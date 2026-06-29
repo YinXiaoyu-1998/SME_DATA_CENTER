@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract is intentionally skeletal through Phase 1 / Day 1A. It records the planned P0 surface, seeded identity assumptions, and catalog enum values without implementing business API behavior yet.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 2.
 
 ## Cross-Cutting Rules
 
@@ -108,6 +108,136 @@ Disabled employee response `403`:
   "error": {
     "code": "EMPLOYEE_DISABLED",
     "message": "Employee account is disabled."
+  }
+}
+```
+
+### `POST /documents`
+
+Request headers:
+
+```http
+Authorization: Bearer <jwt>
+Content-Type: multipart/form-data
+```
+
+Multipart fields:
+
+| Field          | Required | Example                            |
+| -------------- | -------- | ---------------------------------- |
+| `file`         | Yes      | `baoli-june-meituan.csv`           |
+| `title`        | Yes      | `Baoli June Meituan Export`        |
+| `documentType` | Yes      | `raw_material`                     |
+| `sourceSystem` | No       | `meituan`                          |
+| `sourceTime`   | No       | `2026-06-30T00:00:00.000Z`         |
+| `labelKeys[]`  | No       | repeated field, e.g. `store:baoli` |
+
+Response `201`:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "title": "Baoli June Meituan Export",
+  "documentType": "raw_material",
+  "status": "pending_processing",
+  "labels": ["person:baoli.manager", "store:baoli"],
+  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-june-meituan.csv",
+  "originalFileName": "baoli-june-meituan.csv",
+  "sourceSystem": "meituan",
+  "sourceTime": "2026-06-30T00:00:00.000Z",
+  "processingRunStatus": "queued"
+}
+```
+
+Unknown label response `400`:
+
+```json
+{
+  "error": {
+    "code": "UNKNOWN_LABEL",
+    "message": "One or more labels do not exist."
+  }
+}
+```
+
+Forbidden label response `403`:
+
+```json
+{
+  "error": {
+    "code": "FORBIDDEN_LABEL",
+    "message": "One or more labels cannot be assigned."
+  }
+}
+```
+
+Invalid upload response `400`:
+
+```json
+{
+  "error": {
+    "code": "INVALID_DOCUMENT_UPLOAD",
+    "message": "File is required."
+  }
+}
+```
+
+Catalog write failure response `500`:
+
+```json
+{
+  "error": {
+    "code": "DOCUMENT_CATALOG_WRITE_FAILED",
+    "message": "Document catalog write failed."
+  }
+}
+```
+
+Unauthenticated response `401`:
+
+```json
+{
+  "error": {
+    "code": "UNAUTHENTICATED",
+    "message": "Authentication is required."
+  }
+}
+```
+
+### `GET /documents/:id/status`
+
+Allowed actors: the uploader or an admin. Non-admin, non-uploader access returns `404` to avoid document existence leakage.
+
+Request headers:
+
+```http
+Authorization: Bearer <jwt>
+```
+
+Response `200`:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "title": "Baoli June Meituan Export",
+  "documentType": "raw_material",
+  "status": "pending_processing",
+  "labels": ["person:baoli.manager", "store:baoli"],
+  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-june-meituan.csv",
+  "originalFileName": "baoli-june-meituan.csv",
+  "sourceSystem": "meituan",
+  "sourceTime": "2026-06-30T00:00:00.000Z",
+  "processingRunStatus": "queued"
+}
+```
+
+Not found or inaccessible response `404`:
+
+```json
+{
+  "error": {
+    "code": "DOCUMENT_NOT_FOUND",
+    "message": "Document not found."
   }
 }
 ```

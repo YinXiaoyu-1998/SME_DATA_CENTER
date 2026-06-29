@@ -18,4 +18,5 @@ export interface StorageAdapter {
   getObjectStream(key: string): Promise<NodeJS.ReadableStream>;
   statObject(key: string): Promise<StorageObject>;
   createDownloadUrl(key: string): Promise<string>;
+  deleteObject(key: string): Promise<void>;
 }
