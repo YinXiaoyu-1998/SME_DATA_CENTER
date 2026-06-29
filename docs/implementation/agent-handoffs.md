@@ -32,3 +32,14 @@
 - Known gaps: Development login is disabled when `NODE_ENV=production`, but production authentication and long-lived employee access tokens remain future scope. API tests use an injected in-memory repository to stay lightweight; local curl smoke verifies the real Prisma repository against Day 1A seed data.
 - Human blockers: None.
 - Suggested next agent: After lead review/PR merge, proceed to the next earliest dependency-satisfied task in the implementation plan, likely Phase 1 / Day 1C storage adapter, without starting Day 2 upload/catalog early.
+
+## 2026-06-30 07:04 - codex/hub-mvp-documents - Day 1C storage adapter
+
+- Scope: Implemented Phase 1 / Day 1C only: storage adapter interface, local filesystem adapter, deterministic original object key generation, safe filename handling, SHA-256 content hash calculation, stat/read/download URL behavior, and Day 1C docs. Did not implement document upload/catalog APIs, worker processing, search, MCP, admin UI, OSS/MinIO, or employee-facing AI behavior.
+- Files changed: `packages/storage/src/storage-adapter.ts`, `packages/storage/src/local-storage.ts`, `packages/storage/src/index.ts`, `packages/storage/src/local-storage.test.ts`, `docs/implementation/env-inventory.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: `git branch --show-current`; required doc reads; `npm test`; `npm test -- packages/storage/src/local-storage.test.ts` before implementation to verify the red failure; `npm test -- packages/storage/src/local-storage.test.ts`; `npm run typecheck`; `npm run lint`; `npm test`; `npm run format:check`; lead regression red/green for stale content-type metadata on overwrite.
+- Done criteria passed: Local adapter writes original file bytes under `org/<orgId>/documents/<documentId>/original/<safeFileName>`; safe filename sanitization prevents traversal path segments from controlling storage location; `statObject` returns size, known content type when supplied, and SHA-256 hash; `getObjectStream` returns bytes matching the original exactly; `createDownloadUrl` returns a local `file://` URL; storage key contains only org/document physical grouping and no label or role semantics; overwriting without content type clears stale metadata.
+- PR: Not opened by subagent per lead instruction; lead will review and handle git/PR.
+- Known gaps: Local adapter only; no OSS/MinIO adapter or signed remote URL support in Day 1C scope. Content type is persisted only when supplied by the caller.
+- Human blockers: None.
+- Suggested next agent: Lead review/merge for Day 1C, then Day 2 document upload/catalog can consume the storage adapter without expanding Day 1C scope.

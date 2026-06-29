@@ -2,18 +2,19 @@
 
 ## Current Phase
 
-- Phase: Phase 1 / Day 1B - API App Shell And Auth Context
-- Date: 2026-06-29
+- Phase: Phase 1 / Day 1C - Storage Adapter
+- Date: 2026-06-30
 - Lead branch: `codex/enterprise-hub-implementation`
 - Deployment target: Developer machine only
 
 ## Active Workstreams
 
-| Workstream              | Branch                                | Owner/Agent                             | Status   | PR                                                                | Notes                                                                                                                                                             |
-| ----------------------- | ------------------------------------- | --------------------------------------- | -------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Day 0 lead skeleton     | `codex/enterprise-hub-implementation` | Codex lead agent                        | Complete | [PR #2](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/2) | Scope limited to tracking docs, workspace skeleton, tooling, and local MySQL compose. Local port 3306 was occupied, so MySQL was verified with `MYSQL_PORT=3307`. |
-| Day 1A schema/auth seed | `codex/hub-mvp-schema-auth`           | Specialist subagent + Codex lead review | Complete | [PR #3](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/3) | User confirmed PR #3 merged; added Prisma schema/migration/seed, local Prisma shadow DB grant, and permission helper tests.                                       |
-| Day 1B API auth shell   | `codex/hub-mvp-api-auth`              | Codex lead after subagent tool failure  | Complete | [PR #4](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/4) | Implemented health, local dev login, bearer auth context, `/me`, request ids, structured JSON logs, tests, and docs; no Day 1C/Day2/P1/P2/P3 scope.               |
+| Workstream              | Branch                                | Owner/Agent                             | Status   | PR                                                                | Notes                                                                                                                                                              |
+| ----------------------- | ------------------------------------- | --------------------------------------- | -------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Day 0 lead skeleton     | `codex/enterprise-hub-implementation` | Codex lead agent                        | Complete | [PR #2](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/2) | Scope limited to tracking docs, workspace skeleton, tooling, and local MySQL compose. Local port 3306 was occupied, so MySQL was verified with `MYSQL_PORT=3307`.  |
+| Day 1A schema/auth seed | `codex/hub-mvp-schema-auth`           | Specialist subagent + Codex lead review | Complete | [PR #3](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/3) | User confirmed PR #3 merged; added Prisma schema/migration/seed, local Prisma shadow DB grant, and permission helper tests.                                        |
+| Day 1B API auth shell   | `codex/hub-mvp-api-auth`              | Codex lead after subagent tool failure  | Complete | [PR #4](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/4) | Implemented health, local dev login, bearer auth context, `/me`, request ids, structured JSON logs, tests, and docs; no Day 1C/Day2/P1/P2/P3 scope.                |
+| Day 1C storage adapter  | `codex/hub-mvp-documents`             | Simple subagent + Codex lead review     | Complete | [PR #5](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/5) | Implemented storage adapter interface, local filesystem adapter, content hash/stat/read/download URL tests, and Day 1C docs; no upload/catalog API or later scope. |
 
 ## Completed Checkpoints
 
@@ -33,12 +34,16 @@
 | 2026-06-29 | Day 1B subagent abandoned         | Spawned Day 1B subagent `Popper`, but it produced no workspace changes after extended waits; `close_agent` also stalled, so the user directed the lead agent to stop waiting and either start over or self-handle.                                                                           |
 | 2026-06-29 | Day 1B complete locally           | Added Fastify API shell, local JWT dev login, bearer auth context, Prisma employee repository, `/me`, request id headers, structured JSON logs, API tests, and contract/test/env docs. `npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check`, and local curl smoke passed. |
 | 2026-06-29 | Day 1B draft PR opened            | Draft PR [#4](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/4).                                                                                                                                                                                                                     |
+| 2026-06-30 | Day 1C selected                   | User confirmed PR #4 merged; reread `AGENTS.md`, implementation plan, progress, handoffs, env inventory, API contract, test cases, context, and ADRs from latest `origin/main`; assigned branch `codex/hub-mvp-documents`.                                                                   |
+| 2026-06-30 | Day 1C complete locally           | Added storage adapter interface and local filesystem adapter. Verified TDD red with missing adapter import, then targeted/full tests, typecheck, lint, and format checks passed. Lead review fixed a stale content-type metadata overwrite bug with a red/green regression test.             |
+| 2026-06-30 | Day 1C lead review passed         | Lead reviewed subagent diff and read-only reviewer findings; confirmed scope stays inside Day 1C and does not implement upload/catalog, OSS/MinIO, worker, search, MCP, admin UI, P1/P2/P3, or employee-facing AI behavior.                                                                  |
+| 2026-06-30 | Day 1C draft PR opened            | Draft PR [#5](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/5).                                                                                                                                                                                                                     |
 
 ## Blockers
 
 | Blocker         | Needed From Human | Since | Stop Rule |
 | --------------- | ----------------- | ----- | --------- |
-| None for Day 1B | N/A               | N/A   | N/A       |
+| None for Day 1C | N/A               | N/A   | N/A       |
 
 ## Next Actions
 
@@ -52,3 +57,4 @@
 - [x] Lead review/commit/PR for Day 1A branch.
 - [x] Complete Day 1B API app shell and auth context.
 - [x] Lead commit, push, and draft PR for Day 1B branch.
+- [x] Complete Day 1C local storage adapter.
