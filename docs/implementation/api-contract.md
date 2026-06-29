@@ -90,6 +90,28 @@ Response `200`:
 }
 ```
 
+Unknown employee response `404`:
+
+```json
+{
+  "error": {
+    "code": "EMPLOYEE_NOT_FOUND",
+    "message": "Employee not found."
+  }
+}
+```
+
+Disabled employee response `403`:
+
+```json
+{
+  "error": {
+    "code": "EMPLOYEE_DISABLED",
+    "message": "Employee account is disabled."
+  }
+}
+```
+
 ### `GET /me`
 
 Request headers:
@@ -119,6 +141,28 @@ Unauthenticated response `401`:
   "error": {
     "code": "UNAUTHENTICATED",
     "message": "Authentication is required."
+  }
+}
+```
+
+Invalid token response `401`:
+
+```json
+{
+  "error": {
+    "code": "UNAUTHENTICATED",
+    "message": "Authentication is required."
+  }
+}
+```
+
+Disabled employee response `403`:
+
+```json
+{
+  "error": {
+    "code": "EMPLOYEE_DISABLED",
+    "message": "Employee account is disabled."
   }
 }
 ```

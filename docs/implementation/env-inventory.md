@@ -9,8 +9,10 @@ This file tracks required variables and external services. Do not store secret v
 | `DATABASE_URL`         |                             Yes | `mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub` |     Yes | Future API, worker, Prisma | Local-only example is in `.env.example`; replace for personal environments. |
 | `STORAGE_DRIVER`       |                             Yes | `local`                                                                              |      No | Future storage package     | Day 0 only records the contract; adapter implementation starts later.       |
 | `LOCAL_STORAGE_ROOT`   | Yes when `STORAGE_DRIVER=local` | `./.data/storage`                                                                    |      No | Future storage package     | `.data/` is ignored by git.                                                 |
-| `JWT_SECRET`           |                             Yes | `replace-with-local-development-secret`                                              |     Yes | Future auth module         | Development value only; production must come from a secret store.           |
+| `JWT_SECRET`           |                             Yes | `replace-with-local-development-secret`                                              |     Yes | API auth module            | Development value only; production must come from a secret store.           |
 | `DEV_SEED_ADMIN_EMAIL` |                             Yes | `admin@example.com`                                                                  |      No | Future seed script         | Used for local seed data in later phases.                                   |
+| `PORT`                 |                              No | `3000`                                                                               |      No | API server                 | Optional local HTTP port override.                                          |
+| `HOST`                 |                              No | `0.0.0.0`                                                                            |      No | API server                 | Optional local bind host override.                                          |
 
 ## Local Docker Compose
 
@@ -24,4 +26,4 @@ This file tracks required variables and external services. Do not store secret v
 
 ## Human-Provided Inputs
 
-No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 / Day 0.
+No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 / Day 1B.
