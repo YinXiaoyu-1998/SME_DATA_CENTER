@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+dist/
+package-lock.json
+.env*
+.prettierignore
+docs/adr/
+docs/context/
+docs/implementation/implementation-plan.md
