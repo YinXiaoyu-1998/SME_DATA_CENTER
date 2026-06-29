@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract is intentionally skeletal for Phase 1 / Day 0. It records the planned P0 surface and initial response shapes without implementing business behavior.
+This contract is intentionally skeletal through Phase 1 / Day 1A. It records the planned P0 surface, seeded identity assumptions, and catalog enum values without implementing business API behavior yet.
 
 ## Cross-Cutting Rules
 
@@ -8,6 +8,31 @@ This contract is intentionally skeletal for Phase 1 / Day 0. It records the plan
 - The backend must enforce employee-account permissions and active-state filtering.
 - Ordinary employee queries must not reveal inaccessible document existence, titles, filenames, counts, or summaries.
 - API tokens, CLI clients, MCP servers, and web clients inherit employee permissions.
+
+## Catalog Enum Values
+
+### `DocumentStatus`
+
+Exact values:
+
+- `uploading`
+- `pending_processing`
+- `processing`
+- `active`
+- `processing_failed`
+- `archived`
+
+Only `active` documents may enter ordinary employee search/query results.
+
+### `DocumentType`
+
+Exact values:
+
+- `raw_material`
+- `structured_dataset`
+- `analysis_artifact`
+- `business_event`
+- `management_knowledge`
 
 ## P0 API List
 
@@ -60,7 +85,7 @@ Response `200`:
     "email": "admin@example.com",
     "role": "admin",
     "disabled": false,
-    "labels": ["all_staff", "person:admin"]
+    "labels": ["all_staff", "person:admin", "store:baoli", "store:suzhou"]
   }
 }
 ```
@@ -82,7 +107,7 @@ Response `200`:
     "email": "admin@example.com",
     "role": "admin",
     "disabled": false,
-    "labels": ["all_staff", "person:admin"]
+    "labels": ["all_staff", "person:admin", "store:baoli", "store:suzhou"]
   }
 }
 ```

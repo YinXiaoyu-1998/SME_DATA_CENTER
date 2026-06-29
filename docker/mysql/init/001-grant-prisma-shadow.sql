@@ -1,0 +1,2 @@
+GRANT ALL PRIVILEGES ON *.* TO 'enterprise_hub'@'%';
+FLUSH PRIVILEGES;

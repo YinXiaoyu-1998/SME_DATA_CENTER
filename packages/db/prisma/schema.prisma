@@ -1,0 +1,252 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum EmployeeRole {
+  admin
+  manager
+  employee
+}
+
+enum LabelType {
+  all_staff
+  store
+  personal
+}
+
+enum DocumentStatus {
+  uploading
+  pending_processing
+  processing
+  active
+  processing_failed
+  archived
+}
+
+enum DocumentType {
+  raw_material
+  structured_dataset
+  analysis_artifact
+  business_event
+  management_knowledge
+}
+
+enum ProcessingRunStatus {
+  queued
+  running
+  succeeded
+  failed
+  retry_scheduled
+}
+
+enum SkillEntryStatus {
+  approved
+  disabled
+}
+
+model Organization {
+  id             String          @id @db.VarChar(64)
+  name           String          @db.VarChar(255)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  employees      Employee[]
+  labels         Label[]
+  documents      Document[]
+  processingRuns ProcessingRun[]
+  auditLogs      AuditLog[]
+  skillEntries   SkillEntry[]
+  accessTokens   AccessToken[]
+
+  @@map("organizations")
+}
+
+model Employee {
+  id             String          @id @default(cuid()) @db.VarChar(32)
+  orgId          String          @map("org_id") @db.VarChar(64)
+  email          String          @unique @db.VarChar(320)
+  displayName    String          @map("display_name") @db.VarChar(255)
+  role           EmployeeRole    @default(employee)
+  disabled       Boolean         @default(false)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  organization   Organization    @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  employeeLabels EmployeeLabel[]
+  uploadedDocs   Document[]      @relation("DocumentUploader")
+  auditLogs      AuditLog[]      @relation("AuditActor")
+  accessTokens   AccessToken[]
+
+  @@index([orgId])
+  @@map("employees")
+}
+
+model Label {
+  id             String          @id @default(cuid()) @db.VarChar(32)
+  orgId          String          @map("org_id") @db.VarChar(64)
+  key            String          @db.VarChar(128)
+  name           String          @db.VarChar(255)
+  type           LabelType
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  organization   Organization    @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  employeeLabels EmployeeLabel[]
+  documentLabels DocumentLabel[]
+
+  @@unique([orgId, key])
+  @@index([orgId, type])
+  @@map("labels")
+}
+
+model EmployeeLabel {
+  employeeId String   @map("employee_id") @db.VarChar(32)
+  labelId    String   @map("label_id") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at")
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  label      Label    @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, labelId])
+  @@index([labelId])
+  @@map("employee_labels")
+}
+
+model Document {
+  id               String           @id @default(cuid()) @db.VarChar(32)
+  orgId            String           @map("org_id") @db.VarChar(64)
+  title            String           @db.VarChar(512)
+  documentType     DocumentType     @map("document_type")
+  status           DocumentStatus   @default(uploading)
+  storageObjectKey String           @map("storage_object_key") @db.VarChar(1024)
+  originalFileName String?          @map("original_file_name") @db.VarChar(512)
+  contentType      String?          @map("content_type") @db.VarChar(255)
+  byteSize         BigInt?          @map("byte_size")
+  checksumSha256   String?          @map("checksum_sha256") @db.VarChar(64)
+  uploaderId       String           @map("uploader_employee_id") @db.VarChar(32)
+  sourceSystem     String?          @map("source_system") @db.VarChar(255)
+  sourceTime       DateTime?        @map("source_time")
+  sourceMetadata   Json?            @map("source_metadata")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  archivedAt       DateTime?        @map("archived_at")
+  organization     Organization     @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  uploader         Employee         @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  documentLabels   DocumentLabel[]
+  processingRuns   ProcessingRun[]
+  chunks           DocumentChunk[]
+
+  @@index([orgId, status])
+  @@index([orgId, documentType])
+  @@index([uploaderId])
+  @@index([sourceTime])
+  @@map("documents")
+}
+
+model DocumentLabel {
+  documentId String   @map("document_id") @db.VarChar(32)
+  labelId    String   @map("label_id") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  label      Label    @relation(fields: [labelId], references: [id], onDelete: Restrict)
+
+  @@id([documentId, labelId])
+  @@index([labelId])
+  @@map("document_labels")
+}
+
+model ProcessingRun {
+  id             String              @id @default(cuid()) @db.VarChar(32)
+  orgId          String              @map("org_id") @db.VarChar(64)
+  documentId     String              @map("document_id") @db.VarChar(32)
+  status         ProcessingRunStatus @default(queued)
+  attemptNumber  Int                 @default(1) @map("attempt_number")
+  retryCount     Int                 @default(0) @map("retry_count")
+  errorCode      String?             @map("error_code") @db.VarChar(128)
+  errorSummary   String?             @map("error_summary") @db.Text
+  startedAt      DateTime?           @map("started_at")
+  finishedAt     DateTime?           @map("finished_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  organization   Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  document       Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, status])
+  @@index([documentId])
+  @@map("processing_runs")
+}
+
+model DocumentChunk {
+  id           String   @id @default(cuid()) @db.VarChar(32)
+  documentId   String   @map("document_id") @db.VarChar(32)
+  chunkIndex   Int      @map("chunk_index")
+  chunkText    String   @map("chunk_text") @db.Text
+  chunkHash    String   @map("chunk_hash") @db.VarChar(64)
+  indexType    String   @default("text") @map("index_type") @db.VarChar(64)
+  modelName    String?  @map("model_name") @db.VarChar(128)
+  modelVersion String?  @map("model_version") @db.VarChar(128)
+  createdAt    DateTime @default(now()) @map("created_at")
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, chunkHash, indexType])
+  @@index([documentId, chunkIndex])
+  @@map("document_chunks")
+}
+
+model AuditLog {
+  id              String        @id @default(cuid()) @db.VarChar(32)
+  orgId           String        @map("org_id") @db.VarChar(64)
+  actorEmployeeId String?       @map("actor_employee_id") @db.VarChar(32)
+  action          String        @db.VarChar(128)
+  targetType      String        @map("target_type") @db.VarChar(128)
+  targetId        String?       @map("target_id") @db.VarChar(128)
+  result          String        @default("succeeded") @db.VarChar(64)
+  metadata        Json?
+  requestId       String?       @map("request_id") @db.VarChar(128)
+  clientIp        String?       @map("client_ip") @db.VarChar(128)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  organization    Organization  @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  actor           Employee?     @relation("AuditActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, createdAt])
+  @@index([actorEmployeeId])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}
+
+model SkillEntry {
+  id                  String           @id @default(cuid()) @db.VarChar(32)
+  orgId               String           @map("org_id") @db.VarChar(64)
+  name                String           @db.VarChar(255)
+  description         String           @db.Text
+  version             String           @db.VarChar(64)
+  category            String           @db.VarChar(128)
+  inputRequirements   Json             @map("input_requirements")
+  installInstructions String           @map("install_instructions") @db.Text
+  examplePrompts      Json             @map("example_prompts")
+  status              SkillEntryStatus @default(approved)
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  organization        Organization     @relation(fields: [orgId], references: [id], onDelete: Restrict)
+
+  @@unique([orgId, name, version])
+  @@index([orgId, status])
+  @@map("skill_entries")
+}
+
+model AccessToken {
+  id           String       @id @default(cuid()) @db.VarChar(32)
+  orgId        String       @map("org_id") @db.VarChar(64)
+  employeeId   String       @map("employee_id") @db.VarChar(32)
+  name         String       @db.VarChar(255)
+  tokenHash    String       @unique @map("token_hash") @db.VarChar(255)
+  expiresAt    DateTime?    @map("expires_at")
+  revokedAt    DateTime?    @map("revoked_at")
+  lastUsedAt   DateTime?    @map("last_used_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, employeeId])
+  @@map("access_tokens")
+}

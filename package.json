@@ -15,7 +15,10 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:compose:up": "docker compose up -d mysql",
-    "db:compose:down": "docker compose down"
+    "db:compose:down": "docker compose down",
+    "db:generate": "prisma generate --config packages/db/prisma.config.ts",
+    "db:migrate": "prisma migrate dev --config packages/db/prisma.config.ts",
+    "db:seed": "prisma db seed --config packages/db/prisma.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -23,6 +26,8 @@
     "eslint": "^9.39.2",
     "globals": "^16.5.0",
     "prettier": "^3.7.4",
+    "prisma": "^7.8.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.50.0",
     "vitest": "^4.0.16"
