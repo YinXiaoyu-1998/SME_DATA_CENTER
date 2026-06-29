@@ -9,10 +9,10 @@
 
 ## Active Workstreams
 
-| Workstream              | Branch                                | Owner/Agent                             | Status                                  | PR                                                                | Notes                                                                                                                                                             |
-| ----------------------- | ------------------------------------- | --------------------------------------- | --------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Day 0 lead skeleton     | `codex/enterprise-hub-implementation` | Codex lead agent                        | Complete                                | [PR #2](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/2) | Scope limited to tracking docs, workspace skeleton, tooling, and local MySQL compose. Local port 3306 was occupied, so MySQL was verified with `MYSQL_PORT=3307`. |
-| Day 1A schema/auth seed | `codex/hub-mvp-schema-auth`           | Specialist subagent + Codex lead review | Complete locally; ready for lead review | TBD                                                               | Added Prisma schema/migration/seed, local Prisma shadow DB grant, and permission helper tests; no commit or PR per lead instruction.                              |
+| Workstream              | Branch                                | Owner/Agent                             | Status    | PR                                                                | Notes                                                                                                                                                             |
+| ----------------------- | ------------------------------------- | --------------------------------------- | --------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Day 0 lead skeleton     | `codex/enterprise-hub-implementation` | Codex lead agent                        | Complete  | [PR #2](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/2) | Scope limited to tracking docs, workspace skeleton, tooling, and local MySQL compose. Local port 3306 was occupied, so MySQL was verified with `MYSQL_PORT=3307`. |
+| Day 1A schema/auth seed | `codex/hub-mvp-schema-auth`           | Specialist subagent + Codex lead review | PR opened | [PR #3](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/3) | Added Prisma schema/migration/seed, local Prisma shadow DB grant, and permission helper tests.                                                                    |
 
 ## Completed Checkpoints
 
@@ -27,6 +27,7 @@
 | 2026-06-29 | Day 1A specialist session started | Verified branch `codex/hub-mvp-schema-auth`; reread required docs and ADRs before editing; scope limited to schema, migrations, seeds, permission helper, and Day 1A docs.                                                                            |
 | 2026-06-29 | Day 1A complete locally           | `npm run db:migrate` created/applied `20260629101009_init_day_1a`; `npm run db:seed` twice stayed at 1 org, 3 employees, 6 labels, 10 employee-label rows; local Docker init grant added for Prisma shadow DB; permission tests and repo checks pass. |
 | 2026-06-29 | Day 1A lead review passed         | Lead reviewed schema, seed, permission helper tests, docs, DB counts, indexes, and scope boundaries; no human blockers or Day 1B/1C/Day2/P1/P2/P3 scope creep found.                                                                                  |
+| 2026-06-29 | Day 1A draft PR opened            | Commit `a65e044`; draft PR [#3](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/3).                                                                                                                                                            |
 
 ## Blockers
 
@@ -43,4 +44,4 @@
 - [x] Run Day 0 verification commands.
 - [x] Commit, push, and open/update draft PR.
 - [x] Complete Day 1A data model, migrations, seeds, permission helper, and docs.
-- [ ] Lead review/commit/PR for Day 1A branch.
+- [x] Lead review/commit/PR for Day 1A branch.
