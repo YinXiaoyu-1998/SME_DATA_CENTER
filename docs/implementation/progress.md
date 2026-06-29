@@ -9,9 +9,9 @@
 
 ## Active Workstreams
 
-| Workstream          | Branch                                | Owner/Agent      | Status    | PR  | Notes                                                                                                                                                             |
-| ------------------- | ------------------------------------- | ---------------- | --------- | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Day 0 lead skeleton | `codex/enterprise-hub-implementation` | Codex lead agent | Verifying | TBD | Scope limited to tracking docs, workspace skeleton, tooling, and local MySQL compose. Local port 3306 was occupied, so MySQL was verified with `MYSQL_PORT=3307`. |
+| Workstream          | Branch                                | Owner/Agent      | Status   | PR                                                                | Notes                                                                                                                                                             |
+| ------------------- | ------------------------------------- | ---------------- | -------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Day 0 lead skeleton | `codex/enterprise-hub-implementation` | Codex lead agent | Complete | [PR #2](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/2) | Scope limited to tracking docs, workspace skeleton, tooling, and local MySQL compose. Local port 3306 was occupied, so MySQL was verified with `MYSQL_PORT=3307`. |
 
 ## Completed Checkpoints
 
@@ -21,6 +21,7 @@
 | 2026-06-29 | Tracking docs created             | Created `progress.md`, `agent-handoffs.md`, `env-inventory.md`, `api-contract.md`, and populated `test-cases.md`.                                                                    |
 | 2026-06-29 | Workspace skeleton created        | Added npm workspaces under `apps/` and `packages/`, root TypeScript, lint, formatter, Vitest config, and local MySQL compose.                                                        |
 | 2026-06-29 | Day 0 checks passed before commit | `npm install`; `npm run lint`; `npm run typecheck`; `npm test` passed with 1 test file / 1 test; `MYSQL_PORT=3307 docker compose up -d mysql`; Docker health `mysql-health=healthy`. |
+| 2026-06-29 | Day 0 draft PR opened             | Initial scaffold commit `80cb060`; draft PR [#2](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/2).                                                                          |
 
 ## Blockers
 
@@ -35,4 +36,4 @@
 - [x] Create initial service workspace layout.
 - [x] Add root npm tooling and local MySQL compose.
 - [x] Run Day 0 verification commands.
-- [ ] Commit, push, and open/update draft PR.
+- [x] Commit, push, and open/update draft PR.
