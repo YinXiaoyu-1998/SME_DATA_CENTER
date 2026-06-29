@@ -85,6 +85,14 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
     return pathToFileURL(this.resolveObjectPath(key)).href;
   }
 
+  async deleteObject(key: string): Promise<void> {
+    const objectPath = this.resolveObjectPath(key);
+    await Promise.all([
+      rm(objectPath, { force: true }),
+      rm(metadataPathFor(objectPath), { force: true })
+    ]);
+  }
+
   private resolveObjectPath(key: string): string {
     assertSafeObjectKey(key);
     const objectPath = path.resolve(this.root, key);

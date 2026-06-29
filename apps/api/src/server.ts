@@ -1,5 +1,19 @@
+import { randomBytes } from "node:crypto";
+import multipart from "@fastify/multipart";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
-import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import {
+  AUTH_ERROR_CODES,
+  isDocumentType,
+  type AuthenticatedEmployee,
+  type DocumentTypeName
+} from "@enterprise-hub/domain";
+import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
+import {
+  createPrismaDocumentCatalogRepository,
+  type CatalogLabel,
+  type DocumentCatalogRepository,
+  type DocumentStatusRecord
+} from "./documents.js";
 import { createPrismaEmployeeRepository, type EmployeeRepository } from "./employees.js";
 import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
 
@@ -7,6 +21,8 @@ const SERVICE_NAME = "enterprise-hub-api";
 
 export interface ApiServerOptions {
   employeeRepository?: EmployeeRepository;
+  documentRepository?: DocumentCatalogRepository;
+  storageAdapter?: StorageAdapter;
   jwtSecret?: string;
   enableDevLogin?: boolean;
   logger?: boolean;
@@ -18,6 +34,35 @@ interface DevLoginBody {
 
 interface AuthenticatedRequest extends FastifyRequest {
   employee: AuthenticatedEmployee;
+}
+
+interface MultipartFieldPart {
+  type: "field";
+  fieldname: string;
+  value: unknown;
+}
+
+interface MultipartFilePart {
+  type: "file";
+  fieldname: string;
+  filename: string;
+  mimetype?: string;
+  file: AsyncIterable<Buffer | Uint8Array | string>;
+}
+
+type MultipartPart = MultipartFieldPart | MultipartFilePart;
+
+interface ParsedUpload {
+  file?: {
+    fileName: string;
+    contentType?: string;
+    body: Buffer;
+  };
+  title?: string;
+  documentType?: string;
+  sourceSystem?: string;
+  sourceTime?: string;
+  labelKeys: string[];
 }
 
 function requireJwtSecret(): string {
@@ -39,6 +84,10 @@ function errorResponse(code: string, message: string) {
   };
 }
 
+function validationError(reply: FastifyReply, code: string, message: string) {
+  return reply.code(400).send(errorResponse(code, message));
+}
+
 function bearerToken(request: FastifyRequest): string | null {
   const authorization = request.headers.authorization;
 
@@ -57,6 +106,135 @@ function employeeResponse(employee: AuthenticatedEmployee) {
     disabled: employee.disabled,
     labels: employee.labels
   };
+}
+
+function createDocumentId(): string {
+  return `doc_${randomBytes(12).toString("hex")}`;
+}
+
+function defaultOrgId(): string {
+  return "default-org";
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.length > 0))].sort();
+}
+
+async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
+  const upload: ParsedUpload = {
+    labelKeys: []
+  };
+
+  const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
+
+  for await (const part of multipartRequest.parts()) {
+    if (part.type === "file") {
+      if (part.fieldname !== "file") {
+        continue;
+      }
+
+      upload.file = {
+        fileName: part.filename,
+        contentType: part.mimetype,
+        body: await readMultipartFile(part.file)
+      };
+      continue;
+    }
+
+    const value = typeof part.value === "string" ? part.value.trim() : "";
+
+    if (part.fieldname === "labelKeys[]" || part.fieldname === "labelKeys") {
+      if (value) {
+        upload.labelKeys.push(value);
+      }
+      continue;
+    }
+
+    if (part.fieldname === "title") {
+      upload.title = value;
+      continue;
+    }
+
+    if (part.fieldname === "documentType") {
+      upload.documentType = value;
+      continue;
+    }
+
+    if (part.fieldname === "sourceSystem") {
+      upload.sourceSystem = value;
+      continue;
+    }
+
+    if (part.fieldname === "sourceTime") {
+      upload.sourceTime = value;
+    }
+  }
+
+  upload.labelKeys = uniqueSorted(upload.labelKeys);
+  return upload;
+}
+
+async function readMultipartFile(file: MultipartFilePart["file"]): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of file) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
+}
+
+function parseSourceTime(value: string | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const sourceTime = new Date(value);
+
+  if (Number.isNaN(sourceTime.getTime())) {
+    throw new Error("Invalid sourceTime.");
+  }
+
+  return sourceTime;
+}
+
+function documentStatusResponse(document: DocumentStatusRecord) {
+  return {
+    id: document.id,
+    title: document.title,
+    documentType: document.documentType,
+    status: document.status,
+    labels: document.labels,
+    storageObjectKey: document.storageObjectKey,
+    originalFileName: document.originalFileName,
+    sourceSystem: document.sourceSystem,
+    sourceTime: document.sourceTime?.toISOString() ?? null,
+    processingRunStatus: document.processingRunStatus
+  };
+}
+
+function mergeLabels(requestedLabels: CatalogLabel[], personalLabel: CatalogLabel | null) {
+  const labelsByKey = new Map(requestedLabels.map((label) => [label.key, label]));
+
+  if (personalLabel) {
+    labelsByKey.set(personalLabel.key, personalLabel);
+  }
+
+  return [...labelsByKey.values()].sort((first, second) => first.key.localeCompare(second.key));
+}
+
+function forbiddenRequestedLabels(
+  employee: AuthenticatedEmployee,
+  labels: CatalogLabel[]
+): string[] {
+  if (employee.role === "admin") {
+    return [];
+  }
+
+  return labels
+    .filter((label) => label.type === "all_staff" || !employee.labels.includes(label.key))
+    .map((label) => label.key)
+    .sort();
 }
 
 async function authenticate(
@@ -104,6 +282,8 @@ async function authenticate(
 
 export function buildApiServer(options: ApiServerOptions = {}) {
   const repository = options.employeeRepository ?? createPrismaEmployeeRepository();
+  let documentRepository = options.documentRepository;
+  let storageAdapter = options.storageAdapter;
   const jwtSecret = options.jwtSecret ?? requireJwtSecret();
   const enableDevLogin = options.enableDevLogin ?? process.env["NODE_ENV"] !== "production";
 
@@ -118,7 +298,20 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   app.addHook("onClose", async () => {
     await repository.disconnect?.();
+    await documentRepository?.disconnect?.();
   });
+
+  void app.register(multipart);
+
+  function documents(): DocumentCatalogRepository {
+    documentRepository ??= createPrismaDocumentCatalogRepository();
+    return documentRepository;
+  }
+
+  function storage(): StorageAdapter {
+    storageAdapter ??= new LocalFileSystemStorageAdapter();
+    return storageAdapter;
+  }
 
   app.get("/healthz", async () => ({
     ok: true,
@@ -174,6 +367,130 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     return {
       employee: employeeResponse((request as AuthenticatedRequest).employee)
     };
+  });
+
+  app.post("/documents", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    let upload: ParsedUpload;
+
+    try {
+      upload = await parseUpload(request);
+    } catch {
+      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "Multipart upload is invalid.");
+    }
+
+    if (!upload.file) {
+      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "File is required.");
+    }
+
+    if (!upload.title) {
+      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "Title is required.");
+    }
+
+    if (!upload.documentType || !isDocumentType(upload.documentType)) {
+      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "Document type is invalid.");
+    }
+
+    let sourceTime: Date | null;
+
+    try {
+      sourceTime = parseSourceTime(upload.sourceTime);
+    } catch {
+      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "Source time is invalid.");
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+    const orgId = defaultOrgId();
+    const requestedLabels = await documents().findLabelsByKeys(orgId, upload.labelKeys);
+    const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
+    const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
+
+    if (missingLabelKeys.length > 0) {
+      return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
+    }
+
+    const forbiddenLabelKeys = forbiddenRequestedLabels(employee, requestedLabels);
+
+    if (forbiddenLabelKeys.length > 0) {
+      return reply
+        .code(403)
+        .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
+    }
+
+    const personalLabel = await documents().findPersonalLabelForEmployee(orgId, employee.id);
+    const finalLabels = mergeLabels(requestedLabels, personalLabel);
+
+    if (finalLabels.length === 0) {
+      return validationError(reply, "UNLABELED_DOCUMENT", "Document must have at least one label.");
+    }
+
+    const documentId = createDocumentId();
+    const storedObject = await storage().putObject({
+      orgId,
+      documentId,
+      fileName: upload.file.fileName,
+      body: upload.file.body,
+      contentType: upload.file.contentType
+    });
+    const documentType: DocumentTypeName = upload.documentType;
+
+    let document: DocumentStatusRecord;
+
+    try {
+      document = await documents().createUploadedDocument({
+        id: documentId,
+        orgId,
+        title: upload.title,
+        documentType,
+        status: "pending_processing",
+        storageObjectKey: storedObject.key,
+        originalFileName: upload.file.fileName,
+        contentType: storedObject.contentType,
+        byteSize: storedObject.size,
+        checksumSha256: storedObject.hash,
+        uploaderId: employee.id,
+        sourceSystem: upload.sourceSystem || null,
+        sourceTime,
+        labelIds: finalLabels.map((label) => label.id),
+        labels: finalLabels.map((label) => label.key),
+        requestId: request.id,
+        clientIp: request.ip
+      });
+    } catch (error) {
+      await storage().deleteObject(storedObject.key);
+      request.log.error({ err: error, documentId }, "document catalog write failed");
+      return reply
+        .code(500)
+        .send(errorResponse("DOCUMENT_CATALOG_WRITE_FAILED", "Document catalog write failed."));
+    }
+
+    return reply.code(201).send(documentStatusResponse(document));
+  });
+
+  app.get<{ Params: { id: string } }>("/documents/:id/status", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+    const document = await documents().findDocumentStatus(defaultOrgId(), request.params.id);
+
+    if (!document) {
+      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+    }
+
+    if (document.uploaderId !== employee.id && employee.role !== "admin") {
+      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+    }
+
+    return documentStatusResponse(document);
   });
 
   return app;
