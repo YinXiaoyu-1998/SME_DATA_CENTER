@@ -97,6 +97,48 @@ export interface DocumentDownloadAuditInput {
   clientIp: string;
 }
 
+export interface ArchiveDocumentInput {
+  orgId: string;
+  documentId: string;
+  actorEmployeeId: string;
+  requestId: string;
+  clientIp: string;
+}
+
+export interface AddDocumentLabelsInput {
+  orgId: string;
+  documentId: string;
+  actorEmployeeId: string;
+  labelIds: string[];
+  labelKeys: string[];
+  requestId: string;
+  clientIp: string;
+}
+
+export interface AuditLogRecord {
+  id: string;
+  actorEmployeeId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  result: string;
+  metadata: Record<string, unknown> | null;
+  requestId: string | null;
+  clientIp: string | null;
+  createdAt: Date;
+}
+
+export interface ListAuditLogsInput {
+  orgId: string;
+  limit: number;
+  cursor: string | null;
+}
+
+export interface ListAuditLogsResult {
+  auditLogs: AuditLogRecord[];
+  nextCursor: string | null;
+}
+
 export interface DocumentCatalogRepository {
   findLabelsByKeys(orgId: string, keys: string[]): Promise<CatalogLabel[]>;
   findPersonalLabelForEmployee(orgId: string, employeeId: string): Promise<CatalogLabel | null>;
@@ -110,6 +152,9 @@ export interface DocumentCatalogRepository {
   ): Promise<DocumentQueryRecord | null>;
   appendDocumentQueryAudit(input: DocumentQueryAuditInput): Promise<void>;
   appendDocumentDownloadAudit(input: DocumentDownloadAuditInput): Promise<void>;
+  archiveDocument(input: ArchiveDocumentInput): Promise<DocumentQueryRecord | null>;
+  addDocumentLabels(input: AddDocumentLabelsInput): Promise<DocumentQueryRecord | null>;
+  listAuditLogs(input: ListAuditLogsInput): Promise<ListAuditLogsResult>;
   disconnect?(): Promise<void>;
 }
 
@@ -355,9 +400,144 @@ export function createPrismaDocumentCatalogRepository(
         }
       });
     },
+    async archiveDocument(input) {
+      const document = await prisma.$transaction(async (tx) => {
+        const existingDocument = await tx.document.findFirst({
+          where: {
+            id: input.documentId,
+            orgId: input.orgId
+          }
+        });
+
+        if (!existingDocument) {
+          return null;
+        }
+
+        const updatedDocument = await tx.document.update({
+          where: {
+            id: input.documentId
+          },
+          data: {
+            status: DocumentStatus.archived,
+            archivedAt: new Date()
+          },
+          include: documentQueryInclude
+        });
+
+        await tx.auditLog.create({
+          data: {
+            orgId: input.orgId,
+            actorEmployeeId: input.actorEmployeeId,
+            action: AUDIT_ACTIONS.documentArchived,
+            targetType: "document",
+            targetId: input.documentId,
+            result: "succeeded",
+            metadata: {
+              previousStatus: existingDocument.status
+            },
+            requestId: input.requestId,
+            clientIp: input.clientIp
+          }
+        });
+
+        return updatedDocument;
+      });
+
+      return document ? toDocumentQueryRecord(document) : null;
+    },
+    async addDocumentLabels(input) {
+      const document = await prisma.$transaction(async (tx) => {
+        const existingDocument = await tx.document.findFirst({
+          where: {
+            id: input.documentId,
+            orgId: input.orgId
+          }
+        });
+
+        if (!existingDocument) {
+          return null;
+        }
+
+        if (input.labelIds.length > 0) {
+          await tx.documentLabel.createMany({
+            data: input.labelIds.map((labelId) => ({
+              documentId: input.documentId,
+              labelId
+            })),
+            skipDuplicates: true
+          });
+        }
+
+        await tx.auditLog.create({
+          data: {
+            orgId: input.orgId,
+            actorEmployeeId: input.actorEmployeeId,
+            action: AUDIT_ACTIONS.documentLabelsAdded,
+            targetType: "document",
+            targetId: input.documentId,
+            result: "succeeded",
+            metadata: {
+              labelKeys: input.labelKeys
+            },
+            requestId: input.requestId,
+            clientIp: input.clientIp
+          }
+        });
+
+        return tx.document.findFirst({
+          where: {
+            id: input.documentId,
+            orgId: input.orgId
+          },
+          include: documentQueryInclude
+        });
+      });
+
+      return document ? toDocumentQueryRecord(document) : null;
+    },
+    async listAuditLogs(input) {
+      const offset = parseCursorOffset(input.cursor);
+      const auditLogs = await prisma.auditLog.findMany({
+        where: {
+          orgId: input.orgId
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: offset,
+        take: input.limit + 1
+      });
+      const page = auditLogs.slice(0, input.limit);
+
+      return {
+        auditLogs: page.map(toAuditLogRecord),
+        nextCursor: auditLogs.length > input.limit ? String(offset + input.limit) : null
+      };
+    },
     async disconnect() {
       await prisma.$disconnect();
     }
+  };
+}
+
+function toMetadataRecord(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return null;
+}
+
+function toAuditLogRecord(auditLog: Prisma.AuditLogGetPayload<object>): AuditLogRecord {
+  return {
+    id: auditLog.id,
+    actorEmployeeId: auditLog.actorEmployeeId,
+    action: auditLog.action,
+    targetType: auditLog.targetType,
+    targetId: auditLog.targetId,
+    result: auditLog.result,
+    metadata: toMetadataRecord(auditLog.metadata),
+    requestId: auditLog.requestId,
+    clientIp: auditLog.clientIp,
+    createdAt: auditLog.createdAt
   };
 }
 

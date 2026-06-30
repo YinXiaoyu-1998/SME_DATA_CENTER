@@ -90,3 +90,15 @@
 - Known gaps: Skill Directory is read-only and approved-only for Day 4B. There is no admin UI/API for creating, disabling, or editing skills, no skill execution platform, no automatic install/update flow, and no MCP interface in this branch.
 - Human blockers: None.
 - Suggested next agent: After lead review/PR merge, proceed to Phase 1 / Day 4C audit, archive, and label sharing.
+
+## 2026-06-30 18:22 - codex/hub-mvp-archive-audit - Day 4C audit, archive, and label sharing
+
+- Scope: Implemented Phase 1 / Day 4C only: `POST /documents/:id/archive`, `POST /documents/:id/labels` for existing catalog labels, uploader/admin-only document mutation checks, seeded Li Jie personal label for sharing acceptance, admin-only `GET /audit`, and audit events `document.archived` and `document.labels_added`. Did not implement Day 5 MCP/CLI, admin UI, label creation, physical deletion, P1/P2/P3, or employee-facing AI behavior.
+- Subagent note: No subagent was used. The implementation plan recommends a specialist subagent when parallelizing Day 4 API tracks; this session ran a single linear Day 4C task after Day 4A and Day 4B were merged.
+- Files changed: `apps/api/src/documents.ts`, `apps/api/src/server.ts`, `apps/api/src/server.test.ts`, `packages/domain/src/audit.ts`, `packages/db/src/seed.ts`, `docs/implementation/api-contract.md`, `docs/implementation/env-inventory.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: required doc/context/ADR reads; `git switch -c codex/hub-mvp-archive-audit origin/main`; `npm test -- apps/api/src/server.test.ts` before implementation to verify five Day 4C HTTP 404 red failures; `npm test -- apps/api/src/server.test.ts`; `npm run typecheck`; `MYSQL_PORT=3307 docker compose up -d mysql`; `DATABASE_URL=... npm run db:generate`; `DATABASE_URL=... npm run db:seed` twice; injected real API/worker/storage smoke; `npx prettier --write` for touched files; final `npm test -- apps/api/src/server.test.ts`; `npm run typecheck`; `npm test`; `npm run lint`; `npm run format:check`; `git diff --check`.
+- Done criteria passed: Archiving an active document changes status to `archived`; archived documents disappear from ordinary search; archive does not delete the local storage object; adding existing `person:lijie` makes the document visible to seeded/test Li Jie; non-uploader non-admin label mutation is blocked; `/audit` returns ordered events to admin and HTTP 403 to non-admin; API contract documents archive, label change, and audit examples.
+- PR: Not opened yet; lead will commit, push, and open draft PR.
+- Known gaps: Label mutation only adds existing labels and does not remove labels, create labels, or provide an admin label catalog API. Non-admin uploaders are blocked from adding `all_staff`. Audit query uses offset cursor pagination for the local MVP.
+- Human blockers: None.
+- Suggested next agent: After lead review/PR merge, proceed to the next earliest Phase 1 task, likely Day 5 minimal MCP or CLI smoke interface, without starting Phase 2 until the remaining MVP items are complete.

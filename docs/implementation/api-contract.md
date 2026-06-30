@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 4B.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 4C.
 
 ## Cross-Cutting Rules
 
@@ -406,6 +406,142 @@ Seeded approved entries:
 - `menu-gross-margin-analysis`
 
 Disabled or unapproved skills are not returned by `GET /skills`.
+
+### `POST /documents/:id/archive`
+
+Archives an active document by metadata state change only. The original storage object is not deleted. Allowed actors are the uploader or an admin. Non-uploader employees who can otherwise see the document receive `403`; inaccessible documents still return `404`.
+
+Response `200`:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "title": "Baoli June Meituan Export",
+  "documentType": "raw_material",
+  "status": "archived",
+  "labels": ["person:baoli.manager", "store:baoli"],
+  "originalFileName": "baoli-june-meituan.csv",
+  "sourceSystem": "meituan",
+  "sourceTime": "2026-06-30T00:00:00.000Z",
+  "createdAt": "2026-06-30T01:00:00.000Z",
+  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-june-meituan.csv",
+  "contentType": "text/csv",
+  "byteSize": 128,
+  "checksumSha256": "..."
+}
+```
+
+Forbidden mutation response `403`:
+
+```json
+{
+  "error": {
+    "code": "DOCUMENT_UPDATE_FORBIDDEN",
+    "message": "Document cannot be changed."
+  }
+}
+```
+
+Audit event appended:
+
+- `document.archived` with previous status metadata.
+
+### `POST /documents/:id/labels`
+
+Adds existing label-catalog entries to an active document. The MVP allows only the uploader or an admin to change document labels. Non-admin uploaders may share to existing personal or store labels, but cannot add `all_staff`.
+
+Request:
+
+```json
+{
+  "labelKeys": ["person:lijie"]
+}
+```
+
+Response `200`:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "title": "Baoli Menu Analysis Report",
+  "documentType": "analysis_artifact",
+  "status": "active",
+  "labels": ["person:baoli.manager", "person:lijie"],
+  "originalFileName": "baoli-menu-analysis.md",
+  "sourceSystem": null,
+  "sourceTime": null,
+  "createdAt": "2026-06-30T01:00:00.000Z",
+  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-menu-analysis.md",
+  "contentType": "text/markdown",
+  "byteSize": 256,
+  "checksumSha256": "..."
+}
+```
+
+Unknown label response `400`:
+
+```json
+{
+  "error": {
+    "code": "UNKNOWN_LABEL",
+    "message": "One or more labels do not exist."
+  }
+}
+```
+
+Audit event appended:
+
+- `document.labels_added` with added label keys.
+
+Seeded Day 4C sharing employee:
+
+- `lijie@example.com` / `emp_lijie` with labels `all_staff` and `person:lijie`.
+
+### `GET /audit`
+
+Admin-only audit query. Non-admin employees receive `403`.
+
+Query params:
+
+| Param    | Required | Example | Notes                                             |
+| -------- | -------- | ------- | ------------------------------------------------- |
+| `limit`  | No       | `20`    | 1-50, default 20                                  |
+| `cursor` | No       | `20`    | Opaque pagination offset returned as `nextCursor` |
+
+Response `200`:
+
+```json
+{
+  "auditEvents": [
+    {
+      "id": "audit_01",
+      "actorEmployeeId": "emp_admin",
+      "action": "document.archived",
+      "targetType": "document",
+      "targetId": "doc_91e4dd567237bed3d3f00c67",
+      "result": "succeeded",
+      "metadata": {
+        "previousStatus": "active"
+      },
+      "requestId": "req-123",
+      "clientIp": "127.0.0.1",
+      "createdAt": "2026-06-30T02:00:00.000Z"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+Forbidden response `403`:
+
+```json
+{
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "Admin access is required."
+  }
+}
+```
 
 ## Processing Worker
 

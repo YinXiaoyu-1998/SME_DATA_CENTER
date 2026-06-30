@@ -33,6 +33,14 @@ const employees = [
     role: EmployeeRole.manager,
     personalLabelKey: "person:suzhou.manager",
     labelKeys: ["all_staff", "store:suzhou", "person:suzhou.manager"]
+  },
+  {
+    id: "emp_lijie",
+    email: "lijie@example.com",
+    displayName: "Li Jie",
+    role: EmployeeRole.employee,
+    personalLabelKey: "person:lijie",
+    labelKeys: ["all_staff", "person:lijie"]
   }
 ] as const;
 
