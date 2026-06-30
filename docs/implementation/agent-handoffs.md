@@ -110,7 +110,7 @@
 - Files changed: `AGENTS.md`, `package.json`, `package-lock.json`, `apps/cli/package.json`, `apps/cli/src/index.ts`, `apps/cli/src/cli.ts`, `apps/cli/src/cli.test.ts`, `docs/implementation/api-contract.md`, `docs/implementation/env-inventory.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
 - Commands run: required doc/context/ADR reads; `git switch -c codex/hub-mvp-cli-smoke origin/main`; `npm install`; `npm test -- apps/cli/src/cli.test.ts`; `npm run typecheck`; `MYSQL_PORT=3307 docker compose up -d mysql`; `DATABASE_URL=... npm run db:generate`; `DATABASE_URL=... npm run db:seed`; local API server on `127.0.0.1:3015`; `npm run hub -- login --email baoli.manager@example.com`; `npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv --label store:baoli`; `npm run worker:once`; Baoli and Suzhou CLI search smoke; smoke cleanup; `npm test`; `npm run lint`.
 - Done criteria passed: Developer can login, upload a fixture, and search through CLI without raw curl; CLI search results match API permission filtering; Suzhou CLI session cannot see the Baoli document; API contract documents CLI commands; no token is printed by `hub login`.
-- PR: Not opened yet; lead will commit, push, and open draft PR.
+- PR: Draft PR [#13](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/13) opened by lead after verification.
 - Known gaps: CLI is local smoke tooling only and uses dev login plus a local ignored token session file. It does not manage production employee tokens, run MCP tools, execute skills, or provide polished UX.
 - Human blockers: None.
 - Suggested next agent: After lead review/PR merge, proceed to Phase 1 / Day 6 MVP integration test and local demo.
