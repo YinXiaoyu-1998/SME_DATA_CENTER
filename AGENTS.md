@@ -24,6 +24,7 @@
 - Test: `npm test`
 - Format check: `npm run format:check`
 - Run one deterministic worker pass: `npm run worker:once`
+- Run local CLI smoke commands: `npm run hub -- <command>`
 - Start local MySQL: `docker compose up -d mysql`
 - Stop local services: `docker compose down`
 

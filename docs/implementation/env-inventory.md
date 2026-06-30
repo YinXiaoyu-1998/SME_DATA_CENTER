@@ -11,6 +11,8 @@ This file tracks required variables and external services. Do not store secret v
 | `LOCAL_STORAGE_ROOT`   | Yes when `STORAGE_DRIVER=local` | `./.data/storage`                                                                    |      No | Storage package     | Local adapter root for original file objects; `.data/` is ignored by git.   |
 | `JWT_SECRET`           |                             Yes | `replace-with-local-development-secret`                                              |     Yes | API auth module     | Development value only; production must come from a secret store.           |
 | `DEV_SEED_ADMIN_EMAIL` |                             Yes | `admin@example.com`                                                                  |      No | Future seed script  | Used for local seed data in later phases.                                   |
+| `HUB_API_URL`          |                              No | `http://127.0.0.1:3000`                                                              |      No | CLI                 | Optional API base URL override for local CLI smoke commands.                |
+| `HUB_CLI_SESSION_FILE` |                              No | `.data/hub-cli/session.json`                                                         |      No | CLI                 | Optional local token session file path; the file itself is ignored by git.  |
 | `PORT`                 |                              No | `3000`                                                                               |      No | API server          | Optional local HTTP port override.                                          |
 | `HOST`                 |                              No | `0.0.0.0`                                                                            |      No | API server          | Optional local bind host override.                                          |
 
@@ -26,4 +28,4 @@ This file tracks required variables and external services. Do not store secret v
 
 ## Human-Provided Inputs
 
-No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 / Day 4C.
+No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 / Day 5.
