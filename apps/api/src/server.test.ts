@@ -13,6 +13,7 @@ import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "./server.js";
 import { signEmployeeAccessToken } from "./tokens.js";
 import type { EmployeeRepository } from "./employees.js";
+import type { SkillDirectoryRepository, SkillDirectoryEntry } from "./skills.js";
 
 const jwtSecret = "test-local-jwt-secret";
 
@@ -67,6 +68,76 @@ function buildTestServer(employees = [adminEmployee, disabledEmployee]) {
     logger: false
   });
 }
+
+function createSkillRepository(entries: SkillDirectoryEntry[]): SkillDirectoryRepository {
+  return {
+    async listApprovedSkills(input) {
+      const q = input.q?.toLowerCase() ?? null;
+      return entries.filter((entry) => {
+        if (entry.status !== "approved") {
+          return false;
+        }
+
+        if (input.category && entry.category !== input.category) {
+          return false;
+        }
+
+        if (!q) {
+          return true;
+        }
+
+        return [
+          entry.name,
+          entry.description,
+          entry.category,
+          ...entry.inputRequirements,
+          entry.installInstructions,
+          ...entry.examplePrompts
+        ]
+          .join("\n")
+          .toLowerCase()
+          .includes(q);
+      });
+    }
+  };
+}
+
+const skillEntries: SkillDirectoryEntry[] = [
+  {
+    id: "skill_weekly_store_report",
+    name: "weekly-store-report",
+    description: "门店周报 skill，帮助员工智能体基于已授权资料生成周报草稿。",
+    version: "1.0.0",
+    category: "reporting",
+    inputRequirements: ["已授权的 active 经营数据", "门店标签", "目标周"],
+    installInstructions: "Install the approved weekly-store-report skill in the employee agent.",
+    examplePrompts: ["用保利店上周经营数据生成周报草稿"],
+    status: "approved"
+  },
+  {
+    id: "skill_menu_gross_margin_analysis",
+    name: "menu-gross-margin-analysis",
+    description: "菜单毛利分析 skill，帮助员工智能体分析菜品毛利和菜单结构。",
+    version: "1.0.0",
+    category: "menu-analysis",
+    inputRequirements: ["已授权的菜单数据", "菜品成本数据", "销售明细"],
+    installInstructions:
+      "Install the approved menu-gross-margin-analysis skill in the employee agent.",
+    examplePrompts: ["分析最近三个月菜单毛利，找出需要调整的菜品"],
+    status: "approved"
+  },
+  {
+    id: "skill_disabled",
+    name: "disabled-skill",
+    description: "Disabled internal experiment.",
+    version: "0.1.0",
+    category: "internal",
+    inputRequirements: [],
+    installInstructions: "Do not install.",
+    examplePrompts: [],
+    status: "disabled"
+  }
+];
 
 interface RecordedDocument {
   id: string;
@@ -1054,5 +1125,92 @@ describe("document upload and status", () => {
       actorEmployeeId: baoliManagerEmployee.id,
       targetId: "doc_baoli_active"
     });
+  });
+});
+
+describe("skill directory", () => {
+  let app: FastifyInstance | undefined;
+
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  function buildSkillTestServer() {
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee, baoliManagerEmployee]),
+      skillRepository: createSkillRepository(skillEntries),
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
+
+    return app;
+  }
+
+  it("requires authentication before listing skills", async () => {
+    app = buildSkillTestServer();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/skills"
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "UNAUTHENTICATED"
+      }
+    });
+  });
+
+  it("returns the menu analysis skill for Chinese keyword search without executing it", async () => {
+    app = buildSkillTestServer();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/skills?q=%E8%8F%9C%E5%8D%95",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      skills: [
+        {
+          id: "skill_menu_gross_margin_analysis",
+          name: "menu-gross-margin-analysis",
+          description: "菜单毛利分析 skill，帮助员工智能体分析菜品毛利和菜单结构。",
+          version: "1.0.0",
+          category: "menu-analysis",
+          inputRequirements: ["已授权的菜单数据", "菜品成本数据", "销售明细"],
+          installInstructions:
+            "Install the approved menu-gross-margin-analysis skill in the employee agent.",
+          examplePrompts: ["分析最近三个月菜单毛利，找出需要调整的菜品"],
+          status: "approved"
+        }
+      ]
+    });
+    expect(JSON.stringify(response.json())).not.toContain("executionResult");
+    expect(JSON.stringify(response.json())).not.toContain("Disabled internal experiment");
+  });
+
+  it("filters approved skills by category", async () => {
+    app = buildSkillTestServer();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/skills?category=reporting",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().skills.map((skill: { name: string }) => skill.name)).toEqual([
+      "weekly-store-report"
+    ]);
+    expect(JSON.stringify(response.json())).not.toContain("disabled-skill");
   });
 });
