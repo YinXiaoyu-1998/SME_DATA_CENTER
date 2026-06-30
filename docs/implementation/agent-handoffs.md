@@ -114,3 +114,15 @@
 - Known gaps: CLI is local smoke tooling only and uses dev login plus a local ignored token session file. It does not manage production employee tokens, run MCP tools, execute skills, or provide polished UX.
 - Human blockers: None.
 - Suggested next agent: After lead review/PR merge, proceed to Phase 1 / Day 6 MVP integration test and local demo.
+
+## 2026-06-30 22:41 - codex/hub-mvp-integration-test - Day 6 MVP integration test and local demo
+
+- Scope: Implemented Phase 1 / Day 6 only: non-sensitive MVP fixtures, `npm run test:integration`, local demo commands, and progress/test/API/env docs for the local MVP loop. Did not implement Phase 2 infrastructure, OSS, online MySQL, admin UI, P1/P2/P3, or employee-facing AI behavior.
+- Subagent note: No subagent was used. Day 6 recommends a QA/integration subagent when independent validation is needed, but this session kept the single linear integration script in the lead branch and verified it directly.
+- Files changed: `AGENTS.md`, `package.json`, `tsconfig.json`, `scripts/test-integration.ts`, `fixtures/suzhou-performance.md`, `fixtures/management-knowledge.md`, `docs/implementation/api-contract.md`, `docs/implementation/env-inventory.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: required doc/context/ADR reads; `git switch -c codex/hub-mvp-integration-test origin/main`; `npm run typecheck`; `npm run lint`; `npm run format:check`; `npm test`; `MYSQL_PORT=3307 npm run test:integration`.
+- Done criteria passed: `npm test` passed; `npm run test:integration` passed from a reset local development database; local demo commands are documented in `AGENTS.md`; the demo proved upload -> processing -> active search -> download -> archive and Baoli/Suzhou permission isolation.
+- PR: Pending lead push/PR.
+- Known gaps: The integration test intentionally uses local Docker MySQL, local filesystem storage, dev login, and keyword search only. It resets the local development database and is not a staging/production deployment test.
+- Human blockers: None for Phase 1 / Day 6. Phase 2 must stop for human-provided deployment target, domain, online MySQL, OSS bucket/region/credentials, and related production secrets.
+- Suggested next agent: After this PR merges, do not start Phase 2 until the required human inputs are available; then begin Phase 2 / Day 1 containerization and runtime config.

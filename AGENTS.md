@@ -22,14 +22,18 @@
 - Lint: `npm run lint`
 - Typecheck: `npm run typecheck`
 - Test: `npm test`
+- Integration test: `npm run test:integration`
 - Format check: `npm run format:check`
 - Run one deterministic worker pass: `npm run worker:once`
 - Run local CLI smoke commands: `npm run hub -- <command>`
 - Start local MySQL: `docker compose up -d mysql`
 - Stop local services: `docker compose down`
+- Run local MVP demo loop: `MYSQL_PORT=3307 npm run test:integration`
 
 ## Local Environment
 
 Copy `.env.example` to `.env` for local development. Use development-only values locally and never commit `.env`.
 
 Required local variables are tracked in `docs/implementation/env-inventory.md`.
+
+The local MVP integration test defaults to `MYSQL_PORT=3307` when no `MYSQL_PORT` is set, starts the local MySQL service, resets the local development database, seeds sample employees/labels/skills, starts the API on an available local port, runs the CLI upload/search path, runs one worker pass, downloads the active document, archives it, and verifies ordinary search no longer returns it.

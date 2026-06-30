@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-- Phase: Phase 1 / Day 5 - Minimal CLI Smoke Interface
+- Phase: Phase 1 / Day 6 - MVP Integration Test And Local Demo
 - Date: 2026-06-30
 - Lead branch: `codex/enterprise-hub-implementation`
 - Deployment target: Developer machine only
@@ -21,6 +21,7 @@
 | Day 4B Skill Directory  | `codex/hub-mvp-skill-directory`       | Codex lead agent                                         | Complete | [PR #11](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/11) | Implemented two seeded approved skill entries and authenticated read-only `GET /skills` with `q` and `category` filters. Scope stayed limited to Day 4B and excludes skill execution, archive, label sharing, audit query, MCP, admin UI, P1/P2/P3, and employee-facing AI behavior.                       |
 | Day 4C archive/audit    | `codex/hub-mvp-archive-audit`         | Codex lead agent                                         | Complete | [PR #12](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/12) | Implemented metadata archive, existing-label sharing, and admin-only audit query. Scope stayed limited to Day 4C and excludes Day 5/MCP/CLI/admin UI/P1/P2/P3 and employee-facing AI behavior.                                                                                                             |
 | Day 5 CLI smoke         | `codex/hub-mvp-cli-smoke`             | Codex lead agent                                         | Complete | [PR #13](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/13) | Implemented local API-backed CLI smoke commands for dev login, document upload, and document search. Scope stayed limited to Day 5 P0 CLI; no MCP server, admin UI, P1/P2/P3, or employee-facing AI behavior.                                                                                              |
+| Day 6 integration demo  | `codex/hub-mvp-integration-test`      | Codex lead agent                                         | Complete | Pending                                                             | Added the local MVP integration script, two additional non-sensitive fixtures, and documented demo commands. Scope stayed limited to Phase 1 / Day 6; no Phase 2 infrastructure, OSS, online MySQL, admin UI, P1/P2/P3, or employee-facing AI behavior.                                                    |
 
 ## Completed Checkpoints
 
@@ -70,12 +71,15 @@
 | 2026-06-30 | Day 5 CLI tests passed            | Targeted `npm test -- apps/cli/src/cli.test.ts` covered login token storage without stdout token leak, bearer-token search, and multipart upload. Full `npm test` passed with 6 files / 39 tests; `npm run typecheck` and `npm run lint` passed.                                                                                                                                                                                                             |
 | 2026-06-30 | Day 5 local CLI smoke passed      | With local API on `127.0.0.1:3015`, local MySQL on `MYSQL_PORT=3307`, and temporary `HUB_CLI_SESSION_FILE`, `npm run hub -- login --email baoli.manager@example.com` stored a session, `npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv --label store:baoli` created a pending document, `npm run worker:once` activated it, Baoli CLI search found it, and Suzhou CLI search returned no documents.                                       |
 | 2026-06-30 | Day 5 draft PR opened             | Implementation commit `2e11f02`; draft PR [#13](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/13).                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-06-30 | Day 6 selected                    | User confirmed PR #13 merged; reread `AGENTS.md`, implementation plan, progress, handoffs, env inventory, API contract, test cases, context, and ADRs from latest `origin/main`; assigned branch `codex/hub-mvp-integration-test`. Day 6 is the earliest dependency-satisfied remaining Phase 1 task.                                                                                                                                                        |
+| 2026-06-30 | Day 6 integration test passed     | `MYSQL_PORT=3307 npm run test:integration` started local MySQL, reset and seeded the local development database, started API on `127.0.0.1:64143`, logged in through CLI, uploaded `fixtures/baoli-june-meituan.csv`, ran `worker:once`, found the active document as Baoli, hid it from Suzhou, downloaded it as Baoli, archived it, and verified ordinary search hid it.                                                                                   |
+| 2026-06-30 | MVP core loop complete locally    | `npm test` passed with 6 files / 39 tests; `npm run typecheck`, `npm run lint`, and `npm run format:check` passed before final PR preparation. Day 6 local demo proves upload -> processing -> active search -> download -> archive without Phase 2 services.                                                                                                                                                                                                |
 
 ## Blockers
 
 | Blocker        | Needed From Human | Since | Stop Rule |
 | -------------- | ----------------- | ----- | --------- |
-| None for Day 5 | N/A               | N/A   | N/A       |
+| None for Day 6 | N/A               | N/A   | N/A       |
 
 ## Next Actions
 
@@ -102,3 +106,5 @@
 - [x] Lead commit, push, and draft PR for Day 4C branch.
 - [x] Complete Day 5 local CLI smoke interface.
 - [x] Lead commit, push, and draft PR for Day 5 branch.
+- [x] Complete Day 6 MVP integration test and local demo.
+- [ ] Lead commit, push, and draft PR for Day 6 branch.
