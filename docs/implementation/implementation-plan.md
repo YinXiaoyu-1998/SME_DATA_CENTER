@@ -158,15 +158,15 @@ Agents must stop and ask the human instead of inventing values when any of these
 
 When blocked, update `docs/implementation/progress.md` with the exact missing item and stop that workstream.
 
-### 3.4 Subagent Suitability Labels
+### 3.4 Execution Mode And Subagent Fit
 
-Each task below has a label:
+Each task below names both its default execution shape and when a subagent is worth the coordination cost:
 
-- **Lead only:** should be handled by lead/integration agent.
-- **Simple subagent:** good for a narrow, independent implementation task.
-- **Specialist subagent:** good for backend/auth/storage/frontend/devops specialist.
-- **New thread recommended:** large enough that a fresh Codex thread should own it.
-- **Human required:** cannot proceed without the user supplying service/account/config decisions.
+- **Execution mode:** whether the task can be done in the main thread, needs lead ownership, or naturally spans a main-thread pair.
+- **Subagent fit:** when to create a subagent, usually for parallel tracks, independent validation, specialist implementation, or context-heavy work.
+- **Human blocker:** when the task cannot proceed without service, account, data, deployment, or policy decisions from the user.
+
+For single linear work, prefer the main thread. Use subagents when the task boundary, inputs, outputs, and integration point are clear enough that parallel work will save more time than it costs to coordinate.
 
 ## 4. Target System Shape
 
@@ -262,7 +262,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 0: Project Skeleton And Tracking Docs
 
-**Suitability:** Lead only. Simple subagent can assist with docs after lead sets structure.
+**Execution mode:** Main-thread lead.
+**Subagent fit:** Simple docs subagent optional after the lead sets structure.
 
 **Dependencies:** None.
 
@@ -293,7 +294,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 1A: Data Model, Migrations, And Seeds
 
-**Suitability:** Specialist subagent, new thread recommended.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist subagent recommended when running parallel Day 1 tracks; new thread useful if context gets large.
 
 **Can run parallel with:** Day 1B API contract refinement, Day 1C storage adapter interface.
 
@@ -337,7 +339,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 1B: API App Shell And Auth Context
 
-**Suitability:** Simple subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Simple subagent optional when parallelizing with Day 1A and Day 1C.
 
 **Can run parallel with:** Day 1A and Day 1C after skeleton exists.
 
@@ -373,7 +376,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 1C: Storage Adapter
 
-**Suitability:** Simple subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Simple subagent optional when parallelizing with Day 1A and Day 1B.
 
 **Can run parallel with:** Day 1A and Day 1B.
 
@@ -406,7 +410,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 2: Document Upload And Catalog
 
-**Suitability:** Specialist subagent, new thread recommended.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist subagent recommended when running this beside independent Day 4B work; new thread useful for upload/catalog context.
 
 **Can run parallel with:** Day 4B Skill Directory after Day 1A schema has merged.
 
@@ -458,7 +463,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 3: Processing Worker And Active Visibility
 
-**Suitability:** Specialist subagent, new thread recommended.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist subagent recommended when running this beside Skill Directory or audit work; new thread useful for worker/state-machine context.
 
 **Can run parallel with:** Day 4B Skill Directory after Day 1A schema has merged, and Day 4C audit query after upload API exists.
 
@@ -497,7 +503,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 4A: Permission-Filtered Search And Download
 
-**Suitability:** Specialist subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist subagent recommended when parallelizing Day 4 API tracks.
 
 **Can run parallel with:** Day 4B Skill Directory, Day 4C audit API.
 
@@ -537,7 +544,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 4B: Skill Directory
 
-**Suitability:** Simple subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Simple subagent optional when Day 1A schema is merged and Day 4 work is parallelized.
 
 **Can run parallel with:** Day 4A and Day 4C.
 
@@ -570,7 +578,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 4C: Audit, Archive, And Label Sharing
 
-**Suitability:** Specialist subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist subagent recommended when parallelizing Day 4 API tracks.
 
 **Can run parallel with:** Day 4A and Day 4B.
 
@@ -606,7 +615,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 5: Minimal MCP Or CLI Smoke Interface
 
-**Suitability:** Simple subagent if API is stable; new thread recommended if implementing MCP.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Simple subagent optional if the API is stable; new thread recommended only if implementing MCP.
 
 **Can run parallel with:** Integration tests after Day 4.
 
@@ -643,7 +653,8 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 ### Day 6: MVP Integration Test And Local Demo
 
-**Suitability:** Specialist QA/integration subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist QA/integration subagent recommended when the lead needs an independent validation pass.
 
 **Dependencies:** Days 1-5 merged.
 
@@ -704,7 +715,8 @@ Stop and ask the human before starting Phase 2 implementation unless these are a
 
 ### Day 1: Containerization And Runtime Config
 
-**Suitability:** Specialist devops subagent, new thread recommended.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist devops subagent recommended when parallelizing online-readiness work; new thread useful for deployment context.
 
 **Can run parallel with:** OSS adapter if env contract is agreed.
 
@@ -730,7 +742,8 @@ Stop and ask the human before starting Phase 2 implementation unless these are a
 
 ### Day 2: Aliyun OSS Storage Adapter
 
-**Suitability:** Specialist subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist subagent recommended when storage work can proceed independently from containerization.
 
 **Can run parallel with:** Containerization after adapter interface exists.
 
@@ -759,7 +772,8 @@ Stop and ask the human before starting Phase 2 implementation unless these are a
 
 ### Day 3: Online Database And Migration Discipline
 
-**Suitability:** Specialist backend/devops subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist backend/devops subagent recommended when staging database work can proceed independently.
 
 **Dependencies:** Human-provided MySQL staging database.
 
@@ -784,7 +798,8 @@ Stop and ask the human before starting Phase 2 implementation unless these are a
 
 ### Day 4: Security And Operational Basics
 
-**Suitability:** Specialist security/backend subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist security/backend subagent recommended when auth, audit, and operational hardening can be isolated from deployment work.
 
 **Dependencies:** API and online config.
 
@@ -809,7 +824,8 @@ Stop and ask the human before starting Phase 2 implementation unless these are a
 
 ### Day 5: Staging Deployment Runbook
 
-**Suitability:** Devops subagent, new thread recommended.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Devops subagent recommended when deployment credentials and targets are available; new thread useful for runbook-heavy work.
 
 **Dependencies:** Containers, OSS, online DB, human deployment target.
 
@@ -869,7 +885,8 @@ Stop and ask the human before beta launch unless these are available:
 
 ### Day 1: Admin Frontend Skeleton
 
-**Suitability:** Specialist frontend subagent, new thread recommended.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist frontend subagent recommended when backend admin APIs are stable; new thread useful for UI context.
 
 **Can run parallel with:** Backend admin APIs if API contract is agreed.
 
@@ -902,7 +919,8 @@ Stop and ask the human before beta launch unless these are available:
 
 ### Day 2: Admin Failure Queue And Manual Retry
 
-**Suitability:** Frontend + backend pair; use two simple subagents if API contract is frozen.
+**Execution mode:** Main-thread pair or subagents.
+**Subagent fit:** Use two simple subagents only if the API contract is frozen and frontend/backend work can proceed independently.
 
 **Dependencies:** Admin frontend skeleton, worker retry logic.
 
@@ -925,7 +943,8 @@ Stop and ask the human before beta launch unless these are available:
 
 ### Day 3: Beta User And Label Administration
 
-**Suitability:** Specialist backend/frontend subagent.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist backend/frontend subagent recommended when admin API and UI changes can be developed as a bounded slice.
 
 **Dependencies:** Admin auth, seed model.
 
@@ -951,7 +970,8 @@ Stop and ask the human before beta launch unless these are available:
 
 ### Day 4: Beta MCP Tools Or Employee-Agent Connector
 
-**Suitability:** Specialist integration subagent, new thread recommended.
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Specialist integration subagent recommended when API and token flows are stable; new thread useful for MCP/connector context.
 
 **Dependencies:** Stable API, token issuance, search/upload/download.
 
@@ -979,7 +999,8 @@ Stop and ask the human before beta launch unless these are available:
 
 ### Day 5: Beta Launch Checklist And Observation
 
-**Suitability:** Lead + QA subagent.
+**Execution mode:** Main-thread lead, optionally with subagent validation.
+**Subagent fit:** QA subagent recommended for an independent beta-launch verification pass.
 
 **Dependencies:** Admin UI, connector, online deployment.
 
