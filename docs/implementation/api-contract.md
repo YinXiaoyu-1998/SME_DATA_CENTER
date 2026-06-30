@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 3.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 4A.
 
 ## Cross-Cutting Rules
 
@@ -259,7 +259,115 @@ Processing failed response `200` for uploader or admin:
 }
 ```
 
-Ordinary search/list endpoints are not implemented until Day 4A. Until then, Day 3 preserves the existing status endpoint rule: failed documents are visible only to the uploader or an admin, and non-uploader ordinary employees receive `404`.
+### `GET /documents`
+
+Search/list accessible active documents. The backend filters by authenticated employee permissions before returning results. Ordinary employees only see `active` documents whose labels match one of their employee labels or `all_staff`; admins can list all active documents. Inaccessible documents are not counted, named, or otherwise revealed.
+
+Query params:
+
+| Param          | Required | Example        | Notes                                               |
+| -------------- | -------- | -------------- | --------------------------------------------------- |
+| `q`            | No       | `Meituan`      | Keyword over title, source system, metadata, chunks |
+| `documentType` | No       | `raw_material` | Must be one of the documented enum values           |
+| `labelKey`     | No       | `store:baoli`  | Further narrows results by an existing label key    |
+| `limit`        | No       | `20`           | 1-50, default 20                                    |
+| `cursor`       | No       | `20`           | Opaque pagination offset returned as `nextCursor`   |
+
+Response `200`:
+
+```json
+{
+  "documents": [
+    {
+      "id": "doc_91e4dd567237bed3d3f00c67",
+      "title": "Baoli June Meituan Export",
+      "documentType": "raw_material",
+      "status": "active",
+      "labels": ["store:baoli"],
+      "originalFileName": "baoli-june-meituan.csv",
+      "sourceSystem": "meituan",
+      "sourceTime": "2026-06-30T00:00:00.000Z",
+      "createdAt": "2026-06-30T01:00:00.000Z"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+Invalid query response `400`:
+
+```json
+{
+  "error": {
+    "code": "INVALID_DOCUMENT_QUERY",
+    "message": "Document type is invalid."
+  }
+}
+```
+
+### `GET /documents/:id`
+
+Returns metadata for an accessible active document. Missing, inactive, archived, or inaccessible documents all return the same `404`.
+
+Response `200`:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "title": "Baoli June Meituan Export",
+  "documentType": "raw_material",
+  "status": "active",
+  "labels": ["store:baoli"],
+  "originalFileName": "baoli-june-meituan.csv",
+  "sourceSystem": "meituan",
+  "sourceTime": "2026-06-30T00:00:00.000Z",
+  "createdAt": "2026-06-30T01:00:00.000Z",
+  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-june-meituan.csv",
+  "contentType": "text/csv",
+  "byteSize": 128,
+  "checksumSha256": "..."
+}
+```
+
+Not found or inaccessible response `404`:
+
+```json
+{
+  "error": {
+    "code": "DOCUMENT_NOT_FOUND",
+    "message": "Document not found."
+  }
+}
+```
+
+### `GET /documents/:id/download`
+
+Returns a usable local download URL for an accessible active document and records a download audit event. Missing, inactive, archived, or inaccessible documents all return the same `404`.
+
+Response `200`:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "downloadUrl": "file:///absolute/local/storage/path/baoli-june-meituan.csv"
+}
+```
+
+Not found or inaccessible response `404`:
+
+```json
+{
+  "error": {
+    "code": "DOCUMENT_NOT_FOUND",
+    "message": "Document not found."
+  }
+}
+```
+
+Audit events appended by Day 4A:
+
+- `document.queried` with query filters and returned result count, without inaccessible document titles.
+- `document.downloaded` for successful accessible active document downloads.
 
 ## Processing Worker
 

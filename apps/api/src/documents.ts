@@ -7,8 +7,12 @@ import {
   PrismaClient,
   ProcessingRunStatus
 } from "@prisma/client";
-import type { DocumentStatusName, DocumentTypeName } from "@enterprise-hub/domain";
-import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
+import type {
+  AuthenticatedEmployee,
+  DocumentStatusName,
+  DocumentTypeName
+} from "@enterprise-hub/domain";
+import { AUDIT_ACTIONS, canEmployeeAccessDocument } from "@enterprise-hub/domain";
 
 export interface CatalogLabel {
   id: string;
@@ -54,11 +58,58 @@ export interface DocumentStatusRecord {
   processingRunStatus: string | null;
 }
 
+export interface DocumentQueryRecord extends DocumentStatusRecord {
+  createdAt: Date;
+  sourceMetadata: Record<string, unknown> | null;
+}
+
+export interface ListDocumentsInput {
+  orgId: string;
+  employee: AuthenticatedEmployee;
+  q: string | null;
+  documentType: DocumentTypeName | null;
+  labelKey: string | null;
+  limit: number;
+  cursor: string | null;
+}
+
+export interface ListDocumentsResult {
+  documents: DocumentQueryRecord[];
+  nextCursor: string | null;
+}
+
+export interface DocumentQueryAuditInput {
+  orgId: string;
+  employeeId: string;
+  q: string | null;
+  documentType: DocumentTypeName | null;
+  labelKey: string | null;
+  resultCount: number;
+  requestId: string;
+  clientIp: string;
+}
+
+export interface DocumentDownloadAuditInput {
+  orgId: string;
+  employeeId: string;
+  documentId: string;
+  requestId: string;
+  clientIp: string;
+}
+
 export interface DocumentCatalogRepository {
   findLabelsByKeys(orgId: string, keys: string[]): Promise<CatalogLabel[]>;
   findPersonalLabelForEmployee(orgId: string, employeeId: string): Promise<CatalogLabel | null>;
   createUploadedDocument(input: CreateUploadedDocumentInput): Promise<DocumentStatusRecord>;
   findDocumentStatus(orgId: string, documentId: string): Promise<DocumentStatusRecord | null>;
+  listAccessibleActiveDocuments(input: ListDocumentsInput): Promise<ListDocumentsResult>;
+  findAccessibleActiveDocument(
+    orgId: string,
+    documentId: string,
+    employee: AuthenticatedEmployee
+  ): Promise<DocumentQueryRecord | null>;
+  appendDocumentQueryAudit(input: DocumentQueryAuditInput): Promise<void>;
+  appendDocumentDownloadAudit(input: DocumentDownloadAuditInput): Promise<void>;
   disconnect?(): Promise<void>;
 }
 
@@ -79,6 +130,23 @@ const documentStatusInclude = {
     take: 1,
     select: {
       status: true
+    }
+  }
+} satisfies Prisma.DocumentInclude;
+
+const documentQueryInclude = {
+  documentLabels: {
+    include: {
+      label: {
+        select: {
+          key: true
+        }
+      }
+    }
+  },
+  chunks: {
+    select: {
+      chunkText: true
     }
   }
 } satisfies Prisma.DocumentInclude;
@@ -208,10 +276,189 @@ export function createPrismaDocumentCatalogRepository(
 
       return document ? toDocumentStatusRecord(document) : null;
     },
+    async listAccessibleActiveDocuments(input) {
+      const offset = parseCursorOffset(input.cursor);
+      const documents = await prisma.document.findMany({
+        where: buildActiveDocumentWhere(input),
+        include: documentQueryInclude,
+        orderBy: [{ sourceTime: "desc" }, { createdAt: "desc" }, { id: "desc" }]
+      });
+      const matchingDocuments = filterKeywordMatches(documents, input.q).map(toDocumentQueryRecord);
+      const page = matchingDocuments.slice(offset, offset + input.limit);
+      const nextCursor =
+        matchingDocuments.length > offset + input.limit ? String(offset + input.limit) : null;
+
+      return {
+        documents: page,
+        nextCursor
+      };
+    },
+    async findAccessibleActiveDocument(orgId, documentId, employee) {
+      const document = await prisma.document.findFirst({
+        where: {
+          id: documentId,
+          orgId,
+          status: DocumentStatus.active
+        },
+        include: documentQueryInclude
+      });
+
+      if (!document) {
+        return null;
+      }
+
+      if (
+        !employeeCanAccessDocument(
+          employee,
+          document.documentLabels.map((label) => label.label.key)
+        )
+      ) {
+        return null;
+      }
+
+      return toDocumentQueryRecord(document);
+    },
+    async appendDocumentQueryAudit(input) {
+      await prisma.auditLog.create({
+        data: {
+          orgId: input.orgId,
+          actorEmployeeId: input.employeeId,
+          action: AUDIT_ACTIONS.documentQueried,
+          targetType: "document_query",
+          targetId: null,
+          result: "succeeded",
+          metadata: {
+            q: input.q,
+            documentType: input.documentType,
+            labelKey: input.labelKey,
+            resultCount: input.resultCount
+          },
+          requestId: input.requestId,
+          clientIp: input.clientIp
+        }
+      });
+    },
+    async appendDocumentDownloadAudit(input) {
+      await prisma.auditLog.create({
+        data: {
+          orgId: input.orgId,
+          actorEmployeeId: input.employeeId,
+          action: AUDIT_ACTIONS.documentDownloaded,
+          targetType: "document",
+          targetId: input.documentId,
+          result: "succeeded",
+          metadata: {
+            documentId: input.documentId
+          },
+          requestId: input.requestId,
+          clientIp: input.clientIp
+        }
+      });
+    },
     async disconnect() {
       await prisma.$disconnect();
     }
   };
+}
+
+function buildActiveDocumentWhere(input: ListDocumentsInput): Prisma.DocumentWhereInput {
+  const and: Prisma.DocumentWhereInput[] = [
+    {
+      orgId: input.orgId,
+      status: DocumentStatus.active
+    }
+  ];
+
+  if (input.documentType) {
+    and.push({
+      documentType: input.documentType as DocumentType
+    });
+  }
+
+  if (input.labelKey) {
+    and.push({
+      documentLabels: {
+        some: {
+          label: {
+            key: input.labelKey
+          }
+        }
+      }
+    });
+  }
+
+  if (input.employee.role !== "admin") {
+    and.push({
+      documentLabels: {
+        some: {
+          label: {
+            key: {
+              in: unique([...input.employee.labels, "all_staff"])
+            }
+          }
+        }
+      }
+    });
+  }
+
+  return {
+    AND: and
+  };
+}
+
+function parseCursorOffset(cursor: string | null): number {
+  if (!cursor) {
+    return 0;
+  }
+
+  const offset = Number.parseInt(cursor, 10);
+  return Number.isFinite(offset) && offset > 0 ? offset : 0;
+}
+
+function filterKeywordMatches(
+  documents: Array<Prisma.DocumentGetPayload<{ include: typeof documentQueryInclude }>>,
+  q: string | null
+) {
+  const keyword = q?.trim().toLowerCase();
+
+  if (!keyword) {
+    return documents;
+  }
+
+  return documents.filter((document) => {
+    const searchableText = [
+      document.title,
+      document.sourceSystem,
+      document.originalFileName,
+      JSON.stringify(document.sourceMetadata ?? {}),
+      ...document.chunks.map((chunk) => chunk.chunkText)
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n")
+      .toLowerCase();
+
+    return searchableText.includes(keyword);
+  });
+}
+
+function employeeCanAccessDocument(employee: AuthenticatedEmployee, documentLabelKeys: string[]) {
+  if (employee.role === "admin") {
+    return true;
+  }
+
+  return canEmployeeAccessDocument({
+    employee: {
+      disabled: employee.disabled,
+      labelKeys: employee.labels
+    },
+    document: {
+      labelKeys: documentLabelKeys
+    }
+  });
+}
+
+function unique(values: string[]) {
+  return [...new Set(values)];
 }
 
 function toDocumentStatusRecord(
@@ -233,5 +480,29 @@ function toDocumentStatusRecord(
     sourceTime: document.sourceTime,
     labels: document.documentLabels.map((documentLabel) => documentLabel.label.key).sort(),
     processingRunStatus: document.processingRuns[0]?.status ?? null
+  };
+}
+
+function toDocumentQueryRecord(
+  document: Prisma.DocumentGetPayload<{ include: typeof documentQueryInclude }>
+): DocumentQueryRecord {
+  return {
+    id: document.id,
+    orgId: document.orgId,
+    uploaderId: document.uploaderId,
+    title: document.title,
+    documentType: document.documentType,
+    status: document.status,
+    storageObjectKey: document.storageObjectKey,
+    originalFileName: document.originalFileName,
+    contentType: document.contentType,
+    byteSize: document.byteSize === null ? null : Number(document.byteSize),
+    checksumSha256: document.checksumSha256,
+    sourceSystem: document.sourceSystem,
+    sourceTime: document.sourceTime,
+    labels: document.documentLabels.map((documentLabel) => documentLabel.label.key).sort(),
+    processingRunStatus: null,
+    createdAt: document.createdAt,
+    sourceMetadata: document.sourceMetadata as Record<string, unknown> | null
   };
 }
