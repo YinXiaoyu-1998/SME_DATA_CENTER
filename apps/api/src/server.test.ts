@@ -49,6 +49,14 @@ const suzhouManagerEmployee: AuthenticatedEmployee = {
   labels: ["all_staff", "person:suzhou.manager", "store:suzhou"]
 };
 
+const lijieEmployee: AuthenticatedEmployee = {
+  id: "emp_lijie",
+  email: "lijie@example.com",
+  role: "employee",
+  disabled: false,
+  labels: ["all_staff", "person:lijie"]
+};
+
 function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {
   return {
     async findByEmail(email: string) {
@@ -166,10 +174,16 @@ interface RecordedProcessingRun {
 }
 
 interface RecordedAuditLog {
+  id?: string;
   action: string;
   actorEmployeeId: string;
+  targetType?: string;
   targetId: string | null;
+  result?: string;
   metadata?: Record<string, unknown>;
+  requestId?: string;
+  clientIp?: string;
+  createdAt?: Date;
 }
 
 function createDocumentRepository() {
@@ -184,6 +198,7 @@ function createDocumentRepository() {
       "person:suzhou.manager",
       { id: "label_person_suzhou_manager", key: "person:suzhou.manager", type: "personal" }
     ],
+    ["person:lijie", { id: "label_person_lijie", key: "person:lijie", type: "personal" }],
     ["person:admin", { id: "label_person_admin", key: "person:admin", type: "personal" }]
   ]);
   const documents: RecordedDocument[] = [];
@@ -206,6 +221,10 @@ function createDocumentRepository() {
 
       if (employeeId === suzhouManagerEmployee.id) {
         return labelCatalog.get("person:suzhou.manager") ?? null;
+      }
+
+      if (employeeId === lijieEmployee.id) {
+        return labelCatalog.get("person:lijie") ?? null;
       }
 
       if (employeeId === adminEmployee.id) {
@@ -311,6 +330,100 @@ function createDocumentRepository() {
           documentId: input.documentId
         }
       });
+    },
+    async archiveDocument(input: {
+      documentId: string;
+      actorEmployeeId: string;
+      requestId: string;
+      clientIp: string;
+    }) {
+      const document = documents.find((candidate) => candidate.id === input.documentId);
+
+      if (!document) {
+        return null;
+      }
+
+      const previousStatus = document.status;
+      document.status = "archived";
+      auditLogs.push({
+        id: `audit_${auditLogs.length + 1}`,
+        action: "document.archived",
+        actorEmployeeId: input.actorEmployeeId,
+        targetType: "document",
+        targetId: input.documentId,
+        result: "succeeded",
+        metadata: {
+          previousStatus
+        },
+        requestId: input.requestId,
+        clientIp: input.clientIp,
+        createdAt: new Date()
+      });
+
+      return withDefaultCreatedAt(document);
+    },
+    async addDocumentLabels(input: {
+      documentId: string;
+      actorEmployeeId: string;
+      labelKeys: string[];
+      requestId: string;
+      clientIp: string;
+    }) {
+      const document = documents.find((candidate) => candidate.id === input.documentId);
+
+      if (!document) {
+        return null;
+      }
+
+      document.labels = [...new Set([...document.labels, ...input.labelKeys])].sort();
+      auditLogs.push({
+        id: `audit_${auditLogs.length + 1}`,
+        action: "document.labels_added",
+        actorEmployeeId: input.actorEmployeeId,
+        targetType: "document",
+        targetId: input.documentId,
+        result: "succeeded",
+        metadata: {
+          labelKeys: input.labelKeys
+        },
+        requestId: input.requestId,
+        clientIp: input.clientIp,
+        createdAt: new Date()
+      });
+
+      return withDefaultCreatedAt(document);
+    },
+    async listAuditLogs(input: { limit: number; cursor: string | null }) {
+      const offset = input.cursor ? Number.parseInt(input.cursor, 10) : 0;
+      const orderedAuditLogs = auditLogs
+        .map((auditLog, index) => ({
+          id: auditLog.id ?? `audit_${index + 1}`,
+          actorEmployeeId: auditLog.actorEmployeeId,
+          action: auditLog.action,
+          targetType: auditLog.targetType ?? "document",
+          targetId: auditLog.targetId,
+          result: auditLog.result ?? "succeeded",
+          metadata: auditLog.metadata ?? null,
+          requestId: auditLog.requestId ?? null,
+          clientIp: auditLog.clientIp ?? null,
+          createdAt: auditLog.createdAt ?? new Date(index)
+        }))
+        .sort((first, second) => {
+          const timeDifference = second.createdAt.getTime() - first.createdAt.getTime();
+
+          if (timeDifference !== 0) {
+            return timeDifference;
+          }
+
+          return second.id.localeCompare(first.id);
+        });
+      const page = orderedAuditLogs.slice(offset, offset + input.limit);
+
+      return {
+        auditLogs: page,
+        nextCursor:
+          orderedAuditLogs.length > offset + input.limit ? String(offset + input.limit) : null
+      };
     }
   };
 }
@@ -591,7 +704,8 @@ describe("document upload and status", () => {
       employeeRepository: createRepository([
         adminEmployee,
         baoliManagerEmployee,
-        suzhouManagerEmployee
+        suzhouManagerEmployee,
+        lijieEmployee
       ]),
       documentRepository,
       storageAdapter,
@@ -1124,6 +1238,237 @@ describe("document upload and status", () => {
       action: "document.downloaded",
       actorEmployeeId: baoliManagerEmployee.id,
       targetId: "doc_baoli_active"
+    });
+  });
+
+  it("archives an active document without deleting storage and hides it from search", async () => {
+    const { app, documentRepository, storageRoot } = await buildDocumentTestServer();
+    const originalBytes = Buffer.from("date,revenue\n2026-06-01,100\n");
+    const storedObject = await new LocalFileSystemStorageAdapter({ root: storageRoot }).putObject({
+      orgId: "default-org",
+      documentId: "doc_archive_target",
+      fileName: "baoli-archive.csv",
+      body: originalBytes,
+      contentType: "text/csv"
+    });
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_archive_target",
+        title: "Baoli Archive Target",
+        labels: ["store:baoli"],
+        storageObjectKey: storedObject.key
+      })
+    );
+    const accessToken = await accessTokenFor(baoliManagerEmployee);
+
+    const archiveResponse = await app.inject({
+      method: "POST",
+      url: "/documents/doc_archive_target/archive",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+    const searchResponse = await app.inject({
+      method: "GET",
+      url: "/documents?q=Archive",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json()).toMatchObject({
+      id: "doc_archive_target",
+      status: "archived"
+    });
+    expect(documentRepository.documents[0]?.status).toBe("archived");
+    expect(searchResponse.json()).toEqual({ documents: [], nextCursor: null });
+    await expect(readFile(path.join(storageRoot, storedObject.key))).resolves.toEqual(
+      originalBytes
+    );
+    expect(
+      documentRepository.auditLogs.find((auditLog) => auditLog.action === "document.archived")
+    ).toMatchObject({
+      action: "document.archived",
+      actorEmployeeId: baoliManagerEmployee.id,
+      targetId: "doc_archive_target"
+    });
+  });
+
+  it("adds an existing personal label and makes the document visible to that employee", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_private_menu_report",
+        title: "Private Menu Analysis Report",
+        labels: ["person:baoli.manager"]
+      })
+    );
+
+    const shareResponse = await app.inject({
+      method: "POST",
+      url: "/documents/doc_private_menu_report/labels",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      },
+      payload: {
+        labelKeys: ["person:lijie"]
+      }
+    });
+    const lijieSearchResponse = await app.inject({
+      method: "GET",
+      url: "/documents?q=Private",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(lijieEmployee)}`
+      }
+    });
+
+    expect(shareResponse.statusCode).toBe(200);
+    expect(shareResponse.json()).toMatchObject({
+      id: "doc_private_menu_report",
+      labels: ["person:baoli.manager", "person:lijie"]
+    });
+    expect(lijieSearchResponse.statusCode).toBe(200);
+    expect(lijieSearchResponse.json().documents).toMatchObject([
+      {
+        id: "doc_private_menu_report",
+        title: "Private Menu Analysis Report"
+      }
+    ]);
+    expect(
+      documentRepository.auditLogs.find((auditLog) => auditLog.action === "document.labels_added")
+    ).toMatchObject({
+      action: "document.labels_added",
+      actorEmployeeId: baoliManagerEmployee.id,
+      targetId: "doc_private_menu_report",
+      metadata: {
+        labelKeys: ["person:lijie"]
+      }
+    });
+  });
+
+  it("rejects unknown label additions", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_unknown_label",
+        title: "Unknown Label Target",
+        labels: ["person:baoli.manager"]
+      })
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents/doc_unknown_label/labels",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      },
+      payload: {
+        labelKeys: ["person:unknown"]
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "UNKNOWN_LABEL"
+      }
+    });
+    expect(documentRepository.documents[0]?.labels).toEqual(["person:baoli.manager"]);
+  });
+
+  it("prevents non-uploader non-admin employees from changing document labels", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_all_staff_reference",
+        title: "All Staff Reference",
+        labels: ["all_staff"]
+      })
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents/doc_all_staff_reference/labels",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(suzhouManagerEmployee)}`
+      },
+      payload: {
+        labelKeys: ["person:suzhou.manager"]
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "DOCUMENT_UPDATE_FORBIDDEN"
+      }
+    });
+    expect(documentRepository.documents[0]?.labels).toEqual(["all_staff"]);
+  });
+
+  it("returns ordered audit events to admins and denies non-admins", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.auditLogs.push(
+      {
+        id: "audit_older",
+        action: "document.queried",
+        actorEmployeeId: baoliManagerEmployee.id,
+        targetType: "document_query",
+        targetId: null,
+        result: "succeeded",
+        metadata: { resultCount: 1 },
+        createdAt: new Date("2026-06-30T01:00:00.000Z")
+      },
+      {
+        id: "audit_newer",
+        action: "document.archived",
+        actorEmployeeId: adminEmployee.id,
+        targetType: "document",
+        targetId: "doc_old",
+        result: "succeeded",
+        metadata: { previousStatus: "active" },
+        createdAt: new Date("2026-06-30T02:00:00.000Z")
+      }
+    );
+
+    const nonAdminResponse = await app.inject({
+      method: "GET",
+      url: "/audit",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      }
+    });
+    const adminResponse = await app.inject({
+      method: "GET",
+      url: "/audit",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
+      }
+    });
+
+    expect(nonAdminResponse.statusCode).toBe(403);
+    expect(nonAdminResponse.json()).toMatchObject({
+      error: {
+        code: "FORBIDDEN"
+      }
+    });
+    expect(adminResponse.statusCode).toBe(200);
+    expect(adminResponse.json().auditEvents.map((event: { id: string }) => event.id)).toEqual([
+      "audit_newer",
+      "audit_older"
+    ]);
+    expect(adminResponse.json().auditEvents[0]).toMatchObject({
+      id: "audit_newer",
+      action: "document.archived",
+      actorEmployeeId: adminEmployee.id,
+      targetType: "document",
+      targetId: "doc_old",
+      result: "succeeded",
+      metadata: {
+        previousStatus: "active"
+      },
+      createdAt: "2026-06-30T02:00:00.000Z"
     });
   });
 });

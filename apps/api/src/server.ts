@@ -3,6 +3,7 @@ import multipart from "@fastify/multipart";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AUTH_ERROR_CODES,
+  canEmployeeAccessDocument,
   isDocumentType,
   type AuthenticatedEmployee,
   type DocumentTypeName
@@ -10,6 +11,7 @@ import {
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
 import {
   createPrismaDocumentCatalogRepository,
+  type AuditLogRecord,
   type CatalogLabel,
   type DocumentCatalogRepository,
   type DocumentQueryRecord,
@@ -76,6 +78,15 @@ interface DocumentListQuery {
   q?: string;
   documentType?: string;
   labelKey?: string;
+  limit?: string;
+  cursor?: string;
+}
+
+interface DocumentLabelsBody {
+  labelKeys?: unknown;
+}
+
+interface AuditListQuery {
   limit?: string;
   cursor?: string;
 }
@@ -257,6 +268,21 @@ function documentDetailResponse(document: DocumentQueryRecord) {
   };
 }
 
+function auditEventResponse(auditLog: AuditLogRecord) {
+  return {
+    id: auditLog.id,
+    actorEmployeeId: auditLog.actorEmployeeId,
+    action: auditLog.action,
+    targetType: auditLog.targetType,
+    targetId: auditLog.targetId,
+    result: auditLog.result,
+    metadata: auditLog.metadata,
+    requestId: auditLog.requestId,
+    clientIp: auditLog.clientIp,
+    createdAt: auditLog.createdAt.toISOString()
+  };
+}
+
 function skillDirectoryResponse(skill: SkillDirectoryEntry) {
   return {
     id: skill.id,
@@ -297,6 +323,23 @@ function parseCursor(value: string | undefined): string | null {
   return value;
 }
 
+function parseLabelKeysFromBody(body: DocumentLabelsBody): string[] | null {
+  if (!Array.isArray(body.labelKeys)) {
+    return null;
+  }
+
+  const labelKeys = body.labelKeys
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  if (labelKeys.length !== body.labelKeys.length) {
+    return null;
+  }
+
+  return uniqueSorted(labelKeys);
+}
+
 function mergeLabels(requestedLabels: CatalogLabel[], personalLabel: CatalogLabel | null) {
   const labelsByKey = new Map(requestedLabels.map((label) => [label.key, label]));
 
@@ -305,6 +348,32 @@ function mergeLabels(requestedLabels: CatalogLabel[], personalLabel: CatalogLabe
   }
 
   return [...labelsByKey.values()].sort((first, second) => first.key.localeCompare(second.key));
+}
+
+function employeeCanSeeDocumentRecord(
+  employee: AuthenticatedEmployee,
+  document: DocumentStatusRecord
+) {
+  if (employee.role === "admin") {
+    return true;
+  }
+
+  return canEmployeeAccessDocument({
+    employee: {
+      disabled: employee.disabled,
+      labelKeys: employee.labels
+    },
+    document: {
+      labelKeys: document.labels
+    }
+  });
+}
+
+function employeeCanMutateDocument(
+  employee: AuthenticatedEmployee,
+  document: DocumentStatusRecord
+) {
+  return employee.role === "admin" || document.uploaderId === employee.id;
 }
 
 function forbiddenRequestedLabels(
@@ -657,6 +726,113 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     return documentStatusResponse(document);
   });
 
+  app.post<{ Params: { id: string } }>("/documents/:id/archive", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+    const document = await documents().findDocumentStatus(defaultOrgId(), request.params.id);
+
+    if (!document || document.status !== "active") {
+      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+    }
+
+    if (!employeeCanMutateDocument(employee, document)) {
+      if (!employeeCanSeeDocumentRecord(employee, document)) {
+        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+      }
+
+      return reply
+        .code(403)
+        .send(errorResponse("DOCUMENT_UPDATE_FORBIDDEN", "Document cannot be changed."));
+    }
+
+    const archivedDocument = await documents().archiveDocument({
+      orgId: defaultOrgId(),
+      documentId: document.id,
+      actorEmployeeId: employee.id,
+      requestId: request.id,
+      clientIp: request.ip
+    });
+
+    if (!archivedDocument) {
+      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+    }
+
+    return documentDetailResponse(archivedDocument);
+  });
+
+  app.post<{ Body: DocumentLabelsBody; Params: { id: string } }>(
+    "/documents/:id/labels",
+    async (request, reply) => {
+      const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+      if (!authenticated) {
+        return;
+      }
+
+      const labelKeys = parseLabelKeysFromBody(request.body);
+
+      if (!labelKeys || labelKeys.length === 0) {
+        return validationError(
+          reply,
+          "INVALID_LABEL_CHANGE",
+          "labelKeys must be a non-empty array."
+        );
+      }
+
+      const employee = (request as AuthenticatedRequest).employee;
+      const document = await documents().findDocumentStatus(defaultOrgId(), request.params.id);
+
+      if (!document || document.status !== "active") {
+        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+      }
+
+      if (!employeeCanMutateDocument(employee, document)) {
+        if (!employeeCanSeeDocumentRecord(employee, document)) {
+          return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+        }
+
+        return reply
+          .code(403)
+          .send(errorResponse("DOCUMENT_UPDATE_FORBIDDEN", "Document cannot be changed."));
+      }
+
+      const labels = await documents().findLabelsByKeys(defaultOrgId(), labelKeys);
+      const foundLabelKeys = new Set(labels.map((label) => label.key));
+      const missingLabelKeys = labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
+
+      if (missingLabelKeys.length > 0) {
+        return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
+      }
+
+      if (employee.role !== "admin" && labels.some((label) => label.type === "all_staff")) {
+        return reply
+          .code(403)
+          .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
+      }
+
+      const updatedDocument = await documents().addDocumentLabels({
+        orgId: defaultOrgId(),
+        documentId: document.id,
+        actorEmployeeId: employee.id,
+        labelIds: labels.map((label) => label.id),
+        labelKeys: labels.map((label) => label.key).sort(),
+        requestId: request.id,
+        clientIp: request.ip
+      });
+
+      if (!updatedDocument) {
+        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+      }
+
+      return documentDetailResponse(updatedDocument);
+    }
+  );
+
   app.get<{ Params: { id: string } }>("/documents/:id/download", async (request, reply) => {
     const authenticated = await authenticate(request, reply, repository, jwtSecret);
 
@@ -709,6 +885,41 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     return documentDetailResponse(document);
+  });
+
+  app.get<{ Querystring: AuditListQuery }>("/audit", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+
+    if (employee.role !== "admin") {
+      return reply.code(403).send(errorResponse("FORBIDDEN", "Admin access is required."));
+    }
+
+    let limit: number;
+    let cursor: string | null;
+
+    try {
+      limit = parseLimit(request.query.limit);
+      cursor = parseCursor(request.query.cursor);
+    } catch {
+      return validationError(reply, "INVALID_AUDIT_QUERY", "Audit query pagination is invalid.");
+    }
+
+    const result = await documents().listAuditLogs({
+      orgId: defaultOrgId(),
+      limit,
+      cursor
+    });
+
+    return {
+      auditEvents: result.auditLogs.map(auditEventResponse),
+      nextCursor: result.nextCursor
+    };
   });
 
   return app;
