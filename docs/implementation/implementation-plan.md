@@ -4,7 +4,7 @@
 
 **Goal:** Build 企业资料中枢 from zero implementation to local MVP, deployable service, and small-scope internal beta.
 
-**Architecture:** Use a modular monolith first: one backend codebase with modules for employee accounts, labels, document catalog, storage, processing worker, search/query, audit, admin, and Skill directory. Files live in object storage, authoritative metadata lives in MySQL, derived indexes are rebuildable and never authoritative.
+**Architecture:** Use a modular monolith first: one backend codebase with modules for employee accounts, labels, document catalog, storage, processing worker, search/query, audit, admin, and Skill Directory. Files live in object storage, authoritative metadata lives in MySQL, derived indexes are rebuildable and never authoritative.
 
 **Tech Stack:** TypeScript, Node.js, Fastify or NestJS, Prisma, MySQL 8, local filesystem or MinIO for MVP storage, Aliyun OSS for online storage, Docker Compose, Vitest/Jest, Playwright for beta admin UI smoke tests, simple Next.js or Vite React admin frontend for beta.
 
@@ -34,7 +34,7 @@ Implementation must preserve these boundaries:
 6. Upload success is not business availability. The document becomes usable only after processing completes.
 7. Derived indexes are rebuildable and must point back to source `document_id`.
 8. Archival is metadata state change, not default physical deletion.
-9. Skill directory lists approved business skills and usage instructions. It does not execute skills.
+9. Skill Directory lists approved business skills and usage instructions. It does not execute skills.
 10. First implementation is single-enterprise deployment. `org_id` may be reserved but real SaaS multi-tenancy is deferred.
 
 ## 1. Priority Levels
@@ -408,7 +408,7 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 **Suitability:** Specialist subagent, new thread recommended.
 
-**Can run parallel with:** Day 2 Skill directory if Day 1A merged.
+**Can run parallel with:** Day 4B Skill Directory after Day 1A schema has merged.
 
 **Dependencies:** Day 1A, Day 1B, Day 1C.
 
@@ -460,7 +460,7 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 **Suitability:** Specialist subagent, new thread recommended.
 
-**Can run parallel with:** Day 3 Skill directory and audit query after upload API exists.
+**Can run parallel with:** Day 4B Skill Directory after Day 1A schema has merged, and Day 4C audit query after upload API exists.
 
 **Dependencies:** Day 2.
 
@@ -499,7 +499,7 @@ All non-health endpoints must accept an authenticated employee context and must 
 
 **Suitability:** Specialist subagent.
 
-**Can run parallel with:** Day 4B Skill directory, Day 4C audit API.
+**Can run parallel with:** Day 4B Skill Directory, Day 4C audit API.
 
 **Dependencies:** Day 3 active documents.
 
@@ -1040,7 +1040,7 @@ Do not block beta on these unless user explicitly changes priority:
 | Backend permission filtering | Required | Required | Required |
 | Download requires permission | Required | Required | Required |
 | Archive removes from ordinary search | Required | Required | Required |
-| Skill directory returns approved skills | Required | Required | Required |
+| Skill Directory returns approved skills | Required | Required | Required |
 | MCP/CLI agent-facing connector | CLI acceptable | MCP preferred | MCP or documented connector required |
 | Admin frontend | Not required | Optional | Required |
 | Failure retry UI | Not required | Optional | Required |
