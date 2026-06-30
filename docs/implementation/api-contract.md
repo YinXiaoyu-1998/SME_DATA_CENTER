@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 2.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 3.
 
 ## Cross-Cutting Rules
 
@@ -241,6 +241,66 @@ Not found or inaccessible response `404`:
   }
 }
 ```
+
+Processing failed response `200` for uploader or admin:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "title": "Unsupported binary upload",
+  "documentType": "raw_material",
+  "status": "processing_failed",
+  "labels": ["person:baoli.manager", "store:baoli"],
+  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/receipt.pdf",
+  "originalFileName": "receipt.pdf",
+  "sourceSystem": null,
+  "sourceTime": null,
+  "processingRunStatus": "failed"
+}
+```
+
+Ordinary search/list endpoints are not implemented until Day 4A. Until then, Day 3 preserves the existing status endpoint rule: failed documents are visible only to the uploader or an admin, and non-uploader ordinary employees receive `404`.
+
+## Processing Worker
+
+Command:
+
+```bash
+npm run worker:once
+```
+
+Behavior:
+
+- Claims the oldest `queued` or `retry_scheduled` processing run and marks its document `processing`.
+- Reads the original object from local storage and extracts UTF-8 text for `.txt`, `.md`, `.csv`, and `.json`.
+- Rejects unsupported extensions with `UNSUPPORTED_FILE_TYPE`.
+- Writes deterministic text chunks to `document_chunks` using `indexType: "text"` and unique `(document_id, chunk_hash, index_type)`.
+- Marks the document `active` and run `succeeded` on success.
+- Retries failed processing up to three failures, then marks the run `failed` and document `processing_failed`.
+
+Worker result examples:
+
+```json
+{ "processed": true, "documentId": "doc_91e4dd567237bed3d3f00c67", "status": "active" }
+```
+
+```json
+{
+  "processed": true,
+  "documentId": "doc_91e4dd567237bed3d3f00c67",
+  "status": "processing_failed"
+}
+```
+
+```json
+{ "processed": false }
+```
+
+Audit events appended by the worker:
+
+- `document.processing_started`
+- `document.activated`
+- `document.processing_failed`
 
 ### `GET /me`
 
