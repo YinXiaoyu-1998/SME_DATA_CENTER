@@ -122,7 +122,7 @@
 - Files changed: `AGENTS.md`, `package.json`, `tsconfig.json`, `scripts/test-integration.ts`, `fixtures/suzhou-performance.md`, `fixtures/management-knowledge.md`, `docs/implementation/api-contract.md`, `docs/implementation/env-inventory.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
 - Commands run: required doc/context/ADR reads; `git switch -c codex/hub-mvp-integration-test origin/main`; `npm run typecheck`; `npm run lint`; `npm run format:check`; `npm test`; `MYSQL_PORT=3307 npm run test:integration`.
 - Done criteria passed: `npm test` passed; `npm run test:integration` passed from a reset local development database; local demo commands are documented in `AGENTS.md`; the demo proved upload -> processing -> active search -> download -> archive and Baoli/Suzhou permission isolation.
-- PR: Pending lead push/PR.
+- PR: Draft PR [#14](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/14).
 - Known gaps: The integration test intentionally uses local Docker MySQL, local filesystem storage, dev login, and keyword search only. It resets the local development database and is not a staging/production deployment test.
 - Human blockers: None for Phase 1 / Day 6. Phase 2 must stop for human-provided deployment target, domain, online MySQL, OSS bucket/region/credentials, and related production secrets.
 - Suggested next agent: After this PR merges, do not start Phase 2 until the required human inputs are available; then begin Phase 2 / Day 1 containerization and runtime config.
