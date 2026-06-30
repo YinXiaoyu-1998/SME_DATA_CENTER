@@ -8,6 +8,7 @@ import type {
   DocumentStatusName,
   DocumentTypeName
 } from "@enterprise-hub/domain";
+import { canEmployeeAccessDocument } from "@enterprise-hub/domain";
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "./server.js";
 import { signEmployeeAccessToken } from "./tokens.js";
@@ -83,6 +84,9 @@ interface RecordedDocument {
   checksumSha256: string;
   labels: string[];
   processingRunStatus: string | null;
+  createdAt?: Date;
+  sourceMetadata?: Record<string, unknown> | null;
+  chunks?: string[];
 }
 
 interface RecordedProcessingRun {
@@ -93,7 +97,8 @@ interface RecordedProcessingRun {
 interface RecordedAuditLog {
   action: string;
   actorEmployeeId: string;
-  targetId: string;
+  targetId: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 function createDocumentRepository() {
@@ -165,7 +170,162 @@ function createDocumentRepository() {
       }
 
       return document;
+    },
+    async listAccessibleActiveDocuments(input: {
+      employee: AuthenticatedEmployee;
+      q: string | null;
+      documentType: DocumentTypeName | null;
+      labelKey: string | null;
+      limit: number;
+      cursor: string | null;
+    }) {
+      const offset = input.cursor ? Number.parseInt(input.cursor, 10) : 0;
+      const matchingDocuments = documents
+        .filter((document) => document.status === "active")
+        .filter((document) => documentMatchesEmployee(document, input.employee))
+        .filter((document) => !input.documentType || document.documentType === input.documentType)
+        .filter((document) => !input.labelKey || document.labels.includes(input.labelKey))
+        .filter((document) => documentMatchesKeyword(document, input.q))
+        .sort(compareDocuments);
+      const page = matchingDocuments.slice(offset, offset + input.limit);
+
+      return {
+        documents: page.map(withDefaultCreatedAt),
+        nextCursor:
+          matchingDocuments.length > offset + input.limit ? String(offset + input.limit) : null
+      };
+    },
+    async findAccessibleActiveDocument(
+      _orgId: string,
+      documentId: string,
+      employee: AuthenticatedEmployee
+    ) {
+      const document = documents.find((candidate) => candidate.id === documentId);
+
+      if (
+        !document ||
+        document.status !== "active" ||
+        !documentMatchesEmployee(document, employee)
+      ) {
+        return null;
+      }
+
+      return withDefaultCreatedAt(document);
+    },
+    async appendDocumentQueryAudit(input: {
+      employeeId: string;
+      q: string | null;
+      documentType: DocumentTypeName | null;
+      labelKey: string | null;
+      resultCount: number;
+    }) {
+      auditLogs.push({
+        action: "document.queried",
+        actorEmployeeId: input.employeeId,
+        targetId: null,
+        metadata: {
+          q: input.q,
+          documentType: input.documentType,
+          labelKey: input.labelKey,
+          resultCount: input.resultCount
+        }
+      });
+    },
+    async appendDocumentDownloadAudit(input: { employeeId: string; documentId: string }) {
+      auditLogs.push({
+        action: "document.downloaded",
+        actorEmployeeId: input.employeeId,
+        targetId: input.documentId,
+        metadata: {
+          documentId: input.documentId
+        }
+      });
     }
+  };
+}
+
+function activeDocument(
+  input: Partial<RecordedDocument> & Pick<RecordedDocument, "id" | "title" | "labels">
+): RecordedDocument {
+  return {
+    orgId: "default-org",
+    uploaderId: baoliManagerEmployee.id,
+    status: "active",
+    documentType: "raw_material",
+    sourceSystem: "meituan",
+    sourceTime: new Date("2026-06-30T00:00:00.000Z"),
+    storageObjectKey: `org/default-org/documents/${input.id}/original/${input.id}.csv`,
+    originalFileName: `${input.id}.csv`,
+    contentType: "text/csv",
+    byteSize: 24,
+    checksumSha256: "hash",
+    processingRunStatus: "succeeded",
+    createdAt: new Date("2026-06-30T01:00:00.000Z"),
+    sourceMetadata: null,
+    chunks: [],
+    ...input
+  };
+}
+
+function documentMatchesEmployee(document: RecordedDocument, employee: AuthenticatedEmployee) {
+  if (employee.role === "admin") {
+    return true;
+  }
+
+  return canEmployeeAccessDocument({
+    employee: {
+      disabled: employee.disabled,
+      labelKeys: employee.labels
+    },
+    document: {
+      labelKeys: document.labels
+    }
+  });
+}
+
+function documentMatchesKeyword(document: RecordedDocument, q: string | null) {
+  const keyword = q?.trim().toLowerCase();
+
+  if (!keyword) {
+    return true;
+  }
+
+  return [
+    document.title,
+    document.sourceSystem,
+    document.originalFileName,
+    JSON.stringify(document.sourceMetadata ?? {}),
+    ...(document.chunks ?? [])
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n")
+    .toLowerCase()
+    .includes(keyword);
+}
+
+function compareDocuments(first: RecordedDocument, second: RecordedDocument) {
+  const firstSourceTime = first.sourceTime?.getTime() ?? 0;
+  const secondSourceTime = second.sourceTime?.getTime() ?? 0;
+
+  if (firstSourceTime !== secondSourceTime) {
+    return secondSourceTime - firstSourceTime;
+  }
+
+  const firstCreatedAt = first.createdAt?.getTime() ?? 0;
+  const secondCreatedAt = second.createdAt?.getTime() ?? 0;
+
+  if (firstCreatedAt !== secondCreatedAt) {
+    return secondCreatedAt - firstCreatedAt;
+  }
+
+  return second.id.localeCompare(first.id);
+}
+
+function withDefaultCreatedAt(document: RecordedDocument) {
+  return {
+    ...document,
+    createdAt: document.createdAt ?? new Date("2026-06-30T00:00:00.000Z"),
+    sourceMetadata: document.sourceMetadata ?? null
   };
 }
 
@@ -707,5 +867,192 @@ describe("document upload and status", () => {
     });
     expect(adminStatus.statusCode).toBe(200);
     expect(inaccessibleStatus.statusCode).toBe(404);
+  });
+
+  it("lists only active documents accessible to the employee and appends query audit", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_baoli_active",
+        title: "Baoli June Meituan Export",
+        labels: ["store:baoli"],
+        chunks: ["Baoli Meituan revenue export"]
+      }),
+      activeDocument({
+        id: "doc_suzhou_active",
+        title: "Suzhou June Meituan Export",
+        labels: ["store:suzhou"],
+        chunks: ["Suzhou Meituan revenue export"]
+      }),
+      activeDocument({
+        id: "doc_baoli_pending",
+        title: "Baoli Pending Meituan Export",
+        labels: ["store:baoli"],
+        status: "pending_processing"
+      }),
+      activeDocument({
+        id: "doc_baoli_archived",
+        title: "Baoli Archived Meituan Export",
+        labels: ["store:baoli"],
+        status: "archived"
+      })
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/documents?q=Meituan&limit=10",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      documents: [
+        {
+          id: "doc_baoli_active",
+          title: "Baoli June Meituan Export",
+          status: "active",
+          labels: ["store:baoli"]
+        }
+      ],
+      nextCursor: null
+    });
+    expect(JSON.stringify(response.json())).not.toContain("Suzhou June Meituan Export");
+    expect(documentRepository.auditLogs.at(-1)).toMatchObject({
+      action: "document.queried",
+      actorEmployeeId: baoliManagerEmployee.id,
+      targetId: null,
+      metadata: {
+        resultCount: 1,
+        q: "Meituan"
+      }
+    });
+    expect(JSON.stringify(documentRepository.auditLogs.at(-1)?.metadata)).not.toContain(
+      "Suzhou June Meituan Export"
+    );
+  });
+
+  it("does not reveal inaccessible documents in list or detail responses", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_baoli_active",
+        title: "Baoli Secret Revenue Export",
+        labels: ["store:baoli"]
+      })
+    );
+    const suzhouToken = await accessTokenFor(suzhouManagerEmployee);
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/documents?q=Baoli",
+      headers: {
+        authorization: `Bearer ${suzhouToken}`
+      }
+    });
+    const detailResponse = await app.inject({
+      method: "GET",
+      url: "/documents/doc_baoli_active",
+      headers: {
+        authorization: `Bearer ${suzhouToken}`
+      }
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toEqual({ documents: [], nextCursor: null });
+    expect(JSON.stringify(listResponse.json())).not.toContain("Baoli Secret Revenue Export");
+    expect(detailResponse.statusCode).toBe(404);
+    expect(detailResponse.json()).toMatchObject({
+      error: {
+        code: "DOCUMENT_NOT_FOUND"
+      }
+    });
+    expect(JSON.stringify(detailResponse.json())).not.toContain("Baoli Secret Revenue Export");
+  });
+
+  it("allows admins to list all active documents", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_baoli_active",
+        title: "Baoli June Meituan Export",
+        labels: ["store:baoli"],
+        sourceTime: new Date("2026-06-29T00:00:00.000Z")
+      }),
+      activeDocument({
+        id: "doc_suzhou_active",
+        title: "Suzhou June Meituan Export",
+        labels: ["store:suzhou"],
+        sourceTime: new Date("2026-06-30T00:00:00.000Z")
+      })
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/documents",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().documents.map((document: { id: string }) => document.id)).toEqual([
+      "doc_suzhou_active",
+      "doc_baoli_active"
+    ]);
+  });
+
+  it("returns detail and download URL for an accessible active document", async () => {
+    const { app, documentRepository, storageRoot } = await buildDocumentTestServer();
+    const storedObject = await new LocalFileSystemStorageAdapter({ root: storageRoot }).putObject({
+      orgId: "default-org",
+      documentId: "doc_baoli_active",
+      fileName: "baoli-june-meituan.csv",
+      body: "date,revenue\n2026-06-01,100\n",
+      contentType: "text/csv"
+    });
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_baoli_active",
+        title: "Baoli June Meituan Export",
+        labels: ["store:baoli"],
+        storageObjectKey: storedObject.key
+      })
+    );
+    const accessToken = await accessTokenFor(baoliManagerEmployee);
+
+    const detailResponse = await app.inject({
+      method: "GET",
+      url: "/documents/doc_baoli_active",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+    const downloadResponse = await app.inject({
+      method: "GET",
+      url: "/documents/doc_baoli_active/download",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    expect(detailResponse.statusCode).toBe(200);
+    expect(detailResponse.json()).toMatchObject({
+      id: "doc_baoli_active",
+      title: "Baoli June Meituan Export",
+      status: "active",
+      labels: ["store:baoli"]
+    });
+    expect(downloadResponse.statusCode).toBe(200);
+    expect(downloadResponse.json()).toMatchObject({
+      id: "doc_baoli_active",
+      downloadUrl: expect.stringMatching(/^file:\/\//)
+    });
+    expect(documentRepository.auditLogs.at(-1)).toMatchObject({
+      action: "document.downloaded",
+      actorEmployeeId: baoliManagerEmployee.id,
+      targetId: "doc_baoli_active"
+    });
   });
 });

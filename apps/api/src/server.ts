@@ -12,6 +12,7 @@ import {
   createPrismaDocumentCatalogRepository,
   type CatalogLabel,
   type DocumentCatalogRepository,
+  type DocumentQueryRecord,
   type DocumentStatusRecord
 } from "./documents.js";
 import { createPrismaEmployeeRepository, type EmployeeRepository } from "./employees.js";
@@ -63,6 +64,14 @@ interface ParsedUpload {
   sourceSystem?: string;
   sourceTime?: string;
   labelKeys: string[];
+}
+
+interface DocumentListQuery {
+  q?: string;
+  documentType?: string;
+  labelKey?: string;
+  limit?: string;
+  cursor?: string;
 }
 
 function requireJwtSecret(): string {
@@ -211,6 +220,56 @@ function documentStatusResponse(document: DocumentStatusRecord) {
     sourceTime: document.sourceTime?.toISOString() ?? null,
     processingRunStatus: document.processingRunStatus
   };
+}
+
+function documentQueryResponse(document: DocumentQueryRecord) {
+  return {
+    id: document.id,
+    title: document.title,
+    documentType: document.documentType,
+    status: document.status,
+    labels: document.labels,
+    originalFileName: document.originalFileName,
+    sourceSystem: document.sourceSystem,
+    sourceTime: document.sourceTime?.toISOString() ?? null,
+    createdAt: document.createdAt.toISOString()
+  };
+}
+
+function documentDetailResponse(document: DocumentQueryRecord) {
+  return {
+    ...documentQueryResponse(document),
+    storageObjectKey: document.storageObjectKey,
+    contentType: document.contentType,
+    byteSize: document.byteSize,
+    checksumSha256: document.checksumSha256
+  };
+}
+
+function parseLimit(value: string | undefined): number {
+  if (!value) {
+    return 20;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 50) {
+    throw new Error("Invalid limit.");
+  }
+
+  return parsed;
+}
+
+function parseCursor(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (!/^\d+$/.test(value)) {
+    throw new Error("Invalid cursor.");
+  }
+
+  return value;
 }
 
 function mergeLabels(requestedLabels: CatalogLabel[], personalLabel: CatalogLabel | null) {
@@ -472,6 +531,60 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     return reply.code(201).send(documentStatusResponse(document));
   });
 
+  app.get<{ Querystring: DocumentListQuery }>("/documents", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const query = request.query;
+    const rawDocumentType = query.documentType?.trim() || null;
+
+    if (rawDocumentType && !isDocumentType(rawDocumentType)) {
+      return validationError(reply, "INVALID_DOCUMENT_QUERY", "Document type is invalid.");
+    }
+
+    const documentType = rawDocumentType as DocumentTypeName | null;
+
+    let limit: number;
+    let cursor: string | null;
+
+    try {
+      limit = parseLimit(query.limit);
+      cursor = parseCursor(query.cursor);
+    } catch {
+      return validationError(reply, "INVALID_DOCUMENT_QUERY", "Query pagination is invalid.");
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+    const result = await documents().listAccessibleActiveDocuments({
+      orgId: defaultOrgId(),
+      employee,
+      q: query.q?.trim() || null,
+      documentType,
+      labelKey: query.labelKey?.trim() || null,
+      limit,
+      cursor
+    });
+
+    await documents().appendDocumentQueryAudit({
+      orgId: defaultOrgId(),
+      employeeId: employee.id,
+      q: query.q?.trim() || null,
+      documentType,
+      labelKey: query.labelKey?.trim() || null,
+      resultCount: result.documents.length,
+      requestId: request.id,
+      clientIp: request.ip
+    });
+
+    return {
+      documents: result.documents.map(documentQueryResponse),
+      nextCursor: result.nextCursor
+    };
+  });
+
   app.get<{ Params: { id: string } }>("/documents/:id/status", async (request, reply) => {
     const authenticated = await authenticate(request, reply, repository, jwtSecret);
 
@@ -491,6 +604,60 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     return documentStatusResponse(document);
+  });
+
+  app.get<{ Params: { id: string } }>("/documents/:id/download", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+    const document = await documents().findAccessibleActiveDocument(
+      defaultOrgId(),
+      request.params.id,
+      employee
+    );
+
+    if (!document) {
+      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+    }
+
+    const downloadUrl = await storage().createDownloadUrl(document.storageObjectKey);
+
+    await documents().appendDocumentDownloadAudit({
+      orgId: defaultOrgId(),
+      employeeId: employee.id,
+      documentId: document.id,
+      requestId: request.id,
+      clientIp: request.ip
+    });
+
+    return {
+      id: document.id,
+      downloadUrl
+    };
+  });
+
+  app.get<{ Params: { id: string } }>("/documents/:id", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const document = await documents().findAccessibleActiveDocument(
+      defaultOrgId(),
+      request.params.id,
+      (request as AuthenticatedRequest).employee
+    );
+
+    if (!document) {
+      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+    }
+
+    return documentDetailResponse(document);
   });
 
   return app;
