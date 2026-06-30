@@ -23,6 +23,7 @@
 - Typecheck: `npm run typecheck`
 - Test: `npm test`
 - Format check: `npm run format:check`
+- Run one deterministic worker pass: `npm run worker:once`
 - Start local MySQL: `docker compose up -d mysql`
 - Stop local services: `docker compose down`
 

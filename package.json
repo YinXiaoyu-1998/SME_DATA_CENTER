@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "api:dev": "tsx apps/api/src/index.ts",
+    "worker:once": "tsx apps/worker/src/index.ts",
     "db:compose:up": "docker compose up -d mysql",
     "db:compose:down": "docker compose down",
     "db:generate": "prisma generate --config packages/db/prisma.config.ts",

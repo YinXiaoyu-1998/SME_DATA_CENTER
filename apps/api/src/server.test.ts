@@ -656,4 +656,56 @@ describe("document upload and status", () => {
     expect(adminStatus.statusCode).toBe(200);
     expect(inaccessibleStatus.statusCode).toBe(404);
   });
+
+  it("keeps processing failed document status visible only to the uploader and admin", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.documents.push({
+      id: "doc_failed",
+      orgId: "default-org",
+      uploaderId: baoliManagerEmployee.id,
+      status: "processing_failed",
+      title: "Unsupported binary upload",
+      documentType: "raw_material",
+      sourceSystem: null,
+      sourceTime: null,
+      storageObjectKey: "org/default-org/documents/doc_failed/original/receipt.pdf",
+      originalFileName: "receipt.pdf",
+      contentType: "application/pdf",
+      byteSize: 4,
+      checksumSha256: "hash",
+      labels: ["person:baoli.manager", "store:baoli"],
+      processingRunStatus: "failed"
+    });
+
+    const uploaderStatus = await app.inject({
+      method: "GET",
+      url: "/documents/doc_failed/status",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      }
+    });
+    const adminStatus = await app.inject({
+      method: "GET",
+      url: "/documents/doc_failed/status",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
+      }
+    });
+    const inaccessibleStatus = await app.inject({
+      method: "GET",
+      url: "/documents/doc_failed/status",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(suzhouManagerEmployee)}`
+      }
+    });
+
+    expect(uploaderStatus.statusCode).toBe(200);
+    expect(uploaderStatus.json()).toMatchObject({
+      id: "doc_failed",
+      status: "processing_failed",
+      processingRunStatus: "failed"
+    });
+    expect(adminStatus.statusCode).toBe(200);
+    expect(inaccessibleStatus.statusCode).toBe(404);
+  });
 });
