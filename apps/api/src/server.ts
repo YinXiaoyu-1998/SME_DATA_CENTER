@@ -16,6 +16,11 @@ import {
   type DocumentStatusRecord
 } from "./documents.js";
 import { createPrismaEmployeeRepository, type EmployeeRepository } from "./employees.js";
+import {
+  createPrismaSkillDirectoryRepository,
+  type SkillDirectoryEntry,
+  type SkillDirectoryRepository
+} from "./skills.js";
 import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
@@ -23,6 +28,7 @@ const SERVICE_NAME = "enterprise-hub-api";
 export interface ApiServerOptions {
   employeeRepository?: EmployeeRepository;
   documentRepository?: DocumentCatalogRepository;
+  skillRepository?: SkillDirectoryRepository;
   storageAdapter?: StorageAdapter;
   jwtSecret?: string;
   enableDevLogin?: boolean;
@@ -72,6 +78,11 @@ interface DocumentListQuery {
   labelKey?: string;
   limit?: string;
   cursor?: string;
+}
+
+interface SkillListQuery {
+  q?: string;
+  category?: string;
 }
 
 function requireJwtSecret(): string {
@@ -246,6 +257,20 @@ function documentDetailResponse(document: DocumentQueryRecord) {
   };
 }
 
+function skillDirectoryResponse(skill: SkillDirectoryEntry) {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    version: skill.version,
+    category: skill.category,
+    inputRequirements: skill.inputRequirements,
+    installInstructions: skill.installInstructions,
+    examplePrompts: skill.examplePrompts,
+    status: skill.status
+  };
+}
+
 function parseLimit(value: string | undefined): number {
   if (!value) {
     return 20;
@@ -342,6 +367,7 @@ async function authenticate(
 export function buildApiServer(options: ApiServerOptions = {}) {
   const repository = options.employeeRepository ?? createPrismaEmployeeRepository();
   let documentRepository = options.documentRepository;
+  let skillRepository = options.skillRepository;
   let storageAdapter = options.storageAdapter;
   const jwtSecret = options.jwtSecret ?? requireJwtSecret();
   const enableDevLogin = options.enableDevLogin ?? process.env["NODE_ENV"] !== "production";
@@ -358,6 +384,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   app.addHook("onClose", async () => {
     await repository.disconnect?.();
     await documentRepository?.disconnect?.();
+    await skillRepository?.disconnect?.();
   });
 
   void app.register(multipart);
@@ -370,6 +397,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   function storage(): StorageAdapter {
     storageAdapter ??= new LocalFileSystemStorageAdapter();
     return storageAdapter;
+  }
+
+  function skills(): SkillDirectoryRepository {
+    skillRepository ??= createPrismaSkillDirectoryRepository();
+    return skillRepository;
   }
 
   app.get("/healthz", async () => ({
@@ -425,6 +457,25 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     return {
       employee: employeeResponse((request as AuthenticatedRequest).employee)
+    };
+  });
+
+  app.get<{ Querystring: SkillListQuery }>("/skills", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const query = request.query;
+    const skillEntries = await skills().listApprovedSkills({
+      orgId: defaultOrgId(),
+      q: query.q?.trim() || null,
+      category: query.category?.trim() || null
+    });
+
+    return {
+      skills: skillEntries.map(skillDirectoryResponse)
     };
   });
 

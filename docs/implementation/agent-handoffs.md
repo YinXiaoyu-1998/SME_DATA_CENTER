@@ -78,3 +78,15 @@
 - Known gaps: Pagination uses a simple offset cursor for the local MVP. Keyword search is intentionally simple and in-process after DB permission/status filtering; no vector search, structured dataset query, archive, label sharing, audit query API, Skill Directory, or MCP interface is included in Day 4A.
 - Human blockers: None.
 - Suggested next agent: After lead review/PR merge, proceed to the next earliest dependency-satisfied Phase 1 item. Day 4B Skill Directory is independent, while Day 4C audit/archive/label sharing depends on the Day 4A permission helper path now being present.
+
+## 2026-06-30 17:35 - codex/hub-mvp-skill-directory - Day 4B Skill Directory
+
+- Scope: Implemented Phase 1 / Day 4B only: two idempotently seeded approved skill entries (`weekly-store-report`, `menu-gross-margin-analysis`), authenticated read-only `GET /skills`, optional `q` and `category` filters, approved-only filtering, and API/test/progress docs. Did not implement skill execution, report generation, archive, label sharing, audit query API, MCP, admin UI, OSS/MinIO, P1/P2/P3, or employee-facing AI behavior.
+- Subagent note: No subagent was used. The implementation plan marks Day 4B subagent fit as optional when Day 4 work is parallelized; this session intentionally took only the earliest smallest Day 4B slice and did not start Day 4C in parallel.
+- Files changed: `apps/api/src/server.ts`, `apps/api/src/server.test.ts`, `apps/api/src/skills.ts`, `packages/domain/src/index.ts`, `packages/domain/src/skills.ts`, `packages/db/src/seed.ts`, `docs/implementation/api-contract.md`, `docs/implementation/env-inventory.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: required doc/context/ADR reads; `git switch -c codex/hub-mvp-skill-directory origin/main`; `npm test -- apps/api/src/server.test.ts` before implementation to verify three Day 4B HTTP 404 red failures; `npm test -- apps/api/src/server.test.ts`; `npm run typecheck`; `npm test`; `npm run lint`; `npm run format:check`; `git diff --check`; `MYSQL_PORT=3307 docker compose up -d mysql`; `DATABASE_URL=... npm run db:generate`; `DATABASE_URL=... npm run db:seed` twice; injected real API smoke against Prisma-backed `/skills`.
+- Done criteria passed: `GET /skills?q=菜单` returns `menu-gross-margin-analysis`; responses include install/use instructions and example prompts, not execution results; disabled/unapproved skills are filtered from ordinary responses; API contract includes a Skill Directory response example.
+- PR: Not opened yet; lead will finish final verification, commit, push, and open draft PR.
+- Known gaps: Skill Directory is read-only and approved-only for Day 4B. There is no admin UI/API for creating, disabling, or editing skills, no skill execution platform, no automatic install/update flow, and no MCP interface in this branch.
+- Human blockers: None.
+- Suggested next agent: After lead review/PR merge, proceed to Phase 1 / Day 4C audit, archive, and label sharing.

@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 4A.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 4B.
 
 ## Cross-Cutting Rules
 
@@ -368,6 +368,44 @@ Audit events appended by Day 4A:
 
 - `document.queried` with query filters and returned result count, without inaccessible document titles.
 - `document.downloaded` for successful accessible active document downloads.
+
+### `GET /skills`
+
+Lists approved business skill directory entries for authenticated employees and employee-owned agents. This endpoint only returns skill metadata, installation guidance, input requirements, and example prompts. It does not execute skills, generate reports, call models, or return analysis results.
+
+Query params:
+
+| Param      | Required | Example         | Notes                                                     |
+| ---------- | -------- | --------------- | --------------------------------------------------------- |
+| `q`        | No       | `菜单`          | Keyword over name, description, category, inputs, prompts |
+| `category` | No       | `menu-analysis` | Filters approved skills by exact category                 |
+
+Response `200`:
+
+```json
+{
+  "skills": [
+    {
+      "id": "skill_menu_gross_margin_analysis",
+      "name": "menu-gross-margin-analysis",
+      "description": "菜单毛利分析 skill，帮助员工智能体分析菜品毛利和菜单结构。",
+      "version": "1.0.0",
+      "category": "menu-analysis",
+      "inputRequirements": ["已授权的菜单数据", "菜品成本数据", "销售明细"],
+      "installInstructions": "Install the approved menu-gross-margin-analysis skill in the employee agent.",
+      "examplePrompts": ["分析最近三个月菜单毛利，找出需要调整的菜品"],
+      "status": "approved"
+    }
+  ]
+}
+```
+
+Seeded approved entries:
+
+- `weekly-store-report`
+- `menu-gross-margin-analysis`
+
+Disabled or unapproved skills are not returned by `GET /skills`.
 
 ## Processing Worker
 
