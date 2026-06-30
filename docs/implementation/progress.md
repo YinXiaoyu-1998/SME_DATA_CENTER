@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-- Phase: Phase 1 / Day 4C - Audit, Archive, And Label Sharing
+- Phase: Phase 1 / Day 5 - Minimal CLI Smoke Interface
 - Date: 2026-06-30
 - Lead branch: `codex/enterprise-hub-implementation`
 - Deployment target: Developer machine only
@@ -20,6 +20,7 @@
 | Day 4A document query   | `codex/hub-mvp-document-query`        | Codex lead agent                                         | Complete | [PR #10](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/10) | Implemented active-only permission-filtered list/detail/download plus query/download audit logs. Scope stayed limited to Day 4A and excludes archive, label sharing, Skill Directory, MCP, admin UI, P1/P2/P3, and employee-facing AI behavior.                                                            |
 | Day 4B Skill Directory  | `codex/hub-mvp-skill-directory`       | Codex lead agent                                         | Complete | [PR #11](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/11) | Implemented two seeded approved skill entries and authenticated read-only `GET /skills` with `q` and `category` filters. Scope stayed limited to Day 4B and excludes skill execution, archive, label sharing, audit query, MCP, admin UI, P1/P2/P3, and employee-facing AI behavior.                       |
 | Day 4C archive/audit    | `codex/hub-mvp-archive-audit`         | Codex lead agent                                         | Complete | [PR #12](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/12) | Implemented metadata archive, existing-label sharing, and admin-only audit query. Scope stayed limited to Day 4C and excludes Day 5/MCP/CLI/admin UI/P1/P2/P3 and employee-facing AI behavior.                                                                                                             |
+| Day 5 CLI smoke         | `codex/hub-mvp-cli-smoke`             | Codex lead agent                                         | Complete | TBD                                                                 | Implemented local API-backed CLI smoke commands for dev login, document upload, and document search. Scope stayed limited to Day 5 P0 CLI; no MCP server, admin UI, P1/P2/P3, or employee-facing AI behavior.                                                                                              |
 
 ## Completed Checkpoints
 
@@ -65,12 +66,15 @@
 | 2026-06-30 | Day 4C tests passed               | TDD red: `npm test -- apps/api/src/server.test.ts` failed with five missing-route HTTP 404 assertions before implementation. Green checks: targeted API tests passed with 25 tests; full `npm test` passed with 5 files / 36 tests; `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check` passed.                                                                                                                              |
 | 2026-06-30 | Day 4C local smoke passed         | With local MySQL on `MYSQL_PORT=3307`, `npm run db:generate`, and `npm run db:seed` twice, seed stayed at `organizations=1, employees=4, labels=7, employee_labels=12, skill_entries=2`; an injected real API/worker/storage smoke uploaded `Day4C Smoke Menu Report`, activated it, added `person:lijie`, confirmed Li Jie could find it, archived it, confirmed ordinary search hid it while storage bytes remained, and confirmed `/audit` is admin-only. |
 | 2026-06-30 | Day 4C draft PR opened            | Implementation commit `0b47558`; draft PR [#12](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/12).                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-06-30 | Day 5 selected                    | User confirmed PR #12 merged; reread `AGENTS.md`, implementation plan, progress, handoffs, env inventory, API contract, test cases, context, and ADRs from latest `origin/main`; assigned branch `codex/hub-mvp-cli-smoke`. Chose the P0 CLI path instead of MCP because the plan says CLI is acceptable for local MVP and MCP should not block MVP polish.                                                                                                  |
+| 2026-06-30 | Day 5 CLI tests passed            | Targeted `npm test -- apps/cli/src/cli.test.ts` covered login token storage without stdout token leak, bearer-token search, and multipart upload. Full `npm test` passed with 6 files / 39 tests; `npm run typecheck` and `npm run lint` passed.                                                                                                                                                                                                             |
+| 2026-06-30 | Day 5 local CLI smoke passed      | With local API on `127.0.0.1:3015`, local MySQL on `MYSQL_PORT=3307`, and temporary `HUB_CLI_SESSION_FILE`, `npm run hub -- login --email baoli.manager@example.com` stored a session, `npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv --label store:baoli` created a pending document, `npm run worker:once` activated it, Baoli CLI search found it, and Suzhou CLI search returned no documents.                                       |
 
 ## Blockers
 
-| Blocker         | Needed From Human | Since | Stop Rule |
-| --------------- | ----------------- | ----- | --------- |
-| None for Day 4C | N/A               | N/A   | N/A       |
+| Blocker        | Needed From Human | Since | Stop Rule |
+| -------------- | ----------------- | ----- | --------- |
+| None for Day 5 | N/A               | N/A   | N/A       |
 
 ## Next Actions
 
@@ -95,3 +99,5 @@
 - [x] Lead commit, push, and draft PR for Day 4B branch.
 - [x] Complete Day 4C archive, label sharing, and admin audit APIs.
 - [x] Lead commit, push, and draft PR for Day 4C branch.
+- [x] Complete Day 5 local CLI smoke interface.
+- [ ] Lead commit, push, and draft PR for Day 5 branch.

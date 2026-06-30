@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 4C.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 5.
 
 ## Cross-Cutting Rules
 
@@ -541,6 +541,61 @@ Forbidden response `403`:
     "message": "Admin access is required."
   }
 }
+```
+
+## Local CLI Smoke Interface
+
+The local CLI is a thin smoke client over the HTTP API. It does not implement its own permission filtering, does not execute skills, and does not become an employee-facing AI agent. All document visibility still comes from the authenticated API responses.
+
+Run commands through npm:
+
+```bash
+npm run hub -- login --email baoli.manager@example.com
+npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv --label store:baoli
+npm run hub -- documents search "保利店 美团"
+```
+
+Optional environment variables:
+
+| Variable               | Default                      | Notes                                                               |
+| ---------------------- | ---------------------------- | ------------------------------------------------------------------- |
+| `HUB_API_URL`          | `http://127.0.0.1:3000`      | API base URL used by CLI commands.                                  |
+| `HUB_CLI_SESSION_FILE` | `.data/hub-cli/session.json` | Local ignored token session file. The CLI does not print the token. |
+
+### `hub login`
+
+Stores a development token in the local ignored session file. The token is not printed to stdout.
+
+Example output:
+
+```json
+{
+  "ok": true,
+  "apiUrl": "http://127.0.0.1:3000",
+  "employee": {
+    "id": "emp_baoli_manager",
+    "email": "baoli.manager@example.com",
+    "role": "manager",
+    "labels": ["all_staff", "person:baoli.manager", "store:baoli"]
+  },
+  "sessionFile": ".data/hub-cli/session.json"
+}
+```
+
+### `hub documents upload`
+
+Uploads a file through `POST /documents`. `--title` defaults to the file name and `--type` defaults to `raw_material`.
+
+```bash
+npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv --label store:baoli
+```
+
+### `hub documents search`
+
+Searches active accessible documents through `GET /documents`.
+
+```bash
+npm run hub -- documents search "保利店 美团"
 ```
 
 ## Processing Worker
