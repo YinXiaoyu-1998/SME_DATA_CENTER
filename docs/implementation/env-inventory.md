@@ -13,6 +13,7 @@ This file tracks required variables and external services. Do not store secret v
 | `DEV_SEED_ADMIN_EMAIL` |                             Yes | `admin@example.com`                                                                  |      No | Future seed script  | Used for local seed data in later phases.                                   |
 | `HUB_API_URL`          |                              No | `http://127.0.0.1:3000`                                                              |      No | CLI                 | Optional API base URL override for local CLI smoke commands.                |
 | `HUB_CLI_SESSION_FILE` |                              No | `.data/hub-cli/session.json`                                                         |      No | CLI                 | Optional local token session file path; the file itself is ignored by git.  |
+| `HUB_INTEGRATION_PORT` |                              No | auto-assigned                                                                        |      No | Integration test    | Optional API port override for `npm run test:integration`.                  |
 | `PORT`                 |                              No | `3000`                                                                               |      No | API server          | Optional local HTTP port override.                                          |
 | `HOST`                 |                              No | `0.0.0.0`                                                                            |      No | API server          | Optional local bind host override.                                          |
 
@@ -28,4 +29,4 @@ This file tracks required variables and external services. Do not store secret v
 
 ## Human-Provided Inputs
 
-No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 / Day 5.
+No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 / Day 6.

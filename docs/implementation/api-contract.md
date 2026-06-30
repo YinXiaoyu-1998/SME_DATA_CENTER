@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 5.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 6.
 
 ## Cross-Cutting Rules
 
@@ -638,6 +638,16 @@ Audit events appended by the worker:
 - `document.processing_started`
 - `document.activated`
 - `document.processing_failed`
+
+## Local MVP Integration Demo
+
+Run the full local MVP loop with:
+
+```bash
+MYSQL_PORT=3307 npm run test:integration
+```
+
+The script starts local MySQL, resets and seeds the local development database, starts the API on a local port, uses the CLI to log in and upload `fixtures/baoli-june-meituan.csv`, runs one worker pass, verifies Baoli manager search can see the active document, verifies Suzhou manager search cannot see it, downloads it as Baoli manager, archives it, and verifies ordinary search no longer returns it.
 
 ### `GET /me`
 

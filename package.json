@@ -12,6 +12,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:integration": "tsx scripts/test-integration.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "api:dev": "tsx apps/api/src/index.ts",
