@@ -223,6 +223,8 @@ Startup requirements:
 - `ENTERPRISE_HUB_API_URL` is required and must be an `http` or `https` URL.
 - `ENTERPRISE_HUB_MCP_PROFILE` defaults to `local-development`; other profiles are placeholders for later phases.
 - The MCP server does not start API, worker, MySQL, or local storage services.
+- The local MCP session file is written under `.data/` by default, is ignored by git, and may contain development-only API bearer tokens.
+- Normal MCP tool output must not include raw access tokens.
 
 ### Phase 2 MCP Tools
 
@@ -238,7 +240,59 @@ Startup requirements:
 | `enterprise_hub_archive_document`          | Archive a document through `POST /documents/:id/archive`.                      | local session, `documentId`                        | archived document metadata or API error            |
 | `enterprise_hub_list_skills`               | List approved Skill Directory entries through `GET /skills`.                   | local session                                      | approved skill metadata and instructions only      |
 
-Day 1 defines these deterministic tool names, descriptions, input schemas, and result shapes. Tool bodies that call the API are implemented in later Phase 2 days.
+Day 1 defines these deterministic tool names, descriptions, input schemas, and result shapes. Day 2 implements local-development login/session handling only. Document, label, archive, and skill tool bodies that call the API are implemented in later Phase 2 days.
+
+### `enterprise_hub_login_dev`
+
+Local-development only. Calls `POST /auth/dev-login` on `ENTERPRISE_HUB_API_URL` and stores the returned bearer token in the ignored MCP session file.
+
+Request:
+
+```json
+{
+  "email": "baoli.manager@example.com",
+  "sessionName": "baoli"
+}
+```
+
+Response:
+
+```json
+{
+  "employee": {
+    "id": "emp_baoli_manager",
+    "email": "baoli.manager@example.com",
+    "role": "manager",
+    "disabled": false,
+    "labels": ["all_staff", "person:baoli.manager", "store:baoli"]
+  },
+  "sessionName": "baoli",
+  "apiUrl": "http://127.0.0.1:3000",
+  "profile": "local-development"
+}
+```
+
+Unknown or disabled employees return the API error body as an MCP error result, for example:
+
+```json
+{
+  "error": {
+    "code": "EMPLOYEE_NOT_FOUND",
+    "message": "Employee not found."
+  }
+}
+```
+
+Session-required MCP error before Day 3 tool bodies run:
+
+```json
+{
+  "error": {
+    "code": "MCP_SESSION_REQUIRED",
+    "message": "Run enterprise_hub_login_dev first or pass sessionName for an existing local MCP session."
+  }
+}
+```
 
 ### `GET /documents/:id/status`
 
