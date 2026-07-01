@@ -137,3 +137,14 @@
 - Known gaps: `GET /labels` remains a P0 API surface item in the implementation plan/API contract but has no route or tests; decide whether to implement it as a small Phase 1 correction or reclassify it explicitly before saying all P0 API surface is complete.
 - Human blockers: Phase 2 must not start without deployment target, domain/TLS decision, online MySQL settings, OSS region/bucket/endpoint/RAM/credentials via secret store, JWT/session secret via secret store, and allowed admin emails.
 - Suggested next agent: Handle the `GET /labels` decision first; then collect Phase 2 human inputs before starting containerization, OSS, online DB, or deployment work.
+
+## 2026-07-01 09:11 - codex/enterprise-hub-status-recovery-followup - Post-merge status recovery follow-up
+
+- Scope: Documentation-only follow-up after PR #15 merged. Rechecked required implementation docs, `git status`, `git log`, branch list, PR metadata, `/labels` route evidence, and secrets/file-risk signals; did not write business code, add endpoints, change tests, or start Phase 2.
+- Files changed: `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: `git fetch origin --prune`; `gh pr list --state all --limit 30 --json ...`; `git log --oneline --decorate --max-count=12 origin/main`; `git branch --contains c51bed3 --all`; `rg` scans for `/labels` route/tests and credential patterns; `git ls-files` env/data risk scan; `git switch -c codex/enterprise-hub-status-recovery-followup origin/main`.
+- Done criteria passed: Confirmed PR #15 is merged to `origin/main`; confirmed there are no open PRs at the start of this follow-up; confirmed true state is Phase 1 local MVP merged and Phase 2 not started; reconfirmed `GET /labels` is unresolved contract/P0-surface gap; reconfirmed no tracked `.env`, `.data`, CLI session, private key, real cloud credential, or customer export risk from the reviewed file set.
+- PR: Draft PR [#16](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/16).
+- Known gaps: This follow-up intentionally does not resolve `GET /labels`; it only records that the gap remains. Historical merged branches are still present locally/remotely, but no open PR is using them.
+- Human blockers: Phase 2 remains blocked on deployment target, staging/public domain and TLS decision, online MySQL settings, Aliyun OSS region/bucket/endpoint/RAM/credentials via secret store, JWT/session secret via secret store, allowed admin emails, and any optional Qwen/DashScope budget/model decision.
+- Suggested next agent: Use a small P0 correction prompt for `GET /labels`, or explicitly amend the implementation plan/API contract to move it out of Phase 1 before starting Phase 2.
