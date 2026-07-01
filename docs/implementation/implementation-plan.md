@@ -42,8 +42,8 @@ Implementation must preserve these boundaries:
 | Priority | Meaning | Examples |
 |---|---|---|
 | P0 | Required for local MVP and architectural proof | employee auth seed, labels, document upload, local storage, state machine, active-only query, backend permission filtering, audit append, minimal API docs |
-| P1 | Required for online-ready service | Docker image, production env config, Aliyun OSS adapter, MySQL migration discipline, structured logs, health checks, token rotation basics, deployment guide |
-| P2 | Required for small internal beta quality | admin frontend, failure queue, manual retry, simple MCP tools, signed download URLs, backup runbook, smoke tests |
+| P1 | Required before online-ready service | Local MCP server, `enterprise-hub-mcp` meta skill, agent human-test loop, Docker image, production env config, Aliyun OSS adapter, MySQL migration discipline, structured logs, health checks, token rotation basics, deployment guide |
+| P2 | Required for small internal beta quality | admin frontend, failure queue, manual retry, beta MCP connector hardening, signed download URLs, backup runbook, smoke tests |
 | P3 | Explicitly deferred until after beta | full SaaS multi-tenancy, field-level permissions, automatic tag creation, advanced vector search, dashboard/report service, skill execution platform, SSO/OAuth device flow polish, region hierarchy |
 
 MVP and beta must not accidentally implement P3 unless a later PR explicitly changes scope.
@@ -179,7 +179,7 @@ apps/
   api/                 # HTTP API modular monolith
   worker/              # async processing worker using same domain modules
   admin-web/           # beta admin UI, added in small-scope beta phase
-  mcp-server/          # minimal MCP wrapper, can be P1/P2
+  mcp-server/          # local MCP adapter added in Phase 2
 packages/
   domain/              # shared types, state machine, permission helpers
   storage/             # local filesystem, MinIO, Aliyun OSS adapters
@@ -613,20 +613,20 @@ All non-health endpoints must accept an authenticated employee context and must 
 - [ ] API contract includes archive, label change, audit examples.
 - [ ] After all criteria pass, commit current related changes with message `Add archive sharing and audit APIs`, push branch, and open/update PR.
 
-### Day 5: Minimal MCP Or CLI Smoke Interface
+### Day 5: Minimal CLI Smoke Interface
 
 **Execution mode:** Main-thread or subagent.
-**Subagent fit:** Simple subagent optional if the API is stable; new thread recommended only if implementing MCP.
+**Subagent fit:** Simple subagent optional if the API is stable; full MCP work belongs to Phase 2.
 
 **Can run parallel with:** Integration tests after Day 4.
 
 **Dependencies:** Day 4 APIs.
 
-**Scope:** P0 can use a CLI smoke client; P1/P2 should add a minimal MCP server. Do not block MVP on polished MCP UX.
+**Scope:** P0 uses a CLI smoke client to prove the local MVP loop without raw curl. Full MCP work is now the dedicated Phase 2 because MCP is the realistic employee-agent interaction surface and deserves its own local human-test phase before online deployment.
 
 **Files likely touched:**
 
-- `apps/mcp-server/src/*` or `apps/cli/src/*`
+- `apps/cli/src/*`
 - `docs/implementation/api-contract.md`
 - `docs/implementation/test-cases.md`
 
@@ -635,20 +635,15 @@ All non-health endpoints must accept an authenticated employee context and must 
 - [ ] Implement CLI command `hub login --email baoli.manager@example.com` for dev token storage in local ignored file.
 - [ ] Implement CLI command `hub documents search "保利店 美团"` calling API.
 - [ ] Implement CLI command `hub documents upload ./fixtures/baoli.csv --label store:baoli`.
-- [ ] If MCP is chosen instead, expose tools:
-  - `enterprise_hub_search_documents`
-  - `enterprise_hub_get_document`
-  - `enterprise_hub_upload_document`
-  - `enterprise_hub_list_skills`
 - [ ] Document explicit invocation examples using `@企业资料中枢`.
 
 **Done criteria:**
 
-- [ ] A developer can upload a fixture and search it through CLI or MCP without using raw curl.
+- [ ] A developer can upload a fixture and search it through CLI without using raw curl.
 - [ ] Returned results match API permission filtering.
-- [ ] CLI/MCP never receives documents that API would deny.
+- [ ] CLI never receives documents that API would deny.
 - [ ] Test or smoke script proves Baoli/Suzhou isolation.
-- [ ] `api-contract.md` documents tool names or CLI commands.
+- [ ] `api-contract.md` documents CLI commands.
 - [ ] After all criteria pass, commit current related changes with message `Add local agent-facing smoke interface`, push branch, and open/update PR.
 
 ### Day 6: MVP Integration Test And Local Demo
@@ -687,17 +682,366 @@ All non-health endpoints must accept an authenticated employee context and must 
 - [ ] `progress.md` marks MVP core loop complete with evidence.
 - [ ] After all criteria pass, commit current related changes with message `Add MVP integration test`, push branch, and open/update PR.
 
-## 6. Phase 2: Online-Ready Service
+## 6. Phase 2: Local MCP And Agent Human Test
 
-**Goal:** Convert local MVP into a deployable service using real infrastructure, production-like configuration, OSS-backed storage, container images, deployment runbook, structured logs, and basic operational safety.
+**Goal:** Turn the local API service into a locally runnable MCP surface so an employee-owned agent can use 企业资料中枢 in a realistic way before any remote deployment exists. This phase proves the agent interaction model: connect, authenticate as a seeded employee, list labels, upload a document, observe processing state, search only accessible active documents, fetch details/download URLs, archive, list approved skills, and verify permission isolation through MCP.
 
-**Timebox:** 4-7 focused days after MVP.
+**Timebox:** 3-5 focused days after Phase 1 local MVP and P0 API corrections.
 
-**Deployment target:** Staging environment, not yet open to real internal beta users.
+**Deployment target:** Developer machine only. The API, worker, MySQL, storage, and MCP server all run locally.
+
+**Primary user:** A developer or operator using Codex or another MCP-capable employee-owned agent to human-test 企业资料中枢 locally.
+
+**Core architectural decision:** MCP is an agent-facing adapter over the existing HTTP API. It must not become a second backend, must not direct-read MySQL, must not direct-read local storage, and must not implement independent authorization logic. All permissions still come from the API and employee context.
+
+**Companion meta skill:** Create a stable `enterprise-hub-mcp` meta skill. The skill name must not include `local`; local development is only the first environment profile. Future remote/staging/production profiles should update the skill content without renaming the skill.
+
+### Phase 2 Scope Boundaries
+
+Phase 2 should make MCP usable locally, but it must not pull online-readiness work forward:
+
+- Do not deploy API, worker, MCP, or storage to a remote environment.
+- Do not add Aliyun OSS, online MySQL, TLS, domain, or production secret-store integration.
+- Do not implement production password login, SSO, OAuth device flow, or long-lived production token management.
+- Do not make 企业资料中枢 a direct employee-facing AI agent.
+- Do not build a report/dashboard generator or skill execution platform.
+- Do not let the MCP server filter permissions client-side or claim inaccessible documents exist.
+
+Allowed local-only tradeoffs:
+
+- MCP can use local development login through existing `POST /auth/dev-login`.
+- The local worker can still be triggered through `npm run worker:once` by the test harness or human-test guide; the MCP document tools should continue to call the API rather than mutate storage/DB directly.
+- File upload tools may accept local file paths because the MCP server is running on the same developer machine during this phase.
+
+### Phase 2 Environment Profiles
+
+The `enterprise-hub-mcp` meta skill and MCP docs should introduce profiles from the beginning:
+
+| Profile | Phase Implemented | Connection Shape | Auth Shape | Notes |
+|---|---|---|---|---|
+| `local-development` | Phase 2 | Local stdio command or local MCP server command, backed by local API URL such as `http://127.0.0.1:3000` | Seeded employee email via local dev login | Required in Phase 2 |
+| `staging-remote` | Phase 3 | Remote MCP endpoint or deployed command config | Employee-bound token from staging auth/token flow | Document placeholder only in Phase 2 |
+| `production` | Later | Production MCP endpoint | Production employee auth/token policy | Out of scope |
 
 ### Phase 2 Human Inputs Required
 
-Stop and ask the human before starting Phase 2 implementation unless these are available in `docs/implementation/env-inventory.md` or a secure secret store:
+No external infrastructure human inputs are required for Phase 2. Stop and ask only if the human wants a specific MCP client target beyond Codex/local MCP defaults, such as a particular desktop app, managed MCP gateway, or custom installation location.
+
+Do not ask for or invent:
+
+- OSS credentials.
+- Online MySQL credentials.
+- Domain/TLS settings.
+- Production employee passwords.
+- Real company documents.
+
+### Day 1: MCP Server Skeleton And Tool Contract
+
+**Execution mode:** Main-thread or specialist integration subagent.
+**Subagent fit:** Useful if the lead wants a separate agent to focus on MCP protocol wiring while another prepares docs/tests.
+
+**Dependencies:** Phase 1 local API, CLI smoke, `GET /labels`, document search/detail/download/archive APIs, Skill Directory API.
+
+**Files likely touched:**
+
+- `apps/mcp-server/package.json`
+- `apps/mcp-server/src/index.ts`
+- `apps/mcp-server/src/server.ts`
+- `apps/mcp-server/src/tools.ts`
+- `apps/mcp-server/src/schemas.ts`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Choose and document the MCP server transport for local development, preferably stdio because it is easiest for local agent clients to launch.
+- [ ] Add root command `npm run mcp:dev`.
+- [ ] Define a small API-client boundary used by MCP tools to call the existing HTTP API.
+- [ ] Define MCP tool names, descriptions, input schemas, and result shapes before implementing tool bodies.
+- [ ] Include an explicit local profile config:
+  - `ENTERPRISE_HUB_API_URL`
+  - optional `ENTERPRISE_HUB_MCP_SESSION_FILE`
+  - optional `ENTERPRISE_HUB_MCP_PROFILE=local-development`
+- [ ] Document that the MCP server is an adapter over the API, not an independent authorization layer.
+- [ ] Update `api-contract.md` with the MCP tool list and local-development profile.
+
+**Required MCP tool names for Phase 2:**
+
+- `enterprise_hub_login_dev`
+- `enterprise_hub_list_labels`
+- `enterprise_hub_upload_document`
+- `enterprise_hub_get_document_status`
+- `enterprise_hub_search_documents`
+- `enterprise_hub_get_document`
+- `enterprise_hub_get_document_download_url`
+- `enterprise_hub_archive_document`
+- `enterprise_hub_list_skills`
+
+**Done criteria:**
+
+- [ ] `npm run mcp:dev` starts the MCP server locally without starting API or MySQL itself.
+- [ ] MCP startup fails clearly if `ENTERPRISE_HUB_API_URL` is missing or invalid for the selected local mode.
+- [ ] Tool schemas are deterministic and documented.
+- [ ] MCP docs state that all non-health data access is delegated to the API.
+- [ ] No tool calls Prisma, local storage adapter, or filesystem storage directly except reading a user-supplied upload file path for local upload.
+- [ ] `api-contract.md` documents each tool name, purpose, required inputs, and high-level response shape.
+- [ ] After all criteria pass, commit current related changes with message `Add local MCP server skeleton`, push branch, and open/update PR.
+
+### Day 2: Local MCP Authentication And Session Handling
+
+**Execution mode:** Main-thread or subagent.
+**Subagent fit:** Useful if auth/session behavior needs focused testing across multiple employee identities.
+
+**Dependencies:** Day 1 MCP skeleton, existing `POST /auth/dev-login`.
+
+**Files likely touched:**
+
+- `apps/mcp-server/src/auth.ts`
+- `apps/mcp-server/src/session-store.ts`
+- `apps/mcp-server/src/api-client.ts`
+- `apps/mcp-server/src/tools/login-dev.ts`
+- `apps/mcp-server/src/*.test.ts`
+- `docs/implementation/env-inventory.md`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Implement `enterprise_hub_login_dev` for local development only.
+- [ ] Accept `email` and optional `sessionName`.
+- [ ] Call `POST /auth/dev-login` on the configured local API.
+- [ ] Store the returned token in an ignored local session file, or return a session handle that subsequent tools can use.
+- [ ] Do not print raw tokens in normal tool output.
+- [ ] Support at least two local sessions so tests can switch between `baoli.manager@example.com` and `suzhou.manager@example.com`.
+- [ ] Define consistent unauthenticated/session-missing error messages for document and skill tools.
+- [ ] Update `env-inventory.md` for local MCP variables and ignored session file behavior.
+
+**Done criteria:**
+
+- [ ] `enterprise_hub_login_dev` logs in a seeded employee by email against local API.
+- [ ] The token is not exposed in normal result text.
+- [ ] A Baoli session and Suzhou session can coexist without overwriting each other accidentally.
+- [ ] Document tools fail with a clear MCP error when no session/sessionName is supplied.
+- [ ] Production/staging auth is explicitly out of scope and not faked.
+- [ ] Tests cover successful login, unknown employee, disabled employee, token non-disclosure, and multiple local sessions.
+- [ ] After all criteria pass, commit current related changes with message `Add local MCP dev login`, push branch, and open/update PR.
+
+### Day 3: MCP Document, Label, And Skill Tools
+
+**Execution mode:** Main-thread or specialist integration subagent.
+**Subagent fit:** Good candidate for a subagent because the tools are bounded adapters over already-implemented API endpoints.
+
+**Dependencies:** Day 1 and Day 2.
+
+**Files likely touched:**
+
+- `apps/mcp-server/src/tools/list-labels.ts`
+- `apps/mcp-server/src/tools/upload-document.ts`
+- `apps/mcp-server/src/tools/get-document-status.ts`
+- `apps/mcp-server/src/tools/search-documents.ts`
+- `apps/mcp-server/src/tools/get-document.ts`
+- `apps/mcp-server/src/tools/get-document-download-url.ts`
+- `apps/mcp-server/src/tools/archive-document.ts`
+- `apps/mcp-server/src/tools/list-skills.ts`
+- `apps/mcp-server/src/api-client.ts`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Implement `enterprise_hub_list_labels` by calling authenticated `GET /labels`.
+- [ ] Implement `enterprise_hub_upload_document` by calling `POST /documents` with multipart form data:
+  - `filePath`
+  - `title`
+  - `documentType`
+  - optional `sourceSystem`
+  - optional `sourceTime`
+  - `labelKeys`
+- [ ] Validate local file path existence before upload and return a safe error if missing.
+- [ ] Implement `enterprise_hub_get_document_status` by calling `GET /documents/:id/status`.
+- [ ] Implement `enterprise_hub_search_documents` by calling `GET /documents`.
+- [ ] Implement `enterprise_hub_get_document` by calling `GET /documents/:id`.
+- [ ] Implement `enterprise_hub_get_document_download_url` by calling `GET /documents/:id/download`.
+- [ ] Implement `enterprise_hub_archive_document` by calling `POST /documents/:id/archive`.
+- [ ] Implement `enterprise_hub_list_skills` by calling `GET /skills`.
+- [ ] Preserve API error semantics in tool output, especially 401, 403, and not-found/inaccessible cases.
+- [ ] Ensure tool results do not add summaries, guesses, report text, or AI-generated analysis of document content.
+
+**Done criteria:**
+
+- [ ] MCP list-labels returns catalog labels with `key`, `name`, and `type`, not internal label ids.
+- [ ] MCP upload returns a pending document id and labels assigned by the API.
+- [ ] MCP status can show `pending_processing`, `active`, and `processing_failed` when the API allows the actor.
+- [ ] MCP search returns only API-visible active documents for the selected employee session.
+- [ ] MCP detail and download URL tools return not-found/inaccessible semantics without leaking hidden document titles.
+- [ ] MCP archive hides the document from ordinary search after API archive succeeds.
+- [ ] MCP list-skills returns approved skill metadata and instructions only; no skill is executed.
+- [ ] Unit tests mock API responses for success and important errors for each tool.
+- [ ] After all criteria pass, commit current related changes with message `Add local MCP document tools`, push branch, and open/update PR.
+
+### Day 4: Agent Human Test Loop And Permission Isolation
+
+**Execution mode:** Main-thread with optional QA subagent.
+**Subagent fit:** QA subagent recommended for independent validation because this phase exists to test the real agent interaction model.
+
+**Dependencies:** Day 3 MCP tools.
+
+**Files likely touched:**
+
+- `scripts/test-mcp-local.ts`
+- `docs/implementation/local-agent-test.md`
+- `docs/implementation/test-cases.md`
+- `docs/implementation/progress.md`
+
+**Steps:**
+
+- [ ] Add `npm run test:mcp` or equivalent local MCP smoke script.
+- [ ] The smoke script should:
+  - start or connect to local API as configured
+  - login as Baoli manager through MCP
+  - list labels through MCP
+  - upload `fixtures/baoli-june-meituan.csv` through MCP with `store:baoli`
+  - run or instruct the deterministic local worker pass
+  - poll or read status through MCP until `active`
+  - search through MCP as Baoli and find the document
+  - login as Suzhou manager through MCP
+  - search the same query through MCP and not find the Baoli document
+  - get download URL through MCP as Baoli
+  - archive through MCP as uploader/admin
+  - verify ordinary MCP search no longer returns the archived document
+- [ ] Write `docs/implementation/local-agent-test.md` with natural-language Codex prompts for human testing.
+- [ ] Include expected results and failure triage for API not running, MySQL not seeded, worker not run, missing session, and permission-denied cases.
+- [ ] Make clear that the agent must not claim inaccessible documents exist.
+
+**Done criteria:**
+
+- [ ] A developer can run `npm run test:mcp` from a clean local database after documented setup.
+- [ ] The MCP smoke proves upload -> processing -> active MCP search -> download URL -> archive.
+- [ ] The MCP smoke proves Baoli/Suzhou permission isolation using different employee sessions.
+- [ ] Local human-test docs include copy-pasteable Codex prompts and expected outcomes.
+- [ ] The human-test flow does not require OSS, online MySQL, real documents, or production credentials.
+- [ ] `test-cases.md` records automated and manual MCP acceptance scenarios.
+- [ ] After all criteria pass, commit current related changes with message `Add local MCP human test`, push branch, and open/update PR.
+
+### Day 5: `enterprise-hub-mcp` Meta Skill
+
+**Execution mode:** Main-thread or docs/skill subagent.
+**Subagent fit:** Good candidate for a focused documentation/skill authoring subagent after MCP behavior is stable.
+
+**Dependencies:** Day 1-Day 4 MCP behavior and local-agent test docs.
+
+**Files likely touched:**
+
+- `skills/enterprise-hub-mcp/SKILL.md` or another lead-approved repo location for distributable skills.
+- `docs/implementation/enterprise-hub-mcp-skill.md`
+- `docs/implementation/local-agent-test.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Create the companion meta skill named exactly `enterprise-hub-mcp`.
+- [ ] State the skill purpose: teach an employee-owned agent how to connect to, authenticate with, and safely use 企业资料中枢 through MCP across local, staging, and future production profiles.
+- [ ] Implement the `local-development` profile instructions fully.
+- [ ] Include placeholders for `staging-remote` and `production` profiles without inventing endpoints or credentials.
+- [ ] Include setup checks:
+  - verify API is running
+  - verify MCP command/config is available
+  - verify employee email/session
+  - verify labels can be listed
+- [ ] Include standard operating flow:
+  - login/select session
+  - list labels
+  - upload document
+  - check status
+  - search
+  - fetch detail/download URL
+  - archive when requested
+  - verify permission isolation when testing
+- [ ] Include safety rules:
+  - do not invent inaccessible documents
+  - do not ask for production passwords in local mode
+  - do not expose raw tokens
+  - do not execute Skill Directory entries
+  - do not upload real customer documents unless the human explicitly authorizes test data
+
+**Done criteria:**
+
+- [ ] The meta skill is named `enterprise-hub-mcp`, not `enterprise-hub-local-mcp`.
+- [ ] The local-development profile is complete enough for an agent to connect and run the MCP human-test loop.
+- [ ] Future remote profiles are represented as configuration profiles, not separate skill names.
+- [ ] The skill contains no real tokens, passwords, customer data, endpoint secrets, or service-account material.
+- [ ] The skill does not turn 企业资料中枢 into a skill execution platform or direct employee-facing AI agent.
+- [ ] A fresh Codex thread using the skill can follow the documented local MCP setup and run the expected smoke path.
+- [ ] After all criteria pass, commit current related changes with message `Add enterprise hub MCP meta skill`, push branch, and open/update PR.
+
+### Day 6: Phase 2 Packaging, Docs, And Final Verification
+
+**Execution mode:** Main-thread lead.
+**Subagent fit:** Optional QA subagent for independent final MCP verification.
+
+**Dependencies:** Day 1-Day 5.
+
+**Files likely touched:**
+
+- `AGENTS.md`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/env-inventory.md`
+- `docs/implementation/test-cases.md`
+- `docs/implementation/progress.md`
+- `docs/implementation/agent-handoffs.md`
+
+**Steps:**
+
+- [ ] Update `AGENTS.md` with MCP commands:
+  - install dependencies
+  - start local MySQL
+  - run API
+  - run worker once
+  - run MCP server
+  - run MCP smoke
+- [ ] Update `env-inventory.md` with MCP local-development variables.
+- [ ] Update `api-contract.md` with final MCP tool examples.
+- [ ] Update `test-cases.md` with local MCP automated and human-test cases.
+- [ ] Confirm `progress.md` lists Phase 2 active/completed workstreams and evidence.
+- [ ] Confirm every subagent has a handoff entry.
+- [ ] Run final verification commands.
+
+**Done criteria:**
+
+- [ ] `npm test` passes.
+- [ ] `npm run typecheck` passes.
+- [ ] `npm run lint` passes.
+- [ ] `npm run format:check` passes.
+- [ ] `npm run test:integration` still passes.
+- [ ] `npm run test:mcp` or equivalent MCP smoke passes.
+- [ ] A human can use Codex with `enterprise-hub-mcp` instructions to complete the local agent test without raw curl or direct DB access.
+- [ ] `progress.md` marks Phase 2 complete and records remaining gaps.
+- [ ] After all criteria pass, commit current related changes with message `Document local MCP verification`, push branch, and open/update PR.
+
+### Phase 2 Global Done Criteria
+
+Phase 2 is complete only when all of these are true:
+
+- [ ] Local MCP server exists and runs through documented commands.
+- [ ] MCP tools cover the Phase 1 MVP loop and Skill Directory read path.
+- [ ] MCP tools call the HTTP API and inherit API authorization.
+- [ ] MCP tests prove Baoli/Suzhou permission isolation.
+- [ ] `enterprise-hub-mcp` meta skill exists with a complete local-development profile and future remote profile placeholders.
+- [ ] Codex human-test instructions are documented and runnable.
+- [ ] No Phase 3 online infrastructure assumptions were introduced.
+- [ ] No secrets, real customer exports, production credentials, or private tokens are committed.
+
+## 7. Phase 3: Online-Ready Service
+
+**Goal:** Convert local MVP into a deployable service using real infrastructure, production-like configuration, OSS-backed storage, container images, deployment runbook, structured logs, and basic operational safety.
+
+**Timebox:** 4-7 focused days after local MCP and agent human testing.
+
+**Deployment target:** Staging environment, not yet open to real internal beta users.
+
+### Phase 3 Human Inputs Required
+
+Stop and ask the human before starting Phase 3 implementation unless these are available in `docs/implementation/env-inventory.md` or a secure secret store:
 
 | Item | Example Value | Human Required? | Notes |
 |---|---|---|---|
@@ -855,7 +1199,7 @@ Stop and ask the human before starting Phase 2 implementation unless these are a
 - [ ] Runbook is complete enough for a fresh agent to redeploy.
 - [ ] After all criteria pass, commit current related changes with message `Document staging deployment runbook`, push branch, and open/update PR.
 
-## 7. Phase 3: Small-Scope Internal Beta
+## 8. Phase 4: Small-Scope Internal Beta
 
 **Goal:** Deploy a beta version for a small internal user group with a simple admin frontend, enough operational visibility, and high-confidence permission behavior.
 
@@ -871,7 +1215,7 @@ Stop and ask the human before starting Phase 2 implementation unless these are a
 - Employee/agent path can upload, search, download active documents.
 - Permission isolation is tested for at least two non-admin employees.
 
-### Phase 3 Human Inputs Required
+### Phase 4 Human Inputs Required
 
 Stop and ask the human before beta launch unless these are available:
 
@@ -968,7 +1312,7 @@ Stop and ask the human before beta launch unless these are available:
 - [ ] Audit logs record employee create/disable and label assignment.
 - [ ] After all criteria pass, commit current related changes with message `Add beta employee label admin`, push branch, and open/update PR.
 
-### Day 4: Beta MCP Tools Or Employee-Agent Connector
+### Day 4: Beta MCP Connector Hardening And Setup
 
 **Execution mode:** Main-thread or subagent.
 **Subagent fit:** Specialist integration subagent recommended when API and token flows are stable; new thread useful for MCP/connector context.
@@ -977,25 +1321,30 @@ Stop and ask the human before beta launch unless these are available:
 
 **Steps:**
 
-- [ ] Implement MCP server if not already done in MVP.
-- [ ] Tools:
+- [ ] Adapt the Phase 2 MCP server/config for the online beta environment.
+- [ ] Use employee-bound staging/beta tokens instead of local `dev-login`.
+- [ ] Update the `enterprise-hub-mcp` meta skill `staging-remote` profile with real non-secret endpoint/config instructions.
+- [ ] Verify tools against the deployed API:
+  - `enterprise_hub_list_labels`
   - `enterprise_hub_search_documents`
   - `enterprise_hub_get_document`
   - `enterprise_hub_upload_document`
   - `enterprise_hub_list_skills`
   - `enterprise_hub_get_document_status`
+  - `enterprise_hub_get_document_download_url`
 - [ ] Document installation for Codex/OpenClaw-like agent environments.
 - [ ] Add explicit examples using `@企业资料中枢`.
 - [ ] Add beta warning: agent must not claim inaccessible docs exist.
 
 **Done criteria:**
 
-- [ ] A beta tester can configure MCP locally using a token.
+- [ ] A beta tester can configure MCP using a staging/beta token.
 - [ ] Search tool returns same results as API for the same employee.
 - [ ] Upload tool creates pending document with uploader personal label.
 - [ ] Status tool shows pending/active/failed for uploader.
 - [ ] Installation doc is in `docs/implementation/beta-agent-setup.md`.
-- [ ] After all criteria pass, commit current related changes with message `Add beta agent connector`, push branch, and open/update PR.
+- [ ] `enterprise-hub-mcp` includes a working `staging-remote` profile without embedding secrets.
+- [ ] After all criteria pass, commit current related changes with message `Harden beta agent connector`, push branch, and open/update PR.
 
 ### Day 5: Beta Launch Checklist And Observation
 
@@ -1028,7 +1377,7 @@ Stop and ask the human before beta launch unless these are available:
 - [ ] `progress.md` records launch commit SHA, deployment time, beta users, and known issues.
 - [ ] After all criteria pass, commit current related changes with message `Document beta launch runbook`, push branch, and open/update PR.
 
-## 8. Deferred Work After Small-Scope Beta
+## 9. Deferred Work After Small-Scope Beta
 
 Do not block beta on these unless user explicitly changes priority:
 
@@ -1045,30 +1394,32 @@ Do not block beta on these unless user explicitly changes priority:
 | Advanced frontend knowledge portal | P3 | Admin minimal UI is enough for beta |
 | Real third-party platform ingestion | P3 | Initial upload flow proves value without direct platform integrations |
 
-## 9. End-To-End Acceptance Matrix
+## 10. End-To-End Acceptance Matrix
 
-| Scenario | MVP | Online Ready | Beta |
-|---|---:|---:|---:|
-| Local API starts | Required | Required | Required |
-| MySQL authoritative metadata | Required | Required | Required |
-| Local/OSS file storage | Local | OSS | OSS |
-| Employee auth context | Dev token | Employee token | Employee token |
-| Upload creates catalog record | Required | Required | Required |
-| Upload stores original file | Local | OSS | OSS |
-| Worker activates supported file | Required | Required | Required |
-| Failed processing visible to admin/uploader only | Required | Required | Required |
-| Active-only ordinary search | Required | Required | Required |
-| Backend permission filtering | Required | Required | Required |
-| Download requires permission | Required | Required | Required |
-| Archive removes from ordinary search | Required | Required | Required |
-| Skill Directory returns approved skills | Required | Required | Required |
-| MCP/CLI agent-facing connector | CLI acceptable | MCP preferred | MCP or documented connector required |
-| Admin frontend | Not required | Optional | Required |
-| Failure retry UI | Not required | Optional | Required |
-| Deployment runbook | Not required | Required | Required |
-| Beta feedback tracking | Not required | Not required | Required |
+| Scenario | MVP | Local MCP | Online Ready | Beta |
+|---|---:|---:|---:|---:|
+| Local API starts | Required | Required | Required | Required |
+| MySQL authoritative metadata | Required | Required | Required | Required |
+| Local/OSS file storage | Local | Local | OSS | OSS |
+| Employee auth context | Dev token | Dev token through MCP local profile | Employee token | Employee token |
+| Upload creates catalog record | Required | Required through MCP | Required | Required |
+| Upload stores original file | Local | Local via API | OSS | OSS |
+| Worker activates supported file | Required | Required in local MCP smoke | Required | Required |
+| Failed processing visible to admin/uploader only | Required | Required through MCP status | Required | Required |
+| Active-only ordinary search | Required | Required through MCP search | Required | Required |
+| Backend permission filtering | Required | Required through MCP/API inheritance | Required | Required |
+| Download requires permission | Required | Required through MCP download URL | Required | Required |
+| Archive removes from ordinary search | Required | Required through MCP archive | Required | Required |
+| Label catalog returns controlled labels | Required | Required through MCP list-labels | Required | Required |
+| Skill Directory returns approved skills | Required | Required through MCP list-skills | Required | Required |
+| Agent-facing connector | CLI acceptable | MCP required | MCP staging profile required | MCP or documented connector required |
+| `enterprise-hub-mcp` meta skill | Not required | Local profile required | Staging profile updated | Beta setup profile required |
+| Admin frontend | Not required | Not required | Optional | Required |
+| Failure retry UI | Not required | Not required | Optional | Required |
+| Deployment runbook | Not required | Not required | Required | Required |
+| Beta feedback tracking | Not required | Not required | Not required | Required |
 
-## 10. Global Done Criteria Before Any Phase Is Considered Complete
+## 11. Global Done Criteria Before Any Phase Is Considered Complete
 
 For each phase:
 
@@ -1087,7 +1438,7 @@ For each phase:
   - human inputs used
   - known limitations
 
-## 11. Recommended Initial Parallelization
+## 12. Recommended Initial Parallelization
 
 Once Day 0 skeleton exists, dispatch these subagents:
 
@@ -1098,6 +1449,6 @@ Once Day 0 skeleton exists, dispatch these subagents:
 5. **Skill/Audit subagent:** Day 4B and Day 4C.
 6. **QA/Docs subagent:** Day 6, `api-contract.md`, `test-cases.md`, `progress.md` consistency.
 
-For Phase 2, start new threads for DevOps, OSS, and security hardening. For Phase 3, start new threads for admin frontend, beta connector, and QA/beta runbook.
+For Phase 2, start new threads for MCP protocol/tooling, local agent human-test QA, and `enterprise-hub-mcp` meta-skill documentation if parallelism is useful. For Phase 3, start new threads for DevOps, OSS, and security hardening. For Phase 4, start new threads for admin frontend, beta connector hardening, and QA/beta runbook.
 
 The lead agent should not let subagents invent missing infrastructure. If a subagent needs human-provided OSS, MySQL, domain, or API key information, it must update `progress.md` and stop.

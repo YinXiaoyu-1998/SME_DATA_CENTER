@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-- Phase: Phase 1 local MVP P0 correction complete / Pre-Phase 2 blocker queue
+- Phase: Phase 2 MCP plan ready
 - Date: 2026-07-01
-- Lead branch: `codex/hub-mvp-label-catalog`
+- Lead branch: `codex/phase-2-mcp-plan`
 - Deployment target: Developer machine only
 
 ## Active Workstreams
@@ -25,6 +25,7 @@
 | State recovery audit     | `codex/enterprise-hub-status-recovery`          | Codex lead agent                                         | Complete | [PR #15](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/15) | Merged documentation-only recovery audit; read required implementation docs, git history/status, and PR metadata; recorded real state, open gaps, blocker boundaries, branch hygiene, and secrets/file-risk findings without changing business code.                                                       |
 | State recovery follow-up | `codex/enterprise-hub-status-recovery-followup` | Codex lead agent                                         | Complete | [PR #16](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/16) | Documentation-only follow-up after PR #15 merge; confirms current true state is Phase 1 local MVP merged, no open PRs, `GET /labels` still unresolved, and Phase 2 still blocked on human-provided infrastructure inputs.                                                                                  |
 | P0 label catalog         | `codex/hub-mvp-label-catalog`                   | Codex lead agent                                         | Complete | [PR #17](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/17) | Implemented the small authenticated `GET /labels` P0 correction instead of reclassifying it out of Phase 1. Scope stayed limited to label catalog read, API/test/progress docs, and excludes OSS, online MySQL, deployment, admin UI, MCP, P1/P2/P3, and employee-facing AI behavior.                      |
+| Phase 2 MCP planning     | `codex/phase-2-mcp-plan`                        | Codex lead agent                                         | Complete | [PR #18](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/18) | Added a new Phase 2 for local MCP, agent human testing, and the `enterprise-hub-mcp` meta skill; shifted former online-ready and beta phases to Phase 3 and Phase 4. No business code changed in this planning update.                                                                                     |
 
 ## Completed Checkpoints
 
@@ -92,12 +93,14 @@
 | 2026-07-01 | P0 label catalog tests passed        | TDD red: `npm test -- apps/api/src/server.test.ts` failed with two HTTP 404 assertions for missing `GET /labels`. Green: authenticated `GET /labels` returns existing label `key`, `name`, and `type`; unauthenticated access returns HTTP 401; response omits internal label ids.                                                                                                                                                                           |
 | 2026-07-01 | P0 label catalog verification passed | `npm test -- apps/api/src/server.test.ts` passed with 27 tests; `npm test` passed with 6 files / 41 tests; `npm run typecheck`, `npm run lint`, and `npm run format:check` passed after targeted Prettier formatting.                                                                                                                                                                                                                                        |
 | 2026-07-01 | P0 label catalog draft PR opened     | Implementation commit `91304c6`; draft PR [#17](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/17).                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-07-01 | Phase 2 MCP planning selected        | User confirmed PR #17 merged and requested a detailed implementation-plan update: add a new Phase 2 for local MCP, realistic agent human testing, and the stable `enterprise-hub-mcp` meta skill; shift the existing online-ready and beta phases later. Branch `codex/phase-2-mcp-plan` was created from latest `origin/main`.                                                                                                                              |
+| 2026-07-01 | Phase 2 MCP plan update complete     | Updated `implementation-plan.md` to make Phase 2 `Local MCP And Agent Human Test`, with six detailed days covering MCP skeleton/tool contract, local dev login/session handling, document/label/skill tools, agent human-test loop, `enterprise-hub-mcp` meta skill, and final packaging/verification; former online-ready and beta phases are now Phase 3 and Phase 4. `npm run format:check` and `git diff --check` passed.                                |
 
 ## Blockers
 
-| Blocker                                 | Needed From Human                                                                                                                                                                                                                                                                                        | Since      | Stop Rule                                                                                                                                             |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 2 online readiness inputs missing | Deployment target, staging/public domain and TLS decision, online MySQL connection and backup/SSL settings, Aliyun OSS region/bucket/endpoint/RAM policy/credentials via secret store, JWT/session secret via secret store, allowed admin emails, and any optional Qwen/DashScope budget/model decision. | 2026-07-01 | Do not start Phase 2 implementation or invent infrastructure values until these are provided in a secure channel or explicitly declared out of scope. |
+| Blocker                                 | Needed From Human                                                                                                                                                                                                                                                                                        | Since      | Stop Rule                                                                                                                                                              |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 3 online readiness inputs missing | Deployment target, staging/public domain and TLS decision, online MySQL connection and backup/SSL settings, Aliyun OSS region/bucket/endpoint/RAM policy/credentials via secret store, JWT/session secret via secret store, allowed admin emails, and any optional Qwen/DashScope budget/model decision. | 2026-07-01 | Do not start Phase 3 online-readiness implementation or invent infrastructure values until these are provided in a secure channel or explicitly declared out of scope. |
 
 ## Next Actions
 
@@ -131,6 +134,8 @@
 - [x] Confirm PR #15 merged and no open PRs remain before this follow-up.
 - [x] Decide the `GET /labels` contract gap: implement as a small P0 correction rather than reclassify it out of Phase 1 P0.
 - [x] Implement authenticated read-only `GET /labels` and document the P0 correction.
-- [ ] Collect Phase 2 human inputs before starting online-ready implementation.
+- [x] Update `implementation-plan.md` to add the new Phase 2 local MCP and `enterprise-hub-mcp` meta-skill plan, shifting online-ready and beta phases later.
+- [ ] Start Phase 2 / Day 1 MCP server skeleton and tool contract when ready.
+- [ ] Collect Phase 3 human inputs before starting online-ready implementation.
 - [x] Install local dependencies, generate Prisma client, and rerun `npm run typecheck`, `npm test`, `npm run lint`, and `npm run format:check` for this status-recovery PR.
 - [x] Commit, push, and open/update draft PR for this follow-up status recovery branch.
