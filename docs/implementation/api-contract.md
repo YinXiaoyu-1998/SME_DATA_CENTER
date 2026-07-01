@@ -204,6 +204,42 @@ Unauthenticated response `401`:
 }
 ```
 
+## Local MCP Profile And Tool Contract
+
+Phase 2 adds a local MCP adapter named `enterprise-hub-mcp`. The MCP server is an adapter over the HTTP API, not a second backend. It must not direct-read MySQL, direct-read storage, or implement independent authorization filtering. All non-health data access is delegated to the API with an authenticated employee context.
+
+### Local Development Profile
+
+| Setting      | Value                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------- |
+| Profile      | `local-development`                                                                         |
+| Transport    | stdio                                                                                       |
+| Command      | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                              |
+| Auth shape   | local dev login in Phase 2 Day 2, backed by `POST /auth/dev-login`                          |
+| Session file | optional `ENTERPRISE_HUB_MCP_SESSION_FILE`, default `.data/enterprise-hub-mcp/session.json` |
+
+Startup requirements:
+
+- `ENTERPRISE_HUB_API_URL` is required and must be an `http` or `https` URL.
+- `ENTERPRISE_HUB_MCP_PROFILE` defaults to `local-development`; other profiles are placeholders for later phases.
+- The MCP server does not start API, worker, MySQL, or local storage services.
+
+### Phase 2 MCP Tools
+
+| Tool                                       | Purpose                                                                        | Required Inputs                                    | High-Level Result Shape                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------ | -------------------------------------------------- | -------------------------------------------------- |
+| `enterprise_hub_login_dev`                 | Log in as a seeded local employee through the existing API dev-login endpoint. | `email`                                            | `employee`, `sessionName`, `apiUrl`                |
+| `enterprise_hub_list_labels`               | List catalog labels through authenticated `GET /labels`.                       | local session in Day 2                             | `labels[]` with `key`, `name`, `type`              |
+| `enterprise_hub_upload_document`           | Upload a local file through authenticated multipart `POST /documents`.         | local session, `filePath`, `title`, `documentType` | document id, status, labels, processing run status |
+| `enterprise_hub_get_document_status`       | Read upload/processing status through `GET /documents/:id/status`.             | local session, `documentId`                        | id, status, labels, processing run status          |
+| `enterprise_hub_search_documents`          | Search visible active documents through `GET /documents`.                      | local session                                      | documents and `nextCursor`                         |
+| `enterprise_hub_get_document`              | Read accessible active document metadata through `GET /documents/:id`.         | local session, `documentId`                        | document metadata or API not-found error           |
+| `enterprise_hub_get_document_download_url` | Get an accessible download URL through `GET /documents/:id/download`.          | local session, `documentId`                        | id and `downloadUrl`                               |
+| `enterprise_hub_archive_document`          | Archive a document through `POST /documents/:id/archive`.                      | local session, `documentId`                        | archived document metadata or API error            |
+| `enterprise_hub_list_skills`               | List approved Skill Directory entries through `GET /skills`.                   | local session                                      | approved skill metadata and instructions only      |
+
+Day 1 defines these deterministic tool names, descriptions, input schemas, and result shapes. Tool bodies that call the API are implemented in later Phase 2 days.
+
 ### `GET /documents/:id/status`
 
 Allowed actors: the uploader or an admin. Non-admin, non-uploader access returns `404` to avoid document existence leakage.
