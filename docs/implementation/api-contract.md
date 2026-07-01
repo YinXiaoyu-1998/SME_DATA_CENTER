@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / Day 6.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / P0 label-catalog correction.
 
 ## Cross-Cutting Rules
 
@@ -40,7 +40,7 @@ Exact values:
 | ------ | ------------------------- | ----------------------------------------------------- | --------------- |
 | `POST` | `/auth/dev-login`         | Local-only development login for seeded employees.    | Day 1B          |
 | `GET`  | `/me`                     | Return authenticated employee profile and label keys. | Day 1B          |
-| `GET`  | `/labels`                 | List available labels for controlled assignment.      | Later P0        |
+| `GET`  | `/labels`                 | List available labels for controlled assignment.      | P0 correction   |
 | `POST` | `/documents`              | Upload a document and create a catalog record.        | Day 2           |
 | `GET`  | `/documents`              | Search/list accessible active documents.              | Day 4A          |
 | `GET`  | `/documents/:id`          | Fetch accessible active document metadata.            | Day 4A          |
@@ -700,6 +700,53 @@ Disabled employee response `403`:
   "error": {
     "code": "EMPLOYEE_DISABLED",
     "message": "Employee account is disabled."
+  }
+}
+```
+
+### `GET /labels`
+
+Lists the existing label catalog for authenticated employees, CLIs, MCP clients, APIs, and employee-owned agents that need controlled label selection. This endpoint is read-only and does not grant assignment rights. Upload and document-label mutation endpoints still enforce backend authorization before labels can be applied.
+
+Request headers:
+
+```http
+Authorization: Bearer <jwt>
+```
+
+Response `200`:
+
+```json
+{
+  "labels": [
+    {
+      "key": "all_staff",
+      "name": "All Staff",
+      "type": "all_staff"
+    },
+    {
+      "key": "person:baoli.manager",
+      "name": "Baoli Manager Personal",
+      "type": "personal"
+    },
+    {
+      "key": "store:baoli",
+      "name": "Baoli Store",
+      "type": "store"
+    }
+  ]
+}
+```
+
+The response intentionally omits internal label ids. Labels are ordered by `type` then `key`.
+
+Unauthenticated response `401`:
+
+```json
+{
+  "error": {
+    "code": "UNAUTHENTICATED",
+    "message": "Authentication is required."
   }
 }
 ```

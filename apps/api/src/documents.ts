@@ -17,6 +17,7 @@ import { AUDIT_ACTIONS, canEmployeeAccessDocument } from "@enterprise-hub/domain
 export interface CatalogLabel {
   id: string;
   key: string;
+  name: string;
   type: string;
 }
 
@@ -140,6 +141,7 @@ export interface ListAuditLogsResult {
 }
 
 export interface DocumentCatalogRepository {
+  listLabels(orgId: string): Promise<CatalogLabel[]>;
   findLabelsByKeys(orgId: string, keys: string[]): Promise<CatalogLabel[]>;
   findPersonalLabelForEmployee(orgId: string, employeeId: string): Promise<CatalogLabel | null>;
   createUploadedDocument(input: CreateUploadedDocumentInput): Promise<DocumentStatusRecord>;
@@ -215,6 +217,20 @@ export function createPrismaDocumentCatalogRepository(
   const prisma = new PrismaClient({ adapter });
 
   return {
+    async listLabels(orgId) {
+      return prisma.label.findMany({
+        where: {
+          orgId
+        },
+        orderBy: [{ type: "asc" }, { key: "asc" }],
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          type: true
+        }
+      });
+    },
     async findLabelsByKeys(orgId, keys) {
       if (keys.length === 0) {
         return [];
@@ -228,6 +244,7 @@ export function createPrismaDocumentCatalogRepository(
         select: {
           id: true,
           key: true,
+          name: true,
           type: true
         }
       });
@@ -246,6 +263,7 @@ export function createPrismaDocumentCatalogRepository(
             select: {
               id: true,
               key: true,
+              name: true,
               type: true
             }
           }

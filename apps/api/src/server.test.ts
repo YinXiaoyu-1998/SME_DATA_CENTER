@@ -188,18 +188,54 @@ interface RecordedAuditLog {
 
 function createDocumentRepository() {
   const labelCatalog = new Map([
-    ["all_staff", { id: "label_all_staff", key: "all_staff", type: "all_staff" }],
-    ["store:baoli", { id: "label_store_baoli", key: "store:baoli", type: "store" }],
+    [
+      "all_staff",
+      { id: "label_all_staff", key: "all_staff", name: "All Staff", type: "all_staff" }
+    ],
+    [
+      "store:baoli",
+      { id: "label_store_baoli", key: "store:baoli", name: "Baoli Store", type: "store" }
+    ],
+    [
+      "store:suzhou",
+      { id: "label_store_suzhou", key: "store:suzhou", name: "Suzhou Store", type: "store" }
+    ],
     [
       "person:baoli.manager",
-      { id: "label_person_baoli_manager", key: "person:baoli.manager", type: "personal" }
+      {
+        id: "label_person_baoli_manager",
+        key: "person:baoli.manager",
+        name: "Baoli Manager Personal",
+        type: "personal"
+      }
     ],
     [
       "person:suzhou.manager",
-      { id: "label_person_suzhou_manager", key: "person:suzhou.manager", type: "personal" }
+      {
+        id: "label_person_suzhou_manager",
+        key: "person:suzhou.manager",
+        name: "Suzhou Manager Personal",
+        type: "personal"
+      }
     ],
-    ["person:lijie", { id: "label_person_lijie", key: "person:lijie", type: "personal" }],
-    ["person:admin", { id: "label_person_admin", key: "person:admin", type: "personal" }]
+    [
+      "person:lijie",
+      {
+        id: "label_person_lijie",
+        key: "person:lijie",
+        name: "Li Jie Personal",
+        type: "personal"
+      }
+    ],
+    [
+      "person:admin",
+      {
+        id: "label_person_admin",
+        key: "person:admin",
+        name: "Admin Personal",
+        type: "personal"
+      }
+    ]
   ]);
   const documents: RecordedDocument[] = [];
   const processingRuns: RecordedProcessingRun[] = [];
@@ -209,10 +245,18 @@ function createDocumentRepository() {
     documents,
     processingRuns,
     auditLogs,
+    async listLabels() {
+      return [...labelCatalog.values()].sort(
+        (first, second) =>
+          first.type.localeCompare(second.type) || first.key.localeCompare(second.key)
+      );
+    },
     async findLabelsByKeys(_orgId: string, keys: string[]) {
       return keys
         .map((key) => labelCatalog.get(key))
-        .filter((label): label is { id: string; key: string; type: string } => Boolean(label));
+        .filter((label): label is { id: string; key: string; name: string; type: string } =>
+          Boolean(label)
+        );
     },
     async findPersonalLabelForEmployee(_orgId: string, employeeId: string) {
       if (employeeId === baoliManagerEmployee.id) {
@@ -678,6 +722,73 @@ describe("api auth shell", () => {
         code: "EMPLOYEE_DISABLED"
       }
     });
+  });
+});
+
+describe("label catalog", () => {
+  let app: FastifyInstance | undefined;
+
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  function buildLabelTestServer() {
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee, baoliManagerEmployee]),
+      documentRepository: createDocumentRepository(),
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
+
+    return app;
+  }
+
+  it("requires authentication before listing labels", async () => {
+    app = buildLabelTestServer();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/labels"
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "UNAUTHENTICATED"
+      }
+    });
+  });
+
+  it("lists the authenticated label catalog without granting assignment rights", async () => {
+    app = buildLabelTestServer();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/labels",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      labels: [
+        { key: "all_staff", name: "All Staff", type: "all_staff" },
+        { key: "person:admin", name: "Admin Personal", type: "personal" },
+        {
+          key: "person:baoli.manager",
+          name: "Baoli Manager Personal",
+          type: "personal"
+        },
+        { key: "person:lijie", name: "Li Jie Personal", type: "personal" },
+        { key: "person:suzhou.manager", name: "Suzhou Manager Personal", type: "personal" },
+        { key: "store:baoli", name: "Baoli Store", type: "store" },
+        { key: "store:suzhou", name: "Suzhou Store", type: "store" }
+      ]
+    });
+    expect(JSON.stringify(response.json())).not.toContain("label_");
   });
 });
 

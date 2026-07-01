@@ -139,6 +139,14 @@ function employeeResponse(employee: AuthenticatedEmployee) {
   };
 }
 
+function labelCatalogResponse(label: CatalogLabel) {
+  return {
+    key: label.key,
+    name: label.name,
+    type: label.type
+  };
+}
+
 function createDocumentId(): string {
   return `doc_${randomBytes(12).toString("hex")}`;
 }
@@ -526,6 +534,20 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     return {
       employee: employeeResponse((request as AuthenticatedRequest).employee)
+    };
+  });
+
+  app.get("/labels", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const labels = await documents().listLabels(defaultOrgId());
+
+    return {
+      labels: labels.map(labelCatalogResponse)
     };
   });
 
