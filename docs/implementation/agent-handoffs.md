@@ -156,7 +156,7 @@
 - Files changed: `apps/api/src/documents.ts`, `apps/api/src/server.ts`, `apps/api/src/server.test.ts`, `docs/implementation/api-contract.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
 - Commands run: required implementation doc reads; `git fetch origin`; `git switch -c codex/hub-mvp-label-catalog origin/main`; `npm test -- apps/api/src/server.test.ts` before implementation to verify two `GET /labels` HTTP 404 red failures; `npm test -- apps/api/src/server.test.ts`; `npm test`; `npm run typecheck`; `npm run lint`; `npm run format:check`; targeted `npx prettier --write`.
 - Done criteria passed: `GET /labels` requires authentication; authenticated response lists existing label `key`, `name`, and `type`; internal label ids are omitted; assignment authorization remains enforced by upload and document-label mutation endpoints rather than by the catalog endpoint; targeted API tests, full tests, typecheck, lint, and format check pass.
-- PR: Draft PR pending.
-- Known gaps: Draft PR creation still needs to run before merge. Phase 2 infrastructure and online readiness remain intentionally out of scope.
+- PR: Draft PR [#17](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/17).
+- Known gaps: Phase 2 infrastructure and online readiness remain intentionally out of scope.
 - Human blockers: None for this P0 correction. Phase 2 remains blocked on deployment target, domain/TLS, online MySQL settings, OSS settings/credentials via secret store, JWT/session secret via secret store, allowed admin emails, and optional model budget/model choice.
 - Suggested next agent: After this PR merges, do not enter Phase 2 until the remaining human inputs are provided. If Phase 2 remains blocked, only documentation/status work should continue.
