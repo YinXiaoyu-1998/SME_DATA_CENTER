@@ -26,6 +26,7 @@
 - Format check: `npm run format:check`
 - Run one deterministic worker pass: `npm run worker:once`
 - Run local CLI smoke commands: `npm run hub -- <command>`
+- Run local MCP server: `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`
 - Start local MySQL: `docker compose up -d mysql`
 - Stop local services: `docker compose down`
 - Run local MVP demo loop: `MYSQL_PORT=3307 npm run test:integration`

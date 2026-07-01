@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "api:dev": "tsx apps/api/src/index.ts",
     "hub": "tsx apps/cli/src/index.ts",
+    "mcp:dev": "tsx apps/mcp-server/src/index.ts",
     "worker:once": "tsx apps/worker/src/index.ts",
     "db:compose:up": "docker compose up -d mysql",
     "db:compose:down": "docker compose down",

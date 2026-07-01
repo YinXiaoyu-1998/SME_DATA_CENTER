@@ -4,18 +4,21 @@ This file tracks required variables and external services. Do not store secret v
 
 ## Local Development
 
-| Variable               |                        Required | Example / Default                                                                    | Secret? | Used By             | Notes                                                                       |
-| ---------------------- | ------------------------------: | ------------------------------------------------------------------------------------ | ------: | ------------------- | --------------------------------------------------------------------------- |
-| `DATABASE_URL`         |                             Yes | `mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub` |     Yes | API, worker, Prisma | Local-only example is in `.env.example`; replace for personal environments. |
-| `STORAGE_DRIVER`       |                             Yes | `local`                                                                              |      No | Storage package     | Phase 1 implements the local filesystem adapter only.                       |
-| `LOCAL_STORAGE_ROOT`   | Yes when `STORAGE_DRIVER=local` | `./.data/storage`                                                                    |      No | Storage package     | Local adapter root for original file objects; `.data/` is ignored by git.   |
-| `JWT_SECRET`           |                             Yes | `replace-with-local-development-secret`                                              |     Yes | API auth module     | Development value only; production must come from a secret store.           |
-| `DEV_SEED_ADMIN_EMAIL` |                             Yes | `admin@example.com`                                                                  |      No | Future seed script  | Used for local seed data in later phases.                                   |
-| `HUB_API_URL`          |                              No | `http://127.0.0.1:3000`                                                              |      No | CLI                 | Optional API base URL override for local CLI smoke commands.                |
-| `HUB_CLI_SESSION_FILE` |                              No | `.data/hub-cli/session.json`                                                         |      No | CLI                 | Optional local token session file path; the file itself is ignored by git.  |
-| `HUB_INTEGRATION_PORT` |                              No | auto-assigned                                                                        |      No | Integration test    | Optional API port override for `npm run test:integration`.                  |
-| `PORT`                 |                              No | `3000`                                                                               |      No | API server          | Optional local HTTP port override.                                          |
-| `HOST`                 |                              No | `0.0.0.0`                                                                            |      No | API server          | Optional local bind host override.                                          |
+| Variable                          |                        Required | Example / Default                                                                    | Secret? | Used By             | Notes                                                                                           |
+| --------------------------------- | ------------------------------: | ------------------------------------------------------------------------------------ | ------: | ------------------- | ----------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                    |                             Yes | `mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub` |     Yes | API, worker, Prisma | Local-only example is in `.env.example`; replace for personal environments.                     |
+| `STORAGE_DRIVER`                  |                             Yes | `local`                                                                              |      No | Storage package     | Phase 1 implements the local filesystem adapter only.                                           |
+| `LOCAL_STORAGE_ROOT`              | Yes when `STORAGE_DRIVER=local` | `./.data/storage`                                                                    |      No | Storage package     | Local adapter root for original file objects; `.data/` is ignored by git.                       |
+| `JWT_SECRET`                      |                             Yes | `replace-with-local-development-secret`                                              |     Yes | API auth module     | Development value only; production must come from a secret store.                               |
+| `DEV_SEED_ADMIN_EMAIL`            |                             Yes | `admin@example.com`                                                                  |      No | Future seed script  | Used for local seed data in later phases.                                                       |
+| `HUB_API_URL`                     |                              No | `http://127.0.0.1:3000`                                                              |      No | CLI                 | Optional API base URL override for local CLI smoke commands.                                    |
+| `HUB_CLI_SESSION_FILE`            |                              No | `.data/hub-cli/session.json`                                                         |      No | CLI                 | Optional local token session file path; the file itself is ignored by git.                      |
+| `HUB_INTEGRATION_PORT`            |                              No | auto-assigned                                                                        |      No | Integration test    | Optional API port override for `npm run test:integration`.                                      |
+| `ENTERPRISE_HUB_API_URL`          |               Yes for local MCP | `http://127.0.0.1:3000`                                                              |      No | MCP server          | Explicit API base URL for the local MCP adapter. The MCP server does not start the API itself.  |
+| `ENTERPRISE_HUB_MCP_SESSION_FILE` |                              No | `.data/enterprise-hub-mcp/session.json`                                              |      No | MCP server          | Optional local session file path for Phase 2 MCP auth/session work; `.data/` is ignored by git. |
+| `ENTERPRISE_HUB_MCP_PROFILE`      |                              No | `local-development`                                                                  |      No | MCP server          | Optional profile selector. Phase 2 implements only `local-development`.                         |
+| `PORT`                            |                              No | `3000`                                                                               |      No | API server          | Optional local HTTP port override.                                                              |
+| `HOST`                            |                              No | `0.0.0.0`                                                                            |      No | API server          | Optional local bind host override.                                                              |
 
 ## Local Docker Compose
 
@@ -29,4 +32,6 @@ This file tracks required variables and external services. Do not store secret v
 
 ## Human-Provided Inputs
 
-No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 / Day 6.
+No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 or Phase 2 local MCP work.
+
+Phase 3 online readiness still requires human-provided deployment target, domain/TLS, online MySQL, OSS, secret-store, and admin-list inputs before implementation starts.
