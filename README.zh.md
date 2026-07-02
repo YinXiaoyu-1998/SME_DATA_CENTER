@@ -166,7 +166,15 @@ CLI session 默认写入 `.data/hub-cli/session.json`，不要提交。
 
 MCP server 是 HTTP API 的 adapter。它不会启动 API、MySQL 或 worker，也不会直接读取 MySQL 或本地 storage。
 
-启动前先确保 API 正在 `http://127.0.0.1:3000` 运行，然后启动 MCP：
+如果想让本地 agent 一条命令拉起 API + MCP，可以运行：
+
+```sh
+npm run mcp-bootup
+```
+
+`mcp-bootup` 会读取 `.env`，后台启动 API，等待 `/healthz` 成功，然后以前台 stdio 方式启动 MCP server。架构上仍然是 MCP 调 API，这个脚本只是把本地启动流程串起来。
+
+如果 API 已经在 `http://127.0.0.1:3000` 运行，也可以只启动 MCP：
 
 ```sh
 ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 \
@@ -186,11 +194,9 @@ MCP 本地 session 文件可能包含 development bearer token，默认位于 ig
   "mcpServers": {
     "enterprise-hub": {
       "command": "npm",
-      "args": ["run", "mcp:dev"],
+      "args": ["run", "--silent", "mcp-bootup"],
       "cwd": "/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER",
       "env": {
-        "ENTERPRISE_HUB_API_URL": "http://127.0.0.1:3000",
-        "ENTERPRISE_HUB_MCP_PROFILE": "local-development",
         "ENTERPRISE_HUB_MCP_SESSION_FILE": ".data/enterprise-hub-mcp/session.json"
       }
     }
@@ -198,7 +204,7 @@ MCP 本地 session 文件可能包含 development bearer token，默认位于 ig
 }
 ```
 
-不同 Codex 版本的 MCP 配置入口可能不同，但需要传给 MCP server 的信息就是上面的 `command`、`args`、`cwd` 和 `env`。API 必须先单独启动。
+不同 Codex 版本的 MCP 配置入口可能不同，但需要传给 MCP server 的信息就是上面的 `command`、`args`、`cwd` 和 `env`。这里使用 `--silent` 是为了避免 npm 自己的启动 banner 写入 MCP stdio 通道。
 
 如果当前 Codex 环境能发现 repo-local skill，可以在新 thread 里使用：
 
@@ -270,6 +276,7 @@ MYSQL_PORT=3307 npm run test:mcp
 | `typecheck`        | 运行 TypeScript 类型检查，不输出编译文件。 | `npm run typecheck`                                                                                                     | 检查全仓 TS 类型。                                               |
 | `api:dev`          | 启动 Fastify API 服务。                    | `npm run api:dev`                                                                                                       | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
 | `hub`              | 运行 Enterprise Hub CLI。                  | `npm run hub -- <command>`                                                                                              | 示例：`npm run hub -- login --email baoli.manager@example.com`。 |
+| `mcp-bootup`       | 启动 API，等待健康检查，然后启动 MCP。     | `npm run mcp-bootup`                                                                                                    | 配到 MCP client 时建议用 `npm run --silent mcp-bootup`。         |
 | `mcp:dev`          | 启动本地 stdio MCP server。                | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | 需要 API 已经在对应地址运行。                                    |
 | `worker:once`      | 运行一次确定性 worker 处理。               | `npm run worker:once`                                                                                                   | 如需从 `.env` 读变量，先执行 `set -a; source .env; set +a`。     |
 | `db:compose:up`    | 启动本地 MySQL Docker Compose 服务。       | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | 底层是 `docker compose up -d mysql`。                            |

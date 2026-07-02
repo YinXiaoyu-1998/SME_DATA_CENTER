@@ -62,7 +62,25 @@ npm run api:dev
 
 The API entrypoint automatically loads `.env` from the current working directory when it exists, without overriding environment variables already provided by the shell.
 
-Start the MCP server after the API is running:
+Start the API and MCP server together:
+
+```sh
+npm run mcp-bootup
+```
+
+`mcp-bootup` loads `.env`, starts the API in the background, waits for `/healthz`, then starts the MCP stdio server in the foreground. The MCP server still calls the API; this command only makes local bootup easier.
+
+When configuring Codex or another MCP client, prefer silent npm mode so npm does not write its own banner into the MCP stdio stream:
+
+```json
+{
+  "command": "npm",
+  "args": ["run", "--silent", "mcp-bootup"],
+  "cwd": "/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER"
+}
+```
+
+To run only the MCP server when the API is already running:
 
 ```sh
 ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev
@@ -91,6 +109,7 @@ npm run worker:once
 | `typecheck`        | Runs TypeScript without emitting compiled files.                          | `npm run typecheck`                                                                                                     | Verifies TS types across the repo.                                 |
 | `api:dev`          | Starts the Fastify API service.                                           | `npm run api:dev`                                                                                                       | Auto-loads `.env` when present.                                    |
 | `hub`              | Runs the Enterprise Hub CLI.                                              | `npm run hub -- <command>`                                                                                              | Example: `npm run hub -- login --email baoli.manager@example.com`. |
+| `mcp-bootup`       | Starts the API, waits for health, then starts the MCP stdio server.       | `npm run mcp-bootup`                                                                                                    | For MCP client config, prefer `npm run --silent mcp-bootup`.       |
 | `mcp:dev`          | Starts the local stdio MCP server.                                        | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | Requires the API to already be running.                            |
 | `worker:once`      | Runs one deterministic worker pass.                                       | `npm run worker:once`                                                                                                   | Load env first with `set -a; source .env; set +a` if needed.       |
 | `db:compose:up`    | Starts the local MySQL Docker Compose service.                            | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | Uses `docker compose up -d mysql`.                                 |
