@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 1 / P0 label-catalog correction.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 2 / Day 3 MCP tool bodies.
 
 ## Cross-Cutting Rules
 
@@ -240,7 +240,7 @@ Startup requirements:
 | `enterprise_hub_archive_document`          | Archive a document through `POST /documents/:id/archive`.                      | local session, `documentId`                        | archived document metadata or API error            |
 | `enterprise_hub_list_skills`               | List approved Skill Directory entries through `GET /skills`.                   | local session                                      | approved skill metadata and instructions only      |
 
-Day 1 defines these deterministic tool names, descriptions, input schemas, and result shapes. Day 2 implements local-development login/session handling only. Document, label, archive, and skill tool bodies that call the API are implemented in later Phase 2 days.
+Day 1 defines these deterministic tool names, descriptions, input schemas, and result shapes. Day 2 implements local-development login/session handling. Day 3 implements the label, document, archive, and skill tool bodies as authenticated adapters over the HTTP API.
 
 ### `enterprise_hub_login_dev`
 
@@ -283,7 +283,7 @@ Unknown or disabled employees return the API error body as an MCP error result, 
 }
 ```
 
-Session-required MCP error before Day 3 tool bodies run:
+Session-required MCP error when no local session is available:
 
 ```json
 {
@@ -291,6 +291,191 @@ Session-required MCP error before Day 3 tool bodies run:
     "code": "MCP_SESSION_REQUIRED",
     "message": "Run enterprise_hub_login_dev first or pass sessionName for an existing local MCP session."
   }
+}
+```
+
+### Phase 2 Day 3 MCP Tool Bodies
+
+All Day 3 non-login MCP tools require a local session and pass the stored API bearer token to the HTTP API. They preserve API error bodies in tool output and do not generate summaries, reports, or analysis of document content.
+
+#### `enterprise_hub_list_labels`
+
+Calls authenticated `GET /labels`.
+
+Request:
+
+```json
+{
+  "sessionName": "baoli"
+}
+```
+
+Response:
+
+```json
+{
+  "labels": [
+    {
+      "key": "store:baoli",
+      "name": "Baoli Store",
+      "type": "store"
+    }
+  ]
+}
+```
+
+#### `enterprise_hub_upload_document`
+
+Validates the local `filePath` exists, then calls authenticated multipart `POST /documents`. The MCP server may read the local file bytes only for this upload tool; it must not direct-read storage or MySQL.
+
+Request:
+
+```json
+{
+  "sessionName": "baoli",
+  "filePath": "./fixtures/baoli-june-meituan.csv",
+  "title": "Baoli June Meituan Export",
+  "documentType": "raw_material",
+  "sourceSystem": "meituan",
+  "sourceTime": "2026-06-30T00:00:00.000Z",
+  "labelKeys": ["store:baoli"]
+}
+```
+
+Response:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "title": "Baoli June Meituan Export",
+  "documentType": "raw_material",
+  "status": "pending_processing",
+  "labels": ["person:baoli.manager", "store:baoli"],
+  "processingRunStatus": "queued"
+}
+```
+
+Missing local file response:
+
+```json
+{
+  "error": {
+    "code": "LOCAL_FILE_NOT_FOUND",
+    "message": "Local upload file was not found."
+  }
+}
+```
+
+#### `enterprise_hub_get_document_status`
+
+Calls authenticated `GET /documents/:id/status`.
+
+Request:
+
+```json
+{
+  "sessionName": "baoli",
+  "documentId": "doc_91e4dd567237bed3d3f00c67"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "status": "pending_processing",
+  "labels": ["store:baoli"],
+  "processingRunStatus": "queued"
+}
+```
+
+#### `enterprise_hub_search_documents`
+
+Calls authenticated `GET /documents` with optional `q`, `documentType`, `labelKey`, `limit`, and `cursor` query parameters.
+
+Request:
+
+```json
+{
+  "sessionName": "baoli",
+  "q": "Meituan",
+  "documentType": "raw_material",
+  "labelKey": "store:baoli",
+  "limit": 10
+}
+```
+
+Response:
+
+```json
+{
+  "documents": [
+    {
+      "id": "doc_91e4dd567237bed3d3f00c67",
+      "title": "Baoli June Meituan Export",
+      "status": "active",
+      "labels": ["store:baoli"]
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+#### `enterprise_hub_get_document`
+
+Calls authenticated `GET /documents/:id`.
+
+Request:
+
+```json
+{
+  "sessionName": "baoli",
+  "documentId": "doc_91e4dd567237bed3d3f00c67"
+}
+```
+
+Not found or inaccessible documents preserve the API `DOCUMENT_NOT_FOUND` response without leaking hidden titles.
+
+#### `enterprise_hub_get_document_download_url`
+
+Calls authenticated `GET /documents/:id/download`.
+
+Response:
+
+```json
+{
+  "id": "doc_91e4dd567237bed3d3f00c67",
+  "downloadUrl": "file:///absolute/local/storage/path/baoli-june-meituan.csv"
+}
+```
+
+#### `enterprise_hub_archive_document`
+
+Calls authenticated `POST /documents/:id/archive`.
+
+Request:
+
+```json
+{
+  "sessionName": "baoli",
+  "documentId": "doc_91e4dd567237bed3d3f00c67"
+}
+```
+
+Forbidden archive attempts preserve the API `DOCUMENT_UPDATE_FORBIDDEN` response.
+
+#### `enterprise_hub_list_skills`
+
+Calls authenticated `GET /skills` with optional `q` and `category` query parameters. The tool returns approved skill metadata and instructions only; it does not execute skills.
+
+Request:
+
+```json
+{
+  "sessionName": "baoli",
+  "q": "菜单",
+  "category": "menu-analysis"
 }
 ```
 

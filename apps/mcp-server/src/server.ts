@@ -4,12 +4,8 @@ import type { McpRuntimeConfig } from "./config.js";
 import { createEnterpriseHubApiClient, type EnterpriseHubApiClient } from "./api-client.js";
 import { loginDevTool } from "./auth.js";
 import { LocalMcpSessionStore, McpSessionRequiredError } from "./session-store.js";
-import {
-  MCP_TOOL_CONTRACTS,
-  plannedToolResult,
-  sessionRequiredToolResult,
-  type McpJsonToolResult
-} from "./tools.js";
+import { executeAuthenticatedTool } from "./tool-actions.js";
+import { MCP_TOOL_CONTRACTS, sessionRequiredToolResult, type McpJsonToolResult } from "./tools.js";
 
 export const MCP_SERVER_NAME = "enterprise-hub-mcp";
 export const MCP_SERVER_VERSION = "0.1.0";
@@ -58,8 +54,10 @@ export function createToolHandler(
   }
 
   return async (input: unknown) => {
+    let session;
+
     try {
-      await dependencies.sessionStore.requireSession(getSessionName(input));
+      session = await dependencies.sessionStore.requireSession(getSessionName(input));
     } catch (error) {
       if (error instanceof McpSessionRequiredError) {
         return sessionRequiredToolResult();
@@ -68,7 +66,7 @@ export function createToolHandler(
       throw error;
     }
 
-    return plannedToolResult(toolName);
+    return executeAuthenticatedTool(toolName, input, session, dependencies.apiClient);
   };
 }
 

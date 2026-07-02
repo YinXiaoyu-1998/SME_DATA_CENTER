@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-- Phase: Phase 2 / Day 2 merged; post-merge status recovery complete
+- Phase: Phase 2 / Day 3 MCP document, label, and skill tools complete
 - Date: 2026-07-02
-- Lead branch: `codex/enterprise-hub-status-recovery-20260702`
+- Lead branch: `codex/hub-phase2-mcp-tools`
 - Deployment target: Developer machine only
 
 ## Active Workstreams
@@ -29,6 +29,7 @@
 | Phase 2 Day 1 MCP skeleton | `codex/hub-phase2-mcp-skeleton`                 | Codex lead agent                                         | Complete | [PR #19](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/19) | Added local stdio MCP server skeleton, explicit local profile config validation, API-client boundary, deterministic Phase 2 tool contract, root `npm run mcp:dev`, and docs. Scope stayed limited to Day 1 skeleton; no tool business bodies, OSS, online MySQL, deployment, P2/P3, or employee-facing AI behavior. |
 | Phase 2 Day 2 MCP auth     | `codex/hub-phase2-mcp-auth`                     | Codex lead agent                                         | Complete | [PR #20](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/20) | Implemented local-development MCP dev login and session handling only. Scope excludes Day 3 document/label/skill tool bodies, OSS, online MySQL, deployment, P2/P3, production auth, and employee-facing AI behavior.                                                                                               |
 | Status recovery 2026-07-02 | `codex/enterprise-hub-status-recovery-20260702` | Codex lead agent                                         | Complete | [PR #21](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/21) | Documentation-only recovery after PR #20 merged; read required implementation docs, git status/log, open PR metadata, branch state, code evidence, and secrets/file-risk signals. No business code or feature scope changed.                                                                                        |
+| Phase 2 Day 3 MCP tools    | `codex/hub-phase2-mcp-tools`                    | Codex lead agent                                         | Complete | [PR #22](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/22) | Implemented authenticated MCP label, document, archive, and skill tool bodies over the existing HTTP API only. Scope excludes Day 4 MCP smoke/human-test loop, Day 5 meta skill, Phase 3 online infrastructure, and employee-facing AI behavior.                                                                    |
 
 ## Completed Checkpoints
 
@@ -111,6 +112,10 @@
 | 2026-07-02 | Done evidence reconciled                | Phase 1 Day 0-Day 6 plus the P0 `GET /labels` correction remain merged. Phase 2 Day 1 evidence is PR #19 with `npm run mcp:dev`, config validation, deterministic tool contract, and API-delegation docs. Phase 2 Day 2 evidence is PR #20 with `enterprise_hub_login_dev`, ignored local session storage, token non-disclosure, multi-session support, and missing-session errors.                                                                          |
 | 2026-07-02 | Scope and blocker boundaries checked    | No Phase 3 online-readiness code, OSS adapter, online MySQL, TLS/domain config, production secret-store integration, admin UI, skill execution platform, report/dashboard service, or employee-facing AI agent scope was found in the reviewed Phase 2 work. Phase 2 local MCP has no external infrastructure blocker; Phase 3 remains blocked on human-provided infrastructure and admin inputs.                                                            |
 | 2026-07-02 | Secrets and file-risk sweep             | `git ls-files` shows `.env.example`, tracked synthetic fixtures, and source files only for env/data-like paths; `.env`, `.data/`, MCP/CLI session files, and `.DS_Store` are ignored. Text scan found local development defaults and test fake tokens only, not real OSS keys, service account keys, private keys, real credentials, `.env`, downloaded third-party data, or customer exports.                                                               |
+| 2026-07-02 | Phase 2 Day 3 selected                  | Read `AGENTS.md`, implementation plan, progress, handoffs, env inventory, API contract, and test cases from latest `origin/main` after PR #21 merged. Selected Phase 2 / Day 3 because Day 1 and Day 2 are complete, Day 4 depends on Day 3, and Phase 2 local MCP has no external infrastructure human blocker.                                                                                                                                             |
+| 2026-07-02 | Phase 2 Day 3 red tests captured        | Added `apps/mcp-server/src/tool-bodies.test.ts` and ran `npm test -- apps/mcp-server/src/tool-bodies.test.ts`; after local dependencies were installed, the tests failed because non-login MCP tools still returned the planned `TOOL_NOT_IMPLEMENTED` placeholder and made no API calls.                                                                                                                                                                    |
+| 2026-07-02 | Phase 2 Day 3 implementation complete   | Added authenticated MCP tool bodies over the existing API client: labels, upload, status, search, detail, download URL, archive, and skills. Upload validates a local file path and then sends multipart `POST /documents`; all other tools delegate to API endpoints with the stored employee bearer token and preserve API error bodies. No MCP tool reads Prisma, storage, or performs client-side permission filtering.                                  |
+| 2026-07-02 | Phase 2 Day 3 verification passed       | `npm test` passed with 10 files / 62 tests; `npm run typecheck` passed; `npm run lint` passed after removing one unused import; `npm run format:check` passed after targeted Prettier formatting. Targeted MCP tests passed with 4 files / 21 tests.                                                                                                                                                                                                         |
 
 ## Blockers
 
@@ -158,6 +163,8 @@
 - [x] Run 2026-07-02 post-PR #20 status recovery against docs, git history/status, branch state, PR metadata, code evidence, blockers, and file-risk signals.
 - [x] Record true state as Phase 2 / Day 2 merged, with Phase 2 / Day 3 not yet started.
 - [x] Record that no open PRs or unmerged remote topic branches currently indicate active cross-branch pollution.
-- [ ] Start Phase 2 / Day 3 MCP document, label, and skill tool bodies after Day 2 merges.
+- [x] Start Phase 2 / Day 3 MCP document, label, and skill tool bodies after Day 2 merges.
+- [x] Complete Phase 2 / Day 3 MCP document, label, archive, and skill tool bodies over the HTTP API.
+- [ ] Start Phase 2 / Day 4 agent human test loop and permission isolation after Day 3 merges.
 - [ ] Collect Phase 3 human inputs before starting online-ready implementation.
 - [x] Commit, push, and open/update draft PR for this 2026-07-02 status recovery branch.
