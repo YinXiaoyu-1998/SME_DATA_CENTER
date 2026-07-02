@@ -34,14 +34,14 @@ export function createEnterpriseHubApiClient(
         headers.set("authorization", `Bearer ${request.accessToken}`);
       }
 
-      if (request.body !== undefined) {
+      if (request.body !== undefined && !(request.body instanceof FormData)) {
         headers.set("content-type", "application/json");
       }
 
       const response = await fetchImplementation(url, {
         method: request.method,
         headers,
-        body: request.body === undefined ? undefined : JSON.stringify(request.body)
+        body: requestBody(request.body)
       });
       const body = await readJsonResponse(response);
 
@@ -52,6 +52,18 @@ export function createEnterpriseHubApiClient(
       return body as T;
     }
   };
+}
+
+function requestBody(body: unknown): BodyInit | undefined {
+  if (body === undefined) {
+    return undefined;
+  }
+
+  if (body instanceof FormData) {
+    return body;
+  }
+
+  return JSON.stringify(body);
 }
 
 export class EnterpriseHubApiError extends Error {
