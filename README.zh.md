@@ -101,12 +101,13 @@ seed 中常用本地员工：
 另开一个终端：
 
 ```sh
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
-STORAGE_DRIVER=local \
-LOCAL_STORAGE_ROOT=.data/storage \
-JWT_SECRET=replace-with-local-development-secret \
-PORT=3000 \
 npm run api:dev
+```
+
+API 启动入口会自动读取当前目录下的 `.env`（如果存在），且不会覆盖终端里已经显式设置的变量。临时换端口可以这样运行：
+
+```sh
+PORT=3033 npm run api:dev
 ```
 
 健康检查：
