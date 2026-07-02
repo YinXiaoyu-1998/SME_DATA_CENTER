@@ -31,6 +31,15 @@ export interface McpToolContract {
   resultShape: string[];
 }
 
+export interface McpJsonToolResult {
+  [key: string]: unknown;
+  content: Array<{
+    type: "text";
+    text: string;
+  }>;
+  isError?: boolean;
+}
+
 export const MCP_TOOL_CONTRACTS: McpToolContract[] = [
   {
     name: "enterprise_hub_login_dev",
@@ -185,23 +194,70 @@ export const MCP_TOOL_CONTRACTS: McpToolContract[] = [
   }
 ];
 
-export function plannedToolResult(toolName: string) {
+export function jsonToolResult(payload: unknown, isError = false): McpJsonToolResult {
   return {
     content: [
       {
-        type: "text" as const,
-        text: JSON.stringify(
-          {
-            error: {
-              code: "TOOL_NOT_IMPLEMENTED",
-              message: `${toolName} is defined in the Phase 2 Day 1 contract; its body is implemented in a later Phase 2 day.`
-            }
-          },
-          null,
-          2
-        )
+        type: "text",
+        text: JSON.stringify(payload, null, 2)
       }
     ],
-    isError: true
+    isError
   };
+}
+
+export function plannedToolResult(toolName: string): McpJsonToolResult {
+  return jsonToolResult(
+    {
+      error: {
+        code: "TOOL_NOT_IMPLEMENTED",
+        message: `${toolName} is defined in the Phase 2 Day 1 contract; its body is implemented in a later Phase 2 day.`
+      }
+    },
+    true
+  );
+}
+
+export function sessionRequiredToolResult(): McpJsonToolResult {
+  return jsonToolResult(
+    {
+      error: {
+        code: "MCP_SESSION_REQUIRED",
+        message:
+          "Run enterprise_hub_login_dev first or pass sessionName for an existing local MCP session."
+      }
+    },
+    true
+  );
+}
+
+export function apiErrorToolResult(body: unknown): McpJsonToolResult {
+  if (isApiErrorBody(body)) {
+    return jsonToolResult(body, true);
+  }
+
+  return jsonToolResult(
+    {
+      error: {
+        code: "ENTERPRISE_HUB_API_ERROR",
+        message: "Enterprise Hub API request failed."
+      }
+    },
+    true
+  );
+}
+
+function isApiErrorBody(body: unknown): body is { error: { code: string; message: string } } {
+  if (typeof body !== "object" || body === null || !("error" in body)) {
+    return false;
+  }
+
+  const error = (body as { error: unknown }).error;
+
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    typeof (error as { message?: unknown }).message === "string"
+  );
 }

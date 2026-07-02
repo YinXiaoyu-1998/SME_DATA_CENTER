@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-- Phase: Phase 2 / Day 1 MCP server skeleton complete
+- Phase: Phase 2 / Day 2 local MCP authentication and session handling complete
 - Date: 2026-07-01
-- Lead branch: `codex/hub-phase2-mcp-skeleton`
+- Lead branch: `codex/hub-phase2-mcp-auth`
 - Deployment target: Developer machine only
 
 ## Active Workstreams
@@ -27,6 +27,7 @@
 | P0 label catalog           | `codex/hub-mvp-label-catalog`                   | Codex lead agent                                         | Complete | [PR #17](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/17) | Implemented the small authenticated `GET /labels` P0 correction instead of reclassifying it out of Phase 1. Scope stayed limited to label catalog read, API/test/progress docs, and excludes OSS, online MySQL, deployment, admin UI, MCP, P1/P2/P3, and employee-facing AI behavior.                               |
 | Phase 2 MCP planning       | `codex/phase-2-mcp-plan`                        | Codex lead agent                                         | Complete | [PR #18](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/18) | Added a new Phase 2 for local MCP, agent human testing, and the `enterprise-hub-mcp` meta skill; shifted former online-ready and beta phases to Phase 3 and Phase 4. No business code changed in this planning update.                                                                                              |
 | Phase 2 Day 1 MCP skeleton | `codex/hub-phase2-mcp-skeleton`                 | Codex lead agent                                         | Complete | [PR #19](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/19) | Added local stdio MCP server skeleton, explicit local profile config validation, API-client boundary, deterministic Phase 2 tool contract, root `npm run mcp:dev`, and docs. Scope stayed limited to Day 1 skeleton; no tool business bodies, OSS, online MySQL, deployment, P2/P3, or employee-facing AI behavior. |
+| Phase 2 Day 2 MCP auth     | `codex/hub-phase2-mcp-auth`                     | Codex lead agent                                         | Complete | [PR #20](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/20) | Implemented local-development MCP dev login and session handling only. Scope excludes Day 3 document/label/skill tool bodies, OSS, online MySQL, deployment, P2/P3, production auth, and employee-facing AI behavior.                                                                                               |
 
 ## Completed Checkpoints
 
@@ -100,6 +101,9 @@
 | 2026-07-01 | Phase 2 Day 1 MCP skeleton tests passed | TDD red: `npm test -- apps/mcp-server/src/config.test.ts apps/mcp-server/src/tools.test.ts` failed because `config.ts` and `tools.ts` did not exist. Green: target tests passed with 2 files / 6 tests; `npm run typecheck` passed; `npm run lint` passed. Startup smoke showed missing `ENTERPRISE_HUB_API_URL` fails clearly and a provided local URL starts the stdio server without starting API/MySQL.                                                  |
 | 2026-07-01 | Phase 2 Day 1 final checks passed       | `npm test` passed with 8 files / 47 tests; `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check` passed; `npm run mcp:dev` failed clearly without `ENTERPRISE_HUB_API_URL`; `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev </dev/null` started successfully.                                                                                                                                                    |
 | 2026-07-01 | Phase 2 Day 1 draft PR opened           | Implementation commit `717bbb0`; draft PR [#19](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/19).                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-07-01 | Phase 2 Day 2 selected                  | User confirmed PR #19 merged; fetched latest `origin/main` at `a08daf4`, created `codex/hub-phase2-mcp-auth`, and reread `AGENTS.md`, implementation plan, progress, handoffs, env inventory, API contract, and test cases. Selected Phase 2 / Day 2 local MCP authentication and session handling because Day 1 was complete and no Phase 2 external human inputs are required.                                                                             |
+| 2026-07-01 | Phase 2 Day 2 MCP auth tests passed     | TDD red: `npm test -- apps/mcp-server/src/auth.test.ts` failed before implementation because `auth.ts` and `session-store.ts` did not exist. Green checks: targeted MCP tests passed with 3 files / 11 tests; full `npm test` passed with 9 files / 52 tests; `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check` passed.                                                                                                    |
+| 2026-07-01 | Phase 2 Day 2 local smoke passed        | `npm run mcp:dev` still fails clearly without `ENTERPRISE_HUB_API_URL`; `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev </dev/null` starts successfully. With local MySQL on `MYSQL_PORT=3307`, seeded data, and API on `127.0.0.1:3020`, an injected MCP login smoke logged in `baoli.manager@example.com`, returned no token in tool output, and stored the development token only in a temporary session file.                              |
 
 ## Blockers
 
@@ -142,7 +146,9 @@
 - [x] Update `implementation-plan.md` to add the new Phase 2 local MCP and `enterprise-hub-mcp` meta-skill plan, shifting online-ready and beta phases later.
 - [x] Start Phase 2 / Day 1 MCP server skeleton and tool contract.
 - [x] Complete Phase 2 / Day 1 MCP server skeleton, local profile config, and deterministic tool contract.
-- [ ] Start Phase 2 / Day 2 local MCP authentication and session handling after Day 1 merges.
+- [x] Start Phase 2 / Day 2 local MCP authentication and session handling after Day 1 merges.
+- [x] Complete Phase 2 / Day 2 local MCP dev login and session handling.
+- [ ] Start Phase 2 / Day 3 MCP document, label, and skill tool bodies after Day 2 merges.
 - [ ] Collect Phase 3 human inputs before starting online-ready implementation.
 - [x] Install local dependencies, generate Prisma client, and rerun `npm run typecheck`, `npm test`, `npm run lint`, and `npm run format:check` for this status-recovery PR.
 - [x] Commit, push, and open/update draft PR for this follow-up status recovery branch.
