@@ -207,3 +207,14 @@
 - Known gaps: Phase 2 Day 4 must still add the local MCP smoke/human-test loop and permission-isolation proof. Phase 2 Day 5 `enterprise-hub-mcp` meta skill and Day 6 final packaging/verification remain incomplete.
 - Human blockers: None for Phase 2 local MCP. Phase 3 online readiness remains blocked on deployment target, domain/TLS, online MySQL, OSS settings/credentials via secret store, JWT/session secret via secret store, allowed admin emails, and optional model decisions.
 - Suggested next agent: After this PR merges, start Phase 2 / Day 4 local MCP human-test loop and permission isolation on a new branch; do not start the meta skill or online-readiness work until Day 4 is complete.
+
+## 2026-07-02 08:59 - codex/hub-phase2-mcp-human-test-docs - Phase 2 Day 4 QA/docs
+
+- Scope: Documentation-only QA/docs subagent for Phase 2 / Day 4 local MCP human-test guidance. Created the local agent test guide with copy-paste Codex/MCP prompts, expected outcomes, permission-isolation rules, and failure triage. Did not modify business code, scripts, package metadata, progress tracking, API contract, test cases, AGENTS.md, Day 5 meta skill, Phase 3 online readiness, or employee-facing AI behavior.
+- Files changed: `docs/implementation/local-agent-test.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: required doc reads for `AGENTS.md`, `implementation-plan.md`, `progress.md`, `agent-handoffs.md`, `env-inventory.md`, `api-contract.md`, and `test-cases.md`; `git status --short --branch`; `rg` scans for Phase 2 Day 4, MCP commands, tool names, and local-agent docs; `sed` reads for relevant implementation docs and package scripts; `date`.
+- Done criteria passed: Human-test docs include copy-paste MCP prompts for Baoli login, label listing, fixture upload, status check after worker, Baoli search/detail/download, Suzhou isolation, archive verification, and Skill Directory sanity check; docs explicitly forbid claiming inaccessible documents exist; docs require only local Docker MySQL, local API, local storage, dev login, and synthetic fixtures; failure triage covers API not running, MySQL not seeded, worker not run, missing session, and permission denied/inaccessible outcomes.
+- PR: Not opened by this subagent.
+- Known gaps: This branch intentionally does not add or verify the Day 4 MCP smoke script and does not update `test-cases.md` because those files were outside this QA/docs subagent assignment.
+- Human blockers: None for this documentation slice. Phase 3 online readiness remains blocked on deployment target, domain/TLS, online MySQL, OSS settings/credentials via secret store, JWT/session secret via secret store, allowed admin emails, and optional model decisions.
+- Suggested next agent: Lead Day 4 agent should integrate this guide with the MCP smoke script and test-case updates, then run the full Day 4 verification.
