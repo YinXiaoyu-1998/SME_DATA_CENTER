@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-- Phase: Phase 2 / Day 2 local MCP authentication and session handling complete
-- Date: 2026-07-01
-- Lead branch: `codex/hub-phase2-mcp-auth`
+- Phase: Phase 2 / Day 2 merged; post-merge status recovery complete
+- Date: 2026-07-02
+- Lead branch: `codex/enterprise-hub-status-recovery-20260702`
 - Deployment target: Developer machine only
 
 ## Active Workstreams
@@ -28,6 +28,7 @@
 | Phase 2 MCP planning       | `codex/phase-2-mcp-plan`                        | Codex lead agent                                         | Complete | [PR #18](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/18) | Added a new Phase 2 for local MCP, agent human testing, and the `enterprise-hub-mcp` meta skill; shifted former online-ready and beta phases to Phase 3 and Phase 4. No business code changed in this planning update.                                                                                              |
 | Phase 2 Day 1 MCP skeleton | `codex/hub-phase2-mcp-skeleton`                 | Codex lead agent                                         | Complete | [PR #19](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/19) | Added local stdio MCP server skeleton, explicit local profile config validation, API-client boundary, deterministic Phase 2 tool contract, root `npm run mcp:dev`, and docs. Scope stayed limited to Day 1 skeleton; no tool business bodies, OSS, online MySQL, deployment, P2/P3, or employee-facing AI behavior. |
 | Phase 2 Day 2 MCP auth     | `codex/hub-phase2-mcp-auth`                     | Codex lead agent                                         | Complete | [PR #20](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/20) | Implemented local-development MCP dev login and session handling only. Scope excludes Day 3 document/label/skill tool bodies, OSS, online MySQL, deployment, P2/P3, production auth, and employee-facing AI behavior.                                                                                               |
+| Status recovery 2026-07-02 | `codex/enterprise-hub-status-recovery-20260702` | Codex lead agent                                         | Complete | [PR #21](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/21) | Documentation-only recovery after PR #20 merged; read required implementation docs, git status/log, open PR metadata, branch state, code evidence, and secrets/file-risk signals. No business code or feature scope changed.                                                                                        |
 
 ## Completed Checkpoints
 
@@ -104,6 +105,12 @@
 | 2026-07-01 | Phase 2 Day 2 selected                  | User confirmed PR #19 merged; fetched latest `origin/main` at `a08daf4`, created `codex/hub-phase2-mcp-auth`, and reread `AGENTS.md`, implementation plan, progress, handoffs, env inventory, API contract, and test cases. Selected Phase 2 / Day 2 local MCP authentication and session handling because Day 1 was complete and no Phase 2 external human inputs are required.                                                                             |
 | 2026-07-01 | Phase 2 Day 2 MCP auth tests passed     | TDD red: `npm test -- apps/mcp-server/src/auth.test.ts` failed before implementation because `auth.ts` and `session-store.ts` did not exist. Green checks: targeted MCP tests passed with 3 files / 11 tests; full `npm test` passed with 9 files / 52 tests; `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check` passed.                                                                                                    |
 | 2026-07-01 | Phase 2 Day 2 local smoke passed        | `npm run mcp:dev` still fails clearly without `ENTERPRISE_HUB_API_URL`; `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev </dev/null` starts successfully. With local MySQL on `MYSQL_PORT=3307`, seeded data, and API on `127.0.0.1:3020`, an injected MCP login smoke logged in `baoli.manager@example.com`, returned no token in tool output, and stored the development token only in a temporary session file.                              |
+| 2026-07-02 | Post-PR #20 recovery started            | Fast-forwarded local `main` from `d3c3ef9` to `8d88e6c`, then read `AGENTS.md`, `implementation-plan.md`, `progress.md`, `agent-handoffs.md`, `env-inventory.md`, `api-contract.md`, `test-cases.md`, `git status`, `git log`, and current PR metadata. Working tree was clean after sync.                                                                                                                                                                   |
+| 2026-07-02 | PR and branch state verified            | `gh pr list --state open` returned no open PRs; `gh pr list --state all --limit 40` showed PRs #1-#20 merged; `git branch -r --no-merged origin/main` returned no unmerged remote branches. Historical local/remote topic branches remain present after merge but do not represent active open PR work.                                                                                                                                                      |
+| 2026-07-02 | True phase reconciled                   | Current real state is Phase 2 / Day 2 merged and complete. Phase 2 / Day 3 has not started: MCP non-login tools still gate on local session and then return the planned `TOOL_NOT_IMPLEMENTED` placeholder; no MCP document/label/skill tool bodies, MCP smoke script, human-test loop, or `enterprise-hub-mcp` meta skill are complete yet.                                                                                                                 |
+| 2026-07-02 | Done evidence reconciled                | Phase 1 Day 0-Day 6 plus the P0 `GET /labels` correction remain merged. Phase 2 Day 1 evidence is PR #19 with `npm run mcp:dev`, config validation, deterministic tool contract, and API-delegation docs. Phase 2 Day 2 evidence is PR #20 with `enterprise_hub_login_dev`, ignored local session storage, token non-disclosure, multi-session support, and missing-session errors.                                                                          |
+| 2026-07-02 | Scope and blocker boundaries checked    | No Phase 3 online-readiness code, OSS adapter, online MySQL, TLS/domain config, production secret-store integration, admin UI, skill execution platform, report/dashboard service, or employee-facing AI agent scope was found in the reviewed Phase 2 work. Phase 2 local MCP has no external infrastructure blocker; Phase 3 remains blocked on human-provided infrastructure and admin inputs.                                                            |
+| 2026-07-02 | Secrets and file-risk sweep             | `git ls-files` shows `.env.example`, tracked synthetic fixtures, and source files only for env/data-like paths; `.env`, `.data/`, MCP/CLI session files, and `.DS_Store` are ignored. Text scan found local development defaults and test fake tokens only, not real OSS keys, service account keys, private keys, real credentials, `.env`, downloaded third-party data, or customer exports.                                                               |
 
 ## Blockers
 
@@ -148,7 +155,9 @@
 - [x] Complete Phase 2 / Day 1 MCP server skeleton, local profile config, and deterministic tool contract.
 - [x] Start Phase 2 / Day 2 local MCP authentication and session handling after Day 1 merges.
 - [x] Complete Phase 2 / Day 2 local MCP dev login and session handling.
+- [x] Run 2026-07-02 post-PR #20 status recovery against docs, git history/status, branch state, PR metadata, code evidence, blockers, and file-risk signals.
+- [x] Record true state as Phase 2 / Day 2 merged, with Phase 2 / Day 3 not yet started.
+- [x] Record that no open PRs or unmerged remote topic branches currently indicate active cross-branch pollution.
 - [ ] Start Phase 2 / Day 3 MCP document, label, and skill tool bodies after Day 2 merges.
 - [ ] Collect Phase 3 human inputs before starting online-ready implementation.
-- [x] Install local dependencies, generate Prisma client, and rerun `npm run typecheck`, `npm test`, `npm run lint`, and `npm run format:check` for this status-recovery PR.
-- [x] Commit, push, and open/update draft PR for this follow-up status recovery branch.
+- [x] Commit, push, and open/update draft PR for this 2026-07-02 status recovery branch.
