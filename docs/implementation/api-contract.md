@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 2 / Day 3 MCP tool bodies.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 2 / Day 6 local MCP final verification.
 
 ## Cross-Cutting Rules
 
@@ -478,6 +478,18 @@ Request:
   "category": "menu-analysis"
 }
 ```
+
+### Phase 2 Final MCP Verification
+
+The final local MCP verification command is:
+
+```bash
+MYSQL_PORT=3307 npm run test:mcp
+```
+
+The smoke script resets and seeds the local development database, starts the API on an available local port, invokes the MCP tool handlers with a local-development session file, uploads only the synthetic Baoli fixture, runs one deterministic worker pass, and verifies the Phase 1 MVP loop through MCP: login, label listing, upload, status, search, download URL, archive, and Skill Directory-read safety. It also logs in as Suzhou through a separate MCP session and proves Suzhou cannot discover the Baoli document or hidden title.
+
+Human local-agent verification is documented in `docs/implementation/local-agent-test.md` and can be driven by the repo-local `enterprise-hub-mcp` skill. That flow must not use raw curl, direct DB/storage reads, real customer data, production credentials, OSS, online MySQL, domains, or Phase 3 remote endpoints.
 
 ### `GET /documents/:id/status`
 
