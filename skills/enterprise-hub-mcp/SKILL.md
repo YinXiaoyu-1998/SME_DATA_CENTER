@@ -1,45 +1,45 @@
 ---
 name: enterprise-hub-mcp
-description: Use when connecting an employee-owned agent to 企业资料中枢 through MCP, initializing Codex or MCP client configuration, testing the local-development MCP profile, authenticating seeded local employees, uploading/searching/archiving documents, checking permission isolation, or preparing future staging/production MCP profile usage without inventing infrastructure details.
+description: Use when connecting Codex or another MCP client to 企业资料中枢, 初始化 enterprise-hub MCP 配置, testing the local-development profile, authenticating seeded local employees, uploading/searching/archiving documents, checking permission isolation, or preparing staging/production profiles without inventing infrastructure details.
 ---
 
-# Enterprise Hub MCP
+# 企业资料中枢 MCP
 
-## Purpose
+## 用途
 
-Use 企业资料中枢 as an MCP-backed service for employee-owned agents. The MCP server is only an adapter over the HTTP API: it must not direct-read MySQL or storage, implement client-side permission filtering, execute Skill Directory entries, or behave like an employee-facing AI agent.
+把 企业资料中枢 当作员工自有 agent 可调用的 MCP-backed service。MCP server 只是 HTTP API 的 adapter：不能直读 MySQL 或 storage，不能在客户端做权限过滤，不能执行 Skill Directory 条目，也不能把 企业资料中枢 变成员工直接对话的 AI agent、报表生成器或 dashboard 服务。
 
 ## Profiles
 
-| Profile             | Status      | Connection                                                | Auth                                                  |
-| ------------------- | ----------- | --------------------------------------------------------- | ----------------------------------------------------- |
-| `local-development` | Implemented | Local stdio command; prefer `npm run --silent mcp-bootup` | `enterprise_hub_login_dev` with seeded employee email |
-| `staging-remote`    | Placeholder | Future remote MCP endpoint or deployed command config     | Future employee-bound staging auth/token flow         |
-| `production`        | Placeholder | Future production MCP endpoint                            | Future production employee auth/token policy          |
+| Profile             | 状态   | 连接方式                                               | 鉴权方式                                               |
+| ------------------- | ------ | ------------------------------------------------------ | ------------------------------------------------------ |
+| `local-development` | 已实现 | 本地 stdio command；优先 `npm run --silent mcp-bootup` | 用 seeded employee email 调 `enterprise_hub_login_dev` |
+| `staging-remote`    | 占位   | 未来 remote MCP endpoint 或部署后的 command config     | 未来 staging employee-bound auth/token flow            |
+| `production`        | 占位   | 未来 production MCP endpoint                           | 未来 production employee auth/token policy             |
 
-For `staging-remote` and `production`, do not invent URLs, credentials, token flows, domains, TLS settings, or service accounts. Stop and ask for approved configuration.
+对于 `staging-remote` 和 `production`，不要编造 URL、凭据、token flow、域名、TLS 设置或 service account。缺少批准配置时，停下来问用户。
 
-## Local Setup Checks
+## 本地使用前检查
 
-Before using MCP tools in `local-development`:
+在 `local-development` 使用 MCP tools 前：
 
-1. Confirm local MySQL is running and local seed data exists before logging in as seeded employees.
-2. Prefer MCP clients that launch `npm run --silent mcp-bootup` with optional `ENTERPRISE_HUB_MCP_SESSION_FILE`. The bootup command loads `.env`, starts the API, waits for `/healthz`, then starts MCP stdio.
-3. If launching only `npm run mcp:dev`, confirm the local API is already running and reachable at the configured `ENTERPRISE_HUB_API_URL`.
-4. Use `--silent` in MCP client npm args so npm's banner does not pollute the MCP stdio stream.
-5. Confirm the selected employee session by calling `enterprise_hub_login_dev`, then `enterprise_hub_list_labels`.
+1. 确认本地 MySQL 正在运行，且 seed 数据已存在。
+2. MCP client 优先启动 `npm run --silent mcp-bootup`，可选传入 `ENTERPRISE_HUB_MCP_SESSION_FILE`。这个 bootup command 会读取 `.env`、启动 API、等待 `/healthz`，然后启动 MCP stdio。
+3. 如果只启动 `npm run mcp:dev`，必须确认 API 已经在 `ENTERPRISE_HUB_API_URL` 指向的地址运行。
+4. MCP client 的 npm args 必须使用 `--silent`，避免 npm banner 污染 MCP stdio stream。
+5. 选择员工 session 后，先调用 `enterprise_hub_login_dev`，再调用 `enterprise_hub_list_labels`。
 
-Use the repository docs for setup commands:
+设置命令参考：
 
-- `AGENTS.md` for local commands.
-- `docs/implementation/local-agent-test.md` for the full human-test loop.
+- `AGENTS.md`：本地常用命令。
+- `docs/implementation/local-agent-test.md`：完整人工测试流程。
 
-## Client Initialization
+## 初始化 MCP Client
 
-When the user asks to initialize, connect, or fix Codex/MCP configuration for this service:
+当用户说“初始化服务”“把 Enterprise Hub MCP 连上”“修一下 Codex MCP 配置”“使用 Enterprise Hub MCP skill 帮我把服务初始化”时：
 
-1. Locate the Enterprise Hub repo root. In this local project it is `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER`; otherwise use the current trusted checkout or ask for the path.
-2. For Codex Desktop, update `~/.codex/config.toml` so the `enterprise-hub` server launches the bootup command:
+1. 找到 Enterprise Hub repo root。本地默认是 `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER`；如果不是当前可信 checkout，就询问用户路径。
+2. Codex Desktop 使用 `~/.codex/config.toml`。更新或创建 `enterprise-hub` server，让它启动 bootup command：
 
    ```toml
    [mcp_servers.enterprise-hub]
@@ -51,11 +51,11 @@ When the user asks to initialize, connect, or fix Codex/MCP configuration for th
    ENTERPRISE_HUB_MCP_SESSION_FILE = "/path/to/SME_DATA_CENTER/.data/enterprise-hub-mcp/session.json"
    ```
 
-3. Remove old `ENTERPRISE_HUB_API_URL` and `ENTERPRISE_HUB_MCP_PROFILE` entries from the Codex config when using `mcp-bootup`; the bootup script loads `.env`, starts the API, and derives the MCP API URL.
-4. Preserve unrelated MCP servers, plugins, project trust settings, and user preferences. Never write tokens, passwords, production endpoints, or real credentials.
-5. Validate the config syntax if possible, then tell the user to restart Codex or open a new thread so MCP servers and skill content reload.
+3. 使用 `mcp-bootup` 时，从 Codex config 删除旧的 `ENTERPRISE_HUB_API_URL` 和 `ENTERPRISE_HUB_MCP_PROFILE`；bootup script 会读取 `.env`、启动 API，并推导 MCP API URL。
+4. 保留其他 MCP servers、plugins、project trust settings 和用户偏好。不要写入 token、password、production endpoint 或真实凭据。
+5. 尽量验证 config 语法，然后提醒用户重启 Codex 或新开 thread，让 MCP servers 和 skill 内容重新加载。
 
-For generic MCP clients, use the same command shape:
+通用 MCP client 使用同样形状：
 
 ```json
 {
@@ -68,71 +68,71 @@ For generic MCP clients, use the same command shape:
 }
 ```
 
-## Operating Flow
+## 操作流程
 
-1. **Login/select session**
-   - Local only: call `enterprise_hub_login_dev` with a seeded email such as `baoli.manager@example.com` and a `sessionName`.
-   - Do not print raw tokens or inspect the session file contents.
+1. **登录/选择 session**
+   - 本地只用 seeded email，例如 `baoli.manager@example.com`，调用 `enterprise_hub_login_dev` 并指定 `sessionName`。
+   - 不要打印 raw token，不要查看 session file 内容。
 
-2. **List labels**
-   - Call `enterprise_hub_list_labels` before upload.
-   - Use label keys from the API response; do not invent labels.
+2. **读取标签目录**
+   - 上传前调用 `enterprise_hub_list_labels`。
+   - 只能使用 API 返回的 label keys；不要自造标签。
 
-3. **Upload**
-   - Call `enterprise_hub_upload_document` with a local `filePath`, `title`, `documentType`, optional source metadata, and existing `labelKeys`.
-   - In local human tests, prefer synthetic fixtures such as `fixtures/baoli-june-meituan.csv`.
-   - Do not request real company documents unless the human explicitly authorizes that data for testing.
+3. **上传资料**
+   - 调 `enterprise_hub_upload_document`，传入本地 `filePath`、`title`、`documentType`、可选 source metadata，以及已存在的 `labelKeys`。
+   - 本地人工测试优先使用 synthetic fixture，例如 `fixtures/baoli-june-meituan.csv`。
+   - 除非用户明确授权某个测试数据，否则不要要求或上传真实公司资料、真实客户导出、第三方下载数据。
 
-4. **Process/status**
-   - Call `enterprise_hub_get_document_status` after upload.
-   - If status is not `active`, report the exact status and do not claim the document is searchable.
-   - For local testing, the human or harness may run `npm run worker:once`; the MCP tools do not run the worker directly.
+4. **处理状态**
+   - 上传后调用 `enterprise_hub_get_document_status`。
+   - 如果状态不是 `active`，报告准确状态，不要说它已经可搜索。
+   - 本地测试中，用户或 harness 可以运行 `npm run worker:once`；MCP tools 不直接运行 worker。
 
-5. **Search/detail/download**
-   - Call `enterprise_hub_search_documents` for visible active documents.
-   - Fetch details with `enterprise_hub_get_document` only for visible/known document ids.
-   - Fetch download URLs with `enterprise_hub_get_document_download_url`.
-   - Treat API not-found/inaccessible results as not visible. Do not state that a hidden document exists.
+5. **搜索/详情/下载**
+   - 调 `enterprise_hub_search_documents` 只搜索当前员工可见的 active documents。
+   - 只对可见或已知可访问的 document id 调 `enterprise_hub_get_document`。
+   - 下载 URL 用 `enterprise_hub_get_document_download_url`。
+   - API 返回 not-found/inaccessible 时，按“不可见”处理；不要说隐藏文档存在。
 
-6. **Archive**
-   - When requested by an uploader/admin, call `enterprise_hub_archive_document`.
-   - Verify ordinary search no longer returns the archived document.
+6. **归档**
+   - 用户是 uploader/admin 且明确要求时，调用 `enterprise_hub_archive_document`。
+   - 归档后验证普通搜索不再返回该文档。
 
 7. **Skill Directory**
-   - Call `enterprise_hub_list_skills` only to read approved metadata and instructions.
-   - Do not execute skills, generate reports, or analyze document content as part of this skill.
+   - 只用 `enterprise_hub_list_skills` 读取已批准 metadata 和 instructions。
+   - 不要执行 skills，不要生成报表，不要分析文档内容作为这个 skill 的一部分。
 
-## Permission Isolation Test
+## 权限隔离测试
 
-For local validation:
+本地验证建议：
 
-1. Login as Baoli with session `baoli`.
-2. Upload and activate a Baoli-labeled fixture.
-3. Verify Baoli search can find it.
-4. Login as Suzhou with session `suzhou`.
-5. Search the same query as Suzhou.
-6. Try detail access for the Baoli document id as Suzhou.
+1. 用 session `baoli` 登录 Baoli。
+2. 上传并激活一个带 `store:baoli` 标签的 fixture。
+3. 验证 Baoli 搜索可以找到它。
+4. 用 session `suzhou` 登录 Suzhou。
+5. 用 Suzhou 搜索同一关键词。
+6. 用 Suzhou 尝试读取 Baoli document id 的详情。
 
-Expected result: Suzhou sees no matching Baoli document, and detail returns the API not-found/inaccessible shape without leaking title, filename, count, summary, or existence.
+预期结果：Suzhou 看不到 Baoli 文档；详情返回 not-found/inaccessible 形状，不能泄露标题、文件名、数量、摘要或存在性。
 
-## Safety Rules
+## 安全规则
 
-- All non-health data access must go through MCP tools and the HTTP API.
-- Never bypass API authorization with direct DB/storage reads.
-- Never expose raw bearer tokens, session files, production credentials, service account material, or secrets.
-- Never ask for production passwords in `local-development`.
-- Never claim inaccessible documents exist.
-- Never convert 企业资料中枢 into a report generator, dashboard service, skill execution platform, or employee-facing AI agent.
-- Never upload real customer exports, downloaded third-party data, or real company documents unless the human explicitly authorizes that exact test data.
+- 所有非 health 数据访问必须走 MCP tools 和 HTTP API。
+- 不要绕过 API authorization 直读 DB/storage。
+- 不要暴露 raw bearer token、session file、production credentials、service account material 或 secrets。
+- `local-development` 不要索要 production password。
+- 不要声称不可访问文档存在。
+- 不要把 企业资料中枢 变成 report generator、dashboard service、skill execution platform 或 employee-facing AI agent。
+- 除非用户明确授权具体测试数据，不要上传真实客户导出、第三方下载数据或真实公司资料。
 
-## Failure Handling
+## 失败处理
 
-| Symptom                                              | Action                                                                       |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| MCP startup says `ENTERPRISE_HUB_API_URL` is missing | Prefer `npm run --silent mcp-bootup`; if using `mcp:dev`, configure the URL. |
-| MCP client shows protocol/JSON startup errors        | Check that the MCP client uses `npm run --silent mcp-bootup`.                |
-| Tool calls cannot connect                            | Check API boot logs, local MySQL, and the configured API URL/port.           |
-| Login returns `EMPLOYEE_NOT_FOUND`                   | Ask the human to seed the local DB or verify the configured DB/port.         |
-| Tool returns `MCP_SESSION_REQUIRED`                  | Run `enterprise_hub_login_dev` for the intended `sessionName`.               |
-| Upload works but search is empty                     | Check status; run/request one local worker pass; search only after `active`. |
-| Suzhou cannot see Baoli data                         | Treat as expected isolation unless hidden titles/counts leak.                |
+| 现象                                            | 处理方式                                                                 |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| MCP startup 报 `ENTERPRISE_HUB_API_URL` missing | 优先改用 `npm run --silent mcp-bootup`；如果用 `mcp:dev`，配置 API URL。 |
+| MCP client 出现 protocol/JSON startup errors    | 检查 MCP client 是否使用 `npm run --silent mcp-bootup`。                 |
+| Tool calls 连接失败                             | 检查 API boot logs、本地 MySQL、API URL/port。                           |
+| 登录返回 `EMPLOYEE_NOT_FOUND`                   | 请用户 seed 本地 DB，或检查 DB/port 是否正确。                           |
+| Tool 返回 `MCP_SESSION_REQUIRED`                | 为目标 `sessionName` 调用 `enterprise_hub_login_dev`。                   |
+| 上传成功但搜索为空                              | 先查 status；运行/请求一次本地 worker；只有 `active` 后再搜索。          |
+| Suzhou 看不到 Baoli 数据                        | 这是预期权限隔离；除非隐藏标题/数量/存在性泄漏，否则不要当成错误。       |
