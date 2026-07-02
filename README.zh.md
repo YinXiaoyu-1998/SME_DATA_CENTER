@@ -256,6 +256,28 @@ MYSQL_PORT=3307 npm run test:mcp
 
 这两个本地集成脚本会重置本地 development database。不要在有手工调试数据需要保留时运行。
 
+## npm scripts 速查
+
+| Script             | 功能                                       | 运行方法                                                                                                                | 备注                                                             |
+| ------------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `format`           | 用 Prettier 格式化整个仓库。               | `npm run format`                                                                                                        | 会直接改写文件。                                                 |
+| `format:check`     | 检查 Prettier 格式，不改写文件。           | `npm run format:check`                                                                                                  | 提交和 PR 前常用。                                               |
+| `lint`             | 运行 ESLint。                              | `npm run lint`                                                                                                          | 做静态代码质量检查。                                             |
+| `test`             | 运行 Vitest 测试。                         | `npm test`                                                                                                              | 等价于 `npm run test`。                                          |
+| `test:integration` | 跑本地 MVP 集成流程。                      | `MYSQL_PORT=3307 npm run test:integration`                                                                              | 会重置本地 development database。                                |
+| `test:mcp`         | 跑本地 MCP smoke 测试。                    | `MYSQL_PORT=3307 npm run test:mcp`                                                                                      | 会启动测试所需本地服务，并重置本地测试数据。                     |
+| `test:watch`       | 以 watch 模式运行 Vitest。                 | `npm run test:watch`                                                                                                    | 写测试或调试测试时使用。                                         |
+| `typecheck`        | 运行 TypeScript 类型检查，不输出编译文件。 | `npm run typecheck`                                                                                                     | 检查全仓 TS 类型。                                               |
+| `api:dev`          | 启动 Fastify API 服务。                    | `npm run api:dev`                                                                                                       | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
+| `hub`              | 运行 Enterprise Hub CLI。                  | `npm run hub -- <command>`                                                                                              | 示例：`npm run hub -- login --email baoli.manager@example.com`。 |
+| `mcp:dev`          | 启动本地 stdio MCP server。                | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | 需要 API 已经在对应地址运行。                                    |
+| `worker:once`      | 运行一次确定性 worker 处理。               | `npm run worker:once`                                                                                                   | 如需从 `.env` 读变量，先执行 `set -a; source .env; set +a`。     |
+| `db:compose:up`    | 启动本地 MySQL Docker Compose 服务。       | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | 底层是 `docker compose up -d mysql`。                            |
+| `db:compose:down`  | 停止本地 Docker Compose 服务。             | `npm run db:compose:down`                                                                                               | 底层是 `docker compose down`。                                   |
+| `db:generate`      | 生成 Prisma client。                       | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate` | schema 或依赖变化后按需运行。                                    |
+| `db:migrate`       | 在本地开发数据库上应用 Prisma migration。  | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`  | 会更新本地 development database。                                |
+| `db:seed`          | 写入本地开发 seed 数据。                   | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`     | 创建 demo 员工、标签和 skills。                                  |
+
 ## 常见问题
 
 ### MySQL 端口被占用
