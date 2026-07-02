@@ -1,6 +1,6 @@
 ---
 name: enterprise-hub-mcp
-description: Use when connecting an employee-owned agent to 企业资料中枢 through MCP, testing the local-development MCP profile, authenticating seeded local employees, uploading/searching/archiving documents, checking permission isolation, or preparing future staging/production MCP profile usage without inventing infrastructure details.
+description: Use when connecting an employee-owned agent to 企业资料中枢 through MCP, initializing Codex or MCP client configuration, testing the local-development MCP profile, authenticating seeded local employees, uploading/searching/archiving documents, checking permission isolation, or preparing future staging/production MCP profile usage without inventing infrastructure details.
 ---
 
 # Enterprise Hub MCP
@@ -33,6 +33,40 @@ Use the repository docs for setup commands:
 
 - `AGENTS.md` for local commands.
 - `docs/implementation/local-agent-test.md` for the full human-test loop.
+
+## Client Initialization
+
+When the user asks to initialize, connect, or fix Codex/MCP configuration for this service:
+
+1. Locate the Enterprise Hub repo root. In this local project it is `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER`; otherwise use the current trusted checkout or ask for the path.
+2. For Codex Desktop, update `~/.codex/config.toml` so the `enterprise-hub` server launches the bootup command:
+
+   ```toml
+   [mcp_servers.enterprise-hub]
+   command = "bash"
+   args = ["-lc", "cd /path/to/SME_DATA_CENTER && npm run --silent mcp-bootup"]
+   startup_timeout_sec = 120
+
+   [mcp_servers.enterprise-hub.env]
+   ENTERPRISE_HUB_MCP_SESSION_FILE = "/path/to/SME_DATA_CENTER/.data/enterprise-hub-mcp/session.json"
+   ```
+
+3. Remove old `ENTERPRISE_HUB_API_URL` and `ENTERPRISE_HUB_MCP_PROFILE` entries from the Codex config when using `mcp-bootup`; the bootup script loads `.env`, starts the API, and derives the MCP API URL.
+4. Preserve unrelated MCP servers, plugins, project trust settings, and user preferences. Never write tokens, passwords, production endpoints, or real credentials.
+5. Validate the config syntax if possible, then tell the user to restart Codex or open a new thread so MCP servers and skill content reload.
+
+For generic MCP clients, use the same command shape:
+
+```json
+{
+  "command": "npm",
+  "args": ["run", "--silent", "mcp-bootup"],
+  "cwd": "/path/to/SME_DATA_CENTER",
+  "env": {
+    "ENTERPRISE_HUB_MCP_SESSION_FILE": ".data/enterprise-hub-mcp/session.json"
+  }
+}
+```
 
 ## Operating Flow
 
