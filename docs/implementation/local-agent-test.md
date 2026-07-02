@@ -59,6 +59,12 @@ Expected smoke result: the script logs in through MCP, uploads the Baoli fixture
 
 Use these prompts in a Codex thread where the local `enterprise-hub-mcp` server is configured.
 
+If the repository skill is available, start a fresh thread with:
+
+```text
+Use $enterprise-hub-mcp with the local-development profile to run the local 企业资料中枢 MCP human-test flow. Do not print raw tokens, do not ask for production credentials, and do not claim inaccessible documents exist.
+```
+
 ### 1. Connection And Label Catalog
 
 ```text
