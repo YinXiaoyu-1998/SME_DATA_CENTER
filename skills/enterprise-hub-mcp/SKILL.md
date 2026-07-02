@@ -11,11 +11,11 @@ Use 企业资料中枢 as an MCP-backed service for employee-owned agents. The M
 
 ## Profiles
 
-| Profile             | Status      | Connection                                            | Auth                                                  |
-| ------------------- | ----------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| `local-development` | Implemented | Local stdio command backed by a local API URL         | `enterprise_hub_login_dev` with seeded employee email |
-| `staging-remote`    | Placeholder | Future remote MCP endpoint or deployed command config | Future employee-bound staging auth/token flow         |
-| `production`        | Placeholder | Future production MCP endpoint                        | Future production employee auth/token policy          |
+| Profile             | Status      | Connection                                                | Auth                                                  |
+| ------------------- | ----------- | --------------------------------------------------------- | ----------------------------------------------------- |
+| `local-development` | Implemented | Local stdio command; prefer `npm run --silent mcp-bootup` | `enterprise_hub_login_dev` with seeded employee email |
+| `staging-remote`    | Placeholder | Future remote MCP endpoint or deployed command config     | Future employee-bound staging auth/token flow         |
+| `production`        | Placeholder | Future production MCP endpoint                            | Future production employee auth/token policy          |
 
 For `staging-remote` and `production`, do not invent URLs, credentials, token flows, domains, TLS settings, or service accounts. Stop and ask for approved configuration.
 
@@ -23,10 +23,11 @@ For `staging-remote` and `production`, do not invent URLs, credentials, token fl
 
 Before using MCP tools in `local-development`:
 
-1. Confirm the local API is running and reachable at the configured `ENTERPRISE_HUB_API_URL`.
-2. Confirm the MCP client launches `npm run mcp:dev` with `ENTERPRISE_HUB_API_URL` and optional `ENTERPRISE_HUB_MCP_SESSION_FILE`.
-3. Confirm local seed data exists before logging in as seeded employees.
-4. Confirm the selected employee session by calling `enterprise_hub_login_dev`, then `enterprise_hub_list_labels`.
+1. Confirm local MySQL is running and local seed data exists before logging in as seeded employees.
+2. Prefer MCP clients that launch `npm run --silent mcp-bootup` with optional `ENTERPRISE_HUB_MCP_SESSION_FILE`. The bootup command loads `.env`, starts the API, waits for `/healthz`, then starts MCP stdio.
+3. If launching only `npm run mcp:dev`, confirm the local API is already running and reachable at the configured `ENTERPRISE_HUB_API_URL`.
+4. Use `--silent` in MCP client npm args so npm's banner does not pollute the MCP stdio stream.
+5. Confirm the selected employee session by calling `enterprise_hub_login_dev`, then `enterprise_hub_list_labels`.
 
 Use the repository docs for setup commands:
 
@@ -94,8 +95,9 @@ Expected result: Suzhou sees no matching Baoli document, and detail returns the 
 
 | Symptom                                              | Action                                                                       |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| MCP startup says `ENTERPRISE_HUB_API_URL` is missing | Ask the human to configure the local MCP command with the API URL.           |
-| Tool calls cannot connect                            | Check whether the local API is running on the same URL.                      |
+| MCP startup says `ENTERPRISE_HUB_API_URL` is missing | Prefer `npm run --silent mcp-bootup`; if using `mcp:dev`, configure the URL. |
+| MCP client shows protocol/JSON startup errors        | Check that the MCP client uses `npm run --silent mcp-bootup`.                |
+| Tool calls cannot connect                            | Check API boot logs, local MySQL, and the configured API URL/port.           |
 | Login returns `EMPLOYEE_NOT_FOUND`                   | Ask the human to seed the local DB or verify the configured DB/port.         |
 | Tool returns `MCP_SESSION_REQUIRED`                  | Run `enterprise_hub_login_dev` for the intended `sessionName`.               |
 | Upload works but search is empty                     | Check status; run/request one local worker pass; search only after `active`. |
