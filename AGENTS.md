@@ -24,6 +24,7 @@
 - Test: `npm test`
 - Integration test: `npm run test:integration`
 - Format check: `npm run format:check`
+- Run local API: `npm run api:dev`
 - Run one deterministic worker pass: `npm run worker:once`
 - Run local CLI smoke commands: `npm run hub -- <command>`
 - Run local MCP server: `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`
