@@ -1,10 +1,13 @@
 import { pathToFileURL } from "node:url";
+import { config as loadDotenv } from "dotenv";
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 import { createPrismaProcessingWorkerRepository, runWorkerOnce } from "./worker.js";
 
 export const workerWorkspaceName = "@enterprise-hub/worker";
 
 export async function main(): Promise<void> {
+  loadDotenv({ quiet: true, override: false });
+
   const repository = createPrismaProcessingWorkerRepository();
   const storage = new LocalFileSystemStorageAdapter();
 

@@ -9,7 +9,7 @@ Use only the local-development profile:
 - Local MySQL from Docker Compose.
 - Local API backed by seeded development data.
 - Local filesystem storage under ignored `.data/`.
-- Local MCP stdio server pointed at the local API.
+- Local MCP stdio server launched through `mcp-bootup`, which starts the API and local worker loop.
 - Synthetic fixture files from `fixtures/`.
 
 Do not require or request Aliyun OSS, online MySQL, production credentials, staging credentials, real company documents, downloaded third-party data, or customer exports for this test.
@@ -27,18 +27,13 @@ DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:330
 DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed
 ```
 
-Start the API in one terminal:
+Configure the MCP client to launch the local stack with:
 
 ```sh
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
-STORAGE_DRIVER=local \
-LOCAL_STORAGE_ROOT=.data/storage \
-JWT_SECRET=replace-with-local-development-secret \
-PORT=3000 \
-npm run api:dev
+npm run --silent mcp-bootup
 ```
 
-Configure the MCP client to launch the local server with:
+For manual MCP debugging without `mcp-bootup`, start the API and point the MCP server at it:
 
 ```sh
 ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 \
@@ -90,27 +85,18 @@ Expected result:
 - Labels include `store:baoli` and `person:baoli.manager`.
 - The agent uses the fixture file only; it does not ask for real documents.
 
-### 3. Run Worker And Confirm Active Status
+### 3. Confirm Background Worker Activates The Document
 
-Run this command in the repository root:
-
-```sh
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
-STORAGE_DRIVER=local \
-LOCAL_STORAGE_ROOT=.data/storage \
-npm run worker:once
-```
-
-Then ask Codex:
+Ask Codex:
 
 ```text
-Using sessionName "baoli", call enterprise_hub_get_document_status for document id "<DOC_ID_FROM_UPLOAD>". Tell me whether the document is active. If it is not active yet, report only the exact status and processingRunStatus; do not invent availability.
+Using sessionName "baoli", call enterprise_hub_get_document_status for document id "<DOC_ID_FROM_UPLOAD>". If it is not active yet, wait briefly and check again for up to 30 seconds. Tell me whether the document is active. If it is still not active after waiting, report only the exact status and processingRunStatus; do not invent availability.
 ```
 
 Expected result:
 
-- After a successful worker pass, status becomes `active`.
-- Before the worker pass, status may still be `pending_processing` or `processing`; that means the document is not yet available for ordinary search.
+- With `mcp-bootup`, the background worker loop should move the document to `active` without a manual worker command.
+- Before the background worker finishes, status may still be `pending_processing` or `processing`; that means the document is not yet available for ordinary search.
 - If processing fails, the agent reports the exact failure state and does not claim the document is searchable.
 
 ### 4. Baoli Search, Detail, And Download URL
@@ -164,24 +150,24 @@ Expected result:
 
 ## Failure Triage
 
-| Symptom                                                                          | Likely Cause                                                                       | What To Check                                                           | Expected Fix                                                                                                  |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| MCP startup fails with missing `ENTERPRISE_HUB_API_URL`.                         | MCP server was launched without the required local API URL.                        | MCP client command/config.                                              | Launch with `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`.                                   |
-| MCP tool calls fail with connection refused or fetch errors.                     | API is not running or is on a different port.                                      | `curl http://127.0.0.1:3000/healthz`; API terminal logs.                | Start `npm run api:dev` with the same port used by `ENTERPRISE_HUB_API_URL`.                                  |
-| Login returns `EMPLOYEE_NOT_FOUND`.                                              | MySQL was not seeded or the wrong database/port is being used.                     | `MYSQL_PORT`, `DATABASE_URL`, and `npm run db:seed` output.             | Start local MySQL on the expected port and rerun `db:generate` and `db:seed`.                                 |
-| Upload succeeds but search does not find the document.                           | Worker has not activated the uploaded document yet.                                | `enterprise_hub_get_document_status` for the uploaded id.               | Run `npm run worker:once`; search only after status is `active`.                                              |
-| Tool returns `MCP_SESSION_REQUIRED`.                                             | The named local MCP session does not exist or the session file path changed.       | `sessionName`, `ENTERPRISE_HUB_MCP_SESSION_FILE`, and prior login step. | Run `enterprise_hub_login_dev` again for that `sessionName`. Do not inspect or print token contents.          |
-| Suzhou cannot see Baoli upload.                                                  | Correct permission isolation, not a failure.                                       | Search result count and `DOCUMENT_NOT_FOUND` from detail.               | Record pass if no Baoli title, filename, summary, or count leaks to Suzhou.                                   |
-| Baoli cannot archive the uploaded document.                                      | Wrong session, wrong document id, inactive/nonexistent document, or API rejection. | Confirm uploader session is `baoli`; check status/detail as Baoli.      | Retry with the uploaded id and Baoli session. Preserve API error codes if still rejected.                     |
-| Agent says a hidden Baoli document exists for Suzhou.                            | Unsafe interpretation by the human-test agent.                                     | Prompt wording and tool output.                                         | Correct the agent: inaccessible documents must be treated as not visible, and existence must not be asserted. |
-| Test flow asks for OSS, online MySQL, production credentials, or real documents. | Out-of-scope setup drift.                                                          | Prompt and local setup commands.                                        | Stop that path and use only local Docker MySQL, local API, local storage, dev login, and synthetic fixtures.  |
+| Symptom                                                                          | Likely Cause                                                                       | What To Check                                                                          | Expected Fix                                                                                                              |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| MCP startup fails with missing `ENTERPRISE_HUB_API_URL`.                         | MCP server was launched without `mcp-bootup` or a required local API URL.          | MCP client command/config.                                                             | Prefer `npm run --silent mcp-bootup`; if using `mcp:dev`, launch with `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000`.     |
+| MCP tool calls fail with connection refused or fetch errors.                     | API is not running or is on a different port.                                      | `curl http://127.0.0.1:3000/healthz`; API terminal logs.                               | Start `npm run api:dev` with the same port used by `ENTERPRISE_HUB_API_URL`.                                              |
+| Login returns `EMPLOYEE_NOT_FOUND`.                                              | MySQL was not seeded or the wrong database/port is being used.                     | `MYSQL_PORT`, `DATABASE_URL`, and `npm run db:seed` output.                            | Start local MySQL on the expected port and rerun `db:generate` and `db:seed`.                                             |
+| Upload succeeds but search does not find the document.                           | Worker has not activated the uploaded document yet.                                | `enterprise_hub_get_document_status` for the uploaded id and `mcp-bootup` worker logs. | Wait and poll status; if debugging without `mcp-bootup`, run `npm run worker:once`; search only after status is `active`. |
+| Tool returns `MCP_SESSION_REQUIRED`.                                             | The named local MCP session does not exist or the session file path changed.       | `sessionName`, `ENTERPRISE_HUB_MCP_SESSION_FILE`, and prior login step.                | Run `enterprise_hub_login_dev` again for that `sessionName`. Do not inspect or print token contents.                      |
+| Suzhou cannot see Baoli upload.                                                  | Correct permission isolation, not a failure.                                       | Search result count and `DOCUMENT_NOT_FOUND` from detail.                              | Record pass if no Baoli title, filename, summary, or count leaks to Suzhou.                                               |
+| Baoli cannot archive the uploaded document.                                      | Wrong session, wrong document id, inactive/nonexistent document, or API rejection. | Confirm uploader session is `baoli`; check status/detail as Baoli.                     | Retry with the uploaded id and Baoli session. Preserve API error codes if still rejected.                                 |
+| Agent says a hidden Baoli document exists for Suzhou.                            | Unsafe interpretation by the human-test agent.                                     | Prompt wording and tool output.                                                        | Correct the agent: inaccessible documents must be treated as not visible, and existence must not be asserted.             |
+| Test flow asks for OSS, online MySQL, production credentials, or real documents. | Out-of-scope setup drift.                                                          | Prompt and local setup commands.                                                       | Stop that path and use only local Docker MySQL, local API, local storage, dev login, and synthetic fixtures.              |
 
 ## Acceptance Checklist
 
 - [ ] Baoli local MCP session logs in without exposing a raw token.
 - [ ] MCP label listing returns controlled catalog labels.
 - [ ] Baoli uploads `fixtures/baoli-june-meituan.csv` with `store:baoli`.
-- [ ] Worker pass moves the uploaded document to `active`.
+- [ ] Background worker loop moves the uploaded document to `active`.
 - [ ] Baoli MCP search, detail, and download URL can access the active document.
 - [ ] Suzhou MCP search/detail cannot discover the Baoli document.
 - [ ] Baoli archives the document.

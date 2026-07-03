@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 import {
   PROCESSING_ERROR_CODES,
+  runWorkerLoop,
   runWorkerOnce,
   type ClaimedProcessingRun,
   type DocumentChunkWrite,
@@ -207,6 +208,49 @@ describe("processing worker", () => {
 
     expect(firstChunkCount).toBeGreaterThan(0);
     expect(repository.chunks).toHaveLength(firstChunkCount);
+  });
+
+  it("runs as a loop until the queue is idle and the caller aborts", async () => {
+    const storage = await createStorage();
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_loop",
+      fileName: "baoli-loop.csv",
+      contentType: "text/csv",
+      body: "date,revenue\n2026-06-01,100\n"
+    });
+    const repository = createFakeRepository({
+      document: {
+        id: "doc_loop",
+        orgId: "default-org",
+        uploaderId: "emp_baoli_manager",
+        status: "pending_processing",
+        storageObjectKey: stored.key,
+        originalFileName: "baoli-loop.csv"
+      }
+    });
+    const abortController = new AbortController();
+    const results: unknown[] = [];
+
+    await runWorkerLoop({
+      repository,
+      storage,
+      pollIntervalMs: 100,
+      signal: abortController.signal,
+      onResult(result) {
+        results.push(result);
+
+        if (!result.processed) {
+          abortController.abort();
+        }
+      }
+    });
+
+    expect(results).toEqual([
+      { processed: true, documentId: "doc_loop", status: "active" },
+      { processed: false }
+    ]);
+    expect(repository.document.status).toBe("active");
   });
 
   it("moves unsupported files to processing_failed after bounded retries", async () => {
