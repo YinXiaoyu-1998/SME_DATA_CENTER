@@ -38,6 +38,48 @@ DEV_SEED_ADMIN_EMAIL="admin@example.com"
 
 Do not commit `.env`, `.data/`, session files, real credentials, real customer data, or downloaded third-party exports.
 
+## Local Uploaded Files
+
+With the local storage driver, uploaded files are stored under `LOCAL_STORAGE_ROOT`. The default local path is:
+
+```text
+.data/storage/org/<org_id>/documents/<document_id>/original/<filename>
+```
+
+Integration and MCP smoke tests use their own ignored storage roots under `.data/integration/storage` and `.data/mcp-local-test/storage`.
+
+To remove local uploaded files, test storage, and local MySQL document records:
+
+```sh
+npm run purge-data
+```
+
+To preview the cleanup:
+
+```sh
+npm run purge-data -- --dry-run
+```
+
+The default command also deletes MySQL document data from the local `enterprise_hub`
+database, including document rows and derived processing/chunk/label rows through
+database cascades, plus document audit logs. It preserves seeded organizations,
+employees, labels, Skill Directory rows, and local login sessions.
+
+To remove the entire ignored `.data` directory, including local CLI/MCP session files:
+
+```sh
+npm run purge-data -- --all
+```
+
+To remove files only and leave MySQL untouched:
+
+```sh
+npm run purge-data -- --files-only
+```
+
+For safety, MySQL cleanup only runs when `DATABASE_URL` points at local
+`localhost`/`127.0.0.1` MySQL and the database name is `enterprise_hub`.
+
 ## Start Locally
 
 Start MySQL:
@@ -100,27 +142,28 @@ npm run worker:once
 
 ## npm Scripts
 
-| Script             | What It Does                                                              | How To Run                                                                                                              | Notes                                                              |
-| ------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `format`           | Formats the repository with Prettier.                                     | `npm run format`                                                                                                        | Writes changes to files.                                           |
-| `format:check`     | Checks Prettier formatting without writing files.                         | `npm run format:check`                                                                                                  | Useful before commits and PRs.                                     |
-| `lint`             | Runs ESLint across the repository.                                        | `npm run lint`                                                                                                          | Static code-quality check.                                         |
-| `test`             | Runs the Vitest unit/integration-style test suite configured in the repo. | `npm test`                                                                                                              | Same as `npm run test`.                                            |
-| `test:integration` | Runs the local MVP integration flow.                                      | `MYSQL_PORT=3307 npm run test:integration`                                                                              | Resets the local development database.                             |
-| `test:mcp`         | Runs the local MCP smoke test.                                            | `MYSQL_PORT=3307 npm run test:mcp`                                                                                      | Starts local test services and resets local test data.             |
-| `test:watch`       | Runs Vitest in watch mode.                                                | `npm run test:watch`                                                                                                    | Useful while editing tests.                                        |
-| `typecheck`        | Runs TypeScript without emitting compiled files.                          | `npm run typecheck`                                                                                                     | Verifies TS types across the repo.                                 |
-| `api:dev`          | Starts the Fastify API service.                                           | `npm run api:dev`                                                                                                       | Auto-loads `.env` when present.                                    |
-| `hub`              | Runs the Enterprise Hub CLI.                                              | `npm run hub -- <command>`                                                                                              | Example: `npm run hub -- login --email baoli.manager@example.com`. |
-| `mcp-bootup`       | Starts the API, starts a worker loop, then starts the MCP stdio server.   | `npm run mcp-bootup`                                                                                                    | For MCP client config, prefer `npm run --silent mcp-bootup`.       |
-| `mcp:dev`          | Starts the local stdio MCP server.                                        | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | Requires the API to already be running.                            |
-| `worker:dev`       | Starts a local worker loop that continuously processes queued documents.  | `npm run worker:dev`                                                                                                    | Auto-loads `.env` when present.                                    |
-| `worker:once`      | Runs one deterministic worker pass.                                       | `npm run worker:once`                                                                                                   | Auto-loads `.env` when present.                                    |
-| `db:compose:up`    | Starts the local MySQL Docker Compose service.                            | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | Uses `docker compose up -d mysql`.                                 |
-| `db:compose:down`  | Stops local Docker Compose services.                                      | `npm run db:compose:down`                                                                                               | Uses `docker compose down`.                                        |
-| `db:generate`      | Generates the Prisma client.                                              | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate` | Run after dependency/schema changes when needed.                   |
-| `db:migrate`       | Applies Prisma migrations in development.                                 | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`  | Updates the local development database.                            |
-| `db:seed`          | Seeds local development data.                                             | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`     | Creates local demo employees, labels, and skills.                  |
+| Script             | What It Does                                                              | How To Run                                                                                                                  | Notes                                                              |
+| ------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `format`           | Formats the repository with Prettier.                                     | `npm run format`                                                                                                            | Writes changes to files.                                           |
+| `format:check`     | Checks Prettier formatting without writing files.                         | `npm run format:check`                                                                                                      | Useful before commits and PRs.                                     |
+| `lint`             | Runs ESLint across the repository.                                        | `npm run lint`                                                                                                              | Static code-quality check.                                         |
+| `test`             | Runs the Vitest unit/integration-style test suite configured in the repo. | `npm test`                                                                                                                  | Same as `npm run test`.                                            |
+| `test:integration` | Runs the local MVP integration flow.                                      | `MYSQL_PORT=3307 npm run test:integration`                                                                                  | Resets the local development database.                             |
+| `test:mcp`         | Runs the local MCP smoke test.                                            | `MYSQL_PORT=3307 npm run test:mcp`                                                                                          | Starts local test services and resets local test data.             |
+| `test:watch`       | Runs Vitest in watch mode.                                                | `npm run test:watch`                                                                                                        | Useful while editing tests.                                        |
+| `typecheck`        | Runs TypeScript without emitting compiled files.                          | `npm run typecheck`                                                                                                         | Verifies TS types across the repo.                                 |
+| `api:dev`          | Starts the Fastify API service.                                           | `npm run api:dev`                                                                                                           | Auto-loads `.env` when present.                                    |
+| `hub`              | Runs the Enterprise Hub CLI.                                              | `npm run hub -- <command>`                                                                                                  | Example: `npm run hub -- login --email baoli.manager@example.com`. |
+| `mcp-bootup`       | Starts the API, starts a worker loop, then starts the MCP stdio server.   | `npm run mcp-bootup`                                                                                                        | For MCP client config, prefer `npm run --silent mcp-bootup`.       |
+| `mcp:dev`          | Starts the local stdio MCP server.                                        | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                              | Requires the API to already be running.                            |
+| `purge-data`       | Removes local MySQL document data plus ignored upload/test storage files. | `npm run purge-data`; preview with `npm run purge-data -- --dry-run`; remove all `.data` with `npm run purge-data -- --all` | Use `--files-only` to leave MySQL untouched.                       |
+| `worker:dev`       | Starts a local worker loop that continuously processes queued documents.  | `npm run worker:dev`                                                                                                        | Auto-loads `.env` when present.                                    |
+| `worker:once`      | Runs one deterministic worker pass.                                       | `npm run worker:once`                                                                                                       | Auto-loads `.env` when present.                                    |
+| `db:compose:up`    | Starts the local MySQL Docker Compose service.                            | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                     | Uses `docker compose up -d mysql`.                                 |
+| `db:compose:down`  | Stops local Docker Compose services.                                      | `npm run db:compose:down`                                                                                                   | Uses `docker compose down`.                                        |
+| `db:generate`      | Generates the Prisma client.                                              | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate`     | Run after dependency/schema changes when needed.                   |
+| `db:migrate`       | Applies Prisma migrations in development.                                 | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`      | Updates the local development database.                            |
+| `db:seed`          | Seeds local development data.                                             | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`         | Creates local demo employees, labels, and skills.                  |
 
 ## Useful Checks
 
