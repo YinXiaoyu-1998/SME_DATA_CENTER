@@ -67,6 +67,41 @@ DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:330
 
 不要提交 `.env`、`.data/`、本地 session 文件、真实凭据、真实客户资料或第三方下载数据。
 
+## 本地上传文件存在哪里
+
+本地 profile 使用 local storage driver 时，上传原始文件会存到 `LOCAL_STORAGE_ROOT`。默认本地路径是：
+
+```text
+.data/storage/org/<org_id>/documents/<document_id>/original/<filename>
+```
+
+集成测试和 MCP smoke 测试会使用各自的 ignored 目录：
+
+```text
+.data/integration/storage
+.data/mcp-local-test/storage
+```
+
+只清理本地上传文件和测试 storage，保留 CLI/MCP 登录 session：
+
+```sh
+npm run purge-data
+```
+
+先预览会删哪些目录：
+
+```sh
+npm run purge-data -- --dry-run
+```
+
+如果想把 ignored `.data` 整个删掉，包括本地 CLI/MCP session 文件：
+
+```sh
+npm run purge-data -- --all
+```
+
+这个命令不重置 MySQL 里的资料目录记录。如果你还想清空本地数据库，请重新跑 migration reset/seed 流程，或使用已有 integration smoke 脚本。
+
 ## 启动本地数据库
 
 推荐使用 `3307`，避免和本机已有 MySQL 冲突：
@@ -284,6 +319,7 @@ MYSQL_PORT=3307 npm run test:mcp
 | `hub`              | 运行 Enterprise Hub CLI。                  | `npm run hub -- <command>`                                                                                              | 示例：`npm run hub -- login --email baoli.manager@example.com`。 |
 | `mcp-bootup`       | 启动 API、worker loop，然后启动 MCP。      | `npm run mcp-bootup`                                                                                                    | 配到 MCP client 时建议用 `npm run --silent mcp-bootup`。         |
 | `mcp:dev`          | 启动本地 stdio MCP server。                | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | 需要 API 已经在对应地址运行。                                    |
+| `purge-data`       | 删除 ignored 本地上传和测试 storage 文件。 | `npm run purge-data`；预览用 `npm run purge-data -- --dry-run`；删除整个 `.data` 用 `npm run purge-data -- --all`       | 不会重置 MySQL 里的资料目录记录。                                |
 | `worker:dev`       | 启动本地 worker loop，持续处理队列。       | `npm run worker:dev`                                                                                                    | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
 | `worker:once`      | 运行一次确定性 worker 处理。               | `npm run worker:once`                                                                                                   | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
 | `db:compose:up`    | 启动本地 MySQL Docker Compose 服务。       | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | 底层是 `docker compose up -d mysql`。                            |
