@@ -2,10 +2,13 @@ import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { PrismaClient } from "@prisma/client";
 
 interface PurgeOptions {
   all: boolean;
   dryRun: boolean;
+  filesOnly: boolean;
   cwd: string;
   env: NodeJS.ProcessEnv;
 }
@@ -15,12 +18,30 @@ interface PurgeTarget {
   path: string;
 }
 
+interface LocalDatabaseTarget {
+  databaseUrl: string;
+  host: string;
+  databaseName: string;
+}
+
+interface DatabasePurgeResult {
+  target: LocalDatabaseTarget;
+  documentsDeleted: number | null;
+  documentAuditLogsDeleted: number | null;
+}
+
+interface PurgeResult {
+  fileTargets: PurgeTarget[];
+  database: DatabasePurgeResult | null;
+}
+
 loadDotenv({ quiet: true, override: false });
 
-export async function purgeLocalData(options: PurgeOptions): Promise<PurgeTarget[]> {
-  const targets = resolvePurgeTargets(options);
+export async function purgeLocalData(options: PurgeOptions): Promise<PurgeResult> {
+  const fileTargets = resolvePurgeTargets(options);
+  const database = await purgeLocalDatabase(options);
 
-  for (const target of targets) {
+  for (const target of fileTargets) {
     if (options.dryRun) {
       continue;
     }
@@ -30,7 +51,10 @@ export async function purgeLocalData(options: PurgeOptions): Promise<PurgeTarget
 
   await removeEmptyDataDirectory(options.cwd, options.dryRun);
 
-  return targets;
+  return {
+    fileTargets,
+    database
+  };
 }
 
 export function resolvePurgeTargets(options: PurgeOptions): PurgeTarget[] {
@@ -64,10 +88,85 @@ export function resolvePurgeTargets(options: PurgeOptions): PurgeTarget[] {
   );
 }
 
-function parseArgs(argv: string[]): Pick<PurgeOptions, "all" | "dryRun"> {
+export function resolveLocalDatabaseTarget(env: NodeJS.ProcessEnv): LocalDatabaseTarget | null {
+  const databaseUrl = env["DATABASE_URL"];
+
+  if (!databaseUrl) {
+    return null;
+  }
+
+  const url = new URL(databaseUrl);
+  const databaseName = url.pathname.replace(/^\/+/, "");
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+
+  if (url.protocol !== "mysql:") {
+    throw new Error("purge-data only supports local MySQL DATABASE_URL values.");
+  }
+
+  if (!localHosts.has(url.hostname)) {
+    throw new Error("purge-data refuses to purge a non-local DATABASE_URL host.");
+  }
+
+  if (databaseName !== "enterprise_hub") {
+    throw new Error("purge-data refuses to purge a database other than enterprise_hub.");
+  }
+
+  return {
+    databaseUrl,
+    host: url.host,
+    databaseName
+  };
+}
+
+async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeResult | null> {
+  if (options.filesOnly) {
+    return null;
+  }
+
+  const target = resolveLocalDatabaseTarget(options.env);
+
+  if (!target) {
+    if (options.dryRun) {
+      return null;
+    }
+
+    throw new Error("DATABASE_URL is required to purge local MySQL document data.");
+  }
+
+  if (options.dryRun) {
+    return {
+      target,
+      documentsDeleted: null,
+      documentAuditLogsDeleted: null
+    };
+  }
+
+  const adapter = new PrismaMariaDb(target.databaseUrl);
+  const prisma = new PrismaClient({ adapter });
+
+  try {
+    const documentAuditLogs = await prisma.auditLog.deleteMany({
+      where: {
+        OR: [{ targetType: "document" }, { action: { startsWith: "document." } }]
+      }
+    });
+    const documents = await prisma.document.deleteMany({});
+
+    return {
+      target,
+      documentsDeleted: documents.count,
+      documentAuditLogsDeleted: documentAuditLogs.count
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+function parseArgs(argv: string[]): Pick<PurgeOptions, "all" | "dryRun" | "filesOnly"> {
   return {
     all: argv.includes("--all"),
-    dryRun: argv.includes("--dry-run")
+    dryRun: argv.includes("--dry-run"),
+    filesOnly: argv.includes("--files-only")
   };
 }
 
@@ -126,14 +225,33 @@ if (isMainModule()) {
     env: process.env
   };
 
-  const targets = await purgeLocalData(options);
+  const result = await purgeLocalData(options);
   const action = options.dryRun ? "Would remove" : "Removed";
 
-  for (const target of targets) {
+  if (result.database) {
+    const dbAction = options.dryRun ? "Would purge" : "Purged";
+    const target = `${result.database.target.databaseName} on ${result.database.target.host}`;
+
+    if (options.dryRun) {
+      console.log(`${dbAction} local MySQL document data: ${target}`);
+    } else {
+      console.log(
+        `${dbAction} local MySQL document data: ${target} ` +
+          `(documents=${result.database.documentsDeleted}, ` +
+          `documentAuditLogs=${result.database.documentAuditLogsDeleted})`
+      );
+    }
+  } else if (options.filesOnly) {
+    console.log("Skipped local MySQL document data purge because --files-only was provided.");
+  } else if (options.dryRun) {
+    console.log("Would skip local MySQL document data purge because DATABASE_URL is not set.");
+  }
+
+  for (const target of result.fileTargets) {
     console.log(`${action} ${target.label}: ${target.path}`);
   }
 
-  if (targets.length === 0) {
+  if (result.fileTargets.length === 0 && !result.database) {
     console.log("No local Enterprise Hub data targets found.");
   }
 }
