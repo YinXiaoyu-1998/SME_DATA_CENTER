@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { extname } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { DocumentStatus, Prisma, PrismaClient, ProcessingRunStatus } from "@prisma/client";
 import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
@@ -8,6 +9,7 @@ import type { StorageAdapter } from "@enterprise-hub/storage";
 const SUPPORTED_TEXT_EXTENSIONS = new Set([".txt", ".md", ".csv", ".json"]);
 const TEXT_INDEX_TYPE = "text";
 const MAX_PROCESSING_FAILURES = 3;
+const DEFAULT_WORKER_POLL_INTERVAL_MS = 1_000;
 
 export const PROCESSING_ERROR_CODES = {
   unsupportedFileType: "UNSUPPORTED_FILE_TYPE",
@@ -68,6 +70,15 @@ export type RunWorkerOnceResult =
       status: "active" | "processing_failed" | "retry_scheduled";
     };
 
+export interface RunWorkerLoopInput {
+  repository: ProcessingWorkerRepository;
+  storage: StorageAdapter;
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+  onResult?: (result: RunWorkerOnceResult) => void;
+  onError?: (error: unknown) => void;
+}
+
 export async function runWorkerOnce(input: {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
@@ -117,6 +128,28 @@ export async function runWorkerOnce(input: {
       documentId: run.documentId,
       status: willRetry ? "retry_scheduled" : "processing_failed"
     };
+  }
+}
+
+export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
+  const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_WORKER_POLL_INTERVAL_MS;
+
+  while (!input.signal?.aborted) {
+    try {
+      const result = await runWorkerOnce({
+        repository: input.repository,
+        storage: input.storage
+      });
+
+      input.onResult?.(result);
+
+      if (!result.processed) {
+        await waitForNextPoll(pollIntervalMs, input.signal);
+      }
+    } catch (error) {
+      input.onError?.(error);
+      await waitForNextPoll(pollIntervalMs, input.signal);
+    }
   }
 }
 
@@ -405,4 +438,25 @@ function requireDatabaseUrl(): string {
   }
 
   return databaseUrl;
+}
+
+async function waitForNextPoll(pollIntervalMs: number, signal: AbortSignal | undefined) {
+  try {
+    await delay(pollIntervalMs, undefined, { signal });
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
 }

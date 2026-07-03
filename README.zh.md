@@ -9,7 +9,7 @@
 - 本地 MySQL + Prisma 数据模型、迁移和 seed。
 - Fastify API：dev login、资料上传、状态查询、搜索、详情、下载 URL、归档、标签目录、Skill Directory、审计查询。
 - 本地文件存储：原始文件写入 ignored `.data/storage`。
-- 确定性 worker：一次处理一份待处理资料。
+- 确定性 worker：支持一次性处理，也支持本地后台 loop 持续处理待处理资料。
 - CLI smoke：登录、上传、搜索。
 - 本地 MCP server：让 Codex 这类 MCP-capable agent 通过 HTTP API 使用企业资料中枢。
 - `enterprise-hub-mcp` skill：指导 agent 安全使用本地 MCP profile。
@@ -118,20 +118,29 @@ curl http://127.0.0.1:3000/healthz
 
 ## 运行 worker
 
-上传资料后，执行一次确定性处理：
+普通本地 MCP 使用优先通过 `npm run mcp-bootup` 启动 worker loop。单独调试 worker 时，可以启动本地后台 loop：
 
 ```sh
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
-STORAGE_DRIVER=local \
-LOCAL_STORAGE_ROOT=.data/storage \
+npm run worker:dev
+```
+
+也可以执行一次确定性处理，用于测试或排障：
+
+```sh
 npm run worker:once
 ```
 
-worker 只处理本地待处理资料，不是后台常驻队列。
+worker 会读取 `.env`，并且不会覆盖终端里已经显式设置的环境变量。
 
 ## CLI 本地 smoke
 
-API 启动后，可以用 CLI 走登录、上传、搜索：
+API 和 worker loop 启动后，可以用 CLI 走登录、上传、搜索：
+
+```sh
+npm run worker:dev
+```
+
+保持 worker 终端运行；它会自动处理后续上传队列。
 
 ```sh
 HUB_API_URL=http://127.0.0.1:3000 \
@@ -148,31 +157,28 @@ npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv \
   --label store:baoli
 ```
 
-处理一次后搜索：
+等待后台 worker 把资料处理成 `active` 后搜索：
 
 ```sh
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
-STORAGE_DRIVER=local \
-LOCAL_STORAGE_ROOT=.data/storage \
-npm run worker:once
-
 HUB_API_URL=http://127.0.0.1:3000 \
 npm run hub -- documents search "Meituan"
 ```
+
+`npm run worker:once` 只建议用于 CI、脚本化 smoke 或排障，不是自然本地使用流程。
 
 CLI session 默认写入 `.data/hub-cli/session.json`，不要提交。
 
 ## MCP 本地服务
 
-MCP server 是 HTTP API 的 adapter。它不会启动 API、MySQL 或 worker，也不会直接读取 MySQL 或本地 storage。
+MCP server 是 HTTP API 的 adapter。它不会直接读取 MySQL 或本地 storage。
 
-如果想让本地 agent 一条命令拉起 API + MCP，可以运行：
+如果想让本地 agent 一条命令拉起 API + worker + MCP，可以运行：
 
 ```sh
 npm run mcp-bootup
 ```
 
-`mcp-bootup` 会读取 `.env`，后台启动 API，等待 `/healthz` 成功，然后以前台 stdio 方式启动 MCP server。架构上仍然是 MCP 调 API，这个脚本只是把本地启动流程串起来。
+`mcp-bootup` 会读取 `.env`，后台启动 API，等待 `/healthz` 成功，启动本地 worker loop，然后以前台 stdio 方式启动 MCP server。架构上仍然是 MCP 调 API、worker 处理队列，这个脚本只是把本地启动流程串起来，让本地行为接近线上后台 worker 形态。
 
 如果 API 已经在 `http://127.0.0.1:3000` 运行，也可以只启动 MCP：
 
@@ -230,7 +236,7 @@ Use $enterprise-hub-mcp with the local-development profile to run the local 企�
 
 1. 用 `baoli.manager@example.com` 登录 session `baoli`。
 2. 上传 `fixtures/baoli-june-meituan.csv`，标签用 `store:baoli`。
-3. 运行一次 `npm run worker:once`。
+3. 使用 `mcp-bootup` 的后台 worker loop 等待资料变成 `active`；如果只在排障，可以运行一次 `npm run worker:once`。
 4. 用 Baoli session 搜索，应能看到资料。
 5. 用 `suzhou.manager@example.com` 登录 session `suzhou`。
 6. 用 Suzhou session 搜索同一关键词，应看不到 Baoli 资料；详情访问应返回 not found / inaccessible 形状，不能泄露隐藏标题。
@@ -276,9 +282,10 @@ MYSQL_PORT=3307 npm run test:mcp
 | `typecheck`        | 运行 TypeScript 类型检查，不输出编译文件。 | `npm run typecheck`                                                                                                     | 检查全仓 TS 类型。                                               |
 | `api:dev`          | 启动 Fastify API 服务。                    | `npm run api:dev`                                                                                                       | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
 | `hub`              | 运行 Enterprise Hub CLI。                  | `npm run hub -- <command>`                                                                                              | 示例：`npm run hub -- login --email baoli.manager@example.com`。 |
-| `mcp-bootup`       | 启动 API，等待健康检查，然后启动 MCP。     | `npm run mcp-bootup`                                                                                                    | 配到 MCP client 时建议用 `npm run --silent mcp-bootup`。         |
+| `mcp-bootup`       | 启动 API、worker loop，然后启动 MCP。      | `npm run mcp-bootup`                                                                                                    | 配到 MCP client 时建议用 `npm run --silent mcp-bootup`。         |
 | `mcp:dev`          | 启动本地 stdio MCP server。                | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | 需要 API 已经在对应地址运行。                                    |
-| `worker:once`      | 运行一次确定性 worker 处理。               | `npm run worker:once`                                                                                                   | 如需从 `.env` 读变量，先执行 `set -a; source .env; set +a`。     |
+| `worker:dev`       | 启动本地 worker loop，持续处理队列。       | `npm run worker:dev`                                                                                                    | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
+| `worker:once`      | 运行一次确定性 worker 处理。               | `npm run worker:once`                                                                                                   | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
 | `db:compose:up`    | 启动本地 MySQL Docker Compose 服务。       | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | 底层是 `docker compose up -d mysql`。                            |
 | `db:compose:down`  | 停止本地 Docker Compose 服务。             | `npm run db:compose:down`                                                                                               | 底层是 `docker compose down`。                                   |
 | `db:generate`      | 生成 Prisma client。                       | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate` | schema 或依赖变化后按需运行。                                    |
@@ -317,7 +324,7 @@ DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:330
 
 ### 上传后搜索不到
 
-普通搜索只返回 `active` 资料。上传后先运行：
+普通搜索只返回 `active` 资料。使用 `npm run mcp-bootup` 时，后台 worker loop 会自动处理上传队列；如果你只启动了 API 或正在排障，可以手动运行一次：
 
 ```sh
 npm run worker:once

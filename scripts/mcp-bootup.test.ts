@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMcpBootupConfig, createApiChildSpec } from "./mcp-bootup.js";
+import { buildMcpBootupConfig, createApiChildSpec, createWorkerChildSpec } from "./mcp-bootup.js";
 
 describe("mcp bootup config", () => {
   it("derives a local API URL and injects it into the MCP environment", () => {
@@ -37,6 +37,17 @@ describe("mcp bootup config", () => {
     expect(createApiChildSpec(config)).toMatchObject({
       command: "npm",
       args: ["run", "--silent", "api:dev"],
+      cwd: "/workspace",
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+  });
+
+  it("starts the worker loop through npm silently with stdout and stderr captured", () => {
+    const config = buildMcpBootupConfig({ PORT: "4567" }, "/workspace");
+
+    expect(createWorkerChildSpec(config)).toMatchObject({
+      command: "npm",
+      args: ["run", "--silent", "worker:dev"],
       cwd: "/workspace",
       stdio: ["ignore", "pipe", "pipe"]
     });

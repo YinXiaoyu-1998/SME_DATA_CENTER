@@ -16,10 +16,11 @@ export interface McpBootupConfig {
   cwd: string;
   apiUrl: string;
   apiEnv: NodeJS.ProcessEnv;
+  workerEnv: NodeJS.ProcessEnv;
   mcpEnv: NodeJS.ProcessEnv;
 }
 
-interface ApiChildSpec {
+interface ChildSpec {
   command: string;
   args: string[];
   cwd: string;
@@ -43,6 +44,9 @@ export function buildMcpBootupConfig(
       HOST: env["HOST"] ?? DEFAULT_API_HOST,
       PORT: port
     },
+    workerEnv: {
+      ...env
+    },
     mcpEnv: {
       ...env,
       ENTERPRISE_HUB_API_URL: apiUrl
@@ -50,7 +54,7 @@ export function buildMcpBootupConfig(
   };
 }
 
-export function createApiChildSpec(config: McpBootupConfig): ApiChildSpec {
+export function createApiChildSpec(config: McpBootupConfig): ChildSpec {
   return {
     command: "npm",
     args: ["run", "--silent", "api:dev"],
@@ -60,24 +64,57 @@ export function createApiChildSpec(config: McpBootupConfig): ApiChildSpec {
   };
 }
 
+export function createWorkerChildSpec(config: McpBootupConfig): ChildSpec {
+  return {
+    command: "npm",
+    args: ["run", "--silent", "worker:dev"],
+    cwd: config.cwd,
+    env: config.workerEnv,
+    stdio: ["ignore", "pipe", "pipe"]
+  };
+}
+
 export async function runMcpBootup(): Promise<void> {
   loadDotenv({ quiet: true, override: false });
 
   const bootupConfig = buildMcpBootupConfig();
   const apiProcess = startApiProcess(bootupConfig);
+  let workerProcess: ChildProcess | undefined;
+  const childMonitorAbort = new AbortController();
 
   try {
     pipeChildOutputToStderr("enterprise-hub-api", apiProcess.stdout);
     pipeChildOutputToStderr("enterprise-hub-api", apiProcess.stderr);
     await waitForApiHealth(apiProcess, bootupConfig.apiUrl);
-    await runMcpStdioServer(loadMcpRuntimeConfig(bootupConfig.mcpEnv, bootupConfig.cwd));
+    workerProcess = startWorkerProcess(bootupConfig);
+    pipeChildOutputToStderr("enterprise-hub-worker", workerProcess.stdout);
+    pipeChildOutputToStderr("enterprise-hub-worker", workerProcess.stderr);
+    await Promise.race([
+      runMcpStdioServer(loadMcpRuntimeConfig(bootupConfig.mcpEnv, bootupConfig.cwd)),
+      rejectOnUnexpectedChildExit("API", apiProcess, childMonitorAbort.signal),
+      rejectOnUnexpectedChildExit("worker", workerProcess, childMonitorAbort.signal)
+    ]);
   } finally {
-    await stopApiProcess(apiProcess);
+    childMonitorAbort.abort();
+    await Promise.all([
+      workerProcess ? stopChildProcess(workerProcess) : Promise.resolve(),
+      stopChildProcess(apiProcess)
+    ]);
   }
 }
 
 function startApiProcess(config: McpBootupConfig): ChildProcess {
   const spec = createApiChildSpec(config);
+
+  return spawn(spec.command, spec.args, {
+    cwd: spec.cwd,
+    env: spec.env,
+    stdio: spec.stdio
+  });
+}
+
+function startWorkerProcess(config: McpBootupConfig): ChildProcess {
+  const spec = createWorkerChildSpec(config);
 
   return spawn(spec.command, spec.args, {
     cwd: spec.cwd,
@@ -120,7 +157,7 @@ async function waitForApiHealth(child: ChildProcess, apiUrl: string): Promise<vo
   throw new Error(`Timed out waiting for API health at ${healthUrl.toString()}.`);
 }
 
-async function stopApiProcess(child: ChildProcess): Promise<void> {
+async function stopChildProcess(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null) {
     return;
   }
@@ -133,6 +170,26 @@ async function stopApiProcess(child: ChildProcess): Promise<void> {
   });
 
   await Promise.race([once(child, "exit"), forcedKill]);
+}
+
+function rejectOnUnexpectedChildExit(
+  name: string,
+  child: ChildProcess,
+  signal: AbortSignal
+): Promise<never> {
+  return new Promise((_, reject) => {
+    const onExit = (code: number | null, childSignal: NodeJS.Signals | null) => {
+      signal.removeEventListener("abort", onAbort);
+      reject(new Error(`${name} process exited unexpectedly with code ${code ?? childSignal}.`));
+    };
+
+    const onAbort = () => {
+      child.off("exit", onExit);
+    };
+
+    child.once("exit", onExit);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function resolveApiPort(rawApiUrl: string | undefined, rawPort: string | undefined): string {

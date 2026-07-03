@@ -15,6 +15,7 @@
 - Update `docs/implementation/progress.md` at the start and end of every work session.
 - Subagents must append to `docs/implementation/agent-handoffs.md` before stopping.
 - Draft PR descriptions must include scope, tests run, environment changes, human inputs used, and known limitations.
+- When `skills/enterprise-hub-mcp/` changes in this workspace, also sync the same skill update to the standalone repository `YinXiaoyu-1998/enterprise-hub-mcp-skill` and open/update a PR there.
 
 ## Commands
 
@@ -25,6 +26,8 @@
 - Integration test: `npm run test:integration`
 - Format check: `npm run format:check`
 - Run local API: `npm run api:dev`
+- Run local API + worker + MCP bootup: `npm run mcp-bootup`
+- Run local worker loop: `npm run worker:dev`
 - Run one deterministic worker pass: `npm run worker:once`
 - Run local CLI smoke commands: `npm run hub -- <command>`
 - Run local MCP server: `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`
