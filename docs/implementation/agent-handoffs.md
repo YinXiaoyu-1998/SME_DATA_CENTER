@@ -287,3 +287,14 @@
 - Known gaps: OSS remains unverified. Approved test prefix and RAM policy summary are still needed before a non-destructive OSS validation should run. Day 2 OSS adapter remains blocked until required OSS readiness rows are `verified` or explicitly `deferred`.
 - Human blockers: Provide an approved OSS test prefix and RAM policy/allowed-action summary, or explicitly approve a minimal validation object path under the bucket.
 - Suggested next agent: Run only the non-destructive OSS validation after the human approves a test prefix and confirms the `.env` credentials may be used in the local runtime.
+
+## 2026-07-04 12:10 - codex/phase3-oss-readiness-verify - OSS readiness validation
+
+- Scope: Validated Phase 3 OSS/S3-compatible readiness only. Used the human-approved prefix `enterprise-hub-readiness/` and local ignored `.env` credentials to run non-destructive object checks, then updated readiness/progress records. Did not implement the OSS adapter, change runtime code, commit `.env`, print secrets, store signed URLs, or upload real documents.
+- Files changed: `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: `git fetch origin main --prune`; `git switch -c codex/phase3-oss-readiness-verify origin/main`; temporary Node SigV4 validation scripts using local `.env`; first script failed before any network request because Node required CommonJS mode; rerun with `node --input-type=commonjs`; basic PUT/HEAD/GET/DELETE validation; presigned GET validation; no committed scripts.
+- Done criteria passed: Basic object lifecycle succeeded under `enterprise-hub-readiness/`: PUT 200, HEAD/stat 200, GET 200 with content match, DELETE 204, post-delete HEAD 404 for `enterprise-hub-readiness/codex-readiness-1783138001251.txt`. Presigned GET succeeded for a second tiny object: PUT 200, presigned GET 200 with content match, DELETE 204, post-delete HEAD 404 for `enterprise-hub-readiness/codex-presign-1783138050907.txt`. Both validation objects were deleted.
+- PR: Pending.
+- Known gaps: Formal RAM policy name is not recorded, but effective permissions needed by the planned adapter were verified for the approved prefix. Other Phase 3 readiness areas remain missing or blocked: deployment target/runtime shape, domain/TLS, online MySQL, admin emails, seed policy, real-data policy, and optional model decisions.
+- Human blockers: None for starting the Day 2 OSS adapter track after this validation is merged. Other Phase 3 tracks remain gated by their own readiness rows.
+- Suggested next agent: If continuing implementation, start only Phase 3 Day 2 Aliyun OSS/S3-compatible storage adapter on a new branch; do not start deployment, online DB, domain/TLS, admin UI, or broader Phase 3 tracks.
