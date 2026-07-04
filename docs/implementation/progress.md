@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-- Phase: Phase 2 complete locally; post-Phase-2 local DX and skill-boundary corrections are merged through PR #33. Phase 3 has not started.
+- Phase: Phase 2 complete locally; Phase 3 readiness intake is being documented. Phase 3 implementation has not started.
 - Date: 2026-07-04
-- Lead branch: `codex/enterprise-hub-status-recovery-20260704`
+- Lead branch: `codex/phase3-readiness-intake`
 - Deployment target: Developer machine only; no staging or online deployment yet
 
 ## Active Workstreams
@@ -42,6 +42,7 @@
 | Local purge data utility       | `codex/enterprise-hub-purge-data`               | Codex lead agent                                         | Complete         | [PR #32](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/32) | Added local purge support for uploaded/test storage and local MySQL document-derived records. This is a local test hygiene utility and not a product physical-deletion workflow.                                                                                                                                                                                |
 | MCP skill service boundary     | `codex/enterprise-hub-skill-service-boundary`   | Codex lead agent                                         | Complete         | [PR #33](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/33) | Realigned the skill so normal use only calls exposed MCP tools and reports service-unavailable errors instead of starting API/worker/MCP/Docker, falling back to CLI/API/DB/storage, or editing service/config. Standalone skill repo sync PR #3 is also merged.                                                                                                |
 | Status recovery 2026-07-04     | `codex/enterprise-hub-status-recovery-20260704` | Codex lead agent                                         | Complete         | [PR #34](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/34) | Documentation-only recovery after PR #33 merged; reads required implementation docs, git status/log, open PR metadata, branch/worktree state, blocker boundaries, and file-risk signals. No business code or feature work.                                                                                                                                      |
+| Phase 3 readiness intake       | `codex/phase3-readiness-intake`                 | Codex lead agent                                         | In progress      | Pending                                                             | Documentation-only correction to add `phase-3-readiness.md` as the source of truth for incremental Phase 3 human input collection, safe validation, secret handling, and per-track gates. No Phase 3 business code or infrastructure implementation.                                                                                                            |
 
 ## Completed Checkpoints
 
@@ -145,12 +146,14 @@
 | 2026-07-04 | Branch and PR hygiene checked           | Main repo `gh pr list --state open` returned no open PRs; standalone skill repo also has no open PRs. `origin/codex/api-load-env-file` remains as a stale unmerged remote branch containing superseded README/bootup commits with different SHAs from the merged PRs. Local old worktrees remain for historical MCP branches, and the original workspace has an unrelated uncommitted `progress.md` ECS pre-check note not included in this recovery PR.                             |
 | 2026-07-04 | Scope and blocker boundaries checked    | No reviewed merged work starts Phase 3 online readiness: no OSS adapter, online MySQL migration flow, TLS/domain config, production secret-store integration, admin UI, production token flow, report/dashboard service, or skill execution platform is complete. Phase 3 human blockers remain active and must not be bypassed.                                                                                                                                                     |
 | 2026-07-04 | Secrets and file-risk sweep             | `git ls-files` shows tracked `.env.example`, synthetic fixtures, and source/docs only for env/data-like paths; `.env`, `.data/`, CLI/MCP session files, and `.DS_Store` are ignored. Credential-pattern scan found documented local defaults and test fake tokens only, not real OSS/cloud credentials, service account keys, private keys, tracked `.env`, downloaded third-party data, or real customer exports.                                                                   |
+| 2026-07-04 | Phase 3 readiness intake selected       | User identified that Phase 3 should support incremental human input collection and validation instead of requiring every input to be complete before any readiness work. Branch `codex/phase3-readiness-intake` was created from latest `origin/main` after PR #34 merged. Scope is documentation-only: add a readiness tracker and update plan/progress/env docs without writing Phase 3 service code.                                                                              |
+| 2026-07-04 | Phase 3 readiness tracker drafted       | Added `docs/implementation/phase-3-readiness.md` with status vocabulary, secret-handling rules, agent workflow, intake matrix, per-track gates, validation playbooks for OSS/MySQL/domain/deployment target, and a verification log. Updated `implementation-plan.md` so Phase 3 gates are per-track and depend on `verified` or explicitly `deferred` readiness items rather than one all-or-nothing blocker.                                                                       |
 
 ## Blockers
 
-| Blocker                                 | Needed From Human                                                                                                                                                                                                                                                                                        | Since      | Stop Rule                                                                                                                                                              |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 3 online readiness inputs missing | Deployment target, staging/public domain and TLS decision, online MySQL connection and backup/SSL settings, Aliyun OSS region/bucket/endpoint/RAM policy/credentials via secret store, JWT/session secret via secret store, allowed admin emails, and any optional Qwen/DashScope budget/model decision. | 2026-07-01 | Do not start Phase 3 online-readiness implementation or invent infrastructure values until these are provided in a secure channel or explicitly declared out of scope. |
+| Blocker                            | Needed From Human                                                                                                                                                                                                                                      | Since      | Stop Rule                                                                                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 3 readiness items unverified | Deployment target/runtime shape, staging domain/TLS decision, online MySQL, Aliyun OSS, secret handling, admin emails, seed policy, real-data policy, and optional model decisions are not yet verified in `docs/implementation/phase-3-readiness.md`. | 2026-07-01 | Agents may update and validate readiness items, but must not start a Phase 3 implementation track until that track's required items are `verified` or explicitly `deferred`. |
 
 ## Next Actions
 
@@ -210,6 +213,9 @@
 - [x] Add local purge-data utility for repeated local upload tests.
 - [x] Align `enterprise-hub-mcp` skill to the service-client boundary and sync the standalone skill repository.
 - [x] Run 2026-07-04 post-PR #33 status recovery against docs, git history/status, PR metadata, branch/worktree state, blockers, and file-risk signals.
+- [x] Add Phase 3 readiness intake document for incremental human input collection and validation.
+- [x] Update Phase 3 plan gates to use `phase-3-readiness.md` and per-track verified/deferred readiness.
+- [ ] Commit, push, and open/update draft PR for this Phase 3 readiness intake branch.
 - [ ] Clean stale merged/superseded topic branches and old local worktrees after explicit human approval.
-- [ ] Collect Phase 3 human inputs before starting online-ready implementation.
+- [ ] Collect and validate Phase 3 readiness items in `phase-3-readiness.md` before starting each online-ready implementation track.
 - [x] Commit, push, and open/update draft PR for this 2026-07-04 status recovery branch.

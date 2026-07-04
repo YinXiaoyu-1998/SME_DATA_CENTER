@@ -35,4 +35,6 @@ This file tracks required variables and external services. Do not store secret v
 
 No human-provided external service, API key, domain, OSS bucket, online MySQL, or deployment credential is required for Phase 1 or Phase 2 local MCP work.
 
-Phase 3 online readiness still requires human-provided deployment target, domain/TLS, online MySQL, OSS, secret-store, and admin-list inputs before implementation starts.
+Phase 3 online readiness inputs are tracked in `docs/implementation/phase-3-readiness.md`.
+
+Use that readiness document to record non-secret values, secret handling locations, validation status, blocker state, and per-track gates. Do not store secret values in this inventory or in the readiness document.

@@ -1,0 +1,136 @@
+# Phase 3 Readiness Intake
+
+This document tracks human-provided Phase 3 inputs, validation evidence, and per-track readiness for the online-ready service phase.
+
+It is intentionally safe to commit. Do not store secret values here.
+
+## Status Vocabulary
+
+| Status         | Meaning                                                                             |
+| -------------- | ----------------------------------------------------------------------------------- |
+| `missing`      | Required information has not been provided.                                         |
+| `provided`     | Human supplied the information, but no agent has validated it yet.                  |
+| `verified`     | Agent validated the information with a non-destructive check and recorded evidence. |
+| `blocked`      | Validation failed or the input is unusable; human action is required.               |
+| `deferred`     | Human explicitly decided this item is not needed for the current Phase 3 slice.     |
+| `not_required` | Item is not required for the named track.                                           |
+
+## Secret Handling Rules
+
+- Never write passwords, access keys, access secrets, JWT/session secrets, private keys, service-account material, or production tokens into this repo.
+- For secrets, record only where they are available, for example `local shell env`, `Codex secret env`, `ECS secret env`, or `human secure channel`.
+- If an agent needs to validate a secret-backed service, the human must provide the secret through a secure runtime channel, not chat or committed files.
+- Verification logs may record command names, non-secret endpoints, bucket names, regions, HTTP status codes, object keys under an approved test prefix, and timestamps.
+- Verification logs must not record Authorization headers, signed URLs with credentials, raw token values, secret fingerprints, or full connection strings containing passwords.
+
+## Agent Workflow
+
+When the user provides any Phase 3 input:
+
+1. Read this file, `implementation-plan.md`, `progress.md`, `env-inventory.md`, and `AGENTS.md`.
+2. Update the relevant intake row from `missing` to `provided`, or to `deferred` if the human explicitly defers it.
+3. If safe credentials are available at runtime, run the smallest non-destructive validation for that item.
+4. Record the validation command shape and result in `Verification Log`.
+5. Mark the item `verified` only when the validation passed.
+6. Update `progress.md` with readiness changes and any blocker changes.
+7. Stop before implementing any Phase 3 track whose required inputs are not `verified` or explicitly `deferred`.
+
+## Intake Matrix
+
+| Area            | Item                                    | Status  | Safe Value To Record                                    | Secret Location / Handling                    | Validation Required                                                                    | Latest Evidence |
+| --------------- | --------------------------------------- | ------- | ------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------- | --------------- |
+| Deployment      | Deployment target                       | missing | ECS, ACK, Docker host, or other target                  | Do not store server credentials               | Confirm target type, region, access method, and deploy boundary                        | Not provided    |
+| Deployment      | Region / availability zone              | missing | Region and optional zone names                          | None                                          | Confirm region supports selected services                                              | Not provided    |
+| Deployment      | Runtime shape                           | missing | Single host, Compose, managed container, or other shape | None                                          | Confirm API, worker, and MCP deployment shape                                          | Not provided    |
+| Domain/TLS      | Staging domain                          | missing | Non-secret domain name                                  | None                                          | DNS lookup resolves to intended target when configured                                 | Not provided    |
+| Domain/TLS      | TLS decision                            | missing | Managed cert, reverse proxy cert, or deferred           | Do not store private key                      | Confirm HTTPS endpoint or documented staging exception                                 | Not provided    |
+| Database        | Online MySQL host/port/db/user/SSL mode | missing | Host, port, db name, username, SSL mode only            | Password via secure runtime env only          | Connect with least-privilege credentials and run `SELECT 1`                            | Not provided    |
+| Database        | Backup / restore expectation            | missing | Backup schedule and restore owner                       | None                                          | Confirm provider backup setting or documented manual backup runbook                    | Not provided    |
+| OSS             | OSS region                              | missing | Region name                                             | None                                          | Confirm region matches bucket endpoint                                                 | Not provided    |
+| OSS             | Original-files bucket                   | missing | Bucket name and approved prefix                         | Access key/secret via secure runtime env only | List bucket or stat approved prefix; write tiny test object only under approved prefix | Not provided    |
+| OSS             | Derived-artifacts bucket or prefix      | missing | Bucket or prefix decision                               | Access key/secret via secure runtime env only | Confirm bucket/prefix access if Phase 3 uses it                                        | Not provided    |
+| OSS             | Endpoint                                | missing | Public/internal endpoint without credentials            | None                                          | Confirm endpoint format and reachability                                               | Not provided    |
+| OSS             | RAM policy                              | missing | Policy name or allowed actions summary                  | Do not store policy secrets                   | Confirm least-privilege actions cover required put/get/stat/signing behavior           | Not provided    |
+| Secrets         | OSS access key/secret                   | missing | Secret store or runtime env name only                   | Never commit; never paste into chat           | Validate through OSS check, not by printing values                                     | Not provided    |
+| Secrets         | Online MySQL password                   | missing | Secret store or runtime env name only                   | Never commit; never paste into chat           | Validate through DB connection, not by printing value                                  | Not provided    |
+| Secrets         | JWT/session secret                      | missing | Secret store or runtime env name only                   | Never commit; never paste into chat           | Confirm runtime config can read it without logging value                               | Not provided    |
+| Auth/Admin      | Allowed admin emails                    | missing | Email list is safe to record if human approves          | None                                          | Confirm each intended admin maps to planned seed/token flow                            | Not provided    |
+| Auth/Admin      | Initial employee/label seed policy      | missing | Synthetic or approved employee/label list               | Do not include private HR export              | Confirm seed plan has no unexpected real data                                          | Not provided    |
+| Optional Models | Qwen/DashScope decision                 | missing | `disabled`, `deferred`, or chosen model/budget          | API key via secure runtime env only           | If enabled, validate model/key with minimal metadata call                              | Not provided    |
+| Real Data       | Staging document policy                 | missing | Synthetic-only or explicitly approved real-data scope   | Do not commit real documents                  | Confirm allowed test files and retention/deletion policy                               | Not provided    |
+
+## Per-Track Gates
+
+| Phase 3 Track                                  | May Start When                                                                                                                                                             | Current Status | Notes                                                                                                               |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Day 1 Containerization And Runtime Config      | Deployment target and runtime shape are at least `provided`; required runtime env names are listed without secret values                                                   | blocked        | Can design containers locally, but do not claim staging-ready runtime config until target/env contract is verified. |
+| Day 2 Aliyun OSS Storage Adapter               | OSS region, endpoint, original bucket, RAM policy, and OSS secret runtime location are `verified`                                                                          | blocked        | Unit tests can be planned, but real OSS integration must wait for verified OSS access.                              |
+| Day 3 Online Database And Migration Discipline | Online MySQL host/port/db/user/SSL mode and password runtime location are `verified`; backup expectation is at least `provided`                                            | blocked        | Do not run migrations against an unverified or ambiguous database.                                                  |
+| Day 4 Security And Operational Basics          | Deployment/runtime config is at least `provided`; JWT/session secret handling is `verified` or the work is limited to local tests                                          | blocked        | Production auth/token behavior must not rely on invented secrets or admin lists.                                    |
+| Day 5 Staging Deployment Runbook               | Deployment target, domain/TLS decision, online MySQL, OSS, JWT/session secret handling, and admin emails are `verified` or explicitly `deferred` where the runbook says so | blocked        | Do not deploy or record staging smoke as passed until the required service checks pass.                             |
+
+## Validation Playbooks
+
+These are command shapes, not commands to run blindly. Fill variables from secure runtime env or the human-approved shell environment.
+
+### OSS Minimal Validation
+
+Use only an approved test prefix such as `enterprise-hub-readiness/`. Do not upload real documents.
+
+Evidence to record:
+
+- region, endpoint, bucket, prefix
+- object key for tiny test object
+- put/stat/get/delete or cleanup decision
+- timestamp and result
+
+Never record:
+
+- access key
+- access secret
+- signed URL containing credentials
+- Authorization header
+
+### MySQL Minimal Validation
+
+Use the staging database user intended for the app or migration track.
+
+Evidence to record:
+
+- host, port, database name, username, SSL mode
+- command shape, for example `mysql --host ... --execute "SELECT 1"`
+- timestamp and result
+
+Never record:
+
+- password
+- full DSN with password
+- exported shell history containing credentials
+
+### Domain/TLS Validation
+
+Evidence to record:
+
+- domain
+- DNS result
+- HTTP/HTTPS status
+- certificate issuer/expiration if public and non-sensitive
+
+Do not store private certificate keys.
+
+### Deployment Target Validation
+
+Evidence to record:
+
+- target type and region
+- non-secret account/project identifier if human approves
+- whether API, worker, and MCP will run as separate processes/services
+- command/tool used for non-destructive access check
+
+Do not store server credentials, SSH keys, cloud access secrets, or private IPs if the human marks them sensitive.
+
+## Verification Log
+
+| Date       | Area                     | Agent / Branch                  | Check                                                                      | Result               | Follow-up                                                                                                              |
+| ---------- | ------------------------ | ------------------------------- | -------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-04 | Phase 3 readiness intake | `codex/phase3-readiness-intake` | Created readiness tracker and per-track gate; no external inputs validated | Pending human inputs | Human should provide the next Phase 3 input through a safe channel, then ask an agent to update and validate this file |
