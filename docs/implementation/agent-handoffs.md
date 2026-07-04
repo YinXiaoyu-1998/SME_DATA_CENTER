@@ -276,3 +276,14 @@
 - Known gaps: All actual Phase 3 external inputs remain `missing` until the human provides them through safe channels. The first readiness validation pass should update the intake matrix and verification log for the specific item being checked, without committing secrets.
 - Human blockers: Phase 3 implementation tracks remain blocked until their required readiness rows are `verified` or explicitly `deferred`.
 - Suggested next agent: After this PR merges, ask the human which Phase 3 input to provide first. A good first prompt is to provide the deployment target/runtime shape or OSS bucket/endpoint/secret-runtime location, then validate only that item and update `phase-3-readiness.md`.
+
+## 2026-07-04 11:45 - codex/phase3-readiness-intake - OSS readiness input recording
+
+- Scope: Documentation-only update after the human added OSS/S3-compatible variables to the local ignored `.env`. Read non-secret values and recorded them as `provided` in `phase-3-readiness.md`; recorded secret variable names and location only. Did not print, commit, or copy `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` values. Did not run network validation or implement OSS code.
+- Files changed: `docs/implementation/phase-3-readiness.md`, `docs/implementation/env-inventory.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: Parsed `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER/.env` with a Node script that printed only non-secret values (`AWS_REGION`, `AWS_ENDPOINT`, `AWS_S3_BUCKET`) and booleans for credential presence; checked branch status and readiness rows with `git status` and `rg`.
+- Done criteria passed: `AWS_REGION=oss-cn-beijing`, `AWS_ENDPOINT=https://oss-cn-beijing.aliyuncs.com`, and `AWS_S3_BUCKET=yxy-tastepal-assets` are recorded as provided. `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are recorded only as local `.env` variable names/locations. Verification log records that no network validation has been run yet.
+- PR: Draft PR [#35](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/35).
+- Known gaps: OSS remains unverified. Approved test prefix and RAM policy summary are still needed before a non-destructive OSS validation should run. Day 2 OSS adapter remains blocked until required OSS readiness rows are `verified` or explicitly `deferred`.
+- Human blockers: Provide an approved OSS test prefix and RAM policy/allowed-action summary, or explicitly approve a minimal validation object path under the bucket.
+- Suggested next agent: Run only the non-destructive OSS validation after the human approves a test prefix and confirms the `.env` credentials may be used in the local runtime.

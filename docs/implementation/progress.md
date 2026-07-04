@@ -148,6 +148,7 @@
 | 2026-07-04 | Secrets and file-risk sweep             | `git ls-files` shows tracked `.env.example`, synthetic fixtures, and source/docs only for env/data-like paths; `.env`, `.data/`, CLI/MCP session files, and `.DS_Store` are ignored. Credential-pattern scan found documented local defaults and test fake tokens only, not real OSS/cloud credentials, service account keys, private keys, tracked `.env`, downloaded third-party data, or real customer exports.                                                                   |
 | 2026-07-04 | Phase 3 readiness intake selected       | User identified that Phase 3 should support incremental human input collection and validation instead of requiring every input to be complete before any readiness work. Branch `codex/phase3-readiness-intake` was created from latest `origin/main` after PR #34 merged. Scope is documentation-only: add a readiness tracker and update plan/progress/env docs without writing Phase 3 service code.                                                                              |
 | 2026-07-04 | Phase 3 readiness tracker drafted       | Added `docs/implementation/phase-3-readiness.md` with status vocabulary, secret-handling rules, agent workflow, intake matrix, per-track gates, validation playbooks for OSS/MySQL/domain/deployment target, and a verification log. Updated `implementation-plan.md` so Phase 3 gates are per-track and depend on `verified` or explicitly `deferred` readiness items rather than one all-or-nothing blocker.                                                                       |
+| 2026-07-04 | OSS readiness input recorded            | Read local ignored `.env` without printing secret values. Recorded non-secret OSS/S3-compatible values in `phase-3-readiness.md`: `AWS_REGION=oss-cn-beijing`, `AWS_ENDPOINT=https://oss-cn-beijing.aliyuncs.com`, and `AWS_S3_BUCKET=yxy-tastepal-assets`. Confirmed `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are present but recorded only their variable names/location. No network validation was run.                                                                    |
 
 ## Blockers
 
@@ -215,7 +216,9 @@
 - [x] Run 2026-07-04 post-PR #33 status recovery against docs, git history/status, PR metadata, branch/worktree state, blockers, and file-risk signals.
 - [x] Add Phase 3 readiness intake document for incremental human input collection and validation.
 - [x] Update Phase 3 plan gates to use `phase-3-readiness.md` and per-track verified/deferred readiness.
+- [x] Record provided OSS/S3-compatible `.env` readiness inputs without committing or printing secrets.
 - [x] Commit, push, and open/update draft PR for this Phase 3 readiness intake branch.
+- [ ] Provide approved OSS test prefix and RAM policy summary, then run non-destructive OSS validation.
 - [ ] Clean stale merged/superseded topic branches and old local worktrees after explicit human approval.
 - [ ] Collect and validate Phase 3 readiness items in `phase-3-readiness.md` before starting each online-ready implementation track.
 - [x] Commit, push, and open/update draft PR for this 2026-07-04 status recovery branch.

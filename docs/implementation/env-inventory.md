@@ -38,3 +38,15 @@ No human-provided external service, API key, domain, OSS bucket, online MySQL, o
 Phase 3 online readiness inputs are tracked in `docs/implementation/phase-3-readiness.md`.
 
 Use that readiness document to record non-secret values, secret handling locations, validation status, blocker state, and per-track gates. Do not store secret values in this inventory or in the readiness document.
+
+## Phase 3 OSS / S3-Compatible Readiness
+
+These variables may be present in a local ignored `.env` or a future secret/runtime environment when validating OSS/S3-compatible storage. Do not commit real secret values.
+
+| Variable                | Required For              | Secret? | Safe To Record? | Notes                                                                |
+| ----------------------- | ------------------------- | ------: | --------------: | -------------------------------------------------------------------- |
+| `AWS_REGION`            | OSS/S3-compatible storage |      No |             Yes | Current provided value is tracked in `phase-3-readiness.md`.         |
+| `AWS_ENDPOINT`          | OSS/S3-compatible storage |      No |             Yes | Endpoint URL without credentials is safe to record.                  |
+| `AWS_S3_BUCKET`         | OSS/S3-compatible storage |      No |             Yes | Bucket name is tracked as provided but not yet verified.             |
+| `AWS_ACCESS_KEY_ID`     | OSS/S3-compatible storage |     Yes |              No | Record only that the variable exists in secure runtime/local `.env`. |
+| `AWS_SECRET_ACCESS_KEY` | OSS/S3-compatible storage |     Yes |              No | Never print, commit, or copy into readiness docs or PR descriptions. |
