@@ -61,6 +61,7 @@ Long-running multi-agent execution must keep progress outside chat. These files 
 | `docs/implementation/progress.md` | every agent | Current phase, active branches, completed tasks, blocked tasks, next tasks | Update at start and end of every work session or subagent PR |
 | `docs/implementation/agent-handoffs.md` | every subagent | What a subagent changed, tests run, PR link, assumptions, unresolved issues | Add one entry before each subagent stops |
 | `docs/implementation/env-inventory.md` | lead/devops agent | Required local/staging/prod environment variables and external services | Update whenever a new external service, bucket, key, or secret is needed |
+| `docs/implementation/phase-3-readiness.md` | lead/devops/security agent | Human-provided Phase 3 inputs, validation state, blocker matrix, and safe verification log | Update whenever a Phase 3 input is provided, validated, blocked, or deferred |
 | `docs/implementation/api-contract.md` | backend/API agent | Stable request/response examples for core APIs and MCP tools | Update in the same PR as API behavior changes |
 | `docs/implementation/test-cases.md` | QA/integration agent | Manual and automated acceptance scenarios | Update as done criteria become tests |
 
@@ -1039,9 +1040,25 @@ Phase 2 is complete only when all of these are true:
 
 **Deployment target:** Staging environment, not yet open to real internal beta users.
 
-### Phase 3 Human Inputs Required
+### Phase 3 Readiness Intake And Human Inputs
 
-Stop and ask the human before starting Phase 3 implementation unless these are available in `docs/implementation/env-inventory.md` or a secure secret store:
+Phase 3 no longer requires every human input to be supplied in one batch before any Phase 3 planning can happen. Instead, maintain `docs/implementation/phase-3-readiness.md` as the source of truth for input collection, validation status, and per-track gates.
+
+Agents may update the readiness document when the human provides new information, and may run safe non-destructive validations when credentials are available through a secure runtime channel. Agents must not start implementation for a Phase 3 day unless that day's required inputs are marked `verified` or explicitly `deferred` in the readiness document.
+
+Status values:
+
+- `missing`: required information has not been provided.
+- `provided`: human supplied the information, but no agent has validated it yet.
+- `verified`: an agent validated it with a non-destructive check and recorded evidence.
+- `blocked`: validation failed or the input is unusable.
+- `deferred`: the human explicitly decided the item is not needed for the current Phase 3 slice.
+
+The readiness document must never contain secret values. It may record non-secret service identifiers such as region, endpoint, bucket name, domain, database host, database name, username, SSL mode, admin emails, and secret-store/runtime-env variable names. Passwords, access keys, access secrets, JWT/session secrets, private keys, service-account material, production tokens, and signed URLs with credentials must stay out of git and out of chat.
+
+Stop and ask the human before starting any Phase 3 track whose required inputs are still `missing`, `provided` but unvalidated, or `blocked`.
+
+Initial Phase 3 intake items:
 
 | Item | Example Value | Human Required? | Notes |
 |---|---|---|---|
@@ -1056,6 +1073,14 @@ Stop and ask the human before starting Phase 3 implementation unless these are a
 | JWT/session secret | secret manager only | Yes | Required |
 | Allowed admin emails | list | Yes | Initial online admin list |
 | Qwen/DashScope key | optional for P2 search enhancements | Human decision | Not required for keyword-only online readiness |
+
+Per-track gates:
+
+- Day 1 containerization and runtime config may start when deployment target/runtime shape are at least `provided` and required runtime env names are documented without secret values. It must not claim staging readiness until runtime validation passes.
+- Day 2 Aliyun OSS adapter may start only after OSS region, endpoint, bucket, RAM policy, and OSS secret runtime location are `verified`.
+- Day 3 online database and migration discipline may start only after online MySQL connection metadata and password runtime location are `verified`; backup expectation must be at least `provided`.
+- Day 4 security and operational basics may start when deployment/runtime config is at least `provided`, and JWT/session secret handling is `verified` or the work is explicitly limited to local tests.
+- Day 5 staging deployment runbook may start only after deployment target, domain/TLS decision, online MySQL, OSS, JWT/session secret handling, and admin emails are `verified` or explicitly `deferred` in the readiness document.
 
 ### Day 1: Containerization And Runtime Config
 
