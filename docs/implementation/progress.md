@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-- Phase: Phase 2 complete locally; Phase 3 readiness intake is being documented. Phase 3 implementation has not started.
+- Phase: Phase 2 complete locally; Phase 3 readiness intake is active. OSS/S3-compatible storage access is verified, but Phase 3 implementation has not started.
 - Date: 2026-07-04
-- Lead branch: `codex/phase3-readiness-intake`
+- Lead branch: `codex/phase3-oss-readiness-verify`
 - Deployment target: Developer machine only; no staging or online deployment yet
 
 ## Active Workstreams
@@ -44,6 +44,7 @@
 | Status recovery 2026-07-04     | `codex/enterprise-hub-status-recovery-20260704` | Codex lead agent                                         | Complete         | [PR #34](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/34) | Documentation-only recovery after PR #33 merged; reads required implementation docs, git status/log, open PR metadata, branch/worktree state, blocker boundaries, and file-risk signals. No business code or feature work.                                                                                                                                      |
 | Phase 3 readiness intake       | `codex/phase3-readiness-intake`                 | Codex lead agent                                         | Complete         | [PR #35](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/35) | Documentation-only correction to add `phase-3-readiness.md` as the source of truth for incremental Phase 3 human input collection, safe validation, secret handling, and per-track gates. No Phase 3 business code or infrastructure implementation.                                                                                                            |
 | OSS readiness input            | `codex/phase3-oss-readiness-inputs`             | Codex lead agent                                         | Complete         | [PR #36](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/36) | Documentation-only update after the human added OSS/S3-compatible values to local ignored `.env`. Non-secret region/endpoint/bucket are recorded as `provided`; access key variables are recorded only by name/location. No network validation or OSS implementation.                                                                                           |
+| OSS readiness validation       | `codex/phase3-oss-readiness-verify`             | Codex lead agent                                         | Complete         | [PR #37](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/37) | Validated OSS/S3-compatible access under approved prefix `enterprise-hub-readiness/` with PUT, HEAD/stat, GET, DELETE, and presigned GET. Updates readiness docs only; no OSS adapter implementation or secrets committed.                                                                                                                                      |
 
 ## Completed Checkpoints
 
@@ -150,12 +151,13 @@
 | 2026-07-04 | Phase 3 readiness intake selected       | User identified that Phase 3 should support incremental human input collection and validation instead of requiring every input to be complete before any readiness work. Branch `codex/phase3-readiness-intake` was created from latest `origin/main` after PR #34 merged. Scope is documentation-only: add a readiness tracker and update plan/progress/env docs without writing Phase 3 service code.                                                                              |
 | 2026-07-04 | Phase 3 readiness tracker drafted       | Added `docs/implementation/phase-3-readiness.md` with status vocabulary, secret-handling rules, agent workflow, intake matrix, per-track gates, validation playbooks for OSS/MySQL/domain/deployment target, and a verification log. Updated `implementation-plan.md` so Phase 3 gates are per-track and depend on `verified` or explicitly `deferred` readiness items rather than one all-or-nothing blocker.                                                                       |
 | 2026-07-04 | OSS readiness input recorded            | Read local ignored `.env` without printing secret values. Recorded non-secret OSS/S3-compatible values in `phase-3-readiness.md`: `AWS_REGION=oss-cn-beijing`, `AWS_ENDPOINT=https://oss-cn-beijing.aliyuncs.com`, and `AWS_S3_BUCKET=yxy-tastepal-assets`. Confirmed `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are present but recorded only their variable names/location. No network validation was run. Draft PR #36 opened.                                               |
+| 2026-07-04 | OSS readiness validation passed         | Using approved prefix `enterprise-hub-readiness/`, signed OSS/S3-compatible requests succeeded without exposing secrets: PUT 200, HEAD/stat 200, GET 200 with content match, DELETE 204, and post-delete HEAD 404 for `enterprise-hub-readiness/codex-readiness-1783138001251.txt`. Presigned GET validation also succeeded: PUT 200, presigned GET 200 with content match, DELETE 204, and post-delete HEAD 404 for `enterprise-hub-readiness/codex-presign-1783138050907.txt`.     |
 
 ## Blockers
 
-| Blocker                            | Needed From Human                                                                                                                                                                                                                                      | Since      | Stop Rule                                                                                                                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 3 readiness items unverified | Deployment target/runtime shape, staging domain/TLS decision, online MySQL, Aliyun OSS, secret handling, admin emails, seed policy, real-data policy, and optional model decisions are not yet verified in `docs/implementation/phase-3-readiness.md`. | 2026-07-01 | Agents may update and validate readiness items, but must not start a Phase 3 implementation track until that track's required items are `verified` or explicitly `deferred`. |
+| Blocker                            | Needed From Human                                                                                                                                                                                                                                                                          | Since      | Stop Rule                                                                                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 3 readiness items unverified | Deployment target/runtime shape, staging domain/TLS decision, online MySQL, admin emails, seed policy, real-data policy, and optional model decisions are not yet verified in `docs/implementation/phase-3-readiness.md`. OSS/S3-compatible access is verified for Day 2 OSS adapter work. | 2026-07-01 | Agents may update and validate readiness items, but must not start a Phase 3 implementation track until that track's required items are `verified` or explicitly `deferred`. |
 
 ## Next Actions
 
@@ -219,7 +221,8 @@
 - [x] Update Phase 3 plan gates to use `phase-3-readiness.md` and per-track verified/deferred readiness.
 - [x] Record provided OSS/S3-compatible `.env` readiness inputs without committing or printing secrets.
 - [x] Commit, push, and open/update draft PR for this Phase 3 readiness intake branch.
-- [ ] Provide approved OSS test prefix and RAM policy summary, then run non-destructive OSS validation.
+- [x] Provide approved OSS test prefix and run non-destructive OSS validation.
+- [x] Commit, push, and open/update draft PR for this OSS readiness validation branch.
 - [ ] Clean stale merged/superseded topic branches and old local worktrees after explicit human approval.
 - [ ] Collect and validate Phase 3 readiness items in `phase-3-readiness.md` before starting each online-ready implementation track.
 - [x] Commit, push, and open/update draft PR for this 2026-07-04 status recovery branch.
