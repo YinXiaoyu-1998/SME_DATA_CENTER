@@ -331,3 +331,14 @@
 - Known gaps: Runtime setup path is not chosen. Domain/TLS, online MySQL, admin emails, seed policy, real-data policy, and optional model decisions remain unresolved for later Phase 3 tracks.
 - Human blockers: Choose whether Phase 3 should install Docker/Compose for containerized API+worker on this host or install Node/npm plus a process manager directly. Also decide the secret injection path before deployment.
 - Suggested next agent: Start only the minimal runtime-prerequisite planning/setup track after human approval; do not deploy application services until Docker/Node strategy, env/secret handling, and health-check expectations are recorded.
+
+## 2026-07-05 09:05 - codex/phase3-docker-runtime-readiness - Docker runtime strategy
+
+- Scope: Recorded the human-approved Phase 3 runtime strategy. The Alibaba Cloud Simple Application Server should install Docker/Compose and run the enterprise hub service body as containers, specifically API and worker. MySQL should be independent RDS/standalone MySQL, not a database container on the app host. Did not install packages, deploy services, change server state, connect to MySQL, or modify business code.
+- Files changed: `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: Created clean worktree branch from latest `origin/main` after PR #39 merged; read readiness/progress/handoff docs; updated documentation only.
+- Done criteria passed: Runtime shape is now recorded as Docker Compose API+worker containers behind a reverse proxy, with MCP remaining a client-side adapter pointed at remote API and database expected as independent RDS/standalone MySQL.
+- PR: Pending.
+- Known gaps: Docker/Compose is not installed on the target server yet. Independent MySQL/RDS host, port, database name, username, SSL mode, password runtime location, and backup expectation are still missing. Secret injection path is undecided.
+- Human blockers: Provide or approve Docker/Compose prerequisite setup scope, then provide independent MySQL/RDS connection details through safe channels before migrations or deployment smoke.
+- Suggested next agent: Start only the Docker/Compose prerequisite setup/validation track if approved; do not deploy the app or run migrations until MySQL and secret-handling readiness rows are verified.
