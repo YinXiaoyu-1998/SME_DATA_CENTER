@@ -338,7 +338,7 @@
 - Files changed: `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
 - Commands run: Created clean worktree branch from latest `origin/main` after PR #39 merged; read readiness/progress/handoff docs; updated documentation only.
 - Done criteria passed: Runtime shape is now recorded as Docker Compose API+worker containers behind a reverse proxy, with MCP remaining a client-side adapter pointed at remote API and database expected as independent RDS/standalone MySQL.
-- PR: Pending.
+- PR: Draft PR [#40](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/40).
 - Known gaps: Docker/Compose is not installed on the target server yet. Independent MySQL/RDS host, port, database name, username, SSL mode, password runtime location, and backup expectation are still missing. Secret injection path is undecided.
 - Human blockers: Provide or approve Docker/Compose prerequisite setup scope, then provide independent MySQL/RDS connection details through safe channels before migrations or deployment smoke.
 - Suggested next agent: Start only the Docker/Compose prerequisite setup/validation track if approved; do not deploy the app or run migrations until MySQL and secret-handling readiness rows are verified.
