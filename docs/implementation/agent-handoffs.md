@@ -349,7 +349,7 @@
 - Files changed: `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
 - Commands run: Public DNS checks with `dig +short NS smedatacenter.xyz`, `dig +short A smedatacenter.xyz`, `dig +short AAAA smedatacenter.xyz`, `dig +short A www.smedatacenter.xyz`, `dig +short CNAME www.smedatacenter.xyz`, and authoritative `dig @dns15.hichina.com` checks for NS/A/CNAME.
 - Done criteria passed: Domain `smedatacenter.xyz` is recorded from the human-provided registrar screenshot. Public NS resolves to `dns15.hichina.com` and `dns16.hichina.com`. Current apex A resolves to `198.18.0.99`; current `www` A resolves to `198.18.0.100`; no AAAA/CNAME was returned. This confirms the domain input exists but is not yet configured to the target server `39.96.66.185`.
-- PR: Pending.
+- PR: Draft PR [#41](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/41).
 - Known gaps: Registrar screenshot shows a real-name/template verification warning. The intended DNS mapping is not configured. TLS approach is not selected and HTTPS cannot be validated yet.
 - Human blockers: Complete any required domain real-name/template verification, configure the intended DNS record for the staging host, and choose TLS handling before public staging smoke or certificate validation.
 - Suggested next agent: After DNS is configured, rerun DNS checks and only then validate HTTP/HTTPS and certificate metadata. Do not deploy application services or request certificates before the domain/TLS readiness rows are verified or explicitly deferred.
