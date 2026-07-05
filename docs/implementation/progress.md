@@ -2,10 +2,10 @@
 
 ## Current Phase
 
-- Phase: Phase 2 complete locally; Phase 3 readiness intake is active. OSS/S3-compatible storage access is verified, but Phase 3 implementation has not started.
-- Date: 2026-07-04
-- Lead branch: `codex/phase3-oss-readiness-verify`
-- Deployment target: Developer machine only; no staging or online deployment yet
+- Phase: Phase 2 complete locally; Phase 3 readiness intake is active. OSS/S3-compatible storage access is verified, and a lightweight Alibaba Cloud staging target is provided but not internally verified.
+- Date: 2026-07-05
+- Lead branch: `codex/phase3-lightsail-readiness`
+- Deployment target: Alibaba Cloud Simple Application Server candidate for staging/light beta; no deployment has started
 
 ## Active Workstreams
 
@@ -45,6 +45,7 @@
 | Phase 3 readiness intake       | `codex/phase3-readiness-intake`                 | Codex lead agent                                         | Complete         | [PR #35](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/35) | Documentation-only correction to add `phase-3-readiness.md` as the source of truth for incremental Phase 3 human input collection, safe validation, secret handling, and per-track gates. No Phase 3 business code or infrastructure implementation.                                                                                                            |
 | OSS readiness input            | `codex/phase3-oss-readiness-inputs`             | Codex lead agent                                         | Complete         | [PR #36](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/36) | Documentation-only update after the human added OSS/S3-compatible values to local ignored `.env`. Non-secret region/endpoint/bucket are recorded as `provided`; access key variables are recorded only by name/location. No network validation or OSS implementation.                                                                                           |
 | OSS readiness validation       | `codex/phase3-oss-readiness-verify`             | Codex lead agent                                         | Complete         | [PR #37](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/37) | Validated OSS/S3-compatible access under approved prefix `enterprise-hub-readiness/` with PUT, HEAD/stat, GET, DELETE, and presigned GET. Updates readiness docs only; no OSS adapter implementation or secrets committed.                                                                                                                                      |
+| Deployment target readiness    | `codex/phase3-lightsail-readiness`              | Codex lead agent                                         | In progress      | Pending                                                             | Recorded Alibaba Cloud Simple Application Server as a staging/light-beta deployment candidate and validated public reachability only. SSH/internal runtime validation still needs secure access details. No deployment or business code changes.                                                                                                                |
 
 ## Completed Checkpoints
 
@@ -152,12 +153,14 @@
 | 2026-07-04 | Phase 3 readiness tracker drafted       | Added `docs/implementation/phase-3-readiness.md` with status vocabulary, secret-handling rules, agent workflow, intake matrix, per-track gates, validation playbooks for OSS/MySQL/domain/deployment target, and a verification log. Updated `implementation-plan.md` so Phase 3 gates are per-track and depend on `verified` or explicitly `deferred` readiness items rather than one all-or-nothing blocker.                                                                       |
 | 2026-07-04 | OSS readiness input recorded            | Read local ignored `.env` without printing secret values. Recorded non-secret OSS/S3-compatible values in `phase-3-readiness.md`: `AWS_REGION=oss-cn-beijing`, `AWS_ENDPOINT=https://oss-cn-beijing.aliyuncs.com`, and `AWS_S3_BUCKET=yxy-tastepal-assets`. Confirmed `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are present but recorded only their variable names/location. No network validation was run. Draft PR #36 opened.                                               |
 | 2026-07-04 | OSS readiness validation passed         | Using approved prefix `enterprise-hub-readiness/`, signed OSS/S3-compatible requests succeeded without exposing secrets: PUT 200, HEAD/stat 200, GET 200 with content match, DELETE 204, and post-delete HEAD 404 for `enterprise-hub-readiness/codex-readiness-1783138001251.txt`. Presigned GET validation also succeeded: PUT 200, presigned GET 200 with content match, DELETE 204, and post-delete HEAD 404 for `enterprise-hub-readiness/codex-presign-1783138050907.txt`.     |
+| 2026-07-05 | Deployment target input recorded        | Recorded human-provided Alibaba Cloud Simple Application Server details in `phase-3-readiness.md`: instance `Ubuntu-yyht`, public IP `39.96.66.185`, Ubuntu 22.04, 华北 2（北京）, 2 vCPU / 2 GiB RAM / 40 GiB ESSD. Public reachability checks found TCP 22/80/443/3000 open, SSH banner `OpenSSH_8.9p1 Ubuntu-3ubuntu0.15`, and HTTP port 80 returning nginx `200 OK`. No SSH login or deployment was performed.                                                                   |
 
 ## Blockers
 
-| Blocker                            | Needed From Human                                                                                                                                                                                                                                                                          | Since      | Stop Rule                                                                                                                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 3 readiness items unverified | Deployment target/runtime shape, staging domain/TLS decision, online MySQL, admin emails, seed policy, real-data policy, and optional model decisions are not yet verified in `docs/implementation/phase-3-readiness.md`. OSS/S3-compatible access is verified for Day 2 OSS adapter work. | 2026-07-01 | Agents may update and validate readiness items, but must not start a Phase 3 implementation track until that track's required items are `verified` or explicitly `deferred`. |
+| Blocker                            | Needed From Human                                                                                                                                                                                                                                                                                                                                      | Since      | Stop Rule                                                                                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 3 readiness items unverified | Deployment target/runtime shape is provided but still needs SSH/internal runtime validation; staging domain/TLS decision, online MySQL, admin emails, seed policy, real-data policy, and optional model decisions are not yet verified in `docs/implementation/phase-3-readiness.md`. OSS/S3-compatible access is verified for Day 2 OSS adapter work. | 2026-07-01 | Agents may update and validate readiness items, but must not start a Phase 3 implementation track until that track's required items are `verified` or explicitly `deferred`. |
+| Deployment target internal access  | Need SSH username and key/password through a secure channel, or another approved access method, to verify OS resources, package manager, Docker/Node availability, disk, firewall, and deploy boundary on `39.96.66.185`.                                                                                                                              | 2026-07-05 | Do not deploy or claim server runtime readiness until internal checks pass without exposing credentials.                                                                     |
 
 ## Next Actions
 
@@ -223,6 +226,8 @@
 - [x] Commit, push, and open/update draft PR for this Phase 3 readiness intake branch.
 - [x] Provide approved OSS test prefix and run non-destructive OSS validation.
 - [x] Commit, push, and open/update draft PR for this OSS readiness validation branch.
+- [x] Record Alibaba Cloud Simple Application Server deployment target candidate and public reachability evidence.
+- [ ] Provide secure SSH/access details for internal deployment target validation.
 - [ ] Clean stale merged/superseded topic branches and old local worktrees after explicit human approval.
 - [ ] Collect and validate Phase 3 readiness items in `phase-3-readiness.md` before starting each online-ready implementation track.
 - [x] Commit, push, and open/update draft PR for this 2026-07-04 status recovery branch.
