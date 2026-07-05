@@ -320,3 +320,14 @@
 - Known gaps: Correct SSH username/password, enabled password login, post-reset restart, or key-based access still needs confirmation before internal runtime checks can run.
 - Human blockers: Provide a working SSH access method through a secure channel, then rerun only non-destructive internal checks.
 - Suggested next agent: After SSH works, verify OS, CPU/memory/disk, Docker/Node/npm availability, nginx/process/firewall state, and deployment boundary; do not deploy until those checks are recorded.
+
+## 2026-07-05 08:45 - codex/phase3-lightsail-readiness - Deployment internal check
+
+- Scope: Follow-up readiness update after the password file was corrected to contain only the raw password. Verified non-destructive internal server state over SSH and updated readiness/progress records. Did not deploy, install packages, change server configuration, print the password, commit secrets, or modify business code.
+- Files changed: `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: `expect`-driven SSH as `root@39.96.66.185` reading `~/.ssh/enterprise-hub-server-password.txt` without printing it; remote read-only checks for `whoami`, `hostname`, OS release, kernel, CPU count, memory, root disk, Docker/Docker Compose, Node/npm, nginx, systemd service state, listening ports, and UFW status.
+- Done criteria passed: `root` SSH succeeded; server reports Ubuntu 22.04.5 LTS, kernel 5.15.0-142, 2 CPU, 1608 MiB memory, and 40G root disk with 34G available; nginx 1.18.0 is active and listening on port 80; UFW is inactive. Docker, Docker Compose, Node, and npm are not installed, so runtime prerequisite setup remains required before deployment.
+- PR: Draft PR [#39](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/39).
+- Known gaps: Runtime setup path is not chosen. Domain/TLS, online MySQL, admin emails, seed policy, real-data policy, and optional model decisions remain unresolved for later Phase 3 tracks.
+- Human blockers: Choose whether Phase 3 should install Docker/Compose for containerized API+worker on this host or install Node/npm plus a process manager directly. Also decide the secret injection path before deployment.
+- Suggested next agent: Start only the minimal runtime-prerequisite planning/setup track after human approval; do not deploy application services until Docker/Node strategy, env/secret handling, and health-check expectations are recorded.
