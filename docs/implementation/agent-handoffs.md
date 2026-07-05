@@ -309,3 +309,14 @@
 - Known gaps: SSH credentials or another secure access method are still needed to verify internal OS resource readings, Docker/Node availability, package manager state, disk free space, process manager choice, firewall, deploy user, deploy directory, and secret injection path. Port 443 is reachable but HTTPS did not complete a TLS response during the public check; port 3000 accepts TCP but returned an empty HTTP reply. Password auth for `root` and `ubuntu` returned `Permission denied`.
 - Human blockers: Confirm the correct SSH username/password, whether password login is enabled, whether the instance must be restarted after password reset, or provide key-based access through a secure channel. Also still needed for later Phase 3 tracks: staging domain/TLS decision, online MySQL, admin emails, seed policy, real-data policy, and optional model decisions.
 - Suggested next agent: After secure access is available, run only non-destructive internal checks such as `lsb_release`, `uname`, `df -h`, `free -m`, `docker --version`, `node --version`, `npm --version`, and firewall/process inspection; update `phase-3-readiness.md` before any deployment.
+
+## 2026-07-05 08:20 - codex/phase3-lightsail-readiness - Deployment SSH access blocker
+
+- Scope: Follow-up readiness update after PR #38 merged. Tried the human-provided local password file against likely SSH usernames, then recorded the failed access result. Did not print the password, commit secrets, log into the server, change server state, deploy, or modify business code.
+- Files changed: `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: `chmod 600 ~/.ssh/enterprise-hub-server-password.txt`; `expect`-driven SSH attempts for `root@39.96.66.185` and `ubuntu@39.96.66.185`; `npx prettier --write`; `npm run format:check`; `git diff --check`; secret-shape diff scan.
+- Done criteria passed: Password file permissions are now local `600`; both SSH attempts failed with `Permission denied`; no server login occurred; readiness docs now mark the deployment target access method as blocked rather than internally verified.
+- PR: Draft PR [#39](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/39).
+- Known gaps: Correct SSH username/password, enabled password login, post-reset restart, or key-based access still needs confirmation before internal runtime checks can run.
+- Human blockers: Provide a working SSH access method through a secure channel, then rerun only non-destructive internal checks.
+- Suggested next agent: After SSH works, verify OS, CPU/memory/disk, Docker/Node/npm availability, nginx/process/firewall state, and deployment boundary; do not deploy until those checks are recorded.

@@ -46,6 +46,7 @@
 | OSS readiness input            | `codex/phase3-oss-readiness-inputs`             | Codex lead agent                                         | Complete         | [PR #36](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/36) | Documentation-only update after the human added OSS/S3-compatible values to local ignored `.env`. Non-secret region/endpoint/bucket are recorded as `provided`; access key variables are recorded only by name/location. No network validation or OSS implementation.                                                                                           |
 | OSS readiness validation       | `codex/phase3-oss-readiness-verify`             | Codex lead agent                                         | Complete         | [PR #37](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/37) | Validated OSS/S3-compatible access under approved prefix `enterprise-hub-readiness/` with PUT, HEAD/stat, GET, DELETE, and presigned GET. Updates readiness docs only; no OSS adapter implementation or secrets committed.                                                                                                                                      |
 | Deployment target readiness    | `codex/phase3-lightsail-readiness`              | Codex lead agent                                         | Complete         | [PR #38](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/38) | Recorded Alibaba Cloud Simple Application Server as a staging/light-beta deployment candidate and validated public reachability only. SSH/internal runtime validation still needs secure access details. No deployment or business code changes.                                                                                                                |
+| Deployment SSH access blocker  | `codex/phase3-lightsail-readiness`              | Codex lead agent                                         | Complete         | [PR #39](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/39) | Recorded failed password SSH attempts for `root` and `ubuntu` after PR #38 merged. Deployment target remains blocked for internal validation; no server login, deployment, or business code changes.                                                                                                                                                            |
 
 ## Completed Checkpoints
 
@@ -229,6 +230,7 @@
 - [x] Commit, push, and open/update draft PR for this OSS readiness validation branch.
 - [x] Record Alibaba Cloud Simple Application Server deployment target candidate and public reachability evidence.
 - [x] Commit, push, and open/update draft PR for this deployment target readiness branch.
+- [x] Record failed SSH password-auth attempts and open/update draft PR for the blocker update.
 - [ ] Provide secure SSH/access details for internal deployment target validation.
 - [ ] Clean stale merged/superseded topic branches and old local worktrees after explicit human approval.
 - [ ] Collect and validate Phase 3 readiness items in `phase-3-readiness.md` before starting each online-ready implementation track.
