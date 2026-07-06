@@ -360,7 +360,7 @@
 - Files changed: `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
 - Commands run: `dig +short A smedatacenter.xyz`; `dig +short A www.smedatacenter.xyz`; `dig +short A api.smedatacenter.xyz`; `dig +short NS smedatacenter.xyz`; authoritative checks against `dns15.hichina.com` and `dns16.hichina.com`; recursive checks against AliDNS `223.5.5.5` and Google DNS `8.8.8.8`.
 - Done criteria passed: Console screenshot records A entries for `@`, `www`, and `api` pointing to `39.96.66.185` with 10-minute TTL. External verification does not pass yet: apex returns `198.18.0.99`, `www` returns `198.18.0.100`, and `api` returns `198.18.0.4` from public/default, authoritative HiChina, AliDNS, and Google DNS checks.
-- PR: Pending.
+- PR: Draft PR [#42](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/42).
 - Known gaps: DNS propagation or registrar-side state is not complete from the outside. Prior screenshot showed a real-name/template verification warning, so registrar compliance status may still be blocking normal resolution. TLS approach remains unselected.
 - Human blockers: Wait for propagation and confirm domain real-name/template verification is complete if results remain on `198.18.x.x`. Do not proceed to TLS validation or public staging smoke until `@`, `www`, and `api` resolve to `39.96.66.185`.
 - Suggested next agent: Rerun public and authoritative DNS checks after the TTL window. If all three names resolve to `39.96.66.185`, update readiness to `verified` for the staging domain and proceed only to the TLS decision/validation step.
