@@ -50,3 +50,17 @@ These variables may be present in a local ignored `.env` or a future secret/runt
 | `AWS_S3_BUCKET`         | OSS/S3-compatible storage |      No |             Yes | Bucket name is tracked as provided but not yet verified.             |
 | `AWS_ACCESS_KEY_ID`     | OSS/S3-compatible storage |     Yes |              No | Record only that the variable exists in secure runtime/local `.env`. |
 | `AWS_SECRET_ACCESS_KEY` | OSS/S3-compatible storage |     Yes |              No | Never print, commit, or copy into readiness docs or PR descriptions. |
+
+## Phase 3 Container Registry Readiness
+
+These deployment/CI variables are pending an account-owned Alibaba Cloud ACR repository in `cn-beijing`. Store credentials outside git.
+
+| Variable                               | Required For           | Secret? | Safe To Record? | Notes                                                       |
+| -------------------------------------- | ---------------------- | ------: | --------------: | ----------------------------------------------------------- |
+| `ENTERPRISE_HUB_ACR_REGISTRY`          | Image push/pull        |      No |             Yes | Exact ACR registry hostname; do not include credentials.    |
+| `ENTERPRISE_HUB_ACR_NAMESPACE`         | Image naming           |      No |             Yes | Recommended namespace: `enterprise-hub`, if available.      |
+| `ENTERPRISE_HUB_ACR_API_REPOSITORY`    | API image naming       |      No |             Yes | Recommended repository: `api`.                              |
+| `ENTERPRISE_HUB_ACR_WORKER_REPOSITORY` | Worker image naming    |      No |             Yes | Recommended repository: `worker`.                           |
+| `ENTERPRISE_HUB_ACR_USERNAME`          | Registry login         |      No |             Yes | Keep in protected deployment runtime or CI configuration.   |
+| `ENTERPRISE_HUB_ACR_PASSWORD`          | Registry login         |     Yes |              No | Use `docker login --password-stdin`; never print or commit. |
+| `ENTERPRISE_HUB_IMAGE_TAG`             | Immutable image deploy |      No |             Yes | Use a commit SHA or release version; never deploy `latest`. |
