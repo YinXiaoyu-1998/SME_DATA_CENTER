@@ -364,3 +364,14 @@
 - Known gaps: DNS propagation or registrar-side state is not complete from the outside. Prior screenshot showed a real-name/template verification warning, and forced Host HTTP now shows an ICP filing block, so registrar/ICP compliance status may be blocking normal domain use. TLS approach remains unselected.
 - Human blockers: Wait for propagation and confirm domain real-name/template verification and ICP/filing status are complete if results remain on `198.18.x.x` or Host requests return `Non-compliance ICP Filing`. Do not proceed to TLS validation or public staging smoke until `@`, `www`, and `api` resolve to `39.96.66.185` and Host HTTP is no longer compliance-blocked.
 - Suggested next agent: Rerun public and authoritative DNS checks plus forced Host HTTP checks after the TTL/compliance window. If all three names resolve to `39.96.66.185` and no longer return ICP filing block, update readiness to `verified` for the staging domain and proceed only to the TLS decision/validation step.
+
+## 2026-07-09 10:25 - codex/phase3-server-runtime-prereqs - Server runtime prerequisites
+
+- Scope: Installed and validated staging host runtime prerequisites only. Added a reproducible provisioning script and focused runbook. No application deployment, database migration, DNS/TLS change, secret upload, or business-code change.
+- Files changed: `scripts/provision-staging-runtime.sh`, `docs/implementation/server-runtime-prerequisites.md`, `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: Provisioning script syntax and checksum checks; remote apt installation; Docker/Compose/Buildx/Node/npm/Git/nginx version and service checks; Docker daemon configuration checks; Compose config parse; Node and npm smoke; nginx config and HTTP smoke; Docker Hub pull probe; Alibaba Cloud ACR public manifest probe; listener and disk checks; formatting and secret scans.
+- Done criteria passed: Docker 29.6.1, Compose 5.3.1, Buildx 0.35.0, Node 22.23.1, npm 10.9.8, Git 2.34.1, and nginx 1.18.0 are installed. Docker and nginx are enabled and active. Docker live restore and bounded JSON logs are active. nginx returns HTTP 404 until deployment. Provisioning rerun is idempotent.
+- PR: Pending.
+- Known gaps: Docker Hub and GitHub remain unreachable from the server. General ACR/public manifest access works, but the account-owned Beijing ACR registry hostname, namespace, API/worker repository names, and secure login credential location are not provided.
+- Human blockers: Create or select the Beijing ACR repositories and provide non-secret identifiers plus a secure credential location. Independent MySQL, ICP approval, TLS, admin, and production-secret readiness remain separate blockers.
+- Suggested next agent: Validate authenticated ACR push/pull with a disposable fixed tag, then begin only the earliest Phase 3 task whose readiness gate is satisfied.
