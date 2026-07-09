@@ -371,7 +371,7 @@
 - Files changed: `scripts/provision-staging-runtime.sh`, `docs/implementation/server-runtime-prerequisites.md`, `docs/implementation/phase-3-readiness.md`, `docs/implementation/progress.md`, and this handoff.
 - Commands run: Provisioning script syntax and checksum checks; remote apt installation; Docker/Compose/Buildx/Node/npm/Git/nginx version and service checks; Docker daemon configuration checks; Compose config parse; Node and npm smoke; nginx config and HTTP smoke; Docker Hub pull probe; Alibaba Cloud ACR public manifest probe; listener and disk checks; formatting and secret scans.
 - Done criteria passed: Docker 29.6.1, Compose 5.3.1, Buildx 0.35.0, Node 22.23.1, npm 10.9.8, Git 2.34.1, and nginx 1.18.0 are installed. Docker and nginx are enabled and active. Docker live restore and bounded JSON logs are active. nginx returns HTTP 404 until deployment. Provisioning rerun is idempotent.
-- PR: Pending.
+- PR: Draft PR [#45](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/45).
 - Known gaps: Docker Hub and GitHub remain unreachable from the server. General ACR/public manifest access works, but the account-owned Beijing ACR registry hostname, namespace, API/worker repository names, and secure login credential location are not provided.
 - Human blockers: Create or select the Beijing ACR repositories and provide non-secret identifiers plus a secure credential location. Independent MySQL, ICP approval, TLS, admin, and production-secret readiness remain separate blockers.
 - Suggested next agent: Validate authenticated ACR push/pull with a disposable fixed tag, then begin only the earliest Phase 3 task whose readiness gate is satisfied.
