@@ -375,3 +375,25 @@
 - Known gaps: Docker Hub and GitHub remain unreachable from the server. General ACR/public manifest access works, but the account-owned Beijing ACR registry hostname, namespace, API/worker repository names, and secure login credential location are not provided.
 - Human blockers: Create or select the Beijing ACR repositories and provide non-secret identifiers plus a secure credential location. Independent MySQL, ICP approval, TLS, admin, and production-secret readiness remain separate blockers.
 - Suggested next agent: Validate authenticated ACR push/pull with a disposable fixed tag, then begin only the earliest Phase 3 task whose readiness gate is satisfied.
+
+## 2026-07-09 10:10 - codex/phase3-dns-target-verify - Post-reset readiness validation (retrospective)
+
+- Scope: Restored the handoff omitted from merged PR #44. That work recorded the server reset, public-key SSH blocker and resolution, refreshed internal runtime/network evidence, ICP review state, and current DNS placeholders. It did not deploy the application, change DNS/TLS, install packages, upload secrets, run migrations, or modify business code.
+- Files changed: PR #44 changed `docs/implementation/phase-3-readiness.md` and `docs/implementation/progress.md`. This retrospective handoff is added by the 2026-07-09 status recovery branch.
+- Commands run: Public TCP checks; SSH authentication and read-only internal OS/resource/runtime checks; public and authoritative DNS queries; outbound package/registry probes; `npm run format:check`; `git diff --check`; documentation secret-shape scan.
+- Done criteria passed: After the human bound the approved Ed25519 key, root public-key SSH succeeded; Ubuntu 22.04.5, resources, time sync, and password-disabled SSH were verified. Docker, Compose, Node, npm, and nginx were absent after reset. Package mirrors and ACR were reachable; Docker Hub and GitHub were not. ICP/DNS remained blocked.
+- PR: Merged PR [#44](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/44).
+- Known gaps: The original PR failed the documentation-discipline criterion requiring a matching handoff. The operational findings were later superseded in part by PR #45, which installed and verified host runtime prerequisites.
+- Human blockers: At that point, runtime setup required explicit approval and domain work required ICP approval. Runtime approval was later provided and handled in PR #45; ICP/DNS/TLS remain blocked.
+- Suggested next agent: Use the latest readiness state from `origin/main`; do not treat the pre-PR #45 missing-runtime evidence as current.
+
+## 2026-07-09 17:47 - codex/enterprise-hub-status-recovery-20260709 - Implementation status recovery
+
+- Scope: Documentation-only recovery audit after PR #45. Reconciled the real Phase/Day/Track, completed evidence, incomplete and partial work, branch/worktree and PR hygiene, human blocker enforcement, and secret/file risks. Did not write business code, add features, change infrastructure, clean worktrees, or resolve external blockers.
+- Files changed: `docs/implementation/progress.md`, `docs/implementation/agent-handoffs.md`.
+- Commands run: Read all required implementation documents; fetched Git state; inspected status/log/branches/worktrees and PR #35-#45 metadata; compared stale branches with `git cherry`; scanned tracked files/history for secret and prohibited-file patterns; ran `npm install`, `npm run db:generate`, `npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check`.
+- Done criteria passed: True state is Phase 3 readiness/platform prerequisites before Day 1 implementation. Phase 1 and Phase 2 evidence remains intact. Phase 3 Days 1-2 are ready but not started; Days 3-5 are blocked/not started. No open PR, current committed cross-scope pollution, bypassed human blocker, tracked secret, real credential, or prohibited file was found. Missing PR #44 records were restored.
+- PR: Not opened; the user requested only a documentation commit and push.
+- Known gaps: The primary checkout remains on merged PR #33 with a pre-existing uncommitted `progress.md` change. Nine older worktrees and stale merged/superseded branches remain. Independent integration/MCP tests were not rerun because they reset local MySQL; this audit relied on merged acceptance evidence and reran non-DB repository checks.
+- Human blockers: ACR repository/credential location, independent MySQL, ICP/DNS/TLS, JWT/session secret handling, admin/seed/real-data policy, and optional model decisions remain unresolved for their dependent tracks.
+- Suggested next agent: After integrating this documentation branch, select one ready Phase 3 track. Prefer Day 1 containerization/runtime config as a bounded local implementation; do not deploy until ACR and the later staging gates pass.

@@ -2,10 +2,10 @@
 
 ## Current Phase
 
-- Phase: Phase 2 complete locally; Phase 3 readiness intake is active. OSS/S3-compatible storage, deployment target access, Docker Engine, Compose, Node.js 22, npm, Git, and nginx are verified. Application image delivery still needs a selected Beijing ACR repository. ICP review and independent MySQL inputs remain blocked.
+- Phase: Phase 2 complete locally. Phase 3 is in readiness/platform-prerequisite work before Day 1 implementation. Day 1 containerization and Day 2 OSS adapter gates are ready, but neither implementation has started; Days 3-5 remain blocked.
 - Date: 2026-07-09
-- Lead branch: `codex/phase3-server-runtime-prereqs`
-- Deployment target: Alibaba Cloud Simple Application Server candidate for staging/light beta; no deployment has started
+- Lead branch: `codex/enterprise-hub-status-recovery-20260709`
+- Deployment target: Alibaba Cloud Simple Application Server candidate for staging/light beta; host prerequisites are installed, but no application image, migration, or service deployment has started
 
 ## Active Workstreams
 
@@ -51,7 +51,9 @@
 | Domain readiness               | `codex/phase3-domain-readiness`                 | Codex lead agent                                         | Complete         | [PR #41](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/41) | Recorded purchased domain `smedatacenter.xyz` from registrar screenshot and verified NS resolves to HiChina. DNS currently resolves apex to `198.18.0.99` and `www` to `198.18.0.100`, not target server `39.96.66.185`; TLS decision remains missing.                                                                                                                        |
 | Domain DNS target verification | `codex/phase3-dns-target-verify`                | Codex lead agent                                         | Complete         | [PR #42](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/42) | Human-provided DNS console screenshot shows A records for `@`, `www`, and `api` pointing to `39.96.66.185`, but public, AliDNS, Google DNS, and authoritative HiChina queries still return `198.18.0.99`, `198.18.0.100`, and `198.18.0.4`. Forced Host HTTP to `39.96.66.185` returns Alibaba `Non-compliance ICP Filing`. No DNS, server, or application changes were made. |
 | Domain ICP filing check        | `codex/phase3-dns-target-verify`                | Codex lead agent                                         | Complete         | [PR #43](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/43) | Follow-up to merged PR #42. Direct IP `http://39.96.66.185` returns nginx `200 OK`, but forced Host requests for apex, `www`, and `api` return Alibaba `Server: Beaver` `403 Forbidden` with `Non-compliance ICP Filing`. No DNS, server, or application changes were made.                                                                                                   |
-| Server runtime prerequisites   | `codex/phase3-server-runtime-prereqs`           | Codex lead agent                                         | Complete locally | [PR #45](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/45) | Installed and verified Docker Engine, Compose, Buildx, Node.js 22, npm, Git, and nginx through a reproducible script. Docker Hub remains unreachable; ACR manifest access works, but an account-owned Beijing ACR registry/repository and secure credentials are still required before application image delivery.                                                            |
+| Post-reset readiness check     | `codex/phase3-dns-target-verify`                | Codex lead agent                                         | Complete         | [PR #44](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/44) | Recorded the server reset, restored public-key SSH validation, refreshed OS/runtime/network evidence, and kept ICP/DNS blockers explicit. This PR updated readiness/progress but omitted the required handoff entry; the recovery audit adds it retrospectively.                                                                                                              |
+| Server runtime prerequisites   | `codex/phase3-server-runtime-prereqs`           | Codex lead agent                                         | Complete         | [PR #45](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/45) | Installed and verified Docker Engine, Compose, Buildx, Node.js 22, npm, Git, and nginx through a reproducible script. Docker Hub remains unreachable; ACR manifest access works, but an account-owned Beijing ACR registry/repository and secure credentials are still required before application image delivery.                                                            |
+| Status recovery 2026-07-09     | `codex/enterprise-hub-status-recovery-20260709` | Codex lead agent                                         | Complete locally | Not opened                                                          | Documentation-only audit from `origin/main` after PR #45. Reconciles Phase/Day/Track state, done evidence, missing work, branch/worktree hygiene, human blockers, secret risks, and the missing PR #44 handoff. No business code or infrastructure state changed.                                                                                                             |
 
 ## Completed Checkpoints
 
@@ -171,6 +173,40 @@
 | 2026-07-09 | Runtime prerequisite setup started      | Started infrastructure-only setup on `codex/phase3-server-runtime-prereqs` after explicit human approval. Scope is Docker Engine, Compose plugin, Node.js 22, npm, nginx, container-registry reachability/configuration, and verification on the reset Alibaba Cloud server. No application deployment, database migration, DNS/TLS change, secret upload, or business-code change is included.                                                                                      |
 | 2026-07-09 | Runtime prerequisite setup passed       | Installed Docker 29.6.1, Compose 5.3.1, Buildx 0.35.0, Node 22.23.1, npm 10.9.8, Git 2.34.1, and nginx 1.18.0 from documented apt repositories. Docker and nginx are active and enabled; Docker live restore and bounded JSON logging are active; nginx returns HTTP 404 until deployment. Compose parsing, Node execution, npm access, nginx local/public HTTP, and public ACR manifest checks passed. Docker Hub pull remains unavailable.                                         |
 | 2026-07-09 | Runtime knowledge recorded              | Added concise staging runtime/ACR rules to `AGENTS.md`, recorded pending ACR deployment variables in `env-inventory.md`, and linked the runtime runbook from both READMEs. No separate memory file was added because readiness, progress, handoff, and runbook documents already provide scoped durable state.                                                                                                                                                                       |
+| 2026-07-09 | Status recovery session started         | Created `codex/enterprise-hub-status-recovery-20260709` from `origin/main` commit `12d0917` because the primary checkout was still on merged PR #33 branch with an unrelated uncommitted `progress.md` change. Read the required implementation docs, Git status/log/branches/worktrees, and PR metadata without altering the primary checkout.                                                                                                                                      |
+| 2026-07-09 | Phase 1 and Phase 2 evidence confirmed  | Phase 1 Days 0-6 and the P0 label correction are merged in PRs #2-#17; Phase 2 Days 1-6 are merged in PRs #18-#25, with local bootup/skill corrections in PRs #27-#33. `api-contract.md` and `test-cases.md` document the implemented API/MCP surface and passing acceptance evidence. Fresh verification after `npm install` and `npm run db:generate` passed 13 test files / 75 tests, typecheck, lint, and format checks.                                                         |
+| 2026-07-09 | Phase 3 true boundary confirmed         | Current work is readiness/platform prerequisites before Day 1 implementation. Deployment/runtime and OSS gates are ready, but no API/worker Dockerfiles, external-service compose example, `/readyz`, OSS adapter, online DB deployment flow, production auth hardening, or staging deploy runbook exists. Therefore no Phase 3 day is complete and Phase 4 has not started.                                                                                                         |
+| 2026-07-09 | Branch and handoff audit completed      | GitHub reports no open PR. All Phase 3 PRs #35-#45 are merged. No committed cross-scope code contamination was found. PR #44 had no matching handoff and was absent from the workstream table; both records are restored here. The primary checkout remains on merged PR #33 with an uncommitted, superseded July 4 deployment note. Nine older worktrees remain attached; two stale remote branches are patch-equivalent to already merged work.                                    |
+| 2026-07-09 | Blocker and secret audit completed      | Runtime/OSS validations used explicit human approvals and did not bypass a recorded stop rule. ACR, online MySQL, JWT/session secret handling, admin/seed/real-data policy, ICP/DNS, and TLS remain unresolved and still block their dependent tracks. No tracked `.env`, `.data`, private key, credential file, or high-confidence secret pattern was found; local ignored `.env` and SSH credential files remain outside git and must stay there.                                  |
+
+## Recovery Audit Findings
+
+### Done Criteria And Evidence
+
+- Phase 1 Days 0-6 and the P0 `GET /labels` correction are complete and merged. Evidence is recorded in PRs #2-#17, `api-contract.md`, `test-cases.md`, and the Phase 1 integration checkpoint history.
+- Phase 2 Days 1-6 are complete and merged. The local MCP server, API-delegating tools, permission-isolation smoke, `enterprise-hub-mcp` skill, and final packaging evidence are recorded in PRs #18-#25 and follow-up corrections #27-#33.
+- Phase 3 readiness intake is established. Deployment target/runtime shape and OSS access are verified; the reset server now has the approved host prerequisites. Evidence is in `phase-3-readiness.md`, PRs #35-#45, and `server-runtime-prerequisites.md`.
+- Repository verification for this audit passed after dependency install and Prisma client generation: `npm test` (13 files / 75 tests), `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check`.
+
+### Incomplete Or Partial Work
+
+- Phase 3 Day 1 is ready to start but not implemented: no API/worker Dockerfile, external-MySQL compose example, `/readyz`, production boot config validation, or container smoke evidence exists. Host package provisioning is a prerequisite, not Day 1 completion.
+- Phase 3 Day 2 is ready to start but not implemented: OSS credentials/access were validated, but there is no `AliyunOssStorageAdapter`, SDK integration, gated OSS integration test, or runtime adapter selection.
+- Phase 3 Day 3 has not started and is blocked on verified independent MySQL connection metadata, password runtime location, and backup expectation.
+- Phase 3 Day 4 has not started and is blocked on JWT/session secret handling for non-local work. Existing token schema/API scaffolding does not satisfy the production hardening criteria.
+- Phase 3 Day 5 has not started and remains blocked on ACR image delivery, domain/ICP/DNS/TLS, online MySQL, JWT/session secret handling, admin emails, and staging policy inputs.
+- Phase 4 has not started. The existing `apps/admin-web` workspace placeholder is Day 0 structure only, not beta UI implementation.
+
+### Process And Scope Findings
+
+- No open PR or committed branch-to-branch business-code pollution is present. Recent Phase 3 PRs stayed in readiness/runtime-prerequisite scope.
+- PR #44 omitted the mandatory handoff entry, and `progress.md` skipped its workstream row. This audit restores both.
+- The configured lead integration branch `codex/enterprise-hub-implementation` is stale and has not been used as the actual integration line; work has been merged directly to `main`.
+- The primary checkout is stale on merged PR #33 and contains two uncommitted July 4 ECS-deployment notes. Those notes are superseded by merged PRs #38-#45 and were intentionally not copied into this branch.
+- Nine older worktrees remain attached to merged or superseded branches. `origin/codex/api-load-env-file` and `origin/codex/phase3-readiness-intake` appear unmerged by ancestry, but `git cherry` shows no unique patches relative to `origin/main`.
+- Historical Phase 2 QA contamination and incomplete independent QA are already recorded. No new subagent pollution was found in this audit.
+- No human blocker was silently assumed. Remote runtime provisioning followed explicit approval; OSS validation used the approved test prefix/actions. Outstanding stop rules remain active.
+- No tracked secret or prohibited file was found. Local ignored `.env`, MCP/CLI session paths, and SSH credential files remain operational risks if copied or logged and must not enter git.
 
 ## Blockers
 
@@ -264,4 +300,7 @@
 - [ ] Provide and validate independent RDS/standalone MySQL connection details.
 - [ ] Clean stale merged/superseded topic branches and old local worktrees after explicit human approval.
 - [ ] Collect and validate Phase 3 readiness items in `phase-3-readiness.md` before starting each online-ready implementation track.
+- [x] Run the 2026-07-09 status recovery against required docs, Git/PR/worktree state, done evidence, blockers, and secret/file risks.
+- [x] Restore the missing PR #44 workstream and handoff records.
+- [ ] After this documentation branch is integrated, choose exactly one ready Phase 3 implementation track; prefer Day 1 containerization/runtime config before staging deployment.
 - [x] Commit, push, and open/update draft PR for this 2026-07-04 status recovery branch.
