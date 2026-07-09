@@ -12,10 +12,10 @@
 
 - Lead integration branch: `codex/enterprise-hub-implementation`.
 - Subagents must use their own branch and stay inside their assigned day/workstream.
-- Update `docs/implementation/progress.md` at the start and end of every work session.
-- Subagents must append to `docs/implementation/agent-handoffs.md` before stopping.
+- Update `docs/implementation/progress.md` at session start/end; subagents must append to `docs/implementation/agent-handoffs.md` before stopping.
 - Draft PR descriptions must include scope, tests run, environment changes, human inputs used, and known limitations.
 - When `skills/enterprise-hub-mcp/` changes in this workspace, also sync the same skill update to the standalone repository `YinXiaoyu-1998/enterprise-hub-mcp-skill` and open/update a PR there.
+- After any lead/subagent task is verified and fully merged into `main`, remove its clean, inactive local worktree and run `git worktree prune`; never force-remove worktrees with changes or active processes.
 
 ## Commands
 
