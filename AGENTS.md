@@ -37,10 +37,14 @@
 - Stop local services: `docker compose down`
 - Run local MVP demo loop: `MYSQL_PORT=3307 npm run test:integration`
 
-## Local Environment
+## Environments
 
 Copy `.env.example` to `.env` for local development. Use development-only values locally and never commit `.env`.
 
 Required local variables are tracked in `docs/implementation/env-inventory.md`.
 
 The local MVP integration test defaults to `MYSQL_PORT=3307` when no `MYSQL_PORT` is set, starts the local MySQL service, resets the local development database, seeds sample employees/labels/skills, starts the API on an available local port, runs the CLI upload/search path, runs one worker pass, downloads the active document, archives it, and verifies ordinary search no longer returns it.
+
+- Before staging host changes, read `docs/implementation/server-runtime-prerequisites.md` and `phase-3-readiness.md`; provision with `sudo bash scripts/provision-staging-runtime.sh`.
+- Staging image delivery must use an account-owned Beijing ACR repository; do not use unapproved third-party mirrors or configure a general ACR registry hostname as `registry-mirrors`.
+- Keep SSH keys and ACR credentials outside the repo; do not deploy the app until its MySQL, registry, secret, domain, and TLS readiness gates pass.

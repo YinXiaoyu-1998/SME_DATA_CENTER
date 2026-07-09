@@ -173,3 +173,12 @@ npm run typecheck
 npm run lint
 npm run format:check
 ```
+
+## Further Documentation
+
+- `AGENTS.md`: repository rules and common commands.
+- `docs/implementation/env-inventory.md`: environment and secret inventory.
+- `docs/implementation/server-runtime-prerequisites.md`: Phase 3 staging host provisioning, verification, ACR boundary, and rollback.
+- `docs/implementation/api-contract.md`: API and MCP tool contracts.
+- `docs/implementation/local-agent-test.md`: Codex/MCP human-test flow.
+- `skills/enterprise-hub-mcp/SKILL.md`: repository-local MCP skill.

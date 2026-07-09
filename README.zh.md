@@ -392,6 +392,7 @@ docker compose down
 
 - `AGENTS.md`：agent 工作约束和常用命令。
 - `docs/implementation/env-inventory.md`：环境变量清单。
+- `docs/implementation/server-runtime-prerequisites.md`：Phase 3 服务器环境准备、验证、ACR 边界与回滚。
 - `docs/implementation/api-contract.md`：API 与 MCP tool contract。
 - `docs/implementation/local-agent-test.md`：Codex/MCP 人工测试流程。
 - `skills/enterprise-hub-mcp/SKILL.md`：repo-local MCP 使用 skill。
