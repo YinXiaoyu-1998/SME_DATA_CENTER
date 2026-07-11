@@ -5,6 +5,7 @@ import {
   AUTH_ERROR_CODES,
   canEmployeeAccessDocument,
   isDocumentType,
+  PHASE3_ERROR_CODES,
   type AuthenticatedEmployee,
   type DocumentTypeName
 } from "@enterprise-hub/domain";
@@ -132,6 +133,7 @@ function bearerToken(request: FastifyRequest): string | null {
 function employeeResponse(employee: AuthenticatedEmployee) {
   return {
     id: employee.id,
+    orgId: employee.orgId,
     email: employee.email,
     role: employee.role,
     disabled: employee.disabled,
@@ -536,6 +538,30 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       employee: employeeResponse((request as AuthenticatedRequest).employee)
     };
   });
+
+  const phase3RouteNotImplemented = async (request: FastifyRequest, reply: FastifyReply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    return reply
+      .code(501)
+      .send(
+        errorResponse(
+          PHASE3_ERROR_CODES.temporarilyUnavailable,
+          "This Phase 3 endpoint is not implemented yet."
+        )
+      );
+  };
+
+  app.post("/v1/documents/evidence", phase3RouteNotImplemented);
+  app.post("/v1/evidence/search", phase3RouteNotImplemented);
+  app.post("/v1/structured/imports", phase3RouteNotImplemented);
+  app.get("/v1/structured/imports/:importBatchId", phase3RouteNotImplemented);
+  app.get("/v1/structured/datasets", phase3RouteNotImplemented);
+  app.post("/v1/structured/query", phase3RouteNotImplemented);
 
   app.get("/labels", async (request, reply) => {
     const authenticated = await authenticate(request, reply, repository, jwtSecret);

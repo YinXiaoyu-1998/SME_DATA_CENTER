@@ -19,6 +19,7 @@ const jwtSecret = "test-local-jwt-secret";
 
 const adminEmployee: AuthenticatedEmployee = {
   id: "emp_admin",
+  orgId: "default-org",
   email: "admin@example.com",
   role: "admin",
   disabled: false,
@@ -27,6 +28,7 @@ const adminEmployee: AuthenticatedEmployee = {
 
 const disabledEmployee: AuthenticatedEmployee = {
   id: "emp_disabled",
+  orgId: "default-org",
   email: "disabled@example.com",
   role: "employee",
   disabled: true,
@@ -35,6 +37,7 @@ const disabledEmployee: AuthenticatedEmployee = {
 
 const baoliManagerEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_manager",
+  orgId: "default-org",
   email: "baoli.manager@example.com",
   role: "manager",
   disabled: false,
@@ -43,6 +46,7 @@ const baoliManagerEmployee: AuthenticatedEmployee = {
 
 const suzhouManagerEmployee: AuthenticatedEmployee = {
   id: "emp_suzhou_manager",
+  orgId: "default-org",
   email: "suzhou.manager@example.com",
   role: "manager",
   disabled: false,
@@ -51,6 +55,7 @@ const suzhouManagerEmployee: AuthenticatedEmployee = {
 
 const lijieEmployee: AuthenticatedEmployee = {
   id: "emp_lijie",
+  orgId: "default-org",
   email: "lijie@example.com",
   role: "employee",
   disabled: false,
@@ -702,6 +707,64 @@ describe("api auth shell", () => {
         code: "UNAUTHENTICATED"
       }
     });
+  });
+
+  it("keeps the authoritative organization in authenticated employee responses", async () => {
+    app = buildTestServer();
+    const accessToken = await accessTokenFor(adminEmployee);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      employee: {
+        id: adminEmployee.id,
+        orgId: "default-org"
+      }
+    });
+  });
+
+  it("protects every Phase 3 route skeleton before returning its not-implemented response", async () => {
+    app = buildTestServer();
+    const accessToken = await accessTokenFor(adminEmployee);
+    const routes = [
+      { method: "POST" as const, url: "/v1/documents/evidence" },
+      { method: "POST" as const, url: "/v1/evidence/search" },
+      { method: "POST" as const, url: "/v1/structured/imports" },
+      { method: "GET" as const, url: "/v1/structured/imports/import_123" },
+      { method: "GET" as const, url: "/v1/structured/datasets" },
+      { method: "POST" as const, url: "/v1/structured/query" }
+    ];
+
+    for (const route of routes) {
+      const unauthenticated = await app.inject({
+        ...route
+      });
+      expect(unauthenticated.statusCode).toBe(401);
+      expect(unauthenticated.json()).toMatchObject({
+        error: { code: "UNAUTHENTICATED" }
+      });
+
+      const authenticated = await app.inject({
+        ...route,
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        }
+      });
+      expect(authenticated.statusCode).toBe(501);
+      expect(authenticated.json()).toEqual({
+        error: {
+          code: "TEMPORARILY_UNAVAILABLE",
+          message: "This Phase 3 endpoint is not implemented yet."
+        }
+      });
+    }
   });
 
   it("rejects disabled employees even when the token is otherwise valid", async () => {

@@ -11,6 +11,7 @@ export type EmployeeRoleName = "admin" | "manager" | "employee";
 
 export interface AuthenticatedEmployee {
   id: string;
+  orgId: string;
   email: string;
   role: EmployeeRoleName;
   disabled: boolean;

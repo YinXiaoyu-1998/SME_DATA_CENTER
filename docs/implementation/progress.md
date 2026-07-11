@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-- Phase: Phase 2 complete locally. Documentation/design work for the new Phase 3 retrieval and structured-data foundation is ready for review; the former online-ready phase is now Phase 4 and the beta phase is now Phase 5 in the draft plan.
+- Phase: Phase 3 retrieval and structured-data foundation. Task 1 (contract scaffolding and migration baseline) is complete locally; Tasks 2-5 are now independently unblocked. The former online-ready phase is Phase 4 and the beta phase is Phase 5.
 - Date: 2026-07-11
-- Lead branch: `codex/phase3-retrieval-readiness-docs`
+- Lead branch: `codex/phase3-contract-scaffolding`
 - Deployment target: Alibaba Cloud Simple Application Server candidate for staging/light beta; host prerequisites are installed, but no application image, migration, or service deployment has started
 
 ## Active Workstreams
@@ -54,7 +54,8 @@
 | Post-reset readiness check     | `codex/phase3-dns-target-verify`                | Codex lead agent                                         | Complete         | [PR #44](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/44) | Recorded the server reset, restored public-key SSH validation, refreshed OS/runtime/network evidence, and kept ICP/DNS blockers explicit. This PR updated readiness/progress but omitted the required handoff entry; the recovery audit adds it retrospectively.                                                                                                              |
 | Server runtime prerequisites   | `codex/phase3-server-runtime-prereqs`           | Codex lead agent                                         | Complete         | [PR #45](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/45) | Installed and verified Docker Engine, Compose, Buildx, Node.js 22, npm, Git, and nginx through a reproducible script. Docker Hub remains unreachable; ACR manifest access works, but an account-owned Beijing ACR registry/repository and secure credentials are still required before application image delivery.                                                            |
 | Status recovery 2026-07-09     | `codex/enterprise-hub-status-recovery-20260709` | Codex lead agent                                         | Complete locally | Not opened                                                          | Documentation-only audit from `origin/main` after PR #45. Reconciles Phase/Day/Track state, done evidence, missing work, branch/worktree hygiene, human blockers, secret risks, and the missing PR #44 handoff. No business code or infrastructure state changed.                                                                                                             |
-| Retrieval capability planning  | `codex/phase3-retrieval-readiness-docs`         | Codex lead agent + human decision session                | Draft PR opened  | [PR #48](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/48) | Isolated documentation/design worktree from `main` at `bb4a5c6`. Defines the new production-grade pre-launch Phase 3, shifts the former online-ready/beta phases to Phase 4/5, and keeps this branch documentation-only with no implementation or deployment changes.                                                                                                         |
+| Retrieval capability planning  | `codex/phase3-retrieval-readiness-docs`         | Codex lead agent + human decision session                | Complete         | [PR #48](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/48) | Merged documentation/design foundation. Defines the new production-grade pre-launch Phase 3 and shifts the former online-ready/beta phases to Phase 4/5.                                                                                                                                                                                                                      |
+| Phase 3 Task 1 contracts       | `codex/phase3-contract-scaffolding`             | Codex lead agent                                         | Complete locally | Not opened                                                          | Added additive Prisma baseline for retrieval/index/import records, authoritative `orgId` in authenticated context, client-safe Phase 3 errors/file-kind contracts, and authorization-protected `501` route skeletons. Tasks 2-5 may now be dispatched independently after this branch merges.                                                                                 |
 
 ## Completed Checkpoints
 
@@ -307,7 +308,8 @@
 - [ ] Create or select a Beijing ACR repository and validate secure push/pull with a fixed test tag.
 - [ ] Provide and validate independent RDS/standalone MySQL connection details.
 - [ ] Clean stale merged/superseded topic branches and old local worktrees after explicit human approval.
-- [ ] After this documentation PR is reviewed/merged, start new Phase 3 Task 1: retrieval/structured-data contract scaffolding and migration baseline.
+- [x] Start Phase 3 Task 1: retrieval/structured-data contract scaffolding and migration baseline.
+- [ ] Merge the Task 1 PR, then start Phase 3 Tasks 2-5 on independent branches (at most four concurrent workstreams).
 - [ ] Collect and validate Phase 4 staging readiness items in `staging-readiness.md` before starting each online-ready implementation track.
 - [x] Run the 2026-07-09 status recovery against required docs, Git/PR/worktree state, done evidence, blockers, and secret/file risks.
 - [x] Restore the missing PR #44 workstream and handoff records.
