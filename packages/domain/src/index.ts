@@ -52,3 +52,24 @@ export {
   type RetrievalConfigStatusName,
   type RetrievalModelConfig
 } from "./retrieval-config.js";
+export {
+  DEFAULT_LLM_EMBEDDING_MODEL,
+  DEFAULT_LLM_MODEL,
+  DEFAULT_LLM_PROVIDER,
+  DEFAULT_QDRANT_COLLECTION_EVIDENCE,
+  DEFAULT_QDRANT_TIMEOUT_MS,
+  DEFAULT_QDRANT_URL,
+  DEFAULT_RETRIEVAL_CONFIG_VERSION,
+  QDRANT_DENSE_DISTANCE,
+  QDRANT_DENSE_VECTOR_NAME,
+  QDRANT_DENSE_VECTOR_SIZE,
+  QDRANT_SPARSE_VECTOR_NAME,
+  parseRuntimeReadinessConfig,
+  qdrantCollectionMatchesExpectedSchema,
+  qdrantEvidenceCollectionSchema,
+  type ModelProviderRuntimeConfig,
+  type QdrantEvidenceCollectionSchema,
+  type QdrantRuntimeConfig,
+  type RuntimeEnv,
+  type RuntimeReadinessConfig
+} from "./retrieval-runtime.js";

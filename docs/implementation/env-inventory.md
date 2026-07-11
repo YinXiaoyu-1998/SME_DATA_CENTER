@@ -30,6 +30,8 @@ This file tracks required variables and external services. Do not store secret v
 | `MYSQL_PASSWORD`      |       No | `enterprise_hub_local_password`      |     Yes | `docker-compose.yml` | Development-only default, not suitable outside local machines. |
 | `MYSQL_ROOT_PASSWORD` |       No | `enterprise_hub_local_root_password` |     Yes | `docker-compose.yml` | Development-only default, not suitable outside local machines. |
 | `MYSQL_PORT`          |       No | `3306`                               |      No | `docker-compose.yml` | Override if port 3306 is busy locally.                         |
+| `QDRANT_HTTP_PORT`    |       No | `6333`                               |      No | `docker-compose.yml` | Local Qdrant HTTP API host port.                               |
+| `QDRANT_GRPC_PORT`    |       No | `6334`                               |      No | `docker-compose.yml` | Local Qdrant gRPC host port.                                   |
 
 ## Phase 3 Retrieval And Structured Data
 
@@ -44,6 +46,8 @@ These variables are required or introduced by the new Phase 3 retrieval/data fou
 | `QDRANT_COLLECTION_EVIDENCE` |             Yes for Phase 3 | `enterprise_hub_evidence_local` |      No | API, worker        | Evidence collection for MD/TXT/DOCX chunks.                                         |
 | `QDRANT_TIMEOUT_MS`          |                          No | `5000`                          |      No | API, worker        | Client timeout.                                                                     |
 | `RETRIEVAL_CONFIG_VERSION`   |             Yes for Phase 3 | `phase3.retrieval.v1`           |      No | API, worker        | Expected active retrieval config version; details live in versioned config/DB seed. |
+
+Local Compose pins `qdrant/qdrant:v1.15.4` and stores data in the local `qdrant_data` volume. Later Phase 4 staging/prod work should self-host Qdrant OSS on approved infrastructure unless a compliant managed Qdrant option is explicitly validated. For Alibaba Cloud deployment, mirror the pinned Qdrant image into an approved account-owned ACR or internal artifact registry before relying on it in staging/prod; do not deploy with `latest` or depend on ad-hoc public image pulls.
 
 ### Model Provider For Embedding And Rerank
 
