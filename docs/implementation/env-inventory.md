@@ -60,6 +60,8 @@ Phase 3 baseline uses the existing `.env` names as the supported control surface
 
 Optional clearer aliases may be added later (`EMBEDDING_*`, `RERANK_*`), but Phase 3 must continue to support the existing names above.
 
+Task 3 implements the env-backed provider factory with `LLM_PROVIDER=fake` as the local/CI default and `LLM_PROVIDER=openai-compatible` as the real external path. Real embedding and rerank adapter calls require `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`; otherwise the provider call is blocked before any injected or global fetch executes. Unit tests use injected fetch and never call external networks.
+
 ### Worker, Import, And Query Limits
 
 | Variable                                   | Required | Example / Default      | Secret? | Used By     | Notes                                         |

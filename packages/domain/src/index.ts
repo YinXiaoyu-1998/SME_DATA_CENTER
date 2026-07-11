@@ -37,3 +37,18 @@ export {
   type Phase3FileType,
   type ProcessingJobTypeName
 } from "./retrieval-contracts.js";
+export {
+  MODEL_PROVIDER_NAMES,
+  RETRIEVAL_CONFIG_STATUSES,
+  buildRetrievalConfigSeed,
+  loadActiveRetrievalConfig,
+  toEvidenceSearchRetrievalMetadata,
+  toIndexModelMetadata,
+  type EvidenceSearchRetrievalMetadata,
+  type ExplicitRerankConfig,
+  type IndexModelMetadata,
+  type ModelProviderName,
+  type RetrievalConfigSeedInput,
+  type RetrievalConfigStatusName,
+  type RetrievalModelConfig
+} from "./retrieval-config.js";
