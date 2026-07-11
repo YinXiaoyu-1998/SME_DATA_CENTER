@@ -1,6 +1,6 @@
 # Staging Server Runtime Prerequisites
 
-This runbook prepares the Alibaba Cloud staging server for later Phase 3
+This runbook prepares the Alibaba Cloud staging server for later Phase 4
 container deployment. It does not deploy the application or store secrets.
 
 ## Install

@@ -14,6 +14,18 @@ _Avoid_: 经营资料中枢、AI 大脑、专用智能体系统、数据库、�
 由员工各自使用的通用智能体或类小龙虾工具实例，负责调用资料、执行分析、生成报告和辅助工作。
 _Avoid_: 系统智能体、中心智能体
 
+**证据检索**:
+接收员工智能体给出的检索查询，并返回经过权限过滤、可追溯来源的相关资料片段和元信息。
+_Avoid_: RAG 问答服务、最终答案生成、用户原始问题回答
+
+**受控结构化查询**:
+通过服务端定义的只读查询契约表达数据集、字段、过滤、排序、分页，以及调用方显式请求的纯机械分组和聚合，并返回经过权限过滤的结构化数据。
+_Avoid_: 最终自然语言答案、任意 SQL、写入查询、删除行、从自然语言意图推断或自动补充分组聚合
+
+**模型网关配置**:
+用于证据检索索引构建和 rerank 的外部模型 API 配置层，通过环境变量选择 provider、base URL、模型名和密钥。
+_Avoid_: 业务逻辑写死模型供应商、把模型调用用于最终答案生成
+
 **常规报告服务**:
 未来可能独立建设的定时报告或 dashboard 生成服务，与企业资料中枢隔离，通过读取企业资料中枢的数据产出常规报表。
 _Avoid_: 企业资料中枢内置报告功能
@@ -174,6 +186,10 @@ _Avoid_: 微服务架构、大而混乱的单模块应用
 与后端应用同代码库、可独立运行的后台处理进程，用于执行资料解析、清洗、切片、向量化和索引构建。
 _Avoid_: 独立智能体服务、报告生成服务
 
+**类型化处理任务**:
+Phase 3 中由 ProcessingRun 表达的明确后台任务类型，例如 evidence document indexing、structured import validation/apply、index repair/delete 和后续 model reindex。
+_Avoid_: 只靠 Document.status 隐式表达所有后台处理
+
 **单企业部署**:
 第一阶段只面向单个企业使用的部署和权限模型，不提供真正 SaaS 多租户隔离。
 _Avoid_: 多租户 SaaS
@@ -183,11 +199,158 @@ _Avoid_: 多租户 SaaS
 - 一个 **企业资料中枢** 可被多个 **员工智能体** 访问
 - **员工智能体** 从 **企业资料中枢** 读取资料，并把新文件、报告或分析结果写回 **企业资料中枢**
 - **企业资料中枢** 不直接负责复杂分析、模型调用、报告生成或任务运行
+- **员工智能体** 把用户意图转换为一个或多个检索查询后，调用 **证据检索** 或 **受控结构化查询**
+- **企业资料中枢** 只处理收到的检索查询，不需要接收或推断用户的原始问题
+- **证据检索** 返回资料片段、来源位置和检索元信息，由 **员工智能体** 组织最终答案
+- **证据检索** 对 MD/TXT/DOCX 必须采用生产级混合检索底座：结构化/语义切块、embedding 向量索引、词法/关键词索引、候选合并和 rerank
+- Phase 3 默认把词法/关键词索引放在 Qdrant sparse vectors / native hybrid retrieval 中，与 dense embedding 使用相同 chunk id 和 payload metadata；如评估发现词法质量不足，未来可通过检索 adapter 迁移到 OpenSearch/Meilisearch 等专用词法引擎
+- MySQL 不承担 MD/TXT/DOCX chunk 级全文检索；in-process BM25 只能作为实验，不作为 Phase 3 生产基线
+- 文档证据检索上线前必须有 golden evaluation suite，覆盖中文业务文档、MD/TXT/DOCX、多种查询类型、权限隐藏、归档、标签变更、禁用员工和 stale payload 场景
+- 检索验收至少跟踪 hitRate@k、recall@k、precision@k、MRR@k、NDCG@k、权限泄露数、归档/stale 泄露数、no-answer false-positive 和检索/rerank 延迟；权限和状态泄露零容忍
+- Phase 3 应比较 dense-only、lexical-only、hybrid、hybrid+rerank 基线；chunking、embedding、lexical、rerank、权限过滤或 payload schema 变化必须跑回归评估
+- MD/TXT/DOCX 源资料只有在源文件持久化、解析、切块、embedding、Qdrant upsert、词法索引、索引版本元数据和审计全部成功后，才能成为证据检索可见的 **活跃资料**
+- 向量索引或词法索引任一路失败时，资料不能进入证据检索；重试应复用未变更的源文件并创建新的 ProcessingRun，成功后再发布 active
+- MD/TXT/DOCX 必须按文件类型采用结构感知切块：Markdown 按标题层级、列表、表格、代码块等结构；DOCX 按标题样式、段落、表格和页/段落位置；TXT 按段落、空行、句子边界和语义相似度
+- Phase 3 证据检索只索引从 MD/TXT/DOCX 提取出的文本证据；DOCX 表格应以确定性行/单元格文本序列索引，embedded images/screenshots 不做 OCR，只记录未索引 warning
+- 解析器必须记录 parser/version、parse warnings/errors、表格/图片/链接/脚注等计数和 track-changes/comments/header/footer 处理模式；malformed 文件不能 active
+- 禁止把固定 `1024/512` 字符或类似固定长度切块作为主策略；固定长度只能作为极端长段落、损坏结构或无法解析结构时的 fallback，并且要在 chunk metadata 中标记
+- 每个文档 chunk 必须记录 `document_id`、`chunk_id`、`source_type`、heading/path 信息、页码或段落/位置标识、字符范围或等价定位信息，以便员工智能体能追溯来源
+- 向量索引中必须保存可返回的文本片段、embedding、来源资料 id、片段位置、模型版本、权限过滤所需 metadata 和其他检索元信息，不能只保存 embedding 数组
+- 文档证据检索 API 只返回 evidence，不返回 answer；每条结果至少包含 chunk 文本、`document_id`、`chunk_id`、相关性分数、来源标题/文件类型/heading path/页码或位置、匹配路径、embedding 模型、rerank 模型和 rerank 状态
+- 文档证据检索响应必须能表达 `matched_by`（例如 dense、lexical、rerank）和 `rerank_status`（例如 enabled、disabled、rerank_disabled），便于调用方智能体理解结果质量
+- Phase 3 必须把源文档权威状态和检索索引状态分开建模：`Document` 保存源文件、权限、状态、`contentVersion` 和 `labelVisibilityVersion`；`DocumentIndex` 保存某内容版本在某 retrieval config 下的索引 ready/failed/deprecated 状态；chunk manifest 用于审计、repair 和返回前校验
+- Qdrant point id / `chunkId` 必须由 `{documentId, contentVersion, retrievalConfigVersion, chunkOrdinal}` 或其稳定 hash 派生；内容替换或 retrieval config 变化后必须生成新 chunk id，避免旧/新证据混淆
+- Qdrant payload 可保存 chunk text/snippet、版本、来源位置和诊断 snapshot，但这些 snapshot 不能作为权限真相；label 名称、员工信息和敏感权限细节不应进入 Qdrant payload
+- 归档、标签变化和内容替换的生效点都以 MySQL 权威状态为准；Qdrant cleanup/payload repair 可以异步，因为返回前 revalidation 会丢弃 stale hit
+- Phase 3 baseline 内容替换采用严格语义：替换期间资料不可检索，直到新 `contentVersion` 的完整索引 ready 后再发布 active；无中断双版本替换属于 P2
+- embedding 和 rerank 可以使用外部模型 API，但必须通过 **模型网关配置** 显式启用，不能把供应商或模型名写死进业务逻辑
+- 新 Phase 3 模型配置使用 `LLM_PROVIDER`、`LLM_MODEL`、`LLM_EMBEDDING_MODEL`、`OPENAI_COMPATIBLE_API_KEY`、`OPENAI_COMPATIBLE_BASE_URL`；密钥只从运行环境读取，不进入代码、文档示例值或审计输出
+- 这组 `LLM_*` / `OPENAI_COMPATIBLE_*` env 在 Phase 3 中只用于 embedding/rerank 检索基础设施，不代表企业资料中枢可以生成最终答案；baseline 必须继续支持这些变量，后续可增加更明确的 `EMBEDDING_*` / `RERANK_*` 别名但不强制改名
+- env/secrets 负责连接信息、密钥和部署级限流；retrieval config、field registry、模型/索引/chunker 版本属于 DB 或代码种子里的 versioned config，不能只散落在 `.env`
+- real external embedding/rerank provider 启用时必须有数据出境确认 gate，例如 `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`；fake provider 的 local/CI 可不启用
+- Phase 3 env inventory 必须新增 Qdrant 连接、collection、timeout，storage/OSS/local storage，worker concurrency/lease/retry，structured query/import limits，并标记 secret、适用环境和缺失时失败行为
+- 每个向量 chunk 必须记录 embedding 模型名、维度、模型版本/配置版本；rerank 调用也应记录模型名和版本，便于质量评估和未来重建索引
+- embedding 模型用于把文本转成向量以便召回；rerank 模型用于对已召回候选做更精细排序。两者可以来自同一供应商，但不是同一种模型职责
+- 新 Phase 3 必须真实接入 rerank provider：实现 rerank 接口、真实 OpenAI-compatible provider 路径、fake rerank 测试路径、结果排序路径和可观测记录；调试效果可后置，但 adapter/provider/config/调用链/status recording 是 baseline，未 rerank 时必须明确记录并返回 `rerank_disabled`
+- embedding/rerank 仍通过 env/secret 配置保持实现简洁，但运行时必须把 env 解析为明确的 retrieval config 版本；配置变化必须通过并行索引重建、golden evaluation、显式 promote 和可回滚 retention 处理，不能通过静默改 `.env` 让新 query embedding 去查旧向量
+- embedding 维度变化时必须使用新的 Qdrant collection 或等价隔离索引；调用方不能任意选择模型，只有内部评估路径可受控 override
+- 外部模型调用必须有候选数上限、timeout、批处理、迁移限速、成本/延迟/错误率监控和明确 fallback 语义
+- embedding/rerank provider 是显式外部数据处理器；启用前必须由管理员配置并确认数据出境，系统不能在未确认情况下把文档 chunk、query 或候选 chunk 发给外部 provider
+- 外部模型请求必须最小化 payload：embedding 只发送必要 chunk/query text，rerank 只发送 query 和已授权候选 chunk；默认日志、审计、错误和 trace 不得记录原文或 provider request/response body
+- 系统不得把同一次外部模型请求混入多个 org 的内容；provider fallback 必须显式配置，不能静默改发另一个 provider
+- **权威元数据** 和资料状态仍由事务型数据库维护；向量库命中后必须回到来源资料校验活跃状态和当前员工账号权限
+- Qdrant payload filter 只能作为检索空间缩小优化，不能作为授权真相源；文档证据检索返回前必须回 MySQL 复核员工状态、资料 active 状态、标签权限、content/visibility version 和索引版本
+- 资料归档、标签变化、员工禁用或内容替换必须通过 MySQL 立即影响检索可见性；Qdrant 删除、payload 更新或重建索引可以异步执行，因为 stale hit 会在返回前被 MySQL 复核丢弃
+- MySQL 主要承担权威业务元数据、权限元数据、上传/处理状态、审计日志，以及 CSV/XLSX 解析后的结构化菜品/营业行数据
+- 向量数据库承担 MD/TXT/DOCX 非结构化文档的检索索引，保存 chunk text、embedding 和 chunk metadata；MySQL 不作为纯文本 RAG 检索底座
+- 向量数据库不作为菜品/营业表格数据的权威查询存储；CSV/XLSX 的业务查询由 MySQL 结构化表完成
+- MySQL 与向量数据库通过 `orgId`、`documentId`、chunk/source metadata 等 id 关联，用于权限、状态、审计和追溯校验
+- 新 Phase 3 默认向量数据库为 Qdrant，用于 MD/TXT/DOCX 非结构化文档 chunk 检索索引；Milvus 保留为未来数亿/十亿级向量、GPU 检索或重型集群吞吐场景的再评估选项
+- pgvector 不作为当前默认方案，因为现有权威数据库是 MySQL，引入 PostgreSQL 只承担向量检索会增加额外数据库栈；如未来权威数据库迁移到 PostgreSQL，可重新评估
+- 新 Phase 3 只支持五种上传文件类型：Markdown、TXT、DOCX、XLSX、CSV；JSON 暂不支持，已有 JSON 文本处理残留应在实施时删除
+- Phase 3 底层统一使用 `Document`、OSS、audit、worker 和 `ProcessingRun`，但 HTTP 表面应区分 evidence document upload 与 structured import，避免一个泛化 upload endpoint 接受过多 mode 参数
+- evidence upload 支持 MD/TXT/DOCX，创建 `Document(documentKind=evidence)`、`ProcessingRun(evidence_document_index)` 和 `DocumentIndex`；structured import 支持 XLSX/CSV，创建 `Document(documentKind=structured)`、`ImportBatch` 和结构化处理任务
+- `Document.status` 只表达源文件整体状态；evidence 检索还必须检查 `DocumentIndex.status=ready`，结构化查询还必须检查 `ImportBatch.status=applied`
+- unsupported file type 和 JSON 上传必须返回稳定错误，例如 `415 UNSUPPORTED_FILE_TYPE`；XLSX 上传到 evidence endpoint 或 DOCX 上传到 structured endpoint 也必须失败
+- OCR、PDF、图片理解、跨 dataset join、任意公式/窗口函数、自然语言生成结构化查询、服务端分析/报告/dashboard、独立行级权限、自动覆盖/追加/替换导入和 JSON ingestion 都不属于新 Phase 3 baseline；其中多数应作为 P3
+- **受控结构化查询** 只允许服务端白名单中的数据集、字段、过滤运算符、排序、分页，以及调用方显式请求的分组和聚合能力
+- **受控结构化查询** 不接受 SQL 字符串，也不提供新增、修改、删除或数据库定义操作
+- **受控结构化查询** 不从自然语言意图里推断聚合；没有 `metrics` / `group_by` 时返回匹配记录，由 **员工智能体** 决定是否再聚合、分析或组织最终答案
+- **企业资料中枢** 必须清楚发布每个结构化数据集、API 和字段的定义，例如 `order_time` 表示下单时间，`business_date` 表示营业日
+- **企业资料中枢** 不根据用户自然语言意图判断应使用哪个字段；例如“7 月 5 号”应映射到 `order_time` 还是 `business_date`，由调用方 **员工智能体** 在生成结构化查询时决定
+- 结构化查询 API 扮演数据提供层角色，只接收调用方已经整理好的受控 query；它不知道上游用户原始问题，也不输出业务解释、趋势判断、经营建议或自然语言结论
+- 结构化查询响应应返回 `rows`、`columns`、受控 `query` 回显、pagination/row_count/truncated 等 metadata，以及 source/import batch/document id；显式聚合请求只返回机械聚合结果
+- 结构化查询必须支持分页和单次返回上限；默认 `limit` 和最大 `limit` 由 API 契约定义，超过单次上限时返回 `next_cursor` / `truncated` 等 metadata，调用方智能体通过分页获取完整数据
+- 结构化查询不能提供绕过分页的一次性全量导出能力，除非未来单独设计受控批量导出接口
+- 结构化明细查询默认按稳定行血缘排序，例如 import batch、sheet index、source row number 和 row id；聚合查询默认按 group key 排序，分页对象是 group rows 而不是原始 rows
+- 结构化查询 cursor 是绑定调用方、权限 scope、dataset、registry version、query shape、filter、sort、limit、位置、查询模式和 active import scope 的 opaque token；权限或 active scope 变化时 cursor 可失效
+- Phase 3 不承诺多页查询的长事务 snapshot consistency；每一页必须重新授权并只返回当前可见数据
+- baseline 查询复杂度限制建议：默认 50 行、明细最大 200 行、聚合 group 最大 100、boolean depth 3、条件总数 20、`in` 值 100、sort 2、groupBy 1、aggregate 5、select 50
+- 无索引/高成本 filter、未 allowlist 的 `contains`、高基数字段 groupBy 和超限条件必须在 SQL 执行前拒绝，而不是尝试运行后超时
+- 结构化查询对外暴露正常可读的 JSON API 请求结构，可参考常见 Java MySQL query wrapper / specification 风格表达字段、条件、排序、分页和显式聚合；语义上覆盖常见 MySQL 查询，但不是 SQL 字符串或任意表达式
+- 结构化 API 错误必须是稳定、机器可读的 envelope，包含 error code、safe message、retryable、details 和 requestId；调用方智能体不应解析自然语言错误来恢复
+- 结构化查询可带 registryVersion；成功响应返回 effective registryVersion。registry 不兼容、字段/能力不支持、limit 超出、幂等冲突、active import 冲突、临时故障等必须有稳定错误码
+- 权限隐藏的数据应被 scope out；没有可见行时返回成功空结果，不能通过错误、count、pagination 或 aggregate 泄露隐藏数据
+- Phase 3 HTTP API 是唯一权威后端契约；MCP 只是这些 HTTP endpoint 的薄适配，不能成为第二套权限、查询校验、导入或检索实现。ADR 0018 记录该边界
+- Phase 3 baseline HTTP API surface 包括 evidence search、structured import create/status、structured dataset discovery、controlled structured query；worker/admin/operator/provider/schema 控制保持 HTTP/admin-only 或内部运维入口
+- Phase 3 API baseline 使用 opaque cursor 分页；cursor 需要绑定调用方、org、query shape、registry version 和 sort，不能暴露 DB offset 或 Qdrant internals
+- 结构化查询内部可以把受控字段/operator 编译为参数化 SQL；外部调用方不能拼接 SQL、`WHERE` 子句、`LIKE` 片段、正则表达式或任意函数
+- 结构化查询 operator 是服务端 allowlist 能力，例如 `eq`、`neq`、`in`、`not_in`、`gt`、`gte`、`lt`、`lte`、`between`、`contains`、`starts_with`、`ends_with`、`is_null`、`is_not_null`；每个字段必须声明允许的 operator、类型、nullable 和取值限制
+- 结构化查询应支持受控 `and` / `or` 条件树，但必须限制最大嵌套深度、最大条件数、最大 `in` 列表长度和其他复杂度指标；具体阈值在 API contract / 实施阶段确定
+- 显式机械聚合必须逐字段声明能力：`groupBy`、`aggregateInput`、允许函数、单位/scale、基数限制和索引要求；完整字段覆盖不代表所有字段都能分组或聚合
+- Phase 3 聚合函数限定为机械函数，例如 `count`、`countDistinct`、`sum`、`avg`、`min`、`max`；不支持窗口函数、任意公式、跨 dataset join、增长率/占比/趋势等派生业务指标或自然语言分析
+- 聚合前必须先应用后端权限过滤；触及敏感字段的聚合查询需要审计
+- **证据检索** 可以为提高文档召回率而改写检索文本或扩展文档检索查询，但这种处理不能生成面向用户的最终自然语言答案
+- 新 Phase 3 不包含结构化数据的实体/菜品名扩展；例如把“肉夹馍”扩展到“青椒肉夹馍”“优质肉夹馍”应作为后续独立功能设计
 - **常规报告服务** 如未来出现，应作为独立服务读取 **企业资料中枢**，而不是成为 **企业资料中枢** 的内置职责
 - **企业资料中枢** 管理 **原始资料**、**结构化数据集**、**分析产物**、**经营事件** 和 **管理知识** 的沉淀与访问
+- Phase 3 的重处理必须使用类型化 ProcessingRun、DB lease、幂等 job key、retry/backoff 和 explicit publish gate；不能只靠 `Document.status` 隐式推进
+- baseline 任务包括 evidence document indexing、structured import validation、structured import apply、index repair/delete；model reindex 编排属于 P2，除非模型迁移测试需要
+- Phase 3 baseline 运维必须覆盖 MySQL、Qdrant、OSS、worker 和外部模型 provider 的 readiness checks、核心指标和告警；operator dashboard、自动修复、成本预算、adaptive concurrency 等进入 P2
+- Qdrant 是 Phase 3 baseline 依赖，不是可选实验组件；local compose / MVP bootup 需要真实 Qdrant，CI 可以分层但 merge-gating 集成测试必须覆盖真实 Qdrant，staging/prod-like 必须把 Qdrant 纳入 readiness gate
+- Qdrant OSS 上游仓库标注 Apache-2.0 license；baseline 自托管路径的成本主要是主机、磁盘、备份、监控、安全、升级、故障处理和容量规划，而不是 Qdrant Cloud 订阅作为运行许可
+- 中国大陆/阿里云部署默认自托管 Qdrant，不能假设 Qdrant Cloud 有中国大陆阿里云托管区域；Qdrant Cloud/Hybrid/Private Cloud 只有在完成商务、区域、网络和数据驻留确认后才可替代
+- staging/prod-like 应把 Qdrant 镜像 pin 到确定版本，并同步到 approved Alibaba Cloud ACR 或内部制品仓库，避免依赖部署时实时拉取公网镜像
+- 本地和 CI 可默认使用 deterministic fake embedding/rerank provider，以避免真实 API key、费用和数据外发；真实外部 provider smoke 应使用合成文本并作为 manual/nightly/staging preflight
+- Qdrant 索引可从 MySQL、OSS 源文件和 retrieval config 重建，但 staging/prod-like runbook 仍需定义 snapshot 或 rebuild 策略；自动 snapshot/restore drill 和一键 rebuild 属于 P2
+- Phase 3 MCP 仍然只是 HTTP API 的薄适配，不直连 MySQL/Qdrant/OSS/model provider，不重复权限/查询校验，不暴露 worker/admin/operator 控制
+- 员工智能体可通过 MCP 做 evidence search、structured dataset discovery、controlled structured query、structured upload、evidence document upload 和 import/status；模型配置、强制重建索引、worker retry、schema registry 编辑、导入声明修复等保持 HTTP/admin-only
+- 在真正修改 `implementation-plan.md` 前，必须做 phase renumbering impact audit；旧 `Phase 3` / `phase-3` 引用需要分类为新检索 Phase 3、旧 staging/readiness 阶段、历史引用或 stale reference
+- supporting docs 优先使用语义化命名；`phase-3-readiness.md` 已按用户确认重命名为 `staging-readiness.md`
+- 历史 progress、handoff、accepted ADR context 不应逐条重写；应通过追加 note 说明 phase numbering changed
 - 原始文件和报告文件保存在 **文件对象存储** 中，**企业资料中枢** 主要维护 **资料目录记录**、**权威元数据** 和 **派生索引**
 - **权威元数据** 应保存在事务型数据库中，作为权限判断、资料状态和审计追溯的来源
 - **文件对象存储** 的路径不表达业务权限，资料访问必须通过 **资料目录记录** 和 **后端强制权限过滤** 判断
+- 菜品数据和营业数据导入 **结构化数据集** 时必须采用整份文件原子语义：结构校验、字段类型校验、必填字段校验和行级校验全部通过后，才能写入可查询 MySQL 表
+- 菜品数据和营业数据中任一必需校验失败时，整份上传资料保持为 **处理失败资料** 或等待人工处理，不能部分写入权威查询表；错误摘要应指出失败字段、行号和原因
+- 结构化导入失败响应应返回可操作但不泄露内部实现的错误结构，例如 `error_code`、`summary`、`failed_stage`、`sheet_name`、`row_number`、`field`、`reason` 和有限数量的错误样例；完整内部堆栈只进入服务日志，不进入 API 响应
+- 表格校验规则必须基于真实导出样本定义字段可空性和类型宽容度；真实数据中允许为空的字段不能被简单地当作必填错误
+- 菜品和营业 MySQL 表 schema 以及结构化 API 字段注册表必须完整覆盖当前真实导出的列集合；不能只挑选 demo 字段，否则员工智能体会遇到文件中存在但结构化 API 不可发现或不可请求的数据
+- 完整覆盖不等于每个字段支持所有查询能力；每个结构化字段必须定义 canonical name、原始表头 alias、类型、nullable、敏感度、兼容状态、是否默认返回、是否可显式选择、允许 operator、是否可排序、是否可聚合/分组、索引状态和取值限制
+- 真实 dishes/business XLSX 样本用于 profiling 和生成字段注册表初稿，但不能让运行时自动猜 schema；生产契约必须经过人工 review 后固化为 MySQL migration + versioned field registry
+- profiling 必须输出 source column、稳定 public field name、受控 header aliases、候选类型、null/blank 规则、cardinality、金额/百分比/日期语义、默认返回、字段能力和异常样例
+- 当前真实导出所有列必须进入 MySQL schema 和 field registry；未知新增列、缺失 required 列、模糊改名列在 baseline 都导致整份 workbook fail，直到人工 review 后发布新 registry version
+- 金额字段使用 decimal，百分比字段必须明确 ratio/percentage-points 语义，业务编码/编号优先按 string 处理，不能仅因样本值像数字就开放数值聚合
+- 所有字段默认可被 schema discovery 发现，安全允许时可显式 select；filter/sort/group/aggregate/contains 等能力必须按字段 profile、cardinality 和业务语义逐项 allowlist
+- 结构化 API 必须采用完整但能力受控的字段注册表；高基数、自由文本、敏感或不稳定字段可以被发现和显式选择，但过滤、排序、聚合、分组和 `contains` 等能力必须逐字段 allowlist
+- Phase 3 必须提供结构化 schema discovery API，例如 `GET /structured/datasets`，让员工智能体读取 dataset、字段、版本、限制、capabilities、operators、敏感度、生命周期和索引状态后再构造受控查询
+- 员工智能体不能因为字段存在就假设它可过滤、排序、分组或聚合；必须遵守 schema discovery 中的字段能力和 dataset 级复杂度限制
+- 用户上传的文件名只作为原始元数据保存，不参与表格类型识别、企业归属、日期范围或任何业务逻辑判断
+- 系统内部导入批次名必须使用规范化名称：菜品数据采用 `{enterprise_name}_dishes_{start_date}_{end_date}`，营业数据采用 `{enterprise_name}_business_{start_date}_{end_date}`；`start_date` 和 `end_date` 使用 `YYYYMMDD`
+- 校验通过后，OSS 中保存的结构化源文件副本使用导入批次规范名保存，例如 `{enterprise_name}_dishes_{start_date}_{end_date}`；不按营业日拆分为多个文件
+- 表格中的每一行写入对应 dataset 的 MySQL 查询表；按天检索和筛选通过 MySQL 的 `business_date` 等字段完成
+- Phase 3 应引入 `ImportBatch` 或等价 MySQL 模型表达一次结构化导入尝试/结果；`Document` 仍是源文件和权限/OSS 锚点，`ImportBatch` 是结构化行数据、校验、幂等、日期窗口和审计边界
+- `DishRow` / `BusinessRow` 必须关联到唯一 `ImportBatch`，并保留 `documentId` 方便追溯；结构化 `ProcessingRun` 和审计日志应同时关联 `Document` 与 `ImportBatch`
+- 结构化行查询必须继承源 `Document` 的标签权限；`orgId` 和 dataset 不是充分授权条件。后端必须先限定调用方可见的 source document/import batch，再执行过滤、聚合、排序和分页
+- 隐藏的结构化批次不能通过 count、sum、group、分页数量或错误信息泄露；不同可见性批次同时存在时，查询只返回调用方可见批次的行
+- 结构化导入的企业级主键必须沿用现有组织上下文 `orgId` / `Organization.id`，由 authenticated employee 的服务端权限上下文决定；调用方不能通过 metadata 任意指定或覆盖业务主键
+- `enterprise_name`、`dataset`、`start_date` 和 `end_date` 必须由上传接口的 metadata 显式提供，不能从上传文件名推断；`enterprise_name` 是展示和规范文件名组件，不是权限、去重或查询主键
+- `dataset` 只允许 `dishes` 或 `business`；内容 schema 必须与 metadata 声明的 dataset 一致，否则整份文件失败
+- 规范名里的 `start_date` 和 `end_date` 表示营业日范围，对应结构化字段 `business_date`，不是下单时间 `order_time` 的日期范围
+- 表内所有 `business_date` 必须完全落在 metadata 声明的 `start_date` / `end_date` 闭区间内，且表内最小/最大营业日必须分别等于 metadata 的 `start_date` / `end_date`
+- metadata 营业日范围与表内营业日范围不一致时，整份文件校验失败；系统不根据表内数据猜测或修正调用方提供的 metadata
+- 表格类型必须由内容结构和严格 schema 校验识别为菜品数据或营业数据，不能只靠文件名中的 `dishes` / `business`
+- CSV/XLSX 表头列顺序可以不同，但每个表头必须通过受控 alias 映射到唯一 canonical 字段，例如 `营业日` 映射到 MySQL 字段 `business_date`
+- 表头 alias 只用于已配置的列名到 canonical 字段映射，不用于语义猜测、实体扩展或用户意图判断
+- CSV/XLSX 校验器不能固定假设第 3 行是表头；必须扫描前 10 行，找到唯一一行满足对应 schema 的表头
+- 必需字段缺失、重复映射到同一 canonical 字段、未知额外列、表头无法映射或字段类型校验失败时，整份文件失败
+- 扫描前 10 行找不到合法表头，或找到多个合法表头候选时，整份文件失败
+- XLSX 可以包含多个数据 sheet；参与导入的每个 sheet 都必须满足同一个 dataset schema、同一套字段校验和同一个 metadata 营业日范围
+- 同一个 XLSX 上传不能混合菜品数据和营业数据 schema；任一数据 sheet 不满足对应 schema 或出现混合 schema 时，整份文件失败
+- XLSX 中完全空的 sheet 可以忽略并记录；任何非空 sheet，包括说明 sheet 或隐藏 sheet，都必须能识别为同一 dataset schema 并匹配同一 metadata 营业日范围，否则整份文件失败；匹配的隐藏非空 sheet 参与导入，不能静默跳过
+- 多 sheet 导入必须记录 sheet 级血缘：导入/忽略 sheet 名称与数量、每个 sheet 行数；每行必须记录 `sourceSheetName`、`sourceSheetIndex`、`sourceSheetHidden`、`sourceRowNumber` 和 `sourceRowHash`
+- 结构化导入验收必须覆盖真实 67k 行菜品 workbook、151 列营业 workbook、小型 CSV/XLSX、invalid/adversarial variants、完整字段 registry、nullable/type profiling、原子失败、幂等、并发、权限继承和性能指标
+- 同一 `{orgId, dataset, start_date, end_date}` 已存在 active 导入时，新上传不能自动覆盖或追加；应直接失败，并提示需要先归档/撤销旧导入或使用未来明确设计的替换导入能力
+- 重复导入判断必须以 `orgId` 为企业级主键，并保留 `enterprise_name` 作为人类可读名称和规范文件名来源；不能只依赖可变的企业展示名
+- 新上传命中已有 active/applied `{orgId, dataset, start_date, end_date}` 时必须返回冲突错误，即使源文件完全相同；同一 idempotency key 与同一 request fingerprint 的重试才返回已有批次状态
+- 结构化源 `Document` 归档后，对应 rows 可以保留在 MySQL 里用于审计和故障排查，但必须立即不参与明细查询、count、sum/avg、groupBy 或 pagination
+- 结构化查询资格必须同时满足 `ImportBatch.status = applied`、source `Document.status = active`、当前员工有 source Document 标签权限且员工账号有效
+- 如果 active 导入窗口的数据错误，Phase 3 baseline 恢复路径是显式 archive old source document/import batch，再重新上传同窗口新文件；不提供一步替换、覆盖或 append
+- failed/rejected 导入不应永久占用 active window；in-progress 同窗口返回 `IMPORT_IN_PROGRESS`，由 worker lease/retry 恢复或失败原 batch
+- hard delete/purge 不属于 Phase 3 baseline；生产 purge 需要未来 admin-only 设计、保留策略、审计 tombstone、OSS 删除、备份影响和安全审查
+- Phase 3 应使用 `ImportWindowClaim` 或等价事务性声明机制防止同一结构化日期窗口并发导入和重复 active 批次
+- 结构化上传只有在源文件保存到 OSS、schema 校验通过、metadata 与内容一致性校验通过、所有行以事务或等价原子流程写入 MySQL、导入批次记录/资料目录记录/审计日志写入成功后，才能成为 **活跃资料** 并进入结构化查询
+- 结构化上传任一 active 门禁失败时必须保持为 **处理失败资料** 或待人工处理状态，不能出现在普通结构化查询结果中
 - **业务 Skill** 可包含经营规则、分析口径和处理流程；**企业资料中枢** 可以通过 **Skill 目录** 管理和分发 skill 信息，但不执行 skill
 - **Skill 目录** 通过 **Skill 获取入口** 向 **员工智能体** 提供可用 skill、推荐版本、安装方式和使用范例
 - **企业资料中枢** 不托管 skill 执行环境，不负责自动升级员工本地的 skill
@@ -244,6 +407,12 @@ _Avoid_: 多租户 SaaS
 
 > **Dev:** “周报是企业资料中枢每天自动生成吗？”
 > **Domain expert:** “不是。企业资料中枢只提供统一资料。周报由员工智能体或未来独立的常规报告服务生成。”
+
+> **Dev:** “用户问‘差评怎么处理’，企业资料中枢会直接回答吗？”
+> **Domain expert:** “不会。员工智能体可以分别检索‘差评处理 SOP’、‘客户反馈跟进’等内容；中枢只返回相关证据，由员工智能体回答用户。”
+
+> **Dev:** “员工问某个菜在指定日期卖了多少，企业资料中枢需要知道用户原话吗？”
+> **Domain expert:** “不需要。员工智能体只需提交菜品和日期等结构化条件，中枢返回匹配数据。”
 
 > **Dev:** “5A 菜单规则应该直接写进企业资料中枢吗？”
 > **Domain expert:** “不一定。5A 菜单规则更应该跟菜单分析 skill 一起版本化；企业资料中枢可以记录这个 skill 的位置和说明。”
@@ -304,6 +473,75 @@ _Avoid_: 多租户 SaaS
 
 ## Flagged Ambiguities
 
+- “支持 RAG”可能被理解为企业资料中枢直接生成问题答案；已 resolved：这里指作为员工智能体的 **证据检索** 底座，中枢只接收检索查询并返回可追溯证据或结构化数据，不接收用户原始问题，也不生成最终自然语言答案。
+- “证据检索 API”可能被误解为返回自然语言回答；已 resolved：API 只返回 evidence results，包括 chunk text、source metadata、retrieval metadata、model metadata 和 rerank 状态。
+- “文档何时进入证据检索 active”已 resolved：MD/TXT/DOCX 必须等完整 hybrid evidence index ready 后才 active；任一索引路径失败都不可检索。ADR 0011 记录该决策。
+- “文档切块”可能被简化成固定长度切块；已 resolved：MD/TXT/DOCX 必须按文件类型做结构/语义感知切块，固定长度只允许作为异常 fallback，并需记录在 metadata 中。
+- “OCR/图片内容是否进入 Phase 3”已 resolved：不进入。Phase 3 只做 MD/TXT/DOCX 文本证据提取；DOCX 表格文本化，图片/截图只检测并 warning。ADR 0013 记录该范围边界。
+- “支持文件类型”可能因旧代码残留出现歧义；已 resolved：新 Phase 3 只支持 MD/TXT/DOCX/XLSX/CSV，JSON 暂不支持，实施时应删除旧 JSON 文本处理逻辑。
+- “五种文件是否走一个泛化 upload endpoint”已 resolved：底层统一 `Document`/OSS/audit/worker，HTTP 表面分 evidence upload 和 structured import；metadata 和 active gate 分别由 `DocumentIndex` / `ImportBatch` 决定。
+- “MCP 是否 baseline 上传 evidence docs”已 resolved：baseline MCP 同时支持 structured upload 和 evidence document upload；两者都必须走 HTTP API 和后端权限/校验。
+- “Phase 3 优先级”已 resolved：核心 baseline 只包含安全上传/处理/授权/检索/查询所必需能力；可观测、诊断、调优和操作体验进入 P2；OCR、PDF、跨表分析、自然语言 query 生成、报告/dashboard、自动替换导入等进入 P3。
+- “Phase 3 worker 架构”已 resolved：使用类型化 ProcessingRun、DB lease、幂等 job key、retry/backoff 和 publish gate；operator UI、priority queue、dead-letter UI、adaptive concurrency 等进入 P2。ADR 0016 记录该决策。
+- “Phase 3 运维监控”已 resolved：baseline 需要 MySQL/Qdrant/OSS/worker/model provider readiness、核心指标和告警；dashboard、自动修复、成本预算等进入 P2，进入 runbook/implementation docs 而非 ADR。
+- “Qdrant 是否只是可选实验依赖”已 resolved：不是。Qdrant 是 Phase 3 baseline 依赖；local compose/bootup、真实 Qdrant 集成测试和 staging/prod-like readiness gate 都必须覆盖。ADR 0017 记录该决策。
+- “自托管 Qdrant 是否需要 Qdrant Cloud 订阅”已 resolved：baseline 不需要。Qdrant OSS 标注 Apache-2.0 license，自托管成本主要来自我们自己的基础设施和运维；正式商用仍应保留常规开源合规审查。
+- “Qdrant Cloud 是否能在中国大陆/阿里云无缝使用”已 resolved：不能作为假设。Phase 3 默认大陆/阿里云自托管 Qdrant，并通过镜像 pinning/ACR 同步保证部署可重复；托管/Hybrid/Private 方案需另行验证后才可替换。ADR 0017 记录该边界。
+- “CI 是否必须调用真实外部模型 provider”已 resolved：不必须。默认用 deterministic fake embedding/rerank provider 跑真实 Qdrant/MySQL 集成测试；真实 provider smoke 使用合成文本，在 manual/nightly/staging preflight 中跑。
+- “Phase 3 MCP 边界”已 resolved：MCP 继续作为 HTTP API 薄适配，提供员工智能体需要的检索、schema discovery、结构化查询、结构化上传和状态查询；admin/operator/reindex/model/schema 控制不进入 MCP。
+- “插入新 Phase 3 后是否只改 implementation-plan”已 resolved：不可以。需要 phase renumbering impact audit，检查 implementation、readiness、ADR、AGENTS、env/deployment、API/MCP/test/docs/scripts 中的 Phase 3/4 引用。
+- “旧 phase-3-readiness.md 是否直接改名”已 resolved：按用户确认重命名为语义化 `staging-readiness.md`；历史日志里的旧路径保持历史含义。
+- “向量检索”可能被误解为只存 embedding；已 resolved：向量索引需要保存 embedding、可返回文本片段、来源位置、模型版本和权限/metadata 过滤字段，同时由事务型数据库继续维护权威资料状态。
+- “chunk id 是否可以只用文档 id 或 ordinal”已 resolved：不可以。`chunkId` / Qdrant point id 必须绑定 `documentId`、`contentVersion`、`retrievalConfigVersion` 和 `chunkOrdinal`，这样内容替换和模型/索引迁移不会混淆旧证据。
+- “Qdrant payload snapshot 是否可授权”已 resolved：不可以。payload snapshot 只用于预过滤/诊断；返回前必须回 MySQL 校验 document active、contentVersion、index ready、当前标签权限和员工状态。
+- “内容替换时旧内容是否继续可查”已 resolved：Phase 3 baseline 采用严格语义，替换期间不可查，直到新内容版本索引 ready；无中断双版本替换进入 P2。
+- “MySQL 与向量库职责”可能被混在一起；已 resolved：MySQL 存权威元数据和 CSV/XLSX 结构化行数据，向量数据库存 MD/TXT/DOCX 文档检索索引。两者通过 id/metadata 关联做权限、状态和追溯校验，但不互相替代。
+- “Qdrant payload filter 是否可作为权限判断”已 resolved：不可以。它只是检索优化，所有返回 chunk 必须经过 MySQL 权威状态和权限复核。ADR 0010 记录该安全边界。
+- “向量库选型”已 resolved：新 Phase 3 默认使用 Qdrant。Milvus 作为未来超大规模/GPU/重集群需求的替换候选，pgvector 因当前权威数据库不是 PostgreSQL 暂不作为默认方案。
+- “词法索引位置”已 resolved：Phase 3 默认使用 Qdrant sparse/native hybrid，避免新增第三个检索存储；通过 adapter 保留未来迁移到专用 lexical engine 的路径。ADR 0012 记录该决策。
+- “证据检索质量验收”已 resolved：Phase 3 需要 golden retrieval suite 和指标门禁；权限/状态泄露零容忍，并比较 dense-only、lexical-only、hybrid、hybrid+rerank 基线。该内容进入验收/test 文档，不单独建 ADR。
+- “embedding/rerank 模型来源”已 resolved：Phase 3 允许使用配置化外部 API，通过 `LLM_PROVIDER`、`LLM_MODEL`、`LLM_EMBEDDING_MODEL`、`OPENAI_COMPATIBLE_API_KEY`、`OPENAI_COMPATIBLE_BASE_URL` 控制；模型供应商不能写死，密钥不能输出或提交。
+- “模型相关 env 是否要改名”已 resolved：baseline 继续支持现有 `LLM_*` / `OPENAI_COMPATIBLE_*` 变量以保持简洁；可在实现或文档中增加更明确的 embedding/rerank alias，但不能要求当前 `.env` 改名。
+- “哪些配置放 env，哪些放 DB/versioned config”已 resolved：env/secrets 放连接、密钥、部署限流；retrieval config、field registry、模型/索引/chunker 版本放 DB 或代码种子化 versioned config，并由 response/index metadata 引用。
+- “embedding/rerank 模型迁移”已 resolved：模型和配置是版本化检索基础设施，必须并行重建、评估、promote、保留 rollback 版本；不能静默混用新 query embedding 和旧向量。ADR 0014 记录该决策。
+- “外部模型数据出境”已 resolved：embedding/rerank provider 需要管理员显式配置和确认；payload 最小化，默认不记录原文，不跨 org 批量，不静默 fallback。ADR 0015 记录该安全边界。
+- “rerank 是否必需”已 resolved：Phase 3 必须真实接入 rerank provider；效果调优可以后置，但 adapter、provider、config、调用链和状态记录不能缺。local/CI 可用 fake rerank，非 rerank 结果必须明确标记。
+- “结构化查询”可能被理解为允许调用方提交 SQL；已 resolved：采用 **受控结构化查询**，只开放服务端定义的只读字段、运算符、分页，以及调用方显式请求的纯机械分组和聚合，不接受 SQL，也不提供任何数据修改能力。
+- “结构化查询 API”可能被误解为分析服务；已 resolved：它只像 BI 数据提供层一样返回调用方 query 请求的数据和字段定义，不知道上游用户问题，也不生成趋势、结论或建议。
+- “结构化查询一次返回全量明细”已 resolved：必须分页并设置单次上限，调用方智能体需要完整数据时通过 cursor 分页拉取。
+- “结构化分页是否需要跨页 snapshot”已 resolved：baseline 不提供长事务 snapshot；每页重新授权。cursor 绑定权限/query/registry/sort/active import scope，scope 变化时 cursor 失效。
+- “结构化查询复杂度是否可无限放开”已 resolved：不可以。baseline 有 max limit/depth/conditions/in/sort/group/aggregate/select，并在 SQL 执行前拒绝超限或高成本查询。
+- “operator 支持”可能被误解为允许调用方拼接查询；已 resolved：对外是可读 JSON API / query wrapper 风格结构，内部编译为参数化 SQL，所有 dataset、field、operator、sort、pagination 和 aggregation 都由服务端 allowlist 校验。
+- “结构化 API 错误模型”已 resolved：使用稳定机器可读错误 envelope 和 registryVersion 兼容语义；权限隐藏数据返回空结果或被 scope out，不用错误泄露。细节进入 API contract/test docs。
+- “Phase 3 HTTP 和 MCP 谁是权威契约”已 resolved：HTTP API 是唯一权威后端契约；MCP 只是薄适配，不直连存储、不复制权限/查询校验、不暴露 admin/operator 能力。ADR 0018 记录该边界。
+- “分页是否可以暴露 offset”已 resolved：baseline 采用 opaque cursor；cursor 内部绑定调用方、org、query shape、registry version 和 sort，不泄露 DB/Qdrant 实现细节。
+- “复杂条件查询”已 resolved：支持受控 `and` / `or` 条件树，但必须限制深度、条件数和列表长度；具体阈值后续在 API contract 和实现中确定。
+- “显式聚合”可能被误解为指标/分析服务；已 resolved：Phase 3 只支持逐字段 allowlist 的机械聚合函数，不支持公式、窗口函数、跨表 join、派生业务指标、趋势判断或自然语言结论。
+- “日期口径”可能被误解为企业资料中枢需要从用户自然语言里判断字段；已 resolved：中枢只定义并暴露字段/API，调用方智能体负责把用户意图映射到 `order_time`、`business_date` 等具体字段。
+- “菜品名扩展”可能被误纳入新 Phase 3 的核心能力；已 resolved：先不做结构化实体扩展，新 Phase 3 只要求确定性的受控结构化查询能力，菜品名扩展作为低优先级后续功能。
+- “表格部分导入”可能看起来更宽容；已 resolved：菜品数据和营业数据采用整份文件原子失败，避免调用方查询到不完整的权威数据。校验器需要足够 robust，字段可空性和类型规则要参考真实导出样本定义。
+- “结构化导入错误信息”已 resolved：对调用方返回可操作的阶段/表/行/字段/原因和有限样例，不返回内部堆栈。
+- “结构化 schema 覆盖范围”已 resolved：菜品和营业表及结构化 API 字段注册表必须完整覆盖当前真实导出列集合；完整覆盖通过逐字段能力注册实现，不代表每个字段都可任意过滤、排序、聚合或 `contains` 查询。ADR 0007 记录该决策。
+- “真实样本 profiling 是否可直接成为生产 schema”已 resolved：不可以。样本只生成候选 profile/registry diff，生产契约必须人工 review 后固化到 MySQL migration 和 versioned field registry。
+- “未来新增/删除/改名列是否自动接受”已 resolved：baseline 不自动接受。未知列、缺失 required 列和模糊改名列都会失败；确认后通过 registry version bump、migration 和测试进入系统。
+- “结构化 schema discovery”已 resolved：Phase 3 提供 `GET /structured/datasets` 一类 discovery API，调用方智能体基于字段注册表和 dataset 限制构造查询，而不是硬编码字段能力。
+- “上传文件名”可能被误用为业务判断依据；已 resolved：用户上传文件名只保存为原始元数据，系统内导入批次名和 OSS 结构化源文件副本使用 `{enterprise_name}_{dataset}_{start_date}_{end_date}` 规范化名称，不按营业日拆分；`enterprise_name`、`dataset`、`start_date` 和 `end_date` 来自上传接口 metadata；日期范围指营业日范围，表格类型和日期范围由内容结构、上传元数据和校验逻辑确认。
+- “enterprise_name 是否是业务主键”已 resolved：不是。结构化导入沿用现有 `Organization.id` / `orgId` 作为企业级主键和权限边界，`enterprise_name` 仅用于展示和规范文件名组件。
+- “结构化导入是否需要 ImportBatch”已 resolved：需要。`Document` 表达源文件，`ImportBatch` 表达一次结构化导入尝试/结果和日期窗口，行表、ProcessingRun、审计日志都应关联该批次。ADR 0008 记录该决策。
+- “结构化行权限”已 resolved：结构化行继承源 `Document` 标签权限，权限 scope 必须在过滤/聚合/分页前应用；Phase 3 不建立独立行级标签系统。ADR 0009 记录该安全边界。
+- “dataset 类型”可能被系统从内容里自行选择；已 resolved：metadata 必须显式提供 `dataset: dishes | business`，系统只校验内容 schema 是否与声明一致，不替调用方猜测。
+- “metadata 日期范围”可能被误以为可由系统自动修正；已 resolved：metadata 是调用方声明，系统只做一致性校验。表内营业日范围必须与 metadata `start_date` / `end_date` 严格一致，否则整份文件失败。
+- “表头 alias”可能被误解为模型语义理解；已 resolved：alias 是静态、受控的表头到 canonical 字段映射，例如 `营业日 -> business_date`，不做语义猜测。列顺序可变，但未知额外列、必需字段缺失和重复映射都会失败。
+- “表头固定在第 3 行”不应成为导入假设；已 resolved：CSV/XLSX 校验器扫描前 10 行寻找唯一合法表头，找不到或多候选都失败。
+- “XLSX 只能有一个数据表”不成立；已 resolved：允许多个 sheet，但每个参与导入的 sheet 必须满足同一 dataset schema 和同一 metadata 营业日范围，不能混合菜品/营业 schema。
+- “说明 sheet/隐藏 sheet 是否可忽略”已 resolved：只有完全空 sheet 可忽略；任何非空 sheet，包括隐藏 sheet，都必须匹配同一 dataset schema 和营业日范围。匹配的隐藏 sheet 参与导入，不匹配则整份失败。
+- “结构化导入验收”已 resolved：使用真实大文件和 adversarial fixtures 验证完整字段覆盖、nullable/type 规则、多 sheet、metadata 一致性、原子失败、ImportBatch/idempotency、权限继承和性能；该内容进入 acceptance/test 文档，不单独建 ADR。
+- “重复上传是否自动覆盖”已 resolved：同一 `{orgId, dataset, start_date, end_date}` 已有 active/applied 导入时，新上传直接失败，不自动覆盖、不追加、不复用；同 idempotency key + 同 request fingerprint 的重试只返回已有批次状态。替换导入作为未来单独能力设计。
+- “结构化源资料归档后 rows 是否删除”已 resolved：不删除也不可查询。rows 可保留作审计/排障，但所有明细、聚合、分页都必须通过 source Document active/permission scope。
+- “错误 active import 如何恢复”已 resolved：baseline 使用显式 archive old + upload new；atomic replace/overwrite/append 是 P2/P3。ADR 0019 记录该生命周期边界。
+- “结构化 hard delete/purge 是否进入 baseline”已 resolved：不进入。生产 purge 需要单独 admin/security/retention 设计。
+- “OSS 是否按营业日拆分结构化源文件”已 resolved：不拆分。校验通过后按导入批次规范名保存源文件副本，行级查询能力由 MySQL 表提供。
+- “结构化上传何时 active”已 resolved：OSS 保存、schema/metadata/row 校验、MySQL 原子写入、导入批次/资料目录/审计记录全部成功后才 active；任一失败都不可结构化查询。
 - “这个服务”“中心化服务”容易被理解为专用智能体平台；已 resolved：这里指 **企业资料中枢**，只做资料沉淀、访问、维护和追溯，不做复杂分析和报告生成。
 - “经营资料中枢”命名过窄，容易让人以为只管理经营数据；已 resolved：统一改称 **企业资料中枢**，因为它也管理会议、培训、管理知识和 Skill 目录。
 - “经营规则”容易被理解为资料中枢里的独立文本规则；已 resolved：多数经营规则应归属到具体 **业务 Skill**，由 skill 定义、版本化和使用，企业资料中枢可通过 **Skill 目录** 管理获取方式。
