@@ -221,6 +221,8 @@ Phase 3 adds evidence retrieval and controlled structured query APIs. These APIs
 | `GET`  | `/v1/structured/datasets`               | Return dataset registry, fields, capabilities, operators, limits, lifecycle, sensitivity, and versions. |
 | `POST` | `/v1/structured/query`                  | Execute controlled read-only structured query over `dishes` / `business`.                               |
 
+Task 1 registers every Phase 3 route above behind the existing authenticated employee boundary. Until the owning implementation task lands, each authenticated request receives `501 TEMPORARILY_UNAVAILABLE`; unauthenticated callers receive the normal authentication error instead. These placeholders do not parse uploads, query MySQL/Qdrant, or perform any other business operation.
+
 ### `POST /v1/documents/evidence`
 
 Supports MD/TXT/DOCX only. Required multipart metadata:

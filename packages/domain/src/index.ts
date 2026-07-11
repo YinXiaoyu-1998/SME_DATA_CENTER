@@ -20,3 +20,20 @@ export {
 } from "./documents.js";
 export { AUDIT_ACTIONS, type AuditActionName } from "./audit.js";
 export { SKILL_ENTRY_STATUSES, type SkillEntryStatusName } from "./skills.js";
+export {
+  DOCUMENT_INDEX_STATUSES,
+  DOCUMENT_KINDS,
+  IMPORT_BATCH_STATUSES,
+  PHASE3_ERROR_CODES,
+  PHASE3_FILE_TYPES,
+  PROCESSING_JOB_TYPES,
+  isAllowedFileTypeForDocumentKind,
+  isDocumentKind,
+  isPhase3FileType,
+  type DocumentIndexStatusName,
+  type DocumentKindName,
+  type ImportBatchStatusName,
+  type Phase3ErrorCode,
+  type Phase3FileType,
+  type ProcessingJobTypeName
+} from "./retrieval-contracts.js";

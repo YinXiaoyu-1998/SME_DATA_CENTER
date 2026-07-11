@@ -35,6 +35,19 @@ enum DocumentType {
   management_knowledge
 }
 
+enum DocumentKind {
+  evidence
+  structured
+}
+
+enum FileType {
+  md
+  txt
+  docx
+  xlsx
+  csv
+}
+
 enum ProcessingRunStatus {
   queued
   running
@@ -43,23 +56,63 @@ enum ProcessingRunStatus {
   retry_scheduled
 }
 
+enum ProcessingJobType {
+  legacy_text_extract
+  evidence_document_index
+  structured_import
+}
+
+enum RetrievalConfigStatus {
+  active
+  candidate
+  deprecated
+}
+
+enum DocumentIndexStatus {
+  pending
+  indexing
+  ready
+  failed
+  superseded
+}
+
+enum ImportDataset {
+  dishes
+  business
+}
+
+enum ImportBatchStatus {
+  pending
+  validating
+  applying
+  applied
+  failed
+  rejected
+  archived
+}
+
 enum SkillEntryStatus {
   approved
   disabled
 }
 
 model Organization {
-  id             String          @id @db.VarChar(64)
-  name           String          @db.VarChar(255)
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  employees      Employee[]
-  labels         Label[]
-  documents      Document[]
-  processingRuns ProcessingRun[]
-  auditLogs      AuditLog[]
-  skillEntries   SkillEntry[]
-  accessTokens   AccessToken[]
+  id              String              @id @db.VarChar(64)
+  name            String              @db.VarChar(255)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  employees       Employee[]
+  labels          Label[]
+  documents       Document[]
+  processingRuns  ProcessingRun[]
+  documentIndexes DocumentIndex[]
+  importBatches   ImportBatch[]
+  importClaims    ImportWindowClaim[]
+  dishRows        DishRow[]
+  businessRows    BusinessRow[]
+  auditLogs       AuditLog[]
+  skillEntries    SkillEntry[]
+  accessTokens    AccessToken[]
 
   @@map("organizations")
 }
@@ -113,31 +166,39 @@ model EmployeeLabel {
 }
 
 model Document {
-  id               String           @id @default(cuid()) @db.VarChar(32)
-  orgId            String           @map("org_id") @db.VarChar(64)
-  title            String           @db.VarChar(512)
-  documentType     DocumentType     @map("document_type")
-  status           DocumentStatus   @default(uploading)
-  storageObjectKey String           @map("storage_object_key") @db.VarChar(1024)
-  originalFileName String?          @map("original_file_name") @db.VarChar(512)
-  contentType      String?          @map("content_type") @db.VarChar(255)
-  byteSize         BigInt?          @map("byte_size")
-  checksumSha256   String?          @map("checksum_sha256") @db.VarChar(64)
-  uploaderId       String           @map("uploader_employee_id") @db.VarChar(32)
-  sourceSystem     String?          @map("source_system") @db.VarChar(255)
-  sourceTime       DateTime?        @map("source_time")
-  sourceMetadata   Json?            @map("source_metadata")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-  archivedAt       DateTime?        @map("archived_at")
-  organization     Organization     @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  uploader         Employee         @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  id               String          @id @default(cuid()) @db.VarChar(32)
+  orgId            String          @map("org_id") @db.VarChar(64)
+  title            String          @db.VarChar(512)
+  documentType     DocumentType    @map("document_type")
+  documentKind     DocumentKind?   @map("document_kind")
+  fileType         FileType?       @map("file_type")
+  status           DocumentStatus  @default(uploading)
+  contentVersion   Int             @default(1) @map("content_version")
+  storageObjectKey String          @map("storage_object_key") @db.VarChar(1024)
+  originalFileName String?         @map("original_file_name") @db.VarChar(512)
+  contentType      String?         @map("content_type") @db.VarChar(255)
+  byteSize         BigInt?         @map("byte_size")
+  checksumSha256   String?         @map("checksum_sha256") @db.VarChar(64)
+  uploaderId       String          @map("uploader_employee_id") @db.VarChar(32)
+  sourceSystem     String?         @map("source_system") @db.VarChar(255)
+  sourceTime       DateTime?       @map("source_time")
+  sourceMetadata   Json?           @map("source_metadata")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  archivedAt       DateTime?       @map("archived_at")
+  organization     Organization    @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  uploader         Employee        @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
   documentLabels   DocumentLabel[]
   processingRuns   ProcessingRun[]
   chunks           DocumentChunk[]
+  indexes          DocumentIndex[]
+  importBatch      ImportBatch?
+  dishRows         DishRow[]
+  businessRows     BusinessRow[]
 
   @@index([orgId, status])
   @@index([orgId, documentType])
+  @@index([orgId, documentKind, status])
   @@index([uploaderId])
   @@index([sourceTime])
   @@map("documents")
@@ -156,20 +217,21 @@ model DocumentLabel {
 }
 
 model ProcessingRun {
-  id             String              @id @default(cuid()) @db.VarChar(32)
-  orgId          String              @map("org_id") @db.VarChar(64)
-  documentId     String              @map("document_id") @db.VarChar(32)
-  status         ProcessingRunStatus @default(queued)
-  attemptNumber  Int                 @default(1) @map("attempt_number")
-  retryCount     Int                 @default(0) @map("retry_count")
-  errorCode      String?             @map("error_code") @db.VarChar(128)
-  errorSummary   String?             @map("error_summary") @db.Text
-  startedAt      DateTime?           @map("started_at")
-  finishedAt     DateTime?           @map("finished_at")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-  organization   Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  document       Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id            String              @id @default(cuid()) @db.VarChar(32)
+  orgId         String              @map("org_id") @db.VarChar(64)
+  documentId    String              @map("document_id") @db.VarChar(32)
+  status        ProcessingRunStatus @default(queued)
+  jobType       ProcessingJobType   @default(legacy_text_extract) @map("job_type")
+  attemptNumber Int                 @default(1) @map("attempt_number")
+  retryCount    Int                 @default(0) @map("retry_count")
+  errorCode     String?             @map("error_code") @db.VarChar(128)
+  errorSummary  String?             @map("error_summary") @db.Text
+  startedAt     DateTime?           @map("started_at")
+  finishedAt    DateTime?           @map("finished_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  organization  Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  document      Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([orgId, status])
   @@index([documentId])
@@ -177,36 +239,172 @@ model ProcessingRun {
 }
 
 model DocumentChunk {
-  id           String   @id @default(cuid()) @db.VarChar(32)
-  documentId   String   @map("document_id") @db.VarChar(32)
-  chunkIndex   Int      @map("chunk_index")
-  chunkText    String   @map("chunk_text") @db.Text
-  chunkHash    String   @map("chunk_hash") @db.VarChar(64)
-  indexType    String   @default("text") @map("index_type") @db.VarChar(64)
-  modelName    String?  @map("model_name") @db.VarChar(128)
-  modelVersion String?  @map("model_version") @db.VarChar(128)
-  createdAt    DateTime @default(now()) @map("created_at")
-  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id                     String         @id @default(cuid()) @db.VarChar(32)
+  documentId             String         @map("document_id") @db.VarChar(32)
+  documentIndexId        String?        @map("document_index_id") @db.VarChar(32)
+  chunkId                String?        @map("chunk_id") @db.VarChar(128)
+  chunkIndex             Int            @map("chunk_index")
+  chunkText              String         @map("chunk_text") @db.Text
+  chunkHash              String         @map("chunk_hash") @db.VarChar(64)
+  indexType              String         @default("text") @map("index_type") @db.VarChar(64)
+  modelName              String?        @map("model_name") @db.VarChar(128)
+  modelVersion           String?        @map("model_version") @db.VarChar(128)
+  contentVersion         Int            @default(1) @map("content_version")
+  retrievalConfigVersion String?        @map("retrieval_config_version") @db.VarChar(128)
+  qdrantPointId          String?        @map("qdrant_point_id") @db.VarChar(128)
+  sourceLocation         Json?          @map("source_location")
+  createdAt              DateTime       @default(now()) @map("created_at")
+  document               Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentIndex          DocumentIndex? @relation(fields: [documentIndexId], references: [id], onDelete: SetNull)
 
   @@unique([documentId, chunkHash, indexType])
+  @@unique([documentIndexId, chunkId])
   @@index([documentId, chunkIndex])
+  @@index([qdrantPointId])
   @@map("document_chunks")
 }
 
+model RetrievalConfig {
+  id                     String                @id @default(cuid()) @db.VarChar(32)
+  version                String                @unique @db.VarChar(128)
+  status                 RetrievalConfigStatus @default(candidate)
+  chunkerName            String                @map("chunker_name") @db.VarChar(128)
+  denseEmbeddingProvider String                @map("dense_embedding_provider") @db.VarChar(128)
+  denseEmbeddingModel    String                @map("dense_embedding_model") @db.VarChar(255)
+  denseVectorDimension   Int                   @map("dense_vector_dimension")
+  sparseModel            String?               @map("sparse_model") @db.VarChar(255)
+  rerankProvider         String?               @map("rerank_provider") @db.VarChar(128)
+  rerankModel            String?               @map("rerank_model") @db.VarChar(255)
+  qdrantCollection       String                @map("qdrant_collection") @db.VarChar(255)
+  configJson             Json                  @map("config_json")
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
+  documentIndexes        DocumentIndex[]
+
+  @@index([status, version])
+  @@map("retrieval_configs")
+}
+
+model DocumentIndex {
+  id                String              @id @default(cuid()) @db.VarChar(32)
+  orgId             String              @map("org_id") @db.VarChar(64)
+  documentId        String              @map("document_id") @db.VarChar(32)
+  retrievalConfigId String              @map("retrieval_config_id") @db.VarChar(32)
+  contentVersion    Int                 @map("content_version")
+  status            DocumentIndexStatus @default(pending)
+  qdrantCollection  String              @map("qdrant_collection") @db.VarChar(255)
+  indexedChunkCount Int                 @default(0) @map("indexed_chunk_count")
+  errorCode         String?             @map("error_code") @db.VarChar(128)
+  errorSummary      String?             @map("error_summary") @db.Text
+  startedAt         DateTime?           @map("started_at")
+  readyAt           DateTime?           @map("ready_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  organization      Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  document          Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  retrievalConfig   RetrievalConfig     @relation(fields: [retrievalConfigId], references: [id], onDelete: Restrict)
+  chunks            DocumentChunk[]
+
+  @@unique([documentId, retrievalConfigId, contentVersion])
+  @@index([orgId, status])
+  @@index([documentId, status])
+  @@map("document_indexes")
+}
+
+model ImportBatch {
+  id                 String             @id @default(cuid()) @db.VarChar(32)
+  orgId              String             @map("org_id") @db.VarChar(64)
+  sourceDocumentId   String             @unique @map("source_document_id") @db.VarChar(32)
+  dataset            ImportDataset
+  startDate          DateTime           @map("start_date") @db.Date
+  endDate            DateTime           @map("end_date") @db.Date
+  idempotencyKey     String             @map("idempotency_key") @db.VarChar(255)
+  requestFingerprint String             @map("request_fingerprint") @db.VarChar(64)
+  status             ImportBatchStatus  @default(pending)
+  sourceSheetSummary Json?              @map("source_sheet_summary")
+  validationErrors   Json?              @map("validation_errors")
+  totalRowCount      Int                @default(0) @map("total_row_count")
+  appliedRowCount    Int                @default(0) @map("applied_row_count")
+  errorCode          String?            @map("error_code") @db.VarChar(128)
+  errorSummary       String?            @map("error_summary") @db.Text
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  archivedAt         DateTime?          @map("archived_at")
+  organization       Organization       @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument     Document           @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  windowClaim        ImportWindowClaim?
+  dishRows           DishRow[]
+  businessRows       BusinessRow[]
+
+  @@unique([orgId, idempotencyKey])
+  @@index([orgId, dataset, status])
+  @@index([orgId, dataset, startDate, endDate])
+  @@map("import_batches")
+}
+
+model ImportWindowClaim {
+  id            String        @id @default(cuid()) @db.VarChar(32)
+  orgId         String        @map("org_id") @db.VarChar(64)
+  dataset       ImportDataset
+  startDate     DateTime      @map("start_date") @db.Date
+  endDate       DateTime      @map("end_date") @db.Date
+  importBatchId String        @unique @map("import_batch_id") @db.VarChar(32)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  organization  Organization  @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  importBatch   ImportBatch   @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, dataset, startDate, endDate])
+  @@map("import_window_claims")
+}
+
+model DishRow {
+  id               String       @id @default(cuid()) @db.VarChar(32)
+  orgId            String       @map("org_id") @db.VarChar(64)
+  sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
+  importBatchId    String       @map("import_batch_id") @db.VarChar(32)
+  sourceRowNumber  Int          @map("source_row_number")
+  payload          Json
+  createdAt        DateTime     @default(now()) @map("created_at")
+  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([importBatchId, sourceRowNumber])
+  @@index([orgId, importBatchId])
+  @@map("dish_rows")
+}
+
+model BusinessRow {
+  id               String       @id @default(cuid()) @db.VarChar(32)
+  orgId            String       @map("org_id") @db.VarChar(64)
+  sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
+  importBatchId    String       @map("import_batch_id") @db.VarChar(32)
+  sourceRowNumber  Int          @map("source_row_number")
+  payload          Json
+  createdAt        DateTime     @default(now()) @map("created_at")
+  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([importBatchId, sourceRowNumber])
+  @@index([orgId, importBatchId])
+  @@map("business_rows")
+}
+
 model AuditLog {
-  id              String        @id @default(cuid()) @db.VarChar(32)
-  orgId           String        @map("org_id") @db.VarChar(64)
-  actorEmployeeId String?       @map("actor_employee_id") @db.VarChar(32)
-  action          String        @db.VarChar(128)
-  targetType      String        @map("target_type") @db.VarChar(128)
-  targetId        String?       @map("target_id") @db.VarChar(128)
-  result          String        @default("succeeded") @db.VarChar(64)
+  id              String       @id @default(cuid()) @db.VarChar(32)
+  orgId           String       @map("org_id") @db.VarChar(64)
+  actorEmployeeId String?      @map("actor_employee_id") @db.VarChar(32)
+  action          String       @db.VarChar(128)
+  targetType      String       @map("target_type") @db.VarChar(128)
+  targetId        String?      @map("target_id") @db.VarChar(128)
+  result          String       @default("succeeded") @db.VarChar(64)
   metadata        Json?
-  requestId       String?       @map("request_id") @db.VarChar(128)
-  clientIp        String?       @map("client_ip") @db.VarChar(128)
-  createdAt       DateTime      @default(now()) @map("created_at")
-  organization    Organization  @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  actor           Employee?     @relation("AuditActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)
+  requestId       String?      @map("request_id") @db.VarChar(128)
+  clientIp        String?      @map("client_ip") @db.VarChar(128)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  organization    Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  actor           Employee?    @relation("AuditActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([orgId, createdAt])
   @@index([actorEmployeeId])
