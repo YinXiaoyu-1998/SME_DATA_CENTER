@@ -364,6 +364,42 @@ Conflict behavior:
 
 Response contains dataset registry versions, effective query limits, and every current export field with canonical name, aliases/source columns, type, nullable, sensitivity, lifecycle, capabilities, operators, default-return flag, index status, and value limits.
 
+Task 5 establishes registry versions `dishes.2026-07-11.v1` and `business.2026-07-11.v1` from the reviewed Maijia workbook exports. Current row storage maps every field to the dataset row table payload JSON path (`dish_rows.payload` or `business_rows.payload`) until the import/query tasks decide whether to promote selected fields to physical columns.
+
+Minimal response shape:
+
+```json
+{
+  "datasets": [
+    {
+      "dataset": "dishes",
+      "registryVersion": "dishes.2026-07-11.v1",
+      "rowTable": "dish_rows",
+      "fields": [
+        {
+          "canonicalName": "business_date",
+          "sourceColumn": "营业日",
+          "type": "date",
+          "nullable": true,
+          "operators": ["eq", "between", "gte", "lte", "in"],
+          "capabilities": {
+            "filter": true,
+            "sort": true,
+            "group": true,
+            "aggregate": false
+          },
+          "storage": {
+            "table": "dish_rows",
+            "column": "payload",
+            "jsonPath": "$.business_date"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
 ### `POST /v1/structured/query`
 
 Request shape:

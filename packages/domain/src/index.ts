@@ -37,3 +37,15 @@ export {
   type Phase3FileType,
   type ProcessingJobTypeName
 } from "./retrieval-contracts.js";
+export {
+  STRUCTURED_DATASET_REGISTRIES,
+  STRUCTURED_DATASETS,
+  buildStructuredHeaderLookup,
+  getStructuredRegistry,
+  validateStructuredHeaders,
+  type HeaderValidationError,
+  type StructuredDatasetName,
+  type StructuredDatasetRegistry,
+  type StructuredFieldRegistryEntry,
+  type StructuredFieldType
+} from "./structured-registry.js";
