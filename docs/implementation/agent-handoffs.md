@@ -431,3 +431,14 @@
 - PR: Draft PR [#50](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/50).
 - Human blockers: None for Phase 3 Task 2 local Qdrant/runtime. Later Phase 4 staging/prod image mirroring still needs account-owned ACR details before deployment.
 - Suggested next agent: After PR #50 merges, downstream evidence indexing/search tasks can rely on the local Qdrant runtime/readiness baseline but must still implement ingestion/search explicitly.
+
+## 2026-07-11 22:05 - codex/phase3-evidence-structured-final - Phase 3 Tasks 4+5 rebase after Task 2 merge
+
+- Scope: Rebased the combined Phase 3 Task 4 evidence parser/chunker and Phase 3 Task 5 structured dataset registry/profiler branch onto latest `origin/main` after PR #50 merged. This branch resolves conflicts from the superseded standalone Task 4/Task 5 PRs without adding evidence indexing/search, structured import execution, structured query execution, MCP Phase 3 tool bodies, deployment, or P2/P3 retrieval features.
+- Conflict resolution: Preserved Task 2 `retrieval-runtime` exports/docs, Task 3 `retrieval-config` exports/docs, Task 4 `evidence` exports/parser/chunker code and `jszip`, and Task 5 structured registry/profiler exports/code and `xlsx`; kept one coherent progress/test/handoff record for PR #54 instead of carrying old PR #52/#53 status text forward.
+- Files changed: `apps/worker/package.json`, `package-lock.json`, `packages/domain/src/evidence.ts`, `packages/domain/src/structured-registry.ts`, `packages/domain/src/index.ts`, parser/chunker/profiler tests and fixtures, `scripts/profile-structured-workbook.ts`, `docs/implementation/api-contract.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: `git fetch origin --prune`; updated main to merged PR #50; `git rebase origin/main` on `codex/phase3-evidence-structured-final`; resolved domain export and documentation conflicts.
+- Done criteria expected before PR update: Parser/chunker targeted tests pass; structured registry/profiler targeted tests pass; full repo tests, typecheck, lint, format check, and diff check pass; no `.env`, real Maijia export, provider key, or absolute real sample path is committed.
+- PR: Draft PR [#54](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/54).
+- Human blockers: None for Tasks 4+5. Real sample workbook paths remain local-only and are referenced in docs as `<secure-local-...>` placeholders.
+- Suggested next agent: After PR #54 merges, continue Phase 3 evidence indexing/search and structured import/query tasks according to `implementation-plan.md`; do not re-open the superseded standalone Task 4/Task 5 branches unless needed for audit.
