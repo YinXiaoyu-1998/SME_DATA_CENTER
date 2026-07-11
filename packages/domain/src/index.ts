@@ -21,6 +21,15 @@ export {
 export { AUDIT_ACTIONS, type AuditActionName } from "./audit.js";
 export { SKILL_ENTRY_STATUSES, type SkillEntryStatusName } from "./skills.js";
 export {
+  EVIDENCE_BLOCK_TYPES,
+  EvidenceParseError,
+  type EvidenceBlockType,
+  type EvidenceSourceLocation,
+  type EvidenceWarning,
+  type ParsedEvidenceBlock,
+  type ParsedEvidenceDocument
+} from "./evidence.js";
+export {
   DOCUMENT_INDEX_STATUSES,
   DOCUMENT_KINDS,
   IMPORT_BATCH_STATUSES,
