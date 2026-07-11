@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, and implemented request/response examples through Phase 2 / Day 6 local MCP final verification.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, implemented request/response examples through Phase 2 / Day 6 local MCP final verification, and planned Phase 3 retrieval/structured-data contracts.
 
 ## Cross-Cutting Rules
 
@@ -205,6 +205,227 @@ Unauthenticated response `401`:
 ```
 
 ## Local MCP Profile And Tool Contract
+
+## Phase 3 Retrieval And Structured Data API Contract
+
+Phase 3 adds evidence retrieval and controlled structured query APIs. These APIs are data-provider surfaces for employee-owned agents. They do not generate final answers, reports, dashboards, business recommendations, or natural-language-to-query plans.
+
+### Phase 3 HTTP API List
+
+| Method | Path                                    | Purpose                                                                                                 |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `POST` | `/v1/documents/evidence`                | Upload MD/TXT/DOCX evidence documents for parse/chunk/embed/index.                                      |
+| `POST` | `/v1/evidence/search`                   | Return authorized evidence chunks and source metadata from active indexed evidence documents.           |
+| `POST` | `/v1/structured/imports`                | Upload XLSX/CSV structured `dishes` or `business` import.                                               |
+| `GET`  | `/v1/structured/imports/:importBatchId` | Return safe import status, sheet summary, and bounded validation errors.                                |
+| `GET`  | `/v1/structured/datasets`               | Return dataset registry, fields, capabilities, operators, limits, lifecycle, sensitivity, and versions. |
+| `POST` | `/v1/structured/query`                  | Execute controlled read-only structured query over `dishes` / `business`.                               |
+
+### `POST /v1/documents/evidence`
+
+Supports MD/TXT/DOCX only. Required multipart metadata:
+
+| Field                        | Required | Notes                        |
+| ---------------------------- | -------- | ---------------------------- |
+| `file`                       | Yes      | `.md`, `.txt`, or `.docx`.   |
+| `title` / `originalFilename` | Yes      | Human-readable source title. |
+| `labelIds[]` / visibility    | Yes      | Source document permissions. |
+
+Response `202`:
+
+```json
+{
+  "document": {
+    "documentId": "doc_123",
+    "documentKind": "evidence",
+    "fileType": "docx",
+    "status": "processing"
+  },
+  "processing": {
+    "processingRunId": "run_123",
+    "status": "queued"
+  },
+  "documentIndex": {
+    "status": "pending",
+    "retrievalConfigVersion": "phase3.retrieval.v1"
+  },
+  "requestId": "req_123"
+}
+```
+
+### `POST /v1/evidence/search`
+
+Request:
+
+```json
+{
+  "query": "差评处理 SOP",
+  "filters": {
+    "fileTypes": ["md", "txt", "docx"],
+    "documentIds": [],
+    "labelIds": []
+  },
+  "limit": 10,
+  "cursor": null
+}
+```
+
+Response:
+
+```json
+{
+  "results": [
+    {
+      "chunkId": "chk_123",
+      "documentId": "doc_123",
+      "documentTitle": "客户反馈处理 SOP.docx",
+      "text": "命中的证据片段……",
+      "source": {
+        "fileType": "docx",
+        "sectionHeadingPath": ["客户反馈", "差评处理"],
+        "blockType": "paragraph",
+        "pageNumber": null
+      },
+      "score": {
+        "hybrid": 0.82,
+        "rerank": 0.91
+      },
+      "matchedBy": ["dense", "lexical", "rerank"]
+    }
+  ],
+  "page": {
+    "limit": 10,
+    "nextCursor": null,
+    "hasMore": false
+  },
+  "retrieval": {
+    "retrievalConfigVersion": "phase3.retrieval.v1",
+    "embeddingVersion": "embed.v1",
+    "lexicalIndexVersion": "lexical.v1",
+    "rerankVersion": "rerank.v1",
+    "rerankStatus": "enabled"
+  },
+  "warnings": [],
+  "requestId": "req_123"
+}
+```
+
+The response is evidence-only. It must not contain a final answer.
+
+### `POST /v1/structured/imports`
+
+Supports XLSX/CSV only. Required multipart metadata:
+
+| Field                     | Required | Notes                                                     |
+| ------------------------- | -------- | --------------------------------------------------------- |
+| `file`                    | Yes      | `.xlsx` or `.csv`.                                        |
+| `dataset`                 | Yes      | `dishes` or `business`.                                   |
+| `enterprise_name`         | Yes      | Used for canonical source object naming, not permissions. |
+| `startDate`               | Yes      | `YYYYMMDD`, business-date window start.                   |
+| `endDate`                 | Yes      | `YYYYMMDD`, business-date window end.                     |
+| `labelIds[]` / visibility | Yes      | Source document permissions inherited by rows.            |
+| `idempotencyKey`          | Yes      | Client-generated retry key.                               |
+
+Response `202`:
+
+```json
+{
+  "document": {
+    "documentId": "doc_456",
+    "documentKind": "structured",
+    "fileType": "xlsx",
+    "status": "processing"
+  },
+  "processing": {
+    "processingRunId": "run_456",
+    "status": "queued"
+  },
+  "importBatch": {
+    "importBatchId": "imp_456",
+    "dataset": "dishes",
+    "status": "pending",
+    "startDate": "20260701",
+    "endDate": "20260705"
+  },
+  "requestId": "req_456"
+}
+```
+
+Conflict behavior:
+
+- same idempotency key + same request fingerprint returns the existing batch/status
+- same idempotency key + different fingerprint returns `IDEMPOTENCY_KEY_CONFLICT`
+- active/applied same `{orgId,dataset,startDate,endDate}` returns `ACTIVE_IMPORT_EXISTS`
+- in-progress same window returns `IMPORT_IN_PROGRESS`
+
+### `GET /v1/structured/datasets`
+
+Response contains dataset registry versions, effective query limits, and every current export field with canonical name, aliases/source columns, type, nullable, sensitivity, lifecycle, capabilities, operators, default-return flag, index status, and value limits.
+
+### `POST /v1/structured/query`
+
+Request shape:
+
+```json
+{
+  "dataset": "dishes",
+  "registryVersion": "dishes.2026-07-11.v1",
+  "select": ["business_date", "matched_product_name", "dish_sales_quantity"],
+  "filter": {
+    "and": [
+      { "field": "business_date", "op": "between", "value": ["2026-07-01", "2026-07-05"] },
+      { "field": "matched_product_name", "op": "contains", "value": "肉夹馍" }
+    ]
+  },
+  "sort": [{ "field": "business_date", "direction": "asc" }],
+  "page": {
+    "limit": 50,
+    "cursor": null
+  }
+}
+```
+
+The API accepts only controlled JSON query structure. It never accepts raw SQL, arbitrary expressions, mutation operations, joins, formulas, window functions, or natural-language analysis instructions.
+
+Pagination uses opaque cursors. Every page rechecks current authorization and active import scope.
+
+### Phase 3 Error Envelope
+
+All Phase 3 API errors use:
+
+```json
+{
+  "error": {
+    "code": "UNSUPPORTED_OPERATOR",
+    "message": "Operator is not supported for this field.",
+    "retryable": false,
+    "details": {
+      "dataset": "dishes",
+      "field": "matched_product_name",
+      "operator": "regex"
+    },
+    "requestId": "req_789"
+  }
+}
+```
+
+Core Phase 3 codes include `UNSUPPORTED_FILE_TYPE`, `INVALID_DOCUMENT_KIND_FILE_TYPE`, `VALIDATION_FAILED`, `INVALID_QUERY`, `INVALID_FIELD`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_CAPABILITY`, `TYPE_MISMATCH`, `INVALID_AGGREGATION`, `INVALID_DATE_WINDOW`, `LIMIT_EXCEEDED`, `QUERY_TOO_EXPENSIVE`, `INVALID_CURSOR`, `CURSOR_EXPIRED`, `REGISTRY_VERSION_UNSUPPORTED`, `REGISTRY_VERSION_MISMATCH`, `DATASET_FORBIDDEN`, `ACTIVE_IMPORT_EXISTS`, `IMPORT_IN_PROGRESS`, `IDEMPOTENCY_KEY_CONFLICT`, `PROCESSING_FAILED`, `TEMPORARILY_UNAVAILABLE`, and `INTERNAL_ERROR`.
+
+### Phase 3 MCP Tools
+
+Phase 3 MCP remains a thin adapter over HTTP:
+
+| Tool                             | HTTP backing                                | Purpose                                     |
+| -------------------------------- | ------------------------------------------- | ------------------------------------------- |
+| `search_document_evidence`       | `POST /v1/evidence/search`                  | Return evidence chunks, never answers.      |
+| `list_structured_datasets`       | `GET /v1/structured/datasets`               | Discover dataset fields and capabilities.   |
+| `query_structured_dataset`       | `POST /v1/structured/query`                 | Execute controlled structured query.        |
+| `upload_structured_dataset`      | `POST /v1/structured/imports`               | Upload XLSX/CSV structured imports.         |
+| `upload_evidence_document`       | `POST /v1/documents/evidence`               | Upload MD/TXT/DOCX evidence documents.      |
+| `get_import_status`              | `GET /v1/structured/imports/:importBatchId` | Read structured import status.              |
+| `get_document_processing_status` | existing/new document status endpoint       | Read evidence indexing status where needed. |
+
+MCP must not direct-read MySQL, Qdrant, OSS, or model providers.
 
 Phase 2 adds a local MCP adapter named `enterprise-hub-mcp`. The MCP server is an adapter over the HTTP API, not a second backend. It must not direct-read MySQL, direct-read storage, or implement independent authorization filtering. All non-health data access is delegated to the API with an authenticated employee context.
 
@@ -489,7 +710,7 @@ MYSQL_PORT=3307 npm run test:mcp
 
 The smoke script resets and seeds the local development database, starts the API on an available local port, invokes the MCP tool handlers with a local-development session file, uploads only the synthetic Baoli fixture, runs one deterministic worker pass, and verifies the Phase 1 MVP loop through MCP: login, label listing, upload, status, search, download URL, archive, and Skill Directory-read safety. It also logs in as Suzhou through a separate MCP session and proves Suzhou cannot discover the Baoli document or hidden title.
 
-Human local-agent verification is documented in `docs/implementation/local-agent-test.md` and can be driven by the repo-local `enterprise-hub-mcp` skill. That flow must not use raw curl, direct DB/storage reads, real customer data, production credentials, OSS, online MySQL, domains, or Phase 3 remote endpoints.
+Human local-agent verification is documented in `docs/implementation/local-agent-test.md` and can be driven by the repo-local `enterprise-hub-mcp` skill. That flow must not use raw curl, direct DB/storage reads, real customer data, production credentials, OSS, online MySQL, domains, or Phase 4 remote endpoints.
 
 ### `GET /documents/:id/status`
 

@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` for parallel tracks or `superpowers:executing-plans` for single-thread execution. Steps use checkbox (`- [ ]`) syntax for tracking. This plan is written for execution inside Codex App and assumes multiple subagents/threads may work in parallel.
 
-**Goal:** Build 企业资料中枢 from zero implementation to local MVP, deployable service, and small-scope internal beta.
+**Goal:** Build 企业资料中枢 from zero implementation to local MVP, production-usable retrieval/data foundation, deployable service, and small-scope internal beta.
 
-**Architecture:** Use a modular monolith first: one backend codebase with modules for employee accounts, labels, document catalog, storage, processing worker, search/query, audit, admin, and Skill Directory. Files live in object storage, authoritative metadata lives in MySQL, derived indexes are rebuildable and never authoritative.
+**Architecture:** Use a modular monolith first: one backend codebase with modules for employee accounts, labels, document catalog, storage, processing worker, evidence retrieval, controlled structured query, audit, admin, and Skill Directory. Source files live in object storage, authoritative metadata and structured rows live in MySQL, MD/TXT/DOCX evidence chunks live in Qdrant, and all derived indexes are rebuildable and never authoritative for permissions.
 
-**Tech Stack:** TypeScript, Node.js, Fastify or NestJS, Prisma, MySQL 8, local filesystem or MinIO for MVP storage, Aliyun OSS for online storage, Docker Compose, Vitest/Jest, Playwright for beta admin UI smoke tests, simple Next.js or Vite React admin frontend for beta.
+**Tech Stack:** TypeScript, Node.js, Fastify or NestJS, Prisma, MySQL 8, Qdrant, local filesystem or MinIO for MVP storage, Aliyun OSS for online storage, Docker Compose, external OpenAI-compatible embedding/rerank provider, Vitest/Jest, Playwright for beta admin UI smoke tests, simple Next.js or Vite React admin frontend for beta.
 
 ---
 
@@ -23,6 +23,19 @@ These rules come from `docs/context/` and `docs/adr/`. Implementation agents mus
 - `docs/adr/0004-employee-auth-and-backend-authorization.md`
 - `docs/adr/0005-idempotent-processing-and-bounded-retry.md`
 - `docs/adr/0006-backup-restore-and-rebuildable-derived-indexes.md`
+- `docs/adr/0007-structured-export-field-coverage.md`
+- `docs/adr/0008-structured-import-batches.md`
+- `docs/adr/0009-structured-rows-inherit-document-permissions.md`
+- `docs/adr/0010-mysql-authorizes-qdrant-retrieval.md`
+- `docs/adr/0011-evidence-index-active-gate.md`
+- `docs/adr/0012-qdrant-native-hybrid-retrieval.md`
+- `docs/adr/0013-text-extraction-not-ocr.md`
+- `docs/adr/0014-versioned-retrieval-model-migration.md`
+- `docs/adr/0015-external-model-data-egress.md`
+- `docs/adr/0016-typed-processing-runs-and-publish-gates.md`
+- `docs/adr/0017-qdrant-baseline-dependency.md`
+- `docs/adr/0018-http-api-canonical-mcp-thin-adapter.md`
+- `docs/adr/0019-structured-import-lifecycle.md`
 
 Implementation must preserve these boundaries:
 
@@ -36,17 +49,22 @@ Implementation must preserve these boundaries:
 8. Archival is metadata state change, not default physical deletion.
 9. Skill Directory lists approved business skills and usage instructions. It does not execute skills.
 10. First implementation is single-enterprise deployment. `org_id` may be reserved but real SaaS multi-tenancy is deferred.
+11. 企业资料中枢 is a retrieval/data provider, not an answer generator, report generator, dashboard service, or NL-to-query agent.
+12. MD/TXT/DOCX evidence retrieval must return evidence chunks and source metadata only; final answers belong to the caller's employee-owned agent.
+13. CSV/XLSX structured data supports only `dishes` and `business` datasets in Phase 3; JSON is unsupported.
+14. MySQL remains authoritative for metadata, permissions, audit, and structured rows. Qdrant is the rebuildable evidence index for MD/TXT/DOCX and never authorizes a result by itself.
+15. MCP is a thin adapter over HTTP API. It must not direct-connect to MySQL, Qdrant, OSS, or model providers and must not duplicate backend authorization.
 
 ## 1. Priority Levels
 
 | Priority | Meaning | Examples |
 |---|---|---|
 | P0 | Required for local MVP and architectural proof | employee auth seed, labels, document upload, local storage, state machine, active-only query, backend permission filtering, audit append, minimal API docs |
-| P1 | Required before online-ready service | Local MCP server, `enterprise-hub-mcp` meta skill, agent human-test loop, Docker image, production env config, Aliyun OSS adapter, MySQL migration discipline, structured logs, health checks, token rotation basics, deployment guide |
-| P2 | Required for small internal beta quality | admin frontend, failure queue, manual retry, beta MCP connector hardening, signed download URLs, backup runbook, smoke tests |
-| P3 | Explicitly deferred until after beta | full SaaS multi-tenancy, field-level permissions, automatic tag creation, advanced vector search, dashboard/report service, skill execution platform, SSO/OAuth device flow polish, region hierarchy |
+| P1 | Required before online-ready service | Local MCP server, `enterprise-hub-mcp` meta skill, agent human-test loop, production-grade evidence retrieval, Qdrant integration, controlled structured import/query, Docker image, production env config, Aliyun OSS adapter, MySQL migration discipline, structured logs, health checks, token rotation basics, deployment guide |
+| P2 | Required for small internal beta quality or near-term operator quality | admin frontend, failure queue, manual retry, beta MCP connector hardening, signed download URLs, backup runbook, smoke tests, retrieval quality trend reports, stale-index repair sweeps, Qdrant snapshot drill, admin-assisted structured replacement |
+| P3 | Explicitly deferred until after beta | full SaaS multi-tenancy, field-level permissions, automatic tag creation, dashboard/report service, skill execution platform, SSO/OAuth device flow polish, region hierarchy, OCR/PDF/image extraction, NL-to-structured-query inside Hub, server-side business analysis, self-serve schema evolution, automatic structured overwrite/append |
 
-MVP and beta must not accidentally implement P3 unless a later PR explicitly changes scope.
+MVP, Phase 3, and beta must not accidentally implement P3 unless a later PR explicitly changes scope.
 
 ## 2. Required Progress And Handoff Documents
 
@@ -61,7 +79,7 @@ Long-running multi-agent execution must keep progress outside chat. These files 
 | `docs/implementation/progress.md` | every agent | Current phase, active branches, completed tasks, blocked tasks, next tasks | Update at start and end of every work session or subagent PR |
 | `docs/implementation/agent-handoffs.md` | every subagent | What a subagent changed, tests run, PR link, assumptions, unresolved issues | Add one entry before each subagent stops |
 | `docs/implementation/env-inventory.md` | lead/devops agent | Required local/staging/prod environment variables and external services | Update whenever a new external service, bucket, key, or secret is needed |
-| `docs/implementation/phase-3-readiness.md` | lead/devops/security agent | Human-provided Phase 3 inputs, validation state, blocker matrix, and safe verification log | Update whenever a Phase 3 input is provided, validated, blocked, or deferred |
+| `docs/implementation/staging-readiness.md` | lead/devops/security agent | Human-provided staging inputs, validation state, blocker matrix, and safe verification log | Update whenever a staging input is provided, validated, blocked, or deferred |
 | `docs/implementation/api-contract.md` | backend/API agent | Stable request/response examples for core APIs and MCP tools | Update in the same PR as API behavior changes |
 | `docs/implementation/test-cases.md` | QA/integration agent | Manual and automated acceptance scenarios | Update as done criteria become tests |
 
@@ -152,7 +170,7 @@ Agents must stop and ask the human instead of inventing values when any of these
 
 - Aliyun OSS region, bucket name, endpoint, access key, access secret, RAM policy, or lifecycle policy.
 - Online MySQL host, username, password, database name, SSL requirement, backup setting.
-- Qwen/DashScope API key, embedding model choice, or paid model budget.
+- External model provider, model names, API key, base URL, data-egress approval, or paid model budget when the workstream needs real embedding or rerank calls outside local fakes.
 - Domain name, TLS certificate, DNS provider, deploy target, or server credentials.
 - Beta user list, admin list, initial employee permissions, initial store labels.
 - Whether real company documents may be uploaded to staging.
@@ -207,7 +225,14 @@ Minimum entities:
 - `documents`: catalog record with status, type, storage object key, uploader, source metadata.
 - `document_labels`: many-to-many.
 - `processing_runs`: attempts, status, retry count, error summary.
-- `document_chunks`: derived text chunks with `document_id`, `chunk_hash`, model/version fields.
+- `document_indexes`: MD/TXT/DOCX index readiness per `document_id`, `content_version`, and `retrieval_config_version`.
+- `document_chunks`: evidence chunk manifest with `document_id`, `document_index_id`, `chunk_id`, source location, hash, model/version fields, and Qdrant point id.
+- `retrieval_configs`: active/candidate/deprecated retrieval config versions covering chunker, dense embedding, lexical index, rerank model, dimension, and Qdrant collection.
+- `import_batches`: CSV/XLSX structured import attempt/result with dataset, business-date window, idempotency fingerprint, status, source document, row count, and validation summary.
+- `import_window_claims`: transactional active-window guard keyed by `{org_id,dataset,start_date,end_date}`.
+- `dish_rows`: parsed `dishes` dataset rows, complete for current export columns and linked to `import_batch_id` and source `document_id`.
+- `business_rows`: parsed `business` dataset rows, complete for current export columns and linked to `import_batch_id` and source `document_id`.
+- `structured_field_registry` or versioned registry seed: canonical field definitions, aliases, types, nullability, sensitivity, lifecycle, operators, indexes, and capabilities for `dishes` / `business`.
 - `audit_logs`: append-only events.
 - `skill_entries`: approved skill catalog.
 - `business_events`: optional P1/P2 entity for operational facts.
@@ -218,6 +243,37 @@ Minimum entities:
 P0 APIs:
 
 - `POST /auth/dev-login`
+
+Phase 3 API additions:
+
+- `POST /v1/documents/evidence`: upload MD/TXT/DOCX evidence documents.
+- `POST /v1/evidence/search`: return authorized evidence chunks and source metadata only.
+- `POST /v1/structured/imports`: upload XLSX/CSV `dishes` or `business` structured imports.
+- `GET /v1/structured/imports/:importBatchId`: return structured import status and bounded validation errors.
+- `GET /v1/structured/datasets`: return dataset registry, field capabilities, operators, limits, lifecycle, sensitivity, and versions.
+- `POST /v1/structured/query`: execute controlled read-only structured queries over `dishes` / `business`.
+- Optional `GET /v1/documents/:id/processing-runs`: expose safe processing status if existing document status is insufficient.
+
+Phase 3 MCP tool additions:
+
+- `search_document_evidence`
+- `list_structured_datasets`
+- `query_structured_dataset`
+- `upload_structured_dataset`
+- `upload_evidence_document`
+- `get_import_status`
+
+Phase 3 admin/operator surfaces remain HTTP/admin-only or internal:
+
+- worker retry/cancel/dead-letter
+- force reindex
+- Qdrant repair/delete/snapshot/restore
+- model provider config and external data-egress acknowledgement
+- field registry editing
+- ImportWindowClaim repair
+- hard delete/purge
+- audit export
+- readiness/preflight endpoints
 - `GET /me`
 - `GET /labels`
 - `POST /documents`
@@ -721,7 +777,7 @@ The `enterprise-hub-mcp` meta skill and MCP docs should introduce profiles from 
 | Profile | Phase Implemented | Connection Shape | Auth Shape | Notes |
 |---|---|---|---|---|
 | `local-development` | Phase 2 | Local stdio command or local MCP server command, backed by local API URL such as `http://127.0.0.1:3000` | Seeded employee email via local dev login | Required in Phase 2 |
-| `staging-remote` | Phase 3 | Remote MCP endpoint or deployed command config | Employee-bound token from staging auth/token flow | Document placeholder only in Phase 2 |
+| `staging-remote` | Phase 4 | Remote MCP endpoint or deployed command config | Employee-bound token from staging auth/token flow | Document placeholder only in Phase 2 |
 | `production` | Later | Production MCP endpoint | Production employee auth/token policy | Out of scope |
 
 ### Phase 2 Human Inputs Required
@@ -1029,22 +1085,538 @@ Phase 2 is complete only when all of these are true:
 - [ ] MCP tests prove Baoli/Suzhou permission isolation.
 - [ ] `enterprise-hub-mcp` meta skill exists with a complete local-development profile and future remote profile placeholders.
 - [ ] Codex human-test instructions are documented and runnable.
-- [ ] No Phase 3 online infrastructure assumptions were introduced.
+- [ ] No Phase 3 retrieval/Qdrant or Phase 4 online infrastructure assumptions were introduced.
 - [ ] No secrets, real customer exports, production credentials, or private tokens are committed.
 
-## 7. Phase 3: Online-Ready Service
+## 7. Phase 3: Retrieval And Structured Data Foundation
+
+**Goal:** Upgrade the MVP into a production-usable retrieval/data foundation before online deployment. This phase must support MD/TXT/DOCX evidence retrieval through Qdrant-backed RAG infrastructure and XLSX/CSV `dishes` / `business` structured imports through controlled MySQL-backed query APIs.
+
+**Timebox:** 8-14 focused days after Phase 2 local MCP and agent human testing. Parallel subagents should be used aggressively after Task 1 establishes shared contracts.
+
+**Deployment target:** Local and CI first, using Docker Compose with MySQL + Qdrant + API + worker + local/fake storage where needed. Staging/cloud deployment remains Phase 4.
+
+**Product boundary:** 企业资料中枢 remains a data/retrieval provider. It never receives the user's original natural-language question as business context, never generates final answers, never creates reports/dashboards, and never turns natural language into structured queries inside the Hub.
+
+**Supported file types:**
+
+- Evidence documents: MD, TXT, DOCX.
+- Structured imports: XLSX, CSV.
+- JSON is unsupported and any old JSON ingestion/indexing remnants must be removed or explicitly rejected.
+
+**Required external/local services:**
+
+- MySQL 8 for authoritative metadata, permissions, audit, and structured rows.
+- Qdrant for MD/TXT/DOCX evidence chunks, dense vectors, sparse/lexical retrieval, payload metadata, and snippets.
+- Local storage or OSS-compatible storage for source files.
+- OpenAI-compatible external embedding and rerank provider for real retrieval runs.
+- Deterministic fake embedding/rerank provider for unit/CI paths that must avoid network, cost, and data egress.
+
+**Human blocker:** Stop only if implementation needs a real secret or external account value not present in `.env` / `.env.example` / documented env inventory. Agents may read and update local ignored `.env` when necessary for testing, but must never commit it or print secrets.
+
+**Subagent-driven execution rule:** Phase 3 tasks are written as independent work packages. Use a fresh subagent per implementation workstream after Task 1, and review each workstream for spec compliance and code quality before integration. Do not let a subagent invent missing credentials, real model names, bucket names, or database endpoints; it must use `.env`, fake providers, or stop with a concrete blocker.
+
+### Phase 3 Shared Done Criteria
+
+Phase 3 is complete only when all of these are true:
+
+- [ ] Local Docker Compose / bootup includes real Qdrant.
+- [ ] CI integration tests include real MySQL + real Qdrant, not mocks only.
+- [ ] MD/TXT/DOCX upload, parse, chunk, embed, lexical index, Qdrant upsert, MySQL revalidation, and evidence search work end to end.
+- [ ] XLSX/CSV `dishes` and `business` imports validate real schemas, write rows atomically, and support controlled structured queries.
+- [ ] MCP exposes both structured upload and evidence document upload, plus evidence search, schema discovery, structured query, and import status through HTTP-backed thin tools.
+- [ ] Real rerank provider integration exists and can be enabled through env/config; fake rerank is limited to local/CI and clearly marked.
+- [ ] Qdrant hits cannot bypass MySQL authorization or active/version checks.
+- [ ] Structured rows inherit source document permissions before filtering, aggregation, sorting, and pagination.
+- [ ] Golden retrieval evaluation exists and leak metrics are zero.
+- [ ] Real workbook acceptance covers the provided `dishes` and `business` XLSX samples or secure test copies.
+- [ ] `api-contract.md`, `env-inventory.md`, `test-cases.md`, `CONTEXT.md`, ADRs, and this plan agree on endpoint names, env names, phase boundaries, and unsupported features.
+- [ ] `npm test`, `npm run typecheck`, `npm run lint`, relevant integration tests, Qdrant smoke tests, structured import tests, and MCP tests pass or documented environment-gated tests are run with evidence.
+
+### Phase 3 Parallel Workstream Map
+
+| Track | Can Start After | Can Run In Parallel With | Suggested Agent | Integration Owner |
+|---|---|---|---|---|
+| Task 1 contracts/scaffolding | Phase 2 complete | none | lead/backend architect | lead |
+| Task 2 local Qdrant/runtime | Task 1 | Task 3/4/5 | devops/backend | lead |
+| Task 3 retrieval config/models | Task 1 | Task 2/4/5 | backend/RAG | lead |
+| Task 4 evidence parser/chunker | Task 1 | Task 2/3/5 | RAG/parser | retrieval lead |
+| Task 5 structured registry profiling | Task 1 | Task 2/3/4 | data/backend | structured lead |
+| Task 6 structured import pipeline | Task 5 | Task 7/8 | backend/data | structured lead |
+| Task 7 structured query API | Task 5 | Task 6/8 | backend/API | structured lead |
+| Task 8 evidence indexing/search API | Task 2/3/4 | Task 6/7 | backend/RAG | retrieval lead |
+| Task 9 MCP Phase 3 tools | Task 6/7/8 contracts stable | Task 10/11 | MCP/API | lead |
+| Task 10 permissions/security lifecycle | Task 6/8 | Task 9/11 | security/backend | lead |
+| Task 11 tests/evaluation/performance | Task 6/7/8 | Task 9/10 | QA/RAG/data | lead |
+| Task 12 docs/final verification | all functional tasks | none | lead/docs | lead |
+
+### Task 1: Phase 3 Contract Scaffolding And Migration Baseline
+
+**Execution mode:** Lead-owned integration task.
+**Subagent fit:** One architecture/backend subagent may draft schema/code boundaries, but lead must own final contracts.
+
+**Dependencies:** Phase 2 complete.
+
+**Files likely touched:**
+
+- `packages/db/prisma/schema.prisma`
+- `packages/domain/src/*`
+- `apps/api/src/routes/*`
+- `apps/worker/src/*`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/env-inventory.md`
+- `docs/implementation/test-cases.md`
+- `docs/implementation/progress.md`
+
+**Steps:**
+
+- [ ] Add or revise domain enums for `documentKind: evidence | structured`, supported `fileType`, `ProcessingRun.jobType`, `DocumentIndex.status`, and `ImportBatch.status`.
+- [ ] Add Prisma models/migrations for `retrieval_configs`, `document_indexes`, expanded `document_chunks`, `import_batches`, `import_window_claims`, `dish_rows`, and `business_rows`.
+- [ ] Ensure `AuthenticatedEmployee` carries authoritative `orgId`; remove reliance on `defaultOrgId()` for Phase 3 routes.
+- [ ] Add stable error-code definitions for Phase 3 APIs.
+- [ ] Add route skeletons returning contract-safe `501` or equivalent for Phase 3 endpoints until implemented.
+- [ ] Update docs with Phase 3 endpoint list and env inventory placeholders.
+
+**Done criteria:**
+
+- [ ] Prisma schema validates.
+- [ ] Migration applies to local MySQL without destructive reset.
+- [ ] Generated Prisma client compiles.
+- [ ] `orgId` is present in backend auth context used by new route skeletons.
+- [ ] Unsupported JSON upload is represented in contracts as `UNSUPPORTED_FILE_TYPE`.
+- [ ] No route skeleton performs business logic or bypasses authorization.
+- [ ] `npm run typecheck` passes.
+
+### Task 2: Local Qdrant, Compose, And Readiness Bootstrap
+
+**Execution mode:** Devops/backend subagent.
+**Subagent fit:** Strong; isolated dependency/runtime task.
+
+**Dependencies:** Task 1 route/config names.
+
+**Can run parallel with:** Tasks 3, 4, 5.
+
+**Human blocker:** Stop only if a real staging/cloud Qdrant credential is needed. Baseline local Qdrant must be created by the agent through Docker Compose.
+
+**Files likely touched:**
+
+- `docker-compose.yml`
+- `.env.example`
+- `scripts/*`
+- `apps/api/src/config/*`
+- `apps/worker/src/config/*`
+- `docs/implementation/env-inventory.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Add Qdrant service to local Docker Compose with pinned image version and local volume.
+- [ ] Add local Qdrant collection initialization script or API startup/worker bootstrap path.
+- [ ] Add Qdrant env variables: `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION_EVIDENCE`, `QDRANT_TIMEOUT_MS`, `RETRIEVAL_CONFIG_VERSION`.
+- [ ] Add fake provider env defaults for local/CI and document compatibility with existing `LLM_PROVIDER`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_BASE_URL`.
+- [ ] Add readiness checks for MySQL, Qdrant collection/config, storage, worker lease, and model provider mode.
+- [ ] Document Qdrant OSS self-hosting and ACR image pinning expectations for later Phase 4.
+
+**Done criteria:**
+
+- [ ] `docker compose up -d mysql qdrant` starts both services locally.
+- [ ] Qdrant collection is created with expected dense/sparse/vector config.
+- [ ] Local readiness fails clearly when Qdrant is unavailable.
+- [ ] Local readiness passes with Compose Qdrant.
+- [ ] No real external model call is made by default in CI/local fake mode.
+- [ ] `env-inventory.md` marks secret and non-secret variables correctly.
+
+### Task 3: Retrieval Config, Embedding Provider, And Real Rerank Adapter
+
+**Execution mode:** Backend/RAG subagent.
+**Subagent fit:** Strong; clear interface with Task 8.
+
+**Dependencies:** Task 1 config model names; Task 2 env names can be stubbed.
+
+**Can run parallel with:** Tasks 2, 4, 5.
+
+**Human blocker:** Stop if a real external API key/base URL/model is required and missing from ignored `.env`. Use fake provider for tests, but implement real adapter path.
+
+**Files likely touched:**
+
+- `packages/domain/src/retrieval-config*`
+- `apps/api/src/config/*`
+- `apps/worker/src/retrieval/*`
+- `apps/worker/src/model-providers/*`
+- `docs/implementation/env-inventory.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Implement retrieval config seed/loader with active/candidate/deprecated status.
+- [ ] Implement deterministic fake embedding provider for tests.
+- [ ] Implement OpenAI-compatible embedding provider using existing env variables.
+- [ ] Implement deterministic fake rerank provider for tests.
+- [ ] Implement real OpenAI-compatible rerank adapter path using configured provider/base URL/key/model.
+- [ ] Enforce `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true` before any real external embedding/rerank call.
+- [ ] Record embedding/rerank provider/model/version/dimension in index metadata and response metadata.
+- [ ] Return/record `rerank_disabled` only when rerank is explicitly disabled in config; Phase 3 production path must support real rerank.
+
+**Done criteria:**
+
+- [ ] Unit tests cover fake embedding determinism and dimension.
+- [ ] Unit tests cover real-provider request shape without printing secrets.
+- [ ] Unit tests prove real provider is blocked when egress acknowledgement is false.
+- [ ] Rerank adapter interface is exercised by tests.
+- [ ] Missing real rerank config fails readiness for production-like profile with a clear message.
+- [ ] Logs never include raw API keys, full chunk payloads, or provider responses.
+
+### Task 4: Evidence Parser And Structure-Aware Chunker
+
+**Execution mode:** RAG/parser subagent.
+**Subagent fit:** Strong; can develop against fake provider and local fixtures.
+
+**Dependencies:** Task 1 chunk manifest fields.
+
+**Can run parallel with:** Tasks 2, 3, 5.
+
+**Files likely touched:**
+
+- `apps/worker/src/parsers/*`
+- `apps/worker/src/chunking/*`
+- `packages/domain/src/evidence*`
+- `fixtures/evidence/*`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Implement MD extraction preserving heading path, lists, tables, code blocks, and link text.
+- [ ] Implement TXT extraction with deterministic encoding/line/paragraph normalization.
+- [ ] Implement DOCX text extraction for body paragraphs and deterministic table row/cell text.
+- [ ] Detect unsupported embedded images/screenshots and add warnings without OCR.
+- [ ] Implement structure-aware chunking; fixed-length fallback allowed only for pathological long blocks and must mark metadata.
+- [ ] Generate deterministic `chunkId` / point id from `{documentId,contentVersion,retrievalConfigVersion,chunkOrdinal}`.
+- [ ] Persist parser/chunker warnings and source location metadata.
+
+**Done criteria:**
+
+- [ ] Parser tests cover MD/TXT/DOCX happy paths.
+- [ ] DOCX table text order is deterministic.
+- [ ] Embedded image fixture records warning and no OCR text.
+- [ ] Malformed DOCX fails and cannot become active.
+- [ ] Chunk ids are stable for the same content/config and change when content version or retrieval config changes.
+- [ ] No main chunking path uses crude fixed `1024/512` character splitting.
+
+### Task 5: Structured Field Registry And Real Workbook Profiling
+
+**Execution mode:** Data/backend subagent.
+**Subagent fit:** Strong; data profiling and registry artifact task.
+
+**Dependencies:** Task 1 schema names.
+
+**Can run parallel with:** Tasks 2, 3, 4.
+
+**Human blocker:** Stop if the secure real workbook samples are unavailable. Use the paths provided by the user when available; never commit real exports.
+
+**Files likely touched:**
+
+- `packages/domain/src/structured-registry/*`
+- `apps/worker/src/structured/profile*`
+- `fixtures/structured/*` (synthetic only)
+- `docs/implementation/env-inventory.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Add profiling script for real `dishes` and `business` workbooks that emits non-secret profile reports.
+- [ ] Generate reviewed field registries covering every current export column.
+- [ ] Define canonical public field names, aliases, types, nullable rules, blank normalization, sensitivity, lifecycle, volatility, default-return, operators, sort/group/aggregate capabilities, index status, and value limits.
+- [ ] Add registry snapshot tests.
+- [ ] Add synthetic fixtures for valid/invalid CSV/XLSX without committing real exports.
+- [ ] Update schema discovery examples.
+
+**Done criteria:**
+
+- [ ] Profiling reads all non-empty sheets, including hidden sheets, and ignores only fully empty sheets.
+- [ ] Every current real export column has a registry entry and MySQL column mapping.
+- [ ] Unknown column, missing required column, ambiguous alias, and fuzzy rename all fail validation.
+- [ ] Money uses decimal semantics; percent semantics are explicit; IDs/codes are strings unless reviewed otherwise.
+- [ ] Real workbook profile report can be regenerated without committing real data.
+
+### Task 6: Structured Import Pipeline And ImportBatch Lifecycle
+
+**Execution mode:** Backend/data subagent.
+**Subagent fit:** Strong; independent after registry.
+
+**Dependencies:** Tasks 1 and 5.
+
+**Can run parallel with:** Task 7 after registry interfaces stabilize.
+
+**Files likely touched:**
+
+- `apps/api/src/routes/structured-imports*`
+- `apps/worker/src/structured/import*`
+- `packages/domain/src/import-batch*`
+- `packages/db/prisma/schema.prisma`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Implement `POST /v1/structured/imports` multipart upload for XLSX/CSV.
+- [ ] Require metadata: `dataset`, `enterprise_name`, `startDate`, `endDate`, labels/visibility, idempotency key.
+- [ ] Store source file under canonical `{enterprise_name}_{dataset}_{startDate}_{endDate}` object key pattern while retaining original filename as metadata.
+- [ ] Implement `ImportBatch` status flow: pending, validating, applying, applied, failed, rejected, archived.
+- [ ] Implement active-window claim keyed by `{orgId,dataset,startDate,endDate}`.
+- [ ] Validate all non-empty XLSX sheets against same dataset schema and date window.
+- [ ] Atomically insert rows only after full-file validation passes.
+- [ ] Implement archive semantics: rows retained but non-queryable when source document archived.
+
+**Done criteria:**
+
+- [ ] Valid XLSX/CSV imports become `Document.active` + `ImportBatch.applied`.
+- [ ] Validation failure leaves no queryable rows.
+- [ ] Same idempotency key + same fingerprint returns existing status.
+- [ ] Same idempotency key + different fingerprint returns `IDEMPOTENCY_KEY_CONFLICT`.
+- [ ] Active same window returns `ACTIVE_IMPORT_EXISTS`.
+- [ ] In-progress same window returns `IMPORT_IN_PROGRESS`.
+- [ ] Hidden/nonmatching/explanation sheet fails whole workbook.
+- [ ] Archived source document removes rows from all structured queries without physical deletion.
+
+### Task 7: Controlled Structured Query API
+
+**Execution mode:** Backend/API subagent.
+**Subagent fit:** Strong; can parallelize with import after registry.
+
+**Dependencies:** Tasks 1 and 5; useful fixtures from Task 6.
+
+**Can run parallel with:** Task 6 after registry and schema interfaces are fixed.
+
+**Files likely touched:**
+
+- `apps/api/src/routes/structured-query*`
+- `packages/domain/src/structured-query*`
+- `packages/db/src/structured-query*`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Implement `GET /v1/structured/datasets`.
+- [ ] Implement `POST /v1/structured/query`.
+- [ ] Compile controlled JSON query wrapper to parameterized SQL only.
+- [ ] Enforce dataset, field, operator, sort, pagination, group, aggregate, and selected-field allowlists from registry.
+- [ ] Implement opaque cursor pagination with deterministic sort and current permission recheck on every page.
+- [ ] Support detail rows and explicit mechanical aggregations: count, countDistinct, sum, avg, min, max where field allows.
+- [ ] Reject raw SQL, arbitrary expressions, formulas, joins, window functions, trends, analysis, and NL query generation.
+
+**Done criteria:**
+
+- [ ] Invalid field/operator/capability/type fails before SQL execution.
+- [ ] Query limits are enforced before SQL execution: default 50, max rows 200, max aggregate groups 100, boolean depth 3, conditions 20, `in` values 100, sort 2, groupBy 1, aggregates 5, selected fields 50.
+- [ ] Permission scope applies before filters, sorting, aggregation, and pagination.
+- [ ] Cursor tampering or query-shape change fails.
+- [ ] No visible rows returns `200` with empty rows.
+- [ ] Dataset-level denial returns `DATASET_FORBIDDEN`.
+- [ ] Hidden rows do not leak through counts, aggregates, errors, or pagination.
+
+### Task 8: Evidence Indexing And Evidence Search API
+
+**Execution mode:** Backend/RAG subagent.
+**Subagent fit:** Strong but integration-heavy; use after parser/provider/Qdrant basics exist.
+
+**Dependencies:** Tasks 2, 3, 4.
+
+**Can run parallel with:** Tasks 6 and 7 after shared `Document` status semantics are stable.
+
+**Files likely touched:**
+
+- `apps/api/src/routes/evidence*`
+- `apps/api/src/routes/documents-evidence*`
+- `apps/worker/src/evidence-index*`
+- `packages/domain/src/evidence*`
+- `packages/db/src/evidence*`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Implement `POST /v1/documents/evidence` for MD/TXT/DOCX upload.
+- [ ] Implement `evidence_document_index` worker job: parse, chunk, embed, sparse/lexical index, Qdrant upsert, chunk manifest insert, index metadata, audit.
+- [ ] Publish `Document.active` only after source file, parse, chunk, embedding, lexical index, Qdrant upsert, metadata, and audit succeed.
+- [ ] Implement `POST /v1/evidence/search`.
+- [ ] Use Qdrant dense + sparse/native hybrid retrieval, real rerank when configured, then MySQL revalidation before returning.
+- [ ] Return evidence chunks, source metadata, matched_by, scores, retrieval config/model versions, and rerank status.
+- [ ] Never return natural-language answers.
+
+**Done criteria:**
+
+- [ ] MD/TXT/DOCX upload produces indexed active evidence documents.
+- [ ] Qdrant stale archived/hidden/old-version/not-ready hits are dropped by MySQL revalidation.
+- [ ] Disabled employee cannot retrieve evidence.
+- [ ] Search response contains evidence and source metadata only.
+- [ ] Real rerank adapter path is invoked in provider-enabled integration/smoke test or clearly environment-gated with synthetic text.
+- [ ] Any vector/lexical/rerank/index failure prevents active publication.
+
+### Task 9: MCP Phase 3 Tools
+
+**Execution mode:** MCP/API subagent.
+**Subagent fit:** Strong once HTTP contracts are stable.
+
+**Dependencies:** Tasks 6, 7, 8 HTTP contracts.
+
+**Can run parallel with:** Tasks 10 and 11 after endpoints exist.
+
+**Files likely touched:**
+
+- `apps/mcp-server/src/tools*`
+- `skills/enterprise-hub-mcp/SKILL.md`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Add MCP `search_document_evidence`.
+- [ ] Add MCP `list_structured_datasets`.
+- [ ] Add MCP `query_structured_dataset`.
+- [ ] Add MCP `upload_structured_dataset`.
+- [ ] Add MCP `upload_evidence_document`.
+- [ ] Add MCP `get_import_status`.
+- [ ] Ensure all MCP tools call HTTP API and do not direct-read MySQL/Qdrant/OSS/model providers.
+- [ ] Update `enterprise-hub-mcp` skill with Phase 3 tool boundaries and examples.
+
+**Done criteria:**
+
+- [ ] MCP Phase 3 tools inherit HTTP authorization and stable error envelopes.
+- [ ] MCP upload tools require explicit labels/visibility and required metadata.
+- [ ] MCP evidence upload triggers indexing status but does not generate answers.
+- [ ] MCP structured upload returns import batch status and does not bypass idempotency/window checks.
+- [ ] MCP smoke tests cover evidence search, structured discovery/query, structured upload/status, and evidence upload/status.
+- [ ] MCP docs warn agents not to claim hidden docs or hidden rows exist.
+
+### Task 10: Permission, Archive, Version, And Security Revalidation
+
+**Execution mode:** Security/backend subagent.
+**Subagent fit:** Strong; cross-cutting review/test task.
+
+**Dependencies:** Tasks 6 and 8; can start with test scaffolds earlier.
+
+**Can run parallel with:** Tasks 9 and 11.
+
+**Files likely touched:**
+
+- `packages/domain/src/permissions*`
+- `apps/api/src/auth*`
+- `apps/api/src/routes/*`
+- `apps/worker/src/*`
+- `docs/implementation/test-cases.md`
+
+**Steps:**
+
+- [ ] Add tests proving every non-health Phase 3 endpoint requires backend authorization.
+- [ ] Add tests proving evidence and structured rows inherit source document labels.
+- [ ] Add tests for label change, archive, disabled employee, content version mismatch, retrieval config mismatch, and stale Qdrant payload.
+- [ ] Ensure audit logs record structured import lifecycle and permission-sensitive actions without raw row/file/chunk payloads.
+- [ ] Ensure external model calls do not log raw provider requests/responses or secrets.
+- [ ] Ensure hard delete/purge and automatic replacement/overwrite/append are not exposed in baseline.
+
+**Done criteria:**
+
+- [ ] No Phase 3 endpoint trusts MCP/client-side filtering.
+- [ ] Hidden documents/rows do not leak through existence, count, aggregate, pagination, or errors.
+- [ ] Archive immediately hides evidence and structured rows after MySQL commit.
+- [ ] Label change immediately affects evidence and structured rows.
+- [ ] SQL injection payloads cannot become raw SQL.
+- [ ] Cursor tampering fails safely.
+- [ ] Logs and audit exclude secrets and bulk content payloads.
+
+### Task 11: Phase 3 Test Matrix, Golden Retrieval, And Performance Gates
+
+**Execution mode:** QA/RAG/data subagent.
+**Subagent fit:** Strong; can own acceptance matrix and fixtures.
+
+**Dependencies:** Functional paths from Tasks 6, 7, 8; can start fixture planning earlier.
+
+**Can run parallel with:** Tasks 9 and 10.
+
+**Human blocker:** Stop if real workbook samples are inaccessible. Do not commit real customer exports.
+
+**Files likely touched:**
+
+- `fixtures/*`
+- `tests/*`
+- `scripts/*`
+- `docs/implementation/test-cases.md`
+- `docs/implementation/progress.md`
+
+**Steps:**
+
+- [ ] Add CI layers: unit mocks, integration real MySQL + real Qdrant, fake provider by default, external provider smoke gated.
+- [ ] Add golden retrieval evaluation set with 20-50 realistic MD/TXT/DOCX docs and at least 100 judged queries.
+- [ ] Compare dense-only, lexical-only, hybrid, and hybrid+rerank.
+- [ ] Track hitRate@5, recall@10, precision@k, MRR@10, NDCG@10, no-answer false positives, latency, permission leaks, archived leaks, stale payload leaks.
+- [ ] Add real workbook acceptance path for the provided `dishes` and `business` XLSX samples using secure local paths or gated env.
+- [ ] Add performance smoke thresholds for large import, structured query, evidence search, worker lease recovery, and Qdrant upsert.
+
+**Done criteria:**
+
+- [ ] Leak metrics are zero.
+- [ ] Golden evaluation results are saved in a reviewable artifact without secrets or real restricted data.
+- [ ] Real workbook imports validate row count, field coverage, sheet lineage, and query smoke.
+- [ ] CI merge gate runs real Qdrant integration tests.
+- [ ] Nightly/manual gates are documented for real large samples and real provider smoke.
+- [ ] Performance failures produce actionable messages, not timeouts with no context.
+
+### Task 12: Phase 3 Documentation, Final Verification, And Handoff
+
+**Execution mode:** Lead-owned integration task.
+**Subagent fit:** Optional QA/docs subagent for independent final review.
+
+**Dependencies:** Tasks 1-11.
+
+**Files likely touched:**
+
+- `docs/implementation/api-contract.md`
+- `docs/implementation/env-inventory.md`
+- `docs/implementation/test-cases.md`
+- `docs/implementation/progress.md`
+- `docs/implementation/agent-handoffs.md`
+- `docs/context/CONTEXT.md`
+- `AGENTS.md`
+- `README.md`
+- `README.zh.md`
+
+**Steps:**
+
+- [ ] Update API contract with final HTTP examples, MCP tool examples, error envelopes, cursor semantics, schema discovery, evidence search, import status, and upload response shapes.
+- [ ] Update env inventory with final Qdrant/model/storage/worker/query/import variables and secret status.
+- [ ] Update test cases with merge gate, nightly gate, staging gate, and manual real-provider/real-workbook gates.
+- [ ] Update README docs and AGENTS commands for Qdrant local bootup and Phase 3 tests.
+- [ ] Run phase reference audit for `Phase 3`, `phase-3`, `Phase 4`, `phase-4`, and `Phase 5`.
+- [ ] Ensure `progress.md` records Phase 3 completion evidence without becoming a detailed design log.
+- [ ] Ensure every subagent handoff is appended.
+
+**Done criteria:**
+
+- [ ] `npm test` passes.
+- [ ] `npm run typecheck` passes.
+- [ ] `npm run lint` passes.
+- [ ] `npm run format:check` passes.
+- [ ] Local Qdrant integration smoke passes.
+- [ ] Structured import/query tests pass.
+- [ ] MCP Phase 3 smoke passes.
+- [ ] Golden retrieval evaluation runs in documented mode.
+- [ ] No tracked `.env`, real customer exports, private tokens, or provider secrets.
+- [ ] Related changes are committed, pushed, and represented by a PR.
+
+## 8. Phase 4: Online-Ready Service
 
 **Goal:** Convert local MVP into a deployable service using real infrastructure, production-like configuration, OSS-backed storage, container images, deployment runbook, structured logs, and basic operational safety.
 
-**Timebox:** 4-7 focused days after local MCP and agent human testing.
+**Timebox:** 4-7 focused days after Phase 3 retrieval/data foundation.
 
 **Deployment target:** Staging environment, not yet open to real internal beta users.
 
-### Phase 3 Readiness Intake And Human Inputs
+### Staging Readiness Intake And Human Inputs
 
-Phase 3 no longer requires every human input to be supplied in one batch before any Phase 3 planning can happen. Instead, maintain `docs/implementation/phase-3-readiness.md` as the source of truth for input collection, validation status, and per-track gates.
+Staging readiness no longer requires every human input to be supplied in one batch before any staging planning can happen. Instead, maintain `docs/implementation/staging-readiness.md` as the source of truth for input collection, validation status, and per-track gates.
 
-Agents may update the readiness document when the human provides new information, and may run safe non-destructive validations when credentials are available through a secure runtime channel. Agents must not start implementation for a Phase 3 day unless that day's required inputs are marked `verified` or explicitly `deferred` in the readiness document.
+Agents may update the readiness document when the human provides new information, and may run safe non-destructive validations when credentials are available through a secure runtime channel. Agents must not start implementation for a staging day unless that day's required inputs are marked `verified` or explicitly `deferred` in the readiness document.
 
 Status values:
 
@@ -1052,13 +1624,13 @@ Status values:
 - `provided`: human supplied the information, but no agent has validated it yet.
 - `verified`: an agent validated it with a non-destructive check and recorded evidence.
 - `blocked`: validation failed or the input is unusable.
-- `deferred`: the human explicitly decided the item is not needed for the current Phase 3 slice.
+- `deferred`: the human explicitly decided the item is not needed for the current staging slice.
 
 The readiness document must never contain secret values. It may record non-secret service identifiers such as region, endpoint, bucket name, domain, database host, database name, username, SSL mode, admin emails, and secret-store/runtime-env variable names. Passwords, access keys, access secrets, JWT/session secrets, private keys, service-account material, production tokens, and signed URLs with credentials must stay out of git and out of chat.
 
-Stop and ask the human before starting any Phase 3 track whose required inputs are still `missing`, `provided` but unvalidated, or `blocked`.
+Stop and ask the human before starting any staging track whose required inputs are still `missing`, `provided` but unvalidated, or `blocked`.
 
-Initial Phase 3 intake items:
+Initial staging intake items:
 
 | Item | Example Value | Human Required? | Notes |
 |---|---|---|---|
@@ -1072,7 +1644,7 @@ Initial Phase 3 intake items:
 | RAM policy | least privilege for required buckets | Yes | Need create/list/get/put, maybe signed URL |
 | JWT/session secret | secret manager only | Yes | Required |
 | Allowed admin emails | list | Yes | Initial online admin list |
-| Qwen/DashScope key | optional for P2 search enhancements | Human decision | Not required for keyword-only online readiness |
+| External model provider override | Optional provider/base URL/key if staging differs from Phase 3 retrieval defaults | Human decision | Only needed if the staging / online-ready service uses a real model provider different from the Phase 3 retrieval config |
 
 Per-track gates:
 
@@ -1224,11 +1796,11 @@ Per-track gates:
 - [ ] Runbook is complete enough for a fresh agent to redeploy.
 - [ ] After all criteria pass, commit current related changes with message `Document staging deployment runbook`, push branch, and open/update PR.
 
-## 8. Phase 4: Small-Scope Internal Beta
+## 9. Phase 5: Small-Scope Internal Beta
 
 **Goal:** Deploy a beta version for a small internal user group with a simple admin frontend, enough operational visibility, and high-confidence permission behavior.
 
-**Timebox:** 5-10 focused days after online-ready staging.
+**Timebox:** 5-10 focused days after Phase 4 online-ready staging.
 
 **Deployment target:** Online staging/beta environment.
 
@@ -1240,7 +1812,7 @@ Per-track gates:
 - Employee/agent path can upload, search, download active documents.
 - Permission isolation is tested for at least two non-admin employees.
 
-### Phase 4 Human Inputs Required
+### Phase 5 Human Inputs Required
 
 Stop and ask the human before beta launch unless these are available:
 
@@ -1402,49 +1974,58 @@ Stop and ask the human before beta launch unless these are available:
 - [ ] `progress.md` records launch commit SHA, deployment time, beta users, and known issues.
 - [ ] After all criteria pass, commit current related changes with message `Document beta launch runbook`, push branch, and open/update PR.
 
-## 9. Deferred Work After Small-Scope Beta
+## 10. Deferred Work After Small-Scope Beta
 
 Do not block beta on these unless user explicitly changes priority:
 
 | Item | Priority | Why Deferred |
 |---|---|---|
-| Full vector search with Qwen embeddings | P2/P3 | Keyword and chunk search validate permissions and lifecycle first |
 | OAuth device flow | P2/P3 | Employee-bound tokens are enough for early beta |
 | Full SaaS multi-tenancy | P3 | Current architecture is single enterprise |
 | Field-level permissions | P3 | Coarse labels are the chosen first-stage model |
 | Automatic tag creation | P3 | Tags must come from controlled catalog |
 | Report/dashboard generation | P3 | Belongs to employee agent or future separate service |
 | Skill execution | P3 | Hub lists skills but does not run them |
-| Physical deletion workflow | P2/P3 | Archival is default; physical deletion needs stricter human policy |
+| Production hard delete/purge workflow | P2/P3 | Archival is default; physical deletion needs retention, backup, audit, and security design |
+| Atomic structured replacement/overwrite/append | P2/P3 | Phase 3 baseline uses archive old + upload new |
+| OCR/PDF/image evidence extraction | P3 | Phase 3 indexes text extracted from MD/TXT/DOCX only |
+| NL-to-structured-query inside Hub | P3 | Caller agent constructs controlled structured query |
 | Advanced frontend knowledge portal | P3 | Admin minimal UI is enough for beta |
 | Real third-party platform ingestion | P3 | Initial upload flow proves value without direct platform integrations |
 
-## 10. End-To-End Acceptance Matrix
+## 11. End-To-End Acceptance Matrix
 
-| Scenario | MVP | Local MCP | Online Ready | Beta |
-|---|---:|---:|---:|---:|
-| Local API starts | Required | Required | Required | Required |
-| MySQL authoritative metadata | Required | Required | Required | Required |
-| Local/OSS file storage | Local | Local | OSS | OSS |
-| Employee auth context | Dev token | Dev token through MCP local profile | Employee token | Employee token |
-| Upload creates catalog record | Required | Required through MCP | Required | Required |
-| Upload stores original file | Local | Local via API | OSS | OSS |
-| Worker activates supported file | Required | Required in local MCP smoke | Required | Required |
-| Failed processing visible to admin/uploader only | Required | Required through MCP status | Required | Required |
-| Active-only ordinary search | Required | Required through MCP search | Required | Required |
-| Backend permission filtering | Required | Required through MCP/API inheritance | Required | Required |
-| Download requires permission | Required | Required through MCP download URL | Required | Required |
-| Archive removes from ordinary search | Required | Required through MCP archive | Required | Required |
-| Label catalog returns controlled labels | Required | Required through MCP list-labels | Required | Required |
-| Skill Directory returns approved skills | Required | Required through MCP list-skills | Required | Required |
-| Agent-facing connector | CLI acceptable | MCP required | MCP staging profile required | MCP or documented connector required |
-| `enterprise-hub-mcp` meta skill | Not required | Local profile required | Staging profile updated | Beta setup profile required |
-| Admin frontend | Not required | Not required | Optional | Required |
-| Failure retry UI | Not required | Not required | Optional | Required |
-| Deployment runbook | Not required | Not required | Required | Required |
-| Beta feedback tracking | Not required | Not required | Not required | Required |
+| Scenario | MVP | Local MCP | Retrieval/Data Foundation | Online Ready | Beta |
+|---|---:|---:|---:|---:|---:|
+| Local API starts | Required | Required | Required | Required | Required |
+| MySQL authoritative metadata | Required | Required | Required | Required | Required |
+| Qdrant evidence index | Not required | Not required | Required | Required | Required |
+| Local/OSS file storage | Local | Local | Local/OSS-compatible | OSS | OSS |
+| Employee auth context | Dev token | Dev token through MCP local profile | Dev or employee token | Employee token | Employee token |
+| Upload creates catalog record | Required | Required through MCP | Required for evidence + structured | Required | Required |
+| Upload stores original file | Local | Local via API | Local/OSS-compatible | OSS | OSS |
+| Worker activates supported file | Required | Required in local MCP smoke | Required through typed ProcessingRun | Required | Required |
+| Failed processing visible to admin/uploader only | Required | Required through MCP status | Required with ImportBatch/DocumentIndex status | Required | Required |
+| Active-only ordinary search | Required | Required through MCP search | Required via evidence/structured gates | Required | Required |
+| Backend permission filtering | Required | Required through MCP/API inheritance | Required with MySQL revalidation before return | Required | Required |
+| MD/TXT/DOCX evidence retrieval | Not required | Not required | Required | Required | Required |
+| Dense + lexical + rerank retrieval path | Not required | Not required | Required | Required | Required |
+| XLSX/CSV `dishes` / `business` import | Not required | Not required | Required | Required | Required |
+| Controlled structured query API | Not required | Not required | Required | Required | Required |
+| Schema discovery API | Not required | Not required | Required | Required | Required |
+| MCP Phase 3 tools | Not required | Not required | Required | Staging profile required | Beta profile required |
+| Download requires permission | Required | Required through MCP download URL | Required | Required | Required |
+| Archive removes from ordinary search/query | Required | Required through MCP archive | Required for evidence and structured rows | Required | Required |
+| Label catalog returns controlled labels | Required | Required through MCP list-labels | Required | Required | Required |
+| Skill Directory returns approved skills | Required | Required through MCP list-skills | Required | Required | Required |
+| Agent-facing connector | CLI acceptable | MCP required | MCP required for Phase 3 tools | MCP staging profile required | MCP or documented connector required |
+| `enterprise-hub-mcp` meta skill | Not required | Local profile required | Phase 3 local profile required | Staging profile updated | Beta setup profile required |
+| Admin frontend | Not required | Not required | Not required | Optional | Required |
+| Failure retry UI | Not required | Not required | P2 | Optional | Required |
+| Deployment runbook | Not required | Not required | Local/CI only | Required | Required |
+| Beta feedback tracking | Not required | Not required | Not required | Not required | Required |
 
-## 11. Global Done Criteria Before Any Phase Is Considered Complete
+## 12. Global Done Criteria Before Any Phase Is Considered Complete
 
 For each phase:
 
@@ -1463,7 +2044,7 @@ For each phase:
   - human inputs used
   - known limitations
 
-## 12. Recommended Initial Parallelization
+## 13. Recommended Initial Parallelization
 
 Once Day 0 skeleton exists, dispatch these subagents:
 
@@ -1474,6 +2055,22 @@ Once Day 0 skeleton exists, dispatch these subagents:
 5. **Skill/Audit subagent:** Day 4B and Day 4C.
 6. **QA/Docs subagent:** Day 6, `api-contract.md`, `test-cases.md`, `progress.md` consistency.
 
-For Phase 2, start new threads for MCP protocol/tooling, local agent human-test QA, and `enterprise-hub-mcp` meta-skill documentation if parallelism is useful. For Phase 3, start new threads for DevOps, OSS, and security hardening. For Phase 4, start new threads for admin frontend, beta connector hardening, and QA/beta runbook.
+For Phase 2, start new threads for MCP protocol/tooling, local agent human-test QA, and `enterprise-hub-mcp` meta-skill documentation if parallelism is useful.
+
+For Phase 3, use subagent-driven development after Task 1 establishes shared contracts:
+
+1. **Qdrant/runtime subagent:** Task 2.
+2. **Model provider/retrieval config subagent:** Task 3.
+3. **Evidence parser/chunker subagent:** Task 4.
+4. **Structured registry/profiling subagent:** Task 5.
+5. **Structured import subagent:** Task 6.
+6. **Structured query API subagent:** Task 7.
+7. **Evidence indexing/search subagent:** Task 8.
+8. **MCP Phase 3 tools subagent:** Task 9.
+9. **Permission/security subagent:** Task 10.
+10. **QA/evaluation subagent:** Task 11.
+11. **Docs/final verification lead:** Task 12.
+
+For Phase 4, start new threads for DevOps, OSS, online MySQL, deployment, and security hardening. For Phase 5, start new threads for admin frontend, beta connector hardening, and QA/beta runbook.
 
 The lead agent should not let subagents invent missing infrastructure. If a subagent needs human-provided OSS, MySQL, domain, or API key information, it must update `progress.md` and stop.
