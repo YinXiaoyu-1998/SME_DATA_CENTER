@@ -1,0 +1,626 @@
+export const STRUCTURED_DATASETS = ["dishes", "business"] as const;
+
+export type StructuredDatasetName = (typeof STRUCTURED_DATASETS)[number];
+
+export type StructuredFieldType =
+  "string" | "date" | "date_time" | "time_range" | "integer" | "decimal" | "percent";
+
+export interface StructuredFieldCapabilities {
+  filter: boolean;
+  sort: boolean;
+  group: boolean;
+  aggregate: boolean;
+}
+
+export interface StructuredFieldStorageMapping {
+  table: "dish_rows" | "business_rows";
+  column: "payload";
+  jsonPath: string;
+}
+
+export interface StructuredFieldRegistryEntry {
+  canonicalName: string;
+  sourceColumn: string;
+  aliases: string[];
+  type: StructuredFieldType;
+  nullable: boolean;
+  sensitivity: "normal" | "business_metric";
+  lifecycle: "active";
+  volatility: "stable_export" | "review_on_export_change";
+  defaultReturn: boolean;
+  operators: string[];
+  capabilities: StructuredFieldCapabilities;
+  indexStatus: "not_indexed" | "planned";
+  valueLimits?: {
+    maxLength?: number;
+    decimalScale?: number;
+  };
+  storage: StructuredFieldStorageMapping;
+}
+
+export interface StructuredDatasetRegistry {
+  dataset: StructuredDatasetName;
+  version: string;
+  rowTable: "dish_rows" | "business_rows";
+  fields: StructuredFieldRegistryEntry[];
+}
+
+export interface HeaderValidationError {
+  code: "UNKNOWN_COLUMN" | "MISSING_REQUIRED_COLUMN" | "AMBIGUOUS_COLUMN" | "DUPLICATE_COLUMN";
+  column: string;
+  canonicalNames?: string[];
+}
+
+export type HeaderLookupValue =
+  | {
+      type: "field";
+      field: Pick<StructuredFieldRegistryEntry, "canonicalName" | "sourceColumn" | "aliases">;
+    }
+  | {
+      type: "ambiguous";
+      canonicalNames: string[];
+    };
+
+const DISH_SOURCE_COLUMNS = [
+  "下单时间",
+  "门店",
+  "省份",
+  "城市",
+  "区域",
+  "一级组织机构",
+  "二级组织机构",
+  "三级组织机构",
+  "四级组织机构",
+  "是否是会员",
+  "菜品名称",
+  "时段",
+  "关联菜品名称",
+  "订单分类",
+  "营业日",
+  "营业周",
+  "营业月",
+  "菜品销售方式名称",
+  "加料名称",
+  "做法名称",
+  "商户号",
+  "组织机构编码",
+  "菜品销售数量",
+  "菜品销售额",
+  "菜品优惠",
+  "菜品收入",
+  "菜品关联加料销售额",
+  "菜品关联加料收入",
+  "菜品关联做法销售额",
+  "菜品关联做法收入",
+  "菜品关联餐盒销售额",
+  "菜品关联做法优惠",
+  "菜品关联餐盒优惠",
+  "菜品关联正向订单量",
+  "菜品关联逆向订单量",
+  "菜品总销售额",
+  "菜品总收入",
+  "菜品总优惠",
+  "菜品平均售价_菜品本身",
+  "菜品平均售价_菜品及关联加料做法餐盒",
+  "菜品平均收入_菜品本身",
+  "菜品平均收入_菜品及关联加料做法餐盒",
+  "销量占比",
+  "菜品营业额占比",
+  "退菜数量",
+  "退菜金额",
+  "菜品总毛利额（折前）",
+  "菜品总毛利额（折后）",
+  "出餐订单数",
+  "菜品总毛利率（折前）",
+  "菜品总毛利率（折后）"
+] as const;
+
+const BUSINESS_SOURCE_COLUMNS = [
+  "营业日期",
+  "周",
+  "月",
+  "门店名称",
+  "城市",
+  "商户号",
+  "一级组织机构名称",
+  "二级组织机构名称",
+  "三级组织机构名称",
+  "四级组织机构名称",
+  "订单分类",
+  "订单来源",
+  "时段",
+  "餐段",
+  "退单类型名称",
+  "是否是会员",
+  "就餐方式",
+  "营业额(元)",
+  "桌台数量",
+  "桌台使用次数",
+  "开台率",
+  "翻台率",
+  "有效订单量",
+  "订单营业收入",
+  "优惠金额",
+  "逆向订单量",
+  "正向订单量",
+  "已结账订单量",
+  "折扣率",
+  "折前单均",
+  "折后单均",
+  "桌台数x营业天数",
+  "消费桌数",
+  "消费次数",
+  "会员消费金额",
+  "会员订单收入",
+  "店内营业额",
+  "店内营业收入",
+  "店内优惠金额",
+  "店内折前单均",
+  "店内正向单订单量",
+  "店内退单量",
+  "店内已结账订单量",
+  "店内退款金额",
+  "外卖营业额",
+  "店内订单量",
+  "外卖营业收入",
+  "外卖折扣金额",
+  "外卖折前单均",
+  "外卖折后单均",
+  "外卖订单量",
+  "外卖正向单订单量",
+  "外卖退单量",
+  "外卖退款金额",
+  "美团外卖营业额",
+  "美团外卖营业收入",
+  "美团外卖折扣金额",
+  "美团外卖订单量",
+  "美团外卖正向单订单量",
+  "美团外卖退单量",
+  "美团外卖已结账订单量",
+  "美团外卖折前单均",
+  "美团外卖折后单均",
+  "美团外卖退款金额",
+  "京东外卖营业额",
+  "京东外卖营业收入",
+  "京东外卖折扣金额",
+  "京东外卖折前单均",
+  "京东外卖折后单均",
+  "京东外卖订单量",
+  "京东外卖正向单订单量",
+  "京东外卖退单量",
+  "京东外卖已结账订单量",
+  "京东外卖退款金额",
+  "饿了么外卖营业额",
+  "饿了么外卖营业收入",
+  "饿了么外卖折扣金额",
+  "饿了么外卖折前单均",
+  "饿了么外卖折后单均",
+  "饿了么外卖订单量",
+  "饿了么外卖正向单订单量",
+  "饿了么外卖退单量",
+  "饿了么外卖已结账订单量",
+  "饿了么外卖退款金额",
+  "自提营业额",
+  "自提营业收入",
+  "自提折扣金额",
+  "自提折前单均",
+  "自提折后单均",
+  "自提订单量",
+  "自提正向单订单量",
+  "自提已结账订单量",
+  "自提退单量",
+  "自提退款金额",
+  "现金营业额",
+  "现金营业收入",
+  "现金优惠金额",
+  "现金支付次数",
+  "扫码支付营业收入",
+  "扫码支付营业额",
+  "扫码支付优惠金额",
+  "扫码支付支付次数",
+  "扫码支付微信营业额",
+  "扫码支付支付宝营业额",
+  "扫码支付微信营业收入",
+  "扫码支付支付宝营业收入",
+  "扫码支付微信优惠金额",
+  "扫码支付支付宝优惠金额",
+  "扫码支付微信支付次数",
+  "扫码支付支付宝支付次数",
+  "团购营业额",
+  "美团团购营业额",
+  "抖音团购营业额",
+  "快手团购营业额",
+  "团购营业收入",
+  "美团团购营业收入",
+  "抖音团购营业收入",
+  "快手团购营业收入",
+  "团购优惠金额",
+  "美团团购优惠金额",
+  "抖音团购优惠金额",
+  "快手团购优惠金额",
+  "团购支付次数",
+  "美团团购支付次数",
+  "抖音团购支付次数",
+  "快手团购支付次数",
+  "抵用券营业额",
+  "抵用券营业收入",
+  "抵用券优惠金额",
+  "抵用券支付次数",
+  "优惠券营业额",
+  "优惠券营业收入",
+  "优惠券优惠金额",
+  "优惠券支付次数",
+  "自定义记账营业额",
+  "自定义记账营业收入",
+  "自定义记账优惠金额",
+  "自定义记账支付次数",
+  "店内营销会员订单量",
+  "店内非会员订单量",
+  "外卖营销会员订单量",
+  "外卖营销会员单均营业额",
+  "店内营销会员营业额",
+  "店内非会员营业额",
+  "店内营销会员营业收入",
+  "店内营销会员单均营业额",
+  "外卖营销会员营业额",
+  "外卖已结账订单量",
+  "店内折后单均",
+  "店内非会员单均营业收入",
+  "用餐人数",
+  "营业天数"
+] as const;
+
+const DISH_CANONICAL_OVERRIDES: Record<string, string> = {
+  下单时间: "order_time",
+  门店: "store_name",
+  省份: "province",
+  城市: "city",
+  区域: "district",
+  是否是会员: "is_member",
+  菜品名称: "product_name",
+  时段: "time_slot",
+  关联菜品名称: "matched_product_name",
+  订单分类: "order_category",
+  营业日: "business_date",
+  营业周: "business_week",
+  营业月: "business_month",
+  菜品销售数量: "dish_sales_quantity",
+  商户号: "merchant_id",
+  组织机构编码: "organization_code"
+};
+
+const BUSINESS_CANONICAL_OVERRIDES: Record<string, string> = {
+  营业日期: "business_date",
+  周: "business_week",
+  月: "business_month",
+  门店名称: "store_name",
+  城市: "city",
+  商户号: "merchant_id",
+  订单分类: "order_category",
+  订单来源: "order_source",
+  时段: "time_slot",
+  餐段: "meal_period",
+  是否是会员: "is_member",
+  就餐方式: "dining_method",
+  "营业额(元)": "gross_sales_amount",
+  订单营业收入: "order_revenue",
+  优惠金额: "discount_amount",
+  有效订单量: "valid_order_count",
+  正向订单量: "positive_order_count",
+  逆向订单量: "reverse_order_count",
+  折扣率: "discount_rate",
+  用餐人数: "diner_count",
+  营业天数: "business_day_count"
+};
+
+export const STRUCTURED_DATASET_REGISTRIES = {
+  dishes: createRegistry({
+    dataset: "dishes",
+    version: "dishes.2026-07-11.v1",
+    rowTable: "dish_rows",
+    sourceColumns: DISH_SOURCE_COLUMNS,
+    canonicalOverrides: DISH_CANONICAL_OVERRIDES
+  }),
+  business: createRegistry({
+    dataset: "business",
+    version: "business.2026-07-11.v1",
+    rowTable: "business_rows",
+    sourceColumns: BUSINESS_SOURCE_COLUMNS,
+    canonicalOverrides: BUSINESS_CANONICAL_OVERRIDES
+  })
+} as const satisfies Record<StructuredDatasetName, StructuredDatasetRegistry>;
+
+export function getStructuredRegistry(dataset: StructuredDatasetName): StructuredDatasetRegistry {
+  return STRUCTURED_DATASET_REGISTRIES[dataset];
+}
+
+export function buildStructuredHeaderLookup(
+  fields: Array<Pick<StructuredFieldRegistryEntry, "canonicalName" | "sourceColumn" | "aliases">>
+): Map<string, HeaderLookupValue> {
+  const lookup = new Map<string, HeaderLookupValue>();
+
+  for (const field of fields) {
+    for (const rawAlias of [...new Set([field.sourceColumn, ...field.aliases])]) {
+      const alias = normalizeHeader(rawAlias);
+      const existing = lookup.get(alias);
+
+      if (!existing) {
+        lookup.set(alias, { type: "field", field });
+        continue;
+      }
+
+      const canonicalNames =
+        existing.type === "ambiguous"
+          ? existing.canonicalNames
+          : [existing.field.canonicalName, field.canonicalName];
+
+      lookup.set(alias, {
+        type: "ambiguous",
+        canonicalNames: [...new Set(canonicalNames)].sort()
+      });
+    }
+  }
+
+  return lookup;
+}
+
+export function validateStructuredHeaders(
+  dataset: StructuredDatasetName,
+  headers: string[]
+):
+  | {
+      ok: true;
+      fields: string[];
+    }
+  | {
+      ok: false;
+      errors: HeaderValidationError[];
+    } {
+  const registry = getStructuredRegistry(dataset);
+  const lookup = buildStructuredHeaderLookup(registry.fields);
+  const errors: HeaderValidationError[] = [];
+  const seenCanonicalNames = new Set<string>();
+  const seenHeaders = new Set<string>();
+
+  for (const header of headers.map(normalizeHeader).filter(Boolean)) {
+    if (seenHeaders.has(header)) {
+      errors.push({ code: "DUPLICATE_COLUMN", column: header });
+      continue;
+    }
+
+    seenHeaders.add(header);
+    const match = lookup.get(header);
+
+    if (!match) {
+      errors.push({ code: "UNKNOWN_COLUMN", column: header });
+      continue;
+    }
+
+    if (match.type === "ambiguous") {
+      errors.push({
+        code: "AMBIGUOUS_COLUMN",
+        column: header,
+        canonicalNames: match.canonicalNames
+      });
+      continue;
+    }
+
+    seenCanonicalNames.add(match.field.canonicalName);
+  }
+
+  for (const field of registry.fields) {
+    if (!seenCanonicalNames.has(field.canonicalName)) {
+      errors.push({ code: "MISSING_REQUIRED_COLUMN", column: field.sourceColumn });
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+
+  return {
+    ok: true,
+    fields: registry.fields.map((field) => field.canonicalName)
+  };
+}
+
+function createRegistry(input: {
+  dataset: StructuredDatasetName;
+  version: string;
+  rowTable: "dish_rows" | "business_rows";
+  sourceColumns: readonly string[];
+  canonicalOverrides: Record<string, string>;
+}): StructuredDatasetRegistry {
+  return {
+    dataset: input.dataset,
+    version: input.version,
+    rowTable: input.rowTable,
+    fields: input.sourceColumns.map((sourceColumn, index) => {
+      const canonicalName =
+        input.canonicalOverrides[sourceColumn] ??
+        `${input.dataset}_${String(index + 1).padStart(3, "0")}_${fallbackAsciiName(sourceColumn)}`;
+      const type = inferFieldType(sourceColumn);
+      const isMeasure = isMeasureColumn(sourceColumn, type);
+
+      return {
+        canonicalName,
+        sourceColumn,
+        aliases: [sourceColumn],
+        type,
+        nullable: true,
+        sensitivity: isMeasure ? "business_metric" : "normal",
+        lifecycle: "active",
+        volatility: "review_on_export_change",
+        defaultReturn:
+          index < 20 || ["business_date", "matched_product_name"].includes(canonicalName),
+        operators: operatorsForType(type),
+        capabilities: {
+          filter: true,
+          sort: type !== "string" || index < 25,
+          group: !isMeasure,
+          aggregate: isMeasure
+        },
+        indexStatus: "planned",
+        valueLimits: valueLimitsForType(type),
+        storage: {
+          table: input.rowTable,
+          column: "payload",
+          jsonPath: `$.${canonicalName}`
+        }
+      };
+    })
+  };
+}
+
+function inferFieldType(sourceColumn: string): StructuredFieldType {
+  if (["营业日", "营业日期"].includes(sourceColumn)) {
+    return "date";
+  }
+
+  if (sourceColumn === "下单时间") {
+    return "date_time";
+  }
+
+  if (sourceColumn === "时段") {
+    return "time_range";
+  }
+
+  if (sourceColumn.includes("率") || sourceColumn.includes("占比")) {
+    return "percent";
+  }
+
+  if (sourceColumn.includes("销售数量")) {
+    return "decimal";
+  }
+
+  if (
+    sourceColumn.includes("数量") ||
+    sourceColumn.includes("次数") ||
+    sourceColumn.includes("订单量") ||
+    sourceColumn.includes("订单数") ||
+    sourceColumn.includes("桌数") ||
+    sourceColumn.includes("人数") ||
+    sourceColumn.includes("营业天数") ||
+    sourceColumn.includes("桌台数量") ||
+    sourceColumn.includes("支付次数")
+  ) {
+    return "integer";
+  }
+
+  if (
+    sourceColumn.includes("额") ||
+    sourceColumn.includes("收入") ||
+    sourceColumn.includes("优惠") ||
+    sourceColumn.includes("单均") ||
+    sourceColumn.includes("金额") ||
+    sourceColumn.includes("售价") ||
+    sourceColumn.includes("折扣")
+  ) {
+    return "decimal";
+  }
+
+  return "string";
+}
+
+function isMeasureColumn(sourceColumn: string, type: StructuredFieldType): boolean {
+  if (["integer", "decimal", "percent"].includes(type)) {
+    return true;
+  }
+
+  return /金额|营业额|收入|优惠|订单量|数量|次数|毛利|单均/.test(sourceColumn);
+}
+
+function operatorsForType(type: StructuredFieldType): string[] {
+  if (["date", "date_time"].includes(type)) {
+    return ["eq", "between", "gte", "lte", "in"];
+  }
+
+  if (["integer", "decimal", "percent"].includes(type)) {
+    return ["eq", "between", "gt", "gte", "lt", "lte", "in"];
+  }
+
+  return ["eq", "contains", "starts_with", "in"];
+}
+
+function valueLimitsForType(
+  type: StructuredFieldType
+): StructuredFieldRegistryEntry["valueLimits"] {
+  if (type === "decimal" || type === "percent") {
+    return { decimalScale: 4 };
+  }
+
+  if (type === "string") {
+    return { maxLength: 512 };
+  }
+
+  return undefined;
+}
+
+function normalizeHeader(header: string): string {
+  return header.trim().replace(/\s+/g, " ");
+}
+
+function fallbackAsciiName(sourceColumn: string): string {
+  const knownTokens: Array<[string, string]> = [
+    ["一级组织机构", "org_level_1"],
+    ["二级组织机构", "org_level_2"],
+    ["三级组织机构", "org_level_3"],
+    ["四级组织机构", "org_level_4"],
+    ["菜品", "dish"],
+    ["美团", "meituan"],
+    ["饿了么", "eleme"],
+    ["京东", "jd"],
+    ["外卖", "takeout"],
+    ["店内", "dine_in"],
+    ["自提", "pickup"],
+    ["扫码支付", "qr_pay"],
+    ["微信", "wechat"],
+    ["支付宝", "alipay"],
+    ["团购", "group_buy"],
+    ["抖音", "douyin"],
+    ["快手", "kuaishou"],
+    ["抵用券", "voucher"],
+    ["优惠券", "coupon"],
+    ["自定义记账", "custom_accounting"],
+    ["营业额", "gross_sales"],
+    ["营业收入", "revenue"],
+    ["优惠金额", "discount_amount"],
+    ["折扣金额", "discount_amount"],
+    ["支付次数", "payment_count"],
+    ["订单量", "order_count"],
+    ["退款金额", "refund_amount"],
+    ["退单量", "refund_order_count"],
+    ["折前单均", "avg_before_discount"],
+    ["折后单均", "avg_after_discount"],
+    ["毛利率", "gross_margin_rate"],
+    ["毛利额", "gross_margin_amount"],
+    ["销售数量", "sales_quantity"],
+    ["销售额", "sales_amount"],
+    ["收入", "revenue"],
+    ["优惠", "discount"],
+    ["正向", "positive"],
+    ["逆向", "reverse"],
+    ["会员", "member"],
+    ["非会员", "non_member"],
+    ["营销", "marketing"],
+    ["餐盒", "meal_box"],
+    ["加料", "add_on"],
+    ["做法", "preparation"],
+    ["退菜", "returned_dish"],
+    ["出餐", "served"],
+    ["桌台", "table"],
+    ["开台率", "table_open_rate"],
+    ["翻台率", "table_turnover_rate"],
+    ["消费", "consumption"],
+    ["分类", "category"],
+    ["来源", "source"],
+    ["名称", "name"],
+    ["编码", "code"]
+  ];
+
+  const parts = knownTokens
+    .filter(([token]) => sourceColumn.includes(token))
+    .map(([, replacement]) => replacement);
+
+  return parts.length > 0 ? [...new Set(parts)].join("_") : "field";
+}

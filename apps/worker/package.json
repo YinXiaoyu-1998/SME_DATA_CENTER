@@ -9,6 +9,7 @@
     "@enterprise-hub/storage": "^0.0.0",
     "@prisma/adapter-mariadb": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "xlsx": "^0.18.5"
   }
 }
