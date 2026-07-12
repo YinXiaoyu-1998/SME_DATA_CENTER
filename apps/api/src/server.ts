@@ -1,13 +1,20 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import multipart from "@fastify/multipart";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import { read, utils, type WorkBook } from "xlsx";
 import {
   AUTH_ERROR_CODES,
   canEmployeeAccessDocument,
+  getStructuredRegistry,
   isDocumentType,
+  PHASE3_FILE_TYPES,
   PHASE3_ERROR_CODES,
+  validateStructuredHeaders,
   type AuthenticatedEmployee,
-  type DocumentTypeName
+  type DocumentTypeName,
+  type Phase3FileType,
+  type StructuredDatasetName,
+  type StructuredFieldRegistryEntry
 } from "@enterprise-hub/domain";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
 import {
@@ -24,6 +31,13 @@ import {
   type SkillDirectoryEntry,
   type SkillDirectoryRepository
 } from "./skills.js";
+import {
+  createPrismaStructuredImportRepository,
+  StructuredImportError,
+  type StructuredImportBatchRecord,
+  type StructuredImportRepository,
+  type StructuredImportRowInput
+} from "./structured-imports.js";
 import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
@@ -31,6 +45,7 @@ const SERVICE_NAME = "enterprise-hub-api";
 export interface ApiServerOptions {
   employeeRepository?: EmployeeRepository;
   documentRepository?: DocumentCatalogRepository;
+  structuredImportRepository?: StructuredImportRepository;
   skillRepository?: SkillDirectoryRepository;
   storageAdapter?: StorageAdapter;
   jwtSecret?: string;
@@ -73,6 +88,30 @@ interface ParsedUpload {
   sourceSystem?: string;
   sourceTime?: string;
   labelKeys: string[];
+}
+
+interface ParsedStructuredImportUpload {
+  file?: {
+    fileName: string;
+    contentType?: string;
+    body: Buffer;
+  };
+  dataset?: string;
+  enterpriseName?: string;
+  startDate?: string;
+  endDate?: string;
+  idempotencyKey?: string;
+  labelKeys: string[];
+}
+
+interface StructuredWorkbookValidationResult {
+  sheetSummary: Array<{
+    name: string;
+    hidden: boolean;
+    headerRowNumber: number;
+    dataRowCount: number;
+  }>;
+  rows: StructuredImportRowInput[];
 }
 
 interface DocumentListQuery {
@@ -215,6 +254,67 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
   return upload;
 }
 
+async function parseStructuredImportUpload(
+  request: FastifyRequest
+): Promise<ParsedStructuredImportUpload> {
+  const upload: ParsedStructuredImportUpload = {
+    labelKeys: []
+  };
+
+  const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
+
+  for await (const part of multipartRequest.parts()) {
+    if (part.type === "file") {
+      if (part.fieldname !== "file") {
+        continue;
+      }
+
+      upload.file = {
+        fileName: part.filename,
+        contentType: part.mimetype,
+        body: await readMultipartFile(part.file)
+      };
+      continue;
+    }
+
+    const value = typeof part.value === "string" ? part.value.trim() : "";
+
+    if (["labelKeys[]", "labelKeys", "labelIds[]", "labelIds"].includes(part.fieldname)) {
+      if (value) {
+        upload.labelKeys.push(value);
+      }
+      continue;
+    }
+
+    if (part.fieldname === "dataset") {
+      upload.dataset = value;
+      continue;
+    }
+
+    if (part.fieldname === "enterprise_name" || part.fieldname === "enterpriseName") {
+      upload.enterpriseName = value;
+      continue;
+    }
+
+    if (part.fieldname === "startDate") {
+      upload.startDate = value;
+      continue;
+    }
+
+    if (part.fieldname === "endDate") {
+      upload.endDate = value;
+      continue;
+    }
+
+    if (part.fieldname === "idempotencyKey") {
+      upload.idempotencyKey = value;
+    }
+  }
+
+  upload.labelKeys = uniqueSorted(upload.labelKeys);
+  return upload;
+}
+
 async function readMultipartFile(file: MultipartFilePart["file"]): Promise<Buffer> {
   const chunks: Buffer[] = [];
 
@@ -237,6 +337,463 @@ function parseSourceTime(value: string | undefined): Date | null {
   }
 
   return sourceTime;
+}
+
+function validateStructuredImportMetadata(upload: ParsedStructuredImportUpload):
+  | {
+      ok: true;
+      dataset: StructuredDatasetName;
+      fileType: Extract<Phase3FileType, "xlsx" | "csv">;
+      startDate: string;
+      endDate: string;
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+    } {
+  if (!upload.file) {
+    return {
+      ok: false,
+      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
+      message: "File is required."
+    };
+  }
+
+  if (!upload.dataset || !["dishes", "business"].includes(upload.dataset)) {
+    return {
+      ok: false,
+      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
+      message: "dataset must be dishes or business."
+    };
+  }
+
+  if (!upload.enterpriseName) {
+    return {
+      ok: false,
+      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
+      message: "enterprise_name is required."
+    };
+  }
+
+  if (!upload.idempotencyKey) {
+    return {
+      ok: false,
+      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
+      message: "idempotencyKey is required."
+    };
+  }
+
+  if (!upload.startDate || !upload.endDate || !isDateWindow(upload.startDate, upload.endDate)) {
+    return {
+      ok: false,
+      code: PHASE3_ERROR_CODES.invalidDateWindow,
+      message: "startDate and endDate must be valid YYYYMMDD dates."
+    };
+  }
+
+  if (upload.labelKeys.length === 0) {
+    return {
+      ok: false,
+      code: "UNLABELED_DOCUMENT",
+      message: "Structured import must have labels."
+    };
+  }
+
+  const fileType = fileTypeFromName(upload.file.fileName);
+
+  if (fileType !== "xlsx" && fileType !== "csv") {
+    return {
+      ok: false,
+      code: PHASE3_ERROR_CODES.unsupportedFileType,
+      message: "Structured imports support XLSX or CSV only."
+    };
+  }
+
+  return {
+    ok: true,
+    dataset: upload.dataset as StructuredDatasetName,
+    fileType,
+    startDate: upload.startDate,
+    endDate: upload.endDate
+  };
+}
+
+function fileTypeFromName(fileName: string): Phase3FileType | null {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+
+  if (extension && PHASE3_FILE_TYPES.includes(extension as Phase3FileType)) {
+    return extension as Phase3FileType;
+  }
+
+  return null;
+}
+
+function isDateWindow(startDate: string, endDate: string): boolean {
+  const start = parseYyyyMmDd(startDate);
+  const end = parseYyyyMmDd(endDate);
+
+  return Boolean(start && end && start.getTime() <= end.getTime());
+}
+
+function validateStructuredWorkbook(input: {
+  dataset: StructuredDatasetName;
+  body: Buffer;
+  fileType: "xlsx" | "csv";
+  startDate: string;
+  endDate: string;
+}): StructuredWorkbookValidationResult {
+  const workbook =
+    input.fileType === "csv"
+      ? workbookFromCsv(input.body)
+      : read(input.body, { type: "buffer", cellDates: false, raw: false });
+  const registry = getStructuredRegistry(input.dataset);
+  const sheetSummary: StructuredWorkbookValidationResult["sheetSummary"] = [];
+  const rows: StructuredImportRowInput[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const worksheet = workbook.Sheets[sheetName];
+
+    if (!worksheet) {
+      continue;
+    }
+
+    const rawRows = utils.sheet_to_json<string[]>(worksheet, {
+      header: 1,
+      blankrows: false,
+      defval: ""
+    });
+    const normalizedRows = rawRows.map((row) => row.map((cell) => String(cell).trim()));
+
+    if (normalizedRows.every((row) => row.every((cell) => cell.length === 0))) {
+      continue;
+    }
+
+    const hidden = isWorkbookSheetHidden(workbook, sheetName);
+
+    if (hidden) {
+      throw new Error(`Hidden non-empty sheet ${sheetName} is not allowed.`);
+    }
+
+    const headerCandidate = findStructuredHeader(input.dataset, normalizedRows);
+
+    if (!headerCandidate) {
+      throw new Error(`Sheet ${sheetName} has no recognized ${input.dataset} header.`);
+    }
+
+    if (!headerCandidate.validation.ok) {
+      throw new Error(
+        `Sheet ${sheetName} failed header validation: ${headerCandidate.validation.errors
+          .map((error) => `${error.code}:${error.column}`)
+          .join(",")}`
+      );
+    }
+
+    const dataRows = normalizedRows
+      .slice(headerCandidate.headerRowIndex + 1)
+      .map((row, index) => ({
+        row,
+        sourceRowNumber: headerCandidate.headerRowIndex + 2 + index
+      }))
+      .filter(({ row }) => row.some((cell) => cell.length > 0));
+
+    sheetSummary.push({
+      name: sheetName,
+      hidden,
+      headerRowNumber: headerCandidate.headerRowIndex + 1,
+      dataRowCount: dataRows.length
+    });
+
+    for (const dataRow of dataRows) {
+      const payload = rowToStructuredPayload(registry.fields, dataRow.row);
+      const businessDate = parseBusinessDate(payload["business_date"]);
+
+      if (!businessDate || !dateWithinWindow(businessDate, input.startDate, input.endDate)) {
+        throw new Error(`Row ${dataRow.sourceRowNumber} business_date is outside import window.`);
+      }
+
+      rows.push({
+        sourceRowNumber: dataRow.sourceRowNumber,
+        payload
+      });
+    }
+  }
+
+  if (sheetSummary.length === 0) {
+    throw new Error("Workbook has no non-empty import sheets.");
+  }
+
+  return {
+    sheetSummary,
+    rows
+  };
+}
+
+function workbookFromCsv(body: Buffer): WorkBook {
+  const rows = body
+    .toString("utf8")
+    .split(/\r?\n/)
+    .map((line) => line.split(",").map((cell) => cell.trim()))
+    .filter((row) => row.some((cell) => cell.length > 0));
+  const worksheet = utils.aoa_to_sheet(rows);
+
+  return {
+    SheetNames: ["Sheet1"],
+    Sheets: {
+      Sheet1: worksheet
+    }
+  };
+}
+
+function findStructuredHeader(dataset: StructuredDatasetName, rows: string[][]) {
+  for (const [index, row] of rows.slice(0, 10).entries()) {
+    const headers = trimTrailingEmptyCells(row);
+    const validation = validateStructuredHeaders(dataset, headers);
+
+    if (validation.ok || headers.some((header) => header.length > 0)) {
+      return {
+        headerRowIndex: index,
+        validation
+      };
+    }
+  }
+
+  return null;
+}
+
+function rowToStructuredPayload(
+  fields: StructuredFieldRegistryEntry[],
+  row: string[]
+): Record<string, unknown> {
+  return Object.fromEntries(
+    fields.map((field, index) => [
+      field.canonicalName,
+      parseStructuredCell(field, row[index] ?? "")
+    ])
+  );
+}
+
+function parseStructuredCell(field: StructuredFieldRegistryEntry, value: string): unknown {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (field.type === "integer") {
+    const integer = Number.parseInt(trimmed, 10);
+
+    if (!Number.isFinite(integer)) {
+      throw new Error(`${field.canonicalName} must be an integer.`);
+    }
+
+    return integer;
+  }
+
+  if (field.type === "decimal" || field.type === "percent") {
+    const decimal = Number.parseFloat(trimmed.replace("%", ""));
+
+    if (!Number.isFinite(decimal)) {
+      throw new Error(`${field.canonicalName} must be numeric.`);
+    }
+
+    return decimal;
+  }
+
+  if (field.type === "date" || field.type === "date_time") {
+    const date = parseBusinessDate(trimmed);
+
+    if (!date) {
+      throw new Error(`${field.canonicalName} must be a date.`);
+    }
+
+    return formatDateForPayload(date);
+  }
+
+  return trimmed;
+}
+
+function parseBusinessDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  const yyyymmdd = /^(\d{4})(\d{2})(\d{2})$/.exec(trimmed);
+
+  if (yyyymmdd) {
+    return parseYyyyMmDd(trimmed);
+  }
+
+  const dashed = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(trimmed);
+
+  if (!dashed) {
+    return null;
+  }
+
+  return parseDateParts(dashed[1] ?? "", dashed[2] ?? "", dashed[3] ?? "");
+}
+
+function parseYyyyMmDd(value: string): Date | null {
+  if (!/^\d{8}$/.test(value)) {
+    return null;
+  }
+
+  return parseDateParts(value.slice(0, 4), value.slice(4, 6), value.slice(6, 8));
+}
+
+function parseDateParts(yearValue: string, monthValue: string, dayValue: string): Date | null {
+  const year = Number.parseInt(yearValue, 10);
+  const month = Number.parseInt(monthValue, 10);
+  const day = Number.parseInt(dayValue, 10);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function dateWithinWindow(date: Date, startDate: string, endDate: string): boolean {
+  const start = parseYyyyMmDd(startDate);
+  const end = parseYyyyMmDd(endDate);
+
+  return Boolean(
+    start && end && date.getTime() >= start.getTime() && date.getTime() <= end.getTime()
+  );
+}
+
+function formatDateForPayload(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    date.getUTCDate()
+  ).padStart(2, "0")}`;
+}
+
+function trimTrailingEmptyCells(row: string[]): string[] {
+  const trimmed = [...row];
+
+  while (trimmed.length > 0 && trimmed[trimmed.length - 1]?.trim() === "") {
+    trimmed.pop();
+  }
+
+  return trimmed;
+}
+
+function isWorkbookSheetHidden(workbook: WorkBook, sheetName: string): boolean {
+  const sheetIndex = workbook.SheetNames.indexOf(sheetName);
+  const metadata = workbook.Workbook?.Sheets?.[sheetIndex];
+
+  return (metadata?.Hidden ?? 0) > 0;
+}
+
+function canonicalStructuredImportFileName(input: {
+  enterpriseName: string;
+  dataset: StructuredDatasetName;
+  startDate: string;
+  endDate: string;
+  fileType: "xlsx" | "csv";
+}) {
+  const enterpriseSegment =
+    input.enterpriseName
+      .trim()
+      .split("")
+      .map((character) => {
+        if (/^[A-Za-z0-9-]$/.test(character)) {
+          return character.toLowerCase();
+        }
+
+        return `u${character.codePointAt(0)?.toString(16) ?? "0"}`;
+      })
+      .join("_") || "enterprise";
+
+  return `${enterpriseSegment}_${input.dataset}_${input.startDate}_${input.endDate}.${input.fileType}`;
+}
+
+function structuredImportFingerprint(input: {
+  dataset: StructuredDatasetName;
+  enterpriseName: string;
+  startDate: string;
+  endDate: string;
+  labelKeys: string[];
+  fileHash: string;
+}): string {
+  return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+}
+
+function hasStructuredImportCode(error: unknown): error is { code: string } {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+
+  return typeof (error as { code?: unknown }).code === "string";
+}
+
+function structuredImportConflictMessage(code: string): string {
+  if (code === "IDEMPOTENCY_KEY_CONFLICT") {
+    return "Idempotency key was reused with different import content.";
+  }
+
+  if (code === "ACTIVE_IMPORT_EXISTS") {
+    return "An active import already exists for this dataset date window.";
+  }
+
+  if (code === "IMPORT_IN_PROGRESS") {
+    return "An import is already in progress for this dataset date window.";
+  }
+
+  return "Structured import conflict.";
+}
+
+function structuredImportResponse(input: {
+  importBatch: StructuredImportBatchRecord;
+  document: {
+    documentId: string;
+    fileType: "xlsx" | "csv";
+    storageObjectKey: string;
+    originalFileName: string;
+    status: "active";
+  };
+}) {
+  return {
+    document: {
+      documentId: input.document.documentId,
+      documentKind: "structured",
+      fileType: input.document.fileType,
+      status: input.document.status,
+      storageObjectKey: input.document.storageObjectKey,
+      originalFileName: input.document.originalFileName
+    },
+    processing: {
+      processingRunId: null,
+      status: "succeeded"
+    },
+    importBatch: importBatchResponse(input.importBatch)
+  };
+}
+
+function importBatchResponse(importBatch: StructuredImportBatchRecord) {
+  return {
+    importBatchId: importBatch.id,
+    sourceDocumentId: importBatch.sourceDocumentId,
+    dataset: importBatch.dataset,
+    status: importBatch.status,
+    startDate: importBatch.startDate,
+    endDate: importBatch.endDate,
+    sourceSheetSummary: importBatch.sourceSheetSummary,
+    validationErrors: importBatch.validationErrors,
+    totalRowCount: importBatch.totalRowCount,
+    appliedRowCount: importBatch.appliedRowCount,
+    queryableRowCount: importBatch.queryableRowCount
+  };
 }
 
 function documentStatusResponse(document: DocumentStatusRecord) {
@@ -446,6 +1003,7 @@ async function authenticate(
 export function buildApiServer(options: ApiServerOptions = {}) {
   const repository = options.employeeRepository ?? createPrismaEmployeeRepository();
   let documentRepository = options.documentRepository;
+  let structuredImportRepository = options.structuredImportRepository;
   let skillRepository = options.skillRepository;
   let storageAdapter = options.storageAdapter;
   const jwtSecret = options.jwtSecret ?? requireJwtSecret();
@@ -463,6 +1021,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   app.addHook("onClose", async () => {
     await repository.disconnect?.();
     await documentRepository?.disconnect?.();
+    await structuredImportRepository?.disconnect?.();
     await skillRepository?.disconnect?.();
   });
 
@@ -476,6 +1035,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   function storage(): StorageAdapter {
     storageAdapter ??= new LocalFileSystemStorageAdapter();
     return storageAdapter;
+  }
+
+  function structuredImports(): StructuredImportRepository {
+    structuredImportRepository ??= createPrismaStructuredImportRepository();
+    return structuredImportRepository;
   }
 
   function skills(): SkillDirectoryRepository {
@@ -558,8 +1122,191 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   app.post("/v1/documents/evidence", phase3RouteNotImplemented);
   app.post("/v1/evidence/search", phase3RouteNotImplemented);
-  app.post("/v1/structured/imports", phase3RouteNotImplemented);
-  app.get("/v1/structured/imports/:importBatchId", phase3RouteNotImplemented);
+  app.post("/v1/structured/imports", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    let upload: ParsedStructuredImportUpload;
+
+    try {
+      upload = await parseStructuredImportUpload(request);
+    } catch {
+      return validationError(
+        reply,
+        "INVALID_STRUCTURED_IMPORT_UPLOAD",
+        "Multipart structured import upload is invalid."
+      );
+    }
+
+    const metadataValidation = validateStructuredImportMetadata(upload);
+
+    if (!metadataValidation.ok) {
+      return validationError(reply, metadataValidation.code, metadataValidation.message);
+    }
+
+    const { dataset, fileType, startDate, endDate } = metadataValidation;
+    const uploadedFile = upload.file;
+    const enterpriseName = upload.enterpriseName;
+    const idempotencyKey = upload.idempotencyKey;
+
+    if (!uploadedFile || !enterpriseName || !idempotencyKey) {
+      return validationError(
+        reply,
+        "INVALID_STRUCTURED_IMPORT_METADATA",
+        "Structured import metadata is incomplete."
+      );
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+    const requestedLabels = await documents().findLabelsByKeys(employee.orgId, upload.labelKeys);
+    const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
+    const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
+
+    if (missingLabelKeys.length > 0) {
+      return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
+    }
+
+    const forbiddenLabelKeys = forbiddenRequestedLabels(employee, requestedLabels);
+
+    if (forbiddenLabelKeys.length > 0) {
+      return reply
+        .code(403)
+        .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
+    }
+
+    if (requestedLabels.length === 0) {
+      return validationError(reply, "UNLABELED_DOCUMENT", "Structured import must have labels.");
+    }
+
+    let validation: StructuredWorkbookValidationResult;
+
+    try {
+      validation = validateStructuredWorkbook({
+        dataset,
+        body: uploadedFile.body,
+        fileType,
+        startDate,
+        endDate
+      });
+    } catch (error) {
+      return validationError(
+        reply,
+        "STRUCTURED_IMPORT_VALIDATION_FAILED",
+        error instanceof Error ? error.message : "Structured import validation failed."
+      );
+    }
+
+    const documentId = createDocumentId();
+    const originalFileName = uploadedFile.fileName;
+    const canonicalFileName = canonicalStructuredImportFileName({
+      enterpriseName,
+      dataset,
+      startDate,
+      endDate,
+      fileType
+    });
+    const storedObject = await storage().putObject({
+      orgId: employee.orgId,
+      documentId,
+      fileName: canonicalFileName,
+      body: uploadedFile.body,
+      contentType: uploadedFile.contentType
+    });
+    const requestFingerprint = structuredImportFingerprint({
+      dataset,
+      enterpriseName,
+      startDate,
+      endDate,
+      labelKeys: requestedLabels.map((label) => label.key).sort(),
+      fileHash: storedObject.hash
+    });
+
+    try {
+      const importBatch = await structuredImports().importStructuredDataset({
+        orgId: employee.orgId,
+        actorEmployeeId: employee.id,
+        documentId,
+        dataset,
+        fileType,
+        startDate,
+        endDate,
+        idempotencyKey,
+        requestFingerprint,
+        document: {
+          title: `${enterpriseName}_${dataset}_${startDate}_${endDate}`,
+          storageObjectKey: storedObject.key,
+          originalFileName,
+          contentType: storedObject.contentType,
+          byteSize: storedObject.size,
+          checksumSha256: storedObject.hash,
+          labelIds: requestedLabels.map((label) => label.id),
+          labels: requestedLabels.map((label) => label.key).sort()
+        },
+        sourceSheetSummary: validation.sheetSummary,
+        rows: validation.rows
+      });
+
+      if (!importBatch) {
+        throw new Error("Import batch was not created.");
+      }
+
+      return reply.code(202).send(
+        structuredImportResponse({
+          importBatch,
+          document: {
+            documentId,
+            fileType,
+            storageObjectKey: storedObject.key,
+            originalFileName,
+            status: "active"
+          }
+        })
+      );
+    } catch (error) {
+      await storage().deleteObject(storedObject.key);
+
+      if (error instanceof StructuredImportError || hasStructuredImportCode(error)) {
+        return reply
+          .code(409)
+          .send(errorResponse(error.code, structuredImportConflictMessage(error.code)));
+      }
+
+      request.log.error({ err: error, documentId }, "structured import failed");
+      return reply
+        .code(500)
+        .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
+    }
+  });
+
+  app.get<{ Params: { importBatchId: string } }>(
+    "/v1/structured/imports/:importBatchId",
+    async (request, reply) => {
+      const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+      if (!authenticated) {
+        return;
+      }
+
+      const employee = (request as AuthenticatedRequest).employee;
+      const importBatch = await structuredImports().findImportBatch(
+        employee.orgId,
+        request.params.importBatchId
+      );
+
+      if (!importBatch) {
+        return reply
+          .code(404)
+          .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
+      }
+
+      return {
+        importBatch: importBatchResponse(importBatch)
+      };
+    }
+  );
   app.get("/v1/structured/datasets", phase3RouteNotImplemented);
   app.post("/v1/structured/query", phase3RouteNotImplemented);
 

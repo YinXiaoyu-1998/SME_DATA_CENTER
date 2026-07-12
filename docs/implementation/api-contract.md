@@ -221,7 +221,7 @@ Phase 3 adds evidence retrieval and controlled structured query APIs. These APIs
 | `GET`  | `/v1/structured/datasets`               | Return dataset registry, fields, capabilities, operators, limits, lifecycle, sensitivity, and versions. |
 | `POST` | `/v1/structured/query`                  | Execute controlled read-only structured query over `dishes` / `business`.                               |
 
-Task 1 registers every Phase 3 route above behind the existing authenticated employee boundary. Until the owning implementation task lands, each authenticated request receives `501 TEMPORARILY_UNAVAILABLE`; unauthenticated callers receive the normal authentication error instead. These placeholders do not parse uploads, query MySQL/Qdrant, or perform any other business operation.
+Task 1 registered every Phase 3 route above behind the existing authenticated employee boundary. Until an owning implementation task lands, authenticated placeholder requests receive `501 TEMPORARILY_UNAVAILABLE`; unauthenticated callers receive the normal authentication error instead. Task 6 implements the structured import/status routes. Remaining placeholders do not parse uploads, query MySQL/Qdrant, or perform any other business operation.
 
 ### `POST /v1/documents/evidence`
 
@@ -336,22 +336,31 @@ Response `202`:
     "documentId": "doc_456",
     "documentKind": "structured",
     "fileType": "xlsx",
-    "status": "processing"
+    "status": "active",
+    "storageObjectKey": "org_123/doc_456/mai_jia_dishes_20260701_20260705.xlsx",
+    "originalFileName": "麦家菜品记录.xlsx"
   },
   "processing": {
-    "processingRunId": "run_456",
-    "status": "queued"
+    "processingRunId": null,
+    "status": "succeeded"
   },
   "importBatch": {
     "importBatchId": "imp_456",
+    "sourceDocumentId": "doc_456",
     "dataset": "dishes",
-    "status": "pending",
+    "status": "applied",
     "startDate": "20260701",
-    "endDate": "20260705"
-  },
-  "requestId": "req_456"
+    "endDate": "20260705",
+    "sourceSheetSummary": [],
+    "validationErrors": [],
+    "totalRowCount": 1200,
+    "appliedRowCount": 1200,
+    "queryableRowCount": 1200
+  }
 }
 ```
+
+Task 6 validates and applies a structured import atomically. If any non-empty CSV/XLSX sheet fails the dataset registry mapping, required-field, type, or business-date-window checks, no source document, import batch, window claim, or row payload becomes queryable. The original upload file name is retained as metadata, but the stored object key uses the canonical `{enterprise_name}_{dataset}_{startDate}_{endDate}` shape based on trusted metadata.
 
 Conflict behavior:
 
