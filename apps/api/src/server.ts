@@ -1225,23 +1225,6 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     };
   });
 
-  const phase3RouteNotImplemented = async (request: FastifyRequest, reply: FastifyReply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
-
-    if (!authenticated) {
-      return;
-    }
-
-    return reply
-      .code(501)
-      .send(
-        errorResponse(
-          PHASE3_ERROR_CODES.temporarilyUnavailable,
-          "This Phase 3 endpoint is not implemented yet."
-        )
-      );
-  };
-
   app.post("/v1/documents/evidence", async (request, reply) => {
     const authenticated = await authenticate(request, reply, repository, jwtSecret);
 
