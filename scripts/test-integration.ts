@@ -210,7 +210,7 @@ try {
   );
 } finally {
   if (apiProcess) {
-    apiProcess.kill("SIGTERM");
+    await stopApi(apiProcess);
   }
 }
 
@@ -220,13 +220,35 @@ async function prepareLocalWorkspace(): Promise<void> {
 }
 
 function startApi(): ReturnType<typeof spawn> {
-  const child = spawn("npm", ["run", "api:dev"], {
+  const child = spawn(process.execPath, ["--import", "tsx", "apps/api/src/index.ts"], {
     cwd: rootDir,
     env: integrationEnv,
     stdio: ["ignore", "pipe", "pipe"]
   });
 
   return child;
+}
+
+async function stopApi(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const forceKillTimer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+    }, 5_000);
+    forceKillTimer.unref();
+
+    child.once("close", () => {
+      clearTimeout(forceKillTimer);
+      resolve();
+    });
+
+    child.kill("SIGTERM");
+  });
 }
 
 async function waitForMysqlHealth(): Promise<void> {
