@@ -45,6 +45,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: docker compose up -d mysql qdrant
+      - name: Wait for MySQL
+        run: |
+          for attempt in {1..60}; do
+            status="$(docker inspect --format='{{.State.Health.Status}}' enterprise-hub-mysql 2>/dev/null || true)"
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            echo "Waiting for MySQL healthcheck, current status: ${status:-unknown}"
+            sleep 2
+          done
+          docker logs enterprise-hub-mysql
+          exit 1
       - run: npm run db:generate
       - run: npx prisma migrate reset --force --config packages/db/prisma.config.ts
       - run: npm run db:seed
