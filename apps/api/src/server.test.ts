@@ -15,6 +15,7 @@ import { canEmployeeAccessDocument, getStructuredRegistry } from "@enterprise-hu
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "./server.js";
 import { signEmployeeAccessToken } from "./tokens.js";
+import type { DocumentCatalogRepository } from "./documents.js";
 import type { EmployeeRepository } from "./employees.js";
 import type { EvidenceSearchRepository } from "./evidence.js";
 import type { SkillDirectoryRepository, SkillDirectoryEntry } from "./skills.js";
@@ -236,11 +237,11 @@ interface RecordedProcessingRun {
 interface RecordedAuditLog {
   id?: string;
   action: string;
-  actorEmployeeId: string;
+  actorEmployeeId: string | null;
   targetType?: string;
   targetId: string | null;
   result?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> | null;
   requestId?: string;
   clientIp?: string;
   createdAt?: Date;
@@ -445,6 +446,13 @@ function createDocumentRepository() {
         metadata: {
           documentId: input.documentId
         }
+      });
+    },
+    async appendAuditLog(input: Parameters<DocumentCatalogRepository["appendAuditLog"]>[0]) {
+      auditLogs.push({
+        id: `audit_${auditLogs.length + 1}`,
+        ...input,
+        createdAt: new Date()
       });
     },
     async archiveDocument(input: {
@@ -1039,6 +1047,64 @@ describe("api auth shell", () => {
         code: "EMPLOYEE_DISABLED"
       }
     });
+  });
+
+  it("requires backend authorization for every non-health Phase 3 endpoint", async () => {
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository: createDocumentRepository(),
+      evidenceRepository: createEvidenceSearchRepository(),
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
+    const phase3Endpoints = [
+      {
+        method: "POST",
+        url: "/v1/documents/evidence",
+        headers: {
+          "content-type": "multipart/form-data; boundary=phase3-auth-check"
+        },
+        payload: Buffer.from("--phase3-auth-check--\r\n")
+      },
+      {
+        method: "POST",
+        url: "/v1/evidence/search",
+        payload: { query: "差评处理" }
+      },
+      {
+        method: "POST",
+        url: "/v1/structured/imports",
+        headers: {
+          "content-type": "multipart/form-data; boundary=phase3-auth-check"
+        },
+        payload: Buffer.from("--phase3-auth-check--\r\n")
+      },
+      {
+        method: "GET",
+        url: "/v1/structured/imports/imp_hidden"
+      },
+      {
+        method: "GET",
+        url: "/v1/structured/datasets"
+      },
+      {
+        method: "POST",
+        url: "/v1/structured/query",
+        payload: { dataset: "dishes", select: ["business_date"] }
+      }
+    ] as const;
+
+    for (const endpoint of phase3Endpoints) {
+      const response = await app.inject(endpoint);
+
+      expect(response.statusCode, `${endpoint.method} ${endpoint.url}`).toBe(401);
+      expect(response.json(), `${endpoint.method} ${endpoint.url}`).toMatchObject({
+        error: {
+          code: "UNAUTHENTICATED"
+        }
+      });
+    }
   });
 });
 
@@ -1727,6 +1793,45 @@ describe("document upload and status", () => {
     });
   });
 
+  it("does not expose hard delete, purge, replacement, overwrite, or append mutation endpoints", async () => {
+    const { app, documentRepository } = await buildDocumentTestServer();
+    documentRepository.documents.push(
+      activeDocument({
+        id: "doc_no_hard_delete",
+        title: "No Hard Delete Target",
+        labels: ["store:baoli"]
+      })
+    );
+    const authorization = `Bearer ${await accessTokenFor(baoliManagerEmployee)}`;
+    const mutationRoutes = [
+      { method: "DELETE", url: "/documents/doc_no_hard_delete" },
+      { method: "POST", url: "/documents/doc_no_hard_delete/purge" },
+      { method: "PUT", url: "/documents/doc_no_hard_delete" },
+      { method: "PATCH", url: "/documents/doc_no_hard_delete" },
+      { method: "PUT", url: "/v1/structured/imports/imp_1" },
+      { method: "PATCH", url: "/v1/structured/imports/imp_1" },
+      { method: "POST", url: "/v1/structured/imports/imp_1/append" },
+      { method: "POST", url: "/v1/structured/imports/imp_1/overwrite" },
+      { method: "POST", url: "/v1/structured/imports/imp_1/replace" }
+    ] as const;
+
+    for (const route of mutationRoutes) {
+      const response = await app.inject({
+        ...route,
+        headers: {
+          authorization
+        },
+        payload: {}
+      });
+
+      expect(response.statusCode, `${route.method} ${route.url}`).toBe(404);
+    }
+    expect(documentRepository.documents[0]).toMatchObject({
+      id: "doc_no_hard_delete",
+      status: "active"
+    });
+  });
+
   it("adds an existing personal label and makes the document visible to that employee", async () => {
     const { app, documentRepository } = await buildDocumentTestServer();
     documentRepository.documents.push(
@@ -2176,6 +2281,37 @@ describe("structured imports", () => {
       originalFileName: "original-dishes.csv"
     });
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(1);
+    expect(documentRepository.auditLogs).toEqual([
+      expect.objectContaining({
+        action: "structured_import.started",
+        actorEmployeeId: baoliManagerEmployee.id,
+        targetType: "import_batch",
+        result: "succeeded",
+        metadata: {
+          dataset: "dishes",
+          startDate: "20260701",
+          endDate: "20260705",
+          rowCount: 1,
+          sourceDocumentId: response.json().document.documentId
+        }
+      }),
+      expect.objectContaining({
+        action: "structured_import.applied",
+        actorEmployeeId: baoliManagerEmployee.id,
+        targetType: "import_batch",
+        targetId: response.json().importBatch.importBatchId,
+        result: "succeeded",
+        metadata: {
+          dataset: "dishes",
+          startDate: "20260701",
+          endDate: "20260705",
+          appliedRowCount: 1,
+          sourceDocumentId: response.json().document.documentId
+        }
+      })
+    ]);
+    expect(JSON.stringify(documentRepository.auditLogs)).not.toContain("value_1");
+    expect(JSON.stringify(documentRepository.auditLogs)).not.toContain("保利店_dishes");
   });
 
   it("handles import idempotency and active/in-progress window conflicts", async () => {

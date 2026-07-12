@@ -488,3 +488,15 @@
 - Known gaps: Full end-to-end MCP smoke against live API/Qdrant/MySQL remains for Task 12/final integration after Task 10/11 are integrated.
 - Human blockers: None for Task 9 local implementation. Real external model/provider smoke remains separately gated by env and egress approval.
 - Suggested next agent: Integrate with Task 10 and then continue Task 11 golden retrieval/performance gates.
+
+## 2026-07-12 14:06 - codex/phase3-security-revalidation - Phase 3 Task 10 security revalidation
+
+- Scope: Implemented Phase 3 Task 10 only: authorization regression tests for all Phase 3 endpoints, evidence MySQL revalidation tests for current labels/disabled employees/stale Qdrant payloads, structured import lifecycle audit logging, and audit tests proving raw row/file/chunk payloads are excluded. Did not add MCP tools, golden retrieval, deployment, hard delete/purge, automatic replacement/overwrite/append, raw SQL, NL-to-query, reports, dashboards, or P2/P3 scope.
+- Subagent note: A Task 10 subagent created the initial test changes but stopped reporting before handoff. The lead agent interrupted it, reviewed failing tests, fixed the real structured-import audit gap, corrected multipart auth test construction, completed TypeScript/lint fixes, and reran verification.
+- Files changed: `packages/domain/src/audit.ts`, `apps/api/src/documents.ts`, `apps/api/src/server.ts`, `apps/api/src/server.test.ts`, `apps/api/src/evidence.test.ts`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: `npm install`; `npm run db:generate`; `npm test -- apps/api/src/evidence.test.ts apps/api/src/server.test.ts`; `npm run typecheck`; `npm run lint`; `npx prettier --write ...`; `npm run format:check`; `git diff --check`.
+- Done criteria passed: Phase 3 routes require backend employee auth; evidence revalidation drops disabled employees and stale/hidden/current-label-mismatched Qdrant hits; returned evidence uses authoritative MySQL chunk/source metadata; structured import audit records lifecycle actions without raw payloads; no client-side filtering, raw SQL acceptance, mutation API, hard delete/purge, or overwrite/append behavior was added.
+- PR: Not opened separately; lead integration pending.
+- Known gaps: Task 11 still needs golden retrieval, performance gates, real-Qdrant CI layer documentation/scripts, and gated real workbook acceptance path.
+- Human blockers: None for Task 10 local implementation.
+- Suggested next agent: Continue Task 11 golden retrieval/evaluation before Task 12 final Phase 3 verification.

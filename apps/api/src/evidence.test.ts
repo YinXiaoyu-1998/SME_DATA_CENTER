@@ -6,8 +6,10 @@ import {
 } from "@enterprise-hub/domain";
 import {
   HttpQdrantEvidenceSearcher,
+  PrismaEvidenceRevalidator,
   createEvidenceSearchService,
   type EvidenceRevalidator,
+  type QdrantEvidenceCandidate,
   type QdrantEvidenceSearcher
 } from "./evidence.js";
 
@@ -18,6 +20,15 @@ const employee: AuthenticatedEmployee = {
   role: "admin",
   disabled: false,
   labels: ["all_staff"]
+};
+
+const baoliEmployee: AuthenticatedEmployee = {
+  id: "emp_baoli_manager",
+  orgId: "default-org",
+  email: "baoli.manager@example.com",
+  role: "manager",
+  disabled: false,
+  labels: ["all_staff", "person:baoli.manager", "store:baoli"]
 };
 
 describe("evidence search service", () => {
@@ -250,5 +261,201 @@ describe("evidence search service", () => {
       retrievalConfigVersion: "phase3.retrieval.v1",
       rerankStatus: "enabled"
     });
+  });
+});
+
+describe("evidence MySQL revalidation", () => {
+  function evidenceCandidate(
+    overrides: Partial<QdrantEvidenceCandidate> = {}
+  ): QdrantEvidenceCandidate {
+    return {
+      chunkId: "chk_active",
+      documentId: "doc_active",
+      qdrantPointId: "point_active",
+      contentVersion: 2,
+      retrievalConfigVersion: "phase3.retrieval.v1",
+      text: "stale qdrant text must not be trusted",
+      hybridScore: 0.9,
+      matchedBy: ["dense", "lexical"],
+      ...overrides
+    };
+  }
+
+  function evidenceChunk(overrides: Record<string, unknown> = {}) {
+    return {
+      qdrantPointId: "point_active",
+      documentId: "doc_active",
+      chunkId: "chk_active",
+      contentVersion: 2,
+      retrievalConfigVersion: "phase3.retrieval.v1",
+      chunkText: "authoritative MySQL chunk text",
+      sourceLocation: {
+        sectionHeadingPath: ["客户反馈", "差评处理"],
+        blockTypes: ["paragraph"],
+        pageNumber: 3
+      },
+      document: {
+        title: "客户反馈处理 SOP.md",
+        fileType: "md",
+        documentLabels: [
+          {
+            labelId: "label_store_baoli",
+            label: {
+              key: "store:baoli"
+            }
+          }
+        ]
+      },
+      documentIndex: {
+        contentVersion: 2
+      },
+      ...overrides
+    };
+  }
+
+  function createRevalidator(chunks: unknown[]) {
+    const calls: unknown[] = [];
+    const prisma = {
+      documentChunk: {
+        async findMany(query: unknown) {
+          calls.push(query);
+          return chunks;
+        }
+      }
+    };
+
+    return {
+      calls,
+      revalidator: new PrismaEvidenceRevalidator(
+        prisma as ConstructorParameters<typeof PrismaEvidenceRevalidator>[0]
+      )
+    };
+  }
+
+  it("requeries only active ready evidence chunks and returns authoritative source metadata", async () => {
+    const { calls, revalidator } = createRevalidator([evidenceChunk()]);
+
+    const result = await revalidator.revalidate({
+      orgId: "default-org",
+      employee: baoliEmployee,
+      candidates: [evidenceCandidate()],
+      filters: {
+        fileTypes: [],
+        documentIds: [],
+        labelIds: []
+      }
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        where: expect.objectContaining({
+          indexType: "evidence",
+          document: {
+            orgId: "default-org",
+            status: "active",
+            documentKind: "evidence"
+          },
+          documentIndex: {
+            status: "ready"
+          }
+        })
+      })
+    ]);
+    expect(result).toEqual([
+      expect.objectContaining({
+        chunkId: "chk_active",
+        text: "authoritative MySQL chunk text",
+        documentTitle: "客户反馈处理 SOP.md",
+        fileType: "md",
+        sectionHeadingPath: ["客户反馈", "差评处理"],
+        blockType: "paragraph",
+        pageNumber: 3
+      })
+    ]);
+    expect(result[0]?.text).not.toBe("stale qdrant text must not be trusted");
+  });
+
+  it("applies current source document labels during revalidation", async () => {
+    const suzhouOnlyChunk = evidenceChunk({
+      document: {
+        title: "客户反馈处理 SOP.md",
+        fileType: "md",
+        documentLabels: [
+          {
+            labelId: "label_store_suzhou",
+            label: {
+              key: "store:suzhou"
+            }
+          }
+        ]
+      }
+    });
+    const { revalidator } = createRevalidator([suzhouOnlyChunk]);
+
+    const result = await revalidator.revalidate({
+      orgId: "default-org",
+      employee: baoliEmployee,
+      candidates: [evidenceCandidate()],
+      filters: {
+        fileTypes: [],
+        documentIds: [],
+        labelIds: []
+      }
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("drops disabled employees and stale Qdrant payload mismatches", async () => {
+    const { calls: disabledCalls, revalidator: disabledRevalidator } = createRevalidator([
+      evidenceChunk()
+    ]);
+
+    await expect(
+      disabledRevalidator.revalidate({
+        orgId: "default-org",
+        employee: { ...baoliEmployee, disabled: true },
+        candidates: [evidenceCandidate()],
+        filters: {
+          fileTypes: [],
+          documentIds: [],
+          labelIds: []
+        }
+      })
+    ).resolves.toEqual([]);
+    expect(disabledCalls).toEqual([]);
+
+    const { revalidator } = createRevalidator([
+      evidenceChunk({ qdrantPointId: "point_wrong_document", documentId: "doc_active" }),
+      evidenceChunk({ qdrantPointId: "point_wrong_chunk", chunkId: "chk_active" }),
+      evidenceChunk({ qdrantPointId: "point_wrong_content", contentVersion: 2 }),
+      evidenceChunk({
+        qdrantPointId: "point_wrong_config",
+        retrievalConfigVersion: "phase3.retrieval.v1"
+      }),
+      evidenceChunk()
+    ]);
+
+    const result = await revalidator.revalidate({
+      orgId: "default-org",
+      employee: baoliEmployee,
+      candidates: [
+        evidenceCandidate({ qdrantPointId: "point_wrong_document", documentId: "doc_stale" }),
+        evidenceCandidate({ qdrantPointId: "point_wrong_chunk", chunkId: "chk_stale" }),
+        evidenceCandidate({ qdrantPointId: "point_wrong_content", contentVersion: 3 }),
+        evidenceCandidate({
+          qdrantPointId: "point_wrong_config",
+          retrievalConfigVersion: "phase3.retrieval.v0"
+        }),
+        evidenceCandidate()
+      ],
+      filters: {
+        fileTypes: [],
+        documentIds: [],
+        labelIds: []
+      }
+    });
+
+    expect(result.map((candidate) => candidate.qdrantPointId)).toEqual(["point_active"]);
   });
 });

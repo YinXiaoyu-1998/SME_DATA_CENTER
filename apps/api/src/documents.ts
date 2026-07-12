@@ -146,6 +146,18 @@ export interface ListAuditLogsInput {
   cursor: string | null;
 }
 
+export interface AppendAuditLogInput {
+  orgId: string;
+  actorEmployeeId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  result: string;
+  metadata?: Record<string, unknown> | null;
+  requestId: string;
+  clientIp: string;
+}
+
 export interface ListAuditLogsResult {
   auditLogs: AuditLogRecord[];
   nextCursor: string | null;
@@ -165,6 +177,7 @@ export interface DocumentCatalogRepository {
   ): Promise<DocumentQueryRecord | null>;
   appendDocumentQueryAudit(input: DocumentQueryAuditInput): Promise<void>;
   appendDocumentDownloadAudit(input: DocumentDownloadAuditInput): Promise<void>;
+  appendAuditLog(input: AppendAuditLogInput): Promise<void>;
   archiveDocument(input: ArchiveDocumentInput): Promise<DocumentQueryRecord | null>;
   addDocumentLabels(input: AddDocumentLabelsInput): Promise<DocumentQueryRecord | null>;
   listAuditLogs(input: ListAuditLogsInput): Promise<ListAuditLogsResult>;
@@ -427,6 +440,21 @@ export function createPrismaDocumentCatalogRepository(
           metadata: {
             documentId: input.documentId
           },
+          requestId: input.requestId,
+          clientIp: input.clientIp
+        }
+      });
+    },
+    async appendAuditLog(input) {
+      await prisma.auditLog.create({
+        data: {
+          orgId: input.orgId,
+          actorEmployeeId: input.actorEmployeeId,
+          action: input.action,
+          targetType: input.targetType,
+          targetId: input.targetId,
+          result: input.result,
+          metadata: (input.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
           requestId: input.requestId,
           clientIp: input.clientIp
         }
