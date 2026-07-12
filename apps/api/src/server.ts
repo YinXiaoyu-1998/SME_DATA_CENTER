@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
+import { extname } from "node:path";
 import multipart from "@fastify/multipart";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { read, utils, type WorkBook } from "xlsx";
 import {
   AUTH_ERROR_CODES,
+  DEFAULT_RETRIEVAL_CONFIG_VERSION,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_QUERY_LIMITS,
   StructuredQueryValidationError,
@@ -11,6 +13,7 @@ import {
   compileStructuredQuery,
   createStructuredCursor,
   getStructuredRegistry,
+  isAllowedFileTypeForDocumentKind,
   isDocumentType,
   PHASE3_FILE_TYPES,
   PHASE3_ERROR_CODES,
@@ -31,6 +34,7 @@ import {
   type DocumentStatusRecord
 } from "./documents.js";
 import { createPrismaEmployeeRepository, type EmployeeRepository } from "./employees.js";
+import { createPrismaEvidenceSearchRepository, type EvidenceSearchRepository } from "./evidence.js";
 import {
   createPrismaSkillDirectoryRepository,
   type SkillDirectoryEntry,
@@ -57,6 +61,7 @@ export interface ApiServerOptions {
   structuredImportRepository?: StructuredImportRepository;
   skillRepository?: SkillDirectoryRepository;
   structuredQueryRepository?: StructuredQueryRepository;
+  evidenceRepository?: EvidenceSearchRepository;
   storageAdapter?: StorageAdapter;
   jwtSecret?: string;
   enableDevLogin?: boolean;
@@ -112,6 +117,17 @@ interface ParsedStructuredImportUpload {
   endDate?: string;
   idempotencyKey?: string;
   labelKeys: string[];
+}
+
+interface EvidenceSearchBody {
+  query?: unknown;
+  filters?: {
+    fileTypes?: unknown;
+    documentIds?: unknown;
+    labelIds?: unknown;
+  };
+  limit?: unknown;
+  cursor?: unknown;
 }
 
 interface StructuredWorkbookValidationResult {
@@ -184,6 +200,14 @@ function phase3ErrorResponse(
 
 function validationError(reply: FastifyReply, code: string, message: string) {
   return reply.code(400).send(errorResponse(code, message));
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function bearerToken(request: FastifyRequest): string | null {
@@ -454,6 +478,11 @@ function fileTypeFromName(fileName: string): Phase3FileType | null {
   }
 
   return null;
+}
+
+function fileTypeFromFilename(fileName: string): Phase3FileType | null {
+  const extension = extname(fileName).toLowerCase().replace(/^\./, "");
+  return isAllowedFileTypeForDocumentKind("evidence", extension) ? extension : null;
 }
 
 function isDateWindow(startDate: string, endDate: string): boolean {
@@ -823,6 +852,25 @@ function importBatchResponse(importBatch: StructuredImportBatchRecord) {
   };
 }
 
+function evidenceUploadResponse(document: DocumentStatusRecord) {
+  return {
+    document: {
+      documentId: document.id,
+      documentKind: "evidence",
+      fileType: document.fileType,
+      status: document.status
+    },
+    processing: {
+      processingRunId: null,
+      status: document.processingRunStatus
+    },
+    documentIndex: {
+      status: "pending",
+      retrievalConfigVersion: DEFAULT_RETRIEVAL_CONFIG_VERSION
+    }
+  };
+}
+
 function documentStatusResponse(document: DocumentStatusRecord) {
   return {
     id: document.id,
@@ -1066,6 +1114,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   let structuredImportRepository = options.structuredImportRepository;
   let skillRepository = options.skillRepository;
   let structuredQueryRepository = options.structuredQueryRepository;
+  let evidenceRepository = options.evidenceRepository;
   let storageAdapter = options.storageAdapter;
   const jwtSecret = options.jwtSecret ?? requireJwtSecret();
   const enableDevLogin = options.enableDevLogin ?? process.env["NODE_ENV"] !== "production";
@@ -1085,6 +1134,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     await structuredImportRepository?.disconnect?.();
     await skillRepository?.disconnect?.();
     await structuredQueryRepository?.disconnect?.();
+    await evidenceRepository?.disconnect?.();
   });
 
   void app.register(multipart);
@@ -1112,6 +1162,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   function skills(): SkillDirectoryRepository {
     skillRepository ??= createPrismaSkillDirectoryRepository();
     return skillRepository;
+  }
+
+  function evidence(): EvidenceSearchRepository {
+    evidenceRepository ??= createPrismaEvidenceSearchRepository();
+    return evidenceRepository;
   }
 
   app.get("/healthz", async () => ({
@@ -1187,8 +1242,154 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       );
   };
 
-  app.post("/v1/documents/evidence", phase3RouteNotImplemented);
-  app.post("/v1/evidence/search", phase3RouteNotImplemented);
+  app.post("/v1/documents/evidence", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    let upload: ParsedUpload;
+
+    try {
+      upload = await parseUpload(request);
+    } catch {
+      return validationError(reply, "INVALID_EVIDENCE_UPLOAD", "Multipart upload is invalid.");
+    }
+
+    if (!upload.file) {
+      return validationError(reply, "INVALID_EVIDENCE_UPLOAD", "File is required.");
+    }
+
+    if (!upload.title) {
+      return validationError(reply, "INVALID_EVIDENCE_UPLOAD", "Title is required.");
+    }
+
+    const fileType = fileTypeFromFilename(upload.file.fileName);
+
+    if (!fileType) {
+      return validationError(
+        reply,
+        PHASE3_ERROR_CODES.invalidDocumentKindFileType,
+        "Evidence documents must be .md, .txt, or .docx files."
+      );
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+    const orgId = defaultOrgId();
+    const requestedLabels = await documents().findLabelsByKeys(orgId, upload.labelKeys);
+    const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
+    const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
+
+    if (missingLabelKeys.length > 0) {
+      return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
+    }
+
+    const forbiddenLabelKeys = forbiddenRequestedLabels(employee, requestedLabels);
+
+    if (forbiddenLabelKeys.length > 0) {
+      return reply
+        .code(403)
+        .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
+    }
+
+    const personalLabel = await documents().findPersonalLabelForEmployee(orgId, employee.id);
+    const finalLabels = mergeLabels(requestedLabels, personalLabel);
+
+    if (finalLabels.length === 0) {
+      return validationError(reply, "UNLABELED_DOCUMENT", "Document must have at least one label.");
+    }
+
+    const documentId = createDocumentId();
+    const storedObject = await storage().putObject({
+      orgId,
+      documentId,
+      fileName: upload.file.fileName,
+      body: upload.file.body,
+      contentType: upload.file.contentType
+    });
+
+    try {
+      const document = await documents().createUploadedDocument({
+        id: documentId,
+        orgId,
+        title: upload.title,
+        documentType: "management_knowledge",
+        documentKind: "evidence",
+        fileType,
+        status: "pending_processing",
+        storageObjectKey: storedObject.key,
+        originalFileName: upload.file.fileName,
+        contentType: storedObject.contentType,
+        byteSize: storedObject.size,
+        checksumSha256: storedObject.hash,
+        uploaderId: employee.id,
+        sourceSystem: upload.sourceSystem || null,
+        sourceTime: null,
+        labelIds: finalLabels.map((label) => label.id),
+        labels: finalLabels.map((label) => label.key),
+        processingJobType: "evidence_document_index",
+        requestId: request.id,
+        clientIp: request.ip
+      });
+
+      return reply.code(202).send(evidenceUploadResponse(document));
+    } catch (error) {
+      await storage().deleteObject(storedObject.key);
+      request.log.error({ err: error, documentId }, "evidence document catalog write failed");
+      return reply
+        .code(500)
+        .send(errorResponse("DOCUMENT_CATALOG_WRITE_FAILED", "Document catalog write failed."));
+    }
+  });
+  app.post<{ Body: EvidenceSearchBody }>("/v1/evidence/search", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const query = typeof request.body.query === "string" ? request.body.query.trim() : "";
+
+    if (!query) {
+      return validationError(reply, PHASE3_ERROR_CODES.invalidQuery, "Query is required.");
+    }
+
+    const limit =
+      typeof request.body.limit === "number" && Number.isInteger(request.body.limit)
+        ? request.body.limit
+        : 10;
+
+    if (limit < 1 || limit > 50) {
+      return validationError(reply, PHASE3_ERROR_CODES.limitExceeded, "Limit must be 1-50.");
+    }
+
+    const cursor =
+      typeof request.body.cursor === "string" && request.body.cursor.trim()
+        ? request.body.cursor.trim()
+        : null;
+    const filters = {
+      fileTypes: stringArray(request.body.filters?.fileTypes),
+      documentIds: stringArray(request.body.filters?.documentIds),
+      labelIds: stringArray(request.body.filters?.labelIds)
+    };
+    const employee = (request as AuthenticatedRequest).employee;
+    const result = await evidence().searchEvidence({
+      orgId: defaultOrgId(),
+      employee,
+      query,
+      filters,
+      limit,
+      cursor,
+      requestId: request.id,
+      clientIp: request.ip
+    });
+
+    return {
+      ...result,
+      requestId: request.id
+    };
+  });
   app.post("/v1/structured/imports", async (request, reply) => {
     const authenticated = await authenticate(request, reply, repository, jwtSecret);
 

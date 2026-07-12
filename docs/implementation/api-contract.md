@@ -221,7 +221,7 @@ Phase 3 adds evidence retrieval and controlled structured query APIs. These APIs
 | `GET`  | `/v1/structured/datasets`               | Return dataset registry, fields, capabilities, operators, limits, lifecycle, sensitivity, and versions. |
 | `POST` | `/v1/structured/query`                  | Execute controlled read-only structured query over `dishes` / `business`.                               |
 
-Task 1 registered every Phase 3 route above behind the existing authenticated employee boundary. Until an owning implementation task lands, authenticated placeholder requests receive `501 TEMPORARILY_UNAVAILABLE`; unauthenticated callers receive the normal authentication error instead. Task 6 implements the structured import/status routes. Remaining placeholders do not parse uploads, query MySQL/Qdrant, or perform any other business operation.
+Task 1 registered every Phase 3 route above behind the existing authenticated employee boundary. Until an owning implementation task lands, authenticated placeholder requests receive `501 TEMPORARILY_UNAVAILABLE`; unauthenticated callers receive the normal authentication error instead. Task 6 implements the structured import/status routes, Task 7 implements structured dataset discovery/query routes, and Task 8 implements evidence upload/search routes. Remaining placeholders do not parse uploads, query MySQL/Qdrant, or perform any other business operation.
 
 ### `POST /v1/documents/evidence`
 
@@ -254,6 +254,8 @@ Response `202`:
   "requestId": "req_123"
 }
 ```
+
+Task 8 queues `evidence_document_index`; the worker parses, chunks, embeds, writes sparse/dense Qdrant points, persists chunk/index metadata in MySQL, and publishes `Document.active` only after the full indexing transaction succeeds. Any parse, embedding, Qdrant, or metadata failure keeps the document non-active and schedules/finalizes processing failure according to the worker retry policy.
 
 ### `POST /v1/evidence/search`
 
@@ -312,7 +314,7 @@ Response:
 }
 ```
 
-The response is evidence-only. It must not contain a final answer.
+The response is evidence-only. It must not contain a final answer. Search runs Qdrant dense+sparse hybrid retrieval first, optionally applies rerank when the configured provider is enabled, then revalidates every candidate against MySQL for active document status, ready index status, content version, retrieval config version, disabled employee status, labels, and caller-provided filters before returning any chunk.
 
 ### `POST /v1/structured/imports`
 

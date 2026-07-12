@@ -9,6 +9,8 @@ import {
   runWorkerOnce,
   type ClaimedProcessingRun,
   type DocumentChunkWrite,
+  type EvidenceDocumentChunkWrite,
+  type EvidenceIndexer,
   type ProcessingWorkerRepository
 } from "./worker.js";
 
@@ -19,6 +21,9 @@ interface RecordedDocument {
   status: string;
   storageObjectKey: string;
   originalFileName: string | null;
+  documentKind?: string | null;
+  fileType?: string | null;
+  contentVersion?: number;
 }
 
 interface RecordedRun {
@@ -28,6 +33,7 @@ interface RecordedRun {
   status: string;
   retryCount: number;
   errorCode: string | null;
+  jobType: string;
 }
 
 interface RecordedAuditLog {
@@ -43,6 +49,7 @@ function createFakeRepository(input: {
   document: RecordedDocument;
   run: RecordedRun;
   chunks: DocumentChunkWrite[];
+  evidenceChunks: EvidenceDocumentChunkWrite[];
   auditLogs: RecordedAuditLog[];
 } {
   const document = input.document;
@@ -52,15 +59,18 @@ function createFakeRepository(input: {
     documentId: document.id,
     status: input.run?.status ?? "queued",
     retryCount: input.run?.retryCount ?? 0,
-    errorCode: input.run?.errorCode ?? null
+    errorCode: input.run?.errorCode ?? null,
+    jobType: input.run?.jobType ?? "legacy_text_extract"
   };
   const chunks: DocumentChunkWrite[] = [];
+  const evidenceChunks: EvidenceDocumentChunkWrite[] = [];
   const auditLogs: RecordedAuditLog[] = [];
 
   return {
     document,
     run,
     chunks,
+    evidenceChunks,
     auditLogs,
     async claimNextProcessingRun(): Promise<ClaimedProcessingRun | null> {
       if (!["queued", "retry_scheduled"].includes(run.status)) {
@@ -80,6 +90,7 @@ function createFakeRepository(input: {
         orgId: run.orgId,
         documentId: run.documentId,
         retryCount: run.retryCount,
+        jobType: run.jobType,
         document: { ...document }
       };
     },
@@ -100,6 +111,19 @@ function createFakeRepository(input: {
         }
       }
 
+      run.status = "succeeded";
+      document.status = "active";
+      auditLogs.push({
+        action: "document.activated",
+        targetId: document.id,
+        result: "succeeded"
+      });
+    },
+    async completeEvidenceIndexing({ documentId, runId, chunks: nextChunks }) {
+      expect(documentId).toBe(document.id);
+      expect(runId).toBe(run.id);
+
+      evidenceChunks.push(...nextChunks);
       run.status = "succeeded";
       document.status = "active";
       auditLogs.push({
@@ -292,5 +316,120 @@ describe("processing worker", () => {
       "document.processing_started",
       "document.processing_failed"
     ]);
+  });
+
+  it("runs evidence indexing jobs before activating MD evidence documents", async () => {
+    const storage = await createStorage();
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_evidence_md",
+      fileName: "customer-feedback-sop.md",
+      contentType: "text/markdown",
+      body: "# 差评处理\n\n先联系客户，再登记处置结果。"
+    });
+    const repository = createFakeRepository({
+      document: {
+        id: "doc_evidence_md",
+        orgId: "default-org",
+        uploaderId: "emp_baoli_manager",
+        status: "pending_processing",
+        storageObjectKey: stored.key,
+        originalFileName: "customer-feedback-sop.md",
+        documentKind: "evidence",
+        fileType: "md",
+        contentVersion: 1
+      },
+      run: {
+        jobType: "evidence_document_index"
+      }
+    });
+    const indexedInputs: string[] = [];
+    const evidenceIndexer: EvidenceIndexer = {
+      async indexDocument(input) {
+        indexedInputs.push(input.content.toString("utf8"));
+        return {
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          qdrantCollection: "enterprise_hub_evidence_test",
+          embeddingModel: "fake-embedding-v1",
+          embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
+          lexicalIndexVersion: "lexical.v1",
+          rerankVersion: "fake-rerank-v1@phase3.retrieval.v1",
+          chunks: [
+            {
+              documentId: "doc_evidence_md",
+              chunkIndex: 0,
+              chunkText: "差评处理\n\n先联系客户，再登记处置结果。",
+              chunkHash: "hash_1",
+              indexType: "evidence",
+              chunkId: "chk_1",
+              qdrantPointId: "00000000-0000-4000-8000-000000000001",
+              contentVersion: 1,
+              retrievalConfigVersion: "phase3.retrieval.v1",
+              modelName: "fake-embedding-v1",
+              modelVersion: "fake-embedding-v1@phase3.retrieval.v1",
+              sourceLocation: {
+                sectionHeadingPath: ["差评处理"],
+                blockTypes: ["heading", "paragraph"],
+                sourceLocations: [{ startLine: 1, endLine: 3 }]
+              }
+            }
+          ]
+        };
+      }
+    };
+
+    const result = await runWorkerOnce({ repository, storage, evidenceIndexer });
+
+    expect(result).toEqual({ processed: true, documentId: "doc_evidence_md", status: "active" });
+    expect(indexedInputs).toEqual(["# 差评处理\n\n先联系客户，再登记处置结果。"]);
+    expect(repository.evidenceChunks).toHaveLength(1);
+    expect(repository.evidenceChunks[0]).toMatchObject({
+      indexType: "evidence",
+      chunkId: "chk_1",
+      retrievalConfigVersion: "phase3.retrieval.v1"
+    });
+    expect(repository.document.status).toBe("active");
+  });
+
+  it("does not activate evidence documents when indexing fails", async () => {
+    const storage = await createStorage();
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_evidence_fail",
+      fileName: "broken.md",
+      contentType: "text/markdown",
+      body: "# Broken"
+    });
+    const repository = createFakeRepository({
+      document: {
+        id: "doc_evidence_fail",
+        orgId: "default-org",
+        uploaderId: "emp_baoli_manager",
+        status: "pending_processing",
+        storageObjectKey: stored.key,
+        originalFileName: "broken.md",
+        documentKind: "evidence",
+        fileType: "md",
+        contentVersion: 1
+      },
+      run: {
+        jobType: "evidence_document_index"
+      }
+    });
+    const evidenceIndexer: EvidenceIndexer = {
+      async indexDocument() {
+        throw new Error("Qdrant upsert failed");
+      }
+    };
+
+    const result = await runWorkerOnce({ repository, storage, evidenceIndexer });
+
+    expect(result).toEqual({
+      processed: true,
+      documentId: "doc_evidence_fail",
+      status: "retry_scheduled"
+    });
+    expect(repository.document.status).toBe("pending_processing");
+    expect(repository.evidenceChunks).toHaveLength(0);
   });
 });
