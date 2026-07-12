@@ -500,3 +500,15 @@
 - Known gaps: Task 11 still needs golden retrieval, performance gates, real-Qdrant CI layer documentation/scripts, and gated real workbook acceptance path.
 - Human blockers: None for Task 10 local implementation.
 - Suggested next agent: Continue Task 11 golden retrieval/evaluation before Task 12 final Phase 3 verification.
+
+## 2026-07-12 14:06 - codex/phase3-test-evaluation - Phase 3 Task 11 test/evaluation gates
+
+- Scope: Implemented Phase 3 Task 11 only: synthetic golden retrieval evaluation with 20 MD/TXT/DOCX documents, 100 judged queries, dense-only/lexical-only/hybrid/hybrid+rerank comparison, leak metrics, deterministic local performance smoke gates, npm scripts, and a Phase 3 GitHub workflow outline for unit/static checks plus real MySQL + Qdrant with fake provider by default. Did not use real customer exports, external provider secrets, staging credentials, reports/dashboards, NL-to-query, or P2/P3 scope.
+- Subagent note: The Task 11 subagent created initial files in the wrong main checkout instead of its assigned worktree. The lead agent moved those files into `codex/phase3-test-evaluation`, cleaned main, fixed failing tests, added missing npm scripts and performance gates, completed docs/handoff, and reran verification.
+- Files changed: `.github/workflows/phase3-quality-gates.yml`, `package.json`, `scripts/golden-retrieval-eval.ts`, `scripts/golden-retrieval-eval.test.ts`, `scripts/phase3-performance-gates.ts`, `scripts/phase3-performance-gates.test.ts`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: `npm install`; `npm run db:generate`; `npm test -- scripts/golden-retrieval-eval.test.ts scripts/phase3-performance-gates.test.ts`; `npm run test:phase3:golden`; `npm run test:phase3:perf`; `npm run typecheck`; `npm run lint`.
+- Done criteria passed: Golden evaluation saves only synthetic/non-secret output under ignored `.data/`; metrics include hitRate@5, recall@10, precision@5, MRR@10, NDCG@10, no-answer false positives, latency, permission leaks, archived leaks, stale payload leaks, and disabled employee leaks; leak metrics are zero; CI workflow outline includes real MySQL + Qdrant with fake provider by default and a manual external-provider smoke gate.
+- PR: Not opened separately; lead integration pending.
+- Known gaps: Real workbook import/query acceptance remains manual/local-gated because real exports must not be committed. The performance gates are deterministic synthetic smoke thresholds; final Phase 3 verification should still run real local MySQL/Qdrant integration and MCP smoke.
+- Human blockers: None for Task 11 synthetic implementation. Real workbook and external provider smoke remain gated on secure local files/env secrets.
+- Suggested next agent: Integrate Tasks 9-11, run full checks, then proceed to Task 12 final Phase 3 documentation/verification.
