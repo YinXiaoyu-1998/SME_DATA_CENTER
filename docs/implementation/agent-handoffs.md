@@ -476,3 +476,15 @@
 - PR: Not opened separately; intended to be integrated by the lead branch with Tasks 6/7 into one review PR.
 - Human blockers: None for Task 8 local/fake-provider implementation. Real external-provider smoke remains gated on human-approved provider credentials and `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`; no such secret is committed.
 - Suggested next agent: Integrate Tasks 6/7/8 on one branch, resolve route/documentation conflicts, run full repo verification plus local Qdrant/MySQL readiness checks, then open the final draft PR.
+
+## 2026-07-12 14:06 - codex/phase3-mcp-tools - Phase 3 Task 9 MCP tools
+
+- Scope: Implemented Phase 3 Task 9 only: MCP tools for evidence search, structured dataset discovery/query, structured upload/status, and evidence upload. All tools delegate to the HTTP API using the employee session token; upload tools read only the caller-supplied local file before sending multipart HTTP. Did not direct-read MySQL, Qdrant, storage backends, OSS, or model providers, and did not add answer generation, report/dashboard behavior, raw SQL, NL-to-query, deployment, or P2/P3 scope.
+- Subagent note: A Task 9 subagent started the branch and implemented the initial MCP adapters/tests, then stopped reporting before handoff. The lead agent interrupted it, reviewed the changes, completed skill/doc updates, synchronized the standalone `enterprise-hub-mcp-skill` repository on `codex/phase3-mcp-tools-skill-sync`, and reran verification.
+- Files changed: `apps/mcp-server/src/tools.ts`, `apps/mcp-server/src/tool-actions.ts`, `apps/mcp-server/src/tools.test.ts`, `apps/mcp-server/src/tool-bodies.test.ts`, `skills/enterprise-hub-mcp/SKILL.md`, `docs/implementation/api-contract.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: `npm install`; `npm run db:generate`; `python3 /Users/xiaoyuyin/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/enterprise-hub-mcp`; `npm test -- apps/mcp-server/src/tools.test.ts apps/mcp-server/src/tool-bodies.test.ts`; `npm run typecheck`; `npm run lint`; `npx prettier --write ...`; `npm run format:check`; `git diff --check`.
+- Done criteria passed: Phase 3 MCP tools inherit HTTP authorization via the existing session token path; upload tools require explicit non-empty `labelKeys` and required metadata; evidence search/upload do not generate answers; structured upload/status/query delegate idempotency, window, registry, query, and permission checks to the API; tests prove tools call HTTP APIs and preserve error envelopes; skill docs warn agents not to claim hidden docs/rows exist or generate conclusions.
+- PR: Not opened separately; lead integration pending.
+- Known gaps: Full end-to-end MCP smoke against live API/Qdrant/MySQL remains for Task 12/final integration after Task 10/11 are integrated.
+- Human blockers: None for Task 9 local implementation. Real external model/provider smoke remains separately gated by env and egress approval.
+- Suggested next agent: Integrate with Task 10 and then continue Task 11 golden retrieval/performance gates.

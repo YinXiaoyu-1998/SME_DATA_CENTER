@@ -16,6 +16,24 @@ const documentType = z
   ])
   .describe("Existing Enterprise Hub document type.");
 
+const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
+const structuredDataset = z
+  .enum(["dishes", "business"])
+  .describe("Phase 3 structured dataset name.");
+const scalarStructuredValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const structuredFilter: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.object({
+      field: z.string().min(1),
+      op: z.string().min(1),
+      value: z.union([scalarStructuredValue, z.array(scalarStructuredValue)])
+    }),
+    z.object({ and: z.array(structuredFilter).min(1) }),
+    z.object({ or: z.array(structuredFilter).min(1) }),
+    z.object({ not: structuredFilter })
+  ])
+);
+
 export interface McpToolInputField {
   name: string;
   required: boolean;
@@ -191,6 +209,177 @@ export const MCP_TOOL_CONTRACTS: McpToolContract[] = [
       { name: "category", required: false, description: "Exact category filter." }
     ],
     resultShape: ["skills[]: approved metadata and instructions only"]
+  },
+  {
+    name: "search_document_evidence",
+    title: "Search Enterprise Hub evidence chunks",
+    description:
+      "Return authorized evidence chunks by calling authenticated POST /v1/evidence/search; never generates answers.",
+    inputSchema: {
+      sessionName: optionalSessionName,
+      query: z.string().min(1).describe("Evidence search query."),
+      filters: z
+        .object({
+          fileTypes: z.array(evidenceFileType).optional().describe("Optional md/txt/docx filters."),
+          documentIds: z.array(z.string().min(1)).optional().describe("Optional document ids."),
+          labelIds: z
+            .array(z.string().min(1))
+            .optional()
+            .describe("Optional API label id filters when known.")
+        })
+        .optional()
+        .describe("Optional evidence filters delegated to the API."),
+      limit: z.number().int().min(1).max(50).optional().describe("Optional 1-50 result limit."),
+      cursor: z.string().optional().describe("Optional opaque cursor from the API.")
+    },
+    inputFields: [
+      { name: "sessionName", required: false, description: "Local authenticated session name." },
+      { name: "query", required: true, description: "Evidence search query." },
+      { name: "filters", required: false, description: "Optional API-supported filters." },
+      { name: "limit", required: false, description: "1-50 result limit." },
+      { name: "cursor", required: false, description: "Opaque pagination cursor." }
+    ],
+    resultShape: ["results[]: evidence chunks and source metadata", "page", "retrieval", "warnings"]
+  },
+  {
+    name: "list_structured_datasets",
+    title: "List Enterprise Hub structured datasets",
+    description:
+      "Discover registry-backed structured datasets by calling authenticated GET /v1/structured/datasets.",
+    inputSchema: {
+      sessionName: optionalSessionName
+    },
+    inputFields: [
+      { name: "sessionName", required: false, description: "Local authenticated session name." }
+    ],
+    resultShape: ["limits", "datasets[]: registry versions, fields, operators, capabilities"]
+  },
+  {
+    name: "query_structured_dataset",
+    title: "Query Enterprise Hub structured dataset",
+    description:
+      "Execute a controlled read-only structured query by calling authenticated POST /v1/structured/query.",
+    inputSchema: {
+      sessionName: optionalSessionName,
+      dataset: structuredDataset,
+      registryVersion: z.string().min(1).optional().describe("Optional registry version."),
+      select: z.array(z.string().min(1)).optional().describe("Optional selected field names."),
+      filter: structuredFilter.optional().describe("Optional controlled filter tree."),
+      sort: z
+        .array(
+          z.object({
+            field: z.string().min(1),
+            direction: z.enum(["asc", "desc"]).default("asc")
+          })
+        )
+        .optional()
+        .describe("Optional controlled sort fields."),
+      page: z
+        .object({
+          limit: z.number().int().min(1).optional(),
+          cursor: z.string().nullable().optional()
+        })
+        .optional()
+        .describe("Optional page limit and cursor."),
+      groupBy: z.array(z.string().min(1)).optional().describe("Optional aggregate group-by field."),
+      aggregates: z
+        .array(
+          z.object({
+            op: z.enum(["count", "countDistinct", "sum", "avg", "min", "max"]),
+            field: z.string().min(1).optional(),
+            as: z.string().min(1).optional()
+          })
+        )
+        .optional()
+        .describe("Optional explicit mechanical aggregations.")
+    },
+    inputFields: [
+      { name: "sessionName", required: false, description: "Local authenticated session name." },
+      { name: "dataset", required: true, description: "`dishes` or `business`." },
+      { name: "registryVersion", required: false, description: "Optional registry version." },
+      { name: "select", required: false, description: "Selected field names." },
+      { name: "filter", required: false, description: "Controlled filter tree." },
+      { name: "sort", required: false, description: "Controlled sort fields." },
+      { name: "page", required: false, description: "Page limit/cursor." },
+      { name: "groupBy", required: false, description: "Aggregate group-by fields." },
+      { name: "aggregates", required: false, description: "Explicit mechanical aggregations." }
+    ],
+    resultShape: ["dataset", "registryVersion", "mode", "rows[]", "nextCursor"]
+  },
+  {
+    name: "upload_structured_dataset",
+    title: "Upload Enterprise Hub structured dataset",
+    description:
+      "Upload XLSX/CSV structured data by calling authenticated multipart POST /v1/structured/imports.",
+    inputSchema: {
+      sessionName: optionalSessionName,
+      filePath: z.string().min(1).describe("Local XLSX/CSV file path visible to MCP server."),
+      dataset: structuredDataset,
+      enterpriseName: z.string().min(1).describe("Enterprise/source name for canonical naming."),
+      startDate: z
+        .string()
+        .regex(/^\d{8}$/)
+        .describe("YYYYMMDD business window start."),
+      endDate: z
+        .string()
+        .regex(/^\d{8}$/)
+        .describe("YYYYMMDD business window end."),
+      idempotencyKey: z.string().min(1).describe("Client-generated retry/idempotency key."),
+      labelKeys: z
+        .array(z.string().min(1))
+        .min(1)
+        .describe("Explicit existing label keys/visibility for rows and source document.")
+    },
+    inputFields: [
+      { name: "sessionName", required: false, description: "Local authenticated session name." },
+      { name: "filePath", required: true, description: "Local XLSX/CSV file path." },
+      { name: "dataset", required: true, description: "`dishes` or `business`." },
+      { name: "enterpriseName", required: true, description: "Enterprise/source name." },
+      { name: "startDate", required: true, description: "YYYYMMDD business window start." },
+      { name: "endDate", required: true, description: "YYYYMMDD business window end." },
+      { name: "idempotencyKey", required: true, description: "Retry/idempotency key." },
+      { name: "labelKeys", required: true, description: "Explicit existing label keys." }
+    ],
+    resultShape: ["document", "processing", "importBatch"]
+  },
+  {
+    name: "upload_evidence_document",
+    title: "Upload Enterprise Hub evidence document",
+    description:
+      "Upload MD/TXT/DOCX evidence by calling authenticated multipart POST /v1/documents/evidence.",
+    inputSchema: {
+      sessionName: optionalSessionName,
+      filePath: z.string().min(1).describe("Local MD/TXT/DOCX file path visible to MCP server."),
+      title: z.string().min(1).describe("Evidence source title."),
+      sourceSystem: z.string().min(1).optional().describe("Optional source system."),
+      labelKeys: z
+        .array(z.string().min(1))
+        .min(1)
+        .describe("Explicit existing label keys/visibility for the evidence document.")
+    },
+    inputFields: [
+      { name: "sessionName", required: false, description: "Local authenticated session name." },
+      { name: "filePath", required: true, description: "Local MD/TXT/DOCX file path." },
+      { name: "title", required: true, description: "Evidence source title." },
+      { name: "sourceSystem", required: false, description: "Optional source system." },
+      { name: "labelKeys", required: true, description: "Explicit existing label keys." }
+    ],
+    resultShape: ["document", "processing", "documentIndex"]
+  },
+  {
+    name: "get_import_status",
+    title: "Get Enterprise Hub structured import status",
+    description:
+      "Read structured import status by calling authenticated GET /v1/structured/imports/:importBatchId.",
+    inputSchema: {
+      sessionName: optionalSessionName,
+      importBatchId: z.string().min(1).describe("Structured import batch id.")
+    },
+    inputFields: [
+      { name: "sessionName", required: false, description: "Local authenticated session name." },
+      { name: "importBatchId", required: true, description: "Structured import batch id." }
+    ],
+    resultShape: ["importBatch"]
   }
 ];
 

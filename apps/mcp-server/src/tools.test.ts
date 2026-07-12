@@ -12,7 +12,13 @@ describe("MCP tool contract", () => {
       "enterprise_hub_get_document",
       "enterprise_hub_get_document_download_url",
       "enterprise_hub_archive_document",
-      "enterprise_hub_list_skills"
+      "enterprise_hub_list_skills",
+      "search_document_evidence",
+      "list_structured_datasets",
+      "query_structured_dataset",
+      "upload_structured_dataset",
+      "upload_evidence_document",
+      "get_import_status"
     ]);
   });
 

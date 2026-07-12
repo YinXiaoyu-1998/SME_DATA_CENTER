@@ -227,11 +227,12 @@ Task 1 registered every Phase 3 route above behind the existing authenticated em
 
 Supports MD/TXT/DOCX only. Required multipart metadata:
 
-| Field                        | Required | Notes                        |
-| ---------------------------- | -------- | ---------------------------- |
-| `file`                       | Yes      | `.md`, `.txt`, or `.docx`.   |
-| `title` / `originalFilename` | Yes      | Human-readable source title. |
-| `labelIds[]` / visibility    | Yes      | Source document permissions. |
+| Field                    | Required | Notes                                  |
+| ------------------------ | -------- | -------------------------------------- |
+| `file`                   | Yes      | `.md`, `.txt`, or `.docx`.             |
+| `title`                  | Yes      | Human-readable source title.           |
+| `labelKeys[]`/visibility | Yes      | Source document permission label keys. |
+| `sourceSystem`           | No       | Optional source-system metadata.       |
 
 Response `202`:
 
@@ -320,15 +321,15 @@ The response is evidence-only. It must not contain a final answer. Search runs Q
 
 Supports XLSX/CSV only. Required multipart metadata:
 
-| Field                     | Required | Notes                                                     |
-| ------------------------- | -------- | --------------------------------------------------------- |
-| `file`                    | Yes      | `.xlsx` or `.csv`.                                        |
-| `dataset`                 | Yes      | `dishes` or `business`.                                   |
-| `enterprise_name`         | Yes      | Used for canonical source object naming, not permissions. |
-| `startDate`               | Yes      | `YYYYMMDD`, business-date window start.                   |
-| `endDate`                 | Yes      | `YYYYMMDD`, business-date window end.                     |
-| `labelIds[]` / visibility | Yes      | Source document permissions inherited by rows.            |
-| `idempotencyKey`          | Yes      | Client-generated retry key.                               |
+| Field                    | Required | Notes                                                     |
+| ------------------------ | -------- | --------------------------------------------------------- |
+| `file`                   | Yes      | `.xlsx` or `.csv`.                                        |
+| `dataset`                | Yes      | `dishes` or `business`.                                   |
+| `enterprise_name`        | Yes      | Used for canonical source object naming, not permissions. |
+| `startDate`              | Yes      | `YYYYMMDD`, business-date window start.                   |
+| `endDate`                | Yes      | `YYYYMMDD`, business-date window end.                     |
+| `labelKeys[]`/visibility | Yes      | Source document permission label keys inherited by rows.  |
+| `idempotencyKey`         | Yes      | Client-generated retry key.                               |
 
 Response `202`:
 
@@ -466,7 +467,7 @@ Core Phase 3 codes include `UNSUPPORTED_FILE_TYPE`, `INVALID_DOCUMENT_KIND_FILE_
 
 ### Phase 3 MCP Tools
 
-Phase 3 MCP remains a thin adapter over HTTP:
+Phase 3 MCP remains a thin adapter over HTTP. Tool names intentionally stay short because they are the agent-facing Phase 3 capability names exposed by the `enterprise-hub-mcp` server:
 
 | Tool                             | HTTP backing                                | Purpose                                     |
 | -------------------------------- | ------------------------------------------- | ------------------------------------------- |
@@ -478,7 +479,18 @@ Phase 3 MCP remains a thin adapter over HTTP:
 | `get_import_status`              | `GET /v1/structured/imports/:importBatchId` | Read structured import status.              |
 | `get_document_processing_status` | existing/new document status endpoint       | Read evidence indexing status where needed. |
 
-MCP must not direct-read MySQL, Qdrant, OSS, or model providers.
+Implemented Phase 3 MCP tool inputs and result shapes:
+
+| Tool                        | Required inputs                                                                                                         | Optional inputs                                                                           | High-level result shape                                                           |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `search_document_evidence`  | local session, `query`                                                                                                  | `filters.fileTypes`, `filters.documentIds`, `filters.labelIds`, `limit`, `cursor`         | `results[]` evidence chunks with source metadata, `page`, `retrieval`, `warnings` |
+| `list_structured_datasets`  | local session                                                                                                           | none                                                                                      | `limits`, `datasets[]` registry versions, fields, operators, capabilities         |
+| `query_structured_dataset`  | local session, `dataset`                                                                                                | `registryVersion`, `select`, controlled `filter`, `sort`, `page`, `groupBy`, `aggregates` | `dataset`, `registryVersion`, `mode`, `rows[]`, `nextCursor`                      |
+| `upload_structured_dataset` | local session, `filePath`, `dataset`, `enterpriseName`, `startDate`, `endDate`, `idempotencyKey`, non-empty `labelKeys` | none                                                                                      | `document`, `processing`, `importBatch`                                           |
+| `upload_evidence_document`  | local session, `filePath`, `title`, non-empty `labelKeys`                                                               | `sourceSystem`                                                                            | `document`, `processing`, `documentIndex`                                         |
+| `get_import_status`         | local session, `importBatchId`                                                                                          | none                                                                                      | `importBatch`                                                                     |
+
+MCP must not direct-read MySQL, Qdrant, OSS, storage backends, or model providers. The two upload tools may read only the caller-supplied local `filePath` so they can send multipart HTTP requests to the API. Upload tools require explicit non-empty `labelKeys` so visibility is caller-declared and backend-authorized; they still rely on the API for all label existence, assignment, idempotency, active-window, validation, and authorization checks. Evidence search returns chunks/source metadata only and must not add generated answers. Structured query sends only the controlled JSON query shape; it never accepts raw SQL, natural-language query plans, or mutations.
 
 Phase 2 adds a local MCP adapter named `enterprise-hub-mcp`. The MCP server is an adapter over the HTTP API, not a second backend. It must not direct-read MySQL, direct-read storage, or implement independent authorization filtering. All non-health data access is delegated to the API with an authenticated employee context.
 
