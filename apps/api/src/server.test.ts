@@ -834,9 +834,7 @@ describe("api auth shell", () => {
     const accessToken = await accessTokenFor(adminEmployee);
     const routes = [
       { method: "POST" as const, url: "/v1/documents/evidence" },
-      { method: "POST" as const, url: "/v1/evidence/search" },
-      { method: "GET" as const, url: "/v1/structured/datasets" },
-      { method: "POST" as const, url: "/v1/structured/query" }
+      { method: "POST" as const, url: "/v1/evidence/search" }
     ];
 
     for (const route of routes) {

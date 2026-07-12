@@ -453,3 +453,15 @@
 - PR: Not opened separately; intended to be integrated by the lead branch with Tasks 7/8 into one review PR.
 - Human blockers: None for Task 6. Real Maijia export acceptance remains local-only/gated; no real exports or secrets are committed.
 - Suggested next agent: Review/complete Tasks 7 and 8, then integrate Tasks 6/7/8 on one branch and run full repo verification plus relevant local Qdrant/MySQL checks before opening the final draft PR.
+
+## 2026-07-12 09:10 - codex/phase3-structured-query - Phase 3 Task 7 structured query API
+
+- Scope: Implemented Phase 3 Task 7 only: authenticated `GET /v1/structured/datasets`, authenticated `POST /v1/structured/query`, registry-backed controlled query normalization/validation, internal parameterized SQL compilation, backend permission scope, HMAC cursor creation/validation, detail rows, and explicit mechanical aggregations. Did not implement Task 6 structured import/upload, Task 8 evidence indexing/search, MCP tools, Phase 4/5, raw SQL input, mutation operations, joins, formulas, trends, business analysis, or natural-language query generation.
+- Subagent note: Task 7 was started by the structured-query subagent on the assigned branch. The lead agent interrupted after the subagent stopped reporting for an extended period, reviewed the partial work, completed docs/handoff, and reran verification in the same worktree.
+- Files changed: `packages/domain/src/structured-query.ts`, `packages/domain/src/structured-query.test.ts`, `packages/domain/src/index.ts`, `apps/api/src/structured-query.ts`, `apps/api/src/structured-query-route.test.ts`, `apps/api/src/server.ts`, `apps/api/src/server.test.ts`, `docs/implementation/api-contract.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: Required implementation doc reads; created worktree branch `codex/phase3-structured-query` from latest `main`; targeted tests for compiler/API/server auth; full `npm test`; `npm run typecheck`; `npm run lint`; `npm run format:check`; `git diff --check`.
+- Done criteria passed: Invalid fields/operators/capabilities/types/raw SQL/excess limits fail before repository execution; query limits match the Phase 3 contract; permission scope is compiled before filters, sorting, aggregation, and pagination; cursor tampering, query-shape changes, and expiry fail; no visible rows returns `200` with empty rows; dataset-level denial returns `DATASET_FORBIDDEN`; hidden rows are scoped out before counts/aggregates/pagination because compiled SQL joins active/applied imports, active structured documents, org scope, and label permissions before query-specific clauses.
+- Known gaps: Task 6 must still populate `dish_rows` / `business_rows` and archive semantics through the import lifecycle. Task 10 should later add cross-endpoint security regression tests after Task 6 and Task 8 are merged.
+- PR: Not opened yet; lead integration pending.
+- Human blockers: None for Task 7.
+- Suggested next agent: Integrate with Task 6 import pipeline once Task 6 is ready; otherwise this branch can be reviewed independently as the controlled query/compiler layer.

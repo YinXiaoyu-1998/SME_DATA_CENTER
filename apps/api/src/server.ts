@@ -4,7 +4,12 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { read, utils, type WorkBook } from "xlsx";
 import {
   AUTH_ERROR_CODES,
+  STRUCTURED_DATASET_REGISTRIES,
+  STRUCTURED_QUERY_LIMITS,
+  StructuredQueryValidationError,
   canEmployeeAccessDocument,
+  compileStructuredQuery,
+  createStructuredCursor,
   getStructuredRegistry,
   isDocumentType,
   PHASE3_FILE_TYPES,
@@ -38,6 +43,10 @@ import {
   type StructuredImportRepository,
   type StructuredImportRowInput
 } from "./structured-imports.js";
+import {
+  createPrismaStructuredQueryRepository,
+  type StructuredQueryRepository
+} from "./structured-query.js";
 import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
@@ -47,6 +56,7 @@ export interface ApiServerOptions {
   documentRepository?: DocumentCatalogRepository;
   structuredImportRepository?: StructuredImportRepository;
   skillRepository?: SkillDirectoryRepository;
+  structuredQueryRepository?: StructuredQueryRepository;
   storageAdapter?: StorageAdapter;
   jwtSecret?: string;
   enableDevLogin?: boolean;
@@ -151,6 +161,23 @@ function errorResponse(code: string, message: string) {
     error: {
       code,
       message
+    }
+  };
+}
+
+function phase3ErrorResponse(
+  request: FastifyRequest,
+  code: string,
+  message: string,
+  details: Record<string, unknown> = {}
+) {
+  return {
+    error: {
+      code,
+      message,
+      retryable: false,
+      details,
+      requestId: request.id
     }
   };
 }
@@ -864,6 +891,39 @@ function skillDirectoryResponse(skill: SkillDirectoryEntry) {
   };
 }
 
+function structuredFieldResponse(
+  field: (typeof STRUCTURED_DATASET_REGISTRIES)[keyof typeof STRUCTURED_DATASET_REGISTRIES]["fields"][number]
+) {
+  return {
+    canonicalName: field.canonicalName,
+    sourceColumn: field.sourceColumn,
+    aliases: field.aliases,
+    type: field.type,
+    nullable: field.nullable,
+    sensitivity: field.sensitivity,
+    lifecycle: field.lifecycle,
+    volatility: field.volatility,
+    defaultReturn: field.defaultReturn,
+    operators: field.operators,
+    capabilities: field.capabilities,
+    indexStatus: field.indexStatus,
+    valueLimits: field.valueLimits,
+    storage: field.storage
+  };
+}
+
+function structuredDatasetRegistryResponse() {
+  return {
+    limits: STRUCTURED_QUERY_LIMITS,
+    datasets: Object.values(STRUCTURED_DATASET_REGISTRIES).map((registry) => ({
+      dataset: registry.dataset,
+      registryVersion: registry.version,
+      rowTable: registry.rowTable,
+      fields: registry.fields.map(structuredFieldResponse)
+    }))
+  };
+}
+
 function parseLimit(value: string | undefined): number {
   if (!value) {
     return 20;
@@ -1005,6 +1065,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   let documentRepository = options.documentRepository;
   let structuredImportRepository = options.structuredImportRepository;
   let skillRepository = options.skillRepository;
+  let structuredQueryRepository = options.structuredQueryRepository;
   let storageAdapter = options.storageAdapter;
   const jwtSecret = options.jwtSecret ?? requireJwtSecret();
   const enableDevLogin = options.enableDevLogin ?? process.env["NODE_ENV"] !== "production";
@@ -1023,6 +1084,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     await documentRepository?.disconnect?.();
     await structuredImportRepository?.disconnect?.();
     await skillRepository?.disconnect?.();
+    await structuredQueryRepository?.disconnect?.();
   });
 
   void app.register(multipart);
@@ -1040,6 +1102,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   function structuredImports(): StructuredImportRepository {
     structuredImportRepository ??= createPrismaStructuredImportRepository();
     return structuredImportRepository;
+  }
+
+  function structuredQueries(): StructuredQueryRepository {
+    structuredQueryRepository ??= createPrismaStructuredQueryRepository();
+    return structuredQueryRepository;
   }
 
   function skills(): SkillDirectoryRepository {
@@ -1307,8 +1374,68 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       };
     }
   );
-  app.get("/v1/structured/datasets", phase3RouteNotImplemented);
-  app.post("/v1/structured/query", phase3RouteNotImplemented);
+  app.get("/v1/structured/datasets", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    return structuredDatasetRegistryResponse();
+  });
+  app.post("/v1/structured/query", async (request, reply) => {
+    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+    if (!authenticated) {
+      return;
+    }
+
+    const employee = (request as AuthenticatedRequest).employee;
+
+    try {
+      const compiled = compileStructuredQuery({
+        orgId: employee.orgId,
+        employee: {
+          role: employee.role,
+          labels: employee.labels
+        },
+        query: request.body,
+        cursorSecret: jwtSecret
+      });
+      const result = await structuredQueries().execute(compiled);
+      const nextCursor = result.hasMore
+        ? createStructuredCursor({
+            offset: compiled.offset + result.rows.length,
+            shapeHash: compiled.shapeHash,
+            secret: jwtSecret
+          })
+        : null;
+
+      return {
+        dataset: compiled.dataset,
+        registryVersion: compiled.registryVersion,
+        mode: compiled.mode,
+        rows: result.rows,
+        nextCursor
+      };
+    } catch (error) {
+      if (error instanceof StructuredQueryValidationError) {
+        const statusCode =
+          error.code === PHASE3_ERROR_CODES.datasetForbidden
+            ? 403
+            : error.code === PHASE3_ERROR_CODES.cursorExpired ||
+                error.code === PHASE3_ERROR_CODES.invalidCursor
+              ? 400
+              : 400;
+
+        return reply
+          .code(statusCode)
+          .send(phase3ErrorResponse(request, error.code, error.message, error.details));
+      }
+
+      throw error;
+    }
+  });
 
   app.get("/labels", async (request, reply) => {
     const authenticated = await authenticate(request, reply, repository, jwtSecret);

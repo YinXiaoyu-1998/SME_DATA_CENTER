@@ -94,3 +94,13 @@ export {
   type StructuredFieldRegistryEntry,
   type StructuredFieldType
 } from "./structured-registry.js";
+export {
+  STRUCTURED_QUERY_LIMITS,
+  StructuredQueryValidationError,
+  compileStructuredQuery,
+  createStructuredCursor,
+  decodeStructuredCursor,
+  type StructuredCompiledQuery,
+  type StructuredQueryEmployeeScope,
+  type StructuredQueryMode
+} from "./structured-query.js";

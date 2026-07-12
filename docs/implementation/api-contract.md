@@ -375,6 +375,8 @@ Response contains dataset registry versions, effective query limits, and every c
 
 Task 5 establishes registry versions `dishes.2026-07-11.v1` and `business.2026-07-11.v1` from the reviewed Maijia workbook exports. Current row storage maps every field to the dataset row table payload JSON path (`dish_rows.payload` or `business_rows.payload`) until the import/query tasks decide whether to promote selected fields to physical columns.
 
+Task 7 implements this endpoint as an authenticated registry-discovery API. It exposes field capabilities and limits only; it does not infer natural-language intent, run imports, or query rows.
+
 Minimal response shape:
 
 ```json
@@ -435,6 +437,8 @@ Request shape:
 The API accepts only controlled JSON query structure. It never accepts raw SQL, arbitrary expressions, mutation operations, joins, formulas, window functions, or natural-language analysis instructions.
 
 Pagination uses opaque cursors. Every page rechecks current authorization and active import scope.
+
+Task 7 implements this endpoint as a read-only controlled query wrapper. The server compiles accepted JSON to internal parameterized SQL using registry allowlists, applies backend permission scope before filters/sort/aggregation/pagination, and supports detail rows plus explicit mechanical aggregations only. It does not accept or generate raw SQL from clients, does not perform business analysis, and does not execute mutations.
 
 ### Phase 3 Error Envelope
 
