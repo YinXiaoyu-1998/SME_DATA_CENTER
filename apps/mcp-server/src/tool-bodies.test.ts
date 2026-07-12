@@ -396,6 +396,367 @@ describe("MCP document, label, and skill tools", () => {
     expect(JSON.stringify(body)).not.toContain("executionResult");
   });
 
+  it("searches evidence chunks through authenticated POST /v1/evidence/search without answers", async () => {
+    const calls: FetchCall[] = [];
+    const handler = await createHandler("search_document_evidence", async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        results: [
+          {
+            chunkId: "chk_1",
+            documentId: "doc_evidence",
+            documentTitle: "客户反馈处理 SOP.docx",
+            text: "差评处理 SOP：先联系客户，再登记处置结果。",
+            source: {
+              fileType: "docx",
+              sectionHeadingPath: ["客户反馈", "差评处理"],
+              blockType: "paragraph",
+              pageNumber: null
+            },
+            matchedBy: ["dense", "lexical", "rerank"]
+          }
+        ],
+        page: { limit: 10, nextCursor: null, hasMore: false },
+        retrieval: { retrievalConfigVersion: "phase3.retrieval.v1", rerankStatus: "enabled" },
+        warnings: []
+      });
+    });
+
+    const result = await handler({
+      sessionName: "baoli",
+      query: "差评处理 SOP",
+      filters: {
+        fileTypes: ["docx"],
+        documentIds: ["doc_evidence"],
+        labelIds: ["lbl_all_staff"]
+      },
+      limit: 10
+    });
+
+    expect(calls[0]).toMatchObject({
+      url: "http://api.test/v1/evidence/search",
+      init: {
+        method: "POST"
+      }
+    });
+    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
+    expect(new Headers(calls[0]?.init?.headers).get("content-type")).toBe("application/json");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      query: "差评处理 SOP",
+      filters: {
+        fileTypes: ["docx"],
+        documentIds: ["doc_evidence"],
+        labelIds: ["lbl_all_staff"]
+      },
+      limit: 10,
+      cursor: null
+    });
+    const body = parseToolJson(result);
+    expect(body).toMatchObject({
+      results: [
+        {
+          chunkId: "chk_1",
+          text: "差评处理 SOP：先联系客户，再登记处置结果。"
+        }
+      ],
+      retrieval: {
+        retrievalConfigVersion: "phase3.retrieval.v1"
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain("answer");
+  });
+
+  it("lists structured dataset registry through authenticated GET /v1/structured/datasets", async () => {
+    const calls: FetchCall[] = [];
+    const handler = await createHandler("list_structured_datasets", async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        limits: { defaultLimit: 50, maxRows: 200 },
+        datasets: [
+          {
+            dataset: "dishes",
+            registryVersion: "dishes.2026-07-11.v1",
+            rowTable: "dish_rows",
+            fields: [{ canonicalName: "business_date", operators: ["eq", "between"] }]
+          }
+        ]
+      });
+    });
+
+    const result = await handler({ sessionName: "baoli" });
+
+    expect(calls[0]).toMatchObject({
+      url: "http://api.test/v1/structured/datasets",
+      init: {
+        method: "GET"
+      }
+    });
+    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
+    expect(parseToolJson(result)).toMatchObject({
+      datasets: [{ dataset: "dishes", registryVersion: "dishes.2026-07-11.v1" }]
+    });
+  });
+
+  it("queries structured datasets through controlled authenticated POST /v1/structured/query", async () => {
+    const calls: FetchCall[] = [];
+    const handler = await createHandler("query_structured_dataset", async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        dataset: "dishes",
+        registryVersion: "dishes.2026-07-11.v1",
+        mode: "detail",
+        rows: [{ business_date: "2026-07-01", matched_product_name: "肉夹馍" }],
+        nextCursor: null
+      });
+    });
+
+    const result = await handler({
+      sessionName: "baoli",
+      dataset: "dishes",
+      registryVersion: "dishes.2026-07-11.v1",
+      select: ["business_date", "matched_product_name"],
+      filter: {
+        field: "matched_product_name",
+        op: "contains",
+        value: "肉夹馍"
+      },
+      sort: [{ field: "business_date", direction: "asc" }],
+      page: { limit: 20 }
+    });
+
+    expect(calls[0]).toMatchObject({
+      url: "http://api.test/v1/structured/query",
+      init: {
+        method: "POST"
+      }
+    });
+    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      dataset: "dishes",
+      registryVersion: "dishes.2026-07-11.v1",
+      select: ["business_date", "matched_product_name"],
+      filter: {
+        field: "matched_product_name",
+        op: "contains",
+        value: "肉夹馍"
+      },
+      sort: [{ field: "business_date", direction: "asc" }],
+      page: { limit: 20 }
+    });
+    expect(parseToolJson(result)).toMatchObject({
+      dataset: "dishes",
+      mode: "detail",
+      rows: [{ matched_product_name: "肉夹馍" }]
+    });
+  });
+
+  it("uploads structured datasets through authenticated multipart POST /v1/structured/imports", async () => {
+    const calls: FetchCall[] = [];
+    const uploadPath = path.join(await createTempDir(), "maijia-dishes.csv");
+    await writeFile(uploadPath, "营业日,匹配商品名称\n2026-07-01,肉夹馍\n");
+    const handler = await createHandler("upload_structured_dataset", async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse(
+        {
+          document: {
+            documentId: "doc_structured",
+            documentKind: "structured",
+            fileType: "csv",
+            status: "active",
+            originalFileName: "maijia-dishes.csv"
+          },
+          processing: { processingRunId: null, status: "succeeded" },
+          importBatch: {
+            importBatchId: "imp_1",
+            dataset: "dishes",
+            status: "applied",
+            appliedRowCount: 1,
+            queryableRowCount: 1
+          }
+        },
+        202
+      );
+    });
+
+    const result = await handler({
+      sessionName: "baoli",
+      filePath: uploadPath,
+      dataset: "dishes",
+      enterpriseName: "麦家",
+      startDate: "20260701",
+      endDate: "20260705",
+      idempotencyKey: "structured-retry-key",
+      labelKeys: ["store:baoli"]
+    });
+
+    expect(calls[0]).toMatchObject({
+      url: "http://api.test/v1/structured/imports",
+      init: {
+        method: "POST"
+      }
+    });
+    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
+    const formData = calls[0]?.init?.body as FormData;
+    expect(formData).toBeInstanceOf(FormData);
+    expect(formData.get("dataset")).toBe("dishes");
+    expect(formData.get("enterprise_name")).toBe("麦家");
+    expect(formData.get("startDate")).toBe("20260701");
+    expect(formData.get("endDate")).toBe("20260705");
+    expect(formData.get("idempotencyKey")).toBe("structured-retry-key");
+    expect(formData.getAll("labelKeys[]")).toEqual(["store:baoli"]);
+    expect((formData.get("file") as File).name).toBe("maijia-dishes.csv");
+    expect(parseToolJson(result)).toMatchObject({
+      importBatch: {
+        importBatchId: "imp_1",
+        status: "applied"
+      }
+    });
+  });
+
+  it("requires explicit structured import labels before calling the API", async () => {
+    const calls: FetchCall[] = [];
+    const uploadPath = path.join(await createTempDir(), "maijia-dishes.csv");
+    await writeFile(uploadPath, "营业日,匹配商品名称\n2026-07-01,肉夹馍\n");
+    const handler = await createHandler("upload_structured_dataset", async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({});
+    });
+
+    await expect(
+      handler({
+        sessionName: "baoli",
+        filePath: uploadPath,
+        dataset: "dishes",
+        enterpriseName: "麦家",
+        startDate: "20260701",
+        endDate: "20260705",
+        idempotencyKey: "missing-labels",
+        labelKeys: []
+      })
+    ).rejects.toThrow();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("uploads evidence documents through authenticated multipart POST /v1/documents/evidence", async () => {
+    const calls: FetchCall[] = [];
+    const uploadPath = path.join(await createTempDir(), "feedback-sop.md");
+    await writeFile(uploadPath, "# 差评处理 SOP\n先联系客户，再登记处置结果。\n");
+    const handler = await createHandler("upload_evidence_document", async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse(
+        {
+          document: {
+            documentId: "doc_evidence",
+            documentKind: "evidence",
+            fileType: "md",
+            status: "pending_processing"
+          },
+          processing: { processingRunId: null, status: "queued" },
+          documentIndex: {
+            status: "pending",
+            retrievalConfigVersion: "phase3.retrieval.v1"
+          }
+        },
+        202
+      );
+    });
+
+    const result = await handler({
+      sessionName: "baoli",
+      filePath: uploadPath,
+      title: "客户反馈处理 SOP",
+      sourceSystem: "manual",
+      labelKeys: ["all_staff"]
+    });
+
+    expect(calls[0]).toMatchObject({
+      url: "http://api.test/v1/documents/evidence",
+      init: {
+        method: "POST"
+      }
+    });
+    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
+    const formData = calls[0]?.init?.body as FormData;
+    expect(formData).toBeInstanceOf(FormData);
+    expect(formData.get("title")).toBe("客户反馈处理 SOP");
+    expect(formData.get("sourceSystem")).toBe("manual");
+    expect(formData.getAll("labelKeys[]")).toEqual(["all_staff"]);
+    expect((formData.get("file") as File).name).toBe("feedback-sop.md");
+    expect(await (formData.get("file") as File).text()).toContain("差评处理 SOP");
+    expect(parseToolJson(result)).toMatchObject({
+      document: {
+        documentKind: "evidence",
+        status: "pending_processing"
+      },
+      documentIndex: {
+        status: "pending"
+      }
+    });
+  });
+
+  it("requires explicit evidence labels before calling the API", async () => {
+    const calls: FetchCall[] = [];
+    const uploadPath = path.join(await createTempDir(), "feedback-sop.md");
+    await writeFile(uploadPath, "# 差评处理 SOP\n");
+    const handler = await createHandler("upload_evidence_document", async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({});
+    });
+
+    await expect(
+      handler({
+        sessionName: "baoli",
+        filePath: uploadPath,
+        title: "客户反馈处理 SOP",
+        labelKeys: []
+      })
+    ).rejects.toThrow();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("gets structured import status and preserves import API not-found semantics", async () => {
+    const successHandler = await createHandler("get_import_status", async () =>
+      jsonResponse({
+        importBatch: {
+          importBatchId: "imp_1",
+          dataset: "dishes",
+          status: "applied",
+          queryableRowCount: 1
+        }
+      })
+    );
+    const notFoundHandler = await createHandler("get_import_status", async () =>
+      jsonResponse(
+        {
+          error: {
+            code: "IMPORT_BATCH_NOT_FOUND",
+            message: "Import batch not found."
+          }
+        },
+        404
+      )
+    );
+
+    expect(
+      parseToolJson(await successHandler({ sessionName: "baoli", importBatchId: "imp_1" }))
+    ).toMatchObject({
+      importBatch: {
+        status: "applied"
+      }
+    });
+    const notFoundResult = await notFoundHandler({
+      sessionName: "baoli",
+      importBatchId: "hidden_import"
+    });
+    expect(notFoundResult.isError).toBe(true);
+    expect(parseToolJson(notFoundResult)).toEqual({
+      error: {
+        code: "IMPORT_BATCH_NOT_FOUND",
+        message: "Import batch not found."
+      }
+    });
+  });
+
   async function createTempDir(): Promise<string> {
     if (!tempDir) {
       tempDir = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-mcp-tools-test-"));

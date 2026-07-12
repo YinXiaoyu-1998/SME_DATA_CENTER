@@ -476,3 +476,39 @@
 - PR: Not opened separately; intended to be integrated by the lead branch with Tasks 6/7 into one review PR.
 - Human blockers: None for Task 8 local/fake-provider implementation. Real external-provider smoke remains gated on human-approved provider credentials and `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`; no such secret is committed.
 - Suggested next agent: Integrate Tasks 6/7/8 on one branch, resolve route/documentation conflicts, run full repo verification plus local Qdrant/MySQL readiness checks, then open the final draft PR.
+
+## 2026-07-12 14:06 - codex/phase3-mcp-tools - Phase 3 Task 9 MCP tools
+
+- Scope: Implemented Phase 3 Task 9 only: MCP tools for evidence search, structured dataset discovery/query, structured upload/status, and evidence upload. All tools delegate to the HTTP API using the employee session token; upload tools read only the caller-supplied local file before sending multipart HTTP. Did not direct-read MySQL, Qdrant, storage backends, OSS, or model providers, and did not add answer generation, report/dashboard behavior, raw SQL, NL-to-query, deployment, or P2/P3 scope.
+- Subagent note: A Task 9 subagent started the branch and implemented the initial MCP adapters/tests, then stopped reporting before handoff. The lead agent interrupted it, reviewed the changes, completed skill/doc updates, synchronized the standalone `enterprise-hub-mcp-skill` repository on `codex/phase3-mcp-tools-skill-sync`, and reran verification.
+- Files changed: `apps/mcp-server/src/tools.ts`, `apps/mcp-server/src/tool-actions.ts`, `apps/mcp-server/src/tools.test.ts`, `apps/mcp-server/src/tool-bodies.test.ts`, `skills/enterprise-hub-mcp/SKILL.md`, `docs/implementation/api-contract.md`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: `npm install`; `npm run db:generate`; `python3 /Users/xiaoyuyin/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/enterprise-hub-mcp`; `npm test -- apps/mcp-server/src/tools.test.ts apps/mcp-server/src/tool-bodies.test.ts`; `npm run typecheck`; `npm run lint`; `npx prettier --write ...`; `npm run format:check`; `git diff --check`.
+- Done criteria passed: Phase 3 MCP tools inherit HTTP authorization via the existing session token path; upload tools require explicit non-empty `labelKeys` and required metadata; evidence search/upload do not generate answers; structured upload/status/query delegate idempotency, window, registry, query, and permission checks to the API; tests prove tools call HTTP APIs and preserve error envelopes; skill docs warn agents not to claim hidden docs/rows exist or generate conclusions.
+- PR: Not opened separately; lead integration pending.
+- Known gaps: Full end-to-end MCP smoke against live API/Qdrant/MySQL remains for Task 12/final integration after Task 10/11 are integrated.
+- Human blockers: None for Task 9 local implementation. Real external model/provider smoke remains separately gated by env and egress approval.
+- Suggested next agent: Integrate with Task 10 and then continue Task 11 golden retrieval/performance gates.
+
+## 2026-07-12 14:06 - codex/phase3-security-revalidation - Phase 3 Task 10 security revalidation
+
+- Scope: Implemented Phase 3 Task 10 only: authorization regression tests for all Phase 3 endpoints, evidence MySQL revalidation tests for current labels/disabled employees/stale Qdrant payloads, structured import lifecycle audit logging, and audit tests proving raw row/file/chunk payloads are excluded. Did not add MCP tools, golden retrieval, deployment, hard delete/purge, automatic replacement/overwrite/append, raw SQL, NL-to-query, reports, dashboards, or P2/P3 scope.
+- Subagent note: A Task 10 subagent created the initial test changes but stopped reporting before handoff. The lead agent interrupted it, reviewed failing tests, fixed the real structured-import audit gap, corrected multipart auth test construction, completed TypeScript/lint fixes, and reran verification.
+- Files changed: `packages/domain/src/audit.ts`, `apps/api/src/documents.ts`, `apps/api/src/server.ts`, `apps/api/src/server.test.ts`, `apps/api/src/evidence.test.ts`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: `npm install`; `npm run db:generate`; `npm test -- apps/api/src/evidence.test.ts apps/api/src/server.test.ts`; `npm run typecheck`; `npm run lint`; `npx prettier --write ...`; `npm run format:check`; `git diff --check`.
+- Done criteria passed: Phase 3 routes require backend employee auth; evidence revalidation drops disabled employees and stale/hidden/current-label-mismatched Qdrant hits; returned evidence uses authoritative MySQL chunk/source metadata; structured import audit records lifecycle actions without raw payloads; no client-side filtering, raw SQL acceptance, mutation API, hard delete/purge, or overwrite/append behavior was added.
+- PR: Not opened separately; lead integration pending.
+- Known gaps: Task 11 still needs golden retrieval, performance gates, real-Qdrant CI layer documentation/scripts, and gated real workbook acceptance path.
+- Human blockers: None for Task 10 local implementation.
+- Suggested next agent: Continue Task 11 golden retrieval/evaluation before Task 12 final Phase 3 verification.
+
+## 2026-07-12 14:06 - codex/phase3-test-evaluation - Phase 3 Task 11 test/evaluation gates
+
+- Scope: Implemented Phase 3 Task 11 only: synthetic golden retrieval evaluation with 20 MD/TXT/DOCX documents, 100 judged queries, dense-only/lexical-only/hybrid/hybrid+rerank comparison, leak metrics, deterministic local performance smoke gates, npm scripts, and a Phase 3 GitHub workflow outline for unit/static checks plus real MySQL + Qdrant with fake provider by default. Did not use real customer exports, external provider secrets, staging credentials, reports/dashboards, NL-to-query, or P2/P3 scope.
+- Subagent note: The Task 11 subagent created initial files in the wrong main checkout instead of its assigned worktree. The lead agent moved those files into `codex/phase3-test-evaluation`, cleaned main, fixed failing tests, added missing npm scripts and performance gates, completed docs/handoff, and reran verification.
+- Files changed: `.github/workflows/phase3-quality-gates.yml`, `package.json`, `scripts/golden-retrieval-eval.ts`, `scripts/golden-retrieval-eval.test.ts`, `scripts/phase3-performance-gates.ts`, `scripts/phase3-performance-gates.test.ts`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Commands run: `npm install`; `npm run db:generate`; `npm test -- scripts/golden-retrieval-eval.test.ts scripts/phase3-performance-gates.test.ts`; `npm run test:phase3:golden`; `npm run test:phase3:perf`; `npm run typecheck`; `npm run lint`.
+- Done criteria passed: Golden evaluation saves only synthetic/non-secret output under ignored `.data/`; metrics include hitRate@5, recall@10, precision@5, MRR@10, NDCG@10, no-answer false positives, latency, permission leaks, archived leaks, stale payload leaks, and disabled employee leaks; leak metrics are zero; CI workflow outline includes real MySQL + Qdrant with fake provider by default and a manual external-provider smoke gate.
+- PR: Not opened separately; lead integration pending.
+- Known gaps: Real workbook import/query acceptance remains manual/local-gated because real exports must not be committed. The performance gates are deterministic synthetic smoke thresholds; final Phase 3 verification should still run real local MySQL/Qdrant integration and MCP smoke.
+- Human blockers: None for Task 11 synthetic implementation. Real workbook and external provider smoke remain gated on secure local files/env secrets.
+- Suggested next agent: Integrate Tasks 9-11, run full checks, then proceed to Task 12 final Phase 3 documentation/verification.

@@ -5,6 +5,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { read, utils, type WorkBook } from "xlsx";
 import {
   AUTH_ERROR_CODES,
+  AUDIT_ACTIONS,
   DEFAULT_RETRIEVAL_CONFIG_VERSION,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_QUERY_LIMITS,
@@ -1503,6 +1504,41 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       if (!importBatch) {
         throw new Error("Import batch was not created.");
       }
+
+      await documents().appendAuditLog({
+        orgId: employee.orgId,
+        actorEmployeeId: employee.id,
+        action: AUDIT_ACTIONS.structuredImportStarted,
+        targetType: "import_batch",
+        targetId: importBatch.id,
+        result: "succeeded",
+        metadata: {
+          dataset,
+          startDate,
+          endDate,
+          rowCount: validation.rows.length,
+          sourceDocumentId: documentId
+        },
+        requestId: request.id,
+        clientIp: request.ip
+      });
+      await documents().appendAuditLog({
+        orgId: employee.orgId,
+        actorEmployeeId: employee.id,
+        action: AUDIT_ACTIONS.structuredImportApplied,
+        targetType: "import_batch",
+        targetId: importBatch.id,
+        result: "succeeded",
+        metadata: {
+          dataset,
+          startDate,
+          endDate,
+          appliedRowCount: importBatch.appliedRowCount,
+          sourceDocumentId: documentId
+        },
+        requestId: request.id,
+        clientIp: request.ip
+      });
 
       return reply.code(202).send(
         structuredImportResponse({
