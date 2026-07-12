@@ -1,15 +1,21 @@
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import {
+  DocumentKind,
   DocumentStatus,
   DocumentType,
+  FileType,
   LabelType,
   Prisma,
   PrismaClient,
+  ProcessingJobType,
   ProcessingRunStatus
 } from "@prisma/client";
 import type {
   AuthenticatedEmployee,
+  DocumentKindName,
   DocumentStatusName,
+  Phase3FileType,
+  ProcessingJobTypeName,
   DocumentTypeName
 } from "@enterprise-hub/domain";
 import { AUDIT_ACTIONS, canEmployeeAccessDocument } from "@enterprise-hub/domain";
@@ -26,6 +32,8 @@ export interface CreateUploadedDocumentInput {
   orgId: string;
   title: string;
   documentType: DocumentTypeName;
+  documentKind?: DocumentKindName;
+  fileType?: Phase3FileType;
   status: DocumentStatusName;
   storageObjectKey: string;
   originalFileName: string;
@@ -37,6 +45,7 @@ export interface CreateUploadedDocumentInput {
   sourceTime: Date | null;
   labelIds: string[];
   labels: string[];
+  processingJobType?: ProcessingJobTypeName;
   requestId: string;
   clientIp: string;
 }
@@ -47,6 +56,8 @@ export interface DocumentStatusRecord {
   uploaderId: string;
   title: string;
   documentType: DocumentTypeName;
+  documentKind: DocumentKindName | null;
+  fileType: Phase3FileType | null;
   status: DocumentStatusName;
   storageObjectKey: string;
   originalFileName: string | null;
@@ -280,6 +291,8 @@ export function createPrismaDocumentCatalogRepository(
             orgId: input.orgId,
             title: input.title,
             documentType: input.documentType as DocumentType,
+            documentKind: input.documentKind ? (input.documentKind as DocumentKind) : undefined,
+            fileType: input.fileType ? (input.fileType as FileType) : undefined,
             status: input.status as DocumentStatus,
             storageObjectKey: input.storageObjectKey,
             originalFileName: input.originalFileName,
@@ -298,6 +311,7 @@ export function createPrismaDocumentCatalogRepository(
               create: {
                 orgId: input.orgId,
                 status: ProcessingRunStatus.queued,
+                jobType: (input.processingJobType ?? "legacy_text_extract") as ProcessingJobType,
                 attemptNumber: 1,
                 retryCount: 0
               }
@@ -668,6 +682,8 @@ function toDocumentStatusRecord(
     uploaderId: document.uploaderId,
     title: document.title,
     documentType: document.documentType,
+    documentKind: document.documentKind,
+    fileType: document.fileType,
     status: document.status,
     storageObjectKey: document.storageObjectKey,
     originalFileName: document.originalFileName,
@@ -690,6 +706,8 @@ function toDocumentQueryRecord(
     uploaderId: document.uploaderId,
     title: document.title,
     documentType: document.documentType,
+    documentKind: document.documentKind,
+    fileType: document.fileType,
     status: document.status,
     storageObjectKey: document.storageObjectKey,
     originalFileName: document.originalFileName,

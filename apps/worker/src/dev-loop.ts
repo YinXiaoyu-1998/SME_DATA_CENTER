@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { createEvidenceIndexerFromEnv } from "./evidence-index.js";
 import { createPrismaProcessingWorkerRepository, runWorkerLoop } from "./worker.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
@@ -11,6 +12,7 @@ export async function main(): Promise<void> {
   const abortController = new AbortController();
   const repository = createPrismaProcessingWorkerRepository();
   const storage = new LocalFileSystemStorageAdapter();
+  const evidenceIndexer = createEvidenceIndexerFromEnv();
   const pollIntervalMs = resolvePollIntervalMs(process.env["WORKER_POLL_INTERVAL_MS"]);
 
   const stop = () => {
@@ -24,6 +26,7 @@ export async function main(): Promise<void> {
     await runWorkerLoop({
       repository,
       storage,
+      evidenceIndexer,
       pollIntervalMs,
       signal: abortController.signal,
       onResult(result) {

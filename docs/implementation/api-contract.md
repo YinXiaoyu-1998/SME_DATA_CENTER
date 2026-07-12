@@ -221,7 +221,7 @@ Phase 3 adds evidence retrieval and controlled structured query APIs. These APIs
 | `GET`  | `/v1/structured/datasets`               | Return dataset registry, fields, capabilities, operators, limits, lifecycle, sensitivity, and versions. |
 | `POST` | `/v1/structured/query`                  | Execute controlled read-only structured query over `dishes` / `business`.                               |
 
-Task 1 registers every Phase 3 route above behind the existing authenticated employee boundary. Until the owning implementation task lands, each authenticated request receives `501 TEMPORARILY_UNAVAILABLE`; unauthenticated callers receive the normal authentication error instead. These placeholders do not parse uploads, query MySQL/Qdrant, or perform any other business operation.
+Task 1 registered every Phase 3 route above behind the existing authenticated employee boundary. Until an owning implementation task lands, authenticated placeholder requests receive `501 TEMPORARILY_UNAVAILABLE`; unauthenticated callers receive the normal authentication error instead. Task 6 implements the structured import/status routes, Task 7 implements structured dataset discovery/query routes, and Task 8 implements evidence upload/search routes. Remaining placeholders do not parse uploads, query MySQL/Qdrant, or perform any other business operation.
 
 ### `POST /v1/documents/evidence`
 
@@ -254,6 +254,8 @@ Response `202`:
   "requestId": "req_123"
 }
 ```
+
+Task 8 queues `evidence_document_index`; the worker parses, chunks, embeds, writes sparse/dense Qdrant points, persists chunk/index metadata in MySQL, and publishes `Document.active` only after the full indexing transaction succeeds. Any parse, embedding, Qdrant, or metadata failure keeps the document non-active and schedules/finalizes processing failure according to the worker retry policy.
 
 ### `POST /v1/evidence/search`
 
@@ -312,7 +314,7 @@ Response:
 }
 ```
 
-The response is evidence-only. It must not contain a final answer.
+The response is evidence-only. It must not contain a final answer. Search runs Qdrant dense+sparse hybrid retrieval first, optionally applies rerank when the configured provider is enabled, then revalidates every candidate against MySQL for active document status, ready index status, content version, retrieval config version, disabled employee status, labels, and caller-provided filters before returning any chunk.
 
 ### `POST /v1/structured/imports`
 
@@ -336,22 +338,31 @@ Response `202`:
     "documentId": "doc_456",
     "documentKind": "structured",
     "fileType": "xlsx",
-    "status": "processing"
+    "status": "active",
+    "storageObjectKey": "org_123/doc_456/mai_jia_dishes_20260701_20260705.xlsx",
+    "originalFileName": "麦家菜品记录.xlsx"
   },
   "processing": {
-    "processingRunId": "run_456",
-    "status": "queued"
+    "processingRunId": null,
+    "status": "succeeded"
   },
   "importBatch": {
     "importBatchId": "imp_456",
+    "sourceDocumentId": "doc_456",
     "dataset": "dishes",
-    "status": "pending",
+    "status": "applied",
     "startDate": "20260701",
-    "endDate": "20260705"
-  },
-  "requestId": "req_456"
+    "endDate": "20260705",
+    "sourceSheetSummary": [],
+    "validationErrors": [],
+    "totalRowCount": 1200,
+    "appliedRowCount": 1200,
+    "queryableRowCount": 1200
+  }
 }
 ```
+
+Task 6 validates and applies a structured import atomically. If any non-empty CSV/XLSX sheet fails the dataset registry mapping, required-field, type, or business-date-window checks, no source document, import batch, window claim, or row payload becomes queryable. The original upload file name is retained as metadata, but the stored object key uses the canonical `{enterprise_name}_{dataset}_{startDate}_{endDate}` shape based on trusted metadata.
 
 Conflict behavior:
 
@@ -365,6 +376,8 @@ Conflict behavior:
 Response contains dataset registry versions, effective query limits, and every current export field with canonical name, aliases/source columns, type, nullable, sensitivity, lifecycle, capabilities, operators, default-return flag, index status, and value limits.
 
 Task 5 establishes registry versions `dishes.2026-07-11.v1` and `business.2026-07-11.v1` from the reviewed Maijia workbook exports. Current row storage maps every field to the dataset row table payload JSON path (`dish_rows.payload` or `business_rows.payload`) until the import/query tasks decide whether to promote selected fields to physical columns.
+
+Task 7 implements this endpoint as an authenticated registry-discovery API. It exposes field capabilities and limits only; it does not infer natural-language intent, run imports, or query rows.
 
 Minimal response shape:
 
@@ -426,6 +439,8 @@ Request shape:
 The API accepts only controlled JSON query structure. It never accepts raw SQL, arbitrary expressions, mutation operations, joins, formulas, window functions, or natural-language analysis instructions.
 
 Pagination uses opaque cursors. Every page rechecks current authorization and active import scope.
+
+Task 7 implements this endpoint as a read-only controlled query wrapper. The server compiles accepted JSON to internal parameterized SQL using registry allowlists, applies backend permission scope before filters/sort/aggregation/pagination, and supports detail rows plus explicit mechanical aggregations only. It does not accept or generate raw SQL from clients, does not perform business analysis, and does not execute mutations.
 
 ### Phase 3 Error Envelope
 

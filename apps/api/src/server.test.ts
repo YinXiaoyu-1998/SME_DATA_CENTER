@@ -2,17 +2,21 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { utils, write } from "xlsx";
 import type { FastifyInstance } from "fastify";
 import type {
   AuthenticatedEmployee,
   DocumentStatusName,
-  DocumentTypeName
+  DocumentTypeName,
+  Phase3FileType,
+  StructuredDatasetName
 } from "@enterprise-hub/domain";
-import { canEmployeeAccessDocument } from "@enterprise-hub/domain";
+import { canEmployeeAccessDocument, getStructuredRegistry } from "@enterprise-hub/domain";
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "./server.js";
 import { signEmployeeAccessToken } from "./tokens.js";
 import type { EmployeeRepository } from "./employees.js";
+import type { EvidenceSearchRepository } from "./evidence.js";
 import type { SkillDirectoryRepository, SkillDirectoryEntry } from "./skills.js";
 
 const jwtSecret = "test-local-jwt-secret";
@@ -69,6 +73,54 @@ function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepositor
     },
     async findById(id: string) {
       return employees.find((employee) => employee.id === id) ?? null;
+    }
+  };
+}
+
+function createEvidenceSearchRepository(): EvidenceSearchRepository & {
+  queries: Array<{ query: string; employeeId: string }>;
+} {
+  const queries: Array<{ query: string; employeeId: string }> = [];
+
+  return {
+    queries,
+    async searchEvidence(input) {
+      queries.push({ query: input.query, employeeId: input.employee.id });
+
+      return {
+        results: [
+          {
+            chunkId: "chk_1",
+            documentId: "doc_evidence",
+            documentTitle: "客户反馈处理 SOP.docx",
+            text: "差评处理 SOP：先联系客户，再登记处置结果。",
+            source: {
+              fileType: "docx",
+              sectionHeadingPath: ["客户反馈", "差评处理"],
+              blockType: "paragraph",
+              pageNumber: null
+            },
+            score: {
+              hybrid: 0.82,
+              rerank: 0.91
+            },
+            matchedBy: ["dense", "lexical", "rerank"]
+          }
+        ],
+        page: {
+          limit: input.limit,
+          nextCursor: null,
+          hasMore: false
+        },
+        retrieval: {
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
+          lexicalIndexVersion: "lexical.v1",
+          rerankVersion: "fake-rerank-v1@phase3.retrieval.v1",
+          rerankStatus: "enabled"
+        },
+        warnings: []
+      };
     }
   };
 }
@@ -159,6 +211,8 @@ interface RecordedDocument {
   status: DocumentStatusName;
   title: string;
   documentType: DocumentTypeName;
+  documentKind: "evidence" | "structured" | null;
+  fileType: Phase3FileType | null;
   sourceSystem: string | null;
   sourceTime: Date | null;
   storageObjectKey: string;
@@ -176,6 +230,7 @@ interface RecordedDocument {
 interface RecordedProcessingRun {
   documentId: string;
   status: string;
+  jobType: string;
 }
 
 interface RecordedAuditLog {
@@ -283,17 +338,29 @@ function createDocumentRepository() {
       return null;
     },
     async createUploadedDocument(
-      input: Omit<RecordedDocument, "contentType" | "processingRunStatus"> & {
+      input: Omit<
+        RecordedDocument,
+        "contentType" | "processingRunStatus" | "documentKind" | "fileType"
+      > & {
         contentType?: string;
+        documentKind?: "evidence" | "structured";
+        fileType?: Phase3FileType;
+        processingJobType?: string;
       }
     ) {
       const document = {
         ...input,
+        documentKind: input.documentKind ?? null,
+        fileType: input.fileType ?? null,
         contentType: input.contentType ?? null,
         processingRunStatus: "queued"
       };
       documents.push(document);
-      processingRuns.push({ documentId: input.id, status: "queued" });
+      processingRuns.push({
+        documentId: input.id,
+        status: "queued",
+        jobType: input.processingJobType ?? "legacy_text_extract"
+      });
       auditLogs.push({
         action: "document.uploaded",
         actorEmployeeId: input.uploaderId,
@@ -485,6 +552,8 @@ function activeDocument(
     uploaderId: baoliManagerEmployee.id,
     status: "active",
     documentType: "raw_material",
+    documentKind: null,
+    fileType: null,
     sourceSystem: "meituan",
     sourceTime: new Date("2026-06-30T00:00:00.000Z"),
     storageObjectKey: `org/default-org/documents/${input.id}/original/${input.id}.csv`,
@@ -557,6 +626,8 @@ function compareDocuments(first: RecordedDocument, second: RecordedDocument) {
 function withDefaultCreatedAt(document: RecordedDocument) {
   return {
     ...document,
+    documentKind: document.documentKind ?? null,
+    fileType: document.fileType ?? null,
     createdAt: document.createdAt ?? new Date("2026-06-30T00:00:00.000Z"),
     sourceMetadata: document.sourceMetadata ?? null
   };
@@ -605,6 +676,103 @@ function createMultipartPayload(
     body: Buffer.concat(chunks),
     contentType: `multipart/form-data; boundary=${boundary}`
   };
+}
+
+function validStructuredCsv(
+  dataset: StructuredDatasetName,
+  overrides: Record<string, string> = {}
+) {
+  const registry = getStructuredRegistry(dataset);
+  const values = registry.fields.map((field, index) => {
+    if (overrides[field.canonicalName] !== undefined) {
+      return overrides[field.canonicalName];
+    }
+
+    if (field.canonicalName === "business_date") {
+      return "2026-07-02";
+    }
+
+    if (field.type === "integer") {
+      return String(index + 1);
+    }
+
+    if (field.type === "decimal" || field.type === "percent") {
+      return `${index + 1}.5`;
+    }
+
+    if (field.type === "date") {
+      return "2026-07-02";
+    }
+
+    if (field.type === "date_time") {
+      return "2026-07-02 12:30:00";
+    }
+
+    return `value_${index + 1}`;
+  });
+
+  return `${registry.fields.map((field) => field.sourceColumn).join(",")}\n${values.join(",")}\n`;
+}
+
+function structuredWorkbook(input: {
+  dataset: StructuredDatasetName;
+  includeHiddenSheet?: boolean;
+  includeExplanationSheet?: boolean;
+}) {
+  const registry = getStructuredRegistry(input.dataset);
+  const workbook = utils.book_new();
+  const headers = registry.fields.map((field) => field.sourceColumn);
+  const row = registry.fields.map((field, index) =>
+    field.canonicalName === "business_date" ? "2026-07-02" : `value_${index + 1}`
+  );
+  utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, row]), "Data");
+
+  if (input.includeHiddenSheet) {
+    utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, row]), "HiddenData");
+    workbook.Workbook ??= {};
+    workbook.Workbook.Sheets ??= [];
+    workbook.Workbook.Sheets[1] = { Hidden: 1 };
+  }
+
+  if (input.includeExplanationSheet) {
+    utils.book_append_sheet(
+      workbook,
+      utils.aoa_to_sheet([["说明"], ["这个 sheet 不是结构化数据"]]),
+      "Explanation"
+    );
+  }
+
+  return Buffer.from(write(workbook, { bookType: "xlsx", type: "buffer" }) as Buffer);
+}
+
+function createStructuredImportMultipart(input: {
+  dataset?: StructuredDatasetName;
+  enterpriseName?: string;
+  startDate?: string;
+  endDate?: string;
+  idempotencyKey?: string;
+  labelKeys?: string[];
+  fileName?: string;
+  contentType?: string;
+  body?: Buffer;
+}) {
+  return createMultipartPayload([
+    { name: "dataset", value: input.dataset ?? "dishes" },
+    { name: "enterprise_name", value: input.enterpriseName ?? "保利店" },
+    { name: "startDate", value: input.startDate ?? "20260701" },
+    { name: "endDate", value: input.endDate ?? "20260705" },
+    { name: "idempotencyKey", value: input.idempotencyKey ?? "import-key-1" },
+    ...(input.labelKeys ?? ["store:baoli"]).map((labelKey) => ({
+      name: "labelKeys[]",
+      value: labelKey
+    })),
+    {
+      name: "file",
+      fileName: input.fileName ?? "original-dishes.csv",
+      contentType: input.contentType ?? "text/csv",
+      value: input.body ?? Buffer.from(validStructuredCsv(input.dataset ?? "dishes"), "utf8")
+    }
+  ]);
 }
 
 async function accessTokenFor(employee: AuthenticatedEmployee) {
@@ -730,41 +898,127 @@ describe("api auth shell", () => {
     });
   });
 
-  it("protects every Phase 3 route skeleton before returning its not-implemented response", async () => {
-    app = buildTestServer();
+  it("uploads evidence documents and queues evidence indexing", async () => {
+    const documentRepository = createDocumentRepository();
+    const storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-evidence-upload-"));
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository,
+      storageAdapter: new LocalFileSystemStorageAdapter({ root: storageRoot }),
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
     const accessToken = await accessTokenFor(adminEmployee);
-    const routes = [
-      { method: "POST" as const, url: "/v1/documents/evidence" },
-      { method: "POST" as const, url: "/v1/evidence/search" },
-      { method: "POST" as const, url: "/v1/structured/imports" },
-      { method: "GET" as const, url: "/v1/structured/imports/import_123" },
-      { method: "GET" as const, url: "/v1/structured/datasets" },
-      { method: "POST" as const, url: "/v1/structured/query" }
-    ];
+    const multipartPayload = createMultipartPayload([
+      {
+        name: "file",
+        fileName: "customer-feedback-sop.md",
+        contentType: "text/markdown",
+        value: Buffer.from("# 差评处理\n\n先联系客户，再登记处置结果。", "utf8")
+      },
+      { name: "title", value: "客户反馈处理 SOP" },
+      { name: "labelKeys[]", value: "all_staff" }
+    ]);
 
-    for (const route of routes) {
-      const unauthenticated = await app.inject({
-        ...route
-      });
-      expect(unauthenticated.statusCode).toBe(401);
-      expect(unauthenticated.json()).toMatchObject({
-        error: { code: "UNAUTHENTICATED" }
-      });
-
-      const authenticated = await app.inject({
-        ...route,
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/documents/evidence",
         headers: {
-          authorization: `Bearer ${accessToken}`
+          authorization: `Bearer ${accessToken}`,
+          "content-type": multipartPayload.contentType
+        },
+        payload: multipartPayload.body
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toMatchObject({
+        document: {
+          documentKind: "evidence",
+          fileType: "md",
+          status: "pending_processing"
+        },
+        processing: {
+          status: "queued"
+        },
+        documentIndex: {
+          status: "pending",
+          retrievalConfigVersion: "phase3.retrieval.v1"
         }
       });
-      expect(authenticated.statusCode).toBe(501);
-      expect(authenticated.json()).toEqual({
-        error: {
-          code: "TEMPORARILY_UNAVAILABLE",
-          message: "This Phase 3 endpoint is not implemented yet."
-        }
+      expect(documentRepository.documents[0]).toMatchObject({
+        documentKind: "evidence",
+        fileType: "md",
+        status: "pending_processing",
+        title: "客户反馈处理 SOP"
       });
+      expect(documentRepository.processingRuns[0]).toMatchObject({
+        jobType: "evidence_document_index",
+        status: "queued"
+      });
+    } finally {
+      await rm(storageRoot, { recursive: true, force: true });
     }
+  });
+
+  it("searches evidence chunks without returning natural-language answers", async () => {
+    const evidenceRepository = createEvidenceSearchRepository();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository,
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
+    const accessToken = await accessTokenFor(adminEmployee);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      },
+      payload: {
+        query: "差评处理 SOP",
+        filters: {
+          fileTypes: ["docx"],
+          documentIds: [],
+          labelIds: []
+        },
+        limit: 10,
+        cursor: null
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toMatchObject({
+      results: [
+        {
+          chunkId: "chk_1",
+          documentId: "doc_evidence",
+          documentTitle: "客户反馈处理 SOP.docx",
+          text: "差评处理 SOP：先联系客户，再登记处置结果。",
+          source: {
+            fileType: "docx",
+            sectionHeadingPath: ["客户反馈", "差评处理"],
+            blockType: "paragraph",
+            pageNumber: null
+          },
+          matchedBy: ["dense", "lexical", "rerank"]
+        }
+      ],
+      retrieval: {
+        retrievalConfigVersion: "phase3.retrieval.v1",
+        rerankStatus: "enabled"
+      },
+      requestId: expect.any(String)
+    });
+    expect(JSON.stringify(body)).not.toContain("answer");
+    expect(evidenceRepository.queries).toEqual([
+      { query: "差评处理 SOP", employeeId: adminEmployee.id }
+    ]);
   });
 
   it("rejects disabled employees even when the token is otherwise valid", async () => {
@@ -936,7 +1190,9 @@ describe("document upload and status", () => {
       status: "pending_processing",
       labels: ["person:baoli.manager", "store:baoli"]
     });
-    expect(documentRepository.processingRuns).toEqual([{ documentId: body.id, status: "queued" }]);
+    expect(documentRepository.processingRuns).toEqual([
+      expect.objectContaining({ documentId: body.id, status: "queued" })
+    ]);
     expect(documentRepository.auditLogs).toEqual([
       {
         action: "document.uploaded",
@@ -1185,6 +1441,8 @@ describe("document upload and status", () => {
       status: "processing_failed",
       title: "Unsupported binary upload",
       documentType: "raw_material",
+      documentKind: null,
+      fileType: null,
       sourceSystem: null,
       sourceTime: null,
       storageObjectKey: "org/default-org/documents/doc_failed/original/receipt.pdf",
@@ -1643,6 +1901,396 @@ describe("document upload and status", () => {
         previousStatus: "active"
       },
       createdAt: "2026-06-30T02:00:00.000Z"
+    });
+  });
+});
+
+function createInMemoryStructuredImportRepository(documents: RecordedDocument[]) {
+  type StoredRow = {
+    dataset: StructuredDatasetName;
+    sourceDocumentId: string;
+  };
+  type StoredBatch = {
+    id: string;
+    orgId: string;
+    dataset: StructuredDatasetName;
+    startDate: string;
+    endDate: string;
+    idempotencyKey: string;
+    requestFingerprint: string;
+    status: string;
+    sourceDocumentId: string;
+    totalRowCount: number;
+    appliedRowCount: number;
+    sourceSheetSummary: unknown[];
+    validationErrors: unknown[];
+  };
+
+  const batches: StoredBatch[] = [];
+  const rows: StoredRow[] = [];
+  const inProgressWindows = new Set<string>();
+
+  function windowKey(input: {
+    dataset: StructuredDatasetName;
+    startDate: string;
+    endDate: string;
+  }) {
+    return `${input.dataset}:${input.startDate}:${input.endDate}`;
+  }
+
+  return {
+    batches,
+    rows,
+    markWindowInProgress(input: {
+      dataset: StructuredDatasetName;
+      startDate: string;
+      endDate: string;
+    }) {
+      inProgressWindows.add(windowKey(input));
+    },
+    storedRowCount(dataset: StructuredDatasetName) {
+      return rows.filter((row) => row.dataset === dataset).length;
+    },
+    queryableRowCount(dataset: StructuredDatasetName) {
+      const documentStatus = new Map(documents.map((document) => [document.id, document.status]));
+      return rows.filter(
+        (row) => row.dataset === dataset && documentStatus.get(row.sourceDocumentId) === "active"
+      ).length;
+    },
+    async findImportBatch(_orgId: string, importBatchId: string) {
+      const batch = batches.find((candidate) => candidate.id === importBatchId);
+
+      if (!batch) {
+        return null;
+      }
+
+      const sourceDocument = documents.find((document) => document.id === batch.sourceDocumentId);
+      const queryableRowCount = this.queryableRowCount(batch.dataset);
+
+      return {
+        ...batch,
+        status: sourceDocument?.status === "archived" ? "archived" : batch.status,
+        queryableRowCount
+      };
+    },
+    async importStructuredDataset(input: {
+      orgId: string;
+      actorEmployeeId: string;
+      documentId: string;
+      dataset: StructuredDatasetName;
+      startDate: string;
+      endDate: string;
+      idempotencyKey: string;
+      requestFingerprint: string;
+      document: {
+        title: string;
+        storageObjectKey: string;
+        originalFileName: string;
+        contentType?: string;
+        byteSize: number;
+        checksumSha256: string;
+        labelIds: string[];
+        labels: string[];
+      };
+      sourceSheetSummary: unknown[];
+      rows: Array<{ payload: Record<string, unknown>; sourceRowNumber: number }>;
+    }) {
+      const existingIdempotencyBatch = batches.find(
+        (batch) => batch.orgId === input.orgId && batch.idempotencyKey === input.idempotencyKey
+      );
+
+      if (existingIdempotencyBatch) {
+        if (existingIdempotencyBatch.requestFingerprint !== input.requestFingerprint) {
+          throw Object.assign(new Error("IDEMPOTENCY_KEY_CONFLICT"), {
+            code: "IDEMPOTENCY_KEY_CONFLICT"
+          });
+        }
+
+        return this.findImportBatch(input.orgId, existingIdempotencyBatch.id);
+      }
+
+      if (inProgressWindows.has(windowKey(input))) {
+        throw Object.assign(new Error("IMPORT_IN_PROGRESS"), {
+          code: "IMPORT_IN_PROGRESS"
+        });
+      }
+
+      const existingWindowBatch = batches.find(
+        (batch) =>
+          batch.orgId === input.orgId &&
+          batch.dataset === input.dataset &&
+          batch.startDate === input.startDate &&
+          batch.endDate === input.endDate &&
+          batch.status === "applied"
+      );
+
+      if (existingWindowBatch) {
+        throw Object.assign(new Error("ACTIVE_IMPORT_EXISTS"), {
+          code: "ACTIVE_IMPORT_EXISTS"
+        });
+      }
+
+      const batch: StoredBatch = {
+        id: `imp_${batches.length + 1}`,
+        orgId: input.orgId,
+        dataset: input.dataset,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint: input.requestFingerprint,
+        status: "applied",
+        sourceDocumentId: input.documentId,
+        totalRowCount: input.rows.length,
+        appliedRowCount: input.rows.length,
+        sourceSheetSummary: input.sourceSheetSummary,
+        validationErrors: []
+      };
+      batches.push(batch);
+      rows.push(
+        ...input.rows.map(() => ({
+          dataset: input.dataset,
+          sourceDocumentId: input.documentId
+        }))
+      );
+      documents.push({
+        id: input.documentId,
+        orgId: input.orgId,
+        uploaderId: input.actorEmployeeId,
+        status: "active",
+        title: input.document.title,
+        documentType: "structured_dataset",
+        documentKind: "structured",
+        fileType: "xlsx",
+        sourceSystem: "structured_import",
+        sourceTime: null,
+        storageObjectKey: input.document.storageObjectKey,
+        originalFileName: input.document.originalFileName,
+        contentType: input.document.contentType ?? null,
+        byteSize: input.document.byteSize,
+        checksumSha256: input.document.checksumSha256,
+        labels: input.document.labels,
+        processingRunStatus: "succeeded",
+        createdAt: new Date(),
+        sourceMetadata: {
+          dataset: input.dataset,
+          importBatchId: batch.id
+        },
+        chunks: []
+      });
+
+      return this.findImportBatch(input.orgId, batch.id);
+    }
+  };
+}
+
+describe("structured imports", () => {
+  let app: FastifyInstance | undefined;
+  let storageRoot: string | undefined;
+
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+
+    if (storageRoot) {
+      await rm(storageRoot, { recursive: true, force: true });
+      storageRoot = undefined;
+    }
+  });
+
+  async function buildStructuredImportTestServer() {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
+    const documentRepository = createDocumentRepository();
+    const structuredImportRepository = createInMemoryStructuredImportRepository(
+      documentRepository.documents
+    );
+    const storageAdapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
+
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee, baoliManagerEmployee]),
+      documentRepository,
+      structuredImportRepository,
+      storageAdapter,
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    } as Parameters<typeof buildApiServer>[0] & {
+      structuredImportRepository: unknown;
+    });
+
+    return {
+      app,
+      documentRepository,
+      structuredImportRepository
+    };
+  }
+
+  async function postStructuredImport(
+    server: FastifyInstance,
+    input: Parameters<typeof createStructuredImportMultipart>[0] = {}
+  ) {
+    const multipartBody = createStructuredImportMultipart(input);
+
+    return server.inject({
+      method: "POST",
+      url: "/v1/structured/imports",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`,
+        "content-type": multipartBody.contentType
+      },
+      payload: multipartBody.body
+    });
+  }
+
+  it("applies valid CSV imports as active structured documents with canonical storage names", async () => {
+    const { app, documentRepository, structuredImportRepository } =
+      await buildStructuredImportTestServer();
+
+    const response = await postStructuredImport(app, {
+      enterpriseName: "保利店",
+      dataset: "dishes",
+      idempotencyKey: "csv-success"
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      document: {
+        documentKind: "structured",
+        fileType: "csv",
+        status: "active",
+        originalFileName: "original-dishes.csv"
+      },
+      importBatch: {
+        dataset: "dishes",
+        status: "applied",
+        startDate: "20260701",
+        endDate: "20260705",
+        appliedRowCount: 1
+      }
+    });
+    expect(response.json().document.storageObjectKey).toContain(
+      "u4fdd_u5229_u5e97_dishes_20260701_20260705.csv"
+    );
+    expect(documentRepository.documents[0]).toMatchObject({
+      status: "active",
+      documentType: "structured_dataset",
+      originalFileName: "original-dishes.csv"
+    });
+    expect(structuredImportRepository.queryableRowCount("dishes")).toBe(1);
+  });
+
+  it("handles import idempotency and active/in-progress window conflicts", async () => {
+    const { app, structuredImportRepository } = await buildStructuredImportTestServer();
+
+    const firstResponse = await postStructuredImport(app, {
+      idempotencyKey: "stable-key"
+    });
+    const replayResponse = await postStructuredImport(app, {
+      idempotencyKey: "stable-key"
+    });
+    const conflictResponse = await postStructuredImport(app, {
+      idempotencyKey: "stable-key",
+      body: Buffer.from(validStructuredCsv("dishes", { business_date: "2026-07-03" }), "utf8")
+    });
+    const activeWindowResponse = await postStructuredImport(app, {
+      idempotencyKey: "new-key-same-window"
+    });
+
+    structuredImportRepository.markWindowInProgress({
+      dataset: "business",
+      startDate: "20260701",
+      endDate: "20260705"
+    });
+    const inProgressWindowResponse = await postStructuredImport(app, {
+      dataset: "business",
+      idempotencyKey: "business-window",
+      body: Buffer.from(validStructuredCsv("business"), "utf8")
+    });
+
+    expect(firstResponse.statusCode).toBe(202);
+    expect(replayResponse.statusCode).toBe(202);
+    expect(replayResponse.json().importBatch.importBatchId).toBe(
+      firstResponse.json().importBatch.importBatchId
+    );
+    expect(conflictResponse.statusCode).toBe(409);
+    expect(conflictResponse.json()).toMatchObject({
+      error: { code: "IDEMPOTENCY_KEY_CONFLICT" }
+    });
+    expect(activeWindowResponse.statusCode).toBe(409);
+    expect(activeWindowResponse.json()).toMatchObject({
+      error: { code: "ACTIVE_IMPORT_EXISTS" }
+    });
+    expect(inProgressWindowResponse.statusCode).toBe(409);
+    expect(inProgressWindowResponse.json()).toMatchObject({
+      error: { code: "IMPORT_IN_PROGRESS" }
+    });
+  });
+
+  it("rejects invalid files atomically and fails hidden or explanation workbook sheets", async () => {
+    const { app, structuredImportRepository } = await buildStructuredImportTestServer();
+
+    const invalidCsvResponse = await postStructuredImport(app, {
+      idempotencyKey: "invalid-csv",
+      body: Buffer.from("未知列\nbad\n", "utf8")
+    });
+    const hiddenSheetResponse = await postStructuredImport(app, {
+      idempotencyKey: "hidden-sheet",
+      fileName: "hidden.xlsx",
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      body: structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
+    });
+    const explanationSheetResponse = await postStructuredImport(app, {
+      idempotencyKey: "explanation-sheet",
+      fileName: "explanation.xlsx",
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      body: structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
+    });
+
+    expect(invalidCsvResponse.statusCode).toBe(400);
+    expect(invalidCsvResponse.json()).toMatchObject({
+      error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
+    });
+    expect(hiddenSheetResponse.statusCode).toBe(400);
+    expect(hiddenSheetResponse.json()).toMatchObject({
+      error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
+    });
+    expect(explanationSheetResponse.statusCode).toBe(400);
+    expect(explanationSheetResponse.json()).toMatchObject({
+      error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
+    });
+    expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
+  });
+
+  it("retains rows but makes them non-queryable when the source document is archived", async () => {
+    const { app, structuredImportRepository } = await buildStructuredImportTestServer();
+    const importResponse = await postStructuredImport(app, {
+      idempotencyKey: "archive-rows"
+    });
+    const documentId = importResponse.json().document.documentId;
+
+    const archiveResponse = await app.inject({
+      method: "POST",
+      url: `/documents/${documentId}/archive`,
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      }
+    });
+    const statusResponse = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${importResponse.json().importBatch.importBatchId}`,
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      }
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(structuredImportRepository.storedRowCount("dishes")).toBe(1);
+    expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
+    expect(statusResponse.json()).toMatchObject({
+      importBatch: {
+        status: "archived",
+        totalRowCount: 1,
+        queryableRowCount: 0
+      }
     });
   });
 });

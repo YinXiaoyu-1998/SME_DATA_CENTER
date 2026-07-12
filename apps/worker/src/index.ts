@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { createEvidenceIndexerFromEnv } from "./evidence-index.js";
 import { createPrismaProcessingWorkerRepository, runWorkerOnce } from "./worker.js";
 
 export const workerWorkspaceName = "@enterprise-hub/worker";
@@ -10,9 +11,10 @@ export async function main(): Promise<void> {
 
   const repository = createPrismaProcessingWorkerRepository();
   const storage = new LocalFileSystemStorageAdapter();
+  const evidenceIndexer = createEvidenceIndexerFromEnv();
 
   try {
-    const result = await runWorkerOnce({ repository, storage });
+    const result = await runWorkerOnce({ repository, storage, evidenceIndexer });
     console.log(JSON.stringify(result));
   } finally {
     await repository.disconnect?.();

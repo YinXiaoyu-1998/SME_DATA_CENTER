@@ -13,7 +13,8 @@ const DEFAULT_WORKER_POLL_INTERVAL_MS = 1_000;
 
 export const PROCESSING_ERROR_CODES = {
   unsupportedFileType: "UNSUPPORTED_FILE_TYPE",
-  storageReadFailed: "STORAGE_READ_FAILED"
+  storageReadFailed: "STORAGE_READ_FAILED",
+  evidenceIndexingFailed: "EVIDENCE_INDEXING_FAILED"
 } as const;
 
 export interface ClaimedProcessingRun {
@@ -21,6 +22,7 @@ export interface ClaimedProcessingRun {
   orgId: string;
   documentId: string;
   retryCount: number;
+  jobType: string;
   document: {
     id: string;
     orgId: string;
@@ -28,6 +30,9 @@ export interface ClaimedProcessingRun {
     status: string;
     storageObjectKey: string;
     originalFileName: string | null;
+    documentKind?: string | null;
+    fileType?: string | null;
+    contentVersion?: number;
   };
 }
 
@@ -39,10 +44,44 @@ export interface DocumentChunkWrite {
   indexType: string;
 }
 
+export interface EvidenceDocumentChunkWrite extends DocumentChunkWrite {
+  chunkId: string;
+  qdrantPointId: string;
+  contentVersion: number;
+  retrievalConfigVersion: string;
+  modelName: string;
+  modelVersion: string;
+  sourceLocation: Record<string, unknown>;
+}
+
+export interface EvidenceIndexingResult {
+  retrievalConfigVersion: string;
+  qdrantCollection: string;
+  embeddingModel: string;
+  embeddingVersion: string;
+  lexicalIndexVersion: string;
+  rerankVersion: string | null;
+  chunks: EvidenceDocumentChunkWrite[];
+}
+
+export interface EvidenceIndexer {
+  indexDocument(input: {
+    run: ClaimedProcessingRun;
+    content: Buffer;
+  }): Promise<EvidenceIndexingResult>;
+}
+
 export interface CompleteProcessingRunInput {
   runId: string;
   documentId: string;
   chunks: DocumentChunkWrite[];
+}
+
+export interface CompleteEvidenceIndexingInput {
+  runId: string;
+  documentId: string;
+  result: EvidenceIndexingResult;
+  chunks: EvidenceDocumentChunkWrite[];
 }
 
 export interface FailProcessingRunInput {
@@ -56,6 +95,7 @@ export interface FailProcessingRunInput {
 export interface ProcessingWorkerRepository {
   claimNextProcessingRun(): Promise<ClaimedProcessingRun | null>;
   completeProcessingRun(input: CompleteProcessingRunInput): Promise<void>;
+  completeEvidenceIndexing?(input: CompleteEvidenceIndexingInput): Promise<void>;
   failProcessingRun(input: FailProcessingRunInput): Promise<void>;
   disconnect?(): Promise<void>;
 }
@@ -73,6 +113,7 @@ export type RunWorkerOnceResult =
 export interface RunWorkerLoopInput {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
+  evidenceIndexer?: EvidenceIndexer;
   pollIntervalMs?: number;
   signal?: AbortSignal;
   onResult?: (result: RunWorkerOnceResult) => void;
@@ -82,6 +123,7 @@ export interface RunWorkerLoopInput {
 export async function runWorkerOnce(input: {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
+  evidenceIndexer?: EvidenceIndexer;
 }): Promise<RunWorkerOnceResult> {
   const run = await input.repository.claimNextProcessingRun();
 
@@ -90,6 +132,30 @@ export async function runWorkerOnce(input: {
   }
 
   try {
+    if (run.jobType === "evidence_document_index") {
+      if (!input.evidenceIndexer || !input.repository.completeEvidenceIndexing) {
+        throw new ProcessingError(
+          PROCESSING_ERROR_CODES.unsupportedFileType,
+          "Evidence indexing is not configured."
+        );
+      }
+
+      const content = await readDocumentContent(run.document, input.storage);
+      const result = await input.evidenceIndexer.indexDocument({ run, content });
+      await input.repository.completeEvidenceIndexing({
+        runId: run.id,
+        documentId: run.documentId,
+        result,
+        chunks: result.chunks
+      });
+
+      return {
+        processed: true,
+        documentId: run.documentId,
+        status: "active"
+      };
+    }
+
     const text = await extractSupportedText(run.document, input.storage);
     const chunks = chunkText(text).map((chunkText, chunkIndex) => ({
       documentId: run.documentId,
@@ -138,7 +204,8 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
     try {
       const result = await runWorkerOnce({
         repository: input.repository,
-        storage: input.storage
+        storage: input.storage,
+        evidenceIndexer: input.evidenceIndexer
       });
 
       input.onResult?.(result);
@@ -281,6 +348,127 @@ export function createPrismaProcessingWorkerRepository(
         });
       });
     },
+    async completeEvidenceIndexing(input) {
+      const now = new Date();
+
+      await prisma.$transaction(async (tx) => {
+        const run = await tx.processingRun.update({
+          where: {
+            id: input.runId
+          },
+          data: {
+            status: ProcessingRunStatus.succeeded,
+            errorCode: null,
+            errorSummary: null,
+            finishedAt: now
+          }
+        });
+
+        const retrievalConfig = await tx.retrievalConfig.upsert({
+          where: {
+            version: input.result.retrievalConfigVersion
+          },
+          create: {
+            version: input.result.retrievalConfigVersion,
+            status: "active",
+            chunkerName: "phase3.structure-aware",
+            denseEmbeddingProvider: "fake",
+            denseEmbeddingModel: input.result.embeddingModel,
+            denseVectorDimension: 8,
+            sparseModel: input.result.lexicalIndexVersion,
+            rerankProvider: input.result.rerankVersion ? "fake" : null,
+            rerankModel: input.result.rerankVersion,
+            qdrantCollection: input.result.qdrantCollection,
+            configJson: {
+              retrievalConfigVersion: input.result.retrievalConfigVersion,
+              lexicalIndexVersion: input.result.lexicalIndexVersion
+            }
+          },
+          update: {}
+        });
+
+        const document = await tx.document.findUniqueOrThrow({
+          where: {
+            id: input.documentId
+          }
+        });
+
+        const documentIndex = await tx.documentIndex.upsert({
+          where: {
+            documentId_retrievalConfigId_contentVersion: {
+              documentId: input.documentId,
+              retrievalConfigId: retrievalConfig.id,
+              contentVersion: document.contentVersion
+            }
+          },
+          create: {
+            orgId: run.orgId,
+            documentId: input.documentId,
+            retrievalConfigId: retrievalConfig.id,
+            contentVersion: document.contentVersion,
+            status: "ready",
+            qdrantCollection: input.result.qdrantCollection,
+            indexedChunkCount: input.chunks.length,
+            startedAt: run.startedAt,
+            readyAt: now
+          },
+          update: {
+            status: "ready",
+            indexedChunkCount: input.chunks.length,
+            errorCode: null,
+            errorSummary: null,
+            readyAt: now
+          }
+        });
+
+        if (input.chunks.length > 0) {
+          await tx.documentChunk.createMany({
+            data: input.chunks.map((chunk) => ({
+              documentId: chunk.documentId,
+              documentIndexId: documentIndex.id,
+              chunkId: chunk.chunkId,
+              chunkIndex: chunk.chunkIndex,
+              chunkText: chunk.chunkText,
+              chunkHash: chunk.chunkHash,
+              indexType: chunk.indexType,
+              modelName: chunk.modelName,
+              modelVersion: chunk.modelVersion,
+              contentVersion: chunk.contentVersion,
+              retrievalConfigVersion: chunk.retrievalConfigVersion,
+              qdrantPointId: chunk.qdrantPointId,
+              sourceLocation: chunk.sourceLocation as Prisma.InputJsonValue
+            })),
+            skipDuplicates: true
+          });
+        }
+
+        await tx.document.update({
+          where: {
+            id: input.documentId
+          },
+          data: {
+            status: DocumentStatus.active
+          }
+        });
+
+        await tx.auditLog.create({
+          data: {
+            orgId: run.orgId,
+            actorEmployeeId: null,
+            action: AUDIT_ACTIONS.documentActivated,
+            targetType: "document",
+            targetId: input.documentId,
+            result: "succeeded",
+            metadata: {
+              processingRunId: input.runId,
+              chunkCount: input.chunks.length,
+              retrievalConfigVersion: input.result.retrievalConfigVersion,
+              qdrantCollection: input.result.qdrantCollection
+            }
+          }
+        });
+      });
+    },
     async failProcessingRun(input) {
       const now = new Date();
 
@@ -366,6 +554,20 @@ async function extractSupportedText(
   }
 }
 
+async function readDocumentContent(
+  document: ClaimedProcessingRun["document"],
+  storage: StorageAdapter
+): Promise<Buffer> {
+  try {
+    return streamToBuffer(await storage.getObjectStream(document.storageObjectKey));
+  } catch (error) {
+    throw new ProcessingError(
+      PROCESSING_ERROR_CODES.storageReadFailed,
+      error instanceof Error ? error.message : "Unable to read storage object."
+    );
+  }
+}
+
 function chunkText(text: string): string[] {
   return text
     .replace(/\r\n?/g, "\n")
@@ -419,13 +621,17 @@ function toClaimedProcessingRun(
     orgId: run.orgId,
     documentId: run.documentId,
     retryCount: run.retryCount,
+    jobType: run.jobType,
     document: {
       id: document.id,
       orgId: document.orgId,
       uploaderId: document.uploaderId,
       status: document.status,
       storageObjectKey: document.storageObjectKey,
-      originalFileName: document.originalFileName
+      originalFileName: document.originalFileName,
+      documentKind: document.documentKind,
+      fileType: document.fileType,
+      contentVersion: document.contentVersion
     }
   };
 }
