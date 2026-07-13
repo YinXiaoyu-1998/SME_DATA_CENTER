@@ -1,5 +1,13 @@
 # 企业资料中枢 Agent Handoffs
 
+## 2026-07-13 - codex/mcp-user-flow-code-audit - MCP flow docs code audit
+
+- Scope: Re-read the current implementation code for `apps/mcp-launcher`, `apps/api/src/mcp`, `packages/mcp-contract`, API auth/dev-login, evidence upload, structured import, and worker indexing. Corrected the bilingual MCP user-flow diagrams so they reflect launcher-local `EMPLOYEE_AUTH_REQUIRED`, current login API error behavior, actual `/mcp` transport guards, compatibility handling for `ENTERPRISE_HUB_API_URL`, and the split between async evidence indexing and synchronous structured import.
+- Files changed: `docs/implementation/mcp-user-flow.md`, `docs/implementation/mcp-user-flow.zh.md`, `docs/implementation/progress.md`, and this handoff.
+- Verification: `npm run format:check` and `git diff --check` passed.
+- PR: Draft PR [#63](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/63).
+- Known limitation: Current login API request failures are reported by the launcher as `ENTERPRISE_HUB_API_ERROR`; only remote business-tool MCP network failures map to `ENTERPRISE_HUB_UNREACHABLE`.
+
 ## 2026-07-13 - codex/mcp-user-flow-docs - MCP user-flow diagrams
 
 - Scope: Added bilingual flow-diagram documentation for the current Phase 3 Enterprise Hub MCP user journey. The docs cover cold agent startup, missing MCP configuration, already-authenticated and not-yet-authenticated launcher states, upload through stdio-to-HTTP MCP, async worker indexing, search/status flows, protocol boundaries, and safe failure behavior. This is documentation-only and does not change service behavior or skill instructions.
