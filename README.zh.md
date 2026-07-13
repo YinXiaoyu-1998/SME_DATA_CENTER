@@ -13,6 +13,8 @@
 - CLI smoke：登录、上传、搜索。
 - 本地 MCP server：让 Codex 这类 MCP-capable agent 通过 HTTP API 使用企业资料中枢。
 - `enterprise-hub-mcp` skill：指导 agent 安全使用本地 MCP profile。
+- Phase 3 检索底座：MD/TXT/DOCX 证据资料上传、结构化切块、Qdrant 检索、rerank/fake provider 配置。
+- Phase 3 结构化数据底座：XLSX/CSV 菜品/营业数据严格校验、原子导入 MySQL、受控只读结构化 query。
 
 ## 前置依赖
 
@@ -42,6 +44,7 @@ STORAGE_DRIVER="local"
 LOCAL_STORAGE_ROOT="./.data/storage"
 JWT_SECRET="replace-with-local-development-secret"
 DEV_SEED_ADMIN_EMAIL="admin@example.com"
+MAX_UPLOAD_BYTES="52428800"
 ```
 
 如果本机 `3306` 已被占用，使用 `3307` 时请把 `.env` 或命令里的连接串改成：
@@ -52,18 +55,24 @@ DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:330
 
 可选变量：
 
-| Variable                          | 用途                                    | 默认值或示例                            |
-| --------------------------------- | --------------------------------------- | --------------------------------------- |
-| `MYSQL_PORT`                      | Docker MySQL 暴露端口                   | `3306`，常用本地替代值 `3307`           |
-| `PORT`                            | API 监听端口                            | `3000`                                  |
-| `HOST`                            | API bind host                           | `0.0.0.0`                               |
-| `HUB_API_URL`                     | CLI 调用 API 的地址                     | `http://127.0.0.1:3000`                 |
-| `HUB_CLI_SESSION_FILE`            | CLI 本地 session 文件                   | `.data/hub-cli/session.json`            |
-| `ENTERPRISE_HUB_API_URL`          | MCP server 调用 API 的地址，必填        | `http://127.0.0.1:3000`                 |
-| `ENTERPRISE_HUB_MCP_PROFILE`      | MCP profile                             | `local-development`                     |
-| `ENTERPRISE_HUB_MCP_SESSION_FILE` | MCP 本地 session 文件，可能含 dev token | `.data/enterprise-hub-mcp/session.json` |
-| `HUB_INTEGRATION_PORT`            | `test:integration` 临时 API 端口        | 自动选择                                |
-| `HUB_MCP_TEST_PORT`               | `test:mcp` 临时 API 端口                | 自动选择                                |
+| Variable                                   | 用途                                    | 默认值或示例                            |
+| ------------------------------------------ | --------------------------------------- | --------------------------------------- |
+| `MYSQL_PORT`                               | Docker MySQL 暴露端口                   | `3306`，常用本地替代值 `3307`           |
+| `PORT`                                     | API 监听端口                            | `3000`                                  |
+| `HOST`                                     | API bind host                           | `0.0.0.0`                               |
+| `HUB_API_URL`                              | CLI 调用 API 的地址                     | `http://127.0.0.1:3000`                 |
+| `HUB_CLI_SESSION_FILE`                     | CLI 本地 session 文件                   | `.data/hub-cli/session.json`            |
+| `ENTERPRISE_HUB_API_URL`                   | MCP server 调用 API 的地址，必填        | `http://127.0.0.1:3000`                 |
+| `ENTERPRISE_HUB_MCP_PROFILE`               | MCP profile                             | `local-development`                     |
+| `ENTERPRISE_HUB_MCP_SESSION_FILE`          | MCP 本地 session 文件，可能含 dev token | `.data/enterprise-hub-mcp/session.json` |
+| `HUB_INTEGRATION_PORT`                     | `test:integration` 临时 API 端口        | 自动选择                                |
+| `HUB_MCP_TEST_PORT`                        | `test:mcp` 临时 API 端口                | 自动选择                                |
+| `QDRANT_URL`                               | Phase 3 本地 Qdrant 地址                | `http://127.0.0.1:6333`                 |
+| `QDRANT_COLLECTION_EVIDENCE`               | 证据向量 collection                     | `enterprise_hub_evidence_local`         |
+| `LLM_PROVIDER`                             | embedding/rerank provider               | 本地/CI 默认 `fake`                     |
+| `LLM_MODEL`                                | rerank 模型名                           | 本地/CI 默认 `fake-rerank`              |
+| `LLM_EMBEDDING_MODEL`                      | embedding 模型名                        | 本地/CI 默认 `fake-embedding`           |
+| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` | 结构化导入原子事务超时                  | `120000`                                |
 
 不要提交 `.env`、`.data/`、本地 session 文件、真实凭据、真实客户资料或第三方下载数据。
 
@@ -110,12 +119,12 @@ npm run purge-data -- --files-only
 
 出于安全考虑，MySQL 清理只允许 `DATABASE_URL` 指向 `localhost` / `127.0.0.1` 的 MySQL，且数据库名必须是 `enterprise_hub`。
 
-## 启动本地数据库
+## 启动本地数据库和 Qdrant
 
 推荐使用 `3307`，避免和本机已有 MySQL 冲突：
 
 ```sh
-MYSQL_PORT=3307 docker compose up -d mysql
+MYSQL_PORT=3307 npm run runtime:compose:up
 ```
 
 生成 Prisma client，并应用迁移：
@@ -129,6 +138,16 @@ DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:330
 
 ```sh
 DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed
+```
+
+初始化 Phase 3 本地 Qdrant collection，并运行 readiness：
+
+```sh
+npm run qdrant:init
+DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
+  STORAGE_DRIVER=local \
+  LOCAL_STORAGE_ROOT=./.data/storage \
+  npm run readyz:local
 ```
 
 seed 中常用本地员工：
@@ -297,6 +316,13 @@ npm run lint
 npm run format:check
 ```
 
+Phase 3 synthetic gate：
+
+```sh
+npm run test:phase3:golden
+npm run test:phase3:perf
+```
+
 本地 MVP 集成测试：
 
 ```sh
@@ -313,28 +339,33 @@ MYSQL_PORT=3307 npm run test:mcp
 
 ## npm scripts 速查
 
-| Script             | 功能                                                      | 运行方法                                                                                                                | 备注                                                             |
-| ------------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `format`           | 用 Prettier 格式化整个仓库。                              | `npm run format`                                                                                                        | 会直接改写文件。                                                 |
-| `format:check`     | 检查 Prettier 格式，不改写文件。                          | `npm run format:check`                                                                                                  | 提交和 PR 前常用。                                               |
-| `lint`             | 运行 ESLint。                                             | `npm run lint`                                                                                                          | 做静态代码质量检查。                                             |
-| `test`             | 运行 Vitest 测试。                                        | `npm test`                                                                                                              | 等价于 `npm run test`。                                          |
-| `test:integration` | 跑本地 MVP 集成流程。                                     | `MYSQL_PORT=3307 npm run test:integration`                                                                              | 会重置本地 development database。                                |
-| `test:mcp`         | 跑本地 MCP smoke 测试。                                   | `MYSQL_PORT=3307 npm run test:mcp`                                                                                      | 会启动测试所需本地服务，并重置本地测试数据。                     |
-| `test:watch`       | 以 watch 模式运行 Vitest。                                | `npm run test:watch`                                                                                                    | 写测试或调试测试时使用。                                         |
-| `typecheck`        | 运行 TypeScript 类型检查，不输出编译文件。                | `npm run typecheck`                                                                                                     | 检查全仓 TS 类型。                                               |
-| `api:dev`          | 启动 Fastify API 服务。                                   | `npm run api:dev`                                                                                                       | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
-| `hub`              | 运行 Enterprise Hub CLI。                                 | `npm run hub -- <command>`                                                                                              | 示例：`npm run hub -- login --email baoli.manager@example.com`。 |
-| `mcp-bootup`       | 启动 API、worker loop，然后启动 MCP。                     | `npm run mcp-bootup`                                                                                                    | 配到 MCP client 时建议用 `npm run --silent mcp-bootup`。         |
-| `mcp:dev`          | 启动本地 stdio MCP server。                               | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | 需要 API 已经在对应地址运行。                                    |
-| `purge-data`       | 删除本地 MySQL 文档资料数据和 ignored 上传/test storage。 | `npm run purge-data`；预览用 `npm run purge-data -- --dry-run`；删除整个 `.data` 用 `npm run purge-data -- --all`       | 用 `--files-only` 可以只删文件、不动 MySQL。                     |
-| `worker:dev`       | 启动本地 worker loop，持续处理队列。                      | `npm run worker:dev`                                                                                                    | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
-| `worker:once`      | 运行一次确定性 worker 处理。                              | `npm run worker:once`                                                                                                   | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
-| `db:compose:up`    | 启动本地 MySQL Docker Compose 服务。                      | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | 底层是 `docker compose up -d mysql`。                            |
-| `db:compose:down`  | 停止本地 Docker Compose 服务。                            | `npm run db:compose:down`                                                                                               | 底层是 `docker compose down`。                                   |
-| `db:generate`      | 生成 Prisma client。                                      | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate` | schema 或依赖变化后按需运行。                                    |
-| `db:migrate`       | 在本地开发数据库上应用 Prisma migration。                 | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`  | 会更新本地 development database。                                |
-| `db:seed`          | 写入本地开发 seed 数据。                                  | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`     | 创建 demo 员工、标签和 skills。                                  |
+| Script               | 功能                                                        | 运行方法                                                                                                                | 备注                                                             |
+| -------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `format`             | 用 Prettier 格式化整个仓库。                                | `npm run format`                                                                                                        | 会直接改写文件。                                                 |
+| `format:check`       | 检查 Prettier 格式，不改写文件。                            | `npm run format:check`                                                                                                  | 提交和 PR 前常用。                                               |
+| `lint`               | 运行 ESLint。                                               | `npm run lint`                                                                                                          | 做静态代码质量检查。                                             |
+| `test`               | 运行 Vitest 测试。                                          | `npm test`                                                                                                              | 等价于 `npm run test`。                                          |
+| `test:integration`   | 跑本地 MVP 集成流程。                                       | `MYSQL_PORT=3307 npm run test:integration`                                                                              | 会重置本地 development database。                                |
+| `test:mcp`           | 跑本地 MCP smoke 测试，包含 Phase 3 结构化/证据 MCP tools。 | `MYSQL_PORT=3307 npm run test:mcp`                                                                                      | 会启动本地 MySQL/Qdrant 测试服务，并重置本地测试数据。           |
+| `test:phase3:golden` | 跑 Phase 3 synthetic golden retrieval evaluation。          | `npm run test:phase3:golden`                                                                                            | 使用 fake provider 和 synthetic evidence。                       |
+| `test:phase3:perf`   | 跑 Phase 3 deterministic performance smoke gates。          | `npm run test:phase3:perf`                                                                                              | 覆盖 synthetic retrieval/query/import/worker gates。             |
+| `test:watch`         | 以 watch 模式运行 Vitest。                                  | `npm run test:watch`                                                                                                    | 写测试或调试测试时使用。                                         |
+| `typecheck`          | 运行 TypeScript 类型检查，不输出编译文件。                  | `npm run typecheck`                                                                                                     | 检查全仓 TS 类型。                                               |
+| `api:dev`            | 启动 Fastify API 服务。                                     | `npm run api:dev`                                                                                                       | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
+| `hub`                | 运行 Enterprise Hub CLI。                                   | `npm run hub -- <command>`                                                                                              | 示例：`npm run hub -- login --email baoli.manager@example.com`。 |
+| `mcp-bootup`         | 启动 API、worker loop，然后启动 MCP。                       | `npm run mcp-bootup`                                                                                                    | 配到 MCP client 时建议用 `npm run --silent mcp-bootup`。         |
+| `mcp:dev`            | 启动本地 stdio MCP server。                                 | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | 需要 API 已经在对应地址运行。                                    |
+| `purge-data`         | 删除本地 MySQL 文档资料数据和 ignored 上传/test storage。   | `npm run purge-data`；预览用 `npm run purge-data -- --dry-run`；删除整个 `.data` 用 `npm run purge-data -- --all`       | 用 `--files-only` 可以只删文件、不动 MySQL。                     |
+| `worker:dev`         | 启动本地 worker loop，持续处理队列。                        | `npm run worker:dev`                                                                                                    | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
+| `worker:once`        | 运行一次确定性 worker 处理。                                | `npm run worker:once`                                                                                                   | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
+| `db:compose:up`      | 启动本地 MySQL Docker Compose 服务。                        | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | 底层是 `docker compose up -d mysql`。                            |
+| `runtime:compose:up` | 启动本地 MySQL + Qdrant Docker Compose 服务。               | `MYSQL_PORT=3307 npm run runtime:compose:up`                                                                            | 底层是 `docker compose up -d mysql qdrant`。                     |
+| `qdrant:init`        | 初始化或更新本地 Phase 3 evidence collection。              | `npm run qdrant:init`                                                                                                   | 需要 Qdrant 已运行。                                             |
+| `readyz:local`       | 运行本地 runtime readiness checks。                         | `npm run readyz:local`                                                                                                  | 检查 MySQL、storage、model config、Qdrant。                      |
+| `db:compose:down`    | 停止本地 Docker Compose 服务。                              | `npm run db:compose:down`                                                                                               | 底层是 `docker compose down`。                                   |
+| `db:generate`        | 生成 Prisma client。                                        | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate` | schema 或依赖变化后按需运行。                                    |
+| `db:migrate`         | 在本地开发数据库上应用 Prisma migration。                   | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`  | 会更新本地 development database。                                |
+| `db:seed`            | 写入本地开发 seed 数据。                                    | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`     | 创建 demo 员工、标签和 skills。                                  |
 
 ## 常见问题
 

@@ -12,6 +12,24 @@ export interface StructuredQueryRepository {
   disconnect?(): Promise<void>;
 }
 
+function serializeStructuredQueryValue(value: unknown): unknown {
+  if (typeof value !== "bigint") {
+    return value;
+  }
+
+  if (value <= BigInt(Number.MAX_SAFE_INTEGER) && value >= BigInt(Number.MIN_SAFE_INTEGER)) {
+    return Number(value);
+  }
+
+  return value.toString();
+}
+
+function serializeStructuredQueryRow(row: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key, serializeStructuredQueryValue(value)])
+  );
+}
+
 function requireDatabaseUrl(): string {
   const databaseUrl = process.env["DATABASE_URL"];
 
@@ -41,7 +59,7 @@ export function createPrismaStructuredQueryRepository(
       const visibleRows = rows.slice(0, compiled.limit);
 
       return {
-        rows: visibleRows,
+        rows: visibleRows.map(serializeStructuredQueryRow),
         hasMore: rows.length > compiled.limit
       };
     },

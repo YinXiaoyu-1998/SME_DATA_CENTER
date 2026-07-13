@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -57,6 +57,37 @@ interface WorkerResponse {
   status?: string;
 }
 
+interface StructuredDatasetsResponse {
+  datasets: Array<{ dataset: string }>;
+}
+
+interface StructuredQueryResponse {
+  rows: Array<Record<string, unknown>>;
+}
+
+interface StructuredUploadResponse {
+  importBatch: {
+    importBatchId: string;
+    dataset: string;
+    status: string;
+    appliedRowCount: number;
+  };
+}
+
+interface EvidenceUploadResponse {
+  document: {
+    documentId: string;
+    status: string;
+  };
+}
+
+interface EvidenceSearchResponse {
+  results: Array<{
+    documentId: string;
+    text: string;
+  }>;
+}
+
 interface McpToolCaller {
   call: <T>(toolName: string, input: unknown) => Promise<T>;
   callExpectError: (toolName: string, input: unknown) => Promise<{ error?: { code?: string } }>;
@@ -79,6 +110,13 @@ const testEnv: NodeJS.ProcessEnv = {
   LOCAL_STORAGE_ROOT: storageRoot,
   ENTERPRISE_HUB_API_URL: apiUrl,
   ENTERPRISE_HUB_MCP_SESSION_FILE: sessionFile,
+  QDRANT_URL: process.env["QDRANT_URL"] ?? "http://127.0.0.1:6333",
+  QDRANT_COLLECTION_EVIDENCE:
+    process.env["QDRANT_COLLECTION_EVIDENCE"] ?? "enterprise_hub_evidence_local",
+  RETRIEVAL_CONFIG_VERSION: process.env["RETRIEVAL_CONFIG_VERSION"] ?? "phase3.retrieval.v1",
+  LLM_PROVIDER: process.env["LLM_PROVIDER"] ?? "fake",
+  LLM_MODEL: process.env["LLM_MODEL"] ?? "fake-rerank",
+  LLM_EMBEDDING_MODEL: process.env["LLM_EMBEDDING_MODEL"] ?? "fake-embedding",
   NODE_ENV: "development",
   HOST: "127.0.0.1",
   PORT: mcpTestPort
@@ -95,7 +133,7 @@ let apiProcess: ReturnType<typeof spawn> | null = null;
 
 try {
   await prepareLocalWorkspace();
-  await run("docker", ["compose", "up", "-d", "mysql"], { env: testEnv });
+  await run("docker", ["compose", "up", "-d", "mysql", "qdrant"], { env: testEnv });
   await waitForMysqlHealth();
   await run("npm", ["run", "db:generate"], { env: testEnv });
   await run(
@@ -104,6 +142,7 @@ try {
     { env: testEnv }
   );
   await run("npm", ["run", "db:seed"], { env: testEnv });
+  await run("npm", ["run", "qdrant:init"], { env: testEnv });
 
   apiProcess = startApi();
   await waitForApiHealth(apiProcess);
@@ -227,11 +266,105 @@ try {
     "Archived document should disappear from ordinary MCP search."
   );
 
+  const structuredDatasets = await tools.call<StructuredDatasetsResponse>(
+    "list_structured_datasets",
+    {
+      sessionName: "baoli"
+    }
+  );
+  assert(
+    structuredDatasets.datasets.some((dataset) => dataset.dataset === "dishes"),
+    "MCP structured dataset discovery should expose dishes."
+  );
+
+  const structuredUpload = await tools.call<StructuredUploadResponse>("upload_structured_dataset", {
+    sessionName: "baoli",
+    filePath: path.join(rootDir, "fixtures", "structured", "dishes-valid.csv"),
+    dataset: "dishes",
+    enterpriseName: "MCP Smoke",
+    startDate: "20260701",
+    endDate: "20260705",
+    idempotencyKey: `mcp-phase3-${Date.now()}`,
+    labelKeys: ["store:baoli"]
+  });
+  assert(
+    structuredUpload.importBatch.status === "applied",
+    "MCP structured upload should return an applied import batch."
+  );
+  assert(
+    structuredUpload.importBatch.appliedRowCount === 1,
+    "MCP structured upload should import the fixture row."
+  );
+
+  const importStatus = await tools.call<StructuredUploadResponse>("get_import_status", {
+    sessionName: "baoli",
+    importBatchId: structuredUpload.importBatch.importBatchId
+  });
+  assert(
+    importStatus.importBatch.status === "applied",
+    "MCP import status should read the applied structured import."
+  );
+
+  const structuredQuery = await tools.call<StructuredQueryResponse>("query_structured_dataset", {
+    sessionName: "baoli",
+    dataset: "dishes",
+    aggregates: [{ op: "count", as: "row_count" }],
+    page: { limit: 1 }
+  });
+  assert(
+    structuredQuery.rows[0]?.["row_count"] === 1,
+    "MCP structured query should return the imported row count."
+  );
+
+  const evidencePath = path.join(testRoot, "phase3-evidence.md");
+  await writeFile(
+    evidencePath,
+    "# 差评处理 SOP\n\n差评处理需要在 15 分钟内联系顾客，记录订单号、原因和补偿动作。\n",
+    "utf8"
+  );
+  const evidenceUpload = await tools.call<EvidenceUploadResponse>("upload_evidence_document", {
+    sessionName: "baoli",
+    filePath: evidencePath,
+    title: "MCP Phase 3 差评处理 SOP",
+    sourceSystem: "mcp_phase3_smoke",
+    labelKeys: ["store:baoli"]
+  });
+  assert(
+    evidenceUpload.document.status === "pending_processing",
+    "MCP evidence upload should create a pending evidence document."
+  );
+
+  const evidenceWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: testEnv })).stdout
+  );
+  assert(
+    evidenceWorker.documentId === evidenceUpload.document.documentId,
+    "Worker should process the MCP evidence upload."
+  );
+  assert(evidenceWorker.status === "active", "Worker should activate the MCP evidence upload.");
+  await waitForMcpStatus(tools, evidenceUpload.document.documentId, "active");
+
+  const evidenceSearch = await tools.call<EvidenceSearchResponse>("search_document_evidence", {
+    sessionName: "baoli",
+    query: "差评处理",
+    filters: { fileTypes: ["md"] },
+    limit: 5
+  });
+  assert(
+    evidenceSearch.results.some(
+      (result) =>
+        result.documentId === evidenceUpload.document.documentId && result.text.includes("差评处理")
+    ),
+    "MCP evidence search should return evidence chunks without generating an answer."
+  );
+
   console.log(
     JSON.stringify(
       {
         ok: true,
         documentId: upload.id,
+        structuredImportBatchId: structuredUpload.importBatch.importBatchId,
+        evidenceDocumentId: evidenceUpload.document.documentId,
         apiUrl,
         mysqlPort,
         proved: [
@@ -245,7 +378,11 @@ try {
           "mcp_search_suzhou_hidden",
           "mcp_detail_suzhou_not_found_without_title",
           "mcp_download_url",
-          "mcp_archive_hidden"
+          "mcp_archive_hidden",
+          "mcp_phase3_structured_dataset_discovery",
+          "mcp_phase3_structured_upload_status",
+          "mcp_phase3_structured_query",
+          "mcp_phase3_evidence_upload_index_search"
         ]
       },
       null,

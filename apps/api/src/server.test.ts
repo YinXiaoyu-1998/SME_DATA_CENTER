@@ -726,14 +726,39 @@ function structuredWorkbook(input: {
   dataset: StructuredDatasetName;
   includeHiddenSheet?: boolean;
   includeExplanationSheet?: boolean;
+  prefaceRows?: string[][];
 }) {
   const registry = getStructuredRegistry(input.dataset);
   const workbook = utils.book_new();
   const headers = registry.fields.map((field) => field.sourceColumn);
-  const row = registry.fields.map((field, index) =>
-    field.canonicalName === "business_date" ? "2026-07-02" : `value_${index + 1}`
+  const row = registry.fields.map((field, index) => {
+    if (field.canonicalName === "business_date") {
+      return "2026-07-02";
+    }
+
+    if (field.type === "integer") {
+      return String(index + 1);
+    }
+
+    if (field.type === "decimal" || field.type === "percent") {
+      return `${index + 1}.5`;
+    }
+
+    if (field.type === "date") {
+      return "2026-07-02";
+    }
+
+    if (field.type === "date_time") {
+      return "2026-07-02 12:30:00";
+    }
+
+    return `value_${index + 1}`;
+  });
+  utils.book_append_sheet(
+    workbook,
+    utils.aoa_to_sheet([...(input.prefaceRows ?? []), headers, row]),
+    "Data"
   );
-  utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, row]), "Data");
 
   if (input.includeHiddenSheet) {
     utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, row]), "HiddenData");
@@ -2312,6 +2337,64 @@ describe("structured imports", () => {
     ]);
     expect(JSON.stringify(documentRepository.auditLogs)).not.toContain("value_1");
     expect(JSON.stringify(documentRepository.auditLogs)).not.toContain("保利店_dishes");
+  });
+
+  it("finds a structured XLSX header after prefatory title rows", async () => {
+    const { app } = await buildStructuredImportTestServer();
+
+    const response = await postStructuredImport(app, {
+      enterpriseName: "麦家",
+      dataset: "dishes",
+      idempotencyKey: "xlsx-preface-success",
+      fileName: "麦家菜品记录.xlsx",
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      body: structuredWorkbook({
+        dataset: "dishes",
+        prefaceRows: [["菜品主题数据"], ["统计时间：2026-07-01 至 2026-07-05"]]
+      })
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      importBatch: {
+        dataset: "dishes",
+        status: "applied",
+        appliedRowCount: 1,
+        sourceSheetSummary: [
+          {
+            name: "Data",
+            headerRowNumber: 3,
+            dataRowCount: 1
+          }
+        ]
+      }
+    });
+  });
+
+  it("skips explicit structured summary footer rows", async () => {
+    const { app, structuredImportRepository } = await buildStructuredImportTestServer();
+    const registry = getStructuredRegistry("business");
+    const footer = ["合计", ...registry.fields.slice(1).map(() => "--")].join(",");
+
+    const response = await postStructuredImport(app, {
+      enterpriseName: "麦家",
+      dataset: "business",
+      idempotencyKey: "csv-summary-footer-success",
+      fileName: "business.csv",
+      contentType: "text/csv",
+      body: Buffer.from(`${validStructuredCsv("business")}${footer}\n`, "utf8")
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      importBatch: {
+        dataset: "business",
+        status: "applied",
+        appliedRowCount: 1,
+        totalRowCount: 1
+      }
+    });
+    expect(structuredImportRepository.queryableRowCount("business")).toBe(1);
   });
 
   it("handles import idempotency and active/in-progress window conflicts", async () => {

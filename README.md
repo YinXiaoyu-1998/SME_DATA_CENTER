@@ -34,6 +34,19 @@ STORAGE_DRIVER="local"
 LOCAL_STORAGE_ROOT="./.data/storage"
 JWT_SECRET="replace-with-local-development-secret"
 DEV_SEED_ADMIN_EMAIL="admin@example.com"
+MAX_UPLOAD_BYTES="52428800"
+```
+
+Phase 3 retrieval and structured-data work also uses local Qdrant and fake model providers by default:
+
+```dotenv
+QDRANT_URL="http://127.0.0.1:6333"
+QDRANT_COLLECTION_EVIDENCE="enterprise_hub_evidence_local"
+RETRIEVAL_CONFIG_VERSION="phase3.retrieval.v1"
+LLM_PROVIDER="fake"
+LLM_MODEL="fake-rerank"
+LLM_EMBEDDING_MODEL="fake-embedding"
+STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS="120000"
 ```
 
 Do not commit `.env`, `.data/`, session files, real credentials, real customer data, or downloaded third-party exports.
@@ -82,10 +95,10 @@ For safety, MySQL cleanup only runs when `DATABASE_URL` points at local
 
 ## Start Locally
 
-Start MySQL:
+Start MySQL and Qdrant for the full Phase 3 local runtime:
 
 ```sh
-MYSQL_PORT=3307 npm run db:compose:up
+MYSQL_PORT=3307 npm run runtime:compose:up
 ```
 
 Generate the Prisma client, apply migrations, and seed local data:
@@ -100,6 +113,16 @@ Start the API:
 
 ```sh
 npm run api:dev
+```
+
+Initialize the local evidence collection and run readiness checks:
+
+```sh
+npm run qdrant:init
+DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
+  STORAGE_DRIVER=local \
+  LOCAL_STORAGE_ROOT=./.data/storage \
+  npm run readyz:local
 ```
 
 The API entrypoint automatically loads `.env` from the current working directory when it exists, without overriding environment variables already provided by the shell.
@@ -142,28 +165,33 @@ npm run worker:once
 
 ## npm Scripts
 
-| Script             | What It Does                                                              | How To Run                                                                                                                  | Notes                                                              |
-| ------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `format`           | Formats the repository with Prettier.                                     | `npm run format`                                                                                                            | Writes changes to files.                                           |
-| `format:check`     | Checks Prettier formatting without writing files.                         | `npm run format:check`                                                                                                      | Useful before commits and PRs.                                     |
-| `lint`             | Runs ESLint across the repository.                                        | `npm run lint`                                                                                                              | Static code-quality check.                                         |
-| `test`             | Runs the Vitest unit/integration-style test suite configured in the repo. | `npm test`                                                                                                                  | Same as `npm run test`.                                            |
-| `test:integration` | Runs the local MVP integration flow.                                      | `MYSQL_PORT=3307 npm run test:integration`                                                                                  | Resets the local development database.                             |
-| `test:mcp`         | Runs the local MCP smoke test.                                            | `MYSQL_PORT=3307 npm run test:mcp`                                                                                          | Starts local test services and resets local test data.             |
-| `test:watch`       | Runs Vitest in watch mode.                                                | `npm run test:watch`                                                                                                        | Useful while editing tests.                                        |
-| `typecheck`        | Runs TypeScript without emitting compiled files.                          | `npm run typecheck`                                                                                                         | Verifies TS types across the repo.                                 |
-| `api:dev`          | Starts the Fastify API service.                                           | `npm run api:dev`                                                                                                           | Auto-loads `.env` when present.                                    |
-| `hub`              | Runs the Enterprise Hub CLI.                                              | `npm run hub -- <command>`                                                                                                  | Example: `npm run hub -- login --email baoli.manager@example.com`. |
-| `mcp-bootup`       | Starts the API, starts a worker loop, then starts the MCP stdio server.   | `npm run mcp-bootup`                                                                                                        | For MCP client config, prefer `npm run --silent mcp-bootup`.       |
-| `mcp:dev`          | Starts the local stdio MCP server.                                        | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                              | Requires the API to already be running.                            |
-| `purge-data`       | Removes local MySQL document data plus ignored upload/test storage files. | `npm run purge-data`; preview with `npm run purge-data -- --dry-run`; remove all `.data` with `npm run purge-data -- --all` | Use `--files-only` to leave MySQL untouched.                       |
-| `worker:dev`       | Starts a local worker loop that continuously processes queued documents.  | `npm run worker:dev`                                                                                                        | Auto-loads `.env` when present.                                    |
-| `worker:once`      | Runs one deterministic worker pass.                                       | `npm run worker:once`                                                                                                       | Auto-loads `.env` when present.                                    |
-| `db:compose:up`    | Starts the local MySQL Docker Compose service.                            | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                     | Uses `docker compose up -d mysql`.                                 |
-| `db:compose:down`  | Stops local Docker Compose services.                                      | `npm run db:compose:down`                                                                                                   | Uses `docker compose down`.                                        |
-| `db:generate`      | Generates the Prisma client.                                              | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate`     | Run after dependency/schema changes when needed.                   |
-| `db:migrate`       | Applies Prisma migrations in development.                                 | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`      | Updates the local development database.                            |
-| `db:seed`          | Seeds local development data.                                             | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`         | Creates local demo employees, labels, and skills.                  |
+| Script               | What It Does                                                                    | How To Run                                                                                                                  | Notes                                                               |
+| -------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `format`             | Formats the repository with Prettier.                                           | `npm run format`                                                                                                            | Writes changes to files.                                            |
+| `format:check`       | Checks Prettier formatting without writing files.                               | `npm run format:check`                                                                                                      | Useful before commits and PRs.                                      |
+| `lint`               | Runs ESLint across the repository.                                              | `npm run lint`                                                                                                              | Static code-quality check.                                          |
+| `test`               | Runs the Vitest unit/integration-style test suite configured in the repo.       | `npm test`                                                                                                                  | Same as `npm run test`.                                             |
+| `test:integration`   | Runs the local MVP integration flow.                                            | `MYSQL_PORT=3307 npm run test:integration`                                                                                  | Resets the local development database.                              |
+| `test:mcp`           | Runs the local MCP smoke test, including Phase 3 structured/evidence MCP tools. | `MYSQL_PORT=3307 npm run test:mcp`                                                                                          | Starts local MySQL/Qdrant test services and resets local test data. |
+| `test:phase3:golden` | Runs the synthetic Phase 3 golden retrieval evaluation.                         | `npm run test:phase3:golden`                                                                                                | Uses deterministic fake providers and synthetic evidence.           |
+| `test:phase3:perf`   | Runs deterministic Phase 3 performance smoke gates.                             | `npm run test:phase3:perf`                                                                                                  | Covers synthetic retrieval/query/import/worker gates.               |
+| `test:watch`         | Runs Vitest in watch mode.                                                      | `npm run test:watch`                                                                                                        | Useful while editing tests.                                         |
+| `typecheck`          | Runs TypeScript without emitting compiled files.                                | `npm run typecheck`                                                                                                         | Verifies TS types across the repo.                                  |
+| `api:dev`            | Starts the Fastify API service.                                                 | `npm run api:dev`                                                                                                           | Auto-loads `.env` when present.                                     |
+| `hub`                | Runs the Enterprise Hub CLI.                                                    | `npm run hub -- <command>`                                                                                                  | Example: `npm run hub -- login --email baoli.manager@example.com`.  |
+| `mcp-bootup`         | Starts the API, starts a worker loop, then starts the MCP stdio server.         | `npm run mcp-bootup`                                                                                                        | For MCP client config, prefer `npm run --silent mcp-bootup`.        |
+| `mcp:dev`            | Starts the local stdio MCP server.                                              | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                              | Requires the API to already be running.                             |
+| `purge-data`         | Removes local MySQL document data plus ignored upload/test storage files.       | `npm run purge-data`; preview with `npm run purge-data -- --dry-run`; remove all `.data` with `npm run purge-data -- --all` | Use `--files-only` to leave MySQL untouched.                        |
+| `worker:dev`         | Starts a local worker loop that continuously processes queued documents.        | `npm run worker:dev`                                                                                                        | Auto-loads `.env` when present.                                     |
+| `worker:once`        | Runs one deterministic worker pass.                                             | `npm run worker:once`                                                                                                       | Auto-loads `.env` when present.                                     |
+| `db:compose:up`      | Starts the local MySQL Docker Compose service.                                  | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                     | Uses `docker compose up -d mysql`.                                  |
+| `runtime:compose:up` | Starts local MySQL and Qdrant Docker Compose services.                          | `MYSQL_PORT=3307 npm run runtime:compose:up`                                                                                | Uses `docker compose up -d mysql qdrant`.                           |
+| `qdrant:init`        | Creates/updates the local Phase 3 evidence collection.                          | `npm run qdrant:init`                                                                                                       | Requires Qdrant to be running.                                      |
+| `readyz:local`       | Runs local runtime readiness checks.                                            | `npm run readyz:local`                                                                                                      | Checks MySQL, storage, model config, and Qdrant.                    |
+| `db:compose:down`    | Stops local Docker Compose services.                                            | `npm run db:compose:down`                                                                                                   | Uses `docker compose down`.                                         |
+| `db:generate`        | Generates the Prisma client.                                                    | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate`     | Run after dependency/schema changes when needed.                    |
+| `db:migrate`         | Applies Prisma migrations in development.                                       | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`      | Updates the local development database.                             |
+| `db:seed`            | Seeds local development data.                                                   | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`         | Creates local demo employees, labels, and skills.                   |
 
 ## Useful Checks
 
