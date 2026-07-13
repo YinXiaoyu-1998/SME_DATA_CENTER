@@ -26,11 +26,11 @@ There is no generic document upload/search/detail/download/archive flow.
 
 ## Profiles
 
-| Profile             | Status      | Connection                                                | Auth                                                 |
-| ------------------- | ----------- | --------------------------------------------------------- | ---------------------------------------------------- |
-| `local-development` | implemented | local stdio command; prefer `npm run --silent mcp-bootup` | seeded employee email via `enterprise_hub_login_dev` |
-| `staging-remote`    | placeholder | future deployed MCP/API endpoint                          | future employee-bound auth/token flow                |
-| `production`        | placeholder | future production MCP/API endpoint                        | future production employee auth/token policy         |
+| Profile             | Status      | Connection                                                  | Auth                                                 |
+| ------------------- | ----------- | ----------------------------------------------------------- | ---------------------------------------------------- |
+| `local-development` | implemented | local stdio MCP adapter connected to an already-running API | seeded employee email via `enterprise_hub_login_dev` |
+| `staging-remote`    | placeholder | future deployed MCP/API endpoint                            | future employee-bound auth/token flow                |
+| `production`        | placeholder | future production MCP/API endpoint                          | future production employee auth/token policy         |
 
 For `staging-remote` and `production`, do not invent URLs, credentials, token flows, domains, TLS settings, or service accounts. Ask the user for approved configuration when it is missing.
 
@@ -38,40 +38,45 @@ For `staging-remote` and `production`, do not invent URLs, credentials, token fl
 
 Normal upload, search, status, and query work must only use exposed MCP tools.
 
-Do not start API, worker, Docker, MySQL, Qdrant, or any background service during a normal user upload/search task. Service startup is only allowed when the user explicitly asks to initialize or repair the local development connection.
+Do not start, stop, initialize, repair, seed, migrate, or otherwise operate the API, worker, Docker, MySQL, Qdrant, storage, or any background service. The skill may configure and start only the MCP stdio adapter process needed by the MCP client.
 
-Do not fall back to repo scripts, curl, direct API calls, database reads, or storage reads when MCP tools fail. Report that the 企业资料中枢 service is unavailable or not connected.
+Do not fall back to service-management scripts, curl, direct API calls, database reads, or storage reads when MCP tools fail. Report that the 企业资料中枢 service is unavailable or not connected, and direct service operators to the main service repository documentation.
 
 ## Initialize A Local MCP Client
 
 Only do this when the user explicitly asks to connect or initialize Enterprise Hub MCP.
 
-1. Locate the Enterprise Hub repository root. The local default is `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER`.
-2. For Codex Desktop, update `~/.codex/config.toml`:
+1. Obtain an approved `ENTERPRISE_HUB_API_URL` for an already-running Enterprise Hub API. The API, worker, database, storage, and Qdrant must be provisioned and operated outside this skill.
+2. Locate the Enterprise Hub repository root containing the MCP adapter. The local default is `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER`.
+3. For Codex Desktop, update `~/.codex/config.toml`:
 
    ```toml
    [mcp_servers.enterprise-hub]
    command = "bash"
-   args = ["-lc", "cd /path/to/SME_DATA_CENTER && npm run --silent mcp-bootup"]
+   args = ["-lc", "cd /path/to/SME_DATA_CENTER && npm run --silent mcp:dev"]
    startup_timeout_sec = 120
 
    [mcp_servers.enterprise-hub.env]
+   ENTERPRISE_HUB_API_URL = "https://approved-enterprise-hub-api.example"
+   ENTERPRISE_HUB_MCP_PROFILE = "local-development"
    ENTERPRISE_HUB_MCP_SESSION_FILE = "/path/to/SME_DATA_CENTER/.data/enterprise-hub-mcp/session.json"
    ```
 
-3. Remove obsolete `ENTERPRISE_HUB_API_URL` and `ENTERPRISE_HUB_MCP_PROFILE` entries from this server config when using `mcp-bootup`; bootup derives the local API URL.
-4. Preserve other MCP servers, plugin config, project trust settings, and user preferences.
-5. Never write production credentials, API keys, passwords, or bearer tokens into config.
-6. Tell the user to restart Codex or open a fresh thread after config changes so MCP tools and this skill reload.
+4. `mcp:dev` starts only the MCP stdio adapter. It requires the configured API to already be reachable and must not be replaced with a command that starts service components.
+5. Preserve other MCP servers, plugin config, project trust settings, and user preferences.
+6. Never write production credentials, API keys, passwords, or bearer tokens into config.
+7. Tell the user to restart Codex or open a fresh thread after config changes so MCP tools and this skill reload.
 
 Generic MCP clients use the same command shape:
 
 ```json
 {
   "command": "npm",
-  "args": ["run", "--silent", "mcp-bootup"],
+  "args": ["run", "--silent", "mcp:dev"],
   "cwd": "/path/to/SME_DATA_CENTER",
   "env": {
+    "ENTERPRISE_HUB_API_URL": "https://approved-enterprise-hub-api.example",
+    "ENTERPRISE_HUB_MCP_PROFILE": "local-development",
     "ENTERPRISE_HUB_MCP_SESSION_FILE": ".data/enterprise-hub-mcp/session.json"
   }
 }
@@ -163,12 +168,12 @@ Expected: Suzhou receives no visible evidence/data and no hidden title, filename
 
 ## Failure Handling
 
-| Symptom                                      | Response                                                                              |
-| -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| MCP tools are not exposed                    | Report that Enterprise Hub MCP is not connected; do not fall back to CLI/API.         |
-| Tool call connection fails                   | Report that the service is unavailable; do not start or repair services unless asked. |
-| `EMPLOYEE_NOT_FOUND`                         | Report that the current service has no such employee identity.                        |
-| `MCP_SESSION_REQUIRED`                       | Call `enterprise_hub_login_dev` for the intended `sessionName`.                       |
-| Evidence upload succeeds but search is empty | Check `get_evidence_document_status`; report exact status if index is not ready.      |
-| Import upload fails validation               | Return the validation errors from the service; do not rewrite the file locally.       |
-| Cross-store data is invisible                | Treat as expected permission isolation unless the API leaks hidden metadata.          |
+| Symptom                                      | Response                                                                         |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| MCP tools are not exposed                    | Report that Enterprise Hub MCP is not connected; do not fall back to CLI/API.    |
+| Tool call connection fails                   | Report that the service is unavailable; do not start or repair services.         |
+| `EMPLOYEE_NOT_FOUND`                         | Report that the current service has no such employee identity.                   |
+| `MCP_SESSION_REQUIRED`                       | Call `enterprise_hub_login_dev` for the intended `sessionName`.                  |
+| Evidence upload succeeds but search is empty | Check `get_evidence_document_status`; report exact status if index is not ready. |
+| Import upload fails validation               | Return the validation errors from the service; do not rewrite the file locally.  |
+| Cross-store data is invisible                | Treat as expected permission isolation unless the API leaks hidden metadata.     |

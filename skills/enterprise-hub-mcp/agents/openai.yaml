@@ -1,4 +1,4 @@
 interface:
   display_name: "Enterprise Hub MCP"
-  short_description: "Use 企业资料中枢 through local MCP"
-  default_prompt: "Use $enterprise-hub-mcp to run the local-development MCP flow safely."
+  short_description: "Use 企业资料中枢 through configured MCP"
+  default_prompt: "Use $enterprise-hub-mcp with a configured Enterprise Hub MCP connection."
