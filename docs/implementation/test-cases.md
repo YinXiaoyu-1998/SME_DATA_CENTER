@@ -70,5 +70,8 @@ The removed route/tool names may appear only in negative tests, migration/remova
 ## Data And Secret Safety
 
 - Tests use synthetic fixtures and fake model providers by default.
+- `fixtures/structured/maijia_*_first1000.xlsx` are user-approved non-sensitive
+  real-business sample workbooks truncated to the first 1000 worksheet rows for
+  structured schema and parser coverage.
 - Real customer exports, `.env`, API keys, bearer tokens, and service account keys must not be committed.
 - External model provider tests require explicit env configuration and egress acknowledgement.
