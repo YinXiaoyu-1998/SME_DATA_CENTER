@@ -48,6 +48,7 @@ import {
   createPrismaStructuredQueryRepository,
   type StructuredQueryRepository
 } from "./structured-query.js";
+import { registerMcpHttpRoute } from "./mcp/http.js";
 import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
@@ -1084,6 +1085,18 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   void app.register(multipart, {
     limits: {
       fileSize: maxUploadBytesFromEnv()
+    }
+  });
+
+  registerMcpHttpRoute(app, {
+    authenticate: async (request, reply) => {
+      const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+      if (!authenticated) {
+        return null;
+      }
+
+      return (request as AuthenticatedRequest).employee;
     }
   });
 

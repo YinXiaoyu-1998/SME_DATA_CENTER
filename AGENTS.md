@@ -31,10 +31,9 @@
 - Integration test: `npm run test:integration`
 - Format check: `npm run format:check`
 - Run local API: `npm run api:dev`
-- Run local API + worker + MCP bootup: `npm run mcp-bootup`
 - Run local worker loop: `npm run worker:dev`
 - Run one deterministic worker pass: `npm run worker:once`
-- Run local MCP server: `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`
+- Run local MCP launcher: `ENTERPRISE_HUB_BASE_URL=http://127.0.0.1:3000 npm run mcp:launcher`
 - Run local MCP smoke: `MYSQL_PORT=3307 npm run test:mcp`
 - Run Phase 3 golden retrieval evaluation: `npm run test:phase3:golden`
 - Run Phase 3 performance gates: `npm run test:phase3:perf`

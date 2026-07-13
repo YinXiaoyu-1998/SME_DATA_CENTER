@@ -224,6 +224,26 @@ Allowed matches:
 - migrations or historical removal notes;
 - this removed-surface section.
 
+### Task 13: Local Streamable HTTP MCP Endpoint
+
+Execution order: establish the shared contract; implement endpoint guards, read/upload delegation, and launcher bootstrap; then add launcher proxy, verification, legacy removal, and documentation sync.
+
+| Subtask | Dependency | Done criteria |
+| --- | --- | --- |
+| 13.0 shared contract | none | Shared strict schemas/error results contain the nine business tools and inline Base64 file object, with no session name, legacy login, or service file path. |
+| 13.1 endpoint guards | 13.0 | API exposes only authenticated stateless Streamable HTTP `POST /mcp`, hard loopback-only, bounded, redacted, and stable on transport errors. |
+| 13.2/13.3 tools | 13.0/13.1 | Read and upload handlers delegate request-scoped to existing authenticated API routes; upload bytes are checked then internally multipart-adapted. |
+| 13.4/13.5 launcher | 13.0/13.1 | `apps/mcp-launcher` provides memory-only local login/logout and proxies every remote MCP request with bearer auth. |
+| 13.6 removal/verification | 13.1-13.5 | No server stdio/session/file-path implementation remains; HTTP/launcher smoke verifies representative tools and safe failures. |
+| 13.7 docs/skill sync | 13.5/13.6 | Main docs and both skill homes describe launcher plus HTTP only, never service lifecycle operations. |
+
+Task 13 completion criteria:
+
+- Service `/mcp` is HTTP-only; launcher stdio is local client-to-launcher only.
+- All initialize, discovery, and tool requests are bearer-authenticated and preserve existing authorization/audit behavior.
+- Launcher stores no token beyond its process lifetime and needs fresh login after restart.
+- Root `mcp:launcher` starts only the launcher; it never starts or operates service dependencies.
+
 ## Phase 4 Preview: Go Online
 
 Do not start Phase 4 until Phase 3 verification is green and reviewed.

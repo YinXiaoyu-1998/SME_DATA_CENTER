@@ -1,6 +1,6 @@
 # Phase 2 Day 5 Enterprise Hub MCP Meta Skill
 
-This document records the Day 5 companion skill scope and review checklist for `skills/enterprise-hub-mcp/SKILL.md`.
+This document records the companion skill scope and review checklist for `skills/enterprise-hub-mcp/SKILL.md`.
 
 ## Skill Location
 
@@ -14,18 +14,17 @@ The skill is intentionally repo-local and distributable with the project. It is 
 
 The skill should teach an employee-owned agent how to safely use 企业资料中枢 through MCP. It must keep 企业资料中枢 as a service/tool layer, not an employee-facing AI agent, report generator, dashboard service, or skill execution platform.
 
-The local-development profile must be actionable enough for an agent to:
+The current local-development profile must be actionable enough for an agent to:
 
-1. Confirm local API and MCP command configuration.
-2. Log in with `enterprise_hub_login_dev`.
-3. List labels before upload.
-4. Upload a local synthetic fixture with existing labels.
-5. Check processing status and wait for or request the local worker pass.
-6. Search only active API-visible documents.
-7. Fetch detail and download URL for accessible documents.
-8. Archive when requested by an authorized uploader/admin.
-9. Verify Baoli/Suzhou permission isolation during local testing.
-10. List Skill Directory entries as metadata only.
+1. Collect an already-running Enterprise Hub URL and employee email.
+2. Configure only the user-side `mcp:launcher` command.
+3. Log in with `enterprise_hub_login_local`; the token remains launcher-memory only.
+4. List labels before upload.
+5. Upload a local synthetic fixture with existing labels.
+6. Check processing status without starting a worker.
+7. Search only active API-visible documents.
+8. Verify Baoli/Suzhou permission isolation during local testing.
+9. List Skill Directory entries as metadata only.
 
 ## Profile Boundaries
 
@@ -43,7 +42,7 @@ The local-development profile must be actionable enough for an agent to:
 - [x] Skill contains no real tokens, passwords, customer data, endpoint secrets, or service-account material.
 - [x] Skill says MCP tools must use the HTTP API and inherit API authorization.
 - [x] Skill forbids direct DB/storage reads for data access.
-- [x] Skill forbids exposing raw bearer tokens or session files.
+- [x] Skill forbids exposing raw bearer tokens, session files, or token persistence.
 - [x] Skill forbids claiming inaccessible documents exist.
 - [x] Skill forbids executing Skill Directory entries.
 - [x] Skill forbids report/dashboard generation and direct employee-facing AI behavior.

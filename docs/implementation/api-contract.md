@@ -305,9 +305,13 @@ Unsupported:
 
 ## MCP Tools
 
-Current MCP tools:
+Launcher-local bootstrap tools:
 
-- `enterprise_hub_login_dev`
+- `enterprise_hub_login_local`
+- `enterprise_hub_logout_local`
+
+Service MCP tools:
+
 - `enterprise_hub_list_labels`
 - `enterprise_hub_list_skills`
 - `upload_evidence_document`
@@ -318,7 +322,7 @@ Current MCP tools:
 - `list_structured_datasets`
 - `query_structured_dataset`
 
-MCP tools are adapters over the HTTP API and must preserve backend authorization. The MCP server may read a caller-provided local file only for upload tools; it must not direct-read backend storage, MySQL, or Qdrant.
+The service exposes authenticated stateless Streamable HTTP only at `POST /mcp`; every initialize, discovery, and tool request requires bearer auth. The launcher adds its memory-only token to every request. Upload tools receive inline Base64 bytes and never dereference a client file path. All business tools preserve backend authorization and must not direct-read backend storage, MySQL, or Qdrant.
 
 ## Environment Notes
 
