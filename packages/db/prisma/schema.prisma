@@ -57,7 +57,6 @@ enum ProcessingRunStatus {
 }
 
 enum ProcessingJobType {
-  legacy_text_extract
   evidence_document_index
   structured_import
 }
@@ -221,7 +220,7 @@ model ProcessingRun {
   orgId         String              @map("org_id") @db.VarChar(64)
   documentId    String              @map("document_id") @db.VarChar(32)
   status        ProcessingRunStatus @default(queued)
-  jobType       ProcessingJobType   @default(legacy_text_extract) @map("job_type")
+  jobType       ProcessingJobType   @map("job_type")
   attemptNumber Int                 @default(1) @map("attempt_number")
   retryCount    Int                 @default(0) @map("retry_count")
   errorCode     String?             @map("error_code") @db.VarChar(128)

@@ -1,1355 +1,347 @@
-# 企业资料中枢 API Contract
+# 企业资料中枢 API / MCP Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, implemented request/response examples through Phase 2 / Day 6 local MCP final verification, and implemented Phase 3 retrieval/structured-data contracts.
+Last updated: 2026-07-13
 
-## Cross-Cutting Rules
+This contract describes the current public surface after the legacy ordinary document upload/search flow was removed.
 
-- All non-health endpoints require an authenticated employee context.
-- The backend must enforce employee-account permissions and active-state filtering.
-- Ordinary employee queries must not reveal inaccessible document existence, titles, filenames, counts, or summaries.
-- API tokens, CLI clients, MCP servers, and web clients inherit employee permissions.
+## Product Boundary
 
-## Catalog Enum Values
+Enterprise Hub is a retrieval and data foundation for employee-owned agents and MCP/API clients.
 
-### `DocumentStatus`
+It returns:
 
-Exact values:
+- evidence chunks and source metadata for unstructured documents;
+- imported structured rows or explicitly requested mechanical read-only aggregates for supported tabular datasets;
+- status, schema, label, skill-directory, audit, health, and readiness metadata.
 
-- `uploading`
-- `pending_processing`
-- `processing`
-- `active`
-- `processing_failed`
-- `archived`
+It does not:
 
-Only `active` documents may enter ordinary employee search/query results.
+- generate final natural-language answers;
+- infer the original employee question;
+- add business analysis not requested in a structured query;
+- expose raw SQL;
+- expose generic document detail/download/search/archive endpoints.
 
-### `DocumentType`
+## Authentication And Authorization
 
-Exact values:
+Every non-health data endpoint requires backend authorization. Client-side filtering is never trusted.
 
-- `raw_material`
-- `structured_dataset`
-- `analysis_artifact`
-- `business_event`
-- `management_knowledge`
+Local development auth:
 
-## P0 API List
+- `POST /dev-login` with a seeded employee email returns a bearer token.
+- MCP stores local development sessions in an ignored session file.
 
-| Method | Path                      | Purpose                                               | Day Implemented |
-| ------ | ------------------------- | ----------------------------------------------------- | --------------- |
-| `POST` | `/auth/dev-login`         | Local-only development login for seeded employees.    | Day 1B          |
-| `GET`  | `/me`                     | Return authenticated employee profile and label keys. | Day 1B          |
-| `GET`  | `/labels`                 | List available labels for controlled assignment.      | P0 correction   |
-| `POST` | `/documents`              | Upload a document and create a catalog record.        | Day 2           |
-| `GET`  | `/documents`              | Search/list accessible active documents.              | Day 4A          |
-| `GET`  | `/documents/:id`          | Fetch accessible active document metadata.            | Day 4A          |
-| `GET`  | `/documents/:id/download` | Download an accessible active document.               | Day 4A          |
-| `POST` | `/documents/:id/archive`  | Archive a document without physical deletion.         | Day 4C          |
-| `POST` | `/documents/:id/labels`   | Add existing labels to a document.                    | Day 4C          |
-| `GET`  | `/documents/:id/status`   | Return upload/processing status to allowed actors.    | Day 2           |
-| `GET`  | `/skills`                 | List approved business skill directory entries.       | Day 4B          |
-| `GET`  | `/audit`                  | Admin-only audit log query.                           | Day 4C          |
-| `GET`  | `/healthz`                | Liveness check.                                       | Day 1B          |
+Authorization rules:
 
-## Initial Examples
+- evidence and structured data are filtered by org and labels in the API;
+- evidence status is visible only to the uploader or an admin;
+- structured import status and query results must not leak inaccessible source document names, row counts, or existence;
+- not-found and inaccessible resources should use the same non-leaking error shape where practical.
 
-### `GET /healthz`
+## Active Public HTTP Surface
 
-Response `200`:
+| Method | Path                                        | Purpose                                      |
+| ------ | ------------------------------------------- | -------------------------------------------- |
+| `GET`  | `/healthz`                                  | Liveness                                     |
+| `GET`  | `/readyz`                                   | Runtime readiness                            |
+| `POST` | `/dev-login`                                | Local seeded employee login                  |
+| `GET`  | `/me`                                       | Current employee/session metadata            |
+| `GET`  | `/labels`                                   | Label catalog                                |
+| `GET`  | `/skills`                                   | Approved Skill Directory metadata            |
+| `GET`  | `/audit`                                    | Admin audit query                            |
+| `POST` | `/v1/documents/evidence`                    | Upload MD/TXT/DOCX evidence document         |
+| `GET`  | `/v1/documents/evidence/:documentId/status` | Evidence document + index status             |
+| `POST` | `/v1/evidence/search`                       | Search visible evidence chunks               |
+| `POST` | `/v1/structured/imports`                    | Import supported CSV/XLSX structured dataset |
+| `GET`  | `/v1/structured/imports/:importBatchId`     | Structured import status                     |
+| `GET`  | `/v1/structured/datasets`                   | Structured dataset schema discovery          |
+| `POST` | `/v1/structured/query`                      | Controlled read-only structured query        |
 
-```json
-{
-  "ok": true,
-  "service": "enterprise-hub-api"
-}
-```
+## Removed Legacy Public Surface
 
-### `POST /auth/dev-login`
+These endpoints and MCP tools are intentionally not registered. Tests should assert they are absent; docs and skills must not recommend them.
 
-Request:
+Removed HTTP endpoints:
 
-```json
-{
-  "email": "admin@example.com"
-}
-```
+- `POST /documents`
+- `GET /documents`
+- `GET /documents/:id`
+- `GET /documents/:id/download`
+- `GET /documents/:id/status`
+- `POST /documents/:id/archive`
+- `POST /documents/:id/labels`
 
-Response `200`:
+Removed MCP tools:
 
-```json
-{
-  "accessToken": "<jwt>",
-  "employee": {
-    "id": "emp_admin",
-    "email": "admin@example.com",
-    "role": "admin",
-    "disabled": false,
-    "labels": ["all_staff", "person:admin", "store:baoli", "store:suzhou"]
-  }
-}
-```
+- `enterprise_hub_upload_document`
+- `enterprise_hub_get_document_status`
+- `enterprise_hub_search_documents`
+- `enterprise_hub_get_document`
+- `enterprise_hub_get_document_download_url`
+- `enterprise_hub_archive_document`
 
-Unknown employee response `404`:
+The internal documents catalog, source file storage, labels, processing runs, indexes, and audit logs remain part of backend infrastructure.
 
-```json
-{
-  "error": {
-    "code": "EMPLOYEE_NOT_FOUND",
-    "message": "Employee not found."
-  }
-}
-```
-
-Disabled employee response `403`:
-
-```json
-{
-  "error": {
-    "code": "EMPLOYEE_DISABLED",
-    "message": "Employee account is disabled."
-  }
-}
-```
-
-### `POST /documents`
-
-Request headers:
-
-```http
-Authorization: Bearer <jwt>
-Content-Type: multipart/form-data
-```
-
-Multipart fields:
-
-| Field          | Required | Example                            |
-| -------------- | -------- | ---------------------------------- |
-| `file`         | Yes      | `baoli-june-meituan.csv`           |
-| `title`        | Yes      | `Baoli June Meituan Export`        |
-| `documentType` | Yes      | `raw_material`                     |
-| `sourceSystem` | No       | `meituan`                          |
-| `sourceTime`   | No       | `2026-06-30T00:00:00.000Z`         |
-| `labelKeys[]`  | No       | repeated field, e.g. `store:baoli` |
-
-Response `201`:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "title": "Baoli June Meituan Export",
-  "documentType": "raw_material",
-  "status": "pending_processing",
-  "labels": ["person:baoli.manager", "store:baoli"],
-  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-june-meituan.csv",
-  "originalFileName": "baoli-june-meituan.csv",
-  "sourceSystem": "meituan",
-  "sourceTime": "2026-06-30T00:00:00.000Z",
-  "processingRunStatus": "queued"
-}
-```
-
-Unknown label response `400`:
-
-```json
-{
-  "error": {
-    "code": "UNKNOWN_LABEL",
-    "message": "One or more labels do not exist."
-  }
-}
-```
-
-Forbidden label response `403`:
-
-```json
-{
-  "error": {
-    "code": "FORBIDDEN_LABEL",
-    "message": "One or more labels cannot be assigned."
-  }
-}
-```
-
-Invalid upload response `400`:
-
-```json
-{
-  "error": {
-    "code": "INVALID_DOCUMENT_UPLOAD",
-    "message": "File is required."
-  }
-}
-```
-
-Catalog write failure response `500`:
-
-```json
-{
-  "error": {
-    "code": "DOCUMENT_CATALOG_WRITE_FAILED",
-    "message": "Document catalog write failed."
-  }
-}
-```
-
-Unauthenticated response `401`:
-
-```json
-{
-  "error": {
-    "code": "UNAUTHENTICATED",
-    "message": "Authentication is required."
-  }
-}
-```
-
-## Local MCP Profile And Tool Contract
-
-## Phase 3 Retrieval And Structured Data API Contract
-
-Phase 3 adds evidence retrieval and controlled structured query APIs. These APIs are data-provider surfaces for employee-owned agents. They do not generate final answers, reports, dashboards, business recommendations, or natural-language-to-query plans.
-
-### Phase 3 HTTP API List
-
-| Method | Path                                    | Purpose                                                                                                 |
-| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `POST` | `/v1/documents/evidence`                | Upload MD/TXT/DOCX evidence documents for parse/chunk/embed/index.                                      |
-| `POST` | `/v1/evidence/search`                   | Return authorized evidence chunks and source metadata from active indexed evidence documents.           |
-| `POST` | `/v1/structured/imports`                | Upload XLSX/CSV structured `dishes` or `business` import.                                               |
-| `GET`  | `/v1/structured/imports/:importBatchId` | Return safe import status, sheet summary, and bounded validation errors.                                |
-| `GET`  | `/v1/structured/datasets`               | Return dataset registry, fields, capabilities, operators, limits, lifecycle, sensitivity, and versions. |
-| `POST` | `/v1/structured/query`                  | Execute controlled read-only structured query over `dishes` / `business`.                               |
-
-Every Phase 3 route above is implemented behind the existing authenticated employee boundary. Tasks 6-8 own the HTTP implementation: structured imports/status, structured dataset discovery/query, and evidence upload/search. These endpoints remain data-provider surfaces only; they do not generate answers, infer natural-language intent, execute raw SQL, or perform dashboard/report work.
+## Evidence Upload
 
 ### `POST /v1/documents/evidence`
 
-Supports MD/TXT/DOCX only. Required multipart metadata:
+Multipart form fields:
 
-| Field                    | Required | Notes                                  |
-| ------------------------ | -------- | -------------------------------------- |
-| `file`                   | Yes      | `.md`, `.txt`, or `.docx`.             |
-| `title`                  | Yes      | Human-readable source title.           |
-| `labelKeys[]`/visibility | Yes      | Source document permission label keys. |
-| `sourceSystem`           | No       | Optional source-system metadata.       |
+| Field          | Required | Notes                                    |
+| -------------- | -------- | ---------------------------------------- |
+| `file`         | yes      | MD/TXT/DOCX only                         |
+| `title`        | yes      | Human-readable source title              |
+| `sourceSystem` | no       | Caller-provided source system identifier |
+| `labelKeys[]`  | yes      | One or more existing allowed label keys  |
 
-Response `202`:
+Behavior:
+
+- stores the original source file in configured storage;
+- creates a source document record with `documentKind=evidence`;
+- records labels and audit events;
+- creates an `evidence_document_index` processing run;
+- indexes through the worker into Qdrant;
+- does not expose a generic download/detail/search contract.
+
+Response shape:
 
 ```json
 {
   "document": {
-    "documentId": "doc_123",
-    "documentKind": "evidence",
-    "fileType": "docx",
-    "status": "processing"
+    "documentId": "doc_...",
+    "title": "差评处理 SOP",
+    "fileType": "md",
+    "status": "pending_processing",
+    "labels": [{ "key": "store:baoli", "name": "Baoli" }],
+    "processingRunStatus": "queued",
+    "documentIndexStatus": "pending"
+  }
+}
+```
+
+## Evidence Status
+
+### `GET /v1/documents/evidence/:documentId/status`
+
+Visible only to the uploader or an admin.
+
+Response shape:
+
+```json
+{
+  "document": {
+    "documentId": "doc_...",
+    "title": "差评处理 SOP",
+    "fileType": "md",
+    "status": "active",
+    "labels": [{ "key": "store:baoli", "name": "Baoli" }]
   },
-  "processing": {
-    "processingRunId": "run_123",
-    "status": "queued"
+  "processingRun": {
+    "status": "succeeded",
+    "jobType": "evidence_document_index"
   },
   "documentIndex": {
-    "status": "pending",
+    "status": "ready",
+    "indexType": "qdrant_hybrid",
+    "chunkCount": 12,
     "retrievalConfigVersion": "phase3.retrieval.v1"
-  },
-  "requestId": "req_123"
+  }
 }
 ```
 
-Task 8 queues `evidence_document_index`; the worker parses, chunks, embeds, writes sparse/dense Qdrant points, persists chunk/index metadata in MySQL, and publishes `Document.active` only after the full indexing transaction succeeds. Any parse, embedding, Qdrant, or metadata failure keeps the document non-active and schedules/finalizes processing failure according to the worker retry policy.
+## Evidence Search
 
 ### `POST /v1/evidence/search`
-
-Request:
-
-```json
-{
-  "query": "差评处理 SOP",
-  "filters": {
-    "fileTypes": ["md", "txt", "docx"],
-    "documentIds": [],
-    "labelIds": []
-  },
-  "limit": 10,
-  "cursor": null
-}
-```
-
-Response:
-
-```json
-{
-  "results": [
-    {
-      "chunkId": "chk_123",
-      "documentId": "doc_123",
-      "documentTitle": "客户反馈处理 SOP.docx",
-      "text": "命中的证据片段……",
-      "source": {
-        "fileType": "docx",
-        "sectionHeadingPath": ["客户反馈", "差评处理"],
-        "blockType": "paragraph",
-        "pageNumber": null
-      },
-      "score": {
-        "hybrid": 0.82,
-        "rerank": 0.91
-      },
-      "matchedBy": ["dense", "lexical", "rerank"]
-    }
-  ],
-  "page": {
-    "limit": 10,
-    "nextCursor": null,
-    "hasMore": false
-  },
-  "retrieval": {
-    "retrievalConfigVersion": "phase3.retrieval.v1",
-    "embeddingVersion": "embed.v1",
-    "lexicalIndexVersion": "lexical.v1",
-    "rerankVersion": "rerank.v1",
-    "rerankStatus": "enabled"
-  },
-  "warnings": [],
-  "requestId": "req_123"
-}
-```
-
-The response is evidence-only. It must not contain a final answer. Search runs Qdrant dense+sparse hybrid retrieval first, optionally applies rerank when the configured provider is enabled, then revalidates every candidate against MySQL for active document status, ready index status, content version, retrieval config version, disabled employee status, labels, and caller-provided filters before returning any chunk.
-
-### `POST /v1/structured/imports`
-
-Supports XLSX/CSV only. Required multipart metadata:
-
-| Field                    | Required | Notes                                                     |
-| ------------------------ | -------- | --------------------------------------------------------- |
-| `file`                   | Yes      | `.xlsx` or `.csv`.                                        |
-| `dataset`                | Yes      | `dishes` or `business`.                                   |
-| `enterprise_name`        | Yes      | Used for canonical source object naming, not permissions. |
-| `startDate`              | Yes      | `YYYYMMDD`, business-date window start.                   |
-| `endDate`                | Yes      | `YYYYMMDD`, business-date window end.                     |
-| `labelKeys[]`/visibility | Yes      | Source document permission label keys inherited by rows.  |
-| `idempotencyKey`         | Yes      | Client-generated retry key.                               |
-
-Response `202`:
-
-```json
-{
-  "document": {
-    "documentId": "doc_456",
-    "documentKind": "structured",
-    "fileType": "xlsx",
-    "status": "active",
-    "storageObjectKey": "org_123/doc_456/mai_jia_dishes_20260701_20260705.xlsx",
-    "originalFileName": "麦家菜品记录.xlsx"
-  },
-  "processing": {
-    "processingRunId": null,
-    "status": "succeeded"
-  },
-  "importBatch": {
-    "importBatchId": "imp_456",
-    "sourceDocumentId": "doc_456",
-    "dataset": "dishes",
-    "status": "applied",
-    "startDate": "20260701",
-    "endDate": "20260705",
-    "sourceSheetSummary": [],
-    "validationErrors": [],
-    "totalRowCount": 1200,
-    "appliedRowCount": 1200,
-    "queryableRowCount": 1200
-  }
-}
-```
-
-Task 6 validates and applies a structured import atomically. If any non-empty CSV/XLSX sheet fails the dataset registry mapping, required-field, type, or business-date-window checks, no source document, import batch, window claim, or row payload becomes queryable. The original upload file name is retained as metadata, but the stored object key uses the canonical `{enterprise_name}_{dataset}_{startDate}_{endDate}` shape based on trusted metadata.
-
-Conflict behavior:
-
-- same idempotency key + same request fingerprint returns the existing batch/status
-- same idempotency key + different fingerprint returns `IDEMPOTENCY_KEY_CONFLICT`
-- active/applied same `{orgId,dataset,startDate,endDate}` returns `ACTIVE_IMPORT_EXISTS`
-- in-progress same window returns `IMPORT_IN_PROGRESS`
-
-### `GET /v1/structured/imports/:importBatchId`
-
-Response `200`:
-
-```json
-{
-  "importBatch": {
-    "importBatchId": "imp_456",
-    "sourceDocumentId": "doc_456",
-    "dataset": "dishes",
-    "status": "applied",
-    "startDate": "20260701",
-    "endDate": "20260705",
-    "sourceSheetSummary": [
-      {
-        "name": "菜品主题数据",
-        "hidden": false,
-        "headerRowNumber": 3,
-        "dataRowCount": 67581
-      }
-    ],
-    "validationErrors": [],
-    "totalRowCount": 67581,
-    "appliedRowCount": 67581,
-    "queryableRowCount": 67581
-  }
-}
-```
-
-The status response is scoped by the authenticated employee's organization and current label permissions. It returns import metadata and bounded validation details only; it never returns raw workbook rows or file contents.
-
-### `GET /v1/structured/datasets`
-
-Response contains dataset registry versions, effective query limits, and every current export field with canonical name, aliases/source columns, type, nullable, sensitivity, lifecycle, capabilities, operators, default-return flag, index status, and value limits.
-
-Task 5 establishes registry versions `dishes.2026-07-11.v1` and `business.2026-07-11.v1` from the reviewed Maijia workbook exports. Current row storage maps every field to the dataset row table payload JSON path (`dish_rows.payload` or `business_rows.payload`) until the import/query tasks decide whether to promote selected fields to physical columns.
-
-Task 7 implements this endpoint as an authenticated registry-discovery API. It exposes field capabilities and limits only; it does not infer natural-language intent, run imports, or query rows.
-
-Minimal response shape:
-
-```json
-{
-  "datasets": [
-    {
-      "dataset": "dishes",
-      "registryVersion": "dishes.2026-07-11.v1",
-      "rowTable": "dish_rows",
-      "fields": [
-        {
-          "canonicalName": "business_date",
-          "sourceColumn": "营业日",
-          "type": "date",
-          "nullable": true,
-          "operators": ["eq", "between", "gte", "lte", "in"],
-          "capabilities": {
-            "filter": true,
-            "sort": true,
-            "group": true,
-            "aggregate": false
-          },
-          "storage": {
-            "table": "dish_rows",
-            "column": "payload",
-            "jsonPath": "$.business_date"
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-### `POST /v1/structured/query`
 
 Request shape:
 
 ```json
 {
-  "dataset": "dishes",
-  "registryVersion": "dishes.2026-07-11.v1",
-  "select": ["business_date", "matched_product_name", "dish_sales_quantity"],
-  "filter": {
-    "and": [
-      { "field": "business_date", "op": "between", "value": ["2026-07-01", "2026-07-05"] },
-      { "field": "matched_product_name", "op": "contains", "value": "肉夹馍" }
-    ]
+  "query": "差评处理 SOP",
+  "filters": {
+    "labelKeys": ["store:baoli"],
+    "fileTypes": ["md", "txt", "docx"]
   },
-  "sort": [{ "field": "business_date", "direction": "asc" }],
-  "page": {
-    "limit": 50,
-    "cursor": null
-  }
-}
-```
-
-The API accepts only controlled JSON query structure. It never accepts raw SQL, arbitrary expressions, mutation operations, joins, formulas, window functions, or natural-language analysis instructions.
-
-Pagination uses opaque cursors. Every page rechecks current authorization and active import scope.
-
-Task 7 implements this endpoint as a read-only controlled query wrapper. The server compiles accepted JSON to internal parameterized SQL using registry allowlists, applies backend permission scope before filters/sort/aggregation/pagination, and supports detail rows plus explicit mechanical aggregations only. It does not accept or generate raw SQL from clients, does not perform business analysis, and does not execute mutations.
-
-### Phase 3 Error Envelope
-
-All Phase 3 API errors use:
-
-```json
-{
-  "error": {
-    "code": "UNSUPPORTED_OPERATOR",
-    "message": "Operator is not supported for this field.",
-    "retryable": false,
-    "details": {
-      "dataset": "dishes",
-      "field": "matched_product_name",
-      "operator": "regex"
-    },
-    "requestId": "req_789"
-  }
-}
-```
-
-Core Phase 3 codes include `UNSUPPORTED_FILE_TYPE`, `INVALID_DOCUMENT_KIND_FILE_TYPE`, `VALIDATION_FAILED`, `INVALID_QUERY`, `INVALID_FIELD`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_CAPABILITY`, `TYPE_MISMATCH`, `INVALID_AGGREGATION`, `INVALID_DATE_WINDOW`, `LIMIT_EXCEEDED`, `QUERY_TOO_EXPENSIVE`, `INVALID_CURSOR`, `CURSOR_EXPIRED`, `REGISTRY_VERSION_UNSUPPORTED`, `REGISTRY_VERSION_MISMATCH`, `DATASET_FORBIDDEN`, `ACTIVE_IMPORT_EXISTS`, `IMPORT_IN_PROGRESS`, `IDEMPOTENCY_KEY_CONFLICT`, `PROCESSING_FAILED`, and `INTERNAL_ERROR`.
-
-### Phase 3 MCP Tools
-
-Phase 3 MCP remains a thin adapter over HTTP. Tool names intentionally stay short because they are the agent-facing Phase 3 capability names exposed by the `enterprise-hub-mcp` server:
-
-| Tool                        | HTTP backing                                | Purpose                                   |
-| --------------------------- | ------------------------------------------- | ----------------------------------------- |
-| `search_document_evidence`  | `POST /v1/evidence/search`                  | Return evidence chunks, never answers.    |
-| `list_structured_datasets`  | `GET /v1/structured/datasets`               | Discover dataset fields and capabilities. |
-| `query_structured_dataset`  | `POST /v1/structured/query`                 | Execute controlled structured query.      |
-| `upload_structured_dataset` | `POST /v1/structured/imports`               | Upload XLSX/CSV structured imports.       |
-| `upload_evidence_document`  | `POST /v1/documents/evidence`               | Upload MD/TXT/DOCX evidence documents.    |
-| `get_import_status`         | `GET /v1/structured/imports/:importBatchId` | Read structured import status.            |
-
-Implemented Phase 3 MCP tool inputs and result shapes:
-
-| Tool                        | Required inputs                                                                                                         | Optional inputs                                                                           | High-level result shape                                                           |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `search_document_evidence`  | local session, `query`                                                                                                  | `filters.fileTypes`, `filters.documentIds`, `filters.labelIds`, `limit`, `cursor`         | `results[]` evidence chunks with source metadata, `page`, `retrieval`, `warnings` |
-| `list_structured_datasets`  | local session                                                                                                           | none                                                                                      | `limits`, `datasets[]` registry versions, fields, operators, capabilities         |
-| `query_structured_dataset`  | local session, `dataset`                                                                                                | `registryVersion`, `select`, controlled `filter`, `sort`, `page`, `groupBy`, `aggregates` | `dataset`, `registryVersion`, `mode`, `rows[]`, `nextCursor`                      |
-| `upload_structured_dataset` | local session, `filePath`, `dataset`, `enterpriseName`, `startDate`, `endDate`, `idempotencyKey`, non-empty `labelKeys` | none                                                                                      | `document`, `processing`, `importBatch`                                           |
-| `upload_evidence_document`  | local session, `filePath`, `title`, non-empty `labelKeys`                                                               | `sourceSystem`                                                                            | `document`, `processing`, `documentIndex`                                         |
-| `get_import_status`         | local session, `importBatchId`                                                                                          | none                                                                                      | `importBatch`                                                                     |
-
-MCP must not direct-read MySQL, Qdrant, OSS, storage backends, or model providers. The two upload tools may read only the caller-supplied local `filePath` so they can send multipart HTTP requests to the API. Upload tools require explicit non-empty `labelKeys` so visibility is caller-declared and backend-authorized; they still rely on the API for all label existence, assignment, idempotency, active-window, validation, and authorization checks. Evidence search returns chunks/source metadata only and must not add generated answers. Structured query sends only the controlled JSON query shape; it never accepts raw SQL, natural-language query plans, or mutations.
-
-Phase 2 adds a local MCP adapter named `enterprise-hub-mcp`. The MCP server is an adapter over the HTTP API, not a second backend. It must not direct-read MySQL, direct-read storage, or implement independent authorization filtering. All non-health data access is delegated to the API with an authenticated employee context.
-
-### Local Development Profile
-
-| Setting      | Value                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------- |
-| Profile      | `local-development`                                                                         |
-| Transport    | stdio                                                                                       |
-| Command      | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                              |
-| Auth shape   | local dev login in Phase 2 Day 2, backed by `POST /auth/dev-login`                          |
-| Session file | optional `ENTERPRISE_HUB_MCP_SESSION_FILE`, default `.data/enterprise-hub-mcp/session.json` |
-
-Startup requirements:
-
-- `ENTERPRISE_HUB_API_URL` is required and must be an `http` or `https` URL.
-- `ENTERPRISE_HUB_MCP_PROFILE` defaults to `local-development`; other profiles are placeholders for later phases.
-- The MCP server does not start API, worker, MySQL, or local storage services.
-- The local MCP session file is written under `.data/` by default, is ignored by git, and may contain development-only API bearer tokens.
-- Normal MCP tool output must not include raw access tokens.
-
-### Phase 2 MCP Tools
-
-| Tool                                       | Purpose                                                                        | Required Inputs                                    | High-Level Result Shape                            |
-| ------------------------------------------ | ------------------------------------------------------------------------------ | -------------------------------------------------- | -------------------------------------------------- |
-| `enterprise_hub_login_dev`                 | Log in as a seeded local employee through the existing API dev-login endpoint. | `email`                                            | `employee`, `sessionName`, `apiUrl`                |
-| `enterprise_hub_list_labels`               | List catalog labels through authenticated `GET /labels`.                       | local session in Day 2                             | `labels[]` with `key`, `name`, `type`              |
-| `enterprise_hub_upload_document`           | Upload a local file through authenticated multipart `POST /documents`.         | local session, `filePath`, `title`, `documentType` | document id, status, labels, processing run status |
-| `enterprise_hub_get_document_status`       | Read upload/processing status through `GET /documents/:id/status`.             | local session, `documentId`                        | id, status, labels, processing run status          |
-| `enterprise_hub_search_documents`          | Search visible active documents through `GET /documents`.                      | local session                                      | documents and `nextCursor`                         |
-| `enterprise_hub_get_document`              | Read accessible active document metadata through `GET /documents/:id`.         | local session, `documentId`                        | document metadata or API not-found error           |
-| `enterprise_hub_get_document_download_url` | Get an accessible download URL through `GET /documents/:id/download`.          | local session, `documentId`                        | id and `downloadUrl`                               |
-| `enterprise_hub_archive_document`          | Archive a document through `POST /documents/:id/archive`.                      | local session, `documentId`                        | archived document metadata or API error            |
-| `enterprise_hub_list_skills`               | List approved Skill Directory entries through `GET /skills`.                   | local session                                      | approved skill metadata and instructions only      |
-
-Day 1 defines these deterministic tool names, descriptions, input schemas, and result shapes. Day 2 implements local-development login/session handling. Day 3 implements the label, document, archive, and skill tool bodies as authenticated adapters over the HTTP API.
-
-### `enterprise_hub_login_dev`
-
-Local-development only. Calls `POST /auth/dev-login` on `ENTERPRISE_HUB_API_URL` and stores the returned bearer token in the ignored MCP session file.
-
-Request:
-
-```json
-{
-  "email": "baoli.manager@example.com",
-  "sessionName": "baoli"
-}
-```
-
-Response:
-
-```json
-{
-  "employee": {
-    "id": "emp_baoli_manager",
-    "email": "baoli.manager@example.com",
-    "role": "manager",
-    "disabled": false,
-    "labels": ["all_staff", "person:baoli.manager", "store:baoli"]
-  },
-  "sessionName": "baoli",
-  "apiUrl": "http://127.0.0.1:3000",
-  "profile": "local-development"
-}
-```
-
-Unknown or disabled employees return the API error body as an MCP error result, for example:
-
-```json
-{
-  "error": {
-    "code": "EMPLOYEE_NOT_FOUND",
-    "message": "Employee not found."
-  }
-}
-```
-
-Session-required MCP error when no local session is available:
-
-```json
-{
-  "error": {
-    "code": "MCP_SESSION_REQUIRED",
-    "message": "Run enterprise_hub_login_dev first or pass sessionName for an existing local MCP session."
-  }
-}
-```
-
-### Phase 2 Day 3 MCP Tool Bodies
-
-All Day 3 non-login MCP tools require a local session and pass the stored API bearer token to the HTTP API. They preserve API error bodies in tool output and do not generate summaries, reports, or analysis of document content.
-
-#### `enterprise_hub_list_labels`
-
-Calls authenticated `GET /labels`.
-
-Request:
-
-```json
-{
-  "sessionName": "baoli"
-}
-```
-
-Response:
-
-```json
-{
-  "labels": [
-    {
-      "key": "store:baoli",
-      "name": "Baoli Store",
-      "type": "store"
-    }
-  ]
-}
-```
-
-#### `enterprise_hub_upload_document`
-
-Validates the local `filePath` exists, then calls authenticated multipart `POST /documents`. The MCP server may read the local file bytes only for this upload tool; it must not direct-read storage or MySQL.
-
-Request:
-
-```json
-{
-  "sessionName": "baoli",
-  "filePath": "./fixtures/baoli-june-meituan.csv",
-  "title": "Baoli June Meituan Export",
-  "documentType": "raw_material",
-  "sourceSystem": "meituan",
-  "sourceTime": "2026-06-30T00:00:00.000Z",
-  "labelKeys": ["store:baoli"]
-}
-```
-
-Response:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "title": "Baoli June Meituan Export",
-  "documentType": "raw_material",
-  "status": "pending_processing",
-  "labels": ["person:baoli.manager", "store:baoli"],
-  "processingRunStatus": "queued"
-}
-```
-
-Missing local file response:
-
-```json
-{
-  "error": {
-    "code": "LOCAL_FILE_NOT_FOUND",
-    "message": "Local upload file was not found."
-  }
-}
-```
-
-#### `enterprise_hub_get_document_status`
-
-Calls authenticated `GET /documents/:id/status`.
-
-Request:
-
-```json
-{
-  "sessionName": "baoli",
-  "documentId": "doc_91e4dd567237bed3d3f00c67"
-}
-```
-
-Response:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "status": "pending_processing",
-  "labels": ["store:baoli"],
-  "processingRunStatus": "queued"
-}
-```
-
-#### `enterprise_hub_search_documents`
-
-Calls authenticated `GET /documents` with optional `q`, `documentType`, `labelKey`, `limit`, and `cursor` query parameters.
-
-Request:
-
-```json
-{
-  "sessionName": "baoli",
-  "q": "Meituan",
-  "documentType": "raw_material",
-  "labelKey": "store:baoli",
   "limit": 10
 }
 ```
 
-Response:
+Response shape:
 
 ```json
 {
-  "documents": [
+  "results": [
     {
-      "id": "doc_91e4dd567237bed3d3f00c67",
-      "title": "Baoli June Meituan Export",
-      "status": "active",
-      "labels": ["store:baoli"]
-    }
-  ],
-  "nextCursor": null
-}
-```
-
-#### `enterprise_hub_get_document`
-
-Calls authenticated `GET /documents/:id`.
-
-Request:
-
-```json
-{
-  "sessionName": "baoli",
-  "documentId": "doc_91e4dd567237bed3d3f00c67"
-}
-```
-
-Not found or inaccessible documents preserve the API `DOCUMENT_NOT_FOUND` response without leaking hidden titles.
-
-#### `enterprise_hub_get_document_download_url`
-
-Calls authenticated `GET /documents/:id/download`.
-
-Response:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "downloadUrl": "file:///absolute/local/storage/path/baoli-june-meituan.csv"
-}
-```
-
-#### `enterprise_hub_archive_document`
-
-Calls authenticated `POST /documents/:id/archive`.
-
-Request:
-
-```json
-{
-  "sessionName": "baoli",
-  "documentId": "doc_91e4dd567237bed3d3f00c67"
-}
-```
-
-Forbidden archive attempts preserve the API `DOCUMENT_UPDATE_FORBIDDEN` response.
-
-#### `enterprise_hub_list_skills`
-
-Calls authenticated `GET /skills` with optional `q` and `category` query parameters. The tool returns approved skill metadata and instructions only; it does not execute skills.
-
-Request:
-
-```json
-{
-  "sessionName": "baoli",
-  "q": "菜单",
-  "category": "menu-analysis"
-}
-```
-
-### Phase 2 Final MCP Verification
-
-The final local MCP verification command is:
-
-```bash
-MYSQL_PORT=3307 npm run test:mcp
-```
-
-The smoke script resets and seeds the local development database, starts the API on an available local port, invokes the MCP tool handlers with a local-development session file, uploads only the synthetic Baoli fixture, runs one deterministic worker pass, and verifies the Phase 1 MVP loop through MCP: login, label listing, upload, status, search, download URL, archive, and Skill Directory-read safety. It also logs in as Suzhou through a separate MCP session and proves Suzhou cannot discover the Baoli document or hidden title.
-
-Human local-agent verification is documented in `docs/implementation/local-agent-test.md` and can be driven by the repo-local `enterprise-hub-mcp` skill. That flow must not use raw curl, direct DB/storage reads, real customer data, production credentials, OSS, online MySQL, domains, or Phase 4 remote endpoints.
-
-### `GET /documents/:id/status`
-
-Allowed actors: the uploader or an admin. Non-admin, non-uploader access returns `404` to avoid document existence leakage.
-
-Request headers:
-
-```http
-Authorization: Bearer <jwt>
-```
-
-Response `200`:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "title": "Baoli June Meituan Export",
-  "documentType": "raw_material",
-  "status": "pending_processing",
-  "labels": ["person:baoli.manager", "store:baoli"],
-  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-june-meituan.csv",
-  "originalFileName": "baoli-june-meituan.csv",
-  "sourceSystem": "meituan",
-  "sourceTime": "2026-06-30T00:00:00.000Z",
-  "processingRunStatus": "queued"
-}
-```
-
-Not found or inaccessible response `404`:
-
-```json
-{
-  "error": {
-    "code": "DOCUMENT_NOT_FOUND",
-    "message": "Document not found."
-  }
-}
-```
-
-Processing failed response `200` for uploader or admin:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "title": "Unsupported binary upload",
-  "documentType": "raw_material",
-  "status": "processing_failed",
-  "labels": ["person:baoli.manager", "store:baoli"],
-  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/receipt.pdf",
-  "originalFileName": "receipt.pdf",
-  "sourceSystem": null,
-  "sourceTime": null,
-  "processingRunStatus": "failed"
-}
-```
-
-### `GET /documents`
-
-Search/list accessible active documents. The backend filters by authenticated employee permissions before returning results. Ordinary employees only see `active` documents whose labels match one of their employee labels or `all_staff`; admins can list all active documents. Inaccessible documents are not counted, named, or otherwise revealed.
-
-Query params:
-
-| Param          | Required | Example        | Notes                                               |
-| -------------- | -------- | -------------- | --------------------------------------------------- |
-| `q`            | No       | `Meituan`      | Keyword over title, source system, metadata, chunks |
-| `documentType` | No       | `raw_material` | Must be one of the documented enum values           |
-| `labelKey`     | No       | `store:baoli`  | Further narrows results by an existing label key    |
-| `limit`        | No       | `20`           | 1-50, default 20                                    |
-| `cursor`       | No       | `20`           | Opaque pagination offset returned as `nextCursor`   |
-
-Response `200`:
-
-```json
-{
-  "documents": [
-    {
-      "id": "doc_91e4dd567237bed3d3f00c67",
-      "title": "Baoli June Meituan Export",
-      "documentType": "raw_material",
-      "status": "active",
-      "labels": ["store:baoli"],
-      "originalFileName": "baoli-june-meituan.csv",
-      "sourceSystem": "meituan",
-      "sourceTime": "2026-06-30T00:00:00.000Z",
-      "createdAt": "2026-06-30T01:00:00.000Z"
-    }
-  ],
-  "nextCursor": null
-}
-```
-
-Invalid query response `400`:
-
-```json
-{
-  "error": {
-    "code": "INVALID_DOCUMENT_QUERY",
-    "message": "Document type is invalid."
-  }
-}
-```
-
-### `GET /documents/:id`
-
-Returns metadata for an accessible active document. Missing, inactive, archived, or inaccessible documents all return the same `404`.
-
-Response `200`:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "title": "Baoli June Meituan Export",
-  "documentType": "raw_material",
-  "status": "active",
-  "labels": ["store:baoli"],
-  "originalFileName": "baoli-june-meituan.csv",
-  "sourceSystem": "meituan",
-  "sourceTime": "2026-06-30T00:00:00.000Z",
-  "createdAt": "2026-06-30T01:00:00.000Z",
-  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-june-meituan.csv",
-  "contentType": "text/csv",
-  "byteSize": 128,
-  "checksumSha256": "..."
-}
-```
-
-Not found or inaccessible response `404`:
-
-```json
-{
-  "error": {
-    "code": "DOCUMENT_NOT_FOUND",
-    "message": "Document not found."
-  }
-}
-```
-
-### `GET /documents/:id/download`
-
-Returns a usable local download URL for an accessible active document and records a download audit event. Missing, inactive, archived, or inaccessible documents all return the same `404`.
-
-Response `200`:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "downloadUrl": "file:///absolute/local/storage/path/baoli-june-meituan.csv"
-}
-```
-
-Not found or inaccessible response `404`:
-
-```json
-{
-  "error": {
-    "code": "DOCUMENT_NOT_FOUND",
-    "message": "Document not found."
-  }
-}
-```
-
-Audit events appended by Day 4A:
-
-- `document.queried` with query filters and returned result count, without inaccessible document titles.
-- `document.downloaded` for successful accessible active document downloads.
-
-### `GET /skills`
-
-Lists approved business skill directory entries for authenticated employees and employee-owned agents. This endpoint only returns skill metadata, installation guidance, input requirements, and example prompts. It does not execute skills, generate reports, call models, or return analysis results.
-
-Query params:
-
-| Param      | Required | Example         | Notes                                                     |
-| ---------- | -------- | --------------- | --------------------------------------------------------- |
-| `q`        | No       | `菜单`          | Keyword over name, description, category, inputs, prompts |
-| `category` | No       | `menu-analysis` | Filters approved skills by exact category                 |
-
-Response `200`:
-
-```json
-{
-  "skills": [
-    {
-      "id": "skill_menu_gross_margin_analysis",
-      "name": "menu-gross-margin-analysis",
-      "description": "菜单毛利分析 skill，帮助员工智能体分析菜品毛利和菜单结构。",
-      "version": "1.0.0",
-      "category": "menu-analysis",
-      "inputRequirements": ["已授权的菜单数据", "菜品成本数据", "销售明细"],
-      "installInstructions": "Install the approved menu-gross-margin-analysis skill in the employee agent.",
-      "examplePrompts": ["分析最近三个月菜单毛利，找出需要调整的菜品"],
-      "status": "approved"
-    }
-  ]
-}
-```
-
-Seeded approved entries:
-
-- `weekly-store-report`
-- `menu-gross-margin-analysis`
-
-Disabled or unapproved skills are not returned by `GET /skills`.
-
-### `POST /documents/:id/archive`
-
-Archives an active document by metadata state change only. The original storage object is not deleted. Allowed actors are the uploader or an admin. Non-uploader employees who can otherwise see the document receive `403`; inaccessible documents still return `404`.
-
-Response `200`:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "title": "Baoli June Meituan Export",
-  "documentType": "raw_material",
-  "status": "archived",
-  "labels": ["person:baoli.manager", "store:baoli"],
-  "originalFileName": "baoli-june-meituan.csv",
-  "sourceSystem": "meituan",
-  "sourceTime": "2026-06-30T00:00:00.000Z",
-  "createdAt": "2026-06-30T01:00:00.000Z",
-  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-june-meituan.csv",
-  "contentType": "text/csv",
-  "byteSize": 128,
-  "checksumSha256": "..."
-}
-```
-
-Forbidden mutation response `403`:
-
-```json
-{
-  "error": {
-    "code": "DOCUMENT_UPDATE_FORBIDDEN",
-    "message": "Document cannot be changed."
-  }
-}
-```
-
-Audit event appended:
-
-- `document.archived` with previous status metadata.
-
-### `POST /documents/:id/labels`
-
-Adds existing label-catalog entries to an active document. The MVP allows only the uploader or an admin to change document labels. Non-admin uploaders may share to existing personal or store labels, but cannot add `all_staff`.
-
-Request:
-
-```json
-{
-  "labelKeys": ["person:lijie"]
-}
-```
-
-Response `200`:
-
-```json
-{
-  "id": "doc_91e4dd567237bed3d3f00c67",
-  "title": "Baoli Menu Analysis Report",
-  "documentType": "analysis_artifact",
-  "status": "active",
-  "labels": ["person:baoli.manager", "person:lijie"],
-  "originalFileName": "baoli-menu-analysis.md",
-  "sourceSystem": null,
-  "sourceTime": null,
-  "createdAt": "2026-06-30T01:00:00.000Z",
-  "storageObjectKey": "org/default-org/documents/doc_91e4dd567237bed3d3f00c67/original/baoli-menu-analysis.md",
-  "contentType": "text/markdown",
-  "byteSize": 256,
-  "checksumSha256": "..."
-}
-```
-
-Unknown label response `400`:
-
-```json
-{
-  "error": {
-    "code": "UNKNOWN_LABEL",
-    "message": "One or more labels do not exist."
-  }
-}
-```
-
-Audit event appended:
-
-- `document.labels_added` with added label keys.
-
-Seeded Day 4C sharing employee:
-
-- `lijie@example.com` / `emp_lijie` with labels `all_staff` and `person:lijie`.
-
-### `GET /audit`
-
-Admin-only audit query. Non-admin employees receive `403`.
-
-Query params:
-
-| Param    | Required | Example | Notes                                             |
-| -------- | -------- | ------- | ------------------------------------------------- |
-| `limit`  | No       | `20`    | 1-50, default 20                                  |
-| `cursor` | No       | `20`    | Opaque pagination offset returned as `nextCursor` |
-
-Response `200`:
-
-```json
-{
-  "auditEvents": [
-    {
-      "id": "audit_01",
-      "actorEmployeeId": "emp_admin",
-      "action": "document.archived",
-      "targetType": "document",
-      "targetId": "doc_91e4dd567237bed3d3f00c67",
-      "result": "succeeded",
+      "documentId": "doc_...",
+      "chunkId": "chunk_...",
+      "text": "差评处理需要在 15 分钟内联系顾客...",
+      "score": 0.87,
       "metadata": {
-        "previousStatus": "active"
-      },
-      "requestId": "req-123",
-      "clientIp": "127.0.0.1",
-      "createdAt": "2026-06-30T02:00:00.000Z"
+        "title": "差评处理 SOP",
+        "fileType": "md",
+        "sourceSystem": "manual_upload",
+        "labels": ["store:baoli"]
+      }
     }
   ],
-  "nextCursor": null
-}
-```
-
-Forbidden response `403`:
-
-```json
-{
-  "error": {
-    "code": "FORBIDDEN",
-    "message": "Admin access is required."
-  }
-}
-```
-
-## Local CLI Smoke Interface
-
-The local CLI is a thin smoke client over the HTTP API. It does not implement its own permission filtering, does not execute skills, and does not become an employee-facing AI agent. All document visibility still comes from the authenticated API responses.
-
-Run commands through npm:
-
-```bash
-npm run hub -- login --email baoli.manager@example.com
-npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv --label store:baoli
-npm run hub -- documents search "保利店 美团"
-```
-
-Optional environment variables:
-
-| Variable               | Default                      | Notes                                                               |
-| ---------------------- | ---------------------------- | ------------------------------------------------------------------- |
-| `HUB_API_URL`          | `http://127.0.0.1:3000`      | API base URL used by CLI commands.                                  |
-| `HUB_CLI_SESSION_FILE` | `.data/hub-cli/session.json` | Local ignored token session file. The CLI does not print the token. |
-
-### `hub login`
-
-Stores a development token in the local ignored session file. The token is not printed to stdout.
-
-Example output:
-
-```json
-{
-  "ok": true,
-  "apiUrl": "http://127.0.0.1:3000",
-  "employee": {
-    "id": "emp_baoli_manager",
-    "email": "baoli.manager@example.com",
-    "role": "manager",
-    "labels": ["all_staff", "person:baoli.manager", "store:baoli"]
+  "retrieval": {
+    "configVersion": "phase3.retrieval.v1",
+    "provider": "fake"
   },
-  "sessionFile": ".data/hub-cli/session.json"
+  "warnings": []
 }
 ```
 
-### `hub documents upload`
+The API searches only visible active evidence documents with ready indexes. It returns evidence, not final answers.
 
-Uploads a file through `POST /documents`. `--title` defaults to the file name and `--type` defaults to `raw_material`.
+## Structured Import
 
-```bash
-npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv --label store:baoli
-```
+### `POST /v1/structured/imports`
 
-### `hub documents search`
+Multipart form fields:
 
-Searches active accessible documents through `GET /documents`.
-
-```bash
-npm run hub -- documents search "保利店 美团"
-```
-
-## Processing Worker
-
-Command:
-
-```bash
-npm run worker:once
-```
+| Field             | Required | Notes                                   |
+| ----------------- | -------- | --------------------------------------- |
+| `file`            | yes      | CSV/XLSX                                |
+| `dataset`         | yes      | `dishes` or `business`                  |
+| `enterprise_name` | yes      | Metadata supplied by caller             |
+| `startDate`       | yes      | Business-day start, `YYYYMMDD`          |
+| `endDate`         | yes      | Business-day end, `YYYYMMDD`            |
+| `idempotencyKey`  | yes      | Prevents duplicate imports              |
+| `labelKeys[]`     | yes      | One or more existing allowed label keys |
 
 Behavior:
 
-- Claims the oldest `queued` or `retry_scheduled` processing run and marks its document `processing`.
-- Reads the original object from local storage and extracts UTF-8 text for `.txt`, `.md`, `.csv`, and `.json`.
-- Rejects unsupported extensions with `UNSUPPORTED_FILE_TYPE`.
-- Writes deterministic text chunks to `document_chunks` using `indexType: "text"` and unique `(document_id, chunk_hash, index_type)`.
-- Marks the document `active` and run `succeeded` on success.
-- Retries failed processing up to three failures, then marks the run `failed` and document `processing_failed`.
+- validates every sheet/table atomically;
+- supports controlled header aliases mapping into canonical fields;
+- rejects the whole file if structure, date window, labels, or active-window rules fail;
+- stores the original file with canonical metadata;
+- writes each row into the dataset-specific MySQL table;
+- does not use the evidence worker path.
 
-Worker result examples:
-
-```json
-{ "processed": true, "documentId": "doc_91e4dd567237bed3d3f00c67", "status": "active" }
-```
+Response shape:
 
 ```json
 {
-  "processed": true,
-  "documentId": "doc_91e4dd567237bed3d3f00c67",
-  "status": "processing_failed"
+  "document": {
+    "documentId": "doc_...",
+    "status": "active"
+  },
+  "importBatch": {
+    "importBatchId": "batch_...",
+    "dataset": "dishes",
+    "status": "applied",
+    "appliedRowCount": 128
+  }
 }
 ```
 
+## Structured Import Status
+
+### `GET /v1/structured/imports/:importBatchId`
+
+Returns import status and validation/application metadata for visible import batches only.
+
+## Structured Dataset Discovery
+
+### `GET /v1/structured/datasets`
+
+Returns supported datasets, canonical fields, aliases, operators, aggregate support, sorting, grouping, pagination limits, and query safety limits.
+
+Supported datasets:
+
+- `dishes`
+- `business`
+
+## Structured Query
+
+### `POST /v1/structured/query`
+
+This is a controlled read-only JSON API. It is semantically similar to a constrained SQL `SELECT`, but clients never send SQL.
+
+Example detail-row request:
+
 ```json
-{ "processed": false }
+{
+  "dataset": "dishes",
+  "filters": {
+    "and": [
+      { "field": "business_date", "op": "between", "value": ["2026-07-01", "2026-07-05"] },
+      { "field": "product_name", "op": "like", "value": "%肉夹馍%" }
+    ]
+  },
+  "select": ["business_date", "product_name", "dish_sales_quantity"],
+  "sort": [{ "field": "business_date", "direction": "asc" }],
+  "limit": 100
+}
 ```
 
-Audit events appended by the worker:
+Example explicit mechanical aggregate:
 
-- `document.processing_started`
-- `document.activated`
-- `document.processing_failed`
+```json
+{
+  "dataset": "dishes",
+  "filters": {
+    "and": [
+      { "field": "business_date", "op": "eq", "value": "2026-07-05" },
+      { "field": "product_name", "op": "like", "value": "%肉夹馍%" }
+    ]
+  },
+  "aggregates": [{ "field": "dish_sales_quantity", "op": "sum", "as": "quantity_sum" }],
+  "groupBy": ["product_name"],
+  "limit": 100
+}
+```
 
-## Local MVP Integration Demo
+Unsupported:
 
-Run the full local MVP loop with:
+- raw SQL;
+- mutation operations;
+- joins across arbitrary tables;
+- formulas/window functions;
+- natural-language query generation;
+- service-side business conclusions.
 
-```bash
+## MCP Tools
+
+Current MCP tools:
+
+- `enterprise_hub_login_dev`
+- `enterprise_hub_list_labels`
+- `enterprise_hub_list_skills`
+- `upload_evidence_document`
+- `get_evidence_document_status`
+- `search_document_evidence`
+- `upload_structured_dataset`
+- `get_import_status`
+- `list_structured_datasets`
+- `query_structured_dataset`
+
+MCP tools are adapters over the HTTP API and must preserve backend authorization. The MCP server may read a caller-provided local file only for upload tools; it must not direct-read backend storage, MySQL, or Qdrant.
+
+## Environment Notes
+
+Required environment variables are tracked in `docs/implementation/env-inventory.md`.
+
+Phase 3 local defaults use:
+
+- local MySQL;
+- local Qdrant;
+- local filesystem storage;
+- fake embedding/rerank providers unless a real external provider is explicitly configured and acknowledged.
+
+## Verification
+
+Required checks for this contract:
+
+```sh
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
 MYSQL_PORT=3307 npm run test:integration
-```
-
-The script starts local MySQL, resets and seeds the local development database, starts the API on a local port, uses the CLI to log in and upload `fixtures/baoli-june-meituan.csv`, runs one worker pass, verifies Baoli manager search can see the active document, verifies Suzhou manager search cannot see it, downloads it as Baoli manager, archives it, and verifies ordinary search no longer returns it.
-
-### `GET /me`
-
-Request headers:
-
-```http
-Authorization: Bearer <jwt>
-```
-
-Response `200`:
-
-```json
-{
-  "employee": {
-    "id": "emp_admin",
-    "email": "admin@example.com",
-    "role": "admin",
-    "disabled": false,
-    "labels": ["all_staff", "person:admin", "store:baoli", "store:suzhou"]
-  }
-}
-```
-
-Unauthenticated response `401`:
-
-```json
-{
-  "error": {
-    "code": "UNAUTHENTICATED",
-    "message": "Authentication is required."
-  }
-}
-```
-
-Invalid token response `401`:
-
-```json
-{
-  "error": {
-    "code": "UNAUTHENTICATED",
-    "message": "Authentication is required."
-  }
-}
-```
-
-Disabled employee response `403`:
-
-```json
-{
-  "error": {
-    "code": "EMPLOYEE_DISABLED",
-    "message": "Employee account is disabled."
-  }
-}
-```
-
-### `GET /labels`
-
-Lists the existing label catalog for authenticated employees, CLIs, MCP clients, APIs, and employee-owned agents that need controlled label selection. This endpoint is read-only and does not grant assignment rights. Upload and document-label mutation endpoints still enforce backend authorization before labels can be applied.
-
-Request headers:
-
-```http
-Authorization: Bearer <jwt>
-```
-
-Response `200`:
-
-```json
-{
-  "labels": [
-    {
-      "key": "all_staff",
-      "name": "All Staff",
-      "type": "all_staff"
-    },
-    {
-      "key": "person:baoli.manager",
-      "name": "Baoli Manager Personal",
-      "type": "personal"
-    },
-    {
-      "key": "store:baoli",
-      "name": "Baoli Store",
-      "type": "store"
-    }
-  ]
-}
-```
-
-The response intentionally omits internal label ids. Labels are ordered by `type` then `key`.
-
-Unauthenticated response `401`:
-
-```json
-{
-  "error": {
-    "code": "UNAUTHENTICATED",
-    "message": "Authentication is required."
-  }
-}
+MYSQL_PORT=3307 npm run test:mcp
+npm run test:phase3:golden
+npm run test:phase3:perf
 ```

@@ -99,264 +99,6 @@ describe("MCP document, label, and skill tools", () => {
     });
   });
 
-  it("uploads a local file through authenticated multipart POST /documents", async () => {
-    const calls: FetchCall[] = [];
-    const uploadPath = path.join(await createTempDir(), "baoli-june-meituan.csv");
-    await writeFile(uploadPath, "date,store,orders\n2026-06-01,baoli,12\n");
-    const handler = await createHandler("enterprise_hub_upload_document", async (url, init) => {
-      calls.push({ url: String(url), init });
-      return jsonResponse({
-        id: "doc_pending",
-        title: "Baoli June Meituan Export",
-        documentType: "raw_material",
-        status: "pending_processing",
-        labels: ["person:baoli.manager", "store:baoli"],
-        processingRunStatus: "queued"
-      });
-    });
-
-    const result = await handler({
-      sessionName: "baoli",
-      filePath: uploadPath,
-      title: "Baoli June Meituan Export",
-      documentType: "raw_material",
-      sourceSystem: "meituan",
-      sourceTime: "2026-06-30T00:00:00.000Z",
-      labelKeys: ["store:baoli"]
-    });
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      url: "http://api.test/documents",
-      init: {
-        method: "POST"
-      }
-    });
-    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
-    const formData = calls[0]?.init?.body;
-    expect(formData).toBeInstanceOf(FormData);
-    expect((formData as FormData).get("title")).toBe("Baoli June Meituan Export");
-    expect((formData as FormData).get("documentType")).toBe("raw_material");
-    expect((formData as FormData).get("sourceSystem")).toBe("meituan");
-    expect((formData as FormData).get("sourceTime")).toBe("2026-06-30T00:00:00.000Z");
-    expect((formData as FormData).getAll("labelKeys[]")).toEqual(["store:baoli"]);
-    const file = (formData as FormData).get("file");
-    expect(file).toBeInstanceOf(File);
-    expect((file as File).name).toBe("baoli-june-meituan.csv");
-    expect(await (file as File).text()).toContain("baoli,12");
-    expect(parseToolJson(result)).toMatchObject({
-      id: "doc_pending",
-      status: "pending_processing",
-      labels: ["person:baoli.manager", "store:baoli"],
-      processingRunStatus: "queued"
-    });
-  });
-
-  it("returns a safe local-file error before upload when the file path is missing", async () => {
-    const calls: FetchCall[] = [];
-    const handler = await createHandler("enterprise_hub_upload_document", async (url, init) => {
-      calls.push({ url: String(url), init });
-      return jsonResponse({});
-    });
-
-    const result = await handler({
-      sessionName: "baoli",
-      filePath: path.join(await createTempDir(), "missing.csv"),
-      title: "Missing",
-      documentType: "raw_material"
-    });
-
-    expect(calls).toHaveLength(0);
-    expect(result.isError).toBe(true);
-    expect(parseToolJson(result)).toEqual({
-      error: {
-        code: "LOCAL_FILE_NOT_FOUND",
-        message: "Local upload file was not found."
-      }
-    });
-  });
-
-  it("gets document status through authenticated GET /documents/:id/status", async () => {
-    const calls: FetchCall[] = [];
-    const handler = await createHandler("enterprise_hub_get_document_status", async (url, init) => {
-      calls.push({ url: String(url), init });
-      return jsonResponse({
-        id: "doc_pending",
-        status: "pending_processing",
-        labels: ["store:baoli"],
-        processingRunStatus: "queued"
-      });
-    });
-
-    const result = await handler({ sessionName: "baoli", documentId: "doc_pending" });
-
-    expect(calls[0]).toMatchObject({
-      url: "http://api.test/documents/doc_pending/status",
-      init: {
-        method: "GET"
-      }
-    });
-    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
-    expect(parseToolJson(result)).toMatchObject({
-      status: "pending_processing",
-      processingRunStatus: "queued"
-    });
-  });
-
-  it("searches visible active documents with query filters delegated to the API", async () => {
-    const calls: FetchCall[] = [];
-    const handler = await createHandler("enterprise_hub_search_documents", async (url, init) => {
-      calls.push({ url: String(url), init });
-      return jsonResponse({
-        documents: [
-          {
-            id: "doc_active",
-            title: "Baoli June Meituan Export",
-            status: "active",
-            labels: ["store:baoli"]
-          }
-        ],
-        nextCursor: null
-      });
-    });
-
-    const result = await handler({
-      sessionName: "baoli",
-      q: "Meituan",
-      documentType: "raw_material",
-      labelKey: "store:baoli",
-      limit: 10,
-      cursor: "20"
-    });
-
-    expect(calls[0]?.url).toBe(
-      "http://api.test/documents?q=Meituan&documentType=raw_material&labelKey=store%3Abaoli&limit=10&cursor=20"
-    );
-    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
-    expect(parseToolJson(result)).toMatchObject({
-      documents: [
-        {
-          id: "doc_active",
-          status: "active"
-        }
-      ],
-      nextCursor: null
-    });
-  });
-
-  it("gets document metadata and preserves API not-found semantics", async () => {
-    const successHandler = await createHandler("enterprise_hub_get_document", async () =>
-      jsonResponse({
-        id: "doc_active",
-        title: "Baoli June Meituan Export",
-        status: "active",
-        labels: ["store:baoli"]
-      })
-    );
-    const notFoundHandler = await createHandler("enterprise_hub_get_document", async () =>
-      jsonResponse(
-        {
-          error: {
-            code: "DOCUMENT_NOT_FOUND",
-            message: "Document not found."
-          }
-        },
-        404
-      )
-    );
-
-    expect(
-      parseToolJson(await successHandler({ sessionName: "baoli", documentId: "doc_active" }))
-    ).toMatchObject({
-      id: "doc_active",
-      status: "active"
-    });
-    const notFoundResult = await notFoundHandler({
-      sessionName: "baoli",
-      documentId: "hidden_doc"
-    });
-    expect(notFoundResult.isError).toBe(true);
-    expect(parseToolJson(notFoundResult)).toEqual({
-      error: {
-        code: "DOCUMENT_NOT_FOUND",
-        message: "Document not found."
-      }
-    });
-  });
-
-  it("gets document download URLs through the API without reading storage directly", async () => {
-    const calls: FetchCall[] = [];
-    const handler = await createHandler(
-      "enterprise_hub_get_document_download_url",
-      async (url, init) => {
-        calls.push({ url: String(url), init });
-        return jsonResponse({
-          id: "doc_active",
-          downloadUrl: "file:///tmp/baoli-june-meituan.csv"
-        });
-      }
-    );
-
-    const result = await handler({ sessionName: "baoli", documentId: "doc_active" });
-
-    expect(calls[0]?.url).toBe("http://api.test/documents/doc_active/download");
-    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
-    expect(parseToolJson(result)).toEqual({
-      id: "doc_active",
-      downloadUrl: "file:///tmp/baoli-june-meituan.csv"
-    });
-  });
-
-  it("archives documents through authenticated POST /documents/:id/archive", async () => {
-    const calls: FetchCall[] = [];
-    const handler = await createHandler("enterprise_hub_archive_document", async (url, init) => {
-      calls.push({ url: String(url), init });
-      return jsonResponse({
-        id: "doc_active",
-        status: "archived",
-        labels: ["store:baoli"]
-      });
-    });
-
-    const result = await handler({ sessionName: "baoli", documentId: "doc_active" });
-
-    expect(calls[0]).toMatchObject({
-      url: "http://api.test/documents/doc_active/archive",
-      init: {
-        method: "POST"
-      }
-    });
-    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
-    expect(parseToolJson(result)).toMatchObject({
-      id: "doc_active",
-      status: "archived"
-    });
-  });
-
-  it("preserves archive API authorization errors", async () => {
-    const handler = await createHandler("enterprise_hub_archive_document", async () =>
-      jsonResponse(
-        {
-          error: {
-            code: "DOCUMENT_UPDATE_FORBIDDEN",
-            message: "Document cannot be changed."
-          }
-        },
-        403
-      )
-    );
-
-    const result = await handler({ sessionName: "baoli", documentId: "doc_active" });
-
-    expect(result.isError).toBe(true);
-    expect(parseToolJson(result)).toEqual({
-      error: {
-        code: "DOCUMENT_UPDATE_FORBIDDEN",
-        message: "Document cannot be changed."
-      }
-    });
-  });
-
   it("lists approved skills without executing them", async () => {
     const calls: FetchCall[] = [];
     const handler = await createHandler("enterprise_hub_list_skills", async (url, init) => {
@@ -690,6 +432,45 @@ describe("MCP document, label, and skill tools", () => {
       },
       documentIndex: {
         status: "pending"
+      }
+    });
+  });
+
+  it("gets evidence document status through authenticated GET /v1/documents/evidence/:id/status", async () => {
+    const calls: FetchCall[] = [];
+    const handler = await createHandler("get_evidence_document_status", async (url, init) => {
+      calls.push({ url: String(url), init });
+      return jsonResponse({
+        document: {
+          documentId: "doc_evidence",
+          documentKind: "evidence",
+          fileType: "md",
+          status: "active"
+        },
+        processing: { processingRunId: null, status: "succeeded" },
+        documentIndex: {
+          status: "ready",
+          retrievalConfigVersion: "phase3.retrieval.v1"
+        }
+      });
+    });
+
+    const result = await handler({ sessionName: "baoli", documentId: "doc_evidence" });
+
+    expect(calls[0]).toMatchObject({
+      url: "http://api.test/v1/documents/evidence/doc_evidence/status",
+      init: {
+        method: "GET"
+      }
+    });
+    expectAuthorization(calls[0]?.init?.headers, "Bearer baoli-token");
+    expect(parseToolJson(result)).toMatchObject({
+      document: {
+        documentId: "doc_evidence",
+        status: "active"
+      },
+      documentIndex: {
+        status: "ready"
       }
     });
   });

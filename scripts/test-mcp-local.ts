@@ -13,9 +13,6 @@ const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
   `mysql://enterprise_hub:enterprise_hub_local_password@localhost:${mysqlPort}/enterprise_hub`;
 const DEFAULT_JWT_SECRET = "replace-with-local-development-secret";
-const BAOLI_TITLE = "MCP Smoke Baoli June Meituan";
-const BAOLI_QUERY = BAOLI_TITLE;
-
 interface CommandResult {
   stdout: string;
   stderr: string;
@@ -34,21 +31,6 @@ interface LabelsToolResponse {
     name: string;
     type: string;
   }>;
-}
-
-interface DocumentResponse {
-  id: string;
-  title: string;
-  status: string;
-}
-
-interface DocumentListResponse {
-  documents: DocumentResponse[];
-}
-
-interface DownloadResponse {
-  id: string;
-  downloadUrl: string;
 }
 
 interface WorkerResponse {
@@ -74,12 +56,17 @@ interface StructuredUploadResponse {
   };
 }
 
-interface EvidenceUploadResponse {
+interface EvidenceDocumentStatusResponse {
   document: {
     documentId: string;
     status: string;
   };
+  documentIndex: {
+    status: string;
+  };
 }
+
+type EvidenceUploadResponse = EvidenceDocumentStatusResponse;
 
 interface EvidenceSearchResponse {
   results: Array<{
@@ -90,7 +77,6 @@ interface EvidenceSearchResponse {
 
 interface McpToolCaller {
   call: <T>(toolName: string, input: unknown) => Promise<T>;
-  callExpectError: (toolName: string, input: unknown) => Promise<{ error?: { code?: string } }>;
 }
 
 const rootDir = process.cwd();
@@ -165,105 +151,6 @@ try {
   assert(
     labels.labels.some((label) => label.key === "store:baoli"),
     "MCP list-labels should include the Baoli store label."
-  );
-
-  const upload = await tools.call<DocumentResponse>("enterprise_hub_upload_document", {
-    sessionName: "baoli",
-    filePath: path.join(rootDir, "fixtures", "baoli-june-meituan.csv"),
-    title: BAOLI_TITLE,
-    documentType: "raw_material",
-    sourceSystem: "meituan",
-    sourceTime: "2026-06-30T00:00:00.000Z",
-    labelKeys: ["store:baoli"]
-  });
-  assert(upload.status === "pending_processing", "MCP upload should create a pending document.");
-
-  const pendingStatus = await tools.call<DocumentResponse>("enterprise_hub_get_document_status", {
-    sessionName: "baoli",
-    documentId: upload.id
-  });
-  assert(
-    pendingStatus.status === "pending_processing",
-    "MCP status should show the pending document before the worker pass."
-  );
-
-  const worker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: testEnv })).stdout
-  );
-  assert(worker.processed === true, "Worker should process one MCP-uploaded document.");
-  assert(worker.documentId === upload.id, "Worker should process the MCP-uploaded document.");
-  assert(worker.status === "active", "Worker should activate the MCP-uploaded document.");
-
-  await waitForMcpStatus(tools, upload.id, "active");
-
-  const baoliSearch = await tools.call<DocumentListResponse>("enterprise_hub_search_documents", {
-    sessionName: "baoli",
-    q: BAOLI_QUERY
-  });
-  assert(
-    baoliSearch.documents.some(
-      (document) => document.id === upload.id && document.status === "active"
-    ),
-    "Baoli MCP search should find the active uploaded document."
-  );
-
-  const suzhouLogin = await tools.call<LoginToolResponse>("enterprise_hub_login_dev", {
-    email: "suzhou.manager@example.com",
-    sessionName: "suzhou"
-  });
-  assert(
-    suzhouLogin.employee.email === "suzhou.manager@example.com",
-    "Suzhou MCP login should authenticate the seeded manager."
-  );
-
-  const suzhouSearch = await tools.call<DocumentListResponse>("enterprise_hub_search_documents", {
-    sessionName: "suzhou",
-    q: BAOLI_QUERY
-  });
-  assert(
-    suzhouSearch.documents.every((document) => document.id !== upload.id),
-    "Suzhou MCP search must not return the Baoli document."
-  );
-
-  const suzhouDetailError = await tools.callExpectError("enterprise_hub_get_document", {
-    sessionName: "suzhou",
-    documentId: upload.id
-  });
-  assert(
-    suzhouDetailError.error?.code === "DOCUMENT_NOT_FOUND",
-    "Suzhou MCP detail should preserve the API not-found/inaccessible response."
-  );
-  assert(
-    !JSON.stringify(suzhouDetailError).includes(BAOLI_TITLE),
-    "Inaccessible MCP detail errors must not leak the hidden document title."
-  );
-
-  const download = await tools.call<DownloadResponse>("enterprise_hub_get_document_download_url", {
-    sessionName: "baoli",
-    documentId: upload.id
-  });
-  assert(download.id === upload.id, "MCP download response should target the uploaded document.");
-  assert(
-    download.downloadUrl.startsWith("file://"),
-    "Local MCP download URL should be a file URL."
-  );
-
-  const archived = await tools.call<DocumentResponse>("enterprise_hub_archive_document", {
-    sessionName: "baoli",
-    documentId: upload.id
-  });
-  assert(archived.status === "archived", "MCP archive should mark the document archived.");
-
-  const afterArchiveSearch = await tools.call<DocumentListResponse>(
-    "enterprise_hub_search_documents",
-    {
-      sessionName: "baoli",
-      q: BAOLI_QUERY
-    }
-  );
-  assert(
-    afterArchiveSearch.documents.every((document) => document.id !== upload.id),
-    "Archived document should disappear from ordinary MCP search."
   );
 
   const structuredDatasets = await tools.call<StructuredDatasetsResponse>(
@@ -342,7 +229,7 @@ try {
     "Worker should process the MCP evidence upload."
   );
   assert(evidenceWorker.status === "active", "Worker should activate the MCP evidence upload.");
-  await waitForMcpStatus(tools, evidenceUpload.document.documentId, "active");
+  await waitForEvidenceStatus(tools, evidenceUpload.document.documentId, "active");
 
   const evidenceSearch = await tools.call<EvidenceSearchResponse>("search_document_evidence", {
     sessionName: "baoli",
@@ -362,7 +249,6 @@ try {
     JSON.stringify(
       {
         ok: true,
-        documentId: upload.id,
         structuredImportBatchId: structuredUpload.importBatch.importBatchId,
         evidenceDocumentId: evidenceUpload.document.documentId,
         apiUrl,
@@ -370,15 +256,6 @@ try {
         proved: [
           "mcp_login_baoli",
           "mcp_list_labels",
-          "mcp_upload",
-          "mcp_status_pending",
-          "worker_active",
-          "mcp_search_baoli_visible",
-          "mcp_login_suzhou",
-          "mcp_search_suzhou_hidden",
-          "mcp_detail_suzhou_not_found_without_title",
-          "mcp_download_url",
-          "mcp_archive_hidden",
           "mcp_phase3_structured_dataset_discovery",
           "mcp_phase3_structured_upload_status",
           "mcp_phase3_structured_query",
@@ -417,32 +294,25 @@ function createMcpToolCaller(): McpToolCaller {
       }
 
       return payload;
-    },
-    async callExpectError(toolName: string, input: unknown) {
-      const result = await createToolHandler(toolName, dependencies)(input);
-      const payload = parseToolResult<{ error?: { code?: string } }>(result);
-
-      if (!result.isError) {
-        throw new Error(`MCP tool ${toolName} unexpectedly succeeded: ${JSON.stringify(payload)}`);
-      }
-
-      return payload;
     }
   };
 }
 
-async function waitForMcpStatus(
+async function waitForEvidenceStatus(
   tools: McpToolCaller,
   documentId: string,
   expectedStatus: string
 ): Promise<void> {
-  await waitForCondition(`MCP document status ${expectedStatus}`, async () => {
-    const status = await tools.call<DocumentResponse>("enterprise_hub_get_document_status", {
-      sessionName: "baoli",
-      documentId
-    });
+  await waitForCondition(`MCP evidence document status ${expectedStatus}`, async () => {
+    const status = await tools.call<EvidenceDocumentStatusResponse>(
+      "get_evidence_document_status",
+      {
+        sessionName: "baoli",
+        documentId
+      }
+    );
 
-    return status.status === expectedStatus;
+    return status.document.status === expectedStatus && status.documentIndex.status === "ready";
   });
 }
 

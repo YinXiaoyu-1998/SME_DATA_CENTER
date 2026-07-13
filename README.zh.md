@@ -1,261 +1,94 @@
 # 企业资料中枢
 
-企业资料中枢是一个给员工自有 agent、CLI、MCP 客户端和 API 使用的企业资料服务。它负责保存资料目录、原始文件、本地处理状态、标签权限、审计日志和 Skill Directory 元数据。
+企业资料中枢是给员工自有 agent、MCP client、API client 和极简管理面使用的数据服务。它不是员工直接对话的 AI agent，不生成自然语言结论，不做报表/dashboard，不执行 Skill Directory 条目。
 
-它不是员工直接对话的 AI agent，也不是报表生成器、dashboard 服务或 skill 执行平台。所有非健康检查接口都必须通过后端认证和权限过滤。
+当前产品面是 Phase 3-only：
 
-## 当前本地能力
+- 非结构化证据：上传 MD/TXT/DOCX → 解析/切块/embedding/Qdrant indexing → 检索 evidence chunks。
+- 结构化数据：上传 CSV/XLSX → 严格校验 dishes/business 数据 → MySQL 原子导入 → 受控 JSON 查询。
 
-- 本地 MySQL + Prisma 数据模型、迁移和 seed。
-- Fastify API：dev login、资料上传、状态查询、搜索、详情、下载 URL、归档、标签目录、Skill Directory、审计查询。
-- 本地文件存储：原始文件写入 ignored `.data/storage`。
-- 确定性 worker：支持一次性处理，也支持本地后台 loop 持续处理待处理资料。
-- CLI smoke：登录、上传、搜索。
-- 本地 MCP server：让 Codex 这类 MCP-capable agent 通过 HTTP API 使用企业资料中枢。
-- `enterprise-hub-mcp` skill：指导 agent 安全使用本地 MCP profile。
-- Phase 3 检索底座：MD/TXT/DOCX 证据资料上传、结构化切块、Qdrant 检索、rerank/fake provider 配置。
-- Phase 3 结构化数据底座：XLSX/CSV 菜品/营业数据严格校验、原子导入 MySQL、受控只读结构化 query。
+旧的 legacy ordinary document 入口已经移除。底层 documents catalog/storage/labels/audit 仍作为源文件记录、权限标签、状态和审计基础设施使用。
 
-## 前置依赖
-
-- Node.js 和 npm。
-- Docker Desktop 或兼容的 Docker Compose。
-- 可用的本地 MySQL 端口。默认是 `3306`；如果被占用，建议使用 `MYSQL_PORT=3307`。
-
-## 安装
+## 本地环境
 
 ```sh
 npm install
-```
-
-## 本地环境变量
-
-先复制一份本地环境文件：
-
-```sh
 cp .env.example .env
 ```
 
-`.env` 至少包含：
+常用本地变量：
 
 ```dotenv
-DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub"
+DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub"
 STORAGE_DRIVER="local"
 LOCAL_STORAGE_ROOT="./.data/storage"
 JWT_SECRET="replace-with-local-development-secret"
 DEV_SEED_ADMIN_EMAIL="admin@example.com"
 MAX_UPLOAD_BYTES="52428800"
+
+QDRANT_URL="http://127.0.0.1:6333"
+QDRANT_COLLECTION_EVIDENCE="enterprise_hub_evidence_local"
+RETRIEVAL_CONFIG_VERSION="phase3.retrieval.v1"
+
+LLM_PROVIDER="fake"
+LLM_MODEL="fake-rerank"
+LLM_EMBEDDING_MODEL="fake-embedding"
+STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS="120000"
 ```
 
-如果本机 `3306` 已被占用，使用 `3307` 时请把 `.env` 或命令里的连接串改成：
+不要提交 `.env`、`.data/`、session 文件、真实客户导出、私有 token、服务账号 key 或第三方下载数据。
 
-```dotenv
-DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub"
-```
+## 本地启动
 
-可选变量：
-
-| Variable                                   | 用途                                    | 默认值或示例                            |
-| ------------------------------------------ | --------------------------------------- | --------------------------------------- |
-| `MYSQL_PORT`                               | Docker MySQL 暴露端口                   | `3306`，常用本地替代值 `3307`           |
-| `PORT`                                     | API 监听端口                            | `3000`                                  |
-| `HOST`                                     | API bind host                           | `0.0.0.0`                               |
-| `HUB_API_URL`                              | CLI 调用 API 的地址                     | `http://127.0.0.1:3000`                 |
-| `HUB_CLI_SESSION_FILE`                     | CLI 本地 session 文件                   | `.data/hub-cli/session.json`            |
-| `ENTERPRISE_HUB_API_URL`                   | MCP server 调用 API 的地址，必填        | `http://127.0.0.1:3000`                 |
-| `ENTERPRISE_HUB_MCP_PROFILE`               | MCP profile                             | `local-development`                     |
-| `ENTERPRISE_HUB_MCP_SESSION_FILE`          | MCP 本地 session 文件，可能含 dev token | `.data/enterprise-hub-mcp/session.json` |
-| `HUB_INTEGRATION_PORT`                     | `test:integration` 临时 API 端口        | 自动选择                                |
-| `HUB_MCP_TEST_PORT`                        | `test:mcp` 临时 API 端口                | 自动选择                                |
-| `QDRANT_URL`                               | Phase 3 本地 Qdrant 地址                | `http://127.0.0.1:6333`                 |
-| `QDRANT_COLLECTION_EVIDENCE`               | 证据向量 collection                     | `enterprise_hub_evidence_local`         |
-| `LLM_PROVIDER`                             | embedding/rerank provider               | 本地/CI 默认 `fake`                     |
-| `LLM_MODEL`                                | rerank 模型名                           | 本地/CI 默认 `fake-rerank`              |
-| `LLM_EMBEDDING_MODEL`                      | embedding 模型名                        | 本地/CI 默认 `fake-embedding`           |
-| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` | 结构化导入原子事务超时                  | `120000`                                |
-
-不要提交 `.env`、`.data/`、本地 session 文件、真实凭据、真实客户资料或第三方下载数据。
-
-## 本地上传文件存在哪里
-
-本地 profile 使用 local storage driver 时，上传原始文件会存到 `LOCAL_STORAGE_ROOT`。默认本地路径是：
-
-```text
-.data/storage/org/<org_id>/documents/<document_id>/original/<filename>
-```
-
-集成测试和 MCP smoke 测试会使用各自的 ignored 目录：
-
-```text
-.data/integration/storage
-.data/mcp-local-test/storage
-```
-
-清理本地上传文件、测试 storage，以及本地 MySQL 里的资料记录：
-
-```sh
-npm run purge-data
-```
-
-先预览会删哪些目录：
-
-```sh
-npm run purge-data -- --dry-run
-```
-
-默认命令还会清理本地 `enterprise_hub` MySQL 里的文档资料数据，包括 `documents`，以及通过数据库级联删除的 `document_chunks`、`processing_runs`、`document_labels` 等衍生记录，并额外删除 document audit logs。它会保留 seed 的组织、员工、标签、Skill Directory，以及本地 CLI/MCP session 文件。
-
-如果想把 ignored `.data` 整个删掉，包括本地 CLI/MCP session 文件：
-
-```sh
-npm run purge-data -- --all
-```
-
-如果只想删文件、不动 MySQL：
-
-```sh
-npm run purge-data -- --files-only
-```
-
-出于安全考虑，MySQL 清理只允许 `DATABASE_URL` 指向 `localhost` / `127.0.0.1` 的 MySQL，且数据库名必须是 `enterprise_hub`。
-
-## 启动本地数据库和 Qdrant
-
-推荐使用 `3307`，避免和本机已有 MySQL 冲突：
+启动 MySQL 和 Qdrant：
 
 ```sh
 MYSQL_PORT=3307 npm run runtime:compose:up
 ```
 
-生成 Prisma client，并应用迁移：
+生成 Prisma client、迁移并 seed：
 
 ```sh
 DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate
 DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate
-```
-
-写入本地 seed 数据：
-
-```sh
 DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed
 ```
 
-初始化 Phase 3 本地 Qdrant collection，并运行 readiness：
+初始化 Qdrant evidence collection：
 
 ```sh
 npm run qdrant:init
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
-  STORAGE_DRIVER=local \
-  LOCAL_STORAGE_ROOT=./.data/storage \
-  npm run readyz:local
 ```
 
-seed 中常用本地员工：
-
-| Email                        | 用途                             |
-| ---------------------------- | -------------------------------- |
-| `admin@example.com`          | 本地管理员                       |
-| `baoli.manager@example.com`  | 保利店 manager，用于上传和搜索   |
-| `suzhou.manager@example.com` | 苏州店 manager，用于权限隔离验证 |
-
-## 启动 API
-
-另开一个终端：
+启动 API：
 
 ```sh
 npm run api:dev
 ```
 
-API 启动入口会自动读取当前目录下的 `.env`（如果存在），且不会覆盖终端里已经显式设置的变量。临时换端口可以这样运行：
-
-```sh
-PORT=3033 npm run api:dev
-```
-
-健康检查：
-
-```sh
-curl http://127.0.0.1:3000/healthz
-```
-
-## 运行 worker
-
-普通本地 MCP 使用优先通过 `npm run mcp-bootup` 启动 worker loop。单独调试 worker 时，可以启动本地后台 loop：
+启动 worker：
 
 ```sh
 npm run worker:dev
 ```
 
-也可以执行一次确定性处理，用于测试或排障：
+只跑一次 worker pass：
 
 ```sh
 npm run worker:once
 ```
 
-worker 会读取 `.env`，并且不会覆盖终端里已经显式设置的环境变量。
-
-## CLI 本地 smoke
-
-API 和 worker loop 启动后，可以用 CLI 走登录、上传、搜索：
-
-```sh
-npm run worker:dev
-```
-
-保持 worker 终端运行；它会自动处理后续上传队列。
-
-```sh
-HUB_API_URL=http://127.0.0.1:3000 \
-npm run hub -- login --email baoli.manager@example.com
-```
-
-上传 synthetic fixture：
-
-```sh
-HUB_API_URL=http://127.0.0.1:3000 \
-npm run hub -- documents upload ./fixtures/baoli-june-meituan.csv \
-  --title "Baoli June Meituan Export" \
-  --type raw_material \
-  --label store:baoli
-```
-
-等待后台 worker 把资料处理成 `active` 后搜索：
-
-```sh
-HUB_API_URL=http://127.0.0.1:3000 \
-npm run hub -- documents search "Meituan"
-```
-
-`npm run worker:once` 只建议用于 CI、脚本化 smoke 或排障，不是自然本地使用流程。
-
-CLI session 默认写入 `.data/hub-cli/session.json`，不要提交。
-
 ## MCP 本地服务
 
-MCP server 是 HTTP API 的 adapter。它不会直接读取 MySQL 或本地 storage。
+MCP server 是 HTTP API adapter；它不直读 MySQL、Qdrant 或 storage。
 
-如果想让本地 agent 一条命令拉起 API + worker + MCP，可以运行：
+一条命令启动 API + worker loop + MCP stdio server：
 
 ```sh
 npm run mcp-bootup
 ```
 
-`mcp-bootup` 会读取 `.env`，后台启动 API，等待 `/healthz` 成功，启动本地 worker loop，然后以前台 stdio 方式启动 MCP server。架构上仍然是 MCP 调 API、worker 处理队列，这个脚本只是把本地启动流程串起来，让本地行为接近线上后台 worker 形态。
-
-如果 API 已经在 `http://127.0.0.1:3000` 运行，也可以只启动 MCP：
-
-```sh
-ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 \
-ENTERPRISE_HUB_MCP_PROFILE=local-development \
-ENTERPRISE_HUB_MCP_SESSION_FILE=.data/enterprise-hub-mcp/session.json \
-npm run mcp:dev
-```
-
-MCP 本地 session 文件可能包含 development bearer token，默认位于 ignored `.data/enterprise-hub-mcp/session.json`。
-
-### Codex 如何连接
-
-在 Codex 或其他支持本地 MCP 的 agent 中，添加一个本地 stdio MCP server。配置的核心是：
+Codex / MCP client 推荐配置：
 
 ```json
 {
@@ -272,100 +105,90 @@ MCP 本地 session 文件可能包含 development bearer token，默认位于 ig
 }
 ```
 
-不同 Codex 版本的 MCP 配置入口可能不同，但需要传给 MCP server 的信息就是上面的 `command`、`args`、`cwd` 和 `env`。这里使用 `--silent` 是为了避免 npm 自己的启动 banner 写入 MCP stdio 通道。
-
-如果当前 Codex 环境能发现 repo-local skill，可以在新 thread 里使用：
-
-```text
-Use $enterprise-hub-mcp with the local-development profile to run the local 企业资料中枢 MCP human-test flow. Do not print raw tokens, do not ask for production credentials, and do not claim inaccessible documents exist.
-```
-
-常用 MCP tool：
-
-| Tool                                       | 用途                                 |
-| ------------------------------------------ | ------------------------------------ |
-| `enterprise_hub_login_dev`                 | 用 seeded email 登录本地 dev session |
-| `enterprise_hub_list_labels`               | 读取可用标签目录                     |
-| `enterprise_hub_upload_document`           | 上传本地文件到资料中枢               |
-| `enterprise_hub_get_document_status`       | 查询上传/处理状态                    |
-| `enterprise_hub_search_documents`          | 搜索当前员工可见的 active 资料       |
-| `enterprise_hub_get_document`              | 读取可见资料元数据                   |
-| `enterprise_hub_get_document_download_url` | 获取可见资料下载 URL                 |
-| `enterprise_hub_archive_document`          | 归档资料                             |
-| `enterprise_hub_list_skills`               | 读取已批准 Skill Directory 元数据    |
-
-权限隔离验证建议：
-
-1. 用 `baoli.manager@example.com` 登录 session `baoli`。
-2. 上传 `fixtures/baoli-june-meituan.csv`，标签用 `store:baoli`。
-3. 使用 `mcp-bootup` 的后台 worker loop 等待资料变成 `active`；如果只在排障，可以运行一次 `npm run worker:once`。
-4. 用 Baoli session 搜索，应能看到资料。
-5. 用 `suzhou.manager@example.com` 登录 session `suzhou`。
-6. 用 Suzhou session 搜索同一关键词，应看不到 Baoli 资料；详情访问应返回 not found / inaccessible 形状，不能泄露隐藏标题。
-
-更完整的人工 MCP 测试脚本见 `docs/implementation/local-agent-test.md`。
-
-## 一键验证命令
-
-仓库级检查：
+如果 API 已经运行，也可以只启动 MCP：
 
 ```sh
-npm test
-npm run typecheck
-npm run lint
+ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 \
+ENTERPRISE_HUB_MCP_SESSION_FILE=.data/enterprise-hub-mcp/session.json \
+npm run mcp:dev
+```
+
+MCP session 文件可能包含 development bearer token，默认位于 ignored `.data/enterprise-hub-mcp/session.json`。
+
+## 当前 MCP Tools
+
+| Tool                           | 用途                                        |
+| ------------------------------ | ------------------------------------------- |
+| `enterprise_hub_login_dev`     | 用 seeded email 登录本地 dev session        |
+| `enterprise_hub_list_labels`   | 读取可用标签目录                            |
+| `enterprise_hub_list_skills`   | 读取已批准 Skill Directory 元数据           |
+| `upload_evidence_document`     | 上传 MD/TXT/DOCX evidence 文档              |
+| `get_evidence_document_status` | 查询 evidence 文档和索引状态                |
+| `search_document_evidence`     | 检索可见 evidence chunks                    |
+| `upload_structured_dataset`    | 上传 dishes/business CSV/XLSX 数据集        |
+| `get_import_status`            | 查询结构化导入状态                          |
+| `list_structured_datasets`     | 查询可用结构化 dataset/字段/operator schema |
+| `query_structured_dataset`     | 执行受控只读结构化 JSON 查询                |
+
+## 本地 MCP 人工验证
+
+更完整的步骤见 `docs/implementation/local-agent-test.md`。核心路径：
+
+1. 用 `enterprise_hub_login_dev` 登录 `baoli.manager@example.com`。
+2. 用 `enterprise_hub_list_labels` 选择 `store:baoli`。
+3. 用 `upload_evidence_document` 上传 MD/TXT/DOCX，随后用 `get_evidence_document_status` 等待 index ready，再用 `search_document_evidence` 检索。
+4. 用 `upload_structured_dataset` 上传 `dishes` 或 `business` CSV/XLSX，随后用 `get_import_status` 和 `query_structured_dataset` 验证。
+5. 用 `suzhou.manager@example.com` 搜同一内容，确认没有跨店数据、文件名、行数或存在性泄漏。
+
+## npm scripts
+
+| Script               | 功能                                     |
+| -------------------- | ---------------------------------------- |
+| `format`             | 用 Prettier 格式化仓库                   |
+| `format:check`       | 检查 Prettier 格式                       |
+| `lint`               | 运行 ESLint                              |
+| `test`               | 运行 Vitest                              |
+| `test:integration`   | 跑 Phase 3 local API/worker integration  |
+| `test:mcp`           | 跑 Phase 3 local MCP smoke               |
+| `test:phase3:golden` | 跑 synthetic retrieval golden gate       |
+| `test:phase3:perf`   | 跑 deterministic performance smoke gates |
+| `typecheck`          | 运行 TypeScript 类型检查                 |
+| `api:dev`            | 启动 Fastify API                         |
+| `mcp-bootup`         | 启动 API、worker loop 和 MCP server      |
+| `mcp:dev`            | 只启动 MCP stdio server                  |
+| `purge-data`         | 清理本地文档数据和 ignored storage       |
+| `worker:dev`         | 启动 worker loop                         |
+| `worker:once`        | 跑一次 worker pass                       |
+| `runtime:compose:up` | 启动 MySQL + Qdrant                      |
+| `qdrant:init`        | 初始化/更新 Qdrant evidence collection   |
+| `readyz:local`       | 运行本地 readiness checks                |
+| `db:generate`        | 生成 Prisma client                       |
+| `db:migrate`         | 应用本地 Prisma migrations               |
+| `db:seed`            | 写入本地 seed 数据                       |
+
+## 验证命令
+
+```sh
 npm run format:check
-```
-
-Phase 3 synthetic gate：
-
-```sh
+npm run lint
+npm run typecheck
+npm test
+MYSQL_PORT=3307 npm run test:integration
+MYSQL_PORT=3307 npm run test:mcp
 npm run test:phase3:golden
 npm run test:phase3:perf
 ```
 
-本地 MVP 集成测试：
+## 本地数据清理
 
 ```sh
-MYSQL_PORT=3307 npm run test:integration
+npm run purge-data
+npm run purge-data -- --dry-run
+npm run purge-data -- --files-only
+npm run purge-data -- --all
 ```
 
-本地 MCP smoke：
-
-```sh
-MYSQL_PORT=3307 npm run test:mcp
-```
-
-这两个本地集成脚本会重置本地 development database。不要在有手工调试数据需要保留时运行。
-
-## npm scripts 速查
-
-| Script               | 功能                                                        | 运行方法                                                                                                                | 备注                                                             |
-| -------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `format`             | 用 Prettier 格式化整个仓库。                                | `npm run format`                                                                                                        | 会直接改写文件。                                                 |
-| `format:check`       | 检查 Prettier 格式，不改写文件。                            | `npm run format:check`                                                                                                  | 提交和 PR 前常用。                                               |
-| `lint`               | 运行 ESLint。                                               | `npm run lint`                                                                                                          | 做静态代码质量检查。                                             |
-| `test`               | 运行 Vitest 测试。                                          | `npm test`                                                                                                              | 等价于 `npm run test`。                                          |
-| `test:integration`   | 跑本地 MVP 集成流程。                                       | `MYSQL_PORT=3307 npm run test:integration`                                                                              | 会重置本地 development database。                                |
-| `test:mcp`           | 跑本地 MCP smoke 测试，包含 Phase 3 结构化/证据 MCP tools。 | `MYSQL_PORT=3307 npm run test:mcp`                                                                                      | 会启动本地 MySQL/Qdrant 测试服务，并重置本地测试数据。           |
-| `test:phase3:golden` | 跑 Phase 3 synthetic golden retrieval evaluation。          | `npm run test:phase3:golden`                                                                                            | 使用 fake provider 和 synthetic evidence。                       |
-| `test:phase3:perf`   | 跑 Phase 3 deterministic performance smoke gates。          | `npm run test:phase3:perf`                                                                                              | 覆盖 synthetic retrieval/query/import/worker gates。             |
-| `test:watch`         | 以 watch 模式运行 Vitest。                                  | `npm run test:watch`                                                                                                    | 写测试或调试测试时使用。                                         |
-| `typecheck`          | 运行 TypeScript 类型检查，不输出编译文件。                  | `npm run typecheck`                                                                                                     | 检查全仓 TS 类型。                                               |
-| `api:dev`            | 启动 Fastify API 服务。                                     | `npm run api:dev`                                                                                                       | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
-| `hub`                | 运行 Enterprise Hub CLI。                                   | `npm run hub -- <command>`                                                                                              | 示例：`npm run hub -- login --email baoli.manager@example.com`。 |
-| `mcp-bootup`         | 启动 API、worker loop，然后启动 MCP。                       | `npm run mcp-bootup`                                                                                                    | 配到 MCP client 时建议用 `npm run --silent mcp-bootup`。         |
-| `mcp:dev`            | 启动本地 stdio MCP server。                                 | `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`                                                          | 需要 API 已经在对应地址运行。                                    |
-| `purge-data`         | 删除本地 MySQL 文档资料数据和 ignored 上传/test storage。   | `npm run purge-data`；预览用 `npm run purge-data -- --dry-run`；删除整个 `.data` 用 `npm run purge-data -- --all`       | 用 `--files-only` 可以只删文件、不动 MySQL。                     |
-| `worker:dev`         | 启动本地 worker loop，持续处理队列。                        | `npm run worker:dev`                                                                                                    | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
-| `worker:once`        | 运行一次确定性 worker 处理。                                | `npm run worker:once`                                                                                                   | 当前会自动读取项目根目录 `.env`，且不覆盖 shell 已传入变量。     |
-| `db:compose:up`      | 启动本地 MySQL Docker Compose 服务。                        | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                 | 底层是 `docker compose up -d mysql`。                            |
-| `runtime:compose:up` | 启动本地 MySQL + Qdrant Docker Compose 服务。               | `MYSQL_PORT=3307 npm run runtime:compose:up`                                                                            | 底层是 `docker compose up -d mysql qdrant`。                     |
-| `qdrant:init`        | 初始化或更新本地 Phase 3 evidence collection。              | `npm run qdrant:init`                                                                                                   | 需要 Qdrant 已运行。                                             |
-| `readyz:local`       | 运行本地 runtime readiness checks。                         | `npm run readyz:local`                                                                                                  | 检查 MySQL、storage、model config、Qdrant。                      |
-| `db:compose:down`    | 停止本地 Docker Compose 服务。                              | `npm run db:compose:down`                                                                                               | 底层是 `docker compose down`。                                   |
-| `db:generate`        | 生成 Prisma client。                                        | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate` | schema 或依赖变化后按需运行。                                    |
-| `db:migrate`         | 在本地开发数据库上应用 Prisma migration。                   | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`  | 会更新本地 development database。                                |
-| `db:seed`            | 写入本地开发 seed 数据。                                    | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`     | 创建 demo 员工、标签和 skills。                                  |
+`purge-data` 只允许清理 local `localhost` / `127.0.0.1` 且数据库名为 `enterprise_hub` 的开发库。它会清理文档源文件记录、处理/索引/标签/审计派生数据和本地测试 storage；不会提交或暴露 secrets。
 
 ## 常见问题
 
@@ -374,56 +197,32 @@ MYSQL_PORT=3307 npm run test:mcp
 使用：
 
 ```sh
-MYSQL_PORT=3307 docker compose up -d mysql
+MYSQL_PORT=3307 npm run runtime:compose:up
 ```
 
 并确保 `DATABASE_URL` 使用 `localhost:3307`。
 
-### MCP 提示缺少 `ENTERPRISE_HUB_API_URL`
+### MCP tools 未出现
 
-MCP server 必须显式知道 API 地址：
+确认 MCP client 使用 `npm run --silent mcp-bootup`，并重启 Codex 或新开 thread。不要在普通上传/搜索任务里 fallback 到脚本、curl、数据库或 storage。
 
-```sh
-ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev
-```
+### 上传 evidence 后搜不到
 
-### 登录返回 `EMPLOYEE_NOT_FOUND`
+先调用 `get_evidence_document_status`。只有 document active 且 index ready 后才应认为它可检索；否则报告准确状态。
 
-通常是数据库没 seed，或者 API 连到了错误端口/数据库。检查：
+### Structured import 失败
 
-```sh
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed
-```
+返回服务给出的 validation errors。不要让 MCP client 自行修表、改表头或绕过校验。
 
-并确认 API 启动时使用同一个 `DATABASE_URL`。
+### Suzhou 看不到 Baoli 数据
 
-### 上传后搜索不到
+这是预期权限隔离。agent 只能说当前身份没有可见匹配结果，不能泄露隐藏资源存在性。
 
-普通搜索只返回 `active` 资料。使用 `npm run mcp-bootup` 时，后台 worker loop 会自动处理上传队列；如果你只启动了 API 或正在排障，可以手动运行一次：
+## 相关文档
 
-```sh
-npm run worker:once
-```
-
-再搜索。
-
-### Suzhou 看不到 Baoli 资料
-
-这是预期的权限隔离结果。agent 不应该说隐藏资料“存在但不可见”，只能报告 Suzhou 没有可见匹配结果。
-
-## 关闭本地服务
-
-```sh
-docker compose down
-```
-
-如果要删除本地 MySQL volume，请谨慎使用 Docker volume 清理命令；这会删除本地调试数据。
-
-## 更多文档
-
-- `AGENTS.md`：agent 工作约束和常用命令。
-- `docs/implementation/env-inventory.md`：环境变量清单。
-- `docs/implementation/server-runtime-prerequisites.md`：Phase 4 服务器环境准备、验证、ACR 边界与回滚。
-- `docs/implementation/api-contract.md`：API 与 MCP tool contract。
-- `docs/implementation/local-agent-test.md`：Codex/MCP 人工测试流程。
-- `skills/enterprise-hub-mcp/SKILL.md`：repo-local MCP 使用 skill。
+- `AGENTS.md`
+- `docs/implementation/api-contract.md`
+- `docs/implementation/env-inventory.md`
+- `docs/implementation/local-agent-test.md`
+- `docs/implementation/test-cases.md`
+- `skills/enterprise-hub-mcp/SKILL.md`

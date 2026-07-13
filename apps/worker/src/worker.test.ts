@@ -8,7 +8,6 @@ import {
   runWorkerLoop,
   runWorkerOnce,
   type ClaimedProcessingRun,
-  type DocumentChunkWrite,
   type EvidenceDocumentChunkWrite,
   type EvidenceIndexer,
   type ProcessingWorkerRepository
@@ -48,7 +47,6 @@ function createFakeRepository(input: {
 }): ProcessingWorkerRepository & {
   document: RecordedDocument;
   run: RecordedRun;
-  chunks: DocumentChunkWrite[];
   evidenceChunks: EvidenceDocumentChunkWrite[];
   auditLogs: RecordedAuditLog[];
 } {
@@ -60,16 +58,14 @@ function createFakeRepository(input: {
     status: input.run?.status ?? "queued",
     retryCount: input.run?.retryCount ?? 0,
     errorCode: input.run?.errorCode ?? null,
-    jobType: input.run?.jobType ?? "legacy_text_extract"
+    jobType: input.run?.jobType ?? "evidence_document_index"
   };
-  const chunks: DocumentChunkWrite[] = [];
   const evidenceChunks: EvidenceDocumentChunkWrite[] = [];
   const auditLogs: RecordedAuditLog[] = [];
 
   return {
     document,
     run,
-    chunks,
     evidenceChunks,
     auditLogs,
     async claimNextProcessingRun(): Promise<ClaimedProcessingRun | null> {
@@ -93,31 +89,6 @@ function createFakeRepository(input: {
         jobType: run.jobType,
         document: { ...document }
       };
-    },
-    async completeProcessingRun({ documentId, runId, chunks: nextChunks }) {
-      expect(documentId).toBe(document.id);
-      expect(runId).toBe(run.id);
-
-      for (const nextChunk of nextChunks) {
-        if (
-          !chunks.some(
-            (chunk) =>
-              chunk.documentId === nextChunk.documentId &&
-              chunk.chunkHash === nextChunk.chunkHash &&
-              chunk.indexType === nextChunk.indexType
-          )
-        ) {
-          chunks.push(nextChunk);
-        }
-      }
-
-      run.status = "succeeded";
-      document.status = "active";
-      auditLogs.push({
-        action: "document.activated",
-        targetId: document.id,
-        result: "succeeded"
-      });
     },
     async completeEvidenceIndexing({ documentId, runId, chunks: nextChunks }) {
       expect(documentId).toBe(document.id);
@@ -171,77 +142,14 @@ describe("processing worker", () => {
     return new LocalFileSystemStorageAdapter({ root: storageRoot });
   }
 
-  it("activates a supported CSV document and writes deterministic chunks", async () => {
-    const storage = await createStorage();
-    const stored = await storage.putObject({
-      orgId: "default-org",
-      documentId: "doc_csv",
-      fileName: "baoli-june-meituan.csv",
-      contentType: "text/csv",
-      body: "date,revenue\n2026-06-01,100\n2026-06-02,120\n"
-    });
-    const repository = createFakeRepository({
-      document: {
-        id: "doc_csv",
-        orgId: "default-org",
-        uploaderId: "emp_baoli_manager",
-        status: "pending_processing",
-        storageObjectKey: stored.key,
-        originalFileName: "baoli-june-meituan.csv"
-      }
-    });
-
-    const result = await runWorkerOnce({ repository, storage });
-
-    expect(result).toEqual({ processed: true, documentId: "doc_csv", status: "active" });
-    expect(repository.document.status).toBe("active");
-    expect(repository.run.status).toBe("succeeded");
-    expect(repository.chunks.length).toBeGreaterThanOrEqual(1);
-    expect(repository.chunks.map((chunk) => chunk.chunkText)).toContain("date,revenue");
-    expect(repository.auditLogs.map((log) => log.action)).toEqual([
-      "document.processing_started",
-      "document.activated"
-    ]);
-  });
-
-  it("does not duplicate chunks when the same document is processed again", async () => {
-    const storage = await createStorage();
-    const stored = await storage.putObject({
-      orgId: "default-org",
-      documentId: "doc_idempotent",
-      fileName: "notes.md",
-      contentType: "text/markdown",
-      body: "# Daily Notes\n\nFirst paragraph\nSecond paragraph\n"
-    });
-    const repository = createFakeRepository({
-      document: {
-        id: "doc_idempotent",
-        orgId: "default-org",
-        uploaderId: "emp_baoli_manager",
-        status: "pending_processing",
-        storageObjectKey: stored.key,
-        originalFileName: "notes.md"
-      }
-    });
-
-    await runWorkerOnce({ repository, storage });
-    const firstChunkCount = repository.chunks.length;
-    repository.run.status = "queued";
-    repository.document.status = "pending_processing";
-    await runWorkerOnce({ repository, storage });
-
-    expect(firstChunkCount).toBeGreaterThan(0);
-    expect(repository.chunks).toHaveLength(firstChunkCount);
-  });
-
   it("runs as a loop until the queue is idle and the caller aborts", async () => {
     const storage = await createStorage();
     const stored = await storage.putObject({
       orgId: "default-org",
       documentId: "doc_loop",
-      fileName: "baoli-loop.csv",
-      contentType: "text/csv",
-      body: "date,revenue\n2026-06-01,100\n"
+      fileName: "loop.md",
+      contentType: "text/markdown",
+      body: "# Loop"
     });
     const repository = createFakeRepository({
       document: {
@@ -250,15 +158,32 @@ describe("processing worker", () => {
         uploaderId: "emp_baoli_manager",
         status: "pending_processing",
         storageObjectKey: stored.key,
-        originalFileName: "baoli-loop.csv"
+        originalFileName: "loop.md",
+        documentKind: "evidence",
+        fileType: "md",
+        contentVersion: 1
       }
     });
+    const evidenceIndexer: EvidenceIndexer = {
+      async indexDocument() {
+        return {
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          qdrantCollection: "enterprise_hub_evidence_test",
+          embeddingModel: "fake-embedding-v1",
+          embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
+          lexicalIndexVersion: "lexical.v1",
+          rerankVersion: null,
+          chunks: []
+        };
+      }
+    };
     const abortController = new AbortController();
     const results: unknown[] = [];
 
     await runWorkerLoop({
       repository,
       storage,
+      evidenceIndexer,
       pollIntervalMs: 100,
       signal: abortController.signal,
       onResult(result) {
@@ -277,23 +202,29 @@ describe("processing worker", () => {
     expect(repository.document.status).toBe("active");
   });
 
-  it("moves unsupported files to processing_failed after bounded retries", async () => {
+  it("moves unsupported processing job types to processing_failed after bounded retries", async () => {
     const storage = await createStorage();
     const stored = await storage.putObject({
       orgId: "default-org",
-      documentId: "doc_binary",
-      fileName: "receipt.pdf",
-      contentType: "application/pdf",
-      body: Buffer.from([0xff, 0xd8, 0xff, 0x00])
+      documentId: "doc_unknown_job",
+      fileName: "receipt.md",
+      contentType: "text/markdown",
+      body: "# Receipt"
     });
     const repository = createFakeRepository({
       document: {
-        id: "doc_binary",
+        id: "doc_unknown_job",
         orgId: "default-org",
         uploaderId: "emp_baoli_manager",
         status: "pending_processing",
         storageObjectKey: stored.key,
-        originalFileName: "receipt.pdf"
+        originalFileName: "receipt.md",
+        documentKind: "evidence",
+        fileType: "md",
+        contentVersion: 1
+      },
+      run: {
+        jobType: "unknown_job_type"
       }
     });
 
@@ -303,13 +234,13 @@ describe("processing worker", () => {
 
     expect(result).toEqual({
       processed: true,
-      documentId: "doc_binary",
+      documentId: "doc_unknown_job",
       status: "processing_failed"
     });
     expect(repository.run.retryCount).toBe(3);
-    expect(repository.run.errorCode).toBe(PROCESSING_ERROR_CODES.unsupportedFileType);
+    expect(repository.run.errorCode).toBe(PROCESSING_ERROR_CODES.unsupportedProcessingJobType);
     expect(repository.document.status).toBe("processing_failed");
-    expect(repository.chunks).toHaveLength(0);
+    expect(repository.evidenceChunks).toHaveLength(0);
     expect(repository.auditLogs.map((log) => log.action)).toEqual([
       "document.processing_started",
       "document.processing_started",

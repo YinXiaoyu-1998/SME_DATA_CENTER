@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -14,26 +14,9 @@ interface CommandResult {
   stderr: string;
 }
 
-interface StoredCliSession {
+interface LoginResponse {
   accessToken: string;
-}
-
-interface UploadResponse {
-  id: string;
-  status: string;
-}
-
-interface DocumentListResponse {
-  documents: Array<{
-    id: string;
-    title: string;
-    status: string;
-  }>;
-}
-
-interface DownloadResponse {
-  id: string;
-  downloadUrl: string;
+  employee: { email: string };
 }
 
 interface WorkerResponse {
@@ -42,14 +25,48 @@ interface WorkerResponse {
   status?: string;
 }
 
+interface StructuredUploadResponse {
+  importBatch: {
+    importBatchId: string;
+    status: string;
+    appliedRowCount: number;
+  };
+}
+
+interface StructuredQueryResponse {
+  rows: Array<Record<string, unknown>>;
+}
+
+interface EvidenceUploadResponse {
+  document: {
+    documentId: string;
+    status: string;
+  };
+}
+
+interface EvidenceStatusResponse {
+  document: {
+    documentId: string;
+    status: string;
+  };
+  documentIndex: {
+    status: string;
+  };
+}
+
+interface EvidenceSearchResponse {
+  results: Array<{
+    documentId: string;
+    text: string;
+  }>;
+}
+
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
 const integrationPort = process.env["HUB_INTEGRATION_PORT"] ?? String(await findAvailablePort());
 const apiUrl = `http://127.0.0.1:${integrationPort}`;
-const storageRoot = path.join(rootDir, ".data", "integration", "storage");
-const sessionDir = path.join(rootDir, ".data", "integration", "sessions");
-const baoliSessionFile = path.join(sessionDir, "baoli.json");
-const suzhouSessionFile = path.join(sessionDir, "suzhou.json");
+const integrationRoot = path.join(rootDir, ".data", "integration");
+const storageRoot = path.join(integrationRoot, "storage");
 
 const integrationEnv: NodeJS.ProcessEnv = {
   ...process.env,
@@ -58,7 +75,13 @@ const integrationEnv: NodeJS.ProcessEnv = {
   JWT_SECRET: process.env["JWT_SECRET"] ?? DEFAULT_JWT_SECRET,
   STORAGE_DRIVER: "local",
   LOCAL_STORAGE_ROOT: storageRoot,
-  HUB_API_URL: apiUrl,
+  QDRANT_URL: process.env["QDRANT_URL"] ?? "http://127.0.0.1:6333",
+  QDRANT_COLLECTION_EVIDENCE:
+    process.env["QDRANT_COLLECTION_EVIDENCE"] ?? "enterprise_hub_evidence_integration",
+  RETRIEVAL_CONFIG_VERSION: process.env["RETRIEVAL_CONFIG_VERSION"] ?? "phase3.retrieval.v1",
+  LLM_PROVIDER: process.env["LLM_PROVIDER"] ?? "fake",
+  LLM_MODEL: process.env["LLM_MODEL"] ?? "fake-rerank",
+  LLM_EMBEDDING_MODEL: process.env["LLM_EMBEDDING_MODEL"] ?? "fake-embedding",
   NODE_ENV: "development",
   HOST: "127.0.0.1",
   PORT: integrationPort
@@ -68,7 +91,7 @@ let apiProcess: ReturnType<typeof spawn> | null = null;
 
 try {
   await prepareLocalWorkspace();
-  await run("docker", ["compose", "up", "-d", "mysql"], { env: integrationEnv });
+  await run("docker", ["compose", "up", "-d", "mysql", "qdrant"], { env: integrationEnv });
   await waitForMysqlHealth();
   await run("npm", ["run", "db:generate"], { env: integrationEnv });
   await run(
@@ -77,131 +100,113 @@ try {
     { env: integrationEnv }
   );
   await run("npm", ["run", "db:seed"], { env: integrationEnv });
+  await run("npm", ["run", "qdrant:init"], { env: integrationEnv });
 
   apiProcess = startApi();
   await waitForApiHealth(apiProcess);
 
-  await runHub([
-    "login",
-    "--email",
-    "baoli.manager@example.com",
-    "--session-file",
-    baoliSessionFile
-  ]);
-  const upload = parseJson<UploadResponse>(
-    (
-      await runHub([
-        "documents",
-        "upload",
-        "./fixtures/baoli-june-meituan.csv",
-        "--label",
-        "store:baoli",
-        "--title",
-        "Integration Baoli June Meituan",
-        "--source-system",
-        "meituan",
-        "--source-time",
-        "2026-06-30T00:00:00.000Z",
-        "--session-file",
-        baoliSessionFile
-      ])
-    ).stdout
+  const login = await apiJson<LoginResponse>("/auth/dev-login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "baoli.manager@example.com" })
+  });
+  assert(
+    login.employee.email === "baoli.manager@example.com",
+    "Dev login should authenticate Baoli manager."
   );
-  assert(upload.status === "pending_processing", "Uploaded document should start pending.");
+  const auth = authorizationHeader(login.accessToken);
+
+  const structuredForm = new FormData();
+  structuredForm.append(
+    "file",
+    new Blob([await readFile(path.join(rootDir, "fixtures", "structured", "dishes-valid.csv"))]),
+    "dishes-valid.csv"
+  );
+  structuredForm.append("dataset", "dishes");
+  structuredForm.append("enterprise_name", "Integration Smoke");
+  structuredForm.append("startDate", "20260701");
+  structuredForm.append("endDate", "20260705");
+  structuredForm.append("idempotencyKey", `integration-${Date.now()}`);
+  structuredForm.append("labelKeys[]", "store:baoli");
+  const structuredUpload = await apiJson<StructuredUploadResponse>("/v1/structured/imports", {
+    method: "POST",
+    headers: auth,
+    body: structuredForm
+  });
+  assert(structuredUpload.importBatch.status === "applied", "Structured import should apply.");
+  assert(
+    structuredUpload.importBatch.appliedRowCount === 1,
+    "Structured import should load one fixture row."
+  );
+
+  const structuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({ dataset: "dishes", aggregates: [{ op: "count", as: "row_count" }] })
+  });
+  assert(
+    structuredQuery.rows[0]?.["row_count"] === 1,
+    "Structured query should return imported row count."
+  );
+
+  const evidencePath = path.join(integrationRoot, "phase3-evidence.md");
+  await writeFile(
+    evidencePath,
+    "# 差评处理 SOP\n\n差评处理需要在 15 分钟内联系顾客，记录订单号、原因和补偿动作。\n",
+    "utf8"
+  );
+  const evidenceForm = new FormData();
+  evidenceForm.append("file", new Blob([await readFile(evidencePath)]), "phase3-evidence.md");
+  evidenceForm.append("title", "Integration Phase 3 差评处理 SOP");
+  evidenceForm.append("sourceSystem", "integration_smoke");
+  evidenceForm.append("labelKeys[]", "store:baoli");
+  const evidenceUpload = await apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
+    method: "POST",
+    headers: auth,
+    body: evidenceForm
+  });
+  assert(
+    evidenceUpload.document.status === "pending_processing",
+    "Evidence upload should start pending."
+  );
 
   const worker = parseJson<WorkerResponse>(
     (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
   );
-  assert(worker.processed === true, "Worker should process one document.");
-  assert(worker.documentId === upload.id, "Worker should process the uploaded document.");
-  assert(worker.status === "active", "Worker should activate the uploaded document.");
-
-  const baoliSearch = parseJson<DocumentListResponse>(
-    (
-      await runHub([
-        "documents",
-        "search",
-        "Integration Baoli June Meituan",
-        "--session-file",
-        baoliSessionFile
-      ])
-    ).stdout
-  );
   assert(
-    baoliSearch.documents.some(
-      (document) => document.id === upload.id && document.status === "active"
-    ),
-    "Baoli manager should find the active uploaded document."
+    worker.documentId === evidenceUpload.document.documentId,
+    "Worker should process evidence upload."
   );
+  assert(worker.status === "active", "Worker should activate evidence upload.");
 
-  await runHub([
-    "login",
-    "--email",
-    "suzhou.manager@example.com",
-    "--session-file",
-    suzhouSessionFile
-  ]);
-  const suzhouSearch = parseJson<DocumentListResponse>(
-    (
-      await runHub([
-        "documents",
-        "search",
-        "Integration Baoli June Meituan",
-        "--session-file",
-        suzhouSessionFile
-      ])
-    ).stdout
-  );
-  assert(
-    suzhouSearch.documents.every((document) => document.id !== upload.id),
-    "Suzhou manager must not receive the Baoli document."
-  );
-
-  const baoliToken = await readAccessToken(baoliSessionFile);
-  const download = await apiJson<DownloadResponse>(`/documents/${upload.id}/download`, {
-    headers: authorizationHeader(baoliToken)
-  });
-  assert(download.id === upload.id, "Download response should target the uploaded document.");
-  assert(download.downloadUrl.startsWith("file://"), "Local download URL should be a file URL.");
-
-  const archived = await apiJson<UploadResponse>(`/documents/${upload.id}/archive`, {
+  await waitForEvidenceStatus(evidenceUpload.document.documentId, auth);
+  const evidenceSearch = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
     method: "POST",
-    headers: authorizationHeader(baoliToken)
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({ query: "差评处理", filters: { fileTypes: ["md"] }, limit: 5 })
   });
-  assert(archived.status === "archived", "Archive should mark the document archived.");
-
-  const afterArchiveSearch = parseJson<DocumentListResponse>(
-    (
-      await runHub([
-        "documents",
-        "search",
-        "Integration Baoli June Meituan",
-        "--session-file",
-        baoliSessionFile
-      ])
-    ).stdout
-  );
   assert(
-    afterArchiveSearch.documents.every((document) => document.id !== upload.id),
-    "Archived document should disappear from ordinary search."
+    evidenceSearch.results.some(
+      (result) =>
+        result.documentId === evidenceUpload.document.documentId && result.text.includes("差评处理")
+    ),
+    "Evidence search should return indexed evidence chunks."
   );
 
   console.log(
     JSON.stringify(
       {
         ok: true,
-        documentId: upload.id,
+        structuredImportBatchId: structuredUpload.importBatch.importBatchId,
+        evidenceDocumentId: evidenceUpload.document.documentId,
         apiUrl,
         mysqlPort,
         proved: [
           "seed",
-          "cli_login",
-          "cli_upload",
-          "worker_active",
-          "baoli_search_visible",
-          "suzhou_search_denied",
-          "baoli_download",
-          "archive_hidden"
+          "api_login",
+          "phase3_structured_import",
+          "phase3_structured_query",
+          "phase3_evidence_upload_worker_status_search"
         ]
       },
       null,
@@ -215,8 +220,8 @@ try {
 }
 
 async function prepareLocalWorkspace(): Promise<void> {
-  await rm(path.join(rootDir, ".data", "integration"), { recursive: true, force: true });
-  await mkdir(sessionDir, { recursive: true });
+  await rm(integrationRoot, { recursive: true, force: true });
+  await mkdir(integrationRoot, { recursive: true });
 }
 
 function startApi(): ReturnType<typeof spawn> {
@@ -288,6 +293,16 @@ async function waitForApiHealth(child: ReturnType<typeof spawn>): Promise<void> 
   });
 }
 
+async function waitForEvidenceStatus(documentId: string, headers: HeadersInit): Promise<void> {
+  await waitForCondition("Evidence status ready", async () => {
+    const status = await apiJson<EvidenceStatusResponse>(
+      `/v1/documents/evidence/${encodeURIComponent(documentId)}/status`,
+      { headers }
+    );
+    return status.document.status === "active" && status.documentIndex.status === "ready";
+  });
+}
+
 async function waitForCondition(name: string, condition: () => Promise<boolean>): Promise<void> {
   const deadline = Date.now() + 60_000;
 
@@ -300,12 +315,6 @@ async function waitForCondition(name: string, condition: () => Promise<boolean>)
   }
 
   throw new Error(`${name} did not become ready before timeout.`);
-}
-
-async function runHub(args: string[]): Promise<CommandResult> {
-  return run("npm", ["--silent", "run", "hub", "--", ...args, "--api-url", apiUrl], {
-    env: integrationEnv
-  });
 }
 
 async function run(
@@ -364,15 +373,6 @@ function commandFailureMessage(
 
 function parseJson<T>(raw: string): T {
   return JSON.parse(raw) as T;
-}
-
-async function readAccessToken(sessionFile: string): Promise<string> {
-  const session = parseJson<StoredCliSession>(await readFile(sessionFile, "utf8"));
-  assert(
-    typeof session.accessToken === "string" && session.accessToken.length > 0,
-    "CLI session token missing."
-  );
-  return session.accessToken;
 }
 
 function authorizationHeader(token: string): HeadersInit {

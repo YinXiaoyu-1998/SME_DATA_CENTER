@@ -2,24 +2,32 @@ import { describe, expect, it } from "vitest";
 import { MCP_TOOL_CONTRACTS } from "./tools.js";
 
 describe("MCP tool contract", () => {
-  it("defines the required Phase 2 tool names in deterministic order", () => {
+  it("defines the required Phase 3 retrieval-base tool names in deterministic order", () => {
     expect(MCP_TOOL_CONTRACTS.map((tool) => tool.name)).toEqual([
       "enterprise_hub_login_dev",
       "enterprise_hub_list_labels",
-      "enterprise_hub_upload_document",
-      "enterprise_hub_get_document_status",
-      "enterprise_hub_search_documents",
-      "enterprise_hub_get_document",
-      "enterprise_hub_get_document_download_url",
-      "enterprise_hub_archive_document",
       "enterprise_hub_list_skills",
       "search_document_evidence",
       "list_structured_datasets",
       "query_structured_dataset",
       "upload_structured_dataset",
       "upload_evidence_document",
+      "get_evidence_document_status",
       "get_import_status"
     ]);
+  });
+
+  it("does not expose removed ordinary document tools", () => {
+    expect(MCP_TOOL_CONTRACTS.map((tool) => tool.name)).not.toEqual(
+      expect.arrayContaining([
+        "enterprise_hub_upload_document",
+        "enterprise_hub_get_document_status",
+        "enterprise_hub_search_documents",
+        "enterprise_hub_get_document",
+        "enterprise_hub_get_document_download_url",
+        "enterprise_hub_archive_document"
+      ])
+    );
   });
 
   it("documents every tool purpose, input fields, and result shape", () => {

@@ -19,7 +19,6 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "api:dev": "tsx apps/api/src/index.ts",
-    "hub": "tsx apps/cli/src/index.ts",
     "mcp-bootup": "tsx scripts/mcp-bootup.ts",
     "mcp:dev": "tsx apps/mcp-server/src/index.ts",
     "purge-data": "tsx scripts/purge-data.ts",
