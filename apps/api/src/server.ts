@@ -10,17 +10,14 @@ import {
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_QUERY_LIMITS,
   StructuredQueryValidationError,
-  canEmployeeAccessDocument,
   compileStructuredQuery,
   createStructuredCursor,
   getStructuredRegistry,
   isAllowedFileTypeForDocumentKind,
-  isDocumentType,
   PHASE3_FILE_TYPES,
   PHASE3_ERROR_CODES,
   validateStructuredHeaders,
   type AuthenticatedEmployee,
-  type DocumentTypeName,
   type Phase3FileType,
   type StructuredDatasetName,
   type StructuredFieldRegistryEntry
@@ -31,7 +28,6 @@ import {
   type AuditLogRecord,
   type CatalogLabel,
   type DocumentCatalogRepository,
-  type DocumentQueryRecord,
   type DocumentStatusRecord
 } from "./documents.js";
 import { createPrismaEmployeeRepository, type EmployeeRepository } from "./employees.js";
@@ -101,9 +97,7 @@ interface ParsedUpload {
     body: Buffer;
   };
   title?: string;
-  documentType?: string;
   sourceSystem?: string;
-  sourceTime?: string;
   labelKeys: string[];
 }
 
@@ -140,18 +134,6 @@ interface StructuredWorkbookValidationResult {
     dataRowCount: number;
   }>;
   rows: StructuredImportRowInput[];
-}
-
-interface DocumentListQuery {
-  q?: string;
-  documentType?: string;
-  labelKey?: string;
-  limit?: string;
-  cursor?: string;
-}
-
-interface DocumentLabelsBody {
-  labelKeys?: unknown;
 }
 
 interface AuditListQuery {
@@ -304,18 +286,8 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
       continue;
     }
 
-    if (part.fieldname === "documentType") {
-      upload.documentType = value;
-      continue;
-    }
-
     if (part.fieldname === "sourceSystem") {
       upload.sourceSystem = value;
-      continue;
-    }
-
-    if (part.fieldname === "sourceTime") {
-      upload.sourceTime = value;
     }
   }
 
@@ -392,20 +364,6 @@ async function readMultipartFile(file: MultipartFilePart["file"]): Promise<Buffe
   }
 
   return Buffer.concat(chunks);
-}
-
-function parseSourceTime(value: string | undefined): Date | null {
-  if (!value) {
-    return null;
-  }
-
-  const sourceTime = new Date(value);
-
-  if (Number.isNaN(sourceTime.getTime())) {
-    throw new Error("Invalid sourceTime.");
-  }
-
-  return sourceTime;
 }
 
 function validateStructuredImportMetadata(upload: ParsedStructuredImportUpload):
@@ -910,48 +868,32 @@ function evidenceUploadResponse(document: DocumentStatusRecord) {
       status: document.processingRunStatus
     },
     documentIndex: {
-      status: "pending",
+      status: document.documentIndexStatus ?? "pending",
       retrievalConfigVersion: DEFAULT_RETRIEVAL_CONFIG_VERSION
     }
   };
 }
 
-function documentStatusResponse(document: DocumentStatusRecord) {
+function evidenceStatusResponse(document: DocumentStatusRecord) {
   return {
-    id: document.id,
-    title: document.title,
-    documentType: document.documentType,
-    status: document.status,
-    labels: document.labels,
-    storageObjectKey: document.storageObjectKey,
-    originalFileName: document.originalFileName,
-    sourceSystem: document.sourceSystem,
-    sourceTime: document.sourceTime?.toISOString() ?? null,
-    processingRunStatus: document.processingRunStatus
-  };
-}
-
-function documentQueryResponse(document: DocumentQueryRecord) {
-  return {
-    id: document.id,
-    title: document.title,
-    documentType: document.documentType,
-    status: document.status,
-    labels: document.labels,
-    originalFileName: document.originalFileName,
-    sourceSystem: document.sourceSystem,
-    sourceTime: document.sourceTime?.toISOString() ?? null,
-    createdAt: document.createdAt.toISOString()
-  };
-}
-
-function documentDetailResponse(document: DocumentQueryRecord) {
-  return {
-    ...documentQueryResponse(document),
-    storageObjectKey: document.storageObjectKey,
-    contentType: document.contentType,
-    byteSize: document.byteSize,
-    checksumSha256: document.checksumSha256
+    document: {
+      documentId: document.id,
+      documentKind: document.documentKind,
+      fileType: document.fileType,
+      title: document.title,
+      status: document.status,
+      labels: document.labels,
+      originalFileName: document.originalFileName,
+      sourceSystem: document.sourceSystem
+    },
+    processing: {
+      processingRunId: null,
+      status: document.processingRunStatus
+    },
+    documentIndex: {
+      status: document.documentIndexStatus ?? "pending",
+      retrievalConfigVersion: DEFAULT_RETRIEVAL_CONFIG_VERSION
+    }
   };
 }
 
@@ -1043,23 +985,6 @@ function parseCursor(value: string | undefined): string | null {
   return value;
 }
 
-function parseLabelKeysFromBody(body: DocumentLabelsBody): string[] | null {
-  if (!Array.isArray(body.labelKeys)) {
-    return null;
-  }
-
-  const labelKeys = body.labelKeys
-    .filter((value): value is string => typeof value === "string")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-
-  if (labelKeys.length !== body.labelKeys.length) {
-    return null;
-  }
-
-  return uniqueSorted(labelKeys);
-}
-
 function mergeLabels(requestedLabels: CatalogLabel[], personalLabel: CatalogLabel | null) {
   const labelsByKey = new Map(requestedLabels.map((label) => [label.key, label]));
 
@@ -1068,32 +993,6 @@ function mergeLabels(requestedLabels: CatalogLabel[], personalLabel: CatalogLabe
   }
 
   return [...labelsByKey.values()].sort((first, second) => first.key.localeCompare(second.key));
-}
-
-function employeeCanSeeDocumentRecord(
-  employee: AuthenticatedEmployee,
-  document: DocumentStatusRecord
-) {
-  if (employee.role === "admin") {
-    return true;
-  }
-
-  return canEmployeeAccessDocument({
-    employee: {
-      disabled: employee.disabled,
-      labelKeys: employee.labels
-    },
-    document: {
-      labelKeys: document.labels
-    }
-  });
-}
-
-function employeeCanMutateDocument(
-  employee: AuthenticatedEmployee,
-  document: DocumentStatusRecord
-) {
-  return employee.role === "admin" || document.uploaderId === employee.id;
 }
 
 function forbiddenRequestedLabels(
@@ -1374,6 +1273,34 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         .send(errorResponse("DOCUMENT_CATALOG_WRITE_FAILED", "Document catalog write failed."));
     }
   });
+
+  app.get<{ Params: { documentId: string } }>(
+    "/v1/documents/evidence/:documentId/status",
+    async (request, reply) => {
+      const authenticated = await authenticate(request, reply, repository, jwtSecret);
+
+      if (!authenticated) {
+        return;
+      }
+
+      const employee = (request as AuthenticatedRequest).employee;
+      const document = await documents().findEvidenceDocumentStatus(
+        employee.orgId,
+        request.params.documentId
+      );
+
+      if (!document) {
+        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+      }
+
+      if (document.uploaderId !== employee.id && employee.role !== "admin") {
+        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+      }
+
+      return evidenceStatusResponse(document);
+    }
+  );
+
   app.post<{ Body: EvidenceSearchBody }>("/v1/evidence/search", async (request, reply) => {
     const authenticated = await authenticate(request, reply, repository, jwtSecret);
 
@@ -1736,345 +1663,6 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     return {
       skills: skillEntries.map(skillDirectoryResponse)
     };
-  });
-
-  app.post("/documents", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
-
-    if (!authenticated) {
-      return;
-    }
-
-    let upload: ParsedUpload;
-
-    try {
-      upload = await parseUpload(request);
-    } catch {
-      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "Multipart upload is invalid.");
-    }
-
-    if (!upload.file) {
-      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "File is required.");
-    }
-
-    if (!upload.title) {
-      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "Title is required.");
-    }
-
-    if (!upload.documentType || !isDocumentType(upload.documentType)) {
-      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "Document type is invalid.");
-    }
-
-    let sourceTime: Date | null;
-
-    try {
-      sourceTime = parseSourceTime(upload.sourceTime);
-    } catch {
-      return validationError(reply, "INVALID_DOCUMENT_UPLOAD", "Source time is invalid.");
-    }
-
-    const employee = (request as AuthenticatedRequest).employee;
-    const orgId = defaultOrgId();
-    const requestedLabels = await documents().findLabelsByKeys(orgId, upload.labelKeys);
-    const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
-    const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
-
-    if (missingLabelKeys.length > 0) {
-      return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
-    }
-
-    const forbiddenLabelKeys = forbiddenRequestedLabels(employee, requestedLabels);
-
-    if (forbiddenLabelKeys.length > 0) {
-      return reply
-        .code(403)
-        .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
-    }
-
-    const personalLabel = await documents().findPersonalLabelForEmployee(orgId, employee.id);
-    const finalLabels = mergeLabels(requestedLabels, personalLabel);
-
-    if (finalLabels.length === 0) {
-      return validationError(reply, "UNLABELED_DOCUMENT", "Document must have at least one label.");
-    }
-
-    const documentId = createDocumentId();
-    const storedObject = await storage().putObject({
-      orgId,
-      documentId,
-      fileName: upload.file.fileName,
-      body: upload.file.body,
-      contentType: upload.file.contentType
-    });
-    const documentType: DocumentTypeName = upload.documentType;
-
-    let document: DocumentStatusRecord;
-
-    try {
-      document = await documents().createUploadedDocument({
-        id: documentId,
-        orgId,
-        title: upload.title,
-        documentType,
-        status: "pending_processing",
-        storageObjectKey: storedObject.key,
-        originalFileName: upload.file.fileName,
-        contentType: storedObject.contentType,
-        byteSize: storedObject.size,
-        checksumSha256: storedObject.hash,
-        uploaderId: employee.id,
-        sourceSystem: upload.sourceSystem || null,
-        sourceTime,
-        labelIds: finalLabels.map((label) => label.id),
-        labels: finalLabels.map((label) => label.key),
-        requestId: request.id,
-        clientIp: request.ip
-      });
-    } catch (error) {
-      await storage().deleteObject(storedObject.key);
-      request.log.error({ err: error, documentId }, "document catalog write failed");
-      return reply
-        .code(500)
-        .send(errorResponse("DOCUMENT_CATALOG_WRITE_FAILED", "Document catalog write failed."));
-    }
-
-    return reply.code(201).send(documentStatusResponse(document));
-  });
-
-  app.get<{ Querystring: DocumentListQuery }>("/documents", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
-
-    if (!authenticated) {
-      return;
-    }
-
-    const query = request.query;
-    const rawDocumentType = query.documentType?.trim() || null;
-
-    if (rawDocumentType && !isDocumentType(rawDocumentType)) {
-      return validationError(reply, "INVALID_DOCUMENT_QUERY", "Document type is invalid.");
-    }
-
-    const documentType = rawDocumentType as DocumentTypeName | null;
-
-    let limit: number;
-    let cursor: string | null;
-
-    try {
-      limit = parseLimit(query.limit);
-      cursor = parseCursor(query.cursor);
-    } catch {
-      return validationError(reply, "INVALID_DOCUMENT_QUERY", "Query pagination is invalid.");
-    }
-
-    const employee = (request as AuthenticatedRequest).employee;
-    const result = await documents().listAccessibleActiveDocuments({
-      orgId: defaultOrgId(),
-      employee,
-      q: query.q?.trim() || null,
-      documentType,
-      labelKey: query.labelKey?.trim() || null,
-      limit,
-      cursor
-    });
-
-    await documents().appendDocumentQueryAudit({
-      orgId: defaultOrgId(),
-      employeeId: employee.id,
-      q: query.q?.trim() || null,
-      documentType,
-      labelKey: query.labelKey?.trim() || null,
-      resultCount: result.documents.length,
-      requestId: request.id,
-      clientIp: request.ip
-    });
-
-    return {
-      documents: result.documents.map(documentQueryResponse),
-      nextCursor: result.nextCursor
-    };
-  });
-
-  app.get<{ Params: { id: string } }>("/documents/:id/status", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
-
-    if (!authenticated) {
-      return;
-    }
-
-    const employee = (request as AuthenticatedRequest).employee;
-    const document = await documents().findDocumentStatus(defaultOrgId(), request.params.id);
-
-    if (!document) {
-      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-    }
-
-    if (document.uploaderId !== employee.id && employee.role !== "admin") {
-      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-    }
-
-    return documentStatusResponse(document);
-  });
-
-  app.post<{ Params: { id: string } }>("/documents/:id/archive", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
-
-    if (!authenticated) {
-      return;
-    }
-
-    const employee = (request as AuthenticatedRequest).employee;
-    const document = await documents().findDocumentStatus(defaultOrgId(), request.params.id);
-
-    if (!document || document.status !== "active") {
-      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-    }
-
-    if (!employeeCanMutateDocument(employee, document)) {
-      if (!employeeCanSeeDocumentRecord(employee, document)) {
-        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-      }
-
-      return reply
-        .code(403)
-        .send(errorResponse("DOCUMENT_UPDATE_FORBIDDEN", "Document cannot be changed."));
-    }
-
-    const archivedDocument = await documents().archiveDocument({
-      orgId: defaultOrgId(),
-      documentId: document.id,
-      actorEmployeeId: employee.id,
-      requestId: request.id,
-      clientIp: request.ip
-    });
-
-    if (!archivedDocument) {
-      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-    }
-
-    return documentDetailResponse(archivedDocument);
-  });
-
-  app.post<{ Body: DocumentLabelsBody; Params: { id: string } }>(
-    "/documents/:id/labels",
-    async (request, reply) => {
-      const authenticated = await authenticate(request, reply, repository, jwtSecret);
-
-      if (!authenticated) {
-        return;
-      }
-
-      const labelKeys = parseLabelKeysFromBody(request.body);
-
-      if (!labelKeys || labelKeys.length === 0) {
-        return validationError(
-          reply,
-          "INVALID_LABEL_CHANGE",
-          "labelKeys must be a non-empty array."
-        );
-      }
-
-      const employee = (request as AuthenticatedRequest).employee;
-      const document = await documents().findDocumentStatus(defaultOrgId(), request.params.id);
-
-      if (!document || document.status !== "active") {
-        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-      }
-
-      if (!employeeCanMutateDocument(employee, document)) {
-        if (!employeeCanSeeDocumentRecord(employee, document)) {
-          return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-        }
-
-        return reply
-          .code(403)
-          .send(errorResponse("DOCUMENT_UPDATE_FORBIDDEN", "Document cannot be changed."));
-      }
-
-      const labels = await documents().findLabelsByKeys(defaultOrgId(), labelKeys);
-      const foundLabelKeys = new Set(labels.map((label) => label.key));
-      const missingLabelKeys = labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
-
-      if (missingLabelKeys.length > 0) {
-        return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
-      }
-
-      if (employee.role !== "admin" && labels.some((label) => label.type === "all_staff")) {
-        return reply
-          .code(403)
-          .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
-      }
-
-      const updatedDocument = await documents().addDocumentLabels({
-        orgId: defaultOrgId(),
-        documentId: document.id,
-        actorEmployeeId: employee.id,
-        labelIds: labels.map((label) => label.id),
-        labelKeys: labels.map((label) => label.key).sort(),
-        requestId: request.id,
-        clientIp: request.ip
-      });
-
-      if (!updatedDocument) {
-        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-      }
-
-      return documentDetailResponse(updatedDocument);
-    }
-  );
-
-  app.get<{ Params: { id: string } }>("/documents/:id/download", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
-
-    if (!authenticated) {
-      return;
-    }
-
-    const employee = (request as AuthenticatedRequest).employee;
-    const document = await documents().findAccessibleActiveDocument(
-      defaultOrgId(),
-      request.params.id,
-      employee
-    );
-
-    if (!document) {
-      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-    }
-
-    const downloadUrl = await storage().createDownloadUrl(document.storageObjectKey);
-
-    await documents().appendDocumentDownloadAudit({
-      orgId: defaultOrgId(),
-      employeeId: employee.id,
-      documentId: document.id,
-      requestId: request.id,
-      clientIp: request.ip
-    });
-
-    return {
-      id: document.id,
-      downloadUrl
-    };
-  });
-
-  app.get<{ Params: { id: string } }>("/documents/:id", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
-
-    if (!authenticated) {
-      return;
-    }
-
-    const document = await documents().findAccessibleActiveDocument(
-      defaultOrgId(),
-      request.params.id,
-      (request as AuthenticatedRequest).employee
-    );
-
-    if (!document) {
-      return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-    }
-
-    return documentDetailResponse(document);
   });
 
   app.get<{ Querystring: AuditListQuery }>("/audit", async (request, reply) => {

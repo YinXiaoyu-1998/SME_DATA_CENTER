@@ -5,14 +5,6 @@ import { EnterpriseHubApiError, type EnterpriseHubApiClient } from "./api-client
 import { apiErrorToolResult, jsonToolResult, type McpJsonToolResult } from "./tools.js";
 import type { McpEmployeeSession } from "./session-store.js";
 
-const documentTypeSchema = z.enum([
-  "raw_material",
-  "structured_dataset",
-  "analysis_artifact",
-  "business_event",
-  "management_knowledge"
-]);
-
 const evidenceFileTypeSchema = z.enum(["md", "txt", "docx"]);
 const structuredDatasetSchema = z.enum(["dishes", "business"]);
 const scalarStructuredValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -33,28 +25,9 @@ const listLabelsInputSchema = z.object({
   sessionName: z.string().min(1).optional()
 });
 
-const uploadDocumentInputSchema = z.object({
-  sessionName: z.string().min(1).optional(),
-  filePath: z.string().min(1),
-  title: z.string().min(1),
-  documentType: documentTypeSchema,
-  sourceSystem: z.string().min(1).optional(),
-  sourceTime: z.string().datetime().optional(),
-  labelKeys: z.array(z.string().min(1)).default([])
-});
-
 const documentIdInputSchema = z.object({
   sessionName: z.string().min(1).optional(),
   documentId: z.string().min(1)
-});
-
-const searchDocumentsInputSchema = z.object({
-  sessionName: z.string().min(1).optional(),
-  q: z.string().optional(),
-  documentType: documentTypeSchema.optional(),
-  labelKey: z.string().min(1).optional(),
-  limit: z.number().int().min(1).max(50).optional(),
-  cursor: z.string().optional()
 });
 
 const listSkillsInputSchema = z.object({
@@ -147,18 +120,6 @@ export async function executeAuthenticatedTool(
     switch (toolName) {
       case "enterprise_hub_list_labels":
         return jsonToolResult(await listLabels(input, session, apiClient));
-      case "enterprise_hub_upload_document":
-        return uploadDocument(input, session, apiClient);
-      case "enterprise_hub_get_document_status":
-        return jsonToolResult(await getDocumentStatus(input, session, apiClient));
-      case "enterprise_hub_search_documents":
-        return jsonToolResult(await searchDocuments(input, session, apiClient));
-      case "enterprise_hub_get_document":
-        return jsonToolResult(await getDocument(input, session, apiClient));
-      case "enterprise_hub_get_document_download_url":
-        return jsonToolResult(await getDocumentDownloadUrl(input, session, apiClient));
-      case "enterprise_hub_archive_document":
-        return jsonToolResult(await archiveDocument(input, session, apiClient));
       case "enterprise_hub_list_skills":
         return jsonToolResult(await listSkills(input, session, apiClient));
       case "search_document_evidence":
@@ -171,6 +132,8 @@ export async function executeAuthenticatedTool(
         return uploadStructuredDataset(input, session, apiClient);
       case "upload_evidence_document":
         return uploadEvidenceDocument(input, session, apiClient);
+      case "get_evidence_document_status":
+        return jsonToolResult(await getEvidenceDocumentStatus(input, session, apiClient));
       case "get_import_status":
         return jsonToolResult(await getImportStatus(input, session, apiClient));
       default:
@@ -195,126 +158,6 @@ async function listLabels(
   return apiClient.requestJson({
     method: "GET",
     path: "/labels",
-    accessToken: session.accessToken
-  });
-}
-
-async function uploadDocument(
-  input: unknown,
-  session: McpEmployeeSession,
-  apiClient: EnterpriseHubApiClient
-): Promise<McpJsonToolResult> {
-  const parsedInput = uploadDocumentInputSchema.parse(input);
-  const file = await readUploadFile(parsedInput.filePath);
-
-  if (!file) {
-    return localFileNotFoundResult();
-  }
-
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([file.bytes as unknown as BlobPart]),
-    path.basename(parsedInput.filePath)
-  );
-  formData.append("title", parsedInput.title);
-  formData.append("documentType", parsedInput.documentType);
-
-  if (parsedInput.sourceSystem) {
-    formData.append("sourceSystem", parsedInput.sourceSystem);
-  }
-
-  if (parsedInput.sourceTime) {
-    formData.append("sourceTime", parsedInput.sourceTime);
-  }
-
-  for (const labelKey of parsedInput.labelKeys) {
-    formData.append("labelKeys[]", labelKey);
-  }
-
-  return jsonToolResult(
-    await apiClient.requestJson({
-      method: "POST",
-      path: "/documents",
-      accessToken: session.accessToken,
-      body: formData
-    })
-  );
-}
-
-async function getDocumentStatus(
-  input: unknown,
-  session: McpEmployeeSession,
-  apiClient: EnterpriseHubApiClient
-): Promise<unknown> {
-  const parsedInput = documentIdInputSchema.parse(input);
-
-  return apiClient.requestJson({
-    method: "GET",
-    path: `/documents/${encodeURIComponent(parsedInput.documentId)}/status`,
-    accessToken: session.accessToken
-  });
-}
-
-async function searchDocuments(
-  input: unknown,
-  session: McpEmployeeSession,
-  apiClient: EnterpriseHubApiClient
-): Promise<unknown> {
-  const parsedInput = searchDocumentsInputSchema.parse(input);
-
-  return apiClient.requestJson({
-    method: "GET",
-    path: "/documents",
-    accessToken: session.accessToken,
-    query: {
-      q: parsedInput.q,
-      documentType: parsedInput.documentType,
-      labelKey: parsedInput.labelKey,
-      limit: parsedInput.limit,
-      cursor: parsedInput.cursor
-    }
-  });
-}
-
-async function getDocument(
-  input: unknown,
-  session: McpEmployeeSession,
-  apiClient: EnterpriseHubApiClient
-): Promise<unknown> {
-  const parsedInput = documentIdInputSchema.parse(input);
-
-  return apiClient.requestJson({
-    method: "GET",
-    path: `/documents/${encodeURIComponent(parsedInput.documentId)}`,
-    accessToken: session.accessToken
-  });
-}
-
-async function getDocumentDownloadUrl(
-  input: unknown,
-  session: McpEmployeeSession,
-  apiClient: EnterpriseHubApiClient
-): Promise<unknown> {
-  const parsedInput = documentIdInputSchema.parse(input);
-
-  return apiClient.requestJson({
-    method: "GET",
-    path: `/documents/${encodeURIComponent(parsedInput.documentId)}/download`,
-    accessToken: session.accessToken
-  });
-}
-
-async function archiveDocument(
-  input: unknown,
-  session: McpEmployeeSession,
-  apiClient: EnterpriseHubApiClient
-): Promise<unknown> {
-  const parsedInput = documentIdInputSchema.parse(input);
-
-  return apiClient.requestJson({
-    method: "POST",
-    path: `/documents/${encodeURIComponent(parsedInput.documentId)}/archive`,
     accessToken: session.accessToken
   });
 }
@@ -469,6 +312,20 @@ async function uploadEvidenceDocument(
       body: formData
     })
   );
+}
+
+async function getEvidenceDocumentStatus(
+  input: unknown,
+  session: McpEmployeeSession,
+  apiClient: EnterpriseHubApiClient
+): Promise<unknown> {
+  const parsedInput = documentIdInputSchema.parse(input);
+
+  return apiClient.requestJson({
+    method: "GET",
+    path: `/v1/documents/evidence/${encodeURIComponent(parsedInput.documentId)}/status`,
+    accessToken: session.accessToken
+  });
 }
 
 async function getImportStatus(

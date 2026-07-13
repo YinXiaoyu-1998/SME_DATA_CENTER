@@ -1,20 +1,17 @@
-import { createHash } from "node:crypto";
-import { extname } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { DocumentStatus, Prisma, PrismaClient, ProcessingRunStatus } from "@prisma/client";
 import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
 import type { StorageAdapter } from "@enterprise-hub/storage";
 
-const SUPPORTED_TEXT_EXTENSIONS = new Set([".txt", ".md", ".csv", ".json"]);
-const TEXT_INDEX_TYPE = "text";
 const MAX_PROCESSING_FAILURES = 3;
 const DEFAULT_WORKER_POLL_INTERVAL_MS = 1_000;
 
 export const PROCESSING_ERROR_CODES = {
   unsupportedFileType: "UNSUPPORTED_FILE_TYPE",
   storageReadFailed: "STORAGE_READ_FAILED",
-  evidenceIndexingFailed: "EVIDENCE_INDEXING_FAILED"
+  evidenceIndexingFailed: "EVIDENCE_INDEXING_FAILED",
+  unsupportedProcessingJobType: "UNSUPPORTED_PROCESSING_JOB_TYPE"
 } as const;
 
 export interface ClaimedProcessingRun {
@@ -71,12 +68,6 @@ export interface EvidenceIndexer {
   }): Promise<EvidenceIndexingResult>;
 }
 
-export interface CompleteProcessingRunInput {
-  runId: string;
-  documentId: string;
-  chunks: DocumentChunkWrite[];
-}
-
 export interface CompleteEvidenceIndexingInput {
   runId: string;
   documentId: string;
@@ -94,7 +85,6 @@ export interface FailProcessingRunInput {
 
 export interface ProcessingWorkerRepository {
   claimNextProcessingRun(): Promise<ClaimedProcessingRun | null>;
-  completeProcessingRun(input: CompleteProcessingRunInput): Promise<void>;
   completeEvidenceIndexing?(input: CompleteEvidenceIndexingInput): Promise<void>;
   failProcessingRun(input: FailProcessingRunInput): Promise<void>;
   disconnect?(): Promise<void>;
@@ -132,43 +122,27 @@ export async function runWorkerOnce(input: {
   }
 
   try {
-    if (run.jobType === "evidence_document_index") {
-      if (!input.evidenceIndexer || !input.repository.completeEvidenceIndexing) {
-        throw new ProcessingError(
-          PROCESSING_ERROR_CODES.unsupportedFileType,
-          "Evidence indexing is not configured."
-        );
-      }
-
-      const content = await readDocumentContent(run.document, input.storage);
-      const result = await input.evidenceIndexer.indexDocument({ run, content });
-      await input.repository.completeEvidenceIndexing({
-        runId: run.id,
-        documentId: run.documentId,
-        result,
-        chunks: result.chunks
-      });
-
-      return {
-        processed: true,
-        documentId: run.documentId,
-        status: "active"
-      };
+    if (run.jobType !== "evidence_document_index") {
+      throw new ProcessingError(
+        PROCESSING_ERROR_CODES.unsupportedProcessingJobType,
+        `Unsupported processing job type: ${run.jobType}`
+      );
     }
 
-    const text = await extractSupportedText(run.document, input.storage);
-    const chunks = chunkText(text).map((chunkText, chunkIndex) => ({
-      documentId: run.documentId,
-      chunkIndex,
-      chunkText,
-      chunkHash: createChunkHash(chunkText),
-      indexType: TEXT_INDEX_TYPE
-    }));
+    if (!input.evidenceIndexer || !input.repository.completeEvidenceIndexing) {
+      throw new ProcessingError(
+        PROCESSING_ERROR_CODES.unsupportedFileType,
+        "Evidence indexing is not configured."
+      );
+    }
 
-    await input.repository.completeProcessingRun({
+    const content = await readDocumentContent(run.document, input.storage);
+    const result = await input.evidenceIndexer.indexDocument({ run, content });
+    await input.repository.completeEvidenceIndexing({
       runId: run.id,
       documentId: run.documentId,
-      chunks
+      result,
+      chunks: result.chunks
     });
 
     return {
@@ -292,60 +266,6 @@ export function createPrismaProcessingWorkerRepository(
         });
 
         return toClaimedProcessingRun(run, document);
-      });
-    },
-    async completeProcessingRun(input) {
-      const now = new Date();
-
-      await prisma.$transaction(async (tx) => {
-        if (input.chunks.length > 0) {
-          await tx.documentChunk.createMany({
-            data: input.chunks.map((chunk) => ({
-              documentId: chunk.documentId,
-              chunkIndex: chunk.chunkIndex,
-              chunkText: chunk.chunkText,
-              chunkHash: chunk.chunkHash,
-              indexType: chunk.indexType
-            })),
-            skipDuplicates: true
-          });
-        }
-
-        const run = await tx.processingRun.update({
-          where: {
-            id: input.runId
-          },
-          data: {
-            status: ProcessingRunStatus.succeeded,
-            errorCode: null,
-            errorSummary: null,
-            finishedAt: now
-          }
-        });
-
-        await tx.document.update({
-          where: {
-            id: input.documentId
-          },
-          data: {
-            status: DocumentStatus.active
-          }
-        });
-
-        await tx.auditLog.create({
-          data: {
-            orgId: run.orgId,
-            actorEmployeeId: null,
-            action: AUDIT_ACTIONS.documentActivated,
-            targetType: "document",
-            targetId: input.documentId,
-            result: "succeeded",
-            metadata: {
-              processingRunId: input.runId,
-              chunkCount: input.chunks.length
-            }
-          }
-        });
       });
     },
     async completeEvidenceIndexing(input) {
@@ -526,34 +446,6 @@ export function createPrismaProcessingWorkerRepository(
   };
 }
 
-async function extractSupportedText(
-  document: ClaimedProcessingRun["document"],
-  storage: StorageAdapter
-): Promise<string> {
-  const extension = extname(document.originalFileName ?? document.storageObjectKey).toLowerCase();
-
-  if (!SUPPORTED_TEXT_EXTENSIONS.has(extension)) {
-    throw new ProcessingError(
-      PROCESSING_ERROR_CODES.unsupportedFileType,
-      `Unsupported file type: ${extension || "unknown"}`
-    );
-  }
-
-  try {
-    const stream = await storage.getObjectStream(document.storageObjectKey);
-    return (await streamToBuffer(stream)).toString("utf8");
-  } catch (error) {
-    if (error instanceof ProcessingError) {
-      throw error;
-    }
-
-    throw new ProcessingError(
-      PROCESSING_ERROR_CODES.storageReadFailed,
-      error instanceof Error ? error.message : "Unable to read storage object."
-    );
-  }
-}
-
 async function readDocumentContent(
   document: ClaimedProcessingRun["document"],
   storage: StorageAdapter
@@ -566,18 +458,6 @@ async function readDocumentContent(
       error instanceof Error ? error.message : "Unable to read storage object."
     );
   }
-}
-
-function chunkText(text: string): string[] {
-  return text
-    .replace(/\r\n?/g, "\n")
-    .split(/\n{2,}|\n/g)
-    .map((chunk) => chunk.trim())
-    .filter((chunk) => chunk.length > 0);
-}
-
-function createChunkHash(chunkText: string): string {
-  return createHash("sha256").update(chunkText, "utf8").digest("hex");
 }
 
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {

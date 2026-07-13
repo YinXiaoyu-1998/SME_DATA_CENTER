@@ -173,10 +173,10 @@ describe("MCP local development auth", () => {
     });
   });
 
-  it("returns a clear session-required error before Day 3 document and skill tools run", async () => {
+  it("returns a clear session-required error before Phase 3 retrieval and skill tools run", async () => {
     const sessionStore = await createSessionStore();
     const apiClient = createEnterpriseHubApiClient(baseConfig, async () => jsonResponse({}));
-    const searchHandler = createToolHandler("enterprise_hub_search_documents", {
+    const searchHandler = createToolHandler("search_document_evidence", {
       apiClient,
       config: baseConfig,
       sessionStore

@@ -11,11 +11,7 @@ const FILE_TYPES_BY_DOCUMENT_KIND: Record<DocumentKindName, readonly Phase3FileT
   structured: ["xlsx", "csv"]
 };
 
-export const PROCESSING_JOB_TYPES = [
-  "legacy_text_extract",
-  "evidence_document_index",
-  "structured_import"
-] as const;
+export const PROCESSING_JOB_TYPES = ["evidence_document_index", "structured_import"] as const;
 
 export type ProcessingJobTypeName = (typeof PROCESSING_JOB_TYPES)[number];
 

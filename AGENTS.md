@@ -31,7 +31,6 @@
 - Run local API + worker + MCP bootup: `npm run mcp-bootup`
 - Run local worker loop: `npm run worker:dev`
 - Run one deterministic worker pass: `npm run worker:once`
-- Run local CLI smoke commands: `npm run hub -- <command>`
 - Run local MCP server: `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`
 - Run local MCP smoke: `MYSQL_PORT=3307 npm run test:mcp`
 - Run Phase 3 golden retrieval evaluation: `npm run test:phase3:golden`
@@ -40,7 +39,7 @@
 - Start local MySQL: `docker compose up -d mysql`
 - Start local MySQL + Qdrant: `docker compose up -d mysql qdrant`
 - Initialize local Qdrant evidence collection: `npm run qdrant:init`
-- Run local readiness checks: `npm run readyz:local`
+- Run local readiness checks: `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run readyz:local`
 - Stop local services: `docker compose down`
 - Run local MVP demo loop: `MYSQL_PORT=3307 npm run test:integration`
 
