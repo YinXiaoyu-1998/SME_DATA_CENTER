@@ -4,6 +4,10 @@ Last updated: 2026-07-13
 
 This human test verifies that a generic agent using `$enterprise-hub-mcp` can interact with Enterprise Hub through the current Phase 3 MCP tools. It does not use removed ordinary document upload/search/detail/download/archive flows.
 
+For architecture-level flow diagrams that explain what happens before and
+during these prompts, see [mcp-user-flow.md](./mcp-user-flow.md) and
+[mcp-user-flow.zh.md](./mcp-user-flow.zh.md).
+
 ## Preconditions
 
 From the repository root:

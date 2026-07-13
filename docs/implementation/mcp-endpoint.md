@@ -6,6 +6,11 @@ Last updated: 2026-07-13
 
 Record the decisions made while designing a network-reachable Enterprise Hub MCP endpoint for local development. This document is the working decision record for the implementation plan; it is not a service-operations runbook.
 
+For end-to-end user-facing request flows, including cold agent startup, login,
+upload, status, and search paths, see
+[mcp-user-flow.md](./mcp-user-flow.md) and
+[mcp-user-flow.zh.md](./mcp-user-flow.zh.md).
+
 ## Confirmed Scope
 
 - Add a network-reachable MCP endpoint to the locally running Enterprise Hub service.
