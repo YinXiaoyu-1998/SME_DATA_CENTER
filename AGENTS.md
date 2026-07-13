@@ -16,7 +16,10 @@
 - Do not use `docs/implementation/progress.md` as a running design-decision log or chat transcript. During requirements grilling or design discovery, record detailed decisions in a dedicated design document, ADR, API contract draft, or implementation plan section, then add at most one concise progress summary when that design artifact is created or materially completed.
 - Subagents must append to `docs/implementation/agent-handoffs.md` before stopping.
 - Draft PR descriptions must include scope, tests run, environment changes, human inputs used, and known limitations.
-- When `skills/enterprise-hub-mcp/` changes in this workspace, also sync the same skill update to the standalone repository `YinXiaoyu-1998/enterprise-hub-mcp-skill` and open/update a PR there.
+- Enterprise Hub MCP skill is dual-homed:
+  - repo-local skill: `skills/enterprise-hub-mcp/`
+  - standalone skill repo: `YinXiaoyu-1998/enterprise-hub-mcp-skill`
+- When MCP tool behavior, API contracts, or usage guidance changes, update both the repo-local skill and the standalone skill repo. If the standalone repo is not already available locally, clone/fetch it from GitHub, create an independent branch there, make the matching skill/documentation change, and open/update a standalone skill PR. Do not assume a machine-specific checkout path.
 - After any lead/subagent task is verified and fully merged into `main`, remove its clean, inactive local worktree and run `git worktree prune`; never force-remove worktrees with changes or active processes.
 
 ## Commands
@@ -49,7 +52,7 @@ Copy `.env.example` to `.env` for local development. Use development-only values
 
 Required local variables are tracked in `docs/implementation/env-inventory.md`.
 
-The local MVP integration test defaults to `MYSQL_PORT=3307` when no `MYSQL_PORT` is set, starts the local MySQL service, resets the local development database, seeds sample employees/labels/skills, starts the API on an available local port, runs the CLI upload/search path, runs one worker pass, downloads the active document, archives it, and verifies ordinary search no longer returns it.
+The local integration test defaults to `MYSQL_PORT=3307` when no `MYSQL_PORT` is set, starts local MySQL + Qdrant, resets the local development database, seeds sample employees/labels/skills, starts the API on an available local port, verifies Phase 3 structured import/query, uploads an evidence document, runs one worker pass, checks evidence index status, and verifies evidence search.
 
 - Before staging host changes, read `docs/implementation/server-runtime-prerequisites.md` and `docs/implementation/staging-readiness.md`; provision with `sudo bash scripts/provision-staging-runtime.sh`.
 - Staging image delivery must use an account-owned Beijing ACR repository; do not use unapproved third-party mirrors or configure a general ACR registry hostname as `registry-mirrors`.
