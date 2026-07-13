@@ -1,5 +1,12 @@
 # 企业资料中枢 Agent Handoffs
 
+## 2026-07-14 - codex/add-maijia-xlsx-fixtures - Maijia structured XLSX fixtures
+
+- Scope: Added two user-approved non-sensitive real-business Maijia workbook fixtures under `fixtures/structured/`, each truncated to the first 1000 worksheet rows while preserving sheet names and workbook cell content. Added a short test-case note documenting their fixture purpose.
+- Files changed: `fixtures/structured/maijia_business_20260706_20260712_first1000.xlsx`, `fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx`, `docs/implementation/test-cases.md`, `docs/implementation/progress.md`, and this handoff.
+- Verification: `npx tsx scripts/profile-structured-workbook.ts business fixtures/structured/maijia_business_20260706_20260712_first1000.xlsx` returned registry `business.2026-07-11.v1`, 1000 worksheet rows, 997 data rows, and no validation errors. `npx tsx scripts/profile-structured-workbook.ts dishes fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx` returned registry `dishes.2026-07-11.v1`, 1000 worksheet rows, 997 data rows, and no validation errors.
+- Known limitation: These are committed sample fixtures for parser/schema coverage, not complete source exports; the original full workbooks remain outside the repository.
+
 ## 2026-07-13 - codex/mcp-user-flow-code-audit - MCP flow docs code audit
 
 - Scope: Re-read the current implementation code for `apps/mcp-launcher`, `apps/api/src/mcp`, `packages/mcp-contract`, API auth/dev-login, evidence upload, structured import, and worker indexing. Corrected the bilingual MCP user-flow diagrams so they reflect launcher-local `EMPLOYEE_AUTH_REQUIRED`, current login API error behavior, actual `/mcp` transport guards, compatibility handling for `ENTERPRISE_HUB_API_URL`, and the split between async evidence indexing and synchronous structured import.
