@@ -55,6 +55,10 @@ flowchart LR
 | API `/mcp` -> 已有 API 行为 | 进程内 request-scoped delegation | 只传 auth context                     | 业务鉴权仍由后端 API 行为负责。                             |
 | Worker -> DB/storage/Qdrant | 内部服务调用                     | 服务自身凭证，不是 agent 凭证         | 异步处理不属于 skill/launcher 生命周期。                    |
 
+`ENTERPRISE_HUB_BASE_URL` 是文档化的 launcher 配置项。当前 launcher 代码也兼容读取
+`ENTERPRISE_HUB_API_URL` 作为旧别名，但新的 MCP client 配置应使用
+`ENTERPRISE_HUB_BASE_URL`。
+
 ## 冷启动到上传请求
 
 用户第一句话可能是：
@@ -76,11 +80,11 @@ flowchart TD
   F --> G
   G --> H{"Launcher 是否已有当前可用的<br/>模型不可见员工 token？"}
   H -->|"有"| I["Launcher 调远端 MCP tools<br/>自动附加 Authorization header"]
-  H -->|"没有"| J["业务 tool 返回 EMPLOYEE_AUTH_REQUIRED<br/>或 launcher 报告未本地登录"]
+  H -->|"没有"| J["Launcher 本地返回 EMPLOYEE_AUTH_REQUIRED<br/>不会把业务调用发到 /mcp"]
   J --> K["Agent 向用户索取员工身份<br/>当前 dev：注册 email<br/>未来：服务批准的登录/SSO 步骤"]
   K --> L["Agent 调 enterprise_hub_login_local<br/>或未来的本地登录 bootstrap"]
   L --> M{"登录是否成功？"}
-  M -->|"否：服务不可达"| N["Agent 报告 URL 无法连接<br/>不启动或修复服务"]
+  M -->|"否：login API 请求失败"| N["Agent 报告登录/API 失败<br/>不启动或修复服务"]
   M -->|"否：身份被拒绝"| O["Agent 要求用户核对身份<br/>不 seed 或修改服务数据"]
   M -->|"是"| P["Launcher 只把 token 存在进程内存<br/>不返回给 agent"]
   P --> I
@@ -116,21 +120,26 @@ sequenceDiagram
   U->>A: "把这个文件上传到 Enterprise Hub"
   A->>L: "通过 stdio 调 MCP tool：upload_evidence_document 或 upload_structured_dataset"
   L->>M: "Streamable HTTP POST /mcp，带 Authorization: Bearer token"
-  M->>M: "校验 loopback、method、JSON、body size、request id、bearer token"
+  M->>M: "校验 loopback、concurrency、bearer token、POST、JSON、Accept、protocol version、无 MCP session id、JSON-RPC envelope"
   M->>B: "带 authenticated employee context 做 delegation"
   B->>D: "读取员工、标签、权限、idempotency 状态"
   B->>B: "校验标签权限、inline file shape、metadata、decoded size"
   B->>S: "写入原始上传 bytes"
-  B->>D: "创建 document/import、labels、audit event、processing status"
+  alt "Evidence upload"
+    B->>D: "创建 evidence document、labels、audit event、pending processing run"
+  else "Structured upload"
+    B->>B: "校验 workbook 和 structured import metadata"
+    B->>D: "同步写入 structured rows/import batch，并记录 import audit"
+  end
   B-->>M: "业务结果或稳定服务错误"
   M-->>L: "MCP response"
   L-->>A: "MCP response，不含 token"
   A-->>U: "报告 id、accepted status 和下一步 status check"
 
-  W->>D: "稍后领取 processing/import work"
-  W->>S: "按需读取原始 bytes"
-  W->>Q: "为 evidence document 写入向量"
-  W->>D: "发布 active/index-ready 或 validation failure 状态"
+  W->>D: "仅 evidence，稍后领取 evidence_document_index work"
+  W->>S: "读取原始 evidence bytes"
+  W->>Q: "写入 evidence vectors"
+  W->>D: "发布 active/index-ready 或 processing failure 状态"
 ```
 
 关键边界：
@@ -140,6 +149,8 @@ sequenceDiagram
   inline bytes。
 - `/mcp` 对每个请求都鉴权，包括 initialize 和工具发现。
 - 标签、上传、查询、搜索可见性、隐藏资源行为都以后端鉴权为准。
+- Structured upload 由 API route 同步导入；evidence upload 会创建 queued processing work，
+  再由 worker 写入 Qdrant。
 - Skill 和 launcher 不启动 API、worker、数据库、storage 或 Qdrant。服务 URL 不可达时，
   agent 只报告连接失败。
 
@@ -156,10 +167,9 @@ sequenceDiagram
   participant M as "API POST /mcp"
 
   U->>A: "用 Enterprise Hub 上传/搜索"
-  A->>L: "通过 stdio 发 MCP initialize 或业务 tool call"
-  L->>M: "POST /mcp，没有可用 bearer token"
-  M-->>L: "EMPLOYEE_AUTH_REQUIRED"
-  L-->>A: "安全的 login-required 结果"
+  A->>L: "通过 stdio 发业务 tool call"
+  L->>L: "检查 MemoryLauncherSession"
+  L-->>A: "不调用远端 /mcp，直接返回 EMPLOYEE_AUTH_REQUIRED"
   A-->>U: "要求提供注册员工身份，或完成服务批准的登录步骤"
   U-->>A: "今天提供 email，未来可能完成 SSO/OIDC"
   A->>L: "今天调用 enterprise_hub_login_local(email)"
@@ -173,12 +183,16 @@ sequenceDiagram
   M-->>L: "authenticated MCP response"
 ```
 
+如果 launcher 内存里有 token，但远端 `/mcp` 在请求中拒绝该 token，launcher 会清除
+内存 session 并返回 `EMPLOYEE_AUTH_REQUIRED`，让 agent 要求用户重新认证。
+
 失败映射：
 
 | 失败                            | 可见结果                                           | Agent 行为                             |
 | ------------------------------- | -------------------------------------------------- | -------------------------------------- |
 | 缺少 URL                        | 询问 Enterprise Hub base URL                       | 不发明 URL。                           |
-| 服务不可达                      | `ENTERPRISE_HUB_UNREACHABLE`                       | 报告连接失败；不启动或修复服务。       |
+| 登录 API 请求失败               | `ENTERPRISE_HUB_API_ERROR`                         | 报告登录/API 失败；不启动或修复服务。  |
+| 远端 MCP 服务不可达             | `ENTERPRISE_HUB_UNREACHABLE`                       | 报告连接失败；不启动或修复服务。       |
 | token 缺失、过期、launcher 重启 | `EMPLOYEE_AUTH_REQUIRED`                           | 要求用户重新认证。                     |
 | 员工不存在或 disabled           | 安全的鉴权失败                                     | 要求用户核对身份；不 seed 或修改员工。 |
 | 标签/资源无权限                 | 按后端 contract 返回 forbidden、not found 或空结果 | 不推断隐藏资源存在。                   |

@@ -57,6 +57,10 @@ Protocol summary:
 | API `/mcp` -> Existing API behavior | In-process request-scoped delegation | Auth context only                                         | Business authorization remains in the backend API behavior.             |
 | Worker -> DB/storage/Qdrant         | Internal service calls               | Service credentials, not agent credentials                | Asynchronous processing is outside the skill/launcher lifecycle.        |
 
+`ENTERPRISE_HUB_BASE_URL` is the documented launcher configuration key. The
+current launcher code also accepts `ENTERPRISE_HUB_API_URL` as a compatibility
+alias, but new MCP client configuration should use `ENTERPRISE_HUB_BASE_URL`.
+
 ## Cold Start To Upload Request
 
 The user's first prompt may be:
@@ -79,11 +83,11 @@ flowchart TD
   F --> G
   G --> H{"Launcher has a current<br/>model-invisible employee token?"}
   H -->|"Yes"| I["Launcher calls remote MCP tools<br/>with Authorization header"]
-  H -->|"No"| J["Business tool returns EMPLOYEE_AUTH_REQUIRED<br/>or launcher reports no local login"]
+  H -->|"No"| J["Launcher returns local EMPLOYEE_AUTH_REQUIRED<br/>without sending the business call to /mcp"]
   J --> K["Agent asks for employee identity<br/>current dev: registered email<br/>future: service-approved login/SSO step"]
   K --> L["Agent calls enterprise_hub_login_local<br/>or future local login bootstrap"]
   L --> M{"Login succeeds?"}
-  M -->|"No: service unreachable"| N["Agent reports URL is unreachable<br/>does not start or repair service"]
+  M -->|"No: login API request failed"| N["Agent reports login/API failure<br/>does not start or repair service"]
   M -->|"No: identity rejected"| O["Agent asks user to verify identity<br/>does not seed or modify service data"]
   M -->|"Yes"| P["Launcher stores token in process memory only<br/>token is not returned to agent"]
   P --> I
@@ -121,21 +125,26 @@ sequenceDiagram
   U->>A: "Upload this file to Enterprise Hub"
   A->>L: "MCP tool call over stdio: upload_evidence_document or upload_structured_dataset"
   L->>M: "Streamable HTTP POST /mcp with Authorization: Bearer token"
-  M->>M: "Validate loopback, method, JSON, body size, request id, bearer token"
+  M->>M: "Validate loopback, concurrency, bearer token, POST, JSON, Accept, protocol version, no MCP session id, JSON-RPC envelope"
   M->>B: "Delegate request with authenticated employee context"
   B->>D: "Load employee, labels, permissions, idempotency state"
   B->>B: "Validate label access, inline file shape, metadata, decoded size"
   B->>S: "Write original uploaded bytes"
-  B->>D: "Create document/import records, labels, audit event, processing status"
+  alt "Evidence upload"
+    B->>D: "Create evidence document, labels, audit event, pending processing run"
+  else "Structured upload"
+    B->>B: "Validate workbook and structured import metadata"
+    B->>D: "Apply structured rows/import batch synchronously and audit import"
+  end
   B-->>M: "Business result or stable service error"
   M-->>L: "MCP response"
   L-->>A: "MCP response without token"
   A-->>U: "Report id, accepted status, and next status-check step"
 
-  W->>D: "Later: claim queued processing/import work"
-  W->>S: "Read original bytes when needed"
-  W->>Q: "Write evidence vectors for evidence documents"
-  W->>D: "Publish active/index-ready or validation failure status"
+  W->>D: "Evidence only, later: claim queued evidence_document_index work"
+  W->>S: "Read original evidence bytes"
+  W->>Q: "Write evidence vectors"
+  W->>D: "Publish active/index-ready or processing failure status"
 ```
 
 Important boundaries:
@@ -147,6 +156,9 @@ Important boundaries:
 - `/mcp` authenticates every request, including initialization and tool discovery.
 - Backend authorization remains authoritative for labels, uploads, queries,
   search visibility, and hidden-resource behavior.
+- Structured uploads are imported synchronously by the API route. Evidence
+  uploads create queued processing work that the worker later indexes into
+  Qdrant.
 - The skill and launcher do not start the API, worker, database, storage, or
   Qdrant. If the service URL is unreachable, the agent reports that failure.
 
@@ -163,10 +175,9 @@ sequenceDiagram
   participant M as "API POST /mcp"
 
   U->>A: "Upload/search with Enterprise Hub"
-  A->>L: "MCP initialize or business tool call over stdio"
-  L->>M: "POST /mcp without usable bearer token"
-  M-->>L: "EMPLOYEE_AUTH_REQUIRED"
-  L-->>A: "Safe login-required result"
+  A->>L: "Business tool call over stdio"
+  L->>L: "Check MemoryLauncherSession"
+  L-->>A: "EMPLOYEE_AUTH_REQUIRED without calling remote /mcp"
   A-->>U: "Ask for registered employee identity or service-approved login step"
   U-->>A: "Provides email today, or completes future SSO/OIDC step"
   A->>L: "enterprise_hub_login_local(email) today"
@@ -180,12 +191,17 @@ sequenceDiagram
   M-->>L: "Authenticated MCP response"
 ```
 
+If the launcher has a token that the API rejects during a remote MCP request,
+the launcher clears its in-memory session and returns `EMPLOYEE_AUTH_REQUIRED`
+so the agent can ask the user to authenticate again.
+
 Failure mapping:
 
 | Failure                                  | Visible result                                                      | Agent behavior                                                    |
 | ---------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Missing URL                              | Ask for Enterprise Hub base URL                                     | Do not invent a URL.                                              |
-| Service unreachable                      | `ENTERPRISE_HUB_UNREACHABLE`                                        | Report connection failure; do not start or repair services.       |
+| Login API request fails                  | `ENTERPRISE_HUB_API_ERROR`                                          | Report login/API failure; do not start or repair services.        |
+| Remote MCP service unreachable           | `ENTERPRISE_HUB_UNREACHABLE`                                        | Report connection failure; do not start or repair services.       |
 | Missing/expired/restarted launcher token | `EMPLOYEE_AUTH_REQUIRED`                                            | Ask the user to authenticate again.                               |
 | Unknown or disabled employee             | Safe authentication failure                                         | Ask the user to verify identity; do not seed or modify employees. |
 | Forbidden label/resource                 | Forbidden, not found, or empty result according to backend contract | Do not infer hidden resources exist.                              |
