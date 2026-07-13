@@ -80,46 +80,39 @@ npm run worker:once
 
 ## MCP 本地服务
 
-MCP server 是 HTTP API adapter；它不直读 MySQL、Qdrant 或 storage。
+服务端只提供 authenticated Streamable HTTP `POST /mcp`，Phase 3 仅允许 loopback。它不提供服务端 stdio，也不直读 MySQL、Qdrant 或 storage。API、worker 和依赖必须在 skill/launcher 之外运行。
 
-一条命令启动 API + worker loop + MCP stdio server：
-
-```sh
-npm run mcp-bootup
-```
-
-Codex / MCP client 推荐配置：
+Codex / MCP client 通过用户机 launcher 连接：
 
 ```json
 {
   "mcpServers": {
     "enterprise-hub": {
       "command": "npm",
-      "args": ["run", "--silent", "mcp-bootup"],
+      "args": ["run", "--silent", "mcp:launcher"],
       "cwd": "/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER",
       "env": {
-        "ENTERPRISE_HUB_MCP_SESSION_FILE": ".data/enterprise-hub-mcp/session.json"
+        "ENTERPRISE_HUB_BASE_URL": "http://127.0.0.1:3000"
       }
     }
   }
 }
 ```
 
-如果 API 已经运行，也可以只启动 MCP：
+launcher 只保存进程内存中的 development JWT；退出后必须重新用员工 email 登录。它不会启动或修复服务。手动启动：
 
 ```sh
-ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 \
-ENTERPRISE_HUB_MCP_SESSION_FILE=.data/enterprise-hub-mcp/session.json \
-npm run mcp:dev
+ENTERPRISE_HUB_BASE_URL=http://127.0.0.1:3000 npm run mcp:launcher
 ```
 
-MCP session 文件可能包含 development bearer token，默认位于 ignored `.data/enterprise-hub-mcp/session.json`。
+MCP 配置、环境和文件中不得保存 bearer token。
 
 ## 当前 MCP Tools
 
 | Tool                           | 用途                                        |
 | ------------------------------ | ------------------------------------------- |
-| `enterprise_hub_login_dev`     | 用 seeded email 登录本地 dev session        |
+| `enterprise_hub_login_local`   | 用 seeded email 登录 launcher 内存 session  |
+| `enterprise_hub_logout_local`  | 清除 launcher 内存 session                  |
 | `enterprise_hub_list_labels`   | 读取可用标签目录                            |
 | `enterprise_hub_list_skills`   | 读取已批准 Skill Directory 元数据           |
 | `upload_evidence_document`     | 上传 MD/TXT/DOCX evidence 文档              |
@@ -134,7 +127,7 @@ MCP session 文件可能包含 development bearer token，默认位于 ignored `
 
 更完整的步骤见 `docs/implementation/local-agent-test.md`。核心路径：
 
-1. 用 `enterprise_hub_login_dev` 登录 `baoli.manager@example.com`。
+1. 用 `enterprise_hub_login_local` 登录 `baoli.manager@example.com`。
 2. 用 `enterprise_hub_list_labels` 选择 `store:baoli`。
 3. 用 `upload_evidence_document` 上传 MD/TXT/DOCX，随后用 `get_evidence_document_status` 等待 index ready，再用 `search_document_evidence` 检索。
 4. 用 `upload_structured_dataset` 上传 `dishes` 或 `business` CSV/XLSX，随后用 `get_import_status` 和 `query_structured_dataset` 验证。
@@ -154,8 +147,7 @@ MCP session 文件可能包含 development bearer token，默认位于 ignored `
 | `test:phase3:perf`   | 跑 deterministic performance smoke gates |
 | `typecheck`          | 运行 TypeScript 类型检查                 |
 | `api:dev`            | 启动 Fastify API                         |
-| `mcp-bootup`         | 启动 API、worker loop 和 MCP server      |
-| `mcp:dev`            | 只启动 MCP stdio server                  |
+| `mcp:launcher`       | 启动本机 launcher，连接已运行的 HTTP MCP |
 | `purge-data`         | 清理本地文档数据和 ignored storage       |
 | `worker:dev`         | 启动 worker loop                         |
 | `worker:once`        | 跑一次 worker pass                       |
@@ -204,7 +196,7 @@ MYSQL_PORT=3307 npm run runtime:compose:up
 
 ### MCP tools 未出现
 
-确认 MCP client 使用 `npm run --silent mcp-bootup`，并重启 Codex 或新开 thread。不要在普通上传/搜索任务里 fallback 到脚本、curl、数据库或 storage。
+确认 MCP client 使用 `npm run --silent mcp:launcher`，并重启 Codex 或新开 thread。不要在普通上传/搜索任务里 fallback 到脚本、curl、数据库或 storage。
 
 ### 上传 evidence 后搜不到
 

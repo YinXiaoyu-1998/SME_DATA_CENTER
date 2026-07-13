@@ -1,10 +1,11 @@
 import { loadApiEnv } from "./env.js";
+import { resolvePhase3ServiceListenHost } from "./mcp/guards.js";
 import { buildApiServer } from "./server.js";
 
 loadApiEnv();
 
 const port = Number(process.env["PORT"] ?? 3000);
-const host = process.env["HOST"] ?? "0.0.0.0";
+const host = resolvePhase3ServiceListenHost();
 
 const app = buildApiServer();
 

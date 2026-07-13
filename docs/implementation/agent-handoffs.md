@@ -1,5 +1,12 @@
 # 企业资料中枢 Agent Handoffs
 
+## 2026-07-13 - codex/phase3-http-mcp-endpoint - Phase 3 Task 13 local HTTP MCP endpoint
+
+- Scope: Replaced the service-side stdio MCP adapter with authenticated, stateless Streamable HTTP `POST /mcp`. The endpoint is hard loopback-only, validates protocol/body/request limits, authenticates initialize/discovery/tool calls, and delegates all nine business tools to existing authenticated API routes. Added `packages/mcp-contract` and `apps/mcp-launcher`; launcher-local development login/logout retains the JWT only in process memory and proxies each remote MCP request with bearer auth. Removed legacy service stdio, session-file, `filePath`, `enterprise_hub_login_dev`, `mcp:dev`, and `mcp-bootup` surfaces.
+- Files changed: API MCP endpoint/guard/delegation modules and tests; shared contract; launcher and tests; root scripts/workspace test; old `apps/mcp-server` and bootup files removed; repo-local skill, README files, ADR 0020, design/plan/API/env/test/local-agent/context/progress docs, and this handoff.
+- Verification: targeted contract/API/launcher suites passed; `npm run test:mcp`, `npm run typecheck`, `npm run lint`, and `npm run format:check` passed after Prisma generation. Broader Phase 3 integration/golden/performance checks are rerun by the lead before PR.
+- Known limitation: `/auth/dev-login` remains intentionally development-only. Remote exposure, TLS, and SSO/OIDC are Phase 4. Launcher restart intentionally requires fresh local login.
+
 ## 2026-07-13 - codex/skill-service-boundary-main - MCP skill service-boundary audit
 
 - Scope: Tightened the repo-local `enterprise-hub-mcp` skill so it only configures the MCP stdio adapter and calls exposed tools. Explicitly prohibited starting, stopping, initializing, repairing, seeding, migrating, or otherwise operating the API, worker, Docker, MySQL, Qdrant, storage, or background services. Kept the current dev-only seeded-employee login flow unchanged.
@@ -556,3 +563,10 @@
 - Known local environment note: The first readiness attempt with only `MYSQL_PORT=3307` failed because `DATABASE_URL` still pointed elsewhere; explicit `DATABASE_URL` passed. Docker had stale fixed-name containers from older worktrees; they were removed without deleting volumes so this worktree could recreate local test containers.
 - Human blockers: None for this cleanup. Remaining blockers are Phase 4 deployment/production inputs.
 - Suggested next agent: After this PR and standalone skill PR are reviewed/merged, continue to Phase 4 only if the required staging readiness inputs are satisfied; otherwise keep Phase 4 blocked.
+
+## 2026-07-13 - Lead-recorded architecture consultation - Local HTTP MCP endpoint design
+
+- Scope: The lead conducted a one-question-at-a-time architecture consultation for a local Streamable HTTP `/mcp` endpoint. The consulting subagent did not edit repository documentation. The resulting decisions are maintained by the lead in `docs/implementation/mcp-endpoint.md` and proposed ADR 0020.
+- Decisions captured: Existing Fastify listener at `/mcp`; stateless POST-only Streamable HTTP as the only MCP transport; employee bearer authentication on every MCP request; out-of-band local development login stored through an approved secure credential channel and injected by a model-invisible credential-aware launcher; hard loopback-only endpoint exposure with no non-loopback opt-in; one HTTP core MCP business registry; transport-neutral inline base64 upload input; layered errors, request-scoped state, redacted observability, bounded resources, and required integration/regression gates.
+- Status: Discovery is complete and explicitly awaiting product-owner review. No implementation plan or production/Phase 4 work has started.
+- Suggested next agent: Do not begin implementation until the product owner approves or amends the recorded decisions. After approval, write the implementation plan, then implement only the approved local endpoint scope.

@@ -1,20 +1,61 @@
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const workspaceNames = [
-  "@enterprise-hub/api",
-  "@enterprise-hub/worker",
+const expectedWorkspaceNames = [
   "@enterprise-hub/admin-web",
-  "@enterprise-hub/mcp-server",
-  "@enterprise-hub/domain",
-  "@enterprise-hub/storage",
+  "@enterprise-hub/api",
   "@enterprise-hub/db",
-  "@enterprise-hub/testing"
+  "@enterprise-hub/domain",
+  "@enterprise-hub/mcp-contract",
+  "@enterprise-hub/mcp-launcher",
+  "@enterprise-hub/storage",
+  "@enterprise-hub/testing",
+  "@enterprise-hub/worker"
 ];
 
 describe("workspace skeleton", () => {
-  it("declares the initial Day 0 workspaces", () => {
-    expect(workspaceNames).toContain("@enterprise-hub/api");
-    expect(workspaceNames).toContain("@enterprise-hub/db");
-    expect(workspaceNames).toHaveLength(8);
+  it("declares only the supported workspace packages", async () => {
+    await expect(readWorkspaceNames()).resolves.toEqual(expectedWorkspaceNames);
   });
 });
+
+async function readWorkspaceNames(): Promise<string[]> {
+  const workspaceRoots = ["apps", "packages"];
+  const names: string[] = [];
+
+  for (const workspaceRoot of workspaceRoots) {
+    const rootPath = path.join(process.cwd(), workspaceRoot);
+    const entries = await readdir(rootPath, { withFileTypes: true });
+
+    for (const entry of entries.filter((candidate) => candidate.isDirectory())) {
+      const packageJsonPath = path.join(rootPath, entry.name, "package.json");
+      const rawPackageJson = await readOptionalTextFile(packageJsonPath);
+
+      if (!rawPackageJson) {
+        continue;
+      }
+
+      const packageJson = JSON.parse(rawPackageJson) as { name: string };
+      names.push(packageJson.name);
+    }
+  }
+
+  return names.sort();
+}
+
+async function readOptionalTextFile(filePath: string): Promise<string | null> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error: unknown) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}

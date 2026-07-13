@@ -22,10 +22,10 @@ Configure the MCP client to run:
 ```json
 {
   "command": "npm",
-  "args": ["run", "--silent", "mcp-bootup"],
+  "args": ["run", "--silent", "mcp:launcher"],
   "cwd": "/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER",
   "env": {
-    "ENTERPRISE_HUB_MCP_SESSION_FILE": ".data/enterprise-hub-mcp/session.json"
+    "ENTERPRISE_HUB_BASE_URL": "http://127.0.0.1:3000"
   }
 }
 ```
@@ -39,7 +39,7 @@ Use this prompt in a fresh generic agent thread:
 ```text
 Use $enterprise-hub-mcp with the local-development profile.
 
-Log in as baoli.manager@example.com with sessionName "baoli".
+Log in as baoli.manager@example.com using enterprise_hub_login_local.
 List labels and use store:baoli.
 Create or use a small local MD/TXT/DOCX evidence file about "差评处理 SOP".
 Upload it with upload_evidence_document.
@@ -64,7 +64,7 @@ Use this prompt in a fresh generic agent thread:
 ```text
 Use $enterprise-hub-mcp with the local-development profile.
 
-Log in as baoli.manager@example.com with sessionName "baoli".
+Log in as baoli.manager@example.com using enterprise_hub_login_local.
 List labels and use store:baoli.
 Upload fixtures/structured/dishes-valid.csv as dataset "dishes" with enterpriseName "Baoli Local MCP", startDate "20260701", endDate "20260705", and a fresh idempotencyKey.
 Check get_import_status.
@@ -88,7 +88,7 @@ Use this after a Baoli evidence/structured upload exists:
 ```text
 Use $enterprise-hub-mcp with the local-development profile.
 
-Log in as suzhou.manager@example.com with sessionName "suzhou".
+Log in as suzhou.manager@example.com using enterprise_hub_login_local.
 Search document evidence for the same Baoli query.
 Run an equivalent structured query for the same Baoli dataset content if schema discovery allows it.
 Report only what the service returns. Do not claim hidden Baoli documents or rows exist.
@@ -102,17 +102,17 @@ Expected:
 ## Automated Equivalent
 
 ```sh
-MYSQL_PORT=3307 npm run test:mcp
+npm run test:mcp
 ```
 
-The automated smoke logs in, lists labels, imports structured data, queries it, uploads evidence, runs a worker pass, checks evidence status, and searches evidence.
+The automated smoke verifies the launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy behavior. Database/worker coverage remains in `npm run test:integration`.
 
 ## Failure Handling
 
-| Symptom                               | Action                                                                                                                           |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| MCP tools are missing                 | Re-check MCP client config and restart the client. Do not fall back to direct API/curl during the human test.                    |
-| Login fails with `EMPLOYEE_NOT_FOUND` | Re-run seed against the same `DATABASE_URL` used by the API.                                                                     |
-| Evidence status stays pending         | Check that `mcp-bootup` is running the worker loop. For local troubleshooting outside the human test, run `npm run worker:once`. |
-| Structured import fails validation    | Return the service validation errors; do not edit the spreadsheet in the agent.                                                  |
-| Cross-store data appears              | Treat as a security bug and stop the test.                                                                                       |
+| Symptom                               | Action                                                                                                        |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| MCP tools are missing                 | Re-check MCP client config and restart the client. Do not fall back to direct API/curl during the human test. |
+| Login fails with `EMPLOYEE_NOT_FOUND` | Re-run seed against the same `DATABASE_URL` used by the API.                                                  |
+| Evidence status stays pending         | Report the status. Service operators may run worker troubleshooting outside the skill/agent workflow.         |
+| Structured import fails validation    | Return the service validation errors; do not edit the spreadsheet in the agent.                               |
+| Cross-store data appears              | Treat as a security bug and stop the test.                                                                    |
