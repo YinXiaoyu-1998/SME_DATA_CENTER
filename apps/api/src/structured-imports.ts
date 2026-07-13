@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import {
   DocumentKind,
@@ -93,6 +94,58 @@ function requireDatabaseUrl(): string {
   return databaseUrl;
 }
 
+function createImportBatchId(): string {
+  return `imp_${randomBytes(12).toString("hex")}`;
+}
+
+function createStructuredRowId(): string {
+  return `row_${randomBytes(12).toString("hex")}`;
+}
+
+function structuredImportTransactionTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const rawValue = env["STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS"]?.trim();
+
+  if (!rawValue) {
+    return 120_000;
+  }
+
+  const parsed = Number(rawValue);
+
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error("STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS must be a positive integer.");
+  }
+
+  return parsed;
+}
+
+async function insertStructuredRows(
+  tx: Prisma.TransactionClient,
+  input: {
+    dataset: StructuredDatasetName;
+    orgId: string;
+    sourceDocumentId: string;
+    importBatchId: string;
+    rows: StructuredImportRowInput[];
+  }
+): Promise<void> {
+  const tableName = input.dataset === "dishes" ? "dish_rows" : "business_rows";
+  const batchSize = 500;
+
+  for (let offset = 0; offset < input.rows.length; offset += batchSize) {
+    const batch = input.rows.slice(offset, offset + batchSize);
+    const values = batch.map(
+      (row) =>
+        Prisma.sql`(${createStructuredRowId()}, ${input.orgId}, ${input.sourceDocumentId}, ${input.importBatchId}, ${row.sourceRowNumber}, ${JSON.stringify(row.payload)})`
+    );
+
+    await tx.$executeRaw`
+      INSERT INTO ${Prisma.raw(tableName)}
+        (id, org_id, source_document_id, import_batch_id, source_row_number, payload)
+      VALUES ${Prisma.join(values)}
+    `;
+  }
+}
+
 export function createPrismaStructuredImportRepository(
   databaseUrl = requireDatabaseUrl()
 ): StructuredImportRepository {
@@ -177,111 +230,104 @@ export function createPrismaStructuredImportRepository(
         }
       }
 
-      const batch = await prisma.$transaction(async (tx) => {
-        await tx.document.create({
-          data: {
-            id: input.documentId,
-            orgId: input.orgId,
-            title: input.document.title,
-            documentType: DocumentType.structured_dataset,
-            documentKind: DocumentKind.structured,
-            fileType: input.fileType as FileType,
-            status: DocumentStatus.active,
-            storageObjectKey: input.document.storageObjectKey,
-            originalFileName: input.document.originalFileName,
-            contentType: input.document.contentType,
-            byteSize: input.document.byteSize,
-            checksumSha256: input.document.checksumSha256,
-            uploaderId: input.actorEmployeeId,
-            sourceSystem: "structured_import",
-            sourceMetadata: {
-              dataset: input.dataset,
-              startDate: input.startDate,
-              endDate: input.endDate
-            },
-            documentLabels: {
-              create: input.document.labelIds.map((labelId) => ({
-                labelId
-              }))
-            },
-            processingRuns: {
-              create: {
-                orgId: input.orgId,
-                status: ProcessingRunStatus.succeeded,
-                jobType: ProcessingJobType.structured_import,
-                startedAt: new Date(),
-                finishedAt: new Date()
+      const importBatchId = createImportBatchId();
+      const batch = await prisma.$transaction(
+        async (tx) => {
+          await tx.document.create({
+            data: {
+              id: input.documentId,
+              orgId: input.orgId,
+              title: input.document.title,
+              documentType: DocumentType.structured_dataset,
+              documentKind: DocumentKind.structured,
+              fileType: input.fileType as FileType,
+              status: DocumentStatus.active,
+              storageObjectKey: input.document.storageObjectKey,
+              originalFileName: input.document.originalFileName,
+              contentType: input.document.contentType,
+              byteSize: input.document.byteSize,
+              checksumSha256: input.document.checksumSha256,
+              uploaderId: input.actorEmployeeId,
+              sourceSystem: "structured_import",
+              sourceMetadata: {
+                dataset: input.dataset,
+                startDate: input.startDate,
+                endDate: input.endDate
+              },
+              documentLabels: {
+                create: input.document.labelIds.map((labelId) => ({
+                  labelId
+                }))
+              },
+              processingRuns: {
+                create: {
+                  orgId: input.orgId,
+                  status: ProcessingRunStatus.succeeded,
+                  jobType: ProcessingJobType.structured_import,
+                  startedAt: new Date(),
+                  finishedAt: new Date()
+                }
               }
             }
-          }
-        });
+          });
 
-        const createdBatch = await tx.importBatch.create({
-          data: {
+          await tx.importBatch.create({
+            data: {
+              id: importBatchId,
+              orgId: input.orgId,
+              sourceDocumentId: input.documentId,
+              dataset: input.dataset as ImportDataset,
+              startDate: parseDateWindowDate(input.startDate),
+              endDate: parseDateWindowDate(input.endDate),
+              idempotencyKey: input.idempotencyKey,
+              requestFingerprint: input.requestFingerprint,
+              status: ImportBatchStatus.applying,
+              sourceSheetSummary: input.sourceSheetSummary as Prisma.InputJsonValue,
+              validationErrors: [],
+              totalRowCount: input.rows.length,
+              appliedRowCount: 0
+            }
+          });
+
+          await tx.importWindowClaim.create({
+            data: {
+              orgId: input.orgId,
+              dataset: input.dataset as ImportDataset,
+              startDate: parseDateWindowDate(input.startDate),
+              endDate: parseDateWindowDate(input.endDate),
+              importBatchId
+            }
+          });
+
+          await insertStructuredRows(tx, {
+            dataset: input.dataset,
             orgId: input.orgId,
             sourceDocumentId: input.documentId,
-            dataset: input.dataset as ImportDataset,
-            startDate: parseDateWindowDate(input.startDate),
-            endDate: parseDateWindowDate(input.endDate),
-            idempotencyKey: input.idempotencyKey,
-            requestFingerprint: input.requestFingerprint,
-            status: ImportBatchStatus.applying,
-            sourceSheetSummary: input.sourceSheetSummary as Prisma.InputJsonValue,
-            validationErrors: [],
-            totalRowCount: input.rows.length,
-            appliedRowCount: 0
-          }
-        });
-
-        await tx.importWindowClaim.create({
-          data: {
-            orgId: input.orgId,
-            dataset: input.dataset as ImportDataset,
-            startDate: parseDateWindowDate(input.startDate),
-            endDate: parseDateWindowDate(input.endDate),
-            importBatchId: createdBatch.id
-          }
-        });
-
-        if (input.dataset === "dishes") {
-          await tx.dishRow.createMany({
-            data: input.rows.map((row) => ({
-              orgId: input.orgId,
-              sourceDocumentId: input.documentId,
-              importBatchId: createdBatch.id,
-              sourceRowNumber: row.sourceRowNumber,
-              payload: row.payload as Prisma.InputJsonValue
-            }))
+            importBatchId,
+            rows: input.rows
           });
-        } else {
-          await tx.businessRow.createMany({
-            data: input.rows.map((row) => ({
-              orgId: input.orgId,
-              sourceDocumentId: input.documentId,
-              importBatchId: createdBatch.id,
-              sourceRowNumber: row.sourceRowNumber,
-              payload: row.payload as Prisma.InputJsonValue
-            }))
-          });
-        }
 
-        return tx.importBatch.update({
-          where: {
-            id: createdBatch.id
-          },
-          data: {
-            status: ImportBatchStatus.applied,
-            appliedRowCount: input.rows.length
-          },
-          include: {
-            sourceDocument: {
-              select: {
-                status: true
+          return tx.importBatch.update({
+            where: {
+              id: importBatchId
+            },
+            data: {
+              status: ImportBatchStatus.applied,
+              appliedRowCount: input.rows.length
+            },
+            include: {
+              sourceDocument: {
+                select: {
+                  status: true
+                }
               }
             }
-          }
-        });
-      });
+          });
+        },
+        {
+          timeout: structuredImportTransactionTimeoutMs()
+        }
+      );
 
       return toImportBatchRecord(batch);
     },

@@ -55,6 +55,7 @@ import {
 import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
+const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 export interface ApiServerOptions {
   employeeRepository?: EmployeeRepository;
@@ -171,6 +172,22 @@ function requireJwtSecret(): string {
   }
 
   return jwtSecret;
+}
+
+function maxUploadBytesFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const rawValue = env["MAX_UPLOAD_BYTES"]?.trim();
+
+  if (!rawValue) {
+    return DEFAULT_MAX_UPLOAD_BYTES;
+  }
+
+  const parsed = Number(rawValue);
+
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error("MAX_UPLOAD_BYTES must be a positive integer.");
+  }
+
+  return parsed;
 }
 
 function errorResponse(code: string, message: string) {
@@ -552,7 +569,8 @@ function validateStructuredWorkbook(input: {
         row,
         sourceRowNumber: headerCandidate.headerRowIndex + 2 + index
       }))
-      .filter(({ row }) => row.some((cell) => cell.length > 0));
+      .filter(({ row }) => row.some((cell) => cell.length > 0))
+      .filter(({ row }) => !isStructuredSummaryRow(row));
 
     sheetSummary.push({
       name: sheetName,
@@ -603,19 +621,33 @@ function workbookFromCsv(body: Buffer): WorkBook {
 }
 
 function findStructuredHeader(dataset: StructuredDatasetName, rows: string[][]) {
+  let firstNonEmptyValidation:
+    | {
+        headerRowIndex: number;
+        validation: ReturnType<typeof validateStructuredHeaders>;
+      }
+    | undefined;
+
   for (const [index, row] of rows.slice(0, 10).entries()) {
     const headers = trimTrailingEmptyCells(row);
     const validation = validateStructuredHeaders(dataset, headers);
 
-    if (validation.ok || headers.some((header) => header.length > 0)) {
+    if (validation.ok) {
       return {
+        headerRowIndex: index,
+        validation
+      };
+    }
+
+    if (!firstNonEmptyValidation && headers.some((header) => header.length > 0)) {
+      firstNonEmptyValidation = {
         headerRowIndex: index,
         validation
       };
     }
   }
 
-  return null;
+  return firstNonEmptyValidation ?? null;
 }
 
 function rowToStructuredPayload(
@@ -628,6 +660,12 @@ function rowToStructuredPayload(
       parseStructuredCell(field, row[index] ?? "")
     ])
   );
+}
+
+function isStructuredSummaryRow(row: string[]): boolean {
+  const firstCell = row[0]?.trim();
+
+  return firstCell === "合计" || firstCell === "总计";
 }
 
 function parseStructuredCell(field: StructuredFieldRegistryEntry, value: string): unknown {
@@ -791,7 +829,13 @@ function hasStructuredImportCode(error: unknown): error is { code: string } {
     return false;
   }
 
-  return typeof (error as { code?: unknown }).code === "string";
+  const code = (error as { code?: unknown }).code;
+
+  return (
+    code === "IDEMPOTENCY_KEY_CONFLICT" ||
+    code === "ACTIVE_IMPORT_EXISTS" ||
+    code === "IMPORT_IN_PROGRESS"
+  );
 }
 
 function structuredImportConflictMessage(code: string): string {
@@ -1138,7 +1182,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     await evidenceRepository?.disconnect?.();
   });
 
-  void app.register(multipart);
+  void app.register(multipart, {
+    limits: {
+      fileSize: maxUploadBytesFromEnv()
+    }
+  });
 
   function documents(): DocumentCatalogRepository {
     documentRepository ??= createPrismaDocumentCatalogRepository();

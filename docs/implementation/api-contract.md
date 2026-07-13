@@ -1,6 +1,6 @@
 # 企业资料中枢 API Contract
 
-This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, implemented request/response examples through Phase 2 / Day 6 local MCP final verification, and planned Phase 3 retrieval/structured-data contracts.
+This contract records the planned P0 surface, seeded identity assumptions, catalog enum values, implemented request/response examples through Phase 2 / Day 6 local MCP final verification, and implemented Phase 3 retrieval/structured-data contracts.
 
 ## Cross-Cutting Rules
 
@@ -221,7 +221,7 @@ Phase 3 adds evidence retrieval and controlled structured query APIs. These APIs
 | `GET`  | `/v1/structured/datasets`               | Return dataset registry, fields, capabilities, operators, limits, lifecycle, sensitivity, and versions. |
 | `POST` | `/v1/structured/query`                  | Execute controlled read-only structured query over `dishes` / `business`.                               |
 
-Task 1 registered every Phase 3 route above behind the existing authenticated employee boundary. Until an owning implementation task lands, authenticated placeholder requests receive `501 TEMPORARILY_UNAVAILABLE`; unauthenticated callers receive the normal authentication error instead. Task 6 implements the structured import/status routes, Task 7 implements structured dataset discovery/query routes, and Task 8 implements evidence upload/search routes. Remaining placeholders do not parse uploads, query MySQL/Qdrant, or perform any other business operation.
+Every Phase 3 route above is implemented behind the existing authenticated employee boundary. Tasks 6-8 own the HTTP implementation: structured imports/status, structured dataset discovery/query, and evidence upload/search. These endpoints remain data-provider surfaces only; they do not generate answers, infer natural-language intent, execute raw SQL, or perform dashboard/report work.
 
 ### `POST /v1/documents/evidence`
 
@@ -372,6 +372,37 @@ Conflict behavior:
 - active/applied same `{orgId,dataset,startDate,endDate}` returns `ACTIVE_IMPORT_EXISTS`
 - in-progress same window returns `IMPORT_IN_PROGRESS`
 
+### `GET /v1/structured/imports/:importBatchId`
+
+Response `200`:
+
+```json
+{
+  "importBatch": {
+    "importBatchId": "imp_456",
+    "sourceDocumentId": "doc_456",
+    "dataset": "dishes",
+    "status": "applied",
+    "startDate": "20260701",
+    "endDate": "20260705",
+    "sourceSheetSummary": [
+      {
+        "name": "菜品主题数据",
+        "hidden": false,
+        "headerRowNumber": 3,
+        "dataRowCount": 67581
+      }
+    ],
+    "validationErrors": [],
+    "totalRowCount": 67581,
+    "appliedRowCount": 67581,
+    "queryableRowCount": 67581
+  }
+}
+```
+
+The status response is scoped by the authenticated employee's organization and current label permissions. It returns import metadata and bounded validation details only; it never returns raw workbook rows or file contents.
+
 ### `GET /v1/structured/datasets`
 
 Response contains dataset registry versions, effective query limits, and every current export field with canonical name, aliases/source columns, type, nullable, sensitivity, lifecycle, capabilities, operators, default-return flag, index status, and value limits.
@@ -463,21 +494,20 @@ All Phase 3 API errors use:
 }
 ```
 
-Core Phase 3 codes include `UNSUPPORTED_FILE_TYPE`, `INVALID_DOCUMENT_KIND_FILE_TYPE`, `VALIDATION_FAILED`, `INVALID_QUERY`, `INVALID_FIELD`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_CAPABILITY`, `TYPE_MISMATCH`, `INVALID_AGGREGATION`, `INVALID_DATE_WINDOW`, `LIMIT_EXCEEDED`, `QUERY_TOO_EXPENSIVE`, `INVALID_CURSOR`, `CURSOR_EXPIRED`, `REGISTRY_VERSION_UNSUPPORTED`, `REGISTRY_VERSION_MISMATCH`, `DATASET_FORBIDDEN`, `ACTIVE_IMPORT_EXISTS`, `IMPORT_IN_PROGRESS`, `IDEMPOTENCY_KEY_CONFLICT`, `PROCESSING_FAILED`, `TEMPORARILY_UNAVAILABLE`, and `INTERNAL_ERROR`.
+Core Phase 3 codes include `UNSUPPORTED_FILE_TYPE`, `INVALID_DOCUMENT_KIND_FILE_TYPE`, `VALIDATION_FAILED`, `INVALID_QUERY`, `INVALID_FIELD`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_CAPABILITY`, `TYPE_MISMATCH`, `INVALID_AGGREGATION`, `INVALID_DATE_WINDOW`, `LIMIT_EXCEEDED`, `QUERY_TOO_EXPENSIVE`, `INVALID_CURSOR`, `CURSOR_EXPIRED`, `REGISTRY_VERSION_UNSUPPORTED`, `REGISTRY_VERSION_MISMATCH`, `DATASET_FORBIDDEN`, `ACTIVE_IMPORT_EXISTS`, `IMPORT_IN_PROGRESS`, `IDEMPOTENCY_KEY_CONFLICT`, `PROCESSING_FAILED`, and `INTERNAL_ERROR`.
 
 ### Phase 3 MCP Tools
 
 Phase 3 MCP remains a thin adapter over HTTP. Tool names intentionally stay short because they are the agent-facing Phase 3 capability names exposed by the `enterprise-hub-mcp` server:
 
-| Tool                             | HTTP backing                                | Purpose                                     |
-| -------------------------------- | ------------------------------------------- | ------------------------------------------- |
-| `search_document_evidence`       | `POST /v1/evidence/search`                  | Return evidence chunks, never answers.      |
-| `list_structured_datasets`       | `GET /v1/structured/datasets`               | Discover dataset fields and capabilities.   |
-| `query_structured_dataset`       | `POST /v1/structured/query`                 | Execute controlled structured query.        |
-| `upload_structured_dataset`      | `POST /v1/structured/imports`               | Upload XLSX/CSV structured imports.         |
-| `upload_evidence_document`       | `POST /v1/documents/evidence`               | Upload MD/TXT/DOCX evidence documents.      |
-| `get_import_status`              | `GET /v1/structured/imports/:importBatchId` | Read structured import status.              |
-| `get_document_processing_status` | existing/new document status endpoint       | Read evidence indexing status where needed. |
+| Tool                        | HTTP backing                                | Purpose                                   |
+| --------------------------- | ------------------------------------------- | ----------------------------------------- |
+| `search_document_evidence`  | `POST /v1/evidence/search`                  | Return evidence chunks, never answers.    |
+| `list_structured_datasets`  | `GET /v1/structured/datasets`               | Discover dataset fields and capabilities. |
+| `query_structured_dataset`  | `POST /v1/structured/query`                 | Execute controlled structured query.      |
+| `upload_structured_dataset` | `POST /v1/structured/imports`               | Upload XLSX/CSV structured imports.       |
+| `upload_evidence_document`  | `POST /v1/documents/evidence`               | Upload MD/TXT/DOCX evidence documents.    |
+| `get_import_status`         | `GET /v1/structured/imports/:importBatchId` | Read structured import status.            |
 
 Implemented Phase 3 MCP tool inputs and result shapes:
 

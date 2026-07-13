@@ -68,33 +68,34 @@ Task 3 implements the env-backed provider factory with `LLM_PROVIDER=fake` as th
 
 ### Worker, Import, And Query Limits
 
-| Variable                                   | Required | Example / Default      | Secret? | Used By     | Notes                                         |
-| ------------------------------------------ | -------: | ---------------------- | ------: | ----------- | --------------------------------------------- |
-| `WORKER_CONCURRENCY`                       |       No | `2`                    |      No | worker      | Global worker concurrency.                    |
-| `WORKER_LEASE_SECONDS`                     |       No | `120`                  |      No | worker      | DB lease duration for processing runs.        |
-| `WORKER_POLL_INTERVAL_MS`                  |       No | `1000`                 |      No | worker      | Poll interval.                                |
-| `WORKER_MAX_ATTEMPTS`                      |       No | `3`                    |      No | worker      | Transient retry cap.                          |
-| `WORKER_EVIDENCE_INDEX_CONCURRENCY`        |       No | `1`                    |      No | worker      | Evidence indexing concurrency.                |
-| `WORKER_STRUCTURED_IMPORT_CONCURRENCY`     |       No | `1`                    |      No | worker      | Structured import concurrency.                |
-| `WORKER_QDRANT_UPSERT_CONCURRENCY`         |       No | `2`                    |      No | worker      | Qdrant write concurrency.                     |
-| `WORKER_EMBEDDING_CONCURRENCY`             |       No | `2`                    |      No | worker      | External embedding concurrency.               |
-| `MAX_UPLOAD_BYTES`                         |       No | implementation default |      No | API         | Upload size guard.                            |
-| `MAX_DOCUMENT_CHARS`                       |       No | implementation default |      No | worker      | Evidence parser guard.                        |
-| `MAX_CHUNKS_PER_DOCUMENT`                  |       No | implementation default |      No | worker      | Prevent runaway indexing.                     |
-| `MAX_STRUCTURED_IMPORT_ROWS`               |       No | implementation default |      No | worker      | Import safety guard.                          |
-| `MAX_XLSX_SHEETS`                          |       No | implementation default |      No | worker      | Import safety guard.                          |
-| `STRUCTURED_QUERY_DEFAULT_LIMIT`           |       No | `50`                   |      No | API, MCP    | Must match schema discovery effective limits. |
-| `STRUCTURED_QUERY_MAX_LIMIT`               |       No | `200`                  |      No | API, MCP    | Detail row max.                               |
-| `STRUCTURED_QUERY_MAX_BOOLEAN_DEPTH`       |       No | `3`                    |      No | API         | Query compiler guard.                         |
-| `STRUCTURED_QUERY_MAX_CONDITIONS`          |       No | `20`                   |      No | API         | Query compiler guard.                         |
-| `STRUCTURED_QUERY_MAX_IN_VALUES`           |       No | `100`                  |      No | API         | Query compiler guard.                         |
-| `STRUCTURED_QUERY_MAX_SORT_FIELDS`         |       No | `2`                    |      No | API         | Query compiler guard.                         |
-| `STRUCTURED_QUERY_MAX_GROUP_BY_FIELDS`     |       No | `1`                    |      No | API         | Query compiler guard.                         |
-| `STRUCTURED_QUERY_MAX_AGGREGATES`          |       No | `5`                    |      No | API         | Query compiler guard.                         |
-| `STRUCTURED_QUERY_MAX_SELECTED_FIELDS`     |       No | `50`                   |      No | API         | Query compiler guard.                         |
-| `STRUCTURED_QUERY_CURSOR_TTL_SECONDS`      |       No | `900`                  |      No | API         | Opaque cursor expiry.                         |
-| `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`      |       No | implementation default |      No | worker      | Batch row insert size.                        |
-| `STRUCTURED_IMPORT_VALIDATION_ERROR_LIMIT` |       No | `20`                   |      No | API, worker | Max examples returned to caller.              |
+| Variable                                   | Required | Example / Default      | Secret? | Used By     | Notes                                                   |
+| ------------------------------------------ | -------: | ---------------------- | ------: | ----------- | ------------------------------------------------------- |
+| `WORKER_CONCURRENCY`                       |       No | `2`                    |      No | worker      | Global worker concurrency.                              |
+| `WORKER_LEASE_SECONDS`                     |       No | `120`                  |      No | worker      | DB lease duration for processing runs.                  |
+| `WORKER_POLL_INTERVAL_MS`                  |       No | `1000`                 |      No | worker      | Poll interval.                                          |
+| `WORKER_MAX_ATTEMPTS`                      |       No | `3`                    |      No | worker      | Transient retry cap.                                    |
+| `WORKER_EVIDENCE_INDEX_CONCURRENCY`        |       No | `1`                    |      No | worker      | Evidence indexing concurrency.                          |
+| `WORKER_STRUCTURED_IMPORT_CONCURRENCY`     |       No | `1`                    |      No | worker      | Structured import concurrency.                          |
+| `WORKER_QDRANT_UPSERT_CONCURRENCY`         |       No | `2`                    |      No | worker      | Qdrant write concurrency.                               |
+| `WORKER_EMBEDDING_CONCURRENCY`             |       No | `2`                    |      No | worker      | External embedding concurrency.                         |
+| `MAX_UPLOAD_BYTES`                         |       No | `52428800`             |      No | API         | Multipart upload file-size guard; default is 50 MiB.    |
+| `MAX_DOCUMENT_CHARS`                       |       No | implementation default |      No | worker      | Evidence parser guard.                                  |
+| `MAX_CHUNKS_PER_DOCUMENT`                  |       No | implementation default |      No | worker      | Prevent runaway indexing.                               |
+| `MAX_STRUCTURED_IMPORT_ROWS`               |       No | implementation default |      No | worker      | Import safety guard.                                    |
+| `MAX_XLSX_SHEETS`                          |       No | implementation default |      No | worker      | Import safety guard.                                    |
+| `STRUCTURED_QUERY_DEFAULT_LIMIT`           |       No | `50`                   |      No | API, MCP    | Must match schema discovery effective limits.           |
+| `STRUCTURED_QUERY_MAX_LIMIT`               |       No | `200`                  |      No | API, MCP    | Detail row max.                                         |
+| `STRUCTURED_QUERY_MAX_BOOLEAN_DEPTH`       |       No | `3`                    |      No | API         | Query compiler guard.                                   |
+| `STRUCTURED_QUERY_MAX_CONDITIONS`          |       No | `20`                   |      No | API         | Query compiler guard.                                   |
+| `STRUCTURED_QUERY_MAX_IN_VALUES`           |       No | `100`                  |      No | API         | Query compiler guard.                                   |
+| `STRUCTURED_QUERY_MAX_SORT_FIELDS`         |       No | `2`                    |      No | API         | Query compiler guard.                                   |
+| `STRUCTURED_QUERY_MAX_GROUP_BY_FIELDS`     |       No | `1`                    |      No | API         | Query compiler guard.                                   |
+| `STRUCTURED_QUERY_MAX_AGGREGATES`          |       No | `5`                    |      No | API         | Query compiler guard.                                   |
+| `STRUCTURED_QUERY_MAX_SELECTED_FIELDS`     |       No | `50`                   |      No | API         | Query compiler guard.                                   |
+| `STRUCTURED_QUERY_CURSOR_TTL_SECONDS`      |       No | `900`                  |      No | API         | Opaque cursor expiry.                                   |
+| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` |       No | `120000`               |      No | API         | Prisma transaction timeout for atomic XLSX/CSV imports. |
+| `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`      |       No | implementation default |      No | worker      | Batch row insert size.                                  |
+| `STRUCTURED_IMPORT_VALIDATION_ERROR_LIMIT` |       No | `20`                   |      No | API, worker | Max examples returned to caller.                        |
 
 Field registry and retrieval config details are versioned config/DB seed data, not env secrets.
 

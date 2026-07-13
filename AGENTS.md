@@ -34,6 +34,8 @@
 - Run local CLI smoke commands: `npm run hub -- <command>`
 - Run local MCP server: `ENTERPRISE_HUB_API_URL=http://127.0.0.1:3000 npm run mcp:dev`
 - Run local MCP smoke: `MYSQL_PORT=3307 npm run test:mcp`
+- Run Phase 3 golden retrieval evaluation: `npm run test:phase3:golden`
+- Run Phase 3 performance gates: `npm run test:phase3:perf`
 - Purge local MySQL document data and uploaded/test storage files: `npm run purge-data`
 - Start local MySQL: `docker compose up -d mysql`
 - Start local MySQL + Qdrant: `docker compose up -d mysql qdrant`
