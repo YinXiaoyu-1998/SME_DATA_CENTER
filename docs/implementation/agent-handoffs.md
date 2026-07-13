@@ -1,5 +1,13 @@
 # 企业资料中枢 Agent Handoffs
 
+## 2026-07-13 - codex/mcp-user-flow-docs - MCP user-flow diagrams
+
+- Scope: Added bilingual flow-diagram documentation for the current Phase 3 Enterprise Hub MCP user journey. The docs cover cold agent startup, missing MCP configuration, already-authenticated and not-yet-authenticated launcher states, upload through stdio-to-HTTP MCP, async worker indexing, search/status flows, protocol boundaries, and safe failure behavior. This is documentation-only and does not change service behavior or skill instructions.
+- Files changed: `docs/implementation/mcp-user-flow.md`, `docs/implementation/mcp-user-flow.zh.md`, `docs/implementation/mcp-endpoint.md`, `docs/implementation/local-agent-test.md`, `docs/implementation/progress.md`, and this handoff.
+- Verification: `npm run format:check` and `git diff --check` passed; no code or runtime behavior changed.
+- PR: Draft PR [#62](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/62).
+- Known limitation: Current Phase 3 login remains development email login with launcher process-memory token storage. Future SSO/OIDC is described only as a compatible future identity source, not as implemented behavior.
+
 ## 2026-07-13 - codex/phase3-http-mcp-endpoint - Phase 3 Task 13 local HTTP MCP endpoint
 
 - Scope: Replaced the service-side stdio MCP adapter with authenticated, stateless Streamable HTTP `POST /mcp`. The endpoint is hard loopback-only, validates protocol/body/request limits, authenticates initialize/discovery/tool calls, and delegates all nine business tools to existing authenticated API routes. Added `packages/mcp-contract` and `apps/mcp-launcher`; launcher-local development login/logout retains the JWT only in process memory and proxies each remote MCP request with bearer auth. Removed legacy service stdio, session-file, `filePath`, `enterprise_hub_login_dev`, `mcp:dev`, and `mcp-bootup` surfaces.
