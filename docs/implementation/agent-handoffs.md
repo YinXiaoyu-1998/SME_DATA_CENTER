@@ -1,5 +1,15 @@
 # 企业资料中枢 Agent Handoffs
 
+## 2026-07-13 - codex/skill-service-boundary-main - MCP skill service-boundary audit
+
+- Scope: Tightened the repo-local `enterprise-hub-mcp` skill so it only configures the MCP stdio adapter and calls exposed tools. Explicitly prohibited starting, stopping, initializing, repairing, seeding, migrating, or otherwise operating the API, worker, Docker, MySQL, Qdrant, storage, or background services. Kept the current dev-only seeded-employee login flow unchanged.
+- Files changed: `skills/enterprise-hub-mcp/SKILL.md`, `skills/enterprise-hub-mcp/agents/openai.yaml`, `docs/implementation/progress.md`, and this handoff.
+- Documentation audit: `README.md` already documents local dependency startup, migration/seed, API/worker/MCP commands, and each npm script; `docs/implementation/env-inventory.md` documents runtime configuration; `docs/implementation/server-runtime-prerequisites.md` and `docs/implementation/staging-readiness.md` cover staging operations. No service-operation knowledge was moved into the skill or duplicated.
+- Commands run: Read the dual-homed skill and main service operational docs; `quick_validate.py` passed for both skill copies; `cmp` confirmed matching `SKILL.md` content; `git diff --check` passed for both repositories; scanned the standalone repository for removed service lifecycle instructions; formatted changed Markdown; `npm run format:check` passed in the main repository.
+- Verification: The standalone repository has documentation-only changes and no local test suite.
+- PR: Main repository draft PR [#60](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/60); matching standalone skill draft PR [#6](https://github.com/YinXiaoyu-1998/enterprise-hub-mcp-skill/pull/6).
+- Known limitation: `enterprise_hub_login_dev` remains deliberately development-only; remote employee identity and production authentication are future scope.
+
 ## 2026-06-29 17:44 - codex/enterprise-hub-implementation - Day 0 lead skeleton
 
 - Scope: Lead agent started Phase 1 / Day 0 only; create tracking docs, repo instructions, initial workspace layout, npm tooling, and local MySQL compose.
