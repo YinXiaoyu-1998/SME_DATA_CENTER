@@ -54,6 +54,8 @@ Required local variables are tracked in `docs/implementation/env-inventory.md`.
 
 The local integration test defaults to `MYSQL_PORT=3307` when no `MYSQL_PORT` is set, starts local MySQL + Qdrant, resets the local development database, seeds sample employees/labels/skills, starts the API on an available local port, verifies Phase 3 structured import/query, uploads an evidence document, runs one worker pass, checks evidence index status, and verifies evidence search.
 
+When an agent performs local end-to-end, go-online, staging-readiness, or external-provider validation, it must explicitly load the real local provider configuration from `.env` and run the relevant path with the real provider, for example `set -a; source .env; set +a; MYSQL_PORT=3307 npm run test:integration` plus any focused fixture smoke needed for the claim. Do not treat the default fake/mock provider path as evidence that real embedding/rerank/provider integration works. CI and routine automated tests may continue to use deterministic fake providers by default to avoid external secrets, network egress, cost, and flakiness.
+
 - Before staging host changes, read `docs/implementation/server-runtime-prerequisites.md` and `docs/implementation/staging-readiness.md`; provision with `sudo bash scripts/provision-staging-runtime.sh`.
 - Staging image delivery must use an account-owned Beijing ACR repository; do not use unapproved third-party mirrors or configure a general ACR registry hostname as `registry-mirrors`.
 - Keep SSH keys and ACR credentials outside the repo; do not deploy the app until its MySQL, registry, secret, domain, and TLS readiness gates pass.
