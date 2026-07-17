@@ -335,8 +335,8 @@
 - [x] Record DNS console target records and failed external DNS verification.
 - [ ] Complete domain real-name/template verification if required by the registrar.
 - [ ] Wait for ICP review approval for `smedatacenter.xyz`, then rerun compliance and DNS validation.
-- [ ] Configure intended DNS record for staging, then verify it resolves to the deployment target.
-- [ ] Rerun public and authoritative DNS checks after TTL/propagation; expect `@`, `www`, and `api` to return `39.96.66.185`.
+- [x] Configure intended DNS record for staging, then verify it resolves to the deployment target.
+- [x] Rerun public DNS checks after TTL/propagation; `@`, `www`, and `api` return `39.96.66.185` through Cloudflare, Google, and AliDNS DoH.
 - [ ] Choose and validate TLS approach after DNS points at the target.
 - [x] Bind the approved local SSH public key after the server reset, then rerun internal OS/runtime validation.
 - [x] Install and validate Docker/Compose prerequisites on the Alibaba Cloud server after approval.
