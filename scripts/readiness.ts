@@ -62,7 +62,7 @@ export async function bootstrapQdrantEvidenceCollection(
   }
 
   if (existing.ok) {
-    if (!qdrantCollectionMatchesExpectedSchema(existing.body)) {
+    if (!qdrantCollectionMatchesExpectedSchema(existing.body, config.denseVectorSize)) {
       throw new Error(
         `Qdrant evidence collection ${config.collectionName} exists but does not match the expected dense/sparse config.`
       );
@@ -78,7 +78,7 @@ export async function bootstrapQdrantEvidenceCollection(
   }
 
   const created = await fetchQdrantJson(config, collectionUrl(config), "PUT", {
-    body: JSON.stringify(qdrantEvidenceCollectionSchema())
+    body: JSON.stringify(qdrantEvidenceCollectionSchema(config.denseVectorSize))
   });
 
   if (!created.ok) {
@@ -134,7 +134,7 @@ async function checkQdrant(config: QdrantRuntimeConfig): Promise<ReadinessCheckR
       };
     }
 
-    if (!qdrantCollectionMatchesExpectedSchema(response.body)) {
+    if (!qdrantCollectionMatchesExpectedSchema(response.body, config.denseVectorSize)) {
       return {
         name: "qdrant",
         ok: false,
@@ -158,8 +158,11 @@ async function checkQdrant(config: QdrantRuntimeConfig): Promise<ReadinessCheckR
 
 function checkModelProvider(config: RuntimeReadinessConfig): ReadinessCheckResult {
   const provider = config.modelProvider.provider;
+  const rerankProvider = config.modelProvider.rerankProvider;
+  const realEmbeddingEnabled = provider === "openai-compatible";
+  const realRerankEnabled = ["openai-compatible", "dashscope"].includes(rerankProvider);
 
-  if (provider === "fake") {
+  if (provider === "fake" && !realRerankEnabled) {
     return {
       name: "modelProvider",
       ok: true,
@@ -167,11 +170,21 @@ function checkModelProvider(config: RuntimeReadinessConfig): ReadinessCheckResul
     };
   }
 
-  if (provider !== "openai-compatible") {
+  if (provider !== "fake" && provider !== "openai-compatible") {
     return {
       name: "modelProvider",
       ok: false,
       message: `Unsupported LLM_PROVIDER ${provider}; expected fake or openai-compatible.`
+    };
+  }
+
+  if (rerankProvider === "fake") {
+    // Fake rerank is valid with either fake or real embeddings.
+  } else if (!["openai-compatible", "dashscope"].includes(rerankProvider)) {
+    return {
+      name: "modelProvider",
+      ok: false,
+      message: `Unsupported RERANK_PROVIDER ${rerankProvider}; expected fake, openai-compatible, or dashscope.`
     };
   }
 
@@ -185,16 +198,52 @@ function checkModelProvider(config: RuntimeReadinessConfig): ReadinessCheckResul
   }
 
   if (
-    !config.modelProvider.openAiCompatibleApiKey ||
-    !config.modelProvider.openAiCompatibleBaseUrl ||
-    !config.modelProvider.embeddingModel ||
-    !config.modelProvider.rerankModel
+    realEmbeddingEnabled &&
+    (!config.modelProvider.openAiCompatibleApiKey ||
+      !config.modelProvider.openAiCompatibleBaseUrl ||
+      !config.modelProvider.embeddingModelConfigured ||
+      config.modelProvider.embeddingModel === "fake-embedding")
   ) {
     return {
       name: "modelProvider",
       ok: false,
       message:
-        "Real openai-compatible provider mode requires API key, base URL, embedding model, and rerank model."
+        "Real openai-compatible embedding mode requires API key, base URL, and a configured real embedding model."
+    };
+  }
+
+  if (
+    realRerankEnabled &&
+    (!config.modelProvider.rerankModelConfigured ||
+      config.modelProvider.rerankModel === "fake-rerank")
+  ) {
+    return {
+      name: "modelProvider",
+      ok: false,
+      message: "Real rerank provider mode requires a configured real rerank model."
+    };
+  }
+
+  if (
+    rerankProvider === "openai-compatible" &&
+    (!config.modelProvider.openAiCompatibleApiKey || !config.modelProvider.openAiCompatibleBaseUrl)
+  ) {
+    return {
+      name: "modelProvider",
+      ok: false,
+      message: "OpenAI-compatible rerank requires API key and base URL."
+    };
+  }
+
+  if (
+    rerankProvider === "dashscope" &&
+    !config.modelProvider.dashscopeApiKey &&
+    !config.modelProvider.openAiCompatibleApiKey
+  ) {
+    return {
+      name: "modelProvider",
+      ok: false,
+      message: "DashScope rerank requires DASHSCOPE_API_KEY or OPENAI_COMPATIBLE_API_KEY."
     };
   }
 

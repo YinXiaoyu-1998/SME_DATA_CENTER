@@ -54,9 +54,13 @@ export interface EvidenceDocumentChunkWrite extends DocumentChunkWrite {
 export interface EvidenceIndexingResult {
   retrievalConfigVersion: string;
   qdrantCollection: string;
+  embeddingProvider: string;
   embeddingModel: string;
   embeddingVersion: string;
+  embeddingDimension: number;
   lexicalIndexVersion: string;
+  rerankProvider: string | null;
+  rerankModel: string | null;
   rerankVersion: string | null;
   chunks: EvidenceDocumentChunkWrite[];
 }
@@ -292,19 +296,26 @@ export function createPrismaProcessingWorkerRepository(
             version: input.result.retrievalConfigVersion,
             status: "active",
             chunkerName: "phase3.structure-aware",
-            denseEmbeddingProvider: "fake",
+            denseEmbeddingProvider: input.result.embeddingProvider,
             denseEmbeddingModel: input.result.embeddingModel,
-            denseVectorDimension: 8,
+            denseVectorDimension: input.result.embeddingDimension,
             sparseModel: input.result.lexicalIndexVersion,
-            rerankProvider: input.result.rerankVersion ? "fake" : null,
-            rerankModel: input.result.rerankVersion,
+            rerankProvider: input.result.rerankProvider,
+            rerankModel: input.result.rerankModel,
             qdrantCollection: input.result.qdrantCollection,
-            configJson: {
-              retrievalConfigVersion: input.result.retrievalConfigVersion,
-              lexicalIndexVersion: input.result.lexicalIndexVersion
-            }
+            configJson: retrievalConfigJson(input.result)
           },
-          update: {}
+          update: {
+            status: "active",
+            denseEmbeddingProvider: input.result.embeddingProvider,
+            denseEmbeddingModel: input.result.embeddingModel,
+            denseVectorDimension: input.result.embeddingDimension,
+            sparseModel: input.result.lexicalIndexVersion,
+            rerankProvider: input.result.rerankProvider,
+            rerankModel: input.result.rerankModel,
+            qdrantCollection: input.result.qdrantCollection,
+            configJson: retrievalConfigJson(input.result)
+          }
         });
 
         const document = await tx.document.findUniqueOrThrow({
@@ -524,6 +535,20 @@ function requireDatabaseUrl(): string {
   }
 
   return databaseUrl;
+}
+
+function retrievalConfigJson(result: EvidenceIndexingResult): Prisma.InputJsonObject {
+  return {
+    retrievalConfigVersion: result.retrievalConfigVersion,
+    embeddingProvider: result.embeddingProvider,
+    embeddingModel: result.embeddingModel,
+    embeddingVersion: result.embeddingVersion,
+    embeddingDimension: result.embeddingDimension,
+    lexicalIndexVersion: result.lexicalIndexVersion,
+    rerankProvider: result.rerankProvider,
+    rerankModel: result.rerankModel,
+    rerankVersion: result.rerankVersion
+  };
 }
 
 async function waitForNextPoll(pollIntervalMs: number, signal: AbortSignal | undefined) {

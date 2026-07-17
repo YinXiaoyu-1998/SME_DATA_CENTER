@@ -132,30 +132,31 @@ export function createEvidenceSearchService(input: {
         ...searchInput,
         retrievalConfig: input.retrievalConfig
       });
-      const rerankScores = input.rerankProvider
-        ? await input.rerankProvider.rerank({
-            query: searchInput.query,
-            documents: candidates.map((candidate) => ({
-              id: candidate.chunkId,
-              text: candidate.text
-            }))
-          })
-        : null;
-      const rerankScoreByChunkId = new Map<string, number>();
-
-      for (const score of rerankScores?.scores ?? []) {
-        const candidate = candidates[score.index];
-        if (candidate) {
-          rerankScoreByChunkId.set(candidate.chunkId, score.score);
-        }
-      }
-
       const revalidated = await input.revalidator.revalidate({
         orgId: searchInput.orgId,
         employee: searchInput.employee,
         candidates,
         filters: searchInput.filters
       });
+      const rerankScores =
+        input.rerankProvider && revalidated.length > 0
+          ? await input.rerankProvider.rerank({
+              query: searchInput.query,
+              documents: revalidated.map((candidate) => ({
+                id: candidate.chunkId,
+                text: candidate.text
+              }))
+            })
+          : null;
+      const rerankScoreByChunkId = new Map<string, number>();
+
+      for (const score of rerankScores?.scores ?? []) {
+        const candidate = revalidated[score.index];
+        if (candidate) {
+          rerankScoreByChunkId.set(candidate.chunkId, score.score);
+        }
+      }
+
       const ordered = revalidated
         .map((candidate) => ({
           ...candidate,
@@ -202,7 +203,9 @@ export function createPrismaEvidenceSearchRepository(): EvidenceSearchRepository
       retrievalConfigVersion: runtime.qdrant.retrievalConfigVersion,
       qdrantCollection: runtime.qdrant.collectionName,
       llmProvider: runtime.modelProvider.provider,
+      embeddingDimension: runtime.modelProvider.embeddingDimension,
       embeddingModel: runtime.modelProvider.embeddingModel,
+      rerankProvider: runtime.modelProvider.rerankProvider,
       rerankModel: runtime.modelProvider.rerankModel,
       rerankEnabled: Boolean(runtime.modelProvider.rerankModel)
     }),
@@ -218,8 +221,13 @@ export function createPrismaEvidenceSearchRepository(): EvidenceSearchRepository
     retrievalConfig.rerank.enabled && retrievalConfig.rerank.model
       ? createApiRerankProvider({
           retrievalConfig,
-          apiKey: process.env["OPENAI_COMPATIBLE_API_KEY"] ?? "",
-          baseUrl: process.env["OPENAI_COMPATIBLE_BASE_URL"] ?? "",
+          openAiCompatibleApiKey: process.env["OPENAI_COMPATIBLE_API_KEY"] ?? "",
+          openAiCompatibleBaseUrl: process.env["OPENAI_COMPATIBLE_BASE_URL"] ?? "",
+          dashscopeApiKey:
+            optionalString(process.env["DASHSCOPE_API_KEY"]) ??
+            process.env["OPENAI_COMPATIBLE_API_KEY"] ??
+            "",
+          dashscopeApiBaseUrl: runtime.modelProvider.dashscopeApiBaseUrl,
           externalModelEgressAcknowledged:
             process.env["EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED"] === "true"
         })
@@ -522,10 +530,12 @@ function createApiEmbeddingProvider(input: {
   };
 }
 
-function createApiRerankProvider(input: {
+export function createApiRerankProvider(input: {
   retrievalConfig: RetrievalModelConfig;
-  apiKey: string;
-  baseUrl: string;
+  openAiCompatibleApiKey: string;
+  openAiCompatibleBaseUrl: string;
+  dashscopeApiKey: string;
+  dashscopeApiBaseUrl: string;
   externalModelEgressAcknowledged: boolean;
 }): EvidenceRerankProvider | null {
   if (!input.retrievalConfig.rerank.enabled) {
@@ -548,16 +558,91 @@ function createApiRerankProvider(input: {
     };
   }
 
+  if (input.retrievalConfig.rerank.provider === "dashscope") {
+    return {
+      metadata: {
+        version: input.retrievalConfig.rerank.version
+      },
+      async rerank({ query, documents }) {
+        assertExternalModelEgressAcknowledged(input.externalModelEgressAcknowledged);
+        const rerankDocuments = documents
+          .map((document, index) => ({
+            index,
+            text: document.text.trim()
+          }))
+          .filter((document) => document.text.length > 0);
+
+        if (rerankDocuments.length === 0) {
+          return {
+            scores: documents.map((_, index) => ({
+              index,
+              score: 0
+            }))
+          };
+        }
+
+        const response = await fetch(
+          `${normalizeBaseUrl(input.dashscopeApiBaseUrl)}/services/rerank/text-rerank/text-rerank`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${input.dashscopeApiKey}`,
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              model: input.retrievalConfig.rerank.enabled ? input.retrievalConfig.rerank.model : "",
+              input: {
+                query,
+                documents: rerankDocuments.map((document) => document.text)
+              },
+              parameters: {
+                top_n: rerankDocuments.length,
+                return_documents: false
+              }
+            })
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`DashScope rerank provider request failed: HTTP ${response.status}`);
+        }
+
+        const payload = (await response.json()) as {
+          results?: Array<{ index?: number; relevance_score?: number }>;
+          output?: {
+            results?: Array<{ index?: number; relevance_score?: number }>;
+          };
+        };
+
+        return {
+          scores: (payload.output?.results ?? payload.results ?? []).flatMap((result) => {
+            const originalIndex =
+              result.index === undefined ? undefined : rerankDocuments[result.index]?.index;
+
+            return originalIndex === undefined
+              ? []
+              : [
+                  {
+                    index: originalIndex,
+                    score: result.relevance_score ?? 0
+                  }
+                ];
+          })
+        };
+      }
+    };
+  }
+
   return {
     metadata: {
       version: input.retrievalConfig.rerank.version
     },
     async rerank({ query, documents }) {
       assertExternalModelEgressAcknowledged(input.externalModelEgressAcknowledged);
-      const response = await fetch(`${normalizeBaseUrl(input.baseUrl)}/rerank`, {
+      const response = await fetch(`${normalizeBaseUrl(input.openAiCompatibleBaseUrl)}/rerank`, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${input.apiKey}`,
+          authorization: `Bearer ${input.openAiCompatibleApiKey}`,
           "content-type": "application/json"
         },
         body: JSON.stringify({
@@ -739,6 +824,11 @@ function assertExternalModelEgressAcknowledged(acknowledged: boolean): void {
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
+}
+
+function optionalString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function stringPayload(payload: Record<string, unknown>, key: string): string {

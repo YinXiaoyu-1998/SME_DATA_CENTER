@@ -44,6 +44,7 @@
 - Run local readiness checks: `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run readyz:local`
 - Stop local services: `docker compose down`
 - Run local MVP demo loop: `MYSQL_PORT=3307 npm run test:integration`
+- During local testing and debugging, agents may freely remove or recreate local Docker containers and volumes created by this repository or stale local worktrees, including MySQL and Qdrant test data. This permission is local-only and never applies to staging/production hosts or real customer data.
 
 ## Environments
 

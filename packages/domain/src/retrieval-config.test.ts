@@ -90,4 +90,36 @@ describe("retrieval config seed and loader", () => {
       rerankStatus: "enabled"
     });
   });
+
+  it("supports a configured real embedding dimension and independent DashScope rerank provider", () => {
+    const active = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({
+        retrievalConfigVersion: "phase3.retrieval.v1",
+        qdrantCollection: "enterprise_hub_evidence_test",
+        llmProvider: "openai-compatible",
+        embeddingModel: "text-embedding-v4",
+        embeddingDimension: 1024,
+        rerankProvider: "dashscope",
+        rerankModel: "qwen3-rerank"
+      }),
+      "phase3.retrieval.v1"
+    );
+
+    expect(active.denseEmbedding).toMatchObject({
+      provider: "openai-compatible",
+      model: "text-embedding-v4",
+      dimension: 1024
+    });
+    expect(active.rerank).toMatchObject({
+      enabled: true,
+      provider: "dashscope",
+      model: "qwen3-rerank"
+    });
+    expect(toIndexModelMetadata(active)).toMatchObject({
+      embeddingProvider: "openai-compatible",
+      embeddingDimension: 1024,
+      rerankProvider: "dashscope",
+      rerankModel: "qwen3-rerank"
+    });
+  });
 });

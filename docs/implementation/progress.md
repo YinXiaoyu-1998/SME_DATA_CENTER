@@ -371,3 +371,4 @@
 - [x] Document bilingual cold-start user flows for Enterprise Hub MCP launcher configuration, login/not-logged-in paths, upload, status, and search.
 - [x] Re-audit MCP user-flow diagrams against implementation code and correct launcher-local auth, login error, transport guard, and upload-processing details.
 - [x] Add truncated Maijia real-sample XLSX structured fixtures and verify workbook profiling.
+- [x] Complete 2026-07-17 local DashScope rerank readiness work: configurable 1024-dimensional embeddings, DashScope-native rerank adapter, readiness/integration coverage, and local Docker cleanup guidance.

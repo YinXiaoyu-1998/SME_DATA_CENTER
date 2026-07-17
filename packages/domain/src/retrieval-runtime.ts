@@ -5,10 +5,12 @@ export const DEFAULT_RETRIEVAL_CONFIG_VERSION = "phase3.retrieval.v1";
 export const DEFAULT_LLM_PROVIDER = "fake";
 export const DEFAULT_LLM_MODEL = "fake-rerank";
 export const DEFAULT_LLM_EMBEDDING_MODEL = "fake-embedding";
+export const DEFAULT_DASHSCOPE_API_BASE_URL = "https://dashscope.aliyuncs.com/api/v1";
 
 export const QDRANT_DENSE_VECTOR_NAME = "dense";
 export const QDRANT_SPARSE_VECTOR_NAME = "sparse";
 export const QDRANT_DENSE_VECTOR_SIZE = 8;
+export const OPENAI_COMPATIBLE_DENSE_VECTOR_SIZE = 1536;
 export const QDRANT_DENSE_DISTANCE = "Cosine";
 
 export interface RuntimeEnv {
@@ -21,14 +23,21 @@ export interface QdrantRuntimeConfig {
   collectionName: string;
   timeoutMs: number;
   retrievalConfigVersion: string;
+  denseVectorSize: number;
 }
 
 export interface ModelProviderRuntimeConfig {
   provider: string;
+  rerankProvider: string;
   rerankModel: string;
+  rerankModelConfigured: boolean;
   embeddingModel: string;
+  embeddingModelConfigured: boolean;
+  embeddingDimension: number;
   openAiCompatibleApiKey: string | null;
   openAiCompatibleBaseUrl: string | null;
+  dashscopeApiKey: string | null;
+  dashscopeApiBaseUrl: string;
   egressAcknowledged: boolean;
 }
 
@@ -60,24 +69,38 @@ export function parseRuntimeReadinessConfig(env: RuntimeEnv = process.env): Runt
       apiKey: optionalString(env["QDRANT_API_KEY"]),
       collectionName: env["QDRANT_COLLECTION_EVIDENCE"] ?? DEFAULT_QDRANT_COLLECTION_EVIDENCE,
       timeoutMs: parsePositiveInteger(env["QDRANT_TIMEOUT_MS"], DEFAULT_QDRANT_TIMEOUT_MS),
-      retrievalConfigVersion: env["RETRIEVAL_CONFIG_VERSION"] ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
+      retrievalConfigVersion: env["RETRIEVAL_CONFIG_VERSION"] ?? DEFAULT_RETRIEVAL_CONFIG_VERSION,
+      denseVectorSize: parseEmbeddingDimension(env)
     },
     modelProvider: {
-      provider: env["LLM_PROVIDER"] ?? DEFAULT_LLM_PROVIDER,
+      provider: optionalString(env["LLM_PROVIDER"]) ?? DEFAULT_LLM_PROVIDER,
+      rerankProvider:
+        optionalString(env["RERANK_PROVIDER"]) ??
+        optionalString(env["LLM_PROVIDER"]) ??
+        DEFAULT_LLM_PROVIDER,
       rerankModel: env["LLM_MODEL"] ?? DEFAULT_LLM_MODEL,
+      rerankModelConfigured: Boolean(optionalString(env["LLM_MODEL"])),
       embeddingModel: env["LLM_EMBEDDING_MODEL"] ?? DEFAULT_LLM_EMBEDDING_MODEL,
+      embeddingModelConfigured: Boolean(optionalString(env["LLM_EMBEDDING_MODEL"])),
+      embeddingDimension: parseEmbeddingDimension(env),
       openAiCompatibleApiKey: optionalString(env["OPENAI_COMPATIBLE_API_KEY"]),
       openAiCompatibleBaseUrl: optionalString(env["OPENAI_COMPATIBLE_BASE_URL"]),
+      dashscopeApiKey: optionalString(env["DASHSCOPE_API_KEY"]),
+      dashscopeApiBaseUrl: stripTrailingSlash(
+        optionalString(env["DASHSCOPE_API_BASE_URL"]) ?? DEFAULT_DASHSCOPE_API_BASE_URL
+      ),
       egressAcknowledged: env["EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED"] === "true"
     }
   };
 }
 
-export function qdrantEvidenceCollectionSchema(): QdrantEvidenceCollectionSchema {
+export function qdrantEvidenceCollectionSchema(
+  denseVectorSize = QDRANT_DENSE_VECTOR_SIZE
+): QdrantEvidenceCollectionSchema {
   return {
     vectors: {
       [QDRANT_DENSE_VECTOR_NAME]: {
-        size: QDRANT_DENSE_VECTOR_SIZE,
+        size: denseVectorSize,
         distance: QDRANT_DENSE_DISTANCE
       }
     },
@@ -91,13 +114,16 @@ export function qdrantEvidenceCollectionSchema(): QdrantEvidenceCollectionSchema
   };
 }
 
-export function qdrantCollectionMatchesExpectedSchema(collection: unknown): boolean {
+export function qdrantCollectionMatchesExpectedSchema(
+  collection: unknown,
+  denseVectorSize = QDRANT_DENSE_VECTOR_SIZE
+): boolean {
   const params = collectionParams(collection);
   const dense = params?.vectors?.[QDRANT_DENSE_VECTOR_NAME];
   const sparse = params?.sparse_vectors?.[QDRANT_SPARSE_VECTOR_NAME];
 
   return (
-    dense?.size === QDRANT_DENSE_VECTOR_SIZE &&
+    dense?.size === denseVectorSize &&
     dense?.distance === QDRANT_DENSE_DISTANCE &&
     typeof sparse === "object" &&
     sparse !== null
@@ -150,6 +176,16 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
 
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseEmbeddingDimension(env: RuntimeEnv): number {
+  const provider = env["LLM_PROVIDER"] ?? DEFAULT_LLM_PROVIDER;
+  const fallback =
+    provider === "openai-compatible"
+      ? OPENAI_COMPATIBLE_DENSE_VECTOR_SIZE
+      : QDRANT_DENSE_VECTOR_SIZE;
+
+  return parsePositiveInteger(env["LLM_EMBEDDING_DIMENSION"], fallback);
 }
 
 function stripTrailingSlash(value: string): string {

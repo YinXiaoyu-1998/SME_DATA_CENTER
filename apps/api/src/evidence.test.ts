@@ -7,6 +7,7 @@ import {
 import {
   HttpQdrantEvidenceSearcher,
   PrismaEvidenceRevalidator,
+  createApiRerankProvider,
   createEvidenceSearchService,
   type EvidenceRevalidator,
   type QdrantEvidenceCandidate,
@@ -194,6 +195,7 @@ describe("evidence search service", () => {
           }));
       }
     };
+    const rerankedDocuments: Array<{ id: string; text: string }> = [];
     const service = createEvidenceSearchService({
       retrievalConfig: loadActiveRetrievalConfig(
         buildRetrievalConfigSeed({
@@ -210,7 +212,8 @@ describe("evidence search service", () => {
           model: "fake-rerank-v1",
           version: "fake-rerank-v1@phase3.retrieval.v1"
         },
-        async rerank() {
+        async rerank(input) {
+          rerankedDocuments.push(...input.documents);
           return {
             metadata: this.metadata,
             scores: [
@@ -238,6 +241,12 @@ describe("evidence search service", () => {
     });
 
     expect(searchedQueries).toEqual(["差评处理 SOP"]);
+    expect(rerankedDocuments).toEqual([
+      {
+        id: "chk_active",
+        text: "差评处理 SOP：先联系客户，再登记处置结果。"
+      }
+    ]);
     expect(result.results).toEqual([
       {
         chunkId: "chk_active",
@@ -261,6 +270,128 @@ describe("evidence search service", () => {
       retrievalConfigVersion: "phase3.retrieval.v1",
       rerankStatus: "enabled"
     });
+  });
+});
+
+describe("API evidence rerank provider", () => {
+  it("uses DashScope rerank endpoint and maps output results to evidence indexes", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; init: RequestInit }> = [];
+    globalThis.fetch = (async (url, init) => {
+      requests.push({ url: String(url), init: init ?? {} });
+
+      return new Response(
+        JSON.stringify({
+          output: {
+            results: [
+              { index: 1, relevance_score: 0.22 },
+              { index: 0, relevance_score: 0.93 }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    try {
+      const retrievalConfig = loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          qdrantCollection: "enterprise_hub_evidence_test",
+          llmProvider: "openai-compatible",
+          embeddingModel: "text-embedding-v4",
+          embeddingDimension: 1024,
+          rerankProvider: "dashscope",
+          rerankModel: "qwen3-rerank"
+        }),
+        "phase3.retrieval.v1"
+      );
+      const provider = createApiRerankProvider({
+        retrievalConfig,
+        openAiCompatibleApiKey: "sk-openai-compatible",
+        openAiCompatibleBaseUrl: "https://provider.example/v1",
+        dashscopeApiKey: "sk-dashscope",
+        dashscopeApiBaseUrl: "https://dashscope.example/api/v1/",
+        externalModelEgressAcknowledged: true
+      });
+
+      const result = await provider?.rerank({
+        query: "synthetic query",
+        documents: [
+          { id: "chunk_a", text: "synthetic document A" },
+          { id: "chunk_b", text: "synthetic document B" }
+        ]
+      });
+
+      expect(result?.scores).toEqual([
+        { index: 1, score: 0.22 },
+        { index: 0, score: 0.93 }
+      ]);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.url).toBe(
+        "https://dashscope.example/api/v1/services/rerank/text-rerank/text-rerank"
+      );
+      expect(requests[0]?.init.headers).toMatchObject({
+        authorization: "Bearer sk-dashscope",
+        "content-type": "application/json"
+      });
+      expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
+        model: "qwen3-rerank",
+        input: {
+          query: "synthetic query",
+          documents: ["synthetic document A", "synthetic document B"]
+        },
+        parameters: {
+          top_n: 2,
+          return_documents: false
+        }
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("accepts top-level DashScope-compatible rerank results", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ results: [{ index: 0, relevance_score: 0.81 }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })) as typeof fetch;
+
+    try {
+      const retrievalConfig = loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          qdrantCollection: "enterprise_hub_evidence_test",
+          llmProvider: "openai-compatible",
+          embeddingModel: "text-embedding-v4",
+          embeddingDimension: 1024,
+          rerankProvider: "dashscope",
+          rerankModel: "qwen3-rerank"
+        }),
+        "phase3.retrieval.v1"
+      );
+      const provider = createApiRerankProvider({
+        retrievalConfig,
+        openAiCompatibleApiKey: "sk-openai-compatible",
+        openAiCompatibleBaseUrl: "https://provider.example/v1",
+        dashscopeApiKey: "sk-dashscope",
+        dashscopeApiBaseUrl: "https://dashscope.example/api/v1",
+        externalModelEgressAcknowledged: true
+      });
+
+      await expect(
+        provider?.rerank({
+          query: "synthetic query",
+          documents: [{ id: "chunk_a", text: "synthetic document" }]
+        })
+      ).resolves.toEqual({
+        scores: [{ index: 0, score: 0.81 }]
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

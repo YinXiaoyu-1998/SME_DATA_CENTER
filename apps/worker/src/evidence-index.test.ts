@@ -85,9 +85,13 @@ describe("evidence indexer", () => {
     expect(result).toMatchObject({
       retrievalConfigVersion: "phase3.retrieval.v1",
       qdrantCollection: "enterprise_hub_evidence_test",
+      embeddingProvider: "fake",
       embeddingModel: "fake-embedding-v1",
       embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
+      embeddingDimension: 8,
       lexicalIndexVersion: "lexical.v1",
+      rerankProvider: "fake",
+      rerankModel: "fake-rerank-v1",
       rerankVersion: "fake-rerank-v1@phase3.retrieval.v1"
     });
     expect(result.chunks).toHaveLength(1);

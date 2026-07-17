@@ -6,11 +6,17 @@ export const MODEL_PROVIDER_NAMES = ["fake", "openai-compatible"] as const;
 
 export type ModelProviderName = (typeof MODEL_PROVIDER_NAMES)[number];
 
+export const RERANK_PROVIDER_NAMES = ["fake", "openai-compatible", "dashscope"] as const;
+
+export type RerankProviderName = (typeof RERANK_PROVIDER_NAMES)[number];
+
 export interface RetrievalConfigSeedInput {
   retrievalConfigVersion?: string | undefined;
   qdrantCollection?: string | undefined;
   llmProvider?: ModelProviderName | string | undefined;
   embeddingModel?: string | undefined;
+  embeddingDimension?: number | undefined;
+  rerankProvider?: RerankProviderName | string | undefined;
   rerankModel?: string | undefined;
   rerankEnabled?: boolean | undefined;
 }
@@ -41,7 +47,7 @@ export interface RetrievalModelConfig {
 export type ExplicitRerankConfig =
   | {
       enabled: true;
-      provider: ModelProviderName;
+      provider: RerankProviderName;
       model: string;
       version: string;
     }
@@ -55,7 +61,7 @@ export interface IndexModelMetadata {
   embeddingModel: string;
   embeddingVersion: string;
   embeddingDimension: number;
-  rerankProvider: ModelProviderName | null;
+  rerankProvider: RerankProviderName | null;
   rerankModel: string | null;
   rerankVersion: string | null;
 }
@@ -81,6 +87,7 @@ export function buildRetrievalConfigSeed(
 ): RetrievalModelConfig[] {
   const activeVersion = input.retrievalConfigVersion?.trim() || DEFAULT_RETRIEVAL_CONFIG_VERSION;
   const provider = normalizeProviderName(input.llmProvider);
+  const rerankProvider = normalizeRerankProviderName(input.rerankProvider, provider);
   const embeddingModel =
     input.embeddingModel?.trim() || (provider === "fake" ? DEFAULT_FAKE_EMBEDDING_MODEL : "");
   const rerankModel =
@@ -92,6 +99,8 @@ export function buildRetrievalConfigSeed(
       version: activeVersion,
       status: "active",
       provider,
+      embeddingDimension: input.embeddingDimension,
+      rerankProvider,
       embeddingModel,
       rerankModel,
       rerankEnabled: input.rerankEnabled ?? true,
@@ -101,6 +110,8 @@ export function buildRetrievalConfigSeed(
       version: `${activeVersion}.candidate`,
       status: "candidate",
       provider,
+      embeddingDimension: input.embeddingDimension,
+      rerankProvider,
       embeddingModel,
       rerankModel,
       rerankEnabled: input.rerankEnabled ?? true,
@@ -110,6 +121,8 @@ export function buildRetrievalConfigSeed(
       version: "phase3.retrieval.legacy-text",
       status: "deprecated",
       provider: "fake",
+      embeddingDimension: FAKE_EMBEDDING_DIMENSION,
+      rerankProvider: "fake",
       embeddingModel: DEFAULT_FAKE_EMBEDDING_MODEL,
       rerankModel: DEFAULT_FAKE_RERANK_MODEL,
       rerankEnabled: false,
@@ -171,6 +184,8 @@ function createRetrievalConfig(input: {
   version: string;
   status: RetrievalConfigStatusName;
   provider: ModelProviderName;
+  embeddingDimension: number | undefined;
+  rerankProvider: RerankProviderName;
   embeddingModel: string;
   rerankModel: string;
   rerankEnabled: boolean;
@@ -188,7 +203,9 @@ function createRetrievalConfig(input: {
       model: input.embeddingModel,
       version: `${input.embeddingModel}@${input.version}`,
       dimension:
-        input.provider === "fake" ? FAKE_EMBEDDING_DIMENSION : OPENAI_COMPATIBLE_EMBEDDING_DIMENSION
+        input.provider === "fake"
+          ? (input.embeddingDimension ?? FAKE_EMBEDDING_DIMENSION)
+          : (input.embeddingDimension ?? OPENAI_COMPATIBLE_EMBEDDING_DIMENSION)
     },
     lexical: {
       version: LEXICAL_INDEX_VERSION,
@@ -197,7 +214,7 @@ function createRetrievalConfig(input: {
     rerank: input.rerankEnabled
       ? {
           enabled: true,
-          provider: input.provider,
+          provider: input.rerankProvider,
           model: input.rerankModel,
           version: `${input.rerankModel}@${input.version}`
         }
@@ -217,4 +234,23 @@ function normalizeProviderName(provider: string | undefined): ModelProviderName 
   }
 
   return "fake";
+}
+
+function normalizeRerankProviderName(
+  provider: string | undefined,
+  defaultProvider: ModelProviderName
+): RerankProviderName {
+  if (provider === "dashscope") {
+    return "dashscope";
+  }
+
+  if (provider === "openai-compatible") {
+    return "openai-compatible";
+  }
+
+  if (provider === "fake") {
+    return "fake";
+  }
+
+  return defaultProvider;
 }

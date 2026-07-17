@@ -115,9 +115,17 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
       return {
         retrievalConfigVersion: input.retrievalConfig.version,
         qdrantCollection: input.retrievalConfig.qdrant.collection,
+        embeddingProvider: input.retrievalConfig.denseEmbedding.provider,
         embeddingModel: embeddingResult.metadata.model,
         embeddingVersion: embeddingResult.metadata.version,
+        embeddingDimension: embeddingResult.metadata.dimension,
         lexicalIndexVersion: input.retrievalConfig.lexical.version,
+        rerankProvider: input.retrievalConfig.rerank.enabled
+          ? input.retrievalConfig.rerank.provider
+          : null,
+        rerankModel: input.retrievalConfig.rerank.enabled
+          ? input.retrievalConfig.rerank.model
+          : null,
         rerankVersion: input.rerankProvider?.metadata.version ?? null,
         chunks: chunks.map(withoutDenseVector)
       };
