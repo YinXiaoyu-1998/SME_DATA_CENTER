@@ -63,7 +63,7 @@ interface EvidenceSearchResponse {
 
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
-const integrationPort = process.env["HUB_INTEGRATION_PORT"] ?? String(await findAvailablePort());
+const integrationPort = optionalEnv("HUB_INTEGRATION_PORT") ?? String(await findAvailablePort());
 const apiUrl = `http://127.0.0.1:${integrationPort}`;
 const integrationRoot = path.join(rootDir, ".data", "integration");
 const storageRoot = path.join(integrationRoot, "storage");
@@ -82,6 +82,12 @@ const integrationEnv: NodeJS.ProcessEnv = {
   LLM_PROVIDER: process.env["LLM_PROVIDER"] ?? "fake",
   LLM_MODEL: process.env["LLM_MODEL"] ?? "fake-rerank",
   LLM_EMBEDDING_MODEL: process.env["LLM_EMBEDDING_MODEL"] ?? "fake-embedding",
+  LLM_EMBEDDING_DIMENSION: process.env["LLM_EMBEDDING_DIMENSION"] ?? "",
+  RERANK_PROVIDER: process.env["RERANK_PROVIDER"] ?? "fake",
+  DASHSCOPE_API_KEY:
+    optionalEnv("DASHSCOPE_API_KEY") ?? process.env["OPENAI_COMPATIBLE_API_KEY"] ?? "",
+  DASHSCOPE_API_BASE_URL: process.env["DASHSCOPE_API_BASE_URL"] ?? "",
+  EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: process.env["EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED"] ?? "false",
   NODE_ENV: "development",
   HOST: "127.0.0.1",
   PORT: integrationPort
@@ -396,6 +402,11 @@ function assert(condition: boolean, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function optionalEnv(key: string): string | undefined {
+  const value = process.env[key]?.trim();
+  return value ? value : undefined;
 }
 
 async function findAvailablePort(): Promise<number> {

@@ -38,11 +38,17 @@ describe("Phase 3 runtime readiness", () => {
   it("creates the evidence collection with expected dense and sparse vector config", async () => {
     const collections = new Map<string, RecordedCollection>();
     const { url } = await startFakeQdrant(collections);
-    const config = parseRuntimeReadinessConfig({ QDRANT_URL: url });
+    const config = parseRuntimeReadinessConfig({
+      QDRANT_URL: url,
+      LLM_PROVIDER: "openai-compatible",
+      LLM_EMBEDDING_DIMENSION: "1024"
+    });
 
     await bootstrapQdrantEvidenceCollection(config.qdrant);
 
-    expect(collections.get(config.qdrant.collectionName)).toEqual(qdrantEvidenceCollectionSchema());
+    expect(collections.get(config.qdrant.collectionName)).toEqual(
+      qdrantEvidenceCollectionSchema(1024)
+    );
   });
 
   it("fails readiness clearly when Qdrant is unavailable", async () => {
@@ -126,10 +132,13 @@ describe("Phase 3 runtime readiness", () => {
       env: {
         QDRANT_URL: url,
         LLM_PROVIDER: "openai-compatible",
+        RERANK_PROVIDER: "dashscope",
         LLM_MODEL: "rerank-v1",
         LLM_EMBEDDING_MODEL: "embed-v1",
+        LLM_EMBEDDING_DIMENSION: "1024",
         OPENAI_COMPATIBLE_API_KEY: "test-secret",
         OPENAI_COMPATIBLE_BASE_URL: "https://provider.example.test/v1",
+        DASHSCOPE_API_BASE_URL: "https://dashscope.example.test/api/v1",
         EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "false"
       },
       checks: {
@@ -145,6 +154,83 @@ describe("Phase 3 runtime readiness", () => {
         name: "modelProvider",
         ok: false,
         message: expect.stringContaining("EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true")
+      })
+    );
+  });
+
+  it("treats blank optional provider values as unset", () => {
+    const config = parseRuntimeReadinessConfig({
+      LLM_PROVIDER: "openai-compatible",
+      RERANK_PROVIDER: "",
+      DASHSCOPE_API_BASE_URL: "",
+      LLM_EMBEDDING_DIMENSION: "1024"
+    });
+
+    expect(config.modelProvider.rerankProvider).toBe("openai-compatible");
+    expect(config.modelProvider.dashscopeApiBaseUrl).toBe("https://dashscope.aliyuncs.com/api/v1");
+    expect(config.modelProvider.embeddingDimension).toBe(1024);
+    expect(config.qdrant.denseVectorSize).toBe(1024);
+  });
+
+  it("fails readiness when fake embeddings use real DashScope rerank without egress acknowledgement", async () => {
+    const collections = new Map<string, RecordedCollection>();
+    const { url } = await startFakeQdrant(collections);
+    const config = parseRuntimeReadinessConfig({ QDRANT_URL: url });
+    collections.set(config.qdrant.collectionName, qdrantEvidenceCollectionSchema());
+
+    const report = await checkRuntimeReadiness({
+      env: {
+        QDRANT_URL: url,
+        LLM_PROVIDER: "fake",
+        RERANK_PROVIDER: "dashscope",
+        LLM_MODEL: "qwen3-rerank",
+        OPENAI_COMPATIBLE_API_KEY: "test-secret",
+        EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "false"
+      },
+      checks: {
+        mysql: async () => undefined,
+        storage: async () => undefined,
+        workerLease: async () => undefined
+      }
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toContainEqual(
+      expect.objectContaining({
+        name: "modelProvider",
+        ok: false,
+        message: expect.stringContaining("EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true")
+      })
+    );
+  });
+
+  it("fails readiness when real rerank uses the fake default model", async () => {
+    const collections = new Map<string, RecordedCollection>();
+    const { url } = await startFakeQdrant(collections);
+    const config = parseRuntimeReadinessConfig({ QDRANT_URL: url });
+    collections.set(config.qdrant.collectionName, qdrantEvidenceCollectionSchema());
+
+    const report = await checkRuntimeReadiness({
+      env: {
+        QDRANT_URL: url,
+        LLM_PROVIDER: "fake",
+        RERANK_PROVIDER: "dashscope",
+        OPENAI_COMPATIBLE_API_KEY: "test-secret",
+        EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "true"
+      },
+      checks: {
+        mysql: async () => undefined,
+        storage: async () => undefined,
+        workerLease: async () => undefined
+      }
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toContainEqual(
+      expect.objectContaining({
+        name: "modelProvider",
+        ok: false,
+        message: expect.stringContaining("configured real rerank model")
       })
     );
   });

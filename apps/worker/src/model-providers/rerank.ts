@@ -7,7 +7,7 @@ export interface RerankDocument {
 }
 
 export interface RerankProviderMetadata {
-  provider: "fake" | "openai-compatible";
+  provider: "fake" | "openai-compatible" | "dashscope";
   model: string;
   version: string;
 }
@@ -112,11 +112,113 @@ export function createOpenAICompatibleRerankProvider(input: {
   };
 }
 
+export function createDashScopeRerankProvider(input: {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  version: string;
+  externalModelEgressAcknowledged: boolean;
+  fetch?: FetchLike | undefined;
+}): RerankProvider {
+  const metadata: RerankProviderMetadata = {
+    provider: "dashscope",
+    model: input.model,
+    version: input.version
+  };
+  const fetchImpl = input.fetch ?? globalThis.fetch;
+
+  return {
+    metadata,
+    async rerank({ query, documents }) {
+      assertExternalModelEgressAcknowledged(input.externalModelEgressAcknowledged);
+      const rerankDocuments = documents
+        .map((document, index) => ({
+          document,
+          index,
+          text: document.text.trim()
+        }))
+        .filter((document) => document.text.length > 0);
+
+      if (rerankDocuments.length === 0) {
+        return {
+          metadata,
+          scores: documents.map((document) => ({
+            documentId: document.id,
+            score: 0
+          }))
+        };
+      }
+
+      const response = await fetchImpl(
+        `${normalizeBaseUrl(input.baseUrl)}/services/rerank/text-rerank/text-rerank`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${input.apiKey}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            model: input.model,
+            input: {
+              query,
+              documents: rerankDocuments.map((document) => document.text)
+            },
+            parameters: {
+              top_n: rerankDocuments.length,
+              return_documents: false
+            }
+          })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`DashScope rerank provider request failed: HTTP ${response.status}`);
+      }
+
+      const payload = (await response.json()) as DashScopeRerankResponse;
+      const scoresByIndex = new Map<number, number>();
+
+      for (const result of dashScopeResults(payload)) {
+        const originalIndex = rerankDocuments[result.index]?.index;
+
+        if (originalIndex !== undefined) {
+          scoresByIndex.set(originalIndex, result.relevance_score);
+        }
+      }
+
+      return {
+        metadata,
+        scores: documents.map((document, index) => ({
+          documentId: document.id,
+          score: scoresByIndex.get(index) ?? 0
+        }))
+      };
+    }
+  };
+}
+
 interface OpenAICompatibleRerankResponse {
   results: Array<{
     index: number;
     relevance_score: number;
   }>;
+}
+
+interface DashScopeRerankResponse {
+  results?: Array<{
+    index: number;
+    relevance_score: number;
+  }>;
+  output?: {
+    results?: Array<{
+      index: number;
+      relevance_score: number;
+    }>;
+  };
+}
+
+function dashScopeResults(payload: DashScopeRerankResponse) {
+  return payload.output?.results ?? payload.results ?? [];
 }
 
 function createDeterministicRerankScore(query: string, text: string): number {

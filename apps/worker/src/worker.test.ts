@@ -169,9 +169,13 @@ describe("processing worker", () => {
         return {
           retrievalConfigVersion: "phase3.retrieval.v1",
           qdrantCollection: "enterprise_hub_evidence_test",
+          embeddingProvider: "fake",
           embeddingModel: "fake-embedding-v1",
           embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
+          embeddingDimension: 8,
           lexicalIndexVersion: "lexical.v1",
+          rerankProvider: null,
+          rerankModel: null,
           rerankVersion: null,
           chunks: []
         };
@@ -281,9 +285,13 @@ describe("processing worker", () => {
         return {
           retrievalConfigVersion: "phase3.retrieval.v1",
           qdrantCollection: "enterprise_hub_evidence_test",
+          embeddingProvider: "fake",
           embeddingModel: "fake-embedding-v1",
           embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
+          embeddingDimension: 8,
           lexicalIndexVersion: "lexical.v1",
+          rerankProvider: "fake",
+          rerankModel: "fake-rerank-v1",
           rerankVersion: "fake-rerank-v1@phase3.retrieval.v1",
           chunks: [
             {

@@ -48,6 +48,7 @@ export {
 } from "./retrieval-contracts.js";
 export {
   MODEL_PROVIDER_NAMES,
+  RERANK_PROVIDER_NAMES,
   RETRIEVAL_CONFIG_STATUSES,
   buildRetrievalConfigSeed,
   loadActiveRetrievalConfig,
@@ -57,6 +58,7 @@ export {
   type ExplicitRerankConfig,
   type IndexModelMetadata,
   type ModelProviderName,
+  type RerankProviderName,
   type RetrievalConfigSeedInput,
   type RetrievalConfigStatusName,
   type RetrievalModelConfig
@@ -65,6 +67,7 @@ export {
   DEFAULT_LLM_EMBEDDING_MODEL,
   DEFAULT_LLM_MODEL,
   DEFAULT_LLM_PROVIDER,
+  DEFAULT_DASHSCOPE_API_BASE_URL,
   DEFAULT_QDRANT_COLLECTION_EVIDENCE,
   DEFAULT_QDRANT_TIMEOUT_MS,
   DEFAULT_QDRANT_URL,
@@ -72,6 +75,7 @@ export {
   QDRANT_DENSE_DISTANCE,
   QDRANT_DENSE_VECTOR_NAME,
   QDRANT_DENSE_VECTOR_SIZE,
+  OPENAI_COMPATIBLE_DENSE_VECTOR_SIZE,
   QDRANT_SPARSE_VECTOR_NAME,
   parseRuntimeReadinessConfig,
   qdrantCollectionMatchesExpectedSchema,
