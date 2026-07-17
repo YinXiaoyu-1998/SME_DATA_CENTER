@@ -22,6 +22,14 @@
 - When MCP tool behavior, API contracts, or usage guidance changes, update both the repo-local skill and the standalone skill repo. If the standalone repo is not already available locally, clone/fetch it from GitHub, create an independent branch there, make the matching skill/documentation change, and open/update a standalone skill PR. Do not assume a machine-specific checkout path.
 - After any lead/subagent task is verified and fully merged into `main`, remove its clean, inactive local worktree and run `git worktree prune`; never force-remove worktrees with changes or active processes.
 
+## Local Manual Acceptance Trigger
+
+- A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 Enterprise Hub 人工验收”, or an equivalent request explicitly authorizes creation of separate user-visible Codex tasks for the test record.
+- Before running that workflow, read and follow `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/local-agent-test.md`.
+- Send each employee-client turn exactly as written in `fixtures/manual-acceptance/scenarios.json`; never add a controller boundary, tool/protocol hint, safety instruction, or expected answer to the visible message.
+- The controller task operates only this repository's local test runtime. Employee-client tasks must use `skills/enterprise-hub-mcp/` and must not inspect or operate service internals.
+- If user-visible task creation is unavailable, report that limitation instead of silently substituting same-context or direct-API execution.
+
 ## Commands
 
 - Install dependencies: `npm install`

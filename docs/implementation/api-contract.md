@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-07-13
+Last updated: 2026-07-18
 
 This contract describes the current public surface after the legacy ordinary document upload/search flow was removed.
 
@@ -28,8 +28,8 @@ Every non-health data endpoint requires backend authorization. Client-side filte
 
 Local development auth:
 
-- `POST /dev-login` with a seeded employee email returns a bearer token.
-- MCP stores local development sessions in an ignored session file.
+- `POST /auth/dev-login` with a seeded employee email returns a bearer token.
+- The local MCP launcher stores its development token only in process memory and requires login again after restart.
 
 Authorization rules:
 
@@ -44,7 +44,7 @@ Authorization rules:
 | ------ | ------------------------------------------- | -------------------------------------------- |
 | `GET`  | `/healthz`                                  | Liveness                                     |
 | `GET`  | `/readyz`                                   | Runtime readiness                            |
-| `POST` | `/dev-login`                                | Local seeded employee login                  |
+| `POST` | `/auth/dev-login`                           | Local seeded employee login                  |
 | `GET`  | `/me`                                       | Current employee/session metadata            |
 | `GET`  | `/labels`                                   | Label catalog                                |
 | `GET`  | `/skills`                                   | Approved Skill Directory metadata            |

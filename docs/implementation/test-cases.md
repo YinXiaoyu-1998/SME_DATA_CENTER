@@ -1,21 +1,22 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-07-13
+Last updated: 2026-07-18
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
 ## Required Repository Checks
 
-| Check             | Command                                    | Expected                                          |
-| ----------------- | ------------------------------------------ | ------------------------------------------------- |
-| Format            | `npm run format:check`                     | No Prettier diffs                                 |
-| Lint              | `npm run lint`                             | No ESLint failures                                |
-| Typecheck         | `npm run typecheck`                        | TypeScript compiles with no emit                  |
-| Unit tests        | `npm test`                                 | All Vitest suites pass                            |
-| Local integration | `MYSQL_PORT=3307 npm run test:integration` | Phase 3 API + worker path passes                  |
-| MCP smoke         | `npm run test:mcp`                         | HTTP `/mcp` and memory-only launcher path pass    |
-| Golden retrieval  | `npm run test:phase3:golden`               | Deterministic synthetic retrieval thresholds pass |
-| Perf smoke        | `npm run test:phase3:perf`                 | Deterministic local thresholds pass               |
+| Check             | Command                                          | Expected                                                               |
+| ----------------- | ------------------------------------------------ | ---------------------------------------------------------------------- |
+| Format            | `npm run format:check`                           | No Prettier diffs                                                      |
+| Lint              | `npm run lint`                                   | No ESLint failures                                                     |
+| Typecheck         | `npm run typecheck`                              | TypeScript compiles with no emit                                       |
+| Unit tests        | `npm test`                                       | All Vitest suites pass                                                 |
+| Local integration | `MYSQL_PORT=3307 npm run test:integration`       | Phase 3 API + worker path passes                                       |
+| MCP smoke         | `npm run test:mcp`                               | HTTP `/mcp` and memory-only launcher path pass                         |
+| Manual acceptance | Ask Codex to run the SME_DATA_CENTER manual test | Natural, verbatim employee prompts plus user-visible task records pass |
+| Golden retrieval  | `npm run test:phase3:golden`                     | Deterministic synthetic retrieval thresholds pass                      |
+| Perf smoke        | `npm run test:phase3:perf`                       | Deterministic local thresholds pass                                    |
 
 ## Active Phase 3 API / Worker Cases
 
@@ -34,22 +35,30 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 
 ## Active MCP Cases
 
-| Case                     | Test / Command                                        | Expected                                                                                  |
-| ------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| HTTP endpoint guards     | `npm test -- apps/api/src/mcp/http.test.ts`           | Auth, loopback, stateless protocol, size/concurrency, and discovery are enforced          |
-| Core MCP contract        | `npm test -- packages/mcp-contract/src/index.test.ts` | Strict tool inputs reject legacy session/path fields and invalid inline upload content    |
-| API MCP tool delegation  | `npm test -- apps/api/src/mcp`                        | Read/upload tools preserve existing API authorization and multipart validation            |
-| Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                   | Login/logout is memory-only and every remote MCP request carries bearer auth              |
-| Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                    | Login, label list, structured import/status/query, evidence upload/status/search all pass |
+| Case                     | Test / Command                                        | Expected                                                                                        |
+| ------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| HTTP endpoint guards     | `npm test -- apps/api/src/mcp/http.test.ts`           | Auth, loopback, stateless protocol, size/concurrency, and discovery are enforced                |
+| Core MCP contract        | `npm test -- packages/mcp-contract/src/index.test.ts` | Strict tool inputs reject legacy session/path fields and invalid inline upload content          |
+| API MCP tool delegation  | `npm test -- apps/api/src/mcp`                        | Read/upload tools preserve existing API authorization and multipart validation                  |
+| Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                   | Login/logout is memory-only and every remote MCP request carries bearer auth                    |
+| Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                    | Launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy representatives pass |
+
+## User-Visible Codex Manual Acceptance
+
+The repeatable controller workflow is defined in `docs/implementation/local-agent-test.md` and `skills/enterprise-hub-manual-test/SKILL.md`. It resets only the repository's local test runtime, starts API/worker, creates independent user-visible Codex tasks from `fixtures/manual-acceptance/scenarios.json`, captures operator snapshots, and writes an ignored `.data/manual-tests/<runId>/report.md`.
+
+The controller sends manifest prompts verbatim. Visible messages contain ordinary business language only; local email and fixture path stand in for SSO and file attachment. Automated fixture tests reject controller boundaries and MCP/Base64/label/idempotency/SQL/query-shape/grounding hints in those prompts. Protocol-heavy or boundary-prefixed runs count only as guided conformance evidence.
+
+The deterministic fake-provider pass verifies orchestration, authorization, grounding, uploads, state, prompt-injection safety, and structured queries. It must not be cited as proof of semantic retrieval quality. The real-provider subset requires explicit local `.env` configuration and `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`.
 
 ## Legacy Removal Negative Cases
 
-| Case                       | Test / Command                                | Expected                                                                               |
-| -------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Removed HTTP routes absent | `npm test -- apps/api/src/server.test.ts`     | Legacy ordinary document routes return 404                                             |
-| Removed MCP surface absent | `npm run test:mcp`                            | No service stdio, session file, legacy login tool, or server-visible file path remains |
-| CLI package absent         | `rg "hub documents" . --glob '!node_modules'` | No active command/docs/tests reference the removed CLI flow                            |
-| Worker fallback absent     | `npm test -- apps/worker/src/worker.test.ts`  | No legacy text-extraction fallback path remains                                        |
+| Case                       | Test / Command                                | Expected                                                                                             |
+| -------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Removed HTTP routes absent | `npm test -- apps/api/src/server.test.ts`     | Legacy ordinary document routes return 404                                                           |
+| Removed MCP surface absent | `npm run test:mcp`                            | No service stdio, persisted launcher session, legacy login tool, or server-visible file path remains |
+| CLI package absent         | `rg "hub documents" . --glob '!node_modules'` | No active command/docs/tests reference the removed CLI flow                                          |
+| Worker fallback absent     | `npm test -- apps/worker/src/worker.test.ts`  | No legacy text-extraction fallback path remains                                                      |
 
 The removed route/tool names may appear only in negative tests, migration/removal notes, or historical cleanup records.
 
