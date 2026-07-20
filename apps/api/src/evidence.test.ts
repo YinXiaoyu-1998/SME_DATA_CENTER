@@ -5,6 +5,7 @@ import {
   type AuthenticatedEmployee
 } from "@enterprise-hub/domain";
 import {
+  EvidenceSearchCursorError,
   HttpQdrantEvidenceSearcher,
   PrismaEvidenceRevalidator,
   createApiRerankProvider,
@@ -106,6 +107,7 @@ describe("evidence search service", () => {
       },
       limit: 5,
       cursor: null,
+      cursorSecret: "cursor-secret",
       requestId: "req_1",
       clientIp: "127.0.0.1",
       retrievalConfig
@@ -236,6 +238,7 @@ describe("evidence search service", () => {
       },
       limit: 10,
       cursor: null,
+      cursorSecret: "cursor-secret",
       requestId: "req_1",
       clientIp: "127.0.0.1"
     });
@@ -271,7 +274,104 @@ describe("evidence search service", () => {
       rerankStatus: "enabled"
     });
   });
+
+  it("returns signed evidence cursor pages and rejects tamper, expiry, and scope changes", async () => {
+    const candidates = [candidate("chk_1", 0.9), candidate("chk_2", 0.8), candidate("chk_3", 0.7)];
+    const qdrantSearcher: QdrantEvidenceSearcher = {
+      async hybridSearch(input) {
+        expect(input.limit).toBe(200);
+        return candidates;
+      }
+    };
+    const revalidator: EvidenceRevalidator = {
+      async revalidate(input) {
+        return input.candidates.map((next) => ({
+          ...next,
+          documentTitle: `Document ${next.documentId}`,
+          fileType: "md",
+          sectionHeadingPath: [],
+          blockType: "paragraph",
+          pageNumber: null
+        }));
+      }
+    };
+    const service = createEvidenceSearchService({
+      retrievalConfig: loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          qdrantCollection: "enterprise_hub_evidence_test"
+        }),
+        "phase3.retrieval.v1"
+      ),
+      qdrantSearcher,
+      revalidator,
+      rerankProvider: null
+    });
+    const baseInput = {
+      orgId: "default-org",
+      employee,
+      query: "差评处理 SOP",
+      filters: {
+        fileTypes: [],
+        documentIds: [],
+        labelIds: []
+      },
+      limit: 2,
+      cursor: null,
+      cursorSecret: "cursor-secret",
+      requestId: "req_1",
+      clientIp: "127.0.0.1",
+      now: new Date("2026-07-20T00:00:00.000Z")
+    };
+
+    const firstPage = await service.searchEvidence(baseInput);
+    expect(firstPage.results.map((result) => result.chunkId)).toEqual(["chk_1", "chk_2"]);
+    expect(firstPage.page.hasMore).toBe(true);
+    expect(firstPage.page.nextCursor).toEqual(expect.any(String));
+
+    const secondPage = await service.searchEvidence({
+      ...baseInput,
+      cursor: firstPage.page.nextCursor,
+      now: new Date("2026-07-20T00:01:00.000Z")
+    });
+    expect(secondPage.results.map((result) => result.chunkId)).toEqual(["chk_3"]);
+    expect(secondPage.page.nextCursor).toBeNull();
+
+    await expect(
+      service.searchEvidence({
+        ...baseInput,
+        cursor: `${firstPage.page.nextCursor?.slice(0, -1)}x`
+      })
+    ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
+    await expect(
+      service.searchEvidence({
+        ...baseInput,
+        cursor: firstPage.page.nextCursor,
+        now: new Date("2026-07-20T00:16:00.000Z")
+      })
+    ).rejects.toBeInstanceOf(EvidenceSearchCursorError);
+    await expect(
+      service.searchEvidence({
+        ...baseInput,
+        cursor: firstPage.page.nextCursor,
+        query: "另一个问题"
+      })
+    ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
+  });
 });
+
+function candidate(chunkId: string, hybridScore: number): QdrantEvidenceCandidate {
+  return {
+    chunkId,
+    documentId: `doc_${chunkId}`,
+    qdrantPointId: `point_${chunkId}`,
+    contentVersion: 1,
+    retrievalConfigVersion: "phase3.retrieval.v1",
+    text: `Evidence ${chunkId}`,
+    hybridScore,
+    matchedBy: ["dense"]
+  };
+}
 
 describe("API evidence rerank provider", () => {
   it("uses DashScope rerank endpoint and maps output results to evidence indexes", async () => {

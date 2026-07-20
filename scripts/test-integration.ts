@@ -75,9 +75,14 @@ interface EvidenceStatusResponse {
 
 interface EvidenceSearchResponse {
   results: Array<{
+    chunkId: string;
     documentId: string;
     text: string;
   }>;
+  page: {
+    nextCursor: string | null;
+    hasMore: boolean;
+  };
 }
 
 const rootDir = process.cwd();
@@ -300,9 +305,11 @@ try {
   );
 
   const evidencePath = path.join(integrationRoot, "phase3-evidence.md");
+  const longEvidenceParagraph =
+    "差评处理需要在 15 分钟内联系顾客，记录订单号、原因和补偿动作。".repeat(80);
   await writeFile(
     evidencePath,
-    "# 差评处理 SOP\n\n差评处理需要在 15 分钟内联系顾客，记录订单号、原因和补偿动作。\n",
+    `# 差评处理 SOP\n\n${longEvidenceParagraph}\n\n## 复盘\n\n${longEvidenceParagraph}\n`,
     "utf8"
   );
   const evidenceForm = new FormData();
@@ -342,6 +349,30 @@ try {
     ),
     "Evidence search should return indexed evidence chunks."
   );
+  const firstEvidencePage = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({ query: "差评处理", filters: { fileTypes: ["md"] }, limit: 1 })
+  });
+  assert(
+    firstEvidencePage.results.length === 1 && Boolean(firstEvidencePage.page.nextCursor),
+    "Evidence search should return a signed cursor when more authorized chunks remain."
+  );
+  const secondEvidencePage = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({
+      query: "差评处理",
+      filters: { fileTypes: ["md"] },
+      limit: 1,
+      cursor: firstEvidencePage.page.nextCursor
+    })
+  });
+  assert(
+    secondEvidencePage.results.length === 1 &&
+      secondEvidencePage.results[0]?.chunkId !== firstEvidencePage.results[0]?.chunkId,
+    "Evidence cursor pagination should advance without duplicate chunks."
+  );
   await assertWorkerLeaseRecovery();
 
   console.log(
@@ -364,6 +395,7 @@ try {
           "phase3_structured_all_staff_query",
           "phase3_structured_import_status_non_enumeration",
           "phase3_evidence_upload_worker_status_search",
+          "phase3_evidence_signed_pagination",
           "phase3_worker_lease_crash_recovery"
         ]
       },
