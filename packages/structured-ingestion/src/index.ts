@@ -207,23 +207,24 @@ function worksheetRows(sheet: ExcelJS.Worksheet, limits: StructuredIngestionLimi
   return rows;
 }
 function cellText(cell: ExcelJS.Cell, limits: StructuredIngestionLimits): string {
-  return checkedCellText(xlsxCellValueText(cell.value), limits);
+  return checkedCellText(xlsxCellValueText(cell.value, cell.numFmt), limits);
 }
 function checkedCellText(text: string, limits: StructuredIngestionLimits): string {
   if (text.length > limits.maxStructuredCellChars)
     throw validation("Structured cell length limit exceeded.");
   return text.trim();
 }
-function xlsxCellValueText(value: unknown): string {
+function xlsxCellValueText(value: unknown, numberFormat?: string): string {
   if (value == null) return "";
-  if (value instanceof Date) return dateString(value);
+  if (value instanceof Date)
+    return hasTimeComponent(value, numberFormat) ? dateTimeString(value) : dateString(value);
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
     return String(value);
   if (!isRecord(value)) throw validation("Unsupported XLSX cell value.");
   if ("formula" in value) {
     if (!("result" in value) || value.result == null)
       throw validation("Unevaluated XLSX formula is not supported.");
-    return xlsxCellValueText(value.result);
+    return xlsxCellValueText(value.result, numberFormat);
   }
   if (Array.isArray(value.richText)) {
     return value.richText
@@ -232,6 +233,14 @@ function xlsxCellValueText(value: unknown): string {
   }
   if (typeof value.text === "string") return value.text;
   throw validation("Unsupported XLSX cell value.");
+}
+function hasTimeComponent(value: Date, numberFormat?: string): boolean {
+  return (
+    value.getUTCHours() !== 0 ||
+    value.getUTCMinutes() !== 0 ||
+    value.getUTCSeconds() !== 0 ||
+    /[hs]/i.test(numberFormat ?? "")
+  );
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -317,6 +326,11 @@ async function preflightZip(content: Buffer, limits: StructuredIngestionLimits):
                 ) {
                   stream.destroy();
                   fail(validation("XLSX ZIP resource limit exceeded."));
+                  return;
+                }
+                if (entryActual > entry.uncompressedSize) {
+                  stream.destroy();
+                  fail(validation("XLSX ZIP entry size mismatch."));
                   return;
                 }
                 if (

@@ -50,11 +50,16 @@ describe("structured ingestion", () => {
       hyperlink: "https://example.test/store"
     } as unknown as string;
     row[headers.indexOf("营业日")] = new Date(Date.UTC(2026, 6, 1)) as unknown as string;
+    row[headers.indexOf("下单时间")] = new Date(
+      Date.UTC(2026, 6, 1, 12, 30, 45)
+    ) as unknown as string;
     row[headers.indexOf("菜品销售数量")] = {
       formula: "1+2",
       result: 3
     } as unknown as string;
-    workbook.addWorksheet("Data").addRows([headers, row]);
+    const sheet = workbook.addWorksheet("Data");
+    sheet.addRows([headers, row]);
+    sheet.getRow(2).getCell(headers.indexOf("下单时间") + 1).numFmt = "yyyy-mm-dd hh:mm:ss";
 
     const result = await parseStructuredFile({
       dataset: "dishes",
@@ -70,6 +75,7 @@ describe("structured ingestion", () => {
       product_name: "Rich product",
       store_name: "Linked Store",
       business_date: "2026-07-01",
+      order_time: "2026-07-01T12:30:45",
       dish_sales_quantity: 3
     });
     expect(JSON.stringify(result.rows)).not.toContain("[object Object]");
