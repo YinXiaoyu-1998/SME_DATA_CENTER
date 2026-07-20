@@ -705,3 +705,11 @@
 - Verification: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (40 files, 257 tests), `MYSQL_PORT=3307 npm run test:integration` after loading local `.env`, and `git diff --check` all passed. Repository scan confirms no guards-level MCP concurrency parser/default remains.
 - Commit: `e97590c` (`fix(api): centralize MCP concurrency limits`).
 - Limits/next reviewer: No worker, import, query, or MCP protocol behavior changed beyond honoring the already-documented API concurrency setting through its authoritative typed configuration path.
+
+## 2026-07-20 - codex/phase3-hardening-03-runtime-limits - MCP concurrency code-quality re-review
+
+- Reviewer role: Fresh follow-up code-quality review; product/source/test inspection was read-only before this handoff-only record.
+- Reviewed changes: `e97590c` and `af46466` after prior quality-review commit `f976cc3`.
+- Verdict: Ready to merge. No Critical, Important, or Minor issues found. `MCP_MAX_CONCURRENT_REQUESTS` has one immutable domain default, one API typed-loader parse, and is passed by `buildApiServer` into the MCP route; no legacy guards-level `process.env` parser/default remains. The optional direct `registerMcpHttpRoute` compatibility fallback references only that same domain default, so it does not introduce a second environment-resolution path.
+- Test assessment: The runtime-env test deterministically acquires the sole limiter slot by holding authentication behind a deferred promise, waits for that acquisition signal, verifies the second request receives `503 MCP_BUSY`, then releases and completes the first request. It uses no sleeps or timeout races and proves the API construction path rather than merely a limiter unit.
+- Scope/verification: The product delta is limited to the requested domain/API/MCP configuration wiring, tests, and required progress/handoff records. Fresh focused tests passed (`4 files, 43 tests`), along with `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check`.
