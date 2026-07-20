@@ -112,6 +112,19 @@ describe("structured query compiler", () => {
     expect(compiled.params).not.toContain("store:baoli");
   });
 
+  it("treats an all_staff-only employee label as the all_staff document scope", () => {
+    const compiled = compileStructuredQuery({
+      employee: { role: "employee", labels: ["all_staff"] },
+      orgId: "default-org",
+      query: { dataset: "dishes", select: ["business_date"] },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.sql).toContain("l.key = ?");
+    expect(compiled.params).toContain("all_staff");
+    expect(compiled.params).not.toContain("store:baoli");
+  });
+
   it("limits a non-admin query to all_staff or matching employee labels", () => {
     const compiled = compileStructuredQuery({
       employee: { role: "employee", labels: ["store:baoli"] },
