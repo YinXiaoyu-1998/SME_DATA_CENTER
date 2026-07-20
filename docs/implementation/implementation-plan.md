@@ -89,8 +89,11 @@ Required behavior:
 - every sheet/table in an XLSX must satisfy the dataset structure;
 - controlled header aliases map uploaded headers to canonical fields;
 - entire import fails atomically on validation/date/permission/idempotency/active-window failure;
+- ingestion validates CSV/XLSX format and resource limits before storage or DB publication;
+- exact idempotent replay returns the first persisted document/batch/storage key rather than creating duplicates;
 - imported rows are stored in dataset-specific MySQL tables;
-- structured query is controlled read-only JSON, not raw SQL.
+- structured query is controlled read-only JSON, not raw SQL;
+- numeric/date comparisons, sorting, and aggregates use field-type semantics rather than string ordering.
 
 Active HTTP endpoints:
 
@@ -114,6 +117,15 @@ Done criteria:
 - backend permission filtering;
 - no mutation operators exposed through query;
 - explicit mechanical aggregates are supported only when requested by the query.
+
+### Phase 3 Hardening Baselines
+
+- Organization scope is derived only from the authenticated employee record.
+- Document visibility uses one shared policy: disabled denied, same-org admins allowed on supported management paths, active same-org non-admins allowed by `all_staff` or current label intersection.
+- Structured imports use reservation-first idempotency and deterministic storage keys.
+- Evidence search uses signed opaque cursor pagination; each page reruns retrieval and authorization.
+- Worker processing uses database leases, heartbeat, retry classification, and bounded worker concurrency.
+- Parser/import resource limits and evidence document/chunk limits are enforced from typed runtime config.
 
 ### Removed Legacy Surface
 

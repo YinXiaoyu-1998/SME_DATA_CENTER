@@ -71,26 +71,26 @@ Task 3 implements the env-backed provider factory with `LLM_PROVIDER=fake` as th
 
 ### Runtime Limits
 
-| Variable                                   | Required | Example / Default | Secret? | Used By    | Notes                                                                 |
-| ------------------------------------------ | -------: | ----------------- | ------: | ---------- | --------------------------------------------------------------------- |
-| `MAX_UPLOAD_BYTES`                         |       No | `52428800`        |      No | API        | Multipart and MCP decoded-upload file-size guard (50 MiB).            |
-| `MAX_STRUCTURED_IMPORT_ROWS`               |       No | `100000`          |      No | API        | Structured ingestion safety limit; enforcement is introduced later.   |
-| `MAX_XLSX_SHEETS`                          |       No | `20`              |      No | API        | XLSX ingestion safety limit; enforcement is introduced later.         |
-| `MAX_STRUCTURED_CELL_CHARS`                |       No | `32767`           |      No | API        | Structured cell-size safety limit; enforcement is introduced later.   |
-| `MAX_XLSX_UNCOMPRESSED_BYTES`              |       No | `209715200`       |      No | API        | XLSX archive safety limit; enforcement is introduced later.           |
-| `MAX_XLSX_ZIP_ENTRIES`                     |       No | `10000`           |      No | API        | XLSX archive entry safety limit; enforcement is introduced later.     |
-| `MAX_XLSX_COMPRESSION_RATIO`               |       No | `100`             |      No | API        | XLSX compression-ratio safety limit; enforcement is introduced later. |
-| `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`      |       No | `500`             |      No | API        | Atomic structured row insert batch size.                              |
-| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` |       No | `120000`          |      No | API        | Prisma transaction timeout for atomic XLSX/CSV imports.               |
-| `MCP_MAX_CONCURRENT_REQUESTS`              |       No | `8`               |      No | API `/mcp` | Bounded concurrent Streamable HTTP MCP requests.                      |
-| `MAX_DOCUMENT_CHARS`                       |       No | `5000000`         |      No | worker     | Evidence parser safety limit; enforcement is introduced later.        |
-| `MAX_CHUNKS_PER_DOCUMENT`                  |       No | `5000`            |      No | worker     | Evidence indexing safety limit; enforcement is introduced later.      |
-| `WORKER_CONCURRENCY`                       |       No | `2`               |      No | worker     | Planned global worker concurrency; parsed at startup.                 |
-| `WORKER_LEASE_SECONDS`                     |       No | `120`             |      No | worker     | Planned database lease duration; parsed at startup.                   |
-| `WORKER_POLL_INTERVAL_MS`                  |       No | `1000`            |      No | worker     | Poll interval (minimum `100` ms).                                     |
-| `WORKER_MAX_ATTEMPTS`                      |       No | `3`               |      No | worker     | Planned transient retry cap; parsed at startup.                       |
-| `WORKER_RETRY_BASE_MS`                     |       No | `1000`            |      No | worker     | Planned retry base delay; cannot exceed retry maximum.                |
-| `WORKER_RETRY_MAX_MS`                      |       No | `60000`           |      No | worker     | Planned retry maximum delay.                                          |
+| Variable                                   | Required | Example / Default | Secret? | Used By    | Notes                                                                  |
+| ------------------------------------------ | -------: | ----------------- | ------: | ---------- | ---------------------------------------------------------------------- |
+| `MAX_UPLOAD_BYTES`                         |       No | `52428800`        |      No | API        | Multipart and MCP decoded-upload file-size guard (50 MiB).             |
+| `MAX_STRUCTURED_IMPORT_ROWS`               |       No | `100000`          |      No | API        | Enforced structured ingestion row limit before storage/DB publication. |
+| `MAX_XLSX_SHEETS`                          |       No | `20`              |      No | API        | Enforced XLSX sheet-count limit during ZIP/workbook preflight.         |
+| `MAX_STRUCTURED_CELL_CHARS`                |       No | `32767`           |      No | API        | Enforced structured scalar/cell character limit during ingestion.      |
+| `MAX_XLSX_UNCOMPRESSED_BYTES`              |       No | `209715200`       |      No | API        | Enforced XLSX total uncompressed-size limit during ZIP preflight.      |
+| `MAX_XLSX_ZIP_ENTRIES`                     |       No | `10000`           |      No | API        | Enforced XLSX ZIP central-directory entry-count limit.                 |
+| `MAX_XLSX_COMPRESSION_RATIO`               |       No | `100`             |      No | API        | Enforced XLSX per-entry compression-ratio limit.                       |
+| `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`      |       No | `500`             |      No | API        | Atomic structured row insert batch size.                               |
+| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` |       No | `120000`          |      No | API        | Prisma transaction timeout for atomic XLSX/CSV imports.                |
+| `MCP_MAX_CONCURRENT_REQUESTS`              |       No | `8`               |      No | API `/mcp` | Bounded concurrent Streamable HTTP MCP requests.                       |
+| `MAX_DOCUMENT_CHARS`                       |       No | `5000000`         |      No | worker     | Enforced evidence parser character limit before index publication.     |
+| `MAX_CHUNKS_PER_DOCUMENT`                  |       No | `5000`            |      No | worker     | Enforced evidence chunk-count limit before index publication.          |
+| `WORKER_CONCURRENCY`                       |       No | `2`               |      No | worker     | Enforced bounded worker pool size for the dev loop.                    |
+| `WORKER_LEASE_SECONDS`                     |       No | `120`             |      No | worker     | Enforced database lease duration for claim/heartbeat/complete/fail.    |
+| `WORKER_POLL_INTERVAL_MS`                  |       No | `1000`            |      No | worker     | Poll interval (minimum `100` ms).                                      |
+| `WORKER_MAX_ATTEMPTS`                      |       No | `3`               |      No | worker     | Enforced transient retry cap.                                          |
+| `WORKER_RETRY_BASE_MS`                     |       No | `1000`            |      No | worker     | Enforced exponential retry base delay; cannot exceed retry maximum.    |
+| `WORKER_RETRY_MAX_MS`                      |       No | `60000`           |      No | worker     | Enforced exponential retry maximum delay.                              |
 
 Field registry and retrieval config details are versioned config/DB seed data, not env secrets.
 

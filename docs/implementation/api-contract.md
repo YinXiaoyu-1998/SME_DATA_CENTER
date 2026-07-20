@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-07-18
+Last updated: 2026-07-20
 
 This contract describes the current public surface after the legacy ordinary document upload/search flow was removed.
 
@@ -33,9 +33,13 @@ Local development auth:
 
 Authorization rules:
 
-- evidence and structured data are filtered by org and labels in the API;
+- organization scope always comes from the authenticated employee record; callers must not provide org headers, query fields, or body fields;
+- disabled employees are denied on every business data path;
+- same-org admins can use supported management/status paths for same-org documents;
+- active same-org non-admin employees can access a document when it has `all_staff` or when their current label set intersects the document labels;
+- evidence and structured data are filtered by org and labels in the API using that same document visibility policy;
 - evidence status is visible only to the uploader or an admin;
-- structured import status and query results must not leak inaccessible source document names, row counts, or existence;
+- structured import status and query results must not leak inaccessible source document names, row counts, sheet summaries, validation errors, dataset, window, or existence;
 - not-found and inaccessible resources should use the same non-leaking error shape where practical.
 
 ## Active Public HTTP Surface
@@ -43,7 +47,6 @@ Authorization rules:
 | Method | Path                                        | Purpose                                      |
 | ------ | ------------------------------------------- | -------------------------------------------- |
 | `GET`  | `/healthz`                                  | Liveness                                     |
-| `GET`  | `/readyz`                                   | Runtime readiness                            |
 | `POST` | `/auth/dev-login`                           | Local seeded employee login                  |
 | `GET`  | `/me`                                       | Current employee/session metadata            |
 | `GET`  | `/labels`                                   | Label catalog                                |
@@ -56,6 +59,10 @@ Authorization rules:
 | `GET`  | `/v1/structured/imports/:importBatchId`     | Structured import status                     |
 | `GET`  | `/v1/structured/datasets`                   | Structured dataset schema discovery          |
 | `POST` | `/v1/structured/query`                      | Controlled read-only structured query        |
+
+## Deferred HTTP Surface
+
+`GET /readyz` is not an active public HTTP endpoint in Phase 3. Runtime readiness is checked by the local script `npm run readyz:local`; an HTTP readiness endpoint is a Phase 4 staging/runtime capability and should not be documented as callable until it is implemented and route-tested.
 
 ## Removed Legacy Public Surface
 
@@ -163,7 +170,8 @@ Request shape:
     "labelKeys": ["store:baoli"],
     "fileTypes": ["md", "txt", "docx"]
   },
-  "limit": 10
+  "limit": 10,
+  "cursor": "optional_opaque_cursor_from_previous_page"
 }
 ```
 
@@ -189,11 +197,23 @@ Response shape:
     "configVersion": "phase3.retrieval.v1",
     "provider": "fake"
   },
-  "warnings": []
+  "warnings": [],
+  "cursor": "opaque_next_page_cursor_or_null"
 }
 ```
 
 The API searches only visible active evidence documents with ready indexes. It returns evidence, not final answers.
+
+Evidence pagination uses a signed opaque offset cursor with a 900-second TTL. The cursor is scoped to the authenticated org, employee, role, current label digest, normalized query/filters, requested limit, retrieval config version, and next offset. Each page reruns retrieval and backend authorization before slicing results; the cursor is not a cached result set and cannot be reused after document visibility changes.
+
+Cursor failures:
+
+| Code             | HTTP | Meaning                                                                 |
+| ---------------- | ---: | ----------------------------------------------------------------------- |
+| `INVALID_CURSOR` |  400 | Malformed, tampered, or scope/query/filter/limit/config mismatch cursor |
+| `CURSOR_EXPIRED` |  400 | Cursor signature is valid but the 900-second TTL has expired            |
+
+When the fixed 200-candidate retrieval window is reached, responses include `EVIDENCE_CANDIDATE_WINDOW_TRUNCATED` in `warnings`; clients should treat that as a bounded-window warning, not proof that every possible match was traversed.
 
 ## Structured Import
 
@@ -216,8 +236,11 @@ Behavior:
 - validates every sheet/table atomically;
 - supports controlled header aliases mapping into canonical fields;
 - rejects the whole file if structure, date window, labels, or active-window rules fail;
+- reserves `Document`, `ImportBatch`, window claim, deterministic object key, and started audit in MySQL before writing storage;
 - stores the original file with canonical metadata;
-- writes each row into the dataset-specific MySQL table;
+- writes each row into the dataset-specific MySQL table and applies the batch in one transaction;
+- exact replay of the same `idempotencyKey` and request fingerprint returns the originally persisted `documentId`, `importBatchId`, storage key, and status without writing duplicate storage objects, rows, claims, or audits;
+- same idempotency key with a different fingerprint returns a conflict before durable side effects;
 - does not use the evidence worker path.
 
 Response shape:
@@ -226,7 +249,8 @@ Response shape:
 {
   "document": {
     "documentId": "doc_...",
-    "status": "active"
+    "status": "active",
+    "storageObjectKey": "orgs/org_.../documents/doc_.../source.csv"
   },
   "importBatch": {
     "importBatchId": "batch_...",
@@ -242,6 +266,8 @@ Response shape:
 ### `GET /v1/structured/imports/:importBatchId`
 
 Returns import status and validation/application metadata for visible import batches only.
+
+Missing, cross-org, disabled, or same-org-but-label-inaccessible batches all return the same non-enumerating `404`/`IMPORT_BATCH_NOT_FOUND` shape. The response must not include dataset, date window, row counts, sheet summaries, error IDs, or validation details unless the caller is currently authorized for the source document under the shared document visibility policy.
 
 ## Structured Dataset Discovery
 
@@ -259,6 +285,8 @@ Supported datasets:
 ### `POST /v1/structured/query`
 
 This is a controlled read-only JSON API. It is semantically similar to a constrained SQL `SELECT`, but clients never send SQL.
+
+Structured query evaluates document visibility with the same policy used by evidence and import status: same org first, disabled denied, same-org admin access, then `all_staff` or current label intersection for non-admins. Numeric, date, and boolean fields use typed SQL expressions for filters, sorting, `min`, `max`, `sum`, and `avg`; string fields keep text semantics. The public response scalar representation remains compatible with the current schema.
 
 Example detail-row request:
 
@@ -302,6 +330,8 @@ Unsupported:
 - formulas/window functions;
 - natural-language query generation;
 - service-side business conclusions.
+
+Structured query cursors are opaque, signed, and scoped to org, employee, role, sorted current labels, registry/query shape, filter, sort, and limit. Changing employee, organization, role, label set, or query shape invalidates the cursor rather than silently reusing an old authorization scope.
 
 ## MCP Tools
 
@@ -349,3 +379,11 @@ MYSQL_PORT=3307 npm run test:mcp
 npm run test:phase3:golden
 npm run test:phase3:perf
 ```
+
+Current Phase 3 hardening integration proofs include:
+
+- `phase3_structured_concurrent_exact_replay`
+- `phase3_structured_storage_and_apply_recovery`
+- `phase3_worker_lease_crash_recovery`
+- `phase3_structured_typed_query`
+- `phase3_evidence_signed_pagination`
