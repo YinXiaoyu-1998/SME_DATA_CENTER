@@ -9,8 +9,8 @@
 
 ## Active Workstreams
 
-| Workstream                               | Branch                                    | Owner/Agent    | Status      | PR      | Notes                                                                |
-| ---------------------------------------- | ----------------------------------------- | -------------- | ----------- | ------- | -------------------------------------------------------------------- |
+| Workstream                               | Branch                                    | Owner/Agent    | Status           | PR      | Notes                                                                                                                 |
+| ---------------------------------------- | ----------------------------------------- | -------------- | ---------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
 | Phase 3 document authorization hardening | `codex/phase3-hardening-02-authorization` | Codex subagent | Complete locally | Pending | Unified shared document policy for import status/query authorization; full local checks and MySQL integration passed. |
 
 | Workstream                             | Branch                                          | Owner/Agent                                              | Status           | PR                                                                  | Notes                                                                                                                                                                                                                                                                                                                                                                                                     |
