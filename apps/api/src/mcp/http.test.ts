@@ -37,6 +37,15 @@ const adminEmployee: AuthenticatedEmployee = {
   labels: ["all_staff", "person:mcp.admin", "store:baoli"]
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return { promise, resolve };
+}
+
 function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {
   return {
     async findByEmail(email: string) {
@@ -470,6 +479,42 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
 
     expect(response.statusCode).toBe(413);
     expectErrorCode(response.json<McpErrorBody>(), "MCP_REQUEST_TOO_LARGE");
+  });
+
+  it("uses the typed MCP concurrency override from API construction", async () => {
+    const firstAuthenticationStarted = deferred<void>();
+    const firstAuthentication = deferred<AuthenticatedEmployee>();
+    let findByIdCalls = 0;
+
+    app = buildMcpTestServer({
+      employeeRepository: {
+        async findByEmail(email) {
+          return email === employee.email ? employee : null;
+        },
+        findById() {
+          findByIdCalls += 1;
+
+          if (findByIdCalls === 1) {
+            firstAuthenticationStarted.resolve();
+            return firstAuthentication.promise;
+          }
+
+          return Promise.resolve(employee);
+        }
+      },
+      runtimeEnv: { MCP_MAX_CONCURRENT_REQUESTS: "1" }
+    });
+
+    const firstRequest = postMcp(app, initializeRequest(10));
+    await firstAuthenticationStarted.promise;
+
+    const rejectedRequest = await postMcp(app, initializeRequest(11));
+
+    expect(rejectedRequest.statusCode).toBe(503);
+    expectErrorCode(rejectedRequest.json<McpErrorBody>(), "MCP_BUSY");
+
+    firstAuthentication.resolve(employee);
+    expect((await firstRequest).statusCode).toBe(200);
   });
 
   it("rejects invalid client-supplied MCP request IDs before SDK handoff", async () => {

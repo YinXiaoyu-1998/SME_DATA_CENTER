@@ -2,7 +2,6 @@ import { isIP } from "node:net";
 
 const DEFAULT_PHASE3_SERVICE_LISTEN_HOST = "127.0.0.1";
 const MCP_JSON_ENVELOPE_OVERHEAD_BYTES = 64 * 1024;
-const DEFAULT_MCP_MAX_CONCURRENT_REQUESTS = 8;
 const MAX_MCP_REQUEST_ID_BYTES = 128;
 const SAFE_MCP_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
 
@@ -106,22 +105,6 @@ export function mcpBodyLimitBytes(maxUploadBytes: number): number {
   const base64Bytes = Math.ceil((maxUploadBytes * 4) / 3);
 
   return Math.min(Number.MAX_SAFE_INTEGER, base64Bytes + MCP_JSON_ENVELOPE_OVERHEAD_BYTES);
-}
-
-export function mcpMaxConcurrentRequestsFromEnv(env: NodeJS.ProcessEnv = process.env): number {
-  const rawValue = env["MCP_MAX_CONCURRENT_REQUESTS"]?.trim();
-
-  if (!rawValue) {
-    return DEFAULT_MCP_MAX_CONCURRENT_REQUESTS;
-  }
-
-  const parsed = Number(rawValue);
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error("MCP_MAX_CONCURRENT_REQUESTS must be a positive integer.");
-  }
-
-  return parsed;
 }
 
 export function createMcpConcurrencyLimiter(maxConcurrentRequests: number) {

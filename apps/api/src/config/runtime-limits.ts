@@ -2,6 +2,7 @@ import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@enterp
 
 export interface ApiRuntimeLimits {
   maxUploadBytes: number;
+  mcpMaxConcurrentRequests: number;
   maxStructuredImportRows: number;
   maxXlsxSheets: number;
   maxStructuredCellChars: number;
@@ -16,6 +17,9 @@ export function loadApiRuntimeLimits(env: NodeJS.ProcessEnv): ApiRuntimeLimits {
   return {
     maxUploadBytes: parsePositiveSafeInteger(env, "MAX_UPLOAD_BYTES", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes
+    }),
+    mcpMaxConcurrentRequests: parsePositiveSafeInteger(env, "MCP_MAX_CONCURRENT_REQUESTS", {
+      defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.mcpMaxConcurrentRequests
     }),
     maxStructuredImportRows: parsePositiveSafeInteger(env, "MAX_STRUCTURED_IMPORT_ROWS", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxStructuredImportRows

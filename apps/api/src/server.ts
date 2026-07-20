@@ -1074,6 +1074,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   registerMcpHttpRoute(app, {
     maxUploadBytes: runtimeLimits.maxUploadBytes,
+    mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
     authenticate: async (request, reply) => {
       const authenticated = await authenticate(request, reply, repository, jwtSecret);
 

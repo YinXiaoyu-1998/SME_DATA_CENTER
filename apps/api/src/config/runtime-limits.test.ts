@@ -5,6 +5,7 @@ describe("API runtime limits", () => {
   it("uses the documented defaults", () => {
     expect(loadApiRuntimeLimits({})).toEqual({
       maxUploadBytes: 52_428_800,
+      mcpMaxConcurrentRequests: 8,
       maxStructuredImportRows: 100_000,
       maxXlsxSheets: 20,
       maxStructuredCellChars: 32_767,
@@ -20,6 +21,7 @@ describe("API runtime limits", () => {
     expect(
       loadApiRuntimeLimits({
         MAX_UPLOAD_BYTES: "1",
+        MCP_MAX_CONCURRENT_REQUESTS: "2",
         MAX_STRUCTURED_IMPORT_ROWS: "2",
         MAX_XLSX_SHEETS: "3",
         MAX_STRUCTURED_CELL_CHARS: "4",
@@ -31,6 +33,7 @@ describe("API runtime limits", () => {
       })
     ).toEqual({
       maxUploadBytes: 1,
+      mcpMaxConcurrentRequests: 2,
       maxStructuredImportRows: 2,
       maxXlsxSheets: 3,
       maxStructuredCellChars: 4,

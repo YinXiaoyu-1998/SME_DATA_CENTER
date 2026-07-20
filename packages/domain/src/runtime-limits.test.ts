@@ -5,6 +5,7 @@ describe("Phase 3 runtime limit primitives", () => {
   it("provides the authoritative immutable defaults", () => {
     expect(PHASE3_RUNTIME_LIMIT_DEFAULTS).toEqual({
       maxUploadBytes: 52_428_800,
+      mcpMaxConcurrentRequests: 8,
       maxStructuredImportRows: 100_000,
       maxXlsxSheets: 20,
       maxStructuredCellChars: 32_767,

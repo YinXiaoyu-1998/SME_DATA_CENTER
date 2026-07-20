@@ -3,14 +3,13 @@ import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { InjectOptions, InjectPayload, Response as InjectResponse } from "light-my-request";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { PHASE3_RUNTIME_LIMIT_DEFAULTS, type AuthenticatedEmployee } from "@enterprise-hub/domain";
 import {
   createMcpConcurrencyLimiter,
   isLoopbackAddress,
   isLoopbackHost,
   isSafeMcpRequestId,
-  mcpBodyLimitBytes,
-  mcpMaxConcurrentRequestsFromEnv
+  mcpBodyLimitBytes
 } from "./guards.js";
 import { createEnterpriseHubHttpMcpServer } from "./server.js";
 import {
@@ -21,6 +20,7 @@ import {
 
 export interface McpHttpRouteOptions {
   maxUploadBytes: number;
+  mcpMaxConcurrentRequests?: number;
   authenticate: (
     request: FastifyRequest,
     reply: FastifyReply
@@ -38,7 +38,9 @@ interface McpErrorBody {
 }
 
 export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRouteOptions): void {
-  const limiter = createMcpConcurrencyLimiter(mcpMaxConcurrentRequestsFromEnv());
+  const limiter = createMcpConcurrencyLimiter(
+    options.mcpMaxConcurrentRequests ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.mcpMaxConcurrentRequests
+  );
   const bodyLimit = mcpBodyLimitBytes(options.maxUploadBytes);
   const releasesByRequest = new WeakMap<FastifyRequest, () => void>();
   const employeesByRequest = new WeakMap<FastifyRequest, AuthenticatedEmployee>();
