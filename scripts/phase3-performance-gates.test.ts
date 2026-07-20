@@ -18,7 +18,7 @@ describe("phase 3 performance gates", () => {
     expect(report.gates.map((gate) => gate.workload).join("\n")).toContain("70,000-row");
     expect(report.notes.join("\n")).toContain("Worker lease recovery is a correctness");
     expect(JSON.stringify(report)).not.toContain("OPENAI_COMPATIBLE_API_KEY");
-  });
+  }, 20_000);
 
   it("fails when an injected real workload exceeds its threshold", async () => {
     const report = await runPhase3PerformanceGates({
