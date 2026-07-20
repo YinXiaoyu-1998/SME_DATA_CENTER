@@ -9,6 +9,10 @@
 
 ## Active Workstreams
 
+| Workstream                        | Branch                                     | Owner/Agent    | Status      | PR      | Notes                                                                                                                                                                    |
+| --------------------------------- | ------------------------------------------ | -------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Phase 3 safe structured ingestion | `codex/phase3-hardening-04-safe-ingestion` | Codex subagent | In progress | Pending | Started from `2b4c05c85be384fe09bc689ce623404a9fbcb35c`; replacing duplicated CSV/XLSX parsing with a shared hardened workspace package under strict RED-GREEN-REFACTOR. |
+
 | Workstream                               | Branch                                    | Owner/Agent    | Status           | PR      | Notes                                                                                                                 |
 | ---------------------------------------- | ----------------------------------------- | -------------- | ---------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
 | Phase 3 document authorization hardening | `codex/phase3-hardening-02-authorization` | Codex subagent | Complete locally | Pending | Unified shared document policy for import status/query authorization; full local checks and MySQL integration passed. |
@@ -387,3 +391,7 @@
 - [x] Start Phase 3 hardening Task 3 runtime-limit configuration on `codex/phase3-hardening-03-runtime-limits`; baseline inspection is complete and RED-first implementation is in progress.
 - [x] Complete Phase 3 hardening Task 3 runtime-limit configuration: typed startup validation, API/MCP upload wiring, central import timeout/batch configuration, truthful environment documentation, and full local verification passed.
 - [x] Complete Task 3 MCP concurrency configuration rework: the API-owned typed runtime limit now controls the route limiter, and the runtime-env override has deterministic MCP `MCP_BUSY` coverage.
+- [x] Start Phase 3 hardening Task 4 safe structured-ingestion completion on `codex/phase3-hardening-04-safe-ingestion`; auditing the accepted `50dd9e0` baseline with RED/GREEN adversarial parser and route-atomicity coverage.
+- [x] Complete Phase 3 hardening Task 4 safe structured ingestion: comprehensive CSV/XLSX adversarial parsing and ZIP preflight coverage, deliberate ExcelJS values, pre-publication API atomicity proof, real Maijia fixture profile/import proof, and local MySQL/Qdrant integration verification.
+- [x] Complete Phase 3 hardening Task 4 fresh-review rework: correct percent scalar preservation; bounded streamed ZIP preflight; consistent CSV/profile limits; and uncached-formula rejection, with full unit and local integration verification.
+- [x] Complete lead-agent Task 4 acceptance after the subagent stop request: preserve XLSX date-time cell precision, abort forged ZIP entries at the first declared-size overrun, and pass the full static, unit, dependency-audit, and MySQL integration gates.

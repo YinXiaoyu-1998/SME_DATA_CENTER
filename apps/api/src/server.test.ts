@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { utils, write } from "xlsx";
+import ExcelJS from "exceljs";
 import type { FastifyInstance } from "fastify";
 import type {
   AuthenticatedEmployee,
@@ -718,16 +718,21 @@ function validStructuredCsv(
   return `${registry.fields.map((field) => field.sourceColumn).join(",")}\n${values.join(",")}\n`;
 }
 
-function structuredWorkbook(input: {
+async function structuredWorkbook(input: {
   dataset: StructuredDatasetName;
   includeHiddenSheet?: boolean;
   includeExplanationSheet?: boolean;
   prefaceRows?: string[][];
+  rowCount?: number;
+  cellOverrides?: Record<string, unknown>;
 }) {
   const registry = getStructuredRegistry(input.dataset);
-  const workbook = utils.book_new();
+  const workbook = new ExcelJS.Workbook();
   const headers = registry.fields.map((field) => field.sourceColumn);
-  const row = registry.fields.map((field, index) => {
+  const row = registry.fields.map((field, index): unknown => {
+    if (input.cellOverrides?.[field.canonicalName] !== undefined) {
+      return input.cellOverrides[field.canonicalName];
+    }
     if (field.canonicalName === "business_date") {
       return "2026-07-02";
     }
@@ -750,28 +755,23 @@ function structuredWorkbook(input: {
 
     return `value_${index + 1}`;
   });
-  utils.book_append_sheet(
-    workbook,
-    utils.aoa_to_sheet([...(input.prefaceRows ?? []), headers, row]),
-    "Data"
-  );
+  workbook
+    .addWorksheet("Data")
+    .addRows([
+      ...(input.prefaceRows ?? []),
+      headers,
+      ...Array.from({ length: input.rowCount ?? 1 }, () => row)
+    ]);
 
   if (input.includeHiddenSheet) {
-    utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, row]), "HiddenData");
-    workbook.Workbook ??= {};
-    workbook.Workbook.Sheets ??= [];
-    workbook.Workbook.Sheets[1] = { Hidden: 1 };
+    workbook.addWorksheet("HiddenData", { state: "hidden" }).addRows([headers, row]);
   }
 
   if (input.includeExplanationSheet) {
-    utils.book_append_sheet(
-      workbook,
-      utils.aoa_to_sheet([["说明"], ["这个 sheet 不是结构化数据"]]),
-      "Explanation"
-    );
+    workbook.addWorksheet("Explanation").addRows([["说明"], ["这个 sheet 不是结构化数据"]]);
   }
 
-  return Buffer.from(write(workbook, { bookType: "xlsx", type: "buffer" }) as Buffer);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
 function createStructuredImportMultipart(input: {
@@ -1635,14 +1635,26 @@ describe("structured imports", () => {
   });
 
   async function buildStructuredImportTestServer(
-    employees: AuthenticatedEmployee[] = [adminEmployee, baoliManagerEmployee]
+    employees: AuthenticatedEmployee[] = [adminEmployee, baoliManagerEmployee],
+    options: { runtimeEnv?: NodeJS.ProcessEnv } = {}
   ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
     const documentRepository = createDocumentRepository();
     const structuredImportRepository = createInMemoryStructuredImportRepository(
       documentRepository.documents
     );
-    const storageAdapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const localStorage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    let storagePutCalls = 0;
+    const storageAdapter: StorageAdapter = {
+      async putObject(input) {
+        storagePutCalls++;
+        return localStorage.putObject(input);
+      },
+      getObjectStream: localStorage.getObjectStream.bind(localStorage),
+      statObject: localStorage.statObject.bind(localStorage),
+      createDownloadUrl: localStorage.createDownloadUrl.bind(localStorage),
+      deleteObject: localStorage.deleteObject.bind(localStorage)
+    };
 
     app = buildApiServer({
       employeeRepository: createRepository(employees),
@@ -1651,7 +1663,8 @@ describe("structured imports", () => {
       storageAdapter,
       jwtSecret,
       enableDevLogin: true,
-      logger: false
+      logger: false,
+      runtimeEnv: options.runtimeEnv
     } as Parameters<typeof buildApiServer>[0] & {
       structuredImportRepository: unknown;
     });
@@ -1659,7 +1672,8 @@ describe("structured imports", () => {
     return {
       app,
       documentRepository,
-      structuredImportRepository
+      structuredImportRepository,
+      storagePutCalls: () => storagePutCalls
     };
   }
 
@@ -1758,7 +1772,7 @@ describe("structured imports", () => {
       idempotencyKey: "xlsx-preface-success",
       fileName: "麦家菜品记录.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({
+      body: await structuredWorkbook({
         dataset: "dishes",
         prefaceRows: [["菜品主题数据"], ["统计时间：2026-07-01 至 2026-07-05"]]
       })
@@ -1865,13 +1879,13 @@ describe("structured imports", () => {
       idempotencyKey: "hidden-sheet",
       fileName: "hidden.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
+      body: await structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
     });
     const explanationSheetResponse = await postStructuredImport(app, {
       idempotencyKey: "explanation-sheet",
       fileName: "explanation.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
+      body: await structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
     });
 
     expect(invalidCsvResponse.statusCode).toBe(400);
@@ -1887,6 +1901,69 @@ describe("structured imports", () => {
       error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
     });
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
+  });
+
+  it("does not publish malformed or over-limit CSV/XLSX imports to storage or durable repositories", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer(undefined, {
+        runtimeEnv: {
+          MAX_STRUCTURED_IMPORT_ROWS: "1",
+          MAX_STRUCTURED_CELL_CHARS: "100"
+        } as NodeJS.ProcessEnv
+      });
+    const validCsvLines = validStructuredCsv("dishes").trim().split("\n");
+    const overLimitCsv = Buffer.from(
+      `${validCsvLines[0]}\n${validCsvLines[1]}\n${validCsvLines[1]}\n`,
+      "utf8"
+    );
+
+    const responses = await Promise.all([
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-malformed-csv",
+        body: Buffer.from("unknown\nvalue\n", "utf8")
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-over-limit-csv",
+        body: overLimitCsv
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-long-cell-csv",
+        body: Buffer.from(validStructuredCsv("dishes", { product_name: "x".repeat(101) }), "utf8")
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-malformed-xlsx",
+        fileName: "malformed.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00])
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-over-limit-xlsx",
+        fileName: "over-limit.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: await structuredWorkbook({ dataset: "dishes", rowCount: 2 })
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-unevaluated-formula-xlsx",
+        fileName: "unevaluated-formula.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: await structuredWorkbook({
+          dataset: "dishes",
+          cellOverrides: { product_name: { formula: "1+1" } }
+        })
+      })
+    ]);
+
+    for (const response of responses) {
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
+      });
+    }
+    expect(storagePutCalls()).toBe(0);
+    expect(documentRepository.documents).toHaveLength(0);
+    expect(documentRepository.auditLogs).toHaveLength(0);
+    expect(structuredImportRepository.batches).toHaveLength(0);
+    expect(structuredImportRepository.rows).toHaveLength(0);
   });
 
   it("retains rows but makes them non-queryable when the source document is archived", async () => {
