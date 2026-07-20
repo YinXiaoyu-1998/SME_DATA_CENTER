@@ -20,13 +20,13 @@ const baoliManagerEmployee: AuthenticatedEmployee = {
   labels: ["all_staff", "person:baoli.manager", "store:baoli"]
 };
 
-const allStaffOnlyEmployee: AuthenticatedEmployee = {
-  id: "emp_all_staff_only",
+const labelLessEmployee: AuthenticatedEmployee = {
+  id: "emp_label_less",
   orgId: "default-org",
-  email: "all.staff.only@example.com",
+  email: "label.less@example.com",
   role: "employee",
   disabled: false,
-  labels: ["all_staff"]
+  labels: []
 };
 
 function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {
@@ -223,10 +223,10 @@ describe("structured query API", () => {
     expect(structuredQueryRepository.calls).toHaveLength(0);
   });
 
-  it("returns DATASET_FORBIDDEN without executing SQL when the employee has no dataset labels", async () => {
+  it("executes the all_staff scope for an employee with no labels", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
-      employeeRepository: createRepository([allStaffOnlyEmployee]),
+      employeeRepository: createRepository([labelLessEmployee]),
       structuredQueryRepository,
       jwtSecret,
       enableDevLogin: true,
@@ -237,7 +237,7 @@ describe("structured query API", () => {
       method: "POST",
       url: "/v1/structured/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(allStaffOnlyEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(labelLessEmployee)}`
       },
       payload: {
         dataset: "dishes",
@@ -245,13 +245,9 @@ describe("structured query API", () => {
       }
     });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "DATASET_FORBIDDEN"
-      }
-    });
-    expect(structuredQueryRepository.calls).toHaveLength(0);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ rows: [], nextCursor: null });
+    expect(structuredQueryRepository.calls).toHaveLength(1);
   });
 
   it("returns an empty 200 response when no authorized rows are visible", async () => {

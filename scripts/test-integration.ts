@@ -122,6 +122,13 @@ try {
   );
   const auth = authorizationHeader(login.accessToken);
 
+  const adminLogin = await apiJson<LoginResponse>("/auth/dev-login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "admin@example.com" })
+  });
+  const adminAuth = authorizationHeader(adminLogin.accessToken);
+
   const structuredForm = new FormData();
   structuredForm.append(
     "file",
@@ -153,6 +160,70 @@ try {
   assert(
     structuredQuery.rows[0]?.["row_count"] === 1,
     "Structured query should return imported row count."
+  );
+
+  const allStaffStructuredForm = new FormData();
+  allStaffStructuredForm.append(
+    "file",
+    new Blob([
+      await readFile(
+        path.join(
+          rootDir,
+          "fixtures",
+          "structured",
+          "maijia_business_20260706_20260712_first1000.xlsx"
+        )
+      )
+    ]),
+    "maijia_business_20260706_20260712_first1000.xlsx"
+  );
+  allStaffStructuredForm.append("dataset", "business");
+  allStaffStructuredForm.append("enterprise_name", "Integration All Staff");
+  allStaffStructuredForm.append("startDate", "20260706");
+  allStaffStructuredForm.append("endDate", "20260712");
+  allStaffStructuredForm.append("idempotencyKey", `integration-all-staff-${Date.now()}`);
+  allStaffStructuredForm.append("labelKeys[]", "all_staff");
+  const allStaffStructuredUpload = await apiJson<StructuredUploadResponse>(
+    "/v1/structured/imports",
+    {
+      method: "POST",
+      headers: adminAuth,
+      body: allStaffStructuredForm
+    }
+  );
+  assert(
+    allStaffStructuredUpload.importBatch.status === "applied" &&
+      allStaffStructuredUpload.importBatch.appliedRowCount > 0,
+    "Admin should import the all_staff structured fixture."
+  );
+
+  const allStaffStructuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({ dataset: "business", aggregates: [{ op: "count", as: "row_count" }] })
+  });
+  assert(
+    Number(allStaffStructuredQuery.rows[0]?.["row_count"]) > 0,
+    "A non-admin should query the imported all_staff row."
+  );
+
+  const suzhouLogin = await apiJson<LoginResponse>("/auth/dev-login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "suzhou.manager@example.com" })
+  });
+  const inaccessibleImportStatus = await fetch(
+    `${apiUrl}/v1/structured/imports/${encodeURIComponent(structuredUpload.importBatch.importBatchId)}`,
+    { headers: authorizationHeader(suzhouLogin.accessToken) }
+  );
+  const inaccessibleImportBody = (await inaccessibleImportStatus.json()) as {
+    error?: { code?: string; message?: string };
+  };
+  assert(
+    inaccessibleImportStatus.status === 404 &&
+      inaccessibleImportBody.error?.code === "IMPORT_BATCH_NOT_FOUND" &&
+      inaccessibleImportBody.error.message === "Import batch not found.",
+    "An inaccessible same-org import status must be non-enumerating."
   );
 
   const evidencePath = path.join(integrationRoot, "phase3-evidence.md");
@@ -212,6 +283,9 @@ try {
           "api_login",
           "phase3_structured_import",
           "phase3_structured_query",
+          "phase3_structured_all_staff_import",
+          "phase3_structured_all_staff_query",
+          "phase3_structured_import_status_non_enumeration",
           "phase3_evidence_upload_worker_status_search"
         ]
       },

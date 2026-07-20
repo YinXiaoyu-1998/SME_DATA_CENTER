@@ -85,6 +85,24 @@ const orgBAdminEmployee: AuthenticatedEmployee = {
   labels: ["all_staff", "person:org-b.admin"]
 };
 
+const labelLessEmployee: AuthenticatedEmployee = {
+  id: "emp_label_less",
+  orgId: "default-org",
+  email: "label.less@example.com",
+  role: "employee",
+  disabled: false,
+  labels: []
+};
+
+const unlabeledAdminEmployee: AuthenticatedEmployee = {
+  id: "emp_unlabeled_admin",
+  orgId: "default-org",
+  email: "unlabeled.admin@example.com",
+  role: "admin",
+  disabled: false,
+  labels: []
+};
+
 function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {
   return {
     async findByEmail(email: string) {
@@ -1472,8 +1490,10 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         (row) => row.dataset === dataset && documentStatus.get(row.sourceDocumentId) === "active"
       ).length;
     },
-    async findImportBatch(_orgId: string, importBatchId: string) {
-      const batch = batches.find((candidate) => candidate.id === importBatchId);
+    async findImportBatch(orgId: string, importBatchId: string) {
+      const batch = batches.find(
+        (candidate) => candidate.id === importBatchId && candidate.orgId === orgId
+      );
 
       if (!batch) {
         return null;
@@ -1484,6 +1504,7 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
 
       return {
         ...batch,
+        sourceDocumentLabelKeys: sourceDocument?.labels ?? [],
         status: sourceDocument?.status === "archived" ? "archived" : batch.status,
         queryableRowCount
       };
@@ -1613,7 +1634,9 @@ describe("structured imports", () => {
     }
   });
 
-  async function buildStructuredImportTestServer() {
+  async function buildStructuredImportTestServer(
+    employees: AuthenticatedEmployee[] = [adminEmployee, baoliManagerEmployee]
+  ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
     const documentRepository = createDocumentRepository();
     const structuredImportRepository = createInMemoryStructuredImportRepository(
@@ -1622,7 +1645,7 @@ describe("structured imports", () => {
     const storageAdapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
 
     app = buildApiServer({
-      employeeRepository: createRepository([adminEmployee, baoliManagerEmployee]),
+      employeeRepository: createRepository(employees),
       documentRepository,
       structuredImportRepository,
       storageAdapter,
@@ -1642,7 +1665,8 @@ describe("structured imports", () => {
 
   async function postStructuredImport(
     server: FastifyInstance,
-    input: Parameters<typeof createStructuredImportMultipart>[0] = {}
+    input: Parameters<typeof createStructuredImportMultipart>[0] = {},
+    employee: AuthenticatedEmployee = baoliManagerEmployee
   ) {
     const multipartBody = createStructuredImportMultipart(input);
 
@@ -1650,7 +1674,7 @@ describe("structured imports", () => {
       method: "POST",
       url: "/v1/structured/imports",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`,
+        authorization: `Bearer ${await accessTokenFor(employee)}`,
         "content-type": multipartBody.contentType
       },
       payload: multipartBody.body
@@ -1898,6 +1922,82 @@ describe("structured imports", () => {
         queryableRowCount: 0
       }
     });
+  });
+
+  it("returns import status only to same-org callers authorized by source document labels", async () => {
+    const { app } = await buildStructuredImportTestServer([
+      adminEmployee,
+      baoliManagerEmployee,
+      suzhouManagerEmployee,
+      labelLessEmployee,
+      unlabeledAdminEmployee,
+      disabledEmployee,
+      orgBAdminEmployee
+    ]);
+
+    const matchingImport = await postStructuredImport(app, {
+      idempotencyKey: "status-matching",
+      labelKeys: ["store:baoli"]
+    });
+    const allStaffImport = await postStructuredImport(
+      app,
+      {
+        idempotencyKey: "status-all-staff",
+        dataset: "business",
+        body: Buffer.from(validStructuredCsv("business"), "utf8"),
+        labelKeys: ["all_staff"]
+      },
+      adminEmployee
+    );
+    const matchingBatchId = matchingImport.json().importBatch.importBatchId;
+    const allStaffBatchId = allStaffImport.json().importBatch.importBatchId;
+
+    const matching = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}` }
+    });
+    const allStaff = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${allStaffBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(labelLessEmployee)}` }
+    });
+    const admin = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(unlabeledAdminEmployee)}` }
+    });
+    const noMatch = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(suzhouManagerEmployee)}` }
+    });
+    const disabled = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(disabledEmployee)}` }
+    });
+    const crossOrg = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(orgBAdminEmployee)}` }
+    });
+
+    for (const response of [matching, allStaff, admin]) {
+      expect(response.statusCode).toBe(200);
+      expect(JSON.stringify(response.json())).not.toContain("sourceDocumentLabelKeys");
+    }
+    for (const response of [noMatch, crossOrg]) {
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({
+        error: { code: "IMPORT_BATCH_NOT_FOUND", message: "Import batch not found." }
+      });
+      expect(JSON.stringify(response.json())).not.toMatch(
+        /dataset|startDate|endDate|totalRowCount|sourceSheetSummary|validationErrors/
+      );
+    }
+    expect(disabled.statusCode).toBe(403);
+    expect(disabled.json()).toMatchObject({ error: { code: "EMPLOYEE_DISABLED" } });
   });
 });
 

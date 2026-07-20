@@ -63,6 +63,7 @@ describe("structured query compiler", () => {
       "applied",
       "structured",
       "active",
+      "all_staff",
       "store:baoli",
       "$.business_date",
       "2026-07-01",
@@ -73,6 +74,83 @@ describe("structured query compiler", () => {
       50,
       0
     ]);
+  });
+
+  it("omits label predicates for an admin", () => {
+    const compiled = compileStructuredQuery({
+      employee: { role: "admin", labels: [] },
+      orgId: "default-org",
+      query: { dataset: "dishes", select: ["business_date"] },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.sql).not.toContain("document_labels");
+    expect(compiled.params).toEqual([
+      "$.business_date",
+      "default-org",
+      "default-org",
+      "default-org",
+      "dishes",
+      "applied",
+      "structured",
+      "active",
+      50,
+      0
+    ]);
+  });
+
+  it("permits a non-admin without labels to query all_staff documents", () => {
+    const compiled = compileStructuredQuery({
+      employee: { role: "employee", labels: [] },
+      orgId: "default-org",
+      query: { dataset: "dishes", select: ["business_date"] },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.sql).toContain("l.key = ?");
+    expect(compiled.params).toContain("all_staff");
+    expect(compiled.params).not.toContain("store:baoli");
+  });
+
+  it("treats an all_staff-only employee label as the all_staff document scope", () => {
+    const compiled = compileStructuredQuery({
+      employee: { role: "employee", labels: ["all_staff"] },
+      orgId: "default-org",
+      query: { dataset: "dishes", select: ["business_date"] },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.sql).toContain("l.key = ?");
+    expect(compiled.params).toContain("all_staff");
+    expect(compiled.params).not.toContain("store:baoli");
+  });
+
+  it("limits a non-admin query to all_staff or matching employee labels", () => {
+    const compiled = compileStructuredQuery({
+      employee: { role: "employee", labels: ["store:baoli"] },
+      orgId: "default-org",
+      query: { dataset: "dishes", select: ["business_date"] },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.sql).toContain("l.key = ? OR l.key IN (?)");
+    expect(compiled.params).toContain("all_staff");
+    expect(compiled.params).toContain("store:baoli");
+    expect(compiled.params).not.toContain("store:suzhou");
+  });
+
+  it("keeps non-matching labels parameterized without widening the document scope", () => {
+    const compiled = compileStructuredQuery({
+      employee: { role: "employee", labels: ["store:suzhou"] },
+      orgId: "default-org",
+      query: { dataset: "dishes", select: ["business_date"] },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.sql).toContain("l.key = ? OR l.key IN (?)");
+    expect(compiled.params).toContain("all_staff");
+    expect(compiled.params).toContain("store:suzhou");
+    expect(compiled.params).not.toContain("store:baoli");
   });
 
   it("rejects invalid field, operator, type, capability, raw SQL, and excessive limits before SQL", () => {
