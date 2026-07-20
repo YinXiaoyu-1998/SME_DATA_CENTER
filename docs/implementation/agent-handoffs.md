@@ -613,3 +613,11 @@
 - Verdict: ✅ Spec compliant. `authenticate()` reloads and attaches the employee; every requested route derives context from that employee's `orgId`. Evidence upload uses it for label/personal-label lookups, storage, catalog write, and the catalog's audit creation; search, labels, skills, and admin audit use it directly. No client organization input or later-hardening scope was added. The stale-token org-B test and org-A/org-B/default-org route spies cover the requested isolation and compatibility behavior.
 - Commands: `git diff --check`; targeted source/diff and persistence-path inspection; `rg` scan for non-test default-org/defaultOrg usage; `npm test -- apps/api/src/server.test.ts` (24 passed); `npm test` (37 files, 221 tests passed).
 - Issues: None.
+
+## 2026-07-20 - codex/phase3-hardening-01-org-context - Task 1 code-quality review
+
+- Reviewer role: Fresh senior code-quality reviewer (read-only product-code/test review).
+- Reviewed range: `23a54a50bc3a972aff03a9cbb78d9367a81aac4d..ec64a888ae5aeba347cc73ad1394afb285e7a2a6`.
+- Verdict: Ready to merge. No Critical, Important, or Minor issues found. The requested routes consistently obtain organization context from the employee reloaded by `authenticate()`; the upload path forwards that value to label/personal-label, storage, and catalog/audit persistence, while search, labels, skills, and audit do so directly. The targeted tests use route-level spies for org-A/org-B/default-org isolation and default-org compatibility without adding product abstractions or later-scope behavior.
+- Commands: `git diff --stat`; `git diff --check`; targeted `git diff`/surrounding source/repository/token inspections; `rg` scan for production `defaultOrgId`/`default-org` use; `npm test -- --run apps/api/src/server.test.ts` (24 passed); `npm run typecheck`; `npm run lint`; `npm run format:check`.
+- Issues: None.
