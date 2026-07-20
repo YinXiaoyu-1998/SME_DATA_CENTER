@@ -633,3 +633,11 @@
 - Files: `packages/domain/src/permissions.ts`, `packages/domain/src/structured-query.ts`, their tests, API import/status/query/evidence paths and tests, MCP test fixture, `scripts/test-integration.ts`, `docs/implementation/progress.md`, and this handoff.
 - Implementation commits: `5383c5fda43343fc825651d9f629043f5a3aaa99` (`fix(auth): unify structured document access`); `2408bd0` (`test(auth): cover all-staff-only query scope`).
 - Limits/next reviewer: No import idempotency/parser/lease/runtime-limit/typed-expression/evidence-pagination changes. Review the policy use at the status route, Prisma label include reuse, and all-staff SQL predicate before integration.
+
+## 2026-07-20 - codex/phase3-hardening-02-authorization - Task 2 specification review
+
+- Reviewer role: Fresh specification-compliance reviewer (read-only product-code/test review before this handoff).
+- Reviewed range: `d92a819a3d694dce55daafbe9360d8394a4fd4fa..c63300036bc225c41f2f3e4316d2a94d690fd2c2`.
+- Verdict: ❌ Not spec compliant.
+- Issue: `scripts/test-integration.ts:190-198` replaces the pre-existing matching-label `dishes` query/count proof with the new all-staff `business` query. The original query proof is also removed from the reported evidence at `scripts/test-integration.ts:271-279`. The Task 2 specification requires extending the existing MySQL integration flow, not silently removing meaningful structured import/query coverage. Restore the original authorized `dishes` query/count assertion and `phase3_structured_query` evidence, then retain the added all-staff query/status-non-enumeration assertions alongside it.
+- Otherwise inspected: shared policy disabled/admin/all_staff/intersection order; reloaded employee and org-scoped status lookup; typed Prisma include at all three mapper call sites; non-public internal label field; archived authorized readability; admin/non-admin parameterized SQL and zero-label behavior. These portions conform to the stated requirements. Focused verification: `npm test -- --run packages/domain/src/permissions.test.ts packages/domain/src/structured-query.test.ts apps/api/src/server.test.ts apps/api/src/structured-query-route.test.ts` (4 files, 48 tests passed); `git diff --check` passed.
