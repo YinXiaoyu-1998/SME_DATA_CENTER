@@ -410,6 +410,7 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
         !canEmployeeAccessDocument({
           employee: {
             disabled: input.employee.disabled,
+            role: input.employee.role,
             labelKeys: input.employee.labels
           },
           document: {

@@ -27,6 +27,7 @@ export interface StructuredImportBatchRecord {
   id: string;
   orgId: string;
   sourceDocumentId: string;
+  sourceDocumentLabelKeys: string[];
   dataset: StructuredDatasetName;
   status: ImportBatchStatusName;
   startDate: string;
@@ -81,6 +82,23 @@ export class StructuredImportError extends Error {
     super(message);
   }
 }
+
+const importBatchInclude = {
+  sourceDocument: {
+    select: {
+      status: true,
+      documentLabels: {
+        select: {
+          label: {
+            select: {
+              key: true
+            }
+          }
+        }
+      }
+    }
+  }
+} as const satisfies Prisma.ImportBatchInclude;
 
 function requireDatabaseUrl(): string {
   const databaseUrl = process.env["DATABASE_URL"];
@@ -159,13 +177,7 @@ export function createPrismaStructuredImportRepository(
           id: importBatchId,
           orgId
         },
-        include: {
-          sourceDocument: {
-            select: {
-              status: true
-            }
-          }
-        }
+        include: importBatchInclude
       });
 
       return batch ? toImportBatchRecord(batch) : null;
@@ -178,13 +190,7 @@ export function createPrismaStructuredImportRepository(
             idempotencyKey: input.idempotencyKey
           }
         },
-        include: {
-          sourceDocument: {
-            select: {
-              status: true
-            }
-          }
-        }
+        include: importBatchInclude
       });
 
       if (existingIdempotencyBatch) {
@@ -206,13 +212,7 @@ export function createPrismaStructuredImportRepository(
         },
         include: {
           importBatch: {
-            include: {
-              sourceDocument: {
-                select: {
-                  status: true
-                }
-              }
-            }
+            include: importBatchInclude
           }
         }
       });
@@ -315,13 +315,7 @@ export function createPrismaStructuredImportRepository(
               status: ImportBatchStatus.applied,
               appliedRowCount: input.rows.length
             },
-            include: {
-              sourceDocument: {
-                select: {
-                  status: true
-                }
-              }
-            }
+            include: importBatchInclude
           });
         },
         {
@@ -339,13 +333,7 @@ export function createPrismaStructuredImportRepository(
 
 function toImportBatchRecord(
   batch: Prisma.ImportBatchGetPayload<{
-    include: {
-      sourceDocument: {
-        select: {
-          status: true;
-        };
-      };
-    };
+    include: typeof importBatchInclude;
   }>
 ): StructuredImportBatchRecord {
   const archived = batch.sourceDocument.status === DocumentStatus.archived;
@@ -354,6 +342,9 @@ function toImportBatchRecord(
     id: batch.id,
     orgId: batch.orgId,
     sourceDocumentId: batch.sourceDocumentId,
+    sourceDocumentLabelKeys: batch.sourceDocument.documentLabels.map(
+      (documentLabel) => documentLabel.label.key
+    ),
     dataset: batch.dataset,
     status: archived ? "archived" : batch.status,
     startDate: formatDateWindowDate(batch.startDate),

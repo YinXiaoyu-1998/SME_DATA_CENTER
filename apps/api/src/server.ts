@@ -10,6 +10,7 @@ import {
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_QUERY_LIMITS,
   StructuredQueryValidationError,
+  canEmployeeAccessDocument,
   compileStructuredQuery,
   createStructuredCursor,
   getStructuredRegistry,
@@ -1567,7 +1568,19 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         request.params.importBatchId
       );
 
-      if (!importBatch) {
+      if (
+        !importBatch ||
+        !canEmployeeAccessDocument({
+          employee: {
+            disabled: employee.disabled,
+            role: employee.role,
+            labelKeys: employee.labels
+          },
+          document: {
+            labelKeys: importBatch.sourceDocumentLabelKeys
+          }
+        })
+      ) {
         return reply
           .code(404)
           .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));

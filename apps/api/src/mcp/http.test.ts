@@ -201,6 +201,7 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     id: "imp_status",
     orgId: "default-org",
     sourceDocumentId: "doc_structured",
+    sourceDocumentLabelKeys: ["store:baoli"],
     dataset: "dishes",
     status: "applied",
     startDate: "20260701",
@@ -216,8 +217,8 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     async importStructuredDataset() {
       throw new Error("importStructuredDataset should not be called by this test.");
     },
-    async findImportBatch(_orgId, importBatchId) {
-      return importBatchId === importBatch.id ? importBatch : null;
+    async findImportBatch(orgId, importBatchId) {
+      return importBatchId === importBatch.id && orgId === importBatch.orgId ? importBatch : null;
     }
   };
 }

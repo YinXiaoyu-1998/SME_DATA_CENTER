@@ -897,18 +897,18 @@ function baseFromAndWhere(input: {
   ];
 
   if (input.employee.role !== "admin") {
-    const visibleLabels = input.employee.labels.filter((label) => label !== "all_staff").sort();
-    if (visibleLabels.length === 0) {
-      throw new StructuredQueryValidationError(
-        PHASE3_ERROR_CODES.datasetForbidden,
-        "Employee has no dataset permission labels."
-      );
-    }
+    const visibleLabels = [
+      ...new Set(input.employee.labels.filter((label) => label !== "all_staff"))
+    ].sort();
+    const labelPredicate =
+      visibleLabels.length === 0
+        ? "l.key = ?"
+        : `l.key = ? OR l.key IN (${visibleLabels.map(() => "?").join(", ")})`;
 
     clauses.push(
-      `AND EXISTS (SELECT 1 FROM document_labels dl JOIN labels l ON l.id = dl.label_id WHERE dl.document_id = d.id AND l.key IN (${visibleLabels.map(() => "?").join(", ")}))`
+      `AND EXISTS (SELECT 1 FROM document_labels dl JOIN labels l ON l.id = dl.label_id WHERE dl.document_id = d.id AND (${labelPredicate}))`
     );
-    params.push(...visibleLabels);
+    params.push("all_staff", ...visibleLabels);
   }
 
   return {
