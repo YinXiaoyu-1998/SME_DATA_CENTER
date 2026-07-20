@@ -49,7 +49,9 @@ describe("structured query compiler", () => {
     expect(compiled.sql).toContain("JOIN import_batches ib");
     expect(compiled.sql).toContain("JOIN documents d");
     expect(compiled.sql.indexOf("d.status = ?")).toBeLessThan(
-      compiled.sql.indexOf("JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) BETWEEN ? AND ?")
+      compiled.sql.indexOf(
+        "STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)), '%Y-%m-%d') BETWEEN ? AND ?"
+      )
     );
     expect(compiled.sql).not.toContain("肉夹馍");
     expect(compiled.params).toEqual([
@@ -329,6 +331,58 @@ describe("structured query compiler", () => {
     expect(compiled.params).toContain("$.discount_rate");
   });
 
+  it("uses typed SQL expressions for numeric sort, comparison, and min/max", () => {
+    const compiled = compileStructuredQuery({
+      employee: {
+        role: "manager",
+        labels: ["store:baoli"]
+      },
+      orgId: "default-org",
+      query: {
+        dataset: "dishes",
+        select: ["matched_product_name", "dish_sales_quantity"],
+        filter: {
+          field: "dish_sales_quantity",
+          op: "gte",
+          value: 10
+        },
+        sort: [{ field: "dish_sales_quantity", direction: "desc" }],
+        page: { limit: 50 }
+      },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.sql).toContain(
+      "CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6)) >= ?"
+    );
+    expect(compiled.sql).toContain(
+      "ORDER BY CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6)) DESC"
+    );
+
+    const aggregate = compileStructuredQuery({
+      employee: {
+        role: "manager",
+        labels: ["store:baoli"]
+      },
+      orgId: "default-org",
+      query: {
+        dataset: "dishes",
+        aggregates: [
+          { op: "min", field: "dish_sales_quantity", as: "min_quantity" },
+          { op: "max", field: "dish_sales_quantity", as: "max_quantity" }
+        ]
+      },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(aggregate.sql).toContain(
+      "MIN(CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6))) AS `min_quantity`"
+    );
+    expect(aggregate.sql).toContain(
+      "MAX(CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6))) AS `max_quantity`"
+    );
+  });
+
   it("rejects cursor tampering and query-shape changes", () => {
     const query = {
       dataset: "dishes",
@@ -391,5 +445,50 @@ describe("structured query compiler", () => {
         }),
       PHASE3_ERROR_CODES.cursorExpired
     );
+  });
+
+  it("scopes cursor shape to org, employee, role, labels, and query", () => {
+    const query = {
+      dataset: "dishes",
+      select: ["business_date"],
+      page: { limit: 1 }
+    };
+    const base = compileStructuredQuery({
+      employee: { id: "emp_1", role: "manager", labels: ["store:baoli"] },
+      orgId: "default-org",
+      query,
+      cursorSecret: "cursor-secret"
+    });
+
+    const variants = [
+      compileStructuredQuery({
+        employee: { id: "emp_2", role: "manager", labels: ["store:baoli"] },
+        orgId: "default-org",
+        query,
+        cursorSecret: "cursor-secret"
+      }),
+      compileStructuredQuery({
+        employee: { id: "emp_1", role: "admin", labels: ["store:baoli"] },
+        orgId: "default-org",
+        query,
+        cursorSecret: "cursor-secret"
+      }),
+      compileStructuredQuery({
+        employee: { id: "emp_1", role: "manager", labels: ["store:suzhou"] },
+        orgId: "default-org",
+        query,
+        cursorSecret: "cursor-secret"
+      }),
+      compileStructuredQuery({
+        employee: { id: "emp_1", role: "manager", labels: ["store:baoli"] },
+        orgId: "org-b",
+        query,
+        cursorSecret: "cursor-secret"
+      })
+    ];
+
+    for (const variant of variants) {
+      expect(variant.shapeHash).not.toBe(base.shapeHash);
+    }
   });
 });

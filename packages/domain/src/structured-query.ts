@@ -26,6 +26,7 @@ export const STRUCTURED_QUERY_LIMITS = {
 export type StructuredQueryMode = "detail" | "aggregate";
 
 export interface StructuredQueryEmployeeScope {
+  id?: string;
   role: "admin" | "manager" | "employee";
   labels: string[];
 }
@@ -161,7 +162,13 @@ export function compileStructuredQuery(
   validateAggregates(query, fields);
   validateFilter(query.filter, fields);
 
-  const shapeHash = hashQueryShape({ ...query, page: { limit: query.page.limit, cursor: null } });
+  const shapeHash = hashQueryShape({
+    orgId: input.orgId,
+    employeeId: input.employee.id ?? null,
+    role: input.employee.role,
+    labels: [...input.employee.labels].sort(),
+    query: { ...query, page: { limit: query.page.limit, cursor: null } }
+  });
   const offset = query.page.cursor
     ? decodeStructuredCursor({
         cursor: query.page.cursor,
@@ -845,7 +852,7 @@ function buildProjection(
 
     for (const fieldName of query.groupBy) {
       const field = requireField(fields, fieldName);
-      parts.push(`${fieldExpression()} AS ${quoteIdentifier(field.canonicalName)}`);
+      parts.push(`${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`);
       params.push(field.storage.jsonPath);
     }
 
@@ -862,7 +869,7 @@ function buildProjection(
     sql: query.select
       .map((fieldName) => {
         const field = requireField(fields, fieldName);
-        return `${fieldExpression()} AS ${quoteIdentifier(field.canonicalName)}`;
+        return `${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`;
       })
       .join(", "),
     params: query.select.map((fieldName) => requireField(fields, fieldName).storage.jsonPath)
@@ -937,7 +944,7 @@ function compileFilter(
   }
 
   const field = requireField(fields, node.field);
-  const expression = fieldExpression();
+  const expression = typedFieldExpression(field);
 
   switch (node.op) {
     case "eq":
@@ -1004,7 +1011,10 @@ function buildOrderBy(
 
     return {
       sql: ` ORDER BY ${sort
-        .map((item) => `${fieldExpression()} ${item.direction.toUpperCase()}`)
+        .map(
+          (item) =>
+            `${typedFieldExpression(requireField(fields, item.field))} ${item.direction.toUpperCase()}`
+        )
         .join(", ")}`,
       params: sort.map((item) => requireField(fields, item.field).storage.jsonPath)
     };
@@ -1013,7 +1023,10 @@ function buildOrderBy(
   const sort = query.sort.length > 0 ? query.sort : [];
   return {
     sql: ` ORDER BY ${[
-      ...sort.map((item) => `${fieldExpression()} ${item.direction.toUpperCase()}`),
+      ...sort.map(
+        (item) =>
+          `${typedFieldExpression(requireField(fields, item.field))} ${item.direction.toUpperCase()}`
+      ),
       "r.source_row_number ASC",
       "r.id ASC"
     ].join(", ")}`,
@@ -1032,7 +1045,7 @@ function aggregateExpression(
   }
 
   const field = requireField(fields, aggregate.field ?? "");
-  const expression = fieldExpression();
+  const expression = typedFieldExpression(field);
 
   switch (aggregate.op) {
     case "count":
@@ -1040,15 +1053,9 @@ function aggregateExpression(
     case "countDistinct":
       return { sql: `COUNT(DISTINCT ${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
     case "sum":
-      return {
-        sql: `SUM(CAST(${expression} AS DECIMAL(20, 6))) AS ${alias}`,
-        params: [field.storage.jsonPath]
-      };
+      return { sql: `SUM(${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
     case "avg":
-      return {
-        sql: `AVG(CAST(${expression} AS DECIMAL(20, 6))) AS ${alias}`,
-        params: [field.storage.jsonPath]
-      };
+      return { sql: `AVG(${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
     case "min":
       return { sql: `MIN(${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
     case "max":
@@ -1056,8 +1063,26 @@ function aggregateExpression(
   }
 }
 
-function fieldExpression(): string {
+function jsonValueExpression(): string {
   return `JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?))`;
+}
+
+function typedFieldExpression(field: StructuredFieldRegistryEntry): string {
+  const expression = jsonValueExpression();
+
+  switch (field.type) {
+    case "integer":
+    case "decimal":
+    case "percent":
+      return `CAST(${expression} AS DECIMAL(20, 6))`;
+    case "date":
+      return `STR_TO_DATE(${expression}, '%Y-%m-%d')`;
+    case "date_time":
+      return `STR_TO_DATE(${expression}, '%Y-%m-%d %H:%i:%s')`;
+    case "string":
+    case "time_range":
+      return expression;
+  }
 }
 
 function aggregateAlias(aggregate: AggregateSpec): string {

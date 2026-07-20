@@ -228,6 +228,11 @@ try {
     structuredQuery.rows[0]?.["row_count"] === 1,
     "Structured query should return imported row count."
   );
+  await assertTypedStructuredQuerySemantics(
+    auth,
+    structuredUpload.importBatch.importBatchId,
+    structuredUpload.document.documentId
+  );
   await assertStructuredRecoveryPaths();
 
   const allStaffStructuredForm = new FormData();
@@ -353,6 +358,7 @@ try {
           "phase3_structured_import",
           "phase3_structured_concurrent_exact_replay",
           "phase3_structured_storage_and_apply_recovery",
+          "phase3_structured_typed_query",
           "phase3_structured_query",
           "phase3_structured_all_staff_import",
           "phase3_structured_all_staff_query",
@@ -598,6 +604,95 @@ async function assertStructuredReplayCardinality(
   } finally {
     await prisma.$disconnect();
   }
+}
+
+async function assertTypedStructuredQuerySemantics(
+  auth: HeadersInit,
+  importBatchId: string,
+  sourceDocumentId: string
+): Promise<void> {
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  try {
+    await prisma.dishRow.createMany({
+      data: [
+        typedDishRow(importBatchId, sourceDocumentId, 1001, "typed-2", "2"),
+        typedDishRow(importBatchId, sourceDocumentId, 1002, "typed-10", "10"),
+        typedDishRow(importBatchId, sourceDocumentId, 1003, "typed-100", "100"),
+        typedDishRow(importBatchId, sourceDocumentId, 1004, "typed--1", "-1"),
+        typedDishRow(importBatchId, sourceDocumentId, 1005, "typed-0.5", "0.5")
+      ]
+    });
+
+    const sorted = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify({
+        dataset: "dishes",
+        select: ["matched_product_name", "dish_sales_quantity"],
+        filter: {
+          field: "matched_product_name",
+          op: "starts_with",
+          value: "typed-"
+        },
+        sort: [{ field: "dish_sales_quantity", direction: "asc" }],
+        page: { limit: 10 }
+      })
+    });
+    assert(
+      sorted.rows.map((row) => row["matched_product_name"]).join(",") ===
+        "typed--1,typed-0.5,typed-2,typed-10,typed-100",
+      "Numeric sort must use mathematical order, not string order."
+    );
+
+    const aggregate = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify({
+        dataset: "dishes",
+        filter: {
+          field: "matched_product_name",
+          op: "starts_with",
+          value: "typed-"
+        },
+        aggregates: [
+          { op: "min", field: "dish_sales_quantity", as: "min_quantity" },
+          { op: "max", field: "dish_sales_quantity", as: "max_quantity" },
+          { op: "sum", field: "dish_sales_quantity", as: "sum_quantity" },
+          { op: "avg", field: "dish_sales_quantity", as: "avg_quantity" }
+        ]
+      })
+    });
+    const row = aggregate.rows[0] ?? {};
+    assert(Number(row["min_quantity"]) === -1, "Numeric min must be mathematical.");
+    assert(Number(row["max_quantity"]) === 100, "Numeric max must be mathematical.");
+    assert(Number(row["sum_quantity"]) === 111.5, "Numeric sum must be mathematical.");
+    assert(
+      Math.abs(Number(row["avg_quantity"]) - 22.3) < 0.000001,
+      "Numeric avg must be mathematical."
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+function typedDishRow(
+  importBatchId: string,
+  sourceDocumentId: string,
+  sourceRowNumber: number,
+  matchedProductName: string,
+  dishSalesQuantity: string
+) {
+  return {
+    orgId: "default-org",
+    sourceDocumentId,
+    importBatchId,
+    sourceRowNumber,
+    payload: {
+      business_date: "2026-07-03",
+      matched_product_name: matchedProductName,
+      dish_sales_quantity: dishSalesQuantity
+    }
+  };
 }
 
 async function assertStructuredRecoveryPaths(): Promise<void> {
