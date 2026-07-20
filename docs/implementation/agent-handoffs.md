@@ -672,3 +672,8 @@
 - Local environment: Removed only stale repository-local fixed-name Docker test containers `enterprise-hub-mysql` and `enterprise-hub-qdrant`, owned by the inactive Task 2 worktree, after they blocked integration; the integration harness recreated its own local runtime.
 - Implementation commit: `dc276c4` (`feat(config): centralize phase 3 runtime limits`).
 - Limits/next reviewer: No CSV/XLSX safety enforcement, worker pools/leases/retries, or query semantic changes were introduced. Review startup resolution boundaries, MCP/max-upload flow, and the intentionally deferred parser/indexing limit consumption.
+
+## 2026-07-20 — Task 3 runtime-limit specification review (`codex/phase3-hardening-03-runtime-limits`)
+
+- Review verdict: not yet spec compliant. `apps/worker/src/worker.ts:8,179` retains a second hard-coded `1_000` default for the owned `WORKER_POLL_INTERVAL_MS` limit rather than deriving it from the authoritative domain defaults. Keep the existing fallback behavior, but source it from `PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs` (or require the already typed value) so runtime defaults have one source of truth.
+- Review evidence: inspected the complete `b8198da6b3dbe3a8d7ce35c4ff992e8169d42cbc..e661974e5f3a62dbea3b97d9e52cd9a16dd274af` diff and surrounding callers; verified env-variable repository search, API/worker startup wiring, MCP delegated upload propagation, and one-way `mcp-contract -> domain` dependency. Fresh checks passed: focused 56-test configuration/MCP suite, `npm run typecheck`, `npm run format:check`, `npm run lint`, and `npm test` (40 files, 256 tests). Integration was not rerun during this read-only review.
