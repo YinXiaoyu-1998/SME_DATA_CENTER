@@ -409,6 +409,7 @@ export function createPrismaStructuredImportRepository(options: {
             data: {
               orgId: input.orgId,
               documentId: existing.sourceDocumentId,
+              jobKey: `structured_import:applied:${input.importBatchId}`,
               status: ProcessingRunStatus.succeeded,
               jobType: ProcessingJobType.structured_import,
               startedAt: now,
@@ -492,6 +493,7 @@ export function createPrismaStructuredImportRepository(options: {
             data: {
               orgId: input.orgId,
               documentId: existing.sourceDocumentId,
+              jobKey: `structured_import:storage_failure:${input.importBatchId}:${randomBytes(6).toString("hex")}`,
               status: ProcessingRunStatus.failed,
               jobType: ProcessingJobType.structured_import,
               errorCode: input.errorCode,

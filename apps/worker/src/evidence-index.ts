@@ -11,6 +11,7 @@ import { type EmbeddingProvider } from "./model-providers/embedding.js";
 import { type RerankProvider } from "./model-providers/rerank.js";
 import { parseEvidenceDocument } from "./parsers/evidence-parser.js";
 import { parseWorkerRetrievalRuntimeConfig } from "./config/retrieval-runtime.js";
+import { loadWorkerRuntimeLimits } from "./config/runtime-limits.js";
 import { createModelProvidersFromEnv } from "./model-providers/factory.js";
 import type {
   ClaimedProcessingRun,
@@ -43,6 +44,8 @@ export interface CreateEvidenceIndexerInput {
   embeddingProvider: EmbeddingProvider;
   rerankProvider: RerankProvider | null;
   qdrantWriter: QdrantEvidenceWriter;
+  maxDocumentChars?: number;
+  maxChunksPerDocument?: number;
 }
 
 export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): EvidenceIndexer {
@@ -54,12 +57,28 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
         originalFilename: run.document.originalFileName ?? undefined,
         content
       });
+      const documentChars = parsed.blocks.reduce((sum, block) => sum + block.text.length, 0);
+      if (input.maxDocumentChars !== undefined && documentChars > input.maxDocumentChars) {
+        throw new EvidenceIndexingLimitError(
+          "DOCUMENT_TOO_LARGE",
+          `Evidence document contains ${documentChars} parsed characters, exceeding the ${input.maxDocumentChars} character limit.`
+        );
+      }
       const chunking = createEvidenceChunks({
         documentId: run.documentId,
         contentVersion: run.document.contentVersion ?? 1,
         retrievalConfigVersion: input.retrievalConfig.version,
         blocks: parsed.blocks
       });
+      if (
+        input.maxChunksPerDocument !== undefined &&
+        chunking.chunks.length > input.maxChunksPerDocument
+      ) {
+        throw new EvidenceIndexingLimitError(
+          "TOO_MANY_CHUNKS",
+          `Evidence document produced ${chunking.chunks.length} chunks, exceeding the ${input.maxChunksPerDocument} chunk limit.`
+        );
+      }
       const embeddingResult = await input.embeddingProvider.embedTexts(
         chunking.chunks.map((chunk) => chunk.text)
       );
@@ -210,6 +229,7 @@ export function createEvidenceIndexerFromEnv(
 ): EvidenceIndexer {
   const env = input.env ?? process.env;
   const runtime = parseWorkerRetrievalRuntimeConfig(env);
+  const workerRuntime = loadWorkerRuntimeLimits(env);
   const providers = createModelProvidersFromEnv({
     env,
     fetch: input.fetch
@@ -219,6 +239,8 @@ export function createEvidenceIndexerFromEnv(
     retrievalConfig: providers.retrievalConfig,
     embeddingProvider: providers.embeddingProvider,
     rerankProvider: providers.rerankProvider,
+    maxDocumentChars: workerRuntime.maxDocumentChars,
+    maxChunksPerDocument: workerRuntime.maxChunksPerDocument,
     qdrantWriter: new HttpQdrantEvidenceWriter({
       url: runtime.qdrant.url,
       apiKey: runtime.qdrant.apiKey,
@@ -226,6 +248,18 @@ export function createEvidenceIndexerFromEnv(
       fetch: input.fetch
     })
   });
+}
+
+export class EvidenceIndexingLimitError extends Error {
+  readonly retryable = false;
+
+  constructor(
+    readonly code: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "EvidenceIndexingLimitError";
+  }
 }
 
 function evidenceFileType(

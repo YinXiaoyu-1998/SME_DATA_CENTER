@@ -9,14 +9,22 @@ export const workerWorkspaceName = "@enterprise-hub/worker";
 
 export async function main(): Promise<void> {
   loadDotenv({ quiet: true, override: false });
-  loadWorkerRuntimeLimits(process.env);
+  const runtimeLimits = loadWorkerRuntimeLimits(process.env);
 
   const repository = createPrismaProcessingWorkerRepository();
   const storage = new LocalFileSystemStorageAdapter();
   const evidenceIndexer = createEvidenceIndexerFromEnv();
 
   try {
-    const result = await runWorkerOnce({ repository, storage, evidenceIndexer });
+    const result = await runWorkerOnce({
+      repository,
+      storage,
+      evidenceIndexer,
+      leaseSeconds: runtimeLimits.workerLeaseSeconds,
+      maxAttempts: runtimeLimits.workerMaxAttempts,
+      retryBaseMs: runtimeLimits.workerRetryBaseMs,
+      retryMaxMs: runtimeLimits.workerRetryMaxMs
+    });
     console.log(JSON.stringify(result));
   } finally {
     await repository.disconnect?.();

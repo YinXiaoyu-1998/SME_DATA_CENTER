@@ -26,6 +26,11 @@ export async function main(): Promise<void> {
       repository,
       storage,
       evidenceIndexer,
+      workerConcurrency: runtimeLimits.workerConcurrency,
+      leaseSeconds: runtimeLimits.workerLeaseSeconds,
+      maxAttempts: runtimeLimits.workerMaxAttempts,
+      retryBaseMs: runtimeLimits.workerRetryBaseMs,
+      retryMaxMs: runtimeLimits.workerRetryMaxMs,
       pollIntervalMs: runtimeLimits.workerPollIntervalMs,
       signal: abortController.signal,
       onResult(result) {

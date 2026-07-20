@@ -31,6 +31,10 @@ interface RecordedRun {
   documentId: string;
   status: string;
   retryCount: number;
+  attemptNumber: number;
+  availableAt: Date;
+  lockedBy: string | null;
+  lockedUntil: Date | null;
   errorCode: string | null;
   jobType: string;
 }
@@ -57,6 +61,10 @@ function createFakeRepository(input: {
     documentId: document.id,
     status: input.run?.status ?? "queued",
     retryCount: input.run?.retryCount ?? 0,
+    attemptNumber: input.run?.attemptNumber ?? 0,
+    availableAt: new Date("2026-07-20T00:00:00.000Z"),
+    lockedBy: null,
+    lockedUntil: null,
     errorCode: input.run?.errorCode ?? null,
     jobType: input.run?.jobType ?? "evidence_document_index"
   };
@@ -68,12 +76,22 @@ function createFakeRepository(input: {
     run,
     evidenceChunks,
     auditLogs,
-    async claimNextProcessingRun(): Promise<ClaimedProcessingRun | null> {
-      if (!["queued", "retry_scheduled"].includes(run.status)) {
+    async claimNextProcessingRun({
+      workerId,
+      now,
+      leaseSeconds
+    }): Promise<ClaimedProcessingRun | null> {
+      const claimable =
+        (["queued", "retry_scheduled"].includes(run.status) && run.availableAt <= now) ||
+        (run.status === "running" && run.lockedUntil !== null && run.lockedUntil < now);
+      if (!claimable) {
         return null;
       }
 
       run.status = "running";
+      run.attemptNumber += 1;
+      run.lockedBy = workerId;
+      run.lockedUntil = new Date(now.getTime() + leaseSeconds * 1_000);
       document.status = "processing";
       auditLogs.push({
         action: "document.processing_started",
@@ -86,16 +104,36 @@ function createFakeRepository(input: {
         orgId: run.orgId,
         documentId: run.documentId,
         retryCount: run.retryCount,
+        attemptNumber: run.attemptNumber,
         jobType: run.jobType,
+        lockedBy: run.lockedBy,
+        lockedUntil: run.lockedUntil,
         document: { ...document }
       };
     },
-    async completeEvidenceIndexing({ documentId, runId, chunks: nextChunks }) {
+    async heartbeatProcessingRun({ runId, workerId, now, leaseSeconds }) {
+      if (
+        run.id !== runId ||
+        run.lockedBy !== workerId ||
+        run.status !== "running" ||
+        !run.lockedUntil ||
+        run.lockedUntil <= now
+      ) {
+        return false;
+      }
+      run.lockedUntil = new Date(now.getTime() + leaseSeconds * 1_000);
+      return true;
+    },
+    async completeEvidenceIndexing({ documentId, runId, workerId, now, chunks: nextChunks }) {
       expect(documentId).toBe(document.id);
       expect(runId).toBe(run.id);
+      expect(run.lockedBy).toBe(workerId);
+      expect(run.lockedUntil && run.lockedUntil > now).toBe(true);
 
       evidenceChunks.push(...nextChunks);
       run.status = "succeeded";
+      run.lockedBy = null;
+      run.lockedUntil = null;
       document.status = "active";
       auditLogs.push({
         action: "document.activated",
@@ -103,12 +141,25 @@ function createFakeRepository(input: {
         result: "succeeded"
       });
     },
-    async failProcessingRun({ documentId, runId, errorCode, willRetry }) {
+    async failProcessingRun({
+      documentId,
+      runId,
+      workerId,
+      now,
+      errorCode,
+      willRetry,
+      nextAvailableAt
+    }) {
       expect(documentId).toBe(document.id);
       expect(runId).toBe(run.id);
+      expect(run.lockedBy).toBe(workerId);
+      expect(run.lockedUntil && run.lockedUntil > now).toBe(true);
 
       run.retryCount += 1;
       run.errorCode = errorCode;
+      run.lockedBy = null;
+      run.lockedUntil = null;
+      run.availableAt = nextAvailableAt;
 
       if (willRetry) {
         run.status = "retry_scheduled";
@@ -206,7 +257,7 @@ describe("processing worker", () => {
     expect(repository.document.status).toBe("active");
   });
 
-  it("moves unsupported processing job types to processing_failed after bounded retries", async () => {
+  it("moves unsupported processing job types to processing_failed without retry", async () => {
     const storage = await createStorage();
     const stored = await storage.putObject({
       orgId: "default-org",
@@ -232,25 +283,92 @@ describe("processing worker", () => {
       }
     });
 
-    await runWorkerOnce({ repository, storage });
-    await runWorkerOnce({ repository, storage });
-    const result = await runWorkerOnce({ repository, storage });
+    const result = await runWorkerOnce({
+      repository,
+      storage,
+      workerId: "worker-a",
+      now: () => new Date("2026-07-20T00:00:00.000Z")
+    });
 
     expect(result).toEqual({
       processed: true,
       documentId: "doc_unknown_job",
       status: "processing_failed"
     });
-    expect(repository.run.retryCount).toBe(3);
+    expect(repository.run.retryCount).toBe(1);
+    expect(repository.run.attemptNumber).toBe(1);
     expect(repository.run.errorCode).toBe(PROCESSING_ERROR_CODES.unsupportedProcessingJobType);
     expect(repository.document.status).toBe("processing_failed");
     expect(repository.evidenceChunks).toHaveLength(0);
     expect(repository.auditLogs.map((log) => log.action)).toEqual([
       "document.processing_started",
-      "document.processing_started",
-      "document.processing_started",
       "document.processing_failed"
     ]);
+  });
+
+  it("schedules transient failures with exponential backoff and max attempts", async () => {
+    const storage = await createStorage();
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_transient",
+      fileName: "transient.md",
+      contentType: "text/markdown",
+      body: "# Transient"
+    });
+    const repository = createFakeRepository({
+      document: {
+        id: "doc_transient",
+        orgId: "default-org",
+        uploaderId: "emp_baoli_manager",
+        status: "pending_processing",
+        storageObjectKey: stored.key,
+        originalFileName: "transient.md",
+        documentKind: "evidence",
+        fileType: "md",
+        contentVersion: 1
+      }
+    });
+    const times = [
+      new Date("2026-07-20T00:00:00.000Z"),
+      new Date("2026-07-20T00:00:01.000Z"),
+      new Date("2026-07-20T00:00:03.000Z")
+    ];
+    const evidenceIndexer: EvidenceIndexer = {
+      async indexDocument() {
+        throw new Error("temporary provider failure");
+      }
+    };
+
+    for (const [index, now] of times.entries()) {
+      const result = await runWorkerOnce({
+        repository,
+        storage,
+        evidenceIndexer,
+        workerId: "worker-a",
+        leaseSeconds: 10,
+        maxAttempts: 3,
+        retryBaseMs: 1_000,
+        retryMaxMs: 60_000,
+        now: () => now
+      });
+      expect(result.processed).toBe(true);
+      if (index === 0) {
+        expect(repository.run.availableAt.toISOString()).toBe("2026-07-20T00:00:01.000Z");
+      }
+      if (index === 1) {
+        expect(repository.run.availableAt.toISOString()).toBe("2026-07-20T00:00:03.000Z");
+      }
+      if (index < times.length - 1) {
+        repository.run.availableAt = now;
+        repository.document.status = "pending_processing";
+      }
+    }
+
+    expect(repository.run.retryCount).toBe(3);
+    expect(repository.run.attemptNumber).toBe(3);
+    expect(repository.run.status).toBe("failed");
+    expect(repository.document.status).toBe("processing_failed");
+    expect(repository.run.errorCode).toBe(PROCESSING_ERROR_CODES.evidenceIndexingFailed);
   });
 
   it("runs evidence indexing jobs before activating MD evidence documents", async () => {
