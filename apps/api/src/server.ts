@@ -2,7 +2,6 @@ import { createHash, randomBytes } from "node:crypto";
 import { extname } from "node:path";
 import multipart from "@fastify/multipart";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
-import { read, utils, type WorkBook } from "xlsx";
 import {
   AUTH_ERROR_CODES,
   AUDIT_ACTIONS,
@@ -13,16 +12,14 @@ import {
   canEmployeeAccessDocument,
   compileStructuredQuery,
   createStructuredCursor,
-  getStructuredRegistry,
   isAllowedFileTypeForDocumentKind,
   PHASE3_FILE_TYPES,
   PHASE3_ERROR_CODES,
-  validateStructuredHeaders,
   type AuthenticatedEmployee,
   type Phase3FileType,
-  type StructuredDatasetName,
-  type StructuredFieldRegistryEntry
+  type StructuredDatasetName
 } from "@enterprise-hub/domain";
+import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
 import {
   createPrismaDocumentCatalogRepository,
@@ -42,8 +39,7 @@ import {
   createPrismaStructuredImportRepository,
   StructuredImportError,
   type StructuredImportBatchRecord,
-  type StructuredImportRepository,
-  type StructuredImportRowInput
+  type StructuredImportRepository
 } from "./structured-imports.js";
 import { loadApiRuntimeLimits, type ApiRuntimeLimits } from "./config/runtime-limits.js";
 import {
@@ -127,16 +123,6 @@ interface EvidenceSearchBody {
   };
   limit?: unknown;
   cursor?: unknown;
-}
-
-interface StructuredWorkbookValidationResult {
-  sheetSummary: Array<{
-    name: string;
-    hidden: boolean;
-    headerRowNumber: number;
-    dataRowCount: number;
-  }>;
-  rows: StructuredImportRowInput[];
 }
 
 interface AuditListQuery {
@@ -451,229 +437,6 @@ function isDateWindow(startDate: string, endDate: string): boolean {
   return Boolean(start && end && start.getTime() <= end.getTime());
 }
 
-function validateStructuredWorkbook(input: {
-  dataset: StructuredDatasetName;
-  body: Buffer;
-  fileType: "xlsx" | "csv";
-  startDate: string;
-  endDate: string;
-}): StructuredWorkbookValidationResult {
-  const workbook =
-    input.fileType === "csv"
-      ? workbookFromCsv(input.body)
-      : read(input.body, { type: "buffer", cellDates: false, raw: false });
-  const registry = getStructuredRegistry(input.dataset);
-  const sheetSummary: StructuredWorkbookValidationResult["sheetSummary"] = [];
-  const rows: StructuredImportRowInput[] = [];
-
-  for (const sheetName of workbook.SheetNames) {
-    const worksheet = workbook.Sheets[sheetName];
-
-    if (!worksheet) {
-      continue;
-    }
-
-    const rawRows = utils.sheet_to_json<string[]>(worksheet, {
-      header: 1,
-      blankrows: false,
-      defval: ""
-    });
-    const normalizedRows = rawRows.map((row) => row.map((cell) => String(cell).trim()));
-
-    if (normalizedRows.every((row) => row.every((cell) => cell.length === 0))) {
-      continue;
-    }
-
-    const hidden = isWorkbookSheetHidden(workbook, sheetName);
-
-    if (hidden) {
-      throw new Error(`Hidden non-empty sheet ${sheetName} is not allowed.`);
-    }
-
-    const headerCandidate = findStructuredHeader(input.dataset, normalizedRows);
-
-    if (!headerCandidate) {
-      throw new Error(`Sheet ${sheetName} has no recognized ${input.dataset} header.`);
-    }
-
-    if (!headerCandidate.validation.ok) {
-      throw new Error(
-        `Sheet ${sheetName} failed header validation: ${headerCandidate.validation.errors
-          .map((error) => `${error.code}:${error.column}`)
-          .join(",")}`
-      );
-    }
-
-    const dataRows = normalizedRows
-      .slice(headerCandidate.headerRowIndex + 1)
-      .map((row, index) => ({
-        row,
-        sourceRowNumber: headerCandidate.headerRowIndex + 2 + index
-      }))
-      .filter(({ row }) => row.some((cell) => cell.length > 0))
-      .filter(({ row }) => !isStructuredSummaryRow(row));
-
-    sheetSummary.push({
-      name: sheetName,
-      hidden,
-      headerRowNumber: headerCandidate.headerRowIndex + 1,
-      dataRowCount: dataRows.length
-    });
-
-    for (const dataRow of dataRows) {
-      const payload = rowToStructuredPayload(registry.fields, dataRow.row);
-      const businessDate = parseBusinessDate(payload["business_date"]);
-
-      if (!businessDate || !dateWithinWindow(businessDate, input.startDate, input.endDate)) {
-        throw new Error(`Row ${dataRow.sourceRowNumber} business_date is outside import window.`);
-      }
-
-      rows.push({
-        sourceRowNumber: dataRow.sourceRowNumber,
-        payload
-      });
-    }
-  }
-
-  if (sheetSummary.length === 0) {
-    throw new Error("Workbook has no non-empty import sheets.");
-  }
-
-  return {
-    sheetSummary,
-    rows
-  };
-}
-
-function workbookFromCsv(body: Buffer): WorkBook {
-  const rows = body
-    .toString("utf8")
-    .split(/\r?\n/)
-    .map((line) => line.split(",").map((cell) => cell.trim()))
-    .filter((row) => row.some((cell) => cell.length > 0));
-  const worksheet = utils.aoa_to_sheet(rows);
-
-  return {
-    SheetNames: ["Sheet1"],
-    Sheets: {
-      Sheet1: worksheet
-    }
-  };
-}
-
-function findStructuredHeader(dataset: StructuredDatasetName, rows: string[][]) {
-  let firstNonEmptyValidation:
-    | {
-        headerRowIndex: number;
-        validation: ReturnType<typeof validateStructuredHeaders>;
-      }
-    | undefined;
-
-  for (const [index, row] of rows.slice(0, 10).entries()) {
-    const headers = trimTrailingEmptyCells(row);
-    const validation = validateStructuredHeaders(dataset, headers);
-
-    if (validation.ok) {
-      return {
-        headerRowIndex: index,
-        validation
-      };
-    }
-
-    if (!firstNonEmptyValidation && headers.some((header) => header.length > 0)) {
-      firstNonEmptyValidation = {
-        headerRowIndex: index,
-        validation
-      };
-    }
-  }
-
-  return firstNonEmptyValidation ?? null;
-}
-
-function rowToStructuredPayload(
-  fields: StructuredFieldRegistryEntry[],
-  row: string[]
-): Record<string, unknown> {
-  return Object.fromEntries(
-    fields.map((field, index) => [
-      field.canonicalName,
-      parseStructuredCell(field, row[index] ?? "")
-    ])
-  );
-}
-
-function isStructuredSummaryRow(row: string[]): boolean {
-  const firstCell = row[0]?.trim();
-
-  return firstCell === "合计" || firstCell === "总计";
-}
-
-function parseStructuredCell(field: StructuredFieldRegistryEntry, value: string): unknown {
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (field.type === "integer") {
-    const integer = Number.parseInt(trimmed, 10);
-
-    if (!Number.isFinite(integer)) {
-      throw new Error(`${field.canonicalName} must be an integer.`);
-    }
-
-    return integer;
-  }
-
-  if (field.type === "decimal" || field.type === "percent") {
-    const decimal = Number.parseFloat(trimmed.replace("%", ""));
-
-    if (!Number.isFinite(decimal)) {
-      throw new Error(`${field.canonicalName} must be numeric.`);
-    }
-
-    return decimal;
-  }
-
-  if (field.type === "date" || field.type === "date_time") {
-    const date = parseBusinessDate(trimmed);
-
-    if (!date) {
-      throw new Error(`${field.canonicalName} must be a date.`);
-    }
-
-    return formatDateForPayload(date);
-  }
-
-  return trimmed;
-}
-
-function parseBusinessDate(value: unknown): Date | null {
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  const yyyymmdd = /^(\d{4})(\d{2})(\d{2})$/.exec(trimmed);
-
-  if (yyyymmdd) {
-    return parseYyyyMmDd(trimmed);
-  }
-
-  const dashed = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(trimmed);
-
-  if (!dashed) {
-    return null;
-  }
-
-  return parseDateParts(dashed[1] ?? "", dashed[2] ?? "", dashed[3] ?? "");
-}
-
 function parseYyyyMmDd(value: string): Date | null {
   if (!/^\d{8}$/.test(value)) {
     return null;
@@ -697,38 +460,6 @@ function parseDateParts(yearValue: string, monthValue: string, dayValue: string)
   }
 
   return date;
-}
-
-function dateWithinWindow(date: Date, startDate: string, endDate: string): boolean {
-  const start = parseYyyyMmDd(startDate);
-  const end = parseYyyyMmDd(endDate);
-
-  return Boolean(
-    start && end && date.getTime() >= start.getTime() && date.getTime() <= end.getTime()
-  );
-}
-
-function formatDateForPayload(date: Date): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(
-    date.getUTCDate()
-  ).padStart(2, "0")}`;
-}
-
-function trimTrailingEmptyCells(row: string[]): string[] {
-  const trimmed = [...row];
-
-  while (trimmed.length > 0 && trimmed[trimmed.length - 1]?.trim() === "") {
-    trimmed.pop();
-  }
-
-  return trimmed;
-}
-
-function isWorkbookSheetHidden(workbook: WorkBook, sheetName: string): boolean {
-  const sheetIndex = workbook.SheetNames.indexOf(sheetName);
-  const metadata = workbook.Workbook?.Sheets?.[sheetIndex];
-
-  return (metadata?.Hidden ?? 0) > 0;
 }
 
 function canonicalStructuredImportFileName(input: {
@@ -1410,15 +1141,24 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       return validationError(reply, "UNLABELED_DOCUMENT", "Structured import must have labels.");
     }
 
-    let validation: StructuredWorkbookValidationResult;
+    let validation: Awaited<ReturnType<typeof parseStructuredFile>>;
 
     try {
-      validation = validateStructuredWorkbook({
+      validation = await parseStructuredFile({
         dataset,
-        body: uploadedFile.body,
+        content: uploadedFile.body,
         fileType,
         startDate,
-        endDate
+        endDate,
+        fileName: uploadedFile.fileName,
+        limits: {
+          maxStructuredImportRows: runtimeLimits.maxStructuredImportRows,
+          maxXlsxSheets: runtimeLimits.maxXlsxSheets,
+          maxStructuredCellChars: runtimeLimits.maxStructuredCellChars,
+          maxXlsxUncompressedBytes: runtimeLimits.maxXlsxUncompressedBytes,
+          maxXlsxZipEntries: runtimeLimits.maxXlsxZipEntries,
+          maxXlsxCompressionRatio: runtimeLimits.maxXlsxCompressionRatio
+        }
       });
     } catch (error) {
       return validationError(

@@ -376,13 +376,35 @@ export function validateStructuredHeaders(
       ok: false;
       errors: HeaderValidationError[];
     } {
+  const resolution = resolveStructuredHeaders(dataset, headers);
+
+  if (!resolution.ok) {
+    return resolution;
+  }
+
+  return {
+    ok: true,
+    fields: resolution.fields.map((field) => field.canonicalName)
+  };
+}
+
+export function resolveStructuredHeaders(
+  dataset: StructuredDatasetName,
+  headers: string[]
+):
+  | { ok: true; fields: Array<{ canonicalName: string; sourceColumnIndex: number }> }
+  | { ok: false; errors: HeaderValidationError[] } {
   const registry = getStructuredRegistry(dataset);
   const lookup = buildStructuredHeaderLookup(registry.fields);
   const errors: HeaderValidationError[] = [];
   const seenCanonicalNames = new Set<string>();
   const seenHeaders = new Set<string>();
 
-  for (const header of headers.map(normalizeHeader).filter(Boolean)) {
+  const fields: Array<{ canonicalName: string; sourceColumnIndex: number }> = [];
+
+  for (const [sourceColumnIndex, rawHeader] of headers.entries()) {
+    const header = normalizeHeader(rawHeader);
+    if (!header) continue;
     if (seenHeaders.has(header)) {
       errors.push({ code: "DUPLICATE_COLUMN", column: header });
       continue;
@@ -405,7 +427,13 @@ export function validateStructuredHeaders(
       continue;
     }
 
+    if (seenCanonicalNames.has(match.field.canonicalName)) {
+      errors.push({ code: "DUPLICATE_COLUMN", column: header });
+      continue;
+    }
+
     seenCanonicalNames.add(match.field.canonicalName);
+    fields.push({ canonicalName: match.field.canonicalName, sourceColumnIndex });
   }
 
   for (const field of registry.fields) {
@@ -418,10 +446,7 @@ export function validateStructuredHeaders(
     return { ok: false, errors };
   }
 
-  return {
-    ok: true,
-    fields: registry.fields.map((field) => field.canonicalName)
-  };
+  return { ok: true, fields };
 }
 
 function createRegistry(input: {

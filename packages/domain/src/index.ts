@@ -97,6 +97,7 @@ export {
   STRUCTURED_DATASETS,
   buildStructuredHeaderLookup,
   getStructuredRegistry,
+  resolveStructuredHeaders,
   validateStructuredHeaders,
   type HeaderValidationError,
   type StructuredDatasetName,

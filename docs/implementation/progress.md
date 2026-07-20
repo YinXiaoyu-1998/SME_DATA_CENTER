@@ -9,6 +9,10 @@
 
 ## Active Workstreams
 
+| Workstream                        | Branch                                     | Owner/Agent    | Status      | PR      | Notes                                                                                                                                                                    |
+| --------------------------------- | ------------------------------------------ | -------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Phase 3 safe structured ingestion | `codex/phase3-hardening-04-safe-ingestion` | Codex subagent | In progress | Pending | Started from `2b4c05c85be384fe09bc689ce623404a9fbcb35c`; replacing duplicated CSV/XLSX parsing with a shared hardened workspace package under strict RED-GREEN-REFACTOR. |
+
 | Workstream                               | Branch                                    | Owner/Agent    | Status           | PR      | Notes                                                                                                                 |
 | ---------------------------------------- | ----------------------------------------- | -------------- | ---------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
 | Phase 3 document authorization hardening | `codex/phase3-hardening-02-authorization` | Codex subagent | Complete locally | Pending | Unified shared document policy for import status/query authorization; full local checks and MySQL integration passed. |

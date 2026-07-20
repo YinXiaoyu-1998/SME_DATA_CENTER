@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { utils, write } from "xlsx";
+import ExcelJS from "exceljs";
 import type { FastifyInstance } from "fastify";
 import type {
   AuthenticatedEmployee,
@@ -718,14 +718,14 @@ function validStructuredCsv(
   return `${registry.fields.map((field) => field.sourceColumn).join(",")}\n${values.join(",")}\n`;
 }
 
-function structuredWorkbook(input: {
+async function structuredWorkbook(input: {
   dataset: StructuredDatasetName;
   includeHiddenSheet?: boolean;
   includeExplanationSheet?: boolean;
   prefaceRows?: string[][];
 }) {
   const registry = getStructuredRegistry(input.dataset);
-  const workbook = utils.book_new();
+  const workbook = new ExcelJS.Workbook();
   const headers = registry.fields.map((field) => field.sourceColumn);
   const row = registry.fields.map((field, index) => {
     if (field.canonicalName === "business_date") {
@@ -750,28 +750,17 @@ function structuredWorkbook(input: {
 
     return `value_${index + 1}`;
   });
-  utils.book_append_sheet(
-    workbook,
-    utils.aoa_to_sheet([...(input.prefaceRows ?? []), headers, row]),
-    "Data"
-  );
+  workbook.addWorksheet("Data").addRows([...(input.prefaceRows ?? []), headers, row]);
 
   if (input.includeHiddenSheet) {
-    utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, row]), "HiddenData");
-    workbook.Workbook ??= {};
-    workbook.Workbook.Sheets ??= [];
-    workbook.Workbook.Sheets[1] = { Hidden: 1 };
+    workbook.addWorksheet("HiddenData", { state: "hidden" }).addRows([headers, row]);
   }
 
   if (input.includeExplanationSheet) {
-    utils.book_append_sheet(
-      workbook,
-      utils.aoa_to_sheet([["说明"], ["这个 sheet 不是结构化数据"]]),
-      "Explanation"
-    );
+    workbook.addWorksheet("Explanation").addRows([["说明"], ["这个 sheet 不是结构化数据"]]);
   }
 
-  return Buffer.from(write(workbook, { bookType: "xlsx", type: "buffer" }) as Buffer);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
 function createStructuredImportMultipart(input: {
@@ -1758,7 +1747,7 @@ describe("structured imports", () => {
       idempotencyKey: "xlsx-preface-success",
       fileName: "麦家菜品记录.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({
+      body: await structuredWorkbook({
         dataset: "dishes",
         prefaceRows: [["菜品主题数据"], ["统计时间：2026-07-01 至 2026-07-05"]]
       })
@@ -1865,13 +1854,13 @@ describe("structured imports", () => {
       idempotencyKey: "hidden-sheet",
       fileName: "hidden.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
+      body: await structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
     });
     const explanationSheetResponse = await postStructuredImport(app, {
       idempotencyKey: "explanation-sheet",
       fileName: "explanation.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
+      body: await structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
     });
 
     expect(invalidCsvResponse.statusCode).toBe(400);
