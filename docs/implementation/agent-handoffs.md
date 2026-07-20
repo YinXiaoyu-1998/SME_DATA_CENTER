@@ -648,3 +648,10 @@
 - Commit: `9528b22dad238e01c72ebd38adea7bd1a558e728` (`test(integration): retain structured query coverage`).
 - Verification: `git diff --check`; `npm run format:check`; `npm run lint`; `npm run typecheck`; `npm test` (37 files/228 tests); `MYSQL_PORT=3307 npm run test:integration`. The integration result reports `phase3_structured_query`, `phase3_structured_all_staff_query`, and `phase3_structured_import_status_non_enumeration`.
 - Limits/next reviewer: No production behavior or authorization policy changed. Re-review the complete integration proof list to confirm the original matching-label coverage remains additive.
+
+## 2026-07-20 - codex/phase3-hardening-02-authorization - Task 2 specification re-review
+
+- Reviewer role: Fresh follow-up specification-compliance reviewer (read-only product-code/test review before this handoff).
+- Reviewed range: `d92a819a3d694dce55daafbe9360d8394a4fd4fa..ee9876b73f668b33681655d6c066a99403a53a69`; post-review change set `3bde48c1b5e13a34a7228e2f5cab08166d7ee3e8..ee9876b73f668b33681655d6c066a99403a53a69` contains only the integration-coverage correction and its handoff.
+- Verdict: ✅ Spec compliant. The flow preserves the original matching-label `dishes` import and exact `row_count === 1` query (`scripts/test-integration.ts:132-163`), separately imports/queries an admin-created `all_staff` business dataset as a non-admin (`165-208`), and asserts the same-org inaccessible status's non-enumerating 404 (`210-227`). The proof list retains `phase3_structured_query` and includes both added proofs (`281-289`). No unrelated product changes were introduced.
+- Verification: `npm test -- --run packages/domain/src/permissions.test.ts packages/domain/src/structured-query.test.ts apps/api/src/server.test.ts apps/api/src/structured-query-route.test.ts` (4 files, 48 tests passed); after loading local `.env` when present, `MYSQL_PORT=3307 npm run test:integration` passed and reported all three structured authorization proofs.
