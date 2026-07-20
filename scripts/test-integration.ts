@@ -152,6 +152,16 @@ try {
     "Structured import should load one fixture row."
   );
 
+  const structuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({ dataset: "dishes", aggregates: [{ op: "count", as: "row_count" }] })
+  });
+  assert(
+    structuredQuery.rows[0]?.["row_count"] === 1,
+    "Structured query should return imported row count."
+  );
+
   const allStaffStructuredForm = new FormData();
   allStaffStructuredForm.append(
     "file",
@@ -187,13 +197,13 @@ try {
     "Admin should import the all_staff structured fixture."
   );
 
-  const structuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+  const allStaffStructuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
     method: "POST",
     headers: { ...auth, "content-type": "application/json" },
     body: JSON.stringify({ dataset: "business", aggregates: [{ op: "count", as: "row_count" }] })
   });
   assert(
-    Number(structuredQuery.rows[0]?.["row_count"]) > 0,
+    Number(allStaffStructuredQuery.rows[0]?.["row_count"]) > 0,
     "A non-admin should query the imported all_staff row."
   );
 
@@ -272,6 +282,7 @@ try {
           "seed",
           "api_login",
           "phase3_structured_import",
+          "phase3_structured_query",
           "phase3_structured_all_staff_import",
           "phase3_structured_all_staff_query",
           "phase3_structured_import_status_non_enumeration",
