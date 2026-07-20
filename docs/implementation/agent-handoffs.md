@@ -673,6 +673,13 @@
 - Implementation commit: `dc276c4` (`feat(config): centralize phase 3 runtime limits`).
 - Limits/next reviewer: No CSV/XLSX safety enforcement, worker pools/leases/retries, or query semantic changes were introduced. Review startup resolution boundaries, MCP/max-upload flow, and the intentionally deferred parser/indexing limit consumption.
 
+## 2026-07-20 - codex/phase3-hardening-03-runtime-limits - spec-review rework
+
+- Scope: Corrected the Task 3 specification-review finding only. `runWorkerLoop` retains its optional backwards-compatible poll-interval input, but its omitted-value fallback now references `PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs` directly; the duplicate `1_000` default constant is removed.
+- Verification: Focused worker/domain runtime tests passed (3 files, 24 tests); `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (40 files, 256 tests), and `git diff --check` passed. Repository scan confirms the only production default is the domain constant and the only parser is the worker runtime loader. Integration was not rerun because this preserves the existing runtime behavior and has no integration-path change.
+- Commit: `6f7d3af` (`fix(worker): share poll interval default`).
+- Limits/next reviewer: No worker algorithms, schedules, leases, retries, or parser/indexing enforcement changed.
+
 ## 2026-07-20 — Task 3 runtime-limit specification review (`codex/phase3-hardening-03-runtime-limits`)
 
 - Review verdict: not yet spec compliant. `apps/worker/src/worker.ts:8,179` retains a second hard-coded `1_000` default for the owned `WORKER_POLL_INTERVAL_MS` limit rather than deriving it from the authoritative domain defaults. Keep the existing fallback behavior, but source it from `PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs` (or require the already typed value) so runtime defaults have one source of truth.
