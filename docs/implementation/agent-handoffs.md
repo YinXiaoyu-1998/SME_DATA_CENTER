@@ -684,3 +684,8 @@
 
 - Review verdict: not yet spec compliant. `apps/worker/src/worker.ts:8,179` retains a second hard-coded `1_000` default for the owned `WORKER_POLL_INTERVAL_MS` limit rather than deriving it from the authoritative domain defaults. Keep the existing fallback behavior, but source it from `PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs` (or require the already typed value) so runtime defaults have one source of truth.
 - Review evidence: inspected the complete `b8198da6b3dbe3a8d7ce35c4ff992e8169d42cbc..e661974e5f3a62dbea3b97d9e52cd9a16dd274af` diff and surrounding callers; verified env-variable repository search, API/worker startup wiring, MCP delegated upload propagation, and one-way `mcp-contract -> domain` dependency. Fresh checks passed: focused 56-test configuration/MCP suite, `npm run typecheck`, `npm run format:check`, `npm run lint`, and `npm test` (40 files, 256 tests). Integration was not rerun during this read-only review.
+
+## 2026-07-20 — Task 3 runtime-limit specification re-review (`codex/phase3-hardening-03-runtime-limits`)
+
+- Review verdict: spec compliant. Fix commit `6f7d3af` removes the worker-local poll default and now falls back through `PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs` in `apps/worker/src/worker.ts`. The current delta since the prior review contains only that focused worker change and handoff documentation; no Task 6 behavior is present.
+- Review evidence: confirmed no remaining worker-owned `WORKER_POLL_INTERVAL_MS` parser/default literal, current worktree was clean before this handoff, and fresh focused verification passed: `npm test -- --run apps/worker/src/worker.test.ts apps/worker/src/config/runtime-limits.test.ts packages/domain/src/runtime-limits.test.ts` (24 tests) and `npm run typecheck`.
