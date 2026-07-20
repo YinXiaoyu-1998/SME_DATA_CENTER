@@ -126,6 +126,7 @@ export async function profileStructuredFile(
       ignoredEmptySheets.push(sheet.name);
       continue;
     }
+    if (sheet.hidden) throw validation(`Hidden non-empty sheet ${sheet.name} is not allowed.`);
     const candidate = findHeader(input.dataset, sheet.rows);
     if (!candidate || !candidate.resolution.ok)
       throw validation(
@@ -181,26 +182,46 @@ async function readXlsx(
   return workbook.worksheets.map((sheet) => ({
     name: sheet.name,
     hidden: sheet.state !== "visible",
-    rows: sheet
-      .getSheetValues()
-      .slice(1)
-      .map((row: any) =>
-        Array.isArray(row) ? row.slice(1).map((value) => cellText(value, limits)) : []
-      )
+    rows: worksheetRows(sheet, limits)
   }));
 }
-function cellText(value: any, limits: StructuredIngestionLimits): string {
-  const text =
-    value == null
-      ? ""
-      : typeof value === "object" && "text" in value
-        ? String(value.text)
-        : value instanceof Date
-          ? dateString(value)
-          : String(value);
+function worksheetRows(sheet: ExcelJS.Worksheet, limits: StructuredIngestionLimits): string[][] {
+  const rows: string[][] = [];
+  for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber++) {
+    const row = sheet.getRow(rowNumber);
+    const cells: string[] = [];
+    for (let columnNumber = 1; columnNumber <= row.cellCount; columnNumber++) {
+      cells.push(cellText(row.getCell(columnNumber), limits));
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+function cellText(cell: ExcelJS.Cell, limits: StructuredIngestionLimits): string {
+  const text = xlsxCellValueText(cell.value);
   if (text.length > limits.maxStructuredCellChars)
     throw validation("Structured cell length limit exceeded.");
   return text.trim();
+}
+function xlsxCellValueText(value: unknown): string {
+  if (value == null) return "";
+  if (value instanceof Date) return dateString(value);
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (!isRecord(value)) throw validation("Unsupported XLSX cell value.");
+  if ("formula" in value) {
+    return value.result == null ? "" : xlsxCellValueText(value.result);
+  }
+  if (Array.isArray(value.richText)) {
+    return value.richText
+      .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
+      .join("");
+  }
+  if (typeof value.text === "string") return value.text;
+  throw validation("Unsupported XLSX cell value.");
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 async function preflightZip(content: Buffer, limits: StructuredIngestionLimits): Promise<void> {
   await new Promise<void>((resolve, reject) =>
@@ -216,7 +237,7 @@ async function preflightZip(content: Buffer, limits: StructuredIngestionLimits):
           total = 0;
         const names = new Set<string>();
         const critical = new Set<string>();
-        zip.on("error", () => reject(validation("Malformed XLSX ZIP archive.")));
+        zip.on("error", (zipError: Error) => reject(zipErrorFor(zipError)));
         zip.on("entry", (entry: any) => {
           try {
             count++;
@@ -224,26 +245,11 @@ async function preflightZip(content: Buffer, limits: StructuredIngestionLimits):
             const name = String(entry.fileName);
             if (count > limits.maxXlsxZipEntries || total > limits.maxXlsxUncompressedBytes)
               throw validation("XLSX ZIP resource limit exceeded.");
-            if (
-              name.includes("\\") ||
-              name.includes("\0") ||
-              name.startsWith("/") ||
-              name.split("/").includes("..")
-            )
-              throw validation("Unsafe XLSX ZIP entry path.");
-            if (
-              names.has(name) &&
-              (["[Content_Types].xml", "xl/workbook.xml"].includes(name) ||
-                name.startsWith("xl/worksheets/"))
-            )
+            if (isUnsafeZipPath(name)) throw validation("Unsafe XLSX ZIP entry path.");
+            if (names.has(name) && isCriticalXlsxEntry(name))
               throw validation("Duplicate critical XLSX ZIP entry.");
             names.add(name);
-            if (
-              name === "[Content_Types].xml" ||
-              name === "xl/workbook.xml" ||
-              name.startsWith("xl/worksheets/")
-            )
-              critical.add(name);
+            if (isCriticalXlsxEntry(name)) critical.add(name);
             if (
               entry.uncompressedSize > 0 &&
               (entry.compressedSize === 0 ||
@@ -259,7 +265,7 @@ async function preflightZip(content: Buffer, limits: StructuredIngestionLimits):
         zip.on("end", () =>
           critical.has("[Content_Types].xml") &&
           critical.has("xl/workbook.xml") &&
-          [...critical].some((name) => name.startsWith("xl/worksheets/"))
+          [...critical].some(isWorksheetXmlEntry)
             ? resolve()
             : reject(validation("XLSX required OOXML entries are missing."))
         );
@@ -267,6 +273,26 @@ async function preflightZip(content: Buffer, limits: StructuredIngestionLimits):
       }
     )
   );
+}
+function isUnsafeZipPath(name: string) {
+  return (
+    name.includes("\\") ||
+    name.includes("\0") ||
+    name.startsWith("/") ||
+    /^[a-zA-Z]:/.test(name) ||
+    name.split("/").includes("..")
+  );
+}
+function isWorksheetXmlEntry(name: string) {
+  return /^xl\/worksheets\/[^/]+\.xml$/i.test(name);
+}
+function isCriticalXlsxEntry(name: string) {
+  return name === "[Content_Types].xml" || name === "xl/workbook.xml" || isWorksheetXmlEntry(name);
+}
+function zipErrorFor(error: Error) {
+  return /(?:absolute path|relative path|backslash)/i.test(error.message)
+    ? validation("Unsafe XLSX ZIP entry path.")
+    : validation("Malformed XLSX ZIP archive.");
 }
 function findHeader(dataset: StructuredDatasetName, rows: string[][]) {
   let fallback: any;
@@ -296,7 +322,10 @@ function payloadFor(
 }
 function parseCell(field: StructuredFieldRegistryEntry, value: string): unknown {
   const text = value.trim();
-  if (!text) return null;
+  if (!text) {
+    if (!field.nullable) throw validation(`${field.canonicalName} is required.`);
+    return null;
+  }
   if (field.type === "integer") {
     if (!/^[+-]?\d+$/.test(text)) throw validation(`${field.canonicalName} must be an integer.`);
     const number = Number(text);
@@ -319,32 +348,28 @@ function parseCell(field: StructuredFieldRegistryEntry, value: string): unknown 
   if (field.type === "date" || field.type === "date_time") {
     const date = parseDate(text, field.type === "date_time");
     if (!date) throw validation(`${field.canonicalName} must be a date.`);
-    return dateString(date);
+    return field.type === "date_time" ? dateTimeString(date) : dateString(date);
   }
   return text;
 }
 function parseDate(text: string, dateTime: boolean): Date | null {
-  const match = new RegExp(
-    `^(\\d{4})(?:[-/]?(\\d{1,2})[-/]?(\\d{1,2}))${dateTime ? "(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?)?" : ""}$`
-  ).exec(text);
+  const date = "(\\d{4})(?:(\\d{2})(\\d{2})|-(\\d{2})-(\\d{2})|/(\\d{2})/(\\d{2}))";
+  const time = "(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?)";
+  const match = new RegExp(`^${date}${dateTime ? time : ""}$`).exec(text);
   if (!match) return null;
-  const date = new Date(
-    Date.UTC(
-      Number(match[1]),
-      Number(match[2]) - 1,
-      Number(match[3]),
-      Number(match[4] ?? 0),
-      Number(match[5] ?? 0),
-      Number(match[6] ?? 0)
-    )
-  );
-  return date.getUTCFullYear() === Number(match[1]) &&
-    date.getUTCMonth() === Number(match[2]) - 1 &&
-    date.getUTCDate() === Number(match[3]) &&
-    date.getUTCHours() === Number(match[4] ?? 0) &&
-    date.getUTCMinutes() === Number(match[5] ?? 0) &&
-    date.getUTCSeconds() === Number(match[6] ?? 0)
-    ? date
+  const month = Number(match[2] ?? match[4] ?? match[6]);
+  const day = Number(match[3] ?? match[5] ?? match[7]);
+  const hour = Number(match[8] ?? 0);
+  const minute = Number(match[9] ?? 0);
+  const second = Number(match[10] ?? 0);
+  const value = new Date(Date.UTC(Number(match[1]), month - 1, day, hour, minute, second));
+  return value.getUTCFullYear() === Number(match[1]) &&
+    value.getUTCMonth() === month - 1 &&
+    value.getUTCDate() === day &&
+    value.getUTCHours() === hour &&
+    value.getUTCMinutes() === minute &&
+    value.getUTCSeconds() === second
+    ? value
     : null;
 }
 function dateWindow(start: string, end: string) {
@@ -356,6 +381,11 @@ function dateWindow(start: string, end: string) {
 }
 function dateString(date: Date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+function dateTimeString(date: Date) {
+  return `${dateString(date)}T${String(date.getUTCHours()).padStart(2, "0")}:${String(
+    date.getUTCMinutes()
+  ).padStart(2, "0")}:${String(date.getUTCSeconds()).padStart(2, "0")}`;
 }
 function trimTail(row: string[]) {
   const next = [...row];

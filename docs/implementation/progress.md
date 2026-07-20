@@ -391,3 +391,5 @@
 - [x] Start Phase 3 hardening Task 3 runtime-limit configuration on `codex/phase3-hardening-03-runtime-limits`; baseline inspection is complete and RED-first implementation is in progress.
 - [x] Complete Phase 3 hardening Task 3 runtime-limit configuration: typed startup validation, API/MCP upload wiring, central import timeout/batch configuration, truthful environment documentation, and full local verification passed.
 - [x] Complete Task 3 MCP concurrency configuration rework: the API-owned typed runtime limit now controls the route limiter, and the runtime-env override has deterministic MCP `MCP_BUSY` coverage.
+- [x] Start Phase 3 hardening Task 4 safe structured-ingestion completion on `codex/phase3-hardening-04-safe-ingestion`; auditing the accepted `50dd9e0` baseline with RED/GREEN adversarial parser and route-atomicity coverage.
+- [x] Complete Phase 3 hardening Task 4 safe structured ingestion: comprehensive CSV/XLSX adversarial parsing and ZIP preflight coverage, deliberate ExcelJS values, pre-publication API atomicity proof, real Maijia fixture profile/import proof, and local MySQL/Qdrant integration verification.

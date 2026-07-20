@@ -723,6 +723,7 @@ async function structuredWorkbook(input: {
   includeHiddenSheet?: boolean;
   includeExplanationSheet?: boolean;
   prefaceRows?: string[][];
+  rowCount?: number;
 }) {
   const registry = getStructuredRegistry(input.dataset);
   const workbook = new ExcelJS.Workbook();
@@ -750,7 +751,13 @@ async function structuredWorkbook(input: {
 
     return `value_${index + 1}`;
   });
-  workbook.addWorksheet("Data").addRows([...(input.prefaceRows ?? []), headers, row]);
+  workbook
+    .addWorksheet("Data")
+    .addRows([
+      ...(input.prefaceRows ?? []),
+      headers,
+      ...Array.from({ length: input.rowCount ?? 1 }, () => row)
+    ]);
 
   if (input.includeHiddenSheet) {
     workbook.addWorksheet("HiddenData", { state: "hidden" }).addRows([headers, row]);
@@ -1624,14 +1631,26 @@ describe("structured imports", () => {
   });
 
   async function buildStructuredImportTestServer(
-    employees: AuthenticatedEmployee[] = [adminEmployee, baoliManagerEmployee]
+    employees: AuthenticatedEmployee[] = [adminEmployee, baoliManagerEmployee],
+    options: { runtimeEnv?: NodeJS.ProcessEnv } = {}
   ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
     const documentRepository = createDocumentRepository();
     const structuredImportRepository = createInMemoryStructuredImportRepository(
       documentRepository.documents
     );
-    const storageAdapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const localStorage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    let storagePutCalls = 0;
+    const storageAdapter: StorageAdapter = {
+      async putObject(input) {
+        storagePutCalls++;
+        return localStorage.putObject(input);
+      },
+      getObjectStream: localStorage.getObjectStream.bind(localStorage),
+      statObject: localStorage.statObject.bind(localStorage),
+      createDownloadUrl: localStorage.createDownloadUrl.bind(localStorage),
+      deleteObject: localStorage.deleteObject.bind(localStorage)
+    };
 
     app = buildApiServer({
       employeeRepository: createRepository(employees),
@@ -1640,7 +1659,8 @@ describe("structured imports", () => {
       storageAdapter,
       jwtSecret,
       enableDevLogin: true,
-      logger: false
+      logger: false,
+      runtimeEnv: options.runtimeEnv
     } as Parameters<typeof buildApiServer>[0] & {
       structuredImportRepository: unknown;
     });
@@ -1648,7 +1668,8 @@ describe("structured imports", () => {
     return {
       app,
       documentRepository,
-      structuredImportRepository
+      structuredImportRepository,
+      storagePutCalls: () => storagePutCalls
     };
   }
 
@@ -1876,6 +1897,53 @@ describe("structured imports", () => {
       error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
     });
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
+  });
+
+  it("does not publish malformed or over-limit CSV/XLSX imports to storage or durable repositories", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer(undefined, {
+        runtimeEnv: { MAX_STRUCTURED_IMPORT_ROWS: "1" } as NodeJS.ProcessEnv
+      });
+    const validCsvLines = validStructuredCsv("dishes").trim().split("\n");
+    const overLimitCsv = Buffer.from(
+      `${validCsvLines[0]}\n${validCsvLines[1]}\n${validCsvLines[1]}\n`,
+      "utf8"
+    );
+
+    const responses = await Promise.all([
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-malformed-csv",
+        body: Buffer.from("unknown\nvalue\n", "utf8")
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-over-limit-csv",
+        body: overLimitCsv
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-malformed-xlsx",
+        fileName: "malformed.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00])
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-over-limit-xlsx",
+        fileName: "over-limit.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: await structuredWorkbook({ dataset: "dishes", rowCount: 2 })
+      })
+    ]);
+
+    for (const response of responses) {
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
+      });
+    }
+    expect(storagePutCalls()).toBe(0);
+    expect(documentRepository.documents).toHaveLength(0);
+    expect(documentRepository.auditLogs).toHaveLength(0);
+    expect(structuredImportRepository.batches).toHaveLength(0);
+    expect(structuredImportRepository.rows).toHaveLength(0);
   });
 
   it("retains rows but makes them non-queryable when the source document is archived", async () => {

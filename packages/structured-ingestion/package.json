@@ -9,5 +9,8 @@
     "csv-parse": "6.2.1",
     "exceljs": "4.4.0",
     "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "jszip": "3.10.1"
   }
 }

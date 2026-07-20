@@ -464,15 +464,15 @@ function createRegistry(input: {
       const canonicalName =
         input.canonicalOverrides[sourceColumn] ??
         `${input.dataset}_${String(index + 1).padStart(3, "0")}_${fallbackAsciiName(sourceColumn)}`;
-      const type = inferFieldType(sourceColumn);
+      const type = inferFieldType(input.dataset, sourceColumn);
       const isMeasure = isMeasureColumn(sourceColumn, type);
 
       return {
         canonicalName,
         sourceColumn,
-        aliases: [sourceColumn],
+        aliases: aliasesFor(input.dataset, sourceColumn),
         type,
-        nullable: true,
+        nullable: canonicalName !== "business_date",
         sensitivity: isMeasure ? "business_metric" : "normal",
         lifecycle: "active",
         volatility: "review_on_export_change",
@@ -497,7 +497,22 @@ function createRegistry(input: {
   };
 }
 
-function inferFieldType(sourceColumn: string): StructuredFieldType {
+function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): string[] {
+  const aliases =
+    dataset === "dishes"
+      ? {
+          下单时间: ["订单时间"],
+          门店: ["门店名称"],
+          营业日: ["营业日期"]
+        }[sourceColumn]
+      : {
+          营业日期: ["营业日"],
+          门店名称: ["门店"]
+        }[sourceColumn];
+  return [sourceColumn, ...(aliases ?? [])];
+}
+
+function inferFieldType(dataset: StructuredDatasetName, sourceColumn: string): StructuredFieldType {
   if (["营业日", "营业日期"].includes(sourceColumn)) {
     return "date";
   }
@@ -519,15 +534,15 @@ function inferFieldType(sourceColumn: string): StructuredFieldType {
   }
 
   if (
-    sourceColumn.includes("数量") ||
-    sourceColumn.includes("次数") ||
-    sourceColumn.includes("订单量") ||
-    sourceColumn.includes("订单数") ||
-    sourceColumn.includes("桌数") ||
-    sourceColumn.includes("人数") ||
-    sourceColumn.includes("营业天数") ||
-    sourceColumn.includes("桌台数量") ||
-    sourceColumn.includes("支付次数")
+    dataset === "dishes" &&
+    (sourceColumn.includes("数量") ||
+      sourceColumn.includes("次数") ||
+      sourceColumn.includes("订单数") ||
+      sourceColumn.includes("桌数") ||
+      sourceColumn.includes("人数") ||
+      sourceColumn.includes("营业天数") ||
+      sourceColumn.includes("桌台数量") ||
+      sourceColumn.includes("支付次数"))
   ) {
     return "integer";
   }
