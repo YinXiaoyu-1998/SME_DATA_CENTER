@@ -120,22 +120,6 @@ function createStructuredRowId(): string {
   return `row_${randomBytes(12).toString("hex")}`;
 }
 
-function structuredImportTransactionTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  const rawValue = env["STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS"]?.trim();
-
-  if (!rawValue) {
-    return 120_000;
-  }
-
-  const parsed = Number(rawValue);
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error("STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS must be a positive integer.");
-  }
-
-  return parsed;
-}
-
 async function insertStructuredRows(
   tx: Prisma.TransactionClient,
   input: {
@@ -144,10 +128,11 @@ async function insertStructuredRows(
     sourceDocumentId: string;
     importBatchId: string;
     rows: StructuredImportRowInput[];
+    batchInsertSize: number;
   }
 ): Promise<void> {
   const tableName = input.dataset === "dishes" ? "dish_rows" : "business_rows";
-  const batchSize = 500;
+  const batchSize = input.batchInsertSize;
 
   for (let offset = 0; offset < input.rows.length; offset += batchSize) {
     const batch = input.rows.slice(offset, offset + batchSize);
@@ -164,9 +149,12 @@ async function insertStructuredRows(
   }
 }
 
-export function createPrismaStructuredImportRepository(
-  databaseUrl = requireDatabaseUrl()
-): StructuredImportRepository {
+export function createPrismaStructuredImportRepository(options: {
+  databaseUrl?: string;
+  transactionTimeoutMs: number;
+  batchInsertSize: number;
+}): StructuredImportRepository {
+  const databaseUrl = options.databaseUrl ?? requireDatabaseUrl();
   const adapter = new PrismaMariaDb(databaseUrl);
   const prisma = new PrismaClient({ adapter });
 
@@ -304,7 +292,8 @@ export function createPrismaStructuredImportRepository(
             orgId: input.orgId,
             sourceDocumentId: input.documentId,
             importBatchId,
-            rows: input.rows
+            rows: input.rows,
+            batchInsertSize: options.batchInsertSize
           });
 
           return tx.importBatch.update({
@@ -319,7 +308,7 @@ export function createPrismaStructuredImportRepository(
           });
         },
         {
-          timeout: structuredImportTransactionTimeoutMs()
+          timeout: options.transactionTimeoutMs
         }
       );
 

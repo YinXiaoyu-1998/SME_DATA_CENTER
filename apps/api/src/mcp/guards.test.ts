@@ -3,8 +3,7 @@ import {
   createMcpConcurrencyLimiter,
   isLoopbackAddress,
   isLoopbackHost,
-  maxUploadBytesFromEnv,
-  mcpBodyLimitBytesFromEnv,
+  mcpBodyLimitBytes,
   isSafeMcpRequestId,
   resolvePhase3ServiceListenHost
 } from "./guards.js";
@@ -46,8 +45,7 @@ describe("MCP endpoint guards", () => {
   });
 
   it("derives the JSON body limit from MAX_UPLOAD_BYTES with bounded envelope overhead", () => {
-    expect(maxUploadBytesFromEnv({ MAX_UPLOAD_BYTES: "3" })).toBe(3);
-    expect(mcpBodyLimitBytesFromEnv({ MAX_UPLOAD_BYTES: "3" })).toBe(65_540);
+    expect(mcpBodyLimitBytes(3)).toBe(65_540);
   });
 
   it("fails closed for explicitly non-loopback Phase 3 service listener hosts", () => {

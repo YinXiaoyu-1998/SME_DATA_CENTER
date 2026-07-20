@@ -37,6 +37,15 @@ const adminEmployee: AuthenticatedEmployee = {
   labels: ["all_staff", "person:mcp.admin", "store:baoli"]
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return { promise, resolve };
+}
+
 function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {
   return {
     async findByEmail(email: string) {
@@ -306,6 +315,7 @@ function buildCustomMcpTestServer(toolHandlers: EnterpriseHubMcpToolHandlers) {
   });
 
   registerMcpHttpRoute(customApp, {
+    maxUploadBytes: 52_428_800,
     authenticate: async () => employee,
     toolHandlers
   });
@@ -450,15 +460,10 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expectErrorCode(malformedEnvelope.json<McpErrorBody>(), "MCP_MALFORMED_ENVELOPE");
   });
 
-  it("rejects JSON bodies over the MAX_UPLOAD_BYTES-derived limit", async () => {
-    const previousMaxUploadBytes = process.env["MAX_UPLOAD_BYTES"];
-    process.env["MAX_UPLOAD_BYTES"] = "1";
-    app = buildMcpTestServer();
-    if (previousMaxUploadBytes === undefined) {
-      delete process.env["MAX_UPLOAD_BYTES"];
-    } else {
-      process.env["MAX_UPLOAD_BYTES"] = previousMaxUploadBytes;
-    }
+  it("rejects JSON bodies over the typed MAX_UPLOAD_BYTES limit", async () => {
+    app = buildMcpTestServer({
+      runtimeEnv: { MAX_UPLOAD_BYTES: "1" }
+    });
 
     const response = await postMcp(app, {
       jsonrpc: "2.0",
@@ -474,6 +479,42 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
 
     expect(response.statusCode).toBe(413);
     expectErrorCode(response.json<McpErrorBody>(), "MCP_REQUEST_TOO_LARGE");
+  });
+
+  it("uses the typed MCP concurrency override from API construction", async () => {
+    const firstAuthenticationStarted = deferred<void>();
+    const firstAuthentication = deferred<AuthenticatedEmployee>();
+    let findByIdCalls = 0;
+
+    app = buildMcpTestServer({
+      employeeRepository: {
+        async findByEmail(email) {
+          return email === employee.email ? employee : null;
+        },
+        findById() {
+          findByIdCalls += 1;
+
+          if (findByIdCalls === 1) {
+            firstAuthenticationStarted.resolve();
+            return firstAuthentication.promise;
+          }
+
+          return Promise.resolve(employee);
+        }
+      },
+      runtimeEnv: { MCP_MAX_CONCURRENT_REQUESTS: "1" }
+    });
+
+    const firstRequest = postMcp(app, initializeRequest(10));
+    await firstAuthenticationStarted.promise;
+
+    const rejectedRequest = await postMcp(app, initializeRequest(11));
+
+    expect(rejectedRequest.statusCode).toBe(503);
+    expectErrorCode(rejectedRequest.json<McpErrorBody>(), "MCP_BUSY");
+
+    firstAuthentication.resolve(employee);
+    expect((await firstRequest).statusCode).toBe(200);
   });
 
   it("rejects invalid client-supplied MCP request IDs before SDK handoff", async () => {

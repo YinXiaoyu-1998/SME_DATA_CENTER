@@ -45,6 +45,7 @@ import {
   type StructuredImportRepository,
   type StructuredImportRowInput
 } from "./structured-imports.js";
+import { loadApiRuntimeLimits, type ApiRuntimeLimits } from "./config/runtime-limits.js";
 import {
   createPrismaStructuredQueryRepository,
   type StructuredQueryRepository
@@ -53,8 +54,6 @@ import { registerMcpHttpRoute } from "./mcp/http.js";
 import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
-const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-
 export interface ApiServerOptions {
   employeeRepository?: EmployeeRepository;
   documentRepository?: DocumentCatalogRepository;
@@ -66,6 +65,8 @@ export interface ApiServerOptions {
   jwtSecret?: string;
   enableDevLogin?: boolean;
   logger?: boolean;
+  runtimeLimits?: ApiRuntimeLimits;
+  runtimeEnv?: NodeJS.ProcessEnv;
 }
 
 interface DevLoginBody {
@@ -156,22 +157,6 @@ function requireJwtSecret(): string {
   }
 
   return jwtSecret;
-}
-
-function maxUploadBytesFromEnv(env: NodeJS.ProcessEnv = process.env): number {
-  const rawValue = env["MAX_UPLOAD_BYTES"]?.trim();
-
-  if (!rawValue) {
-    return DEFAULT_MAX_UPLOAD_BYTES;
-  }
-
-  const parsed = Number(rawValue);
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error("MAX_UPLOAD_BYTES must be a positive integer.");
-  }
-
-  return parsed;
 }
 
 function errorResponse(code: string, message: string) {
@@ -1058,6 +1043,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   let structuredQueryRepository = options.structuredQueryRepository;
   let evidenceRepository = options.evidenceRepository;
   let storageAdapter = options.storageAdapter;
+  const runtimeLimits =
+    options.runtimeLimits ?? loadApiRuntimeLimits(options.runtimeEnv ?? process.env);
   const jwtSecret = options.jwtSecret ?? requireJwtSecret();
   const enableDevLogin = options.enableDevLogin ?? process.env["NODE_ENV"] !== "production";
 
@@ -1081,11 +1068,13 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   void app.register(multipart, {
     limits: {
-      fileSize: maxUploadBytesFromEnv()
+      fileSize: runtimeLimits.maxUploadBytes
     }
   });
 
   registerMcpHttpRoute(app, {
+    maxUploadBytes: runtimeLimits.maxUploadBytes,
+    mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
     authenticate: async (request, reply) => {
       const authenticated = await authenticate(request, reply, repository, jwtSecret);
 
@@ -1108,7 +1097,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   }
 
   function structuredImports(): StructuredImportRepository {
-    structuredImportRepository ??= createPrismaStructuredImportRepository();
+    structuredImportRepository ??= createPrismaStructuredImportRepository({
+      transactionTimeoutMs: runtimeLimits.structuredImportTransactionTimeoutMs,
+      batchInsertSize: runtimeLimits.structuredImportBatchInsertSize
+    });
     return structuredImportRepository;
   }
 

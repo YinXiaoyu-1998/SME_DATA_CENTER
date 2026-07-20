@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { STRUCTURED_QUERY_LIMITS } from "@enterprise-hub/domain";
 import {
   ENTERPRISE_HUB_MCP_TOOL_CONTRACTS,
   ENTERPRISE_HUB_MCP_TOOL_NAMES,
@@ -454,6 +455,7 @@ describe("Enterprise Hub MCP contract", () => {
   });
 
   it("mirrors structured query cardinality limits from the domain contract", () => {
+    expect(MCP_STRUCTURED_QUERY_LIMITS).toBe(STRUCTURED_QUERY_LIMITS);
     expect(MCP_STRUCTURED_QUERY_LIMITS).toEqual({
       defaultLimit: 50,
       maxRows: 200,

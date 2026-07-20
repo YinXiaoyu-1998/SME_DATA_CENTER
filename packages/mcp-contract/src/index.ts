@@ -1,20 +1,9 @@
 import { z } from "zod";
+import { STRUCTURED_QUERY_LIMITS } from "@enterprise-hub/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = 255;
 export const MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH = 255;
-export const MCP_STRUCTURED_QUERY_LIMITS = {
-  defaultLimit: 50,
-  maxRows: 200,
-  maxAggregateGroups: 100,
-  maxBooleanDepth: 3,
-  maxConditions: 20,
-  maxInValues: 100,
-  maxSortFields: 2,
-  maxGroupByFields: 1,
-  maxAggregates: 5,
-  maxSelectedFields: 50,
-  cursorTtlSeconds: 900
-} as const;
+export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
 const structuredDataset = z

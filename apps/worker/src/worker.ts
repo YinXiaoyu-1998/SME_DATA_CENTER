@@ -1,11 +1,10 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { DocumentStatus, Prisma, PrismaClient, ProcessingRunStatus } from "@prisma/client";
-import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
+import { AUDIT_ACTIONS, PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@enterprise-hub/domain";
 import type { StorageAdapter } from "@enterprise-hub/storage";
 
 const MAX_PROCESSING_FAILURES = 3;
-const DEFAULT_WORKER_POLL_INTERVAL_MS = 1_000;
 
 export const PROCESSING_ERROR_CODES = {
   unsupportedFileType: "UNSUPPORTED_FILE_TYPE",
@@ -176,7 +175,7 @@ export async function runWorkerOnce(input: {
 }
 
 export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
-  const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_WORKER_POLL_INTERVAL_MS;
+  const pollIntervalMs = input.pollIntervalMs ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs;
 
   while (!input.signal?.aborted) {
     try {
