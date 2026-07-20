@@ -1,5 +1,11 @@
 export const domainWorkspaceName = "@enterprise-hub/domain";
 export {
+  PHASE3_RUNTIME_LIMIT_DEFAULTS,
+  parsePositiveSafeInteger,
+  type PositiveSafeIntegerRule,
+  type RuntimeLimitEnv
+} from "./runtime-limits.js";
+export {
   canEmployeeAccessDocument,
   type DocumentAccessInput,
   type DocumentPermissionTarget,

@@ -9,8 +9,7 @@ import {
   isLoopbackAddress,
   isLoopbackHost,
   isSafeMcpRequestId,
-  maxUploadBytesFromEnv,
-  mcpBodyLimitBytesFromEnv,
+  mcpBodyLimitBytes,
   mcpMaxConcurrentRequestsFromEnv
 } from "./guards.js";
 import { createEnterpriseHubHttpMcpServer } from "./server.js";
@@ -21,6 +20,7 @@ import {
 } from "./tool-handlers.js";
 
 export interface McpHttpRouteOptions {
+  maxUploadBytes: number;
   authenticate: (
     request: FastifyRequest,
     reply: FastifyReply
@@ -39,7 +39,7 @@ interface McpErrorBody {
 
 export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRouteOptions): void {
   const limiter = createMcpConcurrencyLimiter(mcpMaxConcurrentRequestsFromEnv());
-  const bodyLimit = mcpBodyLimitBytesFromEnv();
+  const bodyLimit = mcpBodyLimitBytes(options.maxUploadBytes);
   const releasesByRequest = new WeakMap<FastifyRequest, () => void>();
   const employeesByRequest = new WeakMap<FastifyRequest, AuthenticatedEmployee>();
   const safeRequestIdsByRequest = new WeakMap<FastifyRequest, string>();
@@ -248,7 +248,7 @@ export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRoute
               bearerToken,
               requestId: context.requestId,
               clientIp: context.clientIp,
-              maxUploadBytes: maxUploadBytesFromEnv(),
+              maxUploadBytes: options.maxUploadBytes,
               inject: async (delegateRequest) => {
                 const delegatedResponse = await injectFastify(app, {
                   method: delegateRequest.method,

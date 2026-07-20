@@ -384,3 +384,5 @@
 - [x] Complete 2026-07-17 local DashScope rerank readiness work: configurable 1024-dimensional embeddings, DashScope-native rerank adapter, readiness/integration coverage, and local Docker cleanup guidance.
 - [x] Add and live-run the local Codex manual acceptance suite with isolated fake/real profiles, visible employee-client tasks, synthetic fixtures, operator snapshots, and durable reports.
 - [x] Start the 2026-07-18 Phase 3 hardening integration on `codex/enterprise-hub-implementation`; the remote integration branch was fast-forwarded to `origin/main`, an isolated sibling worktree was created, and the clean baseline passed format, lint, typecheck, 219 unit tests, and the local MySQL/Qdrant integration flow.
+- [x] Start Phase 3 hardening Task 3 runtime-limit configuration on `codex/phase3-hardening-03-runtime-limits`; baseline inspection is complete and RED-first implementation is in progress.
+- [x] Complete Phase 3 hardening Task 3 runtime-limit configuration: typed startup validation, API/MCP upload wiring, central import timeout/batch configuration, truthful environment documentation, and full local verification passed.

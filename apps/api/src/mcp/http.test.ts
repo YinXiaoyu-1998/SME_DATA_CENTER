@@ -306,6 +306,7 @@ function buildCustomMcpTestServer(toolHandlers: EnterpriseHubMcpToolHandlers) {
   });
 
   registerMcpHttpRoute(customApp, {
+    maxUploadBytes: 52_428_800,
     authenticate: async () => employee,
     toolHandlers
   });
@@ -450,15 +451,10 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expectErrorCode(malformedEnvelope.json<McpErrorBody>(), "MCP_MALFORMED_ENVELOPE");
   });
 
-  it("rejects JSON bodies over the MAX_UPLOAD_BYTES-derived limit", async () => {
-    const previousMaxUploadBytes = process.env["MAX_UPLOAD_BYTES"];
-    process.env["MAX_UPLOAD_BYTES"] = "1";
-    app = buildMcpTestServer();
-    if (previousMaxUploadBytes === undefined) {
-      delete process.env["MAX_UPLOAD_BYTES"];
-    } else {
-      process.env["MAX_UPLOAD_BYTES"] = previousMaxUploadBytes;
-    }
+  it("rejects JSON bodies over the typed MAX_UPLOAD_BYTES limit", async () => {
+    app = buildMcpTestServer({
+      runtimeEnv: { MAX_UPLOAD_BYTES: "1" }
+    });
 
     const response = await postMcp(app, {
       jsonrpc: "2.0",
