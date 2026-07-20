@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ import type {
   Phase3FileType,
   StructuredDatasetName
 } from "@enterprise-hub/domain";
-import { getStructuredRegistry } from "@enterprise-hub/domain";
+import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "./server.js";
 import { signEmployeeAccessToken } from "./tokens.js";
@@ -1438,7 +1438,10 @@ describe("label catalog", () => {
   });
 });
 
-function createInMemoryStructuredImportRepository(documents: RecordedDocument[]) {
+function createInMemoryStructuredImportRepository(
+  documents: RecordedDocument[],
+  auditLogs: RecordedAuditLog[]
+) {
   type StoredRow = {
     dataset: StructuredDatasetName;
     sourceDocumentId: string;
@@ -1462,6 +1465,7 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
   const batches: StoredBatch[] = [];
   const rows: StoredRow[] = [];
   const inProgressWindows = new Set<string>();
+  let nextApplyFailure: Error | null = null;
 
   function windowKey(input: {
     dataset: StructuredDatasetName;
@@ -1474,6 +1478,9 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
   return {
     batches,
     rows,
+    failNextApply(message = "simulated apply failure") {
+      nextApplyFailure = new Error(message);
+    },
     markWindowInProgress(input: {
       dataset: StructuredDatasetName;
       startDate: string;
@@ -1506,14 +1513,19 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         ...batch,
         sourceDocumentLabelKeys: sourceDocument?.labels ?? [],
         status: sourceDocument?.status === "archived" ? "archived" : batch.status,
-        queryableRowCount
+        queryableRowCount,
+        sourceDocumentStatus: sourceDocument?.status ?? "processing_failed",
+        sourceDocumentFileType: sourceDocument?.fileType ?? "csv",
+        storageObjectKey: sourceDocument?.storageObjectKey ?? "",
+        originalFileName: sourceDocument?.originalFileName ?? "file"
       };
     },
-    async importStructuredDataset(input: {
+    async reserveStructuredImport(input: {
       orgId: string;
       actorEmployeeId: string;
       documentId: string;
       dataset: StructuredDatasetName;
+      fileType: "xlsx" | "csv";
       startDate: string;
       endDate: string;
       idempotencyKey: string;
@@ -1529,7 +1541,9 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         labels: string[];
       };
       sourceSheetSummary: unknown[];
-      rows: Array<{ payload: Record<string, unknown>; sourceRowNumber: number }>;
+      totalRowCount: number;
+      requestId: string;
+      clientIp: string;
     }) {
       const existingIdempotencyBatch = batches.find(
         (batch) => batch.orgId === input.orgId && batch.idempotencyKey === input.idempotencyKey
@@ -1542,7 +1556,10 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
           });
         }
 
-        return this.findImportBatch(input.orgId, existingIdempotencyBatch.id);
+        return {
+          state: existingIdempotencyBatch.status === "applied" ? "existing" : "resumable",
+          importBatch: await this.findImportBatch(input.orgId, existingIdempotencyBatch.id)
+        };
       }
 
       if (inProgressWindows.has(windowKey(input))) {
@@ -1574,29 +1591,23 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         endDate: input.endDate,
         idempotencyKey: input.idempotencyKey,
         requestFingerprint: input.requestFingerprint,
-        status: "applied",
+        status: "pending",
         sourceDocumentId: input.documentId,
-        totalRowCount: input.rows.length,
-        appliedRowCount: input.rows.length,
+        totalRowCount: input.totalRowCount,
+        appliedRowCount: 0,
         sourceSheetSummary: input.sourceSheetSummary,
         validationErrors: []
       };
       batches.push(batch);
-      rows.push(
-        ...input.rows.map(() => ({
-          dataset: input.dataset,
-          sourceDocumentId: input.documentId
-        }))
-      );
       documents.push({
         id: input.documentId,
         orgId: input.orgId,
         uploaderId: input.actorEmployeeId,
-        status: "active",
+        status: "pending_processing",
         title: input.document.title,
         documentType: "structured_dataset",
         documentKind: "structured",
-        fileType: "xlsx",
+        fileType: input.fileType,
         sourceSystem: "structured_import",
         sourceTime: null,
         storageObjectKey: input.document.storageObjectKey,
@@ -1605,7 +1616,7 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         byteSize: input.document.byteSize,
         checksumSha256: input.document.checksumSha256,
         labels: input.document.labels,
-        processingRunStatus: "succeeded",
+        processingRunStatus: null,
         documentIndexStatus: null,
         createdAt: new Date(),
         sourceMetadata: {
@@ -1614,7 +1625,95 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         },
         chunks: []
       });
+      auditLogs.push({
+        action: AUDIT_ACTIONS.structuredImportStarted,
+        actorEmployeeId: input.actorEmployeeId,
+        targetType: "import_batch",
+        targetId: batch.id,
+        result: "succeeded",
+        metadata: {
+          dataset: input.dataset,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          rowCount: input.totalRowCount,
+          sourceDocumentId: input.documentId
+        },
+        requestId: input.requestId,
+        clientIp: input.clientIp
+      });
 
+      return {
+        state: "created",
+        importBatch: await this.findImportBatch(input.orgId, batch.id)
+      };
+    },
+    async applyReservedStructuredImport(input: {
+      orgId: string;
+      actorEmployeeId: string;
+      importBatchId: string;
+      rows: Array<{ payload: Record<string, unknown>; sourceRowNumber: number }>;
+      requestId: string;
+      clientIp: string;
+    }) {
+      const batch = batches.find(
+        (candidate) => candidate.id === input.importBatchId && candidate.orgId === input.orgId
+      );
+      if (!batch) throw new Error("Reserved import batch was not found.");
+      if (batch.status === "applied") return this.findImportBatch(input.orgId, batch.id);
+      if (nextApplyFailure) {
+        const failure = nextApplyFailure;
+        nextApplyFailure = null;
+        throw failure;
+      }
+      rows.splice(
+        0,
+        rows.length,
+        ...rows.filter((row) => row.sourceDocumentId !== batch.sourceDocumentId),
+        ...input.rows.map(() => ({
+          dataset: batch.dataset,
+          sourceDocumentId: batch.sourceDocumentId
+        }))
+      );
+      batch.status = "applied";
+      batch.totalRowCount = input.rows.length;
+      batch.appliedRowCount = input.rows.length;
+      const document = documents.find((candidate) => candidate.id === batch.sourceDocumentId);
+      if (!document) throw new Error("Reserved source document was not found.");
+      document.status = "active";
+      document.processingRunStatus = "succeeded";
+      auditLogs.push({
+        action: AUDIT_ACTIONS.structuredImportApplied,
+        actorEmployeeId: input.actorEmployeeId,
+        targetType: "import_batch",
+        targetId: batch.id,
+        result: "succeeded",
+        metadata: {
+          dataset: batch.dataset,
+          startDate: batch.startDate,
+          endDate: batch.endDate,
+          appliedRowCount: input.rows.length,
+          sourceDocumentId: batch.sourceDocumentId
+        },
+        requestId: input.requestId,
+        clientIp: input.clientIp
+      });
+      return this.findImportBatch(input.orgId, batch.id);
+    },
+    async markStructuredImportStorageFailure(input: {
+      orgId: string;
+      importBatchId: string;
+      errorCode: string;
+      errorSummary: string;
+    }) {
+      const batch = batches.find(
+        (candidate) => candidate.id === input.importBatchId && candidate.orgId === input.orgId
+      );
+      if (!batch) throw new Error("Reserved import batch was not found.");
+      batch.status = "failed";
+      const document = documents.find((candidate) => candidate.id === batch.sourceDocumentId);
+      if (!document) throw new Error("Reserved source document was not found.");
+      document.status = "processing_failed";
+      document.processingRunStatus = "failed";
       return this.findImportBatch(input.orgId, batch.id);
     }
   };
@@ -1636,24 +1735,35 @@ describe("structured imports", () => {
 
   async function buildStructuredImportTestServer(
     employees: AuthenticatedEmployee[] = [adminEmployee, baoliManagerEmployee],
-    options: { runtimeEnv?: NodeJS.ProcessEnv } = {}
+    options: {
+      runtimeEnv?: NodeJS.ProcessEnv;
+      storageAdapter?: StorageAdapter;
+      failStoragePuts?: number;
+    } = {}
   ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
     const documentRepository = createDocumentRepository();
     const structuredImportRepository = createInMemoryStructuredImportRepository(
-      documentRepository.documents
+      documentRepository.documents,
+      documentRepository.auditLogs
     );
     const localStorage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     let storagePutCalls = 0;
+    const delegateStorage = options.storageAdapter ?? localStorage;
+    let remainingStorageFailures = options.failStoragePuts ?? 0;
     const storageAdapter: StorageAdapter = {
       async putObject(input) {
         storagePutCalls++;
-        return localStorage.putObject(input);
+        if (remainingStorageFailures > 0) {
+          remainingStorageFailures--;
+          throw new Error("simulated storage failure");
+        }
+        return delegateStorage.putObject(input);
       },
-      getObjectStream: localStorage.getObjectStream.bind(localStorage),
-      statObject: localStorage.statObject.bind(localStorage),
-      createDownloadUrl: localStorage.createDownloadUrl.bind(localStorage),
-      deleteObject: localStorage.deleteObject.bind(localStorage)
+      getObjectStream: delegateStorage.getObjectStream.bind(delegateStorage),
+      statObject: delegateStorage.statObject.bind(delegateStorage),
+      createDownloadUrl: delegateStorage.createDownloadUrl.bind(delegateStorage),
+      deleteObject: delegateStorage.deleteObject.bind(delegateStorage)
     };
 
     app = buildApiServer({
@@ -1822,7 +1932,8 @@ describe("structured imports", () => {
   });
 
   it("handles import idempotency and active/in-progress window conflicts", async () => {
-    const { app, structuredImportRepository } = await buildStructuredImportTestServer();
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer();
 
     const firstResponse = await postStructuredImport(app, {
       idempotencyKey: "stable-key"
@@ -1854,6 +1965,7 @@ describe("structured imports", () => {
     expect(replayResponse.json().importBatch.importBatchId).toBe(
       firstResponse.json().importBatch.importBatchId
     );
+    expect(replayResponse.json().document).toEqual(firstResponse.json().document);
     expect(conflictResponse.statusCode).toBe(409);
     expect(conflictResponse.json()).toMatchObject({
       error: { code: "IDEMPOTENCY_KEY_CONFLICT" }
@@ -1866,6 +1978,77 @@ describe("structured imports", () => {
     expect(inProgressWindowResponse.json()).toMatchObject({
       error: { code: "IMPORT_IN_PROGRESS" }
     });
+    expect(storagePutCalls()).toBe(1);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(1);
+    expect(
+      documentRepository.auditLogs.filter(
+        (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportStarted
+      )
+    ).toHaveLength(1);
+    expect(
+      documentRepository.auditLogs.filter(
+        (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportApplied
+      )
+    ).toHaveLength(1);
+  });
+
+  it("reuses the reserved document and object key after a transient storage failure", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer(undefined, { failStoragePuts: 1 });
+
+    const first = await postStructuredImport(app, { idempotencyKey: "storage-recovery" });
+    expect(first.statusCode).toBe(500);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(documentRepository.documents[0]?.status).toBe("processing_failed");
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(structuredImportRepository.batches[0]?.status).toBe("failed");
+    expect(structuredImportRepository.rows).toHaveLength(0);
+
+    const replay = await postStructuredImport(app, { idempotencyKey: "storage-recovery" });
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json().document.documentId).toBe(documentRepository.documents[0]?.id);
+    expect(replay.json().document.storageObjectKey).toBe(
+      documentRepository.documents[0]?.storageObjectKey
+    );
+    expect(storagePutCalls()).toBe(2);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(1);
+    expect(
+      documentRepository.auditLogs.filter(
+        (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportStarted
+      )
+    ).toHaveLength(1);
+    expect(
+      documentRepository.auditLogs.filter(
+        (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportApplied
+      )
+    ).toHaveLength(1);
+  });
+
+  it("keeps the reserved object referenced and deterministically resumes after DB apply failure", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer();
+    structuredImportRepository.failNextApply("simulated transactional audit failure");
+
+    const first = await postStructuredImport(app, { idempotencyKey: "apply-recovery" });
+    expect(first.statusCode).toBe(500);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(documentRepository.documents[0]?.status).toBe("pending_processing");
+    expect(structuredImportRepository.batches[0]?.status).toBe("pending");
+    expect(structuredImportRepository.rows).toHaveLength(0);
+    expect(await storedObjectCount(storageRoot)).toBe(1);
+
+    const replay = await postStructuredImport(app, { idempotencyKey: "apply-recovery" });
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json().document.documentId).toBe(documentRepository.documents[0]?.id);
+    expect(storagePutCalls()).toBe(2);
+    expect(await storedObjectCount(storageRoot)).toBe(1);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(1);
   });
 
   it("rejects invalid files atomically and fails hidden or explanation workbook sheets", async () => {
@@ -1967,7 +2150,7 @@ describe("structured imports", () => {
   });
 
   it("retains rows but makes them non-queryable when the source document is archived", async () => {
-    const { app, documentRepository, structuredImportRepository } =
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
       await buildStructuredImportTestServer();
     const importResponse = await postStructuredImport(app, {
       idempotencyKey: "archive-rows"
@@ -1988,6 +2171,7 @@ describe("structured imports", () => {
         authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
       }
     });
+    const replayResponse = await postStructuredImport(app, { idempotencyKey: "archive-rows" });
 
     expect(archivedDocument?.status).toBe("archived");
     expect(structuredImportRepository.storedRowCount("dishes")).toBe(1);
@@ -1999,6 +2183,12 @@ describe("structured imports", () => {
         queryableRowCount: 0
       }
     });
+    expect(replayResponse.statusCode).toBe(202);
+    expect(replayResponse.json()).toMatchObject({
+      document: { documentId, status: "archived" },
+      importBatch: { status: "archived", queryableRowCount: 0 }
+    });
+    expect(storagePutCalls()).toBe(1);
   });
 
   it("returns import status only to same-org callers authorized by source document labels", async () => {
@@ -2077,6 +2267,12 @@ describe("structured imports", () => {
     expect(disabled.json()).toMatchObject({ error: { code: "EMPLOYEE_DISABLED" } });
   });
 });
+
+async function storedObjectCount(root: string | undefined): Promise<number> {
+  if (!root) return 0;
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  return entries.filter((entry) => entry.isFile() && !entry.name.endsWith(".metadata.json")).length;
+}
 
 describe("skill directory", () => {
   let app: FastifyInstance | undefined;

@@ -219,12 +219,22 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     validationErrors: [],
     totalRowCount: 2,
     appliedRowCount: 2,
-    queryableRowCount: 2
+    queryableRowCount: 2,
+    sourceDocumentStatus: "active",
+    sourceDocumentFileType: "csv",
+    storageObjectKey: "org/default-org/documents/doc_structured/original/data.csv",
+    originalFileName: "data.csv"
   };
 
   return {
-    async importStructuredDataset() {
-      throw new Error("importStructuredDataset should not be called by this test.");
+    async reserveStructuredImport() {
+      throw new Error("reserveStructuredImport should not be called by this test.");
+    },
+    async applyReservedStructuredImport() {
+      throw new Error("applyReservedStructuredImport should not be called by this test.");
+    },
+    async markStructuredImportStorageFailure() {
+      throw new Error("markStructuredImportStorageFailure should not be called by this test.");
     },
     async findImportBatch(orgId, importBatchId) {
       return importBatchId === importBatch.id && orgId === importBatch.orgId ? importBatch : null;

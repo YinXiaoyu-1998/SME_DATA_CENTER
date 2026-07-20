@@ -1,8 +1,13 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { PrismaClient } from "@prisma/client";
+import { createPrismaStructuredImportRepository } from "../apps/api/src/structured-imports.js";
+import { createOriginalObjectKey, LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 
 const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
@@ -26,6 +31,11 @@ interface WorkerResponse {
 }
 
 interface StructuredUploadResponse {
+  document: {
+    documentId: string;
+    storageObjectKey: string;
+    status: string;
+  };
   importBatch: {
     importBatchId: string;
     status: string;
@@ -129,23 +139,71 @@ try {
   });
   const adminAuth = authorizationHeader(adminLogin.accessToken);
 
-  const structuredForm = new FormData();
-  structuredForm.append(
-    "file",
-    new Blob([await readFile(path.join(rootDir, "fixtures", "structured", "dishes-valid.csv"))]),
-    "dishes-valid.csv"
+  const structuredFixture = await readFile(
+    path.join(rootDir, "fixtures", "structured", "dishes-valid.csv")
   );
-  structuredForm.append("dataset", "dishes");
-  structuredForm.append("enterprise_name", "Integration Smoke");
-  structuredForm.append("startDate", "20260701");
-  structuredForm.append("endDate", "20260705");
-  structuredForm.append("idempotencyKey", `integration-${Date.now()}`);
-  structuredForm.append("labelKeys[]", "store:baoli");
-  const structuredUpload = await apiJson<StructuredUploadResponse>("/v1/structured/imports", {
+  const structuredIdempotencyKey = `integration-${Date.now()}`;
+  const structuredFormFor = (content: Buffer, idempotencyKey: string) => {
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(content)]), "dishes-valid.csv");
+    form.append("dataset", "dishes");
+    form.append("enterprise_name", "Integration Smoke");
+    form.append("startDate", "20260701");
+    form.append("endDate", "20260705");
+    form.append("idempotencyKey", idempotencyKey);
+    form.append("labelKeys[]", "store:baoli");
+    return form;
+  };
+  const structuredUploads = await Promise.all(
+    Array.from({ length: 10 }, async () => {
+      return apiJson<StructuredUploadResponse>("/v1/structured/imports", {
+        method: "POST",
+        headers: auth,
+        body: structuredFormFor(structuredFixture, structuredIdempotencyKey)
+      });
+    })
+  );
+  const structuredUpload = structuredUploads[0]!;
+  for (const replay of structuredUploads) {
+    assert(
+      replay.document.documentId === structuredUpload.document.documentId &&
+        replay.document.storageObjectKey === structuredUpload.document.storageObjectKey &&
+        replay.document.status === structuredUpload.document.status &&
+        replay.importBatch.importBatchId === structuredUpload.importBatch.importBatchId &&
+        replay.importBatch.status === structuredUpload.importBatch.status,
+      "Concurrent exact replays must return the authoritative persisted identifiers and status."
+    );
+  }
+  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload);
+  const fingerprintConflict = await fetch(`${apiUrl}/v1/structured/imports`, {
     method: "POST",
     headers: auth,
-    body: structuredForm
+    body: structuredFormFor(
+      Buffer.from(structuredFixture.toString("utf8").replace("合成菜品", "冲突菜品"), "utf8"),
+      structuredIdempotencyKey
+    )
   });
+  const windowConflict = await fetch(`${apiUrl}/v1/structured/imports`, {
+    method: "POST",
+    headers: auth,
+    body: structuredFormFor(structuredFixture, `${structuredIdempotencyKey}-window-conflict`)
+  });
+  const conflictBodies = (await Promise.all([
+    fingerprintConflict.json(),
+    windowConflict.json()
+  ])) as Array<{ error?: { code?: string } }>;
+  const fingerprintConflictBody = conflictBodies[0]!;
+  const windowConflictBody = conflictBodies[1]!;
+  assert(
+    fingerprintConflict.status === 409 &&
+      fingerprintConflictBody.error?.code === "IDEMPOTENCY_KEY_CONFLICT",
+    "A changed exact-replay fingerprint must conflict before publication."
+  );
+  assert(
+    windowConflict.status === 409 && windowConflictBody.error?.code === "ACTIVE_IMPORT_EXISTS",
+    "A second idempotency key for an active window must conflict before publication."
+  );
+  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload);
   assert(structuredUpload.importBatch.status === "applied", "Structured import should apply.");
   assert(
     structuredUpload.importBatch.appliedRowCount === 1,
@@ -161,6 +219,7 @@ try {
     structuredQuery.rows[0]?.["row_count"] === 1,
     "Structured query should return imported row count."
   );
+  await assertStructuredRecoveryPaths();
 
   const allStaffStructuredForm = new FormData();
   allStaffStructuredForm.append(
@@ -282,6 +341,8 @@ try {
           "seed",
           "api_login",
           "phase3_structured_import",
+          "phase3_structured_concurrent_exact_replay",
+          "phase3_structured_storage_and_apply_recovery",
           "phase3_structured_query",
           "phase3_structured_all_staff_import",
           "phase3_structured_all_staff_query",
@@ -470,6 +531,265 @@ async function apiJson<T>(pathName: string, init: RequestInit): Promise<T> {
   }
 
   return body;
+}
+
+async function assertStructuredReplayCardinality(
+  idempotencyKey: string,
+  response: StructuredUploadResponse
+): Promise<void> {
+  const adapter = new PrismaMariaDb(integrationEnv["DATABASE_URL"]!);
+  const prisma = new PrismaClient({ adapter });
+  try {
+    const batch = await prisma.importBatch.findUnique({
+      where: {
+        orgId_idempotencyKey: {
+          orgId: "default-org",
+          idempotencyKey
+        }
+      }
+    });
+    assert(batch?.id === response.importBatch.importBatchId, "One authoritative batch must exist.");
+    const [documents, batches, claims, rows, startedAudits, appliedAudits, processingRuns] =
+      await Promise.all([
+        prisma.document.count({ where: { id: response.document.documentId } }),
+        prisma.importBatch.count({ where: { orgId: "default-org", idempotencyKey } }),
+        prisma.importWindowClaim.count({
+          where: { importBatchId: response.importBatch.importBatchId }
+        }),
+        prisma.dishRow.count({ where: { importBatchId: response.importBatch.importBatchId } }),
+        prisma.auditLog.count({
+          where: {
+            targetId: response.importBatch.importBatchId,
+            action: "structured_import.started"
+          }
+        }),
+        prisma.auditLog.count({
+          where: {
+            targetId: response.importBatch.importBatchId,
+            action: "structured_import.applied"
+          }
+        }),
+        prisma.processingRun.count({ where: { documentId: response.document.documentId } })
+      ]);
+    assert(documents === 1, "Concurrent replay must create one Document.");
+    assert(batches === 1, "Concurrent replay must create one ImportBatch.");
+    assert(claims === 1, "Concurrent replay must create one ImportWindowClaim.");
+    assert(rows === 1, "Concurrent replay must create one row set.");
+    assert(startedAudits === 1, "Concurrent replay must create one started audit.");
+    assert(appliedAudits === 1, "Concurrent replay must create one applied audit.");
+    assert(processingRuns === 1, "Concurrent replay must create one successful ProcessingRun.");
+
+    const storageEntries = await readdir(storageRoot, { recursive: true, withFileTypes: true });
+    const storedObjects = storageEntries.filter(
+      (entry) => entry.isFile() && !entry.name.endsWith(".metadata.json")
+    );
+    assert(storedObjects.length === 1, "Concurrent replay must publish one storage object key.");
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function assertStructuredRecoveryPaths(): Promise<void> {
+  const databaseUrl = integrationEnv["DATABASE_URL"]!;
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+  const repository = createPrismaStructuredImportRepository({
+    databaseUrl,
+    transactionTimeoutMs: 60_000,
+    batchInsertSize: 500
+  });
+  const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+  try {
+    const [employee, label] = await Promise.all([
+      prisma.employee.findFirst({
+        where: { orgId: "default-org", email: "baoli.manager@example.com" }
+      }),
+      prisma.label.findUnique({
+        where: { orgId_key: { orgId: "default-org", key: "store:baoli" } }
+      })
+    ]);
+    assert(Boolean(employee && label), "Recovery integration prerequisites must be seeded.");
+
+    const reservationInput = (input: {
+      documentId: string;
+      idempotencyKey: string;
+      startDate: string;
+      content: Buffer;
+    }) => {
+      const fileName = `${input.idempotencyKey}.csv`;
+      const checksum = createHash("sha256").update(input.content).digest("hex");
+      return {
+        orgId: "default-org",
+        actorEmployeeId: employee!.id,
+        documentId: input.documentId,
+        dataset: "dishes" as const,
+        fileType: "csv" as const,
+        startDate: input.startDate,
+        endDate: input.startDate,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint: createHash("sha256")
+          .update(`${input.idempotencyKey}:${checksum}`)
+          .digest("hex"),
+        document: {
+          title: input.idempotencyKey,
+          storageObjectKey: createOriginalObjectKey({
+            orgId: "default-org",
+            documentId: input.documentId,
+            fileName
+          }),
+          originalFileName: fileName,
+          contentType: "text/csv",
+          byteSize: input.content.byteLength,
+          checksumSha256: checksum,
+          labelIds: [label!.id],
+          labels: [label!.key]
+        },
+        sourceSheetSummary: [],
+        totalRowCount: 1,
+        requestId: `request:${input.idempotencyKey}`,
+        clientIp: "127.0.0.1"
+      };
+    };
+
+    const applyContent = Buffer.from("apply recovery", "utf8");
+    const applyInput = reservationInput({
+      documentId: "doc_apply_recovery",
+      idempotencyKey: "integration-apply-recovery",
+      startDate: "20260801",
+      content: applyContent
+    });
+    const applyReservation = await repository.reserveStructuredImport(applyInput);
+    await storage.putObject({
+      orgId: applyInput.orgId,
+      documentId: applyReservation.importBatch.sourceDocumentId,
+      fileName: applyInput.document.originalFileName,
+      body: applyContent,
+      contentType: "text/csv"
+    });
+    let applyFailed = false;
+    try {
+      await repository.applyReservedStructuredImport({
+        orgId: applyInput.orgId,
+        actorEmployeeId: "missing_employee",
+        importBatchId: applyReservation.importBatch.id,
+        rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-01" } }],
+        requestId: "request:apply-failure",
+        clientIp: "127.0.0.1"
+      });
+    } catch {
+      applyFailed = true;
+    }
+    assert(applyFailed, "A transactional applied-audit failure must reject the apply.");
+    const [pendingBatch, pendingDocument, pendingRows, retainedObject] = await Promise.all([
+      prisma.importBatch.findUnique({ where: { id: applyReservation.importBatch.id } }),
+      prisma.document.findUnique({ where: { id: applyReservation.importBatch.sourceDocumentId } }),
+      prisma.dishRow.count({ where: { importBatchId: applyReservation.importBatch.id } }),
+      storage.statObject(applyReservation.importBatch.storageObjectKey)
+    ]);
+    assert(
+      pendingBatch?.status === "pending",
+      "Failed DB apply must roll the batch back to pending."
+    );
+    assert(
+      pendingDocument?.status === "pending_processing",
+      "Failed DB apply must not activate its Document."
+    );
+    assert(pendingRows === 0, "Failed DB apply must not leave partial rows.");
+    assert(
+      retainedObject.key === applyReservation.importBatch.storageObjectKey,
+      "Failed DB apply must retain the referenced deterministic object."
+    );
+    const recoveredApply = await repository.applyReservedStructuredImport({
+      orgId: applyInput.orgId,
+      actorEmployeeId: employee!.id,
+      importBatchId: applyReservation.importBatch.id,
+      rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-01" } }],
+      requestId: "request:apply-recovery",
+      clientIp: "127.0.0.1"
+    });
+    assert(
+      recoveredApply.status === "applied" &&
+        recoveredApply.sourceDocumentId === applyReservation.importBatch.sourceDocumentId,
+      "A DB apply replay must recover the same reservation."
+    );
+
+    const storageContent = Buffer.from("storage recovery", "utf8");
+    const storageInput = reservationInput({
+      documentId: "doc_storage_recovery",
+      idempotencyKey: "integration-storage-recovery",
+      startDate: "20260802",
+      content: storageContent
+    });
+    const storageReservation = await repository.reserveStructuredImport(storageInput);
+    const failedStorageBatch = await repository.markStructuredImportStorageFailure({
+      orgId: storageInput.orgId,
+      importBatchId: storageReservation.importBatch.id,
+      errorCode: "STORAGE_WRITE_FAILED",
+      errorSummary: "simulated transient storage failure"
+    });
+    assert(
+      failedStorageBatch.status === "failed" &&
+        failedStorageBatch.sourceDocumentStatus === "processing_failed",
+      "Storage failure must persist a resumable failed state."
+    );
+    const resumedStorage = await repository.reserveStructuredImport(storageInput);
+    assert(
+      resumedStorage.state === "resumable" &&
+        resumedStorage.importBatch.id === storageReservation.importBatch.id &&
+        resumedStorage.importBatch.sourceDocumentId ===
+          storageReservation.importBatch.sourceDocumentId,
+      "Storage replay must reuse the original reservation."
+    );
+    await storage.putObject({
+      orgId: storageInput.orgId,
+      documentId: resumedStorage.importBatch.sourceDocumentId,
+      fileName: storageInput.document.originalFileName,
+      body: storageContent,
+      contentType: "text/csv"
+    });
+    const recoveredStorage = await repository.applyReservedStructuredImport({
+      orgId: storageInput.orgId,
+      actorEmployeeId: employee!.id,
+      importBatchId: resumedStorage.importBatch.id,
+      rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-02" } }],
+      requestId: "request:storage-recovery",
+      clientIp: "127.0.0.1"
+    });
+    const [storageDocuments, storageBatches, storageClaims, storageStarted, storageApplied] =
+      await Promise.all([
+        prisma.document.count({ where: { id: storageReservation.importBatch.sourceDocumentId } }),
+        prisma.importBatch.count({ where: { id: storageReservation.importBatch.id } }),
+        prisma.importWindowClaim.count({
+          where: { importBatchId: storageReservation.importBatch.id }
+        }),
+        prisma.auditLog.count({
+          where: {
+            targetId: storageReservation.importBatch.id,
+            action: "structured_import.started"
+          }
+        }),
+        prisma.auditLog.count({
+          where: {
+            targetId: storageReservation.importBatch.id,
+            action: "structured_import.applied"
+          }
+        })
+      ]);
+    assert(
+      recoveredStorage.status === "applied",
+      "Storage failure replay must apply successfully."
+    );
+    assert(
+      storageDocuments === 1 &&
+        storageBatches === 1 &&
+        storageClaims === 1 &&
+        storageStarted === 1 &&
+        storageApplied === 1,
+      "Storage recovery must retain single-cardinality records and audits."
+    );
+  } finally {
+    await repository.disconnect?.();
+    await prisma.$disconnect();
+  }
 }
 
 function assert(condition: boolean, message: string): asserts condition {
