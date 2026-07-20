@@ -814,3 +814,12 @@
 - AGENTS.md decision: No `AGENTS.md` change is required. This task did not add a permanent repository command or global development policy; existing branch/worktree/progress/handoff/provider rules already cover the work.
 - Verification: Documentation drift scan for active `/readyz`, stale planned-runtime wording, stale `defaultOrgId()` implementation note, old evidence snapshot cursor wording, and fake performance-gate wording passed before formatting. Final `npm run format:check` and `git diff --check` follow this handoff before merge.
 - Limits/next work: Repo-local and standalone `enterprise-hub-mcp` skill synchronization remains Task 11.
+
+## 2026-07-20 - codex/phase3-hardening-11-skill-sync - lead-only implementation
+
+- Execution mode: Lead-agent-only skill synchronization, following the human override to stop using subagents for the remaining hardening plan.
+- Repo-local scope: Updated `skills/enterprise-hub-mcp/SKILL.md`, `agents/openai.yaml`, README, README.zh, and the skill checklist so callers do not provide org IDs, reuse import idempotency keys only for exact file/metadata replay, treat import-status 404 as non-enumerating not-visible-or-missing, poll status without operating the service, handle evidence `INVALID_CURSOR`/`CURSOR_EXPIRED`, and pass evidence cursors back only as same-query opaque continuations.
+- Standalone scope: Created independent standalone worktree `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER_WORKTREES/enterprise-hub-mcp-skill-phase3-hardening` from `origin/main` of `YinXiaoyu-1998/enterprise-hub-mcp-skill` on branch `codex/phase3-hardening-skill-sync`. Updated standalone README/README.zh plus the same `SKILL.md` and OpenAI metadata guidance.
+- Sync proof: `cmp` confirms repo-local and standalone `skills/enterprise-hub-mcp/SKILL.md` are identical; `cmp` confirms the OpenAI metadata files are identical. README files retain repository-specific install/service-prerequisite wording while sharing the same tool behavior guidance.
+- Verification: `quick_validate.py skills/enterprise-hub-mcp` passed in both repositories; `git diff --check` passed in both repositories. Main repo `npm run format:check` follows before merge; MCP smoke is covered in final integration verification.
+- Limits/next work: Push standalone branch and create a standalone draft PR after final validation; include its PR link in the main PR description.
