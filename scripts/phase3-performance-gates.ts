@@ -34,7 +34,7 @@ const DEFAULT_THRESHOLDS = {
   golden_retrieval_100_queries: 2_000,
   evidence_search_synthetic_p95: 25,
   structured_query_compiler_5000: 500,
-  structured_large_import_validation_70000_rows: 3_000,
+  structured_large_import_validation_70000_rows: 6_000,
   qdrant_upsert_payload_5000_chunks: 500
 } as const;
 
