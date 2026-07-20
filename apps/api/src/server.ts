@@ -1368,6 +1368,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       const compiled = compileStructuredQuery({
         orgId: employee.orgId,
         employee: {
+          id: employee.id,
           role: employee.role,
           labels: employee.labels
         },
