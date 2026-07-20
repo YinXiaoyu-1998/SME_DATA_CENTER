@@ -75,6 +75,23 @@ describe("structured ingestion", () => {
     expect(JSON.stringify(result.rows)).not.toContain("[object Object]");
   });
 
+  test("rejects an XLSX formula without a cached result even in a nullable field", async () => {
+    const row = dishesRow();
+    row[dishesHeaders().indexOf("菜品名称")] = { formula: "1+1" } as unknown as string;
+
+    await expect(
+      parseStructuredFile({
+        dataset: "dishes",
+        fileName: "unevaluated-formula.xlsx",
+        fileType: "xlsx",
+        content: await dishesXlsx(dishesHeaders(), [row]),
+        startDate: "20260701",
+        endDate: "20260701",
+        limits
+      })
+    ).rejects.toThrow("Unevaluated XLSX formula is not supported");
+  });
+
   test("maps reordered canonical and alias CSV headers to their unique sentinel values", async () => {
     const headers = dishesHeaders();
     const productIndex = headers.indexOf("菜品名称");
@@ -116,10 +133,123 @@ describe("structured ingestion", () => {
     expect(result.rows[0]?.payload.order_time).toBe("2026-07-01T12:30:45");
   });
 
+  test("preserves bare and suffixed percent scalar values with the same meaning", async () => {
+    const [bare, suffixed] = await Promise.all([
+      parseDishesCsv({ dishes_043_field: "12.5" }),
+      parseDishesCsv({ dishes_043_field: "12.5%" })
+    ]);
+
+    expect(bare.rows[0]?.payload.dishes_043_field).toBe(12.5);
+    expect(suffixed.rows[0]?.payload.dishes_043_field).toBe(12.5);
+  });
+
   test("rejects empty required scalar cells before date-window evaluation", async () => {
     await expect(parseDishesCsv({ business_date: "" })).rejects.toThrow(
       "business_date is required"
     );
+  });
+
+  test("enforces the structured cell-length limit for CSV data cells", async () => {
+    await expect(parseDishesCsv({ product_name: "x".repeat(101) })).rejects.toThrow(
+      "Structured cell length limit exceeded"
+    );
+    const row = dishesRow();
+    row[dishesHeaders().indexOf("菜品名称")] = "x".repeat(101);
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "long-data.csv",
+        fileType: "csv",
+        content: Buffer.from(validDishesCsvRows([row]), "utf8"),
+        limits
+      })
+    ).rejects.toThrow("Structured cell length limit exceeded");
+  });
+
+  test("enforces the structured cell-length limit for CSV headers during profiling", async () => {
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "long-header.csv",
+        fileType: "csv",
+        content: Buffer.from(`${"h".repeat(101)}\nvalue\n`, "utf8"),
+        limits
+      })
+    ).rejects.toThrow("Structured cell length limit exceeded");
+  });
+
+  test("enforces the import row limit when profiling a CSV", async () => {
+    const csv = validDishesCsvRows([dishesRow(), dishesRow()]);
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "too-many-rows.csv",
+        fileType: "csv",
+        content: Buffer.from(csv, "utf8"),
+        limits: limitsFor({ maxStructuredImportRows: 1 })
+      })
+    ).rejects.toThrow("Structured import row limit exceeded");
+  });
+
+  test("enforces the import row limit when profiling an XLSX", async () => {
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "too-many-rows.xlsx",
+        fileType: "xlsx",
+        content: await dishesXlsx(dishesHeaders(), [dishesRow(), dishesRow()]),
+        limits: limitsFor({ maxStructuredImportRows: 1 })
+      })
+    ).rejects.toThrow("Structured import row limit exceeded");
+  });
+
+  test("enforces the import row limit across profiled XLSX sheets", async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet("First").addRows([dishesHeaders(), dishesRow()]);
+    workbook.addWorksheet("Second").addRows([dishesHeaders(), dishesRow()]);
+
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "cross-sheet-rows.xlsx",
+        fileType: "xlsx",
+        content: Buffer.from(await workbook.xlsx.writeBuffer()),
+        limits: limitsFor({ maxStructuredImportRows: 1 })
+      })
+    ).rejects.toThrow("Structured import row limit exceeded");
+  });
+
+  test("enforces resolved header width during CSV and XLSX profiling while allowing empty tails", async () => {
+    const extraData = [...dishesRow(), "unexpected"];
+    const emptyTail = [...dishesRow(), "", ""];
+
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "extra-data.csv",
+        fileType: "csv",
+        content: Buffer.from(validDishesCsvRows([extraData]), "utf8"),
+        limits
+      })
+    ).rejects.toThrow("data outside the resolved header width");
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "extra-data.xlsx",
+        fileType: "xlsx",
+        content: await dishesXlsx(dishesHeaders(), [extraData]),
+        limits
+      })
+    ).rejects.toThrow("data outside the resolved header width");
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "empty-tail.csv",
+        fileType: "csv",
+        content: Buffer.from(validDishesCsvRows([emptyTail]), "utf8"),
+        limits
+      })
+    ).resolves.toMatchObject({ sheets: [expect.objectContaining({ dataRowCount: 1 })] });
   });
 
   test.each([
@@ -130,6 +260,8 @@ describe("structured ingestion", () => {
     ["non-finite number", { dish_sales_quantity: "Infinity" }, "must be numeric"],
     ["non-finite NaN", { dish_sales_quantity: "NaN" }, "must be numeric"],
     ["malformed percent", { dishes_043_field: "10%%" }, "must be numeric"],
+    ["percent suffix junk", { dishes_043_field: "12.5%junk" }, "must be numeric"],
+    ["malformed percent decimal", { dishes_043_field: "12.%" }, "must be numeric"],
     ["date suffix", { business_date: "2026-07-01T00:00:00" }, "must be a date"],
     ["impossible date", { business_date: "2026-02-30" }, "must be a date"],
     ["mixed date separators", { business_date: "2026-07/01" }, "must be a date"],
@@ -359,6 +491,53 @@ describe("structured ingestion", () => {
     ).rejects.toThrow("XLSX compression ratio limit exceeded");
   });
 
+  test("rejects forged XLSX central-directory sizes during bounded preflight streaming", async () => {
+    const forged = forgeCentralDirectoryUncompressedSizes(
+      await xlsxZip({ "xl/sharedStrings.xml": "x".repeat(50_000) }, {}, "DEFLATE"),
+      10,
+      "xl/sharedStrings.xml"
+    );
+
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "forged-size.xlsx",
+        fileType: "xlsx",
+        content: forged,
+        limits: limitsFor({
+          maxStructuredCellChars: 100_000,
+          maxXlsxUncompressedBytes: 100_000,
+          maxXlsxCompressionRatio: 1_000
+        })
+      })
+    ).rejects.toThrow("XLSX ZIP entry size mismatch");
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "forged-size-limit.xlsx",
+        fileType: "xlsx",
+        content: forged,
+        limits: limitsFor({
+          maxStructuredCellChars: 100_000,
+          maxXlsxUncompressedBytes: 8_000,
+          maxXlsxCompressionRatio: 1_000
+        })
+      })
+    ).rejects.toThrow("XLSX ZIP resource limit exceeded");
+  });
+
+  test("accepts a valid XLSX through streamed ZIP preflight", async () => {
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "valid-preflight.xlsx",
+        fileType: "xlsx",
+        content: await dishesXlsx(dishesHeaders(), [dishesRow()]),
+        limits
+      })
+    ).resolves.toMatchObject({ sheets: [expect.objectContaining({ dataRowCount: 1 })] });
+  });
+
   test("rejects missing and duplicate critical OOXML entries", async () => {
     const missingContentTypes = storedZip([
       ["xl/workbook.xml", "workbook"],
@@ -423,6 +602,16 @@ describe("structured ingestion", () => {
 
     expect(profile.sheets).toEqual([expect.objectContaining({ dataRowCount: 997 })]);
     expect(imported.rows).toHaveLength(997);
+    if (dataset === "dishes") {
+      expect(imported.rows[0]?.payload.dishes_050_dish_gross_margin_rate).toBe(1);
+    }
+    if (dataset === "business") {
+      expect(imported.rows[0]?.payload).toMatchObject({
+        business_date: "2026-07-06",
+        gross_sales_amount: 67.8,
+        discount_rate: 0.1622
+      });
+    }
   });
 
   test("maps reordered CSV headers and RFC4180 quoted fields by their resolved source index", async () => {
@@ -500,6 +689,10 @@ function dishesRow() {
     if (field.type === "date_time") return "2026-07-01 12:30:00";
     return `value_${index + 1}`;
   });
+}
+
+function validDishesCsvRows(rows: string[][]) {
+  return `${dishesHeaders().join(",")}\n${rows.map((row) => row.join(",")).join("\n")}\n`;
 }
 
 function parseDishesCsv(overrides: Record<string, string>) {
@@ -593,4 +786,19 @@ function crc32(content: Buffer) {
     for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
   }
   return (crc ^ 0xffffffff) >>> 0;
+}
+
+function forgeCentralDirectoryUncompressedSizes(content: Buffer, size: number, entryName?: string) {
+  const forged = Buffer.from(content);
+  for (let offset = 0; offset <= forged.length - 46;) {
+    if (forged.readUInt32LE(offset) !== 0x02014b50) {
+      offset++;
+      continue;
+    }
+    const nameLength = forged.readUInt16LE(offset + 28);
+    const name = forged.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+    if (!entryName || name === entryName) forged.writeUInt32LE(size, offset + 24);
+    offset += 46 + nameLength + forged.readUInt16LE(offset + 30) + forged.readUInt16LE(offset + 32);
+  }
+  return forged;
 }

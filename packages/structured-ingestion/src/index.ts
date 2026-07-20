@@ -61,7 +61,7 @@ export async function parseStructuredFile(input: ParseStructuredFileInput): Prom
   assertFileType(input);
   const sheets =
     input.fileType === "csv"
-      ? [{ name: "Sheet1", hidden: false, rows: parseCsvRows(input.content) }]
+      ? [{ name: "Sheet1", hidden: false, rows: parseCsvRows(input.content, input.limits) }]
       : await readXlsx(input.content, input.limits);
   const sheetSummary: StructuredSheetSummary[] = [];
   const rows: StructuredImportRow[] = [];
@@ -77,11 +77,7 @@ export async function parseStructuredFile(input: ParseStructuredFileInput): Prom
       throw validation(
         `Sheet ${sheet.name} failed header validation: ${candidate.resolution.errors.map((error: HeaderValidationError) => `${error.code}:${error.column}`).join(",")}`
       );
-    const data = sheet.rows
-      .slice(candidate.index + 1)
-      .map((row, index) => ({ row, sourceRowNumber: candidate.index + index + 2 }))
-      .filter(({ row }) => row.some((cell) => cell.trim()))
-      .filter(({ row }) => !isSummary(row));
+    const data = dataRowsFor(sheet, candidate);
     sheetSummary.push({
       name: sheet.name,
       hidden: sheet.hidden,
@@ -89,11 +85,6 @@ export async function parseStructuredFile(input: ParseStructuredFileInput): Prom
       dataRowCount: data.length
     });
     for (const item of data) {
-      if (
-        item.row.length > candidate.width &&
-        item.row.slice(candidate.width).some((value) => value.trim())
-      )
-        throw validation(`Row ${item.sourceRowNumber} has data outside the resolved header width.`);
       const payload = payloadFor(input.dataset, candidate.resolution.fields, item.row);
       const businessDate = parseDate(String(payload.business_date ?? ""), false);
       if (
@@ -117,10 +108,11 @@ export async function profileStructuredFile(
   assertFileType(input);
   const sheets =
     input.fileType === "csv"
-      ? [{ name: "Sheet1", hidden: false, rows: parseCsvRows(input.content) }]
+      ? [{ name: "Sheet1", hidden: false, rows: parseCsvRows(input.content, input.limits) }]
       : await readXlsx(input.content, input.limits);
   const profile: StructuredSheetProfile[] = [];
   const ignoredEmptySheets: string[] = [];
+  let dataRowCount = 0;
   for (const sheet of sheets) {
     if (isEmpty(sheet.rows)) {
       ignoredEmptySheets.push(sheet.name);
@@ -132,15 +124,16 @@ export async function profileStructuredFile(
       throw validation(
         `VALIDATION_FAILED: ${sheet.name} has no recognized ${input.dataset} header`
       );
+    const data = dataRowsFor(sheet, candidate);
+    dataRowCount += data.length;
+    if (dataRowCount > input.limits.maxStructuredImportRows)
+      throw validation("Structured import row limit exceeded.");
     profile.push({
       name: sheet.name,
       hidden: sheet.hidden,
       headerRowNumber: candidate.index + 1,
       columnCount: candidate.width,
-      dataRowCount: sheet.rows
-        .slice(candidate.index + 1)
-        .filter((row) => row.some((cell) => cell.trim()))
-        .filter((row) => !isSummary(row)).length,
+      dataRowCount: data.length,
       validationErrors: []
     });
   }
@@ -154,6 +147,22 @@ export async function profileStructuredFile(
   };
 }
 
+function dataRowsFor(sheet: { rows: string[][] }, candidate: { index: number; width: number }) {
+  const data = sheet.rows
+    .slice(candidate.index + 1)
+    .map((row, index) => ({ row, sourceRowNumber: candidate.index + index + 2 }))
+    .filter(({ row }) => row.some((cell) => cell.trim()))
+    .filter(({ row }) => !isSummary(row));
+  for (const item of data) {
+    if (
+      item.row.length > candidate.width &&
+      item.row.slice(candidate.width).some((value) => value.trim())
+    )
+      throw validation(`Row ${item.sourceRowNumber} has data outside the resolved header width.`);
+  }
+  return data;
+}
+
 function assertFileType(input: { fileName: string; fileType: "csv" | "xlsx"; content: Buffer }) {
   const extension = input.fileName.split(".").pop()?.toLowerCase();
   if (extension !== input.fileType) throw validation("File name and file type disagree.");
@@ -163,11 +172,11 @@ function assertFileType(input: { fileName: string; fileType: "csv" | "xlsx"; con
   )
     throw validation("XLSX file does not have a ZIP signature.");
 }
-function parseCsvRows(content: Buffer): string[][] {
+function parseCsvRows(content: Buffer, limits: StructuredIngestionLimits): string[][] {
   if (content.includes(0)) throw validation("CSV content must be UTF-8 text.");
   const decoded = new TextDecoder("utf-8", { fatal: true }).decode(content);
   return parseCsv(decoded, { bom: true, relax_column_count: true, skip_empty_lines: false }).map(
-    (row: unknown[]) => row.map((value) => String(value).trim())
+    (row: unknown[]) => row.map((value) => checkedCellText(String(value), limits))
   );
 }
 async function readXlsx(
@@ -198,7 +207,9 @@ function worksheetRows(sheet: ExcelJS.Worksheet, limits: StructuredIngestionLimi
   return rows;
 }
 function cellText(cell: ExcelJS.Cell, limits: StructuredIngestionLimits): string {
-  const text = xlsxCellValueText(cell.value);
+  return checkedCellText(xlsxCellValueText(cell.value), limits);
+}
+function checkedCellText(text: string, limits: StructuredIngestionLimits): string {
   if (text.length > limits.maxStructuredCellChars)
     throw validation("Structured cell length limit exceeded.");
   return text.trim();
@@ -210,7 +221,9 @@ function xlsxCellValueText(value: unknown): string {
     return String(value);
   if (!isRecord(value)) throw validation("Unsupported XLSX cell value.");
   if ("formula" in value) {
-    return value.result == null ? "" : xlsxCellValueText(value.result);
+    if (!("result" in value) || value.result == null)
+      throw validation("Unevaluated XLSX formula is not supported.");
+    return xlsxCellValueText(value.result);
   }
   if (Array.isArray(value.richText)) {
     return value.richText
@@ -227,23 +240,51 @@ async function preflightZip(content: Buffer, limits: StructuredIngestionLimits):
   await new Promise<void>((resolve, reject) =>
     yauzl.fromBuffer(
       content,
-      { lazyEntries: true, validateEntrySizes: true },
+      { lazyEntries: true, validateEntrySizes: false },
       (error: Error | null, zip: any) => {
         if (error || !zip) {
           reject(validation("Malformed XLSX ZIP archive."));
           return;
         }
-        let count = 0,
-          total = 0;
+        let settled = false;
+        let count = 0;
+        let declaredTotal = 0;
+        let actualTotal = 0;
         const names = new Set<string>();
         const critical = new Set<string>();
-        zip.on("error", (zipError: Error) => reject(zipErrorFor(zipError)));
+        const close = () => {
+          try {
+            zip.close();
+          } catch {
+            // The archive may already be closed after a stream failure.
+          }
+        };
+        const fail = (cause: unknown) => {
+          if (settled) return;
+          settled = true;
+          close();
+          reject(cause instanceof Error ? cause : validation("Malformed XLSX ZIP archive."));
+        };
+        const succeed = () => {
+          if (settled) return;
+          settled = true;
+          close();
+          resolve();
+        };
+        const readNext = () => {
+          if (!settled) zip.readEntry();
+        };
+        zip.on("error", (zipError: Error) => fail(zipErrorFor(zipError)));
         zip.on("entry", (entry: any) => {
           try {
             count++;
-            total += entry.uncompressedSize;
+            declaredTotal += entry.uncompressedSize;
             const name = String(entry.fileName);
-            if (count > limits.maxXlsxZipEntries || total > limits.maxXlsxUncompressedBytes)
+            if (
+              count > limits.maxXlsxZipEntries ||
+              declaredTotal > limits.maxXlsxUncompressedBytes ||
+              entry.uncompressedSize > limits.maxXlsxUncompressedBytes
+            )
               throw validation("XLSX ZIP resource limit exceeded.");
             if (isUnsafeZipPath(name)) throw validation("Unsafe XLSX ZIP entry path.");
             if (names.has(name) && isCriticalXlsxEntry(name))
@@ -256,19 +297,60 @@ async function preflightZip(content: Buffer, limits: StructuredIngestionLimits):
                 entry.uncompressedSize / entry.compressedSize > limits.maxXlsxCompressionRatio)
             )
               throw validation("XLSX compression ratio limit exceeded.");
-            zip.readEntry();
+            zip.openReadStream(entry, (streamError: Error | null, stream: any) => {
+              if (streamError || !stream) {
+                fail(
+                  streamError ? zipErrorFor(streamError) : validation("Malformed XLSX ZIP archive.")
+                );
+                return;
+              }
+              let entryActual = 0;
+              stream.on("data", (chunk: Buffer | Uint8Array | string) => {
+                if (settled) return;
+                const size =
+                  typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.byteLength;
+                entryActual += size;
+                actualTotal += size;
+                if (
+                  entryActual > limits.maxXlsxUncompressedBytes ||
+                  actualTotal > limits.maxXlsxUncompressedBytes
+                ) {
+                  stream.destroy();
+                  fail(validation("XLSX ZIP resource limit exceeded."));
+                  return;
+                }
+                if (
+                  entryActual > 0 &&
+                  (entry.compressedSize === 0 ||
+                    entryActual / entry.compressedSize > limits.maxXlsxCompressionRatio)
+                ) {
+                  stream.destroy();
+                  fail(validation("XLSX compression ratio limit exceeded."));
+                }
+              });
+              stream.once("error", (streamFailure: Error) => fail(zipErrorFor(streamFailure)));
+              stream.once("end", () => {
+                if (settled) return;
+                if (entryActual !== entry.uncompressedSize) {
+                  fail(validation("XLSX ZIP entry size mismatch."));
+                  return;
+                }
+                readNext();
+              });
+            });
           } catch (caught) {
-            zip.close();
-            reject(caught);
+            fail(caught);
           }
         });
-        zip.on("end", () =>
-          critical.has("[Content_Types].xml") &&
-          critical.has("xl/workbook.xml") &&
-          [...critical].some(isWorksheetXmlEntry)
-            ? resolve()
-            : reject(validation("XLSX required OOXML entries are missing."))
-        );
+        zip.on("end", () => {
+          if (
+            critical.has("[Content_Types].xml") &&
+            critical.has("xl/workbook.xml") &&
+            [...critical].some(isWorksheetXmlEntry)
+          )
+            succeed();
+          else fail(validation("XLSX required OOXML entries are missing."));
+        });
         zip.readEntry();
       }
     )
@@ -340,7 +422,7 @@ function parseCell(field: StructuredFieldRegistryEntry, value: string): unknown 
         : /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
     if (!expression.test(text)) throw validation(`${field.canonicalName} must be numeric.`);
     const number = Number(
-      field.type === "percent" ? text.slice(0, -Number(text.endsWith("%"))) : text
+      field.type === "percent" && text.endsWith("%") ? text.slice(0, -1) : text
     );
     if (!Number.isFinite(number)) throw validation(`${field.canonicalName} must be numeric.`);
     return number;

@@ -724,11 +724,15 @@ async function structuredWorkbook(input: {
   includeExplanationSheet?: boolean;
   prefaceRows?: string[][];
   rowCount?: number;
+  cellOverrides?: Record<string, unknown>;
 }) {
   const registry = getStructuredRegistry(input.dataset);
   const workbook = new ExcelJS.Workbook();
   const headers = registry.fields.map((field) => field.sourceColumn);
-  const row = registry.fields.map((field, index) => {
+  const row = registry.fields.map((field, index): unknown => {
+    if (input.cellOverrides?.[field.canonicalName] !== undefined) {
+      return input.cellOverrides[field.canonicalName];
+    }
     if (field.canonicalName === "business_date") {
       return "2026-07-02";
     }
@@ -1902,7 +1906,10 @@ describe("structured imports", () => {
   it("does not publish malformed or over-limit CSV/XLSX imports to storage or durable repositories", async () => {
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
       await buildStructuredImportTestServer(undefined, {
-        runtimeEnv: { MAX_STRUCTURED_IMPORT_ROWS: "1" } as NodeJS.ProcessEnv
+        runtimeEnv: {
+          MAX_STRUCTURED_IMPORT_ROWS: "1",
+          MAX_STRUCTURED_CELL_CHARS: "100"
+        } as NodeJS.ProcessEnv
       });
     const validCsvLines = validStructuredCsv("dishes").trim().split("\n");
     const overLimitCsv = Buffer.from(
@@ -1920,6 +1927,10 @@ describe("structured imports", () => {
         body: overLimitCsv
       }),
       postStructuredImport(app, {
+        idempotencyKey: "atomic-long-cell-csv",
+        body: Buffer.from(validStructuredCsv("dishes", { product_name: "x".repeat(101) }), "utf8")
+      }),
+      postStructuredImport(app, {
         idempotencyKey: "atomic-malformed-xlsx",
         fileName: "malformed.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1930,6 +1941,15 @@ describe("structured imports", () => {
         fileName: "over-limit.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         body: await structuredWorkbook({ dataset: "dishes", rowCount: 2 })
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-unevaluated-formula-xlsx",
+        fileName: "unevaluated-formula.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: await structuredWorkbook({
+          dataset: "dishes",
+          cellOverrides: { product_name: { formula: "1+1" } }
+        })
       })
     ]);
 
