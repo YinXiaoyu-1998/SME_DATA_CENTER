@@ -689,3 +689,11 @@
 
 - Review verdict: spec compliant. Fix commit `6f7d3af` removes the worker-local poll default and now falls back through `PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs` in `apps/worker/src/worker.ts`. The current delta since the prior review contains only that focused worker change and handoff documentation; no Task 6 behavior is present.
 - Review evidence: confirmed no remaining worker-owned `WORKER_POLL_INTERVAL_MS` parser/default literal, current worktree was clean before this handoff, and fresh focused verification passed: `npm test -- --run apps/worker/src/worker.test.ts apps/worker/src/config/runtime-limits.test.ts packages/domain/src/runtime-limits.test.ts` (24 tests) and `npm run typecheck`.
+
+## 2026-07-20 — Task 3 runtime-limit code-quality review (`codex/phase3-hardening-03-runtime-limits`)
+
+- Reviewer role: Fresh senior code-quality review; product/source/test inspection was read-only before this handoff-only record.
+- Reviewed range: `b8198da6b3dbe3a8d7ce35c4ff992e8169d42cbc..3410dd239838ea9f5a7368b7c03f0156e9e7e1e0`.
+- Verdict: Not ready without one important configuration-boundary fix. `MCP_MAX_CONCURRENT_REQUESTS` remains a separate `process.env` parser/default in `apps/api/src/mcp/guards.ts` and is read directly by the route registration, so it bypasses the API typed loader and `ApiServerOptions.runtimeEnv`. Move it into the domain defaults/API runtime-limit loader and pass the typed value into the MCP route, removing the legacy parser/default; add a `runtimeEnv` wiring regression test.
+- Strengths: Upload sizing is resolved once and consistently reaches multipart, MCP body sizing, and decoded MCP upload delegation; structured-import timeout/batch values are injected only when the Prisma repository is constructed; deferred worker/API knobs are accurately documented as parsed-only; the MCP contract has a one-way dependency on domain query limits; poll fallback now uses the shared immutable default.
+- Verification: targeted configuration/MCP/worker/contract suite (`8 files, 82 tests`) passed; `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check` passed.
