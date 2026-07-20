@@ -4,7 +4,6 @@ import multipart from "@fastify/multipart";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AUTH_ERROR_CODES,
-  AUDIT_ACTIONS,
   DEFAULT_RETRIEVAL_CONFIG_VERSION,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_QUERY_LIMITS,
@@ -20,7 +19,11 @@ import {
   type StructuredDatasetName
 } from "@enterprise-hub/domain";
 import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
-import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
+import {
+  createOriginalObjectKey,
+  LocalFileSystemStorageAdapter,
+  type StorageAdapter
+} from "@enterprise-hub/storage";
 import {
   createPrismaDocumentCatalogRepository,
   type AuditLogRecord,
@@ -533,7 +536,7 @@ function structuredImportResponse(input: {
     fileType: "xlsx" | "csv";
     storageObjectKey: string;
     originalFileName: string;
-    status: "active";
+    status: "active" | "archived";
   };
 }) {
   return {
@@ -551,6 +554,19 @@ function structuredImportResponse(input: {
     },
     importBatch: importBatchResponse(input.importBatch)
   };
+}
+
+function responseForReservedImport(importBatch: StructuredImportBatchRecord) {
+  return structuredImportResponse({
+    importBatch,
+    document: {
+      documentId: importBatch.sourceDocumentId,
+      fileType: importBatch.sourceDocumentFileType,
+      storageObjectKey: importBatch.storageObjectKey,
+      originalFileName: importBatch.originalFileName,
+      status: importBatch.sourceDocumentStatus === "archived" ? "archived" : "active"
+    }
+  });
 }
 
 function importBatchResponse(importBatch: StructuredImportBatchRecord) {
@@ -1168,7 +1184,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       );
     }
 
-    const documentId = createDocumentId();
+    const candidateDocumentId = createDocumentId();
     const originalFileName = uploadedFile.fileName;
     const canonicalFileName = canonicalStructuredImportFileName({
       enterpriseName,
@@ -1177,27 +1193,27 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       endDate,
       fileType
     });
-    const storedObject = await storage().putObject({
-      orgId: employee.orgId,
-      documentId,
-      fileName: canonicalFileName,
-      body: uploadedFile.body,
-      contentType: uploadedFile.contentType
-    });
+    const fileHash = createHash("sha256").update(uploadedFile.body).digest("hex");
     const requestFingerprint = structuredImportFingerprint({
       dataset,
       enterpriseName,
       startDate,
       endDate,
       labelKeys: requestedLabels.map((label) => label.key).sort(),
-      fileHash: storedObject.hash
+      fileHash
+    });
+    const candidateStorageObjectKey = createOriginalObjectKey({
+      orgId: employee.orgId,
+      documentId: candidateDocumentId,
+      fileName: canonicalFileName
     });
 
+    let reservation: Awaited<ReturnType<StructuredImportRepository["reserveStructuredImport"]>>;
     try {
-      const importBatch = await structuredImports().importStructuredDataset({
+      reservation = await structuredImports().reserveStructuredImport({
         orgId: employee.orgId,
         actorEmployeeId: employee.id,
-        documentId,
+        documentId: candidateDocumentId,
         dataset,
         fileType,
         startDate,
@@ -1206,79 +1222,86 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         requestFingerprint,
         document: {
           title: `${enterpriseName}_${dataset}_${startDate}_${endDate}`,
-          storageObjectKey: storedObject.key,
+          storageObjectKey: candidateStorageObjectKey,
           originalFileName,
-          contentType: storedObject.contentType,
-          byteSize: storedObject.size,
-          checksumSha256: storedObject.hash,
+          contentType: uploadedFile.contentType,
+          byteSize: uploadedFile.body.byteLength,
+          checksumSha256: fileHash,
           labelIds: requestedLabels.map((label) => label.id),
           labels: requestedLabels.map((label) => label.key).sort()
         },
         sourceSheetSummary: validation.sheetSummary,
-        rows: validation.rows
-      });
-
-      if (!importBatch) {
-        throw new Error("Import batch was not created.");
-      }
-
-      await documents().appendAuditLog({
-        orgId: employee.orgId,
-        actorEmployeeId: employee.id,
-        action: AUDIT_ACTIONS.structuredImportStarted,
-        targetType: "import_batch",
-        targetId: importBatch.id,
-        result: "succeeded",
-        metadata: {
-          dataset,
-          startDate,
-          endDate,
-          rowCount: validation.rows.length,
-          sourceDocumentId: documentId
-        },
+        totalRowCount: validation.rows.length,
         requestId: request.id,
         clientIp: request.ip
       });
-      await documents().appendAuditLog({
-        orgId: employee.orgId,
-        actorEmployeeId: employee.id,
-        action: AUDIT_ACTIONS.structuredImportApplied,
-        targetType: "import_batch",
-        targetId: importBatch.id,
-        result: "succeeded",
-        metadata: {
-          dataset,
-          startDate,
-          endDate,
-          appliedRowCount: importBatch.appliedRowCount,
-          sourceDocumentId: documentId
-        },
-        requestId: request.id,
-        clientIp: request.ip
-      });
-
-      return reply.code(202).send(
-        structuredImportResponse({
-          importBatch,
-          document: {
-            documentId,
-            fileType,
-            storageObjectKey: storedObject.key,
-            originalFileName,
-            status: "active"
-          }
-        })
-      );
     } catch (error) {
-      await storage().deleteObject(storedObject.key);
-
       if (error instanceof StructuredImportError || hasStructuredImportCode(error)) {
         return reply
           .code(409)
           .send(errorResponse(error.code, structuredImportConflictMessage(error.code)));
       }
+      request.log.error({ err: error }, "structured import reservation failed");
+      return reply
+        .code(500)
+        .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
+    }
 
-      request.log.error({ err: error, documentId }, "structured import failed");
+    if (reservation.state === "existing") {
+      return reply.code(202).send(responseForReservedImport(reservation.importBatch));
+    }
+
+    const reservedBatch = reservation.importBatch;
+    try {
+      const storedObject = await storage().putObject({
+        orgId: employee.orgId,
+        documentId: reservedBatch.sourceDocumentId,
+        fileName: canonicalFileName,
+        body: uploadedFile.body,
+        contentType: uploadedFile.contentType
+      });
+      if (
+        storedObject.key !== reservedBatch.storageObjectKey ||
+        storedObject.hash !== fileHash ||
+        storedObject.size !== uploadedFile.body.byteLength
+      ) {
+        throw new Error("Published structured import object does not match its reservation.");
+      }
+    } catch (error) {
+      try {
+        const authoritative = await structuredImports().markStructuredImportStorageFailure({
+          orgId: employee.orgId,
+          importBatchId: reservedBatch.id,
+          errorCode: "STORAGE_WRITE_FAILED",
+          errorSummary: error instanceof Error ? error.message : "Storage write failed."
+        });
+        if (authoritative.status === "applied") {
+          return reply.code(202).send(responseForReservedImport(authoritative));
+        }
+      } catch (markError) {
+        request.log.error({ err: markError }, "failed to record structured storage failure");
+      }
+      request.log.error({ err: error }, "structured import storage publication failed");
+      return reply
+        .code(500)
+        .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
+    }
+
+    try {
+      const importBatch = await structuredImports().applyReservedStructuredImport({
+        orgId: employee.orgId,
+        actorEmployeeId: employee.id,
+        importBatchId: reservedBatch.id,
+        rows: validation.rows,
+        requestId: request.id,
+        clientIp: request.ip
+      });
+      return reply.code(202).send(responseForReservedImport(importBatch));
+    } catch (error) {
+      request.log.error(
+        { err: error, documentId: reservedBatch.sourceDocumentId },
+        "structured import apply failed"
+      );
       return reply
         .code(500)
         .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
