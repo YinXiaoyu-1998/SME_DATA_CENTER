@@ -32,7 +32,11 @@ import {
   type DocumentStatusRecord
 } from "./documents.js";
 import { createPrismaEmployeeRepository, type EmployeeRepository } from "./employees.js";
-import { createPrismaEvidenceSearchRepository, type EvidenceSearchRepository } from "./evidence.js";
+import {
+  EvidenceSearchCursorError,
+  createPrismaEvidenceSearchRepository,
+  type EvidenceSearchRepository
+} from "./evidence.js";
 import {
   createPrismaSkillDirectoryRepository,
   type SkillDirectoryEntry,
@@ -1082,16 +1086,26 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       labelIds: stringArray(request.body.filters?.labelIds)
     };
     const employee = (request as AuthenticatedRequest).employee;
-    const result = await evidence().searchEvidence({
-      orgId: employee.orgId,
-      employee,
-      query,
-      filters,
-      limit,
-      cursor,
-      requestId: request.id,
-      clientIp: request.ip
-    });
+    let result;
+    try {
+      result = await evidence().searchEvidence({
+        orgId: employee.orgId,
+        employee,
+        query,
+        filters,
+        limit,
+        cursor,
+        cursorSecret: jwtSecret,
+        requestId: request.id,
+        clientIp: request.ip
+      });
+    } catch (error) {
+      if (error instanceof EvidenceSearchCursorError) {
+        return reply.code(400).send(phase3ErrorResponse(request, error.code, error.message));
+      }
+
+      throw error;
+    }
 
     return {
       ...result,
