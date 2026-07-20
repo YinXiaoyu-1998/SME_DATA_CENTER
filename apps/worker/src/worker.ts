@@ -1,16 +1,19 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { DocumentStatus, Prisma, PrismaClient, ProcessingRunStatus } from "@prisma/client";
-import { AUDIT_ACTIONS, PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@enterprise-hub/domain";
+import {
+  AUDIT_ACTIONS,
+  EvidenceParseError,
+  PHASE3_RUNTIME_LIMIT_DEFAULTS
+} from "@enterprise-hub/domain";
 import type { StorageAdapter } from "@enterprise-hub/storage";
-
-const MAX_PROCESSING_FAILURES = 3;
 
 export const PROCESSING_ERROR_CODES = {
   unsupportedFileType: "UNSUPPORTED_FILE_TYPE",
   storageReadFailed: "STORAGE_READ_FAILED",
   evidenceIndexingFailed: "EVIDENCE_INDEXING_FAILED",
-  unsupportedProcessingJobType: "UNSUPPORTED_PROCESSING_JOB_TYPE"
+  unsupportedProcessingJobType: "UNSUPPORTED_PROCESSING_JOB_TYPE",
+  leaseLost: "PROCESSING_LEASE_LOST"
 } as const;
 
 export interface ClaimedProcessingRun {
@@ -18,7 +21,10 @@ export interface ClaimedProcessingRun {
   orgId: string;
   documentId: string;
   retryCount: number;
+  attemptNumber: number;
   jobType: string;
+  lockedBy: string | null;
+  lockedUntil: Date | null;
   document: {
     id: string;
     orgId: string;
@@ -71,9 +77,21 @@ export interface EvidenceIndexer {
   }): Promise<EvidenceIndexingResult>;
 }
 
+export interface ClaimProcessingRunInput {
+  workerId: string;
+  now: Date;
+  leaseSeconds: number;
+}
+
+export interface HeartbeatProcessingRunInput extends ClaimProcessingRunInput {
+  runId: string;
+}
+
 export interface CompleteEvidenceIndexingInput {
   runId: string;
   documentId: string;
+  workerId: string;
+  now: Date;
   result: EvidenceIndexingResult;
   chunks: EvidenceDocumentChunkWrite[];
 }
@@ -81,13 +99,17 @@ export interface CompleteEvidenceIndexingInput {
 export interface FailProcessingRunInput {
   runId: string;
   documentId: string;
+  workerId: string;
+  now: Date;
   errorCode: string;
   errorSummary: string;
   willRetry: boolean;
+  nextAvailableAt: Date;
 }
 
 export interface ProcessingWorkerRepository {
-  claimNextProcessingRun(): Promise<ClaimedProcessingRun | null>;
+  claimNextProcessingRun(input: ClaimProcessingRunInput): Promise<ClaimedProcessingRun | null>;
+  heartbeatProcessingRun?(input: HeartbeatProcessingRunInput): Promise<boolean>;
   completeEvidenceIndexing?(input: CompleteEvidenceIndexingInput): Promise<void>;
   failProcessingRun(input: FailProcessingRunInput): Promise<void>;
   disconnect?(): Promise<void>;
@@ -107,6 +129,13 @@ export interface RunWorkerLoopInput {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
   evidenceIndexer?: EvidenceIndexer;
+  workerId?: string;
+  workerConcurrency?: number;
+  leaseSeconds?: number;
+  maxAttempts?: number;
+  retryBaseMs?: number;
+  retryMaxMs?: number;
+  now?: () => Date;
   pollIntervalMs?: number;
   signal?: AbortSignal;
   onResult?: (result: RunWorkerOnceResult) => void;
@@ -117,25 +146,51 @@ export async function runWorkerOnce(input: {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
   evidenceIndexer?: EvidenceIndexer;
+  workerId?: string;
+  leaseSeconds?: number;
+  maxAttempts?: number;
+  retryBaseMs?: number;
+  retryMaxMs?: number;
+  now?: () => Date;
 }): Promise<RunWorkerOnceResult> {
-  const run = await input.repository.claimNextProcessingRun();
+  const workerId = input.workerId ?? createWorkerId();
+  const leaseSeconds = input.leaseSeconds ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerLeaseSeconds;
+  const maxAttempts = input.maxAttempts ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerMaxAttempts;
+  const retryBaseMs = input.retryBaseMs ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerRetryBaseMs;
+  const retryMaxMs = input.retryMaxMs ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerRetryMaxMs;
+  const now = input.now ?? (() => new Date());
+  const run = await input.repository.claimNextProcessingRun({
+    workerId,
+    leaseSeconds,
+    now: now()
+  });
 
   if (!run) {
     return { processed: false };
   }
 
+  const heartbeat = startHeartbeat({
+    repository: input.repository,
+    runId: run.id,
+    workerId,
+    leaseSeconds,
+    now
+  });
+
   try {
     if (run.jobType !== "evidence_document_index") {
       throw new ProcessingError(
         PROCESSING_ERROR_CODES.unsupportedProcessingJobType,
-        `Unsupported processing job type: ${run.jobType}`
+        `Unsupported processing job type: ${run.jobType}`,
+        false
       );
     }
 
     if (!input.evidenceIndexer || !input.repository.completeEvidenceIndexing) {
       throw new ProcessingError(
         PROCESSING_ERROR_CODES.unsupportedFileType,
-        "Evidence indexing is not configured."
+        "Evidence indexing is not configured.",
+        false
       );
     }
 
@@ -144,6 +199,8 @@ export async function runWorkerOnce(input: {
     await input.repository.completeEvidenceIndexing({
       runId: run.id,
       documentId: run.documentId,
+      workerId,
+      now: now(),
       result,
       chunks: result.chunks
     });
@@ -155,15 +212,27 @@ export async function runWorkerOnce(input: {
     };
   } catch (error) {
     const processingError = toProcessingError(error);
-    const nextRetryCount = run.retryCount + 1;
-    const willRetry = nextRetryCount < MAX_PROCESSING_FAILURES;
+    if (processingError.code === PROCESSING_ERROR_CODES.leaseLost) {
+      return {
+        processed: true,
+        documentId: run.documentId,
+        status: "retry_scheduled"
+      };
+    }
 
+    const failedAt = now();
+    const willRetry = processingError.retryable && run.attemptNumber < maxAttempts;
     await input.repository.failProcessingRun({
       runId: run.id,
       documentId: run.documentId,
+      workerId,
+      now: failedAt,
       errorCode: processingError.code,
       errorSummary: processingError.summary,
-      willRetry
+      willRetry,
+      nextAvailableAt: willRetry
+        ? new Date(failedAt.getTime() + retryDelayMs(run.attemptNumber, retryBaseMs, retryMaxMs))
+        : failedAt
     });
 
     return {
@@ -171,23 +240,43 @@ export async function runWorkerOnce(input: {
       documentId: run.documentId,
       status: willRetry ? "retry_scheduled" : "processing_failed"
     };
+  } finally {
+    heartbeat.stop();
   }
 }
 
 export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
   const pollIntervalMs = input.pollIntervalMs ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs;
+  const workerConcurrency =
+    input.workerConcurrency ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerConcurrency;
+  const workerIds = Array.from(
+    { length: workerConcurrency },
+    (_, index) => input.workerId ?? createWorkerId(index + 1)
+  );
 
   while (!input.signal?.aborted) {
     try {
-      const result = await runWorkerOnce({
-        repository: input.repository,
-        storage: input.storage,
-        evidenceIndexer: input.evidenceIndexer
-      });
+      const results = await Promise.all(
+        workerIds.map((workerId) =>
+          runWorkerOnce({
+            repository: input.repository,
+            storage: input.storage,
+            evidenceIndexer: input.evidenceIndexer,
+            workerId,
+            leaseSeconds: input.leaseSeconds,
+            maxAttempts: input.maxAttempts,
+            retryBaseMs: input.retryBaseMs,
+            retryMaxMs: input.retryMaxMs,
+            now: input.now
+          })
+        )
+      );
 
-      input.onResult?.(result);
+      for (const result of results) {
+        input.onResult?.(result);
+      }
 
-      if (!result.processed) {
+      if (results.every((result) => !result.processed)) {
         await waitForNextPoll(pollIntervalMs, input.signal);
       }
     } catch (error) {
@@ -204,22 +293,33 @@ export function createPrismaProcessingWorkerRepository(
   const prisma = new PrismaClient({ adapter });
 
   return {
-    async claimNextProcessingRun() {
-      const now = new Date();
+    async claimNextProcessingRun(input) {
+      const lockedUntil = addSeconds(input.now, input.leaseSeconds);
 
       return prisma.$transaction(async (tx) => {
         const run = await tx.processingRun.findFirst({
           where: {
-            status: {
-              in: [ProcessingRunStatus.queued, ProcessingRunStatus.retry_scheduled]
-            },
+            OR: [
+              {
+                status: ProcessingRunStatus.queued,
+                availableAt: { lte: input.now }
+              },
+              {
+                status: ProcessingRunStatus.retry_scheduled,
+                availableAt: { lte: input.now }
+              },
+              {
+                status: ProcessingRunStatus.running,
+                lockedUntil: { lt: input.now }
+              }
+            ],
             document: {
               status: {
                 in: [DocumentStatus.pending_processing, DocumentStatus.processing]
               }
             }
           },
-          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          orderBy: [{ availableAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
           include: {
             document: true
           }
@@ -232,12 +332,29 @@ export function createPrismaProcessingWorkerRepository(
         const claimed = await tx.processingRun.updateMany({
           where: {
             id: run.id,
-            status: run.status
+            OR: [
+              {
+                status: run.status,
+                availableAt: { lte: input.now }
+              },
+              {
+                status: ProcessingRunStatus.running,
+                lockedUntil: { lt: input.now }
+              }
+            ]
           },
           data: {
             status: ProcessingRunStatus.running,
-            startedAt: now,
-            finishedAt: null
+            attemptNumber: {
+              increment: 1
+            },
+            lockedBy: input.workerId,
+            lockedUntil,
+            lastHeartbeatAt: input.now,
+            startedAt: input.now,
+            finishedAt: null,
+            errorCode: null,
+            errorSummary: null
           }
         });
 
@@ -263,27 +380,50 @@ export function createPrismaProcessingWorkerRepository(
             targetId: run.documentId,
             result: "succeeded",
             metadata: {
-              processingRunId: run.id
+              processingRunId: run.id,
+              workerId: input.workerId,
+              lockedUntil: lockedUntil.toISOString()
             }
           }
         });
 
-        return toClaimedProcessingRun(run, document);
+        const claimedRun = await tx.processingRun.findUniqueOrThrow({
+          where: { id: run.id },
+          include: { document: true }
+        });
+
+        return toClaimedProcessingRun(claimedRun, document);
       });
     },
+    async heartbeatProcessingRun(input) {
+      const result = await prisma.processingRun.updateMany({
+        where: activeLeaseWhere(input),
+        data: {
+          lockedUntil: addSeconds(input.now, input.leaseSeconds),
+          lastHeartbeatAt: input.now
+        }
+      });
+      return result.count === 1;
+    },
     async completeEvidenceIndexing(input) {
-      const now = new Date();
-
       await prisma.$transaction(async (tx) => {
-        const run = await tx.processingRun.update({
-          where: {
-            id: input.runId
-          },
+        const claimed = await tx.processingRun.updateMany({
+          where: activeLeaseWhere(input),
           data: {
             status: ProcessingRunStatus.succeeded,
+            lockedBy: null,
+            lockedUntil: null,
             errorCode: null,
             errorSummary: null,
-            finishedAt: now
+            finishedAt: input.now
+          }
+        });
+        if (claimed.count !== 1) {
+          throw new ProcessingLeaseLostError(input.runId);
+        }
+        const run = await tx.processingRun.findUniqueOrThrow({
+          where: {
+            id: input.runId
           }
         });
 
@@ -340,14 +480,14 @@ export function createPrismaProcessingWorkerRepository(
             qdrantCollection: input.result.qdrantCollection,
             indexedChunkCount: input.chunks.length,
             startedAt: run.startedAt,
-            readyAt: now
+            readyAt: input.now
           },
           update: {
             status: "ready",
             indexedChunkCount: input.chunks.length,
             errorCode: null,
             errorSummary: null,
-            readyAt: now
+            readyAt: input.now
           }
         });
 
@@ -391,6 +531,7 @@ export function createPrismaProcessingWorkerRepository(
             result: "succeeded",
             metadata: {
               processingRunId: input.runId,
+              workerId: input.workerId,
               chunkCount: input.chunks.length,
               retrievalConfigVersion: input.result.retrievalConfigVersion,
               qdrantCollection: input.result.qdrantCollection
@@ -400,13 +541,9 @@ export function createPrismaProcessingWorkerRepository(
       });
     },
     async failProcessingRun(input) {
-      const now = new Date();
-
       await prisma.$transaction(async (tx) => {
-        const run = await tx.processingRun.update({
-          where: {
-            id: input.runId
-          },
+        const claimed = await tx.processingRun.updateMany({
+          where: activeLeaseWhere(input),
           data: {
             status: input.willRetry
               ? ProcessingRunStatus.retry_scheduled
@@ -414,9 +551,20 @@ export function createPrismaProcessingWorkerRepository(
             retryCount: {
               increment: 1
             },
+            lockedBy: null,
+            lockedUntil: null,
+            availableAt: input.nextAvailableAt,
             errorCode: input.errorCode,
             errorSummary: input.errorSummary,
-            finishedAt: now
+            finishedAt: input.now
+          }
+        });
+        if (claimed.count !== 1) {
+          throw new ProcessingLeaseLostError(input.runId);
+        }
+        const run = await tx.processingRun.findUniqueOrThrow({
+          where: {
+            id: input.runId
           }
         });
 
@@ -442,6 +590,7 @@ export function createPrismaProcessingWorkerRepository(
               result: "failed",
               metadata: {
                 processingRunId: input.runId,
+                workerId: input.workerId,
                 errorCode: input.errorCode,
                 errorSummary: input.errorSummary
               }
@@ -465,7 +614,8 @@ async function readDocumentContent(
   } catch (error) {
     throw new ProcessingError(
       PROCESSING_ERROR_CODES.storageReadFailed,
-      error instanceof Error ? error.message : "Unable to read storage object."
+      error instanceof Error ? error.message : "Unable to read storage object.",
+      true
     );
   }
 }
@@ -483,11 +633,20 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
 class ProcessingError extends Error {
   readonly code: string;
   readonly summary: string;
+  readonly retryable: boolean;
 
-  constructor(code: string, summary: string) {
+  constructor(code: string, summary: string, retryable: boolean) {
     super(summary);
     this.code = code;
     this.summary = summary;
+    this.retryable = retryable;
+  }
+}
+
+export class ProcessingLeaseLostError extends Error {
+  constructor(runId: string) {
+    super(`Processing run ${runId} is no longer leased by this worker.`);
+    this.name = "ProcessingLeaseLostError";
   }
 }
 
@@ -496,9 +655,30 @@ function toProcessingError(error: unknown): ProcessingError {
     return error;
   }
 
+  if (error instanceof ProcessingLeaseLostError) {
+    return new ProcessingError(PROCESSING_ERROR_CODES.leaseLost, error.message, false);
+  }
+
+  if (error instanceof EvidenceParseError) {
+    return new ProcessingError(error.code, error.message, false);
+  }
+
+  if (isDeterministicEvidenceError(error)) {
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? String((error as { code: unknown }).code)
+        : PROCESSING_ERROR_CODES.evidenceIndexingFailed;
+    return new ProcessingError(
+      code,
+      error instanceof Error ? error.message : "Evidence indexing failed.",
+      false
+    );
+  }
+
   return new ProcessingError(
-    PROCESSING_ERROR_CODES.storageReadFailed,
-    error instanceof Error ? error.message : "Processing failed."
+    PROCESSING_ERROR_CODES.evidenceIndexingFailed,
+    error instanceof Error ? error.message : "Processing failed.",
+    true
   );
 }
 
@@ -511,7 +691,10 @@ function toClaimedProcessingRun(
     orgId: run.orgId,
     documentId: run.documentId,
     retryCount: run.retryCount,
+    attemptNumber: run.attemptNumber,
     jobType: run.jobType,
+    lockedBy: run.lockedBy,
+    lockedUntil: run.lockedUntil,
     document: {
       id: document.id,
       orgId: document.orgId,
@@ -562,11 +745,74 @@ async function waitForNextPoll(pollIntervalMs: number, signal: AbortSignal | und
   }
 }
 
+function activeLeaseWhere(input: { runId: string; workerId: string; now: Date }) {
+  return {
+    id: input.runId,
+    status: ProcessingRunStatus.running,
+    lockedBy: input.workerId,
+    lockedUntil: { gt: input.now }
+  };
+}
+
+function addSeconds(value: Date, seconds: number) {
+  return new Date(value.getTime() + seconds * 1_000);
+}
+
+function retryDelayMs(attemptNumber: number, retryBaseMs: number, retryMaxMs: number) {
+  return Math.min(retryBaseMs * 2 ** Math.max(attemptNumber - 1, 0), retryMaxMs);
+}
+
+function createWorkerId(slot?: number) {
+  const suffix = `${process.pid}-${Math.random().toString(16).slice(2, 10)}`;
+  return slot === undefined ? `worker:${suffix}` : `worker:${slot}:${suffix}`;
+}
+
+function startHeartbeat(input: {
+  repository: ProcessingWorkerRepository;
+  runId: string;
+  workerId: string;
+  leaseSeconds: number;
+  now: () => Date;
+}) {
+  if (!input.repository.heartbeatProcessingRun) {
+    return { stop() {} };
+  }
+
+  const interval = setInterval(
+    () => {
+      void input.repository
+        .heartbeatProcessingRun?.({
+          runId: input.runId,
+          workerId: input.workerId,
+          leaseSeconds: input.leaseSeconds,
+          now: input.now()
+        })
+        .catch(() => undefined);
+    },
+    Math.max(1, Math.floor((input.leaseSeconds * 1_000) / 3))
+  );
+
+  return {
+    stop() {
+      clearInterval(interval);
+    }
+  };
+}
+
 function isAbortError(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
     "name" in error &&
     (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
+function isDeterministicEvidenceError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "retryable" in error &&
+    (error as { retryable?: unknown }).retryable === false
   );
 }

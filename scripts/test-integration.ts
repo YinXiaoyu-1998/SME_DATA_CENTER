@@ -5,8 +5,17 @@ import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@prisma/client";
+import {
+  DocumentKind,
+  DocumentStatus,
+  DocumentType,
+  FileType,
+  PrismaClient,
+  ProcessingJobType,
+  ProcessingRunStatus
+} from "@prisma/client";
 import { createPrismaStructuredImportRepository } from "../apps/api/src/structured-imports.js";
+import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
 import { createOriginalObjectKey, LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 
 const DEFAULT_MYSQL_PORT = "3307";
@@ -328,6 +337,7 @@ try {
     ),
     "Evidence search should return indexed evidence chunks."
   );
+  await assertWorkerLeaseRecovery();
 
   console.log(
     JSON.stringify(
@@ -347,7 +357,8 @@ try {
           "phase3_structured_all_staff_import",
           "phase3_structured_all_staff_query",
           "phase3_structured_import_status_non_enumeration",
-          "phase3_evidence_upload_worker_status_search"
+          "phase3_evidence_upload_worker_status_search",
+          "phase3_worker_lease_crash_recovery"
         ]
       },
       null,
@@ -790,6 +801,176 @@ async function assertStructuredRecoveryPaths(): Promise<void> {
     await repository.disconnect?.();
     await prisma.$disconnect();
   }
+}
+
+async function assertWorkerLeaseRecovery(): Promise<void> {
+  const databaseUrl = integrationEnv["DATABASE_URL"]!;
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+  const repository = createPrismaProcessingWorkerRepository(databaseUrl);
+  const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+  const documentId = "doc_worker_lease_recovery";
+  const runId = "run_worker_lease_recovery";
+  const fileName = "worker-lease-recovery.md";
+  const content = Buffer.from(
+    "# Lease recovery\n\nOnly the current lease owner may publish.",
+    "utf8"
+  );
+  try {
+    const employee = await prisma.employee.findFirst({
+      where: { orgId: "default-org", email: "baoli.manager@example.com" }
+    });
+    assert(Boolean(employee), "Worker lease integration requires the seeded Baoli manager.");
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId,
+      fileName,
+      body: content,
+      contentType: "text/markdown"
+    });
+    await prisma.document.create({
+      data: {
+        id: documentId,
+        orgId: "default-org",
+        title: "Worker Lease Recovery",
+        documentType: DocumentType.management_knowledge,
+        documentKind: DocumentKind.evidence,
+        fileType: FileType.md,
+        status: DocumentStatus.pending_processing,
+        storageObjectKey: stored.key,
+        originalFileName: fileName,
+        contentType: "text/markdown",
+        byteSize: BigInt(content.byteLength),
+        checksumSha256: createHash("sha256").update(content).digest("hex"),
+        uploaderId: employee!.id,
+        sourceSystem: "integration_smoke"
+      }
+    });
+    await prisma.processingRun.create({
+      data: {
+        id: runId,
+        orgId: "default-org",
+        documentId,
+        jobKey: `evidence_document_index:${documentId}:v1`,
+        status: ProcessingRunStatus.queued,
+        jobType: ProcessingJobType.evidence_document_index,
+        attemptNumber: 0,
+        retryCount: 0,
+        availableAt: new Date("2026-07-20T00:00:00.000Z")
+      }
+    });
+
+    const claimedByA = await repository.claimNextProcessingRun({
+      workerId: "worker-a",
+      leaseSeconds: 1,
+      now: new Date("2026-07-20T00:00:00.000Z")
+    });
+    assert(claimedByA?.id === runId, "Worker A must claim the queued run.");
+    const claimedByBWhileLeased = await repository.claimNextProcessingRun({
+      workerId: "worker-b",
+      leaseSeconds: 1,
+      now: new Date("2026-07-20T00:00:00.100Z")
+    });
+    assert(!claimedByBWhileLeased, "Worker B must not claim an active lease.");
+    const heartbeated = await repository.heartbeatProcessingRun?.({
+      runId,
+      workerId: "worker-a",
+      leaseSeconds: 1,
+      now: new Date("2026-07-20T00:00:00.500Z")
+    });
+    assert(heartbeated === true, "Heartbeat must extend the current lease.");
+    const claimedBeforeHeartbeatExpiry = await repository.claimNextProcessingRun({
+      workerId: "worker-b",
+      leaseSeconds: 1,
+      now: new Date("2026-07-20T00:00:01.000Z")
+    });
+    assert(!claimedBeforeHeartbeatExpiry, "Heartbeat must prevent premature lease recovery.");
+    const claimedByB = await repository.claimNextProcessingRun({
+      workerId: "worker-b",
+      leaseSeconds: 1,
+      now: new Date("2026-07-20T00:00:01.600Z")
+    });
+    assert(claimedByB?.id === runId, "Worker B must recover the expired running job.");
+
+    let oldWorkerCompleteRejected = false;
+    try {
+      await repository.completeEvidenceIndexing?.({
+        runId,
+        documentId,
+        workerId: "worker-a",
+        now: new Date("2026-07-20T00:00:01.700Z"),
+        result: workerLeaseIndexingResult(),
+        chunks: []
+      });
+    } catch {
+      oldWorkerCompleteRejected = true;
+    }
+    assert(oldWorkerCompleteRejected, "Old worker must not complete after losing its lease.");
+    assert(
+      (await prisma.document.findUnique({ where: { id: documentId } }))?.status !==
+        DocumentStatus.active,
+      "A lost old worker must not activate the document."
+    );
+
+    await repository.completeEvidenceIndexing?.({
+      runId,
+      documentId,
+      workerId: "worker-b",
+      now: new Date("2026-07-20T00:00:01.700Z"),
+      result: workerLeaseIndexingResult(),
+      chunks: []
+    });
+    let oldWorkerFailRejected = false;
+    try {
+      await repository.failProcessingRun({
+        runId,
+        documentId,
+        workerId: "worker-a",
+        now: new Date("2026-07-20T00:00:01.800Z"),
+        errorCode: "STALE_WORKER",
+        errorSummary: "old worker attempted to fail after success",
+        willRetry: false,
+        nextAvailableAt: new Date("2026-07-20T00:00:01.800Z")
+      });
+    } catch {
+      oldWorkerFailRejected = true;
+    }
+    const [finalRun, finalDocument, readyIndexes] = await Promise.all([
+      prisma.processingRun.findUnique({ where: { id: runId } }),
+      prisma.document.findUnique({ where: { id: documentId } }),
+      prisma.documentIndex.count({ where: { documentId, status: "ready" } })
+    ]);
+    assert(oldWorkerFailRejected, "Old worker must not fail a job after another worker succeeds.");
+    assert(finalRun?.status === ProcessingRunStatus.succeeded, "Recovered worker must succeed.");
+    assert(
+      finalRun.lockedBy === null && finalRun.lockedUntil === null,
+      "Success must release lease."
+    );
+    assert(finalRun.attemptNumber === 2, "Lease recovery must increment the second attempt.");
+    assert(
+      finalDocument?.status === DocumentStatus.active,
+      "Recovered worker must activate document."
+    );
+    assert(readyIndexes === 1, "Recovered worker must publish one ready index.");
+  } finally {
+    await repository.disconnect?.();
+    await prisma.$disconnect();
+  }
+}
+
+function workerLeaseIndexingResult() {
+  return {
+    retrievalConfigVersion: "phase3.worker-lease.integration",
+    qdrantCollection: "enterprise_hub_evidence_test",
+    embeddingProvider: "fake",
+    embeddingModel: "fake-embedding-v1",
+    embeddingVersion: "fake-embedding-v1@phase3.worker-lease.integration",
+    embeddingDimension: 8,
+    lexicalIndexVersion: "lexical.v1",
+    rerankProvider: null,
+    rerankModel: null,
+    rerankVersion: null,
+    chunks: []
+  };
 }
 
 function assert(condition: boolean, message: string): asserts condition {
