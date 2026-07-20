@@ -605,3 +605,11 @@
 - Tests: `npm test -- apps/api/src/server.test.ts` (24 passed); `npm run format:check`; `npm run lint`; `npm run typecheck`; `npm test` (37 files, 221 tests passed); `git diff --check`.
 - Limits/concerns: Verification uses existing deterministic test adapters only; no local integration, MCP, or external-provider path was needed for this route-context-only change. The initial focused test command dependency/Prisma generation failures were environment setup issues, not test failures.
 - Suggested next reviewer: Review the five changed authenticated route boundaries and the stale-token org-B regression before merging both commits from this branch.
+
+## 2026-07-20 - codex/phase3-hardening-01-org-context - Task 1 specification review
+
+- Reviewer role: Fresh specification-compliance reviewer (read-only product-code review).
+- Branch and reviewed range: `codex/phase3-hardening-01-org-context`; `23a54a50bc3a972aff03a9cbb78d9367a81aac4d..22f03d923f3ae0b8eead71e5bc2a40faf00e1c1f` (implementation `19c1afd1b20462158ea4c7b925254e2c19b74562` plus implementation handoff `22f03d923f3ae0b8eead71e5bc2a40faf00e1c1f`).
+- Verdict: ✅ Spec compliant. `authenticate()` reloads and attaches the employee; every requested route derives context from that employee's `orgId`. Evidence upload uses it for label/personal-label lookups, storage, catalog write, and the catalog's audit creation; search, labels, skills, and admin audit use it directly. No client organization input or later-hardening scope was added. The stale-token org-B test and org-A/org-B/default-org route spies cover the requested isolation and compatibility behavior.
+- Commands: `git diff --check`; targeted source/diff and persistence-path inspection; `rg` scan for non-test default-org/defaultOrg usage; `npm test -- apps/api/src/server.test.ts` (24 passed); `npm test` (37 files, 221 tests passed).
+- Issues: None.
