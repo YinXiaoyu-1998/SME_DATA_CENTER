@@ -244,10 +244,6 @@ function createDocumentId(): string {
   return `doc_${randomBytes(12).toString("hex")}`;
 }
 
-function defaultOrgId(): string {
-  return "default-org";
-}
-
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.length > 0))].sort();
 }
@@ -1220,7 +1216,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     const employee = (request as AuthenticatedRequest).employee;
-    const orgId = defaultOrgId();
+    const orgId = employee.orgId;
     const requestedLabels = await documents().findLabelsByKeys(orgId, upload.labelKeys);
     const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
     const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
@@ -1347,7 +1343,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     };
     const employee = (request as AuthenticatedRequest).employee;
     const result = await evidence().searchEvidence({
-      orgId: defaultOrgId(),
+      orgId: employee.orgId,
       employee,
       query,
       filters,
@@ -1652,7 +1648,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       return;
     }
 
-    const labels = await documents().listLabels(defaultOrgId());
+    const employee = (request as AuthenticatedRequest).employee;
+    const labels = await documents().listLabels(employee.orgId);
 
     return {
       labels: labels.map(labelCatalogResponse)
@@ -1666,9 +1663,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       return;
     }
 
+    const employee = (request as AuthenticatedRequest).employee;
     const query = request.query;
     const skillEntries = await skills().listApprovedSkills({
-      orgId: defaultOrgId(),
+      orgId: employee.orgId,
       q: query.q?.trim() || null,
       category: query.category?.trim() || null
     });
@@ -1702,7 +1700,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     const result = await documents().listAuditLogs({
-      orgId: defaultOrgId(),
+      orgId: employee.orgId,
       limit,
       cursor
     });
