@@ -12,7 +12,7 @@ import type {
   StructuredDatasetName
 } from "@enterprise-hub/domain";
 import { getStructuredRegistry } from "@enterprise-hub/domain";
-import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "./server.js";
 import { signEmployeeAccessToken } from "./tokens.js";
 import type { DocumentCatalogRepository } from "./documents.js";
@@ -67,6 +67,24 @@ const lijieEmployee: AuthenticatedEmployee = {
   labels: ["all_staff", "person:lijie"]
 };
 
+const orgAAdminEmployee: AuthenticatedEmployee = {
+  id: "emp_org_a_admin",
+  orgId: "org-a",
+  email: "org-a.admin@example.com",
+  role: "admin",
+  disabled: false,
+  labels: ["all_staff", "person:org-a.admin"]
+};
+
+const orgBAdminEmployee: AuthenticatedEmployee = {
+  id: "emp_org_b_admin",
+  orgId: "org-b",
+  email: "org-b.admin@example.com",
+  role: "admin",
+  disabled: false,
+  labels: ["all_staff", "person:org-b.admin"]
+};
+
 function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {
   return {
     async findByEmail(email: string) {
@@ -80,13 +98,17 @@ function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepositor
 
 function createEvidenceSearchRepository(): EvidenceSearchRepository & {
   queries: Array<{ query: string; employeeId: string }>;
+  inputs: Array<{ orgId: string; employeeId: string }>;
 } {
   const queries: Array<{ query: string; employeeId: string }> = [];
+  const inputs: Array<{ orgId: string; employeeId: string }> = [];
 
   return {
     queries,
+    inputs,
     async searchEvidence(input) {
       queries.push({ query: input.query, employeeId: input.employee.id });
+      inputs.push({ orgId: input.orgId, employeeId: input.employee.id });
 
       return {
         results: [
@@ -123,6 +145,149 @@ function createEvidenceSearchRepository(): EvidenceSearchRepository & {
         warnings: []
       };
     }
+  };
+}
+
+function createOrganizationContextDocumentRepository(): DocumentCatalogRepository & {
+  labelListOrgIds: string[];
+  labelLookupOrgIds: string[];
+  personalLabelLookupOrgIds: string[];
+  catalogWriteOrgIds: string[];
+  auditWriteOrgIds: string[];
+  auditListOrgIds: string[];
+} {
+  const base = createDocumentRepository() as DocumentCatalogRepository;
+  const labelsByOrg = new Map([
+    [
+      "default-org",
+      [
+        { id: "label_default_shared", key: "same-named", name: "Shared Label", type: "store" },
+        {
+          id: "label_default_personal",
+          key: "person:admin",
+          name: "Default Personal",
+          type: "personal"
+        }
+      ]
+    ],
+    [
+      "org-a",
+      [
+        { id: "label_org_a_shared", key: "same-named", name: "Shared Label", type: "store" },
+        {
+          id: "label_org_a_personal",
+          key: "person:org-a.admin",
+          name: "Org A Personal",
+          type: "personal"
+        }
+      ]
+    ],
+    [
+      "org-b",
+      [
+        { id: "label_org_b_shared", key: "same-named", name: "Shared Label", type: "store" },
+        {
+          id: "label_org_b_personal",
+          key: "person:org-b.admin",
+          name: "Org B Personal",
+          type: "personal"
+        }
+      ]
+    ]
+  ]);
+  const labelLookupOrgIds: string[] = [];
+  const labelListOrgIds: string[] = [];
+  const personalLabelLookupOrgIds: string[] = [];
+  const catalogWriteOrgIds: string[] = [];
+  const auditWriteOrgIds: string[] = [];
+  const auditListOrgIds: string[] = [];
+
+  return {
+    ...base,
+    labelListOrgIds,
+    labelLookupOrgIds,
+    personalLabelLookupOrgIds,
+    catalogWriteOrgIds,
+    auditWriteOrgIds,
+    auditListOrgIds,
+    async listLabels(orgId) {
+      labelListOrgIds.push(orgId);
+      return labelsByOrg.get(orgId) ?? [];
+    },
+    async findLabelsByKeys(orgId, keys) {
+      labelLookupOrgIds.push(orgId);
+      return (labelsByOrg.get(orgId) ?? []).filter((label) => keys.includes(label.key));
+    },
+    async findPersonalLabelForEmployee(orgId, employeeId) {
+      personalLabelLookupOrgIds.push(orgId);
+      return (
+        (labelsByOrg.get(orgId) ?? []).find((label) =>
+          employeeId === orgBAdminEmployee.id
+            ? label.key === "person:org-b.admin"
+            : employeeId === orgAAdminEmployee.id
+              ? label.key === "person:org-a.admin"
+              : employeeId === adminEmployee.id && label.key === "person:admin"
+        ) ?? null
+      );
+    },
+    async createUploadedDocument(input) {
+      catalogWriteOrgIds.push(input.orgId);
+      auditWriteOrgIds.push(input.orgId);
+      return base.createUploadedDocument(input);
+    },
+    async listAuditLogs(input) {
+      auditListOrgIds.push(input.orgId);
+      return {
+        auditLogs: [
+          {
+            id: `audit_${input.orgId}`,
+            actorEmployeeId: `employee_${input.orgId}`,
+            action: "document.uploaded",
+            targetType: "document",
+            targetId: `document_${input.orgId}`,
+            result: "succeeded",
+            metadata: null,
+            requestId: "request",
+            clientIp: "127.0.0.1",
+            createdAt: new Date("2026-07-18T00:00:00.000Z")
+          }
+        ],
+        nextCursor: null
+      };
+    }
+  };
+}
+
+function createOrganizationContextStorageAdapter(): StorageAdapter & {
+  putInputs: Array<{ orgId: string; documentId: string; contentType?: string }>;
+} {
+  const putInputs: Array<{ orgId: string; documentId: string; contentType?: string }> = [];
+
+  return {
+    putInputs,
+    async putObject(input) {
+      putInputs.push({
+        orgId: input.orgId,
+        documentId: input.documentId,
+        contentType: input.contentType
+      });
+      return {
+        key: `org/${input.orgId}/documents/${input.documentId}/original/${input.fileName}`,
+        size: Buffer.byteLength(input.body as Buffer),
+        hash: "test-hash",
+        contentType: input.contentType
+      };
+    },
+    async getObjectStream() {
+      throw new Error("not used by this test");
+    },
+    async statObject() {
+      throw new Error("not used by this test");
+    },
+    async createDownloadUrl() {
+      throw new Error("not used by this test");
+    },
+    async deleteObject() {}
   };
 }
 
@@ -1032,6 +1197,159 @@ describe("api auth shell", () => {
         }
       });
     }
+  });
+});
+
+describe("authenticated organization context", () => {
+  let app: FastifyInstance | undefined;
+
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  it("uses the reloaded org-B employee for evidence labels, storage, catalog, and audit context", async () => {
+    const documentRepository = createOrganizationContextDocumentRepository();
+    const storageAdapter = createOrganizationContextStorageAdapter();
+    app = buildApiServer({
+      employeeRepository: createRepository([orgBAdminEmployee]),
+      documentRepository,
+      storageAdapter,
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
+    const staleOrgToken = await signEmployeeAccessToken(
+      { ...orgBAdminEmployee, orgId: "default-org" },
+      jwtSecret
+    );
+    const multipartPayload = createMultipartPayload([
+      {
+        name: "file",
+        fileName: "org-b-sop.md",
+        contentType: "text/markdown",
+        value: Buffer.from("org B evidence", "utf8")
+      },
+      { name: "title", value: "Org B SOP" },
+      { name: "labelKeys[]", value: "same-named" }
+    ]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/documents/evidence",
+      headers: {
+        authorization: `Bearer ${staleOrgToken}`,
+        "content-type": multipartPayload.contentType
+      },
+      payload: multipartPayload.body
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(documentRepository.labelLookupOrgIds).toEqual(["org-b"]);
+    expect(documentRepository.personalLabelLookupOrgIds).toEqual(["org-b"]);
+    expect(storageAdapter.putInputs).toEqual([
+      expect.objectContaining({ orgId: "org-b", contentType: "text/markdown" })
+    ]);
+    expect(documentRepository.catalogWriteOrgIds).toEqual(["org-b"]);
+    expect(documentRepository.auditWriteOrgIds).toEqual(["org-b"]);
+  });
+
+  it("keeps same-named org-A and org-B records isolated while default-org behavior remains available", async () => {
+    const documentRepository = createOrganizationContextDocumentRepository();
+    const evidenceRepository = createEvidenceSearchRepository();
+    const skillInputs: Array<{ orgId: string }> = [];
+    const skillRepository: SkillDirectoryRepository = {
+      async listApprovedSkills(input) {
+        skillInputs.push({ orgId: input.orgId });
+        return [
+          {
+            id: `skill_${input.orgId}`,
+            name: "same-named-skill",
+            description: `Skill for ${input.orgId}`,
+            version: "1.0.0",
+            category: "reporting",
+            inputRequirements: [],
+            installInstructions: "Install it.",
+            examplePrompts: [],
+            status: "approved"
+          }
+        ];
+      }
+    };
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee, orgAAdminEmployee, orgBAdminEmployee]),
+      documentRepository,
+      evidenceRepository,
+      skillRepository,
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
+
+    const orgAHeaders = { authorization: `Bearer ${await accessTokenFor(orgAAdminEmployee)}` };
+    const orgBHeaders = { authorization: `Bearer ${await accessTokenFor(orgBAdminEmployee)}` };
+    const defaultOrgHeaders = { authorization: `Bearer ${await accessTokenFor(adminEmployee)}` };
+
+    const orgALabels = await app.inject({ method: "GET", url: "/labels", headers: orgAHeaders });
+    const orgBLabels = await app.inject({ method: "GET", url: "/labels", headers: orgBHeaders });
+    const defaultOrgLabels = await app.inject({
+      method: "GET",
+      url: "/labels",
+      headers: defaultOrgHeaders
+    });
+    const orgASkills = await app.inject({ method: "GET", url: "/skills", headers: orgAHeaders });
+    const orgBSkills = await app.inject({ method: "GET", url: "/skills", headers: orgBHeaders });
+    const defaultOrgSkills = await app.inject({
+      method: "GET",
+      url: "/skills",
+      headers: defaultOrgHeaders
+    });
+    const orgAEvidenceSearch = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: orgAHeaders,
+      payload: { query: "same-named evidence" }
+    });
+    const orgBEvidenceSearch = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: orgBHeaders,
+      payload: { query: "same-named evidence" }
+    });
+    const defaultOrgEvidenceSearch = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: defaultOrgHeaders,
+      payload: { query: "default evidence" }
+    });
+    const orgAAudit = await app.inject({ method: "GET", url: "/audit", headers: orgAHeaders });
+    const orgBAudit = await app.inject({ method: "GET", url: "/audit", headers: orgBHeaders });
+    const defaultOrgAudit = await app.inject({
+      method: "GET",
+      url: "/audit",
+      headers: defaultOrgHeaders
+    });
+
+    expect(orgALabels.statusCode).toBe(200);
+    expect(orgBLabels.statusCode).toBe(200);
+    expect(defaultOrgLabels.statusCode).toBe(200);
+    expect(documentRepository.labelListOrgIds).toEqual(["org-a", "org-b", "default-org"]);
+    expect(orgASkills.json().skills[0].id).toBe("skill_org-a");
+    expect(orgBSkills.json().skills[0].id).toBe("skill_org-b");
+    expect(defaultOrgSkills.json().skills[0].id).toBe("skill_default-org");
+    expect(skillInputs).toEqual([{ orgId: "org-a" }, { orgId: "org-b" }, { orgId: "default-org" }]);
+    expect(orgAEvidenceSearch.statusCode).toBe(200);
+    expect(orgBEvidenceSearch.statusCode).toBe(200);
+    expect(defaultOrgEvidenceSearch.statusCode).toBe(200);
+    expect(evidenceRepository.inputs).toEqual([
+      { orgId: "org-a", employeeId: orgAAdminEmployee.id },
+      { orgId: "org-b", employeeId: orgBAdminEmployee.id },
+      { orgId: "default-org", employeeId: adminEmployee.id }
+    ]);
+    expect(orgAAudit.json().auditEvents[0].targetId).toBe("document_org-a");
+    expect(orgBAudit.json().auditEvents[0].targetId).toBe("document_org-b");
+    expect(defaultOrgAudit.json().auditEvents[0].targetId).toBe("document_default-org");
+    expect(documentRepository.auditListOrgIds).toEqual(["org-a", "org-b", "default-org"]);
   });
 });
 
