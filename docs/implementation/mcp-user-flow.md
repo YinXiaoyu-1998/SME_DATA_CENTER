@@ -218,9 +218,9 @@ flowchart TD
   C -->|"No"| D["Agent reports exact service status<br/>or waits/polls if user requested"]
   C -->|"Yes"| E["Agent calls search_document_evidence"]
   E --> F["Launcher sends POST /mcp<br/>with bearer auth"]
-  F --> G["API authorizes employee labels<br/>and queries visible evidence only"]
-  G --> H["MySQL filters visible document ids"]
-  H --> I["Qdrant returns matching visible chunks"]
+  F --> G["Qdrant retrieves candidate chunks by org,<br/>retrieval config, and optional documentId"]
+  G --> H["MySQL revalidates active/ready state, labels,<br/>employee access, and remaining filters"]
+  H --> I["API returns only revalidated visible matching chunks"]
   I --> J["Agent returns evidence chunks/status<br/>not a generated business report"]
 ```
 

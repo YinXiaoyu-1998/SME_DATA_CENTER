@@ -1,6 +1,6 @@
 # Local MCP Endpoint Design Decisions
 
-Last updated: 2026-07-13
+Last updated: 2026-07-21
 
 ## Purpose
 
@@ -20,15 +20,15 @@ upload, status, and search paths, see
 
 ## Current Baseline
 
-- The existing MCP server is a local stdio adapter. It uses `StdioServerTransport`, delegates tool calls to the HTTP API, and stores local development sessions in a local file.
-- Launcher runtime configuration accepts only `ENTERPRISE_HUB_BASE_URL`; the service `/mcp` endpoint is hard-loopback only in Phase 3.
+- The user-side MCP launcher is a local stdio adapter in `apps/mcp-launcher`. It delegates business tool calls to the service's HTTP MCP endpoint and stores the development token only in process memory.
+- Launcher runtime configuration accepts only `ENTERPRISE_HUB_BASE_URL`; the implemented service `POST /mcp` endpoint is hard-loopback only in Phase 3.
 - The only available login mechanism is development login with a seeded employee email. Remote employee authentication and SSO/OAuth are not implemented.
-- The HTTP API currently has no MCP transport endpoint such as `/mcp`.
+- The HTTP API exposes authenticated, stateless Streamable HTTP at `POST /mcp`; the service has no stdio MCP adapter.
 
 ## Decision Status
 
-- Discovery complete. The decisions below are pending product-owner review before any implementation plan or code changes begin.
-- ADR: [0020-local-streamable-http-mcp-endpoint.md](../adr/0020-local-streamable-http-mcp-endpoint.md) records the significant transport, authentication, and network-exposure choice in proposed status.
+- The local Phase 3 endpoint, launcher, and shared tool contract are implemented. This document records the decisions and constraints that govern that implementation.
+- ADR: [0020-local-streamable-http-mcp-endpoint.md](../adr/0020-local-streamable-http-mcp-endpoint.md) records the significant transport, authentication, and network-exposure choice.
 
 ## Decisions
 
@@ -42,7 +42,7 @@ upload, status, and search paths, see
 
 - Decision: Expose only the MCP Streamable HTTP transport at `/mcp`; do not implement the legacy SSE transport.
 - Rationale: The installed MCP SDK already supports Streamable HTTP. A single standard endpoint avoids the legacy SSE multi-route compatibility surface and keeps the local connection shape suitable for a later remote service.
-- Consequence: The endpoint implementation must follow Streamable HTTP request, response, and session semantics. Client configuration will use an MCP URL rather than a local stdio command when this endpoint is selected.
+- Consequence: The endpoint follows Streamable HTTP request, response, and stateless-session semantics. Client configuration starts the user-side stdio launcher, which appends `/mcp` to `ENTERPRISE_HUB_BASE_URL` internally.
 
 ### MCP Transport Session Mode
 
@@ -156,7 +156,7 @@ upload, status, and search paths, see
 
 - Protocol: Integration coverage proves valid single and batch JSON-RPC requests; malformed JSON/envelopes fail at the transport boundary; no session ID is required or issued; and no server-initiated notification route is exposed.
 - Authentication and authorization: Test missing/malformed/invalid token, correct employee mapping, disabled employees, and both forbidden and hidden-resource backend semantics without bypassing backend authorization.
-- HTTP-only contract: Assert that `/mcp` exposes the complete supported core tool list, schemas, and API-error-to-MCP-error mapping. Assert that no stdio command, `enterprise_hub_login_dev` tool, session-file dependency, or `filePath` input remains in the supported product surface.
+- HTTP-only service contract: Assert that `/mcp` exposes the complete supported core tool list, schemas, and API-error-to-MCP-error mapping. Assert that no service-side stdio adapter, `enterprise_hub_login_dev` tool, session-file dependency, or `filePath` input remains in the supported product surface; launcher stdio remains the client-to-launcher transport.
 - Upload: Assert HTTP never dereferences `filePath`, forwards valid bytes to the backend API, rejects oversized bodies with `413 MCP_REQUEST_TOO_LARGE`, rejects oversized decoded payloads with `MCP_INLINE_FILE_TOO_LARGE`, preserves backend size failures, and leaves type/metadata validation backend-authoritative.
 - Exposure: Assert loopback binding by default; blocked `/mcp` on every non-loopback listener with no escape hatch; `405` plus `Allow: POST` for unsupported methods; and no permissive browser CORS response.
 - Errors: Assert transport failures use non-2xx HTTP with stable `retryable`; accepted tool failures use MCP framing; validation, authorization, not-found, and conflict are non-retryable; and backend transients are retryable.
@@ -186,7 +186,7 @@ upload, status, and search paths, see
 
 ### HTTP-Only MCP Transport
 
-- Proposed revision: Remove the stdio adapter and `enterprise_hub_login_dev`; Enterprise Hub exposes MCP only through the local Streamable HTTP `/mcp` endpoint.
+- Implemented: The service-side stdio adapter and `enterprise_hub_login_dev` were removed; Enterprise Hub exposes service MCP only through the local Streamable HTTP `/mcp` endpoint.
 - Rationale: The product has not launched this interface. A single HTTP transport gives agents, skills, tests, and operators one unambiguous connection model and prevents the temporary stdio bridge from becoming a second permanent product surface.
 - Migration consequence: Existing service stdio configuration, `mcp:dev`, local-file `filePath` convenience, and local session-file handling are removed. They are replaced by `mcp:launcher`, launcher-local login, in-memory header injection, and inline-byte upload contract. Launcher stdio is only between its local MCP client and itself; no service fallback transport remains.
 - Shared layer: A single `coreAuthenticatedToolRegistry` owns every business tool, schema, backend delegation, and API-error-to-MCP-error mapping for HTTP. No stdio-only registry or business behavior remains.
@@ -219,8 +219,8 @@ upload, status, and search paths, see
 
 ### Non-Loopback MCP Rejection
 
-- Proposed revision: `/mcp` is hard-limited to `127.0.0.1`/`localhost`; remove `ENABLE_MCP_NON_LOOPBACK` and any other non-loopback escape hatch in this phase.
-- Failure behavior: When the API listener is configured for `0.0.0.0` or another non-loopback address, `/mcp` is disabled or endpoint startup is rejected with stable non-retryable `MCP_NON_LOOPBACK_DISABLED`. It must not process MCP requests.
+- Implemented: `/mcp` is hard-limited to loopback hosts and peers; there is no non-loopback escape hatch in this phase.
+- Failure behavior: API startup rejects an explicit non-loopback listener host. The endpoint rejects a non-loopback Host header or peer address with `MCP_LOOPBACK_REQUIRED` and does not process the MCP request.
 - Rationale: Backend authorization does not remove the risk of bearer tokens and MCP requests crossing a LAN in cleartext HTTP. TLS, network trust controls, and intentional network exposure belong to Phase 4.
 
 ### HTTP Method Policy
