@@ -208,9 +208,9 @@ flowchart TD
   C -->|"否"| D["Agent 报告准确服务状态<br/>或按用户要求等待/轮询"]
   C -->|"是"| E["Agent 调 search_document_evidence"]
   E --> F["Launcher 发送 POST /mcp<br/>带 bearer auth"]
-  F --> G["API 按员工标签鉴权<br/>只查询可见 evidence"]
-  G --> H["MySQL 过滤可见 document ids"]
-  H --> I["Qdrant 返回匹配的可见 chunks"]
+  F --> G["Qdrant 按组织、检索配置<br/>及可选 documentId 取候选 chunks"]
+  G --> H["MySQL 复核 active/ready、文档标签、<br/>员工权限和其余筛选条件"]
+  H --> I["API 仅返回复核后可见的匹配 chunks"]
   I --> J["Agent 返回 evidence chunks/status<br/>不生成业务报告"]
 ```
 
