@@ -20,6 +20,8 @@ When Enterprise Hub tools are requested but no launcher is configured, ask for:
 1. The Enterprise Hub base URL.
 2. The employee email registered in that service.
 
+Do not ask the user for an organization ID. Organization scope is derived by the service from the authenticated employee record, and no MCP tool should add an org header, query field, or body field.
+
 For this Phase 3 local-development implementation, configure Codex to start the launcher, without adding a token:
 
 ```toml
@@ -43,11 +45,30 @@ The URL may point to a locally running service in this phase. Do not try to make
 2. The launcher retains the JWT only in its own process memory. It returns only safe employee identity and service URL. A launcher restart requires a new login.
 3. Call `enterprise_hub_list_labels` before upload and use returned label keys only.
 4. Evidence uploads use `upload_evidence_document` with `file: { name, mediaType, encoding: "base64", contentBase64 }`, `title`, and non-empty `labelKeys`. Never send a server-visible file path.
-5. Structured uploads use `upload_structured_dataset` with the same inline file object plus `dataset`, `enterpriseName`, `startDate`, `endDate`, `idempotencyKey`, and `labelKeys`.
-6. Use `get_evidence_document_status` or `get_import_status` after uploads. Do not run a worker to accelerate processing.
-7. Use `search_document_evidence`, `list_structured_datasets`, and `query_structured_dataset` only through the exposed tools. Do not send SQL or bypass backend authorization.
-8. `enterprise_hub_list_skills` returns approved Skill Directory metadata only; do not execute entries.
-9. Call `enterprise_hub_logout_local` only when the user asks to clear the local login.
+5. Structured uploads use `upload_structured_dataset` with the same inline file object plus `dataset`, `enterpriseName`, `startDate`, `endDate`, `idempotencyKey`, and `labelKeys`. For a network/client retry of the exact same file and metadata, reuse the same `idempotencyKey`; the service returns the originally persisted `documentId`, `importBatchId`, and storage key instead of duplicating data. Do not reuse an idempotency key for a different file, dataset, date window, enterprise, or label set.
+6. Use `get_evidence_document_status` or `get_import_status` after uploads. Do not run a worker to accelerate processing. Poll gently and stop when status is final or when the user asks to stop.
+7. Treat `get_import_status` not-found results as non-visible or missing. The service intentionally returns the same 404 shape for nonexistent, cross-org, disabled, or label-inaccessible import batches, so do not infer that a hidden batch exists or repeat hidden metadata.
+8. Use `search_document_evidence`, `list_structured_datasets`, and `query_structured_dataset` only through the exposed tools. Do not send SQL or bypass backend authorization.
+9. For evidence search pagination, pass the returned `page.nextCursor` back as `cursor` with the same query, filters, and limit to request the next page. Do not edit, decode, persist long term, or reuse cursors across employees, labels, queries, filters, limits, or service configurations.
+10. If evidence search returns `INVALID_CURSOR`, restart the search without the cursor. If it returns `CURSOR_EXPIRED`, tell the user the cursor expired and restart only if the user still wants more results. If a document becomes inaccessible between pages, accept that it disappears.
+11. `enterprise_hub_list_skills` returns approved Skill Directory metadata only; do not execute entries.
+12. Call `enterprise_hub_logout_local` only when the user asks to clear the local login.
+
+## Examples
+
+English evidence pagination:
+
+1. User asks: "Find the refund handling SOP and show more if there are additional matches."
+2. Call `search_document_evidence` with the user's query, visible filters if needed, and a bounded `limit`.
+3. If the response includes a non-null `page.nextCursor` and the user wants more, call the same tool again with the same query/filters/limit plus that cursor.
+4. Summarize only returned visible evidence; never claim hidden documents exist.
+
+中文结构化导入重试：
+
+1. 用户说：“刚才上传菜品表网络断了，帮我确认有没有成功。”
+2. 如果这是同一个文件和同一组 metadata，用原来的 `idempotencyKey` 重新调用 `upload_structured_dataset`。
+3. 如果服务返回同一个 `documentId` / `importBatchId` / storage key，把它解释为精确重放成功，不是重复导入。
+4. 如果 `get_import_status` 返回 404，只能说“当前登录身份不可见或该批次不存在”，不要猜测其它组织或隐藏批次。
 
 ## Tools
 
@@ -77,5 +98,8 @@ Service business tools:
 | `ENTERPRISE_HUB_UNREACHABLE` | Report that the URL cannot be reached; do not start or repair services.                             |
 | Permission/not-found result  | Treat it as non-visible; do not infer hidden resources.                                             |
 | Upload validation error      | Return the service validation result; do not rewrite or inspect the file through service internals. |
+| `INVALID_CURSOR`             | Restart the evidence search without the cursor; do not try to repair or decode it.                  |
+| `CURSOR_EXPIRED`             | Explain that the page cursor expired and restart only if the user still wants more results.         |
+| Idempotency conflict         | Explain that the retry key was reused for different upload content or metadata.                     |
 
 Never expose raw JWTs, infer an enterprise from an email, claim inaccessible data exists, create reports or dashboard conclusions, or turn Enterprise Hub into a direct employee-facing agent.

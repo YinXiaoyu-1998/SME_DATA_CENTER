@@ -1,8 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { utils, write } from "xlsx";
+import ExcelJS from "exceljs";
 import type { FastifyInstance } from "fastify";
 import type {
   AuthenticatedEmployee,
@@ -11,8 +11,8 @@ import type {
   Phase3FileType,
   StructuredDatasetName
 } from "@enterprise-hub/domain";
-import { getStructuredRegistry } from "@enterprise-hub/domain";
-import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
+import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "./server.js";
 import { signEmployeeAccessToken } from "./tokens.js";
 import type { DocumentCatalogRepository } from "./documents.js";
@@ -67,6 +67,42 @@ const lijieEmployee: AuthenticatedEmployee = {
   labels: ["all_staff", "person:lijie"]
 };
 
+const orgAAdminEmployee: AuthenticatedEmployee = {
+  id: "emp_org_a_admin",
+  orgId: "org-a",
+  email: "org-a.admin@example.com",
+  role: "admin",
+  disabled: false,
+  labels: ["all_staff", "person:org-a.admin"]
+};
+
+const orgBAdminEmployee: AuthenticatedEmployee = {
+  id: "emp_org_b_admin",
+  orgId: "org-b",
+  email: "org-b.admin@example.com",
+  role: "admin",
+  disabled: false,
+  labels: ["all_staff", "person:org-b.admin"]
+};
+
+const labelLessEmployee: AuthenticatedEmployee = {
+  id: "emp_label_less",
+  orgId: "default-org",
+  email: "label.less@example.com",
+  role: "employee",
+  disabled: false,
+  labels: []
+};
+
+const unlabeledAdminEmployee: AuthenticatedEmployee = {
+  id: "emp_unlabeled_admin",
+  orgId: "default-org",
+  email: "unlabeled.admin@example.com",
+  role: "admin",
+  disabled: false,
+  labels: []
+};
+
 function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {
   return {
     async findByEmail(email: string) {
@@ -80,13 +116,17 @@ function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepositor
 
 function createEvidenceSearchRepository(): EvidenceSearchRepository & {
   queries: Array<{ query: string; employeeId: string }>;
+  inputs: Array<{ orgId: string; employeeId: string }>;
 } {
   const queries: Array<{ query: string; employeeId: string }> = [];
+  const inputs: Array<{ orgId: string; employeeId: string }> = [];
 
   return {
     queries,
+    inputs,
     async searchEvidence(input) {
       queries.push({ query: input.query, employeeId: input.employee.id });
+      inputs.push({ orgId: input.orgId, employeeId: input.employee.id });
 
       return {
         results: [
@@ -123,6 +163,149 @@ function createEvidenceSearchRepository(): EvidenceSearchRepository & {
         warnings: []
       };
     }
+  };
+}
+
+function createOrganizationContextDocumentRepository(): DocumentCatalogRepository & {
+  labelListOrgIds: string[];
+  labelLookupOrgIds: string[];
+  personalLabelLookupOrgIds: string[];
+  catalogWriteOrgIds: string[];
+  auditWriteOrgIds: string[];
+  auditListOrgIds: string[];
+} {
+  const base = createDocumentRepository() as DocumentCatalogRepository;
+  const labelsByOrg = new Map([
+    [
+      "default-org",
+      [
+        { id: "label_default_shared", key: "same-named", name: "Shared Label", type: "store" },
+        {
+          id: "label_default_personal",
+          key: "person:admin",
+          name: "Default Personal",
+          type: "personal"
+        }
+      ]
+    ],
+    [
+      "org-a",
+      [
+        { id: "label_org_a_shared", key: "same-named", name: "Shared Label", type: "store" },
+        {
+          id: "label_org_a_personal",
+          key: "person:org-a.admin",
+          name: "Org A Personal",
+          type: "personal"
+        }
+      ]
+    ],
+    [
+      "org-b",
+      [
+        { id: "label_org_b_shared", key: "same-named", name: "Shared Label", type: "store" },
+        {
+          id: "label_org_b_personal",
+          key: "person:org-b.admin",
+          name: "Org B Personal",
+          type: "personal"
+        }
+      ]
+    ]
+  ]);
+  const labelLookupOrgIds: string[] = [];
+  const labelListOrgIds: string[] = [];
+  const personalLabelLookupOrgIds: string[] = [];
+  const catalogWriteOrgIds: string[] = [];
+  const auditWriteOrgIds: string[] = [];
+  const auditListOrgIds: string[] = [];
+
+  return {
+    ...base,
+    labelListOrgIds,
+    labelLookupOrgIds,
+    personalLabelLookupOrgIds,
+    catalogWriteOrgIds,
+    auditWriteOrgIds,
+    auditListOrgIds,
+    async listLabels(orgId) {
+      labelListOrgIds.push(orgId);
+      return labelsByOrg.get(orgId) ?? [];
+    },
+    async findLabelsByKeys(orgId, keys) {
+      labelLookupOrgIds.push(orgId);
+      return (labelsByOrg.get(orgId) ?? []).filter((label) => keys.includes(label.key));
+    },
+    async findPersonalLabelForEmployee(orgId, employeeId) {
+      personalLabelLookupOrgIds.push(orgId);
+      return (
+        (labelsByOrg.get(orgId) ?? []).find((label) =>
+          employeeId === orgBAdminEmployee.id
+            ? label.key === "person:org-b.admin"
+            : employeeId === orgAAdminEmployee.id
+              ? label.key === "person:org-a.admin"
+              : employeeId === adminEmployee.id && label.key === "person:admin"
+        ) ?? null
+      );
+    },
+    async createUploadedDocument(input) {
+      catalogWriteOrgIds.push(input.orgId);
+      auditWriteOrgIds.push(input.orgId);
+      return base.createUploadedDocument(input);
+    },
+    async listAuditLogs(input) {
+      auditListOrgIds.push(input.orgId);
+      return {
+        auditLogs: [
+          {
+            id: `audit_${input.orgId}`,
+            actorEmployeeId: `employee_${input.orgId}`,
+            action: "document.uploaded",
+            targetType: "document",
+            targetId: `document_${input.orgId}`,
+            result: "succeeded",
+            metadata: null,
+            requestId: "request",
+            clientIp: "127.0.0.1",
+            createdAt: new Date("2026-07-18T00:00:00.000Z")
+          }
+        ],
+        nextCursor: null
+      };
+    }
+  };
+}
+
+function createOrganizationContextStorageAdapter(): StorageAdapter & {
+  putInputs: Array<{ orgId: string; documentId: string; contentType?: string }>;
+} {
+  const putInputs: Array<{ orgId: string; documentId: string; contentType?: string }> = [];
+
+  return {
+    putInputs,
+    async putObject(input) {
+      putInputs.push({
+        orgId: input.orgId,
+        documentId: input.documentId,
+        contentType: input.contentType
+      });
+      return {
+        key: `org/${input.orgId}/documents/${input.documentId}/original/${input.fileName}`,
+        size: Buffer.byteLength(input.body as Buffer),
+        hash: "test-hash",
+        contentType: input.contentType
+      };
+    },
+    async getObjectStream() {
+      throw new Error("not used by this test");
+    },
+    async statObject() {
+      throw new Error("not used by this test");
+    },
+    async createDownloadUrl() {
+      throw new Error("not used by this test");
+    },
+    async deleteObject() {}
   };
 }
 
@@ -535,16 +718,21 @@ function validStructuredCsv(
   return `${registry.fields.map((field) => field.sourceColumn).join(",")}\n${values.join(",")}\n`;
 }
 
-function structuredWorkbook(input: {
+async function structuredWorkbook(input: {
   dataset: StructuredDatasetName;
   includeHiddenSheet?: boolean;
   includeExplanationSheet?: boolean;
   prefaceRows?: string[][];
+  rowCount?: number;
+  cellOverrides?: Record<string, unknown>;
 }) {
   const registry = getStructuredRegistry(input.dataset);
-  const workbook = utils.book_new();
+  const workbook = new ExcelJS.Workbook();
   const headers = registry.fields.map((field) => field.sourceColumn);
-  const row = registry.fields.map((field, index) => {
+  const row = registry.fields.map((field, index): unknown => {
+    if (input.cellOverrides?.[field.canonicalName] !== undefined) {
+      return input.cellOverrides[field.canonicalName];
+    }
     if (field.canonicalName === "business_date") {
       return "2026-07-02";
     }
@@ -567,28 +755,23 @@ function structuredWorkbook(input: {
 
     return `value_${index + 1}`;
   });
-  utils.book_append_sheet(
-    workbook,
-    utils.aoa_to_sheet([...(input.prefaceRows ?? []), headers, row]),
-    "Data"
-  );
+  workbook
+    .addWorksheet("Data")
+    .addRows([
+      ...(input.prefaceRows ?? []),
+      headers,
+      ...Array.from({ length: input.rowCount ?? 1 }, () => row)
+    ]);
 
   if (input.includeHiddenSheet) {
-    utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, row]), "HiddenData");
-    workbook.Workbook ??= {};
-    workbook.Workbook.Sheets ??= [];
-    workbook.Workbook.Sheets[1] = { Hidden: 1 };
+    workbook.addWorksheet("HiddenData", { state: "hidden" }).addRows([headers, row]);
   }
 
   if (input.includeExplanationSheet) {
-    utils.book_append_sheet(
-      workbook,
-      utils.aoa_to_sheet([["说明"], ["这个 sheet 不是结构化数据"]]),
-      "Explanation"
-    );
+    workbook.addWorksheet("Explanation").addRows([["说明"], ["这个 sheet 不是结构化数据"]]);
   }
 
-  return Buffer.from(write(workbook, { bookType: "xlsx", type: "buffer" }) as Buffer);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
 function createStructuredImportMultipart(input: {
@@ -1035,6 +1218,159 @@ describe("api auth shell", () => {
   });
 });
 
+describe("authenticated organization context", () => {
+  let app: FastifyInstance | undefined;
+
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  it("uses the reloaded org-B employee for evidence labels, storage, catalog, and audit context", async () => {
+    const documentRepository = createOrganizationContextDocumentRepository();
+    const storageAdapter = createOrganizationContextStorageAdapter();
+    app = buildApiServer({
+      employeeRepository: createRepository([orgBAdminEmployee]),
+      documentRepository,
+      storageAdapter,
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
+    const staleOrgToken = await signEmployeeAccessToken(
+      { ...orgBAdminEmployee, orgId: "default-org" },
+      jwtSecret
+    );
+    const multipartPayload = createMultipartPayload([
+      {
+        name: "file",
+        fileName: "org-b-sop.md",
+        contentType: "text/markdown",
+        value: Buffer.from("org B evidence", "utf8")
+      },
+      { name: "title", value: "Org B SOP" },
+      { name: "labelKeys[]", value: "same-named" }
+    ]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/documents/evidence",
+      headers: {
+        authorization: `Bearer ${staleOrgToken}`,
+        "content-type": multipartPayload.contentType
+      },
+      payload: multipartPayload.body
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(documentRepository.labelLookupOrgIds).toEqual(["org-b"]);
+    expect(documentRepository.personalLabelLookupOrgIds).toEqual(["org-b"]);
+    expect(storageAdapter.putInputs).toEqual([
+      expect.objectContaining({ orgId: "org-b", contentType: "text/markdown" })
+    ]);
+    expect(documentRepository.catalogWriteOrgIds).toEqual(["org-b"]);
+    expect(documentRepository.auditWriteOrgIds).toEqual(["org-b"]);
+  });
+
+  it("keeps same-named org-A and org-B records isolated while default-org behavior remains available", async () => {
+    const documentRepository = createOrganizationContextDocumentRepository();
+    const evidenceRepository = createEvidenceSearchRepository();
+    const skillInputs: Array<{ orgId: string }> = [];
+    const skillRepository: SkillDirectoryRepository = {
+      async listApprovedSkills(input) {
+        skillInputs.push({ orgId: input.orgId });
+        return [
+          {
+            id: `skill_${input.orgId}`,
+            name: "same-named-skill",
+            description: `Skill for ${input.orgId}`,
+            version: "1.0.0",
+            category: "reporting",
+            inputRequirements: [],
+            installInstructions: "Install it.",
+            examplePrompts: [],
+            status: "approved"
+          }
+        ];
+      }
+    };
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee, orgAAdminEmployee, orgBAdminEmployee]),
+      documentRepository,
+      evidenceRepository,
+      skillRepository,
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false
+    });
+
+    const orgAHeaders = { authorization: `Bearer ${await accessTokenFor(orgAAdminEmployee)}` };
+    const orgBHeaders = { authorization: `Bearer ${await accessTokenFor(orgBAdminEmployee)}` };
+    const defaultOrgHeaders = { authorization: `Bearer ${await accessTokenFor(adminEmployee)}` };
+
+    const orgALabels = await app.inject({ method: "GET", url: "/labels", headers: orgAHeaders });
+    const orgBLabels = await app.inject({ method: "GET", url: "/labels", headers: orgBHeaders });
+    const defaultOrgLabels = await app.inject({
+      method: "GET",
+      url: "/labels",
+      headers: defaultOrgHeaders
+    });
+    const orgASkills = await app.inject({ method: "GET", url: "/skills", headers: orgAHeaders });
+    const orgBSkills = await app.inject({ method: "GET", url: "/skills", headers: orgBHeaders });
+    const defaultOrgSkills = await app.inject({
+      method: "GET",
+      url: "/skills",
+      headers: defaultOrgHeaders
+    });
+    const orgAEvidenceSearch = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: orgAHeaders,
+      payload: { query: "same-named evidence" }
+    });
+    const orgBEvidenceSearch = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: orgBHeaders,
+      payload: { query: "same-named evidence" }
+    });
+    const defaultOrgEvidenceSearch = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: defaultOrgHeaders,
+      payload: { query: "default evidence" }
+    });
+    const orgAAudit = await app.inject({ method: "GET", url: "/audit", headers: orgAHeaders });
+    const orgBAudit = await app.inject({ method: "GET", url: "/audit", headers: orgBHeaders });
+    const defaultOrgAudit = await app.inject({
+      method: "GET",
+      url: "/audit",
+      headers: defaultOrgHeaders
+    });
+
+    expect(orgALabels.statusCode).toBe(200);
+    expect(orgBLabels.statusCode).toBe(200);
+    expect(defaultOrgLabels.statusCode).toBe(200);
+    expect(documentRepository.labelListOrgIds).toEqual(["org-a", "org-b", "default-org"]);
+    expect(orgASkills.json().skills[0].id).toBe("skill_org-a");
+    expect(orgBSkills.json().skills[0].id).toBe("skill_org-b");
+    expect(defaultOrgSkills.json().skills[0].id).toBe("skill_default-org");
+    expect(skillInputs).toEqual([{ orgId: "org-a" }, { orgId: "org-b" }, { orgId: "default-org" }]);
+    expect(orgAEvidenceSearch.statusCode).toBe(200);
+    expect(orgBEvidenceSearch.statusCode).toBe(200);
+    expect(defaultOrgEvidenceSearch.statusCode).toBe(200);
+    expect(evidenceRepository.inputs).toEqual([
+      { orgId: "org-a", employeeId: orgAAdminEmployee.id },
+      { orgId: "org-b", employeeId: orgBAdminEmployee.id },
+      { orgId: "default-org", employeeId: adminEmployee.id }
+    ]);
+    expect(orgAAudit.json().auditEvents[0].targetId).toBe("document_org-a");
+    expect(orgBAudit.json().auditEvents[0].targetId).toBe("document_org-b");
+    expect(defaultOrgAudit.json().auditEvents[0].targetId).toBe("document_default-org");
+    expect(documentRepository.auditListOrgIds).toEqual(["org-a", "org-b", "default-org"]);
+  });
+});
+
 describe("label catalog", () => {
   let app: FastifyInstance | undefined;
 
@@ -1102,7 +1438,10 @@ describe("label catalog", () => {
   });
 });
 
-function createInMemoryStructuredImportRepository(documents: RecordedDocument[]) {
+function createInMemoryStructuredImportRepository(
+  documents: RecordedDocument[],
+  auditLogs: RecordedAuditLog[]
+) {
   type StoredRow = {
     dataset: StructuredDatasetName;
     sourceDocumentId: string;
@@ -1126,6 +1465,7 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
   const batches: StoredBatch[] = [];
   const rows: StoredRow[] = [];
   const inProgressWindows = new Set<string>();
+  let nextApplyFailure: Error | null = null;
 
   function windowKey(input: {
     dataset: StructuredDatasetName;
@@ -1138,6 +1478,9 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
   return {
     batches,
     rows,
+    failNextApply(message = "simulated apply failure") {
+      nextApplyFailure = new Error(message);
+    },
     markWindowInProgress(input: {
       dataset: StructuredDatasetName;
       startDate: string;
@@ -1154,8 +1497,10 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         (row) => row.dataset === dataset && documentStatus.get(row.sourceDocumentId) === "active"
       ).length;
     },
-    async findImportBatch(_orgId: string, importBatchId: string) {
-      const batch = batches.find((candidate) => candidate.id === importBatchId);
+    async findImportBatch(orgId: string, importBatchId: string) {
+      const batch = batches.find(
+        (candidate) => candidate.id === importBatchId && candidate.orgId === orgId
+      );
 
       if (!batch) {
         return null;
@@ -1166,15 +1511,21 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
 
       return {
         ...batch,
+        sourceDocumentLabelKeys: sourceDocument?.labels ?? [],
         status: sourceDocument?.status === "archived" ? "archived" : batch.status,
-        queryableRowCount
+        queryableRowCount,
+        sourceDocumentStatus: sourceDocument?.status ?? "processing_failed",
+        sourceDocumentFileType: sourceDocument?.fileType ?? "csv",
+        storageObjectKey: sourceDocument?.storageObjectKey ?? "",
+        originalFileName: sourceDocument?.originalFileName ?? "file"
       };
     },
-    async importStructuredDataset(input: {
+    async reserveStructuredImport(input: {
       orgId: string;
       actorEmployeeId: string;
       documentId: string;
       dataset: StructuredDatasetName;
+      fileType: "xlsx" | "csv";
       startDate: string;
       endDate: string;
       idempotencyKey: string;
@@ -1190,7 +1541,9 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         labels: string[];
       };
       sourceSheetSummary: unknown[];
-      rows: Array<{ payload: Record<string, unknown>; sourceRowNumber: number }>;
+      totalRowCount: number;
+      requestId: string;
+      clientIp: string;
     }) {
       const existingIdempotencyBatch = batches.find(
         (batch) => batch.orgId === input.orgId && batch.idempotencyKey === input.idempotencyKey
@@ -1203,7 +1556,10 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
           });
         }
 
-        return this.findImportBatch(input.orgId, existingIdempotencyBatch.id);
+        return {
+          state: existingIdempotencyBatch.status === "applied" ? "existing" : "resumable",
+          importBatch: await this.findImportBatch(input.orgId, existingIdempotencyBatch.id)
+        };
       }
 
       if (inProgressWindows.has(windowKey(input))) {
@@ -1235,29 +1591,23 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         endDate: input.endDate,
         idempotencyKey: input.idempotencyKey,
         requestFingerprint: input.requestFingerprint,
-        status: "applied",
+        status: "pending",
         sourceDocumentId: input.documentId,
-        totalRowCount: input.rows.length,
-        appliedRowCount: input.rows.length,
+        totalRowCount: input.totalRowCount,
+        appliedRowCount: 0,
         sourceSheetSummary: input.sourceSheetSummary,
         validationErrors: []
       };
       batches.push(batch);
-      rows.push(
-        ...input.rows.map(() => ({
-          dataset: input.dataset,
-          sourceDocumentId: input.documentId
-        }))
-      );
       documents.push({
         id: input.documentId,
         orgId: input.orgId,
         uploaderId: input.actorEmployeeId,
-        status: "active",
+        status: "pending_processing",
         title: input.document.title,
         documentType: "structured_dataset",
         documentKind: "structured",
-        fileType: "xlsx",
+        fileType: input.fileType,
         sourceSystem: "structured_import",
         sourceTime: null,
         storageObjectKey: input.document.storageObjectKey,
@@ -1266,7 +1616,7 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         byteSize: input.document.byteSize,
         checksumSha256: input.document.checksumSha256,
         labels: input.document.labels,
-        processingRunStatus: "succeeded",
+        processingRunStatus: null,
         documentIndexStatus: null,
         createdAt: new Date(),
         sourceMetadata: {
@@ -1275,7 +1625,95 @@ function createInMemoryStructuredImportRepository(documents: RecordedDocument[])
         },
         chunks: []
       });
+      auditLogs.push({
+        action: AUDIT_ACTIONS.structuredImportStarted,
+        actorEmployeeId: input.actorEmployeeId,
+        targetType: "import_batch",
+        targetId: batch.id,
+        result: "succeeded",
+        metadata: {
+          dataset: input.dataset,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          rowCount: input.totalRowCount,
+          sourceDocumentId: input.documentId
+        },
+        requestId: input.requestId,
+        clientIp: input.clientIp
+      });
 
+      return {
+        state: "created",
+        importBatch: await this.findImportBatch(input.orgId, batch.id)
+      };
+    },
+    async applyReservedStructuredImport(input: {
+      orgId: string;
+      actorEmployeeId: string;
+      importBatchId: string;
+      rows: Array<{ payload: Record<string, unknown>; sourceRowNumber: number }>;
+      requestId: string;
+      clientIp: string;
+    }) {
+      const batch = batches.find(
+        (candidate) => candidate.id === input.importBatchId && candidate.orgId === input.orgId
+      );
+      if (!batch) throw new Error("Reserved import batch was not found.");
+      if (batch.status === "applied") return this.findImportBatch(input.orgId, batch.id);
+      if (nextApplyFailure) {
+        const failure = nextApplyFailure;
+        nextApplyFailure = null;
+        throw failure;
+      }
+      rows.splice(
+        0,
+        rows.length,
+        ...rows.filter((row) => row.sourceDocumentId !== batch.sourceDocumentId),
+        ...input.rows.map(() => ({
+          dataset: batch.dataset,
+          sourceDocumentId: batch.sourceDocumentId
+        }))
+      );
+      batch.status = "applied";
+      batch.totalRowCount = input.rows.length;
+      batch.appliedRowCount = input.rows.length;
+      const document = documents.find((candidate) => candidate.id === batch.sourceDocumentId);
+      if (!document) throw new Error("Reserved source document was not found.");
+      document.status = "active";
+      document.processingRunStatus = "succeeded";
+      auditLogs.push({
+        action: AUDIT_ACTIONS.structuredImportApplied,
+        actorEmployeeId: input.actorEmployeeId,
+        targetType: "import_batch",
+        targetId: batch.id,
+        result: "succeeded",
+        metadata: {
+          dataset: batch.dataset,
+          startDate: batch.startDate,
+          endDate: batch.endDate,
+          appliedRowCount: input.rows.length,
+          sourceDocumentId: batch.sourceDocumentId
+        },
+        requestId: input.requestId,
+        clientIp: input.clientIp
+      });
+      return this.findImportBatch(input.orgId, batch.id);
+    },
+    async markStructuredImportStorageFailure(input: {
+      orgId: string;
+      importBatchId: string;
+      errorCode: string;
+      errorSummary: string;
+    }) {
+      const batch = batches.find(
+        (candidate) => candidate.id === input.importBatchId && candidate.orgId === input.orgId
+      );
+      if (!batch) throw new Error("Reserved import batch was not found.");
+      batch.status = "failed";
+      const document = documents.find((candidate) => candidate.id === batch.sourceDocumentId);
+      if (!document) throw new Error("Reserved source document was not found.");
+      document.status = "processing_failed";
+      document.processingRunStatus = "failed";
       return this.findImportBatch(input.orgId, batch.id);
     }
   };
@@ -1295,22 +1733,48 @@ describe("structured imports", () => {
     }
   });
 
-  async function buildStructuredImportTestServer() {
+  async function buildStructuredImportTestServer(
+    employees: AuthenticatedEmployee[] = [adminEmployee, baoliManagerEmployee],
+    options: {
+      runtimeEnv?: NodeJS.ProcessEnv;
+      storageAdapter?: StorageAdapter;
+      failStoragePuts?: number;
+    } = {}
+  ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
     const documentRepository = createDocumentRepository();
     const structuredImportRepository = createInMemoryStructuredImportRepository(
-      documentRepository.documents
+      documentRepository.documents,
+      documentRepository.auditLogs
     );
-    const storageAdapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const localStorage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    let storagePutCalls = 0;
+    const delegateStorage = options.storageAdapter ?? localStorage;
+    let remainingStorageFailures = options.failStoragePuts ?? 0;
+    const storageAdapter: StorageAdapter = {
+      async putObject(input) {
+        storagePutCalls++;
+        if (remainingStorageFailures > 0) {
+          remainingStorageFailures--;
+          throw new Error("simulated storage failure");
+        }
+        return delegateStorage.putObject(input);
+      },
+      getObjectStream: delegateStorage.getObjectStream.bind(delegateStorage),
+      statObject: delegateStorage.statObject.bind(delegateStorage),
+      createDownloadUrl: delegateStorage.createDownloadUrl.bind(delegateStorage),
+      deleteObject: delegateStorage.deleteObject.bind(delegateStorage)
+    };
 
     app = buildApiServer({
-      employeeRepository: createRepository([adminEmployee, baoliManagerEmployee]),
+      employeeRepository: createRepository(employees),
       documentRepository,
       structuredImportRepository,
       storageAdapter,
       jwtSecret,
       enableDevLogin: true,
-      logger: false
+      logger: false,
+      runtimeEnv: options.runtimeEnv
     } as Parameters<typeof buildApiServer>[0] & {
       structuredImportRepository: unknown;
     });
@@ -1318,13 +1782,15 @@ describe("structured imports", () => {
     return {
       app,
       documentRepository,
-      structuredImportRepository
+      structuredImportRepository,
+      storagePutCalls: () => storagePutCalls
     };
   }
 
   async function postStructuredImport(
     server: FastifyInstance,
-    input: Parameters<typeof createStructuredImportMultipart>[0] = {}
+    input: Parameters<typeof createStructuredImportMultipart>[0] = {},
+    employee: AuthenticatedEmployee = baoliManagerEmployee
   ) {
     const multipartBody = createStructuredImportMultipart(input);
 
@@ -1332,7 +1798,7 @@ describe("structured imports", () => {
       method: "POST",
       url: "/v1/structured/imports",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`,
+        authorization: `Bearer ${await accessTokenFor(employee)}`,
         "content-type": multipartBody.contentType
       },
       payload: multipartBody.body
@@ -1416,7 +1882,7 @@ describe("structured imports", () => {
       idempotencyKey: "xlsx-preface-success",
       fileName: "麦家菜品记录.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({
+      body: await structuredWorkbook({
         dataset: "dishes",
         prefaceRows: [["菜品主题数据"], ["统计时间：2026-07-01 至 2026-07-05"]]
       })
@@ -1466,7 +1932,8 @@ describe("structured imports", () => {
   });
 
   it("handles import idempotency and active/in-progress window conflicts", async () => {
-    const { app, structuredImportRepository } = await buildStructuredImportTestServer();
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer();
 
     const firstResponse = await postStructuredImport(app, {
       idempotencyKey: "stable-key"
@@ -1498,6 +1965,7 @@ describe("structured imports", () => {
     expect(replayResponse.json().importBatch.importBatchId).toBe(
       firstResponse.json().importBatch.importBatchId
     );
+    expect(replayResponse.json().document).toEqual(firstResponse.json().document);
     expect(conflictResponse.statusCode).toBe(409);
     expect(conflictResponse.json()).toMatchObject({
       error: { code: "IDEMPOTENCY_KEY_CONFLICT" }
@@ -1510,6 +1978,77 @@ describe("structured imports", () => {
     expect(inProgressWindowResponse.json()).toMatchObject({
       error: { code: "IMPORT_IN_PROGRESS" }
     });
+    expect(storagePutCalls()).toBe(1);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(1);
+    expect(
+      documentRepository.auditLogs.filter(
+        (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportStarted
+      )
+    ).toHaveLength(1);
+    expect(
+      documentRepository.auditLogs.filter(
+        (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportApplied
+      )
+    ).toHaveLength(1);
+  });
+
+  it("reuses the reserved document and object key after a transient storage failure", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer(undefined, { failStoragePuts: 1 });
+
+    const first = await postStructuredImport(app, { idempotencyKey: "storage-recovery" });
+    expect(first.statusCode).toBe(500);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(documentRepository.documents[0]?.status).toBe("processing_failed");
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(structuredImportRepository.batches[0]?.status).toBe("failed");
+    expect(structuredImportRepository.rows).toHaveLength(0);
+
+    const replay = await postStructuredImport(app, { idempotencyKey: "storage-recovery" });
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json().document.documentId).toBe(documentRepository.documents[0]?.id);
+    expect(replay.json().document.storageObjectKey).toBe(
+      documentRepository.documents[0]?.storageObjectKey
+    );
+    expect(storagePutCalls()).toBe(2);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(1);
+    expect(
+      documentRepository.auditLogs.filter(
+        (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportStarted
+      )
+    ).toHaveLength(1);
+    expect(
+      documentRepository.auditLogs.filter(
+        (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportApplied
+      )
+    ).toHaveLength(1);
+  });
+
+  it("keeps the reserved object referenced and deterministically resumes after DB apply failure", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer();
+    structuredImportRepository.failNextApply("simulated transactional audit failure");
+
+    const first = await postStructuredImport(app, { idempotencyKey: "apply-recovery" });
+    expect(first.statusCode).toBe(500);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(documentRepository.documents[0]?.status).toBe("pending_processing");
+    expect(structuredImportRepository.batches[0]?.status).toBe("pending");
+    expect(structuredImportRepository.rows).toHaveLength(0);
+    expect(await storedObjectCount(storageRoot)).toBe(1);
+
+    const replay = await postStructuredImport(app, { idempotencyKey: "apply-recovery" });
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json().document.documentId).toBe(documentRepository.documents[0]?.id);
+    expect(storagePutCalls()).toBe(2);
+    expect(await storedObjectCount(storageRoot)).toBe(1);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(1);
   });
 
   it("rejects invalid files atomically and fails hidden or explanation workbook sheets", async () => {
@@ -1523,13 +2062,13 @@ describe("structured imports", () => {
       idempotencyKey: "hidden-sheet",
       fileName: "hidden.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
+      body: await structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
     });
     const explanationSheetResponse = await postStructuredImport(app, {
       idempotencyKey: "explanation-sheet",
       fileName: "explanation.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
+      body: await structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
     });
 
     expect(invalidCsvResponse.statusCode).toBe(400);
@@ -1547,8 +2086,71 @@ describe("structured imports", () => {
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
   });
 
+  it("does not publish malformed or over-limit CSV/XLSX imports to storage or durable repositories", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer(undefined, {
+        runtimeEnv: {
+          MAX_STRUCTURED_IMPORT_ROWS: "1",
+          MAX_STRUCTURED_CELL_CHARS: "100"
+        } as NodeJS.ProcessEnv
+      });
+    const validCsvLines = validStructuredCsv("dishes").trim().split("\n");
+    const overLimitCsv = Buffer.from(
+      `${validCsvLines[0]}\n${validCsvLines[1]}\n${validCsvLines[1]}\n`,
+      "utf8"
+    );
+
+    const responses = await Promise.all([
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-malformed-csv",
+        body: Buffer.from("unknown\nvalue\n", "utf8")
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-over-limit-csv",
+        body: overLimitCsv
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-long-cell-csv",
+        body: Buffer.from(validStructuredCsv("dishes", { product_name: "x".repeat(101) }), "utf8")
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-malformed-xlsx",
+        fileName: "malformed.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00])
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-over-limit-xlsx",
+        fileName: "over-limit.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: await structuredWorkbook({ dataset: "dishes", rowCount: 2 })
+      }),
+      postStructuredImport(app, {
+        idempotencyKey: "atomic-unevaluated-formula-xlsx",
+        fileName: "unevaluated-formula.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        body: await structuredWorkbook({
+          dataset: "dishes",
+          cellOverrides: { product_name: { formula: "1+1" } }
+        })
+      })
+    ]);
+
+    for (const response of responses) {
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
+      });
+    }
+    expect(storagePutCalls()).toBe(0);
+    expect(documentRepository.documents).toHaveLength(0);
+    expect(documentRepository.auditLogs).toHaveLength(0);
+    expect(structuredImportRepository.batches).toHaveLength(0);
+    expect(structuredImportRepository.rows).toHaveLength(0);
+  });
+
   it("retains rows but makes them non-queryable when the source document is archived", async () => {
-    const { app, documentRepository, structuredImportRepository } =
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
       await buildStructuredImportTestServer();
     const importResponse = await postStructuredImport(app, {
       idempotencyKey: "archive-rows"
@@ -1569,6 +2171,7 @@ describe("structured imports", () => {
         authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
       }
     });
+    const replayResponse = await postStructuredImport(app, { idempotencyKey: "archive-rows" });
 
     expect(archivedDocument?.status).toBe("archived");
     expect(structuredImportRepository.storedRowCount("dishes")).toBe(1);
@@ -1580,8 +2183,96 @@ describe("structured imports", () => {
         queryableRowCount: 0
       }
     });
+    expect(replayResponse.statusCode).toBe(202);
+    expect(replayResponse.json()).toMatchObject({
+      document: { documentId, status: "archived" },
+      importBatch: { status: "archived", queryableRowCount: 0 }
+    });
+    expect(storagePutCalls()).toBe(1);
+  });
+
+  it("returns import status only to same-org callers authorized by source document labels", async () => {
+    const { app } = await buildStructuredImportTestServer([
+      adminEmployee,
+      baoliManagerEmployee,
+      suzhouManagerEmployee,
+      labelLessEmployee,
+      unlabeledAdminEmployee,
+      disabledEmployee,
+      orgBAdminEmployee
+    ]);
+
+    const matchingImport = await postStructuredImport(app, {
+      idempotencyKey: "status-matching",
+      labelKeys: ["store:baoli"]
+    });
+    const allStaffImport = await postStructuredImport(
+      app,
+      {
+        idempotencyKey: "status-all-staff",
+        dataset: "business",
+        body: Buffer.from(validStructuredCsv("business"), "utf8"),
+        labelKeys: ["all_staff"]
+      },
+      adminEmployee
+    );
+    const matchingBatchId = matchingImport.json().importBatch.importBatchId;
+    const allStaffBatchId = allStaffImport.json().importBatch.importBatchId;
+
+    const matching = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}` }
+    });
+    const allStaff = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${allStaffBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(labelLessEmployee)}` }
+    });
+    const admin = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(unlabeledAdminEmployee)}` }
+    });
+    const noMatch = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(suzhouManagerEmployee)}` }
+    });
+    const disabled = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(disabledEmployee)}` }
+    });
+    const crossOrg = await app.inject({
+      method: "GET",
+      url: `/v1/structured/imports/${matchingBatchId}`,
+      headers: { authorization: `Bearer ${await accessTokenFor(orgBAdminEmployee)}` }
+    });
+
+    for (const response of [matching, allStaff, admin]) {
+      expect(response.statusCode).toBe(200);
+      expect(JSON.stringify(response.json())).not.toContain("sourceDocumentLabelKeys");
+    }
+    for (const response of [noMatch, crossOrg]) {
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({
+        error: { code: "IMPORT_BATCH_NOT_FOUND", message: "Import batch not found." }
+      });
+      expect(JSON.stringify(response.json())).not.toMatch(
+        /dataset|startDate|endDate|totalRowCount|sourceSheetSummary|validationErrors/
+      );
+    }
+    expect(disabled.statusCode).toBe(403);
+    expect(disabled.json()).toMatchObject({ error: { code: "EMPLOYEE_DISABLED" } });
   });
 });
+
+async function storedObjectCount(root: string | undefined): Promise<number> {
+  if (!root) return 0;
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  return entries.filter((entry) => entry.isFile() && !entry.name.endsWith(".metadata.json")).length;
+}
 
 describe("skill directory", () => {
   let app: FastifyInstance | undefined;

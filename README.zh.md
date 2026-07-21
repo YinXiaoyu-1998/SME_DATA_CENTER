@@ -107,6 +107,8 @@ ENTERPRISE_HUB_BASE_URL=http://127.0.0.1:3000 npm run mcp:launcher
 
 MCP 配置、环境和文件中不得保存 bearer token。
 
+MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登录员工推导。Evidence search 的 cursor 是不透明、短期有效的翻页 token：下一页必须沿用相同 query/filter/limit 原样传回 `page.nextCursor`。遇到 `INVALID_CURSOR` 可不带 cursor 重新开始；遇到 `CURSOR_EXPIRED`，先说明 cursor 已过期，只有用户仍希望继续时才重新搜索。结构化导入只有在同一个文件和同一组 metadata 精确重试时才复用 `idempotencyKey`；精确重放会返回第一次持久化的 ID/storage key，不可见的 import status 与不存在批次一样返回非枚举 404。
+
 ## 当前 MCP Tools
 
 | Tool                           | 用途                                        |
@@ -145,32 +147,32 @@ Codex 会使用 repo-local `enterprise-hub-manual-test` skill 重置专用本地
 
 ## npm scripts
 
-| Script                 | 功能                                       |
-| ---------------------- | ------------------------------------------ |
-| `format`               | 用 Prettier 格式化仓库                     |
-| `format:check`         | 检查 Prettier 格式                         |
-| `lint`                 | 运行 ESLint                                |
-| `test`                 | 运行 Vitest                                |
-| `test:integration`     | 跑 Phase 3 local API/worker integration    |
-| `test:mcp`             | 跑 Phase 3 local MCP smoke                 |
-| `test:phase3:golden`   | 跑 synthetic retrieval golden gate         |
-| `test:phase3:perf`     | 跑 deterministic performance smoke gates   |
-| `test:manual:prepare`  | 重建本地手动验收 MySQL/Qdrant/storage 环境 |
-| `test:manual:serve`    | 启动并保持手动验收 API + worker            |
-| `test:manual:snapshot` | 保存本地 operator 数据/索引状态快照        |
-| `test:manual:cleanup`  | 保存最终快照并停止本地依赖                 |
-| `typecheck`            | 运行 TypeScript 类型检查                   |
-| `api:dev`              | 启动 Fastify API                           |
-| `mcp:launcher`         | 启动本机 launcher，连接已运行的 HTTP MCP   |
-| `purge-data`           | 清理本地文档数据和 ignored storage         |
-| `worker:dev`           | 启动 worker loop                           |
-| `worker:once`          | 跑一次 worker pass                         |
-| `runtime:compose:up`   | 启动 MySQL + Qdrant                        |
-| `qdrant:init`          | 初始化/更新 Qdrant evidence collection     |
-| `readyz:local`         | 运行本地 readiness checks                  |
-| `db:generate`          | 生成 Prisma client                         |
-| `db:migrate`           | 应用本地 Prisma migrations                 |
-| `db:seed`              | 写入本地 seed 数据                         |
+| Script                 | 功能                                            |
+| ---------------------- | ----------------------------------------------- |
+| `format`               | 用 Prettier 格式化仓库                          |
+| `format:check`         | 检查 Prettier 格式                              |
+| `lint`                 | 运行 ESLint                                     |
+| `test`                 | 运行 Vitest                                     |
+| `test:integration`     | 跑 Phase 3 local API/worker integration         |
+| `test:mcp`             | 跑 Phase 3 local MCP smoke                      |
+| `test:phase3:golden`   | 跑 synthetic retrieval golden gate              |
+| `test:phase3:perf`     | 跑真实本地 compiler/CSV parser/payload 性能门禁 |
+| `test:manual:prepare`  | 重建本地手动验收 MySQL/Qdrant/storage 环境      |
+| `test:manual:serve`    | 启动并保持手动验收 API + worker                 |
+| `test:manual:snapshot` | 保存本地 operator 数据/索引状态快照             |
+| `test:manual:cleanup`  | 保存最终快照并停止本地依赖                      |
+| `typecheck`            | 运行 TypeScript 类型检查                        |
+| `api:dev`              | 启动 Fastify API                                |
+| `mcp:launcher`         | 启动本机 launcher，连接已运行的 HTTP MCP        |
+| `purge-data`           | 清理本地文档数据和 ignored storage              |
+| `worker:dev`           | 启动 worker loop                                |
+| `worker:once`          | 跑一次 worker pass                              |
+| `runtime:compose:up`   | 启动 MySQL + Qdrant                             |
+| `qdrant:init`          | 初始化/更新 Qdrant evidence collection          |
+| `readyz:local`         | 运行本地 readiness checks                       |
+| `db:generate`          | 生成 Prisma client                              |
+| `db:migrate`           | 应用本地 Prisma migrations                      |
+| `db:seed`              | 写入本地 seed 数据                              |
 
 ## 验证命令
 

@@ -13,10 +13,12 @@ import {
   ProcessingRunStatus
 } from "@prisma/client";
 import type {
+  DocumentStatusName,
   ImportBatchStatusName,
   Phase3FileType,
   StructuredDatasetName
 } from "@enterprise-hub/domain";
+import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
 
 export interface StructuredImportRowInput {
   sourceRowNumber: number;
@@ -27,6 +29,7 @@ export interface StructuredImportBatchRecord {
   id: string;
   orgId: string;
   sourceDocumentId: string;
+  sourceDocumentLabelKeys: string[];
   dataset: StructuredDatasetName;
   status: ImportBatchStatusName;
   startDate: string;
@@ -36,9 +39,13 @@ export interface StructuredImportBatchRecord {
   totalRowCount: number;
   appliedRowCount: number;
   queryableRowCount: number;
+  sourceDocumentStatus: DocumentStatusName;
+  sourceDocumentFileType: Extract<Phase3FileType, "xlsx" | "csv">;
+  storageObjectKey: string;
+  originalFileName: string;
 }
 
-export interface ApplyStructuredImportInput {
+export interface ReserveStructuredImportInput {
   orgId: string;
   actorEmployeeId: string;
   documentId: string;
@@ -59,13 +66,38 @@ export interface ApplyStructuredImportInput {
     labels: string[];
   };
   sourceSheetSummary: unknown[];
+  totalRowCount: number;
+  requestId: string;
+  clientIp: string;
+}
+
+export interface ApplyReservedStructuredImportInput {
+  orgId: string;
+  actorEmployeeId: string;
+  importBatchId: string;
   rows: StructuredImportRowInput[];
+  requestId: string;
+  clientIp: string;
+}
+
+export interface MarkStructuredImportStorageFailureInput {
+  orgId: string;
+  importBatchId: string;
+  errorCode: string;
+  errorSummary: string;
 }
 
 export interface StructuredImportRepository {
-  importStructuredDataset(
-    input: ApplyStructuredImportInput
-  ): Promise<StructuredImportBatchRecord | null>;
+  reserveStructuredImport(input: ReserveStructuredImportInput): Promise<{
+    state: "created" | "resumable" | "existing";
+    importBatch: StructuredImportBatchRecord;
+  }>;
+  applyReservedStructuredImport(
+    input: ApplyReservedStructuredImportInput
+  ): Promise<StructuredImportBatchRecord>;
+  markStructuredImportStorageFailure(
+    input: MarkStructuredImportStorageFailureInput
+  ): Promise<StructuredImportBatchRecord>;
   findImportBatch(
     orgId: string,
     importBatchId: string
@@ -81,6 +113,30 @@ export class StructuredImportError extends Error {
     super(message);
   }
 }
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+const importBatchInclude = {
+  sourceDocument: {
+    select: {
+      status: true,
+      fileType: true,
+      storageObjectKey: true,
+      originalFileName: true,
+      documentLabels: {
+        select: {
+          label: {
+            select: {
+              key: true
+            }
+          }
+        }
+      }
+    }
+  }
+} as const satisfies Prisma.ImportBatchInclude;
 
 function requireDatabaseUrl(): string {
   const databaseUrl = process.env["DATABASE_URL"];
@@ -102,22 +158,6 @@ function createStructuredRowId(): string {
   return `row_${randomBytes(12).toString("hex")}`;
 }
 
-function structuredImportTransactionTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  const rawValue = env["STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS"]?.trim();
-
-  if (!rawValue) {
-    return 120_000;
-  }
-
-  const parsed = Number(rawValue);
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error("STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS must be a positive integer.");
-  }
-
-  return parsed;
-}
-
 async function insertStructuredRows(
   tx: Prisma.TransactionClient,
   input: {
@@ -126,10 +166,11 @@ async function insertStructuredRows(
     sourceDocumentId: string;
     importBatchId: string;
     rows: StructuredImportRowInput[];
+    batchInsertSize: number;
   }
 ): Promise<void> {
   const tableName = input.dataset === "dishes" ? "dish_rows" : "business_rows";
-  const batchSize = 500;
+  const batchSize = input.batchInsertSize;
 
   for (let offset = 0; offset < input.rows.length; offset += batchSize) {
     const batch = input.rows.slice(offset, offset + batchSize);
@@ -146,11 +187,67 @@ async function insertStructuredRows(
   }
 }
 
-export function createPrismaStructuredImportRepository(
-  databaseUrl = requireDatabaseUrl()
-): StructuredImportRepository {
+export function createPrismaStructuredImportRepository(options: {
+  databaseUrl?: string;
+  transactionTimeoutMs: number;
+  batchInsertSize: number;
+}): StructuredImportRepository {
+  const databaseUrl = options.databaseUrl ?? requireDatabaseUrl();
   const adapter = new PrismaMariaDb(databaseUrl);
   const prisma = new PrismaClient({ adapter });
+
+  async function resolveExistingReservation(input: ReserveStructuredImportInput): Promise<{
+    state: "resumable" | "existing";
+    importBatch: StructuredImportBatchRecord;
+  } | null> {
+    const existingIdempotencyBatch = await prisma.importBatch.findUnique({
+      where: {
+        orgId_idempotencyKey: {
+          orgId: input.orgId,
+          idempotencyKey: input.idempotencyKey
+        }
+      },
+      include: importBatchInclude
+    });
+
+    if (existingIdempotencyBatch) {
+      if (existingIdempotencyBatch.requestFingerprint !== input.requestFingerprint) {
+        throw new StructuredImportError("IDEMPOTENCY_KEY_CONFLICT");
+      }
+
+      return {
+        state:
+          existingIdempotencyBatch.status === ImportBatchStatus.applied ? "existing" : "resumable",
+        importBatch: toImportBatchRecord(existingIdempotencyBatch)
+      };
+    }
+
+    const existingClaim = await prisma.importWindowClaim.findUnique({
+      where: {
+        orgId_dataset_startDate_endDate: {
+          orgId: input.orgId,
+          dataset: input.dataset as ImportDataset,
+          startDate: parseDateWindowDate(input.startDate),
+          endDate: parseDateWindowDate(input.endDate)
+        }
+      },
+      include: {
+        importBatch: {
+          include: importBatchInclude
+        }
+      }
+    });
+
+    if (existingClaim?.importBatch) {
+      if (existingClaim.importBatch.status === ImportBatchStatus.applied) {
+        throw new StructuredImportError("ACTIVE_IMPORT_EXISTS");
+      }
+
+      throw new StructuredImportError("IMPORT_IN_PROGRESS");
+    }
+
+    return null;
+  }
 
   return {
     async findImportBatch(orgId, importBatchId) {
@@ -159,176 +256,259 @@ export function createPrismaStructuredImportRepository(
           id: importBatchId,
           orgId
         },
-        include: {
-          sourceDocument: {
-            select: {
-              status: true
-            }
-          }
-        }
+        include: importBatchInclude
       });
 
       return batch ? toImportBatchRecord(batch) : null;
     },
-    async importStructuredDataset(input) {
-      const existingIdempotencyBatch = await prisma.importBatch.findUnique({
-        where: {
-          orgId_idempotencyKey: {
-            orgId: input.orgId,
-            idempotencyKey: input.idempotencyKey
-          }
-        },
-        include: {
-          sourceDocument: {
-            select: {
-              status: true
-            }
-          }
-        }
-      });
-
-      if (existingIdempotencyBatch) {
-        if (existingIdempotencyBatch.requestFingerprint !== input.requestFingerprint) {
-          throw new StructuredImportError("IDEMPOTENCY_KEY_CONFLICT");
-        }
-
-        return toImportBatchRecord(existingIdempotencyBatch);
-      }
-
-      const existingClaim = await prisma.importWindowClaim.findUnique({
-        where: {
-          orgId_dataset_startDate_endDate: {
-            orgId: input.orgId,
-            dataset: input.dataset as ImportDataset,
-            startDate: parseDateWindowDate(input.startDate),
-            endDate: parseDateWindowDate(input.endDate)
-          }
-        },
-        include: {
-          importBatch: {
-            include: {
-              sourceDocument: {
-                select: {
-                  status: true
-                }
-              }
-            }
-          }
-        }
-      });
-
-      if (existingClaim?.importBatch) {
-        if (["pending", "validating", "applying"].includes(existingClaim.importBatch.status)) {
-          throw new StructuredImportError("IMPORT_IN_PROGRESS");
-        }
-
-        if (
-          existingClaim.importBatch.status === ImportBatchStatus.applied &&
-          existingClaim.importBatch.sourceDocument.status === DocumentStatus.active
-        ) {
-          throw new StructuredImportError("ACTIVE_IMPORT_EXISTS");
-        }
-      }
-
+    async reserveStructuredImport(input) {
+      const existing = await resolveExistingReservation(input);
+      if (existing) return existing;
       const importBatchId = createImportBatchId();
-      const batch = await prisma.$transaction(
-        async (tx) => {
-          await tx.document.create({
-            data: {
-              id: input.documentId,
-              orgId: input.orgId,
-              title: input.document.title,
-              documentType: DocumentType.structured_dataset,
-              documentKind: DocumentKind.structured,
-              fileType: input.fileType as FileType,
-              status: DocumentStatus.active,
-              storageObjectKey: input.document.storageObjectKey,
-              originalFileName: input.document.originalFileName,
-              contentType: input.document.contentType,
-              byteSize: input.document.byteSize,
-              checksumSha256: input.document.checksumSha256,
-              uploaderId: input.actorEmployeeId,
-              sourceSystem: "structured_import",
-              sourceMetadata: {
-                dataset: input.dataset,
-                startDate: input.startDate,
-                endDate: input.endDate
-              },
-              documentLabels: {
-                create: input.document.labelIds.map((labelId) => ({
-                  labelId
-                }))
-              },
-              processingRuns: {
-                create: {
-                  orgId: input.orgId,
-                  status: ProcessingRunStatus.succeeded,
-                  jobType: ProcessingJobType.structured_import,
-                  startedAt: new Date(),
-                  finishedAt: new Date()
+      try {
+        const batch = await prisma.$transaction(
+          async (tx) => {
+            await tx.document.create({
+              data: {
+                id: input.documentId,
+                orgId: input.orgId,
+                title: input.document.title,
+                documentType: DocumentType.structured_dataset,
+                documentKind: DocumentKind.structured,
+                fileType: input.fileType as FileType,
+                status: DocumentStatus.pending_processing,
+                storageObjectKey: input.document.storageObjectKey,
+                originalFileName: input.document.originalFileName,
+                contentType: input.document.contentType,
+                byteSize: input.document.byteSize,
+                checksumSha256: input.document.checksumSha256,
+                uploaderId: input.actorEmployeeId,
+                sourceSystem: "structured_import",
+                sourceMetadata: {
+                  dataset: input.dataset,
+                  startDate: input.startDate,
+                  endDate: input.endDate
+                },
+                documentLabels: {
+                  create: input.document.labelIds.map((labelId) => ({
+                    labelId
+                  }))
                 }
               }
-            }
-          });
+            });
 
-          await tx.importBatch.create({
-            data: {
-              id: importBatchId,
-              orgId: input.orgId,
-              sourceDocumentId: input.documentId,
-              dataset: input.dataset as ImportDataset,
-              startDate: parseDateWindowDate(input.startDate),
-              endDate: parseDateWindowDate(input.endDate),
-              idempotencyKey: input.idempotencyKey,
-              requestFingerprint: input.requestFingerprint,
-              status: ImportBatchStatus.applying,
-              sourceSheetSummary: input.sourceSheetSummary as Prisma.InputJsonValue,
-              validationErrors: [],
-              totalRowCount: input.rows.length,
-              appliedRowCount: 0
-            }
-          });
+            await tx.importBatch.create({
+              data: {
+                id: importBatchId,
+                orgId: input.orgId,
+                sourceDocumentId: input.documentId,
+                dataset: input.dataset as ImportDataset,
+                startDate: parseDateWindowDate(input.startDate),
+                endDate: parseDateWindowDate(input.endDate),
+                idempotencyKey: input.idempotencyKey,
+                requestFingerprint: input.requestFingerprint,
+                status: ImportBatchStatus.pending,
+                sourceSheetSummary: input.sourceSheetSummary as Prisma.InputJsonValue,
+                validationErrors: [],
+                totalRowCount: input.totalRowCount,
+                appliedRowCount: 0
+              }
+            });
 
-          await tx.importWindowClaim.create({
-            data: {
-              orgId: input.orgId,
-              dataset: input.dataset as ImportDataset,
-              startDate: parseDateWindowDate(input.startDate),
-              endDate: parseDateWindowDate(input.endDate),
-              importBatchId
-            }
-          });
+            await tx.importWindowClaim.create({
+              data: {
+                orgId: input.orgId,
+                dataset: input.dataset as ImportDataset,
+                startDate: parseDateWindowDate(input.startDate),
+                endDate: parseDateWindowDate(input.endDate),
+                importBatchId
+              }
+            });
 
-          await insertStructuredRows(tx, {
-            dataset: input.dataset,
-            orgId: input.orgId,
-            sourceDocumentId: input.documentId,
-            importBatchId,
-            rows: input.rows
-          });
+            await tx.auditLog.create({
+              data: {
+                orgId: input.orgId,
+                actorEmployeeId: input.actorEmployeeId,
+                action: AUDIT_ACTIONS.structuredImportStarted,
+                targetType: "import_batch",
+                targetId: importBatchId,
+                result: "succeeded",
+                metadata: {
+                  dataset: input.dataset,
+                  startDate: input.startDate,
+                  endDate: input.endDate,
+                  rowCount: input.totalRowCount,
+                  sourceDocumentId: input.documentId
+                },
+                requestId: input.requestId,
+                clientIp: input.clientIp
+              }
+            });
 
-          return tx.importBatch.update({
+            return tx.importBatch.findUniqueOrThrow({
+              where: { id: importBatchId },
+              include: importBatchInclude
+            });
+          },
+          { timeout: options.transactionTimeoutMs }
+        );
+        return { state: "created" as const, importBatch: toImportBatchRecord(batch) };
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          const raced = await resolveExistingReservation(input);
+          if (raced) return raced;
+        }
+        throw error;
+      }
+    },
+    async applyReservedStructuredImport(input) {
+      const applied = await prisma.$transaction(
+        async (tx) => {
+          const existing = await tx.importBatch.findFirst({
+            where: { id: input.importBatchId, orgId: input.orgId },
+            include: importBatchInclude
+          });
+          if (!existing) throw new Error("Reserved import batch was not found.");
+          if (existing.status === ImportBatchStatus.applied) return toImportBatchRecord(existing);
+
+          const claimed = await tx.importBatch.updateMany({
             where: {
-              id: importBatchId
+              id: input.importBatchId,
+              orgId: input.orgId,
+              status: {
+                in: [ImportBatchStatus.pending, ImportBatchStatus.failed]
+              }
             },
+            data: {
+              status: ImportBatchStatus.applying,
+              errorCode: null,
+              errorSummary: null
+            }
+          });
+          if (claimed.count !== 1) return null;
+
+          if (existing.dataset === ImportDataset.dishes) {
+            await tx.dishRow.deleteMany({ where: { importBatchId: input.importBatchId } });
+          } else {
+            await tx.businessRow.deleteMany({ where: { importBatchId: input.importBatchId } });
+          }
+          await insertStructuredRows(tx, {
+            dataset: existing.dataset,
+            orgId: input.orgId,
+            sourceDocumentId: existing.sourceDocumentId,
+            importBatchId: input.importBatchId,
+            rows: input.rows,
+            batchInsertSize: options.batchInsertSize
+          });
+          const now = new Date();
+          await tx.document.update({
+            where: { id: existing.sourceDocumentId },
+            data: { status: DocumentStatus.active }
+          });
+          await tx.processingRun.create({
+            data: {
+              orgId: input.orgId,
+              documentId: existing.sourceDocumentId,
+              jobKey: `structured_import:applied:${input.importBatchId}`,
+              status: ProcessingRunStatus.succeeded,
+              jobType: ProcessingJobType.structured_import,
+              startedAt: now,
+              finishedAt: now
+            }
+          });
+          const batch = await tx.importBatch.update({
+            where: { id: input.importBatchId },
             data: {
               status: ImportBatchStatus.applied,
-              appliedRowCount: input.rows.length
+              appliedRowCount: input.rows.length,
+              totalRowCount: input.rows.length
             },
-            include: {
-              sourceDocument: {
-                select: {
-                  status: true
-                }
-              }
+            include: importBatchInclude
+          });
+          await tx.auditLog.create({
+            data: {
+              orgId: input.orgId,
+              actorEmployeeId: input.actorEmployeeId,
+              action: AUDIT_ACTIONS.structuredImportApplied,
+              targetType: "import_batch",
+              targetId: input.importBatchId,
+              result: "succeeded",
+              metadata: {
+                dataset: batch.dataset,
+                startDate: formatDateWindowDate(batch.startDate),
+                endDate: formatDateWindowDate(batch.endDate),
+                appliedRowCount: input.rows.length,
+                sourceDocumentId: batch.sourceDocumentId
+              },
+              requestId: input.requestId,
+              clientIp: input.clientIp
             }
           });
+          return toImportBatchRecord(batch);
         },
-        {
-          timeout: structuredImportTransactionTimeoutMs()
-        }
+        { timeout: options.transactionTimeoutMs }
       );
-
+      if (applied) return applied;
+      const authoritative = await prisma.importBatch.findFirst({
+        where: { id: input.importBatchId, orgId: input.orgId },
+        include: importBatchInclude
+      });
+      if (authoritative?.status === ImportBatchStatus.applied) {
+        return toImportBatchRecord(authoritative);
+      }
+      throw new Error("Reserved import batch cannot be applied.");
+    },
+    async markStructuredImportStorageFailure(input) {
+      const batch = await prisma.$transaction(
+        async (tx) => {
+          const claimed = await tx.importBatch.updateMany({
+            where: {
+              id: input.importBatchId,
+              orgId: input.orgId,
+              status: {
+                in: [
+                  ImportBatchStatus.pending,
+                  ImportBatchStatus.validating,
+                  ImportBatchStatus.applying,
+                  ImportBatchStatus.failed
+                ]
+              }
+            },
+            data: {
+              status: ImportBatchStatus.failed,
+              errorCode: input.errorCode,
+              errorSummary: input.errorSummary
+            }
+          });
+          const existing = await tx.importBatch.findFirstOrThrow({
+            where: { id: input.importBatchId, orgId: input.orgId },
+            include: importBatchInclude
+          });
+          if (claimed.count !== 1) return existing;
+          await tx.document.update({
+            where: { id: existing.sourceDocumentId },
+            data: { status: DocumentStatus.processing_failed }
+          });
+          await tx.processingRun.create({
+            data: {
+              orgId: input.orgId,
+              documentId: existing.sourceDocumentId,
+              jobKey: `structured_import:storage_failure:${input.importBatchId}:${randomBytes(6).toString("hex")}`,
+              status: ProcessingRunStatus.failed,
+              jobType: ProcessingJobType.structured_import,
+              errorCode: input.errorCode,
+              errorSummary: input.errorSummary,
+              startedAt: new Date(),
+              finishedAt: new Date()
+            }
+          });
+          return tx.importBatch.findUniqueOrThrow({
+            where: { id: input.importBatchId },
+            include: importBatchInclude
+          });
+        },
+        { timeout: options.transactionTimeoutMs }
+      );
       return toImportBatchRecord(batch);
     },
     async disconnect() {
@@ -339,13 +519,7 @@ export function createPrismaStructuredImportRepository(
 
 function toImportBatchRecord(
   batch: Prisma.ImportBatchGetPayload<{
-    include: {
-      sourceDocument: {
-        select: {
-          status: true;
-        };
-      };
-    };
+    include: typeof importBatchInclude;
   }>
 ): StructuredImportBatchRecord {
   const archived = batch.sourceDocument.status === DocumentStatus.archived;
@@ -354,6 +528,9 @@ function toImportBatchRecord(
     id: batch.id,
     orgId: batch.orgId,
     sourceDocumentId: batch.sourceDocumentId,
+    sourceDocumentLabelKeys: batch.sourceDocument.documentLabels.map(
+      (documentLabel) => documentLabel.label.key
+    ),
     dataset: batch.dataset,
     status: archived ? "archived" : batch.status,
     startDate: formatDateWindowDate(batch.startDate),
@@ -362,7 +539,14 @@ function toImportBatchRecord(
     validationErrors: arrayJson(batch.validationErrors),
     totalRowCount: batch.totalRowCount,
     appliedRowCount: batch.appliedRowCount,
-    queryableRowCount: archived ? 0 : batch.appliedRowCount
+    queryableRowCount: archived ? 0 : batch.appliedRowCount,
+    sourceDocumentStatus: batch.sourceDocument.status,
+    sourceDocumentFileType: batch.sourceDocument.fileType as Extract<
+      Phase3FileType,
+      "xlsx" | "csv"
+    >,
+    storageObjectKey: batch.sourceDocument.storageObjectKey,
+    originalFileName: batch.sourceDocument.originalFileName ?? "file"
   };
 }
 

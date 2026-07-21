@@ -1,5 +1,8 @@
+import type { EmployeeRoleName } from "./auth.js";
+
 export interface EmployeePermissionSubject {
   disabled: boolean;
+  role: EmployeeRoleName;
   labelKeys: string[];
 }
 
@@ -15,6 +18,10 @@ export interface DocumentAccessInput {
 export function canEmployeeAccessDocument(input: DocumentAccessInput): boolean {
   if (input.employee.disabled) {
     return false;
+  }
+
+  if (input.employee.role === "admin") {
+    return true;
   }
 
   if (input.document.labelKeys.includes("all_staff")) {

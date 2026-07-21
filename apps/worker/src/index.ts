@@ -2,19 +2,29 @@ import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 import { createEvidenceIndexerFromEnv } from "./evidence-index.js";
+import { loadWorkerRuntimeLimits } from "./config/runtime-limits.js";
 import { createPrismaProcessingWorkerRepository, runWorkerOnce } from "./worker.js";
 
 export const workerWorkspaceName = "@enterprise-hub/worker";
 
 export async function main(): Promise<void> {
   loadDotenv({ quiet: true, override: false });
+  const runtimeLimits = loadWorkerRuntimeLimits(process.env);
 
   const repository = createPrismaProcessingWorkerRepository();
   const storage = new LocalFileSystemStorageAdapter();
   const evidenceIndexer = createEvidenceIndexerFromEnv();
 
   try {
-    const result = await runWorkerOnce({ repository, storage, evidenceIndexer });
+    const result = await runWorkerOnce({
+      repository,
+      storage,
+      evidenceIndexer,
+      leaseSeconds: runtimeLimits.workerLeaseSeconds,
+      maxAttempts: runtimeLimits.workerMaxAttempts,
+      retryBaseMs: runtimeLimits.workerRetryBaseMs,
+      retryMaxMs: runtimeLimits.workerRetryMaxMs
+    });
     console.log(JSON.stringify(result));
   } finally {
     await repository.disconnect?.();

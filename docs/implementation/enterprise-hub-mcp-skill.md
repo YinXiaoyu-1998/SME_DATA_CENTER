@@ -25,6 +25,10 @@ The current local-development profile must be actionable enough for an agent to:
 7. Search only active API-visible documents.
 8. Verify Baoli/Suzhou permission isolation during local testing.
 9. List Skill Directory entries as metadata only.
+10. Avoid client-supplied organization IDs; org scope is derived from the authenticated employee.
+11. Reuse structured-import idempotency keys only for exact file/metadata replay.
+12. Treat inaccessible import-status 404s as non-enumerating not-found results.
+13. Use evidence cursors only as opaque same-query continuations and restart on cursor errors.
 
 ## Profile Boundaries
 
@@ -44,6 +48,9 @@ The current local-development profile must be actionable enough for an agent to:
 - [x] Skill forbids direct DB/storage reads for data access.
 - [x] Skill forbids exposing raw bearer tokens, session files, or token persistence.
 - [x] Skill forbids claiming inaccessible documents exist.
+- [x] Skill forbids client-supplied org scope.
+- [x] Skill explains import exact replay and non-enumerating import-status 404 behavior.
+- [x] Skill explains evidence cursor continuation and `INVALID_CURSOR`/`CURSOR_EXPIRED` handling.
 - [x] Skill forbids executing Skill Directory entries.
 - [x] Skill forbids report/dashboard generation and direct employee-facing AI behavior.
 - [x] Skill requires explicit human authorization before uploading real company documents or customer exports.

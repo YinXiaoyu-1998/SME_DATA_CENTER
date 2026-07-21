@@ -216,7 +216,8 @@ P2 job type:
 - attempt / max attempts
 - idempotency or job dedup key
 - `lockedBy` / `lockedUntil` lease
-- `nextRunAt`
+- `availableAt` / retry availability timestamp
+- `lastHeartbeatAt`
 - started/finished timestamps
 - error code/summary
 - metrics JSON
@@ -225,7 +226,7 @@ Retry policy:
 
 - retry transient failures such as external model timeout/rate limit, temporary DB failure, Qdrant failure, worker crash/lock expiry
 - do not retry deterministic failures such as malformed file, schema mismatch, invalid date window, unsupported file type, active import conflict, or idempotency-key conflict
-- use exponential backoff with jitter and job-type attempt caps
+- use bounded exponential backoff and job-type attempt caps
 
 Idempotency keys:
 
@@ -722,7 +723,7 @@ Structured query response shape:
 Error envelope:
 
 - all failures return a stable machine-readable envelope with `code`, safe `message`, `retryable`, bounded `details`, and `requestId`
-- baseline codes include `INVALID_QUERY`, `INVALID_FIELD`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_CAPABILITY`, `TYPE_MISMATCH`, `INVALID_AGGREGATION`, `LIMIT_EXCEEDED`, `REGISTRY_VERSION_UNSUPPORTED`, `REGISTRY_VERSION_MISMATCH`, `DATASET_FORBIDDEN`, `ACTIVE_IMPORT_EXISTS`, `IMPORT_IN_PROGRESS`, `IDEMPOTENCY_KEY_CONFLICT`, `VALIDATION_FAILED`, `PROCESSING_FAILED`, `TEMPORARILY_UNAVAILABLE`, and `INTERNAL_ERROR`
+- baseline codes include `INVALID_QUERY`, `INVALID_FIELD`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_CAPABILITY`, `TYPE_MISMATCH`, `INVALID_AGGREGATION`, `LIMIT_EXCEEDED`, `REGISTRY_VERSION_UNSUPPORTED`, `REGISTRY_VERSION_MISMATCH`, `DATASET_FORBIDDEN`, `ACTIVE_IMPORT_EXISTS`, `IMPORT_IN_PROGRESS`, `IDEMPOTENCY_KEY_CONFLICT`, `INVALID_CURSOR`, `CURSOR_EXPIRED`, `VALIDATION_FAILED`, `PROCESSING_FAILED`, `TEMPORARILY_UNAVAILABLE`, and `INTERNAL_ERROR`
 - permission-hidden rows/documents are scoped out; no visible rows returns `200` with empty rows; dataset-level denial returns `403 DATASET_FORBIDDEN`
 - responses must not expose hidden row counts, hidden batch counts, or backend offsets
 
@@ -732,7 +733,7 @@ Pagination / cursors:
 - cursors are opaque and internally bind caller, org, dataset/query shape, registry version, and sort
 - query-shape changes invalidate old cursors
 - structured queries must have deterministic sort; if the caller does not provide one, the service uses a stable default and returns a warning
-- evidence cursors may rely on retrieval snapshots/query ids but cannot leak Qdrant internals
+- evidence cursors are signed opaque offset cursors with a bounded TTL; they bind org, employee, role, current label digest, query/filter/limit, retrieval config version, and next offset, and every page reruns retrieval plus authorization before slicing
 
 Structured query pagination and consistency:
 
@@ -1492,7 +1493,7 @@ The durable enterprise boundary uses the existing organization context:
 - `orgId`
 - authenticated employee's server-side org context
 
-Current implementation evidence: Prisma already has `organizations.id` and `documents.orgId`; current API still uses `defaultOrgId()` and `AuthenticatedEmployee` does not yet carry `orgId`. Phase 3 should carry authenticated employee organization context through the API.
+Current implementation evidence: Prisma has `organizations.id` and `documents.orgId`, and authenticated API paths derive organization scope from the reloaded employee record rather than a caller-supplied org parameter or `defaultOrgId()` fallback.
 
 Structured imports should introduce an `ImportBatch` or equivalent first-class model in MySQL. A CSV/XLSX upload is both a source document asset and an atomic dataset import; `Document` alone should not carry row-level lineage, idempotency, validation status, import window uniqueness, and rollback/audit boundaries.
 
@@ -1505,6 +1506,8 @@ Minimal relationships:
 - audit logs for structured data changes should reference both `Document` and `ImportBatch`
 
 Structured rows inherit source document permissions. A caller may query rows from an import batch only if they are authorized to access the source `Document` that produced that batch. `orgId` and dataset alone are not sufficient authorization. Backend permission predicates must be applied before row filtering, aggregation, grouping, sorting, and pagination.
+
+The shared source-document visibility policy is: disabled employees are denied; same-org admins can access supported management/status paths; active same-org non-admin employees need either `all_staff` on the source document or an intersection with their current labels. This policy applies consistently to evidence retrieval, structured import status, and structured query.
 
 `ImportBatch` should include at least:
 
@@ -1528,6 +1531,8 @@ Structured rows inherit source document permissions. A caller may query rows fro
 - rejection/error summary fields
 
 Phase 3 should not include automatic `replacesBatchId`, superseding, append, overwrite, or reuse semantics.
+
+The hardened import flow is reservation-first: parse/profile/validate and compute the request fingerprint before storage publication; reserve source `Document`, `ImportBatch`, `ImportWindowClaim`, deterministic storage key, and started audit in one database transaction; write storage only for the reserved key; then apply rows, activation, processing-run success, and applied audit in one transaction. Exact replay reuses the persisted IDs/key and cannot produce duplicate objects, rows, claims, or audits.
 
 ## Canonical Naming
 

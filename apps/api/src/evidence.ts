@@ -1,9 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { DocumentIndexStatus, DocumentKind, DocumentStatus, PrismaClient } from "@prisma/client";
 import {
   QDRANT_DENSE_VECTOR_NAME,
   QDRANT_SPARSE_VECTOR_NAME,
+  PHASE3_ERROR_CODES,
   buildRetrievalConfigSeed,
   canEmployeeAccessDocument,
   loadActiveRetrievalConfig,
@@ -29,6 +30,8 @@ export interface EvidenceSearchInput {
   cursor: string | null;
   requestId: string;
   clientIp: string;
+  cursorSecret: string;
+  now?: Date;
 }
 
 export interface EvidenceSearchResultItem {
@@ -114,6 +117,11 @@ interface EmbeddingProvider {
   embedTexts(texts: readonly string[]): Promise<number[][]>;
 }
 
+const EVIDENCE_CURSOR_VERSION = 1;
+const EVIDENCE_CURSOR_TTL_SECONDS = 900;
+const EVIDENCE_CURSOR_DOMAIN = "evidence-cursor:v1";
+const EVIDENCE_CANDIDATE_WINDOW = 200;
+
 interface QdrantQueryPoint {
   id?: unknown;
   score?: unknown;
@@ -128,8 +136,19 @@ export function createEvidenceSearchService(input: {
 }): EvidenceSearchRepository {
   return {
     async searchEvidence(searchInput) {
+      const now = searchInput.now ?? new Date();
+      const cursorScope = evidenceCursorScope(searchInput, input.retrievalConfig.version);
+      const offset = searchInput.cursor
+        ? decodeEvidenceCursor({
+            cursor: searchInput.cursor,
+            expectedScopeHash: cursorScope.scopeHash,
+            secret: searchInput.cursorSecret,
+            now
+          }).offset
+        : 0;
       const candidates = await input.qdrantSearcher.hybridSearch({
         ...searchInput,
+        limit: EVIDENCE_CANDIDATE_WINDOW,
         retrievalConfig: input.retrievalConfig
       });
       const revalidated = await input.revalidator.revalidate({
@@ -157,16 +176,33 @@ export function createEvidenceSearchService(input: {
         }
       }
 
-      const ordered = revalidated
-        .map((candidate) => ({
-          ...candidate,
-          rerankScore: rerankScoreByChunkId.get(candidate.chunkId) ?? null
-        }))
-        .sort(compareEvidenceCandidates)
-        .slice(0, searchInput.limit);
+      const ordered = dedupeEvidenceCandidates(
+        revalidated
+          .map((candidate) => ({
+            ...candidate,
+            rerankScore: rerankScoreByChunkId.get(candidate.chunkId) ?? null
+          }))
+          .sort(compareEvidenceCandidates)
+      );
+      const page = ordered.slice(offset, offset + searchInput.limit + 1);
+      const visible = page.slice(0, searchInput.limit);
+      const hasMore = page.length > searchInput.limit;
+      const nextCursor = hasMore
+        ? createEvidenceCursor({
+            offset: offset + searchInput.limit,
+            scopeHash: cursorScope.scopeHash,
+            scope: cursorScope.payload,
+            secret: searchInput.cursorSecret,
+            now
+          })
+        : null;
+      const warnings =
+        candidates.length >= EVIDENCE_CANDIDATE_WINDOW
+          ? ["EVIDENCE_CANDIDATE_WINDOW_TRUNCATED"]
+          : [];
 
       return {
-        results: ordered.map((candidate) => ({
+        results: visible.map((candidate) => ({
           chunkId: candidate.chunkId,
           documentId: candidate.documentId,
           documentTitle: candidate.documentTitle,
@@ -185,14 +221,167 @@ export function createEvidenceSearchService(input: {
         })),
         page: {
           limit: searchInput.limit,
-          nextCursor: null,
-          hasMore: false
+          nextCursor,
+          hasMore
         },
         retrieval: toEvidenceSearchRetrievalMetadata(input.retrievalConfig),
-        warnings: []
+        warnings
       };
     }
   };
+}
+
+function dedupeEvidenceCandidates(
+  candidates: Array<RevalidatedEvidenceCandidate & { rerankScore: number | null }>
+) {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    if (seen.has(candidate.chunkId)) {
+      return false;
+    }
+    seen.add(candidate.chunkId);
+    return true;
+  });
+}
+
+export class EvidenceSearchCursorError extends Error {
+  constructor(
+    readonly code:
+      typeof PHASE3_ERROR_CODES.invalidCursor | typeof PHASE3_ERROR_CODES.cursorExpired,
+    message: string
+  ) {
+    super(message);
+    this.name = "EvidenceSearchCursorError";
+  }
+}
+
+interface EvidenceCursorScopePayload {
+  orgId: string;
+  employeeId: string;
+  role: string;
+  labels: string[];
+  query: string;
+  filters: EvidenceSearchFilters;
+  limit: number;
+  retrievalConfigVersion: string;
+}
+
+function evidenceCursorScope(input: EvidenceSearchInput, retrievalConfigVersion: string) {
+  const payload: EvidenceCursorScopePayload = {
+    orgId: input.orgId,
+    employeeId: input.employee.id,
+    role: input.employee.role,
+    labels: [...input.employee.labels].sort(),
+    query: input.query,
+    filters: {
+      fileTypes: [...input.filters.fileTypes].sort(),
+      documentIds: [...input.filters.documentIds].sort(),
+      labelIds: [...input.filters.labelIds].sort()
+    },
+    limit: input.limit,
+    retrievalConfigVersion
+  };
+  return {
+    payload,
+    scopeHash: sha256(stableJson(payload))
+  };
+}
+
+function createEvidenceCursor(input: {
+  offset: number;
+  scopeHash: string;
+  scope: EvidenceCursorScopePayload;
+  secret: string;
+  now: Date;
+}) {
+  const issuedAt = Math.floor(input.now.getTime() / 1_000);
+  const payload = {
+    version: EVIDENCE_CURSOR_VERSION,
+    domain: EVIDENCE_CURSOR_DOMAIN,
+    orgId: input.scope.orgId,
+    employeeId: input.scope.employeeId,
+    role: input.scope.role,
+    labelsHash: sha256(stableJson(input.scope.labels)),
+    query: input.scope.query,
+    filters: input.scope.filters,
+    limit: input.scope.limit,
+    retrievalConfigVersion: input.scope.retrievalConfigVersion,
+    scopeHash: input.scopeHash,
+    offset: input.offset,
+    issuedAt,
+    expiresAt: issuedAt + EVIDENCE_CURSOR_TTL_SECONDS
+  };
+  const encodedPayload = Buffer.from(stableJson(payload), "utf8").toString("base64url");
+  const signature = signEvidenceCursor(encodedPayload, input.secret);
+  return `${encodedPayload}.${signature}`;
+}
+
+function decodeEvidenceCursor(input: {
+  cursor: string;
+  expectedScopeHash: string;
+  secret: string;
+  now: Date;
+}) {
+  const [encodedPayload, signature, extra] = input.cursor.split(".");
+  if (!encodedPayload || !signature || extra !== undefined) {
+    throw new EvidenceSearchCursorError(PHASE3_ERROR_CODES.invalidCursor, "Invalid cursor.");
+  }
+  if (!safeEqual(signature, signEvidenceCursor(encodedPayload, input.secret))) {
+    throw new EvidenceSearchCursorError(PHASE3_ERROR_CODES.invalidCursor, "Invalid cursor.");
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    throw new EvidenceSearchCursorError(PHASE3_ERROR_CODES.invalidCursor, "Invalid cursor.");
+  }
+
+  if (
+    payload["version"] !== EVIDENCE_CURSOR_VERSION ||
+    payload["domain"] !== EVIDENCE_CURSOR_DOMAIN ||
+    payload["scopeHash"] !== input.expectedScopeHash ||
+    !Number.isInteger(payload["offset"]) ||
+    !Number.isInteger(payload["expiresAt"])
+  ) {
+    throw new EvidenceSearchCursorError(PHASE3_ERROR_CODES.invalidCursor, "Invalid cursor.");
+  }
+
+  if ((payload["expiresAt"] as number) < Math.floor(input.now.getTime() / 1_000)) {
+    throw new EvidenceSearchCursorError(PHASE3_ERROR_CODES.cursorExpired, "Cursor expired.");
+  }
+
+  return { offset: payload["offset"] as number };
+}
+
+function signEvidenceCursor(encodedPayload: string, secret: string) {
+  return createHmac("sha256", secret)
+    .update(EVIDENCE_CURSOR_DOMAIN)
+    .update(".")
+    .update(encodedPayload)
+    .digest("base64url");
+}
+
+function safeEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nextValue]) => `${JSON.stringify(key)}:${stableJson(nextValue)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 export function createPrismaEvidenceSearchRepository(): EvidenceSearchRepository {
@@ -410,6 +599,7 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
         !canEmployeeAccessDocument({
           employee: {
             disabled: input.employee.disabled,
+            role: input.employee.role,
             labelKeys: input.employee.labels
           },
           document: {

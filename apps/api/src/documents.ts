@@ -270,10 +270,12 @@ export function createPrismaDocumentCatalogRepository(
             processingRuns: {
               create: {
                 orgId: input.orgId,
+                jobKey: `${input.processingJobType}:${input.id}:v1`,
                 status: ProcessingRunStatus.queued,
                 jobType: input.processingJobType as ProcessingJobType,
                 attemptNumber: 1,
-                retryCount: 0
+                retryCount: 0,
+                availableAt: new Date()
               }
             }
           },

@@ -16,7 +16,10 @@ function evidenceRun(
     orgId: "default-org",
     documentId: "doc_evidence",
     retryCount: 0,
+    attemptNumber: 1,
     jobType: "evidence_document_index",
+    lockedBy: "worker-a",
+    lockedUntil: new Date("2026-07-20T00:02:00.000Z"),
     document: {
       id: "doc_evidence",
       orgId: "default-org",

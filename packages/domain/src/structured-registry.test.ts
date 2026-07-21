@@ -3,6 +3,7 @@ import {
   STRUCTURED_DATASET_REGISTRIES,
   buildStructuredHeaderLookup,
   getStructuredRegistry,
+  resolveStructuredHeaders,
   validateStructuredHeaders
 } from "./structured-registry.js";
 
@@ -80,5 +81,23 @@ describe("structured field registries", () => {
       { canonicalName: "b", sourceColumn: "列B", aliases: ["重复"] }
     ]);
     expect(lookup.get("重复")).toEqual({ type: "ambiguous", canonicalNames: ["a", "b"] });
+  });
+
+  test("resolves reordered headers to their actual source indices", () => {
+    const headers = STRUCTURED_DATASET_REGISTRIES.dishes.fields.map((field) => field.sourceColumn);
+    const quantityIndex = headers.indexOf("菜品销售数量");
+    const productIndex = headers.indexOf("关联菜品名称");
+    [headers[quantityIndex], headers[productIndex]] = [
+      headers[productIndex]!,
+      headers[quantityIndex]!
+    ];
+
+    expect(resolveStructuredHeaders("dishes", headers)).toEqual({
+      ok: true,
+      fields: expect.arrayContaining([
+        { canonicalName: "dish_sales_quantity", sourceColumnIndex: productIndex },
+        { canonicalName: "matched_product_name", sourceColumnIndex: quantityIndex }
+      ])
+    });
   });
 });

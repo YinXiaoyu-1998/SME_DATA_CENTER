@@ -69,37 +69,28 @@ Optional clearer aliases may be added later (`EMBEDDING_*`, `RERANK_*`), but Pha
 
 Task 3 implements the env-backed provider factory with `LLM_PROVIDER=fake` as the local/CI default and `LLM_PROVIDER=openai-compatible` as the real external embedding path. DashScope-native rerank is selected independently with `RERANK_PROVIDER=dashscope`; it calls `/services/rerank/text-rerank/text-rerank` under `DASHSCOPE_API_BASE_URL`. The 2026-07-17 local smoke used synthetic text to verify `text-embedding-v4` returns 1024-dimensional embeddings through the compatible embeddings endpoint and `qwen3-rerank` returns `output.results[].index/relevance_score` through the DashScope-native rerank endpoint. Real embedding and rerank adapter calls require `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`; otherwise the provider call is blocked before any injected or global fetch executes. Unit tests use injected fetch and never call external networks.
 
-### Worker, Import, And Query Limits
+### Runtime Limits
 
-| Variable                                   | Required | Example / Default      | Secret? | Used By     | Notes                                                   |
-| ------------------------------------------ | -------: | ---------------------- | ------: | ----------- | ------------------------------------------------------- |
-| `WORKER_CONCURRENCY`                       |       No | `2`                    |      No | worker      | Global worker concurrency.                              |
-| `WORKER_LEASE_SECONDS`                     |       No | `120`                  |      No | worker      | DB lease duration for processing runs.                  |
-| `WORKER_POLL_INTERVAL_MS`                  |       No | `1000`                 |      No | worker      | Poll interval.                                          |
-| `WORKER_MAX_ATTEMPTS`                      |       No | `3`                    |      No | worker      | Transient retry cap.                                    |
-| `WORKER_EVIDENCE_INDEX_CONCURRENCY`        |       No | `1`                    |      No | worker      | Evidence indexing concurrency.                          |
-| `WORKER_STRUCTURED_IMPORT_CONCURRENCY`     |       No | `1`                    |      No | worker      | Structured import concurrency.                          |
-| `WORKER_QDRANT_UPSERT_CONCURRENCY`         |       No | `2`                    |      No | worker      | Qdrant write concurrency.                               |
-| `WORKER_EMBEDDING_CONCURRENCY`             |       No | `2`                    |      No | worker      | External embedding concurrency.                         |
-| `MAX_UPLOAD_BYTES`                         |       No | `52428800`             |      No | API         | Multipart upload file-size guard; default is 50 MiB.    |
-| `MCP_MAX_CONCURRENT_REQUESTS`              |       No | `8`                    |      No | API `/mcp`  | Bounded concurrent Streamable HTTP MCP requests.        |
-| `MAX_DOCUMENT_CHARS`                       |       No | implementation default |      No | worker      | Evidence parser guard.                                  |
-| `MAX_CHUNKS_PER_DOCUMENT`                  |       No | implementation default |      No | worker      | Prevent runaway indexing.                               |
-| `MAX_STRUCTURED_IMPORT_ROWS`               |       No | implementation default |      No | worker      | Import safety guard.                                    |
-| `MAX_XLSX_SHEETS`                          |       No | implementation default |      No | worker      | Import safety guard.                                    |
-| `STRUCTURED_QUERY_DEFAULT_LIMIT`           |       No | `50`                   |      No | API, MCP    | Must match schema discovery effective limits.           |
-| `STRUCTURED_QUERY_MAX_LIMIT`               |       No | `200`                  |      No | API, MCP    | Detail row max.                                         |
-| `STRUCTURED_QUERY_MAX_BOOLEAN_DEPTH`       |       No | `3`                    |      No | API         | Query compiler guard.                                   |
-| `STRUCTURED_QUERY_MAX_CONDITIONS`          |       No | `20`                   |      No | API         | Query compiler guard.                                   |
-| `STRUCTURED_QUERY_MAX_IN_VALUES`           |       No | `100`                  |      No | API         | Query compiler guard.                                   |
-| `STRUCTURED_QUERY_MAX_SORT_FIELDS`         |       No | `2`                    |      No | API         | Query compiler guard.                                   |
-| `STRUCTURED_QUERY_MAX_GROUP_BY_FIELDS`     |       No | `1`                    |      No | API         | Query compiler guard.                                   |
-| `STRUCTURED_QUERY_MAX_AGGREGATES`          |       No | `5`                    |      No | API         | Query compiler guard.                                   |
-| `STRUCTURED_QUERY_MAX_SELECTED_FIELDS`     |       No | `50`                   |      No | API         | Query compiler guard.                                   |
-| `STRUCTURED_QUERY_CURSOR_TTL_SECONDS`      |       No | `900`                  |      No | API         | Opaque cursor expiry.                                   |
-| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` |       No | `120000`               |      No | API         | Prisma transaction timeout for atomic XLSX/CSV imports. |
-| `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`      |       No | implementation default |      No | worker      | Batch row insert size.                                  |
-| `STRUCTURED_IMPORT_VALIDATION_ERROR_LIMIT` |       No | `20`                   |      No | API, worker | Max examples returned to caller.                        |
+| Variable                                   | Required | Example / Default | Secret? | Used By    | Notes                                                                  |
+| ------------------------------------------ | -------: | ----------------- | ------: | ---------- | ---------------------------------------------------------------------- |
+| `MAX_UPLOAD_BYTES`                         |       No | `52428800`        |      No | API        | Multipart and MCP decoded-upload file-size guard (50 MiB).             |
+| `MAX_STRUCTURED_IMPORT_ROWS`               |       No | `100000`          |      No | API        | Enforced structured ingestion row limit before storage/DB publication. |
+| `MAX_XLSX_SHEETS`                          |       No | `20`              |      No | API        | Enforced XLSX sheet-count limit during ZIP/workbook preflight.         |
+| `MAX_STRUCTURED_CELL_CHARS`                |       No | `32767`           |      No | API        | Enforced structured scalar/cell character limit during ingestion.      |
+| `MAX_XLSX_UNCOMPRESSED_BYTES`              |       No | `209715200`       |      No | API        | Enforced XLSX total uncompressed-size limit during ZIP preflight.      |
+| `MAX_XLSX_ZIP_ENTRIES`                     |       No | `10000`           |      No | API        | Enforced XLSX ZIP central-directory entry-count limit.                 |
+| `MAX_XLSX_COMPRESSION_RATIO`               |       No | `100`             |      No | API        | Enforced XLSX per-entry compression-ratio limit.                       |
+| `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`      |       No | `500`             |      No | API        | Atomic structured row insert batch size.                               |
+| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` |       No | `120000`          |      No | API        | Prisma transaction timeout for atomic XLSX/CSV imports.                |
+| `MCP_MAX_CONCURRENT_REQUESTS`              |       No | `8`               |      No | API `/mcp` | Bounded concurrent Streamable HTTP MCP requests.                       |
+| `MAX_DOCUMENT_CHARS`                       |       No | `5000000`         |      No | worker     | Enforced evidence parser character limit before index publication.     |
+| `MAX_CHUNKS_PER_DOCUMENT`                  |       No | `5000`            |      No | worker     | Enforced evidence chunk-count limit before index publication.          |
+| `WORKER_CONCURRENCY`                       |       No | `2`               |      No | worker     | Enforced bounded worker pool size for the dev loop.                    |
+| `WORKER_LEASE_SECONDS`                     |       No | `120`             |      No | worker     | Enforced database lease duration for claim/heartbeat/complete/fail.    |
+| `WORKER_POLL_INTERVAL_MS`                  |       No | `1000`            |      No | worker     | Poll interval (minimum `100` ms).                                      |
+| `WORKER_MAX_ATTEMPTS`                      |       No | `3`               |      No | worker     | Enforced transient retry cap.                                          |
+| `WORKER_RETRY_BASE_MS`                     |       No | `1000`            |      No | worker     | Enforced exponential retry base delay; cannot exceed retry maximum.    |
+| `WORKER_RETRY_MAX_MS`                      |       No | `60000`           |      No | worker     | Enforced exponential retry maximum delay.                              |
 
 Field registry and retrieval config details are versioned config/DB seed data, not env secrets.
 
