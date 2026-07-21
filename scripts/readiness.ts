@@ -1,5 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
 import {
@@ -10,6 +9,7 @@ import {
   type RuntimeEnv,
   type RuntimeReadinessConfig
 } from "@enterprise-hub/domain";
+import { createStorageAdapter } from "@enterprise-hub/storage";
 
 const DEFAULT_LOCAL_DATABASE_URL =
   "mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub";
@@ -274,24 +274,37 @@ async function checkMysql(env: RuntimeEnv | undefined): Promise<void> {
 }
 
 async function checkStorage(env: RuntimeEnv | undefined): Promise<void> {
-  const driver = env?.["STORAGE_DRIVER"] ?? process.env["STORAGE_DRIVER"] ?? "local";
+  const effectiveEnv: RuntimeEnv = {
+    ...process.env,
+    ...env,
+    LOCAL_STORAGE_ROOT:
+      env?.["LOCAL_STORAGE_ROOT"] ?? process.env["LOCAL_STORAGE_ROOT"] ?? DEFAULT_LOCAL_STORAGE_ROOT
+  };
+  const storage = createStorageAdapter(effectiveEnv);
+  const body = Buffer.from("enterprise-hub-storage-readiness", "utf8");
+  const documentId = `readiness_${process.pid}_${Date.now()}`;
+  let key: string | undefined;
 
-  if (driver !== "local") {
-    throw new Error(`Unsupported storage readiness driver ${driver}.`);
+  try {
+    const stored = await storage.putObject({
+      orgId: "readiness",
+      documentId,
+      fileName: "readiness.txt",
+      body,
+      contentType: "text/plain"
+    });
+    key = stored.key;
+    const metadata = await storage.statObject(stored.key);
+    const expectedHash = createHash("sha256").update(body).digest("hex");
+
+    if (metadata.size !== body.byteLength || metadata.hash !== expectedHash) {
+      throw new Error("Storage readiness object metadata did not match written bytes.");
+    }
+  } finally {
+    if (key) {
+      await storage.deleteObject(key);
+    }
   }
-
-  const root =
-    env?.["LOCAL_STORAGE_ROOT"] ?? process.env["LOCAL_STORAGE_ROOT"] ?? DEFAULT_LOCAL_STORAGE_ROOT;
-
-  if (!root) {
-    throw new Error("LOCAL_STORAGE_ROOT is required for local storage readiness.");
-  }
-
-  const resolvedRoot = path.resolve(root);
-  await mkdir(resolvedRoot, { recursive: true });
-  const checkPath = path.join(resolvedRoot, `.readiness-${process.pid}-${Date.now()}`);
-  await writeFile(checkPath, "ok", "utf8");
-  await rm(checkPath, { force: true });
 }
 
 async function checkWorkerLease(env: RuntimeEnv | undefined): Promise<void> {

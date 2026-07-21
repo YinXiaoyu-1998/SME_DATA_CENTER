@@ -20,7 +20,7 @@ The current local-development profile must be actionable enough for an agent to:
 2. Configure only the user-side `mcp:launcher` command.
 3. Log in with `enterprise_hub_login_local`; the token remains launcher-memory only.
 4. List labels before upload.
-5. Upload a local synthetic fixture with existing labels.
+5. Read a user-assigned local fixture as exact bytes, mechanically Base64-encode it, and upload it with existing labels without reconstructing or normalizing content.
 6. Check processing status without starting a worker.
 7. Search only active API-visible documents.
 8. Verify Baoli/Suzhou permission isolation during local testing.
@@ -53,6 +53,7 @@ The current local-development profile must be actionable enough for an agent to:
 - [x] Skill explains evidence cursor continuation and `INVALID_CURSOR`/`CURSOR_EXPIRED` handling.
 - [x] Skill forbids executing Skill Directory entries.
 - [x] Skill forbids report/dashboard generation and direct employee-facing AI behavior.
+- [x] Skill requires exact client-side file-byte reads and forbids retyping, normalizing, translating, or reconstructing upload payloads.
 - [x] Skill requires explicit human authorization before uploading real company documents or customer exports.
 - [x] Local human-test docs include a `$enterprise-hub-mcp` fresh-thread prompt.
 

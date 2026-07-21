@@ -256,9 +256,9 @@ Task 13 completion criteria:
 - Launcher stores no token beyond its process lifetime and needs fresh login after restart.
 - Root `mcp:launcher` starts only the launcher; it never starts or operates service dependencies.
 
-## Phase 4 Preview: Go Online
+## Phase 4: Go Online (In Progress)
 
-Do not start Phase 4 until Phase 3 verification is green and reviewed.
+Phase 3 verification and review were merged before the first Phase 4 implementation track started. Phase 4 tracks remain independently gated by `staging-readiness.md`; completing the OSS track does not authorize database, TLS, registry, or staging deployment work.
 
 Scope:
 
@@ -267,6 +267,20 @@ Scope:
 - MySQL, Qdrant, storage, secret, domain, TLS, and registry readiness;
 - production-grade auth plan;
 - staging smoke and rollback.
+
+### Day 2: Alibaba Cloud OSS Storage Adapter
+
+The OSS track is independently ready because its region, endpoint, bucket, effective object permissions, and credential location are verified.
+
+Completion criteria:
+
+- preserve `LocalFileSystemStorageAdapter` and select `local|oss` only through `STORAGE_DRIVER`;
+- implement the existing put/read/stat/presign/delete contract through the Alibaba OSS S3-compatible endpoint;
+- keep database object keys provider-neutral and isolate physical objects under a configurable service prefix;
+- wire API, worker, and readiness through the same runtime factory;
+- retain credentials only in ignored local env or secure deployment runtime configuration;
+- pass unit tests, a credential-gated live lifecycle test with cleanup, full repository gates, and the documented manual acceptance suite;
+- document that switching drivers does not automatically migrate historical local objects.
 
 ## Phase 5 Preview: Operations And Hardening
 

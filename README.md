@@ -51,15 +51,31 @@ STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS="120000"
 
 Do not commit `.env`, `.data/`, session files, real credentials, real customer data, or downloaded third-party exports.
 
-## Local Uploaded Files
+## Original File Storage
 
-With the local storage driver, uploaded files are stored under `LOCAL_STORAGE_ROOT`. The default local path is:
+`STORAGE_DRIVER` selects the original-file backend at API and worker startup:
+
+- `local` keeps the existing filesystem adapter and requires `LOCAL_STORAGE_ROOT`.
+- `oss` uses Alibaba Cloud OSS through the S3-compatible API and requires `AWS_REGION`, `AWS_ENDPOINT`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`.
+
+The OSS adapter keeps database keys provider-neutral (`org/...`) and maps them to the physical `AWS_S3_PREFIX` namespace, which defaults to `enterprise-hub`. `AWS_SESSION_TOKEN`, `AWS_S3_FORCE_PATH_STYLE`, and `AWS_S3_PRESIGN_EXPIRES_SECONDS` are optional. Existing local files are not migrated automatically when the driver changes; switch back to `local` to read them or migrate them explicitly before relying on OSS-only reads.
+
+With the local driver, uploaded files are stored under `LOCAL_STORAGE_ROOT`. The default local path is:
 
 ```text
 .data/storage/org/<org_id>/documents/<document_id>/original/<filename>
 ```
 
 Integration and MCP smoke tests use their own ignored storage roots under `.data/integration/storage` and `.data/mcp-local-test/storage`.
+
+To run the credential-gated OSS lifecycle test after configuring an ignored `.env`:
+
+```sh
+set -a; source .env; set +a
+npm run test:storage:oss
+```
+
+The test writes one random object under the configured Enterprise Hub prefix, verifies metadata/read/presigned download, deletes it, and confirms absence. It never prints credentials or the signed URL.
 
 To remove local uploaded files, test storage, and local MySQL document records:
 
@@ -77,6 +93,8 @@ The default command also deletes MySQL document data from the local `enterprise_
 database, including document rows and derived processing/chunk/label rows through
 database cascades, plus document audit logs. It preserves seeded organizations,
 employees, labels, Skill Directory rows, and local login sessions.
+
+`npm run purge-data` only removes local filesystem objects. It does not delete OSS objects or migrate source files between drivers.
 
 To remove the entire ignored `.data` directory, including local CLI/MCP session files:
 
@@ -171,6 +189,7 @@ For the repeatable user-visible Codex manual acceptance suite, ask Codex in this
 | `lint`                 | Runs ESLint across the repository.                                        | `npm run lint`                                                                                                              | Static code-quality check.                                       |
 | `test`                 | Runs the Vitest unit/integration-style test suite configured in the repo. | `npm test`                                                                                                                  | Same as `npm run test`.                                          |
 | `test:integration`     | Runs the local Phase 3 API/worker integration flow.                       | `MYSQL_PORT=3307 npm run test:integration`                                                                                  | Resets the local development database.                           |
+| `test:storage:oss`     | Runs the gated live Alibaba OSS object lifecycle.                         | Load ignored `.env`, then run `npm run test:storage:oss`                                                                    | Creates and deletes one isolated random object.                  |
 | `test:mcp`             | Runs HTTP `/mcp` plus launcher smoke checks.                              | `npm run test:mcp`                                                                                                          | Does not start service dependencies.                             |
 | `test:phase3:golden`   | Runs the synthetic Phase 3 golden retrieval evaluation.                   | `npm run test:phase3:golden`                                                                                                | Uses deterministic fake providers and synthetic evidence.        |
 | `test:phase3:perf`     | Runs deterministic Phase 3 performance smoke gates.                       | `npm run test:phase3:perf`                                                                                                  | Measures real local compiler, CSV parser, and payload workloads. |

@@ -38,6 +38,24 @@ STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS="120000"
 
 不要提交 `.env`、`.data/`、session 文件、真实客户导出、私有 token、服务账号 key 或第三方下载数据。
 
+## 源文件存储
+
+API 和 worker 启动时通过 `STORAGE_DRIVER` 选择同一套存储实现：
+
+- `local`：继续使用原有本地文件适配器，必须配置 `LOCAL_STORAGE_ROOT`。
+- `oss`：通过 S3 兼容接口使用阿里云 OSS，必须配置 `AWS_REGION`、`AWS_ENDPOINT`、`AWS_S3_BUCKET`、`AWS_ACCESS_KEY_ID` 和 `AWS_SECRET_ACCESS_KEY`。
+
+OSS 模式下，数据库仍保存与供应商无关的 `org/...` 逻辑 key；实际对象放在 `AWS_S3_PREFIX` 下，默认前缀为 `enterprise-hub`。`AWS_SESSION_TOKEN`、`AWS_S3_FORCE_PATH_STYLE` 和 `AWS_S3_PRESIGN_EXPIRES_SECONDS` 是可选项。切换 driver 不会自动迁移原有本地文件；旧文件仍需切回 `local` 读取，或先执行显式迁移。
+
+配置好 ignored `.env` 后，可以运行真实 OSS 生命周期测试：
+
+```sh
+set -a; source .env; set +a
+npm run test:storage:oss
+```
+
+测试只创建一个随机小对象，验证 metadata、读取、预签名下载与删除，且不会打印凭据或签名 URL。
+
 ## 本地启动
 
 启动 MySQL 和 Qdrant：
@@ -154,6 +172,7 @@ Codex 会使用 repo-local `enterprise-hub-manual-test` skill 重置专用本地
 | `lint`                 | 运行 ESLint                                     |
 | `test`                 | 运行 Vitest                                     |
 | `test:integration`     | 跑 Phase 3 local API/worker integration         |
+| `test:storage:oss`     | 跑真实阿里云 OSS 隔离对象生命周期测试           |
 | `test:mcp`             | 跑 Phase 3 local MCP smoke                      |
 | `test:phase3:golden`   | 跑 synthetic retrieval golden gate              |
 | `test:phase3:perf`     | 跑真实本地 compiler/CSV parser/payload 性能门禁 |
@@ -181,6 +200,7 @@ npm run format:check
 npm run lint
 npm run typecheck
 npm test
+set -a; source .env; set +a; npm run test:storage:oss
 MYSQL_PORT=3307 npm run test:integration
 MYSQL_PORT=3307 npm run test:mcp
 npm run test:phase3:golden
