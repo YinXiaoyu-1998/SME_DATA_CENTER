@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:integration": "tsx scripts/test-integration.ts",
+    "test:storage:oss": "RUN_OSS_INTEGRATION=1 vitest run packages/storage/src/aliyun-oss-storage.integration.test.ts",
     "test:mcp": "tsx scripts/test-mcp-local.ts",
     "test:phase3:golden": "tsx scripts/golden-retrieval-eval.ts",
     "test:phase3:perf": "tsx scripts/phase3-performance-gates.ts",

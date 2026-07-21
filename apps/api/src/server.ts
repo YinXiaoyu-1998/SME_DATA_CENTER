@@ -21,7 +21,7 @@ import {
 import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
 import {
   createOriginalObjectKey,
-  LocalFileSystemStorageAdapter,
+  createStorageAdapter,
   type StorageAdapter
 } from "@enterprise-hub/storage";
 import {
@@ -843,7 +843,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   }
 
   function storage(): StorageAdapter {
-    storageAdapter ??= new LocalFileSystemStorageAdapter();
+    storageAdapter ??= createStorageAdapter(options.runtimeEnv ?? process.env);
     return storageAdapter;
   }
 

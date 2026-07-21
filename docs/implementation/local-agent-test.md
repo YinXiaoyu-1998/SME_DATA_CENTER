@@ -79,6 +79,8 @@ Execute tasks in manifest order:
 
 Wait for each turn to complete before sending the next turn in that scenario. Keep created tasks unarchived so the user can inspect their transcript and tool calls.
 
+The employee-client skill requires the assigned fixture to be read as exact bytes and Base64-encoded mechanically. Reading only that user-assigned input is allowed; retyping, normalizing, translating, or reconstructing content is an upload-integrity failure. This rule belongs in the skill and oracle, never as an added visible prompt hint.
+
 The local email and fixture path are deliberate test-harness artifacts: the email substitutes for production SSO, and the path substitutes for attaching a file in a created background task. Everything else must sound like an ordinary employee request. In particular, the user must not be asked to name MCP, label keys, visibility scopes, idempotency keys, inline encoding, controlled query shapes, SQL restrictions, grounding rules, permission rules, validation behavior, or expected answers.
 
 After each task completes, the controller checks the transcript and operator state. Exact uploaded bytes, generated idempotency, labels, query shape, authorization, atomicity, and direct-service bypass are oracle concerns, not user instructions. A reasonable clarification request is a usability observation; do not answer it with protocol terminology or hidden oracle values.

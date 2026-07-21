@@ -7,7 +7,7 @@ This file tracks required variables and external services. Do not store secret v
 | Variable                   |                        Required | Example / Default                                                                    |     Secret? | Used By                | Notes                                                                                                                                |
 | -------------------------- | ------------------------------: | ------------------------------------------------------------------------------------ | ----------: | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `DATABASE_URL`             |                             Yes | `mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub` |         Yes | API, worker, Prisma    | Local-only example is in `.env.example`; replace for personal environments.                                                          |
-| `STORAGE_DRIVER`           |                             Yes | `local`                                                                              |          No | Storage package        | Phase 1 implements the local filesystem adapter only.                                                                                |
+| `STORAGE_DRIVER`           |                             Yes | `local` or `oss`                                                                     |          No | API, worker, readiness | Selects the filesystem or Alibaba OSS/S3-compatible adapter at process startup; unsupported values fail fast.                        |
 | `LOCAL_STORAGE_ROOT`       | Yes when `STORAGE_DRIVER=local` | `./.data/storage`                                                                    |          No | Storage package        | Local adapter root for original file objects; `.data/` is ignored by git.                                                            |
 | `JWT_SECRET`               |                             Yes | `replace-with-local-development-secret`                                              |         Yes | API auth module        | Development value only; production must come from a secret store.                                                                    |
 | `DEV_SEED_ADMIN_EMAIL`     |                             Yes | `admin@example.com`                                                                  |          No | Future seed script     | Used for local seed data in later phases.                                                                                            |
@@ -104,15 +104,19 @@ Use that readiness document to record non-secret values, secret handling locatio
 
 ## Staging OSS / S3-Compatible Readiness
 
-These variables may be present in a local ignored `.env` or a future secret/runtime environment when validating OSS/S3-compatible storage. Do not commit real secret values.
+These variables may be present in a local ignored `.env` or a deployment secret/runtime environment when `STORAGE_DRIVER=oss`. Do not commit real secret values.
 
-| Variable                | Required For              | Secret? | Safe To Record? | Notes                                                                |
-| ----------------------- | ------------------------- | ------: | --------------: | -------------------------------------------------------------------- |
-| `AWS_REGION`            | OSS/S3-compatible storage |      No |             Yes | Current provided value is tracked in `staging-readiness.md`.         |
-| `AWS_ENDPOINT`          | OSS/S3-compatible storage |      No |             Yes | Endpoint URL without credentials is safe to record.                  |
-| `AWS_S3_BUCKET`         | OSS/S3-compatible storage |      No |             Yes | Bucket name is tracked as provided but not yet verified.             |
-| `AWS_ACCESS_KEY_ID`     | OSS/S3-compatible storage |     Yes |              No | Record only that the variable exists in secure runtime/local `.env`. |
-| `AWS_SECRET_ACCESS_KEY` | OSS/S3-compatible storage |     Yes |              No | Never print, commit, or copy into readiness docs or PR descriptions. |
+| Variable                         | Required For              | Secret? | Safe To Record? | Notes                                                                                             |
+| -------------------------------- | ------------------------- | ------: | --------------: | ------------------------------------------------------------------------------------------------- |
+| `AWS_REGION`                     | OSS/S3-compatible storage |      No |             Yes | Required when the OSS driver is selected.                                                         |
+| `AWS_ENDPOINT`                   | OSS/S3-compatible storage |      No |             Yes | Required S3-compatible endpoint URL without credentials.                                          |
+| `AWS_S3_BUCKET`                  | OSS/S3-compatible storage |      No |             Yes | Required original-file bucket.                                                                    |
+| `AWS_ACCESS_KEY_ID`              | OSS/S3-compatible storage |     Yes |              No | Required; record only that it exists in secure runtime/local `.env`.                              |
+| `AWS_SECRET_ACCESS_KEY`          | OSS/S3-compatible storage |     Yes |              No | Required; never print, commit, or copy into docs or PR descriptions.                              |
+| `AWS_SESSION_TOKEN`              | temporary OSS credentials |     Yes |              No | Optional session credential; omit for long-lived RAM access keys.                                 |
+| `AWS_S3_PREFIX`                  | OSS object isolation      |      No |             Yes | Optional physical namespace; defaults to `enterprise-hub`. Database keys remain provider-neutral. |
+| `AWS_S3_FORCE_PATH_STYLE`        | endpoint compatibility    |      No |             Yes | Optional `true`/`false`; defaults to `false` for OSS virtual-hosted requests.                     |
+| `AWS_S3_PRESIGN_EXPIRES_SECONDS` | document download links   |      No |             Yes | Optional positive integer; defaults to 900 seconds.                                               |
 
 ## Staging Container Registry Readiness
 
