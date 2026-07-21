@@ -140,7 +140,7 @@ The API exposes authenticated Streamable HTTP at `POST /mcp` and is loopback-onl
 
 The launcher does not start or repair the API, worker, database, Qdrant, or storage. It keeps the development JWT only in process memory and asks for a fresh local email login after restart.
 
-MCP callers never provide an organization ID; the service derives organization scope from the logged-in employee. Evidence search cursors are opaque, short-lived continuation tokens: pass them back unchanged with the same query/filter/limit to fetch the next page, and restart the search on `INVALID_CURSOR` or `CURSOR_EXPIRED`. Structured import retries should reuse an `idempotencyKey` only for the exact same file and metadata; exact replay returns the original persisted IDs/storage key, while inaccessible import status returns the same non-enumerating 404 as a missing batch.
+MCP callers never provide an organization ID; the service derives organization scope from the logged-in employee. Evidence search cursors are opaque, short-lived continuation tokens: pass `page.nextCursor` back unchanged with the same query/filter/limit to fetch the next page. Restart without a cursor on `INVALID_CURSOR`; on `CURSOR_EXPIRED`, explain the expiry and restart only if the user still wants more results. Structured import retries should reuse an `idempotencyKey` only for the exact same file and metadata; exact replay returns the original persisted IDs/storage key, while inaccessible import status returns the same non-enumerating 404 as a missing batch.
 
 To run the launcher manually when the API is already running:
 

@@ -1078,7 +1078,7 @@ function typedFieldExpression(field: StructuredFieldRegistryEntry): string {
     case "date":
       return `STR_TO_DATE(${expression}, '%Y-%m-%d')`;
     case "date_time":
-      return `STR_TO_DATE(${expression}, '%Y-%m-%d %H:%i:%s')`;
+      return `STR_TO_DATE(${expression}, '%Y-%m-%dT%H:%i:%s')`;
     case "string":
     case "time_range":
       return expression;

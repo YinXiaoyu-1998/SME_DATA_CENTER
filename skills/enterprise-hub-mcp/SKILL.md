@@ -49,7 +49,7 @@ The URL may point to a locally running service in this phase. Do not try to make
 6. Use `get_evidence_document_status` or `get_import_status` after uploads. Do not run a worker to accelerate processing. Poll gently and stop when status is final or when the user asks to stop.
 7. Treat `get_import_status` not-found results as non-visible or missing. The service intentionally returns the same 404 shape for nonexistent, cross-org, disabled, or label-inaccessible import batches, so do not infer that a hidden batch exists or repeat hidden metadata.
 8. Use `search_document_evidence`, `list_structured_datasets`, and `query_structured_dataset` only through the exposed tools. Do not send SQL or bypass backend authorization.
-9. For evidence search pagination, pass the returned opaque `cursor` back with the same query, filters, and limit to request the next page. Do not edit, decode, persist long term, or reuse cursors across employees, labels, queries, filters, limits, or service configurations.
+9. For evidence search pagination, pass the returned `page.nextCursor` back as `cursor` with the same query, filters, and limit to request the next page. Do not edit, decode, persist long term, or reuse cursors across employees, labels, queries, filters, limits, or service configurations.
 10. If evidence search returns `INVALID_CURSOR`, restart the search without the cursor. If it returns `CURSOR_EXPIRED`, tell the user the cursor expired and restart only if the user still wants more results. If a document becomes inaccessible between pages, accept that it disappears.
 11. `enterprise_hub_list_skills` returns approved Skill Directory metadata only; do not execute entries.
 12. Call `enterprise_hub_logout_local` only when the user asks to clear the local login.
@@ -60,7 +60,7 @@ English evidence pagination:
 
 1. User asks: "Find the refund handling SOP and show more if there are additional matches."
 2. Call `search_document_evidence` with the user's query, visible filters if needed, and a bounded `limit`.
-3. If the response includes a non-null `cursor` and the user wants more, call the same tool again with the same query/filters/limit plus that cursor.
+3. If the response includes a non-null `page.nextCursor` and the user wants more, call the same tool again with the same query/filters/limit plus that cursor.
 4. Summarize only returned visible evidence; never claim hidden documents exist.
 
 中文结构化导入重试：

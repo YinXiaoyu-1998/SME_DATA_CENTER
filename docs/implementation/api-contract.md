@@ -167,7 +167,8 @@ Request shape:
 {
   "query": "差评处理 SOP",
   "filters": {
-    "labelKeys": ["store:baoli"],
+    "labelIds": ["lbl_..."],
+    "documentIds": ["doc_..."],
     "fileTypes": ["md", "txt", "docx"]
   },
   "limit": 10,
@@ -183,22 +184,34 @@ Response shape:
     {
       "documentId": "doc_...",
       "chunkId": "chunk_...",
+      "documentTitle": "差评处理 SOP",
       "text": "差评处理需要在 15 分钟内联系顾客...",
-      "score": 0.87,
-      "metadata": {
-        "title": "差评处理 SOP",
+      "score": {
+        "hybrid": 0.87,
+        "rerank": null
+      },
+      "source": {
         "fileType": "md",
-        "sourceSystem": "manual_upload",
-        "labels": ["store:baoli"]
-      }
+        "sectionHeadingPath": ["客户反馈", "差评处理"],
+        "blockType": "paragraph",
+        "pageNumber": null
+      },
+      "matchedBy": ["dense", "sparse"]
     }
   ],
   "retrieval": {
-    "configVersion": "phase3.retrieval.v1",
-    "provider": "fake"
+    "retrievalConfigVersion": "phase3.retrieval.v1",
+    "embeddingVersion": "fake-embedding-v1@phase3.retrieval.v1",
+    "lexicalIndexVersion": "lexical.v1",
+    "rerankVersion": null,
+    "rerankStatus": "rerank_disabled"
   },
   "warnings": [],
-  "cursor": "opaque_next_page_cursor_or_null"
+  "page": {
+    "limit": 10,
+    "nextCursor": "opaque_next_page_cursor_or_null",
+    "hasMore": true
+  }
 }
 ```
 
@@ -293,15 +306,15 @@ Example detail-row request:
 ```json
 {
   "dataset": "dishes",
-  "filters": {
+  "filter": {
     "and": [
       { "field": "business_date", "op": "between", "value": ["2026-07-01", "2026-07-05"] },
-      { "field": "product_name", "op": "like", "value": "%肉夹馍%" }
+      { "field": "product_name", "op": "contains", "value": "肉夹馍" }
     ]
   },
   "select": ["business_date", "product_name", "dish_sales_quantity"],
   "sort": [{ "field": "business_date", "direction": "asc" }],
-  "limit": 100
+  "page": { "limit": 100 }
 }
 ```
 
@@ -310,15 +323,15 @@ Example explicit mechanical aggregate:
 ```json
 {
   "dataset": "dishes",
-  "filters": {
+  "filter": {
     "and": [
       { "field": "business_date", "op": "eq", "value": "2026-07-05" },
-      { "field": "product_name", "op": "like", "value": "%肉夹馍%" }
+      { "field": "product_name", "op": "contains", "value": "肉夹馍" }
     ]
   },
   "aggregates": [{ "field": "dish_sales_quantity", "op": "sum", "as": "quantity_sum" }],
   "groupBy": ["product_name"],
-  "limit": 100
+  "page": { "limit": 100 }
 }
 ```
 

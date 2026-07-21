@@ -331,7 +331,7 @@ describe("structured query compiler", () => {
     expect(compiled.params).toContain("$.discount_rate");
   });
 
-  it("uses typed SQL expressions for numeric sort, comparison, and min/max", () => {
+  it("uses typed SQL expressions for numeric and date-time sort, comparison, and min/max", () => {
     const compiled = compileStructuredQuery({
       employee: {
         role: "manager",
@@ -357,6 +357,32 @@ describe("structured query compiler", () => {
     );
     expect(compiled.sql).toContain(
       "ORDER BY CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6)) DESC"
+    );
+
+    const dateTime = compileStructuredQuery({
+      employee: {
+        role: "manager",
+        labels: ["store:baoli"]
+      },
+      orgId: "default-org",
+      query: {
+        dataset: "dishes",
+        select: ["order_time"],
+        filter: {
+          field: "order_time",
+          op: "gte",
+          value: "2026-07-01T12:30:45"
+        },
+        sort: [{ field: "order_time", direction: "asc" }]
+      },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(dateTime.sql).toContain(
+      "STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)), '%Y-%m-%dT%H:%i:%s') >= ?"
+    );
+    expect(dateTime.sql).toContain(
+      "ORDER BY STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)), '%Y-%m-%dT%H:%i:%s') ASC"
     );
 
     const aggregate = compileStructuredQuery({

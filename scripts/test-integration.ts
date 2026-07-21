@@ -647,11 +647,39 @@ async function assertTypedStructuredQuerySemantics(
   try {
     await prisma.dishRow.createMany({
       data: [
-        typedDishRow(importBatchId, sourceDocumentId, 1001, "typed-2", "2"),
-        typedDishRow(importBatchId, sourceDocumentId, 1002, "typed-10", "10"),
-        typedDishRow(importBatchId, sourceDocumentId, 1003, "typed-100", "100"),
-        typedDishRow(importBatchId, sourceDocumentId, 1004, "typed--1", "-1"),
-        typedDishRow(importBatchId, sourceDocumentId, 1005, "typed-0.5", "0.5")
+        typedDishRow(importBatchId, sourceDocumentId, 1001, "typed-2", "2", "2026-07-03T10:00:00"),
+        typedDishRow(
+          importBatchId,
+          sourceDocumentId,
+          1002,
+          "typed-10",
+          "10",
+          "2026-07-03T11:00:00"
+        ),
+        typedDishRow(
+          importBatchId,
+          sourceDocumentId,
+          1003,
+          "typed-100",
+          "100",
+          "2026-07-03T12:00:00"
+        ),
+        typedDishRow(
+          importBatchId,
+          sourceDocumentId,
+          1004,
+          "typed--1",
+          "-1",
+          "2026-07-03T09:00:00"
+        ),
+        typedDishRow(
+          importBatchId,
+          sourceDocumentId,
+          1005,
+          "typed-0.5",
+          "0.5",
+          "2026-07-03T10:30:00"
+        )
       ]
     });
 
@@ -674,6 +702,27 @@ async function assertTypedStructuredQuerySemantics(
       sorted.rows.map((row) => row["matched_product_name"]).join(",") ===
         "typed--1,typed-0.5,typed-2,typed-10,typed-100",
       "Numeric sort must use mathematical order, not string order."
+    );
+
+    const dateTimeSorted = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify({
+        dataset: "dishes",
+        select: ["matched_product_name", "order_time"],
+        filter: {
+          field: "order_time",
+          op: "between",
+          value: ["2026-07-03T10:00:00", "2026-07-03T12:00:00"]
+        },
+        sort: [{ field: "order_time", direction: "asc" }],
+        page: { limit: 10 }
+      })
+    });
+    assert(
+      dateTimeSorted.rows.map((row) => row["matched_product_name"]).join(",") ===
+        "typed-2,typed-0.5,typed-10,typed-100",
+      "Date-time filtering and sorting must use the persisted ISO-like value format."
     );
 
     const aggregate = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
@@ -712,7 +761,8 @@ function typedDishRow(
   sourceDocumentId: string,
   sourceRowNumber: number,
   matchedProductName: string,
-  dishSalesQuantity: string
+  dishSalesQuantity: string,
+  orderTime: string
 ) {
   return {
     orgId: "default-org",
@@ -722,7 +772,8 @@ function typedDishRow(
     payload: {
       business_date: "2026-07-03",
       matched_product_name: matchedProductName,
-      dish_sales_quantity: dishSalesQuantity
+      dish_sales_quantity: dishSalesQuantity,
+      order_time: orderTime
     }
   };
 }
