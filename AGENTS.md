@@ -60,6 +60,14 @@ Copy `.env.example` to `.env` for local development. Use development-only values
 
 Required local variables are tracked in `docs/implementation/env-inventory.md`.
 
+## Alibaba Cloud CLI
+
+- Prefer Alibaba Cloud CLI/OpenAPI over manual console clicks for RDS, Simple Application Server, VPC, OSS, and ACR checks/changes when the local CLI is available and the requested action is authorized.
+- This workstation has `aliyun` installed at `/usr/local/bin/aliyun`; version `3.4.4` and the `oauth` profile are valid for `cn-beijing` as of 2026-07-21. The `swas-open` product plugin is installed at version `0.7.0`.
+- If `aliyun` or a needed product plugin is missing, install/update it first, then configure OAuth when possible. Ask the human to complete browser/MFA login if needed. Do not request AccessKey ID/secret in chat and do not commit CLI credentials.
+- Use `aliyun configure list` for non-secret profile checks; use product help such as `aliyun rds CreateAccount help` and official docs before mutating cloud resources.
+- Cloud resource readiness facts and non-secret IDs belong in `docs/implementation/staging-readiness.md`; passwords and full DSNs with passwords must stay in secure runtime storage only.
+
 The local integration test defaults to `MYSQL_PORT=3307` when no `MYSQL_PORT` is set, starts local MySQL + Qdrant, resets the local development database, seeds sample employees/labels/skills, starts the API on an available local port, verifies Phase 3 structured import/query, uploads an evidence document, runs one worker pass, checks evidence index status, and verifies evidence search.
 
 When an agent performs local end-to-end, go-online, staging-readiness, or external-provider validation, it must explicitly load the real local provider configuration from `.env` and run the relevant path with the real provider, for example `set -a; source .env; set +a; MYSQL_PORT=3307 npm run test:integration` plus any focused fixture smoke needed for the claim. Do not treat the default fake/mock provider path as evidence that real embedding/rerank/provider integration works. CI and routine automated tests may continue to use deterministic fake providers by default to avoid external secrets, network egress, cost, and flakiness.
