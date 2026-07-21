@@ -62,10 +62,12 @@ Required local variables are tracked in `docs/implementation/env-inventory.md`.
 
 ## Alibaba Cloud CLI
 
-- Prefer Alibaba Cloud CLI/OpenAPI over manual console clicks for RDS, Simple Application Server, VPC, OSS, and ACR checks/changes when the local CLI is available and the requested action is authorized.
-- This workstation has `aliyun` installed at `/usr/local/bin/aliyun`; version `3.4.4` and the `oauth` profile are valid for `cn-beijing` as of 2026-07-21. The `swas-open` product plugin is installed at version `0.7.0`.
-- If `aliyun` or a needed product plugin is missing, install/update it first, then configure OAuth when possible. Ask the human to complete browser/MFA login if needed. Do not request AccessKey ID/secret in chat and do not commit CLI credentials.
-- Use `aliyun configure list` for non-secret profile checks; use product help such as `aliyun rds CreateAccount help` and official docs before mutating cloud resources.
+- Prefer Alibaba Cloud CLI/OpenAPI over manual console clicks for Alibaba Cloud DevOps work when the requested action is authorized. This includes RDS, Simple Application Server/SWAS, ECS, VPC, OSS, ACR, DNS/domain, RAM/STS, logs/monitoring, and other Alibaba Cloud products.
+- Alibaba Cloud CLI is not RDS-only. CLI plugins cover most console-backed resources; use `aliyun plugin search/list-remote`, install missing product plugins on demand, and run `aliyun <product> <command> --help` before constructing commands. Prefer plugin kebab-case commands; use legacy OpenAPI-style commands only as fallback.
+- This workstation has `aliyun` installed at `/usr/local/bin/aliyun`; version `3.4.4`, auto-plugin-install enabled, and the `oauth` profile are valid for `cn-beijing` as of 2026-07-21. The `swas-open` product plugin is installed at version `0.7.0`.
+- For Simple Application Server, use `aliyun swas-open` where available for instance discovery and command-assistant flows such as `list-instances`, `create-command`, `invoke-command`, and `describe-command-invocations`. Use normal `ssh`, `curl`, `nc`, or app commands for OS-level checks when that is the right interface.
+- If `aliyun` or a needed product plugin is missing, install/update it first, then configure OAuth when possible. Ask the human only for browser/MFA login, new authorization, destructive/costly scope confirmation, or secrets that cannot be obtained securely. Do not request AccessKey ID/secret in chat and do not commit CLI credentials.
+- Use `aliyun configure list` for non-secret profile checks; use product help and official docs before mutating cloud resources. For agent-attributed Alibaba CLI work, enable the Alibaba Cloud agent user-agent mode only for the active workflow and disable it before finishing.
 - Cloud resource readiness facts and non-secret IDs belong in `docs/implementation/staging-readiness.md`; passwords and full DSNs with passwords must stay in secure runtime storage only.
 
 The local integration test defaults to `MYSQL_PORT=3307` when no `MYSQL_PORT` is set, starts local MySQL + Qdrant, resets the local development database, seeds sample employees/labels/skills, starts the API on an available local port, verifies Phase 3 structured import/query, uploads an evidence document, runs one worker pass, checks evidence index status, and verifies evidence search.
