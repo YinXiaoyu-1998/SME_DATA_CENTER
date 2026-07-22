@@ -832,6 +832,81 @@ describe("api auth shell", () => {
     expect(response.headers["x-request-id"]).toBeTruthy();
   });
 
+  it("returns local readiness results and maps failures to 503", async () => {
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      jwtSecret,
+      enableDevLogin: true,
+      logger: false,
+      readinessCheck: async () => ({
+        ok: false,
+        retrievalConfigVersion: "test-retrieval",
+        checks: [
+          {
+            name: "mysql",
+            ok: true,
+            message: "mysql readiness check passed."
+          },
+          {
+            name: "qdrant",
+            ok: false,
+            message: "Qdrant evidence collection is missing."
+          }
+        ]
+      })
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/readyz",
+      remoteAddress: "127.0.0.1"
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      ok: false,
+      service: "enterprise-hub-api",
+      retrievalConfigVersion: "test-retrieval",
+      checks: [
+        {
+          name: "mysql",
+          ok: true,
+          message: "mysql readiness check passed."
+        },
+        {
+          name: "qdrant",
+          ok: false,
+          message: "Qdrant evidence collection is missing."
+        }
+      ]
+    });
+  });
+
+  it("does not expose readiness to non-loopback clients", async () => {
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      jwtSecret,
+      logger: false,
+      readinessCheck: async () => {
+        throw new Error("readiness should not run for non-loopback clients");
+      }
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/readyz",
+      remoteAddress: "203.0.113.10"
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: {
+        code: "NOT_FOUND",
+        message: "Not found."
+      }
+    });
+  });
+
   it("issues a development token for a seeded employee without password fields", async () => {
     app = buildTestServer();
 

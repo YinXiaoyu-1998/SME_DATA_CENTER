@@ -1,0 +1,38 @@
+name: enterprise-hub-staging
+
+services:
+  qdrant:
+    image: ${ENTERPRISE_HUB_QDRANT_IMAGE}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  api:
+    image: ${ENTERPRISE_HUB_API_IMAGE}
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ${ENTERPRISE_HUB_RUNTIME_ENV_FILE:-/opt/enterprise-hub/runtime.env}
+    environment:
+      NODE_ENV: production
+      HOST: 127.0.0.1
+      PORT: "3000"
+    depends_on:
+      - qdrant
+
+  worker:
+    image: ${ENTERPRISE_HUB_WORKER_IMAGE}
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ${ENTERPRISE_HUB_RUNTIME_ENV_FILE:-/opt/enterprise-hub/runtime.env}
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - qdrant
+
+volumes:
+  qdrant_data:
