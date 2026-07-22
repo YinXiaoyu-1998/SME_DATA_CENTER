@@ -28,7 +28,7 @@ The old ordinary document upload/search/detail/download/archive public surface h
 | Phase 1 | Complete / internalized | Core API, auth, labels, source document catalog, storage, audit, local seed data |
 | Phase 2 | Complete / current MCP adapter retained | Local MCP login/session, labels, skills, Phase 3 tool adapter surface |
 | Phase 3 | Implemented, final cleanup in progress | Production-grade retrieval/data foundation before online launch |
-| Phase 4 | Not started | Go-online/staging deployment readiness |
+| Phase 4 | In progress | Go-online/staging deployment readiness; runtime/ACR/TLS/fixture-smoke slice is deployed |
 | Phase 5 | Not started | Post-launch operations, beta feedback, hardening |
 
 ## Phase 3 Scope
@@ -258,7 +258,11 @@ Task 13 completion criteria:
 
 ## Phase 4: Go Online (In Progress)
 
-Phase 3 verification and review were merged before the first Phase 4 implementation track started. Phase 4 tracks remain independently gated by `staging-readiness.md`; completing the OSS track does not authorize database, TLS, registry, or staging deployment work.
+Phase 3 verification and review were merged before the first Phase 4 implementation track started. Phase 4 tracks remain independently gated by `staging-readiness.md`.
+
+As of 2026-07-22, the first online skeleton slice is live in staging: API, worker, and Qdrant run on the Alibaba Cloud Simple Application Server from fixed Beijing ACR image tags behind nginx and Let’s Encrypt. RDS `prisma migrate deploy`, synthetic seed, Qdrant init, local `/readyz`, public HTTPS `/healthz`, blocked public `/readyz`, certbot renew dry-run, and fixture-only staging smoke have passed.
+
+This does not make the service production-ready. Phase 4 still needs the final database SSL-mode decision, backup/restore expectation, production-grade auth/admin policy, deployment automation, monitoring/rollback, and any real-data retention/import decisions before Phase 5 or real customer data.
 
 Scope:
 
@@ -281,6 +285,28 @@ Completion criteria:
 - retain credentials only in ignored local env or secure deployment runtime configuration;
 - pass unit tests, a credential-gated live lifecycle test with cleanup, full repository gates, and the documented manual acceptance suite;
 - document that switching drivers does not automatically migrate historical local objects.
+
+### Deployed Staging Runtime Slice
+
+The current staging deployment uses:
+
+- `https://api.smedatacenter.xyz` for public API liveness through nginx/TLS;
+- private `/readyz` on the server loopback only;
+- Alibaba Cloud ACR Personal Edition registry `crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com`;
+- namespace `enterprise-hub` with private repositories `api`, `worker`, and `qdrant`;
+- API/worker fixed image tag `c24314199c39`;
+- mirrored Qdrant image tag `v1.15.4`;
+- root-only server runtime env at `/opt/enterprise-hub/runtime.env`.
+
+The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed data. It is not an employee-facing production MCP target until production auth/SSO/admin policy is designed and implemented.
+
+### Remaining Phase 4 Tracks
+
+- Database policy: choose final RDS SSL mode and record backup/restore ownership and expectations.
+- Security/auth: design production admin identity, token/session behavior, and SSO/OIDC path.
+- Deployment automation: turn the documented fixed-tag deploy sequence into a repeatable script and then, if desired, CI/CD.
+- Operations: monitoring, alerting, rollback runbook validation, log retention, and cost/resource review.
+- Data governance: define real customer import, retention, deletion, and staging-data policy before any non-fixture data.
 
 ## Phase 5 Preview: Operations And Hardening
 
