@@ -4,8 +4,8 @@ import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
 const seedCommand = existsSync("packages/db/src/seed.ts")
-  ? "npx tsx packages/db/src/seed.ts"
-  : "npx tsx src/seed.ts";
+  ? "./node_modules/.bin/tsx packages/db/src/seed.ts"
+  : "../../node_modules/.bin/tsx src/seed.ts";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",

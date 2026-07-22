@@ -2,8 +2,6 @@ FROM node:22-bookworm-slim AS base
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl \
   && rm -rf /var/lib/apt/lists/*
@@ -14,9 +12,11 @@ COPY packages ./packages
 COPY scripts ./scripts
 COPY fixtures ./fixtures
 
-RUN npm ci \
+RUN npm ci --include=dev \
   && npm run db:generate \
   && npm cache clean --force
+
+ENV NODE_ENV=production
 
 FROM base AS api
 
