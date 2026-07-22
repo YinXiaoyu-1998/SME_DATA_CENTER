@@ -2,16 +2,17 @@
 
 ## Current Phase
 
-- Phase: Phase 3 retrieval and structured-data foundation. Tasks 1-13 are complete; Phase 4 remains the next online-ready phase and Phase 5 remains beta/operations.
-- Date: 2026-07-21
-- Lead branch: `main`; active integration branch: `codex/manual-acceptance-suite`
-- Deployment target: Alibaba Cloud Simple Application Server candidate for staging/light beta; host prerequisites are installed and RDS MySQL has an app database/account, but no application image, migration, or service deployment has started
+- Phase: Phase 4 online-ready runtime skeleton is in progress after Phase 3 completion; Phase 5 remains beta/operations.
+- Date: 2026-07-22
+- Lead branch: `main`; active implementation branch: `codex/phase4-runtime-acr-staging`
+- Deployment target: Alibaba Cloud Simple Application Server staging target is running the Phase 4 staging slice from Beijing ACR fixed image tags behind nginx/Let’s Encrypt; RDS migrations, synthetic seed, `/readyz`, HTTPS `/healthz`, and fixture-only smoke passed.
 
 ## Active Workstreams
 
-| Workstream                        | Branch                                     | Owner/Agent    | Status      | PR      | Notes                                                                                                                                                                    |
-| --------------------------------- | ------------------------------------------ | -------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Phase 3 safe structured ingestion | `codex/phase3-hardening-04-safe-ingestion` | Codex subagent | In progress | Pending | Started from `2b4c05c85be384fe09bc689ce623404a9fbcb35c`; replacing duplicated CSV/XLSX parsing with a shared hardened workspace package under strict RED-GREEN-REFACTOR. |
+| Workstream                           | Branch                                     | Owner/Agent      | Status      | PR                                                                  | Notes                                                                                                                                                                                                                                                |
+| ------------------------------------ | ------------------------------------------ | ---------------- | ----------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 4 runtime/ACR staging skeleton | `codex/phase4-runtime-acr-staging`         | Codex lead agent | In review   | [PR #73](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/73) | Deployed the staging runtime slice from ACR fixed tag `c24314199c39`: API/worker/Qdrant Compose services, root-only runtime env, RDS migrate/seed, Qdrant init, `/readyz`, nginx/Let’s Encrypt, HTTPS `/healthz`, and fixture-only smoke all passed. |
+| Phase 3 safe structured ingestion    | `codex/phase3-hardening-04-safe-ingestion` | Codex subagent   | In progress | Pending                                                             | Started from `2b4c05c85be384fe09bc689ce623404a9fbcb35c`; replacing duplicated CSV/XLSX parsing with a shared hardened workspace package under strict RED-GREEN-REFACTOR.                                                                             |
 
 | Workstream                               | Branch                                    | Owner/Agent    | Status           | PR      | Notes                                                                                                                 |
 | ---------------------------------------- | ----------------------------------------- | -------------- | ---------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -282,12 +283,9 @@
 
 ## Blockers
 
-| Blocker                                    | Needed From Human                                                                                                                                                                                                                                                                                                                                                                 | Since      | Stop Rule                                                                                                                                                                                        |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Phase 4 staging readiness items unverified | Deployment target access and internal state are verified; TLS decision, online MySQL, admin emails, seed policy, real-data policy, and optional model decisions are not yet verified in `docs/implementation/staging-readiness.md`. OSS/S3-compatible access and the Day 2 adapter implementation are verified, but deployment credentials still require secure runtime delivery. | 2026-07-01 | Agents may update and validate staging readiness items, but must not start a Phase 4 implementation track until that track's required items are `verified` or explicitly `deferred`.             |
-| Container image registry input             | Docker/Compose and the host runtime are verified. Docker Hub pull is unavailable, while Alibaba Cloud ACR is reachable. An account-owned Beijing ACR registry hostname, namespace, API/worker repository names, and secure login credential location are still missing.                                                                                                           | 2026-07-09 | Do not deploy application images until fixed image tags can be pushed to ACR and pulled from the staging server without exposing credentials.                                                    |
-| Independent MySQL validation incomplete    | RDS MySQL 8.0 host, port, database, and username are provided and API-verified. The app password is in local macOS Keychain only; SSL mode, server runtime secret delivery, app-account `SELECT 1`, and backup expectation remain incomplete.                                                                                                                                     | 2026-07-05 | Do not run migrations or deployment smoke against a database until these values are fully validated through `staging-readiness.md`.                                                              |
-| Domain DNS/TLS not deploy-ready            | Domain `smedatacenter.xyz` has entered ICP filing review. Console records show `@`, `www`, and `api` targeting `39.96.66.185`, but public and authoritative DNS still return `198.18.0.99`, `198.18.0.100`, and `198.18.0.30`; TLS approach is not chosen.                                                                                                                        | 2026-07-05 | Do not mark staging domain/TLS verified, request certificates, or run public staging smoke until ICP is approved, public/authoritative DNS resolves to the target, and TLS approach is recorded. |
+| Blocker                              | Needed From Human                                                                                                                                                                                                                                                                                                 | Since      | Stop Rule                                                                                                                                                                                        |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Phase 4 staging readiness follow-ups | The current staging slice is deployed and verified for ACR/image pull, runtime secrets, RDS migration/seed, TLS, readiness, and fixture smoke. Remaining follow-ups are final DB SSL-mode decision, backup/restore expectation, and real admin/auth policy. Let’s Encrypt contact email is `consyinxy@gmail.com`. | 2026-07-01 | Do not treat this as full production readiness or import real customer data until auth/admin policy, backup/restore, monitoring/rollback, and data-retention decisions are explicitly completed. |
 
 ## Next Actions
 
@@ -365,11 +363,12 @@
 - [ ] Wait for ICP review approval for `smedatacenter.xyz`, then rerun compliance and DNS validation.
 - [x] Configure intended DNS record for staging, then verify it resolves to the deployment target.
 - [x] Rerun public DNS checks after TTL/propagation; `@`, `www`, and `api` return `39.96.66.185` through Cloudflare, Google, and AliDNS DoH.
-- [ ] Choose and validate TLS approach after DNS points at the target.
+- [x] Choose TLS approach after DNS points at the target: Let’s Encrypt + certbot + nginx.
+- [x] Validate TLS after app/nginx deployment: issue certificate, verify HTTPS `/healthz`, and run certbot renew dry-run.
 - [x] Bind the approved local SSH public key after the server reset, then rerun internal OS/runtime validation.
 - [x] Install and validate Docker/Compose prerequisites on the Alibaba Cloud server after approval.
-- [ ] Create or select a Beijing ACR repository and validate secure push/pull with a fixed test tag.
-- [ ] Complete independent RDS MySQL validation: choose SSL mode, move the password to staging runtime secret/env, run app-account `SELECT 1` from the server, and confirm backup/restore expectation.
+- [x] Create or select a Beijing ACR repository and validate secure push/pull with fixed image tags.
+- [ ] Complete remaining RDS MySQL runtime validation: choose final SSL mode and confirm backup/restore expectation. Server runtime secret delivery, migration, seed, and readiness passed.
 - [ ] Clean stale merged/superseded topic branches and old local worktrees after explicit human approval.
 - [x] Start Phase 3 Task 1: retrieval/structured-data contract scaffolding and migration baseline.
 - [x] Start Phase 3 Task 3: retrieval config, embedding provider, and real rerank adapter on `codex/phase3-retrieval-config`.
@@ -387,10 +386,10 @@
 - [x] Complete Phase 3 Task 12 local final verification, documentation alignment, real workbook smoke, MCP Phase 3 smoke, and old-worktree cleanup.
 - [x] Remove legacy ordinary upload/search public surface and switch docs/skill/API/MCP/CLI guidance to Phase 3-only.
 - [x] Sync standalone `enterprise-hub-mcp-skill` repository and open draft PR for Phase 3-only skill guidance.
-- [ ] Collect and validate Phase 4 staging readiness items in `staging-readiness.md` before starting each online-ready implementation track.
+- [x] Collect and validate the Phase 4 staging readiness items required for the runtime/ACR/TLS/fixture-smoke slice in `staging-readiness.md`.
 - [x] Run the 2026-07-09 status recovery against required docs, Git/PR/worktree state, done evidence, blockers, and secret/file risks.
 - [x] Restore the missing PR #44 workstream and handoff records.
-- [ ] After Phase 3 completes, choose exactly one ready Phase 4 implementation track; prefer Day 1 containerization/runtime config before staging deployment.
+- [x] After Phase 3 completes, choose exactly one ready Phase 4 implementation track; prefer Day 1 containerization/runtime config before staging deployment.
 - [x] Commit, push, and open/update draft PR for this 2026-07-04 status recovery branch.
 - [x] Audit the dual-homed `enterprise-hub-mcp` skill boundary and remove service lifecycle operations from its guidance; keep service setup and operations documented in the main repository.
 - [x] Complete local Streamable HTTP `/mcp` design discovery; decisions are recorded in `mcp-endpoint.md` and proposed ADR 0020, pending product-owner approval before implementation planning.
@@ -418,3 +417,5 @@
 - [x] Complete Phase 3 hardening Task 11 MCP skill sync on `codex/phase3-hardening-11-skill-sync`: repo-local and standalone `enterprise-hub-mcp` skills now share cursor, import replay, non-enumerating 404, no-client-org, polling, and retry guidance; standalone branch `codex/phase3-hardening-skill-sync` is ready for its draft PR.
 - [x] Start 2026-07-21 review-fix follow-up on `codex/enterprise-hub-implementation`: address the independent review's date-time SQL, API contract, and cursor-guidance findings, then rerun verification and the local natural MCP acceptance suite.
 - [x] Complete 2026-07-21 review-fix follow-up: MySQL-backed date-time query coverage and all static/integration gates passed; the fake natural cold-start suite exposed an independent-client capability-discovery failure (report retained under `.data/manual-tests/20260721-004605`), while the isolated real-provider retrieval subset passed (report retained under `.data/manual-tests/20260721-005616`); local runtime was cleaned up.
+- [x] Complete the 2026-07-22 Phase 4 runtime/ACR/TLS/fixture-smoke slice on `codex/phase4-runtime-acr-staging`: ACR private repositories under namespace `enterprise-hub`, fixed API/worker tag `c24314199c39`, mirrored Qdrant `v1.15.4`, root-only staging runtime env, RDS `prisma migrate deploy`, synthetic seed, Qdrant init, local/public readiness, nginx/Let’s Encrypt HTTPS, certbot renew dry-run, and fixture-only smoke all passed without committing or printing secrets.
+- [x] Update the Let’s Encrypt account email on the staging server to `consyinxy@gmail.com` for renewal/failure notices.

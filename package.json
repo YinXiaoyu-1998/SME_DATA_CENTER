@@ -21,6 +21,7 @@
     "test:manual:serve": "tsx scripts/manual-test-harness.ts serve",
     "test:manual:snapshot": "tsx scripts/manual-test-harness.ts snapshot",
     "test:manual:cleanup": "tsx scripts/manual-test-harness.ts cleanup",
+    "staging:smoke": "tsx scripts/staging-smoke.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "api:dev": "tsx apps/api/src/index.ts",
@@ -35,6 +36,7 @@
     "db:compose:down": "docker compose down",
     "db:generate": "prisma generate --config packages/db/prisma.config.ts",
     "db:migrate": "prisma migrate dev --config packages/db/prisma.config.ts",
+    "db:migrate:deploy": "prisma migrate deploy --config packages/db/prisma.config.ts",
     "db:seed": "prisma db seed --config packages/db/prisma.config.ts"
   },
   "devDependencies": {

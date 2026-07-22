@@ -55,6 +55,7 @@ import {
 } from "./structured-query.js";
 import { registerMcpHttpRoute } from "./mcp/http.js";
 import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
+import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
 export interface ApiServerOptions {
@@ -70,6 +71,7 @@ export interface ApiServerOptions {
   logger?: boolean;
   runtimeLimits?: ApiRuntimeLimits;
   runtimeEnv?: NodeJS.ProcessEnv;
+  readinessCheck?: () => Promise<ReadinessReport>;
 }
 
 interface DevLoginBody {
@@ -533,6 +535,12 @@ function structuredImportConflictMessage(code: string): string {
   return "Structured import conflict.";
 }
 
+function isLoopbackRequest(ip: string): boolean {
+  return (
+    ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1" || ip === "0:0:0:0:0:0:0:1"
+  );
+}
+
 function structuredImportResponse(input: {
   importBatch: StructuredImportBatchRecord;
   document: {
@@ -798,6 +806,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     options.runtimeLimits ?? loadApiRuntimeLimits(options.runtimeEnv ?? process.env);
   const jwtSecret = options.jwtSecret ?? requireJwtSecret();
   const enableDevLogin = options.enableDevLogin ?? process.env["NODE_ENV"] !== "production";
+  const readinessCheck = options.readinessCheck ?? (() => checkRuntimeReadiness());
 
   const app = Fastify({
     logger: options.logger ?? true,
@@ -874,6 +883,18 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     ok: true,
     service: SERVICE_NAME
   }));
+
+  app.get("/readyz", async (request, reply) => {
+    if (!isLoopbackRequest(request.ip)) {
+      return reply.code(404).send(errorResponse("NOT_FOUND", "Not found."));
+    }
+
+    const report = await readinessCheck();
+    return reply.code(report.ok ? 200 : 503).send({
+      ...report,
+      service: SERVICE_NAME
+    });
+  });
 
   app.post<{ Body: DevLoginBody }>("/auth/dev-login", async (request, reply) => {
     if (!enableDevLogin) {

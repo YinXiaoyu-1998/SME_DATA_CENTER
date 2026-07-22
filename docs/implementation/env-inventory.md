@@ -128,6 +128,13 @@ These deployment/CI variables are pending an account-owned Alibaba Cloud ACR rep
 | `ENTERPRISE_HUB_ACR_NAMESPACE`         | Image naming           |      No |             Yes | Recommended namespace: `enterprise-hub`, if available.      |
 | `ENTERPRISE_HUB_ACR_API_REPOSITORY`    | API image naming       |      No |             Yes | Recommended repository: `api`.                              |
 | `ENTERPRISE_HUB_ACR_WORKER_REPOSITORY` | Worker image naming    |      No |             Yes | Recommended repository: `worker`.                           |
+| `ENTERPRISE_HUB_ACR_QDRANT_REPOSITORY` | Qdrant image naming    |      No |             Yes | Recommended repository: `qdrant`.                           |
 | `ENTERPRISE_HUB_ACR_USERNAME`          | Registry login         |      No |             Yes | Keep in protected deployment runtime or CI configuration.   |
 | `ENTERPRISE_HUB_ACR_PASSWORD`          | Registry login         |     Yes |              No | Use `docker login --password-stdin`; never print or commit. |
 | `ENTERPRISE_HUB_IMAGE_TAG`             | Immutable image deploy |      No |             Yes | Use a commit SHA or release version; never deploy `latest`. |
+
+For the current Phase 4 staging slice, the human-selected ACR target is Personal Edition in
+`cn-beijing`. Alibaba Cloud documents that Personal Edition does not expose OpenAPI, so initial
+Personal Edition activation, namespace creation, repository creation, and registry password setup
+must happen once in the console if they do not already exist. After that, agents should continue
+with `docker login`, fixed-tag push/pull verification, and runtime deployment automation.
