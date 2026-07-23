@@ -149,6 +149,28 @@ manager, never a checked-in env file.
 | `ENTERPRISE_HUB_STAGING_JWT_KEYCHAIN_ACCOUNT` | Local smoke secret lookup    |      No |             Yes | Defaults to `enterprise-hub-staging`.                                                        |
 | `ENTERPRISE_HUB_STAGING_JWT_SECRET`           | Non-interactive smoke secret |     Yes |              No | Optional Keychain replacement; inject only from an approved secret manager and never log it. |
 
+### GitHub staging environment
+
+GitHub Actions maps Environment-level configuration onto the process variables
+above. The GitHub names intentionally stay provider-neutral at the workflow
+boundary.
+
+| GitHub name               | Kind     | Maps To                             | Secret? | Notes                                                                   |
+| ------------------------- | -------- | ----------------------------------- | ------: | ----------------------------------------------------------------------- |
+| `ACR_PASSWORD`            | Secret   | `ENTERPRISE_HUB_ACR_PASSWORD`       |     Yes | ACR Personal Edition registry password.                                 |
+| `STAGING_JWT_SECRET`      | Secret   | `ENTERPRISE_HUB_STAGING_JWT_SECRET` |     Yes | Used only to generate the in-memory fixture-smoke bearer token.         |
+| `STAGING_SSH_PRIVATE_KEY` | Secret   | temporary SSH key file              |     Yes | Written with a restrictive umask on the ephemeral runner, then removed. |
+| `ACR_REGISTRY`            | Variable | `ENTERPRISE_HUB_ACR_REGISTRY`       |      No | Beijing ACR registry hostname.                                          |
+| `ACR_NAMESPACE`           | Variable | `ENTERPRISE_HUB_ACR_NAMESPACE`      |      No | `enterprise-hub`.                                                       |
+| `ACR_USERNAME`            | Variable | `ENTERPRISE_HUB_ACR_USERNAME`       |      No | Registry login account.                                                 |
+| `STAGING_HOST`            | Variable | `ENTERPRISE_HUB_STAGING_HOST`       |      No | SWAS public host; SSH still uses the committed strict host identity.    |
+| `STAGING_SSH_USER`        | Variable | `ENTERPRISE_HUB_STAGING_SSH_USER`   |      No | Current value is `root`.                                                |
+| `STAGING_PUBLIC_URL`      | Variable | `ENTERPRISE_HUB_STAGING_PUBLIC_URL` |      No | HTTPS API base URL used by public checks and fixture smoke.             |
+
+List Environment secret names with `gh secret list --env staging` and
+non-secret values with `gh variable list --env staging`. Never retrieve or
+echo secret values during diagnostics.
+
 For the current Phase 4 staging slice, the human-selected ACR target is Personal Edition in
 `cn-beijing`. Alibaba Cloud documents that Personal Edition does not expose OpenAPI, so initial
 Personal Edition activation, namespace creation, repository creation, and registry password setup

@@ -2,6 +2,12 @@ name: Phase 3 quality gates
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 jobs:
@@ -9,8 +15,8 @@ jobs:
     name: Unit mocks and static checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
           cache: npm
@@ -38,8 +44,8 @@ jobs:
       QDRANT_URL: http://127.0.0.1:6333
       QDRANT_COLLECTION_EVIDENCE: enterprise_hub_evidence_ci
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
           cache: npm
@@ -52,7 +58,7 @@ jobs:
             if [ "$status" = "healthy" ]; then
               exit 0
             fi
-            echo "Waiting for MySQL healthcheck, current status: ${status:-unknown}"
+            echo "Waiting for MySQL healthcheck (${attempt}/60), current status: ${status:-unknown}"
             sleep 2
           done
           docker logs enterprise-hub-mysql
@@ -78,8 +84,8 @@ jobs:
       LLM_MODEL: ${{ vars.LLM_MODEL }}
       EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22"
           cache: npm
