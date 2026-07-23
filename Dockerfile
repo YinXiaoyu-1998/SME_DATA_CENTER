@@ -12,7 +12,8 @@ COPY packages ./packages
 COPY scripts ./scripts
 COPY fixtures ./fixtures
 
-RUN npm ci --include=dev \
+RUN npm install --global npm@11.18.0 \
+  && npm ci --include=dev \
   && npm run db:generate \
   && npm cache clean --force
 

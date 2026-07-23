@@ -304,7 +304,7 @@ The deployed slice is intentionally staging-only and uses fixture documents plus
 
 - Database policy: choose final RDS SSL mode and record backup/restore ownership and expectations.
 - Security/auth: design production admin identity, token/session behavior, and SSO/OIDC path.
-- Deployment automation: turn the documented fixed-tag deploy sequence into a repeatable script and then, if desired, CI/CD.
+- Deployment automation: validate and merge the new semi-automated `npm run deploy:staging` release/rollback command, then connect the same command boundary to GitHub Actions with an approved non-interactive credential design.
 - Operations: monitoring, alerting, rollback runbook validation, log retention, and cost/resource review.
 - Data governance: define real customer import, retention, deletion, and staging-data policy before any non-fixture data.
 
