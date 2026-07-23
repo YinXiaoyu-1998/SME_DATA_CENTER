@@ -152,9 +152,9 @@ compose config --quiet
 compose pull api worker
 compose up -d qdrant
 wait_for_url http://127.0.0.1:6333/collections "Qdrant"
-compose run -T --rm api npm run qdrant:init
+compose run -T --rm api npm run qdrant:init </dev/null
 if [ "$run_migrate" = "1" ]; then
-  compose run -T --rm api npm run db:migrate:deploy
+  compose run -T --rm api npm run db:migrate:deploy </dev/null
 fi
 compose up -d --remove-orphans
 wait_for_url http://127.0.0.1:3000/healthz "API health"

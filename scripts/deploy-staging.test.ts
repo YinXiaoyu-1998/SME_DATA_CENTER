@@ -79,4 +79,12 @@ describe("deploy-staging remote scripts", () => {
       expect(script).not.toContain('. "$previous_file"');
     }
   });
+
+  it("keeps remote compose jobs from consuming the remaining SSH script", () => {
+    const rollout = remoteScriptsForValidation()[0];
+    expect(rollout).toBeDefined();
+    const composeRuns = (rollout ?? "").split("\n").filter((line) => line.includes("compose run"));
+    expect(composeRuns).not.toHaveLength(0);
+    expect(composeRuns.every((line) => line.endsWith("</dev/null"))).toBe(true);
+  });
 });

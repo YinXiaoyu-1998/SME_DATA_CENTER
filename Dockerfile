@@ -7,14 +7,26 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json tsconfig.json tsconfig.base.json ./
+COPY apps/admin-web/package.json ./apps/admin-web/package.json
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/mcp-launcher/package.json ./apps/mcp-launcher/package.json
+COPY apps/worker/package.json ./apps/worker/package.json
+COPY packages/db/package.json ./packages/db/package.json
+COPY packages/domain/package.json ./packages/domain/package.json
+COPY packages/mcp-contract/package.json ./packages/mcp-contract/package.json
+COPY packages/storage/package.json ./packages/storage/package.json
+COPY packages/structured-ingestion/package.json ./packages/structured-ingestion/package.json
+COPY packages/testing/package.json ./packages/testing/package.json
+
+RUN npm install --global npm@11.18.0 \
+  && npm ci --include=dev
+
 COPY apps ./apps
 COPY packages ./packages
 COPY scripts ./scripts
 COPY fixtures ./fixtures
 
-RUN npm install --global npm@11.18.0 \
-  && npm ci --include=dev \
-  && npm run db:generate \
+RUN npm run db:generate \
   && npm cache clean --force
 
 ENV NODE_ENV=production
