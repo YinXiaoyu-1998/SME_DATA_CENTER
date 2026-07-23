@@ -60,6 +60,12 @@ Copy `.env.example` to `.env` for local development. Use development-only values
 
 Required local variables are tracked in `docs/implementation/env-inventory.md`.
 
+## Employee Client Runtime Assumptions
+
+- Target employee users run Enterprise Hub clients on ordinary interactive personal computers with a graphical session and a functioning system browser.
+- For remote MCP authentication, do not design or implement device-code, headless, SSH-terminal, secondary-device, or no-browser login flows unless the product owner explicitly changes this constraint.
+- A local launcher may open the system browser and receive a loopback authorization callback. Lack of native browser-based OAuth support in an MCP client may justify the launcher compatibility layer, but it does not justify a device-code fallback.
+
 ## Alibaba Cloud CLI
 
 - Prefer Alibaba Cloud CLI/OpenAPI over manual console clicks for Alibaba Cloud DevOps work when the requested action is authorized. This includes RDS, Simple Application Server/SWAS, ECS, VPC, OSS, ACR, DNS/domain, RAM/STS, logs/monitoring, and other Alibaba Cloud products.
