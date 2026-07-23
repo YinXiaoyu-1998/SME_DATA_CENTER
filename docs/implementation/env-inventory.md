@@ -133,6 +133,22 @@ These deployment/CI variables describe the account-owned Alibaba Cloud ACR repos
 | `ENTERPRISE_HUB_ACR_PASSWORD`          | Registry login         |     Yes |              No | Use `docker login --password-stdin`; never print or commit.                                                        |
 | `ENTERPRISE_HUB_IMAGE_TAG`             | Immutable image deploy |      No |             Yes | Use a commit SHA or release version; never deploy `latest`.                                                        |
 
+The semi-automated `npm run deploy:staging` command has safe defaults for the
+current target. These optional overrides exist for later non-interactive
+execution; secret overrides must come from an approved process-level secret
+manager, never a checked-in env file.
+
+| Variable                                      | Required For                 | Secret? | Safe To Record? | Notes                                                                                        |
+| --------------------------------------------- | ---------------------------- | ------: | --------------: | -------------------------------------------------------------------------------------------- |
+| `ENTERPRISE_HUB_STAGING_HOST`                 | SSH target override          |      No |             Yes | Defaults to `39.96.66.185`; strict host checking uses `deploy/staging/known_hosts`.          |
+| `ENTERPRISE_HUB_STAGING_SSH_USER`             | SSH user override            |      No |             Yes | Defaults to `root` for the current SWAS host.                                                |
+| `ENTERPRISE_HUB_STAGING_SSH_KEY`              | SSH private-key path         |     Yes |              No | Defaults to `~/.ssh/id_ed25519`; the key stays outside the repository.                       |
+| `ENTERPRISE_HUB_STAGING_PUBLIC_URL`           | Public release verification  |      No |             Yes | Defaults to `https://api.smedatacenter.xyz`.                                                 |
+| `ENTERPRISE_HUB_ACR_KEYCHAIN_SERVICE`         | Local ACR secret lookup      |      No |             Yes | Defaults to `com.sme_data_center.acr.personal.enterprise-hub`.                               |
+| `ENTERPRISE_HUB_STAGING_JWT_KEYCHAIN_SERVICE` | Local smoke secret lookup    |      No |             Yes | Defaults to `com.sme_data_center.jwt.staging`.                                               |
+| `ENTERPRISE_HUB_STAGING_JWT_KEYCHAIN_ACCOUNT` | Local smoke secret lookup    |      No |             Yes | Defaults to `enterprise-hub-staging`.                                                        |
+| `ENTERPRISE_HUB_STAGING_JWT_SECRET`           | Non-interactive smoke secret |     Yes |              No | Optional Keychain replacement; inject only from an approved secret manager and never log it. |
+
 For the current Phase 4 staging slice, the human-selected ACR target is Personal Edition in
 `cn-beijing`. Alibaba Cloud documents that Personal Edition does not expose OpenAPI, so initial
 Personal Edition activation, namespace creation, repository creation, and registry password setup

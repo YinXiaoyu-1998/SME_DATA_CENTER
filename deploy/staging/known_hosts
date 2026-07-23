@@ -1,0 +1,3 @@
+# Verified on 2026-07-23 against Alibaba Cloud SWAS instance
+# 98872443e05742f2b64223c7462b268c and a successful public-key SSH session.
+39.96.66.185 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHWKMS6+UwCDRCBXhH6HmZbxV9TzAIfulm11ysO9mO9F
