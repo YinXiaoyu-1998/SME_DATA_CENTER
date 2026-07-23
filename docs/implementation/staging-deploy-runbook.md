@@ -5,7 +5,7 @@ commit because it contains no runtime secrets.
 
 Current deployed slice, as verified on 2026-07-23:
 
-- API/worker image tag: `1e9d9633a5f1`
+- API/worker image tag: `708128503656`
 - Qdrant image tag: `v1.15.4`
 - ACR registry: `crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com`
 - ACR namespace: `enterprise-hub`
@@ -153,6 +153,11 @@ GitHub Environment `staging` contains these secrets:
 - `STAGING_JWT_SECRET`
 - `STAGING_SSH_PRIVATE_KEY`
 
+`STAGING_SSH_PRIVATE_KEY` is a dedicated non-interactive CI deployment key, not
+an operator's personal encrypted key. Its public key is installed on the
+staging host with OpenSSH `restrict`; rotate or revoke that one authorized-key
+entry without changing an operator's SSH access.
+
 It contains these non-secret variables:
 
 - `ACR_REGISTRY`
@@ -170,6 +175,22 @@ SSH key in an `always()` cleanup step.
 
 The local command remains the recovery fallback when GitHub Actions itself is
 unavailable. Do not duplicate release logic in inline workflow shell.
+
+The first post-merge live acceptance completed on 2026-07-23:
+
+- main quality run
+  [`29977759504`](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/29977759504)
+  passed;
+- deployment run
+  [`29977876905`](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/29977876905)
+  deployed merge SHA `708128503656`;
+- the first deployment attempt failed before build because the original
+  personal key required an interactive passphrase; replacing it with the
+  dedicated CI key allowed attempt 2 to deploy the same immutable SHA;
+- independent host inspection confirmed API/worker run the selected tag,
+  `runtime.env` remains `root:root` `0600`, public `/healthz` is `200`, public
+  `/readyz` is `404`, and previous tag `1e9d9633a5f1` remains available for
+  rollback.
 
 ## One-time bootstrap only
 
