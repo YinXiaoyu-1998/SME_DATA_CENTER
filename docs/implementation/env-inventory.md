@@ -36,6 +36,12 @@ This file tracks required variables and external services. Do not store secret v
 
 These variables are required or introduced by the new Phase 3 retrieval/data foundation. Real secret values belong only in ignored `.env`, CI secret stores, or deployment runtime configuration.
 
+### Performance gate execution
+
+| Variable                           | Required | Default | Secret? | Used By                    | Notes                                                                                                                                                 |
+| ---------------------------------- | -------: | ------- | ------: | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PHASE3_PERF_THRESHOLD_MULTIPLIER` |       No | `1`     |      No | Phase 3 performance script | Bounded from `1` through `2`; GitHub shared runners use `1.25`, while local runs keep strict unscaled thresholds. The active value appears in output. |
+
 ### Qdrant
 
 | Variable                     |                    Required | Example / Default               | Secret? | Used By            | Notes                                                                               |

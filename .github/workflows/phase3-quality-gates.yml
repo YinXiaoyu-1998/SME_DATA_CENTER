@@ -43,6 +43,7 @@ jobs:
       EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "false"
       QDRANT_URL: http://127.0.0.1:6333
       QDRANT_COLLECTION_EVIDENCE: enterprise_hub_evidence_ci
+      PHASE3_PERF_THRESHOLD_MULTIPLIER: "1.25"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020

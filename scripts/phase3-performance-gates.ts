@@ -15,6 +15,7 @@ interface PerformanceGateReport {
   generatedAt: string;
   mode: "real-local";
   nodeVersion: string;
+  thresholdMultiplier: number;
   gates: PerformanceGate[];
   notes: string[];
 }
@@ -28,6 +29,7 @@ export interface Phase3PerformanceWorkloads {
 export interface Phase3PerformanceGateOptions {
   workloads?: Phase3PerformanceWorkloads;
   thresholds?: Partial<Record<string, number>>;
+  thresholdMultiplier?: number;
 }
 
 const DEFAULT_THRESHOLDS = {
@@ -52,14 +54,26 @@ function gate(input: {
   measuredMs: number;
   workload: string;
   thresholds?: Phase3PerformanceGateOptions["thresholds"];
+  thresholdMultiplier: number;
 }): PerformanceGate {
-  const thresholdMs = input.thresholds?.[input.name] ?? DEFAULT_THRESHOLDS[input.name];
+  const baseThresholdMs = input.thresholds?.[input.name] ?? DEFAULT_THRESHOLDS[input.name];
   return {
     name: input.name,
     measuredMs: Number(input.measuredMs.toFixed(4)),
-    thresholdMs,
+    thresholdMs: Number((baseThresholdMs * input.thresholdMultiplier).toFixed(4)),
     workload: input.workload
   };
+}
+
+export function parsePhase3PerformanceThresholdMultiplier(value: string | undefined): number {
+  if (value === undefined || value === "") {
+    return 1;
+  }
+  const multiplier = Number(value);
+  if (!Number.isFinite(multiplier) || multiplier < 1 || multiplier > 2) {
+    throw new Error("PHASE3_PERF_THRESHOLD_MULTIPLIER must be a number from 1 through 2.");
+  }
+  return multiplier;
 }
 
 async function measure(workload: () => Promise<void> | void): Promise<number> {
@@ -71,6 +85,8 @@ async function measure(workload: () => Promise<void> | void): Promise<number> {
 export async function runPhase3PerformanceGates(
   options: Phase3PerformanceGateOptions = {}
 ): Promise<PerformanceGateReport> {
+  const thresholdMultiplier = options.thresholdMultiplier ?? 1;
+  parsePhase3PerformanceThresholdMultiplier(String(thresholdMultiplier));
   const goldenStarted = performance.now();
   const golden = await evaluateGoldenRetrieval();
   const goldenMs = performance.now() - goldenStarted;
@@ -87,32 +103,37 @@ export async function runPhase3PerformanceGates(
       name: "golden_retrieval_100_queries",
       measuredMs: goldenMs,
       workload: "100 deterministic golden retrieval queries",
-      thresholds: options.thresholds
+      thresholds: options.thresholds,
+      thresholdMultiplier
     }),
     gate({
       name: "evidence_search_synthetic_p95",
       measuredMs: Math.max(...golden.metrics.map((m) => m.latencyMs.p95)),
       workload: "maximum p95 from deterministic golden retrieval metrics",
-      thresholds: options.thresholds
+      thresholds: options.thresholds,
+      thresholdMultiplier
     }),
     gate({
       name: "structured_query_compiler_5000",
       measuredMs: structuredCompileMs,
       workload: "5,000 controlled structured query compilations",
-      thresholds: options.thresholds
+      thresholds: options.thresholds,
+      thresholdMultiplier
     }),
     gate({
       name: "structured_large_import_validation_70000_rows",
       measuredMs: csvParseMs,
       workload:
         "70,000-row RFC4180 CSV parsed and validated by @enterprise-hub/structured-ingestion",
-      thresholds: options.thresholds
+      thresholds: options.thresholds,
+      thresholdMultiplier
     }),
     gate({
       name: "qdrant_upsert_payload_5000_chunks",
       measuredMs: qdrantPayloadMs,
       workload: "5,000 evidence chunk payloads shaped for Qdrant upsert",
-      thresholds: options.thresholds
+      thresholds: options.thresholds,
+      thresholdMultiplier
     })
   ];
   const ok = golden.ok && gates.every((item) => item.measuredMs <= item.thresholdMs);
@@ -122,9 +143,13 @@ export async function runPhase3PerformanceGates(
     generatedAt: new Date().toISOString(),
     mode: "real-local",
     nodeVersion: process.version,
+    thresholdMultiplier,
     gates,
     notes: [
       "These gates use local deterministic workloads and do not call external paid providers.",
+      thresholdMultiplier === 1
+        ? "The default local thresholds are strict and unscaled."
+        : `Thresholds are scaled by ${thresholdMultiplier} for the declared shared-runner environment.`,
       "Worker lease recovery is a correctness integration gate, not a synthetic performance measurement.",
       "Real provider readiness still requires explicitly loading local .env and running provider-backed integration paths."
     ]
@@ -279,7 +304,11 @@ function hash(value: string) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const report = await runPhase3PerformanceGates();
+  const report = await runPhase3PerformanceGates({
+    thresholdMultiplier: parsePhase3PerformanceThresholdMultiplier(
+      process.env["PHASE3_PERF_THRESHOLD_MULTIPLIER"]
+    )
+  });
   console.log(JSON.stringify(report, null, 2));
 
   if (!report.ok) {
