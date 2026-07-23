@@ -37,7 +37,7 @@ ENTERPRISE_HUB_BASE_URL = "http://127.0.0.1:3000"
 
 For another MCP client, use the equivalent command/cwd/environment configuration. `ENTERPRISE_HUB_BASE_URL` is the only launcher configuration value. Never put a bearer token, password, session file, service account key, or credential in MCP configuration, environment, arguments, or skill content.
 
-The URL may point to a locally running service in this phase. Do not try to make it run. Production SSO/OIDC, TLS, and remote deployment remain future scope.
+For the current implementation, normal MCP use is still local-development oriented because `enterprise_hub_login_local` depends on the development login endpoint. A TLS-protected staging API exists at `https://api.smedatacenter.xyz`, but it is a service-readiness target, not a general employee MCP target until production auth/SSO/admin policy is implemented. Do not try to make any configured service run.
 
 ## Login And Use
 

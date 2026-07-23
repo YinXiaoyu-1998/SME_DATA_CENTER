@@ -3,6 +3,16 @@
 This runbook describes the Phase 4 staging skeleton deployment. It is safe to
 commit because it contains no runtime secrets.
 
+Current deployed slice, as verified on 2026-07-22:
+
+- API/worker image tag: `c24314199c39`
+- Qdrant image tag: `v1.15.4`
+- ACR registry: `crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com`
+- ACR namespace: `enterprise-hub`
+- Public liveness URL: `https://api.smedatacenter.xyz/healthz`
+- Public `/readyz`: intentionally returns `404`
+- Let’s Encrypt account email: `consyinxy@gmail.com`
+
 ## Scope
 
 - API and worker run as Docker containers on the Alibaba Cloud Simple
@@ -77,14 +87,14 @@ file instead of creating `/opt/enterprise-hub/runtime.env` locally.
 
    ```bash
    docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml up -d qdrant
-   docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml run --rm api npm run qdrant:init
+   docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml run -T --rm api npm run qdrant:init
    ```
 
 6. Apply schema and seed only synthetic data:
 
    ```bash
-   docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml run --rm api npm run db:migrate:deploy
-   docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml run --rm api npm run db:seed
+   docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml run -T --rm api npm run db:migrate:deploy
+   docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml run -T --rm api npm run db:seed
    ```
 
 7. Start API and worker:
@@ -101,12 +111,23 @@ file instead of creating `/opt/enterprise-hub/runtime.env` locally.
    ```
 
 9. Install nginx config, request a Let's Encrypt certificate through certbot,
-   and run `certbot renew --dry-run`.
+   set the Let's Encrypt account email, and run a renewal dry-run without
+   random sleep:
+
+   ```bash
+   certbot --nginx -d api.smedatacenter.xyz --non-interactive --agree-tos --email consyinxy@gmail.com --redirect
+   certbot renew --dry-run --no-random-sleep-on-renew
+   ```
+
 10. Run the fixture-only staging smoke:
 
     ```bash
-    STAGING_SMOKE_API_URL=https://api.smedatacenter.xyz npm run staging:smoke
+    JWT_SECRET="$(security find-generic-password -a enterprise-hub-staging -s com.sme_data_center.jwt.staging -w)" \
+      STAGING_SMOKE_API_URL=https://api.smedatacenter.xyz npm run staging:smoke
     ```
+
+The smoke command generates a temporary synthetic admin bearer token locally and must not print
+or persist that token.
 
 ## Rollback
 
