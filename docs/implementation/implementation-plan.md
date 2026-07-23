@@ -260,9 +260,9 @@ Task 13 completion criteria:
 
 Phase 3 verification and review were merged before the first Phase 4 implementation track started. Phase 4 tracks remain independently gated by `staging-readiness.md`.
 
-As of 2026-07-22, the first online skeleton slice is live in staging: API, worker, and Qdrant run on the Alibaba Cloud Simple Application Server from fixed Beijing ACR image tags behind nginx and Let’s Encrypt. RDS `prisma migrate deploy`, synthetic seed, Qdrant init, local `/readyz`, public HTTPS `/healthz`, blocked public `/readyz`, certbot renew dry-run, and fixture-only staging smoke have passed.
+As of 2026-07-23, the first online skeleton slice is live in staging: API, worker, and Qdrant run on the Alibaba Cloud Simple Application Server from fixed Beijing ACR image tags behind nginx and Let’s Encrypt. The repeatable `npm run deploy:staging` boundary now builds, scans, publishes, migrates, rolls out, verifies, and records an immutable release. RDS `prisma migrate deploy`, synthetic seed, Qdrant init, local `/readyz`, public HTTPS `/healthz`, blocked public `/readyz`, certbot renew dry-run, and fixture-only staging smoke have passed.
 
-This does not make the service production-ready. Phase 4 still needs the final database SSL-mode decision, backup/restore expectation, production-grade auth/admin policy, deployment automation, monitoring/rollback, and any real-data retention/import decisions before Phase 5 or real customer data.
+This does not make the service production-ready. Phase 4 still needs the final database SSL-mode decision, backup/restore expectation, production-grade auth/admin policy, CI-triggered deployment, monitoring/alerting, a controlled rollback drill, and any real-data retention/import decisions before Phase 5 or real customer data.
 
 Scope:
 
@@ -294,7 +294,7 @@ The current staging deployment uses:
 - private `/readyz` on the server loopback only;
 - Alibaba Cloud ACR Personal Edition registry `crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com`;
 - namespace `enterprise-hub` with private repositories `api`, `worker`, and `qdrant`;
-- API/worker fixed image tag `c24314199c39`;
+- API/worker fixed image tag `1e9d9633a5f1`;
 - mirrored Qdrant image tag `v1.15.4`;
 - root-only server runtime env at `/opt/enterprise-hub/runtime.env`.
 
@@ -304,7 +304,7 @@ The deployed slice is intentionally staging-only and uses fixture documents plus
 
 - Database policy: choose final RDS SSL mode and record backup/restore ownership and expectations.
 - Security/auth: design production admin identity, token/session behavior, and SSO/OIDC path.
-- Deployment automation: validate and merge the new semi-automated `npm run deploy:staging` release/rollback command, then connect the same command boundary to GitHub Actions with an approved non-interactive credential design.
+- Deployment automation: merge the verified semi-automated `npm run deploy:staging` release/rollback command, then connect the same command boundary to GitHub Actions with an approved non-interactive credential design.
 - Operations: monitoring, alerting, rollback runbook validation, log retention, and cost/resource review.
 - Data governance: define real customer import, retention, deletion, and staging-data policy before any non-fixture data.
 

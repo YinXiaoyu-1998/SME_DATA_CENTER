@@ -3,9 +3,9 @@
 This runbook describes the Phase 4 staging skeleton deployment. It is safe to
 commit because it contains no runtime secrets.
 
-Current deployed slice, as verified on 2026-07-22:
+Current deployed slice, as verified on 2026-07-23:
 
-- API/worker image tag: `c24314199c39`
+- API/worker image tag: `1e9d9633a5f1`
 - Qdrant image tag: `v1.15.4`
 - ACR registry: `crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com`
 - ACR namespace: `enterprise-hub`
