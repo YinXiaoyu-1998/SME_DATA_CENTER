@@ -262,7 +262,7 @@ Phase 3 verification and review were merged before the first Phase 4 implementat
 
 As of 2026-07-23, the first online skeleton slice is live in staging: API, worker, and Qdrant run on the Alibaba Cloud Simple Application Server from fixed Beijing ACR image tags behind nginx and Let’s Encrypt. The repeatable `npm run deploy:staging` boundary now builds, scans, publishes, migrates, rolls out, verifies, and records an immutable release. Merged PR #76 also proved the full trusted-main automation chain: quality-gate run `29977759504` triggered deployment run `29977876905`, which deployed merge SHA tag `708128503656`. RDS `prisma migrate deploy`, synthetic seed, Qdrant init, local `/readyz`, public HTTPS `/healthz`, blocked public `/readyz`, certbot renew dry-run, and fixture-only staging smoke have passed.
 
-This does not make the service production-ready. Phase 4 still needs the final database SSL-mode decision, backup/restore expectation, production-grade auth/admin policy, monitoring/alerting, a controlled rollback drill, and any real-data retention/import decisions before Phase 5 or real customer data.
+This does not make the service production-ready. A 2026-07-23 code and live-boundary audit confirmed that a real beta user is still blocked: production dev login returns `404`, public `/mcp` returns `403 MCP_LOOPBACK_REQUIRED`, the launcher has no secure production credential bootstrap, and staging has only synthetic employees. Phase 4 still needs beta identity/remote-MCP access, the final database SSL-mode decision, restore expectations, monitoring/alerting, a controlled rollback drill, and real-data retention/import decisions before Phase 5 or real customer data.
 
 Scope:
 
@@ -298,15 +298,16 @@ The current staging deployment uses:
 - mirrored Qdrant image tag `v1.15.4`;
 - root-only server runtime env at `/opt/enterprise-hub/runtime.env`.
 
-The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed data. It is not an employee-facing production MCP target until production auth/SSO/admin policy is designed and implemented.
+The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed data. It is not an employee-facing production MCP target. The proposed first-beta bridge is a time-bounded, revocable employee access token plus a model-invisible local credential helper and an HTTPS-only reverse-proxy MCP boundary; see ADR 0021 and `beta-access-readiness.md`. Full OIDC/SSO remains later work.
 
 ### Remaining Phase 4 Tracks
 
-- Database policy: choose final RDS SSL mode and record backup/restore ownership and expectations.
-- Security/auth: design production admin identity, token/session behavior, and SSO/OIDC path.
+- First beta access: implement the proposed revocable beta-token flow, secure launcher credential bootstrap, reviewed employee/label provisioning, and HTTPS-only public MCP path. A real user may first use fixture or explicitly approved non-sensitive data.
+- Database policy: choose final RDS SSL mode. Provider CLI now verifies 7-day automated full-backup retention plus 7-day log backups and one successful full backup, but restore ownership/RPO/RTO and a recovery drill remain open.
+- Security/auth: the first-beta bridge is proposed in ADR 0021; choose the long-term production admin identity and SSO/OIDC path separately.
 - Deployment automation: verified. The merged `npm run deploy:staging` release/rollback boundary is reused by GitHub Actions; trusted `main` quality success deployed immutable tag `708128503656`, recorded the GitHub staging deployment, and passed independent host inspection. Manual deploy/rollback remains available from `main`.
 - Operations: monitoring, alerting, rollback runbook validation, log retention, and cost/resource review.
-- Data governance: define real customer import, retention, deletion, and staging-data policy before any non-fixture data.
+- Data governance: define real customer import, retention, deletion, and staging-data policy before customer data. A real beta employee using repo fixtures is an earlier, separate acceptance gate.
 
 ## Phase 5 Preview: Operations And Hardening
 
