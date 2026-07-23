@@ -19,15 +19,15 @@ COPY packages/structured-ingestion/package.json ./packages/structured-ingestion/
 COPY packages/testing/package.json ./packages/testing/package.json
 
 RUN npm install --global npm@11.18.0 \
-  && npm ci --include=dev
+  && npm ci --include=dev \
+  && npm cache clean --force
 
 COPY apps ./apps
 COPY packages ./packages
 COPY scripts ./scripts
 COPY fixtures ./fixtures
 
-RUN npm run db:generate \
-  && npm cache clean --force
+RUN npm run db:generate
 
 ENV NODE_ENV=production
 
