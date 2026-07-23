@@ -125,6 +125,52 @@ npm run deploy:staging -- --help
 a temporary synthetic admin bearer token locally and must not print or persist
 that token.
 
+## GitHub Actions staging delivery
+
+`.github/workflows/staging-deploy.yml` reuses the same release command rather
+than maintaining a second deployment implementation.
+
+The automatic path is:
+
+1. A PR is merged to `main`.
+2. `Phase 3 quality gates` runs against the trusted `main` merge commit.
+3. A successful `push` run triggers `Deploy staging` for that exact commit SHA.
+4. GitHub serializes the job with concurrency group
+   `enterprise-hub-staging`; queued releases are not cancelled.
+5. The job installs pinned build/scan tooling and runs
+   `npm run deploy:staging`.
+6. GitHub records the staging deployment and the release command performs its
+   existing migration, health/readiness, fixture-smoke, and rollback behavior.
+
+The workflow also supports manual `deploy` and `rollback` operations through
+GitHub Actions, but only when dispatched from `main`. Pull requests and feature
+branches cannot enter the deployment job. A `main` push containing only
+Markdown or files under `docs/` skips the post-merge quality/deploy chain.
+
+GitHub Environment `staging` contains these secrets:
+
+- `ACR_PASSWORD`
+- `STAGING_JWT_SECRET`
+- `STAGING_SSH_PRIVATE_KEY`
+
+It contains these non-secret variables:
+
+- `ACR_REGISTRY`
+- `ACR_NAMESPACE`
+- `ACR_USERNAME`
+- `STAGING_HOST`
+- `STAGING_SSH_USER`
+- `STAGING_PUBLIC_URL`
+
+The repository's current private-plan environment supports Environment secrets
+but not additional deployment branch protection rules. The workflow therefore
+enforces trusted `main` events itself, uses read-only repository permissions,
+pins every third-party Action to a full commit SHA, and removes the temporary
+SSH key in an `always()` cleanup step.
+
+The local command remains the recovery fallback when GitHub Actions itself is
+unavailable. Do not duplicate release logic in inline workflow shell.
+
 ## One-time bootstrap only
 
 `deploy:staging` intentionally does not create or replace `runtime.env`, seed

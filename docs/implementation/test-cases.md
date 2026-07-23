@@ -103,6 +103,12 @@ Current hardening proof labels emitted by the integration smoke:
 
 Worker lease correctness is intentionally not treated as a performance measurement; it is covered by unit tests and the MySQL-backed integration proof above.
 
+Default local thresholds remain unscaled. GitHub's shared runner sets
+`PHASE3_PERF_THRESHOLD_MULTIPLIER=1.25` to preserve a bounded regression gate
+without treating normal shared-CPU variance as a product failure. The report
+must include the active multiplier and scaled thresholds. Values below `1` or
+above `2` fail configuration validation.
+
 ## Data And Secret Safety
 
 - Tests use synthetic fixtures and fake model providers by default.

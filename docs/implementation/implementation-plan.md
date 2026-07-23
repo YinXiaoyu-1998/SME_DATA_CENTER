@@ -304,7 +304,7 @@ The deployed slice is intentionally staging-only and uses fixture documents plus
 
 - Database policy: choose final RDS SSL mode and record backup/restore ownership and expectations.
 - Security/auth: design production admin identity, token/session behavior, and SSO/OIDC path.
-- Deployment automation: merge the verified semi-automated `npm run deploy:staging` release/rollback command, then connect the same command boundary to GitHub Actions with an approved non-interactive credential design.
+- Deployment automation: the verified `npm run deploy:staging` release/rollback boundary is merged; GitHub Actions integration now gates trusted `main` pushes through the existing quality workflow, GitHub `staging` Environment secrets, immutable images, serialized deployment, and manual deploy/rollback. The first post-merge workflow run remains the live acceptance gate.
 - Operations: monitoring, alerting, rollback runbook validation, log retention, and cost/resource review.
 - Data governance: define real customer import, retention, deletion, and staging-data policy before any non-fixture data.
 

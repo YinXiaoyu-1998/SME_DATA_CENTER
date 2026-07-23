@@ -1,0 +1,133 @@
+name: Deploy staging
+
+on:
+  workflow_run:
+    workflows:
+      - Phase 3 quality gates
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Deploy the selected main commit or restore the previous staging release
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
+
+permissions:
+  contents: read
+
+jobs:
+  staging:
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'rollback' && 'Rollback staging' || 'Deploy staging' }}
+    if: >-
+      ${{
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main'
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref_name == 'main'
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: enterprise-hub-staging
+      cancel-in-progress: false
+    environment:
+      name: staging
+      url: https://api.smedatacenter.xyz/healthz
+    env:
+      ENTERPRISE_HUB_ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+      ENTERPRISE_HUB_ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+      ENTERPRISE_HUB_ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+      ENTERPRISE_HUB_STAGING_HOST: ${{ vars.STAGING_HOST }}
+      ENTERPRISE_HUB_STAGING_SSH_USER: ${{ vars.STAGING_SSH_USER }}
+      ENTERPRISE_HUB_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL }}
+    steps:
+      - name: Check out the trusted release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install repository dependencies
+        run: npm ci
+
+      - name: Install staging SSH credential
+        env:
+          STAGING_SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SSH_PRIVATE_KEY"
+          key_path="$RUNNER_TEMP/enterprise-hub-staging/id_ed25519"
+          umask 077
+          install -d -m 700 "$(dirname "$key_path")"
+          printf '%s\n' "$STAGING_SSH_PRIVATE_KEY" > "$key_path"
+          ssh-keygen -y -f "$key_path" >/dev/null
+          printf 'ENTERPRISE_HUB_STAGING_SSH_KEY=%s\n' "$key_path" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        if: ${{ github.event_name == 'workflow_run' || inputs.operation == 'deploy' }}
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Install Trivy
+        if: ${{ github.event_name == 'workflow_run' || inputs.operation == 'deploy' }}
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
+        with:
+          version: v0.72.0
+          cache: true
+
+      - name: Deploy immutable staging release
+        if: ${{ github.event_name == 'workflow_run' || inputs.operation == 'deploy' }}
+        env:
+          ENTERPRISE_HUB_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          ENTERPRISE_HUB_STAGING_JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$ENTERPRISE_HUB_ACR_PASSWORD"
+          test -n "$ENTERPRISE_HUB_STAGING_JWT_SECRET"
+          npm run deploy:staging
+
+      - name: Restore previous staging release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'rollback' }}
+        env:
+          ENTERPRISE_HUB_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          ENTERPRISE_HUB_STAGING_JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$ENTERPRISE_HUB_ACR_PASSWORD"
+          test -n "$ENTERPRISE_HUB_STAGING_JWT_SECRET"
+          npm run deploy:staging:rollback
+
+      - name: Publish deployment summary
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### Enterprise Hub staging"
+            echo
+            echo "- Operation: \`${{ github.event_name == 'workflow_dispatch' && inputs.operation || 'deploy' }}\`"
+            echo "- Commit: \`$(git rev-parse --short=12 HEAD)\`"
+            echo "- Health: https://api.smedatacenter.xyz/healthz"
+            echo "- Public readiness boundary: https://api.smedatacenter.xyz/readyz returns 404"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove staging SSH credential
+        if: ${{ always() }}
+        run: |
+          if [ -f "$ENTERPRISE_HUB_STAGING_SSH_KEY" ]; then
+            shred --remove "$ENTERPRISE_HUB_STAGING_SSH_KEY"
+          fi

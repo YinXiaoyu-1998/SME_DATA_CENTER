@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { runPhase3PerformanceGates } from "./phase3-performance-gates.js";
+import {
+  parsePhase3PerformanceThresholdMultiplier,
+  runPhase3PerformanceGates
+} from "./phase3-performance-gates.js";
 
 describe("phase 3 performance gates", () => {
   it("produces real local gate report without secrets or real data", async () => {
@@ -7,6 +10,7 @@ describe("phase 3 performance gates", () => {
 
     expect(report.mode).toBe("real-local");
     expect(report.nodeVersion).toBe(process.version);
+    expect(report.thresholdMultiplier).toBe(1);
     expect(report.gates.map((gate) => gate.name)).toEqual([
       "golden_retrieval_100_queries",
       "evidence_search_synthetic_p95",
@@ -40,5 +44,13 @@ describe("phase 3 performance gates", () => {
     expect(
       report.gates.find((gate) => gate.name === "structured_query_compiler_5000")?.measuredMs
     ).toBeGreaterThan(1);
+  });
+
+  it("accepts only an explicit bounded shared-runner threshold multiplier", () => {
+    expect(parsePhase3PerformanceThresholdMultiplier(undefined)).toBe(1);
+    expect(parsePhase3PerformanceThresholdMultiplier("1.25")).toBe(1.25);
+    expect(() => parsePhase3PerformanceThresholdMultiplier("0.99")).toThrow(/1 through 2/);
+    expect(() => parsePhase3PerformanceThresholdMultiplier("2.01")).toThrow(/1 through 2/);
+    expect(() => parsePhase3PerformanceThresholdMultiplier("not-a-number")).toThrow(/1 through 2/);
   });
 });
