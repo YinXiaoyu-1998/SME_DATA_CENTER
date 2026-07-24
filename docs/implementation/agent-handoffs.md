@@ -848,3 +848,9 @@
 - Review fixes: Identity-row locking now serializes setup-grant replacement in both the core repository and operator reset, including true concurrent `Promise.all` proof. Direct authorization-code creation bypasses were removed. Onboarding/reset emit `setup_grant_issued`; password completion and all durable-session revocation paths emit credential-free lifecycle events.
 - Verification: fresh local MySQL migration deployment passed; focused real-MySQL auth integration passed 9 tests covering concurrent setup replacement/exchange/consumption, cooldown concurrency/no-extension, raw-verifier PKCE redemption, replay family revocation, disabled-state checks, concurrent operator reset, lifecycle audit, binary email distinction, migration nonempty-table abort, and pruning. `npm run db:generate`, lint, typecheck, format check, full unit suite (365 passed, 10 skipped), and `git diff --check` passed at handoff.
 - Environment/limits: Local test MySQL used port 3310 and only repository-owned disposable Docker data. `argon2` is declared in `apps/api/package.json`; `package-lock.json` is intentionally unchanged per Task 1 instructions and must be regenerated once on the lead integration branch alongside other Phase 4 dependency changes.
+
+## 2026-07-24 - codex/phase4-launcher-package
+
+- Implemented the independent `enterprise-hub-mcp-launcher@0.1.0` package: HTTPS-only config, OAuth Authorization Code + PKCE loopback login, Keychain-backed rotating durable sessions, typed safe failures, stdio tools, tsup packaging, and release workflow.
+- Verification: focused launcher suite (15 tests), package build, tarball allowlist, and clean-directory install/CLI `--version` passed. `package-lock.json` was restored before commit.
+- Known limitation: full repository typecheck requires generated Prisma client and was not used as launcher evidence.

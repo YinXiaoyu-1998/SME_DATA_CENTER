@@ -59,13 +59,17 @@ function normalizeEnterpriseHubBaseUrl(value: string): string {
     throw new Error("Enterprise Hub base URL must be an http(s) URL.");
   }
 
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Enterprise Hub base URL must be an http(s) URL.");
+  if (url.protocol !== "https:") {
+    throw new Error("Enterprise Hub base URL must be a canonical HTTPS origin.");
   }
 
   if (url.username || url.password || url.search || url.hash) {
     throw new Error("Enterprise Hub base URL must not include credentials, query, or hash.");
   }
 
-  return url.toString().replace(/\/+$/, "");
+  if (!/^\/$/.test(url.pathname.replace(/\/+$/, "/"))) {
+    throw new Error("Enterprise Hub base URL must be a canonical HTTPS origin.");
+  }
+
+  return url.origin;
 }

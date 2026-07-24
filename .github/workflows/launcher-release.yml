@@ -1,0 +1,39 @@
+name: Publish MCP launcher
+
+on:
+  push:
+    tags:
+      - "mcp-launcher-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - run: npm --version | awk -F. '$1 >= 11 && ($1 > 11 || $2 >= 15) { exit 0 } { exit 1 }'
+      - run: npm ci
+      - run: npm run build --workspace enterprise-hub-mcp-launcher
+      - name: Validate exact tag version
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#mcp-launcher-v}"
+          package_version="$(node -p "require('./apps/mcp-launcher/package.json').version")"
+          test "$tag_version" = "$package_version"
+      - name: Check existing release integrity or stage publish
+        run: |
+          set -euo pipefail
+          package_name=enterprise-hub-mcp-launcher
+          package_version="$(node -p "require('./apps/mcp-launcher/package.json').version")"
+          if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+            test "$(npm view "$package_name@$package_version" version)" = "$package_version"
+            exit 0
+          fi
+          npm publish --workspace enterprise-hub-mcp-launcher --tag stage
