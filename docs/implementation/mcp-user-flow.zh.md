@@ -1,222 +1,101 @@
 # Enterprise Hub MCP 用户流程
 
-> **当前实现范围：** 本文描述 Phase 3 开发期 launcher。邮箱登录和仅内存 token 不是正式
-> 用户登录方案，也不能约束正式方案。正式设计见
-> [`official-user-install-and-login.md`](./official-user-install-and-login.md)。
+> **正式目标，等待 cutover：** 本文描述正式 identity、launcher npm 包和公开 MCP 一起落地后的
+> 员工流程；它不证明当前 Phase 3 development-email/JWT 实现已经可供远程用户使用。历史实现边界
+> 仍见 [mcp-endpoint.md](./mcp-endpoint.md)。
 
-最后更新：2026-07-13
+最后更新：2026-07-24
 
-本文描述当前 Phase 3 设计里，用户从自然语言请求到 Enterprise Hub MCP
-工具执行之间的流转。它是流程和边界说明，不是服务运维手册。主服务运行在本地
-还是远端没有本质区别；差别只是 MCP launcher 配置的 Enterprise Hub base URL。
+本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
+`enterprise-hub-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
+launcher 发行包为 `enterprise-hub-mcp-launcher@0.1.0`。
 
-相关文档：
-
-- [本地 MCP endpoint 设计决策](./mcp-endpoint.md)
-- [本地 agent 人工测试](./local-agent-test.md)
-- [API 和 MCP contract](./api-contract.md)
-
-## 参与者和链路
+## 参与者与凭证边界
 
 ```mermaid
 flowchart LR
-  User["用户"]
-  Agent["Agent 和 MCP client<br/>Codex、Claude、OpenClaw 等"]
-  Skill["enterprise-hub-mcp skill<br/>只提供使用指导"]
-  Launcher["MCP launcher<br/>apps/mcp-launcher"]
-  ApiMcp["Enterprise Hub API<br/>POST /mcp"]
-  Auth["身份签发方<br/>当前：/auth/dev-login<br/>未来：SSO/OIDC"]
-  ApiRoutes["已有 authenticated API 行为"]
-  Db["MySQL<br/>员工、标签、文档、审计、导入状态"]
-  Storage["对象存储<br/>原始上传文件"]
-  Worker["Worker<br/>异步处理和索引"]
-  Qdrant["Qdrant<br/>evidence 向量"]
-
-  User -->|"自然语言"| Agent
-  Agent -->|"读取本地说明"| Skill
-  Agent <-->|"MCP stdio"| Launcher
-  Launcher <-->|"Streamable HTTP POST /mcp<br/>Authorization: Bearer token"| ApiMcp
-  Launcher -->|"登录 bootstrap 请求"| Auth
-  ApiMcp -->|"request-scoped delegation"| ApiRoutes
-  Auth -->|"员工查验 / token claims"| Db
-  ApiRoutes -->|"鉴权、目录、审计、导入状态"| Db
-  ApiRoutes -->|"写入/读取原始 bytes"| Storage
-  Worker -->|"领取处理任务"| Db
-  Worker -->|"读取原始 bytes"| Storage
-  Worker -->|"写入/读取 evidence index"| Qdrant
-  Worker -->|"发布处理状态"| Db
+  Employee["员工"] -->|"自然语言请求"| Agent["员工自有 agent / MCP client"]
+  Agent -->|"读取安装与恢复指导"| Skill["enterprise-hub-mcp skill"]
+  Agent <-->|"本机 stdio；配置无凭证"| Launcher["固定版本本地 launcher"]
+  Launcher -->|"打开系统浏览器"| Browser["Enterprise Hub HTTPS 登录页"]
+  Browser <-->|"Authorization Code + PKCE"| Auth["Enterprise Hub identity endpoints"]
+  Launcher -->|"Streamable HTTP POST /mcp\n不透明 bearer access token"| Api["https://api.smedatacenter.xyz"]
+  Api --> Data["后端强制授权的服务\nAPI、storage、worker、MySQL、Qdrant"]
 ```
 
-协议摘要：
+| 边界                | 凭证规则                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 员工 -> agent       | 员工只提出业务请求，绝不向 agent 提供密码、token、授权码或 credential-store record。                                            |
+| Agent -> launcher   | 本机 stdio entry 不含秘密。agent 仅用 `enterprise_hub_login`、`enterprise_hub_logout`、`enterprise_hub_auth_status` 管理会话。  |
+| Launcher -> browser | 员工只在 Enterprise Hub HTTPS 页面输入密码。loopback callback 只携带单次授权码，绝不携带 token。                                |
+| Launcher -> API/MCP | 只有 launcher 获取、续取、保护并附加不透明 bearer access token；长期会话材料只存 macOS Keychain 或 Windows Credential Manager。 |
+| MCP -> 业务数据     | 每个请求均经认证与后端授权。skill/launcher 绝不直接操作 API 基础设施、数据库、Qdrant、storage、Docker、worker 或云资源。        |
 
-| 链路                        | 协议 / 通道                      | 是否携带凭证                          | 说明                                                        |
-| --------------------------- | -------------------------------- | ------------------------------------- | ----------------------------------------------------------- |
-| 用户 -> Agent               | 自然语言                         | 不携带 raw token                      | 用户说“上传文件”等任务。                                    |
-| Agent -> Skill              | 本地 skill 指令                  | 不携带                                | skill 告诉 agent 如何配置和使用 launcher。                  |
-| MCP client -> Launcher      | 本机 MCP stdio                   | 配置中不写 raw token                  | MCP client 根据配置启动 launcher。                          |
-| Launcher -> 身份签发方      | HTTP                             | 当前是开发 email；未来可能是 SSO/OIDC | launcher 只把签发的 token 保存在进程内存里。                |
-| Launcher -> `POST /mcp`     | Streamable HTTP                  | `Authorization: Bearer <token>`       | launcher 给 initialize、工具发现、工具调用都自动加 header。 |
-| API `/mcp` -> 已有 API 行为 | 进程内 request-scoped delegation | 只传 auth context                     | 业务鉴权仍由后端 API 行为负责。                             |
-| Worker -> DB/storage/Qdrant | 内部服务调用                     | 服务自身凭证，不是 agent 凭证         | 异步处理不属于 skill/launcher 生命周期。                    |
+## 安装或更新
 
-`ENTERPRISE_HUB_BASE_URL` 是文档化的 launcher 配置项。当前 launcher 代码也兼容读取
-`ENTERPRISE_HUB_API_URL` 作为旧别名，但新的 MCP client 配置应使用
-`ENTERPRISE_HUB_BASE_URL`。
+1. 员工用自然语言要求 agent 安装、更新或修复 Enterprise Hub。
+2. agent 确认 macOS 或 Windows，检查当前用户的 Node.js/npm，然后把 skill 批准的精确 launcher
+   包安装到该平台版本目录。
+3. 修改调用该 agent 的 MCP 配置前，先检查并备份；随后只添加一个固定 launcher 的
+   `enterprise-hub` **stdio** entry，保留所有无关 entries。
+4. Codex 使用当前版本支持的配置机制。OpenClaw 使用 `openclaw mcp add`/`set`，随后执行
+   `openclaw mcp doctor enterprise-hub --probe`；不能使用直连远程 OAuth store。其他 agent 进行
+   受保护的自适应发现，无法确定安全 stdio 配置方式时停止并报告阻塞。
+5. agent 运行 launcher 的无凭证自检，并按需 reload/restart MCP client。不得让 launcher 自更新，
+   也不得安装 npm `latest`。
 
-## 冷启动到上传请求
-
-用户第一句话可能是：
-
-```text
-给我上传 xx 文件到 Enterprise Hub。
-```
-
-下面的流程同时覆盖两种情况：MCP launcher 还没有配置，以及已经配置但当前还没运行。
-
-```mermaid
-flowchart TD
-  A["用户冷启动 agent<br/>Enterprise Hub 主服务已在某个 URL 运行"] --> B["用户提出：<br/>上传 xx 文件到 Enterprise Hub"]
-  B --> C{"Agent 是否已有<br/>enterprise-hub MCP 配置？"}
-  C -->|"没有"| D["Skill 要求补齐配置值：<br/>Enterprise Hub base URL<br/>已注册员工身份"]
-  D --> E["Agent 写入该 MCP client 的原生配置<br/>command: npm run --silent mcp:launcher<br/>env: 只包含 ENTERPRISE_HUB_BASE_URL"]
-  E --> F["用户按 client 要求重启或刷新 MCP client"]
-  C -->|"已有"| G["MCP client 启动或复用 launcher 进程"]
-  F --> G
-  G --> H{"Launcher 是否已有当前可用的<br/>模型不可见员工 token？"}
-  H -->|"有"| I["Launcher 调远端 MCP tools<br/>自动附加 Authorization header"]
-  H -->|"没有"| J["Launcher 本地返回 EMPLOYEE_AUTH_REQUIRED<br/>不会把业务调用发到 /mcp"]
-  J --> K["Agent 向用户索取员工身份<br/>当前 dev：注册 email<br/>未来：服务批准的登录/SSO 步骤"]
-  K --> L["Agent 调 enterprise_hub_login_local<br/>或未来的本地登录 bootstrap"]
-  L --> M{"登录是否成功？"}
-  M -->|"否：login API 请求失败"| N["Agent 报告登录/API 失败<br/>不启动或修复服务"]
-  M -->|"否：身份被拒绝"| O["Agent 要求用户核对身份<br/>不 seed 或修改服务数据"]
-  M -->|"是"| P["Launcher 只把 token 存在进程内存<br/>不返回给 agent"]
-  P --> I
-  I --> Q["Agent 从用户机器读取被选中的本地文件 bytes"]
-  Q --> R["Agent 传入 inline Base64 MCP file object<br/>name、mediaType、encoding、contentBase64"]
-  R --> S["上传 tool 经 Enterprise Hub 执行"]
-  S --> T["Agent 报告服务返回的上传结果<br/>document/import id 和 status"]
-```
-
-当前 Phase 3 的细节：launcher 只把 development JWT 保存在进程内存里，所以真正冷启动
-launcher 时通常还没有登录。上图“已经登录”的分支，在今天代表一个已经运行且还持有
-token 的 launcher 进程；在未来 Phase 4 之后，也可以代表模型不可见的 SSO/OIDC token
-来源。
-
-## 已登录上传时序
-
-以下时序从 launcher 已有员工 token 开始。token 可以来自今天的开发 email 登录，也可以来自
-未来的 SSO/OIDC；`/mcp` 服务契约仍然是每个请求都用 bearer auth。
+## 登录与一次重试恢复
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant U as "用户"
+  participant E as "员工"
   participant A as "Agent / MCP client"
-  participant L as "MCP launcher"
-  participant M as "API POST /mcp"
-  participant B as "已有上传 API 行为"
-  participant D as "MySQL"
-  participant S as "对象存储"
-  participant W as "Worker"
-  participant Q as "Qdrant"
+  participant L as "固定 launcher"
+  participant B as "系统浏览器"
+  participant S as "Enterprise Hub 服务"
 
-  U->>A: "把这个文件上传到 Enterprise Hub"
-  A->>L: "通过 stdio 调 MCP tool：upload_evidence_document 或 upload_structured_dataset"
-  L->>M: "Streamable HTTP POST /mcp，带 Authorization: Bearer token"
-  M->>M: "校验 loopback、concurrency、bearer token、POST、JSON、Accept、protocol version、无 MCP session id、JSON-RPC envelope"
-  M->>B: "带 authenticated employee context 做 delegation"
-  B->>D: "读取员工、标签、权限、idempotency 状态"
-  B->>B: "校验标签权限、inline file shape、metadata、decoded size"
-  B->>S: "写入原始上传 bytes"
-  alt "Evidence upload"
-    B->>D: "创建 evidence document、labels、audit event、pending processing run"
-  else "Structured upload"
-    B->>B: "校验 workbook 和 structured import metadata"
-    B->>D: "同步写入 structured rows/import batch，并记录 import audit"
+  E->>A: "上传/检索/查询 Enterprise Hub"
+  A->>L: "enterprise_hub_auth_status 或业务 tool"
+  alt authentication_required
+    A->>L: "enterprise_hub_login"
+    L->>B: "打开 HTTPS 浏览器登录"
+    E->>B: "仅在浏览器输入凭证"
+    B->>S: "Authorization Code + PKCE 请求"
+    S-->>L: "授权码交换；不透明凭证仅留在 launcher"
+    L-->>A: "安全的登录结果"
+    A->>L: "只重试原业务操作一次"
+  else 会话可用
+    L->>S: "已认证的 POST /mcp"
+    S-->>L: "已授权 tool 结果"
   end
-  B-->>M: "业务结果或稳定服务错误"
-  M-->>L: "MCP response"
-  L-->>A: "MCP response，不含 token"
-  A-->>U: "报告 id、accepted status 和下一步 status check"
-
-  W->>D: "仅 evidence，稍后领取 evidence_document_index work"
-  W->>S: "读取原始 evidence bytes"
-  W->>Q: "写入 evidence vectors"
-  W->>D: "发布 active/index-ready 或 processing failure 状态"
+  L-->>A: "不含 token 的结果"
+  A-->>E: "可见状态或记录"
 ```
 
-关键边界：
+`authentication_required` 表示 agent 调用 `enterprise_hub_login`、等待浏览器完成，再只重试原操作
+一次。浏览器取消、超时或登录失败会结束本次尝试，不得自动循环打开浏览器或重试业务操作。
+`service_unavailable` 表示报告连接失败，不打开浏览器也不修复服务基础设施。`forbidden` 或 not-found
+不证明隐藏数据存在。
 
-- Agent 可以读取用户选择的本地文件，并把它编码为 MCP tool input。
-- 服务端永远不 dereference 客户端 `filePath`；它只接收 MCP contract 中明确传入的
-  inline bytes。
-- `/mcp` 对每个请求都鉴权，包括 initialize 和工具发现。
-- 标签、上传、查询、搜索可见性、隐藏资源行为都以后端鉴权为准。
-- Structured upload 由 API route 同步导入；evidence upload 会创建 queued processing work，
-  再由 worker 写入 Qdrant。
-- Skill 和 launcher 不启动 API、worker、数据库、storage 或 Qdrant。服务 URL 不可达时，
-  agent 只报告连接失败。
+`enterprise_hub_logout` 必须显式调用。它删除当前 OS 用户共享的本机会话，并在可达时请求服务端
+撤销，从而让共享同一安全存储记录的全部 Enterprise Hub agent 退出。移除一个 agent 的 MCP entry
+不是退出登录；完全卸载是另一个需要明确授权的生命周期动作。
 
-## 未登录时序
+## 业务 Tool 使用
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant U as "用户"
-  participant A as "Agent / MCP client"
-  participant L as "MCP launcher"
-  participant Auth as "身份签发方"
-  participant D as "MySQL / identity store"
-  participant M as "API POST /mcp"
+- 上传前列出标签，只使用返回的 label key；不得传入 organization ID。
+- 只读取用户选择或明确指定文件的精确字节。传 inline file object；不得传本地路径或重建/规范化内容。
+- 只能轮询服务状态；不得启动 worker 或操作任何 Enterprise Hub 服务组件。
+- 只有精确重放时复用 structured-import idempotency key。import-status 404 只能理解为不可见或不存在，
+  不得推断隐藏 batch。
+- evidence cursor 是不透明的同 query continuation。`INVALID_CURSOR` 时不带 cursor 重新开始；
+  `CURSOR_EXPIRED` 时说明过期，只有员工仍想继续时才重新开始。
+- `enterprise_hub_list_skills` 只返回目录元数据。不得执行条目、生成报告，或把 Enterprise Hub 变成
+  员工直接对话的 AI 服务。
 
-  U->>A: "用 Enterprise Hub 上传/搜索"
-  A->>L: "通过 stdio 发业务 tool call"
-  L->>L: "检查 MemoryLauncherSession"
-  L-->>A: "不调用远端 /mcp，直接返回 EMPLOYEE_AUTH_REQUIRED"
-  A-->>U: "要求提供注册员工身份，或完成服务批准的登录步骤"
-  U-->>A: "今天提供 email，未来可能完成 SSO/OIDC"
-  A->>L: "今天调用 enterprise_hub_login_local(email)"
-  L->>Auth: "HTTP login bootstrap"
-  Auth->>D: "验证员工存在且未 disabled"
-  Auth-->>L: "员工 token 和安全员工摘要"
-  L->>L: "只在进程内存保存 token"
-  L-->>A: "返回安全登录状态、email、service URL；永不返回 token"
-  A->>L: "重试原本的 MCP 业务 tool"
-  L->>M: "POST /mcp，带 Authorization: Bearer token"
-  M-->>L: "authenticated MCP response"
-```
+## 当前代码边界
 
-如果 launcher 内存里有 token，但远端 `/mcp` 在请求中拒绝该 token，launcher 会清除
-内存 session 并返回 `EMPLOYEE_AUTH_REQUIRED`，让 agent 要求用户重新认证。
-
-失败映射：
-
-| 失败                            | 可见结果                                           | Agent 行为                             |
-| ------------------------------- | -------------------------------------------------- | -------------------------------------- |
-| 缺少 URL                        | 询问 Enterprise Hub base URL                       | 不发明 URL。                           |
-| 登录 API 请求失败               | `ENTERPRISE_HUB_API_ERROR`                         | 报告登录/API 失败；不启动或修复服务。  |
-| 远端 MCP 服务不可达             | `ENTERPRISE_HUB_UNREACHABLE`                       | 报告连接失败；不启动或修复服务。       |
-| token 缺失、过期、launcher 重启 | `EMPLOYEE_AUTH_REQUIRED`                           | 要求用户重新认证。                     |
-| 员工不存在或 disabled           | 安全的鉴权失败                                     | 要求用户核对身份；不 seed 或修改员工。 |
-| 标签/资源无权限                 | 按后端 contract 返回 forbidden、not found 或空结果 | 不推断隐藏资源存在。                   |
-
-## 上传后的搜索
-
-Evidence search 是独立的 authenticated tool call。上传 accepted 不等于 evidence index 已经 ready。
-
-```mermaid
-flowchart TD
-  A["上传 accepted"] --> B["Agent 调 get_evidence_document_status"]
-  B --> C{"Document active 且<br/>evidence index ready？"}
-  C -->|"否"| D["Agent 报告准确服务状态<br/>或按用户要求等待/轮询"]
-  C -->|"是"| E["Agent 调 search_document_evidence"]
-  E --> F["Launcher 发送 POST /mcp<br/>带 bearer auth"]
-  F --> G["Qdrant 按组织、检索配置<br/>及可选 documentId 取候选 chunks"]
-  G --> H["MySQL 复核 active/ready、文档标签、<br/>员工权限和其余筛选条件"]
-  H --> I["API 仅返回复核后可见的匹配 chunks"]
-  I --> J["Agent 返回 evidence chunks/status<br/>不生成业务报告"]
-```
-
-Structured query after import 使用同一条 launcher 和 `/mcp` 鉴权链路，但后端执行的是受控
-MySQL structured query，而不是 Qdrant evidence retrieval。
+在 cutover 前，已有的 `POST /auth/dev-login`、development JWT 签发、仅 loopback 的 `/mcp` 以及
+`enterprise_hub_login_local`/`enterprise_hub_logout_local` 都是**待删除的当前代码**，不是正式远程
+操作说明。正式流程落地时必须删除它们，而不是保留兼容路径。

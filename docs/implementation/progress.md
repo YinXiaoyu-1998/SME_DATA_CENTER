@@ -443,3 +443,4 @@
 - [ ] Before customer data, approve and rehearse recovery, configure minimal alerts, run a controlled application rollback, and record retention/deletion rules.
 - [ ] Refresh the pinned Docker Buildx Action when an approved release removes its Node 20 runtime deprecation annotation, then rerun workflow tests.
 - [ ] Triage the current `npm ci` audit report (five moderate and one high) separately from the passing fixable-critical container-image gate before production.
+- [x] Complete Phase 4 official client skill/documentation synchronization on `codex/phase4-official-client-docs`: dual-homed skills now pin the planned `enterprise-hub-mcp-launcher@0.1.0` browser-login flow, cover safe Codex/OpenClaw/other-agent setup and lifecycle recovery, and clearly distinguish the pre-cutover development launcher from the target remote flow. Static skill validation and byte-sync checks passed; runtime/package publication remains integration work.

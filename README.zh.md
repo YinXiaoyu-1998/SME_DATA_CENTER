@@ -96,7 +96,18 @@ npm run worker:dev
 npm run worker:once
 ```
 
-## MCP 本地服务
+## 正式员工 MCP（目标；等待 Cutover）
+
+正式员工路径是通过固定版本的本机 stdio launcher
+`enterprise-hub-mcp-launcher@0.1.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
+`skills/enterprise-hub-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载
+权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `enterprise_hub_login`、
+`enterprise_hub_logout` 和 `enterprise_hub_auth_status`，且绝不操作服务基础设施。
+
+以上是已接受的产品设计和文档，不代表正式 identity、launcher npm 包或公开远程 MCP 已经部署。
+在 cutover 前，下列仅用于仓库开发和受控本地测试的流程仍是 development-only。
+
+## 本地 MCP 开发代码（Cutover 前）
 
 服务端只提供 authenticated Streamable HTTP `POST /mcp`，Phase 3 仅允许 loopback。它不提供服务端 stdio，也不直读 MySQL、Qdrant 或 storage。API、worker 和依赖必须在 skill/launcher 之外运行。
 
@@ -117,7 +128,8 @@ Codex / MCP client 通过用户机 launcher 连接：
 }
 ```
 
-launcher 只保存进程内存中的 development JWT；退出后必须重新用员工 email 登录。它不会启动或修复服务。手动启动：
+**Cutover 前 development launcher** 只保存进程内存中的 development JWT；退出后必须重新用员工
+email 登录。它不会启动或修复服务。这不是正式员工登录流程，正式切换时会删除。手动启动：
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=http://127.0.0.1:3000 npm run mcp:launcher

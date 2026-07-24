@@ -395,7 +395,7 @@ _Avoid_: 多租户 SaaS
 - launcher 只把长期凭证存入 macOS Keychain 或 Windows Credential Manager；安全存储不可用或写入失败时停止认证，绝不降级写入普通文件、配置、日志或剪贴板
 - 同一操作系统用户在同一个 Enterprise Hub 服务地址下只有一个当前账号，Codex 和其他本地 Agent 共享同一安全存储记录；beta 不提供账号列表、切换或多账号并存，凭证续取通过跨进程 single-flight 锁串行化
 - official launcher 使用固定、非秘密的 public client ID，通过固定 Authorization Code + PKCE 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience
-- launcher 权威源码保留在主仓库 `apps/mcp-launcher`，通过可信 GitHub Actions 发布为公开、版本化且带 provenance 的 npm 包；skills 只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
+- launcher 权威源码保留在主仓库 `apps/mcp-launcher`，通过可信 GitHub Actions 发布为公开、版本化且带 provenance 的 npm 包；正式 cutover 的 skill 固定 `enterprise-hub-mcp-launcher@0.1.0`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
 - Enterprise Hub skill 是安装编排说明的唯一入口：用户只需向已有该 skill 的 agent 提出自然语言安装请求，agent 按说明为当前用户安装依赖和 launcher、备份并更新自己的 MCP 配置、执行自检，再由 launcher 打开浏览器登录
 - Codex 和 OpenClaw 的 macOS/Windows 安装与使用链路是首批明确支持并验收的客户端矩阵；对 Qoder 等未命名 agent，skill 仍应提供受约束的自适应说明，允许 agent 判断自己的 MCP 配置位置和方式，在备份、最小修改、不影响其他 MCP 服务并验证成功的前提下完成安装
 - launcher 不自行升级；服务端只公布最低支持版本和推荐版本，由主仓库与独立仓库中保持同步的 Enterprise Hub skills 决定何时升级、选择哪个已批准的精确 npm 包版本，并指导 agent 完成安装和自检

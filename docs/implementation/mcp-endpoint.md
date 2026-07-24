@@ -5,7 +5,7 @@
 > login design and must not constrain it. See
 > [`official-user-install-and-login.md`](./official-user-install-and-login.md).
 
-Last updated: 2026-07-21
+Last updated: 2026-07-24
 
 ## Purpose
 
@@ -25,7 +25,7 @@ upload, status, and search paths, see
 
 ## Current Baseline
 
-- The user-side MCP launcher is a local stdio adapter in `apps/mcp-launcher`. It delegates business tool calls to the service's HTTP MCP endpoint and stores the development token only in process memory.
+- The user-side MCP launcher is a local stdio adapter in `apps/mcp-launcher`. It delegates business tool calls to the service's HTTP MCP endpoint and stores the development token only in process memory. This is pre-cutover current code, not the official remote launcher contract.
 - Launcher runtime configuration accepts only `ENTERPRISE_HUB_BASE_URL`; the implemented service `POST /mcp` endpoint is hard-loopback only in Phase 3.
 - The only available login mechanism is development login with a seeded employee email. Remote employee authentication and SSO/OAuth are not implemented.
 - The HTTP API exposes authenticated, stateless Streamable HTTP at `POST /mcp`; the service has no stdio MCP adapter.
