@@ -12,8 +12,8 @@ const DEFAULT_ACR_USERNAME = "nick2373262573";
 const DEFAULT_STAGING_HOST = "39.96.66.185";
 const DEFAULT_PUBLIC_URL = "https://api.smedatacenter.xyz";
 const DEFAULT_ACR_KEYCHAIN_SERVICE = "com.sme_data_center.acr.personal.enterprise-hub";
-const DEFAULT_JWT_KEYCHAIN_SERVICE = "com.sme_data_center.jwt.staging";
-const DEFAULT_JWT_KEYCHAIN_ACCOUNT = "enterprise-hub-staging";
+const DEFAULT_CURSOR_KEYCHAIN_SERVICE = "com.sme_data_center.cursor.staging";
+const DEFAULT_CURSOR_KEYCHAIN_ACCOUNT = "enterprise-hub-staging";
 const BASH_DOLLAR = "$";
 
 export interface DeployOptions {
@@ -31,8 +31,8 @@ interface DeployConfig {
   acrUsername: string;
   apiRepository: string;
   composeFile: string;
-  jwtKeychainAccount: string;
-  jwtKeychainService: string;
+  cursorKeychainAccount: string;
+  cursorKeychainService: string;
   knownHostsFile: string;
   namespace: string;
   publicUrl: string;
@@ -331,10 +331,10 @@ function loadDeployConfig(env: NodeJS.ProcessEnv = process.env): DeployConfig {
     acrUsername: env["ENTERPRISE_HUB_ACR_USERNAME"] ?? DEFAULT_ACR_USERNAME,
     apiRepository: env["ENTERPRISE_HUB_ACR_API_REPOSITORY"] ?? "api",
     composeFile: join(REPO_ROOT, "deploy/staging/docker-compose.yml"),
-    jwtKeychainAccount:
-      env["ENTERPRISE_HUB_STAGING_JWT_KEYCHAIN_ACCOUNT"] ?? DEFAULT_JWT_KEYCHAIN_ACCOUNT,
-    jwtKeychainService:
-      env["ENTERPRISE_HUB_STAGING_JWT_KEYCHAIN_SERVICE"] ?? DEFAULT_JWT_KEYCHAIN_SERVICE,
+    cursorKeychainAccount:
+      env["ENTERPRISE_HUB_STAGING_CURSOR_KEYCHAIN_ACCOUNT"] ?? DEFAULT_CURSOR_KEYCHAIN_ACCOUNT,
+    cursorKeychainService:
+      env["ENTERPRISE_HUB_STAGING_CURSOR_KEYCHAIN_SERVICE"] ?? DEFAULT_CURSOR_KEYCHAIN_SERVICE,
     knownHostsFile: join(REPO_ROOT, "deploy/staging/known_hosts"),
     namespace: env["ENTERPRISE_HUB_ACR_NAMESPACE"] ?? DEFAULT_NAMESPACE,
     publicUrl: env["ENTERPRISE_HUB_STAGING_PUBLIC_URL"] ?? DEFAULT_PUBLIC_URL,
@@ -454,9 +454,31 @@ async function acrPassword(config: DeployConfig): Promise<string> {
   return injected ?? readSecretFromKeychain(config.acrUsername, config.acrKeychainService);
 }
 
-async function jwtSecret(config: DeployConfig): Promise<string> {
-  const injected = process.env["ENTERPRISE_HUB_STAGING_JWT_SECRET"];
-  return injected ?? readSecretFromKeychain(config.jwtKeychainAccount, config.jwtKeychainService);
+async function cursorSigningSecret(config: DeployConfig): Promise<string> {
+  const injected = process.env["ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET"];
+  return (
+    injected ?? readSecretFromKeychain(config.cursorKeychainAccount, config.cursorKeychainService)
+  );
+}
+
+async function installRemoteCursorSigningSecret(config: DeployConfig): Promise<void> {
+  const secret = await cursorSigningSecret(config);
+  const command = [
+    "set -Eeuo pipefail",
+    "runtime_file=/opt/enterprise-hub/runtime.env",
+    'test -f "$runtime_file"',
+    "umask 077",
+    'temp_file="$(mktemp "${runtime_file}.XXXXXX")"',
+    `awk '!/^CURSOR_SIGNING_SECRET=/' "$runtime_file" > "$temp_file"`,
+    "IFS= read -r cursor_secret",
+    'test -n "$cursor_secret"',
+    `printf 'CURSOR_SIGNING_SECRET=%s\\n' "$cursor_secret" >> "$temp_file"`,
+    'install -o root -g root -m 0600 "$temp_file" "$runtime_file"',
+    'rm -f "$temp_file"'
+  ].join("; ");
+  await run("ssh", [...sshOptions(config), config.sshTarget, command], {
+    input: `${secret}\n`
+  });
 }
 
 async function preflight(config: DeployConfig, options: DeployOptions): Promise<string> {
@@ -636,14 +658,11 @@ async function waitForPublicStatus(url: string, expectedStatus: number): Promise
 
 async function runSmoke(config: DeployConfig): Promise<void> {
   console.log("\n==> Run fixture-only staging smoke");
-  const secret = await jwtSecret(config);
-  await run("npm", ["run", "staging:smoke"], {
-    env: {
-      ...process.env,
-      JWT_SECRET: secret,
-      STAGING_SMOKE_API_URL: config.publicUrl
-    }
-  });
+  await run("ssh", [
+    ...sshOptions(config),
+    config.sshTarget,
+    "docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml exec -T api npm run staging:smoke"
+  ]);
 }
 
 async function rollback(config: DeployConfig): Promise<void> {
@@ -698,7 +717,7 @@ Options:
   -h, --help       Show this help
 
 Secrets default to macOS Keychain. Non-interactive runners may inject
-ENTERPRISE_HUB_ACR_PASSWORD and ENTERPRISE_HUB_STAGING_JWT_SECRET from an
+ENTERPRISE_HUB_ACR_PASSWORD and ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET from an
 approved secret manager. The script never prints either value.`;
 }
 
@@ -750,6 +769,7 @@ async function main(): Promise<void> {
 
   await loginToAcr(config, password, false);
   await uploadCompose(config);
+  await installRemoteCursorSigningSecret(config);
   let releaseNeedsRollback = false;
   try {
     await runRemoteScript(config, "Roll out staging release", REMOTE_ROLLOUT_SCRIPT, [

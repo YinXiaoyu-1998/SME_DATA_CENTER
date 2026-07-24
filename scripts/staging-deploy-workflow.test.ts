@@ -50,7 +50,7 @@ describe("staging GitHub Actions release boundary", () => {
     const source = await workflow(deployWorkflowPath);
 
     expect(source).toContain("${{ secrets.ACR_PASSWORD }}");
-    expect(source).toContain("${{ secrets.STAGING_JWT_SECRET }}");
+    expect(source).toContain("${{ secrets.STAGING_CURSOR_SIGNING_SECRET }}");
     expect(source).toContain("${{ secrets.STAGING_SSH_PRIVATE_KEY }}");
     expect(source).toContain("shred --remove");
     expect(source).not.toContain("nick2373262573");

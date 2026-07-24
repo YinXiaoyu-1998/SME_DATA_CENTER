@@ -15,22 +15,19 @@ import {
   ProcessingRunStatus
 } from "@prisma/client";
 import { createPrismaStructuredImportRepository } from "../apps/api/src/structured-imports.js";
+import { AuthCore } from "../apps/api/src/auth/auth-core.js";
+import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
 import { createOriginalObjectKey, LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 
 const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
   `mysql://enterprise_hub:enterprise_hub_local_password@localhost:${mysqlPort}/enterprise_hub`;
-const DEFAULT_JWT_SECRET = "replace-with-local-development-secret";
+const DEFAULT_CURSOR_SIGNING_SECRET = "replace-with-local-development-cursor-secret";
 
 interface CommandResult {
   stdout: string;
   stderr: string;
-}
-
-interface LoginResponse {
-  accessToken: string;
-  employee: { email: string };
 }
 
 interface WorkerResponse {
@@ -96,7 +93,9 @@ const integrationEnv: NodeJS.ProcessEnv = {
   ...process.env,
   MYSQL_PORT: mysqlPort,
   DATABASE_URL: process.env["DATABASE_URL"] ?? DEFAULT_DATABASE_URL(mysqlPort),
-  JWT_SECRET: process.env["JWT_SECRET"] ?? DEFAULT_JWT_SECRET,
+  CURSOR_SIGNING_SECRET: process.env["CURSOR_SIGNING_SECRET"] ?? DEFAULT_CURSOR_SIGNING_SECRET,
+  ENTERPRISE_HUB_PUBLIC_ORIGIN:
+    process.env["ENTERPRISE_HUB_PUBLIC_ORIGIN"] ?? "https://api.smedatacenter.xyz",
   STORAGE_DRIVER: "local",
   LOCAL_STORAGE_ROOT: storageRoot,
   QDRANT_URL: process.env["QDRANT_URL"] ?? "http://127.0.0.1:6333",
@@ -118,6 +117,7 @@ const integrationEnv: NodeJS.ProcessEnv = {
 };
 
 let apiProcess: ReturnType<typeof spawn> | null = null;
+const officialSessionCleanup: Array<() => Promise<void>> = [];
 
 try {
   await prepareLocalWorkspace();
@@ -135,23 +135,8 @@ try {
   apiProcess = startApi();
   await waitForApiHealth(apiProcess);
 
-  const login = await apiJson<LoginResponse>("/auth/dev-login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "baoli.manager@example.com" })
-  });
-  assert(
-    login.employee.email === "baoli.manager@example.com",
-    "Dev login should authenticate Baoli manager."
-  );
-  const auth = authorizationHeader(login.accessToken);
-
-  const adminLogin = await apiJson<LoginResponse>("/auth/dev-login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "admin@example.com" })
-  });
-  const adminAuth = authorizationHeader(adminLogin.accessToken);
+  const auth = authorizationHeader(await createOfficialIntegrationAccessToken("emp_baoli_manager"));
+  const adminAuth = authorizationHeader(await createOfficialIntegrationAccessToken("emp_admin"));
 
   const structuredFixture = await readFile(
     path.join(rootDir, "fixtures", "structured", "dishes-valid.csv")
@@ -285,14 +270,10 @@ try {
     "A non-admin should query the imported all_staff row."
   );
 
-  const suzhouLogin = await apiJson<LoginResponse>("/auth/dev-login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "suzhou.manager@example.com" })
-  });
+  const suzhouAccessToken = await createOfficialIntegrationAccessToken("emp_suzhou_manager");
   const inaccessibleImportStatus = await fetch(
     `${apiUrl}/v1/structured/imports/${encodeURIComponent(structuredUpload.importBatch.importBatchId)}`,
-    { headers: authorizationHeader(suzhouLogin.accessToken) }
+    { headers: authorizationHeader(suzhouAccessToken) }
   );
   const inaccessibleImportBody = (await inaccessibleImportStatus.json()) as {
     error?: { code?: string; message?: string };
@@ -404,9 +385,38 @@ try {
     )
   );
 } finally {
+  await Promise.allSettled(officialSessionCleanup.splice(0).map((cleanup) => cleanup()));
   if (apiProcess) {
     await stopApi(apiProcess);
   }
+}
+
+async function createOfficialIntegrationAccessToken(employeeId: string): Promise<string> {
+  const prisma = new PrismaClient({
+    adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)
+  });
+  const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
+  const identity = await prisma.loginIdentity.findFirst({
+    where: { employeeId, disabled: false },
+    select: { id: true, employeeId: true, orgId: true }
+  });
+  if (!identity) {
+    await prisma.$disconnect();
+    throw new Error(`Seeded official identity is missing for ${employeeId}.`);
+  }
+  const session = await auth.createSession({
+    identityId: identity.id,
+    employeeId: identity.employeeId,
+    orgId: identity.orgId
+  });
+  officialSessionCleanup.push(async () => {
+    try {
+      await auth.logout(session.durableCredential);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+  return session.accessToken;
 }
 
 async function prepareLocalWorkspace(): Promise<void> {

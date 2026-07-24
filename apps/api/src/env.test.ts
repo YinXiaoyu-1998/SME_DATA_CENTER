@@ -5,12 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadApiEnv } from "./env.js";
 
 const originalDatabaseUrl = process.env["DATABASE_URL"];
-const originalJwtSecret = process.env["JWT_SECRET"];
+const originalCursorSecret = process.env["CURSOR_SIGNING_SECRET"];
 const tempDirs: string[] = [];
 
 afterEach(async () => {
   restoreEnv("DATABASE_URL", originalDatabaseUrl);
-  restoreEnv("JWT_SECRET", originalJwtSecret);
+  restoreEnv("CURSOR_SIGNING_SECRET", originalCursorSecret);
 
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -23,19 +23,19 @@ describe("loadApiEnv", () => {
       path.join(tempDir, ".env"),
       [
         "DATABASE_URL=mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub",
-        "JWT_SECRET=from-dotenv"
+        "CURSOR_SIGNING_SECRET=from-dotenv"
       ].join("\n")
     );
 
     delete process.env["DATABASE_URL"];
-    process.env["JWT_SECRET"] = "from-shell";
+    process.env["CURSOR_SIGNING_SECRET"] = "from-shell";
 
     loadApiEnv(tempDir);
 
     expect(process.env["DATABASE_URL"]).toBe(
       "mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub"
     );
-    expect(process.env["JWT_SECRET"]).toBe("from-shell");
+    expect(process.env["CURSOR_SIGNING_SECRET"]).toBe("from-shell");
   });
 });
 
