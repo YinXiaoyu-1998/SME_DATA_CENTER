@@ -835,6 +835,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   registerMcpHttpRoute(app, {
     maxUploadBytes: runtimeLimits.maxUploadBytes,
     mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
+    publicOrigin: (options.runtimeEnv ?? process.env)["ENTERPRISE_HUB_PUBLIC_ORIGIN"],
     authenticate: async (request, reply) => {
       const authenticated = await authenticate(request, reply, repository, jwtSecret);
 

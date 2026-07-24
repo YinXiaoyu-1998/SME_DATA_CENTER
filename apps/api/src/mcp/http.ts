@@ -5,9 +5,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { InjectOptions, InjectPayload, Response as InjectResponse } from "light-my-request";
 import { PHASE3_RUNTIME_LIMIT_DEFAULTS, type AuthenticatedEmployee } from "@enterprise-hub/domain";
 import {
+  assertValidMcpPublicOrigin,
   createMcpConcurrencyLimiter,
+  isAllowedMcpHost,
   isLoopbackAddress,
-  isLoopbackHost,
   isSafeMcpRequestId,
   mcpBodyLimitBytes
 } from "./guards.js";
@@ -21,6 +22,7 @@ import {
 export interface McpHttpRouteOptions {
   maxUploadBytes: number;
   mcpMaxConcurrentRequests?: number;
+  publicOrigin?: string;
   authenticate: (
     request: FastifyRequest,
     reply: FastifyReply
@@ -38,6 +40,7 @@ interface McpErrorBody {
 }
 
 export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRouteOptions): void {
+  assertValidMcpPublicOrigin(options.publicOrigin);
   const limiter = createMcpConcurrencyLimiter(
     options.mcpMaxConcurrentRequests ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.mcpMaxConcurrentRequests
   );
@@ -119,13 +122,16 @@ export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRoute
             );
           }
 
-          if (!isLoopbackHost(request.headers.host) || !isLoopbackAddress(peerAddress(request))) {
+          if (
+            !isAllowedMcpHost(request.headers.host, options.publicOrigin) ||
+            !isLoopbackAddress(peerAddress(request))
+          ) {
             return sendMcpHttpError(
               reply,
               request,
               403,
               "MCP_LOOPBACK_REQUIRED",
-              "MCP endpoint is available only over loopback hosts and peer addresses."
+              "MCP endpoint requires an approved host through the local reverse proxy."
             );
           }
 

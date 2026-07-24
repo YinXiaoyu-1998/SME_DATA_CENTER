@@ -370,6 +370,30 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expectErrorCode(response.json<McpErrorBody>(), "MCP_LOOPBACK_REQUIRED");
   });
 
+  it("accepts the exact configured public Host only from a loopback reverse-proxy peer", async () => {
+    app = buildMcpTestServer({
+      runtimeEnv: {
+        ENTERPRISE_HUB_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz"
+      }
+    });
+
+    const response = await postMcp(app, initializeRequest(), {
+      host: "api.smedatacenter.xyz"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(parseJsonRpc(response.payload).result).toBeDefined();
+
+    const directResponse = await postMcp(
+      app,
+      initializeRequest(),
+      { host: "api.smedatacenter.xyz" },
+      { remoteAddress: "198.51.100.10" }
+    );
+    expect(directResponse.statusCode).toBe(403);
+    expectErrorCode(directResponse.json<McpErrorBody>(), "MCP_LOOPBACK_REQUIRED");
+  });
+
   it("rejects non-loopback peer addresses even when Host is loopback", async () => {
     app = buildMcpTestServer();
 

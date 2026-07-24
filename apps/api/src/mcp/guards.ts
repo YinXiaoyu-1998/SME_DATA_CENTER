@@ -43,6 +43,34 @@ export function isLoopbackHost(hostHeader: string | undefined): boolean {
   return false;
 }
 
+export function isAllowedMcpHost(
+  hostHeader: string | undefined,
+  publicOrigin: string | undefined
+): boolean {
+  if (isLoopbackHost(hostHeader)) {
+    return true;
+  }
+
+  if (!hostHeader || !publicOrigin) {
+    return false;
+  }
+
+  const origin = parseMcpPublicOrigin(publicOrigin);
+  const suppliedHost = hostHeader.trim().toLowerCase();
+
+  if (!suppliedHost || /[\s/@\\]/.test(suppliedHost)) {
+    return false;
+  }
+
+  return suppliedHost === origin.hostname || suppliedHost === `${origin.hostname}:443`;
+}
+
+export function assertValidMcpPublicOrigin(publicOrigin: string | undefined): void {
+  if (publicOrigin) {
+    parseMcpPublicOrigin(publicOrigin);
+  }
+}
+
 export function isLoopbackAddress(address: string | undefined): boolean {
   if (!address) {
     return false;
@@ -153,4 +181,26 @@ function hasValidPort(value: string): boolean {
   const port = Number(value);
 
   return Number.isInteger(port) && port >= 1 && port <= 65_535;
+}
+
+function parseMcpPublicOrigin(value: string): URL {
+  const origin = new URL(value);
+
+  if (origin.protocol !== "https:") {
+    throw new Error("MCP public origin must use HTTPS.");
+  }
+
+  if (origin.username || origin.password) {
+    throw new Error("MCP public origin must not include credentials.");
+  }
+
+  if (origin.pathname !== "/" || origin.search || origin.hash) {
+    throw new Error("MCP public origin must not include a path, query, or fragment.");
+  }
+
+  if (origin.port && origin.port !== "443") {
+    throw new Error("MCP public origin must use the default HTTPS port.");
+  }
+
+  return origin;
 }
