@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { extname } from "node:path";
 import multipart from "@fastify/multipart";
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { PrismaClient } from "@prisma/client";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AUTH_ERROR_CODES,
@@ -31,7 +33,7 @@ import {
   type DocumentCatalogRepository,
   type DocumentStatusRecord
 } from "./documents.js";
-import { createPrismaEmployeeRepository, type EmployeeRepository } from "./employees.js";
+import type { EmployeeRepository } from "./employees.js";
 import {
   EvidenceSearchCursorError,
   createPrismaEvidenceSearchRepository,
@@ -54,7 +56,9 @@ import {
   type StructuredQueryRepository
 } from "./structured-query.js";
 import { registerMcpHttpRoute } from "./mcp/http.js";
-import { signEmployeeAccessToken, verifyEmployeeAccessToken } from "./tokens.js";
+import { AuthCore } from "./auth/auth-core.js";
+import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
+import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
@@ -66,16 +70,13 @@ export interface ApiServerOptions {
   structuredQueryRepository?: StructuredQueryRepository;
   evidenceRepository?: EvidenceSearchRepository;
   storageAdapter?: StorageAdapter;
-  jwtSecret?: string;
-  enableDevLogin?: boolean;
+  authCore?: AuthCore;
+  authenticateAccessToken?: (token: string) => Promise<AuthenticatedEmployee | null>;
+  cursorSigningSecret?: string;
   logger?: boolean;
   runtimeLimits?: ApiRuntimeLimits;
   runtimeEnv?: NodeJS.ProcessEnv;
   readinessCheck?: () => Promise<ReadinessReport>;
-}
-
-interface DevLoginBody {
-  email?: string;
 }
 
 interface AuthenticatedRequest extends FastifyRequest {
@@ -144,14 +145,12 @@ interface SkillListQuery {
   category?: string;
 }
 
-function requireJwtSecret(): string {
-  const jwtSecret = process.env["JWT_SECRET"];
-
-  if (!jwtSecret) {
-    throw new Error("JWT_SECRET is required to start the API.");
+function requireCursorSigningSecret(environment: NodeJS.ProcessEnv): string {
+  const secret = environment["CURSOR_SIGNING_SECRET"];
+  if (!secret) {
+    throw new Error("CURSOR_SIGNING_SECRET is required to start the API.");
   }
-
-  return jwtSecret;
+  return secret;
 }
 
 function errorResponse(code: string, message: string) {
@@ -754,8 +753,7 @@ function forbiddenRequestedLabels(
 async function authenticate(
   request: FastifyRequest,
   reply: FastifyReply,
-  repository: EmployeeRepository,
-  jwtSecret: string
+  authenticateAccessToken: (token: string) => Promise<AuthenticatedEmployee | null>
 ): Promise<boolean> {
   const token = bearerToken(request);
 
@@ -767,9 +765,7 @@ async function authenticate(
   }
 
   try {
-    const payload = await verifyEmployeeAccessToken(token, jwtSecret);
-    const employee = await repository.findById(payload.employeeId);
-
+    const employee = await authenticateAccessToken(token);
     if (!employee) {
       reply
         .code(401)
@@ -795,18 +791,36 @@ async function authenticate(
 }
 
 export function buildApiServer(options: ApiServerOptions = {}) {
-  const repository = options.employeeRepository ?? createPrismaEmployeeRepository();
+  const environment = options.runtimeEnv ?? process.env;
+  const legacyEmployeeRepository = options.employeeRepository;
   let documentRepository = options.documentRepository;
   let structuredImportRepository = options.structuredImportRepository;
   let skillRepository = options.skillRepository;
   let structuredQueryRepository = options.structuredQueryRepository;
   let evidenceRepository = options.evidenceRepository;
   let storageAdapter = options.storageAdapter;
-  const runtimeLimits =
-    options.runtimeLimits ?? loadApiRuntimeLimits(options.runtimeEnv ?? process.env);
-  const jwtSecret = options.jwtSecret ?? requireJwtSecret();
-  const enableDevLogin = options.enableDevLogin ?? process.env["NODE_ENV"] !== "production";
+  const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
+  const cursorSigningSecret =
+    options.cursorSigningSecret ?? requireCursorSigningSecret(environment);
   const readinessCheck = options.readinessCheck ?? (() => checkRuntimeReadiness());
+  let authPrisma: PrismaClient | undefined;
+  let authCore = options.authCore;
+  if (!authCore && !options.authenticateAccessToken) {
+    const databaseUrl = environment["DATABASE_URL"];
+    if (!databaseUrl) {
+      throw new Error("DATABASE_URL is required to start the official authentication service.");
+    }
+    authPrisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+    authCore = new AuthCore(createPrismaAuthCoreRepository(authPrisma));
+  }
+  const authenticateOfficialAccessToken =
+    options.authenticateAccessToken ??
+    ((token: string) => {
+      if (!authCore) {
+        throw new Error("Official authentication service is unavailable.");
+      }
+      return authCore.authenticateAccessToken(token);
+    });
 
   const app = Fastify({
     logger: options.logger ?? true,
@@ -818,7 +832,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.addHook("onClose", async () => {
-    await repository.disconnect?.();
+    await legacyEmployeeRepository?.disconnect?.();
+    await authPrisma?.$disconnect();
     await documentRepository?.disconnect?.();
     await structuredImportRepository?.disconnect?.();
     await skillRepository?.disconnect?.();
@@ -837,7 +852,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
     publicOrigin: (options.runtimeEnv ?? process.env)["ENTERPRISE_HUB_PUBLIC_ORIGIN"],
     authenticate: async (request, reply) => {
-      const authenticated = await authenticate(request, reply, repository, jwtSecret);
+      const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
       if (!authenticated) {
         return null;
@@ -846,6 +861,27 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       return (request as AuthenticatedRequest).employee;
     }
   });
+
+  if (authCore) {
+    const publicOrigin = environment["ENTERPRISE_HUB_PUBLIC_ORIGIN"];
+    if (!publicOrigin) {
+      throw new Error("ENTERPRISE_HUB_PUBLIC_ORIGIN is required for official authentication.");
+    }
+    registerOfficialAuthRoutes(app, { auth: authCore, publicOrigin });
+    void authCore.pruneSecurityEvents().catch((error: unknown) => {
+      app.log.error({ err: error }, "Failed to prune expired authentication security events.");
+    });
+    const pruneTimer = setInterval(
+      () => {
+        void authCore?.pruneSecurityEvents().catch((error: unknown) => {
+          app.log.error({ err: error }, "Failed to prune expired authentication security events.");
+        });
+      },
+      24 * 60 * 60 * 1000
+    );
+    pruneTimer.unref();
+    app.addHook("onClose", async () => clearInterval(pruneTimer));
+  }
 
   function documents(): DocumentCatalogRepository {
     documentRepository ??= createPrismaDocumentCatalogRepository();
@@ -897,47 +933,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     });
   });
 
-  app.post<{ Body: DevLoginBody }>("/auth/dev-login", async (request, reply) => {
-    if (!enableDevLogin) {
-      return reply
-        .code(404)
-        .send(
-          errorResponse(AUTH_ERROR_CODES.devLoginUnavailable, "Development login is unavailable.")
-        );
-    }
-
-    const email = request.body.email;
-
-    if (!email) {
-      return reply
-        .code(400)
-        .send(errorResponse(AUTH_ERROR_CODES.employeeNotFound, "Email is required."));
-    }
-
-    const employee = await repository.findByEmail(email);
-
-    if (!employee) {
-      return reply
-        .code(404)
-        .send(errorResponse(AUTH_ERROR_CODES.employeeNotFound, "Employee not found."));
-    }
-
-    if (employee.disabled) {
-      return reply
-        .code(403)
-        .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
-    }
-
-    const accessToken = await signEmployeeAccessToken(employee, jwtSecret);
-
-    return {
-      accessToken,
-      employee: employeeResponse(employee)
-    };
-  });
-
   app.get("/me", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
@@ -949,7 +946,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.post("/v1/documents/evidence", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
@@ -1052,7 +1049,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   app.get<{ Params: { documentId: string } }>(
     "/v1/documents/evidence/:documentId/status",
     async (request, reply) => {
-      const authenticated = await authenticate(request, reply, repository, jwtSecret);
+      const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
       if (!authenticated) {
         return;
@@ -1077,7 +1074,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   );
 
   app.post<{ Body: EvidenceSearchBody }>("/v1/evidence/search", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
@@ -1117,7 +1114,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         filters,
         limit,
         cursor,
-        cursorSecret: jwtSecret,
+        cursorSecret: cursorSigningSecret,
         requestId: request.id,
         clientIp: request.ip
       });
@@ -1135,7 +1132,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     };
   });
   app.post("/v1/structured/imports", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
@@ -1347,7 +1344,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   app.get<{ Params: { importBatchId: string } }>(
     "/v1/structured/imports/:importBatchId",
     async (request, reply) => {
-      const authenticated = await authenticate(request, reply, repository, jwtSecret);
+      const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
       if (!authenticated) {
         return;
@@ -1383,7 +1380,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
   );
   app.get("/v1/structured/datasets", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
@@ -1392,7 +1389,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     return structuredDatasetRegistryResponse();
   });
   app.post("/v1/structured/query", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
@@ -1409,14 +1406,14 @@ export function buildApiServer(options: ApiServerOptions = {}) {
           labels: employee.labels
         },
         query: request.body,
-        cursorSecret: jwtSecret
+        cursorSecret: cursorSigningSecret
       });
       const result = await structuredQueries().execute(compiled);
       const nextCursor = result.hasMore
         ? createStructuredCursor({
             offset: compiled.offset + result.rows.length,
             shapeHash: compiled.shapeHash,
-            secret: jwtSecret
+            secret: cursorSigningSecret
           })
         : null;
 
@@ -1447,7 +1444,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.get("/labels", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
@@ -1462,7 +1459,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.get<{ Querystring: SkillListQuery }>("/skills", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
@@ -1482,7 +1479,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.get<{ Querystring: AuditListQuery }>("/audit", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, repository, jwtSecret);
+    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
       return;
