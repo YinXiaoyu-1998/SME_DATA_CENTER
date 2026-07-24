@@ -1,5 +1,9 @@
 # Enterprise Hub MCP User Flow
 
+> **Current-implementation scope:** this flow documents the Phase 3 development launcher. Its
+> email-only login and memory-only token are not the official user login design. See
+> [`official-user-install-and-login.md`](./official-user-install-and-login.md).
+
 Last updated: 2026-07-13
 
 This document describes the current Phase 3 design from a user's natural-language

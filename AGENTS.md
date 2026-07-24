@@ -60,15 +60,9 @@ Copy `.env.example` to `.env` for local development. Use development-only values
 
 Required local variables are tracked in `docs/implementation/env-inventory.md`.
 
-## Employee Client Runtime Assumptions
+## Employee Client Design
 
-- Target employee users run Enterprise Hub clients on ordinary interactive macOS or Windows personal computers with a graphical session and a functioning system browser. Do not design Linux, mobile, or other operating-system compatibility unless the product owner explicitly changes this constraint.
-- Target employee users are low- or no-technical-skill users. Normal installation, sign-in, use, token refresh, and sign-out must not require the user to personally operate a terminal, follow command-line instructions, manually start the launcher, edit environment variables or configuration files, or manage a credential store.
-- Agent-mediated installation is allowed and encouraged after user authorization. A skill or installer may install Node.js or an npm-distributed launcher, run scripts and package-manager commands, write MCP client configuration, and verify the connection on the user's behalf. Do not reject an npm package merely because these implementation details exist under the hood; the constraint is that the user must not need to understand or perform them.
-- The local MCP launcher is an implementation detail rather than a user-facing tool. Installations and supported MCP clients must start and manage it automatically; opening the system browser for authentication and showing an unavoidable native operating-system security prompt are acceptable user-visible interactions.
-- Never design or recommend an authentication flow in which an agent or model receives, reads, transcribes, or stores the user's password. Password entry belongs only on the first-party browser authentication page.
-- For remote MCP authentication, do not design or implement device-code, headless, SSH-terminal, secondary-device, or no-browser login flows unless the product owner explicitly changes this constraint.
-- A local launcher may open the system browser and receive a loopback authorization callback. Lack of native browser-based OAuth support in an MCP client may justify the launcher compatibility layer, but it does not justify a device-code fallback.
+- Follow `docs/implementation/official-user-install-and-login.md` for official client installation, login, and session decisions. Keep the evolving design in that document rather than duplicating it here; never ask a user to expose an account password or authentication token to the agent/model.
 
 ## Alibaba Cloud CLI
 

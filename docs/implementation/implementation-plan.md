@@ -298,13 +298,13 @@ The current staging deployment uses:
 - mirrored Qdrant image tag `v1.15.4`;
 - root-only server runtime env at `/opt/enterprise-hub/runtime.env`.
 
-The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed data. It is not an employee-facing production MCP target. The proposed first-beta bridge is a time-bounded, revocable employee access token plus a model-invisible local credential helper and an HTTPS-only reverse-proxy MCP boundary; see ADR 0021 and `beta-access-readiness.md`. Full OIDC/SSO remains later work.
+The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed data. It is not an employee-facing production MCP target. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be implemented. Official employee installation, browser login, and durable session behavior are being designed in `official-user-install-and-login.md`.
 
 ### Remaining Phase 4 Tracks
 
-- First beta access: implement the proposed revocable beta-token flow, secure launcher credential bootstrap, reviewed employee/label provisioning, and HTTPS-only public MCP path. A real user may first use fixture or explicitly approved non-sensitive data.
+- Official user access: finish `official-user-install-and-login.md`, reconcile the obsolete development/beta authentication documents, and implement the accepted browser-login and durable launcher-session boundary. A real user may first use fixture or explicitly approved non-sensitive data.
 - Database policy: choose final RDS SSL mode. Provider CLI now verifies 7-day automated full-backup retention plus 7-day log backups and one successful full backup, but restore ownership/RPO/RTO and a recovery drill remain open.
-- Security/auth: the first-beta bridge is proposed in ADR 0021; choose the long-term production admin identity and SSO/OIDC path separately.
+- Security/auth: ADR 0021 is withdrawn. The official identity authority, employee mapping, browser authorization, token lifecycle, account recovery, and administrative identity lifecycle must be resolved before implementation.
 - Deployment automation: verified. The merged `npm run deploy:staging` release/rollback boundary is reused by GitHub Actions; trusted `main` quality success deployed immutable tag `708128503656`, recorded the GitHub staging deployment, and passed independent host inspection. Manual deploy/rollback remains available from `main`.
 - Operations: monitoring, alerting, rollback runbook validation, log retention, and cost/resource review.
 - Data governance: define real customer import, retention, deletion, and staging-data policy before customer data. A real beta employee using repo fixtures is an earlier, separate acceptance gate.

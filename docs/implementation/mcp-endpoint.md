@@ -1,5 +1,10 @@
 # Local MCP Endpoint Design Decisions
 
+> **Current-implementation scope:** this document records the Phase 3 local/development endpoint and
+> launcher behavior. Its development-email login and memory-only session are not the official user
+> login design and must not constrain it. See
+> [`official-user-install-and-login.md`](./official-user-install-and-login.md).
+
 Last updated: 2026-07-21
 
 ## Purpose
