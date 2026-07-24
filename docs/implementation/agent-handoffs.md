@@ -868,3 +868,10 @@
 - Reworked lock acquisition to atomically publish a fully written owner record through a hard link, preserve PID/UUID/inode ownership, and reclaim bounded empty/malformed crash orphans through an inode-checked claim.
 - Added macOS and Windows native acceptance before publish. Each runner installs the packed artifact and uses its installed `@napi-rs/keyring` dependency for randomized write/read/delete with safe `finally` cleanup; the Ubuntu publish job depends on both and alone receives `id-token: write`.
 - Verification: clean `npm ci`; Prisma generation; 31 focused launcher/workspace tests; 4 artifact tests; typecheck; lint; format; diff check; tarball allowlist; and a real local macOS Keychain randomized write/read/delete all passed.
+
+## 2026-07-24 - codex/phase4-launcher-package third review fixes
+
+- Extended remote-result credential detection to reject ordinary string values containing a full high-entropy Enterprise Hub opaque secret for every current prefix: `eh_at_`, `eh_rt_`, `eh_ac_`, `eh_ps_`, and `eh_tx_`. Prefix-only documentation remains allowed.
+- Made owner-record `open` failures fail closed immediately unless the error is `EEXIST`; collision retries now honor both the configured polling interval and the overall acquisition deadline.
+- Removed the release workflow's version-specific tarball path. Native platform acceptance now reads the filename from `npm pack --json`, exports it as a step output, and installs exactly that artifact.
+- Verification: 38 focused launcher/workspace tests; 5 artifact/static workflow tests; typecheck; lint; format; diff check; and package dry-run all passed.

@@ -57,6 +57,16 @@ describe("published launcher artifact", () => {
     expect(declarations).not.toMatch(/@enterprise-hub\/(?:mcp-contract|domain)/);
   });
 
+  it("derives the platform-acceptance tarball name from npm pack output", async () => {
+    const workflow = await readFile(
+      path.join(workspaceRoot, ".github", "workflows", "launcher-release.yml"),
+      "utf8"
+    );
+    expect(workflow).not.toMatch(/enterprise-hub-mcp-launcher-\d+\.\d+\.\d+\.tgz/);
+    expect(workflow).toMatch(/npm pack --workspace enterprise-hub-mcp-launcher --json/);
+    expect(workflow).toContain("${{ steps.pack.outputs.tarball }}");
+  });
+
   it("passes a built-artifact secret and legacy-contract scan", () => {
     const bundledSource = exec("tar", ["-xOf", tarballPath, "package/dist/index.js"]);
     for (const forbidden of [

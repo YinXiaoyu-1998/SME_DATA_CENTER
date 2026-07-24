@@ -33,12 +33,14 @@ export function createFileLock(
     pollMs?: number;
     orphanRecoveryMs?: number;
     isProcessAlive?: (pid: number) => boolean;
+    openOwnerFile?: typeof open;
   } = {}
 ): LauncherLock {
   const waitMs = options.waitMs ?? 10_000;
   const pollMs = options.pollMs ?? 50;
   const orphanRecoveryMs = options.orphanRecoveryMs ?? 5_000;
   const isProcessAlive = options.isProcessAlive ?? processIsAlive;
+  const openOwnerFile = options.openOwnerFile ?? open;
   return {
     acquire: async () => {
       await mkdir(path.dirname(lockPath), { recursive: true });
@@ -46,8 +48,16 @@ export function createFileLock(
       while (true) {
         const owner = randomUUID();
         const ownerPath = `${lockPath}.owner-${owner}`;
-        const handle = await open(ownerPath, "wx", 0o600).catch(() => null);
-        if (handle === null) continue;
+        let handle: Awaited<ReturnType<typeof open>>;
+        try {
+          handle = await openOwnerFile(ownerPath, "wx", 0o600);
+        } catch (error) {
+          if (!isAlreadyExists(error)) {
+            throw new Error("Enterprise Hub launcher session lock failed.");
+          }
+          await waitForRetry(deadline, pollMs);
+          continue;
+        }
         try {
           await handle.writeFile(
             JSON.stringify({ pid: process.pid, owner, createdAt: Date.now() })
@@ -77,10 +87,10 @@ export function createFileLock(
               throw new Error("Enterprise Hub launcher session lock failed.");
             }
           }
-        } catch (error) {
+        } catch {
           await handle.close().catch(() => undefined);
           await rm(ownerPath, { force: true }).catch(() => undefined);
-          if (!isAlreadyExists(error)) throw error;
+          throw new Error("Enterprise Hub launcher session lock failed.");
         }
 
         const existing = await readOwner(lockPath);
@@ -89,11 +99,17 @@ export function createFileLock(
         } else if (!existing && (await isBoundedOrphan(lockPath, orphanRecoveryMs))) {
           await removeClaimedRecord(lockPath, null);
         }
-        if (Date.now() >= deadline) throw new Error("Enterprise Hub launcher session is busy.");
-        await new Promise((resolve) => setTimeout(resolve, pollMs));
+        await waitForRetry(deadline, pollMs);
       }
     }
   };
+}
+
+async function waitForRetry(deadline: number, pollMs: number): Promise<void> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) throw new Error("Enterprise Hub launcher session is busy.");
+  await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remainingMs)));
+  if (Date.now() >= deadline) throw new Error("Enterprise Hub launcher session is busy.");
 }
 
 async function removeClaimedRecord(lockPath: string, expectedOwner: string | null): Promise<void> {

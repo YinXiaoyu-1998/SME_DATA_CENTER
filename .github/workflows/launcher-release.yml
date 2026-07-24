@@ -30,9 +30,18 @@ jobs:
           test "$(npm --version)" = "11.15.0"
       - run: npm ci
       - run: npm run build --workspace enterprise-hub-mcp-launcher
-      - run: npm pack --workspace enterprise-hub-mcp-launcher
+      - name: Pack the reviewed artifact
+        id: pack
+        shell: bash
+        run: |
+          pack_json="$(npm pack --workspace enterprise-hub-mcp-launcher --json)"
+          tarball="$(
+            node -e 'const data=JSON.parse(process.argv[1]);process.stdout.write(data[0].filename)' "$pack_json"
+          )"
+          test -n "$tarball"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
       - name: Install the packed artifact
-        run: npm install --prefix "${{ runner.temp }}/launcher-install" --ignore-scripts ./enterprise-hub-mcp-launcher-0.1.0.tgz
+        run: npm install --prefix "${{ runner.temp }}/launcher-install" --ignore-scripts "./${{ steps.pack.outputs.tarball }}"
       - name: Exercise native secure-store write/read/delete
         run: node apps/mcp-launcher/scripts/keyring-acceptance.mjs "${{ runner.temp }}/launcher-install"
 

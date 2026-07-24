@@ -339,7 +339,8 @@ function containsCredential(value: unknown, accessToken: string): boolean {
       return (
         /^(?:Bearer|Basic)\s+\S+$/i.test(value.trim()) ||
         /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value.trim()) ||
-        /[?&](?:access_token|refresh_token|code)=/i.test(value)
+        /[?&](?:access_token|refresh_token|code)=/i.test(value) ||
+        /(?:^|[^A-Za-z0-9_-])eh_(?:at|rt|ac|ps|tx)_[A-Za-z0-9_-]{43,}(?![A-Za-z0-9_-])/.test(value)
       );
     }
   }

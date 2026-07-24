@@ -88,6 +88,28 @@ describe("official launcher bootstrap tools", () => {
     expect(JSON.stringify(safe)).not.toContain(token);
   });
 
+  it.each(["eh_rt_", "eh_ac_", "eh_ps_", "eh_tx_", "eh_at_"])(
+    "rejects a high-entropy %s credential in an ordinary value",
+    (prefix) => {
+      const leakedCredential = `${prefix}${"a".repeat(43)}`;
+      const safe = sanitizeRemoteToolResult(
+        {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ description: `unexpected value ${leakedCredential}` })
+            }
+          ],
+          structuredContent: { description: leakedCredential },
+          isError: false
+        },
+        "different-active-token"
+      );
+      expect(safe.isError).toBe(true);
+      expect(JSON.stringify(safe)).not.toContain(leakedCredential);
+    }
+  );
+
   it("preserves legitimate code and secret language plus standard error codes", () => {
     const legitimate = {
       content: [
@@ -98,6 +120,7 @@ describe("official launcher bootstrap tools", () => {
             storeCode: "S001",
             barcode: "6900000000000",
             secretMenu: true,
+            tokenFormat: "The eh_rt_ prefix identifies a rotating credential.",
             error: { code: "MCP_NOT_FOUND", message: "not visible" }
           })
         }
@@ -106,7 +129,8 @@ describe("official launcher bootstrap tools", () => {
         description: "secret recipe",
         storeCode: "S001",
         barcode: "6900000000000",
-        secretMenu: true
+        secretMenu: true,
+        tokenFormat: "The eh_tx_ prefix alone is documentation, not a credential."
       },
       isError: true
     };

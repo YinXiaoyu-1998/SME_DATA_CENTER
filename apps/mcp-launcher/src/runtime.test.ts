@@ -5,6 +5,47 @@ import { describe, expect, it } from "vitest";
 import { createFileLock } from "./runtime.js";
 
 describe("owned cross-process launcher lock", () => {
+  it("fails closed immediately when opening an owner record fails with a non-EEXIST error", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "launcher-lock-open-failure-"));
+    const lockPath = path.join(directory, "session.lock");
+    let attempts = 0;
+    const options = {
+      waitMs: 25,
+      pollMs: 5,
+      openOwnerFile: async () => {
+        attempts += 1;
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      }
+    };
+
+    await expect(createFileLock(lockPath, options).acquire()).rejects.toThrow(
+      "Enterprise Hub launcher session lock failed."
+    );
+    expect(attempts).toBe(1);
+  });
+
+  it("bounds EEXIST owner-record retries by both polling and the acquisition deadline", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "launcher-lock-open-collision-"));
+    const lockPath = path.join(directory, "session.lock");
+    let attempts = 0;
+    const startedAt = Date.now();
+    const options = {
+      waitMs: 25,
+      pollMs: 10,
+      openOwnerFile: async () => {
+        attempts += 1;
+        throw Object.assign(new Error("already exists"), { code: "EEXIST" });
+      }
+    };
+
+    await expect(createFileLock(lockPath, options).acquire()).rejects.toThrow(
+      "Enterprise Hub launcher session is busy."
+    );
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20);
+    expect(attempts).toBeGreaterThan(1);
+    expect(attempts).toBeLessThanOrEqual(5);
+  });
+
   it("serializes live owners and an old release cannot remove its successor", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "launcher-lock-"));
     const lockPath = path.join(directory, "session.lock");
