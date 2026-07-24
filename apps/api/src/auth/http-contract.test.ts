@@ -6,7 +6,9 @@ import {
   cookieValue,
   csrfTokenForSecret,
   hostOnlyCookie,
-  matchesCsrfToken
+  matchesCsrfToken,
+  oauthMetadata,
+  pkceChallengeForVerifier
 } from "./http-contract.js";
 
 describe("official OAuth HTTP contract", () => {
@@ -76,5 +78,33 @@ describe("official OAuth HTTP contract", () => {
     expect(matchesCsrfToken("eh_tx_private", csrf)).toBe(true);
     expect(matchesCsrfToken("eh_tx_private", `${csrf}x`)).toBe(false);
     expect(matchesCsrfToken("other", csrf)).toBe(false);
+  });
+
+  it("derives S256 from a bounded verifier and publishes fixed OAuth metadata", () => {
+    const verifier = "v".repeat(43);
+
+    expect(pkceChallengeForVerifier(verifier)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(() => pkceChallengeForVerifier("short")).toThrow("invalid PKCE verifier");
+    expect(() => pkceChallengeForVerifier(`${"v".repeat(42)}+`)).toThrow("invalid PKCE verifier");
+
+    expect(oauthMetadata("https://api.smedatacenter.xyz")).toEqual({
+      issuer: "https://api.smedatacenter.xyz",
+      authorization_endpoint: "https://api.smedatacenter.xyz/oauth/authorize",
+      token_endpoint: "https://api.smedatacenter.xyz/oauth/token",
+      revocation_endpoint: "https://api.smedatacenter.xyz/oauth/revoke",
+      response_types_supported: ["code"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      code_challenge_methods_supported: ["S256"],
+      token_endpoint_auth_methods_supported: ["none"],
+      enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher",
+      enterprise_hub_launcher_minimum_version: "0.1.0",
+      enterprise_hub_launcher_recommended_version: "0.1.0"
+    });
+    expect(() => oauthMetadata("http://api.smedatacenter.xyz")).toThrow(
+      "public origin must be canonical HTTPS"
+    );
+    expect(() => oauthMetadata("https://api.smedatacenter.xyz/path")).toThrow(
+      "public origin must be canonical HTTPS"
+    );
   });
 });

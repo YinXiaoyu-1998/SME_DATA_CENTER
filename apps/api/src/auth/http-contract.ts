@@ -20,6 +20,20 @@ export interface ValidAuthorizationRequest {
   pkceChallenge: string;
 }
 
+export interface OAuthAuthorizationServerMetadata {
+  issuer: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  revocation_endpoint: string;
+  response_types_supported: ["code"];
+  grant_types_supported: ["authorization_code", "refresh_token"];
+  code_challenge_methods_supported: ["S256"];
+  token_endpoint_auth_methods_supported: ["none"];
+  enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher";
+  enterprise_hub_launcher_minimum_version: "0.1.0";
+  enterprise_hub_launcher_recommended_version: "0.1.0";
+}
+
 export function authorizationRequest(query: AuthorizationQuery): ValidAuthorizationRequest {
   const responseType = singleString(query.response_type);
   const clientId = singleString(query.client_id);
@@ -98,6 +112,32 @@ export function matchesCsrfToken(transactionSecret: string, suppliedToken: strin
   return expected.byteLength === supplied.byteLength && timingSafeEqual(expected, supplied);
 }
 
+export function pkceChallengeForVerifier(verifier: string): string {
+  if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) {
+    throw new Error("invalid PKCE verifier");
+  }
+
+  return createHash("sha256").update(verifier, "utf8").digest("base64url");
+}
+
+export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMetadata {
+  const issuer = canonicalHttpsOrigin(publicOrigin);
+
+  return {
+    issuer,
+    authorization_endpoint: `${issuer}/oauth/authorize`,
+    token_endpoint: `${issuer}/oauth/token`,
+    revocation_endpoint: `${issuer}/oauth/revoke`,
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported: ["S256"],
+    token_endpoint_auth_methods_supported: ["none"],
+    enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher",
+    enterprise_hub_launcher_minimum_version: "0.1.0",
+    enterprise_hub_launcher_recommended_version: "0.1.0"
+  };
+}
+
 function isExactLoopbackRedirect(value: string): boolean {
   const match = /^http:\/\/127\.0\.0\.1:(\d{1,5})\/oauth\/callback$/.exec(value);
   if (!match) {
@@ -131,4 +171,24 @@ function singleString(value: unknown): string | null {
 
 function invalidAuthorizationRequest(): Error {
   return new Error("invalid OAuth authorization request");
+}
+
+function canonicalHttpsOrigin(value: string): string {
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash ||
+      (url.port && url.port !== "443")
+    ) {
+      throw new Error();
+    }
+    return url.origin;
+  } catch {
+    throw new Error("public origin must be canonical HTTPS");
+  }
 }
