@@ -1,5 +1,9 @@
 # Enterprise Hub MCP 用户流程
 
+> **当前实现范围：** 本文描述 Phase 3 开发期 launcher。邮箱登录和仅内存 token 不是正式
+> 用户登录方案，也不能约束正式方案。正式设计见
+> [`official-user-install-and-login.md`](./official-user-install-and-login.md)。
+
 最后更新：2026-07-13
 
 本文描述当前 Phase 3 设计里，用户从自然语言请求到 Enterprise Hub MCP

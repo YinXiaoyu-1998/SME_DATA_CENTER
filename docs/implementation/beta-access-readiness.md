@@ -2,6 +2,11 @@
 
 Last verified: 2026-07-23
 
+> **Superseded planning document:** the live-state observations remain useful as a dated snapshot,
+> but the opaque beta-token recommendation and its onboarding inputs were withdrawn on 2026-07-23.
+> Do not implement them. The replacement design is being resolved in
+> [`official-user-install-and-login.md`](./official-user-install-and-login.md).
+
 ## Goal
 
 让一名真实 beta 用户从自己的 MCP client 调用
@@ -48,18 +53,8 @@ unsafe and would not produce a supportable beta flow.
 
 ## Recommended Next Slice
 
-Implement ADR 0021 as one beta-access slice:
-
-1. add operator-only employee and token issue/list/revoke commands;
-2. validate opaque access tokens in the shared API authentication layer;
-3. add an interactive local credential helper and launcher secure-store loading;
-4. open `/mcp` only through the loopback nginx TLS boundary while retaining local-development guards;
-5. update both Enterprise Hub MCP skill homes and publish a client-specific onboarding recipe;
-6. run external-machine acceptance for valid, expired, revoked, disabled, and cross-label identities;
-7. onboard exactly one non-admin beta user and complete fixture upload/index/search.
-
-This is the shortest safe path to a real remote user. Full OIDC/SSO, admin UI, and broad employee
-directory import remain later work.
+Withdrawn. Do not implement the ADR 0021 opaque-token bridge. Complete the official installation,
+browser-login, and durable-session design before selecting the next implementation slice.
 
 ## Human Inputs Still Required
 

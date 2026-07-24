@@ -1,6 +1,12 @@
 # 用可撤销 Beta 访问令牌开放远端 MCP
 
-**Status**: Proposed - pending product-owner approval
+**Status**: Withdrawn on 2026-07-23
+
+This proposal was never accepted and must not be implemented. The product direction now requires an
+official browser-based employee login and durable launcher session rather than an operator-to-user
+opaque-token handoff. See
+[`official-user-install-and-login.md`](../implementation/official-user-install-and-login.md). The
+remainder of this ADR is retained only as rejected historical context.
 
 ## Context
 

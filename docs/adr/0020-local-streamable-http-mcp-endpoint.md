@@ -2,7 +2,7 @@
 
 **Status**: Accepted and implemented for the Phase 3 local boundary
 
-Enterprise Hub 过去只提供本地 stdio MCP adapter。本决策将其迁移为本地 Streamable HTTP endpoint；Phase 3 实现本身不包含 Phase 4 的远端部署、TLS、SSO/OIDC 或服务运维。远端 beta 暴露的后续决策见 ADR 0021。
+Enterprise Hub 过去只提供本地 stdio MCP adapter。本决策将其迁移为本地 Streamable HTTP endpoint；Phase 3 实现本身不包含 Phase 4 的远端部署、TLS、正式用户登录或服务运维。ADR 0021 的远端 beta token 提案已撤回；正式安装和登录设计见 `docs/implementation/official-user-install-and-login.md`。
 
 **Decision**: 在现有 Fastify API listener 上挂载 `POST /mcp`，使用 MCP Streamable HTTP 的无状态模式。不实现 legacy SSE，不发放 MCP session ID，也不提供匿名 `initialize` 或工具发现。每个请求均以 `Authorization: Bearer <employee token>` 认证，并以请求作用域创建员工上下文和 API delegation client；后端授权和业务审计继续是唯一权威来源。
 
