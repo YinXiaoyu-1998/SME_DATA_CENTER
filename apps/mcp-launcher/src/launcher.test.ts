@@ -5,7 +5,9 @@ import {
   LAUNCHER_BOOTSTRAP_TOOL_NAMES,
   createLauncherToolDependencies,
   createLauncherToolHandler,
-  registerLauncherTools
+  mapMcpError,
+  registerLauncherTools,
+  sanitizeRemoteToolResult
 } from "./launcher.js";
 
 const config = createLauncherRuntimeConfig({ enterpriseHubBaseUrl: "https://hub.example.test" });
@@ -51,6 +53,71 @@ describe("official launcher bootstrap tools", () => {
     });
     expect(JSON.stringify(result)).not.toContain("secret-token");
   });
+
+  it("denies remote results containing credentials or the exact access token", () => {
+    const token = "exact-access-token";
+    for (const result of [
+      { content: [{ type: "text", text: JSON.stringify({ value: token }) }], isError: false },
+      {
+        content: [{ type: "text", text: JSON.stringify({ authorization: "Bearer other" }) }],
+        isError: false
+      },
+      {
+        content: [{ type: "text", text: JSON.stringify({ nested: { cookie: "secret" } }) }],
+        isError: false
+      }
+    ]) {
+      const safe = sanitizeRemoteToolResult(result, token);
+      expect(safe.isError).toBe(true);
+      expect(JSON.stringify(safe)).not.toContain(token);
+      expect(JSON.stringify(safe)).not.toContain("Bearer other");
+    }
+  });
+
+  it("checks the exact active access token in structured-content keys", () => {
+    const token = "active-token-value";
+    const safe = sanitizeRemoteToolResult(
+      {
+        content: [{ type: "text", text: "{}" }],
+        structuredContent: { [token]: "leaked through a key" },
+        isError: false
+      },
+      token
+    );
+    expect(safe.isError).toBe(true);
+    expect(JSON.stringify(safe)).not.toContain(token);
+  });
+
+  it("preserves legitimate code and secret language plus standard error codes", () => {
+    const legitimate = {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            description: "secret recipe with a discount code",
+            storeCode: "S001",
+            barcode: "6900000000000",
+            secretMenu: true,
+            error: { code: "MCP_NOT_FOUND", message: "not visible" }
+          })
+        }
+      ],
+      structuredContent: {
+        description: "secret recipe",
+        storeCode: "S001",
+        barcode: "6900000000000",
+        secretMenu: true
+      },
+      isError: true
+    };
+    expect(sanitizeRemoteToolResult(legitimate, "active-token-value")).toEqual(legitimate);
+  });
+
+  it("maps remote MCP transport states without triggering the wrong recovery", () => {
+    expect(mapMcpError({ code: 401 }).code).toBe("AUTHENTICATION_REQUIRED");
+    expect(mapMcpError(new Error("HTTP 403 Forbidden")).code).toBe("FORBIDDEN");
+    expect(mapMcpError(new Error("request timed out")).code).toBe("SERVICE_UNAVAILABLE");
+  });
 });
 
 function fakeAuth(
@@ -60,9 +127,16 @@ function fakeAuth(
     login: async () => {
       if (options.loginError) throw options.loginError;
     },
-    logout: async () => undefined,
+    logout: async () => ({
+      remoteRevocationConfirmed: true,
+      localCredentialRemoved: true
+    }),
     status: async () => ({ authenticated: options.authenticated ?? false }),
-    accessToken: async () => "access-secret"
+    accessToken: async () => "access-secret",
+    invalidate: async () => undefined,
+    selfCheck: async () => {
+      throw new Error("not used");
+    }
   };
 }
 

@@ -854,3 +854,17 @@
 - Implemented the independent `enterprise-hub-mcp-launcher@0.1.0` package: HTTPS-only config, OAuth Authorization Code + PKCE loopback login, Keychain-backed rotating durable sessions, typed safe failures, stdio tools, tsup packaging, and release workflow.
 - Verification: focused launcher suite (15 tests), package build, tarball allowlist, and clean-directory install/CLI `--version` passed. `package-lock.json` was restored before commit.
 - Known limitation: full repository typecheck requires generated Prisma client and was not used as launcher evidence.
+
+## 2026-07-24 - codex/phase4-launcher-package review fixes
+
+- Closed the independent review findings: fail-closed remote result credential scanning; committed clean-install lockfile; ownership/inode-safe cross-process locking with dead-owner recovery; `oauth4webapi` authorization-response validation; typed OAuth/MCP 401, 403, timeout, and network handling; durable invalidation; metadata enforcement on ordinary use; expiry preservation; validated revocation plus always-attempted local logout cleanup; machine-readable CLI diagnostics; declaration-free bundled artifact; exact npm release tooling and registry-integrity comparison; and removal of the legacy URL alias.
+- Added focused unit coverage plus an isolated artifact suite for pack allowlist, known-secret/legacy scan, CycloneDX SBOM, empty-directory install, CLI version, and installed stdio initialize/list-tools.
+- Verification: clean `npm ci`; Prisma generation; full typecheck; launcher/workspace unit tests (27 passed); artifact tests (4 passed); lint; format; and diff checks passed. The broad parallel test run passed 342 tests and exposed only the pre-existing real-Maijia XLSX fixture's 5-second timeout under concurrent load; that focused 49-test ingestion file passed independently.
+
+## 2026-07-24 - codex/phase4-launcher-package second review fixes
+
+- Tightened remote-result safety to scan the active access token in keys and values while allowing ordinary language and business fields such as secret recipes, discount codes, `storeCode`, `barcode`, `secretMenu`, and standard `error.code`; only exact credential field names, credential-shaped values, and the active token fail closed.
+- Restored bundled public declarations. The tarball contains `dist/index.d.ts`, and the artifact test proves it has no unpublished Enterprise Hub workspace imports.
+- Reworked lock acquisition to atomically publish a fully written owner record through a hard link, preserve PID/UUID/inode ownership, and reclaim bounded empty/malformed crash orphans through an inode-checked claim.
+- Added macOS and Windows native acceptance before publish. Each runner installs the packed artifact and uses its installed `@napi-rs/keyring` dependency for randomized write/read/delete with safe `finally` cleanup; the Ubuntu publish job depends on both and alone receives `id-token: write`.
+- Verification: clean `npm ci`; Prisma generation; 31 focused launcher/workspace tests; 4 artifact tests; typecheck; lint; format; diff check; tarball allowlist; and a real local macOS Keychain randomized write/read/delete all passed.
