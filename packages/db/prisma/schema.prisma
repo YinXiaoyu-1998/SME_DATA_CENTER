@@ -95,11 +95,45 @@ enum SkillEntryStatus {
   disabled
 }
 
+enum LoginIdentityProvider {
+  local_password
+}
+
+enum PasswordSetupPurpose {
+  initial_setup
+  password_reset
+}
+
+enum OAuthTransactionStatus {
+  pending
+  authenticated
+  completed
+  expired
+}
+
+enum AuthSessionStatus {
+  active
+  revoked
+  expired
+}
+
+enum DurableCredentialStatus {
+  active
+  consumed
+  revoked
+}
+
+enum AuthSecurityOutcome {
+  succeeded
+  failed
+  denied
+}
+
 model Organization {
-  id              String              @id @db.VarChar(64)
-  name            String              @db.VarChar(255)
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  id              String                   @id @db.VarChar(64)
+  name            String                   @db.VarChar(255)
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
   employees       Employee[]
   labels          Label[]
   documents       Document[]
@@ -111,25 +145,33 @@ model Organization {
   businessRows    BusinessRow[]
   auditLogs       AuditLog[]
   skillEntries    SkillEntry[]
-  accessTokens    AccessToken[]
+  loginIdentities LoginIdentity[]
+  authSessions    AuthSession[]
+  oauthCodes      OAuthAuthorizationCode[]
+  oauthTokens     OAuthAccessToken[]
+  authEvents      AuthSecurityEvent[]
 
   @@map("organizations")
 }
 
 model Employee {
-  id             String          @id @default(cuid()) @db.VarChar(32)
-  orgId          String          @map("org_id") @db.VarChar(64)
-  email          String          @unique @db.VarChar(320)
-  displayName    String          @map("display_name") @db.VarChar(255)
-  role           EmployeeRole    @default(employee)
-  disabled       Boolean         @default(false)
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  organization   Organization    @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  employeeLabels EmployeeLabel[]
-  uploadedDocs   Document[]      @relation("DocumentUploader")
-  auditLogs      AuditLog[]      @relation("AuditActor")
-  accessTokens   AccessToken[]
+  id              String                   @id @default(cuid()) @db.VarChar(32)
+  orgId           String                   @map("org_id") @db.VarChar(64)
+  email           String                   @unique @db.VarChar(320)
+  displayName     String                   @map("display_name") @db.VarChar(255)
+  role            EmployeeRole             @default(employee)
+  disabled        Boolean                  @default(false)
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+  organization    Organization             @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  employeeLabels  EmployeeLabel[]
+  uploadedDocs    Document[]               @relation("DocumentUploader")
+  auditLogs       AuditLog[]               @relation("AuditActor")
+  loginIdentities LoginIdentity[]
+  authSessions    AuthSession[]
+  oauthCodes      OAuthAuthorizationCode[]
+  oauthTokens     OAuthAccessToken[]
+  authEvents      AuthSecurityEvent[]
 
   @@index([orgId])
   @@map("employees")
@@ -437,19 +479,196 @@ model SkillEntry {
   @@map("skill_entries")
 }
 
-model AccessToken {
-  id           String       @id @default(cuid()) @db.VarChar(32)
-  orgId        String       @map("org_id") @db.VarChar(64)
-  employeeId   String       @map("employee_id") @db.VarChar(32)
-  name         String       @db.VarChar(255)
-  tokenHash    String       @unique @map("token_hash") @db.VarChar(255)
-  expiresAt    DateTime?    @map("expires_at")
-  revokedAt    DateTime?    @map("revoked_at")
-  lastUsedAt   DateTime?    @map("last_used_at")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+model LoginIdentity {
+  id                 String                          @id @default(cuid()) @db.VarChar(32)
+  orgId              String                          @map("org_id") @db.VarChar(64)
+  employeeId         String                          @map("employee_id") @db.VarChar(32)
+  provider           LoginIdentityProvider           @default(local_password)
+  /// Login email is application-normalized and stored with the exact utf8mb4_bin migration collation.
+  normalizedEmail    String                          @unique @map("normalized_email") @db.VarChar(320)
+  passwordHash       String?                         @map("password_hash") @db.Text
+  disabled           Boolean                         @default(false)
+  failedAttemptCount Int                             @default(0) @map("failed_attempt_count")
+  cooldownLevel      Int                             @default(0) @map("cooldown_level")
+  cooldownUntil      DateTime?                       @map("cooldown_until")
+  createdAt          DateTime                        @default(now()) @map("created_at")
+  updatedAt          DateTime                        @updatedAt @map("updated_at")
+  organization       Organization                    @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  employee           Employee                        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  setupGrants        PasswordSetupGrant[]
+  setupSessions      PasswordSetupSession[]
+  authorizationTxns  OAuthAuthorizationTransaction[]
+  authorizationCodes OAuthAuthorizationCode[]
+  authSessions       AuthSession[]
+  accessTokens       OAuthAccessToken[]
+  securityEvents     AuthSecurityEvent[]
 
   @@index([orgId, employeeId])
-  @@map("access_tokens")
+  @@index([employeeId, provider, disabled])
+  @@map("login_identities")
+}
+
+model PasswordSetupGrant {
+  id            String                 @id @default(cuid()) @db.VarChar(32)
+  identityId    String                 @map("identity_id") @db.VarChar(32)
+  purpose       PasswordSetupPurpose
+  tokenHash     String                 @unique @map("token_hash") @db.Char(64)
+  expiresAt     DateTime               @map("expires_at")
+  usedAt        DateTime?              @map("used_at")
+  revokedAt     DateTime?              @map("revoked_at")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  identity      LoginIdentity          @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  setupSessions PasswordSetupSession[]
+
+  @@index([identityId, purpose, expiresAt])
+  @@map("password_setup_grants")
+}
+
+model PasswordSetupSession {
+  id          String             @id @default(cuid()) @db.VarChar(32)
+  identityId  String             @map("identity_id") @db.VarChar(32)
+  grantId     String             @map("grant_id") @db.VarChar(32)
+  sessionHash String             @unique @map("session_hash") @db.Char(64)
+  expiresAt   DateTime           @map("expires_at")
+  consumedAt  DateTime?          @map("consumed_at")
+  revokedAt   DateTime?          @map("revoked_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  identity    LoginIdentity      @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  grant       PasswordSetupGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([identityId, expiresAt])
+  @@index([grantId])
+  @@map("password_setup_sessions")
+}
+
+model OAuthAuthorizationTransaction {
+  id                 String                   @id @default(cuid()) @db.VarChar(32)
+  identityId         String?                  @map("identity_id") @db.VarChar(32)
+  transactionHash    String                   @unique @map("transaction_hash") @db.Char(64)
+  clientId           String                   @map("client_id") @db.VarChar(128)
+  redirectUri        String                   @map("redirect_uri") @db.VarChar(2048)
+  state              String                   @db.VarChar(512)
+  pkceChallenge      String                   @map("pkce_challenge") @db.VarChar(128)
+  status             OAuthTransactionStatus   @default(pending)
+  expiresAt          DateTime                 @map("expires_at")
+  completedAt        DateTime?                @map("completed_at")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  identity           LoginIdentity?           @relation(fields: [identityId], references: [id], onDelete: SetNull)
+  authorizationCodes OAuthAuthorizationCode[]
+
+  @@index([identityId, status])
+  @@index([expiresAt])
+  @@map("oauth_authorization_transactions")
+}
+
+model OAuthAuthorizationCode {
+  id            String                        @id @default(cuid()) @db.VarChar(32)
+  transactionId String                        @map("transaction_id") @db.VarChar(32)
+  identityId    String                        @map("identity_id") @db.VarChar(32)
+  employeeId    String                        @map("employee_id") @db.VarChar(32)
+  orgId         String                        @map("org_id") @db.VarChar(64)
+  codeHash      String                        @unique @map("code_hash") @db.Char(64)
+  clientId      String                        @map("client_id") @db.VarChar(128)
+  redirectUri   String                        @map("redirect_uri") @db.VarChar(2048)
+  pkceChallenge String                        @map("pkce_challenge") @db.VarChar(128)
+  expiresAt     DateTime                      @map("expires_at")
+  redeemedAt    DateTime?                     @map("redeemed_at")
+  createdAt     DateTime                      @default(now()) @map("created_at")
+  transaction   OAuthAuthorizationTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  identity      LoginIdentity                 @relation(fields: [identityId], references: [id], onDelete: Restrict)
+  employee      Employee                      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  organization  Organization                  @relation(fields: [orgId], references: [id], onDelete: Restrict)
+
+  @@index([transactionId])
+  @@index([identityId, expiresAt])
+  @@index([orgId, employeeId])
+  @@map("oauth_authorization_codes")
+}
+
+model AuthSession {
+  id                 String              @id @default(cuid()) @db.VarChar(32)
+  identityId         String              @map("identity_id") @db.VarChar(32)
+  employeeId         String              @map("employee_id") @db.VarChar(32)
+  orgId              String              @map("org_id") @db.VarChar(64)
+  status             AuthSessionStatus   @default(active)
+  absoluteExpiresAt  DateTime            @map("absolute_expires_at")
+  revokedAt          DateTime?           @map("revoked_at")
+  revocationReason   String?             @map("revocation_reason") @db.VarChar(128)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  identity           LoginIdentity       @relation(fields: [identityId], references: [id], onDelete: Restrict)
+  employee           Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  organization       Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  durableCredentials DurableCredential[]
+  accessTokens       OAuthAccessToken[]
+  securityEvents     AuthSecurityEvent[]
+
+  @@index([identityId, status])
+  @@index([orgId, employeeId, status])
+  @@index([absoluteExpiresAt])
+  @@map("auth_sessions")
+}
+
+model DurableCredential {
+  id             String                  @id @default(cuid()) @db.VarChar(32)
+  sessionId      String                  @map("session_id") @db.VarChar(32)
+  credentialHash String                  @unique @map("credential_hash") @db.Char(64)
+  generation     Int
+  status         DurableCredentialStatus @default(active)
+  consumedAt     DateTime?               @map("consumed_at")
+  revokedAt      DateTime?               @map("revoked_at")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  session        AuthSession             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, generation])
+  @@index([sessionId, status])
+  @@map("durable_credentials")
+}
+
+model OAuthAccessToken {
+  id           String        @id @default(cuid()) @db.VarChar(32)
+  sessionId    String        @map("session_id") @db.VarChar(32)
+  identityId   String        @map("identity_id") @db.VarChar(32)
+  employeeId   String        @map("employee_id") @db.VarChar(32)
+  orgId        String        @map("org_id") @db.VarChar(64)
+  tokenHash    String        @unique @map("token_hash") @db.Char(64)
+  expiresAt    DateTime      @map("expires_at")
+  revokedAt    DateTime?     @map("revoked_at")
+  lastUsedAt   DateTime?     @map("last_used_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  session      AuthSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  identity     LoginIdentity @relation(fields: [identityId], references: [id], onDelete: Restrict)
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, expiresAt])
+  @@index([identityId, expiresAt])
+  @@index([orgId, employeeId])
+  @@map("oauth_access_tokens")
+}
+
+model AuthSecurityEvent {
+  id              String              @id @default(cuid()) @db.VarChar(32)
+  eventType       String              @map("event_type") @db.VarChar(128)
+  outcome         AuthSecurityOutcome
+  reason          String?             @db.VarChar(255)
+  requestId       String?             @map("request_id") @db.VarChar(128)
+  sourceIp        String?             @map("source_ip") @db.VarChar(128)
+  launcherVersion String?             @map("launcher_version") @db.VarChar(64)
+  orgId           String?             @map("org_id") @db.VarChar(64)
+  identityId      String?             @map("identity_id") @db.VarChar(32)
+  employeeId      String?             @map("employee_id") @db.VarChar(32)
+  sessionId       String?             @map("session_id") @db.VarChar(32)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  organization    Organization?       @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  identity        LoginIdentity?      @relation(fields: [identityId], references: [id], onDelete: SetNull)
+  employee        Employee?           @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  session         AuthSession?        @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([orgId, createdAt])
+  @@index([identityId, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("auth_security_events")
 }

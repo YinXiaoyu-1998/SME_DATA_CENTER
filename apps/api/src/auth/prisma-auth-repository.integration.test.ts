@@ -1,0 +1,585 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { PrismaClient } from "@prisma/client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AuthCore } from "./auth-core.js";
+import { createPrismaAuthCoreRepository } from "./prisma-auth-repository.js";
+import { createPrismaAuthOperatorRepository } from "./prisma-auth-operator-repository.js";
+
+const runIntegration = process.env["RUN_AUTH_INTEGRATION"] === "1";
+const describeIntegration = runIntegration ? describe : describe.skip;
+
+describeIntegration("Prisma auth core repository", () => {
+  const prisma = new PrismaClient({
+    adapter: new PrismaMariaDb(process.env["DATABASE_URL"] ?? "")
+  });
+  const repository = createPrismaAuthCoreRepository(prisma);
+  const core = new AuthCore(repository);
+  const operatorRepository = createPrismaAuthOperatorRepository(prisma);
+
+  beforeAll(async () => {
+    await prisma.organization.create({
+      data: { id: "auth-test-org", name: "Auth Test Organization" }
+    });
+    await prisma.employee.create({
+      data: {
+        id: "auth_test_employee",
+        orgId: "auth-test-org",
+        email: "person@example.com",
+        displayName: "Test Person",
+        role: "employee"
+      }
+    });
+    await prisma.label.create({
+      data: {
+        id: "auth_test_label",
+        orgId: "auth-test-org",
+        key: "person:auth_test_employee",
+        name: "Test Person",
+        type: "personal",
+        employeeLabels: {
+          create: { employeeId: "auth_test_employee" }
+        }
+      }
+    });
+    await prisma.loginIdentity.create({
+      data: {
+        id: "auth_test_identity",
+        orgId: "auth-test-org",
+        employeeId: "auth_test_employee",
+        normalizedEmail: "person@example.com"
+      }
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.authSecurityEvent.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.oAuthAccessToken.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.durableCredential.deleteMany({
+      where: { session: { orgId: "auth-test-org" } }
+    });
+    await prisma.authSession.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.oAuthAuthorizationCode.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.oAuthAuthorizationTransaction.deleteMany({
+      where: {
+        OR: [
+          { identity: { orgId: "auth-test-org" } },
+          {
+            transactionHash: {
+              in: ["5".repeat(64), "de".repeat(32)]
+            }
+          }
+        ]
+      }
+    });
+    await prisma.passwordSetupSession.deleteMany({
+      where: { identity: { orgId: "auth-test-org" } }
+    });
+    await prisma.passwordSetupGrant.deleteMany({
+      where: { identity: { orgId: "auth-test-org" } }
+    });
+    await prisma.loginIdentity.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.employeeLabel.deleteMany({
+      where: { employee: { orgId: "auth-test-org" } }
+    });
+    await prisma.label.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.employee.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.organization.deleteMany({ where: { id: "auth-test-org" } });
+    await prisma.$disconnect();
+  });
+
+  it("atomically replaces, exchanges, and consumes setup credentials", async () => {
+    const now = new Date("2026-07-24T12:00:00.000Z");
+    const expiresAt = new Date(now.getTime() + 86_400_000);
+    await repository.replacePasswordSetupGrant({
+      identityId: "auth_test_identity",
+      purpose: "password_reset",
+      tokenHash: "1".repeat(64),
+      expiresAt,
+      now
+    });
+    await repository.replacePasswordSetupGrant({
+      identityId: "auth_test_identity",
+      purpose: "password_reset",
+      tokenHash: "2".repeat(64),
+      expiresAt,
+      now
+    });
+
+    const oldGrant = await prisma.passwordSetupGrant.findUnique({
+      where: { tokenHash: "1".repeat(64) }
+    });
+    expect(oldGrant?.revokedAt).toEqual(now);
+
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        repository.replacePasswordSetupGrant({
+          identityId: "auth_test_identity",
+          purpose: "password_reset",
+          tokenHash: (40 + index).toString(16).repeat(32),
+          expiresAt,
+          now
+        })
+      )
+    );
+    const activeGrants = await prisma.passwordSetupGrant.findMany({
+      where: {
+        identityId: "auth_test_identity",
+        usedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: now }
+      }
+    });
+    expect(activeGrants).toHaveLength(1);
+
+    const exchanges = await Promise.all([
+      repository.exchangePasswordSetupGrant({
+        grantTokenHash: activeGrants[0]!.tokenHash,
+        sessionHash: "3".repeat(64),
+        expiresAt: new Date(now.getTime() + 600_000),
+        now
+      }),
+      repository.exchangePasswordSetupGrant({
+        grantTokenHash: activeGrants[0]!.tokenHash,
+        sessionHash: "4".repeat(64),
+        expiresAt: new Date(now.getTime() + 600_000),
+        now
+      })
+    ]);
+    expect(exchanges.filter(Boolean)).toHaveLength(1);
+
+    const activeSession = await prisma.passwordSetupSession.findFirstOrThrow();
+    const durableSessionId = await repository.createSessionBundle({
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org",
+      credentialHash: "31".repeat(32),
+      accessTokenHash: "32".repeat(32),
+      accessTokenExpiresAt: new Date(now.getTime() + 600_000),
+      absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
+      now
+    });
+    const consumptions = await Promise.all([
+      repository.consumePasswordSetupSession({
+        sessionHash: activeSession.sessionHash,
+        passwordHash: "argon2id-hash",
+        now
+      }),
+      repository.consumePasswordSetupSession({
+        sessionHash: activeSession.sessionHash,
+        passwordHash: "argon2id-hash",
+        now
+      })
+    ]);
+    expect(consumptions.sort()).toEqual([false, true]);
+    expect(
+      (
+        await prisma.loginIdentity.findUniqueOrThrow({
+          where: { id: "auth_test_identity" }
+        })
+      ).passwordHash
+    ).toBe("argon2id-hash");
+    expect(
+      (await prisma.authSession.findUniqueOrThrow({ where: { id: durableSessionId } })).status
+    ).toBe("revoked");
+  });
+
+  it("serializes concurrent login failures and does not extend an active cooldown", async () => {
+    const now = new Date("2026-07-24T12:30:00.000Z");
+    await repository.resetLoginFailures("auth_test_identity");
+
+    await Promise.all(
+      Array.from({ length: 5 }, () => repository.recordLoginFailure("auth_test_identity", now))
+    );
+
+    const afterFifth = await prisma.loginIdentity.findUniqueOrThrow({
+      where: { id: "auth_test_identity" }
+    });
+    expect(afterFifth.failedAttemptCount).toBe(5);
+    expect(afterFifth.cooldownLevel).toBe(1);
+    expect(afterFifth.cooldownUntil).toEqual(new Date(now.getTime() + 5 * 60_000));
+
+    await repository.recordLoginFailure("auth_test_identity", new Date(now.getTime() + 60_000));
+    const duringCooldown = await prisma.loginIdentity.findUniqueOrThrow({
+      where: { id: "auth_test_identity" }
+    });
+    expect(duringCooldown.failedAttemptCount).toBe(5);
+    expect(duringCooldown.cooldownUntil).toEqual(afterFifth.cooldownUntil);
+    await repository.resetLoginFailures("auth_test_identity");
+  });
+
+  it("derives PKCE S256 from the raw verifier, rejects the wrong verifier, and redeems once", async () => {
+    const verifier = "real-raw-verifier-used-only-at-the-auth-core-boundary";
+    const transaction = await core.issueAuthorizationTransaction({
+      clientId: "enterprise-hub-desktop-launcher",
+      redirectUri: "http://127.0.0.1:32123/callback",
+      state: "original-state",
+      pkceChallenge: createHash("sha256").update(verifier).digest("base64url")
+    });
+    const completed = await core.completeAuthorizationTransaction(transaction.secret, {
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org"
+    });
+    expect(completed).toMatchObject({
+      codeId: expect.any(String),
+      redirectUri: "http://127.0.0.1:32123/callback",
+      state: "original-state"
+    });
+
+    await expect(
+      core.redeemAuthorizationCode({
+        secret: completed!.code,
+        clientId: "enterprise-hub-desktop-launcher",
+        redirectUri: "http://127.0.0.1:32123/callback",
+        verifier: "wrong-raw-verifier"
+      })
+    ).resolves.toEqual({ status: "invalid" });
+
+    const results = await Promise.all([
+      core.redeemAuthorizationCode({
+        secret: completed!.code,
+        clientId: "enterprise-hub-desktop-launcher",
+        redirectUri: "http://127.0.0.1:32123/callback",
+        verifier
+      }),
+      core.redeemAuthorizationCode({
+        secret: completed!.code,
+        clientId: "enterprise-hub-desktop-launcher",
+        redirectUri: "http://127.0.0.1:32123/callback",
+        verifier
+      })
+    ]);
+    expect(results.filter((result) => result.status === "redeemed")).toHaveLength(1);
+  });
+
+  it("revokes the entire family when concurrent rotation replays a consumed generation", async () => {
+    const now = new Date("2026-07-24T14:00:00.000Z");
+    const sessionId = await repository.createSessionBundle({
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org",
+      credentialHash: "7".repeat(64),
+      accessTokenHash: "70".repeat(32),
+      accessTokenExpiresAt: new Date(now.getTime() + 600_000),
+      absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
+      now
+    });
+
+    const results = await Promise.all([
+      repository.rotateDurableCredential({
+        presentedCredentialHash: "7".repeat(64),
+        replacementCredentialHash: "8".repeat(64),
+        accessTokenHash: "9".repeat(64),
+        accessTokenExpiresAt: new Date(now.getTime() + 600_000),
+        now
+      }),
+      repository.rotateDurableCredential({
+        presentedCredentialHash: "7".repeat(64),
+        replacementCredentialHash: "a".repeat(64),
+        accessTokenHash: "b".repeat(64),
+        accessTokenExpiresAt: new Date(now.getTime() + 600_000),
+        now
+      })
+    ]);
+
+    expect(results.some((result) => result.status === "replayed")).toBe(true);
+    expect((await prisma.authSession.findUniqueOrThrow({ where: { id: sessionId } })).status).toBe(
+      "revoked"
+    );
+    expect(
+      await prisma.durableCredential.count({
+        where: { sessionId, status: "active" }
+      })
+    ).toBe(0);
+  });
+
+  it("rechecks identity and employee disabled state on access-token authentication", async () => {
+    const now = new Date("2026-07-24T15:00:00.000Z");
+    await repository.createSessionBundle({
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org",
+      credentialHash: "c".repeat(64),
+      accessTokenHash: "d".repeat(64),
+      accessTokenExpiresAt: new Date(now.getTime() + 600_000),
+      absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
+      now
+    });
+
+    expect(await repository.authenticateAccessToken("d".repeat(64), now)).toMatchObject({
+      identityDisabled: false,
+      employeeDisabled: false,
+      labels: ["person:auth_test_employee"]
+    });
+    await prisma.employee.update({
+      where: { id: "auth_test_employee" },
+      data: { disabled: true }
+    });
+    expect(await repository.authenticateAccessToken("d".repeat(64), now)).toMatchObject({
+      employeeDisabled: true
+    });
+
+    await repository.createAuthorizationTransaction({
+      transactionHash: "de".repeat(32),
+      clientId: "enterprise-hub-desktop-launcher",
+      redirectUri: "http://127.0.0.1:32124/callback",
+      state: "disabled-state",
+      pkceChallenge: "disabled-challenge",
+      expiresAt: new Date(now.getTime() + 600_000),
+      now
+    });
+    await expect(
+      repository.consumeAuthorizationTransactionAndCreateCode({
+        transactionHash: "de".repeat(32),
+        identityId: "auth_test_identity",
+        employeeId: "auth_test_employee",
+        orgId: "auth-test-org",
+        codeHash: "df".repeat(32),
+        codeExpiresAt: new Date(now.getTime() + 60_000),
+        now
+      })
+    ).resolves.toBeNull();
+    await prisma.employee.update({
+      where: { id: "auth_test_employee" },
+      data: { disabled: false }
+    });
+  });
+
+  it("atomically onboards employee, personal label, identity, link grant, and optional labels", async () => {
+    const now = new Date("2026-07-24T16:00:00.000Z");
+    const onboarded = await operatorRepository.onboard({
+      orgId: "auth-test-org",
+      normalizedEmail: "onboarded@example.com",
+      displayName: "Onboarded Person",
+      role: "manager",
+      labelKeys: ["person:auth_test_employee"],
+      grantTokenHash: "e".repeat(64),
+      grantExpiresAt: new Date(now.getTime() + 86_400_000),
+      now
+    });
+
+    expect(
+      await prisma.label.findUnique({
+        where: {
+          orgId_key: {
+            orgId: "auth-test-org",
+            key: `person:${onboarded.employeeId}`
+          }
+        }
+      })
+    ).toBeTruthy();
+    expect(
+      await prisma.loginIdentity.findUnique({
+        where: { normalizedEmail: "onboarded@example.com" }
+      })
+    ).toMatchObject({ employeeId: onboarded.employeeId, id: onboarded.identityId });
+    expect(
+      await prisma.passwordSetupGrant.findUnique({ where: { tokenHash: "e".repeat(64) } })
+    ).toMatchObject({ identityId: onboarded.identityId, purpose: "initial_setup" });
+
+    await operatorRepository.resetPassword({
+      employeeId: onboarded.employeeId,
+      grantTokenHash: "0".repeat(64),
+      grantExpiresAt: new Date(now.getTime() + 86_400_000),
+      now
+    });
+    expect(
+      await prisma.passwordSetupGrant.findUnique({ where: { tokenHash: "e".repeat(64) } })
+    ).toMatchObject({ revokedAt: now });
+    expect(
+      await prisma.passwordSetupGrant.findUnique({ where: { tokenHash: "0".repeat(64) } })
+    ).toMatchObject({ purpose: "password_reset" });
+
+    await Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        operatorRepository.resetPassword({
+          employeeId: onboarded.employeeId,
+          grantTokenHash: `a${index}`.padEnd(64, "a"),
+          grantExpiresAt: new Date(now.getTime() + 86_400_000),
+          now
+        })
+      )
+    );
+    expect(
+      await prisma.passwordSetupGrant.count({
+        where: {
+          identityId: onboarded.identityId,
+          usedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: now }
+        }
+      })
+    ).toBe(1);
+    expect(
+      (
+        await prisma.authSecurityEvent.findMany({
+          where: { identityId: onboarded.identityId },
+          select: { eventType: true }
+        })
+      ).map(({ eventType }) => eventType)
+    ).toEqual(expect.arrayContaining(["account_onboarded", "setup_grant_issued"]));
+
+    await expect(
+      operatorRepository.onboard({
+        orgId: "auth-test-org",
+        normalizedEmail: "rolled-back@example.com",
+        displayName: "Rolled Back",
+        role: "employee",
+        labelKeys: ["missing-label"],
+        grantTokenHash: "f".repeat(64),
+        grantExpiresAt: new Date(now.getTime() + 86_400_000),
+        now
+      })
+    ).rejects.toThrow("do not exist");
+    expect(
+      await prisma.employee.findUnique({ where: { email: "rolled-back@example.com" } })
+    ).toBeNull();
+  });
+
+  it("writes credential-free lifecycle events and prunes only records older than 90 days", async () => {
+    const now = new Date("2026-07-24T17:00:00.000Z");
+    const sessionId = await repository.createSessionBundle({
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org",
+      credentialHash: "1a".repeat(32),
+      accessTokenHash: "1b".repeat(32),
+      accessTokenExpiresAt: new Date(now.getTime() + 600_000),
+      absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
+      now
+    });
+    await repository.revokeSessionByDurableCredential("1a".repeat(32), "logout", now);
+
+    const eventTypes = (
+      await prisma.authSecurityEvent.findMany({
+        where: { orgId: "auth-test-org" },
+        select: { eventType: true }
+      })
+    ).map(({ eventType }) => eventType);
+    expect(eventTypes).toEqual(
+      expect.arrayContaining([
+        "setup_grant_issued",
+        "setup_grant_consumed",
+        "password_setup_completed",
+        "session_created",
+        "session_revoked",
+        "credential_replay_detected",
+        "logout"
+      ])
+    );
+    expect(
+      await prisma.authSecurityEvent.findFirst({
+        where: { sessionId },
+        select: { eventType: true }
+      })
+    ).toBeTruthy();
+
+    await repository.writeSecurityEvent({
+      type: "security_policy_rejected",
+      outcome: "denied",
+      reason: "old-test-event",
+      createdAt: new Date("2026-01-01T00:00:00.000Z")
+    });
+    expect(await repository.pruneSecurityEvents(new Date("2026-04-25T17:00:00.000Z"))).toBe(1);
+  });
+
+  it("stores normalized emails with exact binary semantics", async () => {
+    await prisma.employee.createMany({
+      data: [
+        {
+          id: "auth_email_ascii",
+          orgId: "auth-test-org",
+          email: "auth-email-ascii@example.com",
+          displayName: "ASCII Email",
+          role: "employee"
+        },
+        {
+          id: "auth_email_accent",
+          orgId: "auth-test-org",
+          email: "auth-email-accent@example.com",
+          displayName: "Accent Email",
+          role: "employee"
+        }
+      ]
+    });
+
+    await prisma.loginIdentity.createMany({
+      data: [
+        {
+          id: "auth_identity_ascii",
+          orgId: "auth-test-org",
+          employeeId: "auth_email_ascii",
+          normalizedEmail: "jose@example.com"
+        },
+        {
+          id: "auth_identity_accent",
+          orgId: "auth-test-org",
+          employeeId: "auth_email_accent",
+          normalizedEmail: "josé@example.com"
+        }
+      ]
+    });
+
+    expect(
+      await prisma.loginIdentity.count({
+        where: { id: { in: ["auth_identity_ascii", "auth_identity_accent"] } }
+      })
+    ).toBe(2);
+  });
+
+  it("stops the migration before dropping a nonempty legacy access-token table", async () => {
+    const databaseName = `auth_guard_${process.pid}`;
+    const sourceUrl = new URL(process.env["DATABASE_URL"] ?? "");
+    const guardUrl = new URL(sourceUrl);
+    guardUrl.pathname = `/${databaseName}`;
+    await prisma.$executeRawUnsafe(`DROP DATABASE IF EXISTS \`${databaseName}\``);
+    await prisma.$executeRawUnsafe(`CREATE DATABASE \`${databaseName}\``);
+    const guardPrisma = new PrismaClient({
+      adapter: new PrismaMariaDb(guardUrl.toString())
+    });
+
+    try {
+      await guardPrisma.$executeRawUnsafe(
+        "CREATE TABLE `access_tokens` (`id` VARCHAR(32) NOT NULL PRIMARY KEY)"
+      );
+      await guardPrisma.$executeRawUnsafe(
+        "INSERT INTO `access_tokens` (`id`) VALUES ('must-survive-guard')"
+      );
+      const migration = await readFile(
+        new URL(
+          "../../../../packages/db/prisma/migrations/20260724190000_official_auth_core/migration.sql",
+          import.meta.url
+        ),
+        "utf8"
+      );
+      const guardSql = migration.slice(
+        0,
+        migration.indexOf("ALTER TABLE `access_tokens` DROP FOREIGN KEY")
+      );
+      let guardError: unknown;
+      for (const statement of guardSql
+        .split(";")
+        .map((part) => part.trim())
+        .filter(Boolean)) {
+        try {
+          await guardPrisma.$executeRawUnsafe(statement);
+        } catch (error) {
+          guardError = error;
+          break;
+        }
+      }
+
+      expect(String(guardError)).toContain(
+        "legacy_access_tokens_must_be_empty_before_official_auth_cutover"
+      );
+      expect(
+        await guardPrisma.$queryRawUnsafe<Array<{ id: string }>>("SELECT `id` FROM `access_tokens`")
+      ).toEqual([{ id: "must-survive-guard" }]);
+    } finally {
+      await guardPrisma.$disconnect();
+      await prisma.$executeRawUnsafe(`DROP DATABASE IF EXISTS \`${databaseName}\``);
+    }
+  });
+});
