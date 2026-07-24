@@ -20,6 +20,7 @@ services:
       NODE_ENV: production
       HOST: 127.0.0.1
       PORT: "3000"
+      ENTERPRISE_HUB_PUBLIC_ORIGIN: ${ENTERPRISE_HUB_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}
     depends_on:
       - qdrant
 
