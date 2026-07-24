@@ -37,8 +37,9 @@ employee does not need to run these commands personally. Work only for the curre
 only on the invoking agent's configuration.
 
 1. Confirm the host is macOS or Windows and that the user authorizes this current-user install.
-   If Node.js/npm is absent, install a current supported Node.js/npm for the current user only;
-   do not use administrator privileges or alter unrelated tools.
+   Run `node --version` and `npm --version`. Require Node.js major version **22 or newer** and a
+   working npm. If Node.js is missing or older than 22, install or upgrade Node.js/npm for the
+   current user before continuing; do not use administrator privileges or alter unrelated tools.
 2. Use the fixed platform directory:
 
    | Platform | Launcher directory                                                      |
@@ -57,9 +58,47 @@ only on the invoking agent's configuration.
    approved update, install the newly approved exact version into its own versioned directory,
    update the one launcher path in the invoking agent's MCP entry, then run the self-check.
    Updating does not delete the secure-store session or unrelated MCP servers.
-5. Run the installed launcher's documented, credential-free self-check before changing or
-   declaring an MCP configuration healthy. If it reports a typed failure, follow the focused
-   recovery below; do not inspect secure storage or repair the remote service.
+5. Run the installed launcher's credential-free self-check before changing or declaring an MCP
+   configuration healthy:
+
+   ```sh
+   ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+   ```
+
+   ```powershell
+   $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
+   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   ```
+
+   The stable self-check contract is safe machine-readable JSON with this shape:
+
+   ```json
+   {
+     "ok": true,
+     "launcherVersion": "0.1.0",
+     "serviceOrigin": "https://api.smedatacenter.xyz",
+     "platform": "<safe platform>",
+     "secureStore": {
+       "available": true,
+       "durableCredentialPresent": false
+     },
+     "server": {
+       "reachable": true,
+       "metadataCompatible": true,
+       "minimumLauncherVersion": "<safe version>",
+       "recommendedLauncherVersion": "<safe version>",
+       "recommendedUpdateAvailable": false
+     },
+     "mcp": {
+       "handshake": "ok"
+     }
+   }
+   ```
+
+   `mcp.handshake` is `ok`, `not_authenticated`, or `unavailable`. Self-check never performs
+   browser login and never returns credential contents. If it reports a typed failure, follow the
+   focused recovery below; do not inspect secure storage or repair the remote service.
 
 Use this exact stdio launch tuple after installation. `ENTERPRISE_HUB_BASE_URL` is the only
 launcher environment variable; do not add another environment value or any credential.
@@ -82,13 +121,77 @@ the local launcher owns browser login and credential storage.
 
 ### Codex
 
-Use the current Codex MCP configuration mechanism for a stdio server. Back up its existing
-configuration first. Add or replace only the `enterprise-hub` entry with the platform's command,
-the sole `serve` argument, and exactly the `ENTERPRISE_HUB_BASE_URL` value in the table above.
-Reload or restart Codex as its current configuration UI requires, then run the launcher self-check
-and confirm that the MCP tools are discovered. If the exact Codex configuration location or
-supported syntax cannot be established from installed product help/configuration, stop and report
-that narrow blocker rather than guessing or overwriting configuration.
+Use the verified Codex CLI MCP registry. On macOS, prefer `codex` from `PATH`; when it is absent,
+use the bundled `/Applications/ChatGPT.app/Contents/Resources/codex` fallback. On Windows, resolve
+`codex.exe` from `PATH`. Stop if neither verified binary exists.
+
+Before the first mutation, inspect with `codex mcp list --json` and
+`codex mcp get enterprise-hub --json`. Back up `~/.codex/config.toml` (Windows:
+`%USERPROFILE%\.codex\config.toml`) to a timestamped sibling file when it exists. If the existing
+entry already matches the exact command, `serve` argument, and sole BASE_URL environment value, do
+nothing.
+
+For macOS add/repair:
+
+```sh
+CODEX_BIN="$(command -v codex 2>/dev/null || true)"
+if [ -z "$CODEX_BIN" ] && [ -x "/Applications/ChatGPT.app/Contents/Resources/codex" ]; then
+  CODEX_BIN="/Applications/ChatGPT.app/Contents/Resources/codex"
+fi
+test -n "$CODEX_BIN"
+CODEX_CONFIG="$HOME/.codex/config.toml"
+if [ -f "$CODEX_CONFIG" ]; then
+  cp -p "$CODEX_CONFIG" "$CODEX_CONFIG.enterprise-hub.bak.$(date +%Y%m%d%H%M%S)"
+fi
+"$CODEX_BIN" mcp list --json
+"$CODEX_BIN" mcp get enterprise-hub --json
+```
+
+If `get` reports the entry absent, add it. If it is present and exact, stop without mutation. Only
+when it is present and mismatched, remove that one entry immediately before running the same add
+command:
+
+```sh
+# Mismatched entry only:
+"$CODEX_BIN" mcp remove enterprise-hub
+# Missing or just-removed entry:
+"$CODEX_BIN" mcp add \
+  --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
+  enterprise-hub -- \
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" serve
+"$CODEX_BIN" mcp get enterprise-hub --json
+```
+
+For Windows PowerShell, use the same `list`/`get`/`remove`/`add` sequence:
+
+```powershell
+$CodexBin = (Get-Command codex.exe -ErrorAction Stop).Source
+$CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
+if (Test-Path $CodexConfig) {
+  Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
+}
+$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+& $CodexBin mcp list --json
+& $CodexBin mcp get enterprise-hub --json
+```
+
+If `get` reports the entry absent, add it. If it is present and exact, stop without mutation. Only
+for a present mismatched entry, run:
+
+```powershell
+# Mismatched entry only:
+& $CodexBin mcp remove enterprise-hub
+# Missing or just-removed entry:
+& $CodexBin mcp add --env "ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz" enterprise-hub -- $LauncherBin serve
+& $CodexBin mcp get enterprise-hub --json
+```
+
+After add/repair, run the platform self-check above, restart/reload Codex, run
+`codex mcp list --json` and `codex mcp get enterprise-hub --json`, and confirm the discovered tools.
+If add fails after removal, restore the timestamped backup and report the focused failure. For
+per-agent removal, back up first, run `codex mcp remove enterprise-hub`, then verify
+`codex mcp list --json` no longer contains it and `codex mcp get enterprise-hub --json` reports it
+absent.
 
 ### OpenClaw
 
@@ -170,9 +273,25 @@ For **per-agent removal**, back up that agent's configuration and delete only it
 `enterprise-hub` MCP entry. Leave the launcher package, secure-store session, and other agent
 configurations intact.
 
-For **shared logout**, call `enterprise_hub_logout`; it revokes the remote session when reachable
-and removes the local secure-store record. If the service is unreachable, remove the local record
-and report that remote revocation was not confirmed.
+For **shared logout**, use `enterprise_hub_logout` while the MCP connection is available, or invoke
+the pinned launcher directly:
+
+```sh
+ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+```
+
+```powershell
+$env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
+& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+```
+
+The stable logout contract returns only
+`{"remoteRevocationConfirmed":<boolean>,"localCredentialRemoved":<boolean>}`. It attempts remote
+family revocation when reachable and always attempts local credential deletion;
+`localCredentialRemoved` must be `true` before reporting local logout success. It never returns
+credential contents. If the service is unreachable, report that remote revocation was not
+confirmed.
 
 For **complete uninstall**, with explicit employee authorization: perform shared logout; remove
 Enterprise Hub entries only from safely discoverable local agents; remove the current-user pinned

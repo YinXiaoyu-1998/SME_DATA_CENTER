@@ -21,11 +21,12 @@ report generator, dashboard service, or skill execution platform.
 
 The official target profile must be actionable enough for an agent to:
 
-1. Install only `enterprise-hub-mcp-launcher@0.1.0` with `npm install --prefix ... --save-exact`
-   in the approved macOS/Windows versioned directory; never install `latest` or self-update.
+1. Verify Node.js 22 or newer plus npm, then install only
+   `enterprise-hub-mcp-launcher@0.1.0` with `npm install --prefix ... --save-exact` in the approved
+   macOS/Windows versioned directory; never install `latest` or self-update.
 2. Back up and idempotently configure only the invoking agent's local **stdio** entry. Codex uses
-   its supported local configuration mechanism; OpenClaw uses `mcp add`/`set` and
-   `mcp doctor --probe`, not direct remote OAuth storage.
+   its verified `mcp list`/`get`/`add`/`remove` CLI and bundled macOS binary fallback; OpenClaw uses
+   `mcp add`/`set` and `mcp doctor --probe`, not direct remote OAuth storage.
 3. Use `enterprise_hub_auth_status`, `enterprise_hub_login`, and `enterprise_hub_logout` without
    receiving passwords, tokens, authorization codes, headers, or secure-store records.
 4. Treat browser cancellation, `authentication_required`, `service_unavailable`, `forbidden`, and
@@ -38,6 +39,9 @@ The official target profile must be actionable enough for an agent to:
    only as opaque same-query continuations.
 7. Support per-agent removal, shared logout, and complete uninstall without deleting Node.js/npm,
    Employee Accounts, service data, or unrelated MCP configuration.
+8. Invoke the exact platform launcher path with only `ENTERPRISE_HUB_BASE_URL`: `serve` for stdio,
+   `self-check` for safe machine-readable version/origin/store/compatibility/connectivity status,
+   and `logout` for safe local-deletion/remote-revocation status.
 
 ## Profile Boundaries
 
