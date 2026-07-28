@@ -459,6 +459,13 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
+Release status as of 2026-07-28: `enterprise-hub-mcp-launcher@0.1.0` is public. Its registry
+integrity matches the reviewed tarball; exact-version clean installation, CLI execution, and the
+installed production dependency audit passed. The npm Trusted Publisher is bound to
+`YinXiaoyu-1998/SME_DATA_CENTER` and `launcher-release.yml` with stage-publish-only permission.
+Because `0.1.0` required the one-time first publish, the first live OIDC staged publish will be
+verified on a later version.
+
 The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
 only `ENTERPRISE_HUB_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
 `self-check` emits only the safe fields `ok`, `launcherVersion`, `serviceOrigin`, `platform`,

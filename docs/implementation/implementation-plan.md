@@ -308,14 +308,16 @@ The deployed slice is intentionally staging-only and uses fixture documents plus
 data. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be implemented. The
 accepted official employee installation, browser login, and durable session contract is defined in
 `official-user-install-and-login.md`; implementation is complete on the integration branch but
-still requires npm publication, staging deployment, and desktop acceptance before beta use.
+still requires staging deployment and desktop acceptance before beta use. The fixed launcher
+`enterprise-hub-mcp-launcher@0.1.0` is published and its registry integrity, clean install, CLI,
+and production dependency audit have been verified.
 
 ### Remaining Phase 4 Tracks
 
-- Official user access: merge and deploy the atomic auth cutover, publish
-  `enterprise-hub-mcp-launcher@0.1.0`, merge the synchronized skill, and pass real macOS and Windows
-  Codex/OpenClaw browser-login acceptance. A real user may first use fixture or explicitly approved
-  non-sensitive data.
+- Official user access: merge and deploy the atomic auth cutover, merge the synchronized skill, and
+  pass real macOS and Windows Codex/OpenClaw browser-login acceptance. The fixed launcher
+  `enterprise-hub-mcp-launcher@0.1.0` is already public. A real user may first use fixture or
+  explicitly approved non-sensitive data.
 - Database policy: choose final RDS SSL mode. Provider CLI now verifies 7-day automated full-backup retention plus 7-day log backups and one successful full backup, but restore ownership/RPO/RTO and a recovery drill remain open.
 - Security/auth: ADR 0021 is withdrawn. The accepted identity, employee mapping, browser
   authorization, token lifecycle, password setup/reset, and operator onboarding contract is

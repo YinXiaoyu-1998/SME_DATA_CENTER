@@ -1,10 +1,10 @@
 # Enterprise Hub MCP User Flow
 
-> **Official implementation:** This is the implemented employee flow. Publication of the npm
-> package and staging/browser acceptance remain release gates; there is no development-login or JWT
-> compatibility path.
+> **Official implementation:** This is the implemented employee flow. The fixed npm package
+> `enterprise-hub-mcp-launcher@0.1.0` is published; staging/browser/desktop acceptance remain
+> release gates. There is no development-login or JWT compatibility path.
 
-Last updated: 2026-07-24
+Last updated: 2026-07-28
 
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `enterprise-hub-mcp` skill. The official remote origin
@@ -105,6 +105,6 @@ explicitly authorized lifecycle action.
 
 The code implements official opaque access tokens, rotating durable credentials, browser
 Authorization Code + PKCE, public HTTPS `/mcp`, and the pinned launcher. A beta-release claim still
-requires npm publication, staging migration/deployment, real browser login, and macOS/Windows
-desktop acceptance. The removed `/auth/dev-login`, JWT, and local email-login tools must remain
-absent.
+requires staging migration/deployment, real browser login, and macOS/Windows desktop acceptance.
+The pinned npm package is already public and independently installable. The removed
+`/auth/dev-login`, JWT, and local email-login tools must remain absent.

@@ -892,10 +892,14 @@
   allowlist/SBOM/secret/protocol tests, clean tarball production audit with zero findings, real
   macOS Keychain write/read/delete, Compose config, and Linux API/worker Docker builds passed.
   Five concurrent Argon2id verifies measured p95 327 ms and about 192 MiB additional RSS locally.
-- External gates: npm is not authenticated and `enterprise-hub-mcp-launcher` is still unpublished.
-  The atomic main PR must merge before GitHub deploys the migration/runtime cutover. Real macOS
-  browser/Codex/OpenClaw acceptance and real Windows desktop acceptance remain; the standalone skill
-  PR stays draft until package and staging validation.
+- Package release: After the owner enabled npm 2FA, `enterprise-hub-mcp-launcher@0.1.0` was
+  published publicly. Registry integrity matches the reviewed tarball; an exact-version clean
+  install and CLI invocation passed, and the installed production dependency audit has zero
+  findings. npm Trusted Publisher now binds `YinXiaoyu-1998/SME_DATA_CENTER` and
+  `launcher-release.yml` with stage-publish-only permission.
+- Remaining external gates: The atomic main PR must merge before GitHub deploys the
+  migration/runtime cutover. Real macOS browser/Codex/OpenClaw acceptance and real Windows desktop
+  acceptance remain; the standalone skill PR stays draft until staging and desktop validation.
 - Known non-launcher dependency risk: official-registry root audit reports 20 findings (1 low,
   5 moderate, 14 high; 15 in the production graph). The clean installed launcher has zero findings.
   Root dependency remediation remains a separate pre-production hardening track.

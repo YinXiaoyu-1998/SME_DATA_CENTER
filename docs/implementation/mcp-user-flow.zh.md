@@ -1,9 +1,10 @@
 # Enterprise Hub MCP 用户流程
 
-> **正式实现：** 本文描述已经实现的员工流程。npm 包发布和 staging/浏览器验收仍是发布门；
+> **正式实现：** 本文描述已经实现的员工流程。固定版本 npm 包
+> `enterprise-hub-mcp-launcher@0.1.0` 已发布；staging/浏览器/桌面验收仍是发布门。
 > 不存在 development login 或 JWT 兼容路径。
 
-最后更新：2026-07-24
+最后更新：2026-07-28
 
 本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
 `enterprise-hub-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
@@ -96,6 +97,6 @@ sequenceDiagram
 ## 当前发布边界
 
 代码已经实现正式不透明 access token、轮换 durable credential、浏览器 Authorization Code + PKCE、
-公开 HTTPS `/mcp` 和固定版本 launcher。只有 npm 发布、staging migration/deployment、真实浏览器
-登录及 macOS/Windows 桌面验收通过后，才能称为 beta 上线。已删除的 `/auth/dev-login`、JWT 和
-本地邮箱登录工具必须持续保持不存在。
+公开 HTTPS `/mcp` 和固定版本 launcher。固定版本 npm 包已经发布；只有 staging
+migration/deployment、真实浏览器登录及 macOS/Windows 桌面验收通过后，才能称为 beta 上线。
+已删除的 `/auth/dev-login`、JWT 和本地邮箱登录工具必须持续保持不存在。
