@@ -51,6 +51,7 @@ describe("published launcher artifact", () => {
     ]);
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       dependencies?: Record<string, string>;
+      bin?: Record<string, string>;
       license?: string;
       repository?: { url?: string; directory?: string };
       publishConfig?: { access?: string };
@@ -58,6 +59,7 @@ describe("published launcher artifact", () => {
     expect(manifest.dependencies).not.toHaveProperty("@enterprise-hub/mcp-contract");
     expect(manifest).toMatchObject({
       license: "MIT",
+      bin: { "enterprise-hub-mcp-launcher": "dist/index.js" },
       repository: {
         url: "git+https://github.com/YinXiaoyu-1998/SME_DATA_CENTER.git",
         directory: "apps/mcp-launcher"

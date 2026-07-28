@@ -22,7 +22,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "enterprise-hub-mcp-launcher": "./dist/index.js"
+    "enterprise-hub-mcp-launcher": "dist/index.js"
   },
   "files": [
     "dist",
