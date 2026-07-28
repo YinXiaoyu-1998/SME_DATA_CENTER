@@ -2,21 +2,14 @@ import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { config as loadDotenv } from "dotenv";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
-import { signEmployeeAccessToken } from "../apps/api/src/tokens.js";
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { PrismaClient } from "@prisma/client";
+import { AuthCore } from "../apps/api/src/auth/auth-core.js";
+import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 
 loadDotenv({ quiet: true, override: false });
 
 const DEFAULT_API_URL = "https://api.smedatacenter.xyz";
-const STAGING_ADMIN: AuthenticatedEmployee = {
-  id: "emp_admin",
-  orgId: "default-org",
-  email: "admin@example.com",
-  role: "admin",
-  disabled: false,
-  labels: ["all_staff", "store:baoli", "store:suzhou", "person:admin"]
-};
-
 interface EvidenceUploadResponse {
   document: {
     documentId: string;
@@ -43,55 +36,74 @@ interface EvidenceSearchResponse {
 
 async function main() {
   const apiUrl = normalizeApiUrl(process.env["STAGING_SMOKE_API_URL"] ?? DEFAULT_API_URL);
-  const jwtSecret = process.env["JWT_SECRET"];
+  const databaseUrl = process.env["DATABASE_URL"];
 
-  if (!jwtSecret) {
-    throw new Error("JWT_SECRET is required in the local environment for staging smoke.");
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required for the server-side official staging smoke.");
   }
 
-  const token = await signEmployeeAccessToken(STAGING_ADMIN, jwtSecret);
-  const headers = { authorization: `Bearer ${token}` };
-
-  const uploads = await Promise.all([
-    uploadFixture(apiUrl, headers, "fixtures/evidence/kitchen-sop.md", "Staging Kitchen SOP"),
-    uploadFixture(apiUrl, headers, "fixtures/evidence/shift-notes.txt", "Staging Shift Notes")
-  ]);
-
-  await Promise.all(
-    uploads.map((upload) => waitForIndexed(apiUrl, headers, upload.document.documentId))
-  );
-
-  const search = await apiJson<EvidenceSearchResponse>(apiUrl, "/v1/evidence/search", {
-    method: "POST",
-    headers: {
-      ...headers,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      query: "fridge temperatures",
-      filters: {
-        fileTypes: ["md", "txt"]
-      },
-      limit: 5
-    })
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+  const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
+  const identity = await prisma.loginIdentity.findFirst({
+    where: { employeeId: "emp_admin", disabled: false },
+    select: { id: true, employeeId: true, orgId: true }
   });
-
-  const uploadedIds = new Set(uploads.map((upload) => upload.document.documentId));
-  if (!search.results.some((result) => uploadedIds.has(result.documentId))) {
-    throw new Error("Staging smoke search did not return an uploaded fixture document.");
+  if (!identity) {
+    await prisma.$disconnect();
+    throw new Error("Synthetic staging admin LoginIdentity is missing.");
   }
+  const session = await auth.createSession({
+    identityId: identity.id,
+    employeeId: identity.employeeId,
+    orgId: identity.orgId
+  });
+  const headers = { authorization: `Bearer ${session.accessToken}` };
 
-  console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        uploadedDocuments: uploads.map((upload) => upload.document.documentId),
-        searchedFor: "fridge temperatures"
+  try {
+    const uploads = await Promise.all([
+      uploadFixture(apiUrl, headers, "fixtures/evidence/kitchen-sop.md", "Staging Kitchen SOP"),
+      uploadFixture(apiUrl, headers, "fixtures/evidence/shift-notes.txt", "Staging Shift Notes")
+    ]);
+
+    await Promise.all(
+      uploads.map((upload) => waitForIndexed(apiUrl, headers, upload.document.documentId))
+    );
+
+    const search = await apiJson<EvidenceSearchResponse>(apiUrl, "/v1/evidence/search", {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "application/json"
       },
-      null,
-      2
-    )
-  );
+      body: JSON.stringify({
+        query: "fridge temperatures",
+        filters: {
+          fileTypes: ["md", "txt"]
+        },
+        limit: 5
+      })
+    });
+
+    const uploadedIds = new Set(uploads.map((upload) => upload.document.documentId));
+    if (!search.results.some((result) => uploadedIds.has(result.documentId))) {
+      throw new Error("Staging smoke search did not return an uploaded fixture document.");
+    }
+
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          uploadedDocuments: uploads.map((upload) => upload.document.documentId),
+          searchedFor: "fridge temperatures"
+        },
+        null,
+        2
+      )
+    );
+  } finally {
+    await auth.logout(session.durableCredential);
+    await prisma.$disconnect();
+  }
 }
 
 async function uploadFixture(

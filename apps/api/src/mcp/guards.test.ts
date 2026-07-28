@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createMcpConcurrencyLimiter,
+  isAllowedMcpHost,
   isLoopbackAddress,
   isLoopbackHost,
   mcpBodyLimitBytes,
@@ -20,6 +21,29 @@ describe("MCP endpoint guards", () => {
     expect(isLoopbackHost("[::ffff:127.0.0.1]")).toBe(false);
     expect(isLoopbackHost("localhost.evil.example")).toBe(false);
     expect(isLoopbackHost("localhost:3000@evil.example")).toBe(false);
+  });
+
+  it("accepts only loopback hosts or the exact configured HTTPS public origin", () => {
+    const publicOrigin = "https://api.smedatacenter.xyz";
+
+    expect(isAllowedMcpHost("127.0.0.1:3000", publicOrigin)).toBe(true);
+    expect(isAllowedMcpHost("api.smedatacenter.xyz", publicOrigin)).toBe(true);
+    expect(isAllowedMcpHost("api.smedatacenter.xyz:443", publicOrigin)).toBe(true);
+
+    expect(isAllowedMcpHost("api.smedatacenter.xyz:8443", publicOrigin)).toBe(false);
+    expect(isAllowedMcpHost("API.SMEDATACENTER.XYZ", publicOrigin)).toBe(true);
+    expect(isAllowedMcpHost("api.smedatacenter.xyz.evil.example", publicOrigin)).toBe(false);
+    expect(isAllowedMcpHost("api.smedatacenter.xyz@evil.example", publicOrigin)).toBe(false);
+    expect(isAllowedMcpHost("api.smedatacenter.xyz", undefined)).toBe(false);
+    expect(() => isAllowedMcpHost("api.smedatacenter.xyz", "http://api.smedatacenter.xyz")).toThrow(
+      "MCP public origin must use HTTPS."
+    );
+    expect(() =>
+      isAllowedMcpHost("api.smedatacenter.xyz", "https://user@api.smedatacenter.xyz")
+    ).toThrow("MCP public origin must not include credentials");
+    expect(() =>
+      isAllowedMcpHost("api.smedatacenter.xyz", "https://api.smedatacenter.xyz/path")
+    ).toThrow("MCP public origin must not include a path");
   });
 
   it("accepts only loopback peer addresses", () => {

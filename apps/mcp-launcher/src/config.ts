@@ -7,9 +7,7 @@ export interface LauncherRuntimeConfigInput {
   enterpriseHubBaseUrl: string;
 }
 
-type LauncherRuntimeEnv = Partial<
-  Record<"ENTERPRISE_HUB_BASE_URL" | "ENTERPRISE_HUB_API_URL", string | undefined>
->;
+type LauncherRuntimeEnv = Partial<Record<"ENTERPRISE_HUB_BASE_URL", string | undefined>>;
 
 const CONFIG_INPUT_KEYS = new Set(["enterpriseHubBaseUrl"]);
 
@@ -27,7 +25,7 @@ export function createLauncherRuntimeConfig(
 export function loadLauncherRuntimeConfig(
   env: LauncherRuntimeEnv = process.env
 ): LauncherRuntimeConfig {
-  const enterpriseHubBaseUrl = env.ENTERPRISE_HUB_BASE_URL ?? env.ENTERPRISE_HUB_API_URL;
+  const enterpriseHubBaseUrl = env.ENTERPRISE_HUB_BASE_URL;
 
   if (!enterpriseHubBaseUrl) {
     throw new Error("ENTERPRISE_HUB_BASE_URL is required.");
@@ -59,13 +57,17 @@ function normalizeEnterpriseHubBaseUrl(value: string): string {
     throw new Error("Enterprise Hub base URL must be an http(s) URL.");
   }
 
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Enterprise Hub base URL must be an http(s) URL.");
+  if (url.protocol !== "https:") {
+    throw new Error("Enterprise Hub base URL must be a canonical HTTPS origin.");
   }
 
   if (url.username || url.password || url.search || url.hash) {
     throw new Error("Enterprise Hub base URL must not include credentials, query, or hash.");
   }
 
-  return url.toString().replace(/\/+$/, "");
+  if (!/^\/$/.test(url.pathname.replace(/\/+$/, "/"))) {
+    throw new Error("Enterprise Hub base URL must be a canonical HTTPS origin.");
+  }
+
+  return url.origin;
 }

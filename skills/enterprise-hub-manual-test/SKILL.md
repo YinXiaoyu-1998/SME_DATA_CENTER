@@ -7,6 +7,15 @@ description: Run the SME_DATA_CENTER local Enterprise Hub manual acceptance suit
 
 Operate the local test environment and evaluate independent employee-client Codex tasks. Keep the controller/oracle role separate from the MCP client role.
 
+## Cutover Status
+
+This local workflow is withdrawn because it requires the deleted development email login and an
+HTTP loopback launcher. Do not run its historical steps or weaken the official launcher's HTTPS
+requirement. Until a replacement desktop acceptance controller is implemented, report that the
+local user-visible suite is unavailable after the official-auth cutover and direct the release
+owner to `docs/implementation/official-user-install-and-login.md` plus
+`docs/implementation/test-cases.md`.
+
 ## Required Sources
 
 Read these files completely before acting:

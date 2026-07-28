@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { createLauncherRuntimeConfig, loadLauncherRuntimeConfig } from "./config.js";
 
 describe("Enterprise Hub MCP launcher config", () => {
-  it("accepts only the Enterprise Hub base URL and normalizes trailing slashes", () => {
+  it("accepts only a canonical HTTPS Enterprise Hub origin", () => {
     expect(
       createLauncherRuntimeConfig({
-        enterpriseHubBaseUrl: "http://127.0.0.1:3000///"
+        enterpriseHubBaseUrl: "https://HUB.example.com///"
       })
     ).toEqual({
-      serviceUrl: "http://127.0.0.1:3000",
+      serviceUrl: "https://hub.example.com",
       transport: "stdio"
     });
   });
@@ -24,12 +24,24 @@ describe("Enterprise Hub MCP launcher config", () => {
     });
   });
 
+  it("rejects the removed legacy ENTERPRISE_HUB_API_URL alias", () => {
+    expect(() =>
+      loadLauncherRuntimeConfig({ ENTERPRISE_HUB_API_URL: "https://old.example" } as never)
+    ).toThrow("ENTERPRISE_HUB_BASE_URL is required.");
+  });
+
   it("rejects non-base URL or credential-like config input", () => {
+    expect(() =>
+      createLauncherRuntimeConfig({
+        enterpriseHubBaseUrl: "http://127.0.0.1:3000"
+      })
+    ).toThrow("Enterprise Hub base URL must be a canonical HTTPS origin.");
+
     expect(() =>
       createLauncherRuntimeConfig({
         enterpriseHubBaseUrl: "ftp://hub.example.com"
       })
-    ).toThrow("Enterprise Hub base URL must be an http(s) URL.");
+    ).toThrow("Enterprise Hub base URL must be a canonical HTTPS origin.");
 
     expect(() =>
       createLauncherRuntimeConfig({

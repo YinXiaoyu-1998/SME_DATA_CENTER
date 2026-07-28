@@ -823,3 +823,83 @@
 - Sync proof: `cmp` confirms repo-local and standalone `skills/enterprise-hub-mcp/SKILL.md` are identical; `cmp` confirms the OpenAI metadata files are identical. README files retain repository-specific install/service-prerequisite wording while sharing the same tool behavior guidance.
 - Verification: `quick_validate.py skills/enterprise-hub-mcp` passed in both repositories; `git diff --check` passed in both repositories. Main repo `npm run format:check` follows before merge; MCP smoke is covered in final integration verification.
 - Limits/next work: Push standalone branch and create a standalone draft PR after final validation; include its PR link in the main PR description.
+
+## 2026-07-24 - codex/phase4-official-client-docs - Task 3 skills and documentation
+
+- Scope: Rewrote both `enterprise-hub-mcp` skill copies for the planned official remote launcher: pinned `enterprise-hub-mcp-launcher@0.1.0`, `https://api.smedatacenter.xyz`, browser-only credential entry, `enterprise_hub_login`/`enterprise_hub_logout`/`enterprise_hub_auth_status`, one post-login retry, typed recovery, macOS/Windows current-user installation, backup-first Codex/OpenClaw stdio configuration, guarded other-agent discovery, and separate removal/logout/uninstall semantics. The configuration has exact macOS/Windows executable paths, one `serve` argument, and only `ENTERPRISE_HUB_BASE_URL`; OpenClaw `mcp add`, `set`, and `doctor --probe` forms were checked against its official CLI documentation. Updated standalone English/Chinese READMEs plus main README, bilingual MCP flows, endpoint/meta-skill/context wording to preserve the pre-cutover current-code distinction.
+- Service boundary: The guidance expressly forbids direct API, database, Qdrant, storage, Docker, worker, cloud, or deployment operation and does not put a password, token, authorization code, raw header, or credential-store record in agent-visible input.
+- Verification: `cmp` confirmed byte-identical skill copies; both copies passed `quick_validate.py`; forbidden current dev-login/JWT/latest-install scan of skill copies returned no matches; `npm run format:check` passed in the main repository; standalone Prettier check and `git diff --check` passed in both repositories.
+- Known limitation: The package name/version is documented as the approved cutover target, but package publication and official identity/public MCP runtime work are owned by final integration and have not been represented as live here.
+
+## 2026-07-24 - codex/phase4-official-client-docs - Task 3 reviewer amendments
+
+- Review findings closed: Removed impossible npm provenance claims and gates; documented that the private main repository can use npm Trusted Publisher/OIDC but cannot produce npm provenance. Required Node.js 22+ and npm. Changed standalone skill installation to the canonical `~/.agents/skills` and `%USERPROFILE%\.agents\skills` current-user directories. Added exact backup-first Codex `mcp list`/`get`/`add`/`remove` recipes using PATH or the macOS `/Applications/ChatGPT.app/Contents/Resources/codex` fallback, with exact macOS/Windows launcher paths, stdio `serve`, sole BASE_URL environment, repair rollback, and removal verification.
+- Launcher lifecycle contract: Added exact platform `self-check` and `logout` invocations, each setting only `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz`. Coordinated with the launcher workstream's stable `cli.test.ts` contract: self-check uses the documented nested safe JSON fields and nonblocking recommended-version notice; logout returns exactly `remoteRevocationConfirmed` and `localCredentialRemoved`, attempts local cleanup even when remote revocation is unavailable, and never exposes credential values.
+- Verification: The bundled Codex binary help confirmed `mcp list`, `get`, `add`, `remove`, `--env`, and stdio command syntax. An isolated temporary HOME round trip added the expected command/`serve`/BASE_URL entry, returned it from list/get, removed it, and verified an empty list. Both skill copies remained byte-identical and passed `quick_validate.py`; main `npm run format:check`, standalone Prettier check, and both `git diff --check` checks passed.
+- Known limitation: The public npm package is still a cutover target rather than a published live dependency. Final integration owns Trusted Publisher setup, package publication, official auth/public MCP deployment, and external macOS/Windows acceptance.
+
+## 2026-07-24 - codex/phase4-auth-core - official auth data/security core
+
+- Status: DONE locally. Scope is limited to the official-auth Prisma model/migration, API auth core/repositories, operator CLI, security audit, and focused tests; no Fastify routes, launcher, deployment, or user documentation was implemented.
+- Schema/migration: Added Login Identity, setup grant/session, OAuth transaction/code, durable session/credential, opaque access-token, and credential-free security-event records with explicit Employee/Organization relations and unique indexed SHA-256 hashes. `normalized_email` is lowercased by the application and stored with `utf8mb4_bin` exact comparison. The migration uses an executable named `CHECK` guard that intentionally fails before the unused legacy `access_tokens` table can be dropped when that table is nonempty.
+- Security core: Implements trim/NFC/lowercase login-email normalization; NFC 8–128-code-point passwords; MIT-attributed local common-password blocking; Argon2id `65536/3/1/32`; unknown-identity dummy verification; progressive 5/10/20/40/60-minute cooldown; 256-bit prefixed opaque secrets; fixed accepted lifetimes; single-use setup-session exchange; server-bound transaction/code handling; internally derived PKCE S256 challenges from raw verifiers; transaction-only code issuance and one-time redemption; atomic initial session bundle and refresh rotation; replay family revocation; logout/reset revocation; disabled-state rechecks; typed credential-free security events; and 90-day pruning.
+- Operator CLI: Added root `npm run auth:operator -- onboard ...`, `reset-password`, and `audit` commands. Onboarding atomically creates Employee, `person:<employeeId>` label, EmployeeLabel links, LoginIdentity, setup grant, and audit record. Setup secrets are never arguments or persisted plaintext and the HTTPS `/auth/password/setup#token=...` link is written once to stdout.
+- RED/GREEN evidence: Missing-module RED runs preceded primitives/core/schema/repository/CLI implementation. Additional RED regressions caught the route setup-session contract, disabled-employee password login, disabled-account authorization completion, non-atomic initial session shape, and a real MySQL left-to-right assignment bug that started cooldown on attempt four; each received a minimal GREEN fix.
+- Review fixes: Identity-row locking now serializes setup-grant replacement in both the core repository and operator reset, including true concurrent `Promise.all` proof. Direct authorization-code creation bypasses were removed. Onboarding/reset emit `setup_grant_issued`; password completion and all durable-session revocation paths emit credential-free lifecycle events.
+- Verification: fresh local MySQL migration deployment passed; focused real-MySQL auth integration passed 9 tests covering concurrent setup replacement/exchange/consumption, cooldown concurrency/no-extension, raw-verifier PKCE redemption, replay family revocation, disabled-state checks, concurrent operator reset, lifecycle audit, binary email distinction, migration nonempty-table abort, and pruning. `npm run db:generate`, lint, typecheck, format check, full unit suite (365 passed, 10 skipped), and `git diff --check` passed at handoff.
+- Environment/limits: Local test MySQL used port 3310 and only repository-owned disposable Docker data. `argon2` is declared in `apps/api/package.json`; `package-lock.json` is intentionally unchanged per Task 1 instructions and must be regenerated once on the lead integration branch alongside other Phase 4 dependency changes.
+
+## 2026-07-24 - codex/phase4-launcher-package
+
+- Implemented the independent `enterprise-hub-mcp-launcher@0.1.0` package: HTTPS-only config, OAuth Authorization Code + PKCE loopback login, Keychain-backed rotating durable sessions, typed safe failures, stdio tools, tsup packaging, and release workflow.
+- Verification: focused launcher suite (15 tests), package build, tarball allowlist, and clean-directory install/CLI `--version` passed. `package-lock.json` was restored before commit.
+- Known limitation: full repository typecheck requires generated Prisma client and was not used as launcher evidence.
+
+## 2026-07-24 - codex/phase4-launcher-package review fixes
+
+- Closed the independent review findings: fail-closed remote result credential scanning; committed clean-install lockfile; ownership/inode-safe cross-process locking with dead-owner recovery; `oauth4webapi` authorization-response validation; typed OAuth/MCP 401, 403, timeout, and network handling; durable invalidation; metadata enforcement on ordinary use; expiry preservation; validated revocation plus always-attempted local logout cleanup; machine-readable CLI diagnostics; declaration-free bundled artifact; exact npm release tooling and registry-integrity comparison; and removal of the legacy URL alias.
+- Added focused unit coverage plus an isolated artifact suite for pack allowlist, known-secret/legacy scan, CycloneDX SBOM, empty-directory install, CLI version, and installed stdio initialize/list-tools.
+- Verification: clean `npm ci`; Prisma generation; full typecheck; launcher/workspace unit tests (27 passed); artifact tests (4 passed); lint; format; and diff checks passed. The broad parallel test run passed 342 tests and exposed only the pre-existing real-Maijia XLSX fixture's 5-second timeout under concurrent load; that focused 49-test ingestion file passed independently.
+
+## 2026-07-24 - codex/phase4-launcher-package second review fixes
+
+- Tightened remote-result safety to scan the active access token in keys and values while allowing ordinary language and business fields such as secret recipes, discount codes, `storeCode`, `barcode`, `secretMenu`, and standard `error.code`; only exact credential field names, credential-shaped values, and the active token fail closed.
+- Restored bundled public declarations. The tarball contains `dist/index.d.ts`, and the artifact test proves it has no unpublished Enterprise Hub workspace imports.
+- Reworked lock acquisition to atomically publish a fully written owner record through a hard link, preserve PID/UUID/inode ownership, and reclaim bounded empty/malformed crash orphans through an inode-checked claim.
+- Added macOS and Windows native acceptance before publish. Each runner installs the packed artifact and uses its installed `@napi-rs/keyring` dependency for randomized write/read/delete with safe `finally` cleanup; the Ubuntu publish job depends on both and alone receives `id-token: write`.
+- Verification: clean `npm ci`; Prisma generation; 31 focused launcher/workspace tests; 4 artifact tests; typecheck; lint; format; diff check; tarball allowlist; and a real local macOS Keychain randomized write/read/delete all passed.
+
+## 2026-07-24 - codex/phase4-launcher-package third review fixes
+
+- Extended remote-result credential detection to reject ordinary string values containing a full high-entropy Enterprise Hub opaque secret for every current prefix: `eh_at_`, `eh_rt_`, `eh_ac_`, `eh_ps_`, and `eh_tx_`. Prefix-only documentation remains allowed.
+- Made owner-record `open` failures fail closed immediately unless the error is `EEXIST`; collision retries now honor both the configured polling interval and the overall acquisition deadline.
+- Removed the release workflow's version-specific tarball path. Native platform acceptance now reads the filename from `npm pack --json`, exports it as a step output, and installs exactly that artifact.
+- Verification: 38 focused launcher/workspace tests; 5 artifact/static workflow tests; typecheck; lint; format; diff check; and package dry-run all passed.
+
+## 2026-07-28 - codex/phase4-official-auth-launcher - final local integration
+
+- Scope: Integrated the official auth data model, operator setup/reset links, browser
+  Authorization Code + PKCE routes, rotating hash-only opaque sessions, public authenticated MCP
+  trust boundary, official-session staging smoke, independently publishable launcher, dual-homed
+  employee skill, cursor-secret deployment cutover, and current documentation.
+- Release corrections: Added exact npm repository/license/public metadata; changed the future OIDC
+  workflow from ordinary `npm publish --tag stage` to `npm stage publish`; added clean installed
+  dependency audit and macOS/Windows keyring gates; installed the GitHub
+  `STAGING_CURSOR_SIGNING_SECRET` while retaining the old JWT secret until successful staging
+  cutover.
+- Verification: format, lint, typecheck, diff check, 401-unit-test baseline plus the added OAuth
+  wire-contract case, MySQL auth integration 9/9, full local integration, MCP smoke, package
+  allowlist/SBOM/secret/protocol tests, clean tarball production audit with zero findings, real
+  macOS Keychain write/read/delete, Compose config, and Linux API/worker Docker builds passed.
+  Five concurrent Argon2id verifies measured p95 327 ms and about 192 MiB additional RSS locally.
+- Package release: After the owner enabled npm 2FA, `enterprise-hub-mcp-launcher@0.1.0` was
+  published publicly. Registry integrity matches the reviewed tarball; an exact-version clean
+  install and CLI invocation passed, and the installed production dependency audit has zero
+  findings. npm Trusted Publisher now binds `YinXiaoyu-1998/SME_DATA_CENTER` and
+  `launcher-release.yml` with stage-publish-only permission.
+- Remaining external gates: The atomic main PR must merge before GitHub deploys the
+  migration/runtime cutover. Real macOS browser/Codex/OpenClaw acceptance and real Windows desktop
+  acceptance remain; the standalone skill PR stays draft until staging and desktop validation.
+- Known non-launcher dependency risk: official-registry root audit reports 20 findings (1 low,
+  5 moderate, 14 high; 15 in the production graph). The clean installed launcher has zero findings.
+  Root dependency remediation remains a separate pre-production hardening track.

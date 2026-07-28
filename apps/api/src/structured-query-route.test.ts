@@ -2,7 +2,6 @@ import { describe, expect, it, afterEach } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
 import { buildApiServer } from "./server.js";
-import { signEmployeeAccessToken } from "./tokens.js";
 import type { EmployeeRepository } from "./employees.js";
 import type {
   ExecuteStructuredQueryResult,
@@ -10,6 +9,11 @@ import type {
 } from "./structured-query.js";
 
 const jwtSecret = "test-local-jwt-secret";
+const officialTestTokens = new Map<string, AuthenticatedEmployee>();
+
+async function authenticateTestAccessToken(token: string) {
+  return officialTestTokens.get(token) ?? null;
+}
 
 const baoliManagerEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_manager",
@@ -41,7 +45,9 @@ function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepositor
 }
 
 async function accessTokenFor(employee: AuthenticatedEmployee) {
-  return signEmployeeAccessToken(employee, jwtSecret);
+  const token = `eh_at_test_${employee.id}`;
+  officialTestTokens.set(token, employee);
+  return token;
 }
 
 describe("structured dataset discovery", () => {
@@ -55,8 +61,8 @@ describe("structured dataset discovery", () => {
   it("lists registry-backed datasets and effective query limits for authenticated callers", async () => {
     app = buildApiServer({
       employeeRepository: createRepository([baoliManagerEmployee]),
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -148,8 +154,8 @@ describe("structured query API", () => {
     app = buildApiServer({
       employeeRepository: createRepository([baoliManagerEmployee]),
       structuredQueryRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -195,8 +201,8 @@ describe("structured query API", () => {
     app = buildApiServer({
       employeeRepository: createRepository([baoliManagerEmployee]),
       structuredQueryRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -228,8 +234,8 @@ describe("structured query API", () => {
     app = buildApiServer({
       employeeRepository: createRepository([labelLessEmployee]),
       structuredQueryRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -255,8 +261,8 @@ describe("structured query API", () => {
     app = buildApiServer({
       employeeRepository: createRepository([baoliManagerEmployee]),
       structuredQueryRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -293,8 +299,8 @@ describe("structured query API", () => {
     app = buildApiServer({
       employeeRepository: createRepository([baoliManagerEmployee]),
       structuredQueryRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -340,8 +346,8 @@ describe("structured query API", () => {
     app = buildApiServer({
       employeeRepository: createRepository([baoliManagerEmployee]),
       structuredQueryRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
     const accessToken = await accessTokenFor(baoliManagerEmployee);

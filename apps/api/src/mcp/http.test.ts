@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
 import { ENTERPRISE_HUB_MCP_TOOL_NAMES, type McpErrorBody } from "@enterprise-hub/mcp-contract";
 import { buildApiServer } from "../server.js";
-import { signEmployeeAccessToken } from "../tokens.js";
 import type { EmployeeRepository } from "../employees.js";
 import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documents.js";
 import type { EvidenceSearchInput, EvidenceSearchRepository } from "../evidence.js";
@@ -18,6 +17,11 @@ import { registerMcpHttpRoute } from "./http.js";
 import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 
 const jwtSecret = "test-local-jwt-secret";
+const officialTestTokens = new Map<string, AuthenticatedEmployee>();
+
+async function authenticateTestAccessToken(token: string) {
+  return officialTestTokens.get(token) ?? null;
+}
 
 const employee: AuthenticatedEmployee = {
   id: "emp_mcp",
@@ -60,15 +64,17 @@ function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepositor
 function buildMcpTestServer(overrides: Partial<Parameters<typeof buildApiServer>[0]> = {}) {
   return buildApiServer({
     employeeRepository: createRepository([employee, adminEmployee]),
-    jwtSecret,
-    enableDevLogin: false,
+    cursorSigningSecret: jwtSecret,
+    authenticateAccessToken: authenticateTestAccessToken,
     logger: false,
     ...overrides
   });
 }
 
 async function accessToken(authenticatedEmployee = employee) {
-  return signEmployeeAccessToken(authenticatedEmployee, jwtSecret);
+  const token = `eh_at_test_${authenticatedEmployee.id}`;
+  officialTestTokens.set(token, authenticatedEmployee);
+  return token;
 }
 
 function initializeRequest(id = 1) {
@@ -370,6 +376,30 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expectErrorCode(response.json<McpErrorBody>(), "MCP_LOOPBACK_REQUIRED");
   });
 
+  it("accepts the exact configured public Host only from a loopback reverse-proxy peer", async () => {
+    app = buildMcpTestServer({
+      runtimeEnv: {
+        ENTERPRISE_HUB_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz"
+      }
+    });
+
+    const response = await postMcp(app, initializeRequest(), {
+      host: "api.smedatacenter.xyz"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(parseJsonRpc(response.payload).result).toBeDefined();
+
+    const directResponse = await postMcp(
+      app,
+      initializeRequest(),
+      { host: "api.smedatacenter.xyz" },
+      { remoteAddress: "198.51.100.10" }
+    );
+    expect(directResponse.statusCode).toBe(403);
+    expectErrorCode(directResponse.json<McpErrorBody>(), "MCP_LOOPBACK_REQUIRED");
+  });
+
   it("rejects non-loopback peer addresses even when Host is loopback", async () => {
     app = buildMcpTestServer();
 
@@ -494,23 +524,18 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
   it("uses the typed MCP concurrency override from API construction", async () => {
     const firstAuthenticationStarted = deferred<void>();
     const firstAuthentication = deferred<AuthenticatedEmployee>();
-    let findByIdCalls = 0;
+    let authenticationCalls = 0;
 
     app = buildMcpTestServer({
-      employeeRepository: {
-        async findByEmail(email) {
-          return email === employee.email ? employee : null;
-        },
-        findById() {
-          findByIdCalls += 1;
+      authenticateAccessToken() {
+        authenticationCalls += 1;
 
-          if (findByIdCalls === 1) {
-            firstAuthenticationStarted.resolve();
-            return firstAuthentication.promise;
-          }
-
-          return Promise.resolve(employee);
+        if (authenticationCalls === 1) {
+          firstAuthenticationStarted.resolve();
+          return firstAuthentication.promise;
         }
+
+        return Promise.resolve(employee);
       },
       runtimeEnv: { MCP_MAX_CONCURRENT_REQUESTS: "1" }
     });

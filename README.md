@@ -32,8 +32,8 @@ At minimum, local development uses:
 DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub"
 STORAGE_DRIVER="local"
 LOCAL_STORAGE_ROOT="./.data/storage"
-JWT_SECRET="replace-with-local-development-secret"
-DEV_SEED_ADMIN_EMAIL="admin@example.com"
+CURSOR_SIGNING_SECRET="replace-with-local-development-cursor-secret"
+ENTERPRISE_HUB_PUBLIC_ORIGIN="https://api.smedatacenter.xyz"
 MAX_UPLOAD_BYTES="52428800"
 ```
 
@@ -50,6 +50,10 @@ STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS="120000"
 ```
 
 Do not commit `.env`, `.data/`, session files, real credentials, real customer data, or downloaded third-party exports.
+
+Authentication uses the same official opaque-token model in every environment. Seeded local identities
+have no password; tests create short official sessions through an internal fixture factory. There is no
+development email-login or JWT compatibility endpoint.
 
 ## Original File Storage
 
@@ -145,25 +149,46 @@ DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:330
 
 The API entrypoint automatically loads `.env` from the current working directory when it exists, without overriding environment variables already provided by the shell.
 
-The API exposes authenticated Streamable HTTP at `POST /mcp` and is loopback-only in Phase 3. It does not start a service-side stdio adapter. Start the API and worker independently when they are already provisioned for local development. To configure a local MCP client, start only the user-side launcher:
+## Official Employee MCP (Package Live; Staging Cutover Pending)
+
+The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
+`enterprise-hub-mcp-launcher@0.1.0` local stdio launcher. The dual-homed
+`skills/enterprise-hub-mcp/` skill is the authoritative current-user install, configuration,
+browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
+email/password/token/code input, uses `enterprise_hub_login`, `enterprise_hub_logout`, and
+`enterprise_hub_auth_status`, and never operates service infrastructure.
+
+The official identity, launcher, and public MCP code are implemented.
+`enterprise-hub-mcp-launcher@0.1.0` is published on npm and its registry integrity, clean install,
+CLI, and production dependency audit have been verified. Staging deployment and real
+macOS/Windows acceptance remain release gates.
+
+## Official MCP Launcher
+
+The API exposes authenticated Streamable HTTP at `POST /mcp`; it does not start a service-side stdio
+adapter. The launcher accepts only a canonical HTTPS origin:
 
 ```json
 {
   "command": "npm",
   "args": ["run", "--silent", "mcp:launcher"],
   "cwd": "/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER",
-  "env": { "ENTERPRISE_HUB_BASE_URL": "http://127.0.0.1:3000" }
+  "env": { "ENTERPRISE_HUB_BASE_URL": "https://api.smedatacenter.xyz" }
 }
 ```
 
-The launcher does not start or repair the API, worker, database, Qdrant, or storage. It keeps the development JWT only in process memory and asks for a fresh local email login after restart.
+The launcher does not start or repair the API, worker, database, Qdrant, or storage. It opens the
+browser for official login and stores only the rotating durable credential in the operating-system
+secure store; access tokens stay in memory. Local API/worker development is exercised through the
+repository's unit and integration harnesses, which create official short-lived sessions internally
+and do not weaken the launcher's HTTPS requirement.
 
 MCP callers never provide an organization ID; the service derives organization scope from the logged-in employee. Evidence search cursors are opaque, short-lived continuation tokens: pass `page.nextCursor` back unchanged with the same query/filter/limit to fetch the next page. Restart without a cursor on `INVALID_CURSOR`; on `CURSOR_EXPIRED`, explain the expiry and restart only if the user still wants more results. Structured import retries should reuse an `idempotencyKey` only for the exact same file and metadata; exact replay returns the original persisted IDs/storage key, while inaccessible import status returns the same non-enumerating 404 as a missing batch.
 
 To run the launcher manually when the API is already running:
 
 ```sh
-ENTERPRISE_HUB_BASE_URL=http://127.0.0.1:3000 npm run mcp:launcher
+ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher
 ```
 
 Run the worker directly only when testing or troubleshooting:
@@ -178,7 +203,10 @@ Run one deterministic worker pass for CI-style checks or manual debugging:
 npm run worker:once
 ```
 
-For the repeatable user-visible Codex manual acceptance suite, ask Codex in this repository to “run the SME_DATA_CENTER manual test.” The repo-local `enterprise-hub-manual-test` skill prepares a clean local runtime, creates independent visible employee-client tasks, and writes ignored artifacts under `.data/manual-tests/<runId>/`. Employee tasks receive each natural scenario prompt verbatim; controller boundaries, MCP terminology, label/idempotency details, query-shape hints, and expected answers stay outside the visible message. See `docs/implementation/local-agent-test.md`.
+The former local user-visible suite is withdrawn because it depended on the removed development
+email login and an HTTP launcher origin. Official acceptance now uses the published launcher,
+browser login, and staging service on real macOS/Windows desktops; see
+`docs/implementation/official-user-install-and-login.md` and `docs/implementation/test-cases.md`.
 
 ## npm Scripts
 
@@ -200,7 +228,7 @@ For the repeatable user-visible Codex manual acceptance suite, ask Codex in this
 | `test:watch`           | Runs Vitest in watch mode.                                                | `npm run test:watch`                                                                                                        | Useful while editing tests.                                      |
 | `typecheck`            | Runs TypeScript without emitting compiled files.                          | `npm run typecheck`                                                                                                         | Verifies TS types across the repo.                               |
 | `api:dev`              | Starts the Fastify API service.                                           | `npm run api:dev`                                                                                                           | Auto-loads `.env` when present.                                  |
-| `mcp:launcher`         | Starts the user-side stdio launcher for the HTTP MCP endpoint.            | `ENTERPRISE_HUB_BASE_URL=http://127.0.0.1:3000 npm run mcp:launcher`                                                        | Requires an already-running service; never starts it.            |
+| `mcp:launcher`         | Starts the user-side stdio launcher for the official HTTPS MCP endpoint.  | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher`                                                | Requires an already-running service; never starts it.            |
 | `purge-data`           | Removes local MySQL document data plus ignored upload/test storage files. | `npm run purge-data`; preview with `npm run purge-data -- --dry-run`; remove all `.data` with `npm run purge-data -- --all` | Use `--files-only` to leave MySQL untouched.                     |
 | `worker:dev`           | Starts a local worker loop that continuously processes queued documents.  | `npm run worker:dev`                                                                                                        | Auto-loads `.env` when present.                                  |
 | `worker:once`          | Runs one deterministic worker pass.                                       | `npm run worker:once`                                                                                                       | Auto-loads `.env` when present.                                  |

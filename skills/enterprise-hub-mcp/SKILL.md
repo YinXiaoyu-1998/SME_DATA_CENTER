@@ -1,106 +1,306 @@
 ---
 name: enterprise-hub-mcp
-description: Use when connecting Codex or another MCP client to Enterprise Hub, configuring the local launcher, logging in to a development employee identity, or uploading/searching approved Enterprise Hub data.
+description: Install, configure, authenticate, and use the official Enterprise Hub remote MCP launcher without exposing employee credentials or operating service infrastructure.
 ---
 
 # Enterprise Hub MCP
 
-## Boundary
+Use Enterprise Hub only through its official remote MCP launcher. This skill is the
+current-user installation and recovery runbook for an employee-owned agent; it is not a
+service-operations runbook.
 
-Enterprise Hub is a retrieval and data foundation. This skill configures and uses its MCP launcher; it is not allowed to operate the Enterprise Hub service.
+The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
+the exact npm package `enterprise-hub-mcp-launcher@0.1.0`. Do not substitute another
+origin, package, tag, or version. In particular, never install npm `latest` and never let
+the launcher update itself.
 
-Do not start, stop, seed, migrate, initialize, repair, or inspect the API, worker, Docker, database, Qdrant, storage, or background jobs. If the configured service is unreachable, report the connection failure. Do not fall back to curl, direct API calls, database access, storage access, or service-management commands.
+## Hard Boundaries
 
-The service exposes only authenticated stateless Streamable HTTP at `POST <Enterprise Hub URL>/mcp`. The launcher may use stdio only between the local MCP client and itself. The service has no stdio MCP adapter.
+- The employee enters an account password only in the Enterprise Hub browser page. Never ask
+  for, accept, read, store, paste, or transmit an email/password, access token, durable
+  credential, authorization code, raw `Authorization` header, or credential-store record.
+- Use only launcher configuration and tools. Do not call Enterprise Hub API endpoints directly
+  and do not operate its API, database, Qdrant, storage, Docker, worker, cloud resources, or
+  deployment.
+- Do not create reports, dashboards, or final business conclusions. Return only tool-visible
+  records, statuses, and evidence within the employee's backend-authorized scope.
+- Do not provide an organization ID. The service derives organization and label visibility from
+  the authenticated Employee Account; never infer hidden data from a forbidden/not-found result.
+- The launcher stores its durable credential only in the operating-system secure store. Never
+  put credentials in configuration, environment variables, arguments, ordinary files, logs, or
+  chat.
 
-## Configuration
+## Official Install Or Update
 
-When Enterprise Hub tools are requested but no launcher is configured, ask for:
+An employee may ask in natural language to install, update, or repair Enterprise Hub. The
+employee does not need to run these commands personally. Work only for the current OS user and
+only on the invoking agent's configuration.
 
-1. The Enterprise Hub base URL.
-2. The employee email registered in that service.
+1. Confirm the host is macOS or Windows and that the user authorizes this current-user install.
+   Run `node --version` and `npm --version`. Require Node.js major version **22 or newer** and a
+   working npm. If Node.js is missing or older than 22, install or upgrade Node.js/npm for the
+   current user before continuing; do not use administrator privileges or alter unrelated tools.
+2. Use the fixed platform directory:
 
-Do not ask the user for an organization ID. Organization scope is derived by the service from the authenticated employee record, and no MCP tool should add an org header, query field, or body field.
+   | Platform | Launcher directory                                                      |
+   | -------- | ----------------------------------------------------------------------- |
+   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/` |
+   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.1.0\\`           |
 
-For this Phase 3 local-development implementation, configure Codex to start the launcher, without adding a token:
+3. Install or repair the exact package idempotently. Substitute only the platform directory
+   above; do not add credentials or a global install:
 
-```toml
-[mcp_servers.enterprise-hub]
-command = "npm"
-args = ["run", "--silent", "mcp:launcher"]
-cwd = "/path/to/SME_DATA_CENTER"
-startup_timeout_sec = 120
+   ```sh
+   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.1.0
+   ```
 
-[mcp_servers.enterprise-hub.env]
-ENTERPRISE_HUB_BASE_URL = "http://127.0.0.1:3000"
+4. Preserve the existing installation if the same pinned package is already present. For an
+   approved update, install the newly approved exact version into its own versioned directory,
+   update the one launcher path in the invoking agent's MCP entry, then run the self-check.
+   Updating does not delete the secure-store session or unrelated MCP servers.
+5. Run the installed launcher's credential-free self-check before changing or declaring an MCP
+   configuration healthy:
+
+   ```sh
+   ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+   ```
+
+   ```powershell
+   $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
+   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   ```
+
+   The stable self-check contract is safe machine-readable JSON with this shape:
+
+   ```json
+   {
+     "ok": true,
+     "launcherVersion": "0.1.0",
+     "serviceOrigin": "https://api.smedatacenter.xyz",
+     "platform": "<safe platform>",
+     "secureStore": {
+       "available": true,
+       "durableCredentialPresent": false
+     },
+     "server": {
+       "reachable": true,
+       "metadataCompatible": true,
+       "minimumLauncherVersion": "<safe version>",
+       "recommendedLauncherVersion": "<safe version>",
+       "recommendedUpdateAvailable": false
+     },
+     "mcp": {
+       "handshake": "ok"
+     }
+   }
+   ```
+
+   `mcp.handshake` is `ok`, `not_authenticated`, or `unavailable`. Self-check never performs
+   browser login and never returns credential contents. If it reports a typed failure, follow the
+   focused recovery below; do not inspect secure storage or repair the remote service.
+
+Use this exact stdio launch tuple after installation. `ENTERPRISE_HUB_BASE_URL` is the only
+launcher environment variable; do not add another environment value or any credential.
+
+| Platform | Command                                                                                                              | Arguments | Environment                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
+| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.1.0\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+
+The command, its single `serve` argument, and the one URL-only environment value are the complete
+stdio configuration. It must never contain a password, token, header, client secret, or OAuth
+setting.
+
+## Configure The Invoking Agent
+
+Always inspect the existing configuration first, create a timestamped backup before modifying it,
+then make the smallest idempotent change: one `enterprise-hub` stdio MCP entry. Preserve every
+unrelated server and setting. Do not configure a direct HTTP/OAuth Enterprise Hub server because
+the local launcher owns browser login and credential storage.
+
+### Codex
+
+Use the verified Codex CLI MCP registry. On macOS, prefer `codex` from `PATH`; when it is absent,
+use the bundled `/Applications/ChatGPT.app/Contents/Resources/codex` fallback. On Windows, resolve
+`codex.exe` from `PATH`. Stop if neither verified binary exists.
+
+Before the first mutation, inspect with `codex mcp list --json` and
+`codex mcp get enterprise-hub --json`. Back up `~/.codex/config.toml` (Windows:
+`%USERPROFILE%\.codex\config.toml`) to a timestamped sibling file when it exists. If the existing
+entry already matches the exact command, `serve` argument, and sole BASE_URL environment value, do
+nothing.
+
+For macOS add/repair:
+
+```sh
+CODEX_BIN="$(command -v codex 2>/dev/null || true)"
+if [ -z "$CODEX_BIN" ] && [ -x "/Applications/ChatGPT.app/Contents/Resources/codex" ]; then
+  CODEX_BIN="/Applications/ChatGPT.app/Contents/Resources/codex"
+fi
+test -n "$CODEX_BIN"
+CODEX_CONFIG="$HOME/.codex/config.toml"
+if [ -f "$CODEX_CONFIG" ]; then
+  cp -p "$CODEX_CONFIG" "$CODEX_CONFIG.enterprise-hub.bak.$(date +%Y%m%d%H%M%S)"
+fi
+"$CODEX_BIN" mcp list --json
+"$CODEX_BIN" mcp get enterprise-hub --json
 ```
 
-For another MCP client, use the equivalent command/cwd/environment configuration. `ENTERPRISE_HUB_BASE_URL` is the only launcher configuration value. Never put a bearer token, password, session file, service account key, or credential in MCP configuration, environment, arguments, or skill content.
+If `get` reports the entry absent, add it. If it is present and exact, stop without mutation. Only
+when it is present and mismatched, remove that one entry immediately before running the same add
+command:
 
-For the current implementation, normal MCP use is still local-development oriented because `enterprise_hub_login_local` depends on the development login endpoint. A TLS-protected staging API exists at `https://api.smedatacenter.xyz`, but it is a service-readiness target, not a general employee MCP target until production auth/SSO/admin policy is implemented. Do not try to make any configured service run.
+```sh
+# Mismatched entry only:
+"$CODEX_BIN" mcp remove enterprise-hub
+# Missing or just-removed entry:
+"$CODEX_BIN" mcp add \
+  --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
+  enterprise-hub -- \
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" serve
+"$CODEX_BIN" mcp get enterprise-hub --json
+```
 
-## Login And Use
+For Windows PowerShell, use the same `list`/`get`/`remove`/`add` sequence:
 
-1. Call `enterprise_hub_login_local` with the supplied registered employee email. This currently calls the service's development login endpoint.
-2. The launcher retains the JWT only in its own process memory. It returns only safe employee identity and service URL. A launcher restart requires a new login.
-3. Call `enterprise_hub_list_labels` before upload and use returned label keys only.
-4. When the user supplies an attached file or an explicit local file path, read the exact bytes of that assigned file and Base64-encode those bytes mechanically. Reading the assigned input file is allowed client-side input handling; do not inspect unrelated workspace files. Never retype, summarize, normalize, translate, or reconstruct file content from memory. If exact bytes cannot be read, ask the user to attach the file again instead of inventing a payload.
-5. Evidence uploads use `upload_evidence_document` with `file: { name, mediaType, encoding: "base64", contentBase64 }`, `title`, and non-empty `labelKeys`. Never send a server-visible file path.
-6. Structured uploads use `upload_structured_dataset` with the same inline file object plus `dataset`, `enterpriseName`, `startDate`, `endDate`, `idempotencyKey`, and `labelKeys`. For a network/client retry of the exact same file and metadata, reuse the same `idempotencyKey`; the service returns the originally persisted `documentId`, `importBatchId`, and storage key instead of duplicating data. Do not reuse an idempotency key for a different file, dataset, date window, enterprise, or label set.
-7. Use `get_evidence_document_status` or `get_import_status` after uploads. Do not run a worker to accelerate processing. Poll gently and stop when status is final or when the user asks to stop.
-8. Treat `get_import_status` not-found results as non-visible or missing. The service intentionally returns the same 404 shape for nonexistent, cross-org, disabled, or label-inaccessible import batches, so do not infer that a hidden batch exists or repeat hidden metadata.
-9. Use `search_document_evidence`, `list_structured_datasets`, and `query_structured_dataset` only through the exposed tools. Do not send SQL or bypass backend authorization.
-10. For evidence search pagination, pass the returned `page.nextCursor` back as `cursor` with the same query, filters, and limit to request the next page. Do not edit, decode, persist long term, or reuse cursors across employees, labels, queries, filters, limits, or service configurations.
-11. If evidence search returns `INVALID_CURSOR`, restart the search without the cursor. If it returns `CURSOR_EXPIRED`, tell the user the cursor expired and restart only if the user still wants more results. If a document becomes inaccessible between pages, accept that it disappears.
-12. `enterprise_hub_list_skills` returns approved Skill Directory metadata only; do not execute entries.
-13. Call `enterprise_hub_logout_local` only when the user asks to clear the local login.
+```powershell
+$CodexBin = (Get-Command codex.exe -ErrorAction Stop).Source
+$CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
+if (Test-Path $CodexConfig) {
+  Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
+}
+$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+& $CodexBin mcp list --json
+& $CodexBin mcp get enterprise-hub --json
+```
 
-## Examples
+If `get` reports the entry absent, add it. If it is present and exact, stop without mutation. Only
+for a present mismatched entry, run:
 
-English evidence pagination:
+```powershell
+# Mismatched entry only:
+& $CodexBin mcp remove enterprise-hub
+# Missing or just-removed entry:
+& $CodexBin mcp add --env "ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz" enterprise-hub -- $LauncherBin serve
+& $CodexBin mcp get enterprise-hub --json
+```
 
-1. User asks: "Find the refund handling SOP and show more if there are additional matches."
-2. Call `search_document_evidence` with the user's query, visible filters if needed, and a bounded `limit`.
-3. If the response includes a non-null `page.nextCursor` and the user wants more, call the same tool again with the same query/filters/limit plus that cursor.
-4. Summarize only returned visible evidence; never claim hidden documents exist.
+After add/repair, run the platform self-check above, restart/reload Codex, run
+`codex mcp list --json` and `codex mcp get enterprise-hub --json`, and confirm the discovered tools.
+If add fails after removal, restore the timestamped backup and report the focused failure. For
+per-agent removal, back up first, run `codex mcp remove enterprise-hub`, then verify
+`codex mcp list --json` no longer contains it and `codex mcp get enterprise-hub --json` reports it
+absent.
 
-中文结构化导入重试：
+### OpenClaw
 
-1. 用户说：“刚才上传菜品表网络断了，帮我确认有没有成功。”
-2. 如果这是同一个文件和同一组 metadata，用原来的 `idempotencyKey` 重新调用 `upload_structured_dataset`。
-3. 如果服务返回同一个 `documentId` / `importBatchId` / storage key，把它解释为精确重放成功，不是重复导入。
-4. 如果 `get_import_status` 返回 404，只能说“当前登录身份不可见或该批次不存在”，不要猜测其它组织或隐藏批次。
+Use OpenClaw's MCP CLI registry for a **stdio** launcher; do not use OpenClaw's direct remote
+OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for Enterprise Hub.
 
-## Tools
+1. Inspect first: `openclaw mcp status --verbose` and, when present,
+   `openclaw mcp show enterprise-hub --json`.
+2. Back up the OpenClaw configuration using its supported current-user mechanism.
+3. Add the entry with the platform-specific launcher path from the table, its single `serve`
+   argument, and the sole URL-only environment value. On macOS, the verified OpenClaw CLI form is:
 
-Launcher-local bootstrap tools:
+   ```sh
+   openclaw mcp add enterprise-hub \
+     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" \
+     --arg serve \
+     --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz
+   ```
 
-- `enterprise_hub_login_local`
-- `enterprise_hub_logout_local`
+   If the entry already exists, use `openclaw mcp set enterprise-hub '<one stdio JSON object>'`
+   with exactly `command`, `args: ["serve"]`, and the one `ENTERPRISE_HUB_BASE_URL` environment
+   value. Do not add an HTTP URL or `auth: oauth` configuration.
 
-Service business tools:
+4. Verify with `openclaw mcp doctor enterprise-hub --probe`. Reload or restart the owning
+   OpenClaw runtime when required by its current setup.
 
-- `enterprise_hub_list_labels`
-- `enterprise_hub_list_skills`
-- `upload_evidence_document`
-- `get_evidence_document_status`
-- `search_document_evidence`
-- `upload_structured_dataset`
-- `get_import_status`
-- `list_structured_datasets`
-- `query_structured_dataset`
+`openclaw mcp add/set/doctor --probe` are the supported configuration/proof path. The launcher,
+not OpenClaw's OAuth store, opens the browser and manages the Enterprise Hub secure session.
 
-## Safe Failures
+### Other Agents
 
-| Condition                    | Response                                                                                            |
-| ---------------------------- | --------------------------------------------------------------------------------------------------- |
-| No URL or employee email     | Ask only for the missing value.                                                                     |
-| `EMPLOYEE_AUTH_REQUIRED`     | Ask the user to verify the registered email and run local login again.                              |
-| `ENTERPRISE_HUB_UNREACHABLE` | Report that the URL cannot be reached; do not start or repair services.                             |
-| Permission/not-found result  | Treat it as non-visible; do not infer hidden resources.                                             |
-| Upload validation error      | Return the service validation result; do not rewrite or inspect the file through service internals. |
-| `INVALID_CURSOR`             | Restart the evidence search without the cursor; do not try to repair or decode it.                  |
-| `CURSOR_EXPIRED`             | Explain that the page cursor expired and restart only if the user still wants more results.         |
-| Idempotency conflict         | Explain that the retry key was reused for different upload content or metadata.                     |
+Use guarded adaptive discovery. Inspect the installed client's help, current configuration, and
+MCP capabilities to confirm that it can start a local stdio server. Back up its configuration,
+add only the pinned Enterprise Hub launcher entry, validate its handshake, and preserve every
+unrelated server. If its supported configuration mechanism is not clear, report the narrow blocker
+instead of editing guessed files or configuring direct remote OAuth.
 
-Never expose raw JWTs, infer an enterprise from an email, claim inaccessible data exists, create reports or dashboard conclusions, or turn Enterprise Hub into a direct employee-facing agent.
+## Browser Login And Normal Use
+
+Call `enterprise_hub_auth_status` before beginning work when the authentication state is unknown.
+If it reports `authentication_required`, call `enterprise_hub_login`. The launcher opens the
+system browser; ask the employee to finish login there and never request any credential in chat.
+The launcher returns only a safe outcome.
+
+After successful login, retry the employee's original business tool call exactly once. Do not
+retry repeatedly after browser cancellation or an unsuccessful login. Use
+`enterprise_hub_logout` only when the employee asks to sign out. It clears the shared local
+session for Enterprise Hub under the current OS user, so all locally configured agents on that
+OS user are signed out.
+
+For authorized service tools:
+
+- List labels before uploading; use only returned label keys.
+- Read only a user-attached or explicitly assigned file, preserve its exact bytes, and encode
+  those bytes mechanically for an inline file input. Never send a local path to the service or
+  reconstruct/normalize/translate upload contents.
+- Poll document/import status gently when the employee asks; never start a worker.
+- Reuse a structured-import idempotency key only for the exact same file and metadata. Treat an
+  import-status 404 as "not visible or missing" and do not infer hidden metadata.
+- Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged
+  with the same query, filters, and limit. Restart without it on `INVALID_CURSOR`; on
+  `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more results.
+- `enterprise_hub_list_skills` exposes approved directory metadata only; do not execute an entry.
+
+## Typed Recovery
+
+| Condition                                     | Required response                                                                                                                            |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authentication_required`                     | Call `enterprise_hub_login`, wait for browser completion, then retry the original business operation once.                                   |
+| Browser cancelled, timed out, or login failed | Report the safe outcome. Do not reopen the browser automatically or retry the business operation.                                            |
+| `service_unavailable`                         | Report that the official service cannot be reached. Do not start, repair, or diagnose service infrastructure.                                |
+| `forbidden` or not-found                      | Treat the resource as unavailable to this employee; do not infer hidden data.                                                                |
+| `launcher_upgrade_required`                   | Install the skill-approved exact launcher version, re-run self-check, then retry the original operation once if installation succeeds.       |
+| Local configuration/self-check failure        | Restore the backup only when the agent can do so safely; otherwise report the focused configuration failure. Never delete unrelated entries. |
+
+## Removal And Complete Uninstall
+
+For **per-agent removal**, back up that agent's configuration and delete only its
+`enterprise-hub` MCP entry. Leave the launcher package, secure-store session, and other agent
+configurations intact.
+
+For **shared logout**, use `enterprise_hub_logout` while the MCP connection is available, or invoke
+the pinned launcher directly:
+
+```sh
+ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+```
+
+```powershell
+$env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
+& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+```
+
+The stable logout contract returns only
+`{"remoteRevocationConfirmed":<boolean>,"localCredentialRemoved":<boolean>}`. It attempts remote
+family revocation when reachable and always attempts local credential deletion;
+`localCredentialRemoved` must be `true` before reporting local logout success. It never returns
+credential contents. If the service is unreachable, report that remote revocation was not
+confirmed.
+
+For **complete uninstall**, with explicit employee authorization: perform shared logout; remove
+Enterprise Hub entries only from safely discoverable local agents; remove the current-user pinned
+launcher directory and its non-secret Enterprise Hub state; retain backups until the employee
+confirms success. Never remove Node.js/npm, the Employee Account, server-side business data, or
+unrelated MCP entries.
+
+## Pre-Cutover Note
+
+This is the official target runbook. It intentionally does not describe repository development-only
+authentication behavior. Until the official identity, launcher package, and public MCP
+implementation land together, do not represent this skill as proof that the remote flow is live.

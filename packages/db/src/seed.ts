@@ -168,6 +168,22 @@ async function main() {
         update: {}
       });
     }
+
+    await prisma.loginIdentity.upsert({
+      where: { normalizedEmail: employee.email },
+      create: {
+        id: `identity_${employee.id}`,
+        orgId: org.id,
+        employeeId: employee.id,
+        normalizedEmail: employee.email,
+        passwordHash: null
+      },
+      update: {
+        orgId: org.id,
+        employeeId: employee.id,
+        disabled: false
+      }
+    });
   }
 
   for (const skill of skillEntries) {

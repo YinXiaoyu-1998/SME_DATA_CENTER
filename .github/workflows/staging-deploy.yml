@@ -95,22 +95,22 @@ jobs:
         if: ${{ github.event_name == 'workflow_run' || inputs.operation == 'deploy' }}
         env:
           ENTERPRISE_HUB_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          ENTERPRISE_HUB_STAGING_JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+          ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET: ${{ secrets.STAGING_CURSOR_SIGNING_SECRET }}
         run: |
           set -euo pipefail
           test -n "$ENTERPRISE_HUB_ACR_PASSWORD"
-          test -n "$ENTERPRISE_HUB_STAGING_JWT_SECRET"
+          test -n "$ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET"
           npm run deploy:staging
 
       - name: Restore previous staging release
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'rollback' }}
         env:
           ENTERPRISE_HUB_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          ENTERPRISE_HUB_STAGING_JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+          ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET: ${{ secrets.STAGING_CURSOR_SIGNING_SECRET }}
         run: |
           set -euo pipefail
           test -n "$ENTERPRISE_HUB_ACR_PASSWORD"
-          test -n "$ENTERPRISE_HUB_STAGING_JWT_SECRET"
+          test -n "$ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET"
           npm run deploy:staging:rollback
 
       - name: Publish deployment summary

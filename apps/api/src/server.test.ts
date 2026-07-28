@@ -14,13 +14,17 @@ import type {
 import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "./server.js";
-import { signEmployeeAccessToken } from "./tokens.js";
 import type { DocumentCatalogRepository } from "./documents.js";
 import type { EmployeeRepository } from "./employees.js";
 import type { EvidenceSearchRepository } from "./evidence.js";
 import type { SkillDirectoryRepository, SkillDirectoryEntry } from "./skills.js";
 
 const jwtSecret = "test-local-jwt-secret";
+const officialTestTokens = new Map<string, AuthenticatedEmployee>();
+
+async function authenticateTestAccessToken(token: string) {
+  return officialTestTokens.get(token) ?? null;
+}
 
 const adminEmployee: AuthenticatedEmployee = {
   id: "emp_admin",
@@ -312,8 +316,8 @@ function createOrganizationContextStorageAdapter(): StorageAdapter & {
 function buildTestServer(employees = [adminEmployee, disabledEmployee]) {
   return buildApiServer({
     employeeRepository: createRepository(employees),
-    jwtSecret,
-    enableDevLogin: true,
+    cursorSigningSecret: jwtSecret,
+    authenticateAccessToken: authenticateTestAccessToken,
     logger: false
   });
 }
@@ -805,7 +809,9 @@ function createStructuredImportMultipart(input: {
 }
 
 async function accessTokenFor(employee: AuthenticatedEmployee) {
-  return signEmployeeAccessToken(employee, jwtSecret);
+  const token = `eh_at_test_${employee.id}`;
+  officialTestTokens.set(token, employee);
+  return token;
 }
 
 describe("api auth shell", () => {
@@ -835,8 +841,8 @@ describe("api auth shell", () => {
   it("returns local readiness results and maps failures to 503", async () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false,
       readinessCheck: async () => ({
         ok: false,
@@ -885,7 +891,8 @@ describe("api auth shell", () => {
   it("does not expose readiness to non-loopback clients", async () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
-      jwtSecret,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false,
       readinessCheck: async () => {
         throw new Error("readiness should not run for non-loopback clients");
@@ -907,7 +914,7 @@ describe("api auth shell", () => {
     });
   });
 
-  it("issues a development token for a seeded employee without password fields", async () => {
+  it("does not expose the removed development login endpoint", async () => {
     app = buildTestServer();
 
     const response = await app.inject({
@@ -918,16 +925,12 @@ describe("api auth shell", () => {
       }
     });
 
-    const body = response.json();
-    expect(response.statusCode).toBe(200);
-    expect(body.accessToken).toEqual(expect.any(String));
-    expect(body.employee).toEqual(adminEmployee);
-    expect(JSON.stringify(body)).not.toContain("password");
+    expect(response.statusCode).toBe(404);
   });
 
   it("returns the authenticated employee from /me", async () => {
     app = buildTestServer();
-    const accessToken = await signEmployeeAccessToken(adminEmployee, jwtSecret);
+    const accessToken = await accessTokenFor(adminEmployee);
 
     const response = await app.inject({
       method: "GET",
@@ -1000,8 +1003,8 @@ describe("api auth shell", () => {
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter: new LocalFileSystemStorageAdapter({ root: storageRoot }),
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
     const accessToken = await accessTokenFor(adminEmployee);
@@ -1086,8 +1089,8 @@ describe("api auth shell", () => {
         suzhouManagerEmployee
       ]),
       documentRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -1156,8 +1159,8 @@ describe("api auth shell", () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
     const accessToken = await accessTokenFor(adminEmployee);
@@ -1212,7 +1215,7 @@ describe("api auth shell", () => {
 
   it("rejects disabled employees even when the token is otherwise valid", async () => {
     app = buildTestServer();
-    const accessToken = await signEmployeeAccessToken(disabledEmployee, jwtSecret);
+    const accessToken = await accessTokenFor(disabledEmployee);
 
     const response = await app.inject({
       method: "GET",
@@ -1235,8 +1238,8 @@ describe("api auth shell", () => {
       employeeRepository: createRepository([adminEmployee]),
       documentRepository: createDocumentRepository(),
       evidenceRepository: createEvidenceSearchRepository(),
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
     const phase3Endpoints = [
@@ -1308,14 +1311,11 @@ describe("authenticated organization context", () => {
       employeeRepository: createRepository([orgBAdminEmployee]),
       documentRepository,
       storageAdapter,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
-    const staleOrgToken = await signEmployeeAccessToken(
-      { ...orgBAdminEmployee, orgId: "default-org" },
-      jwtSecret
-    );
+    const staleOrgToken = await accessTokenFor(orgBAdminEmployee);
     const multipartPayload = createMultipartPayload([
       {
         name: "file",
@@ -1374,8 +1374,8 @@ describe("authenticated organization context", () => {
       documentRepository,
       evidenceRepository,
       skillRepository,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -1458,8 +1458,8 @@ describe("label catalog", () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee, baoliManagerEmployee]),
       documentRepository: createDocumentRepository(),
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 
@@ -1846,8 +1846,8 @@ describe("structured imports", () => {
       documentRepository,
       structuredImportRepository,
       storageAdapter,
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false,
       runtimeEnv: options.runtimeEnv
     } as Parameters<typeof buildApiServer>[0] & {
@@ -2361,8 +2361,8 @@ describe("skill directory", () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee, baoliManagerEmployee]),
       skillRepository: createSkillRepository(skillEntries),
-      jwtSecret,
-      enableDevLogin: true,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
 

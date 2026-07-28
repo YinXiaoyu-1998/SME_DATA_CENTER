@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-07-20
+Last updated: 2026-07-28
 
 This contract describes the current public surface after the legacy ordinary document upload/search flow was removed.
 
@@ -26,10 +26,13 @@ It does not:
 
 Every non-health data endpoint requires backend authorization. Client-side filtering is never trusted.
 
-Local development auth:
+Official authentication:
 
-- `POST /auth/dev-login` with a seeded employee email returns a bearer token.
-- The local MCP launcher stores its development token only in process memory and requires login again after restart.
+- public launcher client `enterprise-hub-desktop-launcher` uses Authorization Code + S256 PKCE;
+- browser passwords never enter agent input or launcher configuration;
+- 10-minute opaque access tokens authenticate every business/MCP request;
+- rotating durable credentials remain only in macOS Keychain or Windows Credential Manager;
+- `/auth/dev-login`, JWT signing, and JWT verification do not exist in any environment.
 
 Authorization rules:
 
@@ -47,7 +50,16 @@ Authorization rules:
 | Method | Path                                        | Purpose                                      |
 | ------ | ------------------------------------------- | -------------------------------------------- |
 | `GET`  | `/healthz`                                  | Liveness                                     |
-| `POST` | `/auth/dev-login`                           | Local seeded employee login                  |
+| `GET`  | `/.well-known/oauth-authorization-server`   | OAuth discovery and launcher version policy  |
+| `GET`  | `/oauth/authorize`                          | Browser authorization transaction            |
+| `POST` | `/oauth/authorize/login`                    | Browser password verification                |
+| `POST` | `/oauth/token`                              | Code exchange or durable credential rotation |
+| `POST` | `/oauth/revoke`                             | Revoke a durable session family              |
+| `GET`  | `/auth/password/setup`                      | Fragment-safe setup bootstrap                |
+| `POST` | `/auth/password/setup/session`              | Exchange a one-time setup grant              |
+| `GET`  | `/auth/password/setup/form`                 | Render the protected password form           |
+| `POST` | `/auth/password/setup/complete`             | Set/reset password and revoke old sessions   |
+| `POST` | `/mcp`                                      | Authenticated stateless Streamable HTTP MCP  |
 | `GET`  | `/me`                                       | Current employee/session metadata            |
 | `GET`  | `/labels`                                   | Label catalog                                |
 | `GET`  | `/skills`                                   | Approved Skill Directory metadata            |
@@ -60,9 +72,9 @@ Authorization rules:
 | `GET`  | `/v1/structured/datasets`                   | Structured dataset schema discovery          |
 | `POST` | `/v1/structured/query`                      | Controlled read-only structured query        |
 
-## Deferred HTTP Surface
+## Private HTTP Surface
 
-`GET /readyz` is not an active public HTTP endpoint in Phase 3. Runtime readiness is checked by the local script `npm run readyz:local`; an HTTP readiness endpoint is a Phase 4 staging/runtime capability and should not be documented as callable until it is implemented and route-tested.
+`GET /readyz` is implemented but accepts only loopback requests. Public requests return `404`.
 
 ## Removed Legacy Public Surface
 
@@ -350,8 +362,9 @@ Structured query cursors are opaque, signed, and scoped to org, employee, role, 
 
 Launcher-local bootstrap tools:
 
-- `enterprise_hub_login_local`
-- `enterprise_hub_logout_local`
+- `enterprise_hub_login`
+- `enterprise_hub_logout`
+- `enterprise_hub_auth_status`
 
 Service MCP tools:
 
@@ -365,7 +378,11 @@ Service MCP tools:
 - `list_structured_datasets`
 - `query_structured_dataset`
 
-The service exposes authenticated stateless Streamable HTTP only at `POST /mcp`; every initialize, discovery, and tool request requires bearer auth. The launcher adds its memory-only token to every request. Upload tools receive inline Base64 bytes and never dereference a client file path. All business tools preserve backend authorization and must not direct-read backend storage, MySQL, or Qdrant.
+The service exposes authenticated stateless Streamable HTTP only at `POST /mcp`; every initialize,
+discovery, and tool request requires an official opaque bearer access token. The launcher silently
+refreshes and adds the memory-only access token. Upload tools receive inline Base64 bytes and never
+dereference a client file path. All business tools preserve backend authorization and must not
+direct-read backend storage, MySQL, or Qdrant.
 
 ## Environment Notes
 

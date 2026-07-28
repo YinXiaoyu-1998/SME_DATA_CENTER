@@ -4,21 +4,21 @@ This file tracks required variables and external services. Do not store secret v
 
 ## Local Development
 
-| Variable                   |                        Required | Example / Default                                                                    |     Secret? | Used By                | Notes                                                                                                                                |
-| -------------------------- | ------------------------------: | ------------------------------------------------------------------------------------ | ----------: | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`             |                             Yes | `mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub` |         Yes | API, worker, Prisma    | Local-only example is in `.env.example`; replace for personal environments.                                                          |
-| `STORAGE_DRIVER`           |                             Yes | `local` or `oss`                                                                     |          No | API, worker, readiness | Selects the filesystem or Alibaba OSS/S3-compatible adapter at process startup; unsupported values fail fast.                        |
-| `LOCAL_STORAGE_ROOT`       | Yes when `STORAGE_DRIVER=local` | `./.data/storage`                                                                    |          No | Storage package        | Local adapter root for original file objects; `.data/` is ignored by git.                                                            |
-| `JWT_SECRET`               |                             Yes | `replace-with-local-development-secret`                                              |         Yes | API auth module        | Development value only; production must come from a secret store.                                                                    |
-| `DEV_SEED_ADMIN_EMAIL`     |                             Yes | `admin@example.com`                                                                  |          No | Future seed script     | Used for local seed data in later phases.                                                                                            |
-| `HUB_INTEGRATION_PORT`     |                              No | auto-assigned                                                                        |          No | Integration test       | Optional API port override for `npm run test:integration`.                                                                           |
-| `HUB_MCP_TEST_PORT`        |                              No | auto-assigned                                                                        |          No | MCP smoke test         | Optional API port override for HTTP `/mcp` smoke.                                                                                    |
-| `ENTERPRISE_HUB_BASE_URL`  |      Yes for local MCP launcher | `http://127.0.0.1:3000`                                                              |          No | MCP launcher           | URL only. Launcher does not start the service and supports no token environment variable.                                            |
-| `MANUAL_TEST_DATABASE_URL` |                              No | local `enterprise_hub` on `127.0.0.1:3307`                                           | Yes locally | manual-test controller | Optional override; the harness refuses remote hosts and other database names and never writes this value to the public run manifest. |
-| `MANUAL_TEST_API_URL`      |                              No | `http://127.0.0.1:3000`                                                              |          No | manual-test controller | Optional loopback-only API override for a manual run.                                                                                |
-| `MANUAL_TEST_QDRANT_URL`   |                              No | `http://127.0.0.1:6333`                                                              |          No | manual-test controller | Optional loopback-only Qdrant override; each run uses a dedicated `enterprise_hub_evidence_manual_*` collection.                     |
-| `PORT`                     |                              No | `3000`                                                                               |          No | API server             | Optional local HTTP port override.                                                                                                   |
-| `HOST`                     |                              No | `127.0.0.1`                                                                          |          No | API server             | Phase 3 accepts loopback bind hosts only because `/mcp` is local-only.                                                               |
+| Variable                       |                        Required | Example / Default                                                                    |     Secret? | Used By                | Notes                                                                                                                                |
+| ------------------------------ | ------------------------------: | ------------------------------------------------------------------------------------ | ----------: | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                 |                             Yes | `mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub` |         Yes | API, worker, Prisma    | Local-only example is in `.env.example`; replace for personal environments.                                                          |
+| `STORAGE_DRIVER`               |                             Yes | `local` or `oss`                                                                     |          No | API, worker, readiness | Selects the filesystem or Alibaba OSS/S3-compatible adapter at process startup; unsupported values fail fast.                        |
+| `LOCAL_STORAGE_ROOT`           | Yes when `STORAGE_DRIVER=local` | `./.data/storage`                                                                    |          No | Storage package        | Local adapter root for original file objects; `.data/` is ignored by git.                                                            |
+| `CURSOR_SIGNING_SECRET`        |                             Yes | `replace-with-local-development-cursor-secret`                                       |         Yes | API cursor signing     | Signs evidence and structured-query cursors only; it is never an authentication credential.                                          |
+| `ENTERPRISE_HUB_PUBLIC_ORIGIN` |                             Yes | `https://api.smedatacenter.xyz`                                                      |          No | OAuth/API              | Canonical HTTPS issuer and browser-login origin.                                                                                     |
+| `HUB_INTEGRATION_PORT`         |                              No | auto-assigned                                                                        |          No | Integration test       | Optional API port override for `npm run test:integration`.                                                                           |
+| `HUB_MCP_TEST_PORT`            |                              No | auto-assigned                                                                        |          No | MCP smoke test         | Optional API port override for HTTP `/mcp` smoke.                                                                                    |
+| `ENTERPRISE_HUB_BASE_URL`      |   Yes for official MCP launcher | `https://api.smedatacenter.xyz`                                                      |          No | MCP launcher           | Canonical HTTPS origin only. Launcher does not start the service and supports no token environment variable.                         |
+| `MANUAL_TEST_DATABASE_URL`     |                              No | local `enterprise_hub` on `127.0.0.1:3307`                                           | Yes locally | manual-test controller | Optional override; the harness refuses remote hosts and other database names and never writes this value to the public run manifest. |
+| `MANUAL_TEST_API_URL`          |                              No | `http://127.0.0.1:3000`                                                              |          No | manual-test controller | Optional loopback-only API override for a manual run.                                                                                |
+| `MANUAL_TEST_QDRANT_URL`       |                              No | `http://127.0.0.1:6333`                                                              |          No | manual-test controller | Optional loopback-only Qdrant override; each run uses a dedicated `enterprise_hub_evidence_manual_*` collection.                     |
+| `PORT`                         |                              No | `3000`                                                                               |          No | API server             | Optional local HTTP port override.                                                                                                   |
+| `HOST`                         |                              No | `127.0.0.1`                                                                          |          No | API server             | API remains loopback-bound; nginx is the only public TLS entry point.                                                                |
 
 ## Local Docker Compose
 
@@ -144,16 +144,16 @@ current target. These optional overrides exist for later non-interactive
 execution; secret overrides must come from an approved process-level secret
 manager, never a checked-in env file.
 
-| Variable                                      | Required For                 | Secret? | Safe To Record? | Notes                                                                                        |
-| --------------------------------------------- | ---------------------------- | ------: | --------------: | -------------------------------------------------------------------------------------------- |
-| `ENTERPRISE_HUB_STAGING_HOST`                 | SSH target override          |      No |             Yes | Defaults to `39.96.66.185`; strict host checking uses `deploy/staging/known_hosts`.          |
-| `ENTERPRISE_HUB_STAGING_SSH_USER`             | SSH user override            |      No |             Yes | Defaults to `root` for the current SWAS host.                                                |
-| `ENTERPRISE_HUB_STAGING_SSH_KEY`              | SSH private-key path         |     Yes |              No | Defaults to `~/.ssh/id_ed25519`; the key stays outside the repository.                       |
-| `ENTERPRISE_HUB_STAGING_PUBLIC_URL`           | Public release verification  |      No |             Yes | Defaults to `https://api.smedatacenter.xyz`.                                                 |
-| `ENTERPRISE_HUB_ACR_KEYCHAIN_SERVICE`         | Local ACR secret lookup      |      No |             Yes | Defaults to `com.sme_data_center.acr.personal.enterprise-hub`.                               |
-| `ENTERPRISE_HUB_STAGING_JWT_KEYCHAIN_SERVICE` | Local smoke secret lookup    |      No |             Yes | Defaults to `com.sme_data_center.jwt.staging`.                                               |
-| `ENTERPRISE_HUB_STAGING_JWT_KEYCHAIN_ACCOUNT` | Local smoke secret lookup    |      No |             Yes | Defaults to `enterprise-hub-staging`.                                                        |
-| `ENTERPRISE_HUB_STAGING_JWT_SECRET`           | Non-interactive smoke secret |     Yes |              No | Optional Keychain replacement; inject only from an approved secret manager and never log it. |
+| Variable                                         | Required For                  | Secret? | Safe To Record? | Notes                                                                               |
+| ------------------------------------------------ | ----------------------------- | ------: | --------------: | ----------------------------------------------------------------------------------- |
+| `ENTERPRISE_HUB_STAGING_HOST`                    | SSH target override           |      No |             Yes | Defaults to `39.96.66.185`; strict host checking uses `deploy/staging/known_hosts`. |
+| `ENTERPRISE_HUB_STAGING_SSH_USER`                | SSH user override             |      No |             Yes | Defaults to `root` for the current SWAS host.                                       |
+| `ENTERPRISE_HUB_STAGING_SSH_KEY`                 | SSH private-key path          |     Yes |              No | Defaults to `~/.ssh/id_ed25519`; the key stays outside the repository.              |
+| `ENTERPRISE_HUB_STAGING_PUBLIC_URL`              | Public release verification   |      No |             Yes | Defaults to `https://api.smedatacenter.xyz`.                                        |
+| `ENTERPRISE_HUB_ACR_KEYCHAIN_SERVICE`            | Local ACR secret lookup       |      No |             Yes | Defaults to `com.sme_data_center.acr.personal.enterprise-hub`.                      |
+| `ENTERPRISE_HUB_STAGING_CURSOR_KEYCHAIN_SERVICE` | Local cursor secret lookup    |      No |             Yes | Defaults to `com.sme_data_center.cursor.staging`.                                   |
+| `ENTERPRISE_HUB_STAGING_CURSOR_KEYCHAIN_ACCOUNT` | Local cursor secret lookup    |      No |             Yes | Defaults to `enterprise-hub-staging`.                                               |
+| `ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET`   | Non-interactive cursor secret |     Yes |              No | Installed into root-only runtime env; never printed or committed.                   |
 
 ### GitHub staging environment
 
@@ -161,17 +161,17 @@ GitHub Actions maps Environment-level configuration onto the process variables
 above. The GitHub names intentionally stay provider-neutral at the workflow
 boundary.
 
-| GitHub name               | Kind     | Maps To                             | Secret? | Notes                                                                   |
-| ------------------------- | -------- | ----------------------------------- | ------: | ----------------------------------------------------------------------- |
-| `ACR_PASSWORD`            | Secret   | `ENTERPRISE_HUB_ACR_PASSWORD`       |     Yes | ACR Personal Edition registry password.                                 |
-| `STAGING_JWT_SECRET`      | Secret   | `ENTERPRISE_HUB_STAGING_JWT_SECRET` |     Yes | Used only to generate the in-memory fixture-smoke bearer token.         |
-| `STAGING_SSH_PRIVATE_KEY` | Secret   | temporary SSH key file              |     Yes | Written with a restrictive umask on the ephemeral runner, then removed. |
-| `ACR_REGISTRY`            | Variable | `ENTERPRISE_HUB_ACR_REGISTRY`       |      No | Beijing ACR registry hostname.                                          |
-| `ACR_NAMESPACE`           | Variable | `ENTERPRISE_HUB_ACR_NAMESPACE`      |      No | `enterprise-hub`.                                                       |
-| `ACR_USERNAME`            | Variable | `ENTERPRISE_HUB_ACR_USERNAME`       |      No | Registry login account.                                                 |
-| `STAGING_HOST`            | Variable | `ENTERPRISE_HUB_STAGING_HOST`       |      No | SWAS public host; SSH still uses the committed strict host identity.    |
-| `STAGING_SSH_USER`        | Variable | `ENTERPRISE_HUB_STAGING_SSH_USER`   |      No | Current value is `root`.                                                |
-| `STAGING_PUBLIC_URL`      | Variable | `ENTERPRISE_HUB_STAGING_PUBLIC_URL` |      No | HTTPS API base URL used by public checks and fixture smoke.             |
+| GitHub name                     | Kind     | Maps To                                        | Secret? | Notes                                                                           |
+| ------------------------------- | -------- | ---------------------------------------------- | ------: | ------------------------------------------------------------------------------- |
+| `ACR_PASSWORD`                  | Secret   | `ENTERPRISE_HUB_ACR_PASSWORD`                  |     Yes | ACR Personal Edition registry password.                                         |
+| `STAGING_CURSOR_SIGNING_SECRET` | Secret   | `ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET` |     Yes | Signs opaque pagination cursors; deploy installs it into root-only runtime env. |
+| `STAGING_SSH_PRIVATE_KEY`       | Secret   | temporary SSH key file                         |     Yes | Written with a restrictive umask on the ephemeral runner, then removed.         |
+| `ACR_REGISTRY`                  | Variable | `ENTERPRISE_HUB_ACR_REGISTRY`                  |      No | Beijing ACR registry hostname.                                                  |
+| `ACR_NAMESPACE`                 | Variable | `ENTERPRISE_HUB_ACR_NAMESPACE`                 |      No | `enterprise-hub`.                                                               |
+| `ACR_USERNAME`                  | Variable | `ENTERPRISE_HUB_ACR_USERNAME`                  |      No | Registry login account.                                                         |
+| `STAGING_HOST`                  | Variable | `ENTERPRISE_HUB_STAGING_HOST`                  |      No | SWAS public host; SSH still uses the committed strict host identity.            |
+| `STAGING_SSH_USER`              | Variable | `ENTERPRISE_HUB_STAGING_SSH_USER`              |      No | Current value is `root`.                                                        |
+| `STAGING_PUBLIC_URL`            | Variable | `ENTERPRISE_HUB_STAGING_PUBLIC_URL`            |      No | HTTPS API base URL used by public checks and fixture smoke.                     |
 
 List Environment secret names with `gh secret list --env staging` and
 non-secret values with `gh variable list --env staging`. Never retrieve or

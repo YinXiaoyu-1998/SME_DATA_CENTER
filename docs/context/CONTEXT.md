@@ -395,7 +395,7 @@ _Avoid_: 多租户 SaaS
 - launcher 只把长期凭证存入 macOS Keychain 或 Windows Credential Manager；安全存储不可用或写入失败时停止认证，绝不降级写入普通文件、配置、日志或剪贴板
 - 同一操作系统用户在同一个 Enterprise Hub 服务地址下只有一个当前账号，Codex 和其他本地 Agent 共享同一安全存储记录；beta 不提供账号列表、切换或多账号并存，凭证续取通过跨进程 single-flight 锁串行化
 - official launcher 使用固定、非秘密的 public client ID，通过固定 Authorization Code + PKCE 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience
-- launcher 权威源码保留在主仓库 `apps/mcp-launcher`，通过可信 GitHub Actions 发布为公开、版本化且带 provenance 的 npm 包；skills 只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
+- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；正式 cutover 的 skill 固定 `enterprise-hub-mcp-launcher@0.1.0`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
 - Enterprise Hub skill 是安装编排说明的唯一入口：用户只需向已有该 skill 的 agent 提出自然语言安装请求，agent 按说明为当前用户安装依赖和 launcher、备份并更新自己的 MCP 配置、执行自检，再由 launcher 打开浏览器登录
 - Codex 和 OpenClaw 的 macOS/Windows 安装与使用链路是首批明确支持并验收的客户端矩阵；对 Qoder 等未命名 agent，skill 仍应提供受约束的自适应说明，允许 agent 判断自己的 MCP 配置位置和方式，在备份、最小修改、不影响其他 MCP 服务并验证成功的前提下完成安装
 - launcher 不自行升级；服务端只公布最低支持版本和推荐版本，由主仓库与独立仓库中保持同步的 Enterprise Hub skills 决定何时升级、选择哪个已批准的精确 npm 包版本，并指导 agent 完成安装和自检
@@ -626,7 +626,7 @@ _Avoid_: 多租户 SaaS
 - “单因素密码最低是否使用 NIST 建议的 15 字符”已 rejected for beta：产品决定最低 8 字符、最高 128 字符，其他无组合规则、常见密码拦截、完整验证和 Argon2id 存储要求保持不变。
 - “是否保留本地测试用 dev-login/JWT”已 rejected：旧认证实现完全弃用并删除，不设计迁移或双栈兼容；测试同样使用新系统的正式凭证模型，只能通过内部 fixture/factory 加速准备。
 - “CLI 重置密码”可能被理解为开发者设置或掌握员工密码；已 resolved：beta CLI 只签发 **密码设置链接**，密码始终由员工本人在浏览器页面设置。
-- “Phase 3 MCP 连接鉴权现状”仅是待删除的历史实现：当前代码仍是 hard-loopback `POST /mcp`、development email 登录和内存 JWT launcher；正式切换将完整删除该认证方式，以公开 HTTPS MCP、浏览器 Authorization Code + PKCE、不透明 access token 和系统安全存储长期会话取代，不保留兼容路径。
+- “Phase 3 MCP 连接鉴权”已成为历史实现：当前集成代码已经删除 hard-loopback-only 限制、development email 登录和内存 JWT launcher，改为公开 HTTPS MCP、浏览器 Authorization Code + PKCE、不透明 access token 和系统安全存储长期会话，不保留兼容路径；固定版本 `enterprise-hub-mcp-launcher@0.1.0` 已在 npm 发布，staging/浏览器/桌面验收仍是发布门。
 - “权限管理”容易被过度设计成逐字段或逐文件控制；已 resolved：第一阶段采用 **粗颗粒度权限**，只以 **归属标签** 是否命中判断访问。
 - “归属”不应设计成单选组织范围；已 resolved：资料和员工账号都使用多值 **归属标签**，任一标签命中即可访问。
 - “区域标签/门店标签继承”暂不采用；已 resolved：第一阶段保留 **门店标签**，不做区域标签，也不做自动展开。

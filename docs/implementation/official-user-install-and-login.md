@@ -450,12 +450,31 @@ The authoritative launcher source remains in this product monorepo under `apps/m
 Server API, OAuth contract, launcher implementation, tests, and compatible release changes can
 therefore be reviewed together.
 
-The official distribution artifact is a public, versioned npm package with a CLI `bin`, no embedded
-secrets, and npm provenance produced by its trusted GitHub Actions release. The standalone
-Enterprise Hub skill repository contains installation and usage guidance plus the exact approved
-launcher version. It may direct an authorized employee-owned agent to install Node.js/npm when
-needed, install or update the launcher, and write MCP client configuration, but it must not contain
-a second copy of launcher source.
+The official distribution artifact is a public, versioned npm package with a CLI `bin` and no
+embedded secrets. The private main GitHub repository publishes through npm Trusted Publisher/OIDC;
+Trusted Publisher supports a private source repository, but npm provenance is unavailable for
+private source repositories. The workflow therefore must not request, claim, or gate approval on
+npm provenance. The standalone Enterprise Hub skill repository contains installation and usage
+guidance plus the exact approved launcher version. It may direct an authorized employee-owned agent
+to install Node.js/npm when needed, install or update the launcher, and write MCP client
+configuration, but it must not contain a second copy of launcher source.
+
+Release status as of 2026-07-28: `enterprise-hub-mcp-launcher@0.1.0` is public. Its registry
+integrity matches the reviewed tarball; exact-version clean installation, CLI execution, and the
+installed production dependency audit passed. The npm Trusted Publisher is bound to
+`YinXiaoyu-1998/SME_DATA_CENTER` and `launcher-release.yml` with stage-publish-only permission.
+Because `0.1.0` required the one-time first publish, the first live OIDC staged publish will be
+verified on a later version.
+
+The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
+only `ENTERPRISE_HUB_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
+`self-check` emits only the safe fields `ok`, `launcherVersion`, `serviceOrigin`, `platform`,
+`secureStore.{available,durableCredentialPresent}`,
+`server.{reachable,metadataCompatible,minimumLauncherVersion,recommendedLauncherVersion,recommendedUpdateAvailable}`,
+and `mcp.handshake`, whose value is `ok`, `not_authenticated`, or `unavailable`. It never logs in or
+returns credential contents. `logout` emits only `remoteRevocationConfirmed` and
+`localCredentialRemoved` booleans, attempts family revocation when reachable, and always attempts
+local credential deletion; local logout is successful only when `localCredentialRemoved` is true.
 
 Do not create a separate launcher repository until it has a genuinely independent maintainer or
 release cadence. The employee is not expected to run npm commands personally.
@@ -470,7 +489,8 @@ machine changes described by that runbook.
 The runbook directs the agent to:
 
 1. detect supported macOS or Windows;
-2. detect Node.js/npm and install them for the current user only when absent;
+2. require Node.js 22 or newer plus npm and install/upgrade them for the current user when absent or
+   too old;
 3. install the skill-approved exact launcher package version for the current user;
 4. back up and idempotently update only the invoking agent's MCP configuration;
 5. run a local launcher self-check; and
@@ -518,9 +538,11 @@ remain synchronized. They determine whether an update is needed, select the exac
 version, instruct the employee-owned agent to install it for the current user, and rerun the
 launcher self-check. The launcher and server do not independently choose or install a version.
 
-Never install npm `latest` implicitly. A release is approved only when its package, npm provenance,
-compatibility tests, server version policy, and versions pinned by both skill copies agree. Updating
-the launcher preserves the secure-store session, non-secret local state, and MCP configuration.
+Never install npm `latest` implicitly. A release is approved only when its exact public package,
+Trusted Publisher workflow, compatibility tests, server version policy, and versions pinned by both
+skill copies agree. Npm provenance is neither available nor an approval gate while the source
+repository remains private. Updating the launcher preserves the secure-store session, non-secret
+local state, and MCP configuration.
 
 Implementing this design therefore requires material coordinated changes in both the repo-local
 skill and the standalone skills repository; launcher/package work alone is incomplete.

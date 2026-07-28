@@ -8,11 +8,11 @@ const expectedWorkspaceNames = [
   "@enterprise-hub/db",
   "@enterprise-hub/domain",
   "@enterprise-hub/mcp-contract",
-  "@enterprise-hub/mcp-launcher",
   "@enterprise-hub/storage",
   "@enterprise-hub/structured-ingestion",
   "@enterprise-hub/testing",
-  "@enterprise-hub/worker"
+  "@enterprise-hub/worker",
+  "enterprise-hub-mcp-launcher"
 ];
 
 describe("workspace skeleton", () => {
