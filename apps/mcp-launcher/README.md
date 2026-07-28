@@ -6,4 +6,9 @@ are never accepted through command arguments, environment variables, or MCP tool
 
 Commands: `serve`, `self-check`, `logout`, and `--version`.
 
+`self-check` writes one safe JSON object with `ok`, `launcherVersion`, `serviceOrigin`, `platform`,
+`secureStore`, `server`, and `mcp` fields. `logout` always attempts local cleanup and writes
+`remoteRevocationConfirmed` and `localCredentialRemoved` booleans. Neither command writes
+credential contents.
+
 This public package has no npm provenance because the source repository is private.

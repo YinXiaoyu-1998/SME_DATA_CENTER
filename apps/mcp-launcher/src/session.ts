@@ -13,7 +13,7 @@ export interface OAuthTokenClient {
   refresh(
     refreshCredential: string
   ): Promise<{ accessToken: string; refreshToken: string; expiresAt?: number }>;
-  revoke(refreshCredential: string): Promise<void>;
+  revoke(refreshCredential: string): Promise<boolean>;
 }
 
 export interface LauncherLock {
@@ -50,7 +50,9 @@ export class LauncherSession {
       try {
         refreshed = await this.dependencies.tokenClient.refresh(refreshCredential);
       } catch (error) {
-        throw asTypedError(error);
+        const typed = asTypedError(error);
+        if (typed.code === "AUTHENTICATION_REQUIRED") await this.invalidate();
+        throw typed;
       }
 
       try {
@@ -75,7 +77,11 @@ export class LauncherSession {
     }
   }
 
-  async establish(accessToken: string, refreshCredential: string): Promise<void> {
+  async establish(
+    accessToken: string,
+    refreshCredential: string,
+    expiresAt: number
+  ): Promise<void> {
     try {
       await this.dependencies.secureStore.set(
         credentialRecord(this.dependencies.origin, refreshCredential)
@@ -83,7 +89,7 @@ export class LauncherSession {
       if ((await this.readCredential()) !== refreshCredential)
         throw new Error("credential verification failed");
       this.#accessToken = accessToken;
-      this.#accessTokenExpiresAt = Date.now() + 9 * 60_000;
+      this.#accessTokenExpiresAt = expiresAt;
     } catch {
       this.#accessToken = null;
       this.#accessTokenExpiresAt = 0;
@@ -93,16 +99,20 @@ export class LauncherSession {
     }
   }
 
-  async logout(): Promise<void> {
+  async logout(): Promise<{ remoteRevocationConfirmed: boolean; localCredentialRemoved: boolean }> {
     const release = await this.dependencies.lock.acquire();
     try {
       const refreshCredential = await this.readCredential();
       this.#accessToken = null;
       this.#accessTokenExpiresAt = 0;
-      if (refreshCredential) {
-        await this.dependencies.tokenClient.revoke(refreshCredential).catch(() => undefined);
-      }
-      await this.dependencies.secureStore.delete();
+      const remoteRevocationConfirmed = refreshCredential
+        ? await this.dependencies.tokenClient.revoke(refreshCredential).catch(() => false)
+        : true;
+      const localCredentialRemoved = await this.dependencies.secureStore.delete().then(
+        () => true,
+        () => false
+      );
+      return { remoteRevocationConfirmed, localCredentialRemoved };
     } finally {
       await release();
     }
@@ -110,6 +120,12 @@ export class LauncherSession {
 
   async status(): Promise<{ authenticated: boolean }> {
     return { authenticated: this.#accessToken !== null || (await this.readCredential()) !== null };
+  }
+
+  async invalidate(): Promise<void> {
+    this.#accessToken = null;
+    this.#accessTokenExpiresAt = 0;
+    await this.dependencies.secureStore.delete().catch(() => undefined);
   }
 
   private async readCredential(): Promise<string | null> {

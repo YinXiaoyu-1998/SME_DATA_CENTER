@@ -875,3 +875,27 @@
 - Made owner-record `open` failures fail closed immediately unless the error is `EEXIST`; collision retries now honor both the configured polling interval and the overall acquisition deadline.
 - Removed the release workflow's version-specific tarball path. Native platform acceptance now reads the filename from `npm pack --json`, exports it as a step output, and installs exactly that artifact.
 - Verification: 38 focused launcher/workspace tests; 5 artifact/static workflow tests; typecheck; lint; format; diff check; and package dry-run all passed.
+
+## 2026-07-28 - codex/phase4-official-auth-launcher - final local integration
+
+- Scope: Integrated the official auth data model, operator setup/reset links, browser
+  Authorization Code + PKCE routes, rotating hash-only opaque sessions, public authenticated MCP
+  trust boundary, official-session staging smoke, independently publishable launcher, dual-homed
+  employee skill, cursor-secret deployment cutover, and current documentation.
+- Release corrections: Added exact npm repository/license/public metadata; changed the future OIDC
+  workflow from ordinary `npm publish --tag stage` to `npm stage publish`; added clean installed
+  dependency audit and macOS/Windows keyring gates; installed the GitHub
+  `STAGING_CURSOR_SIGNING_SECRET` while retaining the old JWT secret until successful staging
+  cutover.
+- Verification: format, lint, typecheck, diff check, 401-unit-test baseline plus the added OAuth
+  wire-contract case, MySQL auth integration 9/9, full local integration, MCP smoke, package
+  allowlist/SBOM/secret/protocol tests, clean tarball production audit with zero findings, real
+  macOS Keychain write/read/delete, Compose config, and Linux API/worker Docker builds passed.
+  Five concurrent Argon2id verifies measured p95 327 ms and about 192 MiB additional RSS locally.
+- External gates: npm is not authenticated and `enterprise-hub-mcp-launcher` is still unpublished.
+  The atomic main PR must merge before GitHub deploys the migration/runtime cutover. Real macOS
+  browser/Codex/OpenClaw acceptance and real Windows desktop acceptance remain; the standalone skill
+  PR stays draft until package and staging validation.
+- Known non-launcher dependency risk: official-registry root audit reports 20 findings (1 low,
+  5 moderate, 14 high; 15 in the production graph). The clean installed launcher has zero findings.
+  Root dependency remediation remains a separate pre-production hardening track.

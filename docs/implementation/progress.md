@@ -2,10 +2,10 @@
 
 ## Current Phase
 
-- Phase: Phase 4 runtime delivery is verified; first-beta identity and remote MCP access are now the critical path. Phase 5 remains ongoing beta feedback and hardening.
-- Date: 2026-07-23
-- Lead branch: `main`; active audit/design branch: `codex/phase4-beta-readiness-audit`
-- Deployment target: Alibaba Cloud Simple Application Server staging target is healthy on API/worker tag `708128503656`. Delivery, TLS, RDS migrations, private readiness and fixture smoke pass, but a real beta user is blocked because production login is unavailable and public `/mcp` retains the Phase 3 loopback guard.
+- Phase: Phase 4 official access is implementation-complete locally and in final release verification; npm publication, staging cutover, and real macOS/Windows desktop acceptance remain gates.
+- Date: 2026-07-28
+- Lead branch: `codex/phase4-official-auth-launcher`
+- Deployment target: Alibaba Cloud staging still runs the previously verified release until this atomic integration branch passes all gates and merges. The branch replaces JWT/dev-login with official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package.
 
 ## Active Workstreams
 
@@ -440,9 +440,10 @@
 - [x] Audit the first-beta path against current code and live boundaries; record the hard login/MCP blockers, direct RDS backup/SSL/lifecycle facts, corrected OSS bucket, proposed ADR 0021 and separate real-user versus real-data gates.
 - [x] Withdraw ADR 0021 and complete product-owner design approval for official browser login, opaque access/rotating durable sessions, secure launcher storage, skill-driven installation/update, and the no-compatibility JWT cutover.
 - [x] Start the 2026-07-24 Phase 4 official-access implementation on `codex/phase4-official-auth-launcher`: local `main` and the integration branch were fast-forwarded to merged PR #81, an isolated worktree was created, and the clean baseline passed format, lint, typecheck, and 336 unit tests after Prisma client generation.
-- [ ] Turn `official-user-install-and-login.md` into an implementation plan, then implement and externally verify the official identity lifecycle, browser login, secure launcher, public HTTPS MCP boundary, and synchronized Enterprise Hub skill homes. Task 1 auth-core review fixes are complete locally: raw-verifier PKCE, exact normalized-email collation, serialized setup-grant replacement, transaction-only code issuance, complete credential-free lifecycle events, and real-MySQL migration guard behavior all pass.
+- [x] Complete local Phase 4 official-access integration: auth migration/core/routes, public authenticated MCP, official-session smoke, independent launcher package, dual-homed employee skill, cursor-secret cutover, MySQL concurrency/replay tests, OAuth wire-contract test, macOS Keychain acceptance, clean tarball production audit, full unit/integration/MCP gates, and API/worker Docker builds pass.
+- [ ] Complete external release gates for the implemented official identity lifecycle, browser login, secure launcher, public HTTPS MCP boundary, and synchronized skill homes: publish `enterprise-hub-mcp-launcher@0.1.0`, deploy staging, run real browser/macOS/Windows acceptance, then merge the standalone skill PR.
 - [ ] Before customer data, approve and rehearse recovery, configure minimal alerts, run a controlled application rollback, and record retention/deletion rules.
 - [ ] Refresh the pinned Docker Buildx Action when an approved release removes its Node 20 runtime deprecation annotation, then rerun workflow tests.
-- [ ] Triage the current `npm ci` audit report (five moderate and one high) separately from the passing fixable-critical container-image gate before production.
+- [ ] Triage the 2026-07-28 root dependency audit (20 total: 1 low, 5 moderate, 14 high; 15 production-graph findings) separately from the clean installed-launcher audit and passing fixable-critical container-image gate before production.
 - [x] Complete Phase 4 official client skill/documentation synchronization and reviewer fixes on `codex/phase4-official-client-docs`: dual-homed skills now pin the planned `enterprise-hub-mcp-launcher@0.1.0` browser-login flow, require Node.js 22+, install the skill in canonical current-user directories, provide verified backup-first Codex/OpenClaw setup and exact platform `serve`/`self-check`/`logout` commands, state the safe machine-readable launcher contract, and correctly record Trusted Publisher with no npm provenance for the private source repository. Static skill validation, byte-sync, formatting, forbidden-guidance scans, and isolated Codex MCP CLI add/get/list/remove verification passed; runtime/package publication remains integration work.
 - [x] Complete the official launcher third review fixes: recognize all high-entropy Enterprise Hub opaque-secret prefixes in remote values, bound and fail closed owner-lock open retries, and derive release artifact filenames from `npm pack --json`.

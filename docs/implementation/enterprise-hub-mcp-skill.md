@@ -68,7 +68,7 @@ The official target profile must be actionable enough for an agent to:
 - [x] Skill requires exact client-side file-byte reads and forbids retyping, normalizing, translating, or reconstructing upload payloads.
 - [x] Skill requires explicit human authorization before uploading real company documents or customer exports.
 - [x] Skill separates per-agent removal, shared logout, and complete uninstall.
-- [x] Pre-cutover dev-login/JWT current code is not presented as official remote behavior.
+- [x] Removed dev-login/JWT behavior is not presented as a current or compatible path.
 
 ## Validation
 

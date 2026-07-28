@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { fileURLToPath } from "node:url";
 import { loadLauncherRuntimeConfig } from "./config.js";
+import { formatLauncherCommandResult } from "./cli.js";
 import { createOfficialLauncherAuthentication } from "./launcher.js";
 import { runMcpLauncherStdioServer } from "./server.js";
 
@@ -46,9 +47,16 @@ async function runCommand(): Promise<void> {
   try {
     const config = loadLauncherRuntimeConfig();
     if (command === "serve") return runMcpLauncherStdioServer(config);
-    if (command === "logout") return createOfficialLauncherAuthentication(config).logout();
+    if (command === "logout") {
+      const outcome = await createOfficialLauncherAuthentication(config).logout();
+      process.stdout.write(formatLauncherCommandResult("logout", outcome));
+      if (!outcome.localCredentialRemoved) process.exitCode = 1;
+      return;
+    }
     if (command === "self-check") {
-      await createOfficialLauncherAuthentication(config).status();
+      const result = await createOfficialLauncherAuthentication(config).selfCheck();
+      process.stdout.write(formatLauncherCommandResult("self-check", result));
+      if (!result.ok) process.exitCode = 1;
       return;
     }
   } catch {

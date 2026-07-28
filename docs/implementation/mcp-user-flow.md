@@ -1,9 +1,8 @@
 # Enterprise Hub MCP User Flow
 
-> **Official target, pending cutover:** This is the accepted employee flow after the official
-> identity, launcher package, and public MCP changes land together. It is not evidence that the
-> current Phase 3 development-email/JWT implementation is live for remote users. The historical
-> implementation boundary remains in [mcp-endpoint.md](./mcp-endpoint.md).
+> **Official implementation:** This is the implemented employee flow. Publication of the npm
+> package and staging/browser acceptance remain release gates; there is no development-login or JWT
+> compatibility path.
 
 Last updated: 2026-07-24
 
@@ -102,9 +101,10 @@ explicitly authorized lifecycle action.
 - `enterprise_hub_list_skills` returns directory metadata only. Do not execute an entry, generate a
   report, or turn Enterprise Hub into a direct employee-facing AI service.
 
-## Current Code Boundary
+## Current Release Boundary
 
-Until cutover, the existing `POST /auth/dev-login`, development JWT issuance, loopback-only `/mcp`,
-and `enterprise_hub_login_local`/`enterprise_hub_logout_local` behavior are **pre-cutover current
-code**, not official remote instructions. They must be deleted rather than documented as a
-compatibility path when the official flow is implemented.
+The code implements official opaque access tokens, rotating durable credentials, browser
+Authorization Code + PKCE, public HTTPS `/mcp`, and the pinned launcher. A beta-release claim still
+requires npm publication, staging migration/deployment, real browser login, and macOS/Windows
+desktop acceptance. The removed `/auth/dev-login`, JWT, and local email-login tools must remain
+absent.

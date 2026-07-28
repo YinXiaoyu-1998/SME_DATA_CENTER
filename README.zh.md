@@ -22,8 +22,8 @@ cp .env.example .env
 DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub"
 STORAGE_DRIVER="local"
 LOCAL_STORAGE_ROOT="./.data/storage"
-JWT_SECRET="replace-with-local-development-secret"
-DEV_SEED_ADMIN_EMAIL="admin@example.com"
+CURSOR_SIGNING_SECRET="replace-with-local-development-cursor-secret"
+ENTERPRISE_HUB_PUBLIC_ORIGIN="https://api.smedatacenter.xyz"
 MAX_UPLOAD_BYTES="52428800"
 
 QDRANT_URL="http://127.0.0.1:6333"
@@ -37,6 +37,9 @@ STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS="120000"
 ```
 
 不要提交 `.env`、`.data/`、session 文件、真实客户导出、私有 token、服务账号 key 或第三方下载数据。
+
+所有环境统一使用正式的不透明 token 鉴权模型。seed 创建的本地身份没有密码；自动化测试通过
+进程内 fixture factory 创建短期正式 session。系统不再提供开发邮箱登录或 JWT 兼容入口。
 
 ## 源文件存储
 
@@ -109,7 +112,9 @@ npm run worker:once
 
 ## 本地 MCP 开发代码（Cutover 前）
 
-服务端只提供 authenticated Streamable HTTP `POST /mcp`，Phase 3 仅允许 loopback。它不提供服务端 stdio，也不直读 MySQL、Qdrant 或 storage。API、worker 和依赖必须在 skill/launcher 之外运行。
+服务端只提供 authenticated Streamable HTTP `POST /mcp`；staging API 仍只监听 loopback，由
+nginx 作为唯一公网入口。它不提供服务端 stdio，也不直读 MySQL、Qdrant 或 storage。API、worker
+和依赖必须在 skill/launcher 之外运行。
 
 Codex / MCP client 通过用户机 launcher 连接：
 
@@ -121,18 +126,19 @@ Codex / MCP client 通过用户机 launcher 连接：
       "args": ["run", "--silent", "mcp:launcher"],
       "cwd": "/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER",
       "env": {
-        "ENTERPRISE_HUB_BASE_URL": "http://127.0.0.1:3000"
+        "ENTERPRISE_HUB_BASE_URL": "https://api.smedatacenter.xyz"
       }
     }
   }
 }
 ```
 
-**Cutover 前 development launcher** 只保存进程内存中的 development JWT；退出后必须重新用员工
-email 登录。它不会启动或修复服务。这不是正式员工登录流程，正式切换时会删除。手动启动：
+Launcher 使用正式浏览器登录；轮换 durable credential 只进入操作系统安全存储，access token
+只在内存中。它只接受正式 HTTPS origin，不会启动或修复服务。本地 API/worker 开发由内部
+fixture/session 自动化测试覆盖，不会放宽 launcher 的 HTTPS 要求。手动启动：
 
 ```sh
-ENTERPRISE_HUB_BASE_URL=http://127.0.0.1:3000 npm run mcp:launcher
+ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher
 ```
 
 MCP 配置、环境和文件中不得保存 bearer token。
@@ -143,8 +149,9 @@ MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登�
 
 | Tool                           | 用途                                        |
 | ------------------------------ | ------------------------------------------- |
-| `enterprise_hub_login_local`   | 用 seeded email 登录 launcher 内存 session  |
-| `enterprise_hub_logout_local`  | 清除 launcher 内存 session                  |
+| `enterprise_hub_login`         | 打开浏览器完成正式登录                      |
+| `enterprise_hub_logout`        | 撤销并清除本机共享 session                  |
+| `enterprise_hub_auth_status`   | 返回不含凭证的认证状态                      |
 | `enterprise_hub_list_labels`   | 读取可用标签目录                            |
 | `enterprise_hub_list_skills`   | 读取已批准 Skill Directory 元数据           |
 | `upload_evidence_document`     | 上传 MD/TXT/DOCX evidence 文档              |
@@ -169,7 +176,7 @@ Codex 会使用 repo-local `enterprise-hub-manual-test` skill 重置专用本地
 
 手工执行的核心路径：
 
-1. 用 `enterprise_hub_login_local` 登录 `baoli.manager@example.com`。
+1. 调用 `enterprise_hub_login`，只在浏览器中完成登录。
 2. 用 `enterprise_hub_list_labels` 选择 `store:baoli`。
 3. 用 `upload_evidence_document` 上传 MD/TXT/DOCX，随后用 `get_evidence_document_status` 等待 index ready，再用 `search_document_evidence` 检索。
 4. 用 `upload_structured_dataset` 上传 `dishes` 或 `business` CSV/XLSX，随后用 `get_import_status` 和 `query_structured_dataset` 验证。

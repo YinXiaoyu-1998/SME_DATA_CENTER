@@ -262,14 +262,20 @@ Phase 3 verification and review were merged before the first Phase 4 implementat
 
 As of 2026-07-23, the first online skeleton slice is live in staging: API, worker, and Qdrant run on the Alibaba Cloud Simple Application Server from fixed Beijing ACR image tags behind nginx and Let’s Encrypt. The repeatable `npm run deploy:staging` boundary now builds, scans, publishes, migrates, rolls out, verifies, and records an immutable release. Merged PR #76 also proved the full trusted-main automation chain: quality-gate run `29977759504` triggered deployment run `29977876905`, which deployed merge SHA tag `708128503656`. RDS `prisma migrate deploy`, synthetic seed, Qdrant init, local `/readyz`, public HTTPS `/healthz`, blocked public `/readyz`, certbot renew dry-run, and fixture-only staging smoke have passed.
 
-This does not make the service production-ready. A 2026-07-23 code and live-boundary audit confirmed that a real beta user is still blocked: production dev login returns `404`, public `/mcp` returns `403 MCP_LOOPBACK_REQUIRED`, the launcher has no secure production credential bootstrap, and staging has only synthetic employees. Phase 4 still needs beta identity/remote-MCP access, the final database SSL-mode decision, restore expectations, monitoring/alerting, a controlled rollback drill, and real-data retention/import decisions before Phase 5 or real customer data.
+The official-auth implementation branch now replaces the temporary login boundary with local
+password identities, browser Authorization Code + PKCE, rotating opaque credentials, public
+authenticated `/mcp`, an independently publishable desktop launcher, operator onboarding, and
+Codex/OpenClaw installation skills. It is not yet a live beta release until that atomic change is
+merged, deployed, the launcher is published, and macOS/Windows desktop acceptance is recorded.
+Database SSL/recovery, monitoring/alerting, rollback rehearsal, and real-data governance remain
+separate Phase 4 gates.
 
 Scope:
 
 - staging runtime prerequisites;
 - Alibaba Cloud / approved infrastructure deployment path;
 - MySQL, Qdrant, storage, secret, domain, TLS, and registry readiness;
-- production-grade auth plan;
+- official browser authentication and desktop launcher;
 - staging smoke and rollback.
 
 ### Day 2: Alibaba Cloud OSS Storage Adapter
@@ -298,13 +304,22 @@ The current staging deployment uses:
 - mirrored Qdrant image tag `v1.15.4`;
 - root-only server runtime env at `/opt/enterprise-hub/runtime.env`.
 
-The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed data. It is not an employee-facing production MCP target. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be implemented. Official employee installation, browser login, and durable session behavior are being designed in `official-user-install-and-login.md`.
+The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed
+data. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be implemented. The
+accepted official employee installation, browser login, and durable session contract is defined in
+`official-user-install-and-login.md`; implementation is complete on the integration branch but
+still requires npm publication, staging deployment, and desktop acceptance before beta use.
 
 ### Remaining Phase 4 Tracks
 
-- Official user access: finish `official-user-install-and-login.md`, reconcile the obsolete development/beta authentication documents, and implement the accepted browser-login and durable launcher-session boundary. A real user may first use fixture or explicitly approved non-sensitive data.
+- Official user access: merge and deploy the atomic auth cutover, publish
+  `enterprise-hub-mcp-launcher@0.1.0`, merge the synchronized skill, and pass real macOS and Windows
+  Codex/OpenClaw browser-login acceptance. A real user may first use fixture or explicitly approved
+  non-sensitive data.
 - Database policy: choose final RDS SSL mode. Provider CLI now verifies 7-day automated full-backup retention plus 7-day log backups and one successful full backup, but restore ownership/RPO/RTO and a recovery drill remain open.
-- Security/auth: ADR 0021 is withdrawn. The official identity authority, employee mapping, browser authorization, token lifecycle, account recovery, and administrative identity lifecycle must be resolved before implementation.
+- Security/auth: ADR 0021 is withdrawn. The accepted identity, employee mapping, browser
+  authorization, token lifecycle, password setup/reset, and operator onboarding contract is
+  implemented on the official-auth integration branch; staging security acceptance remains.
 - Deployment automation: verified. The merged `npm run deploy:staging` release/rollback boundary is reused by GitHub Actions; trusted `main` quality success deployed immutable tag `708128503656`, recorded the GitHub staging deployment, and passed independent host inspection. Manual deploy/rollback remains available from `main`.
 - Operations: monitoring, alerting, rollback runbook validation, log retention, and cost/resource review.
 - Data governance: define real customer import, retention, deletion, and staging-data policy before customer data. A real beta employee using repo fixtures is an earlier, separate acceptance gate.

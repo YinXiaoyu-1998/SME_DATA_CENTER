@@ -7,9 +7,7 @@ export interface LauncherRuntimeConfigInput {
   enterpriseHubBaseUrl: string;
 }
 
-type LauncherRuntimeEnv = Partial<
-  Record<"ENTERPRISE_HUB_BASE_URL" | "ENTERPRISE_HUB_API_URL", string | undefined>
->;
+type LauncherRuntimeEnv = Partial<Record<"ENTERPRISE_HUB_BASE_URL", string | undefined>>;
 
 const CONFIG_INPUT_KEYS = new Set(["enterpriseHubBaseUrl"]);
 
@@ -27,7 +25,7 @@ export function createLauncherRuntimeConfig(
 export function loadLauncherRuntimeConfig(
   env: LauncherRuntimeEnv = process.env
 ): LauncherRuntimeConfig {
-  const enterpriseHubBaseUrl = env.ENTERPRISE_HUB_BASE_URL ?? env.ENTERPRISE_HUB_API_URL;
+  const enterpriseHubBaseUrl = env.ENTERPRISE_HUB_BASE_URL;
 
   if (!enterpriseHubBaseUrl) {
     throw new Error("ENTERPRISE_HUB_BASE_URL is required.");

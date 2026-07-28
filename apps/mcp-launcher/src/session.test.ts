@@ -32,20 +32,61 @@ describe("durable official launcher session", () => {
 
   it("fails closed and clears in-memory access when rotating credential storage fails", async () => {
     const secureStore = memoryStore("old-refresh", { failSet: true });
+    const sessionTokenClient = tokenClientReturning({
+      accessToken: "access-secret",
+      refreshToken: "new-refresh"
+    });
     const session = new LauncherSession({
       origin,
       secureStore,
-      tokenClient: tokenClientReturning({
-        accessToken: "access-secret",
-        refreshToken: "new-refresh"
-      }),
+      tokenClient: sessionTokenClient,
       lock: immediateLock()
     });
 
     await expect(session.ensureAccessToken()).rejects.toMatchObject({
       code: "AUTHENTICATION_REQUIRED"
     });
+    expect(sessionTokenClient.revoke).toHaveBeenCalledWith("new-refresh");
     await expect(session.status()).resolves.toEqual({ authenticated: false });
+  });
+
+  it("preserves exchange expiry and refreshes after the safety window", async () => {
+    const tokenClient = tokenClientReturning({ accessToken: "refreshed", refreshToken: "rotated" });
+    const session = new LauncherSession({
+      origin,
+      secureStore: memoryStore(null),
+      tokenClient,
+      lock: immediateLock()
+    });
+    await session.establish("initial", "durable", Date.now() + 30_000);
+    await expect(session.ensureAccessToken()).resolves.toBe("refreshed");
+  });
+
+  it("clears definitive invalid credentials and returns logout outcomes", async () => {
+    const secureStore = memoryStore("invalid");
+    const tokenClient: OAuthTokenClient = {
+      refresh: async () => {
+        throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
+      },
+      revoke: vi.fn(async () => true)
+    };
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient,
+      lock: immediateLock()
+    });
+    await expect(session.ensureAccessToken()).rejects.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED"
+    });
+    expect(await secureStore.get()).toBeNull();
+    await secureStore.set(
+      JSON.stringify({ schemaVersion: 1, origin, durableCredential: "logout" })
+    );
+    await expect(session.logout()).resolves.toEqual({
+      remoteRevocationConfirmed: true,
+      localCredentialRemoved: true
+    });
   });
 
   it("serializes concurrent refreshes and rereads the keychain after acquiring the lock", async () => {
@@ -74,7 +115,7 @@ describe("durable official launcher session", () => {
         refresh: async () => {
           throw new LauncherTypedError("SERVICE_UNAVAILABLE");
         },
-        revoke: async () => undefined
+        revoke: async () => true
       },
       lock: immediateLock()
     });
@@ -112,7 +153,7 @@ function tokenClientReturning(result: {
   refreshToken: string;
 }): OAuthTokenClient & { refresh: ReturnType<typeof vi.fn> } {
   const refresh = vi.fn(async () => result);
-  return { refresh, revoke: async () => undefined };
+  return { refresh, revoke: vi.fn(async () => true) };
 }
 
 function immediateLock(): LauncherLock {

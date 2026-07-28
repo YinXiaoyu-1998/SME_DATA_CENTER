@@ -1,22 +1,24 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-07-20
+Last updated: 2026-07-28
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
 ## Required Repository Checks
 
-| Check             | Command                                          | Expected                                                                                      |
-| ----------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| Format            | `npm run format:check`                           | No Prettier diffs                                                                             |
-| Lint              | `npm run lint`                                   | No ESLint failures                                                                            |
-| Typecheck         | `npm run typecheck`                              | TypeScript compiles with no emit                                                              |
-| Unit tests        | `npm test`                                       | All Vitest suites pass                                                                        |
-| Local integration | `MYSQL_PORT=3307 npm run test:integration`       | Phase 3 API + worker path passes                                                              |
-| MCP smoke         | `npm run test:mcp`                               | HTTP `/mcp` and memory-only launcher path pass                                                |
-| Manual acceptance | Ask Codex to run the SME_DATA_CENTER manual test | Natural, verbatim employee prompts plus user-visible task records pass                        |
-| Golden retrieval  | `npm run test:phase3:golden`                     | Deterministic synthetic retrieval thresholds pass                                             |
-| Perf smoke        | `npm run test:phase3:perf`                       | Real local workloads pass and report workload size, elapsed time, Node version, and threshold |
+| Check              | Command                                                                                                                 | Expected                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Format             | `npm run format:check`                                                                                                  | No Prettier diffs                                                                                                  |
+| Lint               | `npm run lint`                                                                                                          | No ESLint failures                                                                                                 |
+| Typecheck          | `npm run typecheck`                                                                                                     | TypeScript compiles with no emit                                                                                   |
+| Unit tests         | `npm test`                                                                                                              | All Vitest suites pass                                                                                             |
+| Local integration  | `MYSQL_PORT=3307 npm run test:integration`                                                                              | Phase 3 API + worker path passes                                                                                   |
+| MCP smoke          | `npm run test:mcp`                                                                                                      | HTTP `/mcp` and official launcher stdio-to-HTTP path pass                                                          |
+| Auth MySQL         | `RUN_AUTH_INTEGRATION=1 npm test -- apps/api/src/auth/prisma-auth-repository.integration.test.ts`                       | Official credential lifecycle passes against MySQL                                                                 |
+| Launcher package   | `npm run build --workspace enterprise-hub-mcp-launcher && npm run test:package --workspace enterprise-hub-mcp-launcher` | Publishable tarball is isolated, allowlisted, and protocol-probed                                                  |
+| Desktop acceptance | Follow `official-user-install-and-login.md` on clean macOS and Windows users                                            | Published launcher, browser login, Codex/OpenClaw upload/query, restart, logout, reset, repair, and uninstall pass |
+| Golden retrieval   | `npm run test:phase3:golden`                                                                                            | Deterministic synthetic retrieval thresholds pass                                                                  |
+| Perf smoke         | `npm run test:phase3:perf`                                                                                              | Real local workloads pass and report workload size, elapsed time, Node version, and threshold                      |
 
 ## Active Phase 3 API / Worker Cases
 
@@ -39,21 +41,35 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 
 ## Active MCP Cases
 
-| Case                     | Test / Command                                        | Expected                                                                                        |
-| ------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| HTTP endpoint guards     | `npm test -- apps/api/src/mcp/http.test.ts`           | Auth, loopback, stateless protocol, size/concurrency, and discovery are enforced                |
-| Core MCP contract        | `npm test -- packages/mcp-contract/src/index.test.ts` | Strict tool inputs reject legacy session/path fields and invalid inline upload content          |
-| API MCP tool delegation  | `npm test -- apps/api/src/mcp`                        | Read/upload tools preserve existing API authorization and multipart validation                  |
-| Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                   | Login/logout is memory-only and every remote MCP request carries bearer auth                    |
-| Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                    | Launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy representatives pass |
+| Case                     | Test / Command                                        | Expected                                                                                                              |
+| ------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| HTTP endpoint guards     | `npm test -- apps/api/src/mcp/http.test.ts`           | Official-host/loopback peer, opaque auth, stateless protocol, size/concurrency, and discovery are enforced            |
+| Core MCP contract        | `npm test -- packages/mcp-contract/src/index.test.ts` | Strict tool inputs reject legacy session/path fields and invalid inline upload content                                |
+| API MCP tool delegation  | `npm test -- apps/api/src/mcp`                        | Read/upload tools preserve existing API authorization and multipart validation                                        |
+| Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                   | Browser PKCE login, secure-store session, refresh serialization, logout, typed failures, and authenticated proxy pass |
+| Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                    | Launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy representatives pass                       |
 
-## User-Visible Codex Manual Acceptance
+## Withdrawn Phase 3 Local Manual Acceptance
 
-The repeatable controller workflow is defined in `docs/implementation/local-agent-test.md` and `skills/enterprise-hub-manual-test/SKILL.md`. It resets only the repository's local test runtime, starts API/worker, creates independent user-visible Codex tasks from `fixtures/manual-acceptance/scenarios.json`, captures operator snapshots, and writes an ignored `.data/manual-tests/<runId>/report.md`.
+The old user-visible controller in `docs/implementation/local-agent-test.md` and
+`skills/enterprise-hub-manual-test/SKILL.md` is withdrawn. It depended on the removed development
+email login and an HTTP loopback launcher, so it must not be used as post-cutover evidence or revived
+by weakening the HTTPS boundary. Current user-visible evidence must come from the published launcher,
+official browser login, staging service, and clean macOS/Windows desktop acceptance.
 
-The controller sends manifest prompts verbatim. Visible messages contain ordinary business language only; local email and fixture path stand in for SSO and file attachment. Automated fixture tests reject controller boundaries and MCP/Base64/label/idempotency/SQL/query-shape/grounding hints in those prompts. Protocol-heavy or boundary-prefixed runs count only as guided conformance evidence.
+## Official Identity, OAuth, And Launcher Cases
 
-The deterministic fake-provider pass verifies orchestration, authorization, grounding, uploads, state, prompt-injection safety, and structured queries. It must not be cited as proof of semantic retrieval quality. The real-provider subset requires explicit local `.env` configuration and `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`.
+| Area              | Required proof                                                                                                                                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Password identity | Unicode NFC and 8–128 boundaries, common-password rejection, Argon2id parameters, dummy verification, non-enumerating failures, and 5/10/20/40/60-minute cooldown                                                    |
+| Setup/reset       | 24-hour single-use grant, 10-minute setup transaction, replacement and concurrent-consumption safety, fragment removal, CSRF/cookie/CSP/no-store headers, and session-family revocation                              |
+| OAuth             | Metadata, fixed public client, exact IPv4 loopback redirect, S256 PKCE, state binding, 60-second one-use code, and invalid/replayed code rejection                                                                   |
+| Sessions          | Hash-only opaque tokens, 10-minute access expiry, 30-day absolute session, atomic refresh rotation, replay-family revocation, logout/reset/disabled revocation, and fail-closed database errors                      |
+| Launcher          | Callback binding and state, browser cancellation/timeout, macOS Keychain or Windows Credential Manager only, cross-process refresh lock, restart recovery, four model-safe failure classes, and no credential output |
+| Package           | `npm pack` allowlist and secret scan, no workspace dependency in the tarball, clean-directory install, stdio initialize/list-tools probe, native keyring load on macOS/Windows CI, and tag/version equality          |
+
+The removed `/auth/dev-login`, JWT verifier/issuer, email-taking launcher tool, and long-lived token
+handoff must remain covered by negative tests and packaging scans.
 
 ## Legacy Removal Negative Cases
 
@@ -73,7 +89,7 @@ The removed route/tool names may appear only in negative tests, migration/remova
 1. local MySQL and Qdrant start;
 2. migrations and seed apply;
 3. API starts on an available port;
-4. `baoli.manager@example.com` can login;
+4. the integration harness creates an official short-lived session without a test login endpoint;
 5. structured `dishes` fixture imports and can be queried;
 6. evidence markdown fixture uploads;
 7. worker indexes evidence into Qdrant;

@@ -1,8 +1,7 @@
 # Enterprise Hub MCP 用户流程
 
-> **正式目标，等待 cutover：** 本文描述正式 identity、launcher npm 包和公开 MCP 一起落地后的
-> 员工流程；它不证明当前 Phase 3 development-email/JWT 实现已经可供远程用户使用。历史实现边界
-> 仍见 [mcp-endpoint.md](./mcp-endpoint.md)。
+> **正式实现：** 本文描述已经实现的员工流程。npm 包发布和 staging/浏览器验收仍是发布门；
+> 不存在 development login 或 JWT 兼容路径。
 
 最后更新：2026-07-24
 
@@ -94,8 +93,9 @@ sequenceDiagram
 - `enterprise_hub_list_skills` 只返回目录元数据。不得执行条目、生成报告，或把 Enterprise Hub 变成
   员工直接对话的 AI 服务。
 
-## 当前代码边界
+## 当前发布边界
 
-在 cutover 前，已有的 `POST /auth/dev-login`、development JWT 签发、仅 loopback 的 `/mcp` 以及
-`enterprise_hub_login_local`/`enterprise_hub_logout_local` 都是**待删除的当前代码**，不是正式远程
-操作说明。正式流程落地时必须删除它们，而不是保留兼容路径。
+代码已经实现正式不透明 access token、轮换 durable credential、浏览器 Authorization Code + PKCE、
+公开 HTTPS `/mcp` 和固定版本 launcher。只有 npm 发布、staging migration/deployment、真实浏览器
+登录及 macOS/Windows 桌面验收通过后，才能称为 beta 上线。已删除的 `/auth/dev-login`、JWT 和
+本地邮箱登录工具必须持续保持不存在。

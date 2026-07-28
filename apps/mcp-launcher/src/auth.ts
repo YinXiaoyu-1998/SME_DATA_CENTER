@@ -24,7 +24,7 @@ export interface LoopbackCallbackServer {
 }
 
 interface InternalLoopbackCallbackServer extends LoopbackCallbackServer {
-  waitForCode(): Promise<string>;
+  waitForUrl(): Promise<URL>;
 }
 
 export async function createAuthorizationRequest(input: {
@@ -65,8 +65,8 @@ export async function createLoopbackCallbackServer(input: {
   throw new Error("Unable to start the secure browser callback.");
 }
 
-export async function waitForAuthorizationCode(callback: LoopbackCallbackServer): Promise<string> {
-  return (callback as InternalLoopbackCallbackServer).waitForCode();
+export async function waitForAuthorizationResponse(callback: LoopbackCallbackServer): Promise<URL> {
+  return (callback as InternalLoopbackCallbackServer).waitForUrl();
 }
 
 export function redactSecrets(value: unknown): unknown {
@@ -92,11 +92,11 @@ function listenForCallback(input: {
 }): Promise<InternalLoopbackCallbackServer> {
   return new Promise((resolve, reject) => {
     let complete = false;
-    let resolveCode: ((code: string) => void) | undefined;
-    let rejectCode: ((error: Error) => void) | undefined;
-    const codePromise = new Promise<string>((resolveCodePromise, rejectCodePromise) => {
-      resolveCode = resolveCodePromise;
-      rejectCode = rejectCodePromise;
+    let resolveUrl: ((url: URL) => void) | undefined;
+    let rejectUrl: ((error: Error) => void) | undefined;
+    const urlPromise = new Promise<URL>((resolveUrlPromise, rejectUrlPromise) => {
+      resolveUrl = resolveUrlPromise;
+      rejectUrl = rejectUrlPromise;
     });
     const server = http.createServer((request, response) => {
       const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -106,23 +106,17 @@ function listenForCallback(input: {
         return;
       }
 
-      const code = requestUrl.searchParams.get("code");
-      const state = requestUrl.searchParams.get("state");
-
-      if (!code || !state || state !== input.state) {
-        sendCallbackResponse(response, 400, "The sign-in callback could not be verified.");
-        return;
-      }
-
       complete = true;
       clearTimeout(timeout);
       sendCallbackResponse(response, 200, "Sign-in completed. You can return to Enterprise Hub.");
-      resolveCode?.(code);
+      resolveUrl?.(
+        new URL(requestUrl.pathname + requestUrl.search, `http://${request.headers.host}`)
+      );
     });
     const timeout = setTimeout(() => {
       if (!complete) {
         complete = true;
-        rejectCode?.(new Error("Browser sign-in timed out."));
+        rejectUrl?.(new Error("Browser sign-in timed out."));
         void closeServer(server);
       }
     }, input.timeoutMs ?? CALLBACK_TIMEOUT_MS);
@@ -144,15 +138,15 @@ function listenForCallback(input: {
       const callback: InternalLoopbackCallbackServer = {
         redirectUri: new URL(`http://127.0.0.1:${address.port}${CALLBACK_PATH}`),
         waitForResult: async () => {
-          await codePromise;
+          await urlPromise;
           return { received: true };
         },
-        waitForCode: () => codePromise,
+        waitForUrl: () => urlPromise,
         close: async () => {
           clearTimeout(timeout);
           if (!complete) {
             complete = true;
-            rejectCode?.(new Error("Browser sign-in was cancelled."));
+            rejectUrl?.(new Error("Browser sign-in was cancelled."));
           }
           await closeServer(server);
         }

@@ -44,7 +44,8 @@ file instead of creating `/opt/enterprise-hub/runtime.env` locally.
 `runtime.env` must include these values without printing or committing them:
 
 - `DATABASE_URL`
-- `JWT_SECRET`
+- `CURSOR_SIGNING_SECRET`
+- `ENTERPRISE_HUB_PUBLIC_ORIGIN=https://api.smedatacenter.xyz`
 - `STORAGE_DRIVER=oss`
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
@@ -82,8 +83,9 @@ Prerequisites on the operator machine:
 - ACR password in macOS Keychain service
   `com.sme_data_center.acr.personal.enterprise-hub` for account
   `nick2373262573`;
-- staging JWT secret in macOS Keychain service
-  `com.sme_data_center.jwt.staging` for account `enterprise-hub-staging`.
+- staging cursor-signing secret in macOS Keychain service
+  `com.sme_data_center.cursor.staging` for account `enterprise-hub-staging`; the GitHub workflow
+  receives the equivalent value only through Environment secret `STAGING_CURSOR_SIGNING_SECRET`.
 
 The command performs these gates in order:
 
@@ -93,15 +95,15 @@ The command performs these gates in order:
    and push immutable tags.
 4. Scan both images with Trivy; a fixable `CRITICAL` vulnerability stops the
    release before the server changes.
-5. Upload and validate Compose, preserve the previous Compose/image release,
-   and atomically update only the API/worker image variables in the existing
-   root-only `runtime.env`. Other runtime secrets are never rewritten.
+5. Install the cursor-signing secret through stdin, upload and validate Compose, preserve the
+   previous Compose/image release, and atomically update only the cursor and API/worker image
+   variables in the existing root-only `runtime.env`. Other runtime secrets are never rewritten.
 6. Pull images, start Qdrant, initialize its collection, run
    `prisma migrate deploy`, and recreate API/worker.
 7. Verify server-loopback `/healthz` and `/readyz`, public HTTPS `/healthz`, and
    public `/readyz` returning `404`.
-8. Run the fixture-only upload/index/search smoke with a memory-only synthetic
-   bearer token, then record `current-release.env`.
+8. Run the fixture-only upload/index/search smoke with a short-lived official synthetic session,
+   revoke that session, then record `current-release.env`.
 
 Any rollout/readiness failure after the remote image switch restores the
 previous API/worker images and Compose definition. A public or smoke failure
@@ -150,7 +152,7 @@ Markdown or files under `docs/` skips the post-merge quality/deploy chain.
 GitHub Environment `staging` contains these secrets:
 
 - `ACR_PASSWORD`
-- `STAGING_JWT_SECRET`
+- `STAGING_CURSOR_SIGNING_SECRET`
 - `STAGING_SSH_PRIVATE_KEY`
 
 `STAGING_SSH_PRIVATE_KEY` is a dedicated non-interactive CI deployment key, not

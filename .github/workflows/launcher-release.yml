@@ -42,6 +42,8 @@ jobs:
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
       - name: Install the packed artifact
         run: npm install --prefix "${{ runner.temp }}/launcher-install" --ignore-scripts "./${{ steps.pack.outputs.tarball }}"
+      - name: Audit installed production dependencies
+        run: npm audit --omit=dev --prefix "${{ runner.temp }}/launcher-install" --audit-level=moderate
       - name: Exercise native secure-store write/read/delete
         run: node apps/mcp-launcher/scripts/keyring-acceptance.mjs "${{ runner.temp }}/launcher-install"
 
@@ -57,9 +59,17 @@ jobs:
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
-      - run: npm --version | awk -F. '$1 >= 11 && ($1 > 11 || $2 >= 15) { exit 0 } { exit 1 }'
+      - name: Install the reviewed npm release
+        run: |
+          npm install --global npm@11.15.0
+          test "$(npm --version)" = "11.15.0"
       - run: npm ci
       - run: npm run build --workspace enterprise-hub-mcp-launcher
+      - run: npm run test:package --workspace enterprise-hub-mcp-launcher
+      - name: Require the tagged commit on main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - name: Validate exact tag version
         run: |
           set -euo pipefail
@@ -72,7 +82,14 @@ jobs:
           package_name=enterprise-hub-mcp-launcher
           package_version="$(node -p "require('./apps/mcp-launcher/package.json').version")"
           if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
-            test "$(npm view "$package_name@$package_version" version)" = "$package_version"
+            registry_integrity="$(npm view "$package_name@$package_version" dist.integrity)"
+            local_integrity="$(
+              npm pack --workspace enterprise-hub-mcp-launcher --json |
+                node -e 'let data="";process.stdin.on("data",chunk=>data+=chunk).on("end",()=>process.stdout.write(JSON.parse(data)[0].integrity))'
+            )"
+            test -n "$registry_integrity"
+            test "$registry_integrity" = "$local_integrity"
             exit 0
           fi
-          npm publish --workspace enterprise-hub-mcp-launcher --tag stage
+          cd apps/mcp-launcher
+          npm stage publish

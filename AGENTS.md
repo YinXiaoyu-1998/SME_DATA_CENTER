@@ -25,7 +25,7 @@
 ## Local Manual Acceptance Trigger
 
 - A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 Enterprise Hub 人工验收”, or an equivalent request explicitly authorizes creation of separate user-visible Codex tasks for the test record.
-- Before running that workflow, read and follow `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/local-agent-test.md`.
+- Before running that workflow, read `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/local-agent-test.md`. After the official-auth cutover these sources mark the old local workflow withdrawn; do not revive its deleted email-login or HTTP-launcher assumptions.
 - Send each employee-client turn exactly as written in `fixtures/manual-acceptance/scenarios.json`; never add a controller boundary, tool/protocol hint, safety instruction, or expected answer to the visible message.
 - The controller task operates only this repository's local test runtime. Employee-client tasks must use `skills/enterprise-hub-mcp/` and must not inspect or operate service internals.
 - If user-visible task creation is unavailable, report that limitation instead of silently substituting same-context or direct-API execution.
@@ -41,7 +41,7 @@
 - Run local API: `npm run api:dev`
 - Run local worker loop: `npm run worker:dev`
 - Run one deterministic worker pass: `npm run worker:once`
-- Run local MCP launcher: `ENTERPRISE_HUB_BASE_URL=http://127.0.0.1:3000 npm run mcp:launcher`
+- Run the official MCP launcher: `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher`
 - Run local MCP smoke: `MYSQL_PORT=3307 npm run test:mcp`
 - Run Phase 3 golden retrieval evaluation: `npm run test:phase3:golden`
 - Run Phase 3 performance gates: `npm run test:phase3:perf`
@@ -83,5 +83,5 @@ When an agent performs local end-to-end, go-online, staging-readiness, or extern
 - Staging image delivery must use an account-owned Beijing ACR repository; do not use unapproved third-party mirrors or configure a general ACR registry hostname as `registry-mirrors`.
 - Keep SSH keys and ACR credentials outside the repo; do not deploy the app until its MySQL, registry, secret, domain, and TLS readiness gates pass.
 - The canonical staging release boundary is `npm run deploy:staging`. After `.github/workflows/staging-deploy.yml` is present on `main`, successful `main` quality gates invoke that same command through the GitHub `staging` Environment. Prefer the workflow over an ad-hoc local release; use the local command only for an explicitly approved recovery or workflow diagnosis.
-- GitHub staging credentials are environment secrets named `ACR_PASSWORD`, `STAGING_JWT_SECRET`, and `STAGING_SSH_PRIVATE_KEY`. Non-secret target metadata is stored as environment variables. Agents may list names and update approved values through `gh`, but must never print secret values, copy them into repository files, or expose them in logs/PR text.
+- GitHub staging credentials are environment secrets named `ACR_PASSWORD`, `STAGING_CURSOR_SIGNING_SECRET`, and `STAGING_SSH_PRIVATE_KEY`. Non-secret target metadata is stored as environment variables. Agents may list names and update approved values through `gh`, but must never print secret values, copy them into repository files, or expose them in logs/PR text.
 - Staging workflows are serialized by the `enterprise-hub-staging` concurrency group. PR branches never deploy. Manual deploy/rollback must be dispatched from `main`; rollback restores the immediately previous image release and never reverses a Prisma migration.

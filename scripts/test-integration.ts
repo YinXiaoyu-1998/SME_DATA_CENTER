@@ -366,7 +366,7 @@ try {
         mysqlPort,
         proved: [
           "seed",
-          "api_login",
+          "official_session_authentication",
           "phase3_structured_import",
           "phase3_structured_concurrent_exact_replay",
           "phase3_structured_storage_and_apply_recovery",

@@ -5,6 +5,7 @@ import {
   redactSecrets,
   type SecureCredentialStore
 } from "./auth.js";
+import { validateAuthorizationCallback } from "./oauth-client.js";
 
 describe("official launcher OAuth bootstrap", () => {
   it("creates a PKCE S256 authorization request with a random state", async () => {
@@ -22,15 +23,10 @@ describe("official launcher OAuth bootstrap", () => {
     expect(request.url.searchParams.get("code_challenge")).not.toBe(request.verifier);
   });
 
-  it("accepts only a matching callback state and never returns the authorization code to a caller", async () => {
+  it("captures the exact callback for OAuth validation without exposing the authorization code", async () => {
     const callback = await createLoopbackCallbackServer({ state: "expected-state" });
 
     try {
-      const wrongUrl = new URL(callback.redirectUri);
-      wrongUrl.search = "?code=never-expose&state=wrong";
-      const wrongState = await fetch(wrongUrl);
-      expect(wrongState.status).toBe(400);
-
       const correctUrl = new URL(callback.redirectUri);
       correctUrl.search = "?code=never-expose&state=expected-state";
       const correctState = await fetch(correctUrl);
@@ -66,5 +62,33 @@ describe("official launcher OAuth bootstrap", () => {
     };
 
     expect(Object.keys(store)).toEqual(["get", "set", "delete"]);
+  });
+
+  it("uses OAuth validation to reject duplicate code and authorization errors", () => {
+    const server = { issuer: "https://hub.example.test" };
+    expect(() =>
+      validateAuthorizationCallback(
+        server,
+        new URL("http://127.0.0.1/cb?code=a&code=b&state=s"),
+        "s"
+      )
+    ).toThrow();
+    expect(() =>
+      validateAuthorizationCallback(
+        server,
+        new URL("http://127.0.0.1/cb?error=access_denied&state=s"),
+        "s"
+      )
+    ).toThrow();
+    expect(() =>
+      validateAuthorizationCallback(server, new URL("http://127.0.0.1/cb?code=a&state=wrong"), "s")
+    ).toThrow();
+    expect(() =>
+      validateAuthorizationCallback(
+        server,
+        new URL("http://127.0.0.1/cb?code=a&state=s&iss=https%3A%2F%2Fevil.example"),
+        "s"
+      )
+    ).toThrow();
   });
 });

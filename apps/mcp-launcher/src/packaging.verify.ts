@@ -51,8 +51,19 @@ describe("published launcher artifact", () => {
     ]);
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       dependencies?: Record<string, string>;
+      license?: string;
+      repository?: { url?: string; directory?: string };
+      publishConfig?: { access?: string };
     };
     expect(manifest.dependencies).not.toHaveProperty("@enterprise-hub/mcp-contract");
+    expect(manifest).toMatchObject({
+      license: "MIT",
+      repository: {
+        url: "git+https://github.com/YinXiaoyu-1998/SME_DATA_CENTER.git",
+        directory: "apps/mcp-launcher"
+      },
+      publishConfig: { access: "public" }
+    });
     const declarations = exec("tar", ["-xOf", tarballPath, "package/dist/index.d.ts"]);
     expect(declarations).not.toMatch(/@enterprise-hub\/(?:mcp-contract|domain)/);
   });
@@ -65,6 +76,9 @@ describe("published launcher artifact", () => {
     expect(workflow).not.toMatch(/enterprise-hub-mcp-launcher-\d+\.\d+\.\d+\.tgz/);
     expect(workflow).toMatch(/npm pack --workspace enterprise-hub-mcp-launcher --json/);
     expect(workflow).toContain("${{ steps.pack.outputs.tarball }}");
+    expect(workflow).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
+    expect(workflow).toContain("npm stage publish");
+    expect(workflow).not.toContain("npm publish --workspace");
   });
 
   it("passes a built-artifact secret and legacy-contract scan", () => {

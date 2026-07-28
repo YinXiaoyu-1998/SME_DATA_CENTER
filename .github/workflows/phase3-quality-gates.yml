@@ -36,7 +36,7 @@ jobs:
       COMPOSE_PROJECT_NAME: sme_data_center_ci
       MYSQL_PORT: "3307"
       DATABASE_URL: mysql://enterprise_hub:enterprise_hub_local_password@127.0.0.1:3307/enterprise_hub
-      JWT_SECRET: replace-with-ci-development-secret
+      CURSOR_SIGNING_SECRET: replace-with-ci-cursor-signing-secret
       STORAGE_DRIVER: local
       LOCAL_STORAGE_ROOT: ./.data/ci/storage
       LLM_PROVIDER: fake

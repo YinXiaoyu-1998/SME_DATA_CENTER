@@ -83,22 +83,22 @@ async function assertRootLauncherScript(): Promise<void> {
   const scripts = packageJson.scripts ?? {};
 
   assert(
-    scripts["mcp:launcher"] === "npm --workspace @enterprise-hub/mcp-launcher run --silent start",
+    scripts["mcp:launcher"] === "npm --workspace enterprise-hub-mcp-launcher run --silent start",
     "Root package.json must expose mcp:launcher through the launcher workspace."
   );
 
-  const launcherFailure = await run("npm", ["run", "--silent", "mcp:launcher"], {
-    env: {
-      ...process.env,
-      ENTERPRISE_HUB_BASE_URL: "",
-      ENTERPRISE_HUB_API_URL: ""
-    },
-    rejectOnFailure: false
-  });
+  const launcherVersion = await run("npm", [
+    "run",
+    "--silent",
+    "mcp:launcher",
+    "--",
+    "--",
+    "--version"
+  ]);
 
   assert(
-    launcherFailure.stderr.includes("ENTERPRISE_HUB_BASE_URL is required."),
-    "mcp:launcher should start the launcher entrypoint and require ENTERPRISE_HUB_BASE_URL."
+    launcherVersion.stdout.trim() === "0.1.0",
+    "mcp:launcher should invoke the official launcher CLI at the expected pinned version."
   );
 }
 

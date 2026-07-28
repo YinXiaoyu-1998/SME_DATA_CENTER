@@ -24,6 +24,12 @@ describe("Enterprise Hub MCP launcher config", () => {
     });
   });
 
+  it("rejects the removed legacy ENTERPRISE_HUB_API_URL alias", () => {
+    expect(() =>
+      loadLauncherRuntimeConfig({ ENTERPRISE_HUB_API_URL: "https://old.example" } as never)
+    ).toThrow("ENTERPRISE_HUB_BASE_URL is required.");
+  });
+
   it("rejects non-base URL or credential-like config input", () => {
     expect(() =>
       createLauncherRuntimeConfig({
