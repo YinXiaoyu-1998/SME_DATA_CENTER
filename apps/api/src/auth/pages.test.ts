@@ -19,6 +19,14 @@ describe("official authentication browser pages", () => {
     });
   });
 
+  it("allows only the validated launcher callback origin for the OAuth form redirect", () => {
+    expect(
+      authPageHeaders("nonce-value", {
+        allowLoopbackFormRedirect: true
+      })["content-security-policy"]
+    ).toContain("form-action 'self' http://127.0.0.1:*");
+  });
+
   it("escapes login errors and CSRF values while preserving accessible labels", () => {
     const html = renderLoginPage({
       csrfToken: `csrf"><script>alert(1)</script>`,

@@ -1,7 +1,8 @@
 # Enterprise Hub MCP User Flow
 
 > **Official implementation:** This is the implemented employee flow. The fixed npm package
-> `enterprise-hub-mcp-launcher@0.1.0` is published; staging/browser/desktop acceptance remain
+> `enterprise-hub-mcp-launcher@0.1.0` is published and the official service is deployed in staging;
+> real browser/desktop acceptance remains
 > release gates. There is no development-login or JWT compatibility path.
 
 Last updated: 2026-07-28
@@ -105,6 +106,7 @@ explicitly authorized lifecycle action.
 
 The code implements official opaque access tokens, rotating durable credentials, browser
 Authorization Code + PKCE, public HTTPS `/mcp`, and the pinned launcher. A beta-release claim still
-requires staging migration/deployment, real browser login, and macOS/Windows desktop acceptance.
-The pinned npm package is already public and independently installable. The removed
+requires real browser login and macOS/Windows desktop acceptance. The staging migration and
+official-session fixture smoke have passed, and the pinned npm package is public and independently
+installable. The removed
 `/auth/dev-login`, JWT, and local email-login tools must remain absent.

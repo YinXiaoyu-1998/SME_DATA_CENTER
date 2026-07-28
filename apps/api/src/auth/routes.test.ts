@@ -107,6 +107,9 @@ describe("official OAuth and password routes", () => {
     expect(response.headers["set-cookie"]).toContain("__Host-eh_oauth_transaction=eh_tx_");
     expect(response.headers["set-cookie"]).toContain("Secure");
     expect(response.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(response.headers["content-security-policy"]).toContain(
+      "form-action 'self' http://127.0.0.1:*"
+    );
     expect(auth.issueAuthorizationTransaction).toHaveBeenCalledWith(
       expect.objectContaining({ redirectUri: "http://127.0.0.1:43121/oauth/callback" })
     );

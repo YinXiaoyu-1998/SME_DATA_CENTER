@@ -903,3 +903,32 @@
 - Known non-launcher dependency risk: official-registry root audit reports 20 findings (1 low,
   5 moderate, 14 high; 15 in the production graph). The clean installed launcher has zero findings.
   Root dependency remediation remains a separate pre-production hardening track.
+
+## 2026-07-28 - codex/phase4-official-auth-live-record - staging cutover continuation
+
+- Synced the main repository and standalone skill repository to merged PRs #82 and #11.
+- Observed the official-auth GitHub staging deployment. Its first attempt applied the migration and
+  then failed safely because the existing synthetic employees predated `LoginIdentity`; the release
+  script restored the previous image. Ran the new image's idempotent synthetic seed once, confirmed
+  the expected identities existed, and reran the same immutable release successfully.
+- Independently verified tag `82a1c5174e00`, public health 200, public readiness 404,
+  unauthenticated MCP 401, OAuth metadata and launcher-version policy, private health/readiness 200,
+  and root-only runtime env mode `0600`.
+- Removed the obsolete staging JWT secret from GitHub, the server runtime env, and local Keychain
+  only after the successful cutover. Local ignored `.env` now uses the independent cursor-signing
+  secret and official public origin without exposing values.
+- Installed the public fixed launcher version in the documented macOS current-user directory,
+  verified its self-check and secure-store capability, backed up the Codex MCP configuration, and
+  replaced only the old development Enterprise Hub entry with the official launcher command.
+- The first real Chrome login exposed a browser interoperability defect: the strict
+  `form-action 'self'` CSP blocked the successful form POST's 303 redirect to the launcher loopback
+  callback. Added focused RED tests and a narrowly scoped fix that allows loopback form redirects
+  only on OAuth login pages; redirect URI validation, state, and PKCE remain unchanged.
+- During browser diagnosis, a Chrome DOM snapshot unexpectedly included the filled synthetic test
+  password in tool output. No value was committed or copied to logs/docs, but the password is
+  treated as compromised and must be reset before acceptance continues. Browser tooling must not
+  inspect password-form DOM in subsequent acceptance.
+- Remaining at this handoff: deploy the CSP fix, reset the synthetic password through a fresh
+  one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
+  explicit external acceptance gate, and merge the synchronized live-status documentation/skill
+  PRs.
