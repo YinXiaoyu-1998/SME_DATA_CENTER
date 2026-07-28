@@ -2,10 +2,10 @@
 
 ## Current Phase
 
-- Phase: Phase 4 official access is deployed in staging and the fixed launcher is published; real macOS/Windows browser-login and desktop acceptance remain gates.
+- Phase: Phase 4 official access is deployed in staging and the fixed launcher is published; macOS Codex browser-login acceptance has passed, while Windows and OpenClaw desktop acceptance remain gates.
 - Date: 2026-07-28
 - Lead branch: `codex/phase4-official-auth-live-record`
-- Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package at immutable API/worker tag `82a1c5174e00`.
+- Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package at immutable API/worker tag `21a769558a4a`.
 
 ## Active Workstreams
 
@@ -281,8 +281,8 @@
 
 - Phase 4 Day 1 runtime/container scope is deployed and verified; production-scale resource sizing and observability remain later operations work.
 - Phase 4 Day 3 migration discipline and automated backups are verified in staging. Provider SSL is disabled, and restore ownership/RPO/RTO/drill remain open.
-- Phase 4 Day 4 official authentication is deployed in staging. Real macOS/Windows browser-login and Codex/OpenClaw acceptance remain before beta-live status.
-- The first Chrome acceptance attempt found that login-page CSP blocked the successful 303 loopback callback. A focused fix is in progress; the synthetic test password is being reset because browser diagnostics exposed its filled value to agent tool output.
+- Phase 4 Day 4 official authentication is deployed in staging. macOS Codex browser-login, secure-store persistence, MCP tool discovery, and an authenticated read-only tool call passed; Windows and OpenClaw acceptance remain before beta-live status.
+- The first Chrome acceptance attempt found that login-page CSP blocked the successful 303 loopback callback. PR #83 fixed the CSP boundary, and the synthetic admin password was reset because browser diagnostics exposed its filled value to agent tool output.
 - Phase 4 Day 5 staging runtime slice and automated delivery are verified. Production admin/auth policy, controlled rollback drill, monitoring/alerting, and real-data governance remain open.
 - Phase 5 has not started. A first real user with fixture/non-sensitive data is now treated as the final Phase 4 access gate; ongoing beta feedback remains Phase 5. The existing `apps/admin-web` workspace placeholder is Day 0 structure only, not beta UI implementation.
 
@@ -445,10 +445,11 @@
 - [x] Complete local Phase 4 official-access integration: auth migration/core/routes, public authenticated MCP, official-session smoke, independent launcher package, dual-homed employee skill, cursor-secret cutover, MySQL concurrency/replay tests, OAuth wire-contract test, macOS Keychain acceptance, clean tarball production audit, full unit/integration/MCP gates, and API/worker Docker builds pass.
 - [x] Publish `enterprise-hub-mcp-launcher@0.1.0` publicly, verify registry integrity plus a clean exact-version install/CLI/zero-finding production audit, and configure the npm Trusted Publisher for `YinXiaoyu-1998/SME_DATA_CENTER` `launcher-release.yml` with stage-publish-only permission.
 - [x] Merge the atomic official-auth PR and standalone skill PR; deploy staging tag `82a1c5174e00`; apply the official auth migration; pass official-session fixture smoke; independently verify TLS, public health, private readiness, unauthenticated MCP rejection, OAuth metadata, runtime permissions, and running image tags; remove old JWT secrets from GitHub, staging runtime, and local Keychain.
-- [ ] Complete the remaining external release gate: real browser/macOS/Windows Codex/OpenClaw acceptance.
+- [ ] Complete the remaining external release gate: Windows Codex and macOS/Windows OpenClaw acceptance. macOS Codex passed with `enterprise-hub-mcp-launcher@0.1.0`, browser password login, Keychain persistence, MCP tool discovery, and authenticated label listing.
 - [ ] Before customer data, approve and rehearse recovery, configure minimal alerts, run a controlled application rollback, and record retention/deletion rules.
 - [ ] Refresh the pinned Docker Buildx Action when an approved release removes its Node 20 runtime deprecation annotation, then rerun workflow tests.
 - [ ] Triage the 2026-07-28 root dependency audit (20 total: 1 low, 5 moderate, 14 high; 15 production-graph findings) separately from the clean installed-launcher audit and passing fixable-critical container-image gate before production.
 - [x] Complete Phase 4 official client skill/documentation synchronization and reviewer fixes on `codex/phase4-official-client-docs`: dual-homed skills pin the published `enterprise-hub-mcp-launcher@0.1.0` browser-login flow, require Node.js 22+, install the skill in canonical current-user directories, provide verified backup-first Codex/OpenClaw setup and exact platform `serve`/`self-check`/`logout` commands, state the safe machine-readable launcher contract, and correctly record Trusted Publisher with no npm provenance for the private source repository. Static skill validation, byte-sync, formatting, forbidden-guidance scans, and isolated Codex MCP CLI add/get/list/remove verification passed.
 - [x] Complete the official launcher third review fixes: recognize all high-entropy Enterprise Hub opaque-secret prefixes in remote values, bound and fail closed owner-lock open retries, and derive release artifact filenames from `npm pack --json`.
 - [x] Diagnose the 2026-07-28 `main` staging deploy failure after PR #83: fixture smoke was matching historical duplicate smoke uploads, not an auth regression. Tighten `scripts/staging-smoke.ts` to search only current upload IDs and clean `sourceSystem=staging_fixture_smoke` documents, OSS objects, and Qdrant points before and after each run; live server-container smoke passed and the staging fixture document count returned to 0.
+- [x] Complete macOS Codex official launcher acceptance against staging tag `21a769558a4a`: reset the compromised synthetic admin password via operator setup link, completed real browser password login without exposing credentials, verified Keychain durable credential presence through launcher self-check, verified a fresh MCP process lists 12 tools, and called `enterprise_hub_list_labels` successfully.
