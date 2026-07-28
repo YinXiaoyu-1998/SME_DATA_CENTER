@@ -149,7 +149,7 @@ DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:330
 
 The API entrypoint automatically loads `.env` from the current working directory when it exists, without overriding environment variables already provided by the shell.
 
-## Official Employee MCP (Package Live; Staging Cutover Pending)
+## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
 `enterprise-hub-mcp-launcher@0.1.0` local stdio launcher. The dual-homed
@@ -160,8 +160,8 @@ email/password/token/code input, uses `enterprise_hub_login`, `enterprise_hub_lo
 
 The official identity, launcher, and public MCP code are implemented.
 `enterprise-hub-mcp-launcher@0.1.0` is published on npm and its registry integrity, clean install,
-CLI, and production dependency audit have been verified. Staging deployment and real
-macOS/Windows acceptance remain release gates.
+CLI, and production dependency audit have been verified. The official auth cutover is deployed in
+staging; real macOS/Windows acceptance remains a release gate.
 
 ## Official MCP Launcher
 

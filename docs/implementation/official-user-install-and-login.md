@@ -41,10 +41,10 @@ Out of scope for this design:
 - Linux, mobile, headless, SSH-only, device-code, or secondary-device login;
 - service deployment, RDS, Qdrant, OSS, ACR, or worker operations.
 
-## Pre-Cutover Code Reality
+## Withdrawn Development Code Reality
 
-The official flow is not implemented yet. Every temporary authentication component listed here is
-replacement scope, not a compatibility constraint.
+The official flow has replaced the temporary implementation described below. This table is retained
+only as historical rationale and is not a compatibility constraint or current runtime description.
 
 | Boundary             | Current implementation                                                                                                                          | Design consequence                                                                    |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -340,7 +340,11 @@ The launcher loopback listener renders the successful-login page. Pages use plai
 HTML with no React/Next.js bundle, client-side authentication state, external script/CDN, separate
 frontend container, new domain, or `apps/admin-web` implementation. They require strict security
 headers, CSRF and authorization-transaction checks, form-level tests, accessibility basics, and
-neutral styling. Existing Docker, nginx, TLS, and deployment topology remains unchanged.
+neutral styling. Login pages keep the normal same-origin form target and add only
+`http://127.0.0.1:*` to CSP `form-action` so Chrome can follow the successful form POST's redirect
+to the validated ephemeral launcher callback; all non-login auth pages remain
+`form-action 'self'`. Exact redirect validation, `state`, and PKCE remain mandatory. Existing
+Docker, nginx, TLS, and deployment topology remains unchanged.
 
 ## Accepted Browser Session Behavior
 

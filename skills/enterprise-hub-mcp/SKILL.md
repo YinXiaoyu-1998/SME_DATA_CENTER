@@ -299,8 +299,9 @@ launcher directory and its non-secret Enterprise Hub state; retain backups until
 confirms success. Never remove Node.js/npm, the Employee Account, server-side business data, or
 unrelated MCP entries.
 
-## Pre-Cutover Note
+## Live Service Status
 
-This is the official target runbook. It intentionally does not describe repository development-only
-authentication behavior. Until the official identity, launcher package, and public MCP
-implementation land together, do not represent this skill as proof that the remote flow is live.
+The official identity, pinned launcher package, and public HTTPS MCP service are deployed together
+in staging. This skill intentionally contains no repository development-only authentication
+behavior. A successful installation or self-check proves only that the configured client can reach
+the live service; it does not replace employee browser-login or authorization acceptance.

@@ -1,7 +1,8 @@
 # Enterprise Hub MCP 用户流程
 
 > **正式实现：** 本文描述已经实现的员工流程。固定版本 npm 包
-> `enterprise-hub-mcp-launcher@0.1.0` 已发布；staging/浏览器/桌面验收仍是发布门。
+> `enterprise-hub-mcp-launcher@0.1.0` 已发布，正式服务已部署到 staging；
+> 真实浏览器/桌面验收仍是发布门。
 > 不存在 development login 或 JWT 兼容路径。
 
 最后更新：2026-07-28
@@ -97,6 +98,6 @@ sequenceDiagram
 ## 当前发布边界
 
 代码已经实现正式不透明 access token、轮换 durable credential、浏览器 Authorization Code + PKCE、
-公开 HTTPS `/mcp` 和固定版本 launcher。固定版本 npm 包已经发布；只有 staging
-migration/deployment、真实浏览器登录及 macOS/Windows 桌面验收通过后，才能称为 beta 上线。
-已删除的 `/auth/dev-login`、JWT 和本地邮箱登录工具必须持续保持不存在。
+公开 HTTPS `/mcp` 和固定版本 launcher。固定版本 npm 包已经发布，staging migration 和正式
+session fixture smoke 已通过；只有真实浏览器登录及 macOS/Windows 桌面验收通过后，才能称为
+beta 上线。已删除的 `/auth/dev-login`、JWT 和本地邮箱登录工具必须持续保持不存在。

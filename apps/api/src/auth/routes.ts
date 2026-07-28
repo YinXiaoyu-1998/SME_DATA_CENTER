@@ -84,7 +84,8 @@ export function registerOfficialAuthRoutes(
       renderLoginPage({
         nonce: nonce(),
         csrfToken: csrfTokenForSecret(transaction.secret)
-      })
+      }),
+      { allowLoopbackFormRedirect: true }
     );
   });
 
@@ -116,7 +117,8 @@ export function registerOfficialAuthRoutes(
           nonce: nonce(),
           csrfToken: csrfTokenForSecret(transactionSecret),
           error: INVALID_LOGIN_MESSAGE
-        })
+        }),
+        { allowLoopbackFormRedirect: true }
       );
     }
 
@@ -282,12 +284,16 @@ function nonce(): string {
   return randomBytes(18).toString("base64url");
 }
 
-function sendHtml(reply: FastifyReply, html: string) {
+function sendHtml(
+  reply: FastifyReply,
+  html: string,
+  options: { allowLoopbackFormRedirect?: boolean } = {}
+) {
   const cspNonce = /<style nonce="([^"]+)"/.exec(html)?.[1];
   if (!cspNonce) {
     throw new Error("Authentication page is missing its CSP nonce.");
   }
-  for (const [name, value] of Object.entries(authPageHeaders(cspNonce))) {
+  for (const [name, value] of Object.entries(authPageHeaders(cspNonce, options))) {
     reply.header(name, value);
   }
   return reply.type("text/html; charset=utf-8").send(html);

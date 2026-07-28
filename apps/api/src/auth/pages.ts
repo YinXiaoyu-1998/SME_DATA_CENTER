@@ -16,15 +16,21 @@ interface FormPageOptions extends PageOptions {
   error?: string;
 }
 
-export function authPageHeaders(nonce: string): AuthPageHeaders {
+export function authPageHeaders(
+  nonce: string,
+  options: { allowLoopbackFormRedirect?: boolean } = {}
+): AuthPageHeaders {
   assertCspNonce(nonce);
+  const formAction = options.allowLoopbackFormRedirect
+    ? "form-action 'self' http://127.0.0.1:*"
+    : "form-action 'self'";
 
   return {
     "cache-control": "no-store",
     "content-security-policy": [
       "default-src 'none'",
       "base-uri 'none'",
-      "form-action 'self'",
+      formAction,
       "frame-ancestors 'none'",
       `script-src 'nonce-${nonce}'`,
       `style-src 'nonce-${nonce}'`
