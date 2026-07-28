@@ -4,12 +4,15 @@ import { setTimeout as delay } from "node:timers/promises";
 import { config as loadDotenv } from "dotenv";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
+import { createStorageAdapter } from "@enterprise-hub/storage";
 import { AuthCore } from "../apps/api/src/auth/auth-core.js";
+import { parseApiRetrievalRuntimeConfig } from "../apps/api/src/config/retrieval-runtime.js";
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 
 loadDotenv({ quiet: true, override: false });
 
 const DEFAULT_API_URL = "https://api.smedatacenter.xyz";
+const STAGING_FIXTURE_SOURCE_SYSTEM = "staging_fixture_smoke";
 interface EvidenceUploadResponse {
   document: {
     documentId: string;
@@ -44,6 +47,8 @@ async function main() {
 
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
   const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
+  await cleanupStagingFixtureDocuments(prisma);
+
   const identity = await prisma.loginIdentity.findFirst({
     where: { employeeId: "emp_admin", disabled: false },
     select: { id: true, employeeId: true, orgId: true }
@@ -58,6 +63,9 @@ async function main() {
     orgId: identity.orgId
   });
   const headers = { authorization: `Bearer ${session.accessToken}` };
+  let smokeFailure: unknown;
+  let cleanupFailure: unknown;
+  let logoutFailure: unknown;
 
   try {
     const uploads = await Promise.all([
@@ -78,7 +86,8 @@ async function main() {
       body: JSON.stringify({
         query: "fridge temperatures",
         filters: {
-          fileTypes: ["md", "txt"]
+          fileTypes: ["md", "txt"],
+          documentIds: uploads.map((upload) => upload.document.documentId)
         },
         limit: 5
       })
@@ -86,7 +95,11 @@ async function main() {
 
     const uploadedIds = new Set(uploads.map((upload) => upload.document.documentId));
     if (!search.results.some((result) => uploadedIds.has(result.documentId))) {
-      throw new Error("Staging smoke search did not return an uploaded fixture document.");
+      throw new Error(
+        `Staging smoke search did not return an uploaded fixture document; returned=${search.results
+          .map((result) => result.documentId)
+          .join(",")}`
+      );
     }
 
     console.log(
@@ -100,9 +113,40 @@ async function main() {
         2
       )
     );
-  } finally {
+  } catch (error) {
+    smokeFailure = error;
+  }
+
+  try {
+    await cleanupStagingFixtureDocuments(prisma);
+  } catch (error) {
+    cleanupFailure = error;
+  }
+
+  try {
     await auth.logout(session.durableCredential);
+  } catch (error) {
+    logoutFailure = error;
+  } finally {
     await prisma.$disconnect();
+  }
+
+  if (smokeFailure) {
+    if (cleanupFailure) {
+      console.error(`Staging smoke cleanup failed: ${errorToMessage(cleanupFailure)}`);
+    }
+    if (logoutFailure) {
+      console.error(`Staging smoke logout failed: ${errorToMessage(logoutFailure)}`);
+    }
+    throw smokeFailure;
+  }
+
+  if (cleanupFailure) {
+    throw cleanupFailure;
+  }
+
+  if (logoutFailure) {
+    throw logoutFailure;
   }
 }
 
@@ -116,7 +160,7 @@ async function uploadFixture(
   const form = new FormData();
   form.append("file", new Blob([body]), basename(fixturePath));
   form.append("title", title);
-  form.append("sourceSystem", "staging_fixture_smoke");
+  form.append("sourceSystem", STAGING_FIXTURE_SOURCE_SYSTEM);
   form.append("labelKeys[]", "store:baoli");
 
   const upload = await apiJson<EvidenceUploadResponse>(apiUrl, "/v1/documents/evidence", {
@@ -132,6 +176,89 @@ async function uploadFixture(
   }
 
   return upload;
+}
+
+async function cleanupStagingFixtureDocuments(prisma: PrismaClient): Promise<void> {
+  const documents = await prisma.document.findMany({
+    where: {
+      sourceSystem: STAGING_FIXTURE_SOURCE_SYSTEM
+    },
+    select: {
+      id: true,
+      storageObjectKey: true,
+      chunks: {
+        where: {
+          qdrantPointId: {
+            not: null
+          }
+        },
+        select: {
+          qdrantPointId: true
+        }
+      }
+    }
+  });
+
+  if (documents.length === 0) {
+    return;
+  }
+
+  const qdrantPointIds = documents.flatMap((document) =>
+    document.chunks
+      .map((chunk) => chunk.qdrantPointId)
+      .filter((pointId): pointId is string => Boolean(pointId))
+  );
+
+  await deleteQdrantPoints(qdrantPointIds);
+
+  const storage = createStorageAdapter(process.env);
+  for (const document of documents) {
+    await storage.deleteObject(document.storageObjectKey);
+  }
+
+  await prisma.document.deleteMany({
+    where: {
+      id: {
+        in: documents.map((document) => document.id)
+      },
+      sourceSystem: STAGING_FIXTURE_SOURCE_SYSTEM
+    }
+  });
+}
+
+async function deleteQdrantPoints(pointIds: string[]): Promise<void> {
+  if (pointIds.length === 0) {
+    return;
+  }
+
+  const runtime = parseApiRetrievalRuntimeConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), runtime.qdrant.timeoutMs);
+
+  try {
+    const response = await fetch(
+      `${runtime.qdrant.url}/collections/${encodeURIComponent(
+        runtime.qdrant.collectionName
+      )}/points/delete?wait=true`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(runtime.qdrant.apiKey ? { "api-key": runtime.qdrant.apiKey } : {})
+        },
+        body: JSON.stringify({
+          points: pointIds
+        }),
+        signal: controller.signal
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Qdrant smoke fixture cleanup failed: HTTP ${response.status}`);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function waitForIndexed(
@@ -173,6 +300,10 @@ async function apiJson<T>(apiUrl: string, path: string, init: RequestInit = {}):
 
 function normalizeApiUrl(input: string): string {
   return input.endsWith("/") ? input : `${input}/`;
+}
+
+function errorToMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 main().catch((error: unknown) => {
