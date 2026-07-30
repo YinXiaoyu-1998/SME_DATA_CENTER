@@ -70,8 +70,14 @@ The macOS user must have:
   `~/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/`;
 - Codex configured with the exact `enterprise-hub` stdio MCP entry from
   `skills/enterprise-hub-mcp/SKILL.md`;
-- a local ignored `.env` containing staging `DATABASE_URL`, `STORAGE_DRIVER=oss`, OSS variables,
-  Qdrant variables, and real provider acknowledgement for cleanup and readiness checks.
+- SSH access to the staging host through the committed strict `known_hosts` identity.
+
+The local ignored `.env` remains a local-development configuration and does not need to point to
+staging RDS. The runner resolves the live API container over SSH and executes controller-only
+window allocation and cleanup inside that container, using its root-protected staging runtime
+environment. Alibaba Cloud CLI remains the preferred interface for RDS instance, network, account,
+performance, and log diagnostics; application-row verification and cleanup use the staging runtime
+because the RDS control-plane API is not an arbitrary SQL execution interface.
 
 Credential-free preflight:
 
@@ -93,7 +99,7 @@ Use a fresh synthetic email owned by the controller, never a real customer addre
 
 ```sh
 npm run auth:operator -- onboard \
-  --org-id org_demo \
+  --org-id default-org \
   --email manual-full-flow-<run-id>@example.invalid \
   --display-name "Manual Acceptance <run-id>" \
   --role employee \
@@ -189,12 +195,18 @@ npm run test:official-manual -- --run-id=20260730-macos-codex --keep-data
 The runner:
 
 - requires a current authenticated launcher session;
-- refuses to run against the public staging service when cleanup would target a local database;
+- never reads staging database credentials from the local `.env`;
+- resolves the live staging API container over strict-host-key SSH and runs controller-only
+  window allocation/cleanup there;
+- refuses controller cleanup unless the container runtime points to the private staging RDS endpoint
+  with the dedicated staging database account;
 - uses `sourceSystem=manual_acceptance_<runId>` for evidence;
-- creates a run-local structured CSV with dates changed to `2030-01-01` through `2030-01-03`;
+- probes and uses a run-specific available three-day window for the structured CSV;
 - queries only that dedicated date window;
 - writes `.data/official-manual-acceptance/<runId>/report.md`;
-- cleans before and after the run unless `--keep-data` is supplied.
+- cleans before and after the run unless `--keep-data` is supplied;
+- fails cleanup if OSS/Qdrant deletion fails or post-clean verification finds documents, batches,
+  structured rows, date-window claims, OSS objects, or Qdrant points.
 
 For full manual acceptance, prefer a fresh user-visible Codex task plus synthetic account lifecycle.
 Use this runner only as an additional controller-side smoke or cleanup helper.

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -8,6 +8,19 @@ import { PrismaClient } from "@prisma/client";
 import { config as loadDotenv } from "dotenv";
 import { createStorageAdapter } from "@enterprise-hub/storage";
 import { parseApiRetrievalRuntimeConfig } from "../apps/api/src/config/retrieval-runtime.js";
+import {
+  assertCleanupCountsAreZero,
+  assertStagingRuntimeDatabaseTarget,
+  createStructuredWindow,
+  deleteStorageObjects,
+  rewriteKnownValuesFixture,
+  type CleanupCounts,
+  type StructuredWindow
+} from "./official-manual-acceptance-support.js";
+import {
+  runStagingController,
+  type RemoteWindowResult
+} from "./official-manual-remote-controller.js";
 
 loadDotenv({ quiet: true, override: false });
 
@@ -17,7 +30,7 @@ const DEFAULT_LABEL_KEY = "store:baoli";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
 interface ParsedArgs {
-  command: "run" | "cleanup";
+  command: "run" | "cleanup" | "controller-cleanup" | "controller-window";
   runId: string;
   keepData: boolean;
 }
@@ -49,43 +62,91 @@ interface StructuredQueryResult extends ToolTextResult {
 }
 
 const parsedArgs = parseArgs(process.argv.slice(2));
-await main(parsedArgs);
+if (parsedArgs.command.startsWith("controller-")) {
+  await runControllerCommand(parsedArgs);
+} else {
+  await runLocalAcceptance(parsedArgs);
+}
 
-async function main(args: ParsedArgs): Promise<void> {
+async function runLocalAcceptance(args: ParsedArgs): Promise<void> {
+  const run = runConfig(args.runId);
+  await removeStaleReport(run);
+  await runStagingController("cleanup", run.runId);
+  if (args.command === "cleanup") {
+    await writeReport(run, {
+      ok: true,
+      runId: run.runId,
+      cleanedOnly: true,
+      cleanupVerified: true,
+      controller: "staging-api-container"
+    });
+    printSafe({ ok: true, command: "cleanup", runId: run.runId });
+    return;
+  }
+
+  const windowResult = await runStagingController<RemoteWindowResult>("window", run.runId);
+  let outcome: Record<string, unknown>;
+  let cleanupVerified = false;
+  try {
+    outcome = await runAcceptance(run, windowResult.structuredWindow);
+  } finally {
+    if (!args.keepData) {
+      await runStagingController("cleanup", run.runId);
+      cleanupVerified = true;
+      printSafe({ ok: true, command: "cleanup", runId: run.runId });
+    }
+  }
+  const finalOutcome: Record<string, unknown> = args.keepData
+    ? {
+        ...outcome,
+        cleanupVerified: false,
+        dataRetainedByRequest: true
+      }
+    : {
+        ...outcome,
+        cleanupVerified,
+        controller: "staging-api-container"
+      };
+  await writeReport(run, finalOutcome);
+  printSafe({ ok: true, command: "run", runId: run.runId, report: reportPath(run) });
+}
+
+async function runControllerCommand(args: ParsedArgs): Promise<void> {
   const databaseUrl = process.env["DATABASE_URL"];
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL is required for official manual acceptance cleanup.");
+    throw new Error("DATABASE_URL is required in the staging controller runtime.");
   }
-  assertCleanupTargetMatchesService(databaseUrl);
+  assertStagingRuntimeDatabaseTarget(databaseUrl);
 
   const run = runConfig(args.runId);
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
   try {
-    await cleanupRun(prisma, run);
-    if (args.command === "cleanup") {
-      await writeReport(run, {
+    if (args.command === "controller-cleanup") {
+      await cleanupRun(prisma, run);
+      printSafe({
         ok: true,
+        command: "controller-cleanup",
         runId: run.runId,
-        cleanedOnly: true
+        cleanupVerified: true
       });
-      printSafe({ ok: true, command: "cleanup", runId: run.runId });
       return;
     }
-
-    const outcome = await runAcceptance(run);
-    await writeReport(run, outcome);
-    printSafe({ ok: true, command: "run", runId: run.runId, report: reportPath(run) });
-
-    if (!args.keepData) {
-      await cleanupRun(prisma, run);
-      printSafe({ ok: true, command: "cleanup", runId: run.runId });
-    }
+    const structuredWindow = await selectAvailableStructuredWindow(prisma, run.runId);
+    printSafe({
+      ok: true,
+      command: "controller-window",
+      runId: run.runId,
+      structuredWindow
+    });
   } finally {
     await prisma.$disconnect();
   }
 }
 
-async function runAcceptance(run: ReturnType<typeof runConfig>): Promise<Record<string, unknown>> {
+async function runAcceptance(
+  run: ReturnType<typeof runConfig>,
+  structuredWindow: StructuredWindow
+): Promise<Record<string, unknown>> {
   const launcher = launcherPath();
   const client = new Client({
     name: "enterprise-hub-official-manual-acceptance",
@@ -131,7 +192,7 @@ async function runAcceptance(run: ReturnType<typeof runConfig>): Promise<Record<
       );
     }
 
-    const structuredFile = await writeRunStructuredFixture(run);
+    const structuredFile = await writeRunStructuredFixture(run, structuredWindow);
     const structuredUpload = await callJson<StructuredUploadResult>(
       client,
       "upload_structured_dataset",
@@ -144,8 +205,8 @@ async function runAcceptance(run: ReturnType<typeof runConfig>): Promise<Record<
         },
         dataset: "dishes",
         enterpriseName: run.enterpriseName,
-        startDate: "20300101",
-        endDate: "20300103",
+        startDate: structuredWindow.startCompact,
+        endDate: structuredWindow.endCompact,
         idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-known-values`,
         labelKeys: [DEFAULT_LABEL_KEY]
       }
@@ -161,7 +222,11 @@ async function runAcceptance(run: ReturnType<typeof runConfig>): Promise<Record<
       "query_structured_dataset",
       {
         dataset: "dishes",
-        filter: { field: "business_date", op: "between", value: ["2030-01-01", "2030-01-03"] },
+        filter: {
+          field: "business_date",
+          op: "between",
+          value: [structuredWindow.startDate, structuredWindow.endDate]
+        },
         aggregates: [
           { op: "count", as: "row_count" },
           { op: "sum", field: "dishes_024_dish_sales_amount", as: "gross_sales" }
@@ -178,7 +243,11 @@ async function runAcceptance(run: ReturnType<typeof runConfig>): Promise<Record<
     const topDishes = await callJson<StructuredQueryResult>(client, "query_structured_dataset", {
       dataset: "dishes",
       select: ["product_name", "dishes_024_dish_sales_amount"],
-      filter: { field: "business_date", op: "between", value: ["2030-01-01", "2030-01-03"] },
+      filter: {
+        field: "business_date",
+        op: "between",
+        value: [structuredWindow.startDate, structuredWindow.endDate]
+      },
       sort: [{ field: "dishes_024_dish_sales_amount", direction: "desc" }],
       page: { limit: 2 }
     });
@@ -187,19 +256,18 @@ async function runAcceptance(run: ReturnType<typeof runConfig>): Promise<Record<
       throw new Error(`Unexpected top dishes: ${JSON.stringify(topNames)}`);
     }
 
+    const invalidFile = await writeRunInvalidStructuredFixture(run, structuredWindow);
     const invalidImport = await callJson<ToolTextResult>(client, "upload_structured_dataset", {
       file: {
-        name: "dishes-invalid-atomic.csv",
+        name: path.basename(invalidFile),
         mediaType: "text/csv",
         encoding: "base64",
-        contentBase64: await fileBase64(
-          "fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv"
-        )
+        contentBase64: await fileBase64(invalidFile)
       },
       dataset: "dishes",
       enterpriseName: run.enterpriseName,
-      startDate: "20300104",
-      endDate: "20300104",
+      startDate: structuredWindow.invalidCompact,
+      endDate: structuredWindow.invalidCompact,
       idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`,
       labelKeys: [DEFAULT_LABEL_KEY]
     });
@@ -216,6 +284,10 @@ async function runAcceptance(run: ReturnType<typeof runConfig>): Promise<Record<
       evidenceDocuments: evidenceUploads.map((upload) => upload.document.documentId),
       structuredDocument: structuredUpload.document.documentId,
       importBatch: structuredUpload.importBatch.importBatchId,
+      structuredWindow: {
+        startDate: structuredWindow.startDate,
+        endDate: structuredWindow.endDate
+      },
       aggregate: redactObject(aggregate),
       topDishes: topNames
     };
@@ -310,10 +382,6 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     }
   });
 
-  if (documents.length === 0) {
-    return;
-  }
-
   const qdrantPointIds = documents.flatMap((document) =>
     document.chunks
       .map((chunk) => chunk.qdrantPointId)
@@ -322,9 +390,8 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   await deleteQdrantPoints(qdrantPointIds);
 
   const storage = createStorageAdapter(process.env);
-  for (const document of documents) {
-    await storage.deleteObject(document.storageObjectKey).catch(() => undefined);
-  }
+  const storageObjectKeys = documents.map((document) => document.storageObjectKey);
+  await deleteStorageObjects(storage, storageObjectKeys);
 
   const documentIds = documents.map((document) => document.id);
   const importBatchIds = documents
@@ -339,6 +406,13 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
       await tx.importBatch.deleteMany({ where: { id: { in: importBatchIds } } });
     }
     await tx.document.deleteMany({ where: { id: { in: documentIds } } });
+  });
+
+  await verifyCleanup(prisma, run, {
+    documentIds,
+    importBatchIds,
+    qdrantPointIds,
+    storageObjectKeys
   });
 }
 
@@ -369,20 +443,181 @@ async function deleteQdrantPoints(pointIds: string[]): Promise<void> {
   }
 }
 
-async function writeRunStructuredFixture(run: ReturnType<typeof runConfig>): Promise<string> {
+async function selectAvailableStructuredWindow(
+  prisma: PrismaClient,
+  runId: string
+): Promise<StructuredWindow> {
+  for (let attempt = 0; attempt < 256; attempt += 1) {
+    const candidate = createStructuredWindow(runId, attempt);
+    const overlap = await prisma.importWindowClaim.findFirst({
+      where: {
+        orgId: "default-org",
+        dataset: "dishes",
+        startDate: { lte: new Date(`${candidate.endDate}T00:00:00.000Z`) },
+        endDate: { gte: new Date(`${candidate.startDate}T00:00:00.000Z`) }
+      },
+      select: { id: true }
+    });
+    if (!overlap) return candidate;
+  }
+  throw new Error("Could not allocate an unused structured-import window after 256 attempts.");
+}
+
+async function verifyCleanup(
+  prisma: PrismaClient,
+  run: ReturnType<typeof runConfig>,
+  deleted: {
+    documentIds: string[];
+    importBatchIds: string[];
+    qdrantPointIds: string[];
+    storageObjectKeys: string[];
+  }
+): Promise<void> {
+  const storage = createStorageAdapter(process.env);
+  let storageObjects = 0;
+  for (const key of deleted.storageObjectKeys) {
+    try {
+      await storage.statObject(key);
+      storageObjects += 1;
+    } catch (error) {
+      if (!isMissingStorageObject(error)) throw error;
+    }
+  }
+
+  const [documents, importBatches, dishRows, businessRows, windowClaims, qdrantPoints] =
+    await Promise.all([
+      prisma.document.count({
+        where: {
+          OR: [
+            { sourceSystem: run.evidenceSourceSystem },
+            { title: { startsWith: `${run.enterpriseName}_` } },
+            { title: { startsWith: run.titlePrefix } }
+          ]
+        }
+      }),
+      countByIds(deleted.importBatchIds, (ids) =>
+        prisma.importBatch.count({ where: { id: { in: ids } } })
+      ),
+      countByIds(deleted.importBatchIds, (ids) =>
+        prisma.dishRow.count({ where: { importBatchId: { in: ids } } })
+      ),
+      countByIds(deleted.importBatchIds, (ids) =>
+        prisma.businessRow.count({ where: { importBatchId: { in: ids } } })
+      ),
+      countByIds(deleted.importBatchIds, (ids) =>
+        prisma.importWindowClaim.count({ where: { importBatchId: { in: ids } } })
+      ),
+      retrieveQdrantPointCount(deleted.qdrantPointIds)
+    ]);
+
+  const counts: CleanupCounts = {
+    documents,
+    importBatches,
+    dishRows,
+    businessRows,
+    windowClaims,
+    qdrantPoints,
+    storageObjects
+  };
+  assertCleanupCountsAreZero(counts);
+}
+
+async function retrieveQdrantPointCount(pointIds: string[]): Promise<number> {
+  if (pointIds.length === 0) return 0;
+
+  const runtime = parseApiRetrievalRuntimeConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), runtime.qdrant.timeoutMs);
+  try {
+    const response = await fetch(
+      `${runtime.qdrant.url}/collections/${encodeURIComponent(runtime.qdrant.collectionName)}/points`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(runtime.qdrant.apiKey ? { "api-key": runtime.qdrant.apiKey } : {})
+        },
+        body: JSON.stringify({
+          ids: pointIds,
+          with_payload: false,
+          with_vector: false
+        }),
+        signal: controller.signal
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`Qdrant cleanup verification failed: HTTP ${response.status}`);
+    }
+    const body = (await response.json()) as { result?: unknown[] };
+    if (!Array.isArray(body.result)) {
+      throw new Error("Qdrant cleanup verification returned an unexpected response shape.");
+    }
+    return body.result.length;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function countByIds(
+  ids: string[],
+  count: (ids: string[]) => Promise<number>
+): Promise<number> {
+  return ids.length === 0 ? 0 : count(ids);
+}
+
+function isMissingStorageObject(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    name?: unknown;
+    code?: unknown;
+    Code?: unknown;
+    statusCode?: unknown;
+    $metadata?: { httpStatusCode?: unknown };
+  };
+  return (
+    candidate.name === "NotFound" ||
+    candidate.code === "ENOENT" ||
+    candidate.code === "NoSuchKey" ||
+    candidate.Code === "NoSuchKey" ||
+    candidate.statusCode === 404 ||
+    candidate.$metadata?.httpStatusCode === 404
+  );
+}
+
+async function writeRunStructuredFixture(
+  run: ReturnType<typeof runConfig>,
+  structuredWindow: StructuredWindow
+): Promise<string> {
   const source = await readFile(
     "fixtures/manual-acceptance/structured/dishes-known-values.csv",
     "utf8"
   );
-  const updated = source
-    .replaceAll("2026-07-01", "2030-01-01")
-    .replaceAll("2026-07-02", "2030-01-02")
-    .replaceAll("2026-07-03", "2030-01-03")
-    .replaceAll("2026/07", "2030/01")
-    .replaceAll("2026第27周", "2030第01周");
+  const updated = rewriteKnownValuesFixture(source, structuredWindow);
   const directory = path.join(RUN_ROOT, run.runId);
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, "dishes-known-values-20300101-20300103.csv");
+  const target = path.join(
+    directory,
+    `dishes-known-values-${structuredWindow.startCompact}-${structuredWindow.endCompact}.csv`
+  );
+  await writeFile(target, updated);
+  return target;
+}
+
+async function writeRunInvalidStructuredFixture(
+  run: ReturnType<typeof runConfig>,
+  structuredWindow: StructuredWindow
+): Promise<string> {
+  const source = await readFile(
+    "fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv",
+    "utf8"
+  );
+  const updated = source.replaceAll("2026-07-04", structuredWindow.invalidDate);
+  const directory = path.join(RUN_ROOT, run.runId);
+  await mkdir(directory, { recursive: true });
+  const target = path.join(
+    directory,
+    `dishes-invalid-atomic-${structuredWindow.invalidCompact}.csv`
+  );
   await writeFile(target, updated);
   return target;
 }
@@ -440,25 +675,18 @@ function launcherPath(): string {
   );
 }
 
-function assertCleanupTargetMatchesService(databaseUrl: string): void {
-  const serviceHost = new URL(SERVICE_ORIGIN).hostname;
-  const databaseHost = new URL(databaseUrl).hostname;
-  const serviceIsLoopback = isLoopbackHost(serviceHost);
-  const databaseIsLoopback = isLoopbackHost(databaseHost);
-
-  if (!serviceIsLoopback && databaseIsLoopback) {
-    throw new Error(
-      "Official manual acceptance targets the public staging service, but DATABASE_URL points to a local database. Run cleanup from the staging runtime or configure the matching staging cleanup environment."
-    );
-  }
-}
-
-function isLoopbackHost(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-}
-
 function reportPath(run: ReturnType<typeof runConfig>): string {
   return path.join(RUN_ROOT, run.runId, "report.md");
+}
+
+async function removeStaleReport(run: ReturnType<typeof runConfig>): Promise<void> {
+  try {
+    await unlink(reportPath(run));
+  } catch (error) {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
 }
 
 function assertHasLabel(labels: ToolTextResult, key: string): void {
@@ -477,8 +705,15 @@ function assertHasLabel(labels: ToolTextResult, key: string): void {
 }
 
 function parseArgs(args: string[]): ParsedArgs {
-  const command = args[0] === "cleanup" ? "cleanup" : "run";
-  const rest = command === "cleanup" ? args.slice(1) : args;
+  const commands: ParsedArgs["command"][] = [
+    "run",
+    "cleanup",
+    "controller-cleanup",
+    "controller-window"
+  ];
+  const first = args[0] as ParsedArgs["command"] | undefined;
+  const command = first && commands.includes(first) ? first : "run";
+  const rest = first && commands.includes(first) ? args.slice(1) : args;
   let runId = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "Z");
   let keepData = false;
   for (const arg of rest) {
