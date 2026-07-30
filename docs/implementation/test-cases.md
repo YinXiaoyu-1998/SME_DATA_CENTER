@@ -1,6 +1,6 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-07-28
+Last updated: 2026-07-30
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
@@ -16,7 +16,7 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 | MCP smoke          | `npm run test:mcp`                                                                                                      | HTTP `/mcp` and official launcher stdio-to-HTTP path pass                                                          |
 | Auth MySQL         | `RUN_AUTH_INTEGRATION=1 npm test -- apps/api/src/auth/prisma-auth-repository.integration.test.ts`                       | Official credential lifecycle passes against MySQL                                                                 |
 | Launcher package   | `npm run build --workspace enterprise-hub-mcp-launcher && npm run test:package --workspace enterprise-hub-mcp-launcher` | Publishable tarball is isolated, allowlisted, and protocol-probed                                                  |
-| Desktop acceptance | Follow `official-user-install-and-login.md` on clean macOS and Windows users                                            | Published launcher, browser login, Codex/OpenClaw upload/query, restart, logout, reset, repair, and uninstall pass |
+| Desktop acceptance | Follow `official-manual-acceptance.md` plus `official-user-install-and-login.md` on clean desktop users                 | Published launcher, browser login, Codex/OpenClaw upload/query, restart, logout, reset, repair, and uninstall pass |
 | Golden retrieval   | `npm run test:phase3:golden`                                                                                            | Deterministic synthetic retrieval thresholds pass                                                                  |
 | Perf smoke         | `npm run test:phase3:perf`                                                                                              | Real local workloads pass and report workload size, elapsed time, Node version, and threshold                      |
 
@@ -56,6 +56,23 @@ The old user-visible controller in `docs/implementation/local-agent-test.md` and
 email login and an HTTP loopback launcher, so it must not be used as post-cutover evidence or revived
 by weakening the HTTPS boundary. Current user-visible evidence must come from the published launcher,
 official browser login, staging service, and clean macOS/Windows desktop acceptance.
+
+## Active Official Manual Acceptance
+
+The active manual flow is defined in `docs/implementation/official-manual-acceptance.md`.
+
+For the current macOS Codex slice, run:
+
+```sh
+npm run test:official-manual
+```
+
+This runner uses the installed `enterprise-hub-mcp-launcher@0.1.0`, the user's operating-system
+secure-store session, and the public staging service. It covers authenticated label discovery,
+evidence upload/status/search, structured CSV import/query, invalid atomic import rejection, and
+run-scoped cleanup of evidence, Qdrant points, OSS objects, structured rows, import batches, and
+documents. Password setup/reset remains browser-only and is proved separately through
+`auth:operator onboard` / `auth:operator reset-password` without recording full setup links.
 
 ## Official Identity, OAuth, And Launcher Cases
 

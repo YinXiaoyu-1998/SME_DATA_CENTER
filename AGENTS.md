@@ -24,11 +24,11 @@
 
 ## Local Manual Acceptance Trigger
 
-- A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 Enterprise Hub 人工验收”, or an equivalent request explicitly authorizes creation of separate user-visible Codex tasks for the test record.
-- Before running that workflow, read `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/local-agent-test.md`. After the official-auth cutover these sources mark the old local workflow withdrawn; do not revive its deleted email-login or HTTP-launcher assumptions.
-- Send each employee-client turn exactly as written in `fixtures/manual-acceptance/scenarios.json`; never add a controller boundary, tool/protocol hint, safety instruction, or expected answer to the visible message.
-- The controller task operates only this repository's local test runtime. Employee-client tasks must use `skills/enterprise-hub-mcp/` and must not inspect or operate service internals.
-- If user-visible task creation is unavailable, report that limitation instead of silently substituting same-context or direct-API execution.
+- A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 Enterprise Hub 人工验收”, or an equivalent request explicitly authorizes the official manual acceptance workflow.
+- Before running that workflow, read `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/official-manual-acceptance.md`; read `docs/implementation/local-agent-test.md` only to confirm the old email-login/HTTP-launcher workflow is withdrawn.
+- The active default is official staging + macOS Codex + browser auth + `enterprise-hub-mcp-launcher@0.1.0`. Do not revive the deleted development email-login or HTTP-launcher assumptions.
+- The employee-client path must use the official launcher and MCP tools. Controller DB/storage/Qdrant access is allowed only for operator setup, verification, and run-scoped cleanup.
+- Manual staging uploads must clean up after themselves; use `npm run test:official-manual` and confirm run-scoped DB/storage/Qdrant residue is gone before reporting success.
 
 ## Commands
 
@@ -43,6 +43,7 @@
 - Run one deterministic worker pass: `npm run worker:once`
 - Run the official MCP launcher: `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher`
 - Run local MCP smoke: `MYSQL_PORT=3307 npm run test:mcp`
+- Run official macOS Codex/staging manual acceptance: `npm run test:official-manual`
 - Run Phase 3 golden retrieval evaluation: `npm run test:phase3:golden`
 - Run Phase 3 performance gates: `npm run test:phase3:perf`
 - Purge local MySQL document data and uploaded/test storage files: `npm run purge-data`

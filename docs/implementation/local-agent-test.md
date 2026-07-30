@@ -1,12 +1,13 @@
 # Local Codex Manual Acceptance: Phase 3 MCP (Withdrawn)
 
-Last updated: 2026-07-28
+Last updated: 2026-07-30
 
 > **Do not execute the procedure below after the official-auth cutover.** It depends on the removed
 > development email login and an HTTP loopback launcher origin, while the official launcher requires
 > HTTPS browser login and operating-system secure storage. The preserved body is historical evidence,
 > not a runnable acceptance procedure. Current release acceptance is defined by
-> `official-user-install-and-login.md` and the staging/macOS/Windows gates in `test-cases.md`.
+> `official-manual-acceptance.md`, `official-user-install-and-login.md`, and the
+> staging/macOS/Windows gates in `test-cases.md`.
 
 This is the source of truth for the user-visible Codex natural cold-start acceptance suite. It verifies the current workspace as a local Enterprise Hub service and MCP client experience without adding or changing product behavior.
 
