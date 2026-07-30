@@ -2,10 +2,10 @@
 
 ## Current Phase
 
-- Phase: Phase 4 official access is deployed in staging and the fixed launcher is published; macOS Codex browser-login acceptance has passed, while Windows and OpenClaw desktop acceptance remain gates.
-- Date: 2026-07-28
-- Lead branch: `codex/phase4-official-auth-live-record`
-- Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package at immutable API/worker tag `21a769558a4a`.
+- Phase: Phase 4 official access is deployed in staging; API boundary hardening and contract/documentation reconciliation are in design, while Windows and OpenClaw desktop acceptance remain gates.
+- Date: 2026-07-30
+- Lead branch: `codex/api-boundary-contract-sync-20260730`
+- Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package. Exact immutable release tags are recorded in dated readiness and verification evidence.
 
 ## Active Workstreams
 
