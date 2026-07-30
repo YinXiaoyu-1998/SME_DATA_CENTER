@@ -255,6 +255,13 @@ export function decodeStructuredCursor(input: {
   secret: string;
   now?: Date;
 }): { offset: number } {
+  if (input.cursor.length > PUBLIC_INPUT_LIMITS.cursorChars) {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.invalidCursor,
+      "Cursor is invalid."
+    );
+  }
+
   let payload: CursorPayload;
 
   try {

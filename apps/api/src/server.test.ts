@@ -1399,6 +1399,83 @@ describe("api auth shell", () => {
     ]);
   });
 
+  it("rejects null and over-limit evidence search inputs before retrieval", async () => {
+    const evidenceRepository = createEvidenceSearchRepository();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const headers = {
+      authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+      "content-type": "application/json"
+    };
+    const cases = [
+      { payload: "null", code: "INVALID_QUERY" },
+      { payload: { query: "q".repeat(4_001) }, code: "LIMIT_EXCEEDED" },
+      { payload: { query: "q", cursor: "c".repeat(4_097) }, code: "INVALID_CURSOR" },
+      {
+        payload: { query: "q", filters: { documentIds: ["d".repeat(65)] } },
+        code: "LIMIT_EXCEEDED"
+      },
+      {
+        payload: {
+          query: "q",
+          filters: {
+            labelIds: Array.from({ length: 101 }, (_, index) => `label_${index}`)
+          }
+        },
+        code: "LIMIT_EXCEEDED"
+      },
+      {
+        payload: { query: "q", filters: { documentIds: "doc_1" } },
+        code: "INVALID_QUERY"
+      }
+    ];
+
+    for (const testCase of cases) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/evidence/search",
+        headers,
+        payload: testCase.payload
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { code: testCase.code }
+      });
+    }
+
+    expect(evidenceRepository.queries).toHaveLength(0);
+  });
+
+  it("rejects an over-limit audit cursor before repository access", async () => {
+    const documentRepository = createDocumentRepository();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/audit?cursor=${"1".repeat(4_097)}`,
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: { code: "INVALID_AUDIT_QUERY" }
+    });
+  });
+
   it("does not expose unexpected evidence provider failures", async () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
