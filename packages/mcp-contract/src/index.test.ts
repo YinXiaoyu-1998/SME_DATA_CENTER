@@ -404,6 +404,128 @@ describe("Enterprise Hub MCP contract", () => {
     ).toBe(false);
   });
 
+  it("enforces shared metadata, search, cursor, and collection boundaries", () => {
+    const acceptedLabels = Array.from({ length: 50 }, (_, index) => `label_${index}`);
+
+    expect(
+      safeParseTool("upload_evidence_document", {
+        ...validInputs.upload_evidence_document,
+        title: "t".repeat(512),
+        sourceSystem: "s".repeat(255),
+        labelKeys: acceptedLabels
+      }).success
+    ).toBe(true);
+    expect(
+      safeParseTool("upload_evidence_document", {
+        ...validInputs.upload_evidence_document,
+        title: "t".repeat(513)
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("upload_evidence_document", {
+        ...validInputs.upload_evidence_document,
+        sourceSystem: "s".repeat(256)
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("upload_evidence_document", {
+        ...validInputs.upload_evidence_document,
+        labelKeys: ["l".repeat(129)]
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("upload_evidence_document", {
+        ...validInputs.upload_evidence_document,
+        labelKeys: [...acceptedLabels, "label_50"]
+      }).success
+    ).toBe(false);
+
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
+        enterpriseName: "e".repeat(255),
+        idempotencyKey: "i".repeat(255)
+      }).success
+    ).toBe(true);
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
+        enterpriseName: "e".repeat(256)
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
+        idempotencyKey: "i".repeat(256)
+      }).success
+    ).toBe(false);
+
+    const acceptedFilterIds = Array.from({ length: 100 }, (_, index) => `doc_${index}`);
+    expect(
+      safeParseTool("search_document_evidence", {
+        query: "q".repeat(4_000),
+        cursor: "c".repeat(4_096),
+        filters: {
+          documentIds: acceptedFilterIds,
+          labelIds: ["l".repeat(64)]
+        }
+      }).success
+    ).toBe(true);
+    expect(
+      safeParseTool("search_document_evidence", {
+        query: "q".repeat(4_001)
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("search_document_evidence", {
+        query: "q",
+        cursor: "c".repeat(4_097)
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("search_document_evidence", {
+        query: "q",
+        filters: { documentIds: ["d".repeat(65)] }
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("search_document_evidence", {
+        query: "q",
+        filters: { documentIds: [...acceptedFilterIds, "doc_100"] }
+      }).success
+    ).toBe(false);
+  });
+
+  it("bounds structured query cursors and string scalar values", () => {
+    expect(
+      safeParseTool("query_structured_dataset", {
+        dataset: "dishes",
+        page: { cursor: "c".repeat(4_096) },
+        filter: {
+          field: "matched_product_name",
+          op: "contains",
+          value: "v".repeat(32_767)
+        }
+      }).success
+    ).toBe(true);
+    expect(
+      safeParseTool("query_structured_dataset", {
+        dataset: "dishes",
+        page: { cursor: "c".repeat(4_097) }
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("query_structured_dataset", {
+        dataset: "dishes",
+        filter: {
+          field: "matched_product_name",
+          op: "contains",
+          value: "v".repeat(32_768)
+        }
+      }).success
+    ).toBe(false);
+  });
+
   it("rejects upload filename and media type control characters", () => {
     for (const name of ["bad\u0000name.csv", "bad\u001fname.csv", "bad\u007fname.csv"]) {
       expect(
