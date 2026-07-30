@@ -20,6 +20,7 @@ export type OperatorCommand =
       labelKeys: string[];
     }
   | { kind: "reset-password"; employeeId: string }
+  | { kind: "delete-test-account"; email: string; confirmEmail: string }
   | { kind: "audit"; days: number; limit: number };
 
 export interface AuthOperatorAuditRow {
@@ -53,6 +54,11 @@ export interface AuthOperatorRepository {
     grantExpiresAt: Date;
     now: Date;
   }): Promise<{ employeeId: string; identityId: string } | null>;
+  deleteTestAccount(input: { normalizedEmail: string; now: Date }): Promise<{
+    employeeId: string;
+    identityIds: string[];
+    personalLabelDeleted: boolean;
+  } | null>;
   audit(input: { since: Date; limit: number }): Promise<AuthOperatorAuditRow[]>;
   disconnect?(): Promise<void>;
 }
@@ -132,6 +138,24 @@ export function parseOperatorCommand(args: string[]): OperatorCommand {
       employeeId: required(options, "--employee-id")
     };
   }
+  if (subcommand === "delete-test-account") {
+    const options = parseOptions(rest, new Set(["--email", "--confirm-email"]));
+    const email = required(options, "--email");
+    const confirmEmail = required(options, "--confirm-email");
+    if (normalizeLoginEmail(email) !== normalizeLoginEmail(confirmEmail)) {
+      throw new Error("--confirm-email must exactly match --email after login normalization.");
+    }
+    if (!isSyntheticManualTestEmail(email)) {
+      throw new Error(
+        "delete-test-account only accepts manual-acceptance-* or manual-full-flow-* @example.invalid test emails."
+      );
+    }
+    return {
+      kind: "delete-test-account",
+      email,
+      confirmEmail
+    };
+  }
   if (subcommand === "audit") {
     const options = parseOptions(rest, new Set(["--days", "--limit"]));
     return {
@@ -140,7 +164,7 @@ export function parseOperatorCommand(args: string[]): OperatorCommand {
       limit: boundedInteger(options.get("--limit")?.[0], 100, 1, 1_000)
     };
   }
-  throw new Error("Expected onboard, reset-password, or audit.");
+  throw new Error("Expected onboard, reset-password, delete-test-account, or audit.");
 }
 
 export async function runOperatorCommand(
@@ -159,6 +183,22 @@ export async function runOperatorCommand(
       limit: command.limit
     });
     dependencies.stdout(JSON.stringify(rows));
+    return;
+  }
+  if (command.kind === "delete-test-account") {
+    const result = await dependencies.repository.deleteTestAccount({
+      normalizedEmail: normalizeLoginEmail(command.email),
+      now
+    });
+    dependencies.stdout(
+      JSON.stringify({
+        ok: true,
+        deleted: result !== null,
+        employeeId: result?.employeeId ?? null,
+        identityCount: result?.identityIds.length ?? 0,
+        personalLabelDeleted: result?.personalLabelDeleted ?? false
+      })
+    );
     return;
   }
 
@@ -194,6 +234,14 @@ export async function runOperatorCommand(
   const setupUrl = new URL("/auth/password/setup", origin);
   setupUrl.hash = `token=${secret}`;
   dependencies.stdout(setupUrl.toString());
+}
+
+function isSyntheticManualTestEmail(email: string): boolean {
+  const normalized = normalizeLoginEmail(email);
+  return (
+    normalized.endsWith("@example.invalid") &&
+    (normalized.startsWith("manual-acceptance-") || normalized.startsWith("manual-full-flow-"))
+  );
 }
 
 async function main(): Promise<void> {

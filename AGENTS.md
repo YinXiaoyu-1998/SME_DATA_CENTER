@@ -25,8 +25,10 @@
 ## Local Manual Acceptance Trigger
 
 - A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 Enterprise Hub 人工验收”, or an equivalent request explicitly authorizes the official manual acceptance workflow.
-- Before running that workflow, read `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/official-manual-acceptance.md`; read `docs/implementation/local-agent-test.md` only to confirm the old email-login/HTTP-launcher workflow is withdrawn.
+- Before running that workflow, read `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/official-manual-acceptance.md`. The old local email-login/HTTP-launcher manual acceptance document has been deleted; do not look for or recreate it.
 - The active default is official staging + macOS Codex + browser auth + `enterprise-hub-mcp-launcher@0.1.0`. Do not revive the deleted development email-login or HTTP-launcher assumptions.
+- Full manual acceptance must create a fresh synthetic account such as `manual-full-flow-<runId>@example.invalid`, generate its own throwaway password, control Chrome to complete password setup/login, then hard-delete that account after all test data is cleaned. Do not use the human owner's real account or require the human to type test credentials.
+- Full manual acceptance must mimic normal low-technical employee usage with multiple new user-visible Codex tasks/sessions. Each employee-client task should receive exactly one ordinary natural-language request, such as install/login, upload a file, ask a business question, or query a structured file. Do not collapse the flow into one controller-style prompt that lists internal expected steps; the resulting task transcripts are part of the acceptance evidence and may be archived by the human afterward.
 - The employee-client path must use the official launcher and MCP tools. Controller DB/storage/Qdrant access is allowed only for operator setup, verification, and run-scoped cleanup.
 - Manual staging uploads must clean up after themselves; use `npm run test:official-manual` and confirm run-scoped DB/storage/Qdrant residue is gone before reporting success.
 

@@ -148,6 +148,98 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
       });
     },
 
+    async deleteTestAccount(input) {
+      return prisma.$transaction(async (tx) => {
+        const identity = await tx.loginIdentity.findUnique({
+          where: { normalizedEmail: input.normalizedEmail },
+          select: { id: true, employeeId: true, orgId: true }
+        });
+        if (!identity) {
+          return null;
+        }
+
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM employees WHERE id = ${identity.employeeId} FOR UPDATE`
+        );
+
+        const uploadedDocumentCount = await tx.document.count({
+          where: { uploaderId: identity.employeeId }
+        });
+        if (uploadedDocumentCount > 0) {
+          throw new Error("Test account still owns uploaded documents; clean test data first.");
+        }
+
+        const identities = await tx.loginIdentity.findMany({
+          where: { employeeId: identity.employeeId },
+          select: { id: true }
+        });
+        const identityIds = identities.map((row) => row.id);
+        const sessions = await tx.authSession.findMany({
+          where: { employeeId: identity.employeeId },
+          select: { id: true }
+        });
+        const sessionIds = sessions.map((row) => row.id);
+
+        await tx.oAuthAccessToken.deleteMany({
+          where: { OR: [{ employeeId: identity.employeeId }, { identityId: { in: identityIds } }] }
+        });
+        await tx.durableCredential.deleteMany({
+          where: { sessionId: { in: sessionIds } }
+        });
+        await tx.authSecurityEvent.deleteMany({
+          where: {
+            OR: [
+              { employeeId: identity.employeeId },
+              { identityId: { in: identityIds } },
+              { sessionId: { in: sessionIds } }
+            ]
+          }
+        });
+        await tx.authSession.deleteMany({
+          where: { id: { in: sessionIds } }
+        });
+        await tx.oAuthAuthorizationCode.deleteMany({
+          where: { OR: [{ employeeId: identity.employeeId }, { identityId: { in: identityIds } }] }
+        });
+        await tx.oAuthAuthorizationTransaction.deleteMany({
+          where: { identityId: { in: identityIds } }
+        });
+        await tx.passwordSetupSession.deleteMany({
+          where: { identityId: { in: identityIds } }
+        });
+        await tx.passwordSetupGrant.deleteMany({
+          where: { identityId: { in: identityIds } }
+        });
+        await tx.auditLog.deleteMany({
+          where: { actorEmployeeId: identity.employeeId }
+        });
+        await tx.loginIdentity.deleteMany({
+          where: { id: { in: identityIds } }
+        });
+        await tx.employeeLabel.deleteMany({
+          where: { employeeId: identity.employeeId }
+        });
+        const personalLabel = await tx.label.findFirst({
+          where: {
+            orgId: identity.orgId,
+            key: `person:${identity.employeeId}`,
+            documentLabels: { none: {} }
+          },
+          select: { id: true }
+        });
+        if (personalLabel) {
+          await tx.label.delete({ where: { id: personalLabel.id } });
+        }
+        await tx.employee.delete({ where: { id: identity.employeeId } });
+
+        return {
+          employeeId: identity.employeeId,
+          identityIds,
+          personalLabelDeleted: Boolean(personalLabel)
+        };
+      });
+    },
+
     async audit(input) {
       return prisma.authSecurityEvent.findMany({
         where: { createdAt: { gte: input.since } },
