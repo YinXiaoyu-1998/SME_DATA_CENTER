@@ -1213,6 +1213,39 @@ describe("api auth shell", () => {
     ]);
   });
 
+  it("does not expose unexpected evidence provider failures", async () => {
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository: {
+        async searchEvidence() {
+          throw new Error("provider detail: private-host.internal:6333");
+        }
+      },
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
+      },
+      payload: { query: "差评处理 SOP" }
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Internal server error.",
+        requestId: expect.any(String)
+      }
+    });
+    expect(response.payload).not.toContain("private-host.internal:6333");
+  });
+
   it("rejects disabled employees even when the token is otherwise valid", async () => {
     app = buildTestServer();
     const accessToken = await accessTokenFor(disabledEmployee);

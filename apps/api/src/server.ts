@@ -60,6 +60,7 @@ import { AuthCore } from "./auth/auth-core.js";
 import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
+import { registerApiErrorHandler } from "./request-errors.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
 export interface ApiServerOptions {
@@ -826,6 +827,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     logger: options.logger ?? true,
     requestIdHeader: "x-request-id"
   });
+
+  registerApiErrorHandler(app);
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
