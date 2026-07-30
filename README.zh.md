@@ -99,7 +99,7 @@ npm run worker:dev
 npm run worker:once
 ```
 
-## 正式员工 MCP（目标；等待 Cutover）
+## 正式员工 MCP
 
 正式员工路径是通过固定版本的本机 stdio launcher
 `enterprise-hub-mcp-launcher@0.1.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
@@ -107,10 +107,11 @@ npm run worker:once
 权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `enterprise_hub_login`、
 `enterprise_hub_logout` 和 `enterprise_hub_auth_status`，且绝不操作服务基础设施。
 
-以上是已接受的产品设计和文档，不代表正式 identity、launcher npm 包或公开远程 MCP 已经部署。
-在 cutover 前，下列仅用于仓库开发和受控本地测试的流程仍是 development-only。
+正式 identity、公开远程 MCP 和固定 launcher 已部署；launcher npm 包已发布。macOS Codex
+浏览器登录、系统安全存储、tool discovery 和已认证调用验收已通过；Windows Codex 以及
+macOS/Windows OpenClaw 验收仍是发布门槛。
 
-## 本地 MCP 开发代码（Cutover 前）
+## MCP 服务与本地开发边界
 
 服务端只提供 authenticated Streamable HTTP `POST /mcp`；staging API 仍只监听 loopback，由
 nginx 作为唯一公网入口。它不提供服务端 stdio，也不直读 MySQL、Qdrant 或 storage。API、worker
