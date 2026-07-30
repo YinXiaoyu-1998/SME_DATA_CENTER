@@ -626,7 +626,7 @@ _Avoid_: 多租户 SaaS
 - “单因素密码最低是否使用 NIST 建议的 15 字符”已 rejected for beta：产品决定最低 8 字符、最高 128 字符，其他无组合规则、常见密码拦截、完整验证和 Argon2id 存储要求保持不变。
 - “是否保留本地测试用 dev-login/JWT”已 rejected：旧认证实现完全弃用并删除，不设计迁移或双栈兼容；测试同样使用新系统的正式凭证模型，只能通过内部 fixture/factory 加速准备。
 - “CLI 重置密码”可能被理解为开发者设置或掌握员工密码；已 resolved：beta CLI 只签发 **密码设置链接**，密码始终由员工本人在浏览器页面设置。
-- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、浏览器 Authorization Code + PKCE、不透明 access token 和系统安全存储长期会话，不保留 development email/JWT 兼容路径；固定版本 `enterprise-hub-mcp-launcher@0.1.0` 已在 npm 发布，真实浏览器与 macOS/Windows 桌面验收仍是发布门。
+- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、浏览器 Authorization Code + PKCE、不透明 access token 和系统安全存储长期会话，不保留 development email/JWT 兼容路径；固定版本 `enterprise-hub-mcp-launcher@0.1.0` 已在 npm 发布。macOS Codex 真实浏览器登录、Keychain 持久化、MCP 工具发现和认证后只读调用已通过；Windows 与 OpenClaw 桌面验收仍是发布门。
 - “权限管理”容易被过度设计成逐字段或逐文件控制；已 resolved：第一阶段采用 **粗颗粒度权限**，只以 **归属标签** 是否命中判断访问。
 - “归属”不应设计成单选组织范围；已 resolved：资料和员工账号都使用多值 **归属标签**，任一标签命中即可访问。
 - “区域标签/门店标签继承”暂不采用；已 resolved：第一阶段保留 **门店标签**，不做区域标签，也不做自动展开。
