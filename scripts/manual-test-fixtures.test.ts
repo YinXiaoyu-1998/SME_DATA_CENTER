@@ -76,7 +76,7 @@ describe("manual acceptance scenario manifest", () => {
     );
   });
 
-  it("points the active skill at the official staging flow instead of the withdrawn local flow", async () => {
+  it("points the active skill at the official staging flow instead of the deleted local flow", async () => {
     const skill = await readFile(
       path.join(root, "skills", "enterprise-hub-manual-test", "SKILL.md"),
       "utf8"
@@ -85,7 +85,9 @@ describe("manual acceptance scenario manifest", () => {
     expect(skill).toContain("official staging + macOS Codex + browser auth");
     expect(skill).toContain("npm run test:official-manual");
     expect(skill).toContain("Manual staging uploads must not accumulate");
-    expect(skill).toContain("Do not run the withdrawn local Phase 3 email-login workflow");
+    expect(skill).toContain(
+      "Do not run or recreate the deleted local Phase 3 email-login workflow"
+    );
     expect(skill).not.toContain("Employee-Client Boundary Prompt");
     expect(skill).not.toContain("Act only as an employee-owned");
     expect(skill).not.toContain("test:manual:prepare");

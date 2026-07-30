@@ -9,6 +9,7 @@ import { hashOpaqueSecret } from "./primitives.js";
 class MemoryOperatorRepository implements AuthOperatorRepository {
   onboardInput: Parameters<AuthOperatorRepository["onboard"]>[0] | null = null;
   resetInput: Parameters<AuthOperatorRepository["resetPassword"]>[0] | null = null;
+  deleteInput: Parameters<AuthOperatorRepository["deleteTestAccount"]>[0] | null = null;
 
   async onboard(input: Parameters<AuthOperatorRepository["onboard"]>[0]) {
     this.onboardInput = input;
@@ -18,6 +19,15 @@ class MemoryOperatorRepository implements AuthOperatorRepository {
   async resetPassword(input: Parameters<AuthOperatorRepository["resetPassword"]>[0]) {
     this.resetInput = input;
     return { employeeId: input.employeeId, identityId: "identity-new" };
+  }
+
+  async deleteTestAccount(input: Parameters<AuthOperatorRepository["deleteTestAccount"]>[0]) {
+    this.deleteInput = input;
+    return {
+      employeeId: "employee-new",
+      identityIds: ["identity-new"],
+      personalLabelDeleted: true
+    };
   }
 
   async audit() {
@@ -71,6 +81,17 @@ describe("auth operator CLI", () => {
     ).toThrow("Unknown option");
     expect(() =>
       parseOperatorCommand(["reset-password", "--employee-id", "employee-new", "--token", "x"])
+    ).toThrow("Unknown option");
+    expect(() =>
+      parseOperatorCommand([
+        "delete-test-account",
+        "--email",
+        "manual-full-flow-1@example.invalid",
+        "--confirm-email",
+        "manual-full-flow-1@example.invalid",
+        "--password",
+        "x"
+      ])
     ).toThrow("Unknown option");
   });
 
@@ -127,6 +148,56 @@ describe("auth operator CLI", () => {
     const rawSecret = new URL(stdout[0]!).hash.replace("#token=", "");
     expect(repository.resetInput?.grantTokenHash).toBe(hashOpaqueSecret(rawSecret));
     expect(JSON.stringify(repository.resetInput)).not.toContain(rawSecret);
+  });
+
+  it("deletes only confirmed synthetic manual test accounts", async () => {
+    const repository = new MemoryOperatorRepository();
+    const stdout: string[] = [];
+
+    await runOperatorCommand(
+      {
+        kind: "delete-test-account",
+        email: " Manual-Full-Flow-1@Example.Invalid ",
+        confirmEmail: "manual-full-flow-1@example.invalid"
+      },
+      {
+        repository,
+        publicOrigin: "https://api.example.com",
+        stdout: (line) => stdout.push(line),
+        now: () => new Date("2026-07-30T00:00:00.000Z")
+      }
+    );
+
+    expect(repository.deleteInput).toMatchObject({
+      normalizedEmail: "manual-full-flow-1@example.invalid"
+    });
+    expect(stdout).toHaveLength(1);
+    expect(JSON.parse(stdout[0]!)).toMatchObject({
+      ok: true,
+      deleted: true,
+      employeeId: "employee-new",
+      identityCount: 1,
+      personalLabelDeleted: true
+    });
+
+    expect(() =>
+      parseOperatorCommand([
+        "delete-test-account",
+        "--email",
+        "real@example.com",
+        "--confirm-email",
+        "real@example.com"
+      ])
+    ).toThrow("only accepts");
+    expect(() =>
+      parseOperatorCommand([
+        "delete-test-account",
+        "--email",
+        "manual-full-flow-1@example.invalid",
+        "--confirm-email",
+        "manual-full-flow-2@example.invalid"
+      ])
+    ).toThrow("confirm-email");
   });
 
   it("prints bounded credential-free audit rows", async () => {

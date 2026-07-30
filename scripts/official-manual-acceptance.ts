@@ -56,6 +56,7 @@ async function main(args: ParsedArgs): Promise<void> {
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required for official manual acceptance cleanup.");
   }
+  assertCleanupTargetMatchesService(databaseUrl);
 
   const run = runConfig(args.runId);
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
@@ -437,6 +438,23 @@ function launcherPath(): string {
     LAUNCHER_VERSION,
     "node_modules/.bin/enterprise-hub-mcp-launcher"
   );
+}
+
+function assertCleanupTargetMatchesService(databaseUrl: string): void {
+  const serviceHost = new URL(SERVICE_ORIGIN).hostname;
+  const databaseHost = new URL(databaseUrl).hostname;
+  const serviceIsLoopback = isLoopbackHost(serviceHost);
+  const databaseIsLoopback = isLoopbackHost(databaseHost);
+
+  if (!serviceIsLoopback && databaseIsLoopback) {
+    throw new Error(
+      "Official manual acceptance targets the public staging service, but DATABASE_URL points to a local database. Run cleanup from the staging runtime or configure the matching staging cleanup environment."
+    );
+  }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
 function reportPath(run: ReturnType<typeof runConfig>): string {

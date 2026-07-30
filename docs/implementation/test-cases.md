@@ -49,13 +49,13 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 | Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                   | Browser PKCE login, secure-store session, refresh serialization, logout, typed failures, and authenticated proxy pass |
 | Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                    | Launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy representatives pass                       |
 
-## Withdrawn Phase 3 Local Manual Acceptance
+## Deleted Phase 3 Local Manual Acceptance
 
-The old user-visible controller in `docs/implementation/local-agent-test.md` and
-`skills/enterprise-hub-manual-test/SKILL.md` is withdrawn. It depended on the removed development
-email login and an HTTP loopback launcher, so it must not be used as post-cutover evidence or revived
-by weakening the HTTPS boundary. Current user-visible evidence must come from the published launcher,
-official browser login, staging service, and clean macOS/Windows desktop acceptance.
+The old local user-visible controller depended on the removed development email login and an HTTP
+loopback launcher. Its document has been deleted to avoid ambiguity. Do not recreate it, use it as
+post-cutover evidence, or revive it by weakening the HTTPS boundary. Current user-visible evidence
+must come from the published launcher, official browser login, staging service, and clean
+macOS/Windows desktop acceptance.
 
 ## Active Official Manual Acceptance
 
@@ -73,6 +73,13 @@ evidence upload/status/search, structured CSV import/query, invalid atomic impor
 run-scoped cleanup of evidence, Qdrant points, OSS objects, structured rows, import batches, and
 documents. Password setup/reset remains browser-only and is proved separately through
 `auth:operator onboard` / `auth:operator reset-password` without recording full setup links.
+
+The full manual acceptance gate is stricter than the runner: it must create a fresh
+`manual-full-flow-* @example.invalid` synthetic account, set/login with an agent-generated
+throwaway password through Chrome, exercise the flow as multiple newly created user-visible Codex
+tasks/sessions with one normal low-technical employee request per task, and then remove uploaded
+test data plus hard-delete the synthetic account with
+`auth:operator delete-test-account`.
 
 ## Official Identity, OAuth, And Launcher Cases
 
