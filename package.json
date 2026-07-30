@@ -22,6 +22,7 @@
     "test:manual:snapshot": "tsx scripts/manual-test-harness.ts snapshot",
     "test:manual:cleanup": "tsx scripts/manual-test-harness.ts cleanup",
     "staging:smoke": "tsx scripts/staging-smoke.ts",
+    "test:official-manual": "tsx scripts/official-manual-acceptance.ts",
     "deploy:staging": "tsx scripts/deploy-staging.ts",
     "deploy:staging:rollback": "tsx scripts/deploy-staging.ts --rollback",
     "test:watch": "vitest",

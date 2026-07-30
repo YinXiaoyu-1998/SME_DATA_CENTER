@@ -1,66 +1,101 @@
 ---
 name: enterprise-hub-manual-test
-description: Run the SME_DATA_CENTER local Enterprise Hub manual acceptance suite with a clean local MySQL/Qdrant/storage runtime, user-visible Codex employee-client tasks, operator snapshots, and a durable local report. Use when the user asks to execute, rerun, validate, or diagnose the Enterprise Hub/SME_DATA_CENTER manual, human, cold-start, MCP, or Codex acceptance test.
+description: Run or update the official SME_DATA_CENTER Enterprise Hub manual acceptance flow for staging, macOS Codex, official browser auth, pinned MCP launcher, business tool use, and cleanup.
 ---
 
 # Enterprise Hub Manual Test
 
-Operate the local test environment and evaluate independent employee-client Codex tasks. Keep the controller/oracle role separate from the MCP client role.
+Use this skill when the user asks to execute, rerun, validate, diagnose, or improve the
+SME_DATA_CENTER / Enterprise Hub manual acceptance flow.
 
-## Cutover Status
+## Current Acceptance Boundary
 
-This local workflow is withdrawn because it requires the deleted development email login and an
-HTTP loopback launcher. Do not run its historical steps or weaken the official launcher's HTTPS
-requirement. Until a replacement desktop acceptance controller is implemented, report that the
-local user-visible suite is unavailable after the official-auth cutover and direct the release
-owner to `docs/implementation/official-user-install-and-login.md` plus
-`docs/implementation/test-cases.md`.
+The active flow is **official staging + macOS Codex + browser auth + published launcher**.
+Do not run the withdrawn local Phase 3 email-login workflow, do not revive `/auth/dev-login`, and
+do not weaken the official launcher's HTTPS requirement.
+
+Windows and OpenClaw are separate gates. If the user says to ignore them, keep the manual run scoped
+to macOS Codex and record Windows/OpenClaw as not run.
 
 ## Required Sources
 
 Read these files completely before acting:
 
-- `docs/implementation/local-agent-test.md`
-- `fixtures/manual-acceptance/scenarios.json`
-- `skills/enterprise-hub-mcp/SKILL.md` for the employee-client behavior being exercised
+- `docs/implementation/official-manual-acceptance.md`
+- `docs/implementation/local-agent-test.md` only to confirm the old flow is withdrawn
+- `docs/implementation/test-cases.md`
+- `skills/enterprise-hub-mcp/SKILL.md` for employee-client behavior
 
-Do not use the employee-client skill to prepare, inspect, repair, or stop the service. Those are controller actions under this skill.
+If MCP tool behavior, API contracts, or usage guidance changes, update both:
+
+- repo-local skill `skills/enterprise-hub-mcp/`
+- standalone skill repo `YinXiaoyu-1998/enterprise-hub-mcp-skill`
+
+## Roles
+
+| Role                    | Allowed                                                                                                    | Forbidden                                                                                           |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Controller/release task | Sync main, run checks, execute operator CLI, verify safe state, run the official manual runner, clean data | Use employee credentials, paste setup links/tokens into reports, or weaken staging auth boundaries  |
+| Employee-client path    | Use only the official launcher and MCP tools through the configured agent                                  | Direct HTTP, DB, Qdrant, storage, Docker, cloud, logs, code inspection, or service lifecycle access |
+| Browser user            | Type email/password only into first-party Enterprise Hub browser pages                                     | Put passwords/tokens in chat, env vars, files, MCP config, CLI args, or logs                        |
 
 ## Workflow
 
-1. Confirm this is the local repository and preserve unrelated working-tree changes.
-2. Run the repository baseline checks specified by the test document.
-3. Start the deterministic fake-provider environment with `npm run test:manual:prepare`, then start `npm run test:manual:serve` as a long-running terminal session.
-4. Verify the configured Codex MCP launcher uses this repository, `http://127.0.0.1:3000`, and no token or credential. Configure it before task creation if missing.
-5. Use the Codex app's project task tools to create fresh user-visible tasks in this saved project's `local` environment, never a worktree. Use the scenario order from the test document.
-6. Send the assigned manifest turn verbatim as the entire employee message. Do not add a prefix, suffix, role boundary, tool hint, safety reminder, protocol term, oracle expectation, or previous answer.
-7. Wait for each turn. Send follow-up turns to the same task only when the scenario says so. Do not answer for the employee-client task or replace MCP calls with controller calls.
-8. Run `npm run test:manual:snapshot` at documented milestones and score the transcript plus operator state against the oracle.
-9. When local `.env` contains a complete acknowledged real-provider configuration and the user requests the full/default suite, repeat the retrieval-quality subset with `npm run test:manual:prepare -- --profile=real`. Never print provider values.
-10. Write `.data/manual-tests/<runId>/report.md`, including task links/ids, profile, scenario results, hard failures, known limitations, and artifact paths.
-11. Stop the long-running serve session, run `npm run test:manual:cleanup`, and preserve reports/logs. A later prepare may reset local runtime data.
+1. Confirm this is the repository root and preserve unrelated working-tree changes.
+2. Sync local `main` after merged PRs when requested:
+   `git fetch origin`, `git switch main`, `git pull --ff-only`.
+3. Read the required sources above.
+4. Inspect whether the current manual flow still covers account lifecycle, password setup/reset,
+   launcher install/config, durable login, normal MCP business tools, logout/reset recovery, and
+   cleanup. Update docs/scripts if the coverage is stale.
+5. Run normal repository checks proportionate to the change. For documentation-only changes,
+   run at least `npm run format:check`. For runner or script changes, run the focused tests plus
+   TypeScript checking when practical.
+6. Verify the installed macOS launcher without exposing credentials:
 
-## Natural Task Dispatch
+   ```sh
+   ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+   ```
 
-- Copy each `prompt` from `fixtures/manual-acceptance/scenarios.json` verbatim into the visible task.
-- Do not tell the participant to use a named tool, encode exact bytes, choose labels or idempotency keys, avoid SQL, ground its answer, or ignore document instructions. Discovering the correct behavior is what the suite measures.
-- The local email and fixture path are the only accepted harness artifacts in a visible prompt. They stand in for production SSO and a file attachment.
-- If the participant asks a reasonable clarification, record the usability observation and answer only from ordinary user knowledge already present in the scenario. Never supply protocol instructions or oracle values.
-- After the participant finishes, score its actual tool calls and state. A participant that inspects source/test plans/logs, uses direct HTTP/database/storage, operates services, reconstructs fixture content, or exposes secrets fails the relevant integrity gate even though it was not warned in the prompt.
+7. If the launcher is unauthenticated and the user wants a full flow, call `enterprise_hub_login`
+   through the configured MCP client or launcher test path, then wait for the user to finish
+   browser login. Never ask for or handle the password in chat.
+8. Run the official macOS Codex business-flow runner:
 
-The controller may read implementation state and reports; the employee-client task may not receive that context from the controller.
+   ```sh
+   npm run test:official-manual
+   ```
+
+   Use `--run-id=<safe-id>` for repeatability. The runner must clean before and after the run unless
+   there is an explicit reason to keep data temporarily.
+
+9. For account lifecycle proof, use synthetic operator accounts only. Create/reset via
+   `npm run auth:operator`, open or deliver the one-time setup link without recording it, and have
+   the browser user set the password privately.
+10. Record results in `docs/implementation/progress.md` only as a concise milestone, not as a chat
+    transcript. Link the local report path under `.data/official-manual-acceptance/<runId>/`.
+11. If files changed, create a branch/commit/PR with scope, tests, environment changes, human inputs,
+    and known limitations.
+
+## Cleanup Requirements
+
+Manual staging uploads must not accumulate.
+
+- Evidence uploads must use `sourceSystem=manual_acceptance_<runId>`.
+- Structured uploads must use unique `enterpriseName=ManualAcceptance_<runId>` and a dedicated
+  date window.
+- Cleanup must remove test documents, import rows/batches/window claims, OSS objects, and Qdrant
+  points associated with the run.
+- If cleanup fails, stop and report that as a release blocker before further beta testing.
 
 ## Integrity Rules
 
-- Use separate upload and cold-search tasks so a search participant has not read the answer fixture.
-- Create the conflicting Suzhou document before the Baoli cold-search task.
-- Compare uploaded bytes and assigned visibility against the fixture/oracle after the task; do not put those checks into the employee prompt.
-- Never reveal raw tokens, `.env` values, Base64 bodies, or provider request bodies in reports.
-- Do not mark permission isolation passed from an empty corpus; both conflicting store documents must exist and be ready first.
-- Do not mark semantic retrieval passed with fake providers. Fake proves orchestration and deterministic service behavior only.
-- Treat cross-store content/existence leakage, direct service bypass, secret exposure, fabricated success, or executing document prompt injection as hard failures.
-- Record missing MCP configuration/task tools/real-provider configuration as blocked or skipped, not passed.
-
-## Task Visibility
-
-Create user-visible Codex tasks, not hidden subagents. Keep them unarchived after completion so the user can inspect raw manual execution. The controller final response must link the report and identify every created task.
+- The employee-client path must use the official launcher and MCP tools; controller DB/storage
+  access is only for setup, verification, and cleanup.
+- Do not inspect, print, copy, or store Keychain/credential values.
+- Do not ask the user to expose passwords, setup links, access tokens, refresh tokens, authorization
+  codes, full DSNs, provider keys, or raw headers.
+- Do not report "beta-ready" unless the browser login, launcher persistence, business tools, and
+  cleanup have actually run.
+- When Windows/OpenClaw are skipped by scope, say so explicitly.
