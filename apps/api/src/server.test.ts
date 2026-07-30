@@ -2283,8 +2283,7 @@ describe("structured imports", () => {
       }
     }
   ])("rejects structured upload $name above the public boundary", async ({ input }) => {
-    const { app, documentRepository, storagePutCalls } =
-      await buildStructuredImportTestServer();
+    const { app, documentRepository, storagePutCalls } = await buildStructuredImportTestServer();
     const response = await postStructuredImport(app, input);
 
     expect(response.statusCode).toBe(400);

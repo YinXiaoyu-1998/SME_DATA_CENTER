@@ -144,7 +144,7 @@ For each bounded value, assert success exactly at the limit and failure one unit
   ["evidence cursor", 4_096],
   ["structured cursor", 4_096],
   ["structured filter string scalar", 32_767]
-]
+];
 ```
 
 Also assert the existing filename/media exported constants equal their matching `PUBLIC_INPUT_LIMITS` fields.
@@ -164,7 +164,7 @@ Expected: the newly added over-limit cases are accepted.
 Use `.max(...)` on evidence query/cursor, metadata strings, label arrays/keys, evidence filter arrays/items, and structured page cursor. Replace the structured scalar string arm with:
 
 ```ts
-z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars)
+z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars);
 ```
 
 Keep all existing `.strict()`, MIME, canonical Base64, recursive filter-depth, and cardinality checks.
@@ -230,7 +230,9 @@ Expected: unknown errors still expose their messages or use Fastify's default bo
 ```ts
 app.setErrorHandler((error, request, reply) => {
   if (error instanceof PublicRequestError) {
-    return reply.code(error.statusCode).send(publicErrorBody(error.code, error.message, request.id));
+    return reply
+      .code(error.statusCode)
+      .send(publicErrorBody(error.code, error.message, request.id));
   }
 
   if (isPayloadTooLargeError(error)) {
@@ -245,7 +247,10 @@ app.setErrorHandler((error, request, reply) => {
       .send(publicErrorBody("INVALID_REQUEST", "Request is invalid.", request.id));
   }
 
-  request.log.error({ err: error, method: request.method, url: request.url, requestId: request.id }, "request failed");
+  request.log.error(
+    { err: error, method: request.method, url: request.url, requestId: request.id },
+    "request failed"
+  );
   return reply
     .code(500)
     .send(publicErrorBody("INTERNAL_ERROR", "Internal server error.", request.id));

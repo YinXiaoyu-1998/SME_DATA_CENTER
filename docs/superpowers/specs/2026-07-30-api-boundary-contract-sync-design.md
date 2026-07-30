@@ -23,23 +23,23 @@ This is preferred over independent per-layer patches because a shared contract m
 
 The shared contract will use these limits:
 
-| Input | Limit | Basis |
-| --- | ---: | --- |
-| Upload filename | 255 characters | Preserves the existing MCP boundary and common basename compatibility. |
-| Evidence title | 512 characters | Matches `Document.title VARCHAR(512)`. |
-| Evidence source system | 255 characters | Matches `Document.sourceSystem VARCHAR(255)`. |
-| Structured enterprise name | 255 characters | Leaves safe room when it contributes to generated titles and filenames. |
-| Idempotency key | 255 characters | Matches `ImportBatch.idempotencyKey VARCHAR(255)`. |
-| Label key | 128 characters | Matches `Label.key VARCHAR(128)`. |
-| Labels per request | 50 | Bounds authorization/catalog work while remaining well above normal usage. |
-| Evidence query | 4,000 characters | Supports long natural-language questions while bounding retrieval/provider work. |
-| Evidence filter identifier | 64 characters | Covers current IDs with headroom while bounding filter payloads. |
-| Evidence filter identifiers per group | 100 | Bounds filter construction and authorization revalidation. |
-| Cursor | 4,096 characters | Provides ample room for signed cursors while bounding decoding and verification. |
-| Structured-query string scalar | 32,767 characters | Matches the maximum accepted structured cell value, so imported values remain queryable. |
-| Multipart files | 1 | Both upload endpoints accept exactly one source file. |
-| Multipart fields | 60 | Covers 50 labels, fixed metadata fields, and a small compatibility margin. |
-| Multipart parts | 61 | One file plus the maximum field count. |
+| Input                                 |             Limit | Basis                                                                                    |
+| ------------------------------------- | ----------------: | ---------------------------------------------------------------------------------------- |
+| Upload filename                       |    255 characters | Preserves the existing MCP boundary and common basename compatibility.                   |
+| Evidence title                        |    512 characters | Matches `Document.title VARCHAR(512)`.                                                   |
+| Evidence source system                |    255 characters | Matches `Document.sourceSystem VARCHAR(255)`.                                            |
+| Structured enterprise name            |    255 characters | Leaves safe room when it contributes to generated titles and filenames.                  |
+| Idempotency key                       |    255 characters | Matches `ImportBatch.idempotencyKey VARCHAR(255)`.                                       |
+| Label key                             |    128 characters | Matches `Label.key VARCHAR(128)`.                                                        |
+| Labels per request                    |                50 | Bounds authorization/catalog work while remaining well above normal usage.               |
+| Evidence query                        |  4,000 characters | Supports long natural-language questions while bounding retrieval/provider work.         |
+| Evidence filter identifier            |     64 characters | Covers current IDs with headroom while bounding filter payloads.                         |
+| Evidence filter identifiers per group |               100 | Bounds filter construction and authorization revalidation.                               |
+| Cursor                                |  4,096 characters | Provides ample room for signed cursors while bounding decoding and verification.         |
+| Structured-query string scalar        | 32,767 characters | Matches the maximum accepted structured cell value, so imported values remain queryable. |
+| Multipart files                       |                 1 | Both upload endpoints accept exactly one source file.                                    |
+| Multipart fields                      |                60 | Covers 50 labels, fixed metadata fields, and a small compatibility margin.               |
+| Multipart parts                       |                61 | One file plus the maximum field count.                                                   |
 
 The existing decoded file-size limit remains 52,428,800 bytes (50 MiB). The existing MCP media-type limit remains 255 characters.
 

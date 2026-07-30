@@ -67,9 +67,7 @@ export function registerApiErrorHandler(app: FastifyInstance): void {
     if (isPayloadTooLargeError(error)) {
       return reply
         .code(413)
-        .send(
-          publicErrorBody("PAYLOAD_TOO_LARGE", "Request payload is too large.", request.id)
-        );
+        .send(publicErrorBody("PAYLOAD_TOO_LARGE", "Request payload is too large.", request.id));
     }
 
     if (isMalformedClientRequest(error)) {

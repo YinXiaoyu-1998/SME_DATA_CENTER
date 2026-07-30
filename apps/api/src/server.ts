@@ -138,8 +138,7 @@ interface EvidenceSearchBody {
 }
 
 type EvidenceFilterGroupResult =
-  | { ok: true; values: string[] }
-  | { ok: false; limitExceeded: boolean };
+  { ok: true; values: string[] } | { ok: false; limitExceeded: boolean };
 
 type EvidenceSearchValidation =
   | {
@@ -312,10 +311,7 @@ function validateEvidenceSearchBody(value: unknown): EvidenceSearchValidation {
   }
 
   const filters = filtersValue as Record<string, unknown> | undefined;
-  const fileTypes = evidenceFilterGroup(
-    filters?.fileTypes,
-    new Set(["md", "txt", "docx"])
-  );
+  const fileTypes = evidenceFilterGroup(filters?.fileTypes, new Set(["md", "txt", "docx"]));
   const documentIds = evidenceFilterGroup(filters?.documentIds);
   const labelIds = evidenceFilterGroup(filters?.labelIds);
 
