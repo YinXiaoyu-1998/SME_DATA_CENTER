@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 import { PHASE3_ERROR_CODES, type Phase3ErrorCode } from "./retrieval-contracts.js";
 import {
   STRUCTURED_DATASETS,
@@ -830,6 +831,13 @@ function validateScalarType(type: StructuredFieldType, value: ScalarValue) {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.typeMismatch,
       "String value is required."
+    );
+  }
+
+  if (value.length > PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars) {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.limitExceeded,
+      "String value exceeds the allowed limit."
     );
   }
 
