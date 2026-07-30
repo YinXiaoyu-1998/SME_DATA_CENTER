@@ -6,6 +6,10 @@ This is the active manual acceptance flow for a real beta-style Enterprise Hub u
 Codex. The old local Phase 3 email-login/HTTP-launcher manual acceptance document has been deleted
 because it was no longer runnable after the official-auth cutover.
 
+For onboarding an actual beta user, use
+[`beta-user-onboarding-runbook.md`](./beta-user-onboarding-runbook.md). This document is the
+acceptance-test procedure; the runbook is the support/operator path for a real pilot.
+
 For now, this flow intentionally ignores Windows and OpenClaw. Those remain separate desktop
 acceptance gates.
 

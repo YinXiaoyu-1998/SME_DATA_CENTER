@@ -242,6 +242,32 @@ retry repeatedly after browser cancellation or an unsuccessful login. Use
 session for Enterprise Hub under the current OS user, so all locally configured agents on that
 OS user are signed out.
 
+## Enterprise Hub Data Questions
+
+When the employee asks about资料、SOP、上传过的文件、公司数据、Enterprise Hub 里的表格, or what was
+“刚上传/刚传进去/这份表”, answer through Enterprise Hub MCP tools. Do not answer those questions by
+reading a local attachment, local CSV/XLSX, previous chat text, cache, or filesystem copy unless
+the employee explicitly asks you to inspect a local file outside Enterprise Hub.
+
+Local files are upload inputs only. After uploading a file, keep the returned service metadata
+needed for follow-up questions: document id, import batch id, dataset id, labels, declared business
+date window, enterprise/store name, and status. In a later task, rediscover available labels and
+datasets through MCP; if the intended uploaded table/document cannot be identified safely, ask one
+short natural clarification instead of querying all visible history.
+
+For structured-table questions:
+
+- Call `list_structured_datasets` before constructing a structured query unless you already have a
+  fresh compatible registry from the same MCP session.
+- Scope follow-up questions about a recent upload to that upload's returned import metadata,
+  declared business-date window, enterprise/store name, or other explicit service-returned
+  metadata. Avoid broad unbounded queries for phrases like “这份表”, “刚才那张表”, or “我刚传的”.
+- If the employee asks about a local spreadsheet before it has been uploaded, offer to upload it
+  first. Do not compute final Enterprise Hub answers directly from the local spreadsheet unless the
+  employee explicitly says they want a local-file-only inspection.
+- If a query result contains historical rows outside the intended upload/window, narrow the query
+  or ask for clarification before presenting totals as “这份表”的 totals.
+
 For authorized service tools:
 
 - List labels before uploading; use only returned label keys.

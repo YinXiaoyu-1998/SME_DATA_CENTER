@@ -1,125 +1,133 @@
 # First Beta User Readiness
 
-Last verified: 2026-07-23
+Last verified: 2026-07-30
 
-> **Superseded planning document:** the live-state observations remain useful as a dated snapshot,
-> but the opaque beta-token recommendation and its onboarding inputs were withdrawn on 2026-07-23.
-> Do not implement them. The replacement design is being resolved in
-> [`official-user-install-and-login.md`](./official-user-install-and-login.md).
+This document tracks whether Enterprise Hub is ready for a first controlled beta user. It replaces
+the withdrawn 2026-07-23 beta-token bridge snapshot; do not use any design that asks a user or
+agent to handle passwords, JWTs, opaque tokens, refresh credentials, or raw HTTP headers.
 
-## Goal
+“Real beta user” and “real customer data” remain separate gates. A real beta user may test the
+live staging service with fixture or explicitly approved non-sensitive business documents before
+the project is ready to ingest customer-confidential or authoritative production data.
 
-让一名真实 beta 用户从自己的 MCP client 调用
-`https://api.smedatacenter.xyz`，完成登录、列出授权标签、上传、异步索引、检索和退出，
-同时保持 backend authorization、secret redaction 和可撤销性。
+## Current Answer
 
-“真实 beta 用户”与“真实客户数据”是两个不同门槛。前者应该先用 fixture 或明确批准的
-非敏感资料上线；后者要等恢复和数据治理门槛闭环。
+Enterprise Hub is ready for a **controlled macOS + Codex beta pilot with non-sensitive data** once
+the readiness/runbook/skill updates in this slice are merged.
+
+It is **not yet ready for real customer data**. Recovery, alerts, retention/deletion policy, and
+selected operational drills still need owner approval and evidence before customer-confidential
+data is uploaded.
+
+Windows and OpenClaw are intentionally not blocking the first macOS + Codex pilot. They remain
+separate acceptance gates before claiming broad desktop-agent support.
 
 ## Verified Current Facts
 
-| Boundary          | Current evidence                                                                                       | Result                                               |
-| ----------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| Public liveness   | `GET /healthz`                                                                                         | `200`                                                |
-| Private readiness | public `GET /readyz`                                                                                   | `404`, as designed                                   |
-| Production login  | public `POST /auth/dev-login`                                                                          | `404`; no usable beta login exists                   |
-| Public MCP        | public `POST /mcp`                                                                                     | `403 MCP_LOOPBACK_REQUIRED`                          |
-| Ordinary API auth | unauthenticated `/me`, `/labels`, `/skills`, and structured datasets                                   | `401`                                                |
-| Launcher          | code accepts only base URL and logs in through development email login                                 | cannot authenticate to staging                       |
-| Identity data     | staging seed contains only synthetic employees and labels                                              | no real beta employee exists                         |
-| Token schema      | Prisma `access_tokens` has hash/expiry/revocation/last-use fields                                      | schema exists; runtime support is not implemented    |
-| Delivery          | trusted `main` quality success deploys the same immutable SHA                                          | verified at `708128503656`                           |
-| Runtime           | API/worker/Qdrant healthy; root-only runtime env is `0600`                                             | verified                                             |
-| Capacity snapshot | API about 260 MiB, worker 193 MiB, Qdrant 43 MiB; disk 27% used                                        | sufficient for one controlled beta, not a load claim |
-| Recent logs       | no `error`/`fatal`/`panic`/`unhandled` matches in app container logs over the inspected 24 hours       | manual snapshot only; no alerting                    |
-| RDS backup        | 7-day full-backup retention, log backup enabled for 7 days, one successful system full backup observed | backup exists; restore has not been rehearsed        |
-| RDS transport     | provider SSL is disabled; app currently uses private VPC TCP                                           | current fact verified; final policy is open          |
-| RDS lifecycle     | prepaid instance expires 2026-08-21; auto-renew duration is `0`; deletion protection is off            | human cost/protection decision required              |
-| OSS runtime       | live runtime uses bucket `yxy-test-sme-data-center`, prefix `enterprise-hub`                           | readiness and fixture lifecycle passed               |
+| Boundary              | Current evidence                                                                                           | Result                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Public service        | `https://api.smedatacenter.xyz/healthz`                                                                    | `200`                                                                                      |
+| Private readiness     | public `GET /readyz`                                                                                       | `404`, as designed; readiness remains internal only                                        |
+| Official identity     | browser password setup/login, OAuth Authorization Code + PKCE, rotating durable credentials                | deployed to staging                                                                        |
+| Development auth      | old dev email/JWT login and staging JWT secret                                                             | removed from staging runtime/GitHub/local Keychain                                         |
+| Public MCP            | unauthenticated public `/mcp`                                                                              | rejects unauthenticated requests; authenticated launcher calls succeed                     |
+| Launcher package      | public npm package `enterprise-hub-mcp-launcher@0.1.0`                                                     | exact-version install and clean installed-package audit passed                             |
+| macOS Codex client    | official launcher, browser login, Keychain persistence, MCP discovery, authenticated label listing         | passed                                                                                     |
+| Full macOS Codex flow | fresh synthetic account, 11 natural user-visible Codex sessions, upload/search/query/logout/reset/re-login | passed core auth/evidence lifecycle; structured-query usability observations remain        |
+| Cleanup               | manual acceptance cleanup                                                                                  | removed run documents, import batch, Qdrant points, dish rows, identity, employee, session |
+| Deployment            | GitHub `main` quality gates and staging deploy workflow                                                    | successful deployment observed at immutable tag `bbb227421fa5`                             |
+| Runtime               | API/worker/Qdrant/nginx/TLS/RDS/OSS                                                                        | healthy in the latest verified live checks                                                 |
+| RDS backup            | 7-day full backup retention and 7-day log backup                                                           | backup exists; restore has not been rehearsed                                              |
+| RDS transport         | private VPC TCP; provider SSL disabled                                                                     | current staging fact; final SSL policy remains open                                        |
+| RDS lifecycle         | prepaid RDS expiry and deletion-protection facts recorded in staging readiness                             | human renewal/protection decision still required before customer data                      |
 
-RDS Copilot Professional Edition is not activated for this Alibaba Cloud account. Its conversational
-diagnostic API therefore returned `InvalidOrder`. This is not a beta blocker because the underlying
-RDS facts above were read directly through the normal authenticated RDS CLI.
+## First Pilot Scope
 
-## Hard Blockers For A Real Beta User
+The recommended first pilot is:
 
-1. There is no production-safe way for the user to obtain a credential.
-2. The public reverse-proxied MCP route is deliberately rejected by the Phase 3 loopback guard.
-3. There is no real beta employee, role, or label assignment.
-4. The launcher has no secure production credential bootstrap.
+- one real beta user;
+- macOS + Codex only;
+- official skill installation and `enterprise-hub-mcp-launcher@0.1.0`;
+- browser password setup/login only;
+- fixture or explicitly approved non-sensitive documents;
+- one or a few simple visibility labels;
+- evidence document upload/search as the primary workflow;
+- structured CSV upload/query only with the tightened skill guidance and explicit date/import
+  context.
 
-These must be solved together. Changing nginx alone or handing out the staging JWT secret would be
-unsafe and would not produce a supportable beta flow.
+The first pilot should avoid real customer-confidential data, broad multi-user rollout, Windows,
+OpenClaw, admin UI, MFA, self-service registration, and automated password-reset email.
 
-## Recommended Next Slice
+## Remaining Before Inviting The First macOS + Codex Beta User
 
-Withdrawn. Do not implement the ADR 0021 opaque-token bridge. Complete the official installation,
-browser-login, and durable-session design before selecting the next implementation slice.
+| Item                            | Status                | Why it matters                                                                                                                           |
+| ------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Beta onboarding runbook         | covered by this slice | The operator needs one repeatable path for account creation, setup-link delivery, verification, reset, and deletion.                     |
+| Skill structured-query guidance | covered by this slice | Manual acceptance showed low-technical prompts like “this table” can cause an agent to answer from a local CSV or query historical rows. |
+| Actual beta identity details    | needed per user       | Operator needs email, display name, role, organization, and allowed labels for the real beta user.                                       |
+| First-run data approval         | needed per pilot      | Decide whether the user uses repo fixtures, synthetic internal docs, or a specific non-sensitive real document.                          |
+| Support owner/contact           | needed per pilot      | Someone must own setup-link delivery, first-login support, reset, and cleanup during the pilot.                                          |
 
-## Human Inputs Still Required
+No additional ACR, SSH, RDS password, OSS key, domain, TLS, GitHub Actions secret, npm token, or
+JWT secret is required for the first macOS + Codex pilot.
 
-| Input                             | Why it is needed                                                           | Recommended default                                                   |
-| --------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Beta email and display name       | creates the permission subject                                             | real beta identity                                                    |
-| Role and allowed label keys       | defines backend visibility                                                 | `employee`, one personal label, only explicitly approved store labels |
-| MCP client and operating system   | determines the credential-store helper and exact install recipe            | Codex Desktop on macOS if that is the beta setup                      |
-| First-run data class              | distinguishes real user testing from real customer-data approval           | repo fixture or non-sensitive internal test document                  |
-| Beta token lifetime               | bounds the temporary credential                                            | 30 days                                                               |
-| Operations alert recipient        | required for minimal outage/disk/expiry alerting                           | confirm whether `consyinxy@gmail.com` may be reused                   |
-| RDS renewal/protection decision   | instance expires 2026-08-21 and cost-impacting changes need human approval | enable auto-renew and deletion protection before real-data beta       |
-| Recovery target and owner         | determines when a restore drill is acceptable                              | proposed RPO 24h, RTO 4h, owner: repository operator                  |
-| Real-data retention/deletion rule | required before importing customer documents                               | defer real customer data until explicitly approved                    |
+## Known Product/UX Observations From Manual Acceptance
 
-No additional ACR, SSH, RDS password, JWT secret, OSS key, domain, TLS, or GitHub Actions secret is
-currently needed from the human.
+1. A vague structured prompt such as “this table” may lead an agent to inspect a locally attached
+   CSV instead of calling Enterprise Hub. The skill must instruct employee-owned agents to use
+   Enterprise Hub MCP for Enterprise Hub questions, and to treat local files only as upload inputs
+   unless the employee explicitly asks for local-file inspection.
+2. An unbounded structured query can return older authorized rows from the same dataset. For
+   recently uploaded tables, the agent should bind follow-up questions to the import result,
+   declared business-date window, enterprise name, or other returned metadata; if that context is
+   absent, it should ask a short clarification instead of querying all historical data.
+3. Evidence search should continue to use explicit filters such as label and, when testing a fresh
+   upload, returned document ids. This avoids matching historical fixture uploads while still
+   proving the new upload was indexed and searchable.
 
-## Provided And Verified
+These observations are not security bypasses: backend authorization continued to enforce employee
+scope. They are beta-readiness usability issues because a low-technical user expects “刚上传这份表”
+to refer to that upload, not all accessible history or an agent-side local shortcut.
 
-- Alibaba Cloud OAuth CLI, SWAS, VPC/RDS connectivity, RDS app account and database.
-- Beijing ACR namespace/repositories and registry credential delivery.
-- Simple Application Server, Docker/Compose/nginx, DNS, TLS, cert renewal.
-- GitHub `staging` environment variables/secrets and trusted-main automated deployment.
-- OSS and real embedding/rerank providers for fixture-only smoke.
-- Synthetic migration/seed/Qdrant initialization and end-to-end fixture smoke.
+## Human Inputs Required For The First Beta User
 
-## Provided Or Existing But Not Fully Validated
+| Input                  | Why it is needed                            | Recommended default                                  |
+| ---------------------- | ------------------------------------------- | ---------------------------------------------------- |
+| Beta email             | login identity and setup-link recipient     | real beta email                                      |
+| Display name           | operator clarity and audit readability      | real name or agreed nickname                         |
+| Organization           | backend tenant boundary                     | current staging org, unless a new org is intentional |
+| Role                   | backend authorization role                  | `employee`                                           |
+| Allowed labels         | document/query visibility                   | one personal label plus explicit store/team labels   |
+| First-run data class   | prevents accidental customer-data upload    | fixture or approved non-sensitive internal document  |
+| Support/reset contact  | account setup and recovery during the pilot | repository operator                                  |
+| Pilot success criteria | determines whether the pilot is done        | install, login, upload, search, logout/reset         |
 
-- RDS backup creation is verified, but no restore drill or recovery-time measurement exists.
-- Automatic deployment rollback logic exists, but no intentional live rollback drill has been run.
-- RDS private connectivity works, but provider SSL remains disabled.
-- Docker logs are bounded and manually inspectable, but no proactive alert reaches an operator.
-- Server capacity is adequate in one idle snapshot; no one-user concurrency or upload-size soak has
-  been run against the public beta path.
-- The `access_tokens` table exists, but no runtime code exercises issue/revoke/authenticate behavior.
+## Before Real Customer Data
 
-## Design Still Open
+The following are not blockers for a fixture/non-sensitive first pilot, but they are blockers before
+customer-confidential or production-authoritative data is uploaded:
 
-- Long-term OIDC/SSO provider, MFA and employee lifecycle synchronization.
-- Production admin identity and admin operations UI.
-- Token audience/rotation policy after the beta bridge.
-- Alerting channel, severity, support hours and incident owner.
-- RPO/RTO, restore owner and whether a restore drill may create a temporary billable RDS instance.
-- Real customer-data classification, retention, deletion, subject access and staging policy.
-- OSS versioning/lifecycle protection for authoritative originals.
-- Capacity target and scaling trigger beyond the first controlled user.
+- approve RPO/RTO and rehearse at least one restore/recovery path;
+- configure minimal uptime, disk, worker-failure, and RDS-expiry alerts;
+- run one controlled application rollback drill;
+- record retention/deletion policy for originals, derived rows, vectors, and audit records;
+- decide RDS renewal/deletion-protection policy;
+- triage the root dependency audit separately from the clean launcher install audit and passing
+  fixable-critical image scan;
+- decide whether RDS SSL policy should change from private VPC TCP to provider SSL enforcement.
 
-## Beta Acceptance Gates
+## Pilot Acceptance Gates
 
-### Real user, fixture/non-sensitive data
+A first macOS + Codex beta pilot passes only when:
 
-- beta employee exists with reviewed role and labels;
-- credential is installed without appearing in chat, MCP config, process arguments or logs;
-- public MCP initialize/discovery/tool calls succeed over HTTPS;
-- expired/revoked token and disabled employee fail closed;
-- a second employee cannot discover beta-only records;
-- fixture upload, worker indexing and evidence search complete;
-- audit records identify the employee and operation;
-- logout/credential removal and operator revoke are tested.
-
-### Before real customer data
-
-- restore objective is approved and one restore/recovery procedure is rehearsed;
-- original-file retention/deletion policy is recorded and executable;
-- minimal uptime, disk, worker-failure and RDS-expiry alerts reach a confirmed recipient;
-- controlled application rollback is rehearsed;
-- the exact first dataset and its label scope are approved.
+- the beta user installs or repairs the skill/launcher without seeing command-line internals as a
+  required manual step;
+- account password setup and login occur only in the Enterprise Hub browser page;
+- no password, setup link, token, credential, header, or full DSN appears in chat, config, git,
+  logs, or reports;
+- the launcher stores durable authentication in the operating-system secure store;
+- a new Codex task can list authenticated labels and call Enterprise Hub MCP tools;
+- fixture or approved non-sensitive evidence upload, indexing, and search succeed;
+- any structured follow-up query is scoped to the intended upload/window or asks for clarification;
+- logout and operator password reset revoke old access;
+- pilot test data can be deleted or clearly retained under the agreed policy.
