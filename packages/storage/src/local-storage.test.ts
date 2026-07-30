@@ -90,4 +90,23 @@ describe("LocalFileSystemStorageAdapter", () => {
     });
     await expect(adapter.statObject(secondWrite.key)).resolves.toEqual(secondWrite);
   });
+
+  it("stores content type metadata for a 255-character public filename", async () => {
+    storageRoot = await mkdtemp(path.join(tmpdir(), "enterprise-hub-storage-"));
+    const adapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const fileName = `${"f".repeat(251)}.csv`;
+
+    const storedObject = await adapter.putObject({
+      orgId: "default-org",
+      documentId: "doc_long_filename",
+      fileName,
+      body: "content",
+      contentType: "text/csv"
+    });
+
+    expect(storedObject.key.endsWith(`/${fileName}`)).toBe(true);
+    await expect(adapter.statObject(storedObject.key)).resolves.toEqual(storedObject);
+    await adapter.deleteObject(storedObject.key);
+    await expect(adapter.statObject(storedObject.key)).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });

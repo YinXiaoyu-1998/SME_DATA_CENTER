@@ -139,5 +139,15 @@ async function readMetadata(objectPath: string): Promise<StoredObjectMetadata> {
 }
 
 function metadataPathFor(objectPath: string): string {
-  return `${objectPath}.metadata.json`;
+  const metadataFileName = `${path.basename(objectPath)}.metadata.json`;
+
+  if (Buffer.byteLength(metadataFileName, "utf8") <= 255) {
+    return path.join(path.dirname(objectPath), metadataFileName);
+  }
+
+  const digest = createHash("sha256")
+    .update(path.basename(objectPath), "utf8")
+    .digest("hex")
+    .slice(0, 32);
+  return path.join(path.dirname(objectPath), `.metadata-${digest}.json`);
 }

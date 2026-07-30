@@ -16,6 +16,7 @@ import {
   isAllowedFileTypeForDocumentKind,
   PHASE3_FILE_TYPES,
   PHASE3_ERROR_CODES,
+  PUBLIC_INPUT_LIMITS,
   type AuthenticatedEmployee,
   type Phase3FileType,
   type StructuredDatasetName
@@ -60,7 +61,7 @@ import { AuthCore } from "./auth/auth-core.js";
 import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
-import { registerApiErrorHandler } from "./request-errors.js";
+import { isPayloadTooLargeError, registerApiErrorHandler } from "./request-errors.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
 export interface ApiServerOptions {
@@ -365,6 +366,14 @@ function validateStructuredImportMetadata(upload: ParsedStructuredImportUpload):
     };
   }
 
+  if (upload.file.fileName.length > PUBLIC_INPUT_LIMITS.uploadFilenameChars) {
+    return {
+      ok: false,
+      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
+      message: "Filename exceeds the allowed limit."
+    };
+  }
+
   if (!upload.dataset || !["dishes", "business"].includes(upload.dataset)) {
     return {
       ok: false,
@@ -381,11 +390,27 @@ function validateStructuredImportMetadata(upload: ParsedStructuredImportUpload):
     };
   }
 
+  if (upload.enterpriseName.length > PUBLIC_INPUT_LIMITS.enterpriseNameChars) {
+    return {
+      ok: false,
+      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
+      message: "enterprise_name exceeds the allowed limit."
+    };
+  }
+
   if (!upload.idempotencyKey) {
     return {
       ok: false,
       code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
       message: "idempotencyKey is required."
+    };
+  }
+
+  if (upload.idempotencyKey.length > PUBLIC_INPUT_LIMITS.idempotencyKeyChars) {
+    return {
+      ok: false,
+      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
+      message: "idempotencyKey exceeds the allowed limit."
     };
   }
 
@@ -402,6 +427,17 @@ function validateStructuredImportMetadata(upload: ParsedStructuredImportUpload):
       ok: false,
       code: "UNLABELED_DOCUMENT",
       message: "Structured import must have labels."
+    };
+  }
+
+  if (
+    upload.labelKeys.length > PUBLIC_INPUT_LIMITS.labelsPerRequest ||
+    upload.labelKeys.some((labelKey) => labelKey.length > PUBLIC_INPUT_LIMITS.labelKeyChars)
+  ) {
+    return {
+      ok: false,
+      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
+      message: "Labels exceed the allowed limit."
     };
   }
 
@@ -478,7 +514,7 @@ function canonicalStructuredImportFileName(input: {
   endDate: string;
   fileType: "xlsx" | "csv";
 }) {
-  const enterpriseSegment =
+  let enterpriseSegment =
     input.enterpriseName
       .trim()
       .split("")
@@ -491,7 +527,19 @@ function canonicalStructuredImportFileName(input: {
       })
       .join("_") || "enterprise";
 
-  return `${enterpriseSegment}_${input.dataset}_${input.startDate}_${input.endDate}.${input.fileType}`;
+  const suffix = `_${input.dataset}_${input.startDate}_${input.endDate}.${input.fileType}`;
+  const maxEnterpriseSegmentChars = PUBLIC_INPUT_LIMITS.uploadFilenameChars - suffix.length;
+
+  if (enterpriseSegment.length > maxEnterpriseSegmentChars) {
+    const digest = createHash("sha256").update(input.enterpriseName).digest("hex").slice(0, 12);
+    const hashSuffix = `_h${digest}`;
+    enterpriseSegment = `${enterpriseSegment.slice(
+      0,
+      maxEnterpriseSegmentChars - hashSuffix.length
+    )}${hashSuffix}`;
+  }
+
+  return `${enterpriseSegment}${suffix}`;
 }
 
 function structuredImportFingerprint(input: {
@@ -846,7 +894,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   void app.register(multipart, {
     limits: {
-      fileSize: runtimeLimits.maxUploadBytes
+      fileSize: runtimeLimits.maxUploadBytes,
+      files: PUBLIC_INPUT_LIMITS.multipartFiles,
+      fields: PUBLIC_INPUT_LIMITS.multipartFields,
+      parts: PUBLIC_INPUT_LIMITS.multipartParts
     }
   });
 
@@ -959,7 +1010,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     try {
       upload = await parseUpload(request);
-    } catch {
+    } catch (error) {
+      if (isPayloadTooLargeError(error)) {
+        throw error;
+      }
+
       return validationError(reply, "INVALID_EVIDENCE_UPLOAD", "Multipart upload is invalid.");
     }
 
@@ -969,6 +1024,20 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     if (!upload.title) {
       return validationError(reply, "INVALID_EVIDENCE_UPLOAD", "Title is required.");
+    }
+
+    if (
+      upload.file.fileName.length > PUBLIC_INPUT_LIMITS.uploadFilenameChars ||
+      upload.title.length > PUBLIC_INPUT_LIMITS.evidenceTitleChars ||
+      (upload.sourceSystem?.length ?? 0) > PUBLIC_INPUT_LIMITS.sourceSystemChars ||
+      upload.labelKeys.length > PUBLIC_INPUT_LIMITS.labelsPerRequest ||
+      upload.labelKeys.some((labelKey) => labelKey.length > PUBLIC_INPUT_LIMITS.labelKeyChars)
+    ) {
+      return validationError(
+        reply,
+        "INVALID_EVIDENCE_UPLOAD",
+        "Evidence upload metadata exceeds the allowed limit."
+      );
     }
 
     const fileType = fileTypeFromFilename(upload.file.fileName);
@@ -1145,7 +1214,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     try {
       upload = await parseStructuredImportUpload(request);
-    } catch {
+    } catch (error) {
+      if (isPayloadTooLargeError(error)) {
+        throw error;
+      }
+
       return validationError(
         reply,
         "INVALID_STRUCTURED_IMPORT_UPLOAD",
