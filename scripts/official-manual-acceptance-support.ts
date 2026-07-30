@@ -1,0 +1,126 @@
+import { createHash } from "node:crypto";
+
+export const STAGING_RDS_HOST = "rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com";
+export const STAGING_RDS_DATABASE = "enterprise_hub";
+export const STAGING_RDS_USER = "enterprise_hub_app";
+
+export interface StructuredWindow {
+  dates: [string, string, string];
+  startDate: string;
+  endDate: string;
+  invalidDate: string;
+  startCompact: string;
+  endCompact: string;
+  invalidCompact: string;
+  monthLabel: string;
+  weekLabel: string;
+}
+
+export interface CleanupCounts {
+  documents: number;
+  importBatches: number;
+  dishRows: number;
+  businessRows: number;
+  windowClaims: number;
+  qdrantPoints: number;
+  storageObjects: number;
+}
+
+export function assertStagingRuntimeDatabaseTarget(databaseUrl: string): void {
+  const parsed = new URL(databaseUrl);
+  const databaseName = parsed.pathname.replace(/^\/+/, "");
+  const username = decodeURIComponent(parsed.username);
+  const port = Number(parsed.port || "3306");
+
+  if (username !== STAGING_RDS_USER || databaseName !== STAGING_RDS_DATABASE) {
+    throw new Error(
+      `Official manual acceptance requires staging database ${STAGING_RDS_DATABASE} as ${STAGING_RDS_USER}.`
+    );
+  }
+  if (parsed.hostname !== STAGING_RDS_HOST || port !== 3306) {
+    throw new Error(
+      "Official manual controller cleanup must run inside staging against the private RDS endpoint."
+    );
+  }
+}
+
+export function createStructuredWindow(runId: string, attempt: number): StructuredWindow {
+  if (!Number.isInteger(attempt) || attempt < 0) {
+    throw new Error("Structured-window attempt must be a non-negative integer.");
+  }
+  const digest = createHash("sha256").update(`${runId}:${attempt}`).digest();
+  const year = 2040 + (digest.readUInt16BE(0) % 40);
+  const monthIndex = digest[2]! % 12;
+  const firstOfMonth = new Date(Date.UTC(year, monthIndex, 1));
+  const firstDay = firstOfMonth.getUTCDay() || 7;
+  const firstMondayOffset = (8 - firstDay) % 7;
+  const start = addUtcDays(firstOfMonth, firstMondayOffset + (digest[3]! % 4) * 7);
+  const dates = [0, 1, 2].map((dayOffset) => isoDate(addUtcDays(start, dayOffset))) as [
+    string,
+    string,
+    string
+  ];
+  const invalidDate = isoDate(addUtcDays(start, 3));
+  const month = String(start.getUTCMonth() + 1).padStart(2, "0");
+
+  return {
+    dates,
+    startDate: dates[0],
+    endDate: dates[2],
+    invalidDate,
+    startCompact: compactDate(dates[0]),
+    endCompact: compactDate(dates[2]),
+    invalidCompact: compactDate(invalidDate),
+    monthLabel: `${year}/${month}`,
+    weekLabel: `${year}第${String(isoWeek(start)).padStart(2, "0")}周`
+  };
+}
+
+export function rewriteKnownValuesFixture(source: string, window: StructuredWindow): string {
+  return source
+    .replaceAll("2026-07-01", window.dates[0])
+    .replaceAll("2026-07-02", window.dates[1])
+    .replaceAll("2026-07-03", window.dates[2])
+    .replaceAll("2026/07", window.monthLabel)
+    .replaceAll("2026第27周", window.weekLabel);
+}
+
+export async function deleteStorageObjects(
+  storage: { deleteObject(key: string): Promise<void> },
+  keys: string[]
+): Promise<void> {
+  for (const key of keys) {
+    await storage.deleteObject(key);
+  }
+}
+
+export function assertCleanupCountsAreZero(counts: CleanupCounts): void {
+  const residue = Object.entries(counts).filter(([, count]) => count !== 0);
+  if (residue.length > 0) {
+    throw new Error(
+      `Official manual acceptance cleanup left residue: ${residue
+        .map(([name, count]) => `${name}=${count}`)
+        .join(", ")}`
+    );
+  }
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 86_400_000);
+}
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function compactDate(value: string): string {
+  return value.replaceAll("-", "");
+}
+
+function isoWeek(date: Date): number {
+  const thursday = new Date(date);
+  const day = thursday.getUTCDay() || 7;
+  thursday.setUTCDate(thursday.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+  return Math.ceil(((thursday.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}

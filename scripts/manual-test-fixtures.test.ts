@@ -93,6 +93,21 @@ describe("manual acceptance scenario manifest", () => {
     expect(skill).not.toContain("test:manual:prepare");
     expect(skill).not.toContain("test:manual:serve");
   });
+
+  it("keeps the official staging guide aligned with the live organization and remote controller", async () => {
+    const guide = await readFile(
+      path.join(root, "docs", "implementation", "official-manual-acceptance.md"),
+      "utf8"
+    );
+
+    expect(guide).toContain("--org-id default-org");
+    expect(guide).toContain("The local ignored `.env` remains a local-development configuration");
+    expect(guide).toContain("executes controller-only");
+    expect(guide).toContain("run-specific available three-day window");
+    expect(guide).not.toContain("--org-id org_demo");
+    expect(guide).not.toContain("staging:access-tunnel");
+    expect(guide).not.toContain("dates changed to `2030-01-01`");
+  });
 });
 
 describe("manual acceptance evidence fixtures", () => {
