@@ -2560,9 +2560,13 @@ describe("structured imports", () => {
     for (const response of responses) {
       expect(response.statusCode).toBe(400);
       expect(response.json()).toMatchObject({
-        error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
+        error: {
+          code: "STRUCTURED_IMPORT_VALIDATION_FAILED",
+          message: "Structured import validation failed."
+        }
       });
     }
+    expect(responses[3]?.payload).not.toContain("Malformed XLSX ZIP archive");
     expect(storagePutCalls()).toBe(0);
     expect(documentRepository.documents).toHaveLength(0);
     expect(documentRepository.auditLogs).toHaveLength(0);

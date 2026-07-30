@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { csrfTokenForSecret, pkceChallengeForVerifier } from "./http-contract.js";
 import { registerOfficialAuthRoutes } from "./routes.js";
+import { registerApiErrorHandler } from "../request-errors.js";
 
 const transactionSecret = "eh_tx_abcdefghijklmnopqrstuvwxyz0123456789";
 const setupSecret = "eh_ps_abcdefghijklmnopqrstuvwxyz0123456789";
@@ -65,6 +66,7 @@ const apps: ReturnType<typeof Fastify>[] = [];
 async function build() {
   const app = Fastify({ logger: false });
   const auth = authFake();
+  registerApiErrorHandler(app);
   registerOfficialAuthRoutes(app, {
     auth,
     publicOrigin: "https://api.smedatacenter.xyz"
@@ -231,5 +233,36 @@ describe("official OAuth and password routes", () => {
       "a secure beta password"
     );
     expect(response.headers["set-cookie"]).toContain("Max-Age=0");
+  });
+
+  it("does not expose unexpected password setup repository failures", async () => {
+    const { app, auth } = await build();
+    auth.consumePasswordSetupSession.mockRejectedValueOnce(
+      new Error("provider detail: private-auth-db.internal")
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/password/setup/complete",
+      headers: {
+        cookie: `__Host-eh_password_setup=${setupSecret}`,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      payload: new URLSearchParams({
+        csrfToken: csrfTokenForSecret(setupSecret),
+        password: "a secure beta password",
+        passwordConfirmation: "a secure beta password"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Internal server error.",
+        requestId: expect.any(String)
+      }
+    });
+    expect(response.body).not.toContain("private-auth-db.internal");
   });
 });

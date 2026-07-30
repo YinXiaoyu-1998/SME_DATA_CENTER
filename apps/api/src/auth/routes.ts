@@ -19,6 +19,7 @@ import {
   renderPasswordSetupForm,
   renderSafeMessagePage
 } from "./pages.js";
+import { validatePassword } from "./primitives.js";
 
 const MINIMUM_LAUNCHER_VERSION = "0.1.0";
 const LAUNCHER_VERSION_HEADER = "x-enterprise-hub-launcher-version";
@@ -257,16 +258,13 @@ export function registerOfficialAuthRoutes(
       return passwordSetupFormError(reply, setupSecret, "The password confirmation is invalid.");
     }
 
-    try {
-      if (!(await options.auth.consumePasswordSetupSession(setupSecret, body.password))) {
-        return passwordSetupFormError(reply, setupSecret, INVALID_SETUP_MESSAGE);
-      }
-    } catch (error) {
-      return passwordSetupFormError(
-        reply,
-        setupSecret,
-        error instanceof Error ? error.message : "The password is invalid."
-      );
+    const passwordValidation = validatePassword(body.password);
+    if (!passwordValidation.valid) {
+      return passwordSetupFormError(reply, setupSecret, passwordValidation.reason);
+    }
+
+    if (!(await options.auth.consumePasswordSetupSession(setupSecret, body.password))) {
+      return passwordSetupFormError(reply, setupSecret, INVALID_SETUP_MESSAGE);
     }
 
     return sendHtml(

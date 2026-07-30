@@ -1417,10 +1417,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         }
       });
     } catch (error) {
+      request.log.warn({ err: error }, "structured import validation failed");
       return validationError(
         reply,
         "STRUCTURED_IMPORT_VALIDATION_FAILED",
-        error instanceof Error ? error.message : "Structured import validation failed."
+        "Structured import validation failed."
       );
     }
 
