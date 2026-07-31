@@ -30,6 +30,24 @@ the launcher update itself.
   put credentials in configuration, environment variables, arguments, ordinary files, logs, or
   chat.
 
+## Request Limits
+
+Keep tool input within the public service contract:
+
+- upload content is at most 50 MiB after Base64 decoding; a basename-only filename is at most 255
+  characters;
+- an evidence title is at most 512 characters and `sourceSystem` is at most 255 characters;
+- structured `enterpriseName` and `idempotencyKey` are each at most 255 characters;
+- each label key is at most 128 characters, with at most 50 labels per upload;
+- an evidence question is at most 4,000 characters; each evidence filter ID is at most 64
+  characters, with at most 100 IDs in each filter group;
+- an opaque cursor is at most 4,096 characters, and each structured-query string filter value is
+  at most 32,767 characters.
+
+If a tool rejects an input at one of these boundaries, report the validation error and ask the
+employee to shorten the text, reduce filters/labels, or split the source file as appropriate.
+Never silently truncate a title, key, query, cursor, filter value, or file.
+
 ## Official Install Or Update
 
 An employee may ask in natural language to install, update, or repair Enterprise Hub. The

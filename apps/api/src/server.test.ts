@@ -1060,6 +1060,192 @@ describe("api auth shell", () => {
     }
   });
 
+  it("accepts evidence metadata exactly at the public string boundaries", async () => {
+    const documentRepository = createDocumentRepository();
+    const storageAdapter = createOrganizationContextStorageAdapter();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository,
+      storageAdapter,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const multipartPayload = createMultipartPayload([
+      {
+        name: "file",
+        fileName: `${"f".repeat(252)}.md`,
+        contentType: "text/markdown",
+        value: Buffer.from("# SOP", "utf8")
+      },
+      { name: "title", value: "t".repeat(512) },
+      { name: "sourceSystem", value: "s".repeat(255) },
+      { name: "labelKeys[]", value: "all_staff" }
+    ]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/documents/evidence",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+        "content-type": multipartPayload.contentType
+      },
+      payload: multipartPayload.body
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(documentRepository.documents[0]).toMatchObject({
+      title: "t".repeat(512),
+      sourceSystem: "s".repeat(255),
+      originalFileName: `${"f".repeat(252)}.md`
+    });
+  });
+
+  it("rejects evidence metadata above the public boundaries before storage", async () => {
+    const documentRepository = createDocumentRepository();
+    const storageAdapter = createOrganizationContextStorageAdapter();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository,
+      storageAdapter,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const cases = [
+      { fileName: "sop.md", title: "t".repeat(513), sourceSystem: "manual", labels: ["all_staff"] },
+      { fileName: "sop.md", title: "SOP", sourceSystem: "s".repeat(256), labels: ["all_staff"] },
+      {
+        fileName: `${"f".repeat(253)}.md`,
+        title: "SOP",
+        sourceSystem: "manual",
+        labels: ["all_staff"]
+      },
+      {
+        fileName: "sop.md",
+        title: "SOP",
+        sourceSystem: "manual",
+        labels: ["l".repeat(129)]
+      },
+      {
+        fileName: "sop.md",
+        title: "SOP",
+        sourceSystem: "manual",
+        labels: Array.from({ length: 51 }, (_, index) => `label_${index}`)
+      }
+    ];
+
+    for (const testCase of cases) {
+      const multipartPayload = createMultipartPayload([
+        {
+          name: "file",
+          fileName: testCase.fileName,
+          contentType: "text/markdown",
+          value: Buffer.from("# SOP", "utf8")
+        },
+        { name: "title", value: testCase.title },
+        { name: "sourceSystem", value: testCase.sourceSystem },
+        ...testCase.labels.map((label) => ({ name: "labelKeys[]", value: label }))
+      ]);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/documents/evidence",
+        headers: {
+          authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+          "content-type": multipartPayload.contentType
+        },
+        payload: multipartPayload.body
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { code: "INVALID_EVIDENCE_UPLOAD" }
+      });
+    }
+
+    expect(storageAdapter.putInputs).toHaveLength(0);
+    expect(documentRepository.documents).toHaveLength(0);
+  });
+
+  it("maps multipart file, file-count, field-count, and part-count excess to 413", async () => {
+    const documentRepository = createDocumentRepository();
+    const storageAdapter = createOrganizationContextStorageAdapter();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository,
+      storageAdapter,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false,
+      runtimeEnv: { MAX_UPLOAD_BYTES: "8" }
+    });
+    const payloads = [
+      createMultipartPayload([
+        {
+          name: "file",
+          fileName: "sop.md",
+          contentType: "text/markdown",
+          value: Buffer.from("123456789", "utf8")
+        },
+        { name: "title", value: "SOP" },
+        { name: "labelKeys[]", value: "all_staff" }
+      ]),
+      createMultipartPayload([
+        {
+          name: "file",
+          fileName: "first.md",
+          contentType: "text/markdown",
+          value: Buffer.from("first", "utf8")
+        },
+        {
+          name: "file",
+          fileName: "second.md",
+          contentType: "text/markdown",
+          value: Buffer.from("second", "utf8")
+        },
+        { name: "title", value: "SOP" },
+        { name: "labelKeys[]", value: "all_staff" }
+      ]),
+      createMultipartPayload([
+        {
+          name: "file",
+          fileName: "sop.md",
+          contentType: "text/markdown",
+          value: Buffer.from("content", "utf8")
+        },
+        { name: "title", value: "SOP" },
+        { name: "labelKeys[]", value: "all_staff" },
+        ...Array.from({ length: 59 }, (_, index) => ({
+          name: `compatibility_${index}`,
+          value: "value"
+        }))
+      ])
+    ];
+
+    for (const multipartPayload of payloads) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/documents/evidence",
+        headers: {
+          authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+          "content-type": multipartPayload.contentType
+        },
+        payload: multipartPayload.body
+      });
+
+      expect(response.statusCode).toBe(413);
+      expect(response.json()).toMatchObject({
+        error: {
+          code: "PAYLOAD_TOO_LARGE",
+          requestId: expect.any(String)
+        }
+      });
+    }
+
+    expect(storageAdapter.putInputs).toHaveLength(0);
+    expect(documentRepository.documents).toHaveLength(0);
+  });
+
   it("returns evidence indexing status only to the uploader or admin", async () => {
     const documentRepository = createDocumentRepository();
     documentRepository.documents.push({
@@ -1211,6 +1397,116 @@ describe("api auth shell", () => {
     expect(evidenceRepository.queries).toEqual([
       { query: "差评处理 SOP", employeeId: adminEmployee.id }
     ]);
+  });
+
+  it("rejects null and over-limit evidence search inputs before retrieval", async () => {
+    const evidenceRepository = createEvidenceSearchRepository();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const headers = {
+      authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+      "content-type": "application/json"
+    };
+    const cases = [
+      { payload: "null", code: "INVALID_QUERY" },
+      { payload: { query: "q".repeat(4_001) }, code: "LIMIT_EXCEEDED" },
+      { payload: { query: "q", cursor: "c".repeat(4_097) }, code: "INVALID_CURSOR" },
+      {
+        payload: { query: "q", filters: { documentIds: ["d".repeat(65)] } },
+        code: "LIMIT_EXCEEDED"
+      },
+      {
+        payload: {
+          query: "q",
+          filters: {
+            labelIds: Array.from({ length: 101 }, (_, index) => `label_${index}`)
+          }
+        },
+        code: "LIMIT_EXCEEDED"
+      },
+      {
+        payload: { query: "q", filters: { documentIds: "doc_1" } },
+        code: "INVALID_QUERY"
+      }
+    ];
+
+    for (const testCase of cases) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/evidence/search",
+        headers,
+        payload: testCase.payload
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { code: testCase.code }
+      });
+    }
+
+    expect(evidenceRepository.queries).toHaveLength(0);
+  });
+
+  it("rejects an over-limit audit cursor before repository access", async () => {
+    const documentRepository = createDocumentRepository();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/audit?cursor=${"1".repeat(4_097)}`,
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: { code: "INVALID_AUDIT_QUERY" }
+    });
+  });
+
+  it("does not expose unexpected evidence provider failures", async () => {
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository: {
+        async searchEvidence() {
+          throw new Error("provider detail: private-host.internal:6333");
+        }
+      },
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
+      },
+      payload: { query: "差评处理 SOP" }
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Internal server error.",
+        requestId: expect.any(String)
+      }
+    });
+    expect(response.payload).not.toContain("private-host.internal:6333");
   });
 
   it("rejects disabled employees even when the token is otherwise valid", async () => {
@@ -1948,6 +2244,56 @@ describe("structured imports", () => {
     expect(JSON.stringify(documentRepository.auditLogs)).not.toContain("保利店_dishes");
   });
 
+  it("accepts structured upload metadata exactly at the public string boundaries", async () => {
+    const { app, documentRepository } = await buildStructuredImportTestServer();
+    const response = await postStructuredImport(app, {
+      enterpriseName: "e".repeat(255),
+      idempotencyKey: "i".repeat(255),
+      fileName: `${"f".repeat(251)}.csv`
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(documentRepository.documents[0]).toMatchObject({
+      originalFileName: `${"f".repeat(251)}.csv`
+    });
+  });
+
+  it.each([
+    {
+      name: "enterprise name",
+      input: { enterpriseName: "e".repeat(256), idempotencyKey: "enterprise-too-long" }
+    },
+    {
+      name: "idempotency key",
+      input: { idempotencyKey: "i".repeat(256) }
+    },
+    {
+      name: "filename",
+      input: { fileName: `${"f".repeat(252)}.csv`, idempotencyKey: "filename-too-long" }
+    },
+    {
+      name: "label key",
+      input: { labelKeys: ["l".repeat(129)], idempotencyKey: "label-too-long" }
+    },
+    {
+      name: "label count",
+      input: {
+        labelKeys: Array.from({ length: 51 }, (_, index) => `label_${index}`),
+        idempotencyKey: "labels-too-many"
+      }
+    }
+  ])("rejects structured upload $name above the public boundary", async ({ input }) => {
+    const { app, documentRepository, storagePutCalls } = await buildStructuredImportTestServer();
+    const response = await postStructuredImport(app, input);
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: { code: "INVALID_STRUCTURED_IMPORT_UPLOAD" }
+    });
+    expect(storagePutCalls()).toBe(0);
+    expect(documentRepository.documents).toHaveLength(0);
+  });
+
   it("finds a structured XLSX header after prefatory title rows", async () => {
     const { app } = await buildStructuredImportTestServer();
 
@@ -2214,9 +2560,13 @@ describe("structured imports", () => {
     for (const response of responses) {
       expect(response.statusCode).toBe(400);
       expect(response.json()).toMatchObject({
-        error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
+        error: {
+          code: "STRUCTURED_IMPORT_VALIDATION_FAILED",
+          message: "Structured import validation failed."
+        }
       });
     }
+    expect(responses[3]?.payload).not.toContain("Malformed XLSX ZIP archive");
     expect(storagePutCalls()).toBe(0);
     expect(documentRepository.documents).toHaveLength(0);
     expect(documentRepository.auditLogs).toHaveLength(0);

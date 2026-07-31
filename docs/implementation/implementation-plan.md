@@ -262,13 +262,12 @@ Phase 3 verification and review were merged before the first Phase 4 implementat
 
 As of 2026-07-23, the first online skeleton slice is live in staging: API, worker, and Qdrant run on the Alibaba Cloud Simple Application Server from fixed Beijing ACR image tags behind nginx and Let’s Encrypt. The repeatable `npm run deploy:staging` boundary now builds, scans, publishes, migrates, rolls out, verifies, and records an immutable release. Merged PR #76 also proved the full trusted-main automation chain: quality-gate run `29977759504` triggered deployment run `29977876905`, which deployed merge SHA tag `708128503656`. RDS `prisma migrate deploy`, synthetic seed, Qdrant init, local `/readyz`, public HTTPS `/healthz`, blocked public `/readyz`, certbot renew dry-run, and fixture-only staging smoke have passed.
 
-The official-auth implementation branch now replaces the temporary login boundary with local
-password identities, browser Authorization Code + PKCE, rotating opaque credentials, public
-authenticated `/mcp`, an independently publishable desktop launcher, operator onboarding, and
-Codex/OpenClaw installation skills. It is not yet a live beta release until that atomic change is
-merged, deployed, the launcher is published, and macOS/Windows desktop acceptance is recorded.
-Database SSL/recovery, monitoring/alerting, rollback rehearsal, and real-data governance remain
-separate Phase 4 gates.
+The official-auth implementation is merged and deployed with local password identities, browser
+Authorization Code + PKCE, rotating opaque credentials, public authenticated `/mcp`, the published
+desktop launcher, operator onboarding, and Codex/OpenClaw installation skills. Real macOS Codex
+acceptance has passed. Windows Codex and macOS/Windows OpenClaw acceptance, database
+SSL/recovery, monitoring/alerting, rollback rehearsal, and real-data governance remain separate
+Phase 4 gates.
 
 Scope:
 
@@ -300,28 +299,32 @@ The current staging deployment uses:
 - private `/readyz` on the server loopback only;
 - Alibaba Cloud ACR Personal Edition registry `crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com`;
 - namespace `enterprise-hub` with private repositories `api`, `worker`, and `qdrant`;
-- API/worker fixed image tag `82a1c5174e00`;
+- immutable API/worker image tags recorded in dated staging readiness and deployment evidence;
 - mirrored Qdrant image tag `v1.15.4`;
 - root-only server runtime env at `/opt/enterprise-hub/runtime.env`.
 
 The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed
 data. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be implemented. The
 accepted official employee installation, browser login, and durable session contract is defined in
-`official-user-install-and-login.md`; the implementation and migration are deployed in staging but
-still require desktop acceptance before beta use. The fixed launcher
+`official-user-install-and-login.md`; the implementation and migration are deployed in staging,
+and real macOS Codex acceptance has passed. The fixed launcher
 `enterprise-hub-mcp-launcher@0.1.0` is published and independently verified.
 
 ### Remaining Phase 4 Tracks
 
-- Official user access: pass real macOS and Windows Codex/OpenClaw browser-login acceptance. The
-  atomic auth cutover and synchronized skill are merged, staging runs tag `82a1c5174e00`, and the
-  fixed launcher is public. A real user may first use fixture or explicitly approved non-sensitive
-  data.
+- Official user access: macOS Codex browser-login acceptance has passed. Windows Codex and
+  macOS/Windows OpenClaw acceptance remain. The atomic auth cutover and synchronized skill are
+  merged, and the fixed launcher is public. A real user may first use fixture or explicitly
+  approved non-sensitive data.
 - Database policy: choose final RDS SSL mode. Provider CLI now verifies 7-day automated full-backup retention plus 7-day log backups and one successful full backup, but restore ownership/RPO/RTO and a recovery drill remain open.
 - Security/auth: ADR 0021 is withdrawn. The accepted identity, employee mapping, browser
   authorization, token lifecycle, password setup/reset, and operator onboarding contract is
-  deployed in staging; real browser and desktop acceptance remains.
-- Deployment automation: verified. The merged `npm run deploy:staging` release/rollback boundary is reused by GitHub Actions; trusted `main` quality success deployed immutable tag `82a1c5174e00`, recorded the GitHub staging deployment, and passed independent host inspection. Manual deploy/rollback remains available from `main`.
+  deployed in staging; macOS Codex browser acceptance passed and the remaining client matrix is
+  listed above.
+- Deployment automation: verified. The merged `npm run deploy:staging` release/rollback boundary
+  is reused by GitHub Actions; trusted `main` quality success records immutable tags in dated
+  deployment evidence and passes independent host inspection. Manual deploy/rollback remains
+  available from `main`.
 - Operations: monitoring, alerting, rollback runbook validation, log retention, and cost/resource review.
 - Data governance: define real customer import, retention, deletion, and staging-data policy before customer data. A real beta employee using repo fixtures is an earlier, separate acceptance gate.
 

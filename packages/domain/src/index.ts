@@ -1,4 +1,5 @@
 export const domainWorkspaceName = "@enterprise-hub/domain";
+export { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 export {
   PHASE3_RUNTIME_LIMIT_DEFAULTS,
   parsePositiveSafeInteger,

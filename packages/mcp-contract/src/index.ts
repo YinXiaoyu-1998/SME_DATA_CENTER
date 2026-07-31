@@ -1,15 +1,22 @@
 import { z } from "zod";
-import { STRUCTURED_QUERY_LIMITS } from "@enterprise-hub/domain";
+import { PUBLIC_INPUT_LIMITS, STRUCTURED_QUERY_LIMITS } from "@enterprise-hub/domain";
 
-export const MCP_UPLOAD_FILENAME_MAX_LENGTH = 255;
-export const MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH = 255;
+export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
+export const MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadMediaTypeChars;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
 const structuredDataset = z
   .enum(["dishes", "business"])
   .describe("Phase 3 structured dataset name.");
-const scalarStructuredValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const scalarStructuredValue = z.union([
+  z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
+  z.number(),
+  z.boolean(),
+  z.null()
+]);
+const labelKey = z.string().min(1).max(PUBLIC_INPUT_LIMITS.labelKeyChars);
+const evidenceFilterId = z.string().min(1).max(PUBLIC_INPUT_LIMITS.evidenceFilterIdChars);
 const structuredFilter: z.ZodType<unknown> = z.lazy(() =>
   z.union([
     z
@@ -76,13 +83,22 @@ const listSkillsInputSchema = z
 
 const searchDocumentEvidenceInputSchema = z
   .object({
-    query: z.string().min(1).describe("Evidence search query."),
+    query: z
+      .string()
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.evidenceQueryChars)
+      .describe("Evidence search query."),
     filters: z
       .object({
         fileTypes: z.array(evidenceFileType).optional().describe("Optional md/txt/docx filters."),
-        documentIds: z.array(z.string().min(1)).optional().describe("Optional document ids."),
+        documentIds: z
+          .array(evidenceFilterId)
+          .max(PUBLIC_INPUT_LIMITS.evidenceFilterIdsPerGroup)
+          .optional()
+          .describe("Optional document ids."),
         labelIds: z
-          .array(z.string().min(1))
+          .array(evidenceFilterId)
+          .max(PUBLIC_INPUT_LIMITS.evidenceFilterIdsPerGroup)
           .optional()
           .describe("Optional API label id filters when known.")
       })
@@ -90,7 +106,11 @@ const searchDocumentEvidenceInputSchema = z
       .optional()
       .describe("Optional evidence filters delegated to the API."),
     limit: z.number().int().min(1).max(50).optional().describe("Optional 1-50 result limit."),
-    cursor: z.string().optional().describe("Optional opaque cursor from the API.")
+    cursor: z
+      .string()
+      .max(PUBLIC_INPUT_LIMITS.cursorChars)
+      .optional()
+      .describe("Optional opaque cursor from the API.")
   })
   .strict();
 
@@ -121,7 +141,7 @@ const queryStructuredDatasetInputSchema = z
     page: z
       .object({
         limit: z.number().int().min(1).max(MCP_STRUCTURED_QUERY_LIMITS.maxRows).optional(),
-        cursor: z.string().nullable().optional()
+        cursor: z.string().max(PUBLIC_INPUT_LIMITS.cursorChars).nullable().optional()
       })
       .strict()
       .optional()
@@ -152,7 +172,11 @@ const uploadStructuredDatasetInputSchema = z
   .object({
     file: uploadFileInputSchema,
     dataset: structuredDataset,
-    enterpriseName: z.string().min(1).describe("Enterprise/source name for canonical naming."),
+    enterpriseName: z
+      .string()
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.enterpriseNameChars)
+      .describe("Enterprise/source name for canonical naming."),
     startDate: z
       .string()
       .regex(/^\d{8}$/)
@@ -161,10 +185,15 @@ const uploadStructuredDatasetInputSchema = z
       .string()
       .regex(/^\d{8}$/)
       .describe("YYYYMMDD business window end."),
-    idempotencyKey: z.string().min(1).describe("Client-generated retry/idempotency key."),
-    labelKeys: z
-      .array(z.string().min(1))
+    idempotencyKey: z
+      .string()
       .min(1)
+      .max(PUBLIC_INPUT_LIMITS.idempotencyKeyChars)
+      .describe("Client-generated retry/idempotency key."),
+    labelKeys: z
+      .array(labelKey)
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.labelsPerRequest)
       .describe("Explicit existing label keys/visibility for rows and source document.")
   })
   .strict();
@@ -172,11 +201,21 @@ const uploadStructuredDatasetInputSchema = z
 const uploadEvidenceDocumentInputSchema = z
   .object({
     file: uploadFileInputSchema,
-    title: z.string().min(1).describe("Evidence source title."),
-    sourceSystem: z.string().min(1).optional().describe("Optional source system."),
-    labelKeys: z
-      .array(z.string().min(1))
+    title: z
+      .string()
       .min(1)
+      .max(PUBLIC_INPUT_LIMITS.evidenceTitleChars)
+      .describe("Evidence source title."),
+    sourceSystem: z
+      .string()
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.sourceSystemChars)
+      .optional()
+      .describe("Optional source system."),
+    labelKeys: z
+      .array(labelKey)
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.labelsPerRequest)
       .describe("Explicit existing label keys/visibility for the evidence document.")
   })
   .strict();

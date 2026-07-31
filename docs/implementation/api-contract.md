@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-07-28
+Last updated: 2026-07-30
 
 This contract describes the current public surface after the legacy ordinary document upload/search flow was removed.
 
@@ -76,6 +76,46 @@ Authorization rules:
 
 `GET /readyz` is implemented but accepts only loopback requests. Public requests return `404`.
 
+## Public Request Boundaries
+
+HTTP and MCP use the same semantic input limits:
+
+| Input                                           |                             Limit |
+| ----------------------------------------------- | --------------------------------: |
+| Upload filename                                 |                    255 characters |
+| Evidence title                                  |                    512 characters |
+| Evidence `sourceSystem`                         |                    255 characters |
+| Structured `enterpriseName` / `enterprise_name` |                    255 characters |
+| Structured `idempotencyKey`                     |                    255 characters |
+| Label key / labels per request                  |        128 characters / 50 labels |
+| Evidence query                                  |                  4,000 characters |
+| Evidence filter ID / IDs per group              |           64 characters / 100 IDs |
+| Opaque cursor                                   |                  4,096 characters |
+| Structured-query string scalar                  |                 32,767 characters |
+| Multipart upload                                | 1 file, 60 fields, 61 total parts |
+
+Decoded upload content remains limited to 52,428,800 bytes (50 MiB). nginx accepts up to `72m`
+per encoded request so a valid 50 MiB MCP Base64/JSON upload and a direct multipart upload can
+reach the API; the API still enforces the decoded limit.
+
+Malformed requests that do not have a more specific route error return `400` /
+`INVALID_REQUEST`. Body, file, or multipart-count excess returns `413` /
+`PAYLOAD_TOO_LARGE`. Unexpected server exceptions are logged with the request ID and return only:
+
+```json
+{
+  "error": {
+    "code": "INTERNAL_ERROR",
+    "message": "Internal server error.",
+    "requestId": "request-id"
+  }
+}
+```
+
+Internal exception messages and stacks are never part of that fallback response. Existing
+route-specific authentication, authorization, OAuth, MCP transport, cursor, and structured-query
+error contracts remain authoritative.
+
 ## Removed Legacy Public Surface
 
 These endpoints and MCP tools are intentionally not registered. Tests should assert they are absent; docs and skills must not recommend them.
@@ -129,12 +169,17 @@ Response shape:
 {
   "document": {
     "documentId": "doc_...",
-    "title": "差评处理 SOP",
+    "documentKind": "evidence",
     "fileType": "md",
-    "status": "pending_processing",
-    "labels": [{ "key": "store:baoli", "name": "Baoli" }],
-    "processingRunStatus": "queued",
-    "documentIndexStatus": "pending"
+    "status": "pending_processing"
+  },
+  "processing": {
+    "processingRunId": null,
+    "status": "queued"
+  },
+  "documentIndex": {
+    "status": "pending",
+    "retrievalConfigVersion": "phase3.retrieval.v1"
   }
 }
 ```
@@ -151,19 +196,20 @@ Response shape:
 {
   "document": {
     "documentId": "doc_...",
-    "title": "差评处理 SOP",
+    "documentKind": "evidence",
     "fileType": "md",
+    "title": "差评处理 SOP",
     "status": "active",
-    "labels": [{ "key": "store:baoli", "name": "Baoli" }]
+    "labels": ["store:baoli"],
+    "originalFileName": "customer-feedback-sop.md",
+    "sourceSystem": "manual"
   },
-  "processingRun": {
-    "status": "succeeded",
-    "jobType": "evidence_document_index"
+  "processing": {
+    "processingRunId": null,
+    "status": "succeeded"
   },
   "documentIndex": {
     "status": "ready",
-    "indexType": "qdrant_hybrid",
-    "chunkCount": 12,
     "retrievalConfigVersion": "phase3.retrieval.v1"
   }
 }
@@ -274,14 +320,28 @@ Response shape:
 {
   "document": {
     "documentId": "doc_...",
+    "documentKind": "structured",
+    "fileType": "csv",
     "status": "active",
-    "storageObjectKey": "orgs/org_.../documents/doc_.../source.csv"
+    "storageObjectKey": "org/org_.../documents/doc_.../original/enterprise_dishes_20260701_20260731.csv",
+    "originalFileName": "source.csv"
+  },
+  "processing": {
+    "processingRunId": null,
+    "status": "succeeded"
   },
   "importBatch": {
-    "importBatchId": "batch_...",
+    "importBatchId": "imp_...",
+    "sourceDocumentId": "doc_...",
     "dataset": "dishes",
     "status": "applied",
-    "appliedRowCount": 128
+    "startDate": "20260701",
+    "endDate": "20260731",
+    "sourceSheetSummary": [],
+    "validationErrors": [],
+    "totalRowCount": 128,
+    "appliedRowCount": 128,
+    "queryableRowCount": 128
   }
 }
 ```

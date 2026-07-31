@@ -6,6 +6,7 @@ import {
   decodeStructuredCursor,
   StructuredQueryValidationError
 } from "./structured-query.js";
+import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 
 function expectStructuredError(run: () => unknown, code: string) {
   try {
@@ -296,6 +297,43 @@ describe("structured query compiler", () => {
         testCase.code
       );
     }
+  });
+
+  it("accepts imported-size string scalars and rejects larger query values", () => {
+    const base = {
+      employee: { role: "manager" as const, labels: ["store:baoli"] },
+      orgId: "default-org",
+      cursorSecret: "cursor-secret"
+    };
+    const acceptedValue = "a".repeat(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars);
+    const compiled = compileStructuredQuery({
+      ...base,
+      query: {
+        dataset: "dishes",
+        filter: {
+          field: "matched_product_name",
+          op: "contains",
+          value: acceptedValue
+        }
+      }
+    });
+
+    expect(compiled.params).toContain(`%${acceptedValue}%`);
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          ...base,
+          query: {
+            dataset: "dishes",
+            filter: {
+              field: "matched_product_name",
+              op: "contains",
+              value: `${acceptedValue}a`
+            }
+          }
+        }),
+      PHASE3_ERROR_CODES.limitExceeded
+    );
   });
 
   it("compiles explicit aggregations without leaking hidden rows outside the permission scope", () => {

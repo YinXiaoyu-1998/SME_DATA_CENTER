@@ -161,7 +161,8 @@ email/password/token/code input, uses `enterprise_hub_login`, `enterprise_hub_lo
 The official identity, launcher, and public MCP code are implemented.
 `enterprise-hub-mcp-launcher@0.1.0` is published on npm and its registry integrity, clean install,
 CLI, and production dependency audit have been verified. The official auth cutover is deployed in
-staging; real macOS/Windows acceptance remains a release gate.
+staging. Real macOS Codex browser-login acceptance has passed; Windows Codex and macOS/Windows
+OpenClaw acceptance remain release gates.
 
 ## Official MCP Launcher
 

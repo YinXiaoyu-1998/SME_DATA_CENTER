@@ -229,6 +229,42 @@ describe("structured query API", () => {
     expect(structuredQueryRepository.calls).toHaveLength(0);
   });
 
+  it("rejects structured string scalars larger than an imported cell", async () => {
+    const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
+    app = buildApiServer({
+      employeeRepository: createRepository([baoliManagerEmployee]),
+      structuredQueryRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      },
+      payload: {
+        dataset: "dishes",
+        filter: {
+          field: "matched_product_name",
+          op: "contains",
+          value: "v".repeat(32_768)
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "LIMIT_EXCEEDED",
+        requestId: expect.any(String)
+      }
+    });
+    expect(structuredQueryRepository.calls).toHaveLength(0);
+  });
+
   it("executes the all_staff scope for an employee with no labels", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
