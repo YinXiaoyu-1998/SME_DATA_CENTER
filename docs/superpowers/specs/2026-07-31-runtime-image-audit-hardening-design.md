@@ -22,6 +22,8 @@ behavior, reporting, dashboards, skill execution, or new business capabilities.
 - Long-running API and worker images will execute compiled JavaScript with `node`, not TypeScript
   through `tsx`.
 - Complete development dependencies will remain in build/test stages only.
+- Prisma migration and compiled staging smoke will run from a separate ephemeral `release-ops`
+  image. The long-running API image will not retain Prisma CLI merely for deployment operations.
 - Compatible Fastify, Prisma, and other dependency updates will be applied where they remove
   non-ExcelJS production findings without changing public behavior.
 - ExcelJS remains the structured XLSX reader for this change. Its exact transitive advisory chain is
@@ -87,8 +89,9 @@ launcher-version fields.
 
 - compiled API, worker, and staging-smoke entrypoints;
 - production-only dependency installation for long-running images;
-- the minimum operational files needed for Prisma migration, generated Prisma runtime, health
-  checks, and staging smoke;
+- a separate ephemeral release-operations image containing the minimum files needed for Prisma
+  migration and staging smoke;
+- generated Prisma runtime and health-check support in long-running images;
 - compatible dependency upgrades;
 - lockfile and built-image vulnerability gates;
 - an expiring ExcelJS risk record and exact exception;
@@ -116,7 +119,7 @@ launcher-version fields.
 
 ### Build stages
 
-The Dockerfile will separate four concerns:
+The Dockerfile will separate five concerns:
 
 1. **development dependency stage**  
    Installs the locked full workspace graph for compilation, Prisma generation, tests outside the
@@ -132,31 +135,40 @@ The Dockerfile will separate four concerns:
    workspace TypeScript is bundled; third-party runtime packages and native modules remain external
    so the dependency inventory is visible to npm and container scanners.
 
-3. **API runtime dependency stage**  
-   Installs the locked production dependency graph only. Prisma CLI is retained in the API image as
-   an explicit operational dependency because the accepted release boundary runs
-   `compose run api ... migrate deploy` before rollout. This narrow operational dependency is not
-   permission to retain the root development graph. The compatible current Prisma line must be
-   used. The worker image does not receive Prisma CLI unless a verified runtime import requires it.
+3. **service-specific runtime dependency stages**
+   Install the locked production closure separately for API and worker with npm workspace scoping,
+   production omission, and legacy peer resolution. The last option is required because the current
+   Prisma optional-peer metadata otherwise reintroduces Prisma CLI, TypeScript, and related
+   development packages despite `--omit=dev`. Generated Prisma runtime artifacts are copied from
+   the build stage. Prisma CLI is absent from both long-running dependency closures.
 
 4. **API and worker runtime stages**  
-   Copy only the applicable compiled entrypoint, production dependencies, generated Prisma runtime
-   and engines, schema/migrations where operationally required, and minimal runtime OS packages.
+   Copy only the applicable compiled entrypoint, service-specific production dependencies,
+   generated Prisma runtime and engines, and minimal runtime OS packages.
+
+5. **release-operations stage**
+   Produces an ephemeral image with the compatible Prisma CLI, schema/migrations, compiled staging
+   smoke, and its synthetic fixture inputs. It is invoked only through a Compose `release` profile
+   during migration and verification; it is never a long-running service and is never started by
+   ordinary `docker compose up`.
 
 The API command becomes a direct `node` command for the compiled API entrypoint. The worker command
-becomes a direct `node` command for the compiled worker-loop entrypoint. `tsx`, TypeScript, Vitest,
-ESLint, Prettier, test sources, and unrelated fixtures must not be present in either long-running
-image.
+becomes a direct `node` command for the compiled worker-loop entrypoint. `tsx`, TypeScript, Prisma
+CLI, Vitest, ESLint, Prettier, test sources, and unrelated fixtures must not be present in either
+long-running image.
 
-The staging smoke remains callable through the release script, but executes its compiled entrypoint.
-Only its synthetic fixture inputs are copied into the API release artifact. This preserves the
-canonical deploy command without retaining the whole source and development toolchain.
+The release-operations image uses the existing API ACR repository with the immutable sibling tag
+`ops-<12-character-git-sha>`. This avoids a new registry or human provisioning decision while
+keeping release tooling out of the service image. It is scanned under the same high/critical policy
+and receives no broader dependency exception than the exact ExcelJS record.
 
 ### Operational compatibility
 
 - The existing API host, port, health check, non-root user, environment variables, and Compose
   service names remain unchanged.
-- Prisma migration remains a pre-rollout operation through the canonical deploy script.
+- Prisma migration remains a pre-rollout operation through the canonical deploy script, but runs in
+  the ephemeral `release-ops` service rather than the API service.
+- Compiled staging smoke runs in the same ephemeral service after rollout.
 - The worker still performs the same continuous loop and signal handling.
 - Rollback continues to select the previous immutable image and never reverses a Prisma migration.
 - The production artifact must be built for `linux/amd64` exactly as staging does today.
@@ -204,7 +216,7 @@ Two separate checks are required:
    - emit moderate findings with their risk-register status.
 
 2. **Built-image scan**
-   - scan both API and worker images for high and critical OS/library findings;
+   - scan API, worker, and release-operations images for high and critical OS/library findings;
    - apply only exact, unexpired exceptions;
    - do not use a blanket `--ignore-unfixed` or global severity waiver;
    - prove the worker has no ExcelJS exception if ExcelJS is not part of its runtime dependency
@@ -324,7 +336,8 @@ tokens, token hashes, or passwords enter audit context or persistence.
 ## Migration and Rollout
 
 1. Apply an additive Prisma migration for the two nullable `AuditLog` columns.
-2. Deploy the compiled, production-only images through the normal `main` workflow.
+2. Build and scan the compiled service images plus the ephemeral release-operations image through
+   the normal `main` workflow.
 3. Run the unchanged migration-before-rollout sequence.
 4. Verify private readiness, public readiness concealment, health, official session smoke, MCP
    smoke, structured import/query, evidence upload/index/search, and cleanup.
@@ -341,7 +354,8 @@ nullable. Application rollback remains possible without reversing the migration.
 
 - API and worker containers start with direct `node` commands.
 - `tsx`, TypeScript, Vitest, ESLint, and Prettier are absent from long-running images.
-- API migration and compiled staging smoke still work.
+- API and worker contain no Prisma CLI; migration and compiled staging smoke work through the
+  ephemeral release-operations image.
 - Prisma client/native engines, Argon2, OSS, MySQL, Qdrant, and model-provider paths start correctly.
 - Images run as the existing non-root user.
 
@@ -351,7 +365,7 @@ nullable. Application rollback remains possible without reversing the migration.
 - a synthetic new high finding fails the gate;
 - an expired or broadened ExcelJS exception fails the gate;
 - unregistered moderate findings fail the policy check;
-- API and worker image scans cover high and critical findings.
+- API, worker, and release-operations image scans cover high and critical findings.
 
 ### Provenance and auth
 
@@ -377,7 +391,7 @@ nullable. Application rollback remains possible without reversing the migration.
 - `npm run test:mcp`;
 - `npm run test:phase3:golden`;
 - `npm run test:phase3:perf`;
-- API and worker `linux/amd64` Docker builds and scans;
+- API, worker, and release-operations `linux/amd64` Docker builds and scans;
 - `git diff --check`.
 
 ## Documentation
