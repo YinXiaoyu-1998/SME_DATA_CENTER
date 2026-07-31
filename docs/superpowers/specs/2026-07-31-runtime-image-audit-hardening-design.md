@@ -87,7 +87,7 @@ launcher-version fields.
 
 ### Included
 
-- compiled API, worker, and staging-smoke entrypoints;
+- compiled API, worker, readiness/Qdrant-initialization, and staging-smoke entrypoints;
 - production-only dependency installation for long-running images;
 - a separate ephemeral release-operations image containing the minimum files needed for Prisma
   migration and staging smoke;
@@ -129,6 +129,7 @@ The Dockerfile will separate five concerns:
    Runs Prisma client generation and produces bundled Node.js entrypoints for:
    - API;
    - continuous worker loop; and
+   - release-time readiness/Qdrant initialization; and
    - staging smoke.
 
    The project will use the existing tsup/esbuild approach already used by the launcher. Internal
@@ -147,10 +148,10 @@ The Dockerfile will separate five concerns:
    generated Prisma runtime and engines, and minimal runtime OS packages.
 
 5. **release-operations stage**
-   Produces an ephemeral image with the compatible Prisma CLI, schema/migrations, compiled staging
-   smoke, and its synthetic fixture inputs. It is invoked only through a Compose `release` profile
-   during migration and verification; it is never a long-running service and is never started by
-   ordinary `docker compose up`.
+   Produces an ephemeral image with the compatible Prisma CLI, schema/migrations, compiled
+   readiness/Qdrant initialization, compiled staging smoke, and its synthetic fixture inputs. It is
+   invoked only through a Compose `release` profile during migration and verification; it is never
+   a long-running service and is never started by ordinary `docker compose up`.
 
 The API command becomes a direct `node` command for the compiled API entrypoint. The worker command
 becomes a direct `node` command for the compiled worker-loop entrypoint. `tsx`, TypeScript, Prisma
@@ -168,7 +169,7 @@ and receives no broader dependency exception than the exact ExcelJS record.
   service names remain unchanged.
 - Prisma migration remains a pre-rollout operation through the canonical deploy script, but runs in
   the ephemeral `release-ops` service rather than the API service.
-- Compiled staging smoke runs in the same ephemeral service after rollout.
+- Qdrant initialization and compiled staging smoke run in the same ephemeral service.
 - The worker still performs the same continuous loop and signal handling.
 - Rollback continues to select the previous immutable image and never reverses a Prisma migration.
 - The production artifact must be built for `linux/amd64` exactly as staging does today.
