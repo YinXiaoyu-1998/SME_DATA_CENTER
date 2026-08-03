@@ -948,3 +948,15 @@
   scan), release build, four Node syntax checks, lint, typecheck, focused
   Prettier, and diff check passed.
 - Commit scope: `build: compile service release entrypoints`.
+
+## 2026-08-03 - Runtime image/dependency hardening Task 4
+
+- Implemented manifest-only API, worker, and release-operations production
+  dependency stages; API/worker now run compiled Node entrypoints, and the
+  ephemeral `release-ops` Compose profile owns the compiled utilities, Prisma
+  configuration, and smoke fixtures.
+- TDD RED and focused GREEN contract/release-build tests passed. API and worker
+  Docker builds plus absence assertions and Compose config validation passed.
+- Handoff concern: the release-ops target began its production closure install,
+  but its final image and absence assertion were not completed within the local
+  verification window; rerun the exact target build and `docker run` check.
