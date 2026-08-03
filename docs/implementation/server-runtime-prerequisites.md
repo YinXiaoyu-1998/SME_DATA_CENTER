@@ -20,6 +20,17 @@ The script installs:
 - bounded Docker JSON log rotation
 - an nginx default server that returns HTTP 404 until deployment
 
+## Reverse-proxy boundary
+
+The staging nginx proxy is the only approved hop in front of the API. It sets
+`X-Forwarded-For` to its direct peer address (`$remote_addr`) rather than
+appending a caller-supplied forwarding chain. nginx returns `404` for public
+`/readyz`; direct host-loopback requests remain the only readiness path.
+
+Adding a CDN or load balancer changes this trust boundary and requires a new,
+explicit trusted-proxy list in the API and matching proxy configuration.
+`trustProxy: true` is not approved.
+
 ## Container Registry
 
 The staging server can reach Alibaba Cloud ACR, but direct Docker Hub image and
