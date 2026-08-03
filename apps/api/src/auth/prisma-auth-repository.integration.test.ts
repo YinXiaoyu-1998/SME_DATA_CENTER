@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthCore } from "./auth-core.js";
 import { createPrismaAuthCoreRepository } from "./prisma-auth-repository.js";
 import { createPrismaAuthOperatorRepository } from "./prisma-auth-operator-repository.js";
+import { hashOpaqueSecret } from "./primitives.js";
 
 const runIntegration = process.env["RUN_AUTH_INTEGRATION"] === "1";
 const describeIntegration = runIntegration ? describe : describe.skip;
@@ -345,6 +346,67 @@ describeIntegration("Prisma auth core repository", () => {
     ).toEqual([oauthAudit, oauthAudit]);
   });
 
+  it("records OAuth request metadata on refresh expiry and renewal failure events", async () => {
+    const issuedAt = new Date("2026-07-24T14:30:00.000Z");
+    const refreshAt = new Date("2026-07-24T14:32:00.000Z");
+    const presentedCredential = "eh_rt_expired_refresh";
+    await prisma.authSecurityEvent.deleteMany({
+      where: {
+        createdAt: refreshAt,
+        eventType: { in: ["session_expired", "renewal_failed"] }
+      }
+    });
+    const sessionId = await repository.createSessionBundle({
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org",
+      credentialHash: hashOpaqueSecret(presentedCredential),
+      accessTokenHash: "71".repeat(32),
+      accessTokenExpiresAt: new Date(issuedAt.getTime() + 600_000),
+      absoluteExpiresAt: new Date(issuedAt.getTime() + 60_000),
+      now: issuedAt,
+      audit: oauthAudit
+    });
+    const refreshCore = new AuthCore(repository, () => refreshAt);
+
+    await expect(
+      refreshCore.rotateDurableCredential(presentedCredential, oauthAudit)
+    ).resolves.toEqual({ status: "invalid" });
+
+    const events = await prisma.authSecurityEvent.findMany({
+      where: {
+        createdAt: refreshAt,
+        eventType: { in: ["session_expired", "renewal_failed"] }
+      },
+      select: {
+        eventType: true,
+        requestId: true,
+        sourceIp: true,
+        launcherVersion: true,
+        sessionId: true
+      }
+    });
+    expect(events).toHaveLength(2);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        {
+          eventType: "session_expired",
+          requestId: "oauth_request_1",
+          sourceIp: "203.0.113.9",
+          launcherVersion: "0.1.0",
+          sessionId
+        },
+        {
+          eventType: "renewal_failed",
+          requestId: "oauth_request_1",
+          sourceIp: "203.0.113.9",
+          launcherVersion: "0.1.0",
+          sessionId: null
+        }
+      ])
+    );
+  });
+
   it("records MCP request metadata when access-token authentication discovers session expiry", async () => {
     const issuedAt = new Date("2026-07-24T15:30:00.000Z");
     const sessionId = await repository.createSessionBundle({
@@ -516,16 +578,21 @@ describeIntegration("Prisma auth core repository", () => {
         })
       ).map(({ eventType }) => eventType)
     ).toEqual(expect.arrayContaining(["account_onboarded", "setup_grant_issued"]));
-    expect(
-      await prisma.authSecurityEvent.findMany({
-        where: { identityId: onboarded.identityId },
-        select: { requestId: true, sourceIp: true, launcherVersion: true }
-      })
-    ).toEqual(
-      expect.arrayContaining([
-        { requestId: null, sourceIp: null, launcherVersion: null },
-        { requestId: null, sourceIp: null, launcherVersion: null }
-      ])
+    const passwordResetEvents = await prisma.authSecurityEvent.findMany({
+      where: {
+        identityId: onboarded.identityId,
+        eventType: "setup_grant_issued",
+        reason: "password_reset"
+      },
+      select: { requestId: true, sourceIp: true, launcherVersion: true }
+    });
+    expect(passwordResetEvents).toHaveLength(7);
+    expect(passwordResetEvents).toEqual(
+      Array.from({ length: 7 }, () => ({
+        requestId: null,
+        sourceIp: null,
+        launcherVersion: null
+      }))
     );
 
     await expect(
@@ -602,6 +669,35 @@ describeIntegration("Prisma auth core repository", () => {
       })
     ).toEqual({ requestId: null, sourceIp: null, launcherVersion: null });
     expect(await repository.pruneSecurityEvents(new Date("2026-04-25T17:00:00.000Z"))).toBe(1);
+  });
+
+  it("keeps operator identity-session reset event metadata null", async () => {
+    const now = new Date("2026-07-24T18:00:00.000Z");
+    const sessionId = await repository.createSessionBundle({
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org",
+      credentialHash: "2a".repeat(32),
+      accessTokenHash: "2b".repeat(32),
+      accessTokenExpiresAt: new Date(now.getTime() + 600_000),
+      absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
+      now
+    });
+
+    await expect(
+      repository.revokeIdentitySessions("auth_test_identity", "operator_session_reset", now)
+    ).resolves.toBeGreaterThanOrEqual(1);
+
+    expect(
+      await prisma.authSecurityEvent.findFirst({
+        where: {
+          sessionId,
+          eventType: "session_revoked",
+          reason: "operator_session_reset"
+        },
+        select: { requestId: true, sourceIp: true, launcherVersion: true }
+      })
+    ).toEqual({ requestId: null, sourceIp: null, launcherVersion: null });
   });
 
   it("stores normalized emails with exact binary semantics", async () => {
