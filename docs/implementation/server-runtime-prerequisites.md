@@ -27,10 +27,24 @@ blob access is unreliable. Do not configure the general ACR registry hostname
 as a Docker `registry-mirrors` endpoint; it is a registry, not a transparent
 Docker Hub mirror.
 
-Before application deployment, create or select an ACR repository in
-`cn-beijing`, then provide its non-secret registry hostname, namespace, and
-repository names. Keep the ACR password outside git and log in with
-`docker login --password-stdin`.
+Before application deployment, create or select the existing API and worker
+ACR repositories in `cn-beijing`, then provide their non-secret registry
+hostname, namespace, and repository names. Keep the ACR password outside git
+and log in with `docker login --password-stdin`. `release-ops` does not need a
+third repository or secret: it is stored as `ops-<12-character-git-sha>` in the
+existing API repository.
+
+## Runtime image roles
+
+The API and worker targets are lean, non-root, long-running images. The
+`release-ops` target is also non-root but is on-demand only through the Compose
+`release` profile; it performs Qdrant initialization, forward-only Prisma
+migrations, and compiled staging smoke work before its container is removed.
+Do not start it as a persistent service.
+
+All three targets are scanned under the dependency risk policy. New high or
+critical findings and any unregistered moderate finding block CI. The current
+ExcelJS read-only XLSX exception has a mandatory review date of `2027-01-31`.
 
 ## Verify
 
@@ -71,3 +85,7 @@ sudo rm -f \
 
 Do not remove `/var/lib/docker` after application deployment without a separate
 backup and data-retention decision.
+
+An image rollback restores image/Compose references only. It never reverses a
+forward-only Prisma migration; migration compatibility and database recovery
+require a separate operations decision.

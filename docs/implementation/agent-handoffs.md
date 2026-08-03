@@ -960,3 +960,17 @@
 - Handoff concern: the release-ops target began its production closure install,
   but its final image and absence assertion were not completed within the local
   verification window; rerun the exact target build and `docker run` check.
+
+## 2026-08-04 - Runtime image/dependency hardening Task 6
+
+- Updated the staging deployment runbook, runtime prerequisites, environment
+  inventory, and verification matrix for the lean API/worker runtime targets,
+  ephemeral non-root `release-ops` profile, existing API-repository
+  `ops-<12-character-git-sha>` tag, forward-only migration behavior, and
+  ExcelJS policy review date.
+- No staging deploy occurred. Lint, typecheck, local MCP smoke, golden/perf,
+  production audit, and diff check passed. Full format is blocked by seven
+  pre-existing unrelated files; `npm test` fails because the workspace allowlist
+  omits the already-added `@enterprise-hub/release-ops`; integration is stopped
+  by Prisma's destructive-reset consent gate. Task 5 evidence covers the three
+  linux/amd64 builds; live Trivy remains blocked by slow vulnerability DB fetch.
