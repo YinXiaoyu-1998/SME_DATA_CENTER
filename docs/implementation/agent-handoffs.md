@@ -983,3 +983,7 @@
   and used the project-approved local-only test-data consent to run the real
   integration harness successfully. Full repository formatting remains blocked
   only by seven pre-existing files; no staging operation occurred.
+
+## 2026-08-04 - Audit provenance hardening Task 1
+
+- Commit `d3d015c feat(api): establish trusted request audit context` adds immutable bounded request context helpers, Fastify-owned safe request IDs, strict nginx-loopback proxy trust, and the MCP request-ID adapter. Focused tests (78), typecheck, scoped Prettier, and diff checks passed. Later plan tasks must wire the context into business/audit/auth persistence and MCP delegation; no staging action was taken.
