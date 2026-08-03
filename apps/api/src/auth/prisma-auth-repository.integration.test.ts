@@ -9,6 +9,16 @@ import { createPrismaAuthOperatorRepository } from "./prisma-auth-operator-repos
 
 const runIntegration = process.env["RUN_AUTH_INTEGRATION"] === "1";
 const describeIntegration = runIntegration ? describe : describe.skip;
+const browserAudit = {
+  requestId: "browser_request_1",
+  sourceIp: "198.51.100.7",
+  launcherVersion: null
+};
+const oauthAudit = {
+  requestId: "oauth_request_1",
+  sourceIp: "203.0.113.9",
+  launcherVersion: "0.1.0"
+};
 
 describeIntegration("Prisma auth core repository", () => {
   const prisma = new PrismaClient({
@@ -138,13 +148,15 @@ describeIntegration("Prisma auth core repository", () => {
         grantTokenHash: activeGrants[0]!.tokenHash,
         sessionHash: "3".repeat(64),
         expiresAt: new Date(now.getTime() + 600_000),
-        now
+        now,
+        audit: browserAudit
       }),
       repository.exchangePasswordSetupGrant({
         grantTokenHash: activeGrants[0]!.tokenHash,
         sessionHash: "4".repeat(64),
         expiresAt: new Date(now.getTime() + 600_000),
-        now
+        now,
+        audit: browserAudit
       })
     ]);
     expect(exchanges.filter(Boolean)).toHaveLength(1);
@@ -158,18 +170,21 @@ describeIntegration("Prisma auth core repository", () => {
       accessTokenHash: "32".repeat(32),
       accessTokenExpiresAt: new Date(now.getTime() + 600_000),
       absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
-      now
+      now,
+      audit: oauthAudit
     });
     const consumptions = await Promise.all([
       repository.consumePasswordSetupSession({
         sessionHash: activeSession.sessionHash,
         passwordHash: "argon2id-hash",
-        now
+        now,
+        audit: browserAudit
       }),
       repository.consumePasswordSetupSession({
         sessionHash: activeSession.sessionHash,
         passwordHash: "argon2id-hash",
-        now
+        now,
+        audit: browserAudit
       })
     ]);
     expect(consumptions.sort()).toEqual([false, true]);
@@ -183,6 +198,16 @@ describeIntegration("Prisma auth core repository", () => {
     expect(
       (await prisma.authSession.findUniqueOrThrow({ where: { id: durableSessionId } })).status
     ).toBe("revoked");
+    expect(
+      await prisma.authSecurityEvent.findMany({
+        where: {
+          orgId: "auth-test-org",
+          eventType: { in: ["setup_grant_consumed", "password_setup_completed"] },
+          requestId: browserAudit.requestId
+        },
+        select: { requestId: true, sourceIp: true, launcherVersion: true }
+      })
+    ).toEqual([browserAudit, browserAudit]);
   });
 
   it("serializes concurrent login failures and does not extend an active cooldown", async () => {
@@ -217,11 +242,15 @@ describeIntegration("Prisma auth core repository", () => {
       state: "original-state",
       pkceChallenge: createHash("sha256").update(verifier).digest("base64url")
     });
-    const completed = await core.completeAuthorizationTransaction(transaction.secret, {
-      identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
-      orgId: "auth-test-org"
-    });
+    const completed = await core.completeAuthorizationTransaction(
+      transaction.secret,
+      {
+        identityId: "auth_test_identity",
+        employeeId: "auth_test_employee",
+        orgId: "auth-test-org"
+      },
+      browserAudit
+    );
     expect(completed).toMatchObject({
       codeId: expect.any(String),
       redirectUri: "http://127.0.0.1:32123/callback",
@@ -229,27 +258,36 @@ describeIntegration("Prisma auth core repository", () => {
     });
 
     await expect(
-      core.redeemAuthorizationCode({
-        secret: completed!.code,
-        clientId: "enterprise-hub-desktop-launcher",
-        redirectUri: "http://127.0.0.1:32123/callback",
-        verifier: "wrong-raw-verifier"
-      })
+      core.redeemAuthorizationCode(
+        {
+          secret: completed!.code,
+          clientId: "enterprise-hub-desktop-launcher",
+          redirectUri: "http://127.0.0.1:32123/callback",
+          verifier: "wrong-raw-verifier"
+        },
+        oauthAudit
+      )
     ).resolves.toEqual({ status: "invalid" });
 
     const results = await Promise.all([
-      core.redeemAuthorizationCode({
-        secret: completed!.code,
-        clientId: "enterprise-hub-desktop-launcher",
-        redirectUri: "http://127.0.0.1:32123/callback",
-        verifier
-      }),
-      core.redeemAuthorizationCode({
-        secret: completed!.code,
-        clientId: "enterprise-hub-desktop-launcher",
-        redirectUri: "http://127.0.0.1:32123/callback",
-        verifier
-      })
+      core.redeemAuthorizationCode(
+        {
+          secret: completed!.code,
+          clientId: "enterprise-hub-desktop-launcher",
+          redirectUri: "http://127.0.0.1:32123/callback",
+          verifier
+        },
+        oauthAudit
+      ),
+      core.redeemAuthorizationCode(
+        {
+          secret: completed!.code,
+          clientId: "enterprise-hub-desktop-launcher",
+          redirectUri: "http://127.0.0.1:32123/callback",
+          verifier
+        },
+        oauthAudit
+      )
     ]);
     expect(results.filter((result) => result.status === "redeemed")).toHaveLength(1);
   });
@@ -264,7 +302,8 @@ describeIntegration("Prisma auth core repository", () => {
       accessTokenHash: "70".repeat(32),
       accessTokenExpiresAt: new Date(now.getTime() + 600_000),
       absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
-      now
+      now,
+      audit: oauthAudit
     });
 
     const results = await Promise.all([
@@ -273,14 +312,16 @@ describeIntegration("Prisma auth core repository", () => {
         replacementCredentialHash: "8".repeat(64),
         accessTokenHash: "9".repeat(64),
         accessTokenExpiresAt: new Date(now.getTime() + 600_000),
-        now
+        now,
+        audit: oauthAudit
       }),
       repository.rotateDurableCredential({
         presentedCredentialHash: "7".repeat(64),
         replacementCredentialHash: "a".repeat(64),
         accessTokenHash: "b".repeat(64),
         accessTokenExpiresAt: new Date(now.getTime() + 600_000),
-        now
+        now,
+        audit: oauthAudit
       })
     ]);
 
@@ -293,6 +334,50 @@ describeIntegration("Prisma auth core repository", () => {
         where: { sessionId, status: "active" }
       })
     ).toBe(0);
+    expect(
+      await prisma.authSecurityEvent.findMany({
+        where: {
+          sessionId,
+          eventType: { in: ["credential_replay_detected", "session_revoked"] }
+        },
+        select: { requestId: true, sourceIp: true, launcherVersion: true }
+      })
+    ).toEqual([oauthAudit, oauthAudit]);
+  });
+
+  it("records MCP request metadata when access-token authentication discovers session expiry", async () => {
+    const issuedAt = new Date("2026-07-24T15:30:00.000Z");
+    const sessionId = await repository.createSessionBundle({
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org",
+      credentialHash: "ce".repeat(32),
+      accessTokenHash: "cf".repeat(32),
+      accessTokenExpiresAt: new Date(issuedAt.getTime() + 86_400_000),
+      absoluteExpiresAt: new Date(issuedAt.getTime() + 60_000),
+      now: issuedAt,
+      audit: oauthAudit
+    });
+    const mcpAudit = {
+      requestId: "mcp_request_1",
+      sourceIp: "203.0.113.10",
+      launcherVersion: "0.1.0"
+    };
+
+    await expect(
+      repository.authenticateAccessToken(
+        "cf".repeat(32),
+        new Date(issuedAt.getTime() + 120_000),
+        mcpAudit
+      )
+    ).resolves.toBeNull();
+
+    expect(
+      await prisma.authSecurityEvent.findFirst({
+        where: { sessionId, eventType: "session_expired" },
+        select: { requestId: true, sourceIp: true, launcherVersion: true }
+      })
+    ).toEqual(mcpAudit);
   });
 
   it("rechecks identity and employee disabled state on access-token authentication", async () => {
@@ -305,21 +390,26 @@ describeIntegration("Prisma auth core repository", () => {
       accessTokenHash: "d".repeat(64),
       accessTokenExpiresAt: new Date(now.getTime() + 600_000),
       absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
-      now
+      now,
+      audit: oauthAudit
     });
 
-    expect(await repository.authenticateAccessToken("d".repeat(64), now)).toMatchObject({
-      identityDisabled: false,
-      employeeDisabled: false,
-      labels: ["person:auth_test_employee"]
-    });
+    expect(await repository.authenticateAccessToken("d".repeat(64), now, oauthAudit)).toMatchObject(
+      {
+        identityDisabled: false,
+        employeeDisabled: false,
+        labels: ["person:auth_test_employee"]
+      }
+    );
     await prisma.employee.update({
       where: { id: "auth_test_employee" },
       data: { disabled: true }
     });
-    expect(await repository.authenticateAccessToken("d".repeat(64), now)).toMatchObject({
-      employeeDisabled: true
-    });
+    expect(await repository.authenticateAccessToken("d".repeat(64), now, oauthAudit)).toMatchObject(
+      {
+        employeeDisabled: true
+      }
+    );
 
     await repository.createAuthorizationTransaction({
       transactionHash: "de".repeat(32),
@@ -338,7 +428,8 @@ describeIntegration("Prisma auth core repository", () => {
         orgId: "auth-test-org",
         codeHash: "df".repeat(32),
         codeExpiresAt: new Date(now.getTime() + 60_000),
-        now
+        now,
+        audit: browserAudit
       })
     ).resolves.toBeNull();
     await prisma.employee.update({
@@ -416,10 +507,26 @@ describeIntegration("Prisma auth core repository", () => {
       (
         await prisma.authSecurityEvent.findMany({
           where: { identityId: onboarded.identityId },
-          select: { eventType: true }
+          select: {
+            eventType: true,
+            requestId: true,
+            sourceIp: true,
+            launcherVersion: true
+          }
         })
       ).map(({ eventType }) => eventType)
     ).toEqual(expect.arrayContaining(["account_onboarded", "setup_grant_issued"]));
+    expect(
+      await prisma.authSecurityEvent.findMany({
+        where: { identityId: onboarded.identityId },
+        select: { requestId: true, sourceIp: true, launcherVersion: true }
+      })
+    ).toEqual(
+      expect.arrayContaining([
+        { requestId: null, sourceIp: null, launcherVersion: null },
+        { requestId: null, sourceIp: null, launcherVersion: null }
+      ])
+    );
 
     await expect(
       operatorRepository.onboard({
@@ -448,9 +555,10 @@ describeIntegration("Prisma auth core repository", () => {
       accessTokenHash: "1b".repeat(32),
       accessTokenExpiresAt: new Date(now.getTime() + 600_000),
       absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
-      now
+      now,
+      audit: oauthAudit
     });
-    await repository.revokeSessionByDurableCredential("1a".repeat(32), "logout", now);
+    await repository.revokeSessionByDurableCredential("1a".repeat(32), "logout", now, oauthAudit);
 
     const eventTypes = (
       await prisma.authSecurityEvent.findMany({
@@ -472,9 +580,14 @@ describeIntegration("Prisma auth core repository", () => {
     expect(
       await prisma.authSecurityEvent.findFirst({
         where: { sessionId },
-        select: { eventType: true }
+        select: {
+          eventType: true,
+          requestId: true,
+          sourceIp: true,
+          launcherVersion: true
+        }
       })
-    ).toBeTruthy();
+    ).toMatchObject(oauthAudit);
 
     await repository.writeSecurityEvent({
       type: "security_policy_rejected",
@@ -482,6 +595,12 @@ describeIntegration("Prisma auth core repository", () => {
       reason: "old-test-event",
       createdAt: new Date("2026-01-01T00:00:00.000Z")
     });
+    expect(
+      await prisma.authSecurityEvent.findFirst({
+        where: { reason: "old-test-event" },
+        select: { requestId: true, sourceIp: true, launcherVersion: true }
+      })
+    ).toEqual({ requestId: null, sourceIp: null, launcherVersion: null });
     expect(await repository.pruneSecurityEvents(new Date("2026-04-25T17:00:00.000Z"))).toBe(1);
   });
 

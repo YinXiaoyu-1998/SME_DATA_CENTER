@@ -7,6 +7,16 @@ import { registerApiErrorHandler } from "../request-errors.js";
 const transactionSecret = "eh_tx_abcdefghijklmnopqrstuvwxyz0123456789";
 const setupSecret = "eh_ps_abcdefghijklmnopqrstuvwxyz0123456789";
 const verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+const browserAudit = {
+  requestId: "browser_request_1",
+  sourceIp: "198.51.100.7",
+  launcherVersion: null
+};
+const oauthAudit = {
+  requestId: "oauth_request_1",
+  sourceIp: "203.0.113.9",
+  launcherVersion: "0.1.0"
+};
 
 function authFake() {
   return {
@@ -64,7 +74,7 @@ function authFake() {
 const apps: ReturnType<typeof Fastify>[] = [];
 
 async function build() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, requestIdHeader: "x-request-id" });
   const auth = authFake();
   registerApiErrorHandler(app);
   registerOfficialAuthRoutes(app, {
@@ -129,8 +139,10 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/authorize/login",
       headers: {
         cookie: `__Host-eh_oauth_transaction=${transactionSecret}`,
-        "content-type": "application/x-www-form-urlencoded"
+        "content-type": "application/x-www-form-urlencoded",
+        "x-request-id": browserAudit.requestId
       },
+      remoteAddress: browserAudit.sourceIp,
       payload: new URLSearchParams({
         csrfToken: csrfTokenForSecret(transactionSecret),
         email: "unknown@example.com",
@@ -141,6 +153,43 @@ describe("official OAuth and password routes", () => {
     expect(response.statusCode).toBe(401);
     expect(response.body).toContain("The email or password is incorrect.");
     expect(response.headers.location).toBeUndefined();
+    expect(auth.verifyLogin).toHaveBeenCalledWith(
+      "unknown@example.com",
+      "wrong password",
+      browserAudit
+    );
+  });
+
+  it("passes browser request metadata through successful login and authorization completion", async () => {
+    const { app, auth } = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/authorize/login",
+      headers: {
+        cookie: `__Host-eh_oauth_transaction=${transactionSecret}`,
+        "content-type": "application/x-www-form-urlencoded",
+        "x-request-id": browserAudit.requestId
+      },
+      remoteAddress: browserAudit.sourceIp,
+      payload: new URLSearchParams({
+        csrfToken: csrfTokenForSecret(transactionSecret),
+        email: "person@example.com",
+        password: "correct horse"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(303);
+    expect(auth.verifyLogin).toHaveBeenCalledWith(
+      "person@example.com",
+      "correct horse",
+      browserAudit
+    );
+    expect(auth.completeAuthorizationTransaction).toHaveBeenCalledWith(
+      transactionSecret,
+      expect.objectContaining({ identityId: "identity_1" }),
+      browserAudit
+    );
   });
 
   it("redeems a code and returns only standard token response fields", async () => {
@@ -150,8 +199,10 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/token",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-enterprise-hub-launcher-version": "0.1.0"
+        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-request-id": oauthAudit.requestId
       },
+      remoteAddress: oauthAudit.sourceIp,
       payload: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: "enterprise-hub-desktop-launcher",
@@ -169,8 +220,55 @@ describe("official OAuth and password routes", () => {
       refresh_token: "eh_rt_durable"
     });
     expect(auth.redeemAuthorizationCode).toHaveBeenCalledWith(
-      expect.objectContaining({ verifier })
+      expect.objectContaining({ verifier }),
+      oauthAudit
     );
+    expect(auth.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ identityId: "identity_1" }),
+      oauthAudit
+    );
+  });
+
+  it("passes normalized OAuth request metadata through refresh rotation", async () => {
+    const { app, auth } = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/token",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-request-id": oauthAudit.requestId
+      },
+      remoteAddress: oauthAudit.sourceIp,
+      payload: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: "enterprise-hub-desktop-launcher",
+        refresh_token: "eh_rt_old"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(auth.rotateDurableCredential).toHaveBeenCalledWith("eh_rt_old", oauthAudit);
+  });
+
+  it("passes observable OAuth request metadata into revoke and logout", async () => {
+    const { app, auth } = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/revoke",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-request-id": oauthAudit.requestId
+      },
+      remoteAddress: oauthAudit.sourceIp,
+      payload: "token=eh_rt_old"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(auth.logout).toHaveBeenCalledWith("eh_rt_old", oauthAudit);
   });
 
   it("rejects missing or obsolete launcher versions with a stable upgrade code", async () => {
@@ -199,7 +297,11 @@ describe("official OAuth and password routes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/auth/password/setup/session",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-request-id": browserAudit.requestId
+      },
+      remoteAddress: browserAudit.sourceIp,
       payload: "token=eh_ps_grant"
     });
 
@@ -207,7 +309,7 @@ describe("official OAuth and password routes", () => {
     expect(response.headers.location).toBe("/auth/password/setup/form");
     expect(response.headers["set-cookie"]).toContain("__Host-eh_password_setup=eh_ps_");
     expect(response.headers["set-cookie"]).toContain("HttpOnly");
-    expect(auth.exchangePasswordSetupGrant).toHaveBeenCalledWith("eh_ps_grant");
+    expect(auth.exchangePasswordSetupGrant).toHaveBeenCalledWith("eh_ps_grant", browserAudit);
   });
 
   it("sets a password only with matching confirmation and CSRF", async () => {
@@ -217,8 +319,10 @@ describe("official OAuth and password routes", () => {
       url: "/auth/password/setup/complete",
       headers: {
         cookie: `__Host-eh_password_setup=${setupSecret}`,
-        "content-type": "application/x-www-form-urlencoded"
+        "content-type": "application/x-www-form-urlencoded",
+        "x-request-id": browserAudit.requestId
       },
+      remoteAddress: browserAudit.sourceIp,
       payload: new URLSearchParams({
         csrfToken: csrfTokenForSecret(setupSecret),
         password: "a secure beta password",
@@ -230,7 +334,8 @@ describe("official OAuth and password routes", () => {
     expect(response.body).toContain("Password saved");
     expect(auth.consumePasswordSetupSession).toHaveBeenCalledWith(
       setupSecret,
-      "a secure beta password"
+      "a secure beta password",
+      browserAudit
     );
     expect(response.headers["set-cookie"]).toContain("Max-Age=0");
   });

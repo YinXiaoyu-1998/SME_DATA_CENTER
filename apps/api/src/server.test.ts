@@ -1059,6 +1059,80 @@ describe("api auth shell", () => {
     });
   });
 
+  it("passes API and MCP route metadata into access-token authentication", async () => {
+    const calls: Array<{
+      token: string;
+      audit: Pick<RequestAuditContext, "requestId" | "sourceIp" | "launcherVersion"> | undefined;
+    }> = [];
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: async (
+        token: string,
+        audit?: Pick<RequestAuditContext, "requestId" | "sourceIp" | "launcherVersion">
+      ) => {
+        calls.push({ token, audit });
+        return adminEmployee;
+      },
+      logger: false
+    });
+
+    const apiResponse = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: {
+        authorization: "Bearer eh_at_api",
+        "x-request-id": "api_request_1",
+        "x-enterprise-hub-launcher-version": "9.9.9"
+      },
+      remoteAddress: "198.51.100.8"
+    });
+    const mcpResponse = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        host: "127.0.0.1:3000",
+        authorization: "Bearer eh_at_mcp",
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "x-request-id": "mcp_request_1",
+        "x-enterprise-hub-launcher-version": "0.1.0"
+      },
+      remoteAddress: "127.0.0.1",
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "audit-test", version: "1.0.0" }
+        }
+      }
+    });
+
+    expect(apiResponse.statusCode).toBe(200);
+    expect(mcpResponse.statusCode).toBe(200);
+    expect(calls).toEqual([
+      {
+        token: "eh_at_api",
+        audit: {
+          requestId: "api_request_1",
+          sourceIp: "198.51.100.8",
+          launcherVersion: null
+        }
+      },
+      {
+        token: "eh_at_mcp",
+        audit: {
+          requestId: "mcp_request_1",
+          sourceIp: "127.0.0.1",
+          launcherVersion: "0.1.0"
+        }
+      }
+    ]);
+  });
+
   it("keeps the authoritative organization in authenticated employee responses", async () => {
     app = buildTestServer();
     const accessToken = await accessTokenFor(adminEmployee);

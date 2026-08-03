@@ -129,6 +129,9 @@ describe("auth operator CLI", () => {
     });
     expect(repository.onboardInput?.grantTokenHash).toBe(hashOpaqueSecret(rawSecret));
     expect(JSON.stringify(repository.onboardInput)).not.toContain(rawSecret);
+    expect(repository.onboardInput).not.toHaveProperty("requestId");
+    expect(repository.onboardInput).not.toHaveProperty("sourceIp");
+    expect(repository.onboardInput).not.toHaveProperty("launcherVersion");
   });
 
   it("resets by employee id and persists no raw setup secret", async () => {
@@ -148,6 +151,9 @@ describe("auth operator CLI", () => {
     const rawSecret = new URL(stdout[0]!).hash.replace("#token=", "");
     expect(repository.resetInput?.grantTokenHash).toBe(hashOpaqueSecret(rawSecret));
     expect(JSON.stringify(repository.resetInput)).not.toContain(rawSecret);
+    expect(repository.resetInput).not.toHaveProperty("requestId");
+    expect(repository.resetInput).not.toHaveProperty("sourceIp");
+    expect(repository.resetInput).not.toHaveProperty("launcherVersion");
   });
 
   it("deletes only confirmed synthetic manual test accounts", async () => {
@@ -171,6 +177,9 @@ describe("auth operator CLI", () => {
     expect(repository.deleteInput).toMatchObject({
       normalizedEmail: "manual-full-flow-1@example.invalid"
     });
+    expect(repository.deleteInput).not.toHaveProperty("requestId");
+    expect(repository.deleteInput).not.toHaveProperty("sourceIp");
+    expect(repository.deleteInput).not.toHaveProperty("launcherVersion");
     expect(stdout).toHaveLength(1);
     expect(JSON.parse(stdout[0]!)).toMatchObject({
       ok: true,

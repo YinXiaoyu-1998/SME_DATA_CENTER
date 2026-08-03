@@ -57,7 +57,7 @@ import {
   type StructuredQueryRepository
 } from "./structured-query.js";
 import { registerMcpHttpRoute } from "./mcp/http.js";
-import { AuthCore } from "./auth/auth-core.js";
+import { AuthCore, type AuthRequestAudit } from "./auth/auth-core.js";
 import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
@@ -79,7 +79,10 @@ export interface ApiServerOptions {
   evidenceRepository?: EvidenceSearchRepository;
   storageAdapter?: StorageAdapter;
   authCore?: AuthCore;
-  authenticateAccessToken?: (token: string) => Promise<AuthenticatedEmployee | null>;
+  authenticateAccessToken?: (
+    token: string,
+    audit: AuthRequestAudit
+  ) => Promise<AuthenticatedEmployee | null>;
   cursorSigningSecret?: string;
   logger?: boolean;
   runtimeLimits?: ApiRuntimeLimits;
@@ -960,7 +963,10 @@ function forbiddenRequestedLabels(
 async function authenticate(
   request: FastifyRequest,
   reply: FastifyReply,
-  authenticateAccessToken: (token: string) => Promise<AuthenticatedEmployee | null>
+  authenticateAccessToken: (
+    token: string,
+    request: FastifyRequest
+  ) => Promise<AuthenticatedEmployee | null>
 ): Promise<boolean> {
   const token = bearerToken(request);
 
@@ -972,7 +978,7 @@ async function authenticate(
   }
 
   try {
-    const employee = await authenticateAccessToken(token);
+    const employee = await authenticateAccessToken(token, request);
     if (!employee) {
       reply
         .code(401)
@@ -1021,14 +1027,35 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     authPrisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
     authCore = new AuthCore(createPrismaAuthCoreRepository(authPrisma));
   }
-  const authenticateOfficialAccessToken =
-    options.authenticateAccessToken ??
-    ((token: string) => {
-      if (!authCore) {
-        throw new Error("Official authentication service is unavailable.");
-      }
-      return authCore.authenticateAccessToken(token);
-    });
+  const authenticateOfficialAccessToken = (token: string, request: FastifyRequest) => {
+    const context = createRequestAuditContext(request, authenticationClientSource(request));
+    const audit: AuthRequestAudit = {
+      requestId: context.requestId,
+      sourceIp: context.sourceIp,
+      launcherVersion: context.launcherVersion
+    };
+    if (options.authenticateAccessToken) {
+      return options.authenticateAccessToken(token, audit);
+    }
+    if (!authCore) {
+      throw new Error("Official authentication service is unavailable.");
+    }
+    return authCore.authenticateAccessToken(token, audit);
+  };
+
+  function authenticationClientSource(request: FastifyRequest) {
+    if (
+      request.url === "/mcp" ||
+      request.url.startsWith("/mcp?") ||
+      verifyInternalDelegationProof(
+        request.headers["x-enterprise-hub-internal-delegation"],
+        delegationProof
+      )
+    ) {
+      return "mcp_launcher" as const;
+    }
+    return "http_api" as const;
+  }
 
   const app = Fastify({
     logger: options.logger ?? true,
@@ -1083,14 +1110,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   function createBusinessRequestAudit(request: FastifyRequest) {
-    const clientSource = verifyInternalDelegationProof(
-      request.headers["x-enterprise-hub-internal-delegation"],
-      delegationProof
-    )
-      ? "mcp_launcher"
-      : "http_api";
-
-    return createRequestAuditContext(request, clientSource);
+    return createRequestAuditContext(request, authenticationClientSource(request));
   }
 
   if (authCore) {

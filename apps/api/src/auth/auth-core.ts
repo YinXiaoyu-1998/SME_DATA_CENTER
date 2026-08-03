@@ -1,4 +1,5 @@
 import type { AuthenticatedEmployee, EmployeeRoleName } from "@enterprise-hub/domain";
+import type { RequestAuditContext } from "../request-audit-context.js";
 import {
   AUTH_LIFETIMES_MS,
   derivePkceS256Challenge,
@@ -82,6 +83,21 @@ export interface SecurityEventInput {
   sessionId?: string;
 }
 
+export type AuthRequestAudit = Pick<
+  RequestAuditContext,
+  "requestId" | "sourceIp" | "launcherVersion"
+>;
+
+export function eventAudit(audit: AuthRequestAudit | undefined) {
+  return audit
+    ? {
+        requestId: audit.requestId,
+        sourceIp: audit.sourceIp,
+        launcherVersion: audit.launcherVersion ?? undefined
+      }
+    : {};
+}
+
 export interface AuthCoreRepository {
   findLoginIdentityByEmail(normalizedEmail: string): Promise<LoginIdentityRecord | null>;
   recordLoginFailure(identityId: string, now: Date): Promise<{ cooldownUntil: Date | null }>;
@@ -98,6 +114,7 @@ export interface AuthCoreRepository {
     sessionHash: string;
     expiresAt: Date;
     now: Date;
+    audit: AuthRequestAudit;
   }): Promise<{
     identityId: string;
     purpose: "initial_setup" | "password_reset";
@@ -106,6 +123,7 @@ export interface AuthCoreRepository {
     sessionHash: string;
     passwordHash: string;
     now: Date;
+    audit: AuthRequestAudit;
   }): Promise<boolean>;
   createAuthorizationTransaction(input: {
     transactionHash: string;
@@ -124,6 +142,7 @@ export interface AuthCoreRepository {
     codeHash: string;
     codeExpiresAt: Date;
     now: Date;
+    audit: AuthRequestAudit;
   }): Promise<{
     codeId: string;
     clientId: string;
@@ -136,6 +155,7 @@ export interface AuthCoreRepository {
     redirectUri: string;
     pkceChallenge: string;
     now: Date;
+    audit: AuthRequestAudit;
   }): Promise<AuthorizationCodeRedemption>;
   createSessionBundle(input: {
     identityId: string;
@@ -146,6 +166,7 @@ export interface AuthCoreRepository {
     absoluteExpiresAt: Date;
     accessTokenExpiresAt: Date;
     now: Date;
+    audit?: AuthRequestAudit;
   }): Promise<string>;
   rotateDurableCredential(input: {
     presentedCredentialHash: string;
@@ -153,12 +174,18 @@ export interface AuthCoreRepository {
     accessTokenHash: string;
     accessTokenExpiresAt: Date;
     now: Date;
+    audit: AuthRequestAudit;
   }): Promise<RotateCredentialResult>;
-  authenticateAccessToken(tokenHash: string, now: Date): Promise<AccessAuthenticationRecord | null>;
+  authenticateAccessToken(
+    tokenHash: string,
+    now: Date,
+    audit?: AuthRequestAudit
+  ): Promise<AccessAuthenticationRecord | null>;
   revokeSessionByDurableCredential(
     credentialHash: string,
     reason: "logout" | "reset",
-    now: Date
+    now: Date,
+    audit?: AuthRequestAudit
   ): Promise<boolean>;
   revokeIdentitySessions(identityId: string, reason: string, now: Date): Promise<number>;
   writeSecurityEvent(event: SecurityEventInput & { createdAt: Date }): Promise<void>;
@@ -183,7 +210,8 @@ export class AuthCore {
 
   async verifyLogin(
     email: string,
-    password: string
+    password: string,
+    audit: AuthRequestAudit
   ): Promise<
     | { ok: false; reason: "invalid_credentials" }
     | { ok: true; identityId: string; employeeId: string; orgId: string }
@@ -197,6 +225,7 @@ export class AuthCore {
         type: "password_login_failed",
         outcome: "failed",
         reason: "invalid_credentials",
+        ...eventAudit(audit),
         createdAt: now
       });
       return { ok: false, reason: "invalid_credentials" };
@@ -219,6 +248,7 @@ export class AuthCore {
         orgId: identity.orgId,
         identityId: identity.id,
         employeeId: identity.employeeId,
+        ...eventAudit(audit),
         createdAt: now
       });
       return { ok: false, reason: "invalid_credentials" };
@@ -233,6 +263,7 @@ export class AuthCore {
         orgId: identity.orgId,
         identityId: identity.id,
         employeeId: identity.employeeId,
+        ...eventAudit(audit),
         createdAt: now
       });
       if (failure.cooldownUntil) {
@@ -243,6 +274,7 @@ export class AuthCore {
           orgId: identity.orgId,
           identityId: identity.id,
           employeeId: identity.employeeId,
+          ...eventAudit(audit),
           createdAt: now
         });
       }
@@ -256,6 +288,7 @@ export class AuthCore {
       orgId: identity.orgId,
       identityId: identity.id,
       employeeId: identity.employeeId,
+      ...eventAudit(audit),
       createdAt: now
     });
     return {
@@ -283,7 +316,10 @@ export class AuthCore {
     return { id, secret, expiresAt };
   }
 
-  async exchangePasswordSetupGrant(grantSecret: string): Promise<{
+  async exchangePasswordSetupGrant(
+    grantSecret: string,
+    audit: AuthRequestAudit
+  ): Promise<{
     identityId: string;
     purpose: "initial_setup" | "password_reset";
     sessionSecret: string;
@@ -296,17 +332,23 @@ export class AuthCore {
       grantTokenHash: hashOpaqueSecret(grantSecret),
       sessionHash: hashOpaqueSecret(sessionSecret),
       expiresAt,
-      now
+      now,
+      audit
     });
     return result ? { ...result, sessionSecret, expiresAt } : null;
   }
 
-  async consumePasswordSetupSession(sessionSecret: string, password: string): Promise<boolean> {
+  async consumePasswordSetupSession(
+    sessionSecret: string,
+    password: string,
+    audit: AuthRequestAudit
+  ): Promise<boolean> {
     const passwordHash = await this.hashAcceptedPassword(password);
     return this.repository.consumePasswordSetupSession({
       sessionHash: hashOpaqueSecret(sessionSecret),
       passwordHash,
-      now: this.now()
+      now: this.now(),
+      audit
     });
   }
 
@@ -333,7 +375,8 @@ export class AuthCore {
 
   async completeAuthorizationTransaction(
     transactionSecret: string,
-    identity: { identityId: string; employeeId: string; orgId: string }
+    identity: { identityId: string; employeeId: string; orgId: string },
+    audit: AuthRequestAudit
   ): Promise<{
     codeId: string;
     code: string;
@@ -350,27 +393,35 @@ export class AuthCore {
       ...identity,
       codeHash: hashOpaqueSecret(code),
       codeExpiresAt: expiresAt,
-      now
+      now,
+      audit
     });
     return result ? { ...result, code, expiresAt } : null;
   }
 
-  redeemAuthorizationCode(input: {
-    secret: string;
-    clientId: string;
-    redirectUri: string;
-    verifier: string;
-  }): Promise<AuthorizationCodeRedemption> {
+  redeemAuthorizationCode(
+    input: {
+      secret: string;
+      clientId: string;
+      redirectUri: string;
+      verifier: string;
+    },
+    audit: AuthRequestAudit
+  ): Promise<AuthorizationCodeRedemption> {
     return this.repository.redeemAuthorizationCode({
       codeHash: hashOpaqueSecret(input.secret),
       clientId: input.clientId,
       redirectUri: input.redirectUri,
       pkceChallenge: derivePkceS256Challenge(input.verifier),
-      now: this.now()
+      now: this.now(),
+      audit
     });
   }
 
-  async createSession(input: { identityId: string; employeeId: string; orgId: string }): Promise<{
+  async createSession(
+    input: { identityId: string; employeeId: string; orgId: string },
+    audit?: AuthRequestAudit
+  ): Promise<{
     sessionId: string;
     durableCredential: string;
     accessToken: string;
@@ -388,7 +439,8 @@ export class AuthCore {
       accessTokenHash: hashOpaqueSecret(accessToken),
       absoluteExpiresAt,
       accessTokenExpiresAt,
-      now
+      now,
+      audit
     });
     return {
       sessionId,
@@ -399,7 +451,10 @@ export class AuthCore {
     };
   }
 
-  async rotateDurableCredential(presentedCredential: string): Promise<
+  async rotateDurableCredential(
+    presentedCredential: string,
+    audit: AuthRequestAudit
+  ): Promise<
     | { status: "invalid" | "replayed" }
     | {
         status: "rotated";
@@ -417,7 +472,8 @@ export class AuthCore {
       replacementCredentialHash: hashOpaqueSecret(durableCredential),
       accessTokenHash: hashOpaqueSecret(accessToken),
       accessTokenExpiresAt,
-      now
+      now,
+      audit
     });
     if (result.status !== "rotated") {
       if (result.status === "invalid") {
@@ -425,6 +481,7 @@ export class AuthCore {
           type: "renewal_failed",
           outcome: "failed",
           reason: "invalid_or_expired_credential",
+          ...eventAudit(audit),
           createdAt: now
         });
       }
@@ -433,10 +490,14 @@ export class AuthCore {
     return { status: "rotated", durableCredential, accessToken, accessTokenExpiresAt };
   }
 
-  async authenticateAccessToken(accessToken: string): Promise<AuthenticatedEmployee | null> {
+  async authenticateAccessToken(
+    accessToken: string,
+    audit: AuthRequestAudit
+  ): Promise<AuthenticatedEmployee | null> {
     const record = await this.repository.authenticateAccessToken(
       hashOpaqueSecret(accessToken),
-      this.now()
+      this.now(),
+      audit
     );
     if (!record || record.identityDisabled || record.employeeDisabled) {
       return null;
@@ -451,11 +512,12 @@ export class AuthCore {
     };
   }
 
-  logout(durableCredential: string): Promise<boolean> {
+  logout(durableCredential: string, audit?: AuthRequestAudit): Promise<boolean> {
     return this.repository.revokeSessionByDurableCredential(
       hashOpaqueSecret(durableCredential),
       "logout",
-      this.now()
+      this.now(),
+      audit
     );
   }
 
