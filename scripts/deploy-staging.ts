@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { access } from "node:fs/promises";
-import { homedir } from "node:os";
+import { access, mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,7 +63,8 @@ previous_file=/opt/enterprise-hub/previous-release.env
 previous_compose=/opt/enterprise-hub/previous-docker-compose.yml
 api_image="$1"
 worker_image="$2"
-run_migrate="$3"
+release_ops_image="$3"
+run_migrate="$4"
 
 exec 9>/opt/enterprise-hub/deploy.lock
 if ! flock -n 9; then
@@ -82,14 +83,17 @@ compose() {
 update_images() {
   local next_api="$1"
   local next_worker="$2"
+  local next_release_ops="$3"
   local temp_file
   temp_file="$(mktemp "${BASH_DOLLAR}{runtime_file}.XXXXXX")"
   awk '
     !/^ENTERPRISE_HUB_API_IMAGE=/ &&
-    !/^ENTERPRISE_HUB_WORKER_IMAGE=/
+    !/^ENTERPRISE_HUB_WORKER_IMAGE=/ &&
+    !/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=/
   ' "$runtime_file" > "$temp_file"
   printf 'ENTERPRISE_HUB_API_IMAGE=%s\n' "$next_api" >> "$temp_file"
   printf 'ENTERPRISE_HUB_WORKER_IMAGE=%s\n' "$next_worker" >> "$temp_file"
+  printf 'ENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\n' "$next_release_ops" >> "$temp_file"
   install -o root -g root -m 0600 "$temp_file" "$runtime_file"
   rm -f "$temp_file"
 }
@@ -116,12 +120,13 @@ rollback_on_error() {
     set +e
     previous_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$previous_file" | tail -n 1)"
     previous_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
-    if [ -n "$previous_api" ] && [ -n "$previous_worker" ]; then
+    previous_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
+    if [ -n "$previous_api" ] && [ -n "$previous_worker" ] && [ -n "$previous_release_ops" ]; then
       echo "Rollout failed; restoring the previous API and worker images." >&2
       if [ -f "$previous_compose" ]; then
         install -o root -g root -m 0644 "$previous_compose" "$compose_file"
       fi
-      update_images "$previous_api" "$previous_worker"
+      update_images "$previous_api" "$previous_worker" "$previous_release_ops"
       compose pull api worker
       compose up -d api worker
       wait_for_url http://127.0.0.1:3000/healthz "rolled-back API health"
@@ -132,29 +137,34 @@ rollback_on_error() {
 }
 trap rollback_on_error EXIT
 
-docker compose --env-file "$runtime_file" -f "$compose_next" config --quiet
+ENTERPRISE_HUB_API_IMAGE="$api_image" \
+ENTERPRISE_HUB_WORKER_IMAGE="$worker_image" \
+ENTERPRISE_HUB_RELEASE_OPS_IMAGE="$release_ops_image" \
+  docker compose --env-file "$runtime_file" -f "$compose_next" config --quiet
 install -o root -g root -m 0644 "$compose_file" "$previous_compose"
 install -o root -g root -m 0644 "$compose_next" "$compose_file"
 rm -f "$compose_next"
 
 current_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$runtime_file" | tail -n 1)"
 current_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$runtime_file" | tail -n 1)"
+current_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$runtime_file" | tail -n 1)"
 test -n "$current_api"
 test -n "$current_worker"
-printf 'ENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\n' \
-  "$current_api" "$current_worker" > "$previous_file"
+test -n "$current_release_ops"
+printf 'ENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\n' \
+  "$current_api" "$current_worker" "$current_release_ops" > "$previous_file"
 chown root:root "$previous_file"
 chmod 0600 "$previous_file"
 
-update_images "$api_image" "$worker_image"
+update_images "$api_image" "$worker_image" "$release_ops_image"
 rollback_armed=1
 compose config --quiet
-compose pull api worker
+compose --profile release pull api worker release-ops
 compose up -d qdrant
 wait_for_url http://127.0.0.1:6333/collections "Qdrant"
-compose run -T --rm api npm run qdrant:init </dev/null
+compose --profile release run -T --rm release-ops node dist/release/readiness.js init-qdrant </dev/null
 if [ "$run_migrate" = "1" ]; then
-  compose run -T --rm api npm run db:migrate:deploy </dev/null
+  compose --profile release run -T --rm release-ops npm run db:migrate:deploy </dev/null
 fi
 compose up -d --remove-orphans
 wait_for_url http://127.0.0.1:3000/healthz "API health"
@@ -185,8 +195,10 @@ test -f "$previous_file"
 umask 077
 previous_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$previous_file" | tail -n 1)"
 previous_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
 test -n "$previous_api"
 test -n "$previous_worker"
+test -n "$previous_release_ops"
 
 if [ -f "$previous_compose" ]; then
   install -o root -g root -m 0644 "$previous_compose" "$compose_file"
@@ -195,10 +207,12 @@ fi
 temp_file="$(mktemp "${BASH_DOLLAR}{runtime_file}.XXXXXX")"
 awk '
   !/^ENTERPRISE_HUB_API_IMAGE=/ &&
-  !/^ENTERPRISE_HUB_WORKER_IMAGE=/
+  !/^ENTERPRISE_HUB_WORKER_IMAGE=/ &&
+  !/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=/
 ' "$runtime_file" > "$temp_file"
 printf 'ENTERPRISE_HUB_API_IMAGE=%s\n' "$previous_api" >> "$temp_file"
 printf 'ENTERPRISE_HUB_WORKER_IMAGE=%s\n' "$previous_worker" >> "$temp_file"
+printf 'ENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\n' "$previous_release_ops" >> "$temp_file"
 install -o root -g root -m 0600 "$temp_file" "$runtime_file"
 rm -f "$temp_file"
 
@@ -224,8 +238,8 @@ done
 
 rollback_tag="${BASH_DOLLAR}{previous_api##*:}"
 temp_current="$(mktemp "${BASH_DOLLAR}{current_file}.XXXXXX")"
-printf 'GIT_SHA=%s\nENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nDEPLOYED_AT=%s\n' \
-  "$rollback_tag" "$previous_api" "$previous_worker" \
+printf 'GIT_SHA=%s\nENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\nDEPLOYED_AT=%s\n' \
+  "$rollback_tag" "$previous_api" "$previous_worker" "$previous_release_ops" \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temp_current"
 install -o root -g root -m 0644 "$temp_current" "$current_file"
 rm -f "$temp_current"
@@ -238,16 +252,25 @@ current_file=/opt/enterprise-hub/current-release.env
 git_sha="$1"
 api_image="$2"
 worker_image="$3"
+release_ops_image="$4"
 exec 9>/opt/enterprise-hub/deploy.lock
 if ! flock -n 9; then
   echo "Another staging deployment is already running." >&2
   exit 75
 fi
 temp_file="$(mktemp "${BASH_DOLLAR}{current_file}.XXXXXX")"
-printf 'GIT_SHA=%s\nENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nDEPLOYED_AT=%s\n' \
-  "$git_sha" "$api_image" "$worker_image" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temp_file"
+printf 'GIT_SHA=%s\nENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\nDEPLOYED_AT=%s\n' \
+  "$git_sha" "$api_image" "$worker_image" "$release_ops_image" \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temp_file"
 install -o root -g root -m 0644 "$temp_file" "$current_file"
 rm -f "$temp_file"
+`;
+
+const REMOTE_SMOKE_SCRIPT = String.raw`
+set -Eeuo pipefail
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/staging-smoke.js </dev/null
 `;
 
 export function parseDeployArgs(argv: string[]): DeployOptions {
@@ -319,8 +342,22 @@ export function imageReference(
   return `${registry}/${namespace}/${repository}:${validateGitShaTag(tag)}`;
 }
 
+export function releaseOpsImageReference(
+  registry: string,
+  namespace: string,
+  apiRepository: string,
+  tag: string
+): string {
+  return `${registry}/${namespace}/${apiRepository}:ops-${validateGitShaTag(tag)}`;
+}
+
 export function remoteScriptsForValidation(): string[] {
-  return [REMOTE_ROLLOUT_SCRIPT, REMOTE_ROLLBACK_SCRIPT, REMOTE_FINALIZE_SCRIPT];
+  return [
+    REMOTE_ROLLOUT_SCRIPT,
+    REMOTE_ROLLBACK_SCRIPT,
+    REMOTE_FINALIZE_SCRIPT,
+    REMOTE_SMOKE_SCRIPT
+  ];
 }
 
 function loadDeployConfig(env: NodeJS.ProcessEnv = process.env): DeployConfig {
@@ -537,6 +574,7 @@ async function buildAndPush(
   config: DeployConfig,
   apiImage: string,
   workerImage: string,
+  releaseOpsImage: string,
   tag: string
 ): Promise<void> {
   console.log("\n==> Build and push linux/amd64 API image");
@@ -572,35 +610,68 @@ async function buildAndPush(
     "--push",
     "."
   ]);
+
+  console.log("\n==> Build and push linux/amd64 release-ops image");
+  await run("docker", [
+    "buildx",
+    "build",
+    "--pull",
+    "--platform",
+    "linux/amd64",
+    "--target",
+    "release-ops",
+    "--label",
+    `org.opencontainers.image.revision=${tag}`,
+    "--tag",
+    releaseOpsImage,
+    "--push",
+    "."
+  ]);
 }
 
-async function scanImages(apiImage: string, workerImage: string): Promise<void> {
-  for (const [service, image] of [
-    ["API", apiImage],
-    ["worker", workerImage]
-  ] as const) {
-    console.log(`\n==> Scan ${service} image for fixable critical vulnerabilities`);
-    await run("trivy", [
-      "image",
-      "--scanners",
-      "vuln",
-      "--severity",
-      "CRITICAL",
-      "--ignore-unfixed",
-      "--exit-code",
-      "1",
-      "--quiet",
-      "--format",
-      "template",
-      "--template",
-      "{{- range . }}{{- range .Vulnerabilities }}{{ .VulnerabilityID }} {{ .PkgName }} {{ .InstalledVersion }} -> {{ .FixedVersion }}; {{- end }}{{- end }}",
-      "--platform",
-      "linux/amd64",
-      "--timeout",
-      "10m",
-      image
-    ]);
-    console.log(`${service} image passed the fixable-critical vulnerability gate.`);
+async function scanImages(
+  apiImage: string,
+  workerImage: string,
+  releaseOpsImage: string
+): Promise<void> {
+  const reportDirectory = await mkdtemp(join(tmpdir(), "enterprise-hub-trivy-"));
+  try {
+    for (const [service, component, image] of [
+      ["API", "api-image", apiImage],
+      ["worker", "worker-image", workerImage],
+      ["release-ops", "release-ops-image", releaseOpsImage]
+    ] as const) {
+      const report = join(reportDirectory, `${component}.json`);
+      console.log(`\n==> Scan ${service} image through the dependency risk policy`);
+      await run("trivy", [
+        "image",
+        "--scanners",
+        "vuln",
+        "--severity",
+        "MEDIUM,HIGH,CRITICAL",
+        "--format",
+        "json",
+        "--output",
+        report,
+        "--platform",
+        "linux/amd64",
+        image
+      ]);
+      await run("npm", [
+        "run",
+        "audit:report",
+        "--",
+        "--kind",
+        "trivy",
+        "--component",
+        component,
+        "--input",
+        report
+      ]);
+      console.log(`${service} image passed the dependency risk policy.`);
+    }
+  } finally {
+    await rm(reportDirectory, { recursive: true, force: true });
   }
 }
 
@@ -658,11 +729,7 @@ async function waitForPublicStatus(url: string, expectedStatus: number): Promise
 
 async function runSmoke(config: DeployConfig): Promise<void> {
   console.log("\n==> Run fixture-only staging smoke");
-  await run("ssh", [
-    ...sshOptions(config),
-    config.sshTarget,
-    "docker compose --env-file /opt/enterprise-hub/runtime.env -f /opt/enterprise-hub/docker-compose.yml exec -T api npm run staging:smoke"
-  ]);
+  await runRemoteScript(config, "Run fixture-only staging smoke", REMOTE_SMOKE_SCRIPT);
 }
 
 async function rollback(config: DeployConfig): Promise<void> {
@@ -678,7 +745,8 @@ function printPlan(
   config: DeployConfig,
   tag: string,
   apiImage: string,
-  workerImage: string
+  workerImage: string,
+  releaseOpsImage: string
 ): void {
   console.log(
     JSON.stringify(
@@ -688,6 +756,7 @@ function printPlan(
         tag,
         apiImage,
         workerImage,
+        releaseOpsImage,
         build: !options.skipBuild && !options.rollback,
         migrate: !options.skipMigrate && !options.rollback,
         smoke: !options.skipSmoke,
@@ -703,9 +772,10 @@ function printPlan(
 function helpText(): string {
   return `Usage: npm run deploy:staging -- [options]
 
-Builds immutable linux/amd64 API and worker images, pushes them to the approved
-Beijing ACR registry, rolls them out on staging, applies Prisma migrations,
-checks local readiness/public liveness, and runs the fixture-only smoke test.
+Builds immutable linux/amd64 API, worker, and release-ops images, pushes them to
+the approved Beijing ACR registry, rolls them out on staging, applies Prisma
+migrations, checks local readiness/public liveness, and runs the fixture-only
+smoke test.
 
 Options:
   --dry-run        Print the release plan without Docker, SSH, or cloud changes
@@ -737,7 +807,13 @@ async function main(): Promise<void> {
     config.workerRepository,
     tag
   );
-  printPlan(options, config, tag, apiImage, workerImage);
+  const releaseOpsImage = releaseOpsImageReference(
+    config.registry,
+    config.namespace,
+    config.apiRepository,
+    tag
+  );
+  printPlan(options, config, tag, apiImage, workerImage, releaseOpsImage);
   if (options.dryRun) {
     return;
   }
@@ -763,9 +839,9 @@ async function main(): Promise<void> {
 
   await loginToAcr(config, password, true);
   if (!options.skipBuild) {
-    await buildAndPush(config, apiImage, workerImage, tag);
+    await buildAndPush(config, apiImage, workerImage, releaseOpsImage, tag);
   }
-  await scanImages(apiImage, workerImage);
+  await scanImages(apiImage, workerImage, releaseOpsImage);
 
   await loginToAcr(config, password, false);
   await uploadCompose(config);
@@ -775,6 +851,7 @@ async function main(): Promise<void> {
     await runRemoteScript(config, "Roll out staging release", REMOTE_ROLLOUT_SCRIPT, [
       apiImage,
       workerImage,
+      releaseOpsImage,
       options.skipMigrate ? "0" : "1"
     ]);
     releaseNeedsRollback = true;
@@ -785,7 +862,8 @@ async function main(): Promise<void> {
     await runRemoteScript(config, "Record verified staging release", REMOTE_FINALIZE_SCRIPT, [
       tag,
       apiImage,
-      workerImage
+      workerImage,
+      releaseOpsImage
     ]);
     releaseNeedsRollback = false;
   } catch (error) {

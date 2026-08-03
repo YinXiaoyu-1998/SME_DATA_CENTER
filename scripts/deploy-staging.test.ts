@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   imageReference,
   parseDeployArgs,
+  releaseOpsImageReference,
   remoteScriptsForValidation,
   validateGitShaTag
 } from "./deploy-staging.js";
@@ -64,6 +65,12 @@ describe("deploy-staging image references", () => {
       "registry.example.com/enterprise-hub/api:0123456789ab"
     );
   });
+
+  it("uses an immutable sibling tag for the release operations image", () => {
+    expect(
+      releaseOpsImageReference("registry.example.com", "enterprise-hub", "api", "0123456789ab")
+    ).toBe("registry.example.com/enterprise-hub/api:ops-0123456789ab");
+  });
 });
 
 describe("deploy-staging remote scripts", () => {
@@ -81,10 +88,21 @@ describe("deploy-staging remote scripts", () => {
   });
 
   it("keeps remote compose jobs from consuming the remaining SSH script", () => {
-    const rollout = remoteScriptsForValidation()[0];
+    const scripts = remoteScriptsForValidation();
+    const rollout = scripts[0];
     expect(rollout).toBeDefined();
-    const composeRuns = (rollout ?? "").split("\n").filter((line) => line.includes("compose run"));
+    const composeRuns = scripts
+      .flatMap((script) => script.split("\n"))
+      .filter((line) => line.includes("compose ") && line.includes(" run "));
     expect(composeRuns).not.toHaveLength(0);
     expect(composeRuns.every((line) => line.endsWith("</dev/null"))).toBe(true);
+  });
+
+  it("runs release operations in the ephemeral release-ops service", () => {
+    const [rollout, , , smokeCommand] = remoteScriptsForValidation();
+
+    expect(rollout).toContain("compose --profile release run -T --rm release-ops");
+    expect(rollout).not.toContain("compose run -T --rm api npm run db:migrate:deploy");
+    expect(smokeCommand).toContain("node dist/release/staging-smoke.js");
   });
 });
