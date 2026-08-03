@@ -892,7 +892,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       employee.email,
       adminEmployee.email
     ]);
-    expect(evidenceCalls.map((call) => call.requestId)).toEqual([
+    expect(evidenceCalls.map((call) => call.audit.requestId)).toEqual([
       "mcp-manager-req",
       "mcp-admin-req"
     ]);

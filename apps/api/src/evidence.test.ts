@@ -108,8 +108,12 @@ describe("evidence search service", () => {
       limit: 5,
       cursor: null,
       cursorSecret: "cursor-secret",
-      requestId: "req_1",
-      clientIp: "127.0.0.1",
+      audit: {
+        requestId: "req_http_1",
+        sourceIp: "198.51.100.8",
+        clientSource: "http_api" as const,
+        launcherVersion: null
+      },
       retrievalConfig
     });
 
@@ -239,8 +243,12 @@ describe("evidence search service", () => {
       limit: 10,
       cursor: null,
       cursorSecret: "cursor-secret",
-      requestId: "req_1",
-      clientIp: "127.0.0.1"
+      audit: {
+        requestId: "req_http_1",
+        sourceIp: "198.51.100.8",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
     });
 
     expect(searchedQueries).toEqual(["差评处理 SOP"]);
@@ -319,8 +327,12 @@ describe("evidence search service", () => {
       limit: 2,
       cursor: null,
       cursorSecret: "cursor-secret",
-      requestId: "req_1",
-      clientIp: "127.0.0.1",
+      audit: {
+        requestId: "req_http_1",
+        sourceIp: "198.51.100.8",
+        clientSource: "http_api" as const,
+        launcherVersion: null
+      },
       now: new Date("2026-07-20T00:00:00.000Z")
     };
 

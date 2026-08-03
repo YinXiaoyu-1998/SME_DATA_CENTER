@@ -62,7 +62,11 @@ import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
 import { isPayloadTooLargeError, registerApiErrorHandler } from "./request-errors.js";
-import { isTrustedLoopbackProxy, normalizeRequestId } from "./request-audit-context.js";
+import {
+  createRequestAuditContext,
+  isTrustedLoopbackProxy,
+  normalizeRequestId
+} from "./request-audit-context.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
 export interface ApiServerOptions {
@@ -848,6 +852,8 @@ function auditEventResponse(auditLog: AuditLogRecord) {
     metadata: auditLog.metadata,
     requestId: auditLog.requestId,
     clientIp: auditLog.clientIp,
+    clientSource: auditLog.clientSource,
+    launcherVersion: auditLog.launcherVersion,
     createdAt: auditLog.createdAt.toISOString()
   };
 }
@@ -1207,6 +1213,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     const employee = (request as AuthenticatedRequest).employee;
+    const audit = createRequestAuditContext(request, "http_api");
     const orgId = employee.orgId;
     const requestedLabels = await documents().findLabelsByKeys(orgId, upload.labelKeys);
     const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
@@ -1260,8 +1267,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         labelIds: finalLabels.map((label) => label.id),
         labels: finalLabels.map((label) => label.key),
         processingJobType: "evidence_document_index",
-        requestId: request.id,
-        clientIp: request.ip
+        audit
       });
 
       return reply.code(202).send(evidenceUploadResponse(document));
@@ -1315,6 +1321,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     const { query, filters, limit, cursor } = validation;
     const employee = (request as AuthenticatedRequest).employee;
+    const audit = createRequestAuditContext(request, "http_api");
     let result;
     try {
       result = await evidence().searchEvidence({
@@ -1325,8 +1332,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         limit,
         cursor,
         cursorSecret: cursorSigningSecret,
-        requestId: request.id,
-        clientIp: request.ip
+        audit
       });
     } catch (error) {
       if (error instanceof EvidenceSearchCursorError) {
@@ -1384,6 +1390,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     const employee = (request as AuthenticatedRequest).employee;
+    const audit = createRequestAuditContext(request, "http_api");
     const requestedLabels = await documents().findLabelsByKeys(employee.orgId, upload.labelKeys);
     const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
     const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
@@ -1480,8 +1487,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         },
         sourceSheetSummary: validation.sheetSummary,
         totalRowCount: validation.rows.length,
-        requestId: request.id,
-        clientIp: request.ip
+        audit
       });
     } catch (error) {
       if (error instanceof StructuredImportError || hasStructuredImportCode(error)) {
@@ -1541,8 +1547,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         actorEmployeeId: employee.id,
         importBatchId: reservedBatch.id,
         rows: validation.rows,
-        requestId: request.id,
-        clientIp: request.ip
+        audit
       });
       return reply.code(202).send(responseForReservedImport(importBatch));
     } catch (error) {

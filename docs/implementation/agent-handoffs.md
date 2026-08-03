@@ -932,6 +932,7 @@
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill
   PRs.
+
 # 2026-08-03 — Runtime image/dependency hardening Task 2
 
 - Completed compatible dependency pins on `codex/runtime-image-audit-hardening-20260731`: API now uses Fastify `5.11.0`, multipart `10.1.0`, Prisma adapter/client `7.9.1`, and `dotenv` `17.4.2`; worker uses Prisma adapter/client and `dotenv` at those exact versions; root Prisma CLI is `7.9.1`.
@@ -988,3 +989,10 @@
 
 - Commit `d3d015c feat(api): establish trusted request audit context` adds immutable bounded request context helpers, Fastify-owned safe request IDs, strict nginx-loopback proxy trust, and the MCP request-ID adapter. Focused tests (78), typecheck, scoped Prettier, and diff checks passed. Later plan tasks must wire the context into business/audit/auth persistence and MCP delegation; no staging action was taken.
 - Fix round 1/5 commit `93805b2 fix(api): verify internal delegation proof` adds the pure 32-byte canonical-base64url verifier, with safe absent/malformed/unequal rejection and equal-length `timingSafeEqual` comparison. Focused tests now pass 80 assertions; no MCP wiring or staging action occurred.
+
+## 2026-08-04 - Audit provenance hardening Task 3
+
+- Scope: Added nullable `AuditLog.clientSource` and `AuditLog.launcherVersion` columns and migration, replaced paired business repository request/IP inputs with immutable `RequestAuditContext`, persisted provenance for document upload/archive/generic audit and structured-import start/apply writes, passed the context through direct HTTP upload/import/evidence-search adapters, and added the two fields to admin audit responses. MCP delegation and authentication-event propagation remain intentionally deferred to later audit-provenance tasks.
+- TDD evidence: the required focused command first failed 15 assertions across three files because repository writes, route calls, and response serialization lacked provenance; after implementation it passed 4 files / 57 tests. `npm run db:generate`, Prisma validate, local `prisma migrate deploy`, typecheck, lint, focused formatting/diff checks, and the full suite (68 files, 467 passed, 10 skipped) also passed.
+- Environment/human input: used only the project-authorized disposable local MySQL at `127.0.0.1:3307`; no human secrets or staging actions were used.
+- Known limitations: launcher/MCP source attribution and auth security-event propagation are outside Task 3 and remain for the planned later tasks. Integration fixture and MCP assertion call sites were mechanically updated for the new atomic input shape; no MCP behavior was implemented here.

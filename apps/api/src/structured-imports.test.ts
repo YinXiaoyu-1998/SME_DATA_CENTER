@@ -1,0 +1,182 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const prisma = vi.hoisted(() => ({
+  importBatch: {
+    findUnique: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
+    findFirst: vi.fn(),
+    updateMany: vi.fn(),
+    update: vi.fn(),
+    create: vi.fn()
+  },
+  importWindowClaim: {
+    findUnique: vi.fn(),
+    create: vi.fn()
+  },
+  document: {
+    create: vi.fn(),
+    update: vi.fn()
+  },
+  dishRow: {
+    deleteMany: vi.fn()
+  },
+  businessRow: {
+    deleteMany: vi.fn()
+  },
+  processingRun: {
+    create: vi.fn()
+  },
+  auditLog: {
+    create: vi.fn()
+  },
+  $executeRaw: vi.fn(),
+  $transaction: vi.fn(),
+  $disconnect: vi.fn()
+}));
+
+vi.mock("@prisma/adapter-mariadb", () => ({
+  PrismaMariaDb: class PrismaMariaDb {}
+}));
+
+vi.mock("@prisma/client", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@prisma/client")>();
+
+  return {
+    ...original,
+    PrismaClient: class PrismaClient {
+      constructor() {
+        return prisma;
+      }
+    }
+  };
+});
+
+import { createPrismaStructuredImportRepository } from "./structured-imports.js";
+
+const audit = {
+  requestId: "req_http_1",
+  sourceIp: "198.51.100.8",
+  clientSource: "http_api" as const,
+  launcherVersion: null
+};
+
+function importBatchRecord(status = "pending") {
+  return {
+    id: "imp_1",
+    orgId: "org_1",
+    sourceDocumentId: "doc_1",
+    dataset: "dishes",
+    status,
+    startDate: new Date("2026-07-01T00:00:00.000Z"),
+    endDate: new Date("2026-07-05T00:00:00.000Z"),
+    sourceSheetSummary: [],
+    validationErrors: [],
+    totalRowCount: 1,
+    appliedRowCount: status === "applied" ? 1 : 0,
+    sourceDocument: {
+      status: status === "applied" ? "active" : "pending_processing",
+      fileType: "csv",
+      storageObjectKey: "org/org_1/documents/doc_1/original/data.csv",
+      originalFileName: "data.csv",
+      documentLabels: [{ label: { key: "all_staff" } }]
+    }
+  };
+}
+
+describe("Prisma structured import audit provenance", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.importBatch.findUnique.mockResolvedValue(null);
+    prisma.importWindowClaim.findUnique.mockResolvedValue(null);
+    prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
+      callback(prisma)
+    );
+    prisma.document.create.mockResolvedValue({});
+    prisma.importBatch.create.mockResolvedValue({});
+    prisma.importWindowClaim.create.mockResolvedValue({});
+    prisma.auditLog.create.mockResolvedValue({});
+    prisma.importBatch.findUniqueOrThrow.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve({ ...importBatchRecord(), id: where.id })
+    );
+    prisma.importBatch.findFirst.mockResolvedValue(importBatchRecord());
+    prisma.importBatch.updateMany.mockResolvedValue({ count: 1 });
+    prisma.importBatch.update.mockResolvedValue(importBatchRecord("applied"));
+    prisma.document.update.mockResolvedValue({});
+    prisma.dishRow.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.businessRow.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.processingRun.create.mockResolvedValue({});
+    prisma.$executeRaw.mockResolvedValue(1);
+  });
+
+  it("persists the complete audit context when reserving a structured import", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+
+    await repository.reserveStructuredImport({
+      orgId: "org_1",
+      actorEmployeeId: "emp_1",
+      documentId: "doc_1",
+      dataset: "dishes",
+      fileType: "csv",
+      startDate: "20260701",
+      endDate: "20260705",
+      idempotencyKey: "idem_1",
+      requestFingerprint: "fingerprint_1",
+      document: {
+        title: "Dishes",
+        storageObjectKey: "org/org_1/documents/doc_1/original/data.csv",
+        originalFileName: "data.csv",
+        contentType: "text/csv",
+        byteSize: 10,
+        checksumSha256: "hash",
+        labelIds: ["label_1"],
+        labels: ["all_staff"]
+      },
+      sourceSheetSummary: [],
+      totalRowCount: 1,
+      audit
+    });
+
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          requestId: "req_http_1",
+          clientIp: "198.51.100.8",
+          clientSource: "http_api",
+          launcherVersion: null
+        })
+      })
+    );
+  });
+
+  it("persists the complete audit context when applying a structured import", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+
+    await repository.applyReservedStructuredImport({
+      orgId: "org_1",
+      actorEmployeeId: "emp_1",
+      importBatchId: "imp_1",
+      rows: [{ sourceRowNumber: 2, payload: { product_name: "Tea" } }],
+      audit
+    });
+
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          requestId: "req_http_1",
+          clientIp: "198.51.100.8",
+          clientSource: "http_api",
+          launcherVersion: null
+        })
+      })
+    );
+  });
+});

@@ -14,6 +14,7 @@ import {
   type RetrievalModelConfig
 } from "@enterprise-hub/domain";
 import { parseApiRetrievalRuntimeConfig } from "./config/retrieval-runtime.js";
+import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface EvidenceSearchFilters {
   fileTypes: string[];
@@ -28,8 +29,7 @@ export interface EvidenceSearchInput {
   filters: EvidenceSearchFilters;
   limit: number;
   cursor: string | null;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
   cursorSecret: string;
   now?: Date;
 }

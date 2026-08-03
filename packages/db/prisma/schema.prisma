@@ -449,6 +449,8 @@ model AuditLog {
   metadata        Json?
   requestId       String?      @map("request_id") @db.VarChar(128)
   clientIp        String?      @map("client_ip") @db.VarChar(128)
+  clientSource    String?      @map("client_source") @db.VarChar(32)
+  launcherVersion String?      @map("launcher_version") @db.VarChar(64)
   createdAt       DateTime     @default(now()) @map("created_at")
   organization    Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
   actor           Employee?    @relation("AuditActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)

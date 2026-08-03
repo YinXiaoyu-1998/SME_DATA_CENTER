@@ -844,8 +844,12 @@ async function assertStructuredRecoveryPaths(): Promise<void> {
         },
         sourceSheetSummary: [],
         totalRowCount: 1,
-        requestId: `request:${input.idempotencyKey}`,
-        clientIp: "127.0.0.1"
+        audit: {
+          requestId: `request:${input.idempotencyKey}`,
+          sourceIp: "127.0.0.1",
+          clientSource: "http_api" as const,
+          launcherVersion: null
+        }
       };
     };
 
@@ -871,8 +875,12 @@ async function assertStructuredRecoveryPaths(): Promise<void> {
         actorEmployeeId: "missing_employee",
         importBatchId: applyReservation.importBatch.id,
         rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-01" } }],
-        requestId: "request:apply-failure",
-        clientIp: "127.0.0.1"
+        audit: {
+          requestId: "request:apply-failure",
+          sourceIp: "127.0.0.1",
+          clientSource: "http_api",
+          launcherVersion: null
+        }
       });
     } catch {
       applyFailed = true;
@@ -902,8 +910,12 @@ async function assertStructuredRecoveryPaths(): Promise<void> {
       actorEmployeeId: employee!.id,
       importBatchId: applyReservation.importBatch.id,
       rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-01" } }],
-      requestId: "request:apply-recovery",
-      clientIp: "127.0.0.1"
+      audit: {
+        requestId: "request:apply-recovery",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
     });
     assert(
       recoveredApply.status === "applied" &&
@@ -950,8 +962,12 @@ async function assertStructuredRecoveryPaths(): Promise<void> {
       actorEmployeeId: employee!.id,
       importBatchId: resumedStorage.importBatch.id,
       rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-02" } }],
-      requestId: "request:storage-recovery",
-      clientIp: "127.0.0.1"
+      audit: {
+        requestId: "request:storage-recovery",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
     });
     const [storageDocuments, storageBatches, storageClaims, storageStarted, storageApplied] =
       await Promise.all([
