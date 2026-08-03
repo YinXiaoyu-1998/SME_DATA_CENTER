@@ -932,3 +932,9 @@
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill
   PRs.
+# 2026-08-03 — Runtime image/dependency hardening Task 2
+
+- Completed compatible dependency pins on `codex/runtime-image-audit-hardening-20260731`: API now uses Fastify `5.11.0`, multipart `10.1.0`, Prisma adapter/client `7.9.1`, and `dotenv` `17.4.2`; worker uses Prisma adapter/client and `dotenv` at those exact versions; root Prisma CLI is `7.9.1`.
+- The refreshed lockfile also resolves compatible transitive `brace-expansion` and `@hono/node-server` releases needed for the production audit to pass. ExcelJS remains `4.4.0`; no new risk exception was required.
+- Verified baseline 54 focused API/auth tests, final 74 API/auth/MCP tests, `npm run db:generate`, `npm run typecheck`, `npm run audit:production`, and `git diff --check`. Production audit is green with only the existing `exceljs-read-only-xlsx-2026-07` exception.
+- Commit scope: `chore(deps): clear non-ExcelJS production advisories`.
