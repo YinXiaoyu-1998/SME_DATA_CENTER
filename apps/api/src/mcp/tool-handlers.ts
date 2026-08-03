@@ -4,6 +4,7 @@ import {
   type McpJsonToolResult
 } from "@enterprise-hub/mcp-contract";
 import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { RequestAuditContext } from "../request-audit-context.js";
 import { createReadOnlyMcpToolHandlers } from "./read-tools.js";
 import type { ApiDelegationContext } from "./api-delegation.js";
 import {
@@ -14,8 +15,7 @@ import {
 
 export interface McpRequestContext {
   employee: AuthenticatedEmployee;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
   abortSignal?: AbortSignal;
 }
 
@@ -30,8 +30,8 @@ export type EnterpriseHubMcpToolHandlers = Partial<
 
 export interface CreateEnterpriseHubMcpToolHandlersOptions {
   bearerToken: string;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
+  delegationProof: string;
   maxUploadBytes: number;
   inject: ApiDelegationContext["inject"];
   uploadDelegate: UploadApiDelegate;
@@ -42,16 +42,16 @@ export function createEnterpriseHubMcpToolHandlers(
 ): EnterpriseHubMcpToolHandlers {
   const readOnlyHandlers = createReadOnlyMcpToolHandlers({
     bearerToken: options.bearerToken,
-    requestId: options.requestId,
-    clientIp: options.clientIp,
+    audit: options.audit,
+    delegationProof: options.delegationProof,
     inject: options.inject
   });
   const uploadHandlers = createUploadToolHandlers({
     delegate: options.uploadDelegate,
     getDelegationContext: (context): UploadApiDelegationContext => ({
       authorization: `Bearer ${options.bearerToken}`,
-      requestId: context.requestId,
-      clientIp: context.clientIp,
+      audit: context.audit,
+      delegationProof: options.delegationProof,
       maxUploadBytes: options.maxUploadBytes
     })
   });
@@ -71,7 +71,7 @@ export function createNoopToolHandler(
       "Enterprise Hub MCP tool handler is not implemented yet.",
       {
         toolName,
-        requestId: context.requestId
+        requestId: context.audit.requestId
       }
     );
 }

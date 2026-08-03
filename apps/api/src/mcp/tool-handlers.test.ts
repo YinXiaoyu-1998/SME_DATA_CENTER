@@ -4,6 +4,14 @@ import { createEnterpriseHubMcpToolHandlers, type McpRequestContext } from "./to
 import type { ApiDelegationInjectRequest } from "./api-delegation.js";
 import type { UploadApiDelegationRequest } from "./upload-tools.js";
 
+const delegationProof = Buffer.alloc(32, 0x5a).toString("base64url");
+const audit = Object.freeze({
+  requestId: "factory_req_1",
+  sourceIp: "127.0.0.1",
+  clientSource: "mcp_launcher" as const,
+  launcherVersion: "0.1.0"
+});
+
 const mcpContext: McpRequestContext = {
   employee: {
     id: "emp_factory",
@@ -13,8 +21,7 @@ const mcpContext: McpRequestContext = {
     disabled: false,
     labels: ["all_staff"]
   },
-  requestId: "factory_req_1",
-  clientIp: "127.0.0.1"
+  audit
 };
 
 function createHandlers(bearerToken: string) {
@@ -22,8 +29,8 @@ function createHandlers(bearerToken: string) {
   const uploadRequests: UploadApiDelegationRequest[] = [];
   const handlers = createEnterpriseHubMcpToolHandlers({
     bearerToken,
-    requestId: "factory_req_1",
-    clientIp: "127.0.0.1",
+    audit,
+    delegationProof,
     maxUploadBytes: 1024,
     async inject(request) {
       jsonRequests.push(request);

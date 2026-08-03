@@ -1501,6 +1501,43 @@ describe("api auth shell", () => {
     });
   });
 
+  it("treats a forged public delegation proof as ordinary HTTP provenance", async () => {
+    const evidenceRepository = createEvidenceSearchRepository();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      internalDelegationProof: Buffer.alloc(32, 0x5a).toString("base64url"),
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+        "x-request-id": "forged_request_1",
+        "x-forwarded-for": "203.0.113.9",
+        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-enterprise-hub-internal-delegation": Buffer.alloc(32, 0xa5).toString("base64url")
+      },
+      remoteAddress: "198.51.100.8",
+      payload: {
+        query: "forged delegation proof",
+        limit: 1
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(evidenceRepository.inputs[0]?.audit).toEqual({
+      requestId: "forged_request_1",
+      sourceIp: "198.51.100.8",
+      clientSource: "http_api",
+      launcherVersion: null
+    });
+  });
+
   it("rejects null and over-limit evidence search inputs before retrieval", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
     app = buildApiServer({

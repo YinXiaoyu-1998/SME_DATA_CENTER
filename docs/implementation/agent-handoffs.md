@@ -996,3 +996,11 @@
 - TDD evidence: the required focused command first failed 15 assertions across three files because repository writes, route calls, and response serialization lacked provenance; after implementation it passed 4 files / 57 tests. `npm run db:generate`, Prisma validate, local `prisma migrate deploy`, typecheck, lint, focused formatting/diff checks, and the full suite (68 files, 467 passed, 10 skipped) also passed.
 - Environment/human input: used only the project-authorized disposable local MySQL at `127.0.0.1:3307`; no human secrets or staging actions were used.
 - Known limitations: launcher/MCP source attribution and auth security-event propagation are outside Task 3 and remain for the planned later tasks. Integration fixture and MCP assertion call sites were mechanically updated for the new atomic input shape; no MCP behavior was implemented here.
+
+## 2026-08-04 - Audit provenance hardening Task 4
+
+- Implemented one random 32-byte base64url internal delegation proof per `buildApiServer` instance, with only the explicit `internalDelegationProof` construction override for deterministic tests. The proof is neither environment-backed nor logged, persisted, or returned.
+- MCP requests now create one immutable `RequestAuditContext` from the trusted outer boundary and carry it through request context, read tools, upload tools, and both in-process injection adapters. Nested requests send authorization, content type, the outer request ID, the internal proof, and optional launcher version; their synthetic peer is the outer source IP, with no `X-Forwarded-For` or `X-Real-IP` forwarding.
+- Business route adapters accept `mcp_launcher` only when `verifyInternalDelegationProof` validates the marker. Incorrect public markers fall back to `http_api`, direct peer IP, and null launcher version.
+- TDD evidence: the exact focused command first failed 1 of 83 tests because the nested repository saw `http_api`, `127.0.0.1`, and null version; after implementation it passed 5 files / 83 tests. Read-only/audit-context tests, typecheck, lint, scoped Prettier/diff checks, and full tests (68 files; 469 passed, 10 skipped) also passed.
+- Public MCP JSON-RPC envelopes, tool schemas/results, and error bodies are unchanged. Task 5 auth-event audit propagation remains intentionally out of scope.

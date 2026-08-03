@@ -15,10 +15,17 @@ const employee: AuthenticatedEmployee = {
   labels: ["all_staff", "store:baoli"]
 };
 
+const delegationProof = Buffer.alloc(32, 0x5a).toString("base64url");
+const mcpAudit = Object.freeze({
+  requestId: "mcp_req_1",
+  sourceIp: "203.0.113.9",
+  clientSource: "mcp_launcher" as const,
+  launcherVersion: "0.1.0"
+});
+
 const mcpContext = {
   employee,
-  requestId: "mcp_req_1",
-  clientIp: "203.0.113.9"
+  audit: mcpAudit
 };
 
 function createHandlers(input: {
@@ -47,8 +54,12 @@ function createHandlers(input: {
       delegate,
       getDelegationContext: () => ({
         authorization: "Bearer secret-upload-token",
-        requestId: "api_req_1",
-        clientIp: "198.51.100.10",
+        audit: Object.freeze({
+          ...mcpAudit,
+          requestId: "api_req_1",
+          sourceIp: "198.51.100.10"
+        }),
+        delegationProof,
         maxUploadBytes: input.maxUploadBytes ?? 1024
       })
     })
@@ -174,8 +185,11 @@ describe("upload MCP tool handlers", () => {
     expect(requests[0]?.headers).toMatchObject({
       authorization: "Bearer secret-upload-token",
       "x-request-id": "api_req_1",
-      "x-forwarded-for": "198.51.100.10"
+      "x-enterprise-hub-internal-delegation": delegationProof,
+      "x-enterprise-hub-launcher-version": "0.1.0"
     });
+    expect(requests[0]?.headers).not.toHaveProperty("x-forwarded-for");
+    expect(requests[0]?.headers).not.toHaveProperty("x-real-ip");
 
     const parts = parseMultipart(requests[0]!);
     const file = parts.find((part) => part.name === "file");

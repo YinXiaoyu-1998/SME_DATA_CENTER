@@ -65,7 +65,8 @@ import { isPayloadTooLargeError, registerApiErrorHandler } from "./request-error
 import {
   createRequestAuditContext,
   isTrustedLoopbackProxy,
-  normalizeRequestId
+  normalizeRequestId,
+  verifyInternalDelegationProof
 } from "./request-audit-context.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
@@ -84,6 +85,7 @@ export interface ApiServerOptions {
   runtimeLimits?: ApiRuntimeLimits;
   runtimeEnv?: NodeJS.ProcessEnv;
   readinessCheck?: () => Promise<ReadinessReport>;
+  internalDelegationProof?: string;
 }
 
 interface AuthenticatedRequest extends FastifyRequest {
@@ -997,6 +999,7 @@ async function authenticate(
 
 export function buildApiServer(options: ApiServerOptions = {}) {
   const environment = options.runtimeEnv ?? process.env;
+  const delegationProof = options.internalDelegationProof ?? randomBytes(32).toString("base64url");
   const legacyEmployeeRepository = options.employeeRepository;
   let documentRepository = options.documentRepository;
   let structuredImportRepository = options.structuredImportRepository;
@@ -1065,6 +1068,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   registerMcpHttpRoute(app, {
     maxUploadBytes: runtimeLimits.maxUploadBytes,
+    delegationProof,
     mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
     publicOrigin: (options.runtimeEnv ?? process.env)["ENTERPRISE_HUB_PUBLIC_ORIGIN"],
     authenticate: async (request, reply) => {
@@ -1077,6 +1081,17 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       return (request as AuthenticatedRequest).employee;
     }
   });
+
+  function createBusinessRequestAudit(request: FastifyRequest) {
+    const clientSource = verifyInternalDelegationProof(
+      request.headers["x-enterprise-hub-internal-delegation"],
+      delegationProof
+    )
+      ? "mcp_launcher"
+      : "http_api";
+
+    return createRequestAuditContext(request, clientSource);
+  }
 
   if (authCore) {
     const publicOrigin = environment["ENTERPRISE_HUB_PUBLIC_ORIGIN"];
@@ -1213,7 +1228,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     const employee = (request as AuthenticatedRequest).employee;
-    const audit = createRequestAuditContext(request, "http_api");
+    const audit = createBusinessRequestAudit(request);
     const orgId = employee.orgId;
     const requestedLabels = await documents().findLabelsByKeys(orgId, upload.labelKeys);
     const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
@@ -1321,7 +1336,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     const { query, filters, limit, cursor } = validation;
     const employee = (request as AuthenticatedRequest).employee;
-    const audit = createRequestAuditContext(request, "http_api");
+    const audit = createBusinessRequestAudit(request);
     let result;
     try {
       result = await evidence().searchEvidence({
@@ -1390,7 +1405,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     const employee = (request as AuthenticatedRequest).employee;
-    const audit = createRequestAuditContext(request, "http_api");
+    const audit = createBusinessRequestAudit(request);
     const requestedLabels = await documents().findLabelsByKeys(employee.orgId, upload.labelKeys);
     const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
     const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
