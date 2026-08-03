@@ -141,23 +141,26 @@ ENTERPRISE_HUB_API_IMAGE="$api_image" \
 ENTERPRISE_HUB_WORKER_IMAGE="$worker_image" \
 ENTERPRISE_HUB_RELEASE_OPS_IMAGE="$release_ops_image" \
   docker compose --env-file "$runtime_file" -f "$compose_next" config --quiet
-install -o root -g root -m 0644 "$compose_file" "$previous_compose"
-install -o root -g root -m 0644 "$compose_next" "$compose_file"
-rm -f "$compose_next"
 
 current_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$runtime_file" | tail -n 1)"
 current_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$runtime_file" | tail -n 1)"
 current_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$runtime_file" | tail -n 1)"
 test -n "$current_api"
 test -n "$current_worker"
+if [ -z "$current_release_ops" ]; then
+  current_release_ops="$release_ops_image"
+fi
 test -n "$current_release_ops"
 printf 'ENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\n' \
   "$current_api" "$current_worker" "$current_release_ops" > "$previous_file"
 chown root:root "$previous_file"
 chmod 0600 "$previous_file"
 
-update_images "$api_image" "$worker_image" "$release_ops_image"
+install -o root -g root -m 0644 "$compose_file" "$previous_compose"
 rollback_armed=1
+install -o root -g root -m 0644 "$compose_next" "$compose_file"
+rm -f "$compose_next"
+update_images "$api_image" "$worker_image" "$release_ops_image"
 compose config --quiet
 compose --profile release pull api worker release-ops
 compose up -d qdrant
@@ -348,7 +351,11 @@ export function releaseOpsImageReference(
   apiRepository: string,
   tag: string
 ): string {
-  return `${registry}/${namespace}/${apiRepository}:ops-${validateGitShaTag(tag)}`;
+  const validatedTag = validateGitShaTag(tag);
+  if (validatedTag.length !== 12) {
+    throw new Error("Release operations image tag must use a 12-character git SHA.");
+  }
+  return `${registry}/${namespace}/${apiRepository}:ops-${validatedTag}`;
 }
 
 export function remoteScriptsForValidation(): string[] {
