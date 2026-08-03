@@ -974,3 +974,12 @@
   omits the already-added `@enterprise-hub/release-ops`; integration is stopped
   by Prisma's destructive-reset consent gate. Task 5 evidence covers the three
   linux/amd64 builds; live Trivy remains blocked by slow vulnerability DB fetch.
+
+### Fix round 1/5
+
+- Added the missing `@enterprise-hub/release-ops` workspace expectation and
+  reran the full unit suite successfully (62 files / 448 tests). After loading
+  ignored `.env`, verified the local target was `localhost:3307/enterprise_hub`
+  and used the project-approved local-only test-data consent to run the real
+  integration harness successfully. Full repository formatting remains blocked
+  only by seven pre-existing files; no staging operation occurred.
