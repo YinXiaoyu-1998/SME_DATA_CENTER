@@ -838,6 +838,57 @@ describe("api auth shell", () => {
     expect(response.headers["x-request-id"]).toBeTruthy();
   });
 
+  it("uses forwarded client IPs only from a loopback proxy peer", async () => {
+    app = buildTestServer();
+    app.get("/__test/request-audit-ip", async (request) => ({ sourceIp: request.ip }));
+
+    const trustedProxyResponse = await app.inject({
+      method: "GET",
+      url: "/__test/request-audit-ip",
+      remoteAddress: "127.0.0.1",
+      headers: { "x-forwarded-for": "203.0.113.9" }
+    });
+    const forgedForwardingResponse = await app.inject({
+      method: "GET",
+      url: "/__test/request-audit-ip",
+      remoteAddress: "198.51.100.8",
+      headers: { "x-forwarded-for": "203.0.113.9" }
+    });
+
+    expect(trustedProxyResponse.json()).toEqual({ sourceIp: "203.0.113.9" });
+    expect(forgedForwardingResponse.json()).toEqual({ sourceIp: "198.51.100.8" });
+  });
+
+  it("replaces invalid request IDs with bounded server-generated values", async () => {
+    app = buildTestServer();
+
+    for (const requestId of ["x".repeat(129), "invalid request id"]) {
+      const response = await app.inject({
+        method: "GET",
+        url: "/healthz",
+        headers: { "x-request-id": requestId }
+      });
+      const responseRequestId = response.headers["x-request-id"];
+
+      expect(responseRequestId).toMatch(
+        /^req_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+      expect(Buffer.byteLength(responseRequestId as string, "utf8")).toBeLessThanOrEqual(128);
+    }
+  });
+
+  it("echoes valid structured request IDs unchanged", async () => {
+    app = buildTestServer();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/healthz",
+      headers: { "x-request-id": "req_valid-123" }
+    });
+
+    expect(response.headers["x-request-id"]).toBe("req_valid-123");
+  });
+
   it("returns local readiness results and maps failures to 503", async () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),

@@ -8,6 +8,7 @@ import {
   isSafeMcpRequestId,
   resolvePhase3ServiceListenHost
 } from "./guards.js";
+import { normalizeRequestId } from "../request-audit-context.js";
 
 describe("MCP endpoint guards", () => {
   it("accepts only explicit loopback host headers", () => {
@@ -66,6 +67,13 @@ describe("MCP endpoint guards", () => {
     expect(isSafeMcpRequestId("bad id")).toBe(false);
     expect(isSafeMcpRequestId("bad/id")).toBe(false);
     expect(isSafeMcpRequestId("x".repeat(129))).toBe(false);
+  });
+
+  it("keeps the MCP request ID adapter aligned with shared normalization", () => {
+    expect(isSafeMcpRequestId("req_mcp_1")).toBe(normalizeRequestId("req_mcp_1") !== null);
+    expect(isSafeMcpRequestId("bad request id")).toBe(
+      normalizeRequestId("bad request id") !== null
+    );
   });
 
   it("derives the JSON body limit from MAX_UPLOAD_BYTES with bounded envelope overhead", () => {

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import multipart from "@fastify/multipart";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
@@ -62,6 +62,7 @@ import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
 import { isPayloadTooLargeError, registerApiErrorHandler } from "./request-errors.js";
+import { isTrustedLoopbackProxy, normalizeRequestId } from "./request-audit-context.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
 export interface ApiServerOptions {
@@ -1022,7 +1023,13 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   const app = Fastify({
     logger: options.logger ?? true,
-    requestIdHeader: "x-request-id"
+    requestIdHeader: false,
+    genReqId(rawRequest) {
+      return normalizeRequestId(rawRequest.headers["x-request-id"]) ?? `req_${randomUUID()}`;
+    },
+    trustProxy(address) {
+      return isTrustedLoopbackProxy(address);
+    }
   });
 
   registerApiErrorHandler(app);
