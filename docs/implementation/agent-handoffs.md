@@ -987,3 +987,4 @@
 ## 2026-08-04 - Audit provenance hardening Task 1
 
 - Commit `d3d015c feat(api): establish trusted request audit context` adds immutable bounded request context helpers, Fastify-owned safe request IDs, strict nginx-loopback proxy trust, and the MCP request-ID adapter. Focused tests (78), typecheck, scoped Prettier, and diff checks passed. Later plan tasks must wire the context into business/audit/auth persistence and MCP delegation; no staging action was taken.
+- Fix round 1/5 commit `93805b2 fix(api): verify internal delegation proof` adds the pure 32-byte canonical-base64url verifier, with safe absent/malformed/unequal rejection and equal-length `timingSafeEqual` comparison. Focused tests now pass 80 assertions; no MCP wiring or staging action occurred.
