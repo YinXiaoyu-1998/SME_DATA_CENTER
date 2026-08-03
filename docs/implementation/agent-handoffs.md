@@ -938,3 +938,13 @@
 - The refreshed lockfile also resolves compatible transitive `brace-expansion` and `@hono/node-server` releases needed for the production audit to pass. ExcelJS remains `4.4.0`; no new risk exception was required.
 - Verified baseline 54 focused API/auth tests, final 74 API/auth/MCP tests, `npm run db:generate`, `npm run typecheck`, `npm run audit:production`, and `git diff --check`. Production audit is green with only the existing `exceljs-read-only-xlsx-2026-07` exception.
 - Commit scope: `chore(deps): clear non-ExcelJS production advisories`.
+
+## 2026-08-03 - Runtime image/dependency hardening Task 3
+
+- Status: DONE locally. Added exact root `tsup@8.5.1`, the `build:release`
+  script, tsup release configuration, and a TDD contract test for compiled API,
+  worker, readiness, and staging-smoke artifacts.
+- Verification: focused release-build test (including internal-workspace-import
+  scan), release build, four Node syntax checks, lint, typecheck, focused
+  Prettier, and diff check passed.
+- Commit scope: `build: compile service release entrypoints`.
