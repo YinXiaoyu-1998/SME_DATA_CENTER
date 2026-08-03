@@ -4,8 +4,11 @@ import {
   createRequestAuditContext,
   isTrustedLoopbackProxy,
   normalizeLauncherVersion,
-  normalizeRequestId
+  normalizeRequestId,
+  verifyInternalDelegationProof
 } from "./request-audit-context.js";
+
+const delegationProof = Buffer.alloc(32, 0x5a).toString("base64url");
 
 function requestForAuditContext(
   input: {
@@ -81,5 +84,22 @@ describe("request audit context", () => {
     );
 
     expect(context.sourceIp).toBe("x".repeat(128));
+  });
+
+  it("verifies only an exact opaque internal delegation proof", () => {
+    const unequalProof = Buffer.alloc(32, 0xa5).toString("base64url");
+
+    expect(verifyInternalDelegationProof(delegationProof, delegationProof)).toBe(true);
+    expect(verifyInternalDelegationProof(unequalProof, delegationProof)).toBe(false);
+  });
+
+  it("rejects absent, malformed, and overlong delegation proofs without throwing", () => {
+    expect(verifyInternalDelegationProof(undefined, delegationProof)).toBe(false);
+    expect(verifyInternalDelegationProof(delegationProof, undefined)).toBe(false);
+    expect(verifyInternalDelegationProof(`${delegationProof.slice(0, -1)}!`, delegationProof)).toBe(
+      false
+    );
+    expect(verifyInternalDelegationProof(delegationProof.slice(1), delegationProof)).toBe(false);
+    expect(verifyInternalDelegationProof("x".repeat(128), delegationProof)).toBe(false);
   });
 });

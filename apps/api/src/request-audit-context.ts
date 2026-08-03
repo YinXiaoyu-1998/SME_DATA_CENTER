@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 
 const MAX_REQUEST_ID_BYTES = 128;
@@ -5,6 +6,10 @@ const MAX_SOURCE_IP_CHARS = 128;
 const MAX_LAUNCHER_VERSION_CHARS = 64;
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const LAUNCHER_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
+const INTERNAL_DELEGATION_PROOF_ENCODED_CHARS = 43;
+const INTERNAL_DELEGATION_PROOF_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+export const INTERNAL_DELEGATION_PROOF_BYTES = 32;
 
 export type ClientSource = "http_api" | "browser_auth" | "oauth_launcher" | "mcp_launcher";
 
@@ -64,6 +69,20 @@ export function isTrustedLoopbackProxy(address: string | undefined): boolean {
   );
 }
 
+export function verifyInternalDelegationProof(
+  presentedProof: unknown,
+  expectedProof: unknown
+): boolean {
+  const presented = internalDelegationProofBuffer(presentedProof);
+  const expected = internalDelegationProofBuffer(expectedProof);
+
+  if (!presented || !expected || presented.length !== expected.length) {
+    return false;
+  }
+
+  return timingSafeEqual(presented, expected);
+}
+
 export function createRequestAuditContext(
   request: Pick<FastifyRequest, "id" | "ip" | "headers">,
   clientSource: ClientSource
@@ -89,4 +108,23 @@ function normalizePeerAddress(address: string): string {
   }
 
   return normalized;
+}
+
+function internalDelegationProofBuffer(value: unknown): Buffer | null {
+  if (
+    typeof value !== "string" ||
+    value.length !== INTERNAL_DELEGATION_PROOF_ENCODED_CHARS ||
+    Buffer.byteLength(value, "utf8") !== INTERNAL_DELEGATION_PROOF_ENCODED_CHARS ||
+    !INTERNAL_DELEGATION_PROOF_PATTERN.test(value)
+  ) {
+    return null;
+  }
+
+  const proof = Buffer.from(value, "base64url");
+
+  if (proof.length !== INTERNAL_DELEGATION_PROOF_BYTES || proof.toString("base64url") !== value) {
+    return null;
+  }
+
+  return proof;
 }
