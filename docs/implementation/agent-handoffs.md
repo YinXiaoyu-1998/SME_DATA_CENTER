@@ -1004,3 +1004,9 @@
 - Business route adapters accept `mcp_launcher` only when `verifyInternalDelegationProof` validates the marker. Incorrect public markers fall back to `http_api`, direct peer IP, and null launcher version.
 - TDD evidence: the exact focused command first failed 1 of 83 tests because the nested repository saw `http_api`, `127.0.0.1`, and null version; after implementation it passed 5 files / 83 tests. Read-only/audit-context tests, typecheck, lint, scoped Prettier/diff checks, and full tests (68 files; 469 passed, 10 skipped) also passed.
 - Public MCP JSON-RPC envelopes, tool schemas/results, and error bodies are unchanged. Task 5 auth-event audit propagation remains intentionally out of scope.
+
+## 2026-08-04 - Audit provenance hardening Task 6
+
+- Scope: Documented the additive admin audit response, nullable provenance semantics, observational-only launcher version, trusted nginx one-hop topology, event-origin matrix, and verification matrix. No product code, client workflow, standalone skill, runtime-image behavior, or staging state changed.
+- Verification: targeted Task 6 documentation formatting, lint, typecheck, full unit suite (68 files; 475 passed, 13 skipped), diff check, local MCP smoke, and Phase 3 golden/performance gates passed. Repository-wide format remains blocked only by 11 pre-existing SDD Markdown files outside this task.
+- Limitation: the required real-provider integration was attempted after loading ignored `.env`, targeting the project-authorized disposable `localhost:3307/enterprise_hub` database. Prisma refused `npx prisma migrate reset --force --config packages/db/prisma.config.ts` without a fresh explicit user-consent token, so no destructive reset was bypassed and integration cleanup proof is pending that consent. No staging deployment or mutation occurred.

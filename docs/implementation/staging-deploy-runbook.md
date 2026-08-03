@@ -28,6 +28,16 @@ Current deployed slice, as verified on 2026-07-23:
   immutable git-SHA tags.
 - nginx publicly exposes `api.smedatacenter.xyz`; `/readyz` remains local-only.
 
+## Trusted Request-Forwarding Topology
+
+The public path is `client -> nginx -> API` on the staging host. nginx overwrites
+`X-Forwarded-For` with its direct peer using `proxy_set_header X-Forwarded-For $remote_addr;`; it
+does not append caller-supplied forwarding values. The API trusts forwarding metadata only from its
+loopback nginx peer (`127.0.0.1`, `::1`, or IPv4-mapped loopback), never through `trustProxy: true`.
+This preserves the one-hop public client IP for audit provenance and prevents direct callers from
+forging it. Adding a CDN or load balancer requires an explicit reviewed trusted-proxy list and
+matching forwarding-boundary tests before that topology is enabled.
+
 ## Runtime files
 
 The server runtime directory is `/opt/enterprise-hub`.

@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-07-30
+Last updated: 2026-08-04
 
 This contract describes the current public surface after the legacy ordinary document upload/search flow was removed.
 
@@ -115,6 +115,40 @@ Malformed requests that do not have a more specific route error return `400` /
 Internal exception messages and stacks are never part of that fallback response. Existing
 route-specific authentication, authorization, OAuth, MCP transport, cursor, and structured-query
 error contracts remain authoritative.
+
+## Audit Provenance
+
+Admin `GET /audit` records are additive. Each record includes the existing `requestId` and
+`clientIp` fields plus nullable `clientSource` and `launcherVersion` fields:
+
+```json
+{
+  "requestId": "req_...",
+  "clientIp": "203.0.113.9",
+  "clientSource": "mcp_launcher",
+  "launcherVersion": "0.1.0"
+}
+```
+
+`clientSource` is server-derived and is one of `http_api`, `browser_auth`, `oauth_launcher`, or
+`mcp_launcher`. `launcherVersion` is client-declared observational metadata, bounded and
+syntax-validated when received; it is not version attestation and is never a client requirement.
+It is recorded only for observable OAuth-launcher and MCP-launcher requests. Historical,
+operator, and system audit rows may have both new properties set to `null`.
+
+| Origin / route boundary                             | Persisted record                 | Request ID and source IP                            | `clientSource`                | `launcherVersion`                        |
+| --------------------------------------------------- | -------------------------------- | --------------------------------------------------- | ----------------------------- | ---------------------------------------- |
+| Direct business HTTP                                | `AuditLog`                       | Normalized request ID and actual peer IP            | `http_api`                    | `null`                                   |
+| nginx one-hop business HTTP                         | `AuditLog`                       | Normalized request ID and nginx-forwarded public IP | `http_api`                    | `null`                                   |
+| MCP outer request with verified internal delegation | `AuditLog`                       | Outer normalized request ID and source IP           | `mcp_launcher`                | Normalized declared version when present |
+| Browser authorization, password login, or setup     | authentication security event    | Normalized request ID and source IP                 | Not stored on security events | `null`                                   |
+| OAuth token, refresh, or revoke                     | authentication security event    | Normalized request ID and source IP                 | Not stored on security events | Normalized declared version when present |
+| Operator/pruning/system path or historical row      | applicable audit/security record | `null` when no HTTP request exists                  | `null` when applicable        | `null`                                   |
+
+The in-process MCP delegation marker is verified with a per-server opaque proof; a public forged,
+missing, or invalid marker cannot select `mcp_launcher` and falls back to ordinary `http_api`
+provenance. Audit context excludes credentials, cookies, request bodies, authorization codes, PKCE
+material, setup secrets, tokens, token hashes, and passwords.
 
 ## Removed Legacy Public Surface
 

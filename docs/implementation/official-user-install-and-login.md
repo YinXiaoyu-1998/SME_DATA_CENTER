@@ -2,7 +2,7 @@
 
 Status: accepted design; ready for implementation planning
 
-Last updated: 2026-07-24
+Last updated: 2026-08-04
 
 ## Purpose
 
@@ -642,7 +642,12 @@ Beta persists a durable security-event trail for:
 
 Routine successful ten-minute token renewals do not create an event. Each event contains a
 timestamp, event type, outcome/reason, request ID, source IP, launcher version, and Login
-Identity/Employee/session IDs only when known.
+Identity/Employee/session IDs only when known. Browser events record the request ID and source IP
+but always have a null launcher version. OAuth token/refresh/revoke and MCP-authentication security
+events record a launcher version only when the launcher actually supplied a valid version header.
+That value is client-declared observational metadata, not launcher attestation; the client is not
+required to supply it outside the existing OAuth compatibility contract. Operator and system paths
+have null request metadata because they do not originate from an HTTP request.
 
 Audit events never contain passwords, password hashes, access tokens, durable credentials,
 authorization codes, PKCE material, setup/reset tokens, or full request bodies. They are retained
