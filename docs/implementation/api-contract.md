@@ -132,9 +132,10 @@ Admin `GET /audit` records are additive. Each record includes the existing `requ
 
 `clientSource` is server-derived and is one of `http_api`, `browser_auth`, `oauth_launcher`, or
 `mcp_launcher`. `launcherVersion` is client-declared observational metadata, bounded and
-syntax-validated when received; it is not version attestation and is never a client requirement.
-It is recorded only for observable OAuth-launcher and MCP-launcher requests. Historical,
-operator, and system audit rows may have both new properties set to `null`.
+syntax-validated when received; it is not version attestation, and provenance storage adds no new
+client requirement. The existing OAuth token endpoint minimum-launcher-version compatibility gate
+still applies. The version is recorded only for observable OAuth-launcher and MCP-launcher
+requests. Historical, operator, and system audit rows may have both new properties set to `null`.
 
 | Origin / route boundary                             | Persisted record                 | Request ID and source IP                            | `clientSource`                | `launcherVersion`                        |
 | --------------------------------------------------- | -------------------------------- | --------------------------------------------------- | ----------------------------- | ---------------------------------------- |

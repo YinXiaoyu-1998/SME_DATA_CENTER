@@ -7,8 +7,11 @@ export const releaseEntries = {
   "staging-smoke": "scripts/staging-smoke.ts"
 } as const;
 
+const thirdPartyPackageImport = /^(?!@enterprise-hub(?:\/|$))[^./]/;
+
 export default defineConfig({
   entry: releaseEntries,
+  external: [thirdPartyPackageImport],
   format: ["esm"],
   outDir: "dist/release",
   clean: true,

@@ -16,6 +16,12 @@ import {
 } from "@prisma/client";
 import { createPrismaStructuredImportRepository } from "../apps/api/src/structured-imports.js";
 import { AuthCore } from "../apps/api/src/auth/auth-core.js";
+import {
+  OAUTH_CLIENT_ID,
+  OAUTH_TRANSACTION_COOKIE,
+  csrfTokenForSecret,
+  pkceChallengeForVerifier
+} from "../apps/api/src/auth/http-contract.js";
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
 import { createOriginalObjectKey, LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
@@ -82,6 +88,18 @@ interface EvidenceSearchResponse {
   };
 }
 
+interface OAuthTokenResponse {
+  access_token: string;
+  refresh_token: string;
+}
+
+interface McpToolEnvelope {
+  result?: {
+    content?: Array<{ type: string; text?: string }>;
+    isError?: boolean;
+  };
+}
+
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
 const integrationPort = optionalEnv("HUB_INTEGRATION_PORT") ?? String(await findAvailablePort());
@@ -135,7 +153,8 @@ try {
   apiProcess = startApi();
   await waitForApiHealth(apiProcess);
 
-  const auth = authorizationHeader(await createOfficialIntegrationAccessToken("emp_baoli_manager"));
+  const employeeAccessToken = await createOfficialIntegrationAccessToken("emp_baoli_manager");
+  const auth = authorizationHeader(employeeAccessToken);
   const adminAuth = authorizationHeader(await createOfficialIntegrationAccessToken("emp_admin"));
 
   const structuredFixture = await readFile(
@@ -355,6 +374,7 @@ try {
     "Evidence cursor pagination should advance without duplicate chunks."
   );
   await assertWorkerLeaseRecovery();
+  await assertAuditProvenanceMatrix(employeeAccessToken);
 
   console.log(
     JSON.stringify(
@@ -377,7 +397,9 @@ try {
           "phase3_structured_import_status_non_enumeration",
           "phase3_evidence_upload_worker_status_search",
           "phase3_evidence_signed_pagination",
-          "phase3_worker_lease_crash_recovery"
+          "phase3_worker_lease_crash_recovery",
+          "audit_provenance_persistence_matrix",
+          "audit_provenance_run_scoped_cleanup"
         ]
       },
       null,
@@ -1005,6 +1027,569 @@ async function assertStructuredRecoveryPaths(): Promise<void> {
     await repository.disconnect?.();
     await prisma.$disconnect();
   }
+}
+
+async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
+  const runId = `audit_${Date.now().toString(36)}`;
+  const sourceSystem = `audit_provenance_${runId}`;
+  const requestIds = {
+    direct: `${runId}_direct`,
+    trustedProxy: `${runId}_proxy`,
+    mcp: `${runId}_mcp`,
+    forgedProof: `${runId}_forged`,
+    browser: `${runId}_browser`,
+    oauthToken: `${runId}_oauth_token`,
+    oauthRefresh: `${runId}_oauth_refresh`,
+    oauthRevoke: `${runId}_oauth_revoke`
+  } as const;
+  const businessRequestIds = [
+    requestIds.direct,
+    requestIds.trustedProxy,
+    requestIds.mcp,
+    requestIds.forgedProof
+  ];
+  const authRequestIds = [
+    requestIds.browser,
+    requestIds.oauthToken,
+    requestIds.oauthRefresh,
+    requestIds.oauthRevoke
+  ];
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
+  const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+  const transactionIds: string[] = [];
+  const sessionIds: string[] = [];
+
+  try {
+    const identity = await prisma.loginIdentity.findFirst({
+      where: { employeeId: "emp_baoli_manager", disabled: false },
+      select: { id: true, employeeId: true, orgId: true }
+    });
+    assert(Boolean(identity), "Audit provenance integration requires the seeded Baoli identity.");
+
+    const operatorSession = await auth.createSession({
+      identityId: identity!.id,
+      employeeId: identity!.employeeId,
+      orgId: identity!.orgId
+    });
+    sessionIds.push(operatorSession.sessionId);
+
+    const direct = await uploadAuditEvidence(accessToken, {
+      requestId: requestIds.direct,
+      sourceSystem,
+      title: `${runId} direct`,
+      extraHeaders: { "x-enterprise-hub-launcher-version": "0.1.0" }
+    });
+    const trustedProxy = await uploadAuditEvidence(accessToken, {
+      requestId: requestIds.trustedProxy,
+      sourceSystem,
+      title: `${runId} trusted proxy`,
+      extraHeaders: { "x-forwarded-for": "203.0.113.41" }
+    });
+    const forgedProof = await uploadAuditEvidence(accessToken, {
+      requestId: requestIds.forgedProof,
+      sourceSystem,
+      title: `${runId} forged proof`,
+      extraHeaders: {
+        "x-enterprise-hub-internal-delegation": "A".repeat(43),
+        "x-enterprise-hub-launcher-version": "0.1.0"
+      }
+    });
+    const mcp = await uploadAuditEvidenceThroughMcp(accessToken, {
+      requestId: requestIds.mcp,
+      sourceSystem,
+      title: `${runId} MCP`,
+      forwardedIp: "203.0.113.42"
+    });
+    const businessDocuments = [direct, trustedProxy, forgedProof, mcp];
+
+    const browserTransaction = await auth.issueAuthorizationTransaction({
+      clientId: OAUTH_CLIENT_ID,
+      redirectUri: "http://127.0.0.1:43121/oauth/callback",
+      state: `${runId}_browser_state`,
+      pkceChallenge: pkceChallengeForVerifier(
+        "audit-provenance-browser-verifier-abcdefghijklmnopqrstuvwxyz0123456789"
+      )
+    });
+    transactionIds.push(browserTransaction.id);
+    const browserResponse = await fetch(`${apiUrl}/oauth/authorize/login`, {
+      method: "POST",
+      headers: {
+        cookie: `${OAUTH_TRANSACTION_COOKIE}=${browserTransaction.secret}`,
+        "content-type": "application/x-www-form-urlencoded",
+        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-forwarded-for": "198.51.100.31",
+        "x-request-id": requestIds.browser
+      },
+      body: new URLSearchParams({
+        csrfToken: csrfTokenForSecret(browserTransaction.secret),
+        email: `${runId}@example.invalid`,
+        password: "intentionally invalid"
+      }).toString(),
+      redirect: "manual"
+    });
+    assert(browserResponse.status === 401, "Synthetic browser login must fail generically.");
+
+    const verifier = "audit-provenance-oauth-verifier-abcdefghijklmnopqrstuvwxyz0123456789";
+    const redirectUri = "http://127.0.0.1:43122/oauth/callback";
+    const oauthTransaction = await auth.issueAuthorizationTransaction({
+      clientId: OAUTH_CLIENT_ID,
+      redirectUri,
+      state: `${runId}_oauth_state`,
+      pkceChallenge: pkceChallengeForVerifier(verifier)
+    });
+    transactionIds.push(oauthTransaction.id);
+    const authorization = await auth.completeAuthorizationTransaction(
+      oauthTransaction.secret,
+      {
+        identityId: identity!.id,
+        employeeId: identity!.employeeId,
+        orgId: identity!.orgId
+      },
+      { requestId: `${runId}_oauth_setup`, sourceIp: "127.0.0.1", launcherVersion: null }
+    );
+    assert(Boolean(authorization), "Synthetic OAuth authorization code must be created.");
+
+    const tokenResponse = await fetch(`${apiUrl}/oauth/token`, {
+      method: "POST",
+      headers: oauthHeaders(requestIds.oauthToken, "198.51.100.32"),
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: OAUTH_CLIENT_ID,
+        code: authorization!.code,
+        redirect_uri: redirectUri,
+        code_verifier: verifier
+      }).toString()
+    });
+    const tokens = (await tokenResponse.json()) as OAuthTokenResponse;
+    assert(tokenResponse.status === 200, "Synthetic OAuth code exchange must succeed.");
+
+    const refreshResponse = await fetch(`${apiUrl}/oauth/token`, {
+      method: "POST",
+      headers: oauthHeaders(requestIds.oauthRefresh, "198.51.100.33"),
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: OAUTH_CLIENT_ID,
+        refresh_token: `eh_rt_invalid_${runId}`
+      }).toString()
+    });
+    assert(refreshResponse.status === 400, "Synthetic invalid OAuth refresh must be rejected.");
+
+    const revokeResponse = await fetch(`${apiUrl}/oauth/revoke`, {
+      method: "POST",
+      headers: oauthHeaders(requestIds.oauthRevoke, "198.51.100.34"),
+      body: new URLSearchParams({ token: tokens.refresh_token }).toString()
+    });
+    assert(revokeResponse.status === 200, "Synthetic OAuth revocation must succeed.");
+
+    const auditRows = await prisma.auditLog.findMany({
+      where: { requestId: { in: businessRequestIds } }
+    });
+    assert(auditRows.length === 4, "Every synthetic business origin must persist one audit row.");
+    assertBusinessAudit(
+      auditRows,
+      requestIds.direct,
+      direct.document.documentId,
+      "127.0.0.1",
+      "http_api",
+      null
+    );
+    assertBusinessAudit(
+      auditRows,
+      requestIds.trustedProxy,
+      trustedProxy.document.documentId,
+      "203.0.113.41",
+      "http_api",
+      null
+    );
+    assertBusinessAudit(
+      auditRows,
+      requestIds.mcp,
+      mcp.document.documentId,
+      "203.0.113.42",
+      "mcp_launcher",
+      "0.1.0"
+    );
+    assertBusinessAudit(
+      auditRows,
+      requestIds.forgedProof,
+      forgedProof.document.documentId,
+      "127.0.0.1",
+      "http_api",
+      null
+    );
+
+    const browserEvent = await prisma.authSecurityEvent.findFirst({
+      where: { requestId: requestIds.browser, eventType: "password_login_failed" }
+    });
+    assertAuthEvent(browserEvent, "198.51.100.31", null, "browser login");
+
+    const tokenEvent = await prisma.authSecurityEvent.findFirst({
+      where: { requestId: requestIds.oauthToken, eventType: "session_created" }
+    });
+    assertAuthEvent(tokenEvent, "198.51.100.32", "0.1.0", "OAuth token");
+    assert(Boolean(tokenEvent?.sessionId), "OAuth token event must identify its session.");
+    sessionIds.push(tokenEvent!.sessionId!);
+
+    const refreshEvent = await prisma.authSecurityEvent.findFirst({
+      where: { requestId: requestIds.oauthRefresh, eventType: "renewal_failed" }
+    });
+    assertAuthEvent(refreshEvent, "198.51.100.33", "0.1.0", "OAuth refresh");
+
+    const revokeEvents = await prisma.authSecurityEvent.findMany({
+      where: {
+        requestId: requestIds.oauthRevoke,
+        eventType: { in: ["logout", "session_revoked"] }
+      }
+    });
+    assert(revokeEvents.length === 2, "OAuth revoke must persist logout and revocation events.");
+    for (const event of revokeEvents) {
+      assertAuthEvent(event, "198.51.100.34", "0.1.0", "OAuth revoke");
+    }
+
+    const operatorEvent = await prisma.authSecurityEvent.findFirst({
+      where: { sessionId: operatorSession.sessionId, eventType: "session_created" }
+    });
+    assert(
+      operatorEvent?.requestId === null &&
+        operatorEvent.sourceIp === null &&
+        operatorEvent.launcherVersion === null,
+      "Operator/system session events must keep request provenance null."
+    );
+
+    const worker = parseJson<WorkerResponse>(
+      (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+    );
+    assert(
+      Boolean(worker.documentId) &&
+        businessDocuments.some((document) => document.document.documentId === worker.documentId),
+      "The provenance cleanup fixture must index one run-scoped document."
+    );
+    await waitForEvidenceStatus(worker.documentId!, authorizationHeader(accessToken));
+    assert(
+      (await prisma.documentChunk.count({
+        where: { documentId: worker.documentId!, qdrantPointId: { not: null } }
+      })) > 0,
+      "The provenance cleanup fixture must persist at least one Qdrant-backed chunk."
+    );
+  } finally {
+    try {
+      await cleanupAuditProvenanceRun(prisma, storage, {
+        sourceSystem,
+        businessRequestIds,
+        authRequestIds,
+        transactionIds,
+        sessionIds
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+}
+
+async function uploadAuditEvidence(
+  accessToken: string,
+  input: {
+    requestId: string;
+    sourceSystem: string;
+    title: string;
+    extraHeaders?: Record<string, string>;
+  }
+): Promise<EvidenceUploadResponse> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([`# ${input.title}\n\nSynthetic audit cleanup fixture.\n`]),
+    `${input.requestId}.md`
+  );
+  form.append("title", input.title);
+  form.append("sourceSystem", input.sourceSystem);
+  form.append("labelKeys[]", "store:baoli");
+  return apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "x-request-id": input.requestId,
+      ...input.extraHeaders
+    },
+    body: form
+  });
+}
+
+async function uploadAuditEvidenceThroughMcp(
+  accessToken: string,
+  input: {
+    requestId: string;
+    sourceSystem: string;
+    title: string;
+    forwardedIp: string;
+  }
+): Promise<EvidenceUploadResponse> {
+  const response = await fetch(`${apiUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+      "mcp-protocol-version": "2025-11-25",
+      "x-enterprise-hub-launcher-version": "0.1.0",
+      "x-forwarded-for": input.forwardedIp,
+      "x-request-id": input.requestId
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "upload_evidence_document",
+        arguments: {
+          file: {
+            name: `${input.requestId}.md`,
+            mediaType: "text/markdown",
+            encoding: "base64",
+            contentBase64: Buffer.from(
+              `# ${input.title}\n\nSynthetic MCP audit cleanup fixture.\n`,
+              "utf8"
+            ).toString("base64")
+          },
+          title: input.title,
+          sourceSystem: input.sourceSystem,
+          labelKeys: ["store:baoli"]
+        }
+      }
+    })
+  });
+  const envelope = (await response.json()) as McpToolEnvelope;
+  const toolResult = envelope.result;
+  const text = toolResult?.content?.find((content) => content.type === "text")?.text;
+  assert(response.status === 200, "Synthetic MCP upload must return HTTP 200.");
+  assert(toolResult?.isError === false && Boolean(text), "Synthetic MCP upload must succeed.");
+  return JSON.parse(text!) as EvidenceUploadResponse;
+}
+
+function oauthHeaders(requestId: string, forwardedIp: string): Record<string, string> {
+  return {
+    "content-type": "application/x-www-form-urlencoded",
+    "x-enterprise-hub-launcher-version": "0.1.0",
+    "x-forwarded-for": forwardedIp,
+    "x-request-id": requestId
+  };
+}
+
+function assertBusinessAudit(
+  rows: Array<{
+    requestId: string | null;
+    targetId: string | null;
+    action: string;
+    targetType: string;
+    result: string;
+    clientIp: string | null;
+    clientSource: string | null;
+    launcherVersion: string | null;
+  }>,
+  requestId: string,
+  documentId: string,
+  clientIp: string,
+  clientSource: string,
+  launcherVersion: string | null
+): void {
+  const row = rows.find((candidate) => candidate.requestId === requestId);
+  assert(Boolean(row), `Missing persisted audit row for ${requestId}.`);
+  assert(
+    row!.action === "document.uploaded" &&
+      row!.targetType === "document" &&
+      row!.targetId === documentId &&
+      row!.result === "succeeded" &&
+      row!.clientIp === clientIp &&
+      row!.clientSource === clientSource &&
+      row!.launcherVersion === launcherVersion,
+    `Persisted audit provenance mismatch for ${requestId}.`
+  );
+}
+
+function assertAuthEvent(
+  event: { sourceIp: string | null; launcherVersion: string | null } | null,
+  sourceIp: string,
+  launcherVersion: string | null,
+  origin: string
+): void {
+  assert(Boolean(event), `Missing persisted ${origin} security event.`);
+  assert(
+    event!.sourceIp === sourceIp && event!.launcherVersion === launcherVersion,
+    `Persisted ${origin} security-event provenance mismatch.`
+  );
+}
+
+async function cleanupAuditProvenanceRun(
+  prisma: PrismaClient,
+  storage: LocalFileSystemStorageAdapter,
+  input: {
+    sourceSystem: string;
+    businessRequestIds: string[];
+    authRequestIds: string[];
+    transactionIds: string[];
+    sessionIds: string[];
+  }
+): Promise<void> {
+  const documents = await prisma.document.findMany({
+    where: { sourceSystem: input.sourceSystem },
+    select: {
+      id: true,
+      storageObjectKey: true,
+      chunks: {
+        where: { qdrantPointId: { not: null } },
+        select: { qdrantPointId: true }
+      }
+    }
+  });
+  const documentIds = documents.map((document) => document.id);
+  const storageObjectKeys = documents.map((document) => document.storageObjectKey);
+  const qdrantPointIds = documents.flatMap((document) =>
+    document.chunks
+      .map((chunk) => chunk.qdrantPointId)
+      .filter((pointId): pointId is string => Boolean(pointId))
+  );
+  await deleteIntegrationQdrantPoints(qdrantPointIds);
+  for (const key of storageObjectKeys) {
+    await storage.deleteObject(key);
+  }
+
+  const discoveredEvents = await prisma.authSecurityEvent.findMany({
+    where: {
+      OR: [
+        { requestId: { in: input.authRequestIds } },
+        ...(input.sessionIds.length > 0 ? [{ sessionId: { in: input.sessionIds } }] : [])
+      ]
+    },
+    select: { sessionId: true }
+  });
+  const sessionIds = [
+    ...new Set([
+      ...input.sessionIds,
+      ...discoveredEvents
+        .map((event) => event.sessionId)
+        .filter((sessionId): sessionId is string => Boolean(sessionId))
+    ])
+  ];
+
+  await prisma.$transaction(async (tx) => {
+    await tx.auditLog.deleteMany({
+      where: {
+        OR: [
+          { requestId: { in: input.businessRequestIds } },
+          ...(documentIds.length > 0 ? [{ targetId: { in: documentIds } }] : [])
+        ]
+      }
+    });
+    await tx.authSecurityEvent.deleteMany({
+      where: {
+        OR: [
+          { requestId: { in: input.authRequestIds } },
+          ...(sessionIds.length > 0 ? [{ sessionId: { in: sessionIds } }] : [])
+        ]
+      }
+    });
+    if (sessionIds.length > 0) {
+      await tx.authSession.deleteMany({ where: { id: { in: sessionIds } } });
+    }
+    if (input.transactionIds.length > 0) {
+      await tx.oAuthAuthorizationTransaction.deleteMany({
+        where: { id: { in: input.transactionIds } }
+      });
+    }
+    if (documentIds.length > 0) {
+      await tx.document.deleteMany({ where: { id: { in: documentIds } } });
+    }
+  });
+
+  let retainedStorageObjects = 0;
+  for (const key of storageObjectKeys) {
+    try {
+      await storage.statObject(key);
+      retainedStorageObjects += 1;
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
+  }
+  const [
+    retainedDocuments,
+    retainedAudits,
+    retainedEvents,
+    retainedSessions,
+    retainedTransactions
+  ] = await Promise.all([
+    prisma.document.count({ where: { sourceSystem: input.sourceSystem } }),
+    prisma.auditLog.count({ where: { requestId: { in: input.businessRequestIds } } }),
+    prisma.authSecurityEvent.count({
+      where: {
+        OR: [
+          { requestId: { in: input.authRequestIds } },
+          ...(sessionIds.length > 0 ? [{ sessionId: { in: sessionIds } }] : [])
+        ]
+      }
+    }),
+    sessionIds.length > 0
+      ? prisma.authSession.count({ where: { id: { in: sessionIds } } })
+      : Promise.resolve(0),
+    input.transactionIds.length > 0
+      ? prisma.oAuthAuthorizationTransaction.count({
+          where: { id: { in: input.transactionIds } }
+        })
+      : Promise.resolve(0)
+  ]);
+  const retainedQdrantPoints = await retrieveIntegrationQdrantPointCount(qdrantPointIds);
+  assert(
+    retainedDocuments === 0 &&
+      retainedAudits === 0 &&
+      retainedEvents === 0 &&
+      retainedSessions === 0 &&
+      retainedTransactions === 0 &&
+      retainedStorageObjects === 0 &&
+      retainedQdrantPoints === 0,
+    "Audit provenance integration cleanup must leave no run-scoped DB/storage/Qdrant residue."
+  );
+}
+
+async function deleteIntegrationQdrantPoints(pointIds: string[]): Promise<void> {
+  if (pointIds.length === 0) {
+    return;
+  }
+  const response = await fetch(`${integrationQdrantCollectionUrl()}/points/delete?wait=true`, {
+    method: "POST",
+    headers: integrationQdrantHeaders(),
+    body: JSON.stringify({ points: pointIds })
+  });
+  assert(response.ok, `Qdrant provenance cleanup failed with HTTP ${response.status}.`);
+}
+
+async function retrieveIntegrationQdrantPointCount(pointIds: string[]): Promise<number> {
+  if (pointIds.length === 0) {
+    return 0;
+  }
+  const response = await fetch(`${integrationQdrantCollectionUrl()}/points`, {
+    method: "POST",
+    headers: integrationQdrantHeaders(),
+    body: JSON.stringify({ ids: pointIds, with_payload: false, with_vector: false })
+  });
+  assert(response.ok, `Qdrant provenance verification failed with HTTP ${response.status}.`);
+  const body = (await response.json()) as { result?: unknown[] };
+  assert(Array.isArray(body.result), "Qdrant provenance verification returned invalid JSON.");
+  return body.result.length;
+}
+
+function integrationQdrantCollectionUrl(): string {
+  const baseUrl = integrationEnv["QDRANT_URL"]!.replace(/\/$/, "");
+  return `${baseUrl}/collections/${encodeURIComponent(integrationEnv["QDRANT_COLLECTION_EVIDENCE"]!)}`;
+}
+
+function integrationQdrantHeaders(): Record<string, string> {
+  const apiKey = integrationEnv["QDRANT_API_KEY"]?.trim();
+  return {
+    "content-type": "application/json",
+    ...(apiKey ? { "api-key": apiKey } : {})
+  };
 }
 
 async function assertWorkerLeaseRecovery(): Promise<void> {

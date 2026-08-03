@@ -1010,3 +1010,19 @@
 - Scope: Documented the additive admin audit response, nullable provenance semantics, observational-only launcher version, trusted nginx one-hop topology, event-origin matrix, and verification matrix. No product code, client workflow, standalone skill, runtime-image behavior, or staging state changed.
 - Verification: targeted Task 6 documentation formatting, lint, typecheck, full unit suite (68 files; 475 passed, 13 skipped), diff check, local MCP smoke, and Phase 3 golden/performance gates passed. Repository-wide format remains blocked only by 11 pre-existing SDD Markdown files outside this task.
 - Limitation: the required real-provider integration was attempted after loading ignored `.env`, targeting the project-authorized disposable `localhost:3307/enterprise_hub` database. Prisma refused `npx prisma migrate reset --force --config packages/db/prisma.config.ts` without a fresh explicit user-consent token, so no destructive reset was bypassed and integration cleanup proof is pending that consent. No staging deployment or mutation occurred.
+
+## 2026-08-04 - Final hardening review fix wave
+
+- Fixed the release crash by externalizing bare third-party packages while retaining bundled
+  `@enterprise-hub/*` code. The RED-first artifact test caught the prior bundled-CommonJS dynamic
+  require, then imported worker/readiness/staging-smoke and started the compiled API through
+  `/healthz` from a clean temporary layout.
+- Added the persisted end-to-end provenance matrix to the real local integration harness. It covers
+  direct HTTP, trusted one-hop, MCP outer provenance, forged-proof fallback, browser login, OAuth
+  token/invalid-refresh/revoke, and operator/system nulls, then indexes and removes a Qdrant-backed
+  run fixture and verifies zero scoped DB/storage/Qdrant residue.
+- Real-provider integration (OpenAI-compatible embedding + DashScope rerank), local MCP smoke, full
+  488-test suite, lint, typecheck, scoped formatting, and diff checks passed. Repository-wide format
+  still reports only pre-existing SDD/progress files. No staging/customer data changed; full Docker
+  image build and live Trivy were not repeated.
+- Requested commit message: `fix: complete hardening release verification`.
