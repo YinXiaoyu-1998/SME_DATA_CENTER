@@ -12,6 +12,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run",
+    "audit:production": "tsx scripts/check-vulnerability-policy.ts npm-audit",
+    "audit:report": "tsx scripts/check-vulnerability-policy.ts report",
     "test:integration": "tsx scripts/test-integration.ts",
     "test:storage:oss": "RUN_OSS_INTEGRATION=1 vitest run packages/storage/src/aliyun-oss-storage.integration.test.ts",
     "test:mcp": "tsx scripts/test-mcp-local.ts",
