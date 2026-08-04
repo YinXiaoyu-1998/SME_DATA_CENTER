@@ -167,7 +167,7 @@ compose up -d qdrant
 wait_for_url http://127.0.0.1:6333/collections "Qdrant"
 compose --profile release run -T --rm release-ops node dist/release/readiness.js init-qdrant </dev/null
 if [ "$run_migrate" = "1" ]; then
-  compose --profile release run -T --rm release-ops npm run db:migrate:deploy </dev/null
+  compose --profile release run -T --rm release-ops node node_modules/prisma/build/index.js migrate deploy --config packages/db/prisma.config.ts </dev/null
 fi
 compose up -d --remove-orphans
 wait_for_url http://127.0.0.1:3000/healthz "API health"
