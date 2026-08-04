@@ -8,6 +8,7 @@ import {
   parseDeployArgs,
   releaseOpsImageReference,
   remoteScriptsForValidation,
+  trivyRuntimeImageScanArgs,
   validateGitShaTag
 } from "./deploy-staging.js";
 
@@ -79,6 +80,30 @@ describe("deploy-staging image references", () => {
     expect(() =>
       releaseOpsImageReference("registry.example.com", "enterprise-hub", "api", "0123456")
     ).toThrow(/12-character/);
+  });
+});
+
+describe("deploy-staging runtime image scans", () => {
+  it("matches the quality gate runtime vulnerability policy scope", () => {
+    expect(
+      trivyRuntimeImageScanArgs("/tmp/api.json", "registry.example.com/api:0123456789ab")
+    ).toEqual([
+      "image",
+      "--scanners",
+      "vuln",
+      "--pkg-types",
+      "os",
+      "--ignore-unfixed",
+      "--severity",
+      "MEDIUM,HIGH,CRITICAL",
+      "--format",
+      "json",
+      "--output",
+      "/tmp/api.json",
+      "--platform",
+      "linux/amd64",
+      "registry.example.com/api:0123456789ab"
+    ]);
   });
 });
 

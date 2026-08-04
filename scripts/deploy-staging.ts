@@ -358,6 +358,26 @@ export function releaseOpsImageReference(
   return `${registry}/${namespace}/${apiRepository}:ops-${validatedTag}`;
 }
 
+export function trivyRuntimeImageScanArgs(reportPath: string, image: string): string[] {
+  return [
+    "image",
+    "--scanners",
+    "vuln",
+    "--pkg-types",
+    "os",
+    "--ignore-unfixed",
+    "--severity",
+    "MEDIUM,HIGH,CRITICAL",
+    "--format",
+    "json",
+    "--output",
+    reportPath,
+    "--platform",
+    "linux/amd64",
+    image
+  ];
+}
+
 export function remoteScriptsForValidation(): string[] {
   return [
     REMOTE_ROLLOUT_SCRIPT,
@@ -650,20 +670,7 @@ async function scanImages(
     ] as const) {
       const report = join(reportDirectory, `${component}.json`);
       console.log(`\n==> Scan ${service} image through the dependency risk policy`);
-      await run("trivy", [
-        "image",
-        "--scanners",
-        "vuln",
-        "--severity",
-        "MEDIUM,HIGH,CRITICAL",
-        "--format",
-        "json",
-        "--output",
-        report,
-        "--platform",
-        "linux/amd64",
-        image
-      ]);
+      await run("trivy", trivyRuntimeImageScanArgs(report, image));
       await run("npm", [
         "run",
         "audit:report",
