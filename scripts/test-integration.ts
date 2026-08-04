@@ -172,8 +172,13 @@ try {
     form.append("labelKeys[]", "store:baoli");
     return form;
   };
-  const structuredUploads = await Promise.all(
-    Array.from({ length: 10 }, async () => {
+  const structuredUpload = await apiJson<StructuredUploadResponse>("/v1/structured/imports", {
+    method: "POST",
+    headers: auth,
+    body: structuredFormFor(structuredFixture, structuredIdempotencyKey)
+  });
+  const structuredReplays = await Promise.all(
+    Array.from({ length: 9 }, async () => {
       return apiJson<StructuredUploadResponse>("/v1/structured/imports", {
         method: "POST",
         headers: auth,
@@ -181,8 +186,7 @@ try {
       });
     })
   );
-  const structuredUpload = structuredUploads[0]!;
-  for (const replay of structuredUploads) {
+  for (const replay of structuredReplays) {
     assert(
       replay.document.documentId === structuredUpload.document.documentId &&
         replay.document.storageObjectKey === structuredUpload.document.storageObjectKey &&

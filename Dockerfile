@@ -53,7 +53,9 @@ FROM node:22-bookworm-slim AS runtime-base
 WORKDIR /app
 
 RUN apt-get update \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production

@@ -59,13 +59,13 @@ jobs:
           report_dir="$(mktemp -d)"
           trap 'rm -rf -- "$report_dir"' EXIT
 
-          trivy image --scanners vuln --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/api.json" --platform linux/amd64 enterprise-hub-api:ci
+          trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/api.json" --platform linux/amd64 enterprise-hub-api:ci
           npm run audit:report -- --kind trivy --component api-image --input "$report_dir/api.json"
 
-          trivy image --scanners vuln --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/worker.json" --platform linux/amd64 enterprise-hub-worker:ci
+          trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/worker.json" --platform linux/amd64 enterprise-hub-worker:ci
           npm run audit:report -- --kind trivy --component worker-image --input "$report_dir/worker.json"
 
-          trivy image --scanners vuln --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/release-ops.json" --platform linux/amd64 enterprise-hub-release-ops:ci
+          trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/release-ops.json" --platform linux/amd64 enterprise-hub-release-ops:ci
           npm run audit:report -- --kind trivy --component release-ops-image --input "$report_dir/release-ops.json"
 
   phase3-real-runtime:

@@ -1,5 +1,13 @@
 # Dependency risk register
 
+## Quality gate scope
+
+Production JavaScript dependency advisories are enforced through
+`npm audit --omit=dev` against the public npm registry. Runtime image advisories
+are enforced with Trivy against the OS package layer only, using `--ignore-unfixed`
+so the gate blocks actionable fixed-version vulnerabilities rather than Debian
+tracker entries that cannot be patched by rebuilding or running `apt-get upgrade`.
+
 ## ExcelJS read-only XLSX exception
 
 The `exceljs-read-only-xlsx-2026-07` exception is narrowly limited to the current
