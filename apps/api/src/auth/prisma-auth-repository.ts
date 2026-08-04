@@ -6,6 +6,7 @@ import type {
   RotateCredentialResult,
   SecurityEventInput
 } from "./auth-core.js";
+import { eventAudit } from "./auth-core.js";
 
 async function revokeSessionFamily(
   tx: Prisma.TransactionClient,
@@ -214,6 +215,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             orgId: identity.orgId,
             identityId: grant.identityId,
             employeeId: identity.employeeId,
+            ...eventAudit(input.audit),
             createdAt: input.now
           }
         });
@@ -278,6 +280,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               identityId: setupSession.identityId,
               employeeId: setupSession.identity.employeeId,
               sessionId: session.id,
+              ...eventAudit(input.audit),
               createdAt: input.now
             }
           });
@@ -290,6 +293,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             orgId: setupSession.identity.orgId,
             identityId: setupSession.identityId,
             employeeId: setupSession.identity.employeeId,
+            ...eventAudit(input.audit),
             createdAt: input.now
           }
         });
@@ -477,6 +481,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             identityId: input.identityId,
             employeeId: input.employeeId,
             sessionId: session.id,
+            ...eventAudit(input.audit),
             createdAt: input.now
           }
         });
@@ -504,6 +509,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               identityId: credential.session.identityId,
               employeeId: credential.session.employeeId,
               sessionId: credential.sessionId,
+              ...eventAudit(input.audit),
               createdAt: input.now
             }
           });
@@ -516,6 +522,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               identityId: credential.session.identityId,
               employeeId: credential.session.employeeId,
               sessionId: credential.sessionId,
+              ...eventAudit(input.audit),
               createdAt: input.now
             }
           });
@@ -539,6 +546,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
                 identityId: credential.session.identityId,
                 employeeId: credential.session.employeeId,
                 sessionId: credential.sessionId,
+                ...eventAudit(input.audit),
                 createdAt: input.now
               }
             });
@@ -560,6 +568,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               identityId: credential.session.identityId,
               employeeId: credential.session.employeeId,
               sessionId: credential.sessionId,
+              ...eventAudit(input.audit),
               createdAt: input.now
             }
           });
@@ -572,6 +581,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               identityId: credential.session.identityId,
               employeeId: credential.session.employeeId,
               sessionId: credential.sessionId,
+              ...eventAudit(input.audit),
               createdAt: input.now
             }
           });
@@ -606,7 +616,11 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
       });
     },
 
-    async authenticateAccessToken(tokenHash, now): Promise<AccessAuthenticationRecord | null> {
+    async authenticateAccessToken(
+      tokenHash,
+      now,
+      audit
+    ): Promise<AccessAuthenticationRecord | null> {
       const token = await prisma.oAuthAccessToken.findUnique({
         where: { tokenHash },
         include: {
@@ -645,6 +659,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               identityId: token.identityId,
               employeeId: token.employeeId,
               sessionId: token.sessionId,
+              ...eventAudit(audit),
               createdAt: now
             }
           });
@@ -667,7 +682,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
       };
     },
 
-    async revokeSessionByDurableCredential(credentialHash, reason, now) {
+    async revokeSessionByDurableCredential(credentialHash, reason, now, audit) {
       return prisma.$transaction(async (tx) => {
         const credential = await tx.durableCredential.findUnique({
           where: { credentialHash },
@@ -689,6 +704,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             identityId: session.identityId,
             employeeId: session.employeeId,
             sessionId: session.id,
+            ...eventAudit(audit),
             createdAt: now
           }
         });
@@ -701,6 +717,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             identityId: session.identityId,
             employeeId: session.employeeId,
             sessionId: session.id,
+            ...eventAudit(audit),
             createdAt: now
           }
         });

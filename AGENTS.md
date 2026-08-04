@@ -16,6 +16,13 @@
 - Do not use `docs/implementation/progress.md` as a running design-decision log or chat transcript. During requirements grilling or design discovery, record detailed decisions in a dedicated design document, ADR, API contract draft, or implementation plan section, then add at most one concise progress summary when that design artifact is created or materially completed.
 - Subagents must append to `docs/implementation/agent-handoffs.md` before stopping.
 - Draft PR descriptions must include scope, tests run, environment changes, human inputs used, and known limitations.
+- When creating or materially updating a PR, always report the PR diff composition to the human before or alongside the PR link. Include approximate inserted/deleted line counts by category:
+  - production code/config;
+  - runtime, CI, and deploy scripts;
+  - tests and test/integration harnesses;
+  - documentation, plans, and reports;
+  - `package-lock.json`.
+    Call out any process-only artifacts such as execution plans, SDD reports, scratch ledgers, or handoff logs, and remove them from the PR unless the human explicitly wants them committed.
 - Enterprise Hub MCP skill is dual-homed:
   - repo-local skill: `skills/enterprise-hub-mcp/`
   - standalone skill repo: `YinXiaoyu-1998/enterprise-hub-mcp-skill`

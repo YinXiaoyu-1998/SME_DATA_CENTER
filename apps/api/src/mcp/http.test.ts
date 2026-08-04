@@ -302,13 +302,17 @@ function fakeEvidenceRepository(calls: EvidenceSearchInput[] = []): EvidenceSear
   };
 }
 
-function buildLiveMcpApiTestServer(evidenceCalls: EvidenceSearchInput[] = []) {
+function buildLiveMcpApiTestServer(
+  evidenceCalls: EvidenceSearchInput[] = [],
+  overrides: Partial<Parameters<typeof buildApiServer>[0]> = {}
+) {
   return buildMcpTestServer({
     documentRepository: fakeDocumentRepository(),
     skillRepository: fakeSkillRepository(),
     structuredImportRepository: fakeStructuredImportRepository(),
     structuredQueryRepository: fakeStructuredQueryRepository(),
-    evidenceRepository: fakeEvidenceRepository(evidenceCalls)
+    evidenceRepository: fakeEvidenceRepository(evidenceCalls),
+    ...overrides
   });
 }
 
@@ -332,6 +336,7 @@ function buildCustomMcpTestServer(toolHandlers: EnterpriseHubMcpToolHandlers) {
 
   registerMcpHttpRoute(customApp, {
     maxUploadBytes: 52_428_800,
+    delegationProof: Buffer.alloc(32, 0x5a).toString("base64url"),
     authenticate: async () => employee,
     toolHandlers
   });
@@ -892,7 +897,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       employee.email,
       adminEmployee.email
     ]);
-    expect(evidenceCalls.map((call) => call.requestId)).toEqual([
+    expect(evidenceCalls.map((call) => call.audit.requestId)).toEqual([
       "mcp-manager-req",
       "mcp-admin-req"
     ]);
@@ -902,5 +907,44 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(JSON.stringify(parseToolPayload(adminResponse.payload).payload)).not.toContain(
       employee.email
     );
+  });
+
+  it("preserves the outer launcher audit context through delegated business routes", async () => {
+    const evidenceCalls: EvidenceSearchInput[] = [];
+    app = buildLiveMcpApiTestServer(evidenceCalls, {
+      internalDelegationProof: Buffer.alloc(32, 0x5a).toString("base64url")
+    });
+
+    const response = await postMcp(
+      app,
+      {
+        jsonrpc: "2.0",
+        id: 12,
+        method: "tools/call",
+        params: {
+          name: "search_document_evidence",
+          arguments: {
+            query: "delegated provenance",
+            limit: 1
+          }
+        }
+      },
+      {
+        "mcp-protocol-version": "2025-11-25",
+        "x-forwarded-for": "203.0.113.9",
+        "x-request-id": "mcp_request_1",
+        "x-enterprise-hub-launcher-version": "0.1.0"
+      },
+      { remoteAddress: "127.0.0.1" }
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(parseToolPayload(response.payload).result).toMatchObject({ isError: false });
+    expect(evidenceCalls[0]?.audit).toEqual({
+      requestId: "mcp_request_1",
+      sourceIp: "203.0.113.9",
+      clientSource: "mcp_launcher",
+      launcherVersion: "0.1.0"
+    });
   });
 });

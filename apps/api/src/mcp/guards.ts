@@ -1,9 +1,8 @@
 import { isIP } from "node:net";
+import { normalizeRequestId } from "../request-audit-context.js";
 
 const DEFAULT_PHASE3_SERVICE_LISTEN_HOST = "127.0.0.1";
 const MCP_JSON_ENVELOPE_OVERHEAD_BYTES = 64 * 1024;
-const MAX_MCP_REQUEST_ID_BYTES = 128;
-const SAFE_MCP_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
 
 export function isLoopbackHost(hostHeader: string | undefined): boolean {
   if (!hostHeader) {
@@ -96,14 +95,7 @@ export function isLoopbackAddress(address: string | undefined): boolean {
 }
 
 export function isSafeMcpRequestId(requestId: string | undefined): boolean {
-  if (!requestId) {
-    return false;
-  }
-
-  return (
-    Buffer.byteLength(requestId, "utf8") <= MAX_MCP_REQUEST_ID_BYTES &&
-    SAFE_MCP_REQUEST_ID_PATTERN.test(requestId)
-  );
+  return normalizeRequestId(requestId) !== null;
 }
 
 export function resolvePhase3ServiceListenHost(env: NodeJS.ProcessEnv = process.env): string {
@@ -163,16 +155,6 @@ export function createMcpConcurrencyLimiter(maxConcurrentRequests: number) {
   };
 }
 
-function normalizePeerAddress(address: string): string {
-  const normalized = address.trim().toLowerCase();
-
-  if (normalized.startsWith("[") && normalized.endsWith("]")) {
-    return normalized.slice(1, -1);
-  }
-
-  return normalized;
-}
-
 function hasValidPort(value: string): boolean {
   if (!/^\d+$/.test(value)) {
     return false;
@@ -181,6 +163,16 @@ function hasValidPort(value: string): boolean {
   const port = Number(value);
 
   return Number.isInteger(port) && port >= 1 && port <= 65_535;
+}
+
+function normalizePeerAddress(address: string): string {
+  const normalized = address.trim().toLowerCase();
+
+  if (normalized.startsWith("[") && normalized.endsWith("]")) {
+    return normalized.slice(1, -1);
+  }
+
+  return normalized;
 }
 
 function parseMcpPublicOrigin(value: string): URL {

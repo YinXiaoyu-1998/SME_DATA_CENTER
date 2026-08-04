@@ -9,6 +9,7 @@ import {
   type McpJsonToolResult
 } from "@enterprise-hub/mcp-contract";
 import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
+import type { RequestAuditContext } from "../request-audit-context.js";
 
 interface InlineUploadFile {
   name: string;
@@ -36,8 +37,8 @@ interface UploadEvidenceDocumentInput {
 
 export interface UploadApiDelegationContext {
   authorization: string;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
+  delegationProof: string;
   maxUploadBytes: number;
 }
 
@@ -98,7 +99,7 @@ async function uploadStructuredDataset(
   options: UploadToolHandlerOptions
 ): Promise<McpJsonToolResult> {
   if (context.abortSignal?.aborted) {
-    return requestCancelledUploadError(context.requestId);
+    return requestCancelledUploadError(context.audit.requestId);
   }
 
   const delegation = options.getDelegationContext(context);
@@ -153,7 +154,7 @@ async function uploadEvidenceDocument(
   options: UploadToolHandlerOptions
 ): Promise<McpJsonToolResult> {
   if (context.abortSignal?.aborted) {
-    return requestCancelledUploadError(context.requestId);
+    return requestCancelledUploadError(context.audit.requestId);
   }
 
   const delegation = options.getDelegationContext(context);
@@ -227,7 +228,7 @@ function decodeUploadFile(
           actualBytes: body.byteLength
         },
         {
-          requestId: context.requestId,
+          requestId: context.audit.requestId,
           retryable: false
         }
       )
@@ -274,7 +275,7 @@ function preflightEncodedUploadSize(
         actualEncodedBytes: contentBase64.length
       },
       {
-        requestId: context.requestId,
+        requestId: context.audit.requestId,
         retryable: false
       }
     )
@@ -338,12 +339,14 @@ async function delegateMultipartRequest(
         authorization: context.authorization,
         accept: "application/json",
         "content-type": input.multipart.contentType,
-        "x-request-id": context.requestId,
-        "x-forwarded-for": context.clientIp,
-        "x-real-ip": context.clientIp
+        "x-request-id": context.audit.requestId,
+        "x-enterprise-hub-internal-delegation": context.delegationProof,
+        ...(context.audit.launcherVersion
+          ? { "x-enterprise-hub-launcher-version": context.audit.launcherVersion }
+          : {})
       },
       payload: input.multipart.body,
-      remoteAddress: context.clientIp
+      remoteAddress: context.audit.sourceIp
     });
   } catch {
     return errorToolResult(
@@ -351,7 +354,7 @@ async function delegateMultipartRequest(
       "Enterprise Hub API request failed.",
       undefined,
       {
-        requestId: context.requestId,
+        requestId: context.audit.requestId,
         retryable: true
       }
     );
@@ -369,7 +372,7 @@ async function delegateMultipartRequest(
       "Enterprise Hub API returned invalid JSON.",
       undefined,
       {
-        requestId: context.requestId,
+        requestId: context.audit.requestId,
         retryable: true
       }
     );

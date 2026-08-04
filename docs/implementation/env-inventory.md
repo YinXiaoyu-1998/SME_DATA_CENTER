@@ -139,6 +139,16 @@ These deployment/CI variables describe the account-owned Alibaba Cloud ACR repos
 | `ENTERPRISE_HUB_ACR_PASSWORD`          | Registry login         |     Yes |              No | Use `docker login --password-stdin`; never print or commit.                                                        |
 | `ENTERPRISE_HUB_IMAGE_TAG`             | Immutable image deploy |      No |             Yes | Use a commit SHA or release version; never deploy `latest`.                                                        |
 
+`release-ops` has no repository variable: its image uses the existing API
+repository with the sibling tag `ops-<12-character-git-sha>`. This does not
+require an additional ACR credential or runtime secret.
+
+| Runtime variable                   | Required For                | Secret? | Safe To Record? | Notes                                                                                                       |
+| ---------------------------------- | --------------------------- | ------: | --------------: | ----------------------------------------------------------------------------------------------------------- |
+| `ENTERPRISE_HUB_API_IMAGE`         | Long-running staging API    |      No |             Yes | Immutable API image reference written into root-only `runtime.env` by deployment.                           |
+| `ENTERPRISE_HUB_WORKER_IMAGE`      | Long-running staging worker |      No |             Yes | Immutable worker image reference written into root-only `runtime.env` by deployment.                        |
+| `ENTERPRISE_HUB_RELEASE_OPS_IMAGE` | On-demand `release-ops`     |      No |             Yes | Existing API repository sibling tag `ops-<12-character-git-sha>`; used only with Compose profile `release`. |
+
 The semi-automated `npm run deploy:staging` command has safe defaults for the
 current target. These optional overrides exist for later non-interactive
 execution; secret overrides must come from an approved process-level secret
@@ -183,3 +193,8 @@ Personal Edition activation, namespace creation, repository creation, and regist
 must happen once in the console if they do not already exist. That one-time setup is complete for
 the current staging namespace. Agents should continue with Keychain-backed `docker login`,
 fixed-tag push/pull verification, and runtime deployment automation.
+
+The dependency risk policy applies to repository production dependencies and
+all runtime image targets. New high/critical findings or unregistered moderate
+findings block CI. The registered ExcelJS read-only XLSX exception is reviewed
+no later than `2027-01-31`.

@@ -17,6 +17,7 @@ import { buildApiServer } from "./server.js";
 import type { DocumentCatalogRepository } from "./documents.js";
 import type { EmployeeRepository } from "./employees.js";
 import type { EvidenceSearchRepository } from "./evidence.js";
+import type { RequestAuditContext } from "./request-audit-context.js";
 import type { SkillDirectoryRepository, SkillDirectoryEntry } from "./skills.js";
 
 const jwtSecret = "test-local-jwt-secret";
@@ -120,17 +121,25 @@ function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepositor
 
 function createEvidenceSearchRepository(): EvidenceSearchRepository & {
   queries: Array<{ query: string; employeeId: string }>;
-  inputs: Array<{ orgId: string; employeeId: string }>;
+  inputs: Array<{
+    orgId: string;
+    employeeId: string;
+    audit: Parameters<EvidenceSearchRepository["searchEvidence"]>[0]["audit"];
+  }>;
 } {
   const queries: Array<{ query: string; employeeId: string }> = [];
-  const inputs: Array<{ orgId: string; employeeId: string }> = [];
+  const inputs: Array<{
+    orgId: string;
+    employeeId: string;
+    audit: Parameters<EvidenceSearchRepository["searchEvidence"]>[0]["audit"];
+  }> = [];
 
   return {
     queries,
     inputs,
     async searchEvidence(input) {
       queries.push({ query: input.query, employeeId: input.employee.id });
-      inputs.push({ orgId: input.orgId, employeeId: input.employee.id });
+      inputs.push({ orgId: input.orgId, employeeId: input.employee.id, audit: input.audit });
 
       return {
         results: [
@@ -271,6 +280,8 @@ function createOrganizationContextDocumentRepository(): DocumentCatalogRepositor
             metadata: null,
             requestId: "request",
             clientIp: "127.0.0.1",
+            clientSource: input.orgId === "org-b" ? null : "http_api",
+            launcherVersion: null,
             createdAt: new Date("2026-07-18T00:00:00.000Z")
           }
         ],
@@ -432,6 +443,8 @@ interface RecordedAuditLog {
   metadata?: Record<string, unknown> | null;
   requestId?: string;
   clientIp?: string;
+  clientSource?: string | null;
+  launcherVersion?: string | null;
   createdAt?: Date;
 }
 
@@ -489,11 +502,13 @@ function createDocumentRepository() {
   const documents: RecordedDocument[] = [];
   const processingRuns: RecordedProcessingRun[] = [];
   const auditLogs: RecordedAuditLog[] = [];
+  const uploadInputs: unknown[] = [];
 
   return {
     documents,
     processingRuns,
     auditLogs,
+    uploadInputs,
     async listLabels() {
       return [...labelCatalog.values()].sort(
         (first, second) =>
@@ -535,8 +550,10 @@ function createDocumentRepository() {
         documentKind?: "evidence" | "structured";
         fileType?: Phase3FileType;
         processingJobType: string;
+        audit: RequestAuditContext;
       }
     ) {
+      uploadInputs.push(input);
       const document = {
         ...input,
         documentKind: input.documentKind ?? null,
@@ -554,7 +571,11 @@ function createDocumentRepository() {
       auditLogs.push({
         action: "document.uploaded",
         actorEmployeeId: input.uploaderId,
-        targetId: input.id
+        targetId: input.id,
+        requestId: input.audit.requestId,
+        clientIp: input.audit.sourceIp,
+        clientSource: input.audit.clientSource,
+        launcherVersion: input.audit.launcherVersion
       });
       return document;
     },
@@ -570,7 +591,16 @@ function createDocumentRepository() {
     async appendAuditLog(input: Parameters<DocumentCatalogRepository["appendAuditLog"]>[0]) {
       auditLogs.push({
         id: `audit_${auditLogs.length + 1}`,
-        ...input,
+        action: input.action,
+        actorEmployeeId: input.actorEmployeeId,
+        targetType: input.targetType,
+        targetId: input.targetId,
+        result: input.result,
+        metadata: input.metadata,
+        requestId: input.audit.requestId,
+        clientIp: input.audit.sourceIp,
+        clientSource: input.audit.clientSource,
+        launcherVersion: input.audit.launcherVersion,
         createdAt: new Date()
       });
     },
@@ -578,8 +608,7 @@ function createDocumentRepository() {
       orgId: string;
       documentId: string;
       actorEmployeeId: string;
-      requestId: string;
-      clientIp: string;
+      audit: RequestAuditContext;
     }) {
       const document = documents.find((candidate) => candidate.id === input.documentId);
 
@@ -599,8 +628,10 @@ function createDocumentRepository() {
         metadata: {
           previousStatus
         },
-        requestId: input.requestId,
-        clientIp: input.clientIp,
+        requestId: input.audit.requestId,
+        clientIp: input.audit.sourceIp,
+        clientSource: input.audit.clientSource,
+        launcherVersion: input.audit.launcherVersion,
         createdAt: new Date()
       });
 
@@ -619,6 +650,8 @@ function createDocumentRepository() {
           metadata: auditLog.metadata ?? null,
           requestId: auditLog.requestId ?? null,
           clientIp: auditLog.clientIp ?? null,
+          clientSource: auditLog.clientSource ?? null,
+          launcherVersion: auditLog.launcherVersion ?? null,
           createdAt: auditLog.createdAt ?? new Date(index)
         }))
         .sort((first, second) => {
@@ -838,6 +871,57 @@ describe("api auth shell", () => {
     expect(response.headers["x-request-id"]).toBeTruthy();
   });
 
+  it("uses forwarded client IPs only from a loopback proxy peer", async () => {
+    app = buildTestServer();
+    app.get("/__test/request-audit-ip", async (request) => ({ sourceIp: request.ip }));
+
+    const trustedProxyResponse = await app.inject({
+      method: "GET",
+      url: "/__test/request-audit-ip",
+      remoteAddress: "127.0.0.1",
+      headers: { "x-forwarded-for": "203.0.113.9" }
+    });
+    const forgedForwardingResponse = await app.inject({
+      method: "GET",
+      url: "/__test/request-audit-ip",
+      remoteAddress: "198.51.100.8",
+      headers: { "x-forwarded-for": "203.0.113.9" }
+    });
+
+    expect(trustedProxyResponse.json()).toEqual({ sourceIp: "203.0.113.9" });
+    expect(forgedForwardingResponse.json()).toEqual({ sourceIp: "198.51.100.8" });
+  });
+
+  it("replaces invalid request IDs with bounded server-generated values", async () => {
+    app = buildTestServer();
+
+    for (const requestId of ["x".repeat(129), "invalid request id"]) {
+      const response = await app.inject({
+        method: "GET",
+        url: "/healthz",
+        headers: { "x-request-id": requestId }
+      });
+      const responseRequestId = response.headers["x-request-id"];
+
+      expect(responseRequestId).toMatch(
+        /^req_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+      expect(Buffer.byteLength(responseRequestId as string, "utf8")).toBeLessThanOrEqual(128);
+    }
+  });
+
+  it("echoes valid structured request IDs unchanged", async () => {
+    app = buildTestServer();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/healthz",
+      headers: { "x-request-id": "req_valid-123" }
+    });
+
+    expect(response.headers["x-request-id"]).toBe("req_valid-123");
+  });
+
   it("returns local readiness results and maps failures to 503", async () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
@@ -975,6 +1059,80 @@ describe("api auth shell", () => {
     });
   });
 
+  it("passes API and MCP route metadata into access-token authentication", async () => {
+    const calls: Array<{
+      token: string;
+      audit: Pick<RequestAuditContext, "requestId" | "sourceIp" | "launcherVersion"> | undefined;
+    }> = [];
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: async (
+        token: string,
+        audit?: Pick<RequestAuditContext, "requestId" | "sourceIp" | "launcherVersion">
+      ) => {
+        calls.push({ token, audit });
+        return adminEmployee;
+      },
+      logger: false
+    });
+
+    const apiResponse = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: {
+        authorization: "Bearer eh_at_api",
+        "x-request-id": "api_request_1",
+        "x-enterprise-hub-launcher-version": "9.9.9"
+      },
+      remoteAddress: "198.51.100.8"
+    });
+    const mcpResponse = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        host: "127.0.0.1:3000",
+        authorization: "Bearer eh_at_mcp",
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "x-request-id": "mcp_request_1",
+        "x-enterprise-hub-launcher-version": "0.1.0"
+      },
+      remoteAddress: "127.0.0.1",
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "audit-test", version: "1.0.0" }
+        }
+      }
+    });
+
+    expect(apiResponse.statusCode).toBe(200);
+    expect(mcpResponse.statusCode).toBe(200);
+    expect(calls).toEqual([
+      {
+        token: "eh_at_api",
+        audit: {
+          requestId: "api_request_1",
+          sourceIp: "198.51.100.8",
+          launcherVersion: null
+        }
+      },
+      {
+        token: "eh_at_mcp",
+        audit: {
+          requestId: "mcp_request_1",
+          sourceIp: "127.0.0.1",
+          launcherVersion: "0.1.0"
+        }
+      }
+    ]);
+  });
+
   it("keeps the authoritative organization in authenticated employee responses", async () => {
     app = buildTestServer();
     const accessToken = await accessTokenFor(adminEmployee);
@@ -1025,8 +1183,10 @@ describe("api auth shell", () => {
         url: "/v1/documents/evidence",
         headers: {
           authorization: `Bearer ${accessToken}`,
+          "x-request-id": "req_http_1",
           "content-type": multipartPayload.contentType
         },
+        remoteAddress: "198.51.100.8",
         payload: multipartPayload.body
       });
 
@@ -1054,6 +1214,14 @@ describe("api auth shell", () => {
       expect(documentRepository.processingRuns[0]).toMatchObject({
         jobType: "evidence_document_index",
         status: "queued"
+      });
+      expect(documentRepository.uploadInputs[0]).toMatchObject({
+        audit: {
+          requestId: "req_http_1",
+          sourceIp: "198.51.100.8",
+          clientSource: "http_api",
+          launcherVersion: null
+        }
       });
     } finally {
       await rm(storageRoot, { recursive: true, force: true });
@@ -1355,8 +1523,10 @@ describe("api auth shell", () => {
       method: "POST",
       url: "/v1/evidence/search",
       headers: {
-        authorization: `Bearer ${accessToken}`
+        authorization: `Bearer ${accessToken}`,
+        "x-request-id": "req_http_1"
       },
+      remoteAddress: "198.51.100.8",
       payload: {
         query: "差评处理 SOP",
         filters: {
@@ -1397,6 +1567,49 @@ describe("api auth shell", () => {
     expect(evidenceRepository.queries).toEqual([
       { query: "差评处理 SOP", employeeId: adminEmployee.id }
     ]);
+    expect(evidenceRepository.inputs[0]?.audit).toEqual({
+      requestId: "req_http_1",
+      sourceIp: "198.51.100.8",
+      clientSource: "http_api",
+      launcherVersion: null
+    });
+  });
+
+  it("treats a forged public delegation proof as ordinary HTTP provenance", async () => {
+    const evidenceRepository = createEvidenceSearchRepository();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      internalDelegationProof: Buffer.alloc(32, 0x5a).toString("base64url"),
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+        "x-request-id": "forged_request_1",
+        "x-forwarded-for": "203.0.113.9",
+        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-enterprise-hub-internal-delegation": Buffer.alloc(32, 0xa5).toString("base64url")
+      },
+      remoteAddress: "198.51.100.8",
+      payload: {
+        query: "forged delegation proof",
+        limit: 1
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(evidenceRepository.inputs[0]?.audit).toEqual({
+      requestId: "forged_request_1",
+      sourceIp: "198.51.100.8",
+      clientSource: "http_api",
+      launcherVersion: null
+    });
   });
 
   it("rejects null and over-limit evidence search inputs before retrieval", async () => {
@@ -1731,12 +1944,24 @@ describe("authenticated organization context", () => {
     expect(orgBEvidenceSearch.statusCode).toBe(200);
     expect(defaultOrgEvidenceSearch.statusCode).toBe(200);
     expect(evidenceRepository.inputs).toEqual([
-      { orgId: "org-a", employeeId: orgAAdminEmployee.id },
-      { orgId: "org-b", employeeId: orgBAdminEmployee.id },
-      { orgId: "default-org", employeeId: adminEmployee.id }
+      expect.objectContaining({ orgId: "org-a", employeeId: orgAAdminEmployee.id }),
+      expect.objectContaining({ orgId: "org-b", employeeId: orgBAdminEmployee.id }),
+      expect.objectContaining({ orgId: "default-org", employeeId: adminEmployee.id })
     ]);
     expect(orgAAudit.json().auditEvents[0].targetId).toBe("document_org-a");
+    expect(orgAAudit.json().auditEvents[0]).toMatchObject({
+      requestId: "request",
+      clientIp: "127.0.0.1",
+      clientSource: "http_api",
+      launcherVersion: null
+    });
     expect(orgBAudit.json().auditEvents[0].targetId).toBe("document_org-b");
+    expect(orgBAudit.json().auditEvents[0]).toMatchObject({
+      requestId: "request",
+      clientIp: "127.0.0.1",
+      clientSource: null,
+      launcherVersion: null
+    });
     expect(defaultOrgAudit.json().auditEvents[0].targetId).toBe("document_default-org");
     expect(documentRepository.auditListOrgIds).toEqual(["org-a", "org-b", "default-org"]);
   });
@@ -1913,8 +2138,7 @@ function createInMemoryStructuredImportRepository(
       };
       sourceSheetSummary: unknown[];
       totalRowCount: number;
-      requestId: string;
-      clientIp: string;
+      audit: RequestAuditContext;
     }) {
       const existingIdempotencyBatch = batches.find(
         (batch) => batch.orgId === input.orgId && batch.idempotencyKey === input.idempotencyKey
@@ -2009,8 +2233,10 @@ function createInMemoryStructuredImportRepository(
           rowCount: input.totalRowCount,
           sourceDocumentId: input.documentId
         },
-        requestId: input.requestId,
-        clientIp: input.clientIp
+        requestId: input.audit.requestId,
+        clientIp: input.audit.sourceIp,
+        clientSource: input.audit.clientSource,
+        launcherVersion: input.audit.launcherVersion
       });
 
       return {
@@ -2023,8 +2249,7 @@ function createInMemoryStructuredImportRepository(
       actorEmployeeId: string;
       importBatchId: string;
       rows: Array<{ payload: Record<string, unknown>; sourceRowNumber: number }>;
-      requestId: string;
-      clientIp: string;
+      audit: RequestAuditContext;
     }) {
       const batch = batches.find(
         (candidate) => candidate.id === input.importBatchId && candidate.orgId === input.orgId
@@ -2065,8 +2290,10 @@ function createInMemoryStructuredImportRepository(
           appliedRowCount: input.rows.length,
           sourceDocumentId: batch.sourceDocumentId
         },
-        requestId: input.requestId,
-        clientIp: input.clientIp
+        requestId: input.audit.requestId,
+        clientIp: input.audit.sourceIp,
+        clientSource: input.audit.clientSource,
+        launcherVersion: input.audit.launcherVersion
       });
       return this.findImportBatch(input.orgId, batch.id);
     },
@@ -2170,8 +2397,10 @@ describe("structured imports", () => {
       url: "/v1/structured/imports",
       headers: {
         authorization: `Bearer ${await accessTokenFor(employee)}`,
+        "x-request-id": "req_http_1",
         "content-type": multipartBody.contentType
       },
+      remoteAddress: "198.51.100.8",
       payload: multipartBody.body
     });
   }
@@ -2217,6 +2446,10 @@ describe("structured imports", () => {
         actorEmployeeId: baoliManagerEmployee.id,
         targetType: "import_batch",
         result: "succeeded",
+        requestId: "req_http_1",
+        clientIp: "198.51.100.8",
+        clientSource: "http_api",
+        launcherVersion: null,
         metadata: {
           dataset: "dishes",
           startDate: "20260701",
@@ -2231,6 +2464,10 @@ describe("structured imports", () => {
         targetType: "import_batch",
         targetId: response.json().importBatch.importBatchId,
         result: "succeeded",
+        requestId: "req_http_1",
+        clientIp: "198.51.100.8",
+        clientSource: "http_api",
+        launcherVersion: null,
         metadata: {
           dataset: "dishes",
           startDate: "20260701",
@@ -2586,8 +2823,12 @@ describe("structured imports", () => {
       orgId: "default-org",
       documentId,
       actorEmployeeId: baoliManagerEmployee.id,
-      requestId: "test-request",
-      clientIp: "127.0.0.1"
+      audit: {
+        requestId: "test-request",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
     });
     const statusResponse = await app.inject({
       method: "GET",

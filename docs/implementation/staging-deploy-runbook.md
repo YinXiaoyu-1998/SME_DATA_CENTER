@@ -15,13 +15,28 @@ Current deployed slice, as verified on 2026-07-23:
 
 ## Scope
 
-- API and worker run as Docker containers on the Alibaba Cloud Simple
-  Application Server.
+- API and worker run as long-running, lean compiled Docker images on the
+  Alibaba Cloud Simple Application Server. They contain only the production
+  dependency closure for their service.
+- `release-ops` is a separate lean compiled image used only by the on-demand
+  Compose `release` profile. It is not a long-running service: deploy invokes
+  it for Qdrant initialization, Prisma migration, and the fixture smoke, then
+  removes the container.
 - Qdrant runs as a Docker container with a local Docker volume.
 - MySQL is Alibaba Cloud RDS, not a local container.
 - Images are pulled from an account-owned Beijing ACR private registry with
   immutable git-SHA tags.
 - nginx publicly exposes `api.smedatacenter.xyz`; `/readyz` remains local-only.
+
+## Trusted Request-Forwarding Topology
+
+The public path is `client -> nginx -> API` on the staging host. nginx overwrites
+`X-Forwarded-For` with its direct peer using `proxy_set_header X-Forwarded-For $remote_addr;`; it
+does not append caller-supplied forwarding values. The API trusts forwarding metadata only from its
+loopback nginx peer (`127.0.0.1`, `::1`, or IPv4-mapped loopback), never through `trustProxy: true`.
+This preserves the one-hop public client IP for audit provenance and prevents direct callers from
+forging it. Adding a CDN or load balancer requires an explicit reviewed trusted-proxy list and
+matching forwarding-boundary tests before that topology is enabled.
 
 ## Runtime files
 
@@ -65,7 +80,12 @@ file instead of creating `/opt/enterprise-hub/runtime.env` locally.
 - `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`
 - `ENTERPRISE_HUB_API_IMAGE`
 - `ENTERPRISE_HUB_WORKER_IMAGE`
+- `ENTERPRISE_HUB_RELEASE_OPS_IMAGE`
 - `ENTERPRISE_HUB_QDRANT_IMAGE`
+
+`ENTERPRISE_HUB_RELEASE_OPS_IMAGE` is a sibling tag in the existing API ACR
+repository: `api:ops-<12-character-git-sha>`. No additional ACR repository,
+registry credential, or runtime secret is needed for release operations.
 
 ## Repeatable deployment
 
@@ -91,24 +111,30 @@ The command performs these gates in order:
 
 1. Refuse a dirty worktree and choose the current 12-character git SHA.
 2. Verify the committed staging SSH host key with strict host checking.
-3. Log in to ACR with password-stdin, build linux/amd64 API and worker images,
-   and push immutable tags.
-4. Scan both images with Trivy; a fixable `CRITICAL` vulnerability stops the
-   release before the server changes.
+3. Log in to ACR with password-stdin, build linux/amd64 API, worker, and
+   release-ops images, and push immutable tags. The release-ops sibling tag is
+   `ops-<12-character-git-sha>` in the existing API repository.
+4. Scan all three images with Trivy and enforce the dependency risk policy.
+   Any high or critical finding, or any moderate finding that is not explicitly
+   registered, blocks CI and the release before server changes. The sole
+   registered ExcelJS read-only XLSX exception must be reviewed by
+   `2027-01-31`.
 5. Install the cursor-signing secret through stdin, upload and validate Compose, preserve the
-   previous Compose/image release, and atomically update only the cursor and API/worker image
-   variables in the existing root-only `runtime.env`. Other runtime secrets are never rewritten.
-6. Pull images, start Qdrant, initialize its collection, run
-   `prisma migrate deploy`, and recreate API/worker.
+   previous Compose/image release, and atomically update only the cursor and API/worker/release-ops
+   image variables in the existing root-only `runtime.env`. Other runtime secrets are never rewritten.
+6. Pull images, start Qdrant, use the ephemeral `release-ops` profile to
+   initialize its collection and run `prisma migrate deploy`, then recreate
+   API/worker.
 7. Verify server-loopback `/healthz` and `/readyz`, public HTTPS `/healthz`, and
    public `/readyz` returning `404`.
 8. Run the fixture-only upload/index/search smoke with a short-lived official synthetic session,
    revoke that session, then record `current-release.env`.
 
 Any rollout/readiness failure after the remote image switch restores the
-previous API/worker images and Compose definition. A public or smoke failure
-also triggers the same rollback. Database migrations are not reversed, so all
-online migrations must remain backward-compatible with the prior image.
+previous API, worker, and release-ops image references plus the Compose
+definition. A public or smoke failure also triggers the same rollback. Prisma
+migrations are forward-only and are never reversed by an image rollback, so
+all online migrations must remain backward-compatible with the prior image.
 
 Useful modes:
 
@@ -205,7 +231,8 @@ restore nginx/certbot before using the repeatable release command.
 
 ## Manual rollback
 
-The release command records the last image/Compose release before switching.
+The release command records the last API/worker/release-ops image references
+and Compose release before switching.
 Restore it and rerun readiness plus fixture smoke with:
 
 ```bash
@@ -214,6 +241,6 @@ npm run deploy:staging:rollback
 
 For an older known tag rather than the immediately previous release, use the
 `--tag ... --skip-build --skip-migrate` form above. A rollback never reverses a
-Prisma migration.
+forward-only Prisma migration.
 
 Do not delete the Qdrant volume or RDS data during a routine image rollback.

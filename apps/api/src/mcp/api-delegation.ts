@@ -4,6 +4,7 @@ import {
   jsonToolResult,
   type McpJsonToolResult
 } from "@enterprise-hub/mcp-contract";
+import type { RequestAuditContext } from "../request-audit-context.js";
 
 export type ApiDelegationMethod = "GET" | "POST";
 
@@ -25,8 +26,8 @@ export interface ApiDelegationInjectResponse {
 
 export interface ApiDelegationContext {
   bearerToken: string;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
+  delegationProof: string;
   abortSignal?: AbortSignal;
   inject(request: ApiDelegationInjectRequest): Promise<ApiDelegationInjectResponse>;
 }
@@ -43,7 +44,7 @@ export async function delegateJsonApiRequest(
   request: DelegateJsonApiRequest
 ): Promise<McpJsonToolResult> {
   if (context.abortSignal?.aborted) {
-    return requestCancelledApiError(context.requestId);
+    return requestCancelledApiError(context.audit.requestId);
   }
 
   try {
@@ -54,16 +55,19 @@ export async function delegateJsonApiRequest(
       headers: {
         authorization: `Bearer ${context.bearerToken}`,
         "content-type": "application/json",
-        "x-forwarded-for": context.clientIp,
-        "x-request-id": context.requestId
+        "x-request-id": context.audit.requestId,
+        "x-enterprise-hub-internal-delegation": context.delegationProof,
+        ...(context.audit.launcherVersion
+          ? { "x-enterprise-hub-launcher-version": context.audit.launcherVersion }
+          : {})
       },
       payload: request.body,
-      remoteAddress: context.clientIp
+      remoteAddress: context.audit.sourceIp
     });
     const parsed = parseJsonResponse(response);
 
     if (!parsed.ok) {
-      return genericApiError(context.requestId);
+      return genericApiError(context.audit.requestId);
     }
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -72,7 +76,7 @@ export async function delegateJsonApiRequest(
 
     return apiErrorToolResult(parsed.value);
   } catch {
-    return genericApiError(context.requestId);
+    return genericApiError(context.audit.requestId);
   }
 }
 

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { delegateJsonApiRequest, type ApiDelegationContext } from "./api-delegation.js";
 
+const delegationProof = Buffer.alloc(32, 0x5a).toString("base64url");
+const audit = Object.freeze({
+  requestId: "req_mcp_123",
+  sourceIp: "203.0.113.10",
+  clientSource: "mcp_launcher" as const,
+  launcherVersion: "0.1.0"
+});
+
 function parseToolResult(result: { content: Array<{ text: string }> }): unknown {
   return JSON.parse(result.content[0]?.text ?? "null");
 }
@@ -10,8 +18,8 @@ describe("MCP API delegation", () => {
     const calls: unknown[] = [];
     const context: ApiDelegationContext = {
       bearerToken: "secret-token",
-      requestId: "req_mcp_123",
-      clientIp: "203.0.113.10",
+      audit,
+      delegationProof,
       async inject(request) {
         calls.push(request);
 
@@ -31,6 +39,7 @@ describe("MCP API delegation", () => {
 
     expect(result.isError).toBe(false);
     expect(parseToolResult(result)).toEqual({ ok: true });
+    expect(JSON.stringify(result)).not.toContain(delegationProof);
     expect(calls).toEqual([
       {
         method: "POST",
@@ -39,8 +48,9 @@ describe("MCP API delegation", () => {
         headers: {
           authorization: "Bearer secret-token",
           "content-type": "application/json",
-          "x-forwarded-for": "203.0.113.10",
-          "x-request-id": "req_mcp_123"
+          "x-request-id": "req_mcp_123",
+          "x-enterprise-hub-internal-delegation": delegationProof,
+          "x-enterprise-hub-launcher-version": "0.1.0"
         },
         payload: { query: "菜单", limit: 5 },
         remoteAddress: "203.0.113.10"
@@ -51,8 +61,8 @@ describe("MCP API delegation", () => {
   it("preserves shared safe API error fields without details", async () => {
     const context: ApiDelegationContext = {
       bearerToken: "secret-token",
-      requestId: "req_mcp_123",
-      clientIp: "203.0.113.10",
+      audit,
+      delegationProof,
       async inject() {
         return {
           statusCode: 403,
@@ -90,8 +100,8 @@ describe("MCP API delegation", () => {
     const token = "secret-token";
     const context: ApiDelegationContext = {
       bearerToken: token,
-      requestId: "req_mcp_123",
-      clientIp: "203.0.113.10",
+      audit,
+      delegationProof,
       async inject() {
         throw new Error(`upstream failed with Bearer ${token}`);
       }
@@ -122,8 +132,8 @@ describe("MCP API delegation", () => {
     const calls: unknown[] = [];
     const context: ApiDelegationContext = {
       bearerToken: token,
-      requestId: "req_mcp_123",
-      clientIp: "203.0.113.10",
+      audit,
+      delegationProof,
       abortSignal: controller.signal,
       async inject(request) {
         calls.push(request);

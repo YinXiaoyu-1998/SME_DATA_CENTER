@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import multipart from "@fastify/multipart";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
@@ -57,11 +57,17 @@ import {
   type StructuredQueryRepository
 } from "./structured-query.js";
 import { registerMcpHttpRoute } from "./mcp/http.js";
-import { AuthCore } from "./auth/auth-core.js";
+import { AuthCore, type AuthRequestAudit } from "./auth/auth-core.js";
 import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
 import { isPayloadTooLargeError, registerApiErrorHandler } from "./request-errors.js";
+import {
+  createRequestAuditContext,
+  isTrustedLoopbackProxy,
+  normalizeRequestId,
+  verifyInternalDelegationProof
+} from "./request-audit-context.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
 export interface ApiServerOptions {
@@ -73,12 +79,16 @@ export interface ApiServerOptions {
   evidenceRepository?: EvidenceSearchRepository;
   storageAdapter?: StorageAdapter;
   authCore?: AuthCore;
-  authenticateAccessToken?: (token: string) => Promise<AuthenticatedEmployee | null>;
+  authenticateAccessToken?: (
+    token: string,
+    audit: AuthRequestAudit
+  ) => Promise<AuthenticatedEmployee | null>;
   cursorSigningSecret?: string;
   logger?: boolean;
   runtimeLimits?: ApiRuntimeLimits;
   runtimeEnv?: NodeJS.ProcessEnv;
   readinessCheck?: () => Promise<ReadinessReport>;
+  internalDelegationProof?: string;
 }
 
 interface AuthenticatedRequest extends FastifyRequest {
@@ -847,6 +857,8 @@ function auditEventResponse(auditLog: AuditLogRecord) {
     metadata: auditLog.metadata,
     requestId: auditLog.requestId,
     clientIp: auditLog.clientIp,
+    clientSource: auditLog.clientSource,
+    launcherVersion: auditLog.launcherVersion,
     createdAt: auditLog.createdAt.toISOString()
   };
 }
@@ -951,7 +963,10 @@ function forbiddenRequestedLabels(
 async function authenticate(
   request: FastifyRequest,
   reply: FastifyReply,
-  authenticateAccessToken: (token: string) => Promise<AuthenticatedEmployee | null>
+  authenticateAccessToken: (
+    token: string,
+    request: FastifyRequest
+  ) => Promise<AuthenticatedEmployee | null>
 ): Promise<boolean> {
   const token = bearerToken(request);
 
@@ -963,7 +978,7 @@ async function authenticate(
   }
 
   try {
-    const employee = await authenticateAccessToken(token);
+    const employee = await authenticateAccessToken(token, request);
     if (!employee) {
       reply
         .code(401)
@@ -990,6 +1005,7 @@ async function authenticate(
 
 export function buildApiServer(options: ApiServerOptions = {}) {
   const environment = options.runtimeEnv ?? process.env;
+  const delegationProof = options.internalDelegationProof ?? randomBytes(32).toString("base64url");
   const legacyEmployeeRepository = options.employeeRepository;
   let documentRepository = options.documentRepository;
   let structuredImportRepository = options.structuredImportRepository;
@@ -1011,18 +1027,45 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     authPrisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
     authCore = new AuthCore(createPrismaAuthCoreRepository(authPrisma));
   }
-  const authenticateOfficialAccessToken =
-    options.authenticateAccessToken ??
-    ((token: string) => {
-      if (!authCore) {
-        throw new Error("Official authentication service is unavailable.");
-      }
-      return authCore.authenticateAccessToken(token);
-    });
+  const authenticateOfficialAccessToken = (token: string, request: FastifyRequest) => {
+    const context = createRequestAuditContext(request, authenticationClientSource(request));
+    const audit: AuthRequestAudit = {
+      requestId: context.requestId,
+      sourceIp: context.sourceIp,
+      launcherVersion: context.launcherVersion
+    };
+    if (options.authenticateAccessToken) {
+      return options.authenticateAccessToken(token, audit);
+    }
+    if (!authCore) {
+      throw new Error("Official authentication service is unavailable.");
+    }
+    return authCore.authenticateAccessToken(token, audit);
+  };
+
+  function authenticationClientSource(request: FastifyRequest) {
+    if (
+      request.url === "/mcp" ||
+      request.url.startsWith("/mcp?") ||
+      verifyInternalDelegationProof(
+        request.headers["x-enterprise-hub-internal-delegation"],
+        delegationProof
+      )
+    ) {
+      return "mcp_launcher" as const;
+    }
+    return "http_api" as const;
+  }
 
   const app = Fastify({
     logger: options.logger ?? true,
-    requestIdHeader: "x-request-id"
+    requestIdHeader: false,
+    genReqId(rawRequest) {
+      return normalizeRequestId(rawRequest.headers["x-request-id"]) ?? `req_${randomUUID()}`;
+    },
+    trustProxy(address) {
+      return isTrustedLoopbackProxy(address);
+    }
   });
 
   registerApiErrorHandler(app);
@@ -1052,6 +1095,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   registerMcpHttpRoute(app, {
     maxUploadBytes: runtimeLimits.maxUploadBytes,
+    delegationProof,
     mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
     publicOrigin: (options.runtimeEnv ?? process.env)["ENTERPRISE_HUB_PUBLIC_ORIGIN"],
     authenticate: async (request, reply) => {
@@ -1064,6 +1108,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       return (request as AuthenticatedRequest).employee;
     }
   });
+
+  function createBusinessRequestAudit(request: FastifyRequest) {
+    return createRequestAuditContext(request, authenticationClientSource(request));
+  }
 
   if (authCore) {
     const publicOrigin = environment["ENTERPRISE_HUB_PUBLIC_ORIGIN"];
@@ -1200,6 +1248,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     const employee = (request as AuthenticatedRequest).employee;
+    const audit = createBusinessRequestAudit(request);
     const orgId = employee.orgId;
     const requestedLabels = await documents().findLabelsByKeys(orgId, upload.labelKeys);
     const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
@@ -1253,8 +1302,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         labelIds: finalLabels.map((label) => label.id),
         labels: finalLabels.map((label) => label.key),
         processingJobType: "evidence_document_index",
-        requestId: request.id,
-        clientIp: request.ip
+        audit
       });
 
       return reply.code(202).send(evidenceUploadResponse(document));
@@ -1308,6 +1356,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     const { query, filters, limit, cursor } = validation;
     const employee = (request as AuthenticatedRequest).employee;
+    const audit = createBusinessRequestAudit(request);
     let result;
     try {
       result = await evidence().searchEvidence({
@@ -1318,8 +1367,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         limit,
         cursor,
         cursorSecret: cursorSigningSecret,
-        requestId: request.id,
-        clientIp: request.ip
+        audit
       });
     } catch (error) {
       if (error instanceof EvidenceSearchCursorError) {
@@ -1377,6 +1425,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
 
     const employee = (request as AuthenticatedRequest).employee;
+    const audit = createBusinessRequestAudit(request);
     const requestedLabels = await documents().findLabelsByKeys(employee.orgId, upload.labelKeys);
     const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
     const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
@@ -1473,8 +1522,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         },
         sourceSheetSummary: validation.sheetSummary,
         totalRowCount: validation.rows.length,
-        requestId: request.id,
-        clientIp: request.ip
+        audit
       });
     } catch (error) {
       if (error instanceof StructuredImportError || hasStructuredImportCode(error)) {
@@ -1534,8 +1582,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         actorEmployeeId: employee.id,
         importBatchId: reservedBatch.id,
         rows: validation.rows,
-        requestId: request.id,
-        clientIp: request.ip
+        audit
       });
       return reply.code(202).send(responseForReservedImport(importBatch));
     } catch (error) {

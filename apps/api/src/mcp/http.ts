@@ -18,9 +18,11 @@ import {
   type EnterpriseHubMcpToolHandlers,
   type McpRequestContext
 } from "./tool-handlers.js";
+import { createRequestAuditContext } from "../request-audit-context.js";
 
 export interface McpHttpRouteOptions {
   maxUploadBytes: number;
+  delegationProof: string;
   mcpMaxConcurrentRequests?: number;
   publicOrigin?: string;
   authenticate: (
@@ -235,8 +237,7 @@ export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRoute
 
           const context: McpRequestContext = {
             employee,
-            requestId: safeRequestId(request),
-            clientIp: peerAddress(request) ?? request.ip
+            audit: createRequestAuditContext(request, "mcp_launcher")
           };
           const bearerToken = bearerTokenFromAuthenticatedRequest(request);
 
@@ -254,8 +255,8 @@ export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRoute
             options.toolHandlers ??
             createEnterpriseHubMcpToolHandlers({
               bearerToken,
-              requestId: context.requestId,
-              clientIp: context.clientIp,
+              audit: context.audit,
+              delegationProof: options.delegationProof,
               maxUploadBytes: options.maxUploadBytes,
               inject: async (delegateRequest) => {
                 const delegatedResponse = await injectFastify(app, {

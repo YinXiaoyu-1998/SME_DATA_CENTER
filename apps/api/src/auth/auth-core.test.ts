@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   AuthCore,
@@ -7,6 +8,18 @@ import {
   type RotateCredentialResult
 } from "./auth-core.js";
 import { hashOpaqueSecret } from "./primitives.js";
+
+const browserAudit = {
+  requestId: "browser_request_1",
+  sourceIp: "198.51.100.7",
+  launcherVersion: null
+};
+const browserEventAudit = { ...browserAudit, launcherVersion: undefined };
+const oauthAudit = {
+  requestId: "oauth_request_1",
+  sourceIp: "203.0.113.9",
+  launcherVersion: "0.1.0"
+};
 
 class MemoryAuthRepository implements AuthCoreRepository {
   identity: LoginIdentityRecord | null = {
@@ -21,31 +34,18 @@ class MemoryAuthRepository implements AuthCoreRepository {
     cooldownUntil: null
   };
   setupGrantInput: Parameters<AuthCoreRepository["replacePasswordSetupGrant"]>[0] | null = null;
-  setupExchangeInput: {
-    grantTokenHash: string;
-    sessionHash: string;
-    expiresAt: Date;
-    now: Date;
-  } | null = null;
-  setupConsumeInput: {
-    sessionHash: string;
-    passwordHash: string;
-    now: Date;
-  } | null = null;
+  setupExchangeInput: Parameters<AuthCoreRepository["exchangePasswordSetupGrant"]>[0] | null = null;
+  setupConsumeInput: Parameters<AuthCoreRepository["consumePasswordSetupSession"]>[0] | null = null;
   sessionBundleInput: Parameters<AuthCoreRepository["createSessionBundle"]>[0] | null = null;
   transactionInput: Parameters<AuthCoreRepository["createAuthorizationTransaction"]>[0] | null =
     null;
-  codeInput: {
-    transactionHash: string;
-    identityId: string;
-    employeeId: string;
-    orgId: string;
-    codeHash: string;
-    codeExpiresAt: Date;
-    now: Date;
-  } | null = null;
+  codeInput:
+    Parameters<AuthCoreRepository["consumeAuthorizationTransactionAndCreateCode"]>[0] | null = null;
   redemptionInput: Parameters<AuthCoreRepository["redeemAuthorizationCode"]>[0] | null = null;
   rotateResult: RotateCredentialResult = { status: "invalid" };
+  rotateInput: unknown = null;
+  authenticationInput: unknown = null;
+  logoutInput: unknown = null;
   authenticationRecord: AccessAuthenticationRecord | null = {
     identityId: "identity-1",
     employeeId: "employee-1",
@@ -105,15 +105,9 @@ class MemoryAuthRepository implements AuthCoreRepository {
     return "transaction-1";
   }
 
-  async consumeAuthorizationTransactionAndCreateCode(input: {
-    transactionHash: string;
-    identityId: string;
-    employeeId: string;
-    orgId: string;
-    codeHash: string;
-    codeExpiresAt: Date;
-    now: Date;
-  }): Promise<{
+  async consumeAuthorizationTransactionAndCreateCode(
+    input: Parameters<AuthCoreRepository["consumeAuthorizationTransactionAndCreateCode"]>[0]
+  ): Promise<{
     codeId: string;
     clientId: string;
     redirectUri: string;
@@ -152,15 +146,18 @@ class MemoryAuthRepository implements AuthCoreRepository {
     return "session-1";
   }
 
-  async rotateDurableCredential(): Promise<RotateCredentialResult> {
+  async rotateDurableCredential(...input: unknown[]): Promise<RotateCredentialResult> {
+    this.rotateInput = input;
     return this.rotateResult;
   }
 
-  async authenticateAccessToken(): Promise<AccessAuthenticationRecord | null> {
+  async authenticateAccessToken(...input: unknown[]): Promise<AccessAuthenticationRecord | null> {
+    this.authenticationInput = input;
     return this.authenticationRecord;
   }
 
-  async revokeSessionByDurableCredential(): Promise<boolean> {
+  async revokeSessionByDurableCredential(...input: unknown[]): Promise<boolean> {
+    this.logoutInput = input;
     return true;
   }
 
@@ -195,7 +192,7 @@ describe("AuthCore", () => {
     const repository = new MemoryAuthRepository();
     const core = new AuthCore(repository);
 
-    const exchanged = await core.exchangePasswordSetupGrant("eh_ps_raw-grant");
+    const exchanged = await core.exchangePasswordSetupGrant("eh_ps_raw-grant", browserAudit);
 
     expect(exchanged?.sessionSecret).toMatch(/^eh_ps_/);
     expect(exchanged?.purpose).toBe("password_reset");
@@ -215,10 +212,11 @@ describe("AuthCore", () => {
     const core = new AuthCore(repository);
 
     await expect(
-      core.consumePasswordSetupSession("eh_ps_setup-session", "correct horse")
+      core.consumePasswordSetupSession("eh_ps_setup-session", "correct horse", browserAudit)
     ).resolves.toBe(true);
 
     expect(repository.setupConsumeInput?.sessionHash).toBe(hashOpaqueSecret("eh_ps_setup-session"));
+    expect(repository.setupConsumeInput).toMatchObject({ audit: browserAudit });
     expect(JSON.stringify(repository.setupConsumeInput)).not.toContain("correct horse");
   });
 
@@ -227,7 +225,9 @@ describe("AuthCore", () => {
     repository.identity = null;
     const core = new AuthCore(repository);
 
-    await expect(core.verifyLogin("missing@example.com", "wrong password")).resolves.toEqual({
+    await expect(
+      core.verifyLogin("missing@example.com", "wrong password", browserAudit)
+    ).resolves.toEqual({
       ok: false,
       reason: "invalid_credentials"
     });
@@ -244,10 +244,12 @@ describe("AuthCore", () => {
     };
     const core = new AuthCore(repository);
 
-    await expect(core.verifyLogin("person@example.com", "anything")).resolves.toEqual({
-      ok: false,
-      reason: "invalid_credentials"
-    });
+    await expect(core.verifyLogin("person@example.com", "anything", browserAudit)).resolves.toEqual(
+      {
+        ok: false,
+        reason: "invalid_credentials"
+      }
+    );
     expect(repository.failureCalls).toBe(0);
   });
 
@@ -257,7 +259,9 @@ describe("AuthCore", () => {
     const passwordHash = await core.hashAcceptedPassword("correct horse");
     repository.identity = { ...repository.identity!, passwordHash };
 
-    await expect(core.verifyLogin("person@example.com", "correct horse")).resolves.toEqual({
+    await expect(
+      core.verifyLogin("person@example.com", "correct horse", browserAudit)
+    ).resolves.toEqual({
       ok: true,
       identityId: "identity-1",
       employeeId: "employee-1",
@@ -269,7 +273,8 @@ describe("AuthCore", () => {
         type: "password_login_succeeded",
         outcome: "succeeded",
         identityId: "identity-1",
-        employeeId: "employee-1"
+        employeeId: "employee-1",
+        ...browserEventAudit
       })
     );
   });
@@ -283,11 +288,15 @@ describe("AuthCore", () => {
     };
     repository.failureCooldownUntil = new Date(Date.now() + 300_000);
 
-    await core.verifyLogin("person@example.com", "wrong password");
+    await core.verifyLogin("person@example.com", "wrong password", browserAudit);
 
     expect(repository.securityEvents.map((event) => event.type)).toEqual([
       "password_login_failed",
       "password_cooldown_entered"
+    ]);
+    expect(repository.securityEvents).toEqual([
+      expect.objectContaining(browserEventAudit),
+      expect.objectContaining(browserEventAudit)
     ]);
     expect(JSON.stringify(repository.securityEvents)).not.toContain("wrong password");
   });
@@ -302,7 +311,9 @@ describe("AuthCore", () => {
       employeeDisabled: true
     };
 
-    await expect(core.verifyLogin("person@example.com", "correct horse")).resolves.toEqual({
+    await expect(
+      core.verifyLogin("person@example.com", "correct horse", browserAudit)
+    ).resolves.toEqual({
       ok: false,
       reason: "invalid_credentials"
     });
@@ -319,11 +330,14 @@ describe("AuthCore", () => {
       state: "launcher-state",
       pkceChallenge: "challenge"
     });
-    const session = await core.createSession({
-      identityId: "identity-1",
-      employeeId: "employee-1",
-      orgId: "org-1"
-    });
+    const session = await core.createSession(
+      {
+        identityId: "identity-1",
+        employeeId: "employee-1",
+        orgId: "org-1"
+      },
+      oauthAudit
+    );
 
     expect(transaction.secret).toMatch(/^eh_tx_/);
     expect(session.durableCredential).toMatch(/^eh_rt_/);
@@ -335,6 +349,7 @@ describe("AuthCore", () => {
     expect(repository.sessionBundleInput?.accessTokenHash).toBe(
       hashOpaqueSecret(session.accessToken)
     );
+    expect(repository.sessionBundleInput).toMatchObject({ audit: oauthAudit });
     expect(JSON.stringify(repository.sessionBundleInput)).not.toContain(session.durableCredential);
     expect(JSON.stringify(repository.sessionBundleInput)).not.toContain(session.accessToken);
   });
@@ -343,11 +358,15 @@ describe("AuthCore", () => {
     const repository = new MemoryAuthRepository();
     const core = new AuthCore(repository);
 
-    const completed = await core.completeAuthorizationTransaction("eh_tx_cookie", {
-      identityId: "identity-1",
-      employeeId: "employee-1",
-      orgId: "org-1"
-    });
+    const completed = await core.completeAuthorizationTransaction(
+      "eh_tx_cookie",
+      {
+        identityId: "identity-1",
+        employeeId: "employee-1",
+        orgId: "org-1"
+      },
+      browserAudit
+    );
 
     expect(completed).toEqual({
       codeId: "code-1",
@@ -358,6 +377,7 @@ describe("AuthCore", () => {
       expiresAt: expect.any(Date)
     });
     expect(repository.codeInput?.codeHash).toBe(hashOpaqueSecret(completed!.code));
+    expect(repository.codeInput).toMatchObject({ audit: browserAudit });
     expect(JSON.stringify(repository.codeInput)).not.toContain(completed!.code);
   });
 
@@ -366,16 +386,20 @@ describe("AuthCore", () => {
     const core = new AuthCore(repository);
     const verifier = "raw-pkce-verifier-that-never-reaches-the-repository";
 
-    await core.redeemAuthorizationCode({
-      secret: "eh_ac_code",
-      clientId: "enterprise-hub-desktop-launcher",
-      redirectUri: "http://127.0.0.1:43123/callback",
-      verifier
-    });
+    await core.redeemAuthorizationCode(
+      {
+        secret: "eh_ac_code",
+        clientId: "enterprise-hub-desktop-launcher",
+        redirectUri: "http://127.0.0.1:43123/callback",
+        verifier
+      },
+      oauthAudit
+    );
 
     expect(repository.redemptionInput?.pkceChallenge).toBe(
       createHash("sha256").update(verifier).digest("base64url")
     );
+    expect(repository.redemptionInput).toMatchObject({ audit: oauthAudit });
     expect(JSON.stringify(repository.redemptionInput)).not.toContain(verifier);
   });
 
@@ -390,27 +414,34 @@ describe("AuthCore", () => {
     };
     const core = new AuthCore(repository);
 
-    const result = await core.rotateDurableCredential("eh_rt_old");
+    const result = await core.rotateDurableCredential("eh_rt_old", oauthAudit);
 
     expect(result.status).toBe("rotated");
     if (result.status === "rotated") {
       expect(result.durableCredential).toMatch(/^eh_rt_/);
       expect(result.accessToken).toMatch(/^eh_at_/);
     }
+    expect(repository.rotateInput).toEqual([
+      expect.objectContaining({
+        presentedCredentialHash: hashOpaqueSecret("eh_rt_old"),
+        audit: oauthAudit
+      })
+    ]);
   });
 
   it("writes a credential-free renewal failure for an invalid durable credential", async () => {
     const repository = new MemoryAuthRepository();
     const core = new AuthCore(repository);
 
-    await expect(core.rotateDurableCredential("eh_rt_invalid")).resolves.toEqual({
+    await expect(core.rotateDurableCredential("eh_rt_invalid", oauthAudit)).resolves.toEqual({
       status: "invalid"
     });
     expect(repository.securityEvents).toContainEqual(
       expect.objectContaining({
         type: "renewal_failed",
         outcome: "failed",
-        reason: "invalid_or_expired_credential"
+        reason: "invalid_or_expired_credential",
+        ...oauthAudit
       })
     );
     expect(JSON.stringify(repository.securityEvents)).not.toContain("eh_rt_invalid");
@@ -424,14 +455,40 @@ describe("AuthCore", () => {
       ...repository.authenticationRecord!,
       identityDisabled: true
     };
-    await expect(core.authenticateAccessToken("eh_at_token")).resolves.toBeNull();
+    await expect(core.authenticateAccessToken("eh_at_token", oauthAudit)).resolves.toBeNull();
 
     repository.authenticationRecord = {
       ...repository.authenticationRecord!,
       identityDisabled: false,
       employeeDisabled: true
     };
-    await expect(core.authenticateAccessToken("eh_at_token")).resolves.toBeNull();
+    await expect(core.authenticateAccessToken("eh_at_token", oauthAudit)).resolves.toBeNull();
+  });
+
+  it("passes route-derived audit metadata into access-token authentication", async () => {
+    const repository = new MemoryAuthRepository();
+    const core = new AuthCore(repository);
+
+    await core.authenticateAccessToken("eh_at_token", oauthAudit);
+
+    expect(repository.authenticationInput).toEqual([
+      hashOpaqueSecret("eh_at_token"),
+      expect.any(Date),
+      oauthAudit
+    ]);
+  });
+
+  it("passes OAuth request metadata into logout events", async () => {
+    const repository = new MemoryAuthRepository();
+    const core = new AuthCore(repository);
+
+    await core.logout("eh_rt_token", oauthAudit);
+
+    expect(repository.logoutInput).toEqual([
+      hashOpaqueSecret("eh_rt_token"),
+      "logout",
+      expect.any(Date),
+      oauthAudit
+    ]);
   });
 });
-import { createHash } from "node:crypto";

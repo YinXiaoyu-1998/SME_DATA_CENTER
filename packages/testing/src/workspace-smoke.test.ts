@@ -8,6 +8,7 @@ const expectedWorkspaceNames = [
   "@enterprise-hub/db",
   "@enterprise-hub/domain",
   "@enterprise-hub/mcp-contract",
+  "@enterprise-hub/release-ops",
   "@enterprise-hub/storage",
   "@enterprise-hub/structured-ingestion",
   "@enterprise-hub/testing",

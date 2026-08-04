@@ -37,7 +37,7 @@ jobs:
         )
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     concurrency:
       group: enterprise-hub-staging
       cancel-in-progress: false

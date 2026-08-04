@@ -18,6 +18,7 @@ import type {
   DocumentTypeName
 } from "@enterprise-hub/domain";
 import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
+import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface CatalogLabel {
   id: string;
@@ -45,8 +46,7 @@ export interface CreateUploadedDocumentInput {
   labelIds: string[];
   labels: string[];
   processingJobType: ProcessingJobTypeName;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
 }
 
 export interface DocumentStatusRecord {
@@ -74,8 +74,7 @@ export interface ArchiveDocumentInput {
   orgId: string;
   documentId: string;
   actorEmployeeId: string;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
 }
 
 export interface AddDocumentLabelsInput {
@@ -84,8 +83,7 @@ export interface AddDocumentLabelsInput {
   actorEmployeeId: string;
   labelIds: string[];
   labelKeys: string[];
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
 }
 
 export interface AuditLogRecord {
@@ -98,6 +96,8 @@ export interface AuditLogRecord {
   metadata: Record<string, unknown> | null;
   requestId: string | null;
   clientIp: string | null;
+  clientSource: string | null;
+  launcherVersion: string | null;
   createdAt: Date;
 }
 
@@ -115,8 +115,7 @@ export interface AppendAuditLogInput {
   targetId: string | null;
   result: string;
   metadata?: Record<string, unknown> | null;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
 }
 
 export interface ListAuditLogsResult {
@@ -294,8 +293,10 @@ export function createPrismaDocumentCatalogRepository(
               labelKeys: input.labels,
               storageObjectKey: input.storageObjectKey
             },
-            requestId: input.requestId,
-            clientIp: input.clientIp
+            requestId: input.audit.requestId,
+            clientIp: input.audit.sourceIp,
+            clientSource: input.audit.clientSource,
+            launcherVersion: input.audit.launcherVersion
           }
         });
 
@@ -326,8 +327,10 @@ export function createPrismaDocumentCatalogRepository(
           targetId: input.targetId,
           result: input.result,
           metadata: (input.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-          requestId: input.requestId,
-          clientIp: input.clientIp
+          requestId: input.audit.requestId,
+          clientIp: input.audit.sourceIp,
+          clientSource: input.audit.clientSource,
+          launcherVersion: input.audit.launcherVersion
         }
       });
     },
@@ -366,8 +369,10 @@ export function createPrismaDocumentCatalogRepository(
             metadata: {
               previousStatus: existingDocument.status
             },
-            requestId: input.requestId,
-            clientIp: input.clientIp
+            requestId: input.audit.requestId,
+            clientIp: input.audit.sourceIp,
+            clientSource: input.audit.clientSource,
+            launcherVersion: input.audit.launcherVersion
           }
         });
 
@@ -418,6 +423,8 @@ function toAuditLogRecord(auditLog: Prisma.AuditLogGetPayload<object>): AuditLog
     metadata: toMetadataRecord(auditLog.metadata),
     requestId: auditLog.requestId,
     clientIp: auditLog.clientIp,
+    clientSource: auditLog.clientSource,
+    launcherVersion: auditLog.launcherVersion,
     createdAt: auditLog.createdAt
   };
 }

@@ -3,6 +3,14 @@ import type { EnterpriseHubMcpToolName } from "@enterprise-hub/mcp-contract";
 import type { ApiDelegationContext, ApiDelegationInjectRequest } from "./api-delegation.js";
 import { READ_ONLY_MCP_TOOL_NAMES, createReadOnlyMcpToolHandlers } from "./read-tools.js";
 
+const delegationProof = Buffer.alloc(32, 0x5a).toString("base64url");
+const audit = Object.freeze({
+  requestId: "req_mcp_123",
+  sourceIp: "198.51.100.25",
+  clientSource: "mcp_launcher" as const,
+  launcherVersion: null
+});
+
 function parseToolResult(result: { content: Array<{ text: string }> }): unknown {
   return JSON.parse(result.content[0]?.text ?? "null");
 }
@@ -11,8 +19,8 @@ function createCapturingDelegate(token = "manager-token") {
   const calls: ApiDelegationInjectRequest[] = [];
   const context: ApiDelegationContext = {
     bearerToken: token,
-    requestId: "req_mcp_123",
-    clientIp: "198.51.100.25",
+    audit,
+    delegationProof,
     async inject(request) {
       calls.push(request);
 
@@ -196,8 +204,8 @@ describe("read-only MCP tool handlers", () => {
     const calls: ApiDelegationInjectRequest[] = [];
     const handlers = createReadOnlyMcpToolHandlers({
       bearerToken: token,
-      requestId: "req_mcp_123",
-      clientIp: "198.51.100.25",
+      audit,
+      delegationProof,
       abortSignal: controller.signal,
       async inject(request) {
         calls.push(request);

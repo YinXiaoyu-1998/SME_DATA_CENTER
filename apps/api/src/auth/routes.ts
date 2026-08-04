@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { AuthCore } from "./auth-core.js";
+import { createRequestAuditContext, type RequestAuditContext } from "../request-audit-context.js";
+import type { AuthCore, AuthRequestAudit } from "./auth-core.js";
 import {
   OAUTH_CLIENT_ID,
   OAUTH_TRANSACTION_COOKIE,
@@ -22,7 +23,6 @@ import {
 import { validatePassword } from "./primitives.js";
 
 const MINIMUM_LAUNCHER_VERSION = "0.1.0";
-const LAUNCHER_VERSION_HEADER = "x-enterprise-hub-launcher-version";
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
 const INVALID_LOGIN_MESSAGE = "The email or password is incorrect.";
 const INVALID_SETUP_MESSAGE = "This password setup link is invalid or expired.";
@@ -110,7 +110,8 @@ export function registerOfficialAuthRoutes(
       );
     }
 
-    const result = await options.auth.verifyLogin(body.email ?? "", body.password ?? "");
+    const audit = authAudit(createRequestAuditContext(request, "browser_auth"));
+    const result = await options.auth.verifyLogin(body.email ?? "", body.password ?? "", audit);
     if (!result.ok) {
       return sendHtml(
         reply.code(401),
@@ -125,7 +126,8 @@ export function registerOfficialAuthRoutes(
 
     const completed = await options.auth.completeAuthorizationTransaction(
       transactionSecret,
-      result
+      result,
+      audit
     );
     if (!completed) {
       return sendHtml(
@@ -148,7 +150,8 @@ export function registerOfficialAuthRoutes(
   });
 
   app.post<{ Body: FormBody }>("/oauth/token", async (request, reply) => {
-    if (!isSupportedLauncherVersion(request.headers[LAUNCHER_VERSION_HEADER])) {
+    const context = createRequestAuditContext(request, "oauth_launcher");
+    if (!isSupportedLauncherVersion(context.launcherVersion)) {
       return reply.code(426).send({
         error: "invalid_client",
         error_description: "LAUNCHER_UPGRADE_REQUIRED",
@@ -156,6 +159,7 @@ export function registerOfficialAuthRoutes(
         minimum_version: MINIMUM_LAUNCHER_VERSION
       });
     }
+    const audit = authAudit(context);
 
     const body = request.body;
     if (!body || body.client_id !== OAUTH_CLIENT_ID) {
@@ -166,16 +170,19 @@ export function registerOfficialAuthRoutes(
       if (!body.code || !body.redirect_uri || !body.code_verifier) {
         return oauthError(reply, 400, "invalid_request", "Required token fields are missing.");
       }
-      const redemption = await options.auth.redeemAuthorizationCode({
-        secret: body.code,
-        clientId: body.client_id,
-        redirectUri: body.redirect_uri,
-        verifier: body.code_verifier
-      });
+      const redemption = await options.auth.redeemAuthorizationCode(
+        {
+          secret: body.code,
+          clientId: body.client_id,
+          redirectUri: body.redirect_uri,
+          verifier: body.code_verifier
+        },
+        audit
+      );
       if (redemption.status !== "redeemed") {
         return oauthError(reply, 400, "invalid_grant", "The authorization grant is invalid.");
       }
-      const session = await options.auth.createSession(redemption);
+      const session = await options.auth.createSession(redemption, audit);
       return tokenResponse(reply, session.accessToken, session.durableCredential);
     }
 
@@ -183,7 +190,7 @@ export function registerOfficialAuthRoutes(
       if (!body.refresh_token) {
         return oauthError(reply, 400, "invalid_request", "The refresh token is missing.");
       }
-      const rotation = await options.auth.rotateDurableCredential(body.refresh_token);
+      const rotation = await options.auth.rotateDurableCredential(body.refresh_token, audit);
       if (rotation.status !== "rotated") {
         return oauthError(reply, 400, "invalid_grant", "The refresh token is invalid.");
       }
@@ -194,8 +201,9 @@ export function registerOfficialAuthRoutes(
   });
 
   app.post<{ Body: FormBody }>("/oauth/revoke", async (request, reply) => {
+    const audit = authAudit(createRequestAuditContext(request, "oauth_launcher"));
     if (request.body?.token) {
-      await options.auth.logout(request.body.token);
+      await options.auth.logout(request.body.token, audit);
     }
     return reply.header("cache-control", "no-store").code(200).send();
   });
@@ -205,8 +213,9 @@ export function registerOfficialAuthRoutes(
   );
 
   app.post<{ Body: FormBody }>("/auth/password/setup/session", async (request, reply) => {
+    const audit = authAudit(createRequestAuditContext(request, "browser_auth"));
     const setup = request.body?.token
-      ? await options.auth.exchangePasswordSetupGrant(request.body.token)
+      ? await options.auth.exchangePasswordSetupGrant(request.body.token, audit)
       : null;
     if (!setup) {
       return sendHtml(
@@ -263,7 +272,8 @@ export function registerOfficialAuthRoutes(
       return passwordSetupFormError(reply, setupSecret, passwordValidation.reason);
     }
 
-    if (!(await options.auth.consumePasswordSetupSession(setupSecret, body.password))) {
+    const audit = authAudit(createRequestAuditContext(request, "browser_auth"));
+    if (!(await options.auth.consumePasswordSetupSession(setupSecret, body.password, audit))) {
       return passwordSetupFormError(reply, setupSecret, INVALID_SETUP_MESSAGE);
     }
 
@@ -338,8 +348,16 @@ function passwordSetupFormError(reply: FastifyReply, setupSecret: string | null,
   );
 }
 
-function isSupportedLauncherVersion(value: string | string[] | undefined): boolean {
-  const version = Array.isArray(value) ? value[0] : value;
+function authAudit(context: RequestAuditContext): AuthRequestAudit {
+  return {
+    requestId: context.requestId,
+    sourceIp: context.sourceIp,
+    launcherVersion: context.launcherVersion
+  };
+}
+
+function isSupportedLauncherVersion(value: string | null): boolean {
+  const version = value;
   if (!version) {
     return false;
   }

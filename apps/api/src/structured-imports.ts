@@ -19,6 +19,7 @@ import type {
   StructuredDatasetName
 } from "@enterprise-hub/domain";
 import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
+import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface StructuredImportRowInput {
   sourceRowNumber: number;
@@ -67,8 +68,7 @@ export interface ReserveStructuredImportInput {
   };
   sourceSheetSummary: unknown[];
   totalRowCount: number;
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
 }
 
 export interface ApplyReservedStructuredImportInput {
@@ -76,8 +76,7 @@ export interface ApplyReservedStructuredImportInput {
   actorEmployeeId: string;
   importBatchId: string;
   rows: StructuredImportRowInput[];
-  requestId: string;
-  clientIp: string;
+  audit: RequestAuditContext;
 }
 
 export interface MarkStructuredImportStorageFailureInput {
@@ -340,8 +339,10 @@ export function createPrismaStructuredImportRepository(options: {
                   rowCount: input.totalRowCount,
                   sourceDocumentId: input.documentId
                 },
-                requestId: input.requestId,
-                clientIp: input.clientIp
+                requestId: input.audit.requestId,
+                clientIp: input.audit.sourceIp,
+                clientSource: input.audit.clientSource,
+                launcherVersion: input.audit.launcherVersion
               }
             });
 
@@ -440,8 +441,10 @@ export function createPrismaStructuredImportRepository(options: {
                 appliedRowCount: input.rows.length,
                 sourceDocumentId: batch.sourceDocumentId
               },
-              requestId: input.requestId,
-              clientIp: input.clientIp
+              requestId: input.audit.requestId,
+              clientIp: input.audit.sourceIp,
+              clientSource: input.audit.clientSource,
+              launcherVersion: input.audit.launcherVersion
             }
           });
           return toImportBatchRecord(batch);

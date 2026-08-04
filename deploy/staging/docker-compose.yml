@@ -35,5 +35,14 @@ services:
     depends_on:
       - qdrant
 
+  release-ops:
+    image: ${ENTERPRISE_HUB_RELEASE_OPS_IMAGE}
+    profiles: ["release"]
+    network_mode: host
+    env_file:
+      - ${ENTERPRISE_HUB_RUNTIME_ENV_FILE:-/opt/enterprise-hub/runtime.env}
+    environment:
+      NODE_ENV: production
+
 volumes:
   qdrant_data:

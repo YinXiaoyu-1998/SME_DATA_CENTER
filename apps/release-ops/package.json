@@ -1,0 +1,10 @@
+{
+  "name": "@enterprise-hub/release-ops",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@enterprise-hub/api": "0.0.0",
+    "prisma": "7.9.1"
+  }
+}
