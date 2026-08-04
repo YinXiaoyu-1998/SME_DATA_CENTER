@@ -137,6 +137,10 @@ describe("deploy-staging remote scripts", () => {
 
     expect(rollout).toContain("compose --profile release run -T --rm release-ops");
     expect(rollout).not.toContain("compose run -T --rm api npm run db:migrate:deploy");
+    expect(rollout).not.toContain("release-ops npm run db:migrate:deploy");
+    expect(rollout).toContain(
+      "release-ops node node_modules/prisma/build/index.js migrate deploy --config packages/db/prisma.config.ts"
+    );
     expect(smokeCommand).toContain("node dist/release/staging-smoke.js");
   });
 
