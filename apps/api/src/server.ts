@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { extname } from "node:path";
+import { performance } from "node:perf_hooks";
 import multipart from "@fastify/multipart";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
@@ -49,7 +50,8 @@ import {
   createPrismaStructuredImportRepository,
   StructuredImportError,
   type StructuredImportBatchRecord,
-  type StructuredImportRepository
+  type StructuredImportRepository,
+  type StructuredImportTimingEvent
 } from "./structured-imports.js";
 import { loadApiRuntimeLimits, type ApiRuntimeLimits } from "./config/runtime-limits.js";
 import {
@@ -788,6 +790,10 @@ function responseForReservedImport(importBatch: StructuredImportBatchRecord) {
   });
 }
 
+function timingDurationMs(started: number): number {
+  return Number((performance.now() - started).toFixed(3));
+}
+
 function importBatchResponse(importBatch: StructuredImportBatchRecord) {
   return {
     importBatchId: importBatch.id,
@@ -1383,6 +1389,47 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     };
   });
   app.post("/v1/structured/imports", async (request, reply) => {
+    const importRequestStarted = performance.now();
+    const timingContext: Record<string, unknown> = {};
+    const logTiming = (stage: string, started: number, extra: Record<string, unknown> = {}) => {
+      request.log.info(
+        {
+          event: "structured_import_timing",
+          stage,
+          durationMs: timingDurationMs(started),
+          elapsedMs: timingDurationMs(importRequestStarted),
+          ...timingContext,
+          ...extra
+        },
+        "structured import timing"
+      );
+    };
+    const logApplyTiming = (event: StructuredImportTimingEvent) => {
+      request.log.info(
+        {
+          event: "structured_import_timing",
+          elapsedMs: timingDurationMs(importRequestStarted),
+          ...timingContext,
+          ...event,
+          stage: event.stage,
+          durationMs: event.durationMs
+        },
+        "structured import timing"
+      );
+    };
+    const measureTiming = async <T>(
+      stage: string,
+      workload: () => Promise<T>,
+      extra: Record<string, unknown> = {}
+    ): Promise<T> => {
+      const started = performance.now();
+      try {
+        return await workload();
+      } finally {
+        logTiming(stage, started, extra);
+      }
+    };
+
     const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
 
     if (!authenticated) {
@@ -1392,8 +1439,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     let upload: ParsedStructuredImportUpload;
 
     try {
-      upload = await parseStructuredImportUpload(request);
+      upload = await measureTiming("upload.parse_multipart", () =>
+        parseStructuredImportUpload(request)
+      );
     } catch (error) {
+      logTiming("upload.total", importRequestStarted, { outcome: "invalid_multipart" });
       if (isPayloadTooLargeError(error)) {
         throw error;
       }
@@ -1405,9 +1455,12 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       );
     }
 
+    const metadataValidationStarted = performance.now();
     const metadataValidation = validateStructuredImportMetadata(upload);
+    logTiming("upload.validate_metadata", metadataValidationStarted);
 
     if (!metadataValidation.ok) {
+      logTiming("upload.total", importRequestStarted, { outcome: "invalid_metadata" });
       return validationError(reply, metadataValidation.code, metadataValidation.message);
     }
 
@@ -1417,6 +1470,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     const idempotencyKey = upload.idempotencyKey;
 
     if (!uploadedFile || !enterpriseName || !idempotencyKey) {
+      logTiming("upload.total", importRequestStarted, { outcome: "incomplete_metadata" });
       return validationError(
         reply,
         "INVALID_STRUCTURED_IMPORT_METADATA",
@@ -1426,53 +1480,70 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     const employee = (request as AuthenticatedRequest).employee;
     const audit = createBusinessRequestAudit(request);
-    const requestedLabels = await documents().findLabelsByKeys(employee.orgId, upload.labelKeys);
+    Object.assign(timingContext, {
+      dataset,
+      fileType,
+      fileByteSize: uploadedFile.body.byteLength
+    });
+    const requestedLabels = await measureTiming("upload.resolve_labels", () =>
+      documents().findLabelsByKeys(employee.orgId, upload.labelKeys)
+    );
     const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
     const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
 
     if (missingLabelKeys.length > 0) {
+      logTiming("upload.total", importRequestStarted, { outcome: "unknown_label" });
       return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
     }
 
     const forbiddenLabelKeys = forbiddenRequestedLabels(employee, requestedLabels);
 
     if (forbiddenLabelKeys.length > 0) {
+      logTiming("upload.total", importRequestStarted, { outcome: "forbidden_label" });
       return reply
         .code(403)
         .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
     }
 
     if (requestedLabels.length === 0) {
+      logTiming("upload.total", importRequestStarted, { outcome: "unlabeled_document" });
       return validationError(reply, "UNLABELED_DOCUMENT", "Structured import must have labels.");
     }
 
     let validation: Awaited<ReturnType<typeof parseStructuredFile>>;
 
     try {
-      validation = await parseStructuredFile({
-        dataset,
-        content: uploadedFile.body,
-        fileType,
-        startDate,
-        endDate,
-        fileName: uploadedFile.fileName,
-        limits: {
-          maxStructuredImportRows: runtimeLimits.maxStructuredImportRows,
-          maxXlsxSheets: runtimeLimits.maxXlsxSheets,
-          maxStructuredCellChars: runtimeLimits.maxStructuredCellChars,
-          maxXlsxUncompressedBytes: runtimeLimits.maxXlsxUncompressedBytes,
-          maxXlsxZipEntries: runtimeLimits.maxXlsxZipEntries,
-          maxXlsxCompressionRatio: runtimeLimits.maxXlsxCompressionRatio
-        }
-      });
+      validation = await measureTiming("upload.parse_file", () =>
+        parseStructuredFile({
+          dataset,
+          content: uploadedFile.body,
+          fileType,
+          startDate,
+          endDate,
+          fileName: uploadedFile.fileName,
+          limits: {
+            maxStructuredImportRows: runtimeLimits.maxStructuredImportRows,
+            maxXlsxSheets: runtimeLimits.maxXlsxSheets,
+            maxStructuredCellChars: runtimeLimits.maxStructuredCellChars,
+            maxXlsxUncompressedBytes: runtimeLimits.maxXlsxUncompressedBytes,
+            maxXlsxZipEntries: runtimeLimits.maxXlsxZipEntries,
+            maxXlsxCompressionRatio: runtimeLimits.maxXlsxCompressionRatio
+          }
+        })
+      );
     } catch (error) {
       request.log.warn({ err: error }, "structured import validation failed");
+      logTiming("upload.total", importRequestStarted, { outcome: "parse_failed" });
       return validationError(
         reply,
         "STRUCTURED_IMPORT_VALIDATION_FAILED",
         "Structured import validation failed."
       );
     }
+    Object.assign(timingContext, {
+      rowCount: validation.rows.length,
+      sheetCount: validation.sheetSummary.length
+    });
 
     const candidateDocumentId = createDocumentId();
     const originalFileName = uploadedFile.fileName;
@@ -1500,31 +1571,37 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
     let reservation: Awaited<ReturnType<StructuredImportRepository["reserveStructuredImport"]>>;
     try {
-      reservation = await structuredImports().reserveStructuredImport({
-        orgId: employee.orgId,
-        actorEmployeeId: employee.id,
-        documentId: candidateDocumentId,
-        dataset,
-        fileType,
-        startDate,
-        endDate,
-        idempotencyKey,
-        requestFingerprint,
-        document: {
-          title: `${enterpriseName}_${dataset}_${startDate}_${endDate}`,
-          storageObjectKey: candidateStorageObjectKey,
-          originalFileName,
-          contentType: uploadedFile.contentType,
-          byteSize: uploadedFile.body.byteLength,
-          checksumSha256: fileHash,
-          labelIds: requestedLabels.map((label) => label.id),
-          labels: requestedLabels.map((label) => label.key).sort()
-        },
-        sourceSheetSummary: validation.sheetSummary,
-        totalRowCount: validation.rows.length,
-        audit
-      });
+      reservation = await measureTiming(
+        "upload.reserve_import",
+        () =>
+          structuredImports().reserveStructuredImport({
+            orgId: employee.orgId,
+            actorEmployeeId: employee.id,
+            documentId: candidateDocumentId,
+            dataset,
+            fileType,
+            startDate,
+            endDate,
+            idempotencyKey,
+            requestFingerprint,
+            document: {
+              title: `${enterpriseName}_${dataset}_${startDate}_${endDate}`,
+              storageObjectKey: candidateStorageObjectKey,
+              originalFileName,
+              contentType: uploadedFile.contentType,
+              byteSize: uploadedFile.body.byteLength,
+              checksumSha256: fileHash,
+              labelIds: requestedLabels.map((label) => label.id),
+              labels: requestedLabels.map((label) => label.key).sort()
+            },
+            sourceSheetSummary: validation.sheetSummary,
+            totalRowCount: validation.rows.length,
+            audit
+          }),
+        { sourceDocumentId: candidateDocumentId }
+      );
     } catch (error) {
+      logTiming("upload.total", importRequestStarted, { outcome: "reservation_failed" });
       if (error instanceof StructuredImportError || hasStructuredImportCode(error)) {
         return reply
           .code(409)
@@ -1536,19 +1613,26 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
     }
 
+    Object.assign(timingContext, {
+      importBatchId: reservation.importBatch.id,
+      sourceDocumentId: reservation.importBatch.sourceDocumentId
+    });
     if (reservation.state === "existing") {
+      logTiming("upload.total", importRequestStarted, { outcome: "existing" });
       return reply.code(202).send(responseForReservedImport(reservation.importBatch));
     }
 
     const reservedBatch = reservation.importBatch;
     try {
-      const storedObject = await storage().putObject({
-        orgId: employee.orgId,
-        documentId: reservedBatch.sourceDocumentId,
-        fileName: canonicalFileName,
-        body: uploadedFile.body,
-        contentType: uploadedFile.contentType
-      });
+      const storedObject = await measureTiming("upload.put_storage_object", () =>
+        storage().putObject({
+          orgId: employee.orgId,
+          documentId: reservedBatch.sourceDocumentId,
+          fileName: canonicalFileName,
+          body: uploadedFile.body,
+          contentType: uploadedFile.contentType
+        })
+      );
       if (
         storedObject.key !== reservedBatch.storageObjectKey ||
         storedObject.hash !== fileHash ||
@@ -1565,31 +1649,38 @@ export function buildApiServer(options: ApiServerOptions = {}) {
           errorSummary: error instanceof Error ? error.message : "Storage write failed."
         });
         if (authoritative.status === "applied") {
+          logTiming("upload.total", importRequestStarted, { outcome: "storage_failed_applied" });
           return reply.code(202).send(responseForReservedImport(authoritative));
         }
       } catch (markError) {
         request.log.error({ err: markError }, "failed to record structured storage failure");
       }
       request.log.error({ err: error }, "structured import storage publication failed");
+      logTiming("upload.total", importRequestStarted, { outcome: "storage_failed" });
       return reply
         .code(500)
         .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
     }
 
     try {
-      const importBatch = await structuredImports().applyReservedStructuredImport({
-        orgId: employee.orgId,
-        actorEmployeeId: employee.id,
-        importBatchId: reservedBatch.id,
-        rows: validation.rows,
-        audit
-      });
+      const importBatch = await measureTiming("upload.apply_import", () =>
+        structuredImports().applyReservedStructuredImport({
+          orgId: employee.orgId,
+          actorEmployeeId: employee.id,
+          importBatchId: reservedBatch.id,
+          rows: validation.rows,
+          audit,
+          onTiming: logApplyTiming
+        })
+      );
+      logTiming("upload.total", importRequestStarted, { outcome: "applied" });
       return reply.code(202).send(responseForReservedImport(importBatch));
     } catch (error) {
       request.log.error(
         { err: error, documentId: reservedBatch.sourceDocumentId },
         "structured import apply failed"
       );
+      logTiming("upload.total", importRequestStarted, { outcome: "apply_failed" });
       return reply
         .code(500)
         .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
