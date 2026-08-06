@@ -75,13 +75,18 @@ Never silently truncate a title, key, query, cursor, filter value, or file.
 
 When an employee asks to upload a large XLSX/CSV structured table, prefer small business-safe
 chunks over one very large upload. Treat structured files above about **5 MiB** as large even when
-the public service contract permits a larger upload.
+the public service contract permits a larger upload; for XLSX, treat anything above about **2–3 MiB**
+or **5,000 data rows** as large.
 
 - Split by a real business boundary first: date window, month/week, store, or another explicit
   non-overlapping partition that preserves row meaning. For sales/business tables, date-window
   chunks are preferred.
 - Never split an XLSX by raw bytes. XLSX is a ZIP workbook; byte chunks are corrupt files. Read the
-  workbook locally only to create new valid XLSX/CSV chunk files with headers preserved.
+  workbook locally and write each chunk as **CSV (UTF-8, headers preserved)** whenever the target
+  dataset accepts CSV: the service parses CSV chunks cheaply, while XLSX chunks trigger a slow,
+  memory-heavy workbook parse that can stall the service even at a few MiB.
+- If a chunk must remain XLSX, keep it small — no more than about 2–3 MiB or 5,000 data rows per
+  file — and upload serially.
 - Keep chunk windows non-overlapping and complete. Do not create overlapping `startDate`/`endDate`
   ranges, because structured queries aggregate all `applied` rows in visible matching windows.
 - Upload chunks serially, not in parallel. After each structured upload, keep the returned
