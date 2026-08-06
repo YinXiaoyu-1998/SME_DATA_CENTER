@@ -928,6 +928,14 @@
   password in tool output. No value was committed or copied to logs/docs, but the password is
   treated as compromised and must be reset before acceptance continues. Browser tooling must not
   inspect password-form DOM in subsequent acceptance.
+- 2026-08-06 staging XLSX-upload freeze: root-caused a 7.6 MiB XLSX chunk upload freezing the
+  entire host to a kernel memory-compaction deadlock (`kcompactd` hung task) after ExcelJS parsing
+  exhausted the 2 GiB box (no swap, no container memory limits). Hardened staging with a 2 GiB
+  swapfile (swappiness 10), API container `mem_limit: 1g`, and IaC sync (compose template +
+  provisioning script); dual-homed skill guidance now prefers CSV chunks. Host rebooted via SWAS
+  CLI and all containers returned healthy with zero data residue. Remaining: decide Qdrant
+  relocation or instance upgrade, enable the cloud-monitor agent, and refresh
+  `deploy/staging/known_hosts`.
 - Remaining at this handoff: deploy the CSP fix, reset the synthetic password through a fresh
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill

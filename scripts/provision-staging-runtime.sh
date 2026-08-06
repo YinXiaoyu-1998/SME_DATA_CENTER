@@ -84,6 +84,22 @@ ln -sfn \
   /etc/nginx/sites-available/enterprise-hub-default \
   /etc/nginx/sites-enabled/enterprise-hub-default
 
+# 2 GiB swapfile backstop so transient memory spikes (for example XLSX ingestion)
+# degrade instead of freezing the kernel on this small instance. Idempotent.
+if [[ ! -e /swapfile ]]; then
+  fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+fi
+chmod 600 /swapfile
+if ! swapon --show | grep -q '^/swapfile '; then
+  mkswap /swapfile
+  swapon /swapfile
+fi
+if ! grep -q '^/swapfile ' /etc/fstab; then
+  printf '/swapfile none swap sw 0 0\n' >>/etc/fstab
+fi
+printf 'vm.swappiness=10\n' >/etc/sysctl.d/99-swap.conf
+sysctl -p /etc/sysctl.d/99-swap.conf >/dev/null
+
 systemctl daemon-reload
 systemctl enable --now docker
 systemctl enable --now nginx
