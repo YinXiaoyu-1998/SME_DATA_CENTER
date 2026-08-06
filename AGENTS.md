@@ -64,6 +64,17 @@
 - Run local MVP demo loop: `MYSQL_PORT=3307 npm run test:integration`
 - During local testing and debugging, agents may freely remove or recreate local Docker containers and volumes created by this repository or stale local worktrees, including MySQL and Qdrant test data. This permission is local-only and never applies to staging/production hosts or real customer data.
 
+## Local Test Cleanup
+
+After every local test run (unit, integration, benchmark, manual acceptance, or MCP smoke), remove everything the run created before stopping or handing off:
+
+- Delete generated test files and run-scoped data under `.data/` (benchmark artifacts, evaluation reports, storage, manual-test output).
+- Stop and remove local Docker containers, volumes, and networks started by this repository for the run (for example `docker compose -p <project> down -v` or explicit `docker rm -f` / `docker volume rm` / `docker network rm`).
+- Remove clean, inactive test worktrees and run `git worktree prune` after their branch is merged.
+- Verify no repo-owned leftovers remain with `docker ps -a`, `docker volume ls`, `docker network ls`, and `git worktree list`.
+
+This cleanup is local-only and never applies to staging/production hosts or real customer data.
+
 ## Environments
 
 Copy `.env.example` to `.env` for local development. Use development-only values locally and never commit `.env`.
