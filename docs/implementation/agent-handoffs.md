@@ -936,6 +936,12 @@
   CLI and all containers returned healthy with zero data residue. Remaining: decide Qdrant
   relocation or instance upgrade, enable the cloud-monitor agent, and refresh
   `deploy/staging/known_hosts`.
+- 2026-08-06 XLSX streaming parser Task 1 (deps/audit): pinned `sax@1.6.1` as the runtime XML
+  parser in `@enterprise-hub/structured-ingestion`, demoted `exceljs@4.4.0` to devDependencies
+  (test oracle only), and removed the `exceljs-read-only-xlsx-2026-07` exception from
+  `config/dependency-risk-acceptance.json`. Policy tests were rewritten around a synthetic
+  exception matrix that preserves every generic policy behavior; `npm ls exceljs --omit=dev` is
+  empty and `sax` is the only new production dependency.
 - Remaining at this handoff: deploy the CSP fix, reset the synthetic password through a fresh
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill
