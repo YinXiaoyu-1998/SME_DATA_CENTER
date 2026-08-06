@@ -1,6 +1,11 @@
 ---
 name: enterprise-hub-mcp
-description: Install, configure, authenticate, and use the official Enterprise Hub remote MCP launcher without exposing employee credentials or operating service infrastructure.
+description: >-
+  上传和查询企业数据中枢（Enterprise Hub）中的文件与资料：当员工要求把文件/文档/表格上传到
+  企业数据中枢、企业资料中枢、企业知识库或企业数据库，或想基于已上传的企业资料提问业务问题时使用。
+  Also covers installing, configuring, and authenticating the official Enterprise Hub remote MCP
+  launcher (api.smedatacenter.xyz); operates through the launcher only and never exposes employee
+  credentials or service infrastructure.
 ---
 
 # Enterprise Hub MCP
@@ -29,6 +34,24 @@ the launcher update itself.
 - The launcher stores its durable credential only in the operating-system secure store. Never
   put credentials in configuration, environment variables, arguments, ordinary files, logs, or
   chat.
+
+## Tool Discovery
+
+The launcher is a standard stdio MCP server. When the invoking host is configured correctly,
+its Enterprise Hub tools appear in the host's native MCP tool list; the agent does not need to
+discover them by hand.
+
+- Never hand-craft JSON-RPC (`initialize`, `ping`, `tools/list`, `tools/call`) against the
+  launcher process. Use the host's MCP integration and its tool list.
+- The launcher registers a small stable set of `enterprise_hub_*` tools locally and proxies the
+  service's business tools (upload, query, import status, evidence, and more) dynamically. The
+  proxied set can change with the service; discover exact tool names from the connected host
+  instead of assuming a fixed inventory.
+- If Enterprise Hub tools are not visible: run the pinned launcher's credential-free self-check
+  (see Official Install Or Update), verify the invoking agent's MCP entry (`codex mcp list` /
+  `codex mcp get enterprise-hub` or the host equivalent), reload or restart the host, then
+  recheck its tool list. Only if the entry is missing or the self-check fails, follow the focused
+  recovery below. Do not debug the launcher protocol or service internals.
 
 ## Request Limits
 
