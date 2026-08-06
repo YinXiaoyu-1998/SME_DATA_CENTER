@@ -118,15 +118,19 @@ function zipErrorFor(error: Error): Error {
 }
 
 /**
- * Bounded pass over the XLSX archive. Enforces the same ZIP-level limits as the
- * previous preflight (entry count, declared/actual uncompressed bytes,
- * compression ratio, unsafe paths, duplicate critical entries, required
- * entries) while collecting only the requested entry buffers.
+ * Bounded pass over the XLSX archive. Enforces ZIP-level limits from the
+ * central directory for every entry (count, declared uncompressed bytes,
+ * declared compression ratio, unsafe paths, duplicate critical entries,
+ * required entries) and streams only the requested entries. Requested entries
+ * with a stream handler are fed to the handler directly; the rest are
+ * collected as buffers. Actual byte sizes and streaming ratios are verified
+ * for every streamed entry.
  */
 function readWantedZipEntries(
   content: Buffer,
   limits: XlsxReadLimits,
-  wanted: Set<string>
+  wanted: Set<string>,
+  streamHandlers?: Map<string, (stream: any) => Promise<void>>
 ): Promise<Map<string, Buffer>> {
   return new Promise((resolve, reject) => {
     const collected = new Map<string, Buffer>();
@@ -161,6 +165,77 @@ function readWantedZipEntries(
       if (!settled) zip?.readEntry();
     };
 
+    const streamEntry = (name: string, entry: any): Promise<void> => {
+      const handler = streamHandlers?.get(name);
+      return new Promise((resolveStream, rejectStream) => {
+        zip.openReadStream(entry, (streamError: Error | null, stream: any) => {
+          if (streamError || !stream) {
+            rejectStream(
+              streamError ? zipErrorFor(streamError) : validation("Malformed XLSX ZIP archive.")
+            );
+            return;
+          }
+          const chunks: Buffer[] = [];
+          let entryActual = 0;
+          let entrySettled = false;
+          const failEntry = (cause: unknown) => {
+            if (entrySettled) return;
+            entrySettled = true;
+            try {
+              stream.destroy();
+            } catch {
+              // noop
+            }
+            rejectStream(
+              cause instanceof Error ? cause : validation("Malformed XLSX ZIP archive.")
+            );
+          };
+          stream.on("data", (chunk: Buffer | Uint8Array | string) => {
+            if (entrySettled) return;
+            const size = typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.byteLength;
+            entryActual += size;
+            actualTotal += size;
+            if (
+              entryActual > limits.maxXlsxUncompressedBytes ||
+              actualTotal > limits.maxXlsxUncompressedBytes
+            ) {
+              failEntry(validation("XLSX ZIP resource limit exceeded."));
+              return;
+            }
+            if (entryActual > entry.uncompressedSize) {
+              failEntry(validation("XLSX ZIP entry size mismatch."));
+              return;
+            }
+            if (
+              entryActual > 0 &&
+              (entry.compressedSize === 0 ||
+                entryActual / entry.compressedSize > limits.maxXlsxCompressionRatio)
+            ) {
+              failEntry(validation("XLSX compression ratio limit exceeded."));
+            }
+            if (!handler) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
+          stream.once("error", (streamFailure: Error) => failEntry(zipErrorFor(streamFailure)));
+          stream.once("end", () => {
+            if (entrySettled) return;
+            entrySettled = true;
+            if (entryActual !== entry.uncompressedSize) {
+              rejectStream(validation("XLSX ZIP entry size mismatch."));
+              return;
+            }
+            if (!handler) collected.set(name, Buffer.concat(chunks));
+            if (!handler) resolveStream();
+          });
+          if (handler) {
+            handler(stream).then(
+              () => resolveStream(),
+              (cause: unknown) => failEntry(cause)
+            );
+          }
+        });
+      });
+    };
+
     yauzl.fromBuffer(
       content,
       { lazyEntries: true, validateEntrySizes: false },
@@ -172,81 +247,34 @@ function readWantedZipEntries(
         zip = archive;
         zip.on("error", (zipError: Error) => fail(zipErrorFor(zipError)));
         zip.on("entry", (entry: any) => {
-          try {
-            count++;
-            declaredTotal += entry.uncompressedSize;
-            const name = String(entry.fileName);
-            if (
-              count > limits.maxXlsxZipEntries ||
-              declaredTotal > limits.maxXlsxUncompressedBytes ||
-              entry.uncompressedSize > limits.maxXlsxUncompressedBytes
-            )
-              throw validation("XLSX ZIP resource limit exceeded.");
-            if (isUnsafeZipPath(name)) throw validation("Unsafe XLSX ZIP entry path.");
-            if (names.has(name) && isCriticalXlsxEntry(name))
-              throw validation("Duplicate critical XLSX ZIP entry.");
-            names.add(name);
-            if (isCriticalXlsxEntry(name)) critical.add(name);
-            if (
-              entry.uncompressedSize > 0 &&
-              (entry.compressedSize === 0 ||
-                entry.uncompressedSize / entry.compressedSize > limits.maxXlsxCompressionRatio)
-            )
-              throw validation("XLSX compression ratio limit exceeded.");
-
-            zip.openReadStream(entry, (streamError: Error | null, stream: any) => {
-              if (streamError || !stream) {
-                fail(
-                  streamError ? zipErrorFor(streamError) : validation("Malformed XLSX ZIP archive.")
-                );
-                return;
-              }
-              const wantedEntry = wanted.has(name);
-              const chunks: Buffer[] = [];
-              let entryActual = 0;
-              stream.on("data", (chunk: Buffer | Uint8Array | string) => {
-                if (settled) return;
-                const size =
-                  typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.byteLength;
-                entryActual += size;
-                actualTotal += size;
-                if (
-                  entryActual > limits.maxXlsxUncompressedBytes ||
-                  actualTotal > limits.maxXlsxUncompressedBytes
-                ) {
-                  stream.destroy();
-                  fail(validation("XLSX ZIP resource limit exceeded."));
-                  return;
-                }
-                if (entryActual > entry.uncompressedSize) {
-                  stream.destroy();
-                  fail(validation("XLSX ZIP entry size mismatch."));
-                  return;
-                }
-                if (
-                  entryActual > 0 &&
-                  (entry.compressedSize === 0 ||
-                    entryActual / entry.compressedSize > limits.maxXlsxCompressionRatio)
-                ) {
-                  stream.destroy();
-                  fail(validation("XLSX compression ratio limit exceeded."));
-                }
-                if (wantedEntry) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-              });
-              stream.once("error", (streamFailure: Error) => fail(zipErrorFor(streamFailure)));
-              stream.once("end", () => {
-                if (settled) return;
-                if (entryActual !== entry.uncompressedSize) {
-                  fail(validation("XLSX ZIP entry size mismatch."));
-                  return;
-                }
-                if (wantedEntry) collected.set(name, Buffer.concat(chunks));
-                readNext();
-              });
-            });
-          } catch (caught) {
-            fail(caught);
-          }
+          void (async () => {
+            try {
+              count++;
+              declaredTotal += entry.uncompressedSize;
+              const name = String(entry.fileName);
+              if (
+                count > limits.maxXlsxZipEntries ||
+                declaredTotal > limits.maxXlsxUncompressedBytes ||
+                entry.uncompressedSize > limits.maxXlsxUncompressedBytes
+              )
+                throw validation("XLSX ZIP resource limit exceeded.");
+              if (isUnsafeZipPath(name)) throw validation("Unsafe XLSX ZIP entry path.");
+              if (names.has(name) && isCriticalXlsxEntry(name))
+                throw validation("Duplicate critical XLSX ZIP entry.");
+              names.add(name);
+              if (isCriticalXlsxEntry(name)) critical.add(name);
+              if (
+                entry.uncompressedSize > 0 &&
+                (entry.compressedSize === 0 ||
+                  entry.uncompressedSize / entry.compressedSize > limits.maxXlsxCompressionRatio)
+              )
+                throw validation("XLSX compression ratio limit exceeded.");
+              if (wanted.has(name)) await streamEntry(name, entry);
+              readNext();
+            } catch (caught) {
+              fail(caught);
+            }
+          })();
         });
         zip.on("end", () => {
           if (
@@ -263,7 +291,7 @@ function readWantedZipEntries(
   });
 }
 
-/** Runs sax synchronously over a string and wraps any parse failure. */
+/** Runs sax synchronously over a string and preserves validation errors. */
 function runSax(xml: string, configure: (parser: sax.SAXParser) => void): void {
   const parser = sax.parser(true, {
     trim: false,
@@ -418,6 +446,41 @@ interface CellContext {
   collecting: "none" | "value" | "inline" | "inlineText";
 }
 
+interface SheetParseState {
+  shared: string[];
+  styles: StyleTable;
+  limits: XlsxReadLimits;
+  rowMap: Map<number, string[]>;
+  mergeRanges: MergeRange[];
+  maxRow: number;
+  sequentialRow: number;
+  currentRowNumber: number;
+  rowCells: Map<number, string>;
+  rowWidth: number;
+  nextColumn: number;
+  cell?: CellContext;
+}
+
+function createSheetState(
+  shared: string[],
+  styles: StyleTable,
+  limits: XlsxReadLimits
+): SheetParseState {
+  return {
+    shared,
+    styles,
+    limits,
+    rowMap: new Map(),
+    mergeRanges: [],
+    maxRow: 0,
+    sequentialRow: 0,
+    currentRowNumber: 1,
+    rowCells: new Map(),
+    rowWidth: 0,
+    nextColumn: 0
+  };
+}
+
 function numericFormat(cell: CellContext, styles: StyleTable): string | undefined {
   if (cell.style === undefined) return undefined;
   const numFmtId = styles.cellXfNumFmtIds[cell.style];
@@ -425,145 +488,183 @@ function numericFormat(cell: CellContext, styles: StyleTable): string | undefine
   return styles.numFmtCodes.get(numFmtId) ?? DEFAULT_NUM_FORMATS[numFmtId];
 }
 
-function parseSheetRows(
-  xml: Buffer,
-  shared: string[],
-  styles: StyleTable,
-  limits: XlsxReadLimits
-): string[][] {
-  const rowMap = new Map<number, string[]>();
-  let maxRow = 0;
-  let sequentialRow = 0;
-  let currentRowNumber = 1;
-  let rowCells = new Map<number, string>();
-  let rowWidth = 0;
-  let nextColumn = 0;
-  let cell: CellContext | undefined;
-  const mergeRanges: MergeRange[] = [];
-
-  const resolveCell = (): string => {
-    if (!cell) return "";
-    const raw = cell.value;
-    const type = cell.type;
-    if (type === "s") {
-      const index = Number(raw);
-      const text = shared[index];
-      if (text === undefined) throw validation("Malformed XLSX workbook XML.");
-      return text;
-    }
-    if (type === "inlineStr") return cell.inlineParts.join("");
-    if (type === "str") return raw;
-    if (type === "b") return raw === "1" || raw.toLowerCase() === "true" ? "true" : "false";
-    if (type === "e") throw validation("Unsupported XLSX cell value.");
-    if (cell.formula) {
-      if (raw === "") throw validation("Unevaluated XLSX formula is not supported.");
-      return String(Number(raw));
-    }
-    if (raw === "") return "";
-    const numFmt = numericFormat(cell, styles);
-    if (numFmt !== undefined && isDateFmt(numFmt)) {
-      const date = numToDate(Number(raw));
-      return hasTimeComponent(date, numFmt) ? dateTimeString(date) : dateString(date);
-    }
+function resolveCell(state: SheetParseState): string {
+  const cell = state.cell;
+  if (!cell) return "";
+  const raw = cell.value;
+  const type = cell.type;
+  if (type === "s") {
+    const index = Number(raw);
+    const text = state.shared[index];
+    if (text === undefined) throw validation("Malformed XLSX workbook XML.");
+    return text;
+  }
+  if (type === "inlineStr") return cell.inlineParts.join("");
+  if (type === "str") return raw;
+  if (type === "b") return raw === "1" || raw.toLowerCase() === "true" ? "true" : "false";
+  if (type === "e") throw validation("Unsupported XLSX cell value.");
+  if (cell.formula) {
+    if (raw === "") throw validation("Unevaluated XLSX formula is not supported.");
     return String(Number(raw));
+  }
+  if (raw === "") return "";
+  const numFmt = numericFormat(cell, state.styles);
+  if (numFmt !== undefined && isDateFmt(numFmt)) {
+    const date = numToDate(Number(raw));
+    return hasTimeComponent(date, numFmt) ? dateTimeString(date) : dateString(date);
+  }
+  return String(Number(raw));
+}
+
+function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): void {
+  parser.onopentag = (tag) => {
+    const name = tag.name;
+    if (name === "row") {
+      const attributes = tag.attributes as Record<string, string>;
+      const declared = attributes.r === undefined ? NaN : Number(attributes.r);
+      state.sequentialRow += 1;
+      state.currentRowNumber = Number.isFinite(declared) ? declared : state.sequentialRow;
+      if (state.currentRowNumber > state.maxRow) state.maxRow = state.currentRowNumber;
+      state.rowCells = new Map();
+      state.rowWidth = 0;
+      state.nextColumn = 0;
+    } else if (name === "c") {
+      const attributes = tag.attributes as Record<string, string>;
+      const ref = attributes.r ?? "";
+      const column = columnIndexFromRef(ref);
+      if (column >= 0) state.nextColumn = column;
+      state.cell = {
+        type: attributes.t,
+        style: attributes.s === undefined ? undefined : Number(attributes.s),
+        formula: false,
+        value: "",
+        inlineParts: [],
+        collecting: "none"
+      };
+    } else if (name === "mergeCell") {
+      const range = parseMergeRange(String((tag.attributes as Record<string, string>).ref ?? ""));
+      if (range) state.mergeRanges.push(range);
+    } else if (state.cell) {
+      if (name === "f") {
+        state.cell.formula = true;
+      } else if (name === "v") {
+        state.cell.collecting = "value";
+      } else if (name === "is") {
+        state.cell.collecting = "inline";
+      } else if (name === "t" && state.cell.collecting === "inline") {
+        state.cell.collecting = "inlineText";
+      }
+    }
   };
-
-  runSax(xml.toString("utf8"), (parser) => {
-    parser.onopentag = (tag) => {
-      const name = tag.name;
-      if (name === "row") {
-        const attributes = tag.attributes as Record<string, string>;
-        const declared = attributes.r === undefined ? NaN : Number(attributes.r);
-        sequentialRow += 1;
-        currentRowNumber = Number.isFinite(declared) ? declared : sequentialRow;
-        if (currentRowNumber > maxRow) maxRow = currentRowNumber;
-        rowCells = new Map();
-        rowWidth = 0;
-        nextColumn = 0;
+  parser.ontext = (text) => {
+    if (!state.cell) return;
+    if (state.cell.collecting === "value") state.cell.value += text;
+    else if (state.cell.collecting === "inlineText") state.cell.inlineParts.push(text);
+  };
+  parser.oncdata = (text) => {
+    if (!state.cell) return;
+    if (state.cell.collecting === "value") state.cell.value += text;
+    else if (state.cell.collecting === "inlineText") state.cell.inlineParts.push(text);
+  };
+  parser.onclosetag = (name) => {
+    if (state.cell) {
+      if (name === "t" && state.cell.collecting === "inlineText") {
+        state.cell.collecting = "inline";
+      } else if (name === "is" && state.cell.collecting === "inline") {
+        state.cell.collecting = "none";
+      } else if (name === "v" && state.cell.collecting === "value") {
+        state.cell.collecting = "none";
       } else if (name === "c") {
-        const attributes = tag.attributes as Record<string, string>;
-        const ref = attributes.r ?? "";
-        const column = columnIndexFromRef(ref);
-        if (column >= 0) nextColumn = column;
-        cell = {
-          type: attributes.t,
-          style: attributes.s === undefined ? undefined : Number(attributes.s),
-          formula: false,
-          value: "",
-          inlineParts: [],
-          collecting: "none"
-        };
-      } else if (name === "mergeCell") {
-        const range = parseMergeRange(String((tag.attributes as Record<string, string>).ref ?? ""));
-        if (range) mergeRanges.push(range);
-      } else if (cell) {
-        if (name === "f") {
-          cell.formula = true;
-        } else if (name === "v") {
-          cell.collecting = "value";
-        } else if (name === "is") {
-          cell.collecting = "inline";
-        } else if (name === "t" && cell.collecting === "inline") {
-          cell.collecting = "inlineText";
-        }
+        state.rowCells.set(state.nextColumn, checkedCellText(resolveCell(state), state.limits));
+        if (state.nextColumn + 1 > state.rowWidth) state.rowWidth = state.nextColumn + 1;
+        state.cell = undefined;
       }
-    };
-    parser.ontext = (text) => {
-      if (!cell) return;
-      if (cell.collecting === "value") cell.value += text;
-      else if (cell.collecting === "inlineText") cell.inlineParts.push(text);
-    };
-    parser.oncdata = (text) => {
-      if (!cell) return;
-      if (cell.collecting === "value") cell.value += text;
-      else if (cell.collecting === "inlineText") cell.inlineParts.push(text);
-    };
-    parser.onclosetag = (name) => {
-      if (cell) {
-        if (name === "t" && cell.collecting === "inlineText") {
-          cell.collecting = "inline";
-        } else if (name === "is" && cell.collecting === "inline") {
-          cell.collecting = "none";
-        } else if (name === "v" && cell.collecting === "value") {
-          cell.collecting = "none";
-        } else if (name === "c") {
-          rowCells.set(nextColumn, checkedCellText(resolveCell(), limits));
-          if (nextColumn + 1 > rowWidth) rowWidth = nextColumn + 1;
-          cell = undefined;
-        }
-      }
-      if (name === "row") {
-        const rendered: string[] = [];
-        for (let index = 0; index < rowWidth; index++) rendered.push(rowCells.get(index) ?? "");
-        rowMap.set(currentRowNumber, rendered);
-      }
-    };
-  });
+    }
+    if (name === "row") {
+      const rendered: string[] = [];
+      for (let index = 0; index < state.rowWidth; index++)
+        rendered.push(state.rowCells.get(index) ?? "");
+      state.rowMap.set(state.currentRowNumber, rendered);
+    }
+  };
+}
 
-  // Expand merged-cell slave positions with the master value, matching ExcelJS
-  // behavior where every covered cell reports the master's text.
-  for (const range of mergeRanges) {
-    const master = rowMap.get(range.startRow)?.[range.startColumn - 1] ?? "";
+function finalizeSheetRows(state: SheetParseState): string[][] {
+  for (const range of state.mergeRanges) {
+    const master = state.rowMap.get(range.startRow)?.[range.startColumn - 1] ?? "";
     for (let rowNumber = range.startRow; rowNumber <= range.endRow; rowNumber++) {
-      let row = rowMap.get(rowNumber);
+      let row = state.rowMap.get(rowNumber);
       if (!row) {
         row = [];
-        rowMap.set(rowNumber, row);
+        state.rowMap.set(rowNumber, row);
       }
       for (let column = range.startColumn; column <= range.endColumn; column++) {
         if (rowNumber === range.startRow && column === range.startColumn) continue;
         while (row.length < column) row.push("");
         row[column - 1] = master;
       }
-      if (rowNumber > maxRow) maxRow = rowNumber;
+      if (rowNumber > state.maxRow) state.maxRow = rowNumber;
     }
   }
 
   const filled: string[][] = [];
-  for (let rowNumber = 1; rowNumber <= maxRow; rowNumber++) {
-    filled.push(rowMap.get(rowNumber) ?? []);
+  for (let rowNumber = 1; rowNumber <= state.maxRow; rowNumber++) {
+    filled.push(state.rowMap.get(rowNumber) ?? []);
   }
   return filled;
+}
+
+function parseSheetStream(
+  stream: any,
+  shared: string[],
+  styles: StyleTable,
+  limits: XlsxReadLimits
+): Promise<string[][]> {
+  return new Promise((resolve, reject) => {
+    const state = createSheetState(shared, styles, limits);
+    const parser = sax.parser(true, {
+      trim: false,
+      normalize: false,
+      xmlns: false,
+      position: false
+    });
+    configureSheetParser(parser, state);
+    let failure: unknown;
+    const decoder = new TextDecoder("utf-8");
+    parser.onerror = (error) => {
+      failure = error;
+    };
+    stream.on("data", (chunk: Buffer | Uint8Array | string) => {
+      if (failure) return;
+      try {
+        const text = decoder.decode(Buffer.from(chunk), { stream: true });
+        if (text) parser.write(text);
+      } catch (caught) {
+        failure = caught;
+        reject(failure instanceof Error ? failure : validation("Malformed XLSX workbook XML."));
+        try {
+          stream.destroy();
+        } catch {
+          // noop
+        }
+      }
+    });
+    stream.once("error", (streamError: Error) => reject(zipErrorFor(streamError)));
+    stream.once("end", () => {
+      try {
+        const tail = decoder.decode();
+        if (tail) parser.write(tail);
+        parser.close();
+      } catch (caught) {
+        failure = caught;
+      }
+      if (failure) {
+        reject(failure instanceof Error ? failure : validation("Malformed XLSX workbook XML."));
+        return;
+      }
+      resolve(finalizeSheetRows(state));
+    });
+  });
 }
 
 function worksheetEntryPath(target: string): string {
@@ -603,8 +704,6 @@ export async function readXlsxRows(
     return worksheetEntryPath(target);
   });
 
-  const sheetXmls = await readWantedZipEntries(content, limits, new Set(sheetEntries));
-
   const shared = structuralEntries.has("xl/sharedStrings.xml")
     ? sharedStrings(structuralEntries.get("xl/sharedStrings.xml")!)
     : [];
@@ -612,15 +711,20 @@ export async function readXlsxRows(
     ? stylesTable(structuralEntries.get("xl/styles.xml")!)
     : { cellXfNumFmtIds: [], numFmtCodes: new Map<number, string>() };
 
+  const sheetRows = new Map<string, string[][]>();
+  const handlers = new Map<string, (stream: any) => Promise<void>>();
+  for (const entry of sheetEntries) {
+    handlers.set(entry, async (stream) => {
+      sheetRows.set(entry, await parseSheetStream(stream, shared, styles, limits));
+    });
+  }
+  await readWantedZipEntries(content, limits, new Set(sheetEntries), handlers);
+
   return workbook.map((sheet, index) => {
     const entry = sheetEntries[index];
     if (!entry) throw validation("Malformed XLSX workbook XML.");
-    const sheetXml = sheetXmls.get(entry);
-    if (!sheetXml) throw validation("Malformed XLSX workbook XML.");
-    return {
-      name: sheet.name,
-      hidden: sheet.state !== "visible",
-      rows: parseSheetRows(sheetXml, shared, styles, limits)
-    };
+    const rows = sheetRows.get(entry);
+    if (!rows) throw validation("Malformed XLSX workbook XML.");
+    return { name: sheet.name, hidden: sheet.state !== "visible", rows };
   });
 }

@@ -962,6 +962,15 @@
   mapping untouched). Added pipeline-level assertions over the committed fixtures (typed cells,
   sparse rows, hidden sheet, cross-sheet limit, multi-sheet order). Full structured-ingestion
   suite is now 72 passing tests with a clean typecheck.
+- 2026-08-06 XLSX streaming parser Task 5 (perf): `readXlsxRows` now streams sheet XML directly
+  from the ZIP entry through a TextDecoder into sax (no whole-file XML buffer) and skips opening
+  non-requested ZIP entries while keeping central-directory limits. Added
+  `scripts/synthetic-xlsx.ts` (deterministic 50k-row dishes workbook), `npm run
+  benchmark:xlsx-parse` (old ExcelJS vs streaming extraction vs full pipeline with sampled peak
+  RSS in child processes), and a Phase 3 gate
+  `structured_large_xlsx_import_validation_50000_rows` (threshold 12s; local measured 7.25s).
+  Local benchmark on 50k rows x 51 cols: peak RSS 660 -> 228 MiB (2.9x), time 8.9s -> 7.3s.
+  Added `@types/sax` as a devDependency for reader typing.
 - Remaining at this handoff: deploy the CSP fix, reset the synthetic password through a fresh
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill

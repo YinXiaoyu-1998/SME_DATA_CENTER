@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 import { compileStructuredQuery, getStructuredRegistry } from "@enterprise-hub/domain";
 import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
 import { evaluateGoldenRetrieval } from "./golden-retrieval-eval.js";
+import { buildSyntheticDishesXlsx } from "./synthetic-xlsx.js";
 
 interface PerformanceGate {
   name: string;
@@ -23,6 +24,7 @@ interface PerformanceGateReport {
 export interface Phase3PerformanceWorkloads {
   compileStructuredQueries?: () => Promise<void> | void;
   parseStructuredCsv?: () => Promise<void> | void;
+  parseStructuredXlsx?: (content: Buffer) => Promise<void> | void;
   buildQdrantPayloads?: () => Promise<void> | void;
 }
 
@@ -37,6 +39,7 @@ const DEFAULT_THRESHOLDS = {
   evidence_search_synthetic_p95: 25,
   structured_query_compiler_5000: 500,
   structured_large_import_validation_70000_rows: 6_000,
+  structured_large_xlsx_import_validation_50000_rows: 12_000,
   qdrant_upsert_payload_5000_chunks: 500
 } as const;
 
@@ -94,6 +97,13 @@ export async function runPhase3PerformanceGates(
     options.workloads?.compileStructuredQueries ?? compileStructuredQueries
   );
   const csvParseMs = await measure(options.workloads?.parseStructuredCsv ?? parseStructuredCsv);
+  let xlsxParseMs: number;
+  if (options.workloads?.parseStructuredXlsx) {
+    xlsxParseMs = await measure(() => options.workloads.parseStructuredXlsx!(Buffer.alloc(0)));
+  } else {
+    const xlsxContent = await buildSyntheticDishesXlsx(50_000);
+    xlsxParseMs = await measure(() => parseStructuredXlsx(xlsxContent));
+  }
   const qdrantPayloadMs = await measure(
     options.workloads?.buildQdrantPayloads ?? buildQdrantPayloads
   );
@@ -125,6 +135,14 @@ export async function runPhase3PerformanceGates(
       measuredMs: csvParseMs,
       workload:
         "70,000-row RFC4180 CSV parsed and validated by @enterprise-hub/structured-ingestion",
+      thresholds: options.thresholds,
+      thresholdMultiplier
+    }),
+    gate({
+      name: "structured_large_xlsx_import_validation_50000_rows",
+      measuredMs: xlsxParseMs,
+      workload:
+        "50,000-row synthetic XLSX parsed and validated by @enterprise-hub/structured-ingestion",
       thresholds: options.thresholds,
       thresholdMultiplier
     }),
@@ -203,6 +221,18 @@ async function parseStructuredCsv() {
     content: Buffer.from(generateStructuredCsv(70_000), "utf8"),
     startDate: "20260701",
     endDate: "20260731",
+    limits: DEFAULT_LIMITS
+  });
+}
+
+async function parseStructuredXlsx(content: Buffer) {
+  await parseStructuredFile({
+    dataset: "dishes",
+    fileName: "phase3-performance-dishes.xlsx",
+    fileType: "xlsx",
+    content,
+    startDate: "20260701",
+    endDate: "20260701",
     limits: DEFAULT_LIMITS
   });
 }

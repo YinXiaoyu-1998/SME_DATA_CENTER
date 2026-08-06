@@ -20,6 +20,7 @@
     "test:phase3:golden": "tsx scripts/golden-retrieval-eval.ts",
     "test:phase3:perf": "tsx scripts/phase3-performance-gates.ts",
     "generate:xlsx-fixtures": "tsx scripts/generate-structured-xlsx-fixtures.ts",
+    "benchmark:xlsx-parse": "tsx scripts/benchmark-xlsx-parse.ts",
     "test:manual:prepare": "tsx scripts/manual-test-harness.ts prepare",
     "test:manual:serve": "tsx scripts/manual-test-harness.ts serve",
     "test:manual:snapshot": "tsx scripts/manual-test-harness.ts snapshot",
@@ -50,6 +51,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/node": "^25.0.3",
+    "@types/sax": "^1.2.7",
     "eslint": "^9.39.2",
     "globals": "^16.5.0",
     "prettier": "^3.7.4",
