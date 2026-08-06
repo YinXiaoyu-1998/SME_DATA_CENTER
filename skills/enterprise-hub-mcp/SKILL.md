@@ -48,6 +48,32 @@ If a tool rejects an input at one of these boundaries, report the validation err
 employee to shorten the text, reduce filters/labels, or split the source file as appropriate.
 Never silently truncate a title, key, query, cursor, filter value, or file.
 
+## Large Structured Uploads
+
+When an employee asks to upload a large XLSX/CSV structured table, prefer small business-safe
+chunks over one very large upload. Treat structured files above about **5 MiB** as large even when
+the public service contract permits a larger upload.
+
+- Split by a real business boundary first: date window, month/week, store, or another explicit
+  non-overlapping partition that preserves row meaning. For sales/business tables, date-window
+  chunks are preferred.
+- Never split an XLSX by raw bytes. XLSX is a ZIP workbook; byte chunks are corrupt files. Read the
+  workbook locally only to create new valid XLSX/CSV chunk files with headers preserved.
+- Keep chunk windows non-overlapping and complete. Do not create overlapping `startDate`/`endDate`
+  ranges, because structured queries aggregate all `applied` rows in visible matching windows.
+- Upload chunks serially, not in parallel. After each structured upload, keep the returned
+  `importBatchId` and call the import-status tool until that chunk is `applied` or failed before
+  starting the next chunk.
+- Give every chunk its own stable idempotency key that names the original file and chunk window,
+  for example `maijia-business-20240701-20240715-part01-v1`. Reuse that key only for the exact
+  same chunk bytes and metadata.
+- If one chunk fails or returns `service_unavailable`, stop the sequence, report the failed
+  `importBatchId`/window if available, and ask whether to retry that chunk later. Do not continue
+  uploading later chunks after a partial failure.
+- In the final handoff, summarize the original file, each chunk filename/window, each
+  `importBatchId`, and the final status so later tasks can query the intended uploaded data
+  without guessing.
+
 ## Official Install Or Update
 
 An employee may ask in natural language to install, update, or repair Enterprise Hub. The

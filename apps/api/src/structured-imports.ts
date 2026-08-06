@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import {
   DocumentKind,
@@ -24,6 +25,19 @@ import type { RequestAuditContext } from "./request-audit-context.js";
 export interface StructuredImportRowInput {
   sourceRowNumber: number;
   payload: Record<string, unknown>;
+}
+
+export interface StructuredImportTimingEvent {
+  stage: string;
+  durationMs: number;
+  importBatchId?: string;
+  sourceDocumentId?: string;
+  dataset?: StructuredDatasetName;
+  rowCount?: number;
+  batchInsertSize?: number;
+  batchIndex?: number;
+  batchOffset?: number;
+  batchRowCount?: number;
 }
 
 export interface StructuredImportBatchRecord {
@@ -77,6 +91,7 @@ export interface ApplyReservedStructuredImportInput {
   importBatchId: string;
   rows: StructuredImportRowInput[];
   audit: RequestAuditContext;
+  onTiming?: (event: StructuredImportTimingEvent) => void;
 }
 
 export interface MarkStructuredImportStorageFailureInput {
@@ -157,6 +172,30 @@ function createStructuredRowId(): string {
   return `row_${randomBytes(12).toString("hex")}`;
 }
 
+function elapsedMs(started: number): number {
+  return Number((performance.now() - started).toFixed(3));
+}
+
+async function measureStructuredImportStage<T>(
+  input: Pick<ApplyReservedStructuredImportInput, "importBatchId" | "rows" | "onTiming">,
+  stage: string,
+  workload: () => Promise<T>,
+  extra: Omit<StructuredImportTimingEvent, "stage" | "durationMs"> = {}
+): Promise<T> {
+  const started = performance.now();
+  try {
+    return await workload();
+  } finally {
+    input.onTiming?.({
+      stage,
+      durationMs: elapsedMs(started),
+      importBatchId: input.importBatchId,
+      rowCount: input.rows.length,
+      ...extra
+    });
+  }
+}
+
 async function insertStructuredRows(
   tx: Prisma.TransactionClient,
   input: {
@@ -166,12 +205,18 @@ async function insertStructuredRows(
     importBatchId: string;
     rows: StructuredImportRowInput[];
     batchInsertSize: number;
+    onTiming?: (event: StructuredImportTimingEvent) => void;
   }
 ): Promise<void> {
   const tableName = input.dataset === "dishes" ? "dish_rows" : "business_rows";
   const batchSize = input.batchInsertSize;
 
-  for (let offset = 0; offset < input.rows.length; offset += batchSize) {
+  for (
+    let offset = 0, batchIndex = 0;
+    offset < input.rows.length;
+    offset += batchSize, batchIndex += 1
+  ) {
+    const started = performance.now();
     const batch = input.rows.slice(offset, offset + batchSize);
     const values = batch.map(
       (row) =>
@@ -183,6 +228,18 @@ async function insertStructuredRows(
         (id, org_id, source_document_id, import_batch_id, source_row_number, payload)
       VALUES ${Prisma.join(values)}
     `;
+    input.onTiming?.({
+      stage: "apply.insert_rows_batch",
+      durationMs: elapsedMs(started),
+      importBatchId: input.importBatchId,
+      sourceDocumentId: input.sourceDocumentId,
+      dataset: input.dataset,
+      rowCount: input.rows.length,
+      batchInsertSize: batchSize,
+      batchIndex,
+      batchOffset: offset,
+      batchRowCount: batch.length
+    });
   }
 }
 
@@ -363,103 +420,181 @@ export function createPrismaStructuredImportRepository(options: {
       }
     },
     async applyReservedStructuredImport(input) {
-      const applied = await prisma.$transaction(
-        async (tx) => {
-          const existing = await tx.importBatch.findFirst({
-            where: { id: input.importBatchId, orgId: input.orgId },
-            include: importBatchInclude
-          });
-          if (!existing) throw new Error("Reserved import batch was not found.");
-          if (existing.status === ImportBatchStatus.applied) return toImportBatchRecord(existing);
+      const applyStarted = performance.now();
+      try {
+        const transactionStarted = performance.now();
+        const applied = await prisma.$transaction(
+          async (tx) => {
+            const existing = await measureStructuredImportStage(input, "apply.find_import", () =>
+              tx.importBatch.findFirst({
+                where: { id: input.importBatchId, orgId: input.orgId },
+                include: importBatchInclude
+              })
+            );
+            if (!existing) throw new Error("Reserved import batch was not found.");
+            if (existing.status === ImportBatchStatus.applied) return toImportBatchRecord(existing);
 
-          const claimed = await tx.importBatch.updateMany({
-            where: {
-              id: input.importBatchId,
-              orgId: input.orgId,
-              status: {
-                in: [ImportBatchStatus.pending, ImportBatchStatus.failed]
+            const baseTiming = {
+              importBatchId: input.importBatchId,
+              sourceDocumentId: existing.sourceDocumentId,
+              dataset: existing.dataset,
+              rowCount: input.rows.length,
+              batchInsertSize: options.batchInsertSize
+            };
+            const claimed = await measureStructuredImportStage(
+              input,
+              "apply.claim_import",
+              () =>
+                tx.importBatch.updateMany({
+                  where: {
+                    id: input.importBatchId,
+                    orgId: input.orgId,
+                    status: {
+                      in: [ImportBatchStatus.pending, ImportBatchStatus.failed]
+                    }
+                  },
+                  data: {
+                    status: ImportBatchStatus.applying,
+                    errorCode: null,
+                    errorSummary: null
+                  }
+                }),
+              baseTiming
+            );
+            if (claimed.count !== 1) return null;
+
+            await measureStructuredImportStage(
+              input,
+              "apply.delete_existing_rows",
+              () =>
+                existing.dataset === ImportDataset.dishes
+                  ? tx.dishRow.deleteMany({ where: { importBatchId: input.importBatchId } })
+                  : tx.businessRow.deleteMany({ where: { importBatchId: input.importBatchId } }),
+              baseTiming
+            );
+            await measureStructuredImportStage(
+              input,
+              "apply.insert_rows_total",
+              () =>
+                insertStructuredRows(tx, {
+                  dataset: existing.dataset,
+                  orgId: input.orgId,
+                  sourceDocumentId: existing.sourceDocumentId,
+                  importBatchId: input.importBatchId,
+                  rows: input.rows,
+                  batchInsertSize: options.batchInsertSize,
+                  onTiming: input.onTiming
+                }),
+              baseTiming
+            );
+            const now = new Date();
+            await measureStructuredImportStage(
+              input,
+              "apply.activate_document",
+              () =>
+                tx.document.update({
+                  where: { id: existing.sourceDocumentId },
+                  data: { status: DocumentStatus.active }
+                }),
+              baseTiming
+            );
+            await measureStructuredImportStage(
+              input,
+              "apply.create_processing_run",
+              () =>
+                tx.processingRun.create({
+                  data: {
+                    orgId: input.orgId,
+                    documentId: existing.sourceDocumentId,
+                    jobKey: `structured_import:applied:${input.importBatchId}`,
+                    status: ProcessingRunStatus.succeeded,
+                    jobType: ProcessingJobType.structured_import,
+                    startedAt: now,
+                    finishedAt: now
+                  }
+                }),
+              baseTiming
+            );
+            const batch = await measureStructuredImportStage(
+              input,
+              "apply.finalize_import_batch",
+              () =>
+                tx.importBatch.update({
+                  where: { id: input.importBatchId },
+                  data: {
+                    status: ImportBatchStatus.applied,
+                    appliedRowCount: input.rows.length,
+                    totalRowCount: input.rows.length
+                  },
+                  include: importBatchInclude
+                }),
+              baseTiming
+            );
+            await measureStructuredImportStage(
+              input,
+              "apply.audit",
+              () =>
+                tx.auditLog.create({
+                  data: {
+                    orgId: input.orgId,
+                    actorEmployeeId: input.actorEmployeeId,
+                    action: AUDIT_ACTIONS.structuredImportApplied,
+                    targetType: "import_batch",
+                    targetId: input.importBatchId,
+                    result: "succeeded",
+                    metadata: {
+                      dataset: batch.dataset,
+                      startDate: formatDateWindowDate(batch.startDate),
+                      endDate: formatDateWindowDate(batch.endDate),
+                      appliedRowCount: input.rows.length,
+                      sourceDocumentId: batch.sourceDocumentId
+                    },
+                    requestId: input.audit.requestId,
+                    clientIp: input.audit.sourceIp,
+                    clientSource: input.audit.clientSource,
+                    launcherVersion: input.audit.launcherVersion
+                  }
+                }),
+              {
+                ...baseTiming,
+                sourceDocumentId: batch.sourceDocumentId,
+                dataset: batch.dataset
               }
-            },
-            data: {
-              status: ImportBatchStatus.applying,
-              errorCode: null,
-              errorSummary: null
-            }
-          });
-          if (claimed.count !== 1) return null;
-
-          if (existing.dataset === ImportDataset.dishes) {
-            await tx.dishRow.deleteMany({ where: { importBatchId: input.importBatchId } });
-          } else {
-            await tx.businessRow.deleteMany({ where: { importBatchId: input.importBatchId } });
-          }
-          await insertStructuredRows(tx, {
-            dataset: existing.dataset,
-            orgId: input.orgId,
-            sourceDocumentId: existing.sourceDocumentId,
-            importBatchId: input.importBatchId,
-            rows: input.rows,
-            batchInsertSize: options.batchInsertSize
-          });
-          const now = new Date();
-          await tx.document.update({
-            where: { id: existing.sourceDocumentId },
-            data: { status: DocumentStatus.active }
-          });
-          await tx.processingRun.create({
-            data: {
-              orgId: input.orgId,
-              documentId: existing.sourceDocumentId,
-              jobKey: `structured_import:applied:${input.importBatchId}`,
-              status: ProcessingRunStatus.succeeded,
-              jobType: ProcessingJobType.structured_import,
-              startedAt: now,
-              finishedAt: now
-            }
-          });
-          const batch = await tx.importBatch.update({
-            where: { id: input.importBatchId },
-            data: {
-              status: ImportBatchStatus.applied,
-              appliedRowCount: input.rows.length,
-              totalRowCount: input.rows.length
-            },
-            include: importBatchInclude
-          });
-          await tx.auditLog.create({
-            data: {
-              orgId: input.orgId,
-              actorEmployeeId: input.actorEmployeeId,
-              action: AUDIT_ACTIONS.structuredImportApplied,
-              targetType: "import_batch",
-              targetId: input.importBatchId,
-              result: "succeeded",
-              metadata: {
-                dataset: batch.dataset,
-                startDate: formatDateWindowDate(batch.startDate),
-                endDate: formatDateWindowDate(batch.endDate),
-                appliedRowCount: input.rows.length,
-                sourceDocumentId: batch.sourceDocumentId
-              },
-              requestId: input.audit.requestId,
-              clientIp: input.audit.sourceIp,
-              clientSource: input.audit.clientSource,
-              launcherVersion: input.audit.launcherVersion
-            }
-          });
-          return toImportBatchRecord(batch);
-        },
-        { timeout: options.transactionTimeoutMs }
-      );
-      if (applied) return applied;
-      const authoritative = await prisma.importBatch.findFirst({
-        where: { id: input.importBatchId, orgId: input.orgId },
-        include: importBatchInclude
-      });
-      if (authoritative?.status === ImportBatchStatus.applied) {
-        return toImportBatchRecord(authoritative);
+            );
+            return toImportBatchRecord(batch);
+          },
+          { timeout: options.transactionTimeoutMs }
+        );
+        input.onTiming?.({
+          stage: "apply.transaction",
+          durationMs: elapsedMs(transactionStarted),
+          importBatchId: input.importBatchId,
+          rowCount: input.rows.length,
+          batchInsertSize: options.batchInsertSize
+        });
+        if (applied) return applied;
+        const authoritative = await measureStructuredImportStage(
+          input,
+          "apply.find_authoritative",
+          () =>
+            prisma.importBatch.findFirst({
+              where: { id: input.importBatchId, orgId: input.orgId },
+              include: importBatchInclude
+            })
+        );
+        if (authoritative?.status === ImportBatchStatus.applied) {
+          return toImportBatchRecord(authoritative);
+        }
+        throw new Error("Reserved import batch cannot be applied.");
+      } finally {
+        input.onTiming?.({
+          stage: "apply.total",
+          durationMs: elapsedMs(applyStarted),
+          importBatchId: input.importBatchId,
+          rowCount: input.rows.length,
+          batchInsertSize: options.batchInsertSize
+        });
       }
-      throw new Error("Reserved import batch cannot be applied.");
     },
     async markStructuredImportStorageFailure(input) {
       const batch = await prisma.$transaction(
