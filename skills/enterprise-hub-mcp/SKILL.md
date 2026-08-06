@@ -71,12 +71,26 @@ If a tool rejects an input at one of these boundaries, report the validation err
 employee to shorten the text, reduce filters/labels, or split the source file as appropriate.
 Never silently truncate a title, key, query, cursor, filter value, or file.
 
+The 50 MiB contract is the service-side ceiling. Some hosts (OpenAI Codex) in practice cap a
+single model-emitted tool argument at about 1 MiB, so large structured files still need chunking
+— see Large Structured Uploads.
+
 ## Large Structured Uploads
 
 When an employee asks to upload a large XLSX/CSV structured table, prefer small business-safe
-chunks over one very large upload. Treat structured files above about **5 MiB** as large even when
-the public service contract permits a larger upload; for XLSX, treat anything above about **2–3 MiB**
-or **5,000 data rows** as large.
+chunks over one very large upload. Two limits apply, and the stricter one wins:
+
+- **Host transport (OpenAI Codex and similar hosts):** a single tool-call argument is emitted as
+  model output, so a Base64-encoded file payload is practically capped at about **1 MiB** per
+  call; larger payloads can be truncated or dropped before the launcher receives them. This is a
+  host-side limit, not an Enterprise Hub limit.
+- **Service performance:** treat structured files above about **5 MiB** as large even when the
+  public service contract permits a larger upload; for XLSX, treat anything above about **2–3 MiB**
+  or **5,000 data rows** as large.
+
+When uploading through OpenAI Codex, keep each chunk small enough that its Base64 form stays under
+about **1 MiB** (roughly **700–750 KiB** of raw file bytes, since Base64 expands by ~4/3) and
+prefer CSV chunks so the total chunk count stays manageable.
 
 - Split by a real business boundary first: date window, month/week, store, or another explicit
   non-overlapping partition that preserves row meaning. For sales/business tables, date-window
@@ -85,8 +99,8 @@ or **5,000 data rows** as large.
   workbook locally and write each chunk as **CSV (UTF-8, headers preserved)** whenever the target
   dataset accepts CSV: the service parses CSV chunks cheaply, while XLSX chunks trigger a slow,
   memory-heavy workbook parse that can stall the service even at a few MiB.
-- If a chunk must remain XLSX, keep it small — no more than about 2–3 MiB or 5,000 data rows per
-  file — and upload serially.
+- If a chunk must remain XLSX, keep it within the host transport cap (its Base64-encoded upload
+  must stay under about 1 MiB) and upload serially.
 - Keep chunk windows non-overlapping and complete. Do not create overlapping `startDate`/`endDate`
   ranges, because structured queries aggregate all `applied` rows in visible matching windows.
 - Upload chunks serially, not in parallel. After each structured upload, keep the returned
