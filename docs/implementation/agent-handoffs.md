@@ -942,6 +942,20 @@
   `config/dependency-risk-acceptance.json`. Policy tests were rewritten around a synthetic
   exception matrix that preserves every generic policy behavior; `npm ls exceljs --omit=dev` is
   empty and `sax` is the only new production dependency.
+- 2026-08-06 XLSX streaming parser Task 2 (fixtures): added
+  `scripts/generate-structured-xlsx-fixtures.ts` (`npm run generate:xlsx-fixtures`) which
+  hand-writes minimal OOXML with jszip (pinned ZIP entry dates, byte-deterministic) and committed
+  the generated matrix under `fixtures/structured/xlsx/`: typed cells, unevaluated formula,
+  error cell, sparse rows, hidden sheet, cross-sheet row limit, multi-sheet order, and Excel
+  date-serial boundaries.
+- 2026-08-06 XLSX streaming parser Task 3 (reader): added
+  `packages/structured-ingestion/src/xlsx-stream.ts` (`readXlsxRows`), a yauzl + sax streaming
+  XLSX reader that keeps the ZIP safety limits, cell-type semantics (shared/inline/str/bool/
+  error/formula-with-or-without-cache), ExcelJS-matching date serial conversion and date-format
+  detection, merged-cell expansion, row-gap filling, and exact legacy error messages. New
+  `xlsx-stream.test.ts` locks extraction parity against the ExcelJS oracle on every committed
+  fixture plus the two real 1000-row Maijia exports (all byte-equal after trim). Typecheck,
+  prettier, and the full structured-ingestion suite (67 tests) pass.
 - Remaining at this handoff: deploy the CSP fix, reset the synthetic password through a fresh
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill
