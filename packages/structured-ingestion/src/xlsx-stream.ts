@@ -1,8 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- yauzl has no bundled types. */
 import sax from "sax";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- yauzl has no bundled types.
 const yauzl: any = require("yauzl");
 
 export interface XlsxReadLimits {

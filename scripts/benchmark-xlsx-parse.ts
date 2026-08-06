@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,10 +5,7 @@ import { spawnSync } from "node:child_process";
 import { performance } from "node:perf_hooks";
 import ExcelJS from "exceljs";
 import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
-import {
-  readXlsxRows,
-  type XlsxReadLimits
-} from "../packages/structured-ingestion/src/xlsx-stream.js";
+import { readXlsxRows } from "../packages/structured-ingestion/src/xlsx-stream.js";
 import { buildSyntheticDishesXlsx } from "./synthetic-xlsx.js";
 
 const ROW_COUNT = Number(process.argv[2] ?? 50_000);

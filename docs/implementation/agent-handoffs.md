@@ -966,7 +966,7 @@
   from the ZIP entry through a TextDecoder into sax (no whole-file XML buffer) and skips opening
   non-requested ZIP entries while keeping central-directory limits. Added
   `scripts/synthetic-xlsx.ts` (deterministic 50k-row dishes workbook), `npm run
-  benchmark:xlsx-parse` (old ExcelJS vs streaming extraction vs full pipeline with sampled peak
+benchmark:xlsx-parse` (old ExcelJS vs streaming extraction vs full pipeline with sampled peak
   RSS in child processes), and a Phase 3 gate
   `structured_large_xlsx_import_validation_50000_rows` (threshold 12s; local measured 7.25s).
   Local benchmark on 50k rows x 51 cols: peak RSS 660 -> 228 MiB (2.9x), time 8.9s -> 7.3s.

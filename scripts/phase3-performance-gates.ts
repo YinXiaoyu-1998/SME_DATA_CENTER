@@ -98,8 +98,9 @@ export async function runPhase3PerformanceGates(
   );
   const csvParseMs = await measure(options.workloads?.parseStructuredCsv ?? parseStructuredCsv);
   let xlsxParseMs: number;
-  if (options.workloads?.parseStructuredXlsx) {
-    xlsxParseMs = await measure(() => options.workloads.parseStructuredXlsx!(Buffer.alloc(0)));
+  const injectedXlsxWorkload = options.workloads?.parseStructuredXlsx;
+  if (injectedXlsxWorkload) {
+    xlsxParseMs = await measure(() => injectedXlsxWorkload(Buffer.alloc(0)));
   } else {
     const xlsxContent = await buildSyntheticDishesXlsx(50_000);
     xlsxParseMs = await measure(() => parseStructuredXlsx(xlsxContent));
