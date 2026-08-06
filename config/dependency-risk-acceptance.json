@@ -1,42 +1,5 @@
 {
   "schemaVersion": 1,
-  "exceptions": [
-    {
-      "id": "exceljs-read-only-xlsx-2026-07",
-      "rootPackage": "exceljs",
-      "components": ["repository-production", "api-image", "release-ops-image"],
-      "allowedPackages": [
-        "exceljs",
-        "archiver",
-        "archiver-utils",
-        "brace-expansion",
-        "glob",
-        "minimatch",
-        "readdir-glob",
-        "rimraf",
-        "uuid",
-        "zip-stream"
-      ],
-      "advisories": [
-        {
-          "id": "GHSA-mh99-v99m-4gvg",
-          "package": "brace-expansion",
-          "severity": "high"
-        },
-        {
-          "id": "GHSA-w5hq-g745-h8pq",
-          "package": "uuid",
-          "severity": "moderate",
-          "components": ["api-image", "release-ops-image"],
-          "impact": "Affected UUID v3/v5/v6 buffer handling is present only through the read-only ExcelJS dependency chain; Enterprise Hub does not call those UUID APIs or supply their output buffers.",
-          "mitigation": "Keep XLSX ingestion authenticated and bounded, do not invoke the affected UUID APIs, and replace or upgrade the ExcelJS dependency chain when a compatible fix is available.",
-          "owner": "Enterprise Hub maintainers",
-          "reviewBy": "2027-01-31"
-        }
-      ],
-      "approvedOn": "2026-07-31",
-      "reviewBy": "2027-01-31"
-    }
-  ],
+  "exceptions": [],
   "moderates": []
 }

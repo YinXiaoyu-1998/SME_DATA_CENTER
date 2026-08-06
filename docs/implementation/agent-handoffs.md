@@ -936,6 +936,41 @@
   CLI and all containers returned healthy with zero data residue. Remaining: decide Qdrant
   relocation or instance upgrade, enable the cloud-monitor agent, and refresh
   `deploy/staging/known_hosts`.
+- 2026-08-06 XLSX streaming parser Task 1 (deps/audit): pinned `sax@1.6.1` as the runtime XML
+  parser in `@enterprise-hub/structured-ingestion`, demoted `exceljs@4.4.0` to devDependencies
+  (test oracle only), and removed the `exceljs-read-only-xlsx-2026-07` exception from
+  `config/dependency-risk-acceptance.json`. Policy tests were rewritten around a synthetic
+  exception matrix that preserves every generic policy behavior; `npm ls exceljs --omit=dev` is
+  empty and `sax` is the only new production dependency.
+- 2026-08-06 XLSX streaming parser Task 2 (fixtures): added
+  `scripts/generate-structured-xlsx-fixtures.ts` (`npm run generate:xlsx-fixtures`) which
+  hand-writes minimal OOXML with jszip (pinned ZIP entry dates, byte-deterministic) and committed
+  the generated matrix under `fixtures/structured/xlsx/`: typed cells, unevaluated formula,
+  error cell, sparse rows, hidden sheet, cross-sheet row limit, multi-sheet order, and Excel
+  date-serial boundaries.
+- 2026-08-06 XLSX streaming parser Task 3 (reader): added
+  `packages/structured-ingestion/src/xlsx-stream.ts` (`readXlsxRows`), a yauzl + sax streaming
+  XLSX reader that keeps the ZIP safety limits, cell-type semantics (shared/inline/str/bool/
+  error/formula-with-or-without-cache), ExcelJS-matching date serial conversion and date-format
+  detection, merged-cell expansion, row-gap filling, and exact legacy error messages. New
+  `xlsx-stream.test.ts` locks extraction parity against the ExcelJS oracle on every committed
+  fixture plus the two real 1000-row Maijia exports (all byte-equal after trim). Typecheck,
+  prettier, and the full structured-ingestion suite (67 tests) pass.
+- 2026-08-06 XLSX streaming parser Task 4 (wiring): `parseStructuredFile` /
+  `profileStructuredFile` now use `readXlsxRows`; the ExcelJS/yauzl extraction code, ZIP
+  preflight, and date/rich-text helpers were removed from `index.ts` (CSV path and payload
+  mapping untouched). Added pipeline-level assertions over the committed fixtures (typed cells,
+  sparse rows, hidden sheet, cross-sheet limit, multi-sheet order). Full structured-ingestion
+  suite is now 72 passing tests with a clean typecheck.
+- 2026-08-06 XLSX streaming parser Task 5 (perf): `readXlsxRows` now streams sheet XML directly
+  from the ZIP entry through a TextDecoder into sax (no whole-file XML buffer) and skips opening
+  non-requested ZIP entries while keeping central-directory limits. Added
+  `scripts/synthetic-xlsx.ts` (deterministic 50k-row dishes workbook), `npm run
+benchmark:xlsx-parse` (old ExcelJS vs streaming extraction vs full pipeline with sampled peak
+  RSS in child processes), and a Phase 3 gate
+  `structured_large_xlsx_import_validation_50000_rows` (threshold 12s; local measured 7.25s).
+  Local benchmark on 50k rows x 51 cols: peak RSS 660 -> 228 MiB (2.9x), time 8.9s -> 7.3s.
+  Added `@types/sax` as a devDependency for reader typing.
 - Remaining at this handoff: deploy the CSP fix, reset the synthetic password through a fresh
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill

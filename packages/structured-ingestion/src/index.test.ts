@@ -808,3 +808,86 @@ function forgeCentralDirectoryUncompressedSizes(content: Buffer, size: number, e
   }
   return forged;
 }
+
+describe("committed XLSX fixture pipeline", () => {
+  const fixturePath = (...parts: string[]) =>
+    path.join(process.cwd(), "fixtures", "structured", "xlsx", ...parts);
+
+  test("imports typed-cells.xlsx with exact payload values", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dishes",
+      fileName: "typed-cells.xlsx",
+      fileType: "xlsx",
+      content: await readFile(fixturePath("typed-cells.xlsx")),
+      startDate: "20260701",
+      endDate: "20260701",
+      limits: PHASE3_RUNTIME_LIMIT_DEFAULTS
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.payload).toMatchObject({
+      product_name: "Rich product",
+      store_name: "Linked Store",
+      business_date: "2026-07-01",
+      order_time: "2026-07-01T12:30:45",
+      dish_sales_quantity: 3,
+      is_member: "true",
+      matched_product_name: "Inline product",
+      order_category: "堂食",
+      dishes_024_dish_sales_amount: 10.5
+    });
+  });
+
+  test("imports sparse-rows.xlsx with legacy sourceRowNumber semantics", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dishes",
+      fileName: "sparse-rows.xlsx",
+      fileType: "xlsx",
+      content: await readFile(fixturePath("sparse-rows.xlsx")),
+      startDate: "20260701",
+      endDate: "20260702",
+      limits: PHASE3_RUNTIME_LIMIT_DEFAULTS
+    });
+
+    expect(result.rows.map((row) => row.sourceRowNumber)).toEqual([2, 6]);
+    expect(result.rows.map((row) => row.payload.product_name)).toEqual(["Alpha", "Beta"]);
+  });
+
+  test("rejects hidden-sheet.xlsx during profiling", async () => {
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "hidden-sheet.xlsx",
+        fileType: "xlsx",
+        content: await readFile(fixturePath("hidden-sheet.xlsx")),
+        limits: PHASE3_RUNTIME_LIMIT_DEFAULTS
+      })
+    ).rejects.toThrow("Hidden non-empty sheet HiddenData is not allowed.");
+  });
+
+  test("rejects cross-sheet.xlsx row limit during profiling", async () => {
+    await expect(
+      profileStructuredFile({
+        dataset: "dishes",
+        fileName: "cross-sheet.xlsx",
+        fileType: "xlsx",
+        content: await readFile(fixturePath("cross-sheet.xlsx")),
+        limits: limitsFor({ maxStructuredImportRows: 1 })
+      })
+    ).rejects.toThrow("Structured import row limit exceeded");
+  });
+
+  test("preserves multi-sheet order and per-sheet values", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dishes",
+      fileName: "multi-sheet-visible.xlsx",
+      fileType: "xlsx",
+      content: await readFile(fixturePath("multi-sheet-visible.xlsx")),
+      startDate: "20260701",
+      endDate: "20260702",
+      limits: PHASE3_RUNTIME_LIMIT_DEFAULTS
+    });
+
+    expect(result.rows.map((row) => row.payload.product_name)).toEqual(["First", "Second"]);
+  });
+});
