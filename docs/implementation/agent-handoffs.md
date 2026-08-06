@@ -956,6 +956,12 @@
   `xlsx-stream.test.ts` locks extraction parity against the ExcelJS oracle on every committed
   fixture plus the two real 1000-row Maijia exports (all byte-equal after trim). Typecheck,
   prettier, and the full structured-ingestion suite (67 tests) pass.
+- 2026-08-06 XLSX streaming parser Task 4 (wiring): `parseStructuredFile` /
+  `profileStructuredFile` now use `readXlsxRows`; the ExcelJS/yauzl extraction code, ZIP
+  preflight, and date/rich-text helpers were removed from `index.ts` (CSV path and payload
+  mapping untouched). Added pipeline-level assertions over the committed fixtures (typed cells,
+  sparse rows, hidden sheet, cross-sheet limit, multi-sheet order). Full structured-ingestion
+  suite is now 72 passing tests with a clean typecheck.
 - Remaining at this handoff: deploy the CSP fix, reset the synthetic password through a fresh
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill

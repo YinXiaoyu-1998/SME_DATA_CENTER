@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- yauzl has no bundled types. */
-import { createRequire } from "node:module";
-import ExcelJS from "exceljs";
 import { parse as parseCsv } from "csv-parse/sync";
 import {
   getStructuredRegistry,
@@ -9,9 +6,7 @@ import {
   type StructuredDatasetName,
   type StructuredFieldRegistryEntry
 } from "@enterprise-hub/domain";
-
-const require = createRequire(import.meta.url);
-const yauzl: any = require("yauzl");
+import { readXlsxRows } from "./xlsx-stream.js";
 const MAX_HEADER_SCAN_ROWS = 10;
 
 export interface StructuredIngestionLimits {
@@ -62,7 +57,7 @@ export async function parseStructuredFile(input: ParseStructuredFileInput): Prom
   const sheets =
     input.fileType === "csv"
       ? [{ name: "Sheet1", hidden: false, rows: parseCsvRows(input.content, input.limits) }]
-      : await readXlsx(input.content, input.limits);
+      : await readXlsxRows(input.content, input.limits);
   const sheetSummary: StructuredSheetSummary[] = [];
   const rows: StructuredImportRow[] = [];
   const window = dateWindow(input.startDate, input.endDate);
@@ -109,7 +104,7 @@ export async function profileStructuredFile(
   const sheets =
     input.fileType === "csv"
       ? [{ name: "Sheet1", hidden: false, rows: parseCsvRows(input.content, input.limits) }]
-      : await readXlsx(input.content, input.limits);
+      : await readXlsxRows(input.content, input.limits);
   const profile: StructuredSheetProfile[] = [];
   const ignoredEmptySheets: string[] = [];
   let dataRowCount = 0;
@@ -179,219 +174,15 @@ function parseCsvRows(content: Buffer, limits: StructuredIngestionLimits): strin
     (row: unknown[]) => row.map((value) => checkedCellText(String(value), limits))
   );
 }
-async function readXlsx(
-  content: Buffer,
-  limits: StructuredIngestionLimits
-): Promise<Array<{ name: string; hidden: boolean; rows: string[][] }>> {
-  await preflightZip(content, limits);
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(content as any);
-  if (workbook.worksheets.length > limits.maxXlsxSheets)
-    throw validation("XLSX sheet limit exceeded.");
-  return workbook.worksheets.map((sheet) => ({
-    name: sheet.name,
-    hidden: sheet.state !== "visible",
-    rows: worksheetRows(sheet, limits)
-  }));
-}
-function worksheetRows(sheet: ExcelJS.Worksheet, limits: StructuredIngestionLimits): string[][] {
-  const rows: string[][] = [];
-  for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber++) {
-    const row = sheet.getRow(rowNumber);
-    const cells: string[] = [];
-    for (let columnNumber = 1; columnNumber <= row.cellCount; columnNumber++) {
-      cells.push(cellText(row.getCell(columnNumber), limits));
-    }
-    rows.push(cells);
-  }
-  return rows;
-}
-function cellText(cell: ExcelJS.Cell, limits: StructuredIngestionLimits): string {
-  return checkedCellText(xlsxCellValueText(cell.value, cell.numFmt), limits);
-}
 function checkedCellText(text: string, limits: StructuredIngestionLimits): string {
   if (text.length > limits.maxStructuredCellChars)
     throw validation("Structured cell length limit exceeded.");
   return text.trim();
 }
-function xlsxCellValueText(value: unknown, numberFormat?: string): string {
-  if (value == null) return "";
-  if (value instanceof Date)
-    return hasTimeComponent(value, numberFormat) ? dateTimeString(value) : dateString(value);
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
-    return String(value);
-  if (!isRecord(value)) throw validation("Unsupported XLSX cell value.");
-  if ("formula" in value) {
-    if (!("result" in value) || value.result == null)
-      throw validation("Unevaluated XLSX formula is not supported.");
-    return xlsxCellValueText(value.result, numberFormat);
-  }
-  if (Array.isArray(value.richText)) {
-    return value.richText
-      .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
-      .join("");
-  }
-  if (typeof value.text === "string") return value.text;
-  throw validation("Unsupported XLSX cell value.");
-}
-function hasTimeComponent(value: Date, numberFormat?: string): boolean {
-  return (
-    value.getUTCHours() !== 0 ||
-    value.getUTCMinutes() !== 0 ||
-    value.getUTCSeconds() !== 0 ||
-    /[hs]/i.test(numberFormat ?? "")
-  );
-}
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-async function preflightZip(content: Buffer, limits: StructuredIngestionLimits): Promise<void> {
-  await new Promise<void>((resolve, reject) =>
-    yauzl.fromBuffer(
-      content,
-      { lazyEntries: true, validateEntrySizes: false },
-      (error: Error | null, zip: any) => {
-        if (error || !zip) {
-          reject(validation("Malformed XLSX ZIP archive."));
-          return;
-        }
-        let settled = false;
-        let count = 0;
-        let declaredTotal = 0;
-        let actualTotal = 0;
-        const names = new Set<string>();
-        const critical = new Set<string>();
-        const close = () => {
-          try {
-            zip.close();
-          } catch {
-            // The archive may already be closed after a stream failure.
-          }
-        };
-        const fail = (cause: unknown) => {
-          if (settled) return;
-          settled = true;
-          close();
-          reject(cause instanceof Error ? cause : validation("Malformed XLSX ZIP archive."));
-        };
-        const succeed = () => {
-          if (settled) return;
-          settled = true;
-          close();
-          resolve();
-        };
-        const readNext = () => {
-          if (!settled) zip.readEntry();
-        };
-        zip.on("error", (zipError: Error) => fail(zipErrorFor(zipError)));
-        zip.on("entry", (entry: any) => {
-          try {
-            count++;
-            declaredTotal += entry.uncompressedSize;
-            const name = String(entry.fileName);
-            if (
-              count > limits.maxXlsxZipEntries ||
-              declaredTotal > limits.maxXlsxUncompressedBytes ||
-              entry.uncompressedSize > limits.maxXlsxUncompressedBytes
-            )
-              throw validation("XLSX ZIP resource limit exceeded.");
-            if (isUnsafeZipPath(name)) throw validation("Unsafe XLSX ZIP entry path.");
-            if (names.has(name) && isCriticalXlsxEntry(name))
-              throw validation("Duplicate critical XLSX ZIP entry.");
-            names.add(name);
-            if (isCriticalXlsxEntry(name)) critical.add(name);
-            if (
-              entry.uncompressedSize > 0 &&
-              (entry.compressedSize === 0 ||
-                entry.uncompressedSize / entry.compressedSize > limits.maxXlsxCompressionRatio)
-            )
-              throw validation("XLSX compression ratio limit exceeded.");
-            zip.openReadStream(entry, (streamError: Error | null, stream: any) => {
-              if (streamError || !stream) {
-                fail(
-                  streamError ? zipErrorFor(streamError) : validation("Malformed XLSX ZIP archive.")
-                );
-                return;
-              }
-              let entryActual = 0;
-              stream.on("data", (chunk: Buffer | Uint8Array | string) => {
-                if (settled) return;
-                const size =
-                  typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.byteLength;
-                entryActual += size;
-                actualTotal += size;
-                if (
-                  entryActual > limits.maxXlsxUncompressedBytes ||
-                  actualTotal > limits.maxXlsxUncompressedBytes
-                ) {
-                  stream.destroy();
-                  fail(validation("XLSX ZIP resource limit exceeded."));
-                  return;
-                }
-                if (entryActual > entry.uncompressedSize) {
-                  stream.destroy();
-                  fail(validation("XLSX ZIP entry size mismatch."));
-                  return;
-                }
-                if (
-                  entryActual > 0 &&
-                  (entry.compressedSize === 0 ||
-                    entryActual / entry.compressedSize > limits.maxXlsxCompressionRatio)
-                ) {
-                  stream.destroy();
-                  fail(validation("XLSX compression ratio limit exceeded."));
-                }
-              });
-              stream.once("error", (streamFailure: Error) => fail(zipErrorFor(streamFailure)));
-              stream.once("end", () => {
-                if (settled) return;
-                if (entryActual !== entry.uncompressedSize) {
-                  fail(validation("XLSX ZIP entry size mismatch."));
-                  return;
-                }
-                readNext();
-              });
-            });
-          } catch (caught) {
-            fail(caught);
-          }
-        });
-        zip.on("end", () => {
-          if (
-            critical.has("[Content_Types].xml") &&
-            critical.has("xl/workbook.xml") &&
-            [...critical].some(isWorksheetXmlEntry)
-          )
-            succeed();
-          else fail(validation("XLSX required OOXML entries are missing."));
-        });
-        zip.readEntry();
-      }
-    )
-  );
-}
-function isUnsafeZipPath(name: string) {
-  return (
-    name.includes("\\") ||
-    name.includes("\0") ||
-    name.startsWith("/") ||
-    /^[a-zA-Z]:/.test(name) ||
-    name.split("/").includes("..")
-  );
-}
-function isWorksheetXmlEntry(name: string) {
-  return /^xl\/worksheets\/[^/]+\.xml$/i.test(name);
-}
-function isCriticalXlsxEntry(name: string) {
-  return name === "[Content_Types].xml" || name === "xl/workbook.xml" || isWorksheetXmlEntry(name);
-}
-function zipErrorFor(error: Error) {
-  return /(?:absolute path|relative path|backslash)/i.test(error.message)
-    ? validation("Unsafe XLSX ZIP entry path.")
-    : validation("Malformed XLSX ZIP archive.");
-}
 function findHeader(dataset: StructuredDatasetName, rows: string[][]) {
-  let fallback: any;
+  let fallback:
+    | { index: number; width: number; resolution: ReturnType<typeof resolveStructuredHeaders> }
+    | undefined;
   for (let index = 0; index < Math.min(MAX_HEADER_SCAN_ROWS, rows.length); index++) {
     const headers = trimTail(rows[index] ?? []);
     const resolution = resolveStructuredHeaders(dataset, headers);
