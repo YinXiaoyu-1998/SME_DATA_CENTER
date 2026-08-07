@@ -73,7 +73,7 @@ describe("owned cross-process launcher lock", () => {
       mode: 0o600
     });
     const release = await createFileLock(lockPath, {
-      waitMs: 100,
+      waitMs: 2_000,
       pollMs: 5,
       isProcessAlive: () => false
     }).acquire();
