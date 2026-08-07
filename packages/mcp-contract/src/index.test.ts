@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { STRUCTURED_QUERY_LIMITS } from "@enterprise-hub/domain";
 import {
   ENTERPRISE_HUB_MCP_TOOL_CONTRACTS,
   ENTERPRISE_HUB_MCP_TOOL_NAMES,
+  MCP_LOCAL_FILE_PATH_MAX_LENGTH,
   MCP_STRUCTURED_QUERY_LIMITS,
   MCP_UPLOAD_FILENAME_MAX_LENGTH,
+  MCP_UPLOAD_MAX_BYTES,
   MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH,
   apiErrorToolResult,
   errorToolResult,
+  launcherUploadFileInputSchema,
+  launcherUploadFileInputShape,
   type EnterpriseHubMcpToolName,
   isMcpErrorBody,
   jsonToolResult,
@@ -782,3 +787,79 @@ function parseErrorResult(result: ReturnType<typeof errorToolResult>): {
     };
   };
 }
+
+describe("launcher path-mode upload schema", () => {
+  const base64File = {
+    name: "dishes.csv",
+    mediaType: "text/csv",
+    encoding: "base64",
+    contentBase64: "YSwNCg=="
+  };
+  const pathFile = {
+    name: "dishes.csv",
+    mediaType: "text/csv",
+    encoding: "path",
+    filePath: "/tmp/dishes.csv"
+  };
+
+  it("accepts both base64 and absolute-path file variants", () => {
+    expect(launcherUploadFileInputSchema.safeParse(base64File).success).toBe(true);
+    expect(launcherUploadFileInputSchema.safeParse(pathFile).success).toBe(true);
+  });
+
+  it("rejects relative, empty, and over-length local file paths", () => {
+    for (const filePath of ["dishes.csv", "../dishes.csv", "", "C:\\dishes.csv"]) {
+      expect(launcherUploadFileInputSchema.safeParse({ ...pathFile, filePath }).success).toBe(
+        false
+      );
+    }
+    expect(
+      launcherUploadFileInputSchema.safeParse({
+        ...pathFile,
+        filePath: `/${"a".repeat(MCP_LOCAL_FILE_PATH_MAX_LENGTH)}`
+      }).success
+    ).toBe(false);
+  });
+
+  it("keeps base64 and path variants mutually exclusive", () => {
+    expect(
+      launcherUploadFileInputSchema.safeParse({ ...base64File, filePath: "/tmp/dishes.csv" })
+        .success
+    ).toBe(false);
+    expect(
+      launcherUploadFileInputSchema.safeParse({ ...pathFile, contentBase64: "YSwNCg==" }).success
+    ).toBe(false);
+  });
+
+  it("exposes a registration-ready shape with both encodings", () => {
+    expect(Object.keys(launcherUploadFileInputShape).sort()).toEqual([
+      "contentBase64",
+      "encoding",
+      "filePath",
+      "mediaType",
+      "name"
+    ]);
+    const shapeSchema = z.object(launcherUploadFileInputShape);
+    expect(shapeSchema.safeParse(base64File).success).toBe(true);
+    expect(shapeSchema.safeParse(pathFile).success).toBe(true);
+  });
+
+  it("exports the shared 50 MiB upload ceiling for launcher-side preflight", () => {
+    expect(MCP_UPLOAD_MAX_BYTES).toBe(52_428_800);
+  });
+
+  it("keeps the server-facing schema base64-only and strict", () => {
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
+        file: pathFile
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("upload_evidence_document", {
+        ...validInputs.upload_evidence_document,
+        file: pathFile
+      }).success
+    ).toBe(false);
+  });
+});

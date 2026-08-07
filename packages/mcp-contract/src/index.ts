@@ -1,8 +1,15 @@
+import path from "node:path";
 import { z } from "zod";
-import { PUBLIC_INPUT_LIMITS, STRUCTURED_QUERY_LIMITS } from "@enterprise-hub/domain";
+import {
+  PHASE3_RUNTIME_LIMIT_DEFAULTS,
+  PUBLIC_INPUT_LIMITS,
+  STRUCTURED_QUERY_LIMITS
+} from "@enterprise-hub/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
 export const MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadMediaTypeChars;
+export const MCP_UPLOAD_MAX_BYTES = PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes;
+export const MCP_LOCAL_FILE_PATH_MAX_LENGTH = 4096;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
@@ -52,25 +59,58 @@ const canonicalBase64 = z.string().min(1).refine(isCanonicalWhitespaceFreeBase64
   message: "Content must be canonical whitespace-free base64."
 });
 
+const uploadMediaType = z
+  .string()
+  .min(1)
+  .max(MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH)
+  .refine((mediaType) => !hasAsciiControlCharacter(mediaType), {
+    message: "Upload MIME media type must not contain control characters."
+  })
+  .regex(
+    /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*[A-Za-z0-9!#$&^_.+-]+=(?:[A-Za-z0-9!#$&^_.+-]+|"[\t !#-[\]-~]*"))*$/,
+    "Upload MIME media type must use strict MIME token syntax."
+  )
+  .describe("Upload MIME media type.");
+
 const uploadFileInputSchema = z
   .object({
     name: basenameOnlyFilename.describe("Basename-only upload filename."),
-    mediaType: z
-      .string()
-      .min(1)
-      .max(MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH)
-      .refine((mediaType) => !hasAsciiControlCharacter(mediaType), {
-        message: "Upload MIME media type must not contain control characters."
-      })
-      .regex(
-        /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*[A-Za-z0-9!#$&^_.+-]+=(?:[A-Za-z0-9!#$&^_.+-]+|"[\t !#-[\]-~]*"))*$/,
-        "Upload MIME media type must use strict MIME token syntax."
-      )
-      .describe("Upload MIME media type."),
+    mediaType: uploadMediaType,
     encoding: z.literal("base64").describe("Upload content encoding."),
     contentBase64: canonicalBase64.describe("Canonical whitespace-free base64 upload content.")
   })
   .strict();
+
+export const localFilePath = z
+  .string()
+  .min(1)
+  .max(MCP_LOCAL_FILE_PATH_MAX_LENGTH)
+  .refine((candidate) => path.isAbsolute(candidate), {
+    message: "Local upload file path must be absolute."
+  })
+  .describe("Absolute local filesystem path read by the launcher.");
+
+const launcherPathUploadFileInputSchema = z
+  .object({
+    name: basenameOnlyFilename.describe("Basename-only upload filename."),
+    mediaType: uploadMediaType,
+    encoding: z.literal("path").describe("Launcher-resolved local file path encoding."),
+    filePath: localFilePath
+  })
+  .strict();
+
+export const launcherUploadFileInputSchema = z.union([
+  uploadFileInputSchema,
+  launcherPathUploadFileInputSchema
+]);
+
+export const launcherUploadFileInputShape: z.ZodRawShape = {
+  name: basenameOnlyFilename,
+  mediaType: uploadMediaType,
+  encoding: z.enum(["base64", "path"]),
+  contentBase64: canonicalBase64.optional(),
+  filePath: localFilePath.optional()
+};
 
 const listLabelsInputSchema = z.object({}).strict();
 

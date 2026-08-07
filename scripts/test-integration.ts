@@ -17,6 +17,10 @@ import {
 import { createPrismaStructuredImportRepository } from "../apps/api/src/structured-imports.js";
 import { AuthCore } from "../apps/api/src/auth/auth-core.js";
 import {
+  createLauncherToolDependencies,
+  createLauncherToolHandler
+} from "../apps/mcp-launcher/src/index.js";
+import {
   OAUTH_CLIENT_ID,
   OAUTH_TRANSACTION_COOKIE,
   csrfTokenForSecret,
@@ -248,6 +252,65 @@ try {
   );
   await assertStructuredRecoveryPaths();
 
+  const launcherPathCsv = Buffer.from(
+    structuredFixture.toString("utf8").replace("2026-07-01,", "2026-07-06,"),
+    "utf8"
+  );
+  const launcherPathFile = path.join(integrationRoot, "launcher-path-dishes.csv");
+  await writeFile(launcherPathFile, launcherPathCsv);
+  const launcherPathIdempotencyKey = `integration-launcher-path-${Date.now()}`;
+  const launcherPathResult = await createLauncherToolHandler(
+    "upload_structured_dataset",
+    createLauncherToolDependencies({
+      config: { serviceUrl: apiUrl, transport: "stdio" },
+      auth: {
+        login: async () => undefined,
+        logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
+        status: async () => ({ authenticated: true }),
+        accessToken: async () => employeeAccessToken,
+        invalidate: async () => undefined,
+        selfCheck: async () => {
+          throw new Error("not used");
+        }
+      }
+    })
+  )({
+    file: {
+      name: "launcher-path-dishes.csv",
+      mediaType: "text/csv",
+      encoding: "path",
+      filePath: launcherPathFile
+    },
+    dataset: "dishes",
+    enterpriseName: "Integration Smoke",
+    startDate: "20260706",
+    endDate: "20260706",
+    idempotencyKey: launcherPathIdempotencyKey,
+    labelKeys: ["store:baoli"]
+  });
+  assert(
+    !launcherPathResult.isError,
+    `Launcher path-mode upload should not error: ${JSON.stringify(launcherPathResult)}`
+  );
+  const launcherPathBody = JSON.parse(
+    launcherPathResult.content[0]?.text ?? "null"
+  ) as StructuredUploadResponse;
+  assert(
+    launcherPathBody.importBatch.status === "applied",
+    "Launcher path-mode import should apply."
+  );
+  assert(
+    launcherPathBody.importBatch.appliedRowCount === 1,
+    "Launcher path-mode import should load one row."
+  );
+  const storedObject = await new LocalFileSystemStorageAdapter({
+    root: storageRoot
+  }).getObjectStream(launcherPathBody.document.storageObjectKey);
+  assert(
+    Buffer.from(await collectStreamBytes(storedObject)).equals(launcherPathCsv),
+    "Stored bytes must match the launcher path-mode upload."
+  );
+
   const allStaffStructuredForm = new FormData();
   allStaffStructuredForm.append(
     "file",
@@ -393,6 +456,7 @@ try {
           "official_session_authentication",
           "phase3_structured_import",
           "phase3_structured_concurrent_exact_replay",
+          "launcher_local_path_upload",
           "phase3_structured_storage_and_apply_recovery",
           "phase3_structured_typed_query",
           "phase3_structured_query",
@@ -1793,4 +1857,12 @@ async function findAvailablePort(): Promise<number> {
       });
     });
   });
+}
+
+async function collectStreamBytes(stream: NodeJS.ReadableStream): Promise<Uint8Array> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
 }
