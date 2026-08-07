@@ -52,6 +52,10 @@ discover them by hand.
   `codex mcp get enterprise-hub` or the host equivalent), reload or restart the host, then
   recheck its tool list. Only if the entry is missing or the self-check fails, follow the focused
   recovery below. Do not debug the launcher protocol or service internals.
+- If a self-check reports `recommendedUpdateAvailable: true` (the server recommends a launcher
+  version newer than the installed one), tell the employee a newer approved launcher version is
+  available and offer to update now. Update only with the employee's consent, following Official
+  Install Or Update; never update silently in the background.
 
 ## Request Limits
 
@@ -120,8 +124,9 @@ subject to host caps (OpenAI Codex roughly **700–750 KiB** of raw bytes per ca
 ## Official Install Or Update
 
 An employee may ask in natural language to install, update, or repair Enterprise Hub. The
-employee does not need to run these commands personally. Work only for the current OS user and
-only on the invoking agent's configuration.
+employee does not need to run these commands personally. Agents should also offer an update when
+a self-check reports `recommendedUpdateAvailable: true` (see Tool Discovery). Work only for the
+current OS user and only on the invoking agent's configuration.
 
 1. Confirm the host is macOS or Windows and that the user authorizes this current-user install.
    Run `node --version` and `npm --version`. Require Node.js major version **22 or newer** and a
