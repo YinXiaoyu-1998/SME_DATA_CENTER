@@ -264,7 +264,16 @@ try {
     createLauncherToolDependencies({
       config: { serviceUrl: apiUrl, transport: "stdio" },
       auth: {
-        login: async () => undefined,
+        login: async () => ({
+          authenticated: false,
+          flow: "device",
+          verificationUri: `${apiUrl}/oauth/device/verify`,
+          verificationUriComplete: `${apiUrl}/oauth/device/verify?user_code=INTEGR8`,
+          userCode: "INTEGR8",
+          instanceName: "integration-agent",
+          instanceHostname: "integration-host",
+          openedBrowser: false
+        }),
         logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
         status: async () => ({ authenticated: true }),
         accessToken: async () => employeeAccessToken,
@@ -1313,6 +1322,115 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     assert(revokeEvents.length === 2, "OAuth revoke must persist logout and revocation events.");
     for (const event of revokeEvents) {
       assertAuthEvent(event, "198.51.100.34", "0.1.0", "OAuth revoke");
+    }
+
+    const deviceRunId = `${runId}_device`;
+    const deviceHeaders = (requestId: string, forwardedIp: string) => ({
+      ...oauthHeaders(requestId, forwardedIp),
+      "x-enterprise-hub-launcher-version": "0.2.0"
+    });
+    const deviceRequest = await fetch(`${apiUrl}/oauth/device_authorization`, {
+      method: "POST",
+      headers: deviceHeaders(`${deviceRunId}_issue`, "198.51.100.35"),
+      body: new URLSearchParams({
+        client_id: OAUTH_CLIENT_ID,
+        instanceName: `${runId}-agent`,
+        instanceHostname: "integration-host"
+      }).toString()
+    });
+    assert(deviceRequest.status === 200, "Device authorization request must succeed.");
+    const device = (await deviceRequest.json()) as {
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      verification_uri_complete: string;
+      expires_in: number;
+      interval: number;
+    };
+    assert(device.user_code.length === 8, "Device user code must be a short code.");
+    assert(
+      device.verification_uri_complete.includes(`user_code=${device.user_code}`),
+      "Tap link must embed the user code."
+    );
+
+    const localVerifyUri = new URL(device.verification_uri_complete);
+    localVerifyUri.protocol = new URL(apiUrl).protocol;
+    localVerifyUri.host = new URL(apiUrl).host;
+    const verifyPage = await fetch(localVerifyUri, {
+      headers: { "x-forwarded-for": "198.51.100.36", "x-request-id": `${deviceRunId}_page` }
+    });
+    if (verifyPage.status !== 200) {
+      throw new Error(
+        `Device verification page must render (status ${verifyPage.status}): ${(
+          await verifyPage.text()
+        ).slice(0, 300)}`
+      );
+    }
+    const pageHtml = await verifyPage.text();
+    assert(
+      pageHtml.includes(`${runId}-agent`) && pageHtml.includes("integration-host"),
+      "Verification page must show the paired agent instance."
+    );
+
+    const pendingPoll = await fetch(`${apiUrl}/oauth/token`, {
+      method: "POST",
+      headers: deviceHeaders(`${deviceRunId}_pending`, "198.51.100.37"),
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: OAUTH_CLIENT_ID,
+        device_code: device.device_code
+      }).toString()
+    });
+    assert(
+      pendingPoll.status === 400 &&
+        ((await pendingPoll.json()) as { error: string }).error === "authorization_pending",
+      "Polling before completion must return authorization_pending."
+    );
+
+    const completed = await auth.completeDeviceAuthorization(
+      device.user_code,
+      {
+        identityId: identity!.id,
+        employeeId: identity!.employeeId,
+        orgId: identity!.orgId
+      },
+      { requestId: `${deviceRunId}_complete`, sourceIp: "198.51.100.38", launcherVersion: null }
+    );
+    assert(completed, "Device authorization must complete with the verified identity.");
+
+    const deviceToken = await fetch(`${apiUrl}/oauth/token`, {
+      method: "POST",
+      headers: deviceHeaders(`${deviceRunId}_token`, "198.51.100.39"),
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: OAUTH_CLIENT_ID,
+        device_code: device.device_code
+      }).toString()
+    });
+    assert(deviceToken.status === 200, "Device code exchange must succeed.");
+    const deviceTokens = (await deviceToken.json()) as OAuthTokenResponse;
+    assert(
+      Boolean(deviceTokens.access_token && deviceTokens.refresh_token),
+      "Device exchange must issue both token types."
+    );
+
+    const deviceReplay = await fetch(`${apiUrl}/oauth/token`, {
+      method: "POST",
+      headers: deviceHeaders(`${deviceRunId}_replay`, "198.51.100.40"),
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: OAUTH_CLIENT_ID,
+        device_code: device.device_code
+      }).toString()
+    });
+    assert(deviceReplay.status === 400, "Replayed device codes must be rejected.");
+
+    const deviceTokenEvent = await prisma.authSecurityEvent.findFirst({
+      where: { requestId: `${deviceRunId}_token`, eventType: "session_created" }
+    });
+    assertAuthEvent(deviceTokenEvent, "198.51.100.39", "0.2.0", "device token");
+    if (deviceTokenEvent?.sessionId) {
+      sessionIds.push(deviceTokenEvent.sessionId);
     }
 
     const operatorEvent = await prisma.authSecurityEvent.findFirst({

@@ -2,13 +2,14 @@ import * as oauth from "oauth4webapi";
 import semver from "semver";
 import { LauncherTypedError, type OAuthTokenClient } from "./session.js";
 
-export const LAUNCHER_VERSION = "0.1.1";
+export const LAUNCHER_VERSION = "0.2.0";
 const CLIENT: oauth.Client = { client_id: "enterprise-hub-desktop-launcher" };
 const VERSION_HEADER = { "x-enterprise-hub-launcher-version": LAUNCHER_VERSION };
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export interface LauncherMetadata {
   authorizationEndpoint: URL;
+  deviceAuthorizationEndpoint: URL | null;
   minimumVersion: string;
   recommendedVersion: string;
   recommendedUpdateAvailable: boolean;
@@ -46,6 +47,9 @@ export class EnterpriseHubOAuthClient implements OAuthTokenClient {
     }
     return {
       authorizationEndpoint: new URL(server.authorization_endpoint),
+      deviceAuthorizationEndpoint: server.device_authorization_endpoint
+        ? new URL(server.device_authorization_endpoint)
+        : null,
       minimumVersion,
       recommendedVersion,
       recommendedUpdateAvailable: semver.lt(LAUNCHER_VERSION, recommendedVersion),
@@ -78,6 +82,77 @@ export class EnterpriseHubOAuthClient implements OAuthTokenClient {
   validateCallback(callbackUrl: URL, expectedState: string): URLSearchParams {
     if (!this.#server) throw new LauncherTypedError("SERVICE_UNAVAILABLE");
     return validateAuthorizationCallback(this.#server, callbackUrl, expectedState);
+  }
+
+  async requestDeviceAuthorization(input: {
+    instanceName: string;
+    instanceHostname: string;
+  }): Promise<DeviceAuthorizationRequest> {
+    const server = await this.discovery();
+    if (!server.device_authorization_endpoint) {
+      throw new LauncherTypedError("SERVICE_UNAVAILABLE");
+    }
+    const response = await oauth.deviceAuthorizationRequest(
+      server,
+      CLIENT,
+      oauth.None(),
+      new URLSearchParams({
+        instanceName: input.instanceName,
+        instanceHostname: input.instanceHostname
+      }),
+      requestOptions(this.fetchImplementation)
+    );
+    try {
+      const parsed = await oauth.processDeviceAuthorizationResponse(server, CLIENT, response);
+      return {
+        deviceCode: parsed.device_code,
+        userCode: parsed.user_code,
+        verificationUri: new URL(parsed.verification_uri),
+        verificationUriComplete: parsed.verification_uri_complete
+          ? new URL(parsed.verification_uri_complete)
+          : null,
+        expiresInSeconds: parsed.expires_in,
+        intervalSeconds: parsed.interval ?? 5
+      };
+    } catch (error) {
+      throw mapOAuthError(error);
+    }
+  }
+
+  async pollDeviceAuthorization(deviceCode: string): Promise<DeviceCodePollResult> {
+    const server = await this.discovery();
+    const response = await oauth.deviceCodeGrantRequest(
+      server,
+      CLIENT,
+      oauth.None(),
+      deviceCode,
+      requestOptions(this.fetchImplementation)
+    );
+    try {
+      const parsed = await oauth.processDeviceCodeResponse(server, CLIENT, response);
+      return {
+        status: "complete",
+        accessToken: parsed.access_token,
+        refreshToken: parsed.refresh_token ?? "",
+        expiresAt:
+          typeof parsed.expires_in === "number" && parsed.expires_in > 0
+            ? Date.now() + parsed.expires_in * 1000
+            : undefined
+      };
+    } catch (error) {
+      if (error instanceof oauth.ResponseBodyError) {
+        if (error.error === "authorization_pending") {
+          return { status: "pending" };
+        }
+        if (error.error === "slow_down") {
+          return { status: "slow_down", intervalSeconds: 5 };
+        }
+        if (error.error === "expired_token" || error.error === "invalid_grant") {
+          return { status: "expired" };
+        }
+      }
+      throw mapOAuthError(error);
+    }
   }
 
   async refresh(
@@ -208,3 +283,23 @@ export function mapOAuthError(
   if (status === 403) return new LauncherTypedError("FORBIDDEN");
   return new LauncherTypedError(fallback ?? "SERVICE_UNAVAILABLE");
 }
+
+export interface DeviceAuthorizationRequest {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: URL;
+  verificationUriComplete: URL | null;
+  expiresInSeconds: number;
+  intervalSeconds: number;
+}
+
+export type DeviceCodePollResult =
+  | { status: "pending" }
+  | { status: "slow_down"; intervalSeconds: number }
+  | { status: "expired" }
+  | {
+      status: "complete";
+      accessToken: string;
+      refreshToken: string;
+      expiresAt?: number;
+    };

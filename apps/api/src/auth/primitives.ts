@@ -13,13 +13,25 @@ export const AUTH_LIFETIMES_MS = {
   accessToken: 10 * 60_000,
   authorizationCode: 60_000,
   browserTransaction: 10 * 60_000,
+  deviceAuthorization: 10 * 60_000,
   passwordSetupSession: 10 * 60_000,
   passwordSetupGrant: 24 * 60 * 60_000,
   durableSession: 30 * 24 * 60 * 60_000,
   securityEventRetention: 90 * 24 * 60 * 60_000
 } as const;
 
-export type OpaqueSecretPrefix = "eh_ps_" | "eh_at_" | "eh_rt_" | "eh_ac_" | "eh_tx_";
+export type OpaqueSecretPrefix = "eh_ps_" | "eh_at_" | "eh_rt_" | "eh_ac_" | "eh_tx_" | "eh_dc_";
+
+const DEVICE_USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+export function generateDeviceUserCode(length = 8): string {
+  const bytes = randomBytes(length);
+  let code = "";
+  for (const byte of bytes) {
+    code += DEVICE_USER_CODE_ALPHABET[byte % DEVICE_USER_CODE_ALPHABET.length]!;
+  }
+  return code;
+}
 
 export function normalizeLoginEmail(email: string): string {
   return email.trim().normalize("NFC").toLowerCase();

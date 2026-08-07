@@ -1,5 +1,5 @@
 import open from "open";
-import { randomBytes } from "node:crypto";
+import os from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
@@ -13,11 +13,6 @@ import {
   toolNotFoundResult,
   validationErrorToolResult
 } from "@enterprise-hub/mcp-contract";
-import {
-  createAuthorizationRequest,
-  createLoopbackCallbackServer,
-  waitForAuthorizationResponse
-} from "./auth.js";
 import type { LauncherRuntimeConfig } from "./config.js";
 import { EnterpriseHubOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
@@ -54,13 +49,26 @@ export interface LauncherToolResult {
 }
 
 export interface LauncherAuthentication {
-  login(): Promise<void>;
+  login(): Promise<LauncherLoginResult>;
   logout(): Promise<{ remoteRevocationConfirmed: boolean; localCredentialRemoved: boolean }>;
   status(): Promise<{ authenticated: boolean }>;
   accessToken(): Promise<string>;
   invalidate(): Promise<void>;
   selfCheck(): Promise<LauncherSelfCheck>;
 }
+
+export type LauncherLoginResult =
+  | { authenticated: true }
+  | {
+      authenticated: false;
+      flow: "device";
+      verificationUri: string;
+      verificationUriComplete: string | null;
+      userCode: string;
+      instanceName: string;
+      instanceHostname: string;
+      openedBrowser: boolean;
+    };
 
 export interface LauncherSelfCheck {
   ok: boolean;
@@ -237,22 +245,27 @@ export function createOfficialLauncherAuthentication(
   return {
     login: async () => {
       const metadata = await oauth.metadata(true);
-      const state = randomBytes(32).toString("base64url");
-      const callback = await createLoopbackCallbackServer({ state });
-      try {
-        const request = await createAuthorizationRequest({
-          authorizationEndpoint: metadata.authorizationEndpoint,
-          redirectUri: callback.redirectUri,
-          state
-        });
-        await open(request.url.toString());
-        const callbackUrl = await waitForAuthorizationResponse(callback);
-        const parameters = oauth.validateCallback(callbackUrl, state);
-        const tokens = await oauth.exchange(parameters, callback.redirectUri, request.verifier);
-        await session.establish(tokens.accessToken, tokens.refreshToken, tokens.expiresAt);
-      } finally {
-        await callback.close();
+      if (!metadata.deviceAuthorizationEndpoint) {
+        throw new LauncherTypedError("SERVICE_UNAVAILABLE");
       }
+      const instanceHostname = os.hostname();
+      const instanceName = instanceHostname;
+      const device = await oauth.requestDeviceAuthorization({
+        instanceName,
+        instanceHostname
+      });
+      const openedBrowser = await openVerificationLink(device);
+      session.waitForLogin(pollUntilComplete(oauth, session, device));
+      return {
+        authenticated: false,
+        flow: "device",
+        verificationUri: device.verificationUri.toString(),
+        verificationUriComplete: device.verificationUriComplete?.toString() ?? null,
+        userCode: device.userCode,
+        instanceName,
+        instanceHostname,
+        openedBrowser
+      };
     },
     logout: () => session.logout(),
     status: () => session.status(),
@@ -262,12 +275,13 @@ export function createOfficialLauncherAuthentication(
     },
     invalidate: () => session.invalidate(),
     selfCheck: async () => {
-      let secureStoreAvailable = true;
+      let secureStoreAvailable = false;
       let authenticated = false;
       try {
+        secureStoreAvailable = await session.secureStoreAvailable();
         authenticated = (await session.status()).authenticated;
       } catch {
-        secureStoreAvailable = false;
+        // A failed probe reports an unavailable secure store in the self-check result.
       }
       let metadata: Awaited<ReturnType<EnterpriseHubOAuthClient["metadata"]>> | null = null;
       try {
@@ -287,11 +301,7 @@ export function createOfficialLauncherAuthentication(
           handshake = "unavailable";
         }
       }
-      const ok =
-        secureStoreAvailable &&
-        metadata !== null &&
-        metadata.compatible &&
-        handshake !== "unavailable";
+      const ok = metadata !== null && metadata.compatible && handshake !== "unavailable";
       return {
         ok,
         launcherVersion: LAUNCHER_VERSION,
@@ -321,12 +331,71 @@ async function login(
   const parsed = emptyInputSchema.safeParse(input);
   if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
   try {
-    await dependencies.auth.login();
-    return jsonToolResult({ authenticated: true, serviceUrl: dependencies.config.serviceUrl });
+    const result = await dependencies.auth.login();
+    return jsonToolResult({ ...result, serviceUrl: dependencies.config.serviceUrl });
   } catch (error) {
     return typedToolError(error);
   }
 }
+
+export function canOpenBrowser(): boolean {
+  if (process.platform === "darwin" || process.platform === "win32") {
+    return true;
+  }
+  return Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+}
+
+async function openVerificationLink(device: {
+  verificationUri: URL;
+  verificationUriComplete: URL | null;
+}): Promise<boolean> {
+  if (!canOpenBrowser()) {
+    return false;
+  }
+  const target = device.verificationUriComplete ?? device.verificationUri;
+  try {
+    await open(target.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function pollUntilComplete(
+  oauth: EnterpriseHubOAuthClient,
+  session: LauncherSession,
+  device: {
+    deviceCode: string;
+    expiresInSeconds: number;
+    intervalSeconds: number;
+  }
+): Promise<void> {
+  let intervalSeconds = device.intervalSeconds;
+  const deadline = Date.now() + device.expiresInSeconds * 1000;
+  while (Date.now() < deadline) {
+    await sleep(intervalSeconds * 1000);
+    const result = await oauth.pollDeviceAuthorization(device.deviceCode);
+    if (result.status === "complete") {
+      await session.establish(
+        result.accessToken,
+        result.refreshToken,
+        result.expiresAt ?? Date.now() + 9 * 60_000
+      );
+      return;
+    }
+    if (result.status === "slow_down") {
+      intervalSeconds += result.intervalSeconds;
+    }
+    if (result.status === "expired") {
+      return;
+    }
+  }
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 async function logout(
   input: unknown,
   dependencies: LauncherToolDependencies

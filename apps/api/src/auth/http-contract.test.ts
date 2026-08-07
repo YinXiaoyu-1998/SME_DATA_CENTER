@@ -90,10 +90,15 @@ describe("official OAuth HTTP contract", () => {
     expect(oauthMetadata("https://api.smedatacenter.xyz")).toEqual({
       issuer: "https://api.smedatacenter.xyz",
       authorization_endpoint: "https://api.smedatacenter.xyz/oauth/authorize",
+      device_authorization_endpoint: "https://api.smedatacenter.xyz/oauth/device_authorization",
       token_endpoint: "https://api.smedatacenter.xyz/oauth/token",
       revocation_endpoint: "https://api.smedatacenter.xyz/oauth/revoke",
       response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code", "refresh_token"],
+      grant_types_supported: [
+        "authorization_code",
+        "refresh_token",
+        "urn:ietf:params:oauth:grant-type:device_code"
+      ],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
       enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher",
