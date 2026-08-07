@@ -152,14 +152,14 @@ The API entrypoint automatically loads `.env` from the current working directory
 ## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
-`enterprise-hub-mcp-launcher@0.1.0` local stdio launcher. The dual-homed
+`enterprise-hub-mcp-launcher@0.1.1` local stdio launcher. The dual-homed
 `skills/enterprise-hub-mcp/` skill is the authoritative current-user install, configuration,
 browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
 email/password/token/code input, uses `enterprise_hub_login`, `enterprise_hub_logout`, and
 `enterprise_hub_auth_status`, and never operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
-`enterprise-hub-mcp-launcher@0.1.0` is published on npm and its registry integrity, clean install,
+`enterprise-hub-mcp-launcher@0.1.1` is published on npm and its registry integrity, clean install,
 CLI, and production dependency audit have been verified. The official auth cutover is deployed in
 staging. Real macOS Codex browser-login acceptance has passed; Windows Codex and macOS/Windows
 OpenClaw acceptance remain release gates.
