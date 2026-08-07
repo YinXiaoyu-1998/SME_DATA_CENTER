@@ -6,6 +6,7 @@
 - Date: 2026-08-04
 - Lead branch: `codex/runtime-image-audit-hardening-20260731`
 - Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package. Exact immutable release tags are recorded in dated readiness and verification evidence.
+- 2026-08-07: remote/headless and secondary-device login design completed in `docs/implementation/official-user-install-and-login.md` and ADR 0022 (uniform device-code flow, split secrets, pairing confirmation, memory-only headless credential custody, per-process session model); implementation not started.
 
 ## Active Workstreams
 

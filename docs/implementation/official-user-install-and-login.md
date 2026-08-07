@@ -1,8 +1,9 @@
 # Official User Installation, Login, and Session Design
 
-Status: accepted design; ready for implementation planning
+Status: desktop browser flow accepted and ready for implementation planning; remote/headless and
+secondary-device login reopened and in progress
 
-Last updated: 2026-08-04
+Last updated: 2026-08-07
 
 ## Purpose
 
@@ -30,7 +31,10 @@ In scope:
 - local secure credential storage;
 - automatic reuse, refresh, reauthentication, logout, and revocation;
 - the boundary between the employee, agent/model, launcher, browser, identity system, and API;
-- macOS and Windows client behavior.
+- macOS and Windows client behavior;
+- remote/headless and secondary-device (mobile) login via OAuth Device Authorization Grant semantics,
+  including the first-party tap-link verification page and headless-agent token polling
+  (design and implementation in progress).
 
 Out of scope for this design:
 
@@ -38,7 +42,6 @@ Out of scope for this design:
 - registration as a growth or self-service acquisition flow;
 - employee labels and business-data authorization rules beyond preserving the existing backend
   authority;
-- Linux, mobile, headless, SSH-only, device-code, or secondary-device login;
 - service deployment, RDS, Qdrant, OSS, ACR, or worker operations.
 
 ## Withdrawn Development Code Reality
@@ -69,8 +72,11 @@ only as historical rationale and is not a compatibility constraint or current ru
 - Normal installation, login, later use, refresh, and logout must not require the employee to
   personally use a terminal, type commands, edit environment variables, edit MCP configuration, or
   manage an operating-system credential store.
-- No Linux, mobile, headless, SSH-terminal, device-code, or secondary-device flow is needed unless
-  the product constraint changes.
+- Remote/headless and secondary-device login is now in scope: an agent running without a local
+  system browser can send the employee a first-party login/verification link, the employee
+  authenticates in a mobile or desktop browser, and the agent completes the flow by polling the
+  token endpoint. This extension is under active design and implementation (see
+  “In-Progress: Remote/Headless And Secondary-Device Login”).
 
 ### Installation
 
@@ -202,7 +208,7 @@ design constraint.
 | 2026-07-23 | Confirmed                 | Account passwords never enter agent/model-visible channels and are entered only on the browser login page                                                                                                                |
 | 2026-07-23 | Confirmed                 | Authentication must persist across later agent sessions and ordinary restarts                                                                                                                                            |
 | 2026-07-23 | Rejected                  | Asking the employee to give a password to an agent through chat, environment variables, or files                                                                                                                         |
-| 2026-07-23 | Rejected                  | Device-code/headless/secondary-device login for the current target audience                                                                                                                                              |
+| 2026-07-23 | Deferred | Device-code/headless/secondary-device login for the current target audience; deferred from the initial beta launch window rather than excluded as a product direction |
 | 2026-07-23 | Rejected as official flow | Operator-to-user long-lived opaque-token handoff proposed by ADR 0021                                                                                                                                                    |
 | 2026-07-23 | Confirmed                 | Obsolete temporary authentication designs do not constrain the official design; conflicting recommendations must be deleted, withdrawn, or marked historical/current-code-only                                           |
 | 2026-07-23 | Superseded                | A mature independent OIDC identity system immediately owns login identities and passwords; revised after choosing a controlled internal beta verifier                                                                    |
@@ -239,6 +245,7 @@ design constraint.
 | 2026-07-24 | Deferred                  | Source-IP and endpoint-specific authentication limits, CAPTCHA, and external anti-bot services are not part of the minimal beta; the accepted per-identity progressive cooldown remains                                  |
 | 2026-07-24 | Confirmed                 | Beta passwords are 8–128 Unicode characters with no composition or periodic-change rule, a small local common-password blocklist, and reviewed benchmarked Argon2id storage                                              |
 | 2026-07-24 | Confirmed                 | The temporary development email/JWT authentication system is deleted completely; every environment and test moves to the official identity/session model with no compatibility period                                    |
+| 2026-08-07 | Confirmed | Device-code/headless/secondary-device login is reopened and in progress: adopt the OAuth Device Authorization Grant (RFC 8628) semantics with a first-party mobile-friendly tap-link verification page and headless-agent token polling; open branches are recorded in the In-Progress section |
 
 ## Design Tree
 
@@ -290,6 +297,10 @@ Resolve these branches in dependency order:
     Codex/OpenClaw plus login, expiry, retry, logout, password reset, reinstall, upgrade,
     interrupted callback, and lost-device recovery. Exact automated/manual cases belong in the
     implementation plan.
+14. **Remote/headless login**: resolved at the design level — the OAuth Device Authorization Grant
+    is the single official flow; split secrets, pairing confirmation, headless credential custody,
+    and the per-instance session model are resolved. See ADR 0022 and the In-Progress section;
+    implementation has not started.
 
 ## Accepted Password-Setup Policy
 
@@ -326,6 +337,84 @@ The launcher is a public client and has no embedded client secret. The redirect 
 access or refresh token. The launcher binds only to IPv4 loopback on a random available port, the
 server enforces the exact callback from the authorization request, and requests without PKCE are
 rejected. No custom URL scheme is required.
+
+## In-Progress: Remote/Headless And Secondary-Device Login
+
+Status: design completed on 2026-08-07; implementation pending. The desktop browser flow above
+remains the accepted, shipped boundary until the device-code flow ships; this section records the
+active extension.
+
+**Motivation.** Agents that run on a headless remote server — for example OpenClaw-family
+deployments controlled from a phone, such as QClaw/小艺Claw-style setups — have no local system
+browser, no loopback callback target, and no macOS Keychain or Windows Credential Manager. The
+employee must still be able to authenticate from any device and let the remote agent obtain a
+session without the agent/model ever reading the credentials.
+
+**Confirmed scope (2026-08-07).** The supported agent forms for the new flow are:
+
+- A — interactive desktop agents on macOS/Windows with a local system browser;
+- B — phone-remote-controlled agents running on the employee's own PC;
+- C — headless remote agents on VPS/cloud hosts with no local browser or OS credential store.
+
+Support class D (fully unattended agents with no interactive login) is out of scope for login
+flows. The design assumes every supported form has an employee channel that can present the
+first-party login link to the employee, and that the employee can open that link in a mobile or
+desktop browser.
+
+**Agreed direction.**
+
+- Implement the OAuth Device Authorization Grant semantics (RFC 8628) on the existing public-client
+  contract rather than inventing a bespoke protocol.
+- Use one uniform flow for all supported agent forms (A, B, and C): the launcher obtains a
+  first-party login/verification link, the employee opens it in any mobile or desktop browser and
+  authenticates, and the launcher completes the flow by polling the token endpoint. No loopback
+  callback is required.
+- Link delivery does not degrade the desktop experience: when the launcher runs on a machine with
+  an interactive system browser (support class A), the launcher opens the link automatically;
+  otherwise it returns the link so the agent surfaces it through the employee channel (support
+  classes B and C).
+- The employee-facing link pre-fills the one-time `user_code`; the employee's only credential
+  input remains email and password on the first-party verification page. No one-time code is
+  typed by hand.
+- Preserve the existing secret boundaries: passwords and tokens never enter agent/model-visible
+  channels; the browser never receives durable credentials; tokens continue to flow only over the
+  back-channel poll response.
+- Once shipped, this flow becomes the single official login flow and replaces the loopback
+  Authorization Code flow described above; the accepted loopback sections remain current shipped
+  state until then.
+
+**Resolved design decisions (2026-08-07).**
+
+- Split secrets: an unguessable, single-use, short-lived pending-login handle (the `device_code`
+  equivalent) stays with the launcher, while the employee-facing link carries only the
+  verification handle / `user_code`, so chat or link leakage cannot transfer the session.
+- Pairing confirmation: the verification page displays the declared agent instance name and
+  hostname, the employee channel mirrors the same identity, and the employee visually confirms the
+  match before entering the password. The instance metadata is client-declared and accepted for
+  the controlled beta, matching the existing treatment of launcher-version metadata.
+- Headless credential custody: on hosts without a secure store (support class C), the launcher
+  holds credentials in memory only and never writes a durable credential to disk; a launcher
+  process restart therefore requires a new tap-link login. On macOS/Windows where Keychain or
+  Credential Manager is available (support classes A and B), the existing durable secure-store
+  behavior is unchanged. The launcher selects memory-only mode only after confirming no secure
+  store is available (reusing the existing `secureStore.available` signal).
+- Session model: support classes A and B keep one shared session per OS user per origin via the
+  secure store. On support class C each launcher process owns one independent server-side session
+  family and there is no cross-process sharing or local coordination file (memory-only mode cannot
+  share across processes). The server already permits multiple session families per Employee
+  Account; session inventory and single-session revoke stay deferred for beta.
+- Pending-login record defaults: a pending login (`device_code` + `user_code`) expires after
+  10 minutes; the launcher polls every 5 seconds with RFC 8628 `slow_down` backoff; `device_code`
+  is single use, bound to the creating launcher instance and, at completion, to the Login
+  Identity / Employee Account; records are stored as hashes only; each launcher instance has one
+  active pending request (a new request revokes the old); the employee link is the standard
+  `verification_uri_complete`; audit events cover creation, completion, expiry, and revocation.
+
+All design branches for this flow are resolved. Implementation has not started; the remaining work
+is implementation decomposition, server endpoints, the verification page, launcher flow selection,
+and test mechanics.
+
+This section does not yet change shipped desktop launcher behavior.
 
 ## Accepted Browser Page Delivery
 
@@ -629,6 +718,11 @@ are revoked. Until that happens, the fixed 30-day absolute session lifetime rema
 Per-session identification and immediate operator revoke may be reconsidered only when real usage
 demonstrates the need.
 
+The reopened remote/headless flow does create such a need for the new path: each headless agent
+instance requires its own identifiable session family, so session identification and inventory are
+open branches there even though the desktop beta keeps them deferred (see
+“In-Progress: Remote/Headless And Secondary-Device Login”).
+
 ## Accepted Minimal Authentication Security Audit
 
 Beta persists a durable security-event trail for:
@@ -728,3 +822,8 @@ The official beta installation, browser login, token/session, local storage, ski
 recovery, password, audit, and hard-cutover decisions have reached an implementable boundary.
 Remaining choices are implementation decomposition and test mechanics, not unresolved employee
 experience or authentication policy.
+
+The remote/headless and secondary-device login flow reached its implementable boundary on
+2026-08-07: the device-code flow, link delivery, pairing, credential custody, and session model are
+resolved. Remaining work is implementation decomposition, server endpoints, verification-page UX,
+launcher flow selection, and test mechanics (see the In-Progress section).
