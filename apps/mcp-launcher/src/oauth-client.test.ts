@@ -102,7 +102,7 @@ describe("OAuth typed failures", () => {
 
     expect(metadata).toMatchObject({ compatible: true, recommendedUpdateAvailable: false });
     expect(token).toMatchObject({ accessToken: "eh_at_test", refreshToken: "eh_rt_test" });
-    expect(tokenRequest?.launcherVersion).toBe("0.1.0");
+    expect(tokenRequest?.launcherVersion).toBe("0.1.1");
     expect(Object.fromEntries(tokenRequest!.body)).toMatchObject({
       grant_type: "authorization_code",
       client_id: "enterprise-hub-desktop-launcher",

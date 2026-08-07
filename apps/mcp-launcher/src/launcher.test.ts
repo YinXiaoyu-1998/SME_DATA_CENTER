@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { ENTERPRISE_HUB_MCP_TOOL_NAMES } from "@enterprise-hub/mcp-contract";
 import { createLauncherRuntimeConfig } from "./config.js";
 import {
@@ -144,6 +148,134 @@ describe("official launcher bootstrap tools", () => {
   });
 });
 
+describe("launcher local path upload proxy", () => {
+  const tempRoots: string[] = [];
+
+  afterAll(async () => {
+    await Promise.all(tempRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  const pathInput = (filePath: string) => ({
+    file: {
+      name: "dishes.csv",
+      mediaType: "text/csv",
+      encoding: "path",
+      filePath
+    },
+    dataset: "dishes",
+    enterpriseName: "Maijia",
+    startDate: "20260701",
+    endDate: "20260731",
+    idempotencyKey: "path-upload-key",
+    labelKeys: ["store:baoli"]
+  });
+  const base64Input = {
+    file: {
+      name: "dishes.csv",
+      mediaType: "text/csv",
+      encoding: "base64",
+      contentBase64: "YSwNCg=="
+    },
+    dataset: "dishes",
+    enterpriseName: "Maijia",
+    startDate: "20260701",
+    endDate: "20260731",
+    idempotencyKey: "base64-upload-key",
+    labelKeys: ["store:baoli"]
+  };
+
+  it("registers path-capable schemas for both upload tools", () => {
+    const registered: Array<{ name: string; shape: Record<string, unknown> }> = [];
+    registerLauncherTools(
+      { registerTool: (name, options) => registered.push({ name, shape: options.inputSchema }) },
+      createLauncherToolDependencies({ config, auth: fakeAuth() })
+    );
+
+    for (const name of ["upload_structured_dataset", "upload_evidence_document"]) {
+      const shape = registered.find((entry) => entry.name === name)?.shape;
+      const schema = z.object(shape as z.ZodRawShape);
+      expect(schema.safeParse(pathInput("/tmp/dishes.csv").file).success).toBe(true);
+      expect(schema.safeParse(base64Input.file).success).toBe(true);
+      expect(
+        schema.safeParse({
+          name: "dishes.csv",
+          mediaType: "text/csv",
+          encoding: "path",
+          filePath: "relative.csv"
+        }).success
+      ).toBe(false);
+    }
+  });
+
+  it("converts path-mode input to exact base64 before proxying", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "eh-launcher-proxy-"));
+    tempRoots.push(dir);
+    const filePath = path.join(dir, "dishes.csv");
+    const bytes = Buffer.from("dish_name,business_date\n合成菜品,20260703\n", "utf8");
+    await writeFile(filePath, bytes);
+
+    const calls: Array<{ method?: string; params?: { arguments?: unknown } }> = [];
+    const dependencies = createLauncherToolDependencies({
+      config,
+      auth: fakeAuth(),
+      fetchImplementation: fakeMcpFetch(calls)
+    });
+
+    const result = await createLauncherToolHandler(
+      "upload_structured_dataset",
+      dependencies
+    )(pathInput(filePath));
+
+    expect(result.isError).toBe(false);
+    const forwarded = calls.find((call) => call.method === "tools/call")?.params?.arguments as {
+      file?: { encoding?: string; contentBase64?: string; filePath?: string };
+      dataset?: string;
+    };
+    expect(forwarded?.file?.encoding).toBe("base64");
+    expect(forwarded?.file?.contentBase64).toBe(bytes.toString("base64"));
+    expect("filePath" in (forwarded?.file ?? {})).toBe(false);
+    expect(forwarded?.dataset).toBe("dishes");
+  });
+
+  it("forwards base64-mode input unchanged", async () => {
+    const calls: Array<{ method?: string; params?: { arguments?: unknown } }> = [];
+    const dependencies = createLauncherToolDependencies({
+      config,
+      auth: fakeAuth(),
+      fetchImplementation: fakeMcpFetch(calls)
+    });
+
+    const result = await createLauncherToolHandler(
+      "upload_structured_dataset",
+      dependencies
+    )(base64Input);
+
+    expect(result.isError).toBe(false);
+    const forwarded = calls.find((call) => call.method === "tools/call")?.params?.arguments;
+    expect(forwarded).toEqual(base64Input);
+  });
+
+  it("reports local file read failures without proxying", async () => {
+    const calls: Array<{ method?: string }> = [];
+    const dependencies = createLauncherToolDependencies({
+      config,
+      auth: fakeAuth(),
+      fetchImplementation: fakeMcpFetch(calls)
+    });
+
+    const result = await createLauncherToolHandler(
+      "upload_structured_dataset",
+      dependencies
+    )(pathInput(path.join("/definitely-missing", "dishes.csv")));
+
+    expect(result.isError).toBe(true);
+    expect(body(result)).toMatchObject({
+      error: { code: "MCP_LOCAL_FILE_NOT_FOUND", retryable: false }
+    });
+    expect(calls.some((call) => call.method === "tools/call")).toBe(false);
+  });
+});
+
 function fakeAuth(
   options: { authenticated?: boolean; loginError?: { code: string; message: string } } = {}
 ) {
@@ -166,4 +298,57 @@ function fakeAuth(
 
 function body(result: { content: Array<{ text: string }> }): unknown {
   return JSON.parse(result.content[0]?.text ?? "null");
+}
+
+function fakeMcpFetch(calls: Array<{ method?: string; params?: unknown }>): typeof fetch {
+  return async (url: string | URL | Request, init?: RequestInit) => {
+    let parsed: { method?: string; params?: unknown; id?: unknown } | null = null;
+    if (typeof init?.body === "string") {
+      try {
+        parsed = JSON.parse(init.body) as { method?: string; params?: unknown; id?: unknown };
+      } catch {
+        parsed = null;
+      }
+    }
+    if (parsed) {
+      calls.push({ method: parsed.method, params: parsed.params });
+    }
+    if (parsed?.method === "initialize") {
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: parsed.id,
+          result: {
+            protocolVersion: "2025-11-25",
+            capabilities: { tools: { listChanged: false } },
+            serverInfo: { name: "fake-enterprise-hub", version: "0.0.0" }
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (parsed?.method === "notifications/initialized") {
+      return new Response(null, { status: 202 });
+    }
+    if (parsed?.method === "tools/call") {
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: parsed.id,
+          result: {
+            content: [{ type: "text", text: JSON.stringify({ accepted: true }) }],
+            isError: false
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (init?.method === "DELETE") {
+      return new Response(null, { status: 204 });
+    }
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: parsed?.id, result: {} }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
 }

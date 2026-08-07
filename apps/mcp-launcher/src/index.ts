@@ -41,7 +41,7 @@ if (isMainModule()) {
 async function runCommand(): Promise<void> {
   const command = process.argv[2] ?? "serve";
   if (command === "--version" || command === "-v") {
-    process.stdout.write("0.1.0\n");
+    process.stdout.write("0.1.1\n");
     return;
   }
   try {

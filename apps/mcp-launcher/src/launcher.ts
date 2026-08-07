@@ -8,6 +8,8 @@ import {
   ENTERPRISE_HUB_MCP_TOOL_NAMES,
   errorToolResult,
   jsonToolResult,
+  launcherUploadFileInputSchema,
+  launcherUploadFileInputShape,
   toolNotFoundResult,
   validationErrorToolResult
 } from "@enterprise-hub/mcp-contract";
@@ -18,6 +20,7 @@ import {
 } from "./auth.js";
 import type { LauncherRuntimeConfig } from "./config.js";
 import { EnterpriseHubOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
+import { readLocalUploadFile } from "./local-file.js";
 import { createCrossProcessLock, createKeychainCredentialStore } from "./runtime.js";
 import { LauncherSession, LauncherTypedError } from "./session.js";
 
@@ -38,6 +41,11 @@ export type LauncherBusinessToolName =
   | "get_evidence_document_status"
   | "get_import_status";
 export type LauncherToolName = LauncherBootstrapToolName | LauncherBusinessToolName;
+
+const LOCAL_PATH_UPLOAD_TOOL_NAMES = new Set<LauncherBusinessToolName>([
+  "upload_structured_dataset",
+  "upload_evidence_document"
+]);
 
 export interface LauncherToolResult {
   [key: string]: unknown;
@@ -131,7 +139,13 @@ export function registerLauncherTools(
   for (const tool of ENTERPRISE_HUB_MCP_TOOL_CONTRACTS)
     registrar.registerTool(
       tool.name,
-      { title: tool.title, description: tool.description, inputSchema: tool.inputShape },
+      {
+        title: tool.title,
+        description: tool.description,
+        inputSchema: LOCAL_PATH_UPLOAD_TOOL_NAMES.has(tool.name)
+          ? launcherUploadFileInputShape
+          : tool.inputShape
+      },
       createLauncherToolHandler(tool.name, dependencies)
     );
 }
@@ -143,9 +157,70 @@ export function createLauncherToolHandler(
   if (toolName === "enterprise_hub_login") return (input) => login(input, dependencies);
   if (toolName === "enterprise_hub_logout") return (input) => logout(input, dependencies);
   if (toolName === "enterprise_hub_auth_status") return (input) => status(input, dependencies);
+  if (LOCAL_PATH_UPLOAD_TOOL_NAMES.has(toolName as LauncherBusinessToolName))
+    return (input) =>
+      proxyLocalPathUpload(toolName as LauncherBusinessToolName, input, dependencies);
   if ((ENTERPRISE_HUB_MCP_TOOL_NAMES as readonly string[]).includes(toolName))
     return (input) => proxy(toolName as LauncherBusinessToolName, input, dependencies);
   return async () => toolNotFoundResult(toolName);
+}
+
+async function proxyLocalPathUpload(
+  toolName: LauncherBusinessToolName,
+  input: unknown,
+  dependencies: LauncherToolDependencies
+): Promise<LauncherToolResult> {
+  const file = uploadFileFromInput(input);
+
+  if (file === undefined || file.encoding !== "path") {
+    return proxy(toolName, input, dependencies);
+  }
+
+  const parsed = launcherUploadFileInputSchema.safeParse(file);
+
+  if (!parsed.success) {
+    return validationErrorToolResult(parsed.error.issues);
+  }
+
+  const pathFile = parsed.data as {
+    name: string;
+    mediaType: string;
+    encoding: "path";
+    filePath: string;
+  };
+  const read = await readLocalUploadFile(pathFile);
+
+  if (!read.ok) {
+    return read.result;
+  }
+
+  const convertedInput = {
+    ...(typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {}),
+    file: {
+      name: pathFile.name,
+      mediaType: pathFile.mediaType,
+      encoding: "base64",
+      contentBase64: read.body.toString("base64")
+    }
+  };
+
+  return proxy(toolName, convertedInput, dependencies);
+}
+
+function uploadFileFromInput(
+  input: unknown
+): { encoding?: unknown; [key: string]: unknown } | undefined {
+  if (typeof input !== "object" || input === null) {
+    return undefined;
+  }
+
+  const file = (input as { file?: unknown }).file;
+
+  if (typeof file !== "object" || file === null) {
+    return undefined;
+  }
+
+  return file as { encoding?: unknown; [key: string]: unknown };
 }
 
 export function createOfficialLauncherAuthentication(
@@ -287,7 +362,7 @@ async function proxy(
 ): Promise<LauncherToolResult> {
   try {
     const accessToken = await dependencies.auth.accessToken();
-    const client = new Client({ name: "enterprise-hub-mcp-launcher", version: "0.1.0" });
+    const client = new Client({ name: "enterprise-hub-mcp-launcher", version: LAUNCHER_VERSION });
     const transport = new StreamableHTTPClientTransport(
       new URL("mcp", `${dependencies.config.serviceUrl}/`),
       {
@@ -295,7 +370,7 @@ async function proxy(
         requestInit: {
           headers: {
             authorization: `Bearer ${accessToken}`,
-            "x-enterprise-hub-launcher-version": "0.1.0"
+            "x-enterprise-hub-launcher-version": LAUNCHER_VERSION
           }
         }
       }
