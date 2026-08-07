@@ -7,6 +7,7 @@
 - Lead branch: `codex/runtime-image-audit-hardening-20260731`
 - Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package. Exact immutable release tags are recorded in dated readiness and verification evidence.
 - 2026-08-07: remote/headless and secondary-device login design completed in `docs/implementation/official-user-install-and-login.md` and ADR 0022 (uniform device-code flow, split secrets, pairing confirmation, memory-only headless credential custody, per-process session model); implementation in progress on `codex/device-code-login` per `docs/implementation/device-code-login-plan.md`.
+- 2026-08-07: launcher 0.2.0 released: PR #108 version bump merged, tag `mcp-launcher-v0.2.0` pushed, macOS/Windows acceptance + `npm stage publish` green, staged publish approved by owner; registry install/`--version`/production audit verified. Server OAuth metadata `recommendedLauncherVersion` and both skill copies move to 0.2.0 (this PR + standalone skill PR), and the manual acceptance doc gains the headless support-class-C scenario.
 
 ## Active Workstreams
 
