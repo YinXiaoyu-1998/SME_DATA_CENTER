@@ -131,7 +131,7 @@ describe("device authorization grant", () => {
             grant_types_supported: ["authorization_code", "refresh_token"],
             code_challenge_methods_supported: ["S256"],
             enterprise_hub_launcher_minimum_version: "0.1.0",
-            enterprise_hub_launcher_recommended_version: "0.1.1"
+            enterprise_hub_launcher_recommended_version: "0.2.0"
           })
         );
         return;
@@ -212,7 +212,7 @@ describe("device authorization grant", () => {
             grant_types_supported: ["authorization_code", "refresh_token"],
             code_challenge_methods_supported: ["S256"],
             enterprise_hub_launcher_minimum_version: "0.1.0",
-            enterprise_hub_launcher_recommended_version: "0.1.1"
+            enterprise_hub_launcher_recommended_version: "0.2.0"
           })
         );
         return;
