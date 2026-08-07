@@ -15,7 +15,7 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `enterprise-hub-mcp-launcher@0.1.0`. Do not substitute another
+the exact npm package `enterprise-hub-mcp-launcher@0.1.1`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself.
 
@@ -71,36 +71,37 @@ If a tool rejects an input at one of these boundaries, report the validation err
 employee to shorten the text, reduce filters/labels, or split the source file as appropriate.
 Never silently truncate a title, key, query, cursor, filter value, or file.
 
-The 50 MiB contract is the service-side ceiling. Some hosts (OpenAI Codex) in practice cap a
-single model-emitted tool argument at about 1 MiB, so large structured files still need chunking
-— see Large Structured Uploads.
+The 50 MiB contract is the service-side ceiling. Prefer `file.encoding:"path"` uploads with the
+file's absolute local path so the launcher reads the file locally and the model never emits
+payload bytes; inline `file.encoding:"base64"` uploads remain subject to host tool-argument caps
+(OpenAI Codex in practice caps a single model-emitted argument at about 1 MiB) — see Large
+Structured Uploads.
 
 ## Large Structured Uploads
 
 When an employee asks to upload a large XLSX/CSV structured table, prefer small business-safe
 chunks over one very large upload. Two limits apply, and the stricter one wins:
 
-- **Host transport (OpenAI Codex and similar hosts):** a single tool-call argument is emitted as
-  model output, so a Base64-encoded file payload is practically capped at about **1 MiB** per
-  call; larger payloads can be truncated or dropped before the launcher receives them. This is a
-  host-side limit, not an Enterprise Hub limit.
+- **Service contract:** upload content is at most 50 MiB after decoding; keep structured files
+  below this even when the tool schema would permit more.
 - **Service performance:** treat structured files above about **5 MiB** as large even when the
-  public service contract permits a larger upload; for XLSX, treat anything above about **2–3 MiB**
-  or **5,000 data rows** as large.
+  service contract permits more; for XLSX, treat anything above about **2–3 MiB** or
+  **5,000 data rows** as large.
 
-When uploading through OpenAI Codex, keep each chunk small enough that its Base64 form stays under
-about **1 MiB** (roughly **700–750 KiB** of raw file bytes, since Base64 expands by ~4/3) and
-prefer CSV chunks so the total chunk count stays manageable.
+Prefer `file.encoding:"path"` uploads with the file's absolute local path: the launcher reads the
+file directly, so the model never emits payload bytes and host tool-argument caps do not constrain
+chunk size. Use `file.encoding:"base64"` only for small inline payloads; inline base64 remains
+subject to host caps (OpenAI Codex roughly **700–750 KiB** of raw bytes per call).
 
 - Split by a real business boundary first: date window, month/week, store, or another explicit
   non-overlapping partition that preserves row meaning. For sales/business tables, date-window
   chunks are preferred.
 - Never split an XLSX by raw bytes. XLSX is a ZIP workbook; byte chunks are corrupt files. Read the
   workbook locally and write each chunk as **CSV (UTF-8, headers preserved)** whenever the target
-  dataset accepts CSV: the service parses CSV chunks cheaply, while XLSX chunks trigger a slow,
-  memory-heavy workbook parse that can stall the service even at a few MiB.
-- If a chunk must remain XLSX, keep it within the host transport cap (its Base64-encoded upload
-  must stay under about 1 MiB) and upload serially.
+  dataset accepts CSV: the service parses CSV chunks cheaply, while XLSX chunks go through a
+  heavier workbook parse.
+- If a chunk must remain XLSX, keep it small — no more than about 2–3 MiB or 5,000 data rows per
+  file — and upload serially.
 - Keep chunk windows non-overlapping and complete. Do not create overlapping `startDate`/`endDate`
   ranges, because structured queries aggregate all `applied` rows in visible matching windows.
 - Upload chunks serially, not in parallel. After each structured upload, keep the returned
@@ -130,14 +131,14 @@ only on the invoking agent's configuration.
 
    | Platform | Launcher directory                                                      |
    | -------- | ----------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/` |
-   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.1.0\\`           |
+   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.1.1/` |
+   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.1.1\\`           |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.1.0
+   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.1.1
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -149,12 +150,12 @@ only on the invoking agent's configuration.
 
    ```sh
    ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.1/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.1\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
    ```
 
    The stable self-check contract is safe machine-readable JSON with this shape:
@@ -162,7 +163,7 @@ only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.1.0",
+     "launcherVersion": "0.1.1",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -191,8 +192,8 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                                              | Arguments | Environment                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.1.0\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.1.1/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.1.1\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -244,7 +245,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
   enterprise-hub -- \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" serve
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.1/node_modules/.bin/enterprise-hub-mcp-launcher" serve
 "$CODEX_BIN" mcp get enterprise-hub --json
 ```
 
@@ -256,7 +257,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.1\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get enterprise-hub --json
 ```
@@ -292,7 +293,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for Enterprise Hub.
 
    ```sh
    openclaw mcp add enterprise-hub \
-     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" \
+     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.1/node_modules/.bin/enterprise-hub-mcp-launcher" \
      --arg serve \
      --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -357,9 +358,9 @@ For structured-table questions:
 For authorized service tools:
 
 - List labels before uploading; use only returned label keys.
-- Read only a user-attached or explicitly assigned file, preserve its exact bytes, and encode
-  those bytes mechanically for an inline file input. Never send a local path to the service or
-  reconstruct/normalize/translate upload contents.
+- Prefer `file.encoding:"path"` uploads with the file's absolute local path; the launcher reads
+  exact bytes mechanically. Use `file.encoding:"base64"` only for small inline payloads. Never
+  reconstruct, normalize, or translate upload contents.
 - Poll document/import status gently when the employee asks; never start a worker.
 - Reuse a structured-import idempotency key only for the exact same file and metadata. Treat an
   import-status 404 as "not visible or missing" and do not infer hidden metadata.
@@ -367,6 +368,28 @@ For authorized service tools:
   with the same query, filters, and limit. Restart without it on `INVALID_CURSOR`; on
   `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more results.
 - `enterprise_hub_list_skills` exposes approved directory metadata only; do not execute an entry.
+
+## Local File Read Errors
+
+When a path-mode upload fails because the launcher cannot read the file, report the typed error
+and ask the employee, in the employee's language, to provide an accessible file. Do not fabricate
+content, do not paste file contents into chat, and do not silently retry with an inline copy.
+
+- `MCP_LOCAL_FILE_NOT_FOUND`: the file does not exist at the given path.
+- `MCP_LOCAL_FILE_PERMISSION_DENIED`: the launcher cannot read the file (file permissions, macOS
+  privacy protection, sandbox, or another OS access boundary).
+- `MCP_LOCAL_FILE_INVALID`: the path is relative, a directory, or not a regular file.
+- `MCP_LOCAL_FILE_TOO_LARGE`: the file exceeds the 50 MiB upload contract.
+- `MCP_LOCAL_FILE_READ_FAILED`: another read error.
+
+Example employee-facing reply (Chinese):
+
+> 您刚才提供的文件企业数据中枢没有足够权限读取，请把文件放到桌面/下载等可访问位置后重新提供，
+> 或重新拖入文件。
+
+For `MCP_LOCAL_FILE_NOT_FOUND` / `MCP_LOCAL_FILE_INVALID`, ask the employee to re-check the file
+location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, split the file by a business
+boundary and upload the chunks serially.
 
 ## Typed Recovery
 
@@ -390,12 +413,12 @@ the pinned launcher directly:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.1/node_modules/.bin/enterprise-hub-mcp-launcher" logout
 ```
 
 ```powershell
 $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.1.1\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
 ```
 
 The stable logout contract returns only
