@@ -21,7 +21,7 @@ The acceptance run must exercise both sides of the real product boundary:
 | --------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Operator onboarding   | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, personal label, and setup link.      |
 | Password setup/reset  | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.    |
-| Client installation   | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.1.0` is installed and configured as a Codex stdio MCP.     |
+| Client installation   | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.0` is installed and configured as a Codex stdio MCP.     |
 | Durable login         | Launcher + system browser         | `enterprise_hub_login` completes Authorization Code + PKCE and stores durable credential safely. |
 | Continued use         | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.           |
 | Evidence workflow     | Employee-owned MCP client         | Upload fixture bytes, poll index status, search only authorized evidence, and clean test data.   |
@@ -67,7 +67,7 @@ The macOS user must have:
 
 - Node.js 22+ and npm;
 - the published launcher installed at
-  `~/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/`;
+  `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.0/`;
 - Codex configured with the exact `enterprise-hub` stdio MCP entry from
   `skills/enterprise-hub-mcp/SKILL.md`;
 - SSH access to the staging host through the committed strict `known_hosts` identity.
@@ -83,7 +83,7 @@ Credential-free preflight:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.1.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
 ```
 
 Expected:
@@ -210,6 +210,25 @@ The runner:
 
 For full manual acceptance, prefer a fresh user-visible Codex task plus synthetic account lifecycle.
 Use this runner only as an additional controller-side smoke or cleanup helper.
+
+## Headless Remote Agent (Support Class C) Flow
+
+This scenario extends acceptance to the headless remote agent form (no local browser, no
+Keychain/Credential Manager). Run it on a Linux host or container without DISPLAY and without a
+keyring daemon, using a fresh synthetic employee account created by the operator.
+
+Pass only when:
+
+- launcher self-check reports `secureStore.available=false` and `server.reachable=true`;
+- `enterprise_hub_login` returns the first-party device verification link (with prefilled
+  `user_code`) instead of opening a browser;
+- the employee opens the link on a phone or any other device, confirms the agent instance name,
+  and completes email/password login on the verification page;
+- the launcher's background polling completes and an authenticated business MCP tool call succeeds
+  (for example `enterprise_hub_list_labels`);
+- after the launcher process is restarted, `enterprise_hub_auth_status` reports unauthenticated and
+  a fresh tap-link login is required (memory-only session);
+- cleanup removes the synthetic account and all run-scoped data from DB/storage/Qdrant.
 
 ## Pass / Fail
 
