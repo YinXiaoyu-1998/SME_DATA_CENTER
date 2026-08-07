@@ -57,6 +57,9 @@ instanceHostname, openedBrowser}` 并在后台轮询；业务 MCP 调用有界�
 4. 无头环境验证：Linux 容器（无 DISPLAY、无 keyring）跑 `scripts/test-device-login.ts`，
    self-check 报 `secureStore.available=false`，login 不弹浏览器，员工端表单/headless 浏览器
    完成，重启后需重新登录；收尾删除容器/卷。
+   已执行（2026-08-07）：在 `node:22-slim` 容器内跑通，`secureStore.available=false`、
+   `openedBrowser=false`、device 链接正常返回；同时发现并修复 launcher 在无 keyring 主机上
+   `AsyncEntry` 构造即抛 `PermissionDenied` 的问题（改为惰性构造，首次使用失败即落入内存态）。
 5. 人工验收（发布阶段，不在本 PR）：扩展 `npm run test:official-manual`，staging + 合成账号
    C 形态真机手机浏览器完成 device 登录。
 
