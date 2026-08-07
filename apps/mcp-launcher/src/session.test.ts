@@ -131,6 +131,81 @@ describe("durable official launcher session", () => {
   });
 });
 
+describe("memory-only official launcher session", () => {
+  it("keeps the durable credential only in memory and refreshes within the process", async () => {
+    const tokenClient = tokenClientReturning({
+      accessToken: "new-access",
+      refreshToken: "new-refresh"
+    });
+    const session = new LauncherSession({ origin, tokenClient });
+
+    await session.establish("initial-access", "initial-durable", Date.now() + 30_000);
+    expect(await session.status()).toEqual({ authenticated: true });
+    await expect(session.ensureAccessToken()).resolves.toBe("new-access");
+  });
+
+  it("requires a new login after a launcher restart", async () => {
+    const tokenClient = tokenClientReturning({
+      accessToken: "new-access",
+      refreshToken: "new-refresh"
+    });
+    const first = new LauncherSession({ origin, tokenClient });
+    await first.establish("initial-access", "initial-durable", Date.now() + 60_000);
+
+    const restarted = new LauncherSession({ origin, tokenClient });
+    await expect(restarted.ensureAccessToken()).rejects.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED"
+    });
+  });
+
+  it("clears the in-memory credential on logout", async () => {
+    const tokenClient = tokenClientReturning({
+      accessToken: "new-access",
+      refreshToken: "new-refresh"
+    });
+    const session = new LauncherSession({ origin, tokenClient });
+    await session.establish("initial-access", "initial-durable", Date.now() + 60_000);
+
+    const outcome = await session.logout();
+
+    expect(outcome).toEqual({ remoteRevocationConfirmed: true, localCredentialRemoved: true });
+    expect(await session.status()).toEqual({ authenticated: false });
+  });
+
+  it("waits for an in-flight device login before serving the session", async () => {
+    const tokenClient = tokenClientReturning({
+      accessToken: "after-login",
+      refreshToken: "rotated"
+    });
+    const session = new LauncherSession({ origin, tokenClient });
+    let resolveLogin!: () => void;
+    session.waitForLogin(
+      new Promise<void>((resolve) => {
+        resolveLogin = resolve;
+      })
+    );
+    const waiting = session.ensureAccessToken();
+
+    await session.establish("initial-access", "initial-durable", Date.now() + 9 * 60_000);
+    resolveLogin();
+
+    await expect(waiting).resolves.toBe("initial-access");
+  });
+
+  it("reports AUTHENTICATION_PENDING when the device login ends without a session", async () => {
+    const tokenClient = tokenClientReturning({
+      accessToken: "after-login",
+      refreshToken: "rotated"
+    });
+    const session = new LauncherSession({ origin, tokenClient });
+    session.waitForLogin(Promise.resolve());
+
+    await expect(session.ensureAccessToken()).rejects.toMatchObject({
+      code: "AUTHENTICATION_PENDING"
+    });
+  });
+});
+
 function memoryStore(initial: string | null, options: { failSet?: boolean } = {}) {
   let value =
     initial === null

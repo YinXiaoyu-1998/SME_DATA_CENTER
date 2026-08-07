@@ -204,6 +204,28 @@ The command, its single `serve` argument, and the one URL-only environment value
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
 setting.
 
+## Device-Code Login Flow
+
+Starting with launcher 0.2.0, every login uses the OAuth Device Authorization Grant: the launcher
+obtains a first-party Enterprise Hub verification link, opens it automatically when a system
+browser is available (desktop agents), or returns it for the agent to surface through the employee
+channel (phone-remote-controlled and headless agents). The employee confirms the agent instance
+name shown on the page, enters email/password, and the launcher completes sign-in by polling.
+
+- The employee's only credential input remains email/password on the Enterprise Hub page; never
+  ask for, read, or relay verification codes or tokens.
+- On macOS/Windows the launcher keeps the durable session in Keychain/Credential Manager exactly as
+  before.
+- On hosts without a secure store (headless Linux/VPS), the launcher keeps the session in memory
+  only; after a launcher or host restart, run the login tool again so the employee can tap a fresh
+  link.
+- If a business tool reports `authentication_pending`, tell the employee to complete the sign-in
+  link and retry the original request once; if it reports `authentication_required`, run
+  `enterprise_hub_login` to obtain a new link.
+
+The exact pinned launcher version in this document is updated when the approved 0.2.0 release is
+published.
+
 ## Configure The Invoking Agent
 
 Always inspect the existing configuration first, create a timestamped backup before modifying it,

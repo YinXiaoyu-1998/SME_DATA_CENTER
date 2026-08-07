@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   authPageHeaders,
+  renderDeviceVerificationPage,
   renderLoginPage,
   renderPasswordSetupBootstrapPage,
   renderPasswordSetupForm
@@ -40,6 +41,38 @@ describe("official authentication browser pages", () => {
     expect(html).toContain('autocomplete="current-password"');
     expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).not.toContain("<img src=x onerror=alert(1)>");
+  });
+
+  it("renders the device verification page with pairing details and a hidden user code", () => {
+    const html = renderDeviceVerificationPage({
+      csrfToken: "csrf-device",
+      userCode: "ABCDEFGH",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1",
+      nonce: "device-nonce",
+      error: "The email or password is incorrect."
+    });
+
+    expect(html).toContain("agent-a");
+    expect(html).toContain("vps-1");
+    expect(html).toContain('action="/oauth/device/verify/login"');
+    expect(html).toContain('name="userCode" value="ABCDEFGH"');
+    expect(html).toContain('autocomplete="username"');
+    expect(html).toContain('autocomplete="current-password"');
+    expect(html).toContain("The email or password is incorrect.");
+  });
+
+  it("escapes pairing metadata so agent-declared names cannot inject markup", () => {
+    const html = renderDeviceVerificationPage({
+      csrfToken: "csrf-device",
+      userCode: "ABCDEFGH",
+      instanceName: `<img src=x onerror=alert(1)>`,
+      instanceHostname: "vps-1",
+      nonce: "device-nonce"
+    });
+
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
     expect(html).not.toContain("<img src=x onerror=alert(1)>");
   });
 

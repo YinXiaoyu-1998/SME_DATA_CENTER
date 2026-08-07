@@ -46,6 +46,24 @@ function authFake() {
       employeeId: "employee_1",
       orgId: "org_1"
     })),
+    issueDeviceAuthorization: vi.fn(async () => ({
+      deviceCode: "eh_dc_devicecode",
+      userCode: "ABCDEFGH",
+      expiresAt: new Date(Date.now() + 600_000),
+      intervalSeconds: 5
+    })),
+    findDeviceAuthorizationByUserCode: vi.fn(async () => ({
+      status: "pending" as const,
+      instanceName: "agent-a",
+      instanceHostname: "vps-1"
+    })),
+    completeDeviceAuthorization: vi.fn(async () => true),
+    redeemDeviceAuthorization: vi.fn(async () => ({
+      status: "redeemed" as const,
+      identityId: "identity_1",
+      employeeId: "employee_1",
+      orgId: "org_1"
+    })),
     createSession: vi.fn(async () => ({
       sessionId: "session_1",
       durableCredential: "eh_rt_durable",
@@ -369,5 +387,232 @@ describe("official OAuth and password routes", () => {
       }
     });
     expect(response.body).not.toContain("private-auth-db.internal");
+  });
+});
+
+describe("device authorization endpoints", () => {
+  const launcherHeaders = {
+    "content-type": "application/x-www-form-urlencoded",
+    "x-enterprise-hub-launcher-version": "0.1.0",
+    "x-request-id": oauthAudit.requestId
+  };
+
+  it("issues a device authorization and returns the tap-link contract", async () => {
+    const { app, auth } = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/device_authorization",
+      headers: launcherHeaders,
+      remoteAddress: oauthAudit.sourceIp,
+      payload: new URLSearchParams({
+        client_id: "enterprise-hub-desktop-launcher",
+        instanceName: "agent-a",
+        instanceHostname: "vps-1"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toMatchObject({
+      device_code: "eh_dc_devicecode",
+      user_code: "ABCDEFGH",
+      verification_uri: "https://api.smedatacenter.xyz/oauth/device/verify",
+      verification_uri_complete:
+        "https://api.smedatacenter.xyz/oauth/device/verify?user_code=ABCDEFGH",
+      expires_in: 600,
+      interval: 5
+    });
+    expect(auth.issueDeviceAuthorization).toHaveBeenCalledWith({
+      clientId: "enterprise-hub-desktop-launcher",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1",
+      audit: oauthAudit
+    });
+  });
+
+  it("rejects device authorization requests without a supported launcher version", async () => {
+    const { app } = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/device_authorization",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: new URLSearchParams({ client_id: "enterprise-hub-desktop-launcher" }).toString()
+    });
+
+    expect(response.statusCode).toBe(426);
+    expect(response.json()).toMatchObject({ code: "LAUNCHER_UPGRADE_REQUIRED" });
+  });
+
+  it("rejects device authorization requests from an unknown client or missing instance identity", async () => {
+    const { app } = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/device_authorization",
+      headers: launcherHeaders,
+      payload: new URLSearchParams({ client_id: "not-our-client" }).toString()
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: "invalid_request" });
+  });
+
+  it("renders the mobile verification page with pairing details and a secure cookie", async () => {
+    const { app } = await build();
+
+    const response = await app.inject({
+      url: "/oauth/device/verify?user_code=ABCDEFGH",
+      headers: { "x-request-id": browserAudit.requestId },
+      remoteAddress: browserAudit.sourceIp
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("agent-a");
+    expect(response.body).toContain("vps-1");
+    expect(response.body).toContain('action="/oauth/device/verify/login"');
+    expect(response.headers["set-cookie"]).toContain("__Host-eh_device_verify=");
+  });
+
+  it("rejects malformed verification links", async () => {
+    const { app } = await build();
+
+    const response = await app.inject({ url: "/oauth/device/verify?user_code=bad" });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toContain("Sign-in link invalid");
+  });
+
+  it("completes a device login with the verified identity", async () => {
+    const { app, auth } = await build();
+    const page = await app.inject({
+      url: "/oauth/device/verify?user_code=ABCDEFGH",
+      headers: { "x-request-id": browserAudit.requestId }
+    });
+    const cookieHeader = page.headers["set-cookie"] as string;
+    const verifySecret = /__Host-eh_device_verify=([^;]+)/.exec(cookieHeader)?.[1] ?? "";
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/device/verify/login",
+      headers: {
+        cookie: `__Host-eh_device_verify=${verifySecret}`,
+        "content-type": "application/x-www-form-urlencoded",
+        "x-request-id": browserAudit.requestId
+      },
+      remoteAddress: browserAudit.sourceIp,
+      payload: new URLSearchParams({
+        csrfToken: csrfTokenForSecret(verifySecret),
+        userCode: "ABCDEFGH",
+        email: "person@example.com",
+        password: "correct horse"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("Sign-in complete");
+    expect(auth.verifyLogin).toHaveBeenCalledWith(
+      "person@example.com",
+      "correct horse",
+      browserAudit
+    );
+    expect(auth.completeDeviceAuthorization).toHaveBeenCalledWith(
+      "ABCDEFGH",
+      { identityId: "identity_1", employeeId: "employee_1", orgId: "org_1" },
+      browserAudit
+    );
+  });
+
+  it("re-renders the verification page with a generic error on failed credentials", async () => {
+    const { app, auth } = await build();
+    auth.verifyLogin.mockResolvedValueOnce({
+      ok: false,
+      reason: "invalid_credentials"
+    } as never);
+    const page = await app.inject({ url: "/oauth/device/verify?user_code=ABCDEFGH" });
+    const verifySecret =
+      /__Host-eh_device_verify=([^;]+)/.exec(page.headers["set-cookie"] as string)?.[1] ?? "";
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/device/verify/login",
+      headers: {
+        cookie: `__Host-eh_device_verify=${verifySecret}`,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      payload: new URLSearchParams({
+        csrfToken: csrfTokenForSecret(verifySecret),
+        userCode: "ABCDEFGH",
+        email: "person@example.com",
+        password: "wrong password"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toContain("The email or password is incorrect.");
+    expect(auth.completeDeviceAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("exchanges a redeemed device code for tokens", async () => {
+    const { app } = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/token",
+      headers: launcherHeaders,
+      payload: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: "enterprise-hub-desktop-launcher",
+        device_code: "eh_dc_devicecode"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      access_token: "eh_at_access",
+      token_type: "Bearer",
+      refresh_token: "eh_rt_durable"
+    });
+  });
+
+  it("returns authorization_pending while the employee has not completed the link", async () => {
+    const { app, auth } = await build();
+    auth.redeemDeviceAuthorization.mockResolvedValueOnce({
+      status: "authorization_pending"
+    } as never);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/token",
+      headers: launcherHeaders,
+      payload: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: "enterprise-hub-desktop-launcher",
+        device_code: "eh_dc_devicecode"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: "authorization_pending" });
+  });
+
+  it("returns expired_token when the device code has expired", async () => {
+    const { app, auth } = await build();
+    auth.redeemDeviceAuthorization.mockResolvedValueOnce({ status: "expired" } as never);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/token",
+      headers: launcherHeaders,
+      payload: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: "enterprise-hub-desktop-launcher",
+        device_code: "eh_dc_devicecode"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: "expired_token" });
   });
 });

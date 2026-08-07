@@ -1,7 +1,11 @@
 import type { SecureCredentialStore } from "./auth.js";
 
 export type LauncherErrorCode =
-  "AUTHENTICATION_REQUIRED" | "SERVICE_UNAVAILABLE" | "FORBIDDEN" | "LAUNCHER_UPGRADE_REQUIRED";
+  | "AUTHENTICATION_REQUIRED"
+  | "AUTHENTICATION_PENDING"
+  | "SERVICE_UNAVAILABLE"
+  | "FORBIDDEN"
+  | "LAUNCHER_UPGRADE_REQUIRED";
 
 export class LauncherTypedError extends Error {
   constructor(readonly code: LauncherErrorCode) {
@@ -23,13 +27,16 @@ export interface LauncherLock {
 export class LauncherSession {
   #accessToken: string | null = null;
   #accessTokenExpiresAt = 0;
+  #memoryCredential: string | null = null;
+  #storeAvailable: boolean | null = null;
+  #waitingForLogin: Promise<void> | null = null;
 
   constructor(
     private readonly dependencies: {
       origin: string;
-      secureStore: SecureCredentialStore;
+      secureStore?: SecureCredentialStore;
       tokenClient: OAuthTokenClient;
-      lock: LauncherLock;
+      lock?: LauncherLock;
     }
   ) {}
 
@@ -38,9 +45,24 @@ export class LauncherSession {
       return this.#accessToken;
     }
 
-    const release = await this.dependencies.lock.acquire();
+    if (this.#waitingForLogin !== null) {
+      const pending = this.#waitingForLogin;
+      this.#waitingForLogin = null;
+      try {
+        await pending;
+      } catch {
+        // The login attempt ended without a session; report the typed condition below.
+      }
+      if (this.#accessToken !== null && this.#accessTokenExpiresAt > Date.now() + 60_000) {
+        return this.#accessToken;
+      }
+      if (this.#accessToken === null && (await this.readCredential()) === null) {
+        throw new LauncherTypedError("AUTHENTICATION_PENDING");
+      }
+    }
+
+    const release = this.dependencies.lock ? await this.dependencies.lock.acquire() : null;
     try {
-      // Another launcher may have rotated the durable credential while this process waited.
       const refreshCredential = await this.readCredential();
       if (refreshCredential === null) {
         throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
@@ -56,16 +78,15 @@ export class LauncherSession {
       }
 
       try {
-        await this.dependencies.secureStore.set(
-          credentialRecord(this.dependencies.origin, refreshed.refreshToken)
-        );
-        if ((await this.readCredential()) !== refreshed.refreshToken)
+        await this.storeCredential(refreshed.refreshToken);
+        if ((await this.readCredential()) !== refreshed.refreshToken) {
           throw new Error("credential verification failed");
+        }
       } catch {
         this.#accessToken = null;
         this.#accessTokenExpiresAt = 0;
         await this.dependencies.tokenClient.revoke(refreshed.refreshToken).catch(() => undefined);
-        await this.dependencies.secureStore.delete().catch(() => undefined);
+        await this.deleteCredential();
         throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
       }
 
@@ -73,7 +94,7 @@ export class LauncherSession {
       this.#accessTokenExpiresAt = refreshed.expiresAt ?? Date.now() + 9 * 60_000;
       return refreshed.accessToken;
     } finally {
-      await release();
+      await release?.();
     }
   }
 
@@ -83,9 +104,7 @@ export class LauncherSession {
     expiresAt: number
   ): Promise<void> {
     try {
-      await this.dependencies.secureStore.set(
-        credentialRecord(this.dependencies.origin, refreshCredential)
-      );
+      await this.storeCredential(refreshCredential);
       if ((await this.readCredential()) !== refreshCredential)
         throw new Error("credential verification failed");
       this.#accessToken = accessToken;
@@ -94,42 +113,60 @@ export class LauncherSession {
       this.#accessToken = null;
       this.#accessTokenExpiresAt = 0;
       await this.dependencies.tokenClient.revoke(refreshCredential).catch(() => undefined);
-      await this.dependencies.secureStore.delete().catch(() => undefined);
+      await this.deleteCredential();
       throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
     }
   }
 
   async logout(): Promise<{ remoteRevocationConfirmed: boolean; localCredentialRemoved: boolean }> {
-    const release = await this.dependencies.lock.acquire();
+    const release = this.dependencies.lock ? await this.dependencies.lock.acquire() : null;
     try {
       const refreshCredential = await this.readCredential();
       this.#accessToken = null;
       this.#accessTokenExpiresAt = 0;
+      this.#memoryCredential = null;
       const remoteRevocationConfirmed = refreshCredential
         ? await this.dependencies.tokenClient.revoke(refreshCredential).catch(() => false)
         : true;
-      const localCredentialRemoved = await this.dependencies.secureStore.delete().then(
+      const localCredentialRemoved = await this.deleteCredential().then(
         () => true,
         () => false
       );
       return { remoteRevocationConfirmed, localCredentialRemoved };
     } finally {
-      await release();
+      await release?.();
     }
   }
 
   async status(): Promise<{ authenticated: boolean }> {
-    return { authenticated: this.#accessToken !== null || (await this.readCredential()) !== null };
+    return {
+      authenticated:
+        this.#accessToken !== null ||
+        this.#memoryCredential !== null ||
+        (await this.readCredential()) !== null
+    };
   }
 
   async invalidate(): Promise<void> {
     this.#accessToken = null;
     this.#accessTokenExpiresAt = 0;
-    await this.dependencies.secureStore.delete().catch(() => undefined);
+    this.#memoryCredential = null;
+    await this.deleteCredential();
+  }
+
+  async secureStoreAvailable(): Promise<boolean> {
+    return this.#isStoreAvailable();
+  }
+
+  waitForLogin(promise: Promise<void>): void {
+    this.#waitingForLogin = promise;
   }
 
   private async readCredential(): Promise<string | null> {
-    const record = await this.dependencies.secureStore.get();
+    if (!(await this.#isStoreAvailable())) {
+      return this.#memoryCredential;
+    }
+    const record = await this.dependencies.secureStore!.get();
     if (!record) return null;
     try {
       const value = JSON.parse(record) as {
@@ -147,6 +184,38 @@ export class LauncherSession {
       return null;
     }
   }
+
+  async #isStoreAvailable(): Promise<boolean> {
+    if (this.#storeAvailable !== null) return this.#storeAvailable;
+    if (!this.dependencies.secureStore) {
+      this.#storeAvailable = false;
+      return false;
+    }
+    try {
+      await this.dependencies.secureStore.get();
+      this.#storeAvailable = true;
+    } catch {
+      this.#storeAvailable = false;
+    }
+    return this.#storeAvailable;
+  }
+
+  private async storeCredential(refreshCredential: string): Promise<void> {
+    if (await this.#isStoreAvailable()) {
+      await this.dependencies.secureStore!.set(
+        credentialRecord(this.dependencies.origin, refreshCredential)
+      );
+      return;
+    }
+    this.#memoryCredential = refreshCredential;
+  }
+
+  private async deleteCredential(): Promise<void> {
+    this.#memoryCredential = null;
+    if (await this.#isStoreAvailable()) {
+      await this.dependencies.secureStore!.delete().catch(() => undefined);
+    }
+  }
 }
 
 function asTypedError(error: unknown): LauncherTypedError {
@@ -158,6 +227,7 @@ function asTypedError(error: unknown): LauncherTypedError {
     const code = (error as { code?: unknown }).code;
     if (
       code === "AUTHENTICATION_REQUIRED" ||
+      code === "AUTHENTICATION_PENDING" ||
       code === "SERVICE_UNAVAILABLE" ||
       code === "FORBIDDEN" ||
       code === "LAUNCHER_UPGRADE_REQUIRED"
@@ -182,6 +252,8 @@ function messageFor(code: LauncherErrorCode): string {
   switch (code) {
     case "AUTHENTICATION_REQUIRED":
       return "Enterprise Hub sign-in is required.";
+    case "AUTHENTICATION_PENDING":
+      return "Enterprise Hub sign-in is still pending.";
     case "SERVICE_UNAVAILABLE":
       return "Enterprise Hub service is unavailable.";
     case "FORBIDDEN":

@@ -17,6 +17,7 @@ describe("official auth schema", () => {
       "PasswordSetupSession",
       "OAuthAuthorizationTransaction",
       "OAuthAuthorizationCode",
+      "DeviceAuthorization",
       "AuthSession",
       "DurableCredential",
       "OAuthAccessToken",

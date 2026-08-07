@@ -4,6 +4,7 @@ import {
   AuthCore,
   type AccessAuthenticationRecord,
   type AuthCoreRepository,
+  type DeviceCodeRedemption,
   type LoginIdentityRecord,
   type RotateCredentialResult
 } from "./auth-core.js";
@@ -42,6 +43,18 @@ class MemoryAuthRepository implements AuthCoreRepository {
   codeInput:
     Parameters<AuthCoreRepository["consumeAuthorizationTransactionAndCreateCode"]>[0] | null = null;
   redemptionInput: Parameters<AuthCoreRepository["redeemAuthorizationCode"]>[0] | null = null;
+  deviceIssueInput: Parameters<AuthCoreRepository["createDeviceAuthorization"]>[0] | null = null;
+  deviceLookupInput: Parameters<AuthCoreRepository["findDeviceAuthorizationByUserCode"]>[0] | null =
+    null;
+  deviceCompleteInput: Parameters<AuthCoreRepository["completeDeviceAuthorization"]>[0] | null =
+    null;
+  deviceRedeemInput: Parameters<AuthCoreRepository["redeemDeviceAuthorization"]>[0] | null = null;
+  deviceRecord: {
+    status: "pending" | "completed" | "expired" | "revoked";
+    instanceName: string;
+    instanceHostname: string;
+  } | null = { status: "pending", instanceName: "agent-a", instanceHostname: "vps-1" };
+  deviceRedeemResult: DeviceCodeRedemption = { status: "authorization_pending" };
   rotateResult: RotateCredentialResult = { status: "invalid" };
   rotateInput: unknown = null;
   authenticationInput: unknown = null;
@@ -137,6 +150,37 @@ class MemoryAuthRepository implements AuthCoreRepository {
       employeeId: "employee-1",
       orgId: "org-1"
     };
+  }
+
+  async createDeviceAuthorization(
+    input: Parameters<AuthCoreRepository["createDeviceAuthorization"]>[0]
+  ): Promise<void> {
+    this.deviceIssueInput = input;
+  }
+
+  async findDeviceAuthorizationByUserCode(
+    input: Parameters<AuthCoreRepository["findDeviceAuthorizationByUserCode"]>[0]
+  ): Promise<{
+    status: "pending" | "completed" | "expired" | "revoked";
+    instanceName: string;
+    instanceHostname: string;
+  } | null> {
+    this.deviceLookupInput = input;
+    return this.deviceRecord ? { ...this.deviceRecord } : null;
+  }
+
+  async completeDeviceAuthorization(
+    input: Parameters<AuthCoreRepository["completeDeviceAuthorization"]>[0]
+  ): Promise<boolean> {
+    this.deviceCompleteInput = input;
+    return this.deviceRecord?.status === "pending";
+  }
+
+  async redeemDeviceAuthorization(
+    input: Parameters<AuthCoreRepository["redeemDeviceAuthorization"]>[0]
+  ): Promise<DeviceCodeRedemption> {
+    this.deviceRedeemInput = input;
+    return this.deviceRedeemResult;
   }
 
   async createSessionBundle(
@@ -490,5 +534,105 @@ describe("AuthCore", () => {
       expect.any(Date),
       oauthAudit
     ]);
+  });
+});
+
+describe("device authorization flow", () => {
+  it("issues a device authorization that stores only hashes and returns plaintext once", async () => {
+    const repository = new MemoryAuthRepository();
+    const now = new Date("2026-08-07T00:00:00.000Z");
+    const core = new AuthCore(repository, () => now);
+
+    const issued = await core.issueDeviceAuthorization({
+      clientId: "enterprise-hub-desktop-launcher",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1",
+      audit: oauthAudit
+    });
+
+    expect(issued.userCode).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+    expect(issued.expiresAt.getTime()).toBe(now.getTime() + 10 * 60_000);
+    expect(issued.intervalSeconds).toBe(5);
+    expect(repository.deviceIssueInput?.deviceCodeHash).toBe(hashOpaqueSecret(issued.deviceCode));
+    expect(repository.deviceIssueInput?.userCodeHash).toBe(hashOpaqueSecret(issued.userCode));
+    expect(repository.deviceIssueInput).toMatchObject({
+      clientId: "enterprise-hub-desktop-launcher",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1",
+      audit: oauthAudit,
+      now
+    });
+    expect(repository.deviceIssueInput?.expiresAt.getTime()).toBe(now.getTime() + 10 * 60_000);
+  });
+
+  it("completes a pending device authorization with the verified identity", async () => {
+    const repository = new MemoryAuthRepository();
+    const core = new AuthCore(repository);
+
+    const completed = await core.completeDeviceAuthorization(
+      "ABCDEFGH",
+      { identityId: "identity-1", employeeId: "employee-1", orgId: "org-1" },
+      browserAudit
+    );
+
+    expect(completed).toBe(true);
+    expect(repository.deviceCompleteInput?.userCodeHash).toBe(hashOpaqueSecret("ABCDEFGH"));
+    expect(repository.deviceCompleteInput).toMatchObject({
+      identityId: "identity-1",
+      employeeId: "employee-1",
+      orgId: "org-1",
+      audit: browserAudit
+    });
+  });
+
+  it("looks up a pending device authorization by user-code hash", async () => {
+    const repository = new MemoryAuthRepository();
+    const core = new AuthCore(repository);
+
+    const found = await core.findDeviceAuthorizationByUserCode("ABCDEFGH");
+
+    expect(repository.deviceLookupInput?.userCodeHash).toBe(hashOpaqueSecret("ABCDEFGH"));
+    expect(found).toMatchObject({
+      status: "pending",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1"
+    });
+  });
+
+  it("redeems a completed device code and passes the launcher audit", async () => {
+    const repository = new MemoryAuthRepository();
+    const core = new AuthCore(repository);
+    repository.deviceRedeemResult = {
+      status: "redeemed",
+      identityId: "identity-1",
+      employeeId: "employee-1",
+      orgId: "org-1"
+    };
+
+    const result = await core.redeemDeviceAuthorization(
+      "eh_dc_secret",
+      "enterprise-hub-desktop-launcher",
+      oauthAudit
+    );
+
+    expect(result).toEqual({
+      status: "redeemed",
+      identityId: "identity-1",
+      employeeId: "employee-1",
+      orgId: "org-1"
+    });
+    expect(repository.deviceRedeemInput?.deviceCodeHash).toBe(hashOpaqueSecret("eh_dc_secret"));
+    expect(repository.deviceRedeemInput?.clientId).toBe("enterprise-hub-desktop-launcher");
+    expect(repository.deviceRedeemInput?.audit).toEqual(oauthAudit);
+  });
+
+  it("reports authorization_pending while the employee has not completed the link", async () => {
+    const repository = new MemoryAuthRepository();
+    const core = new AuthCore(repository);
+    repository.deviceRedeemResult = { status: "authorization_pending" };
+
+    await expect(
+      core.redeemDeviceAuthorization("eh_dc_secret", "enterprise-hub-desktop-launcher", oauthAudit)
+    ).resolves.toEqual({ status: "authorization_pending" });
   });
 });

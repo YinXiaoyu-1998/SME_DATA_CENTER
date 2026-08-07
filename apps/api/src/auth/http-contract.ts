@@ -3,6 +3,9 @@ import { createHash, timingSafeEqual } from "node:crypto";
 export const OAUTH_CLIENT_ID = "enterprise-hub-desktop-launcher";
 export const OAUTH_TRANSACTION_COOKIE = "__Host-eh_oauth_transaction";
 export const PASSWORD_SETUP_COOKIE = "__Host-eh_password_setup";
+export const DEVICE_VERIFY_COOKIE = "__Host-eh_device_verify";
+export const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
+export const DEVICE_USER_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{8}$/;
 
 interface AuthorizationQuery {
   response_type?: unknown;
@@ -23,10 +26,11 @@ export interface ValidAuthorizationRequest {
 export interface OAuthAuthorizationServerMetadata {
   issuer: string;
   authorization_endpoint: string;
+  device_authorization_endpoint: string;
   token_endpoint: string;
   revocation_endpoint: string;
   response_types_supported: ["code"];
-  grant_types_supported: ["authorization_code", "refresh_token"];
+  grant_types_supported: ["authorization_code", "refresh_token", typeof DEVICE_CODE_GRANT_TYPE];
   code_challenge_methods_supported: ["S256"];
   token_endpoint_auth_methods_supported: ["none"];
   enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher";
@@ -126,16 +130,21 @@ export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMet
   return {
     issuer,
     authorization_endpoint: `${issuer}/oauth/authorize`,
+    device_authorization_endpoint: `${issuer}/oauth/device_authorization`,
     token_endpoint: `${issuer}/oauth/token`,
     revocation_endpoint: `${issuer}/oauth/revoke`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
+    grant_types_supported: ["authorization_code", "refresh_token", DEVICE_CODE_GRANT_TYPE],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher",
     enterprise_hub_launcher_minimum_version: "0.1.0",
     enterprise_hub_launcher_recommended_version: "0.1.1"
   };
+}
+
+export function isValidDeviceUserCode(value: unknown): value is string {
+  return typeof value === "string" && DEVICE_USER_CODE_PATTERN.test(value);
 }
 
 function isExactLoopbackRedirect(value: string): boolean {

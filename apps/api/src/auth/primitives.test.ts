@@ -86,6 +86,7 @@ describe("auth primitives", () => {
       accessToken: 10 * 60_000,
       authorizationCode: 60_000,
       browserTransaction: 10 * 60_000,
+      deviceAuthorization: 10 * 60_000,
       passwordSetupSession: 10 * 60_000,
       passwordSetupGrant: 24 * 60 * 60_000,
       durableSession: 30 * 24 * 60 * 60_000,

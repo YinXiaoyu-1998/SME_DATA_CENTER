@@ -72,6 +72,9 @@ describeIntegration("Prisma auth core repository", () => {
     });
     await prisma.authSession.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.oAuthAuthorizationCode.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.deviceAuthorization.deleteMany({
+      where: { clientId: "enterprise-hub-desktop-launcher" }
+    });
     await prisma.oAuthAuthorizationTransaction.deleteMany({
       where: {
         OR: [
@@ -291,6 +294,79 @@ describeIntegration("Prisma auth core repository", () => {
       )
     ]);
     expect(results.filter((result) => result.status === "redeemed")).toHaveLength(1);
+  });
+
+  it("issues, completes, and redeems a device authorization exactly once", async () => {
+    const issued = await core.issueDeviceAuthorization({
+      clientId: "enterprise-hub-desktop-launcher",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1",
+      audit: oauthAudit
+    });
+
+    const found = await core.findDeviceAuthorizationByUserCode(issued.userCode);
+    expect(found).toMatchObject({
+      status: "pending",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1"
+    });
+
+    await expect(
+      core.redeemDeviceAuthorization(
+        issued.deviceCode,
+        "enterprise-hub-desktop-launcher",
+        oauthAudit
+      )
+    ).resolves.toEqual({ status: "authorization_pending" });
+
+    const completed = await core.completeDeviceAuthorization(
+      issued.userCode,
+      {
+        identityId: "auth_test_identity",
+        employeeId: "auth_test_employee",
+        orgId: "auth-test-org"
+      },
+      browserAudit
+    );
+    expect(completed).toBe(true);
+
+    const redeemed = await core.redeemDeviceAuthorization(
+      issued.deviceCode,
+      "enterprise-hub-desktop-launcher",
+      oauthAudit
+    );
+    expect(redeemed).toEqual({
+      status: "redeemed",
+      identityId: "auth_test_identity",
+      employeeId: "auth_test_employee",
+      orgId: "auth-test-org"
+    });
+
+    await expect(
+      core.redeemDeviceAuthorization(
+        issued.deviceCode,
+        "enterprise-hub-desktop-launcher",
+        oauthAudit
+      )
+    ).resolves.toEqual({ status: "invalid" });
+  });
+
+  it("revokes a prior pending device authorization when the same instance re-issues", async () => {
+    const first = await core.issueDeviceAuthorization({
+      clientId: "enterprise-hub-desktop-launcher",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1",
+      audit: oauthAudit
+    });
+    await core.issueDeviceAuthorization({
+      clientId: "enterprise-hub-desktop-launcher",
+      instanceName: "agent-a",
+      instanceHostname: "vps-1",
+      audit: oauthAudit
+    });
+
+    const firstLookup = await core.findDeviceAuthorizationByUserCode(first.userCode);
+    expect(firstLookup?.status).toBe("revoked");
   });
 
   it("revokes the entire family when concurrent rotation replays a consumed generation", async () => {

@@ -9,12 +9,13 @@ import type { LauncherLock } from "./session.js";
 const SERVICE_NAME = "com.smedatacenter.enterprise-hub.launcher";
 
 export function createKeychainCredentialStore(origin: string): SecureCredentialStore {
-  const entry = new AsyncEntry(SERVICE_NAME, origin);
+  let entry: AsyncEntry | null = null;
+  const entryFor = () => (entry ??= new AsyncEntry(SERVICE_NAME, origin));
   return {
-    get: async () => (await entry.getPassword()) ?? null,
-    set: async (credential) => entry.setPassword(credential),
+    get: async () => (await entryFor().getPassword()) ?? null,
+    set: async (credential) => entryFor().setPassword(credential),
     delete: async () => {
-      await entry.deleteCredential();
+      await entryFor().deleteCredential();
     }
   };
 }

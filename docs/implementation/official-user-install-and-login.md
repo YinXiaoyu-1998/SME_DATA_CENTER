@@ -300,7 +300,7 @@ Resolve these branches in dependency order:
 14. **Remote/headless login**: resolved at the design level — the OAuth Device Authorization Grant
     is the single official flow; split secrets, pairing confirmation, headless credential custody,
     and the per-instance session model are resolved. See ADR 0022 and the In-Progress section;
-    implementation has not started.
+    implementation is in progress on `codex/device-code-login`.
 
 ## Accepted Password-Setup Policy
 
@@ -340,9 +340,10 @@ rejected. No custom URL scheme is required.
 
 ## In-Progress: Remote/Headless And Secondary-Device Login
 
-Status: design completed on 2026-08-07; implementation pending. The desktop browser flow above
-remains the accepted, shipped boundary until the device-code flow ships; this section records the
-active extension.
+Status: design completed on 2026-08-07; implementation in progress on branch
+`codex/device-code-login` (see `docs/implementation/device-code-login-plan.md`). The desktop
+browser flow above remains the accepted, shipped boundary until the device-code flow ships; this
+section records the active extension.
 
 **Motivation.** Agents that run on a headless remote server — for example OpenClaw-family
 deployments controlled from a phone, such as QClaw/小艺Claw-style setups — have no local system
@@ -825,5 +826,5 @@ experience or authentication policy.
 
 The remote/headless and secondary-device login flow reached its implementable boundary on
 2026-08-07: the device-code flow, link delivery, pairing, credential custody, and session model are
-resolved. Remaining work is implementation decomposition, server endpoints, verification-page UX,
-launcher flow selection, and test mechanics (see the In-Progress section).
+resolved. Implementation is in progress on `codex/device-code-login`
+(see `docs/implementation/device-code-login-plan.md`).

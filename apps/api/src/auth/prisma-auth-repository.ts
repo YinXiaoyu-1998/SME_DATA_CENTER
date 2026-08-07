@@ -3,6 +3,7 @@ import type {
   AccessAuthenticationRecord,
   AuthCoreRepository,
   AuthorizationCodeRedemption,
+  DeviceCodeRedemption,
   RotateCredentialResult,
   SecurityEventInput
 } from "./auth-core.js";
@@ -421,6 +422,187 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           employeeId: code.employeeId,
           orgId: code.orgId
         };
+      });
+    },
+
+    async createDeviceAuthorization(input) {
+      return prisma.$transaction(async (tx) => {
+        const superseded = await tx.deviceAuthorization.updateMany({
+          where: {
+            clientId: input.clientId,
+            instanceName: input.instanceName,
+            instanceHostname: input.instanceHostname,
+            status: "pending"
+          },
+          data: { status: "revoked", revokedAt: input.now }
+        });
+        if (superseded.count > 0) {
+          await tx.authSecurityEvent.create({
+            data: {
+              eventType: "device_authorization_revoked",
+              outcome: "succeeded",
+              reason: `superseded:${input.instanceName}@${input.instanceHostname}`,
+              ...eventAudit(input.audit),
+              createdAt: input.now
+            }
+          });
+        }
+        await tx.deviceAuthorization.create({
+          data: {
+            clientId: input.clientId,
+            deviceCodeHash: input.deviceCodeHash,
+            userCodeHash: input.userCodeHash,
+            instanceName: input.instanceName,
+            instanceHostname: input.instanceHostname,
+            expiresAt: input.expiresAt,
+            createdAt: input.now
+          }
+        });
+        await tx.authSecurityEvent.create({
+          data: {
+            eventType: "device_authorization_issued",
+            outcome: "succeeded",
+            reason: `instance:${input.instanceName}@${input.instanceHostname}`,
+            ...eventAudit(input.audit),
+            createdAt: input.now
+          }
+        });
+      });
+    },
+
+    async findDeviceAuthorizationByUserCode(input) {
+      const record = await prisma.deviceAuthorization.findUnique({
+        where: { userCodeHash: input.userCodeHash },
+        select: { status: true, instanceName: true, instanceHostname: true, expiresAt: true }
+      });
+      if (!record) {
+        return null;
+      }
+      return {
+        status:
+          record.status === "pending" && record.expiresAt <= input.now
+            ? ("expired" as const)
+            : record.status,
+        instanceName: record.instanceName,
+        instanceHostname: record.instanceHostname
+      };
+    },
+
+    async completeDeviceAuthorization(input) {
+      return prisma.$transaction(async (tx) => {
+        const record = await tx.deviceAuthorization.findUnique({
+          where: { userCodeHash: input.userCodeHash }
+        });
+        if (!record || record.status !== "pending" || record.expiresAt <= input.now) {
+          return false;
+        }
+        const identity = await tx.loginIdentity.findUnique({
+          where: { id: input.identityId },
+          include: {
+            employee: {
+              select: { id: true, orgId: true, disabled: true }
+            }
+          }
+        });
+        if (
+          !identity ||
+          identity.disabled ||
+          identity.employee.disabled ||
+          identity.employeeId !== input.employeeId ||
+          identity.orgId !== input.orgId ||
+          identity.employee.orgId !== input.orgId
+        ) {
+          return false;
+        }
+        const completed = await tx.deviceAuthorization.updateMany({
+          where: { id: record.id, status: "pending", expiresAt: { gt: input.now } },
+          data: {
+            status: "completed",
+            identityId: input.identityId,
+            employeeId: input.employeeId,
+            orgId: input.orgId,
+            completedAt: input.now
+          }
+        });
+        if (completed.count !== 1) {
+          return false;
+        }
+        await tx.authSecurityEvent.create({
+          data: {
+            eventType: "device_authorization_completed",
+            outcome: "succeeded",
+            orgId: input.orgId,
+            identityId: input.identityId,
+            employeeId: input.employeeId,
+            ...eventAudit(input.audit),
+            createdAt: input.now
+          }
+        });
+        return true;
+      });
+    },
+
+    async redeemDeviceAuthorization(input): Promise<DeviceCodeRedemption> {
+      return prisma.$transaction(async (tx) => {
+        const record = await tx.deviceAuthorization.findUnique({
+          where: { deviceCodeHash: input.deviceCodeHash }
+        });
+        if (!record || record.clientId !== input.clientId) {
+          return { status: "invalid" };
+        }
+        if (record.status === "pending") {
+          if (record.expiresAt <= input.now) {
+            const expired = await tx.deviceAuthorization.updateMany({
+              where: { id: record.id, status: "pending" },
+              data: { status: "expired" }
+            });
+            if (expired.count === 1) {
+              await tx.authSecurityEvent.create({
+                data: {
+                  eventType: "device_authorization_expired",
+                  outcome: "succeeded",
+                  reason: "pending_expired",
+                  ...eventAudit(input.audit),
+                  createdAt: input.now
+                }
+              });
+            }
+            return { status: "expired" };
+          }
+          return { status: "authorization_pending" };
+        }
+        if (record.status === "completed") {
+          if (record.expiresAt <= input.now) {
+            return { status: "expired" };
+          }
+          if (
+            record.redeemedAt !== null ||
+            !record.identityId ||
+            !record.employeeId ||
+            !record.orgId
+          ) {
+            return { status: "invalid" };
+          }
+          const consumed = await tx.deviceAuthorization.updateMany({
+            where: {
+              id: record.id,
+              status: "completed",
+              redeemedAt: null,
+              expiresAt: { gt: input.now }
+            },
+            data: { redeemedAt: input.now }
+          });
+          if (consumed.count !== 1) {
+            return { status: "invalid" };
+          }
+          return {
+            status: "redeemed",
+            identityId: record.identityId,
+            employeeId: record.employeeId,
+            orgId: record.orgId
+          };
+        }
+        return { status: "invalid" };
       });
     },
 

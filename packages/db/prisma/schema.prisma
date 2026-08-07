@@ -111,6 +111,13 @@ enum OAuthTransactionStatus {
   expired
 }
 
+enum DeviceAuthorizationStatus {
+  pending
+  completed
+  expired
+  revoked
+}
+
 enum AuthSessionStatus {
   active
   revoked
@@ -148,6 +155,7 @@ model Organization {
   loginIdentities LoginIdentity[]
   authSessions    AuthSession[]
   oauthCodes      OAuthAuthorizationCode[]
+  deviceAuthorizations DeviceAuthorization[]
   oauthTokens     OAuthAccessToken[]
   authEvents      AuthSecurityEvent[]
 
@@ -170,6 +178,7 @@ model Employee {
   loginIdentities LoginIdentity[]
   authSessions    AuthSession[]
   oauthCodes      OAuthAuthorizationCode[]
+  deviceAuthorizations DeviceAuthorization[]
   oauthTokens     OAuthAccessToken[]
   authEvents      AuthSecurityEvent[]
 
@@ -503,6 +512,7 @@ model LoginIdentity {
   authorizationCodes OAuthAuthorizationCode[]
   authSessions       AuthSession[]
   accessTokens       OAuthAccessToken[]
+  deviceAuthorizations DeviceAuthorization[]
   securityEvents     AuthSecurityEvent[]
 
   @@index([orgId, employeeId])
@@ -586,6 +596,33 @@ model OAuthAuthorizationCode {
   @@index([identityId, expiresAt])
   @@index([orgId, employeeId])
   @@map("oauth_authorization_codes")
+}
+
+model DeviceAuthorization {
+  id               String                    @id @default(cuid()) @db.VarChar(32)
+  clientId         String                    @map("client_id") @db.VarChar(128)
+  deviceCodeHash   String                    @unique @map("device_code_hash") @db.Char(64)
+  userCodeHash     String                    @unique @map("user_code_hash") @db.Char(64)
+  status           DeviceAuthorizationStatus @default(pending)
+  instanceName     String                    @map("instance_name") @db.VarChar(128)
+  instanceHostname String                    @map("instance_hostname") @db.VarChar(255)
+  identityId       String?                   @map("identity_id") @db.VarChar(32)
+  employeeId       String?                   @map("employee_id") @db.VarChar(32)
+  orgId            String?                   @map("org_id") @db.VarChar(64)
+  expiresAt        DateTime                  @map("expires_at")
+  completedAt      DateTime?                 @map("completed_at")
+  redeemedAt       DateTime?                 @map("redeemed_at")
+  revokedAt        DateTime?                 @map("revoked_at")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+  identity         LoginIdentity?            @relation(fields: [identityId], references: [id], onDelete: SetNull)
+  employee         Employee?                 @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  organization     Organization?             @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, instanceName, instanceHostname, status], map: "device_authorizations_instance_status_idx")
+  @@index([identityId, status])
+  @@index([expiresAt])
+  @@map("device_authorizations")
 }
 
 model AuthSession {

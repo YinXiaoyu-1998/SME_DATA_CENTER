@@ -68,6 +68,41 @@ export function renderLoginPage(options: FormPageOptions): string {
   );
 }
 
+export function renderDeviceVerificationPage(
+  options: FormPageOptions & {
+    userCode: string;
+    instanceName: string;
+    instanceHostname: string;
+  }
+): string {
+  const error = options.error
+    ? `<p role="alert" class="error">${escapeHtml(options.error)}</p>`
+    : "";
+
+  return pageShell(
+    {
+      nonce: options.nonce,
+      title: "Sign in to Enterprise Hub"
+    },
+    `<main>
+      <h1>Sign in to Enterprise Hub</h1>
+      <p class="device">This sign-in authorizes <strong>${escapeHtml(
+        options.instanceName
+      )}</strong> on ${escapeHtml(options.instanceHostname)}.</p>
+      ${error}
+      <form method="post" action="/oauth/device/verify/login">
+        <input type="hidden" name="csrfToken" value="${escapeHtml(options.csrfToken)}">
+        <input type="hidden" name="userCode" value="${escapeHtml(options.userCode)}">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Sign in</button>
+      </form>
+    </main>`
+  );
+}
+
 export function renderPasswordSetupBootstrapPage(options: PageOptions): string {
   return pageShell(
     {

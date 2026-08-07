@@ -6,15 +6,19 @@ import {
   OAUTH_CLIENT_ID,
   OAUTH_TRANSACTION_COOKIE,
   PASSWORD_SETUP_COOKIE,
+  DEVICE_VERIFY_COOKIE,
+  DEVICE_CODE_GRANT_TYPE,
   authorizationRequest,
   cookieValue,
   csrfTokenForSecret,
   hostOnlyCookie,
+  isValidDeviceUserCode,
   matchesCsrfToken,
   oauthMetadata
 } from "./http-contract.js";
 import {
   authPageHeaders,
+  renderDeviceVerificationPage,
   renderLoginPage,
   renderPasswordSetupBootstrapPage,
   renderPasswordSetupForm,
@@ -26,18 +30,25 @@ const MINIMUM_LAUNCHER_VERSION = "0.1.0";
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
 const INVALID_LOGIN_MESSAGE = "The email or password is incorrect.";
 const INVALID_SETUP_MESSAGE = "This password setup link is invalid or expired.";
+const DEVICE_LINK_INVALID_MESSAGE =
+  "This sign-in link is invalid or expired. Return to your agent and start sign-in again.";
+const DEVICE_AUTHORIZATION_TTL_SECONDS = 10 * 60;
 
 type OfficialAuthCore = Pick<
   AuthCore,
   | "authenticateAccessToken"
   | "completeAuthorizationTransaction"
+  | "completeDeviceAuthorization"
   | "consumePasswordSetupSession"
   | "createSession"
   | "exchangePasswordSetupGrant"
+  | "findDeviceAuthorizationByUserCode"
+  | "issueDeviceAuthorization"
   | "issueAuthorizationTransaction"
   | "logout"
   | "pruneSecurityEvents"
   | "redeemAuthorizationCode"
+  | "redeemDeviceAuthorization"
   | "rotateDurableCredential"
   | "verifyLogin"
 >;
@@ -149,6 +160,170 @@ export function registerOfficialAuthRoutes(
       .redirect(callback.toString(), 303);
   });
 
+  app.post<{ Body: FormBody }>("/oauth/device_authorization", async (request, reply) => {
+    const context = createRequestAuditContext(request, "oauth_launcher");
+    if (!isSupportedLauncherVersion(context.launcherVersion)) {
+      return reply.code(426).send({
+        error: "invalid_client",
+        error_description: "LAUNCHER_UPGRADE_REQUIRED",
+        code: "LAUNCHER_UPGRADE_REQUIRED",
+        minimum_version: MINIMUM_LAUNCHER_VERSION
+      });
+    }
+    const audit = authAudit(context);
+    const body = request.body;
+    const instanceName = typeof body?.instanceName === "string" ? body.instanceName.trim() : "";
+    const instanceHostname =
+      typeof body?.instanceHostname === "string" ? body.instanceHostname.trim() : "";
+    if (
+      !body ||
+      body.client_id !== OAUTH_CLIENT_ID ||
+      !instanceName ||
+      !instanceHostname ||
+      instanceName.length > 128 ||
+      instanceHostname.length > 255
+    ) {
+      return oauthError(
+        reply,
+        400,
+        "invalid_request",
+        "The device authorization request is invalid."
+      );
+    }
+
+    const issued = await options.auth.issueDeviceAuthorization({
+      clientId: body.client_id,
+      instanceName,
+      instanceHostname,
+      audit
+    });
+    const verificationUri = `${options.publicOrigin}/oauth/device/verify`;
+    return reply.header("cache-control", "no-store").send({
+      device_code: issued.deviceCode,
+      user_code: issued.userCode,
+      verification_uri: verificationUri,
+      verification_uri_complete: `${verificationUri}?user_code=${encodeURIComponent(
+        issued.userCode
+      )}`,
+      expires_in: DEVICE_AUTHORIZATION_TTL_SECONDS,
+      interval: issued.intervalSeconds
+    });
+  });
+
+  app.get<{ Querystring: { user_code?: string } }>(
+    "/oauth/device/verify",
+    async (request, reply) => {
+      const userCode = request.query.user_code;
+      if (!isValidDeviceUserCode(userCode)) {
+        return sendHtml(
+          reply.code(400),
+          renderSafeMessagePage({
+            nonce: nonce(),
+            title: "Sign-in link invalid",
+            message: DEVICE_LINK_INVALID_MESSAGE
+          })
+        );
+      }
+      const pending = await options.auth.findDeviceAuthorizationByUserCode(userCode);
+      if (!pending || pending.status !== "pending") {
+        return sendHtml(
+          reply.code(400),
+          renderSafeMessagePage({
+            nonce: nonce(),
+            title: "Sign-in link expired",
+            message: DEVICE_LINK_INVALID_MESSAGE
+          })
+        );
+      }
+      const secret = randomBytes(24).toString("base64url");
+      return sendHtml(
+        reply.header("set-cookie", hostOnlyCookie(DEVICE_VERIFY_COOKIE, secret, 10 * 60)),
+        renderDeviceVerificationPage({
+          nonce: nonce(),
+          csrfToken: csrfTokenForSecret(secret),
+          userCode,
+          instanceName: pending.instanceName,
+          instanceHostname: pending.instanceHostname
+        })
+      );
+    }
+  );
+
+  app.post<{ Body: FormBody }>("/oauth/device/verify/login", async (request, reply) => {
+    const verifySecret = cookieValue(request.headers.cookie, DEVICE_VERIFY_COOKIE);
+    const body = request.body;
+    if (
+      !verifySecret ||
+      !body ||
+      typeof body.csrfToken !== "string" ||
+      !matchesCsrfToken(verifySecret, body.csrfToken) ||
+      !isValidDeviceUserCode(body.userCode)
+    ) {
+      return sendHtml(
+        reply.code(400),
+        renderSafeMessagePage({
+          nonce: nonce(),
+          title: "Sign-in expired",
+          message: DEVICE_LINK_INVALID_MESSAGE
+        })
+      );
+    }
+    const audit = authAudit(createRequestAuditContext(request, "browser_auth"));
+    const result = await options.auth.verifyLogin(body.email ?? "", body.password ?? "", audit);
+    if (!result.ok) {
+      const pending = await options.auth.findDeviceAuthorizationByUserCode(body.userCode);
+      if (!pending || pending.status !== "pending") {
+        return sendHtml(
+          reply.code(400),
+          renderSafeMessagePage({
+            nonce: nonce(),
+            title: "Sign-in expired",
+            message: DEVICE_LINK_INVALID_MESSAGE
+          })
+        );
+      }
+      return sendHtml(
+        reply.code(401),
+        renderDeviceVerificationPage({
+          nonce: nonce(),
+          csrfToken: csrfTokenForSecret(verifySecret),
+          userCode: body.userCode,
+          instanceName: pending.instanceName,
+          instanceHostname: pending.instanceHostname,
+          error: INVALID_LOGIN_MESSAGE
+        })
+      );
+    }
+
+    const completed = await options.auth.completeDeviceAuthorization(
+      body.userCode,
+      {
+        identityId: result.identityId,
+        employeeId: result.employeeId,
+        orgId: result.orgId
+      },
+      audit
+    );
+    if (!completed) {
+      return sendHtml(
+        reply.code(400).header("set-cookie", clearCookie(DEVICE_VERIFY_COOKIE)),
+        renderSafeMessagePage({
+          nonce: nonce(),
+          title: "Sign-in expired",
+          message: DEVICE_LINK_INVALID_MESSAGE
+        })
+      );
+    }
+    return sendHtml(
+      reply.header("set-cookie", clearCookie(DEVICE_VERIFY_COOKIE)),
+      renderSafeMessagePage({
+        nonce: nonce(),
+        title: "Sign-in complete",
+        message: "You can close this page and return to your agent."
+      })
+    );
+  });
+
   app.post<{ Body: FormBody }>("/oauth/token", async (request, reply) => {
     const context = createRequestAuditContext(request, "oauth_launcher");
     if (!isSupportedLauncherVersion(context.launcherVersion)) {
@@ -195,6 +370,33 @@ export function registerOfficialAuthRoutes(
         return oauthError(reply, 400, "invalid_grant", "The refresh token is invalid.");
       }
       return tokenResponse(reply, rotation.accessToken, rotation.durableCredential);
+    }
+
+    if (body.grant_type === DEVICE_CODE_GRANT_TYPE) {
+      if (!body.device_code) {
+        return oauthError(reply, 400, "invalid_request", "Required token fields are missing.");
+      }
+      const redemption = await options.auth.redeemDeviceAuthorization(
+        body.device_code,
+        body.client_id,
+        audit
+      );
+      if (redemption.status === "authorization_pending") {
+        return oauthError(
+          reply,
+          400,
+          "authorization_pending",
+          "The authorization is still pending."
+        );
+      }
+      if (redemption.status === "expired") {
+        return oauthError(reply, 400, "expired_token", "The device code has expired.");
+      }
+      if (redemption.status !== "redeemed") {
+        return oauthError(reply, 400, "invalid_grant", "The authorization grant is invalid.");
+      }
+      const session = await options.auth.createSession(redemption, audit);
+      return tokenResponse(reply, session.accessToken, session.durableCredential);
     }
 
     return oauthError(reply, 400, "unsupported_grant_type", "The grant type is unsupported.");

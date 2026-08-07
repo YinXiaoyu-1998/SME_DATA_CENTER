@@ -3,6 +3,7 @@ import type { RequestAuditContext } from "../request-audit-context.js";
 import {
   AUTH_LIFETIMES_MS,
   derivePkceS256Challenge,
+  generateDeviceUserCode,
   generateOpaqueSecret,
   hashOpaqueSecret,
   hashPassword,
@@ -54,6 +55,17 @@ export type AuthorizationCodeRedemption =
     }
   | { status: "invalid" };
 
+export type DeviceCodeRedemption =
+  | {
+      status: "redeemed";
+      identityId: string;
+      employeeId: string;
+      orgId: string;
+    }
+  | { status: "authorization_pending" }
+  | { status: "expired" }
+  | { status: "invalid" };
+
 export type AuthSecurityEventType =
   | "account_onboarded"
   | "setup_grant_issued"
@@ -62,6 +74,10 @@ export type AuthSecurityEventType =
   | "password_login_succeeded"
   | "password_login_failed"
   | "password_cooldown_entered"
+  | "device_authorization_issued"
+  | "device_authorization_completed"
+  | "device_authorization_expired"
+  | "device_authorization_revoked"
   | "session_created"
   | "session_revoked"
   | "session_expired"
@@ -157,6 +173,35 @@ export interface AuthCoreRepository {
     now: Date;
     audit: AuthRequestAudit;
   }): Promise<AuthorizationCodeRedemption>;
+  createDeviceAuthorization(input: {
+    deviceCodeHash: string;
+    userCodeHash: string;
+    clientId: string;
+    instanceName: string;
+    instanceHostname: string;
+    expiresAt: Date;
+    now: Date;
+    audit: AuthRequestAudit;
+  }): Promise<void>;
+  findDeviceAuthorizationByUserCode(input: { userCodeHash: string; now: Date }): Promise<{
+    status: "pending" | "completed" | "expired" | "revoked";
+    instanceName: string;
+    instanceHostname: string;
+  } | null>;
+  completeDeviceAuthorization(input: {
+    userCodeHash: string;
+    identityId: string;
+    employeeId: string;
+    orgId: string;
+    now: Date;
+    audit: AuthRequestAudit;
+  }): Promise<boolean>;
+  redeemDeviceAuthorization(input: {
+    deviceCodeHash: string;
+    clientId: string;
+    now: Date;
+    audit: AuthRequestAudit;
+  }): Promise<DeviceCodeRedemption>;
   createSessionBundle(input: {
     identityId: string;
     employeeId: string;
@@ -413,6 +458,71 @@ export class AuthCore {
       clientId: input.clientId,
       redirectUri: input.redirectUri,
       pkceChallenge: derivePkceS256Challenge(input.verifier),
+      now: this.now(),
+      audit
+    });
+  }
+
+  async issueDeviceAuthorization(input: {
+    clientId: string;
+    instanceName: string;
+    instanceHostname: string;
+    audit: AuthRequestAudit;
+  }): Promise<{
+    deviceCode: string;
+    userCode: string;
+    expiresAt: Date;
+    intervalSeconds: number;
+  }> {
+    const now = this.now();
+    const expiresAt = new Date(now.getTime() + AUTH_LIFETIMES_MS.deviceAuthorization);
+    const deviceCode = generateOpaqueSecret("eh_dc_");
+    const userCode = generateDeviceUserCode();
+    await this.repository.createDeviceAuthorization({
+      deviceCodeHash: hashOpaqueSecret(deviceCode),
+      userCodeHash: hashOpaqueSecret(userCode),
+      clientId: input.clientId,
+      instanceName: input.instanceName,
+      instanceHostname: input.instanceHostname,
+      expiresAt,
+      now,
+      audit: input.audit
+    });
+    return { deviceCode, userCode, expiresAt, intervalSeconds: 5 };
+  }
+
+  async findDeviceAuthorizationByUserCode(userCode: string): Promise<{
+    status: "pending" | "completed" | "expired" | "revoked";
+    instanceName: string;
+    instanceHostname: string;
+  } | null> {
+    return this.repository.findDeviceAuthorizationByUserCode({
+      userCodeHash: hashOpaqueSecret(userCode),
+      now: this.now()
+    });
+  }
+
+  async completeDeviceAuthorization(
+    userCode: string,
+    identity: { identityId: string; employeeId: string; orgId: string },
+    audit: AuthRequestAudit
+  ): Promise<boolean> {
+    return this.repository.completeDeviceAuthorization({
+      userCodeHash: hashOpaqueSecret(userCode),
+      ...identity,
+      now: this.now(),
+      audit
+    });
+  }
+
+  async redeemDeviceAuthorization(
+    deviceCode: string,
+    clientId: string,
+    audit: AuthRequestAudit
+  ): Promise<DeviceCodeRedemption> {
+    return this.repository.redeemDeviceAuthorization({
+      deviceCodeHash: hashOpaqueSecret(deviceCode),
+      clientId,
       now: this.now(),
       audit
     });

@@ -1,12 +1,14 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ENTERPRISE_HUB_MCP_TOOL_NAMES } from "@enterprise-hub/mcp-contract";
 import { createLauncherRuntimeConfig } from "./config.js";
 import {
   LAUNCHER_BOOTSTRAP_TOOL_NAMES,
+  type LauncherLoginResult,
+  canOpenBrowser,
   createLauncherToolDependencies,
   createLauncherToolHandler,
   mapMcpError,
@@ -56,6 +58,19 @@ describe("official launcher bootstrap tools", () => {
       error: { code: "AUTHENTICATION_REQUIRED", message: "Enterprise Hub sign-in is required." }
     });
     expect(JSON.stringify(result)).not.toContain("secret-token");
+  });
+
+  it("reports browser availability from the platform and display environment", () => {
+    if (process.platform === "darwin" || process.platform === "win32") {
+      expect(canOpenBrowser()).toBe(true);
+      return;
+    }
+    vi.stubEnv("DISPLAY", "");
+    vi.stubEnv("WAYLAND_DISPLAY", "");
+    expect(canOpenBrowser()).toBe(false);
+    vi.stubEnv("DISPLAY", ":0");
+    expect(canOpenBrowser()).toBe(true);
+    vi.unstubAllEnvs();
   });
 
   it("denies remote results containing credentials or the exact access token", () => {
@@ -280,8 +295,18 @@ function fakeAuth(
   options: { authenticated?: boolean; loginError?: { code: string; message: string } } = {}
 ) {
   return {
-    login: async () => {
+    login: async (): Promise<LauncherLoginResult> => {
       if (options.loginError) throw options.loginError;
+      return {
+        authenticated: false as const,
+        flow: "device" as const,
+        verificationUri: "https://hub.example.test/oauth/device/verify",
+        verificationUriComplete: "https://hub.example.test/oauth/device/verify?user_code=ABCDEFGH",
+        userCode: "ABCDEFGH",
+        instanceName: "agent-a",
+        instanceHostname: "vps-1",
+        openedBrowser: false
+      } satisfies LauncherLoginResult;
     },
     logout: async () => ({
       remoteRevocationConfirmed: true,
