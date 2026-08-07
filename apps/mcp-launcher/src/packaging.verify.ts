@@ -100,7 +100,7 @@ describe("published launcher artifact", () => {
   });
 
   it("installs into an empty directory, reports its version, and emits a CycloneDX SBOM", async () => {
-    expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe("0.1.1");
+    expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe("0.2.0");
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
     ) as { components?: Array<{ name?: string }> };

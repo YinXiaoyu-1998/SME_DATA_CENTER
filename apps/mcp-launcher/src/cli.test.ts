@@ -5,7 +5,7 @@ describe("launcher machine-readable CLI contract", () => {
   it("emits exact safe self-check JSON", () => {
     const result = {
       ok: true,
-      launcherVersion: "0.1.1",
+      launcherVersion: "0.2.0",
       serviceOrigin: "https://hub.example.test",
       platform: "darwin",
       secureStore: { available: true, durableCredentialPresent: false },
