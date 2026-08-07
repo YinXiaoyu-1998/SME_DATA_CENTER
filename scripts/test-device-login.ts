@@ -1,5 +1,7 @@
 import type { LauncherRuntimeConfig } from "../apps/mcp-launcher/src/config.js";
+import { csrfTokenForSecret } from "../apps/api/src/auth/http-contract.js";
 import {
+  type LauncherAuthentication,
   canOpenBrowser,
   createLauncherToolDependencies,
   createLauncherToolHandler
@@ -22,6 +24,8 @@ const baseUrl = process.env["ENTERPRISE_HUB_BASE_URL"];
 try {
   assert(baseUrl, "ENTERPRISE_HUB_BASE_URL must point at a running local Enterprise Hub API.");
   const expectedSecureStore = process.env["LAUNCHER_EXPECT_SECURE_STORE"] === "1";
+  const employeeEmail = process.env["LAUNCHER_EMPLOYEE_EMAIL"];
+  const employeePassword = process.env["LAUNCHER_EMPLOYEE_PASSWORD"];
   const config: LauncherRuntimeConfig = { serviceUrl: baseUrl, transport: "stdio" };
   const dependencies = createLauncherToolDependencies({ config });
 
@@ -50,6 +54,27 @@ try {
   };
   assert(!status.authenticated, "Auth status must remain unauthenticated until the link is used.");
 
+  const proved = ["device_self_check", "device_login_link", "headless_link_delivery"];
+  if (employeeEmail && employeePassword) {
+    await completeDeviceVerification({
+      baseUrl,
+      verificationUriComplete: body.verificationUriComplete!,
+      email: employeeEmail,
+      password: employeePassword
+    });
+    await waitForAuthenticated(dependencies.auth);
+    const labelsResult = await createLauncherToolHandler(
+      "enterprise_hub_list_labels",
+      dependencies
+    )({});
+    assert(!labelsResult.isError, "Authenticated business tool must succeed after device login.");
+    const labelsBody = JSON.parse(labelsResult.content[0]?.text ?? "null") as {
+      labels?: unknown[];
+    };
+    assert(Array.isArray(labelsBody.labels), "Label tool must return the employee label list.");
+    proved.push("device_full_loop");
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -58,7 +83,7 @@ try {
         secureStoreAvailable: selfCheck.secureStore.available,
         flow: body.flow,
         openedBrowser: body.openedBrowser,
-        proved: ["device_self_check", "device_login_link", "headless_link_delivery"]
+        proved
       },
       null,
       2
@@ -80,4 +105,45 @@ function errorToMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+async function completeDeviceVerification(input: {
+  baseUrl: string;
+  verificationUriComplete: string;
+  email: string;
+  password: string;
+}): Promise<void> {
+  const page = await fetch(input.verificationUriComplete, { redirect: "manual" });
+  assert(page.status === 200, `Verification page must render (${page.status}).`);
+  const setCookie = page.headers.get("set-cookie") ?? "";
+  const verifySecret = /__Host-eh_device_verify=([^;]+)/.exec(setCookie)?.[1];
+  assert(Boolean(verifySecret), "Verification page must issue its secure cookie.");
+  const userCode = new URL(input.verificationUriComplete).searchParams.get("user_code") ?? "";
+  const response = await fetch(`${input.baseUrl}/oauth/device/verify/login`, {
+    method: "POST",
+    headers: {
+      cookie: `__Host-eh_device_verify=${verifySecret}`,
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      csrfToken: csrfTokenForSecret(verifySecret!),
+      userCode,
+      email: input.email,
+      password: input.password
+    }).toString()
+  });
+  assert(
+    response.status === 200,
+    `Verification login must succeed (${response.status}): ${(await response.text()).slice(0, 200)}`
+  );
+}
+
+async function waitForAuthenticated(auth: LauncherAuthentication): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if ((await auth.status()).authenticated) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error("Launcher did not become authenticated after device completion.");
 }
