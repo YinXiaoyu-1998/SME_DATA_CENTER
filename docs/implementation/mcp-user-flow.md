@@ -1,16 +1,17 @@
 # Enterprise Hub MCP User Flow
 
-> **Official implementation:** This is the implemented employee flow. The fixed npm package
-> `enterprise-hub-mcp-launcher@0.1.0` is published and the official service is deployed in staging;
-> real browser/desktop acceptance remains
-> release gates. There is no development-login or JWT compatibility path.
+> **Official implementation:** This is the implemented employee flow. The pinned npm package
+> `enterprise-hub-mcp-launcher@0.2.0` is published and the official service is deployed in staging.
+> Native macOS/Windows package acceptance and the headless Linux loop pass; user-visible OpenClaw
+> and support-class-C phone/browser acceptance remain release evidence. There is no
+> development-login or JWT compatibility path.
 
-Last updated: 2026-07-28
+Last updated: 2026-08-10
 
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `enterprise-hub-mcp` skill. The official remote origin
 is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`enterprise-hub-mcp-launcher@0.1.0`.
+`enterprise-hub-mcp-launcher@0.2.0`.
 
 ## Participants And Credential Boundary
 
@@ -19,8 +20,9 @@ flowchart LR
   Employee["Employee"] -->|"Natural-language request"| Agent["Employee-owned agent / MCP client"]
   Agent -->|"Reads installation and recovery guidance"| Skill["enterprise-hub-mcp skill"]
   Agent <-->|"Local stdio; no credential in configuration"| Launcher["Pinned local launcher"]
-  Launcher -->|"Opens system browser"| Browser["Enterprise Hub HTTPS login page"]
-  Browser <-->|"Authorization Code + PKCE"| Auth["Enterprise Hub identity endpoints"]
+  Launcher -->|"Opens or surfaces verification link"| Browser["Enterprise Hub HTTPS verification page"]
+  Browser -->|"Password + pairing confirmation"| Auth["Enterprise Hub identity endpoints"]
+  Launcher <-->|"Device Authorization polling"| Auth
   Launcher -->|"Streamable HTTP POST /mcp\nopaque bearer access token"| Api["https://api.smedatacenter.xyz"]
   Api --> Data["Backend-authorized service\nAPI, storage, worker, MySQL, Qdrant"]
 ```
@@ -29,8 +31,8 @@ flowchart LR
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Employee -> agent    | The employee requests an action, but never gives a password, token, authorization code, or credential-store record to the agent.                                                        |
 | Agent -> launcher    | The configured local stdio entry contains no secret. The agent may invoke only `enterprise_hub_login`, `enterprise_hub_logout`, and `enterprise_hub_auth_status` for session lifecycle. |
-| Launcher -> browser  | The employee enters a password only in the Enterprise Hub HTTPS page. The loopback callback carries a single-use authorization code, never a token.                                     |
-| Launcher -> API/MCP  | The launcher alone obtains, refreshes, protects, and attaches opaque bearer access tokens. It stores durable session material only in macOS Keychain or Windows Credential Manager.     |
+| Launcher -> browser  | The employee enters a password and confirms the agent instance only in the Enterprise Hub HTTPS page; the browser never returns credentials through the agent/model.                    |
+| Launcher -> API/MCP  | The launcher polls the token endpoint, protects and attaches opaque access tokens, and uses Keychain/Credential Manager or memory-only custody on genuinely headless hosts.             |
 | MCP -> business data | Every request is authenticated and backend-authorized. The skill/launcher never directly operate API infrastructure, database, Qdrant, storage, Docker, worker, or cloud resources.     |
 
 ## Installation Or Update
@@ -63,10 +65,13 @@ sequenceDiagram
   A->>L: "enterprise_hub_auth_status or business tool"
   alt authentication_required
     A->>L: "enterprise_hub_login"
-    L->>B: "Open HTTPS browser login"
+    L->>S: "Request Device Authorization"
+    S-->>L: "Verification link and user code"
+    L->>B: "Open or surface HTTPS verification link"
     E->>B: "Enter credentials only in browser"
-    B->>S: "Authorize code + PKCE request"
-    S-->>L: "Code exchange; opaque credentials remain launcher-only"
+    B->>S: "Confirm pairing and authorize"
+    L->>S: "Poll token endpoint"
+    S-->>L: "Opaque credentials remain launcher-only"
     L-->>A: "Safe login outcome"
     A->>L: "Retry original business operation once"
   else usable session
@@ -91,8 +96,9 @@ explicitly authorized lifecycle action.
 ## Business Tool Use
 
 - List labels before uploads and use only returned label keys. Do not supply an organization ID.
-- Read only a user-selected or explicitly assigned file's exact bytes. Send an inline file object;
-  never send a local file path or reconstruct/normalize content.
+- Read only a user-selected or explicitly assigned file's exact bytes. Prefer the launcher's
+  `file.encoding="path"` input with an absolute local path; use inline base64 only for small files.
+  Never reconstruct, normalize, translate, or retype the content.
 - Status polling is allowed only to observe service state. Do not start workers or operate any
   Enterprise Hub service component.
 - Reuse a structured-import idempotency key only for exact replay. Treat an import-status 404 as
@@ -104,9 +110,10 @@ explicitly authorized lifecycle action.
 
 ## Current Release Boundary
 
-The code implements official opaque access tokens, rotating durable credentials, browser
-Authorization Code + PKCE, public HTTPS `/mcp`, and the pinned launcher. A beta-release claim still
-requires real browser login and macOS/Windows desktop acceptance. The staging migration and
-official-session fixture smoke have passed, and the pinned npm package is public and independently
-installable. The removed
-`/auth/dev-login`, JWT, and local email-login tools must remain absent.
+The code implements OAuth Device Authorization, opaque access tokens, rotating durable credentials,
+desktop secure-store and headless memory-only custody, public HTTPS `/mcp`, and the pinned launcher.
+The staging migration, official-session fixture smoke, native macOS/Windows package acceptance, and
+headless Linux login-to-business-tool loop have passed. Full user-visible OpenClaw and
+support-class-C phone/browser acceptance remain. The retained Authorization Code + PKCE endpoints
+serve minimum-compatible 0.1.x launchers only; removed `/auth/dev-login`, JWT, and local email-login
+tools must remain absent.

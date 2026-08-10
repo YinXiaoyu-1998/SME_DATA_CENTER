@@ -1,6 +1,7 @@
 # Device-Code 登录流程实现计划
 
-Status: accepted by the product owner on 2026-08-07; implementation branch `codex/device-code-login`.
+Status: completed in merged PR #107; launcher 0.2.0 published by PR #108 and metadata/skill pins
+synchronized by PR #109.
 
 ## 摘要
 
@@ -39,9 +40,8 @@ instanceHostname, openedBrowser}` 并在后台轮询；业务 MCP 调用有界�
 ## 文档与技能
 
 - 提交本计划文档（PR 描述标注为 requested artifact）。
-- repo-local `skills/enterprise-hub-mcp/SKILL.md` 更新 device 流程登录说明、B/C 投递方式与
-  内存态重登提示；技能 pin 与 launcher 版本门槛在本 PR 不动；设计文档 In-Progress 小节同步
-  为“实现中”。
+- repo-local `skills/enterprise-hub-mcp/SKILL.md` 已更新 device 流程登录说明、B/C 投递方式与
+  内存态重登提示；PR #109 已把技能 pin 和 server recommended launcher 版本同步到 0.2.0。
 
 ## 测试计划
 
@@ -68,19 +68,17 @@ instanceHostname, openedBrowser}` 并在后台轮询；业务 MCP 调用有界�
 
 ## PR 与发布步骤
 
-1. 更新本地 main（拉取 PR #106）并创建 `codex/device-code-login`。
-2. 实现并补齐测试；本地全量门禁通过：typecheck、lint、format:check、test、
+1. 已更新本地 main（拉取 PR #106）并创建 `codex/device-code-login`。
+2. 已实现并补齐测试；本地全量门禁通过：typecheck、lint、format:check、test、
    `set -a; source .env; set +a; MYSQL_PORT=3307 npm run test:integration`、MCP 冒烟。
-3. 提交（含计划文档）→ push → `gh pr create`（范围、测试清单、环境变更、人工输入、已知
-   限制、diff 构成报告，标注计划文档为 requested artifact）→ 等 quality gates 全绿交付 review。
-4. 合并后单独发布：launcher 0.2.0 上 npm → 服务端 metadata recommended 升到 0.2.0 → 同步
-   更新 repo-local 与 standalone `enterprise-hub-mcp-skill`（standalone 单独 PR）→ 扩展官方
-   人工验收 C 场景。
+3. PR #107 已合并并通过质量门禁。
+4. PR #108 已发布 launcher 0.2.0；PR #109 已同步服务端 metadata recommended 和 repo-local
+   skill，standalone skill 已按 dual-home 规则同步。官方人工验收仍需补齐 C 场景的真机证据。
 
 ## 假设与默认值
 
 - 单个实现 PR；launcher 发布与 standalone 技能仓库更新为合并后步骤。
-- 服务端 metadata 的 minimum 保持 0.1.0、recommended 保持 0.1.1，0.2.0 门槛随发布生效。
+- 服务端 metadata 的 minimum 保持 0.1.0、recommended 已更新为 0.2.0。
 - pending 10 分钟过期、轮询 5 秒 + `slow_down` 退避、每实例一个有效 pending、链接用
   `verification_uri_complete`、浏览器不留会话。
 - agent 实例身份为 launcher 声明的主机名/实例名（客户端声明元数据）；不新增 per-IP 防滥用

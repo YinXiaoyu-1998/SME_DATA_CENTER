@@ -1,6 +1,6 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-08-04
+Last updated: 2026-08-10
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
@@ -19,19 +19,19 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 | Desktop acceptance | Follow `official-manual-acceptance.md` plus `official-user-install-and-login.md` on clean desktop users                                | Published launcher, browser login, Codex/OpenClaw upload/query, restart, logout, reset, repair, and uninstall pass                      |
 | Golden retrieval   | `npm run test:phase3:golden`                                                                                                           | Deterministic synthetic retrieval thresholds pass                                                                                       |
 | Perf smoke         | `npm run test:phase3:perf`                                                                                                             | Real local workloads pass and report workload size, elapsed time, Node version, and threshold                                           |
-| Production audit   | `npm run audit:production`                                                                                                             | New high/critical findings and unregistered moderate findings fail; the only accepted ExcelJS exception is reviewed by `2027-01-31`     |
+| Production audit   | `npm run audit:production`                                                                                                             | New high/critical findings and unregistered moderate findings fail; the current policy has no accepted package exceptions               |
 | Runtime images     | CI-equivalent `docker buildx build --pull --platform linux/amd64 --target {api,worker,release-ops} --load .` plus Trivy policy reports | All three lean targets build; policy accepts no new high/critical or unregistered moderate findings                                     |
 | Local release path | Disposable MySQL/Qdrant runtime with compiled API/worker/release-ops commands                                                          | Health/readiness, non-root users, worker termination, Qdrant init, forward migration, and fixture-only upload/index/search/cleanup pass |
 
 ## Audit Provenance Verification
 
-| Case                               | Test / command                                                                                                                                                                                                                            | Expected                                                                                                                                                    |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Request context and proxy boundary | `npm test -- apps/api/src/request-audit-context.test.ts apps/api/src/proxy-boundary.test.ts`                                                                                                                                              | Safe request IDs; direct callers cannot forge forwarding metadata; one trusted nginx hop preserves the public IP.                                           |
-| Business audit provenance          | `npm test -- apps/api/src/documents.test.ts apps/api/src/evidence.test.ts apps/api/src/structured-imports.test.ts apps/api/src/server.test.ts`                                                                                            | Direct HTTP audit stores true peer IP, `http_api`, and null version; admin output preserves nullable historical/operator/system fields.                     |
-| MCP provenance delegation          | `npm test -- apps/api/src/mcp/http.test.ts apps/api/src/mcp/api-delegation.test.ts apps/api/src/mcp/tool-handlers.test.ts apps/api/src/mcp/upload-tools.test.ts apps/api/src/server.test.ts`                                              | MCP audit retains outer request ID/IP, `mcp_launcher`, and `0.1.0`; a forged internal proof falls back to `http_api` with null version.                     |
-| Authentication-event provenance    | `RUN_AUTH_INTEGRATION=1 npm test -- apps/api/src/auth/auth-core.test.ts apps/api/src/auth/routes.test.ts apps/api/src/auth/prisma-auth-repository.integration.test.ts apps/api/src/auth/operator-cli.test.ts apps/api/src/server.test.ts` | Browser events have request ID/IP and null version; OAuth token/refresh/revoke events record request ID/IP and `0.1.0`; operator/system events remain null. |
-| End-to-end local cleanup           | `set -a; source .env; set +a; MYSQL_PORT=3307 npm run test:integration && MYSQL_PORT=3307 npm run test:mcp`                                                                                                                               | Synthetic test data is created and run-scoped DB, storage, and Qdrant residue is removed.                                                                   |
+| Case                               | Test / command                                                                                                                                                                                                                            | Expected                                                                                                                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request context and proxy boundary | `npm test -- apps/api/src/request-audit-context.test.ts apps/api/src/proxy-boundary.test.ts`                                                                                                                                              | Safe request IDs; direct callers cannot forge forwarding metadata; one trusted nginx hop preserves the public IP.                                                                 |
+| Business audit provenance          | `npm test -- apps/api/src/documents.test.ts apps/api/src/evidence.test.ts apps/api/src/structured-imports.test.ts apps/api/src/server.test.ts`                                                                                            | Direct HTTP audit stores true peer IP, `http_api`, and null version; admin output preserves nullable historical/operator/system fields.                                           |
+| MCP provenance delegation          | `npm test -- apps/api/src/mcp/http.test.ts apps/api/src/mcp/api-delegation.test.ts apps/api/src/mcp/tool-handlers.test.ts apps/api/src/mcp/upload-tools.test.ts apps/api/src/server.test.ts`                                              | MCP audit retains outer request ID/IP, `mcp_launcher`, and valid bounded launcher-version metadata; a forged internal proof falls back to `http_api` with null version.           |
+| Authentication-event provenance    | `RUN_AUTH_INTEGRATION=1 npm test -- apps/api/src/auth/auth-core.test.ts apps/api/src/auth/routes.test.ts apps/api/src/auth/prisma-auth-repository.integration.test.ts apps/api/src/auth/operator-cli.test.ts apps/api/src/server.test.ts` | Browser events have request ID/IP and null version; OAuth device/token/refresh/revoke events retain valid supplied launcher-version metadata; operator/system events remain null. |
+| End-to-end local cleanup           | `set -a; source .env; set +a; MYSQL_PORT=3307 npm run test:integration && MYSQL_PORT=3307 npm run test:mcp`                                                                                                                               | Synthetic test data is created and run-scoped DB, storage, and Qdrant residue is removed.                                                                                         |
 
 ## Active Phase 3 API / Worker Cases
 
@@ -54,13 +54,13 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 
 ## Active MCP Cases
 
-| Case                     | Test / Command                                        | Expected                                                                                                              |
-| ------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| HTTP endpoint guards     | `npm test -- apps/api/src/mcp/http.test.ts`           | Official-host/loopback peer, opaque auth, stateless protocol, size/concurrency, and discovery are enforced            |
-| Core MCP contract        | `npm test -- packages/mcp-contract/src/index.test.ts` | Strict tool inputs reject legacy session/path fields and invalid inline upload content                                |
-| API MCP tool delegation  | `npm test -- apps/api/src/mcp`                        | Read/upload tools preserve existing API authorization and multipart validation                                        |
-| Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                   | Browser PKCE login, secure-store session, refresh serialization, logout, typed failures, and authenticated proxy pass |
-| Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                    | Launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy representatives pass                       |
+| Case                     | Test / Command                                        | Expected                                                                                                                                                                                 |
+| ------------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP endpoint guards     | `npm test -- apps/api/src/mcp/http.test.ts`           | Official-host/loopback peer, opaque auth, stateless protocol, size/concurrency, and discovery are enforced                                                                               |
+| Core MCP contract        | `npm test -- packages/mcp-contract/src/index.test.ts` | Strict tool inputs reject legacy session/path fields and invalid inline upload content                                                                                                   |
+| API MCP tool delegation  | `npm test -- apps/api/src/mcp`                        | Read/upload tools preserve existing API authorization and multipart validation                                                                                                           |
+| Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                   | Device Authorization, desktop auto-open/headless link delivery, secure-store or memory-only session custody, refresh serialization, logout, typed failures, and authenticated proxy pass |
+| Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                    | Launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy representatives pass                                                                                          |
 
 ## Deleted Phase 3 Local Manual Acceptance
 
@@ -80,7 +80,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-This runner uses the installed `enterprise-hub-mcp-launcher@0.1.0`, the user's operating-system
+This runner uses the installed `enterprise-hub-mcp-launcher@0.2.0`, the user's operating-system
 secure-store session, and the public staging service. It covers authenticated label discovery,
 evidence upload/status/search, structured CSV import/query, invalid atomic import rejection, and
 run-scoped cleanup of evidence, Qdrant points, OSS objects, structured rows, import batches, and
@@ -96,14 +96,14 @@ test data plus hard-delete the synthetic account with
 
 ## Official Identity, OAuth, And Launcher Cases
 
-| Area              | Required proof                                                                                                                                                                                                       |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Password identity | Unicode NFC and 8–128 boundaries, common-password rejection, Argon2id parameters, dummy verification, non-enumerating failures, and 5/10/20/40/60-minute cooldown                                                    |
-| Setup/reset       | 24-hour single-use grant, 10-minute setup transaction, replacement and concurrent-consumption safety, fragment removal, CSRF/cookie/CSP/no-store headers, and session-family revocation                              |
-| OAuth             | Metadata, fixed public client, exact IPv4 loopback redirect, S256 PKCE, state binding, 60-second one-use code, and invalid/replayed code rejection                                                                   |
-| Sessions          | Hash-only opaque tokens, 10-minute access expiry, 30-day absolute session, atomic refresh rotation, replay-family revocation, logout/reset/disabled revocation, and fail-closed database errors                      |
-| Launcher          | Callback binding and state, browser cancellation/timeout, macOS Keychain or Windows Credential Manager only, cross-process refresh lock, restart recovery, four model-safe failure classes, and no credential output |
-| Package           | `npm pack` allowlist and secret scan, no workspace dependency in the tarball, clean-directory install, stdio initialize/list-tools probe, native keyring load on macOS/Windows CI, and tag/version equality          |
+| Area              | Required proof                                                                                                                                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Password identity | Unicode NFC and 8–128 boundaries, common-password rejection, Argon2id parameters, dummy verification, non-enumerating failures, and 5/10/20/40/60-minute cooldown                                                                                           |
+| Setup/reset       | 24-hour single-use grant, 10-minute setup transaction, replacement and concurrent-consumption safety, fragment removal, CSRF/cookie/CSP/no-store headers, and session-family revocation                                                                     |
+| OAuth             | Metadata, fixed public client, Device Authorization issue/verify/poll lifecycle, 10-minute single-use pending codes, pairing metadata, pending/expiry/replay rejection, plus retained minimum-compatible 0.1.x Authorization Code + PKCE coverage           |
+| Sessions          | Hash-only opaque tokens, 10-minute access expiry, 30-day absolute session, atomic refresh rotation, replay-family revocation, logout/reset/disabled revocation, and fail-closed database errors                                                             |
+| Launcher          | Desktop browser auto-open and headless link delivery, bounded device polling, macOS Keychain/Windows Credential Manager or headless memory-only custody, cross-process refresh lock, restart recovery, model-safe failure classes, and no credential output |
+| Package           | `npm pack` allowlist and secret scan, no workspace dependency in the tarball, clean-directory install, stdio initialize/list-tools probe, native keyring load on macOS/Windows CI, and tag/version equality                                                 |
 
 The removed `/auth/dev-login`, JWT verifier/issuer, email-taking launcher tool, and long-lived token
 handoff must remain covered by negative tests and packaging scans.

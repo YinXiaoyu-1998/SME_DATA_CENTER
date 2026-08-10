@@ -22,13 +22,14 @@ report generator, dashboard service, or skill execution platform.
 The official target profile must be actionable enough for an agent to:
 
 1. Verify Node.js 22 or newer plus npm, then install only
-   `enterprise-hub-mcp-launcher@0.1.0` with `npm install --prefix ... --save-exact` in the approved
+   `enterprise-hub-mcp-launcher@0.2.0` with `npm install --prefix ... --save-exact` in the approved
    macOS/Windows versioned directory; never install `latest` or self-update.
 2. Back up and idempotently configure only the invoking agent's local **stdio** entry. Codex uses
    its verified `mcp list`/`get`/`add`/`remove` CLI and bundled macOS binary fallback; OpenClaw uses
    `mcp add`/`set` and `mcp doctor --probe`, not direct remote OAuth storage.
-3. Use `enterprise_hub_auth_status`, `enterprise_hub_login`, and `enterprise_hub_logout` without
-   receiving passwords, tokens, authorization codes, headers, or secure-store records.
+3. Use `enterprise_hub_auth_status`, `enterprise_hub_login`, and `enterprise_hub_logout`; every
+   login uses Device Authorization and never exposes passwords, tokens, device codes, headers, or
+   secure-store records to the agent/model.
 4. Treat browser cancellation, `authentication_required`, `service_unavailable`, `forbidden`, and
    `launcher_upgrade_required` as distinct typed outcomes. Retry the original operation exactly
    once after successful browser login.
@@ -45,16 +46,16 @@ The official target profile must be actionable enough for an agent to:
 
 ## Profile Boundaries
 
-| Profile                   | Requirement                                                                                                             |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `official-remote`         | The only employee-facing guidance: pinned launcher, `https://api.smedatacenter.xyz`, browser login, and typed recovery. |
-| `pre-cutover-development` | Historical current-code detail belongs in implementation/testing docs, never in the official skill.                     |
+| Profile                   | Requirement                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `official-remote`         | The only employee-facing guidance: pinned launcher, `https://api.smedatacenter.xyz`, Device Authorization, and typed recovery. |
+| `pre-cutover-development` | Historical current-code detail belongs in implementation/testing docs, never in the official skill.                            |
 
 ## Safety Review Checklist
 
 - [x] Skill name is exactly `enterprise-hub-mcp`.
 - [x] Skill includes only the official remote employee profile.
-- [x] Skill pins `enterprise-hub-mcp-launcher@0.1.0`, rejects `latest`, and never directs launcher self-update.
+- [x] Skill pins `enterprise-hub-mcp-launcher@0.2.0`, rejects `latest`, and never directs launcher self-update.
 - [x] Skill contains no real tokens, passwords, customer data, endpoint secrets, or service-account material.
 - [x] Skill says MCP tools must use the HTTP API and inherit API authorization.
 - [x] Skill forbids direct DB/storage reads for data access.
