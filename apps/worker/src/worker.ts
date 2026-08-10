@@ -262,18 +262,19 @@ export async function runWorkerOnce(input: {
           false
         );
       }
+      const structuredImport = run.structuredImport;
 
-      const transition = {
+      const transition = () => ({
         runId: run.id,
         documentId: run.documentId,
-        importBatchId: run.structuredImport.importBatchId,
+        importBatchId: structuredImport.importBatchId,
         workerId,
         now: now()
-      };
+      });
       const fileType = structuredFileType(run.document.fileType);
       if (!fileType) {
         await input.repository.rejectStructuredImport({
-          ...transition,
+          ...transition(),
           result: unsupportedStructuredFileResult()
         });
         return {
@@ -285,18 +286,18 @@ export async function runWorkerOnce(input: {
 
       const content = await readDocumentContent(run.document, input.storage);
       const result = await parseStructuredFile({
-        dataset: run.structuredImport.dataset,
+        dataset: structuredImport.dataset,
         content,
         fileType,
-        startDate: run.structuredImport.startDate,
-        endDate: run.structuredImport.endDate,
+        startDate: structuredImport.startDate,
+        endDate: structuredImport.endDate,
         fileName: run.document.originalFileName ?? "structured-import",
         limits: input.structuredIngestionLimits ?? structuredIngestionLimits(),
         validationMode: "collect"
       });
 
       if (result.validationErrorCount > 0) {
-        await input.repository.rejectStructuredImport({ ...transition, result });
+        await input.repository.rejectStructuredImport({ ...transition(), result });
         return {
           processed: true,
           documentId: run.documentId,
@@ -304,9 +305,9 @@ export async function runWorkerOnce(input: {
         };
       }
 
-      await input.repository.beginStructuredImportApply(transition);
+      await input.repository.beginStructuredImportApply(transition());
       await input.repository.completeStructuredImport({
-        ...transition,
+        ...transition(),
         result,
         batchInsertSize:
           input.structuredImportBatchInsertSize ??

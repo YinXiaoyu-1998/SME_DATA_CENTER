@@ -428,7 +428,7 @@ model DishRow {
   sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
   importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
 
-  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber])
+  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "dish_rows_batch_sheet_row_uq")
   @@index([orgId, importBatchId])
   @@map("dish_rows")
 }
@@ -447,7 +447,7 @@ model BusinessRow {
   sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
   importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
 
-  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber])
+  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "business_rows_batch_sheet_row_uq")
   @@index([orgId, importBatchId])
   @@map("business_rows")
 }

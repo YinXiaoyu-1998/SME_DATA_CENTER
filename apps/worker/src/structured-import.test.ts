@@ -231,6 +231,37 @@ describe("structured import processing worker", () => {
     expect(repository.failures).toHaveLength(0);
   });
 
+  it("checks the lease against a fresh timestamp after structured parsing", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_expired_after_parse",
+      fileName: "dishes.csv",
+      contentType: "text/csv",
+      body: await readFile("fixtures/structured/dishes-valid.csv")
+    });
+    const repository = createStructuredImportRepository({
+      storageObjectKey: stored.key,
+      originalFileName: "dishes.csv",
+      fileType: "csv"
+    });
+    const claimedAt = new Date("2026-07-20T00:00:00.000Z");
+    const expiredAt = new Date("2026-07-20T00:02:01.000Z");
+    const timestamps = [claimedAt, expiredAt, expiredAt];
+
+    await expect(
+      runWorkerOnce({
+        repository,
+        storage,
+        workerId: "worker-expired-parse",
+        now: () => timestamps.shift() ?? expiredAt
+      })
+    ).resolves.toMatchObject({ status: "retry_scheduled" });
+    expect(repository.rows).toHaveLength(0);
+    expect(repository.run.status).toBe("running");
+  });
+
   it("does not reject or fail a batch after its lease is lost", async () => {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
