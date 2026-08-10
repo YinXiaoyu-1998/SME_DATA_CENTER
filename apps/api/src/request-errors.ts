@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 export class PublicRequestError extends Error {
   constructor(
@@ -28,6 +28,36 @@ function publicErrorBody(code: string, message: string, requestId: string) {
       requestId
     }
   };
+}
+
+export function errorResponse(code: string, message: string) {
+  return {
+    error: {
+      code,
+      message
+    }
+  };
+}
+
+export function phase3ErrorResponse(
+  request: FastifyRequest,
+  code: string,
+  message: string,
+  details: Record<string, unknown> = {}
+) {
+  return {
+    error: {
+      code,
+      message,
+      retryable: false,
+      details,
+      requestId: request.id
+    }
+  };
+}
+
+export function validationError(reply: FastifyReply, code: string, message: string) {
+  return reply.code(400).send(errorResponse(code, message));
 }
 
 function errorCode(error: unknown): string | undefined {
