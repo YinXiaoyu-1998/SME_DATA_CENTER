@@ -263,17 +263,6 @@ export async function runWorkerOnce(input: {
         );
       }
 
-      const content = await readDocumentContent(run.document, input.storage);
-      const result = await parseStructuredFile({
-        dataset: run.structuredImport.dataset,
-        content,
-        fileType: structuredFileType(run.document.fileType),
-        startDate: run.structuredImport.startDate,
-        endDate: run.structuredImport.endDate,
-        fileName: run.document.originalFileName ?? "structured-import",
-        limits: input.structuredIngestionLimits ?? structuredIngestionLimits(),
-        validationMode: "collect"
-      });
       const transition = {
         runId: run.id,
         documentId: run.documentId,
@@ -281,6 +270,30 @@ export async function runWorkerOnce(input: {
         workerId,
         now: now()
       };
+      const fileType = structuredFileType(run.document.fileType);
+      if (!fileType) {
+        await input.repository.rejectStructuredImport({
+          ...transition,
+          result: unsupportedStructuredFileResult()
+        });
+        return {
+          processed: true,
+          documentId: run.documentId,
+          status: "rejected"
+        };
+      }
+
+      const content = await readDocumentContent(run.document, input.storage);
+      const result = await parseStructuredFile({
+        dataset: run.structuredImport.dataset,
+        content,
+        fileType,
+        startDate: run.structuredImport.startDate,
+        endDate: run.structuredImport.endDate,
+        fileName: run.document.originalFileName ?? "structured-import",
+        limits: input.structuredIngestionLimits ?? structuredIngestionLimits(),
+        validationMode: "collect"
+      });
 
       if (result.validationErrorCount > 0) {
         await input.repository.rejectStructuredImport({ ...transition, result });
@@ -325,18 +338,29 @@ export async function runWorkerOnce(input: {
 
     const failedAt = now();
     const willRetry = processingError.retryable && run.attemptNumber < maxAttempts;
-    await input.repository.failProcessingRun({
-      runId: run.id,
-      documentId: run.documentId,
-      workerId,
-      now: failedAt,
-      errorCode: processingError.code,
-      errorSummary: processingError.summary,
-      willRetry,
-      nextAvailableAt: willRetry
-        ? new Date(failedAt.getTime() + retryDelayMs(run.attemptNumber, retryBaseMs, retryMaxMs))
-        : failedAt
-    });
+    try {
+      await input.repository.failProcessingRun({
+        runId: run.id,
+        documentId: run.documentId,
+        workerId,
+        now: failedAt,
+        errorCode: processingError.code,
+        errorSummary: processingError.summary,
+        willRetry,
+        nextAvailableAt: willRetry
+          ? new Date(failedAt.getTime() + retryDelayMs(run.attemptNumber, retryBaseMs, retryMaxMs))
+          : failedAt
+      });
+    } catch (failureError) {
+      if (toProcessingError(failureError, run.jobType).code === PROCESSING_ERROR_CODES.leaseLost) {
+        return {
+          processed: true,
+          documentId: run.documentId,
+          status: "retry_scheduled"
+        };
+      }
+      throw failureError;
+    }
 
     return {
       processed: true,
@@ -1127,13 +1151,28 @@ async function insertStructuredRows(
   }
 }
 
-function structuredFileType(fileType: string | null | undefined): "csv" | "xlsx" {
+function structuredFileType(fileType: string | null | undefined): "csv" | "xlsx" | null {
   if (fileType === "csv" || fileType === "xlsx") return fileType;
-  throw new ProcessingError(
-    PROCESSING_ERROR_CODES.unsupportedFileType,
-    "Structured import file type is not supported.",
-    false
-  );
+  return null;
+}
+
+function unsupportedStructuredFileResult(): StructuredParseResult {
+  return {
+    sheetSummary: [],
+    rows: [],
+    validationErrors: [
+      {
+        code: "INVALID_FILE",
+        message: "Structured file type is not supported.",
+        sheetName: null,
+        sheetIndex: null,
+        rowNumber: null,
+        column: null
+      }
+    ],
+    validationErrorCount: 1,
+    validationErrorsTruncated: false
+  };
 }
 
 function structuredIngestionLimits(): StructuredIngestionLimits {

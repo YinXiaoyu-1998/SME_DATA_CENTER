@@ -148,6 +148,37 @@ describe("structured import processing worker", () => {
     expect(repository.failures).toHaveLength(0);
   });
 
+  it("rejects an unsupported structured file format without retrying", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_invalid_format",
+      fileName: "dishes.txt",
+      contentType: "text/plain",
+      body: "not a structured export"
+    });
+    const repository = createStructuredImportRepository({
+      storageObjectKey: stored.key,
+      originalFileName: "dishes.txt",
+      fileType: "txt"
+    });
+
+    await expect(
+      runWorkerOnce({ repository, storage, workerId: "worker-format" })
+    ).resolves.toEqual({
+      processed: true,
+      documentId: "doc_structured_csv",
+      status: "rejected"
+    });
+    expect(repository.importBatch).toMatchObject({
+      status: "rejected",
+      validationErrorCount: 1
+    });
+    expect(repository.failures).toHaveLength(0);
+    expect(repository.rows).toHaveLength(0);
+  });
+
   it("retries transient storage failures and marks the batch failed after max attempts", async () => {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
@@ -200,7 +231,43 @@ describe("structured import processing worker", () => {
     expect(repository.failures).toHaveLength(0);
   });
 
-  it("allows only one worker to claim and apply a structured import", async () => {
+  it("does not reject or fail a batch after its lease is lost", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const invalid = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_reject_lease_lost",
+      fileName: "invalid.csv",
+      contentType: "text/csv",
+      body: await readFile("fixtures/structured/dishes-invalid-unknown-column.csv")
+    });
+    const rejectRepository = createStructuredImportRepository({
+      storageObjectKey: invalid.key,
+      originalFileName: "invalid.csv",
+      fileType: "csv",
+      loseLeaseWhen: "reject"
+    });
+
+    await expect(
+      runWorkerOnce({ repository: rejectRepository, storage, workerId: "worker-reject-lease" })
+    ).resolves.toMatchObject({ status: "retry_scheduled" });
+    expect(rejectRepository.importBatch.status).toBe("validating");
+    expect(rejectRepository.rejectCount).toBe(0);
+
+    const failRepository = createStructuredImportRepository({
+      storageObjectKey: "missing-object",
+      originalFileName: "dishes.csv",
+      fileType: "csv",
+      loseLeaseWhen: "fail"
+    });
+    await expect(
+      runWorkerOnce({ repository: failRepository, storage, workerId: "worker-fail-lease" })
+    ).resolves.toMatchObject({ status: "retry_scheduled" });
+    expect(failRepository.importBatch.status).toBe("validating");
+    expect(failRepository.failures).toHaveLength(0);
+  });
+
+  it("allows only one worker to claim and apply a contended structured import", async () => {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const stored = await storage.putObject({
@@ -228,6 +295,7 @@ describe("structured import processing worker", () => {
       ])
     );
     expect(repository.rows).toHaveLength(1);
+    expect(repository.run.attemptNumber).toBe(1);
   });
 
   it("keeps existing rows intact when atomic apply fails", async () => {
@@ -254,6 +322,7 @@ describe("structured import processing worker", () => {
     ).resolves.toMatchObject({
       status: "retry_scheduled"
     });
+    expect(repository.applyAttempts).toEqual([{ deletedRowCount: 1, insertedRowCount: 1 }]);
     expect(repository.rows).toEqual([existingRow]);
   });
 });
@@ -261,9 +330,10 @@ describe("structured import processing worker", () => {
 function createStructuredImportRepository(options: {
   storageObjectKey: string;
   originalFileName: string;
-  fileType: "csv" | "xlsx";
+  fileType: string;
   completeError?: "lease_lost" | "apply_failure";
   initialRows?: unknown[];
+  loseLeaseWhen?: "complete" | "reject" | "fail";
 }): ProcessingWorkerRepository & {
   document: { status: string };
   importBatch: {
@@ -277,6 +347,7 @@ function createStructuredImportRepository(options: {
   run: { status: string; retryCount: number; attemptNumber: number };
   failures: Array<{ errorCode: string; willRetry: boolean }>;
   rejectCount: number;
+  applyAttempts: Array<{ deletedRowCount: number; insertedRowCount: number }>;
 } {
   const document = {
     id: "doc_structured_csv",
@@ -307,6 +378,7 @@ function createStructuredImportRepository(options: {
   };
   const rows: unknown[] = [...(options.initialRows ?? [])];
   const failures: Array<{ errorCode: string; willRetry: boolean }> = [];
+  const applyAttempts: Array<{ deletedRowCount: number; insertedRowCount: number }> = [];
   let rejectCount = 0;
 
   return {
@@ -315,6 +387,7 @@ function createStructuredImportRepository(options: {
     rows,
     run,
     failures,
+    applyAttempts,
     get rejectCount() {
       return rejectCount;
     },
@@ -323,6 +396,7 @@ function createStructuredImportRepository(options: {
       now,
       leaseSeconds
     }): Promise<ClaimedProcessingRun | null> {
+      await Promise.resolve();
       if (!(["queued", "retry_scheduled"] as string[]).includes(run.status)) return null;
       run.status = "running";
       run.attemptNumber += 1;
@@ -349,6 +423,7 @@ function createStructuredImportRepository(options: {
       };
     },
     async failProcessingRun(input) {
+      if (options.loseLeaseWhen === "fail") loseLease(run);
       if (run.lockedBy !== input.workerId || !run.lockedUntil || run.lockedUntil <= input.now) {
         throw new ProcessingLeaseLostError(input.runId);
       }
@@ -364,6 +439,10 @@ function createStructuredImportRepository(options: {
       importBatch.status = "applying";
     },
     async rejectStructuredImport(input) {
+      if (options.loseLeaseWhen === "reject") loseLease(run);
+      if (run.lockedBy !== input.workerId || !run.lockedUntil || run.lockedUntil <= input.now) {
+        throw new ProcessingLeaseLostError(input.runId);
+      }
       rejectCount += 1;
       importBatch.status = "rejected";
       importBatch.sourceSheetSummary = input.result.sheetSummary;
@@ -375,11 +454,21 @@ function createStructuredImportRepository(options: {
     },
     async completeStructuredImport(input: {
       result: { rows: unknown[]; sheetSummary: unknown[] };
+      workerId: string;
+      now: Date;
     }) {
+      if (options.loseLeaseWhen === "complete") loseLease(run);
+      if (run.lockedBy !== input.workerId || !run.lockedUntil || run.lockedUntil <= input.now) {
+        throw new ProcessingLeaseLostError(run.id);
+      }
       if (options.completeError === "lease_lost") throw new ProcessingLeaseLostError(run.id);
+      const stagedRows = [...rows];
+      const deletedRowCount = stagedRows.length;
+      stagedRows.splice(0, stagedRows.length);
+      stagedRows.push(...input.result.rows);
+      applyAttempts.push({ deletedRowCount, insertedRowCount: input.result.rows.length });
       if (options.completeError === "apply_failure") throw new Error("database write failed");
-      rows.splice(0, rows.length);
-      rows.push(...input.result.rows);
+      rows.splice(0, rows.length, ...stagedRows);
       importBatch.status = "applied";
       importBatch.totalRowCount = input.result.rows.length;
       importBatch.appliedRowCount = input.result.rows.length;
@@ -400,5 +489,11 @@ function createStructuredImportRepository(options: {
     run: { status: string; retryCount: number; attemptNumber: number };
     failures: Array<{ errorCode: string; willRetry: boolean }>;
     rejectCount: number;
+    applyAttempts: Array<{ deletedRowCount: number; insertedRowCount: number }>;
   };
+}
+
+function loseLease(run: { lockedBy: string | null; lockedUntil: Date | null }) {
+  run.lockedBy = "worker-other";
+  run.lockedUntil = new Date("2099-01-01T00:00:00.000Z");
 }
