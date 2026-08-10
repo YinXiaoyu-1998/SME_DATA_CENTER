@@ -218,7 +218,7 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     sourceDocumentId: "doc_structured",
     sourceDocumentLabelKeys: ["store:baoli"],
     dataset: "dishes",
-    status: "applied",
+    status: "pending",
     startDate: "20260701",
     endDate: "20260731",
     sourceSheetSummary: [],
@@ -226,14 +226,14 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     validationErrorCount: 0,
     validationErrorsTruncated: false,
     totalRowCount: 2,
-    appliedRowCount: 2,
-    queryableRowCount: 2,
-    sourceDocumentStatus: "active",
+    appliedRowCount: 0,
+    queryableRowCount: 0,
+    sourceDocumentStatus: "pending_processing",
     sourceDocumentFileType: "csv",
     storageObjectKey: "org/default-org/documents/doc_structured/original/data.csv",
     originalFileName: "data.csv",
     processingRunId: "run_status",
-    processingStatus: "succeeded"
+    processingStatus: "queued"
   };
 
   return {
@@ -822,7 +822,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       documentIndex: { status: "indexed" }
     });
     expect(parseToolPayload(importStatus.payload).payload).toMatchObject({
-      importBatch: { importBatchId: "imp_status", dataset: "dishes", status: "applied" }
+      importBatch: { importBatchId: "imp_status", dataset: "dishes", status: "pending" },
+      processing: { status: "queued" }
     });
   });
 

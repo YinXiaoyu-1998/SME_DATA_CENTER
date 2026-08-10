@@ -128,6 +128,22 @@ describe("manual acceptance scenario manifest", () => {
     expect(skill).toContain("failed");
     expect(guide).toContain("`rejected` terminal state");
   });
+
+  it("makes the official acceptance runner poll accepted structured imports to terminal status", async () => {
+    const runner = await readFile(
+      path.join(root, "scripts", "official-manual-acceptance.ts"),
+      "utf8"
+    );
+
+    expect(runner).toContain("pollStructuredImportStatus");
+    expect(runner).toContain('"get_import_status"');
+    expect(runner).toContain("Expected structured import to apply after polling");
+    expect(runner).toContain("Expected invalid structured import to be rejected after polling");
+    expect(runner).not.toContain("Expected structured import applied; got");
+    expect(runner).not.toContain(
+      "Invalid structured import did not return a validation-style failure."
+    );
+  });
 });
 
 describe("manual acceptance evidence fixtures", () => {

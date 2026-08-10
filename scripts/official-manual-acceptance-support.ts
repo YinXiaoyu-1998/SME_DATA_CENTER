@@ -26,6 +26,45 @@ export interface CleanupCounts {
   storageObjects: number;
 }
 
+export interface StructuredImportPollResult {
+  importBatch: {
+    importBatchId: string;
+    status: string;
+  };
+}
+
+const STRUCTURED_IMPORT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
+
+export async function pollStructuredImportStatus<T extends StructuredImportPollResult>(input: {
+  importBatchId: string;
+  getStatus: () => Promise<T>;
+  sleep?: (delayMs: number) => Promise<void>;
+  now?: () => number;
+}): Promise<T> {
+  const now = input.now ?? Date.now;
+  const sleep =
+    input.sleep ?? ((delayMs) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
+  const deadline = now() + STRUCTURED_IMPORT_POLL_TIMEOUT_MS;
+  let delayMs = 2_000;
+
+  while (now() < deadline) {
+    await sleep(Math.min(delayMs, deadline - now()));
+    const status = await input.getStatus();
+
+    if (status.importBatch.importBatchId !== input.importBatchId) {
+      throw new Error("Structured import status returned an unexpected import batch.");
+    }
+
+    if (["applied", "rejected", "failed"].includes(status.importBatch.status)) {
+      return status;
+    }
+
+    delayMs = delayMs === 2_000 ? 5_000 : delayMs === 5_000 ? 10_000 : 15_000;
+  }
+
+  throw new Error("Structured import is still processing after 10 minutes.");
+}
+
 export function assertStagingRuntimeDatabaseTarget(databaseUrl: string): void {
   const parsed = new URL(databaseUrl);
   const databaseName = parsed.pathname.replace(/^\/+/, "");
