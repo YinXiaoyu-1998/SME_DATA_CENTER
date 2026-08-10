@@ -998,3 +998,8 @@ benchmark:xlsx-parse` (old ExcelJS vs streaming extraction vs full pipeline with
 - Handle `P2002` job-key publication races by refetching and returning the authoritative run.
 - Added direct public-contract coverage for terminal date-window reuse and GET envelope fields.
 - Verified: lint, 56 focused API/query/worker tests, typecheck, format check, and diff check.
+
+### Review fix round 2
+
+- Parameterized terminal import-window coverage over both `rejected` and `failed` batches.
+- Verified: 36 focused API/query/worker tests, typecheck, format check, and diff check.

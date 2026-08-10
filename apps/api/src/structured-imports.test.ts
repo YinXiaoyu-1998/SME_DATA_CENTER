@@ -231,44 +231,47 @@ describe("Prisma structured import audit provenance", () => {
     ).resolves.toMatchObject({ processingRunId: "run_1", processingStatus: "queued" });
   });
 
-  it("releases a rejected import-window claim before accepting a replacement key", async () => {
-    const repository = createPrismaStructuredImportRepository({
-      databaseUrl: "mysql://test",
-      transactionTimeoutMs: 1_000,
-      batchInsertSize: 100
-    });
-    prisma.importWindowClaim.findUnique.mockResolvedValueOnce({
-      id: "claim_rejected",
-      importBatch: importBatchRecord("rejected")
-    });
+  it.each(["rejected", "failed"] as const)(
+    "releases a %s import-window claim before accepting a replacement key",
+    async (terminalStatus) => {
+      const repository = createPrismaStructuredImportRepository({
+        databaseUrl: "mysql://test",
+        transactionTimeoutMs: 1_000,
+        batchInsertSize: 100
+      });
+      prisma.importWindowClaim.findUnique.mockResolvedValueOnce({
+        id: `claim_${terminalStatus}`,
+        importBatch: importBatchRecord(terminalStatus)
+      });
 
-    await repository.reserveStructuredImport({
-      orgId: "org_1",
-      actorEmployeeId: "emp_2",
-      documentId: "doc_2",
-      dataset: "dishes",
-      fileType: "csv",
-      startDate: "20260701",
-      endDate: "20260705",
-      idempotencyKey: "replacement-key",
-      requestFingerprint: "replacement-fingerprint",
-      document: {
-        title: "Replacement dishes",
-        storageObjectKey: "org/org_1/documents/doc_2/original/data.csv",
-        originalFileName: "data.csv",
-        contentType: "text/csv",
-        byteSize: 10,
-        checksumSha256: "hash",
-        labelIds: ["label_1"],
-        labels: ["all_staff"]
-      },
-      sourceSheetSummary: [],
-      totalRowCount: 0,
-      audit
-    });
+      await repository.reserveStructuredImport({
+        orgId: "org_1",
+        actorEmployeeId: "emp_2",
+        documentId: "doc_2",
+        dataset: "dishes",
+        fileType: "csv",
+        startDate: "20260701",
+        endDate: "20260705",
+        idempotencyKey: "replacement-key",
+        requestFingerprint: "replacement-fingerprint",
+        document: {
+          title: "Replacement dishes",
+          storageObjectKey: "org/org_1/documents/doc_2/original/data.csv",
+          originalFileName: "data.csv",
+          contentType: "text/csv",
+          byteSize: 10,
+          checksumSha256: "hash",
+          labelIds: ["label_1"],
+          labels: ["all_staff"]
+        },
+        sourceSheetSummary: [],
+        totalRowCount: 0,
+        audit
+      });
 
-    expect(prisma.importWindowClaim.delete).toHaveBeenCalledWith({
-      where: { id: "claim_rejected" }
-    });
-  });
+      expect(prisma.importWindowClaim.delete).toHaveBeenCalledWith({
+        where: { id: `claim_${terminalStatus}` }
+      });
+    }
+  );
 });
