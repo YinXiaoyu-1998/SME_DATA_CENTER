@@ -144,6 +144,21 @@ advice. At the 10-minute limit without a terminal status, report **still process
 Document/ImportBatch IDs in acceptance evidence, and say it can be checked later with the status
 tool; this is not a failure.
 
+## Structured-import async cutover acceptance
+
+Run this section after the single staging cutover has restored the API and worker. With a fresh
+synthetic acceptance account and separate ordinary employee tasks, the required terminal evidence
+is:
+
+- valid table -> `applied` after polling its upload status;
+- invalid table -> `rejected` with no partial structured rows; and
+- text -> `ready` after polling the evidence document status.
+
+Then use the official controller cleanup to verify that the run's documents, structured rows/import
+batches/window claims, exact OSS objects, and exact Qdrant points are gone. Only after that cleanup
+succeeds may the controller hard-delete the synthetic acceptance account. Never run this acceptance
+against the human owner's account.
+
 ## macOS Codex User Flow
 
 For the current macOS user:
