@@ -20,9 +20,8 @@ import {
 } from "@enterprise-hub/domain";
 import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
 import { createOriginalObjectKey } from "@enterprise-hub/storage";
-import { type AuditLogRecord, type CatalogLabel, type DocumentStatusRecord } from "./documents.js";
+import { type CatalogLabel, type DocumentStatusRecord } from "./documents.js";
 import { EvidenceSearchCursorError } from "./evidence.js";
-import { type SkillDirectoryEntry } from "./skills.js";
 import {
   StructuredImportError,
   type StructuredImportBatchRecord,
@@ -42,8 +41,9 @@ import { isTrustedLoopbackProxy, normalizeRequestId } from "./request-audit-cont
 import { createApiServerContext, type ApiServerOptions } from "./app-context.js";
 import { createRequestAuth, type AuthenticatedRequest } from "./request-auth.js";
 import { readMultipartFile, registerApiMultipart, type MultipartPart } from "./http/multipart.js";
+import { registerSystemRoutes } from "./routes/system.js";
+import { registerCatalogRoutes } from "./routes/catalog.js";
 
-const SERVICE_NAME = "enterprise-hub-api";
 export type { ApiServerOptions } from "./app-context.js";
 
 interface ParsedUpload {
@@ -102,16 +102,6 @@ type EvidenceSearchValidation =
       code: string;
       message: string;
     };
-
-interface AuditListQuery {
-  limit?: string;
-  cursor?: string;
-}
-
-interface SkillListQuery {
-  q?: string;
-  category?: string;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -246,25 +236,6 @@ function validateEvidenceSearchBody(value: unknown): EvidenceSearchValidation {
     },
     limit,
     cursor
-  };
-}
-
-function employeeResponse(employee: AuthenticatedEmployee) {
-  return {
-    id: employee.id,
-    orgId: employee.orgId,
-    email: employee.email,
-    role: employee.role,
-    disabled: employee.disabled,
-    labels: employee.labels
-  };
-}
-
-function labelCatalogResponse(label: CatalogLabel) {
-  return {
-    key: label.key,
-    name: label.name,
-    type: label.type
   };
 }
 
@@ -619,12 +590,6 @@ function structuredImportConflictMessage(code: string): string {
   return "Structured import conflict.";
 }
 
-function isLoopbackRequest(ip: string): boolean {
-  return (
-    ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1" || ip === "0:0:0:0:0:0:0:1"
-  );
-}
-
 function structuredImportResponse(input: {
   importBatch: StructuredImportBatchRecord;
   document: {
@@ -727,37 +692,6 @@ function evidenceStatusResponse(document: DocumentStatusRecord) {
   };
 }
 
-function auditEventResponse(auditLog: AuditLogRecord) {
-  return {
-    id: auditLog.id,
-    actorEmployeeId: auditLog.actorEmployeeId,
-    action: auditLog.action,
-    targetType: auditLog.targetType,
-    targetId: auditLog.targetId,
-    result: auditLog.result,
-    metadata: auditLog.metadata,
-    requestId: auditLog.requestId,
-    clientIp: auditLog.clientIp,
-    clientSource: auditLog.clientSource,
-    launcherVersion: auditLog.launcherVersion,
-    createdAt: auditLog.createdAt.toISOString()
-  };
-}
-
-function skillDirectoryResponse(skill: SkillDirectoryEntry) {
-  return {
-    id: skill.id,
-    name: skill.name,
-    description: skill.description,
-    version: skill.version,
-    category: skill.category,
-    inputRequirements: skill.inputRequirements,
-    installInstructions: skill.installInstructions,
-    examplePrompts: skill.examplePrompts,
-    status: skill.status
-  };
-}
-
 function structuredFieldResponse(
   field: (typeof STRUCTURED_DATASET_REGISTRIES)[keyof typeof STRUCTURED_DATASET_REGISTRIES]["fields"][number]
 ) {
@@ -789,32 +723,6 @@ function structuredDatasetRegistryResponse() {
       fields: registry.fields.map(structuredFieldResponse)
     }))
   };
-}
-
-function parseLimit(value: string | undefined): number {
-  if (!value) {
-    return 20;
-  }
-
-  const parsed = Number.parseInt(value, 10);
-
-  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 50) {
-    throw new Error("Invalid limit.");
-  }
-
-  return parsed;
-}
-
-function parseCursor(value: string | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  if (value.length > PUBLIC_INPUT_LIMITS.cursorChars || !/^\d+$/.test(value)) {
-    throw new Error("Invalid cursor.");
-  }
-
-  return value;
 }
 
 function mergeLabels(requestedLabels: CatalogLabel[], personalLabel: CatalogLabel | null) {
@@ -914,34 +822,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     app.addHook("onClose", async () => clearInterval(pruneTimer));
   }
 
-  app.get("/healthz", async () => ({
-    ok: true,
-    service: SERVICE_NAME
-  }));
-
-  app.get("/readyz", async (request, reply) => {
-    if (!isLoopbackRequest(request.ip)) {
-      return reply.code(404).send(errorResponse("NOT_FOUND", "Not found."));
-    }
-
-    const report = await readinessCheck();
-    return reply.code(report.ok ? 200 : 503).send({
-      ...report,
-      service: SERVICE_NAME
-    });
-  });
-
-  app.get("/me", async (request, reply) => {
-    const authenticated = await requestAuth.authenticate(request, reply);
-
-    if (!authenticated) {
-      return;
-    }
-
-    return {
-      employee: employeeResponse((request as AuthenticatedRequest).employee)
-    };
-  });
+  registerSystemRoutes(app, { auth: requestAuth, readinessCheck });
 
   app.post("/v1/documents/evidence", async (request, reply) => {
     const authenticated = await requestAuth.authenticate(request, reply);
@@ -1530,75 +1411,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
   });
 
-  app.get("/labels", async (request, reply) => {
-    const authenticated = await requestAuth.authenticate(request, reply);
-
-    if (!authenticated) {
-      return;
-    }
-
-    const employee = (request as AuthenticatedRequest).employee;
-    const labels = await documents().listLabels(employee.orgId);
-
-    return {
-      labels: labels.map(labelCatalogResponse)
-    };
-  });
-
-  app.get<{ Querystring: SkillListQuery }>("/skills", async (request, reply) => {
-    const authenticated = await requestAuth.authenticate(request, reply);
-
-    if (!authenticated) {
-      return;
-    }
-
-    const employee = (request as AuthenticatedRequest).employee;
-    const query = request.query;
-    const skillEntries = await skills().listApprovedSkills({
-      orgId: employee.orgId,
-      q: query.q?.trim() || null,
-      category: query.category?.trim() || null
-    });
-
-    return {
-      skills: skillEntries.map(skillDirectoryResponse)
-    };
-  });
-
-  app.get<{ Querystring: AuditListQuery }>("/audit", async (request, reply) => {
-    const authenticated = await requestAuth.authenticate(request, reply);
-
-    if (!authenticated) {
-      return;
-    }
-
-    const employee = (request as AuthenticatedRequest).employee;
-
-    if (employee.role !== "admin") {
-      return reply.code(403).send(errorResponse("FORBIDDEN", "Admin access is required."));
-    }
-
-    let limit: number;
-    let cursor: string | null;
-
-    try {
-      limit = parseLimit(request.query.limit);
-      cursor = parseCursor(request.query.cursor);
-    } catch {
-      return validationError(reply, "INVALID_AUDIT_QUERY", "Audit query pagination is invalid.");
-    }
-
-    const result = await documents().listAuditLogs({
-      orgId: employee.orgId,
-      limit,
-      cursor
-    });
-
-    return {
-      auditEvents: result.auditLogs.map(auditEventResponse),
-      nextCursor: result.nextCursor
-    };
-  });
+  registerCatalogRoutes(app, { auth: requestAuth, documents, skills });
 
   return app;
 }

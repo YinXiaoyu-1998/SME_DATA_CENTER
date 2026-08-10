@@ -61,3 +61,5 @@ export function createRequestAuth(context: ApiServerContext) {
     }
   };
 }
+
+export type RequestAuth = ReturnType<typeof createRequestAuth>;
