@@ -241,13 +241,26 @@ the API and worker so no upload, retry, or indexing work races the cleanup. Keep
 available to the operator. Restore the API and worker immediately after the one-time cleanup, then
 rerun health/readiness checks before accepting new uploads.
 
-The cleanup adapter must first enumerate an exact inventory from the staging database, then build
-the plan with `scripts/staging-upload-domain-cleanup-support.ts`. The support contract defaults to
-dry-run and refuses any target other than `--target staging`; execution additionally requires
-`--execute --confirm delete-upload-domain`. Review the dry-run's non-sensitive counts and IDs
-before the explicit execution invocation. Its safe log deliberately excludes DSNs, credentials,
-file contents, and OSS object keys. Do not reuse `npm run purge-data`: it remains local-only and
-must continue refusing non-local database hosts.
+Use the explicit operator boundary, `npm run staging:cleanup-upload-domain`, only from the
+quiesced staging release-operations environment. The support module alone performs no cleanup: the
+CLI loads the reviewed adapter named by `STAGING_UPLOAD_DOMAIN_CLEANUP_ADAPTER`, which must enumerate
+the exact staging database inventory and implement the injected DB/OSS/Qdrant operations. The CLI
+defaults to dry-run and refuses any target other than `--target staging`; execution additionally
+requires `--execute --confirm delete-upload-domain`. Review the dry-run's non-sensitive counts and
+IDs before the explicit execution invocation:
+
+```bash
+STAGING_UPLOAD_DOMAIN_CLEANUP_ADAPTER=/secure/operator/staging-upload-domain-adapter.mjs \
+  npm run staging:cleanup-upload-domain -- --target staging
+
+STAGING_UPLOAD_DOMAIN_CLEANUP_ADAPTER=/secure/operator/staging-upload-domain-adapter.mjs \
+  npm run staging:cleanup-upload-domain -- \
+  --execute --target staging --confirm delete-upload-domain
+```
+
+The CLI logs only the plan's safe counts/IDs and post-clean counts; it deliberately excludes DSNs,
+credentials, file contents, and OSS object keys. Do not reuse `npm run purge-data`: it remains
+local-only and must continue refusing non-local database hosts.
 
 Delete only the enumerated upload domain, never a key prefix or a whole collection:
 

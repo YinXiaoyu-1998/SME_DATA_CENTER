@@ -15,6 +15,8 @@ describe("structured-import async staging cutover runbooks", () => {
     expect(runbook).toMatch(/briefly stop\s+the API and worker/);
     expect(runbook).toContain("--target staging");
     expect(runbook).toContain("delete-upload-domain");
+    expect(runbook).toContain("npm run staging:cleanup-upload-domain");
+    expect(runbook).toContain("support module alone performs no cleanup");
     expect(runbook).toContain("DocumentLabel, ProcessingRun, DocumentChunk, DocumentIndex");
     expect(runbook).toContain("ImportBatch, ImportWindowClaim, DishRow, and BusinessRow");
     expect(runbook).toMatch(/Image rollback does not reverse Prisma\s+migrations/);

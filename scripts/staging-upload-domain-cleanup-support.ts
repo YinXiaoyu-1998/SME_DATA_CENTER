@@ -214,6 +214,14 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
   validateUniqueNonEmpty(inventory.uploadAuditLogIds, "upload audit log ID");
   validateUniqueNonEmpty(inventory.storageObjectKeys, "storage object key");
 
+  validateNonEmpty(
+    inventory.qdrantPoints.map((point) => point.collection),
+    "Qdrant collection"
+  );
+  validateNonEmpty(
+    inventory.qdrantPoints.map((point) => point.pointId),
+    "Qdrant point ID"
+  );
   const pointTargets = inventory.qdrantPoints.map(
     (point) => `${point.collection}:${point.pointId}`
   );
@@ -236,6 +244,14 @@ function validateUniqueNonEmpty(values: string[], label: string): void {
       throw new Error(`Staging upload-domain cleanup has a duplicate ${label}.`);
     }
     seen.add(value);
+  }
+}
+
+function validateNonEmpty(values: string[], label: string): void {
+  for (const value of values) {
+    if (!value.trim()) {
+      throw new Error(`Staging upload-domain cleanup has an empty ${label}.`);
+    }
   }
 }
 

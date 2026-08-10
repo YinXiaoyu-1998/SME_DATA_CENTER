@@ -1,0 +1,120 @@
+import { describe, expect, it, vi } from "vitest";
+import type { StagingUploadDomainCleanupInventory } from "./staging-upload-domain-cleanup-support.js";
+import {
+  runStagingUploadDomainCleanup,
+  type StagingUploadDomainCleanupAdapter
+} from "./staging-upload-domain-cleanup.js";
+
+const inventory: StagingUploadDomainCleanupInventory = {
+  documentIds: ["doc-1"],
+  documentLabelCount: 1,
+  processingRunIds: ["run-1"],
+  documentChunkIds: ["chunk-1"],
+  documentIndexIds: ["index-1"],
+  importBatchIds: ["batch-1"],
+  importWindowClaimIds: ["claim-1"],
+  dishRowIds: ["dish-1"],
+  businessRowIds: ["business-1"],
+  uploadAuditLogIds: ["audit-1"],
+  storageObjectKeys: ["uploads/private.csv"],
+  qdrantPoints: [{ collection: "evidence", pointId: "point-1" }]
+};
+
+function createAdapter(): StagingUploadDomainCleanupAdapter {
+  return {
+    collectInventory: vi.fn(async () => inventory),
+    deleteQdrantPoints: vi.fn(async () => undefined),
+    deleteOssObjects: vi.fn(async () => undefined),
+    deleteUploadAuditLogs: vi.fn(async () => undefined),
+    deleteDocumentLabels: vi.fn(async () => undefined),
+    deleteProcessingRuns: vi.fn(async () => undefined),
+    deleteDocumentChunks: vi.fn(async () => undefined),
+    deleteDocumentIndexes: vi.fn(async () => undefined),
+    deleteImportWindowClaims: vi.fn(async () => undefined),
+    deleteDishRows: vi.fn(async () => undefined),
+    deleteBusinessRows: vi.fn(async () => undefined),
+    deleteImportBatches: vi.fn(async () => undefined),
+    deleteDocuments: vi.fn(async () => undefined),
+    verifyPostCleanup: vi.fn(async () => ({
+      documents: 0,
+      documentLabels: 0,
+      processingRuns: 0,
+      documentChunks: 0,
+      documentIndexes: 0,
+      importBatches: 0,
+      importWindowClaims: 0,
+      dishRows: 0,
+      businessRows: 0,
+      uploadAuditLogs: 0,
+      storageObjects: 0,
+      qdrantPoints: 0
+    }))
+  };
+}
+
+describe("staging upload-domain cleanup CLI", () => {
+  it("defaults to dry-run and logs only the safe plan", async () => {
+    const adapter = createAdapter();
+    const log = vi.fn();
+
+    await runStagingUploadDomainCleanup({
+      argv: ["--target", "staging"],
+      adapter,
+      log
+    });
+
+    expect(adapter.collectInventory).toHaveBeenCalledOnce();
+    expect(adapter.deleteDocuments).not.toHaveBeenCalled();
+    expect(adapter.verifyPostCleanup).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "dry-run", documentIds: ["doc-1"] })
+    );
+    expect(JSON.stringify(log.mock.calls)).not.toContain("uploads/private.csv");
+  });
+
+  it("refuses an executable cleanup without the exact staging target and confirmation", async () => {
+    const adapter = createAdapter();
+
+    await expect(
+      runStagingUploadDomainCleanup({
+        argv: ["--execute", "--target", "production", "--confirm", "delete-upload-domain"],
+        adapter,
+        log: vi.fn()
+      })
+    ).rejects.toThrow("--target staging");
+    await expect(
+      runStagingUploadDomainCleanup({
+        argv: ["--execute", "--target", "staging", "--confirm", "yes"],
+        adapter,
+        log: vi.fn()
+      })
+    ).rejects.toThrow("--confirm delete-upload-domain");
+    expect(adapter.collectInventory).not.toHaveBeenCalled();
+  });
+
+  it("executes only the plan's enumerated DB, OSS, and Qdrant targets after confirmation", async () => {
+    const adapter = createAdapter();
+    const log = vi.fn();
+
+    await runStagingUploadDomainCleanup({
+      argv: ["--execute", "--target", "staging", "--confirm", "delete-upload-domain"],
+      adapter,
+      log
+    });
+
+    expect(adapter.deleteQdrantPoints).toHaveBeenCalledWith(inventory.qdrantPoints);
+    expect(adapter.deleteOssObjects).toHaveBeenCalledWith(inventory.storageObjectKeys);
+    expect(adapter.deleteUploadAuditLogs).toHaveBeenCalledWith(inventory.uploadAuditLogIds);
+    expect(adapter.deleteDocumentLabels).toHaveBeenCalledWith(inventory.documentIds);
+    expect(adapter.deleteProcessingRuns).toHaveBeenCalledWith(inventory.processingRunIds);
+    expect(adapter.deleteDocumentChunks).toHaveBeenCalledWith(inventory.documentChunkIds);
+    expect(adapter.deleteDocumentIndexes).toHaveBeenCalledWith(inventory.documentIndexIds);
+    expect(adapter.deleteImportWindowClaims).toHaveBeenCalledWith(inventory.importWindowClaimIds);
+    expect(adapter.deleteDishRows).toHaveBeenCalledWith(inventory.dishRowIds);
+    expect(adapter.deleteBusinessRows).toHaveBeenCalledWith(inventory.businessRowIds);
+    expect(adapter.deleteImportBatches).toHaveBeenCalledWith(inventory.importBatchIds);
+    expect(adapter.deleteDocuments).toHaveBeenCalledWith(inventory.documentIds);
+    expect(adapter.verifyPostCleanup).toHaveBeenCalledOnce();
+    expect(JSON.stringify(log.mock.calls)).not.toContain("uploads/private.csv");
+  });
+});

@@ -71,6 +71,33 @@ describe("staging upload-domain cleanup support", () => {
     ).toThrow("duplicate document ID");
   });
 
+  it.each([
+    [{ collection: "", pointId: "point-1" }, "Qdrant collection"],
+    [{ collection: "evidence", pointId: "" }, "Qdrant point ID"]
+  ])("rejects an empty %s target component", (qdrantPoint, expectedError) => {
+    expect(() =>
+      buildStagingUploadDomainCleanupPlan({
+        options: { dryRun: true, target: "staging", confirmation: undefined },
+        inventory: { ...inventory, qdrantPoints: [qdrantPoint] }
+      })
+    ).toThrow(expectedError);
+  });
+
+  it("allows separate exact points in the same Qdrant collection", () => {
+    expect(() =>
+      buildStagingUploadDomainCleanupPlan({
+        options: { dryRun: true, target: "staging", confirmation: undefined },
+        inventory: {
+          ...inventory,
+          qdrantPoints: [
+            { collection: "evidence", pointId: "point-1" },
+            { collection: "evidence", pointId: "point-2" }
+          ]
+        }
+      })
+    ).not.toThrow();
+  });
+
   it("preserves identity, authorization, label, skill, retrieval, and auth audit records", () => {
     const plan = buildStagingUploadDomainCleanupPlan({
       options: { dryRun: false, target: "staging", confirmation: CLEANUP_CONFIRMATION },
