@@ -920,6 +920,26 @@ export function createPrismaProcessingWorkerRepository(
           }
         });
 
+        if (run.jobType === "structured_import" && input.willRetry) {
+          await tx.importBatch.updateMany({
+            where: {
+              sourceDocumentId: input.documentId,
+              orgId: run.orgId,
+              status: {
+                in: [
+                  ImportBatchStatus.pending,
+                  ImportBatchStatus.validating,
+                  ImportBatchStatus.applying,
+                  ImportBatchStatus.failed
+                ]
+              }
+            },
+            data: {
+              status: ImportBatchStatus.pending
+            }
+          });
+        }
+
         if (run.jobType === "structured_import" && !input.willRetry) {
           const batch = await tx.importBatch.findFirst({
             where: {

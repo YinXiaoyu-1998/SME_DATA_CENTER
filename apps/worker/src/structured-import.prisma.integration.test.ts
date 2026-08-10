@@ -100,6 +100,57 @@ describeIntegration("Prisma structured import worker repository", () => {
     await repository.disconnect?.();
   });
 
+  it("returns an async apply transaction failure to pending without partial rows", async () => {
+    const repository = createPrismaProcessingWorkerRepository(databaseUrl);
+    const fixture = await createStructuredRun(prisma, "retryrb");
+    const now = new Date("2026-08-10T00:30:00.000Z");
+    const claimed = await repository.claimNextProcessingRun({
+      workerId: "worker-retry-after-rollback",
+      leaseSeconds: 120,
+      now
+    });
+    expect(claimed?.id).toBe(fixture.runId);
+    await repository.beginStructuredImportApply?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      workerId: "worker-retry-after-rollback",
+      now
+    });
+
+    await expect(
+      repository.completeStructuredImport?.({
+        runId: fixture.runId,
+        documentId: fixture.documentId,
+        importBatchId: fixture.importBatchId,
+        workerId: "worker-retry-after-rollback",
+        now,
+        batchInsertSize: 500,
+        result: structuredResult({ sourceSheetName: "x".repeat(256) })
+      })
+    ).rejects.toThrow();
+
+    await repository.failProcessingRun({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      workerId: "worker-retry-after-rollback",
+      now,
+      errorCode: "STRUCTURED_IMPORT_FAILED",
+      errorSummary: "simulated apply transaction failure",
+      willRetry: true,
+      nextAvailableAt: now
+    });
+
+    expect(await prisma.dishRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(0);
+    await expectRepositoryState(prisma, fixture, {
+      batch: ImportBatchStatus.pending,
+      document: DocumentStatus.pending_processing,
+      run: ProcessingRunStatus.retry_scheduled,
+      lockedBy: null
+    });
+    await repository.disconnect?.();
+  });
+
   it("allows only one Prisma worker to claim a contended structured import", async () => {
     const repositoryA = createPrismaProcessingWorkerRepository(databaseUrl);
     const repositoryB = createPrismaProcessingWorkerRepository(databaseUrl);
