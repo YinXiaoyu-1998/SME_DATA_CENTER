@@ -11,7 +11,8 @@ const prisma = vi.hoisted(() => ({
   },
   importWindowClaim: {
     findUnique: vi.fn(),
-    create: vi.fn()
+    create: vi.fn(),
+    delete: vi.fn()
   },
   document: {
     create: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock("@prisma/client", async (importOriginal) => {
   };
 });
 
+import { Prisma } from "@prisma/client";
 import { createPrismaStructuredImportRepository } from "./structured-imports.js";
 
 const audit = {
@@ -60,7 +62,10 @@ const audit = {
   launcherVersion: null
 };
 
-function importBatchRecord(status = "pending") {
+function importBatchRecord(
+  status = "pending",
+  processingRuns: Array<{ id: string; status: string }> = []
+) {
   return {
     id: "imp_1",
     orgId: "org_1",
@@ -79,7 +84,7 @@ function importBatchRecord(status = "pending") {
       storageObjectKey: "org/org_1/documents/doc_1/original/data.csv",
       originalFileName: "data.csv",
       documentLabels: [{ label: { key: "all_staff" } }],
-      processingRuns: []
+      processingRuns
     }
   };
 }
@@ -89,6 +94,7 @@ describe("Prisma structured import audit provenance", () => {
     vi.clearAllMocks();
     prisma.importBatch.findUnique.mockResolvedValue(null);
     prisma.importWindowClaim.findUnique.mockResolvedValue(null);
+    prisma.importWindowClaim.delete.mockResolvedValue({});
     prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
       callback(prisma)
     );
@@ -201,6 +207,68 @@ describe("Prisma structured import audit provenance", () => {
         status: "queued",
         jobType: "structured_import"
       })
+    });
+  });
+
+  it("returns the authoritative queued run when a concurrent replay wins the job-key race", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    prisma.importBatch.findFirst
+      .mockResolvedValueOnce(importBatchRecord())
+      .mockResolvedValueOnce(importBatchRecord("pending", [{ id: "run_1", status: "queued" }]));
+    prisma.processingRun.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("duplicate structured-import job", {
+        code: "P2002",
+        clientVersion: "test"
+      })
+    );
+
+    await expect(
+      repository.enqueueReservedStructuredImport({ orgId: "org_1", importBatchId: "imp_1" })
+    ).resolves.toMatchObject({ processingRunId: "run_1", processingStatus: "queued" });
+  });
+
+  it("releases a rejected import-window claim before accepting a replacement key", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    prisma.importWindowClaim.findUnique.mockResolvedValueOnce({
+      id: "claim_rejected",
+      importBatch: importBatchRecord("rejected")
+    });
+
+    await repository.reserveStructuredImport({
+      orgId: "org_1",
+      actorEmployeeId: "emp_2",
+      documentId: "doc_2",
+      dataset: "dishes",
+      fileType: "csv",
+      startDate: "20260701",
+      endDate: "20260705",
+      idempotencyKey: "replacement-key",
+      requestFingerprint: "replacement-fingerprint",
+      document: {
+        title: "Replacement dishes",
+        storageObjectKey: "org/org_1/documents/doc_2/original/data.csv",
+        originalFileName: "data.csv",
+        contentType: "text/csv",
+        byteSize: 10,
+        checksumSha256: "hash",
+        labelIds: ["label_1"],
+        labels: ["all_staff"]
+      },
+      sourceSheetSummary: [],
+      totalRowCount: 0,
+      audit
+    });
+
+    expect(prisma.importWindowClaim.delete).toHaveBeenCalledWith({
+      where: { id: "claim_rejected" }
     });
   });
 });

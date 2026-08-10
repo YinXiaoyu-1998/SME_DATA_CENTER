@@ -313,7 +313,7 @@ export function createInMemoryStructuredImportRepository(
         id: input.documentId,
         orgId: input.orgId,
         uploaderId: input.actorEmployeeId,
-        status: "pending_processing",
+        status: "uploading",
         title: input.document.title,
         documentType: "structured_dataset",
         documentKind: "structured",

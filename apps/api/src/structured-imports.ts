@@ -356,7 +356,7 @@ export function createPrismaStructuredImportRepository(options: {
                 documentType: DocumentType.structured_dataset,
                 documentKind: DocumentKind.structured,
                 fileType: input.fileType as FileType,
-                status: DocumentStatus.pending_processing,
+                status: DocumentStatus.uploading,
                 storageObjectKey: input.document.storageObjectKey,
                 originalFileName: input.document.originalFileName,
                 contentType: input.document.contentType,
@@ -622,42 +622,55 @@ export function createPrismaStructuredImportRepository(options: {
       }
     },
     async enqueueReservedStructuredImport(input) {
-      const batch = await prisma.$transaction(
-        async (tx) => {
-          const existing = await tx.importBatch.findFirst({
+      try {
+        const batch = await prisma.$transaction(
+          async (tx) => {
+            const existing = await tx.importBatch.findFirst({
+              where: { id: input.importBatchId, orgId: input.orgId },
+              include: importBatchInclude
+            });
+
+            if (!existing) {
+              throw new Error("Reserved import batch was not found.");
+            }
+
+            if (existing.sourceDocument.processingRuns.length > 0) {
+              return existing;
+            }
+
+            await tx.document.update({
+              where: { id: existing.sourceDocumentId },
+              data: { status: DocumentStatus.pending_processing }
+            });
+            await tx.processingRun.create({
+              data: {
+                orgId: input.orgId,
+                documentId: existing.sourceDocumentId,
+                jobKey: `structured_import:${existing.id}`,
+                status: ProcessingRunStatus.queued,
+                jobType: ProcessingJobType.structured_import
+              }
+            });
+            return tx.importBatch.findUniqueOrThrow({
+              where: { id: existing.id },
+              include: importBatchInclude
+            });
+          },
+          { timeout: options.transactionTimeoutMs }
+        );
+        return toImportBatchRecord(batch);
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          const authoritative = await prisma.importBatch.findFirst({
             where: { id: input.importBatchId, orgId: input.orgId },
             include: importBatchInclude
           });
-
-          if (!existing) {
-            throw new Error("Reserved import batch was not found.");
+          if (authoritative?.sourceDocument.processingRuns.length) {
+            return toImportBatchRecord(authoritative);
           }
-
-          if (existing.sourceDocument.processingRuns.length > 0) {
-            return existing;
-          }
-
-          await tx.document.update({
-            where: { id: existing.sourceDocumentId },
-            data: { status: DocumentStatus.pending_processing }
-          });
-          await tx.processingRun.create({
-            data: {
-              orgId: input.orgId,
-              documentId: existing.sourceDocumentId,
-              jobKey: `structured_import:${existing.id}`,
-              status: ProcessingRunStatus.queued,
-              jobType: ProcessingJobType.structured_import
-            }
-          });
-          return tx.importBatch.findUniqueOrThrow({
-            where: { id: existing.id },
-            include: importBatchInclude
-          });
-        },
-        { timeout: options.transactionTimeoutMs }
-      );
-      return toImportBatchRecord(batch);
+        }
+        throw error;
+      }
     },
     async markStructuredImportStorageFailure(input) {
       const batch = await prisma.$transaction(

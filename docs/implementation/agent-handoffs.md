@@ -990,3 +990,11 @@ benchmark:xlsx-parse` (old ExcelJS vs streaming extraction vs full pipeline with
   async worker loop can be exercised together.
 - Verified: `npm run lint`; focused API/query/worker Vitest run (53 passing); `npm run typecheck`;
   `npm run format:check`.
+
+### Review fix round 1
+
+- Kept pre-storage/pre-queue reservations at `uploading`, and only transition to
+  `pending_processing` alongside queued `ProcessingRun` publication.
+- Handle `P2002` job-key publication races by refetching and returning the authoritative run.
+- Added direct public-contract coverage for terminal date-window reuse and GET envelope fields.
+- Verified: lint, 56 focused API/query/worker tests, typecheck, format check, and diff check.

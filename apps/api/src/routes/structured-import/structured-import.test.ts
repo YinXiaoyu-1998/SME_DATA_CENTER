@@ -374,7 +374,7 @@ describe("structured imports", () => {
     const first = await postStructuredImport(app, { idempotencyKey: "storage-recovery" });
     expect(first.statusCode).toBe(500);
     expect(documentRepository.documents).toHaveLength(1);
-    expect(documentRepository.documents[0]?.status).toBe("pending_processing");
+    expect(documentRepository.documents[0]?.status).toBe("uploading");
     expect(structuredImportRepository.batches).toHaveLength(1);
     expect(structuredImportRepository.batches[0]?.status).toBe("pending");
     expect(structuredImportRepository.rows).toHaveLength(0);
@@ -409,7 +409,7 @@ describe("structured imports", () => {
     const first = await postStructuredImport(app, { idempotencyKey: "queue-recovery" });
     expect(first.statusCode).toBe(500);
     expect(documentRepository.documents).toHaveLength(1);
-    expect(documentRepository.documents[0]?.status).toBe("pending_processing");
+    expect(documentRepository.documents[0]?.status).toBe("uploading");
     expect(structuredImportRepository.batches[0]?.status).toBe("pending");
     expect(structuredImportRepository.rows).toHaveLength(0);
     expect(await storedObjectCount(storageRoot)).toBe(1);
@@ -422,6 +422,28 @@ describe("structured imports", () => {
     expect(documentRepository.documents).toHaveLength(1);
     expect(structuredImportRepository.batches).toHaveLength(1);
     expect(structuredImportRepository.rows).toHaveLength(0);
+  });
+
+  it("allows a new idempotency key after a rejected import releases its date window", async () => {
+    const { app, documentRepository, structuredImportRepository } =
+      await buildStructuredImportTestServer();
+
+    const rejected = await postStructuredImport(app, { idempotencyKey: "terminal-window-first" });
+    structuredImportRepository.batches[0]!.status = "rejected";
+    documentRepository.documents[0]!.status = "processing_failed";
+
+    const replacement = await postStructuredImport(app, {
+      idempotencyKey: "terminal-window-replacement"
+    });
+
+    expect(rejected.statusCode).toBe(202);
+    expect(replacement.statusCode).toBe(202);
+    expect(replacement.json()).toMatchObject({
+      document: { status: "pending_processing" },
+      processing: { status: "queued" },
+      importBatch: { status: "pending" }
+    });
+    expect(structuredImportRepository.batches).toHaveLength(2);
   });
 
   it("accepts worker-validated header and worksheet errors without exposing rows", async () => {
@@ -566,6 +588,8 @@ describe("structured imports", () => {
     expect(structuredImportRepository.storedRowCount("dishes")).toBe(0);
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
     expect(statusResponse.json()).toMatchObject({
+      document: { documentId, status: "archived" },
+      processing: { processingRunId: expect.any(String), status: "queued" },
       importBatch: {
         status: "archived",
         totalRowCount: 0,
