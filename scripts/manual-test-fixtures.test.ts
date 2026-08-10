@@ -108,6 +108,26 @@ describe("manual acceptance scenario manifest", () => {
     expect(guide).not.toContain("staging:access-tunnel");
     expect(guide).not.toContain("dates changed to `2030-01-01`");
   });
+
+  it("requires async structured-upload polling in the employee skill and official acceptance guide", async () => {
+    const [skill, guide] = await Promise.all([
+      readFile(path.join(root, "skills", "enterprise-hub-mcp", "SKILL.md"), "utf8"),
+      readFile(path.join(root, "docs", "implementation", "official-manual-acceptance.md"), "utf8")
+    ]);
+
+    for (const content of [skill, guide]) {
+      expect(content).toMatch(
+        /2 seconds, then\s+5 seconds, then\s+10 seconds, then every 15 seconds/
+      );
+      expect(content).toContain("10 minutes");
+      expect(content).toContain("still processing");
+      expect(content).toContain("Do not re-upload instead of polling");
+    }
+    expect(skill).toContain("terminal success state");
+    expect(skill).toContain("rejected");
+    expect(skill).toContain("failed");
+    expect(guide).toContain("`rejected` terminal state");
+  });
 });
 
 describe("manual acceptance evidence fixtures", () => {

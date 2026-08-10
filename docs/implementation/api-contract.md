@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-08-04
+Last updated: 2026-08-10
 
 This contract describes the current public surface after the legacy ordinary document upload/search flow was removed.
 
@@ -339,15 +339,21 @@ Multipart form fields:
 
 Behavior:
 
-- validates every sheet/table atomically;
-- supports controlled header aliases mapping into canonical fields;
-- rejects the whole file if structure, date window, labels, or active-window rules fail;
+- preflights request metadata, validates authorized labels/date-window eligibility, reserves its
+  durable identifiers, stores and verifies the original object, then queues a `structured_import`
+  worker run;
+- returns `202 Accepted` with `document.status=pending_processing`,
+  `processing.status=queued`, and `importBatch.status=pending`; header/sheet/row validation and
+  all row writes happen in the worker, so invalid headers are rejected later through status rather
+  than as an immediate upload response;
+- only `importBatch.status=applied` is a terminal structured-upload success; `rejected` and
+  `failed` are terminal non-success outcomes;
 - reserves `Document`, `ImportBatch`, window claim, deterministic object key, and started audit in MySQL before writing storage;
 - stores the original file with canonical metadata;
-- writes each row into the dataset-specific MySQL table and applies the batch in one transaction;
+- the worker writes each row into the dataset-specific MySQL table and applies the batch in one transaction;
 - exact replay of the same `idempotencyKey` and request fingerprint returns the originally persisted `documentId`, `importBatchId`, storage key, and status without writing duplicate storage objects, rows, claims, or audits;
 - same idempotency key with a different fingerprint returns a conflict before durable side effects;
-- does not use the evidence worker path.
+- queues the structured-import worker path rather than applying rows on the HTTP request path.
 
 Response shape:
 
@@ -357,26 +363,26 @@ Response shape:
     "documentId": "doc_...",
     "documentKind": "structured",
     "fileType": "csv",
-    "status": "active",
+    "status": "pending_processing",
     "storageObjectKey": "org/org_.../documents/doc_.../original/enterprise_dishes_20260701_20260731.csv",
     "originalFileName": "source.csv"
   },
   "processing": {
-    "processingRunId": null,
-    "status": "succeeded"
+    "processingRunId": "run_...",
+    "status": "queued"
   },
   "importBatch": {
     "importBatchId": "imp_...",
     "sourceDocumentId": "doc_...",
     "dataset": "dishes",
-    "status": "applied",
+    "status": "pending",
     "startDate": "20260701",
     "endDate": "20260731",
     "sourceSheetSummary": [],
     "validationErrors": [],
-    "totalRowCount": 128,
-    "appliedRowCount": 128,
-    "queryableRowCount": 128
+    "totalRowCount": 0,
+    "appliedRowCount": 0,
+    "queryableRowCount": 0
   }
 }
 ```
@@ -385,7 +391,16 @@ Response shape:
 
 ### `GET /v1/structured/imports/:importBatchId`
 
-Returns import status and validation/application metadata for visible import batches only.
+Returns the additive `document`, `processing`, and `importBatch` status views for visible import
+batches only. Clients poll this endpoint after a `202` structured upload: after 2 seconds, then 5
+seconds, then 10 seconds, then every 15 seconds, for a default maximum of 10 minutes. A
+non-terminal result at 10 minutes is still processing, not failure; retain the returned Document and
+ImportBatch IDs and check later. Do not re-upload instead of polling; exact replays alone reuse the
+same idempotency key.
+
+For terminal `rejected` or `failed`, clients may present safe returned validation/error summaries
+and correction advice, but must not expose internal exceptions. Only `applied` is a successful
+structured import.
 
 Missing, cross-org, disabled, or same-org-but-label-inaccessible batches all return the same non-enumerating `404`/`IMPORT_BATCH_NOT_FOUND` shape. The response must not include dataset, date window, row counts, sheet summaries, error IDs, or validation details unless the caller is currently authorized for the source document under the shared document visibility policy.
 
