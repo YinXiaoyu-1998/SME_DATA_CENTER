@@ -150,8 +150,9 @@ export function createStagingUploadDomainCleanupAdapter(
             try {
               await runtime.storage.statObject(key);
               return 1;
-            } catch {
-              return 0;
+            } catch (error) {
+              if (isObjectNotFound(error)) return 0;
+              throw error;
             }
           })
         )
@@ -182,12 +183,39 @@ function createRuntimeProviders(env: NodeJS.ProcessEnv): StagingUploadDomainClea
   const url = new URL(databaseUrl);
   if (url.protocol !== "mysql:" || ["localhost", "127.0.0.1", "::1"].includes(url.hostname))
     throw new Error("Staging cleanup refuses a local or non-MySQL DATABASE_URL.");
+  let qdrantTarget: URL;
+  try {
+    qdrantTarget = new URL(qdrantUrl);
+  } catch {
+    throw new Error("Staging cleanup requires an absolute HTTP(S) QDRANT_URL.");
+  }
+  if (
+    !["http:", "https:"].includes(qdrantTarget.protocol) ||
+    ["localhost", "127.0.0.1", "::1"].includes(qdrantTarget.hostname)
+  ) {
+    throw new Error("Staging cleanup refuses a local or non-HTTP(S) QDRANT_URL.");
+  }
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
   return {
     prisma,
     storage: createStorageAdapter(env),
     qdrant: createQdrantAdapter(qdrantUrl, env["QDRANT_API_KEY"])
   };
+}
+
+function isObjectNotFound(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    name?: unknown;
+    code?: unknown;
+    $metadata?: { httpStatusCode?: unknown };
+  };
+  return (
+    candidate.name === "NoSuchKey" ||
+    candidate.code === "NoSuchKey" ||
+    candidate.code === "ENOENT" ||
+    candidate.$metadata?.httpStatusCode === 404
+  );
 }
 
 function createQdrantAdapter(url: string, apiKey: string | undefined): QdrantCleanupAdapter {

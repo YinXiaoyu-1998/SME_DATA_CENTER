@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 import { createStagingUploadDomainCleanupAdapter } from "./staging-upload-domain-cleanup-adapter.js";
+import { buildStagingUploadDomainCleanupPlan } from "./staging-upload-domain-cleanup-support.js";
 
 describe("repo-contained staging upload-domain cleanup adapter", () => {
   it("enumerates and deletes only exact DB, OSS, and Qdrant targets through injected providers", async () => {
@@ -56,7 +57,9 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     const storage = {
       deleteObject: vi.fn(async () => undefined),
       statObject: vi.fn(async () => {
-        throw new Error("not found");
+        const error = new Error("not found");
+        error.name = "NoSuchKey";
+        throw error;
       })
     };
     const qdrant = {
@@ -84,5 +87,79 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     expect(qdrant.deletePoints).toHaveBeenCalledWith(inventory.qdrantPoints);
     expect(storage.deleteObject).toHaveBeenCalledWith("uploads/doc-1");
     expect(prisma.document.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["doc-1"] } } });
+    await expect(
+      adapter.verifyPostCleanup(
+        buildStagingUploadDomainCleanupPlan({
+          options: { dryRun: false, target: "staging", confirmation: "delete-upload-domain" },
+          inventory
+        })
+      )
+    ).resolves.toMatchObject({ storageObjects: 0 });
+  });
+
+  it("fails closed when OSS verification reports anything except an identified not-found error", async () => {
+    const storage = {
+      deleteObject: vi.fn(async () => undefined),
+      statObject: vi.fn(async () => {
+        throw Object.assign(new Error("denied"), { name: "AccessDenied" });
+      })
+    };
+    const emptyCount = { count: vi.fn(async () => 0) };
+    const prisma = {
+      document: emptyCount,
+      documentLabel: emptyCount,
+      processingRun: emptyCount,
+      documentChunk: emptyCount,
+      documentIndex: emptyCount,
+      importBatch: emptyCount,
+      importWindowClaim: emptyCount,
+      dishRow: emptyCount,
+      businessRow: emptyCount,
+      auditLog: emptyCount
+    } as unknown as PrismaClient;
+    const adapter = createStagingUploadDomainCleanupAdapter(
+      {
+        DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+        QDRANT_URL: "https://qdrant.example"
+      },
+      {
+        prisma,
+        storage,
+        qdrant: { deletePoints: vi.fn(), countPoints: vi.fn(async () => 0) }
+      }
+    );
+    const plan = buildStagingUploadDomainCleanupPlan({
+      options: { dryRun: false, target: "staging", confirmation: "delete-upload-domain" },
+      inventory: {
+        documentIds: [],
+        documentLabelCount: 0,
+        processingRunIds: [],
+        documentChunkIds: [],
+        documentIndexIds: [],
+        importBatchIds: [],
+        importWindowClaimIds: [],
+        dishRowIds: [],
+        businessRowIds: [],
+        uploadAuditLogIds: [],
+        storageObjectKeys: ["uploads/doc-1"],
+        qdrantPoints: []
+      }
+    });
+    await expect(adapter.verifyPostCleanup(plan)).rejects.toThrow("denied");
+  });
+
+  it("rejects malformed or local Qdrant URLs before creating runtime providers", () => {
+    expect(() =>
+      createStagingUploadDomainCleanupAdapter({
+        DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+        QDRANT_URL: "not-a-url"
+      })
+    ).toThrow("QDRANT_URL");
+    expect(() =>
+      createStagingUploadDomainCleanupAdapter({
+        DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+        QDRANT_URL: "http://localhost:6333"
+      })
+    ).toThrow("QDRANT_URL");
   });
 });
