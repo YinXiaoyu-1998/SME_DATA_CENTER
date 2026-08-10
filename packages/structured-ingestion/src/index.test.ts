@@ -6,6 +6,7 @@ import JSZip from "jszip";
 import { getStructuredRegistry, PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@enterprise-hub/domain";
 import {
   parseStructuredFile,
+  preflightStructuredFile,
   profileStructuredFile,
   type StructuredIngestionLimits
 } from "./index.js";
@@ -679,6 +680,91 @@ describe("structured ingestion", () => {
         limits
       })
     ).rejects.toThrow();
+  });
+
+  test("collects safe validation issues without retaining raw cell values after the first 100", async () => {
+    const headers = dishesHeaders();
+    const quantityColumn = headers.indexOf("菜品销售数量");
+    const rows = Array.from({ length: 101 }, (_, index) => {
+      const row = dishesRow();
+      row[quantityColumn] = `secret-cell-value-${index + 1}`;
+      return row;
+    });
+
+    const result = await parseStructuredFile({
+      dataset: "dishes",
+      fileName: "invalid-values.csv",
+      fileType: "csv",
+      content: Buffer.from(validDishesCsvRows(rows), "utf8"),
+      startDate: "20260701",
+      endDate: "20260701",
+      limits: limitsFor({ maxStructuredImportRows: 200 }),
+      validationMode: "collect"
+    });
+
+    expect(result.rows).toEqual([]);
+    expect(result.validationErrorCount).toBe(101);
+    expect(result.validationErrorsTruncated).toBe(true);
+    expect(result.validationErrors).toHaveLength(100);
+    expect(result.validationErrors[0]).toEqual({
+      code: "INVALID_FIELD_VALUE",
+      message: "Field value is invalid.",
+      sheetName: "Sheet1",
+      sheetIndex: 0,
+      rowNumber: 2,
+      column: "dish_sales_quantity"
+    });
+    expect(JSON.stringify(result.validationErrors)).not.toContain("secret-cell-value");
+  });
+
+  test("preserves source worksheet lineage for XLSX rows and the stable CSV default sheet", async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet("First").addRows([dishesHeaders(), dishesRow()]);
+    workbook.addWorksheet("Second").addRows([dishesHeaders(), dishesRow()]);
+
+    const xlsx = await parseStructuredFile({
+      dataset: "dishes",
+      fileName: "lineage.xlsx",
+      fileType: "xlsx",
+      content: Buffer.from(await workbook.xlsx.writeBuffer()),
+      startDate: "20260701",
+      endDate: "20260701",
+      limits
+    });
+    const csv = await parseDishesCsv({});
+
+    expect(
+      xlsx.rows.map(({ sourceSheetIndex, sourceSheetName, sourceRowNumber }) => ({
+        sourceSheetIndex,
+        sourceSheetName,
+        sourceRowNumber
+      }))
+    ).toEqual([
+      { sourceSheetIndex: 0, sourceSheetName: "First", sourceRowNumber: 2 },
+      { sourceSheetIndex: 1, sourceSheetName: "Second", sourceRowNumber: 2 }
+    ]);
+    expect(csv.rows[0]).toMatchObject({
+      sourceSheetIndex: 0,
+      sourceSheetName: "Sheet1",
+      sourceRowNumber: 2
+    });
+  });
+
+  test("preflight checks only transport-safe CSV properties without parsing business rows", () => {
+    expect(() =>
+      preflightStructuredFile({
+        fileName: "unvalidated.csv",
+        fileType: "csv",
+        content: Buffer.from("unrecognized header\nraw cell value\n", "utf8")
+      })
+    ).not.toThrow();
+    expect(() =>
+      preflightStructuredFile({
+        fileName: "invalid.csv",
+        fileType: "csv",
+        content: Buffer.from([0x61, 0x00])
+      })
+    ).toThrow("CSV content must be UTF-8 text.");
   });
 });
 

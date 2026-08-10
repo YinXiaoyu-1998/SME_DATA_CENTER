@@ -379,6 +379,7 @@ model ImportBatch {
   status             ImportBatchStatus  @default(pending)
   sourceSheetSummary Json?              @map("source_sheet_summary")
   validationErrors   Json?              @map("validation_errors")
+  validationErrorCount Int               @default(0) @map("validation_error_count")
   totalRowCount      Int                @default(0) @map("total_row_count")
   appliedRowCount    Int                @default(0) @map("applied_row_count")
   errorCode          String?            @map("error_code") @db.VarChar(128)
@@ -418,6 +419,8 @@ model DishRow {
   orgId            String       @map("org_id") @db.VarChar(64)
   sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
   importBatchId    String       @map("import_batch_id") @db.VarChar(32)
+  sourceSheetIndex Int          @default(0) @map("source_sheet_index")
+  sourceSheetName  String       @default("Sheet1") @map("source_sheet_name") @db.VarChar(255)
   sourceRowNumber  Int          @map("source_row_number")
   payload          Json
   createdAt        DateTime     @default(now()) @map("created_at")
@@ -425,7 +428,7 @@ model DishRow {
   sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
   importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
 
-  @@unique([importBatchId, sourceRowNumber])
+  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber])
   @@index([orgId, importBatchId])
   @@map("dish_rows")
 }
@@ -435,6 +438,8 @@ model BusinessRow {
   orgId            String       @map("org_id") @db.VarChar(64)
   sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
   importBatchId    String       @map("import_batch_id") @db.VarChar(32)
+  sourceSheetIndex Int          @default(0) @map("source_sheet_index")
+  sourceSheetName  String       @default("Sheet1") @map("source_sheet_name") @db.VarChar(255)
   sourceRowNumber  Int          @map("source_row_number")
   payload          Json
   createdAt        DateTime     @default(now()) @map("created_at")
@@ -442,7 +447,7 @@ model BusinessRow {
   sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
   importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
 
-  @@unique([importBatchId, sourceRowNumber])
+  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber])
   @@index([orgId, importBatchId])
   @@map("business_rows")
 }
