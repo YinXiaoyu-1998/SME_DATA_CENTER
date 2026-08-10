@@ -1,15 +1,15 @@
 # Enterprise Hub MCP 用户流程
 
 > **正式实现：** 本文描述已经实现的员工流程。固定版本 npm 包
-> `enterprise-hub-mcp-launcher@0.1.0` 已发布，正式服务已部署到 staging；
-> 真实浏览器/桌面验收仍是发布门。
+> `enterprise-hub-mcp-launcher@0.2.0` 已发布，正式服务已部署到 staging；原生 macOS/Windows
+> 包验收和无头 Linux 闭环已通过，用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍待补齐。
 > 不存在 development login 或 JWT 兼容路径。
 
-最后更新：2026-07-28
+最后更新：2026-08-10
 
 本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
 `enterprise-hub-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
-launcher 发行包为 `enterprise-hub-mcp-launcher@0.1.0`。
+launcher 发行包为 `enterprise-hub-mcp-launcher@0.2.0`。
 
 ## 参与者与凭证边界
 
@@ -18,19 +18,20 @@ flowchart LR
   Employee["员工"] -->|"自然语言请求"| Agent["员工自有 agent / MCP client"]
   Agent -->|"读取安装与恢复指导"| Skill["enterprise-hub-mcp skill"]
   Agent <-->|"本机 stdio；配置无凭证"| Launcher["固定版本本地 launcher"]
-  Launcher -->|"打开系统浏览器"| Browser["Enterprise Hub HTTPS 登录页"]
-  Browser <-->|"Authorization Code + PKCE"| Auth["Enterprise Hub identity endpoints"]
+  Launcher -->|"打开或投递验证链接"| Browser["Enterprise Hub HTTPS 验证页"]
+  Browser -->|"密码与配对确认"| Auth["Enterprise Hub identity endpoints"]
+  Launcher <-->|"Device Authorization 轮询"| Auth
   Launcher -->|"Streamable HTTP POST /mcp\n不透明 bearer access token"| Api["https://api.smedatacenter.xyz"]
   Api --> Data["后端强制授权的服务\nAPI、storage、worker、MySQL、Qdrant"]
 ```
 
-| 边界                | 凭证规则                                                                                                                        |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 员工 -> agent       | 员工只提出业务请求，绝不向 agent 提供密码、token、授权码或 credential-store record。                                            |
-| Agent -> launcher   | 本机 stdio entry 不含秘密。agent 仅用 `enterprise_hub_login`、`enterprise_hub_logout`、`enterprise_hub_auth_status` 管理会话。  |
-| Launcher -> browser | 员工只在 Enterprise Hub HTTPS 页面输入密码。loopback callback 只携带单次授权码，绝不携带 token。                                |
-| Launcher -> API/MCP | 只有 launcher 获取、续取、保护并附加不透明 bearer access token；长期会话材料只存 macOS Keychain 或 Windows Credential Manager。 |
-| MCP -> 业务数据     | 每个请求均经认证与后端授权。skill/launcher 绝不直接操作 API 基础设施、数据库、Qdrant、storage、Docker、worker 或云资源。        |
+| 边界                | 凭证规则                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 员工 -> agent       | 员工只提出业务请求，绝不向 agent 提供密码、token、授权码或 credential-store record。                                           |
+| Agent -> launcher   | 本机 stdio entry 不含秘密。agent 仅用 `enterprise_hub_login`、`enterprise_hub_logout`、`enterprise_hub_auth_status` 管理会话。 |
+| Launcher -> browser | 员工只在 Enterprise Hub HTTPS 页面输入密码并确认 agent 实例；浏览器不会通过 agent/model 返回任何凭证。                         |
+| Launcher -> API/MCP | launcher 轮询 token 端点、保护并附加不透明 access token；桌面使用 Keychain/Credential Manager，真正无头主机只保存在内存。      |
+| MCP -> 业务数据     | 每个请求均经认证与后端授权。skill/launcher 绝不直接操作 API 基础设施、数据库、Qdrant、storage、Docker、worker 或云资源。       |
 
 ## 安装或更新
 
@@ -60,10 +61,13 @@ sequenceDiagram
   A->>L: "enterprise_hub_auth_status 或业务 tool"
   alt authentication_required
     A->>L: "enterprise_hub_login"
-    L->>B: "打开 HTTPS 浏览器登录"
+    L->>S: "请求 Device Authorization"
+    S-->>L: "验证链接与 user code"
+    L->>B: "打开或投递 HTTPS 验证链接"
     E->>B: "仅在浏览器输入凭证"
-    B->>S: "Authorization Code + PKCE 请求"
-    S-->>L: "授权码交换；不透明凭证仅留在 launcher"
+    B->>S: "确认配对并授权"
+    L->>S: "轮询 token 端点"
+    S-->>L: "不透明凭证仅留在 launcher"
     L-->>A: "安全的登录结果"
     A->>L: "只重试原业务操作一次"
   else 会话可用
@@ -86,7 +90,8 @@ sequenceDiagram
 ## 业务 Tool 使用
 
 - 上传前列出标签，只使用返回的 label key；不得传入 organization ID。
-- 只读取用户选择或明确指定文件的精确字节。传 inline file object；不得传本地路径或重建/规范化内容。
+- 只读取用户选择或明确指定文件的精确字节。优先使用 launcher 的 `file.encoding="path"` 和绝对
+  本地路径；仅对小文件使用 inline base64。不得重建、规范化、翻译或重输内容。
 - 只能轮询服务状态；不得启动 worker 或操作任何 Enterprise Hub 服务组件。
 - 只有精确重放时复用 structured-import idempotency key。import-status 404 只能理解为不可见或不存在，
   不得推断隐藏 batch。
@@ -97,7 +102,8 @@ sequenceDiagram
 
 ## 当前发布边界
 
-代码已经实现正式不透明 access token、轮换 durable credential、浏览器 Authorization Code + PKCE、
-公开 HTTPS `/mcp` 和固定版本 launcher。固定版本 npm 包已经发布，staging migration 和正式
-session fixture smoke 已通过；只有真实浏览器登录及 macOS/Windows 桌面验收通过后，才能称为
-beta 上线。已删除的 `/auth/dev-login`、JWT 和本地邮箱登录工具必须持续保持不存在。
+代码已经实现 OAuth Device Authorization、不透明 access token、轮换 durable credential、桌面
+安全存储与无头内存态保管、公开 HTTPS `/mcp` 和固定版本 launcher。staging migration、正式
+session fixture smoke、原生 macOS/Windows 包验收和无头 Linux 登录到业务工具闭环已通过；用户
+可见的 OpenClaw 与支持类 C 手机/浏览器验收仍待补齐。Authorization Code + PKCE 仅为服务端
+minimum-compatible 0.1.x 路径；已删除的 `/auth/dev-login`、JWT 和本地邮箱登录工具必须持续保持不存在。

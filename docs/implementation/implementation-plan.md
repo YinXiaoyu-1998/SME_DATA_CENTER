@@ -262,12 +262,13 @@ Phase 3 verification and review were merged before the first Phase 4 implementat
 
 As of 2026-07-23, the first online skeleton slice is live in staging: API, worker, and Qdrant run on the Alibaba Cloud Simple Application Server from fixed Beijing ACR image tags behind nginx and Let’s Encrypt. The repeatable `npm run deploy:staging` boundary now builds, scans, publishes, migrates, rolls out, verifies, and records an immutable release. Merged PR #76 also proved the full trusted-main automation chain: quality-gate run `29977759504` triggered deployment run `29977876905`, which deployed merge SHA tag `708128503656`. RDS `prisma migrate deploy`, synthetic seed, Qdrant init, local `/readyz`, public HTTPS `/healthz`, blocked public `/readyz`, certbot renew dry-run, and fixture-only staging smoke have passed.
 
-The official-auth implementation is merged and deployed with local password identities, browser
-Authorization Code + PKCE, rotating opaque credentials, public authenticated `/mcp`, the published
-desktop launcher, operator onboarding, and Codex/OpenClaw installation skills. Real macOS Codex
-acceptance has passed. Windows Codex and macOS/Windows OpenClaw acceptance, database
-SSL/recovery, monitoring/alerting, rollback rehearsal, and real-data governance remain separate
-Phase 4 gates.
+The official-auth implementation is merged and deployed with local password identities, OAuth
+Device Authorization, rotating opaque credentials, public authenticated `/mcp`, the published
+desktop/headless launcher, operator onboarding, and Codex/OpenClaw installation skills. Real macOS
+Codex acceptance passed on the retained 0.1.x compatibility path; native 0.2.0 macOS/Windows package
+acceptance and a full headless Linux loop also pass. Full user-visible OpenClaw and support-class-C
+phone/browser acceptance, database SSL/recovery, monitoring/alerting, rollback rehearsal, and
+real-data governance remain separate Phase 4 gates.
 
 Scope:
 
@@ -307,8 +308,10 @@ The deployed slice is intentionally staging-only and uses fixture documents plus
 data. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be implemented. The
 accepted official employee installation, browser login, and durable session contract is defined in
 `official-user-install-and-login.md`; the implementation and migration are deployed in staging,
-and real macOS Codex acceptance has passed. The fixed launcher
-`enterprise-hub-mcp-launcher@0.1.0` is published and independently verified.
+and real macOS Codex acceptance has passed on the retained 0.1.x compatibility path. The pinned and
+recommended launcher `enterprise-hub-mcp-launcher@0.2.0` is published and independently verified by
+native macOS/Windows package acceptance and a full headless Linux login-to-business-tool loop; the
+full user-visible 0.2.0 acceptance matrix remains open.
 
 ### Remaining Phase 4 Tracks
 

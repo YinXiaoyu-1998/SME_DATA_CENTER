@@ -1,6 +1,6 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-07-30
+Last updated: 2026-08-10
 
 This is the active manual acceptance flow for a real beta-style Enterprise Hub user on macOS
 Codex. The old local Phase 3 email-login/HTTP-launcher manual acceptance document has been deleted
@@ -22,7 +22,7 @@ The acceptance run must exercise both sides of the real product boundary:
 | Operator onboarding   | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, personal label, and setup link.      |
 | Password setup/reset  | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.    |
 | Client installation   | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.0` is installed and configured as a Codex stdio MCP.     |
-| Durable login         | Launcher + system browser         | `enterprise_hub_login` completes Authorization Code + PKCE and stores durable credential safely. |
+| Durable login         | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.      |
 | Continued use         | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.           |
 | Evidence workflow     | Employee-owned MCP client         | Upload fixture bytes, poll index status, search only authorized evidence, and clean test data.   |
 | Structured workflow   | Employee-owned MCP client         | Upload fixture CSV, query aggregate/top rows, reject invalid atomic import, and clean test data. |

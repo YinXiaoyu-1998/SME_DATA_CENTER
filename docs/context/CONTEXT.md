@@ -393,18 +393,18 @@ _Avoid_: 多租户 SaaS
 - 禁用 **员工账号** 必须使已有登录会话无法继续访问资料，即使身份验证方签发的 token 尚未自然过期
 - beta 新员工入驻由一个开发者 CLI 操作在同一事务中创建 **员工账号**、对应的 **个人标签** 和唯一启用的本地密码 **登录身份**，成功后再签发 **密码设置链接**
 - 开发者 CLI 可以为 beta **登录身份** 签发 **密码设置链接**；员工只在浏览器页面设置密码
-- launcher 作为无客户端密钥的桌面 public client，通过系统浏览器、Authorization Code、PKCE、`state` 和 `127.0.0.1` 随机端口回调完成登录；回调只携带单次授权码，launcher 再通过 HTTPS 换取凭证
+- launcher 作为无客户端密钥的 public client，统一通过 OAuth Device Authorization 完成登录：取得第一方验证链接，桌面自动打开、无头/异机由 agent 投递，员工在浏览器确认实例并输入密码，launcher 轮询 token 端点
 - beta 登录、密码设置和安全错误页面由现有 API 在当前 HTTPS 域名上直接返回服务端 HTML，不新增前端框架、独立容器、域名或 `apps/admin-web` 实现
-- 浏览器只保存最长 10 分钟的授权事务 Cookie，不保存长期登录状态；授权码交给 launcher 后，关闭页面或清空 Cookie 不影响 launcher 的持续 MCP 访问
-- Enterprise Hub token 接口签发有效期 10 分钟的 bearer access token，launcher 只在进程内存中持有并使用长期会话凭证自动续取；launcher 重启也不需要重新打开浏览器
+- 浏览器只保存最长 10 分钟的授权事务 Cookie，不保存长期登录状态；Device Authorization 完成后，关闭页面或清空 Cookie 不影响 launcher 的持续 MCP 访问
+- Enterprise Hub token 接口签发有效期 10 分钟的 bearer access token，launcher 只在进程内存中持有并使用长期会话凭证自动续取；有安全存储的桌面 launcher 重启无需重新登录，真正无头的内存态进程重启后必须重新登录
 - access token 是至少 256 位随机强度的不透明 bearer 字符串，MySQL 只保存其哈希和会话、员工账号、过期、撤销元数据；每个受保护请求必须查询服务端权威状态
 - launcher 长期会话从最近一次浏览器密码登录起绝对有效 30 天，不设置额外闲置超时，也不能通过日常使用或 access token 续取延长
 - launcher 长期凭证在每次 access token 续取时轮换；服务端只保存各代哈希和会话家族关系，任何已消费旧凭证重放都会撤销整个家族并要求重新进行浏览器登录
-- launcher 只把长期凭证存入 macOS Keychain 或 Windows Credential Manager；安全存储不可用或写入失败时停止认证，绝不降级写入普通文件、配置、日志或剪贴板
+- launcher 在桌面只把长期凭证存入 macOS Keychain 或 Windows Credential Manager；预期存在的安全存储被锁定、拒绝或写入失败时停止认证，真正没有安全存储的无头主机只使用内存态会话，绝不写入普通文件、配置、日志或剪贴板
 - 同一操作系统用户在同一个 Enterprise Hub 服务地址下只有一个当前账号，Codex 和其他本地 Agent 共享同一安全存储记录；beta 不提供账号列表、切换或多账号并存，凭证续取通过跨进程 single-flight 锁串行化
-- official launcher 使用固定、非秘密的 public client ID，通过固定 Authorization Code + PKCE 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience
-- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；正式 cutover 的 skill 固定 `enterprise-hub-mcp-launcher@0.1.0`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
-- Enterprise Hub skill 是安装编排说明的唯一入口：用户只需向已有该 skill 的 agent 提出自然语言安装请求，agent 按说明为当前用户安装依赖和 launcher、备份并更新自己的 MCP 配置、执行自检，再由 launcher 打开浏览器登录
+- official launcher 使用固定、非秘密的 public client ID，通过 Device Authorization 端点、token 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience，Authorization Code + PKCE 仅保留为 minimum-compatible 0.1.x 服务端路径
+- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；当前 skill 固定 `enterprise-hub-mcp-launcher@0.2.0`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
+- Enterprise Hub skill 是安装编排说明的唯一入口：用户只需向已有该 skill 的 agent 提出自然语言安装请求，agent 按说明为当前用户安装依赖和 launcher、备份并更新自己的 MCP 配置、执行自检，再由 launcher 打开或投递第一方验证链接
 - Codex 和 OpenClaw 的 macOS/Windows 安装与使用链路是首批明确支持并验收的客户端矩阵；对 Qoder 等未命名 agent，skill 仍应提供受约束的自适应说明，允许 agent 判断自己的 MCP 配置位置和方式，在备份、最小修改、不影响其他 MCP 服务并验证成功的前提下完成安装
 - launcher 不自行升级；服务端只公布最低支持版本和推荐版本，由主仓库与独立仓库中保持同步的 Enterprise Hub skills 决定何时升级、选择哪个已批准的精确 npm 包版本，并指导 agent 完成安装和自检
 - “退出登录”撤销并删除当前操作系统用户共享的长期会话；从单个 agent 移除只删除该 agent 的 MCP 条目；“彻底卸载”才清理所有可安全发现的本地集成、launcher、本地状态和系统凭证，且三者都不删除员工账号、业务资料或 Node.js/npm
@@ -414,7 +414,7 @@ _Avoid_: 多租户 SaaS
 - beta 保留 90 天最小身份安全审计，记录账号/密码设置、登录结果、冷却、会话生命周期、重放和安全拒绝等事件；不得记录任何密码、hash、token、授权码、PKCE、设置密钥或完整请求，且不做审计页面和实时告警
 - beta 不增加来源 IP/端点级身份限流、验证码或外部反机器人服务；只保留已确定的单登录身份五次失败后递进冷却，额外设施在用户规模或实际攻击迹象变化后再评估
 - beta 密码长度为 8–128 个 Unicode 字符，允许空格/粘贴/密码管理器，不设大小写数字符号组合或定期修改规则；使用小型本地常见密码列表拦截明显弱值，并只保存经过实机基准测试的 Argon2id 加盐 hash
-- 现有 development email/JWT 认证系统完全删除，不保留任何环境或测试兼容路径；所有环境、自动化测试、runtime env、部署脚本、文档和两份 skills 一次性切换到正式身份、授权码 + PKCE、不透明 access token 与轮换长期会话
+- 现有 development email/JWT 认证系统完全删除，不保留任何环境或测试兼容路径；所有环境、自动化测试、runtime env、部署脚本、文档和两份 skills 使用正式身份、OAuth Device Authorization、不透明 access token 与轮换长期会话
 - **员工账号** 通过 **粗颗粒度权限** 访问资料，第一阶段只由 **归属标签** 命中关系决定
 - 每个 **员工账号** 必须有且只有一个对应的 **个人标签**
 - **离职员工账号** 应被禁用但不删除，其对应的 **个人标签** 保留在标签清单和历史资料上
@@ -611,16 +611,16 @@ _Avoid_: 多租户 SaaS
 - “登录邮箱怎么判重”已 resolved：登录标识在部署内全局唯一，去除首尾空格且完整地址不区分大小写；不做删除点号、删除 `+suffix` 等服务商特有转换，公开登录失败也不能泄露该邮箱是否存在。
 - “错误密码是否永久锁号”已 resolved：前五次可连续失败，此后按 5、10、20、40、60 分钟等待并保持 60 分钟上限；冷却期间的请求不增加计数或延长时间，成功登录或完成开发者发起的密码重置后清零。
 - “账号停用/恢复/删除”不属于当前正式登录切片；已 deferred：beta 不提供员工入口或管理后台流程，未来最多先增加开发者 CLI 紧急操作，硬删除如何处理历史资料与审计记录另行设计。
-- “浏览器登录后 launcher 怎么知道成功”已 resolved：launcher 临时监听 `127.0.0.1` 随机端口并使用 Authorization Code + PKCE；浏览器只把单次授权码送回精确回调地址，launcher 校验 `state` 后通过 HTTPS 换取凭证。
-- “登录页面是否需要独立前端服务”已 resolved：由现有 Fastify API 在当前 HTTPS origin 返回少量服务端 HTML；成功页由 launcher 的本机回调返回，不引入独立前端部署。
-- “浏览器是否也要保持长期登录”已 rejected：浏览器状态只服务于当前授权事务；持久会话属于 launcher，授权码交付后关闭页面或清空 Cookie 不影响后续使用，交付前中断则安全地重新开始登录。
-- “短期 access token 从哪里来”已 resolved：它由 Enterprise Hub token 接口在授权码 + PKCE 交换成功后签发，有效期 10 分钟且只驻留 launcher 内存；它不是密码、浏览器 Cookie、阿里云或 GitHub 凭证。
+- “浏览器登录后 launcher 怎么知道成功”已 resolved：launcher 统一使用 OAuth Device Authorization；浏览器在第一方验证页完成身份与配对确认，launcher 通过有界轮询 token 端点取得结果，不监听 loopback 回调。
+- “登录页面是否需要独立前端服务”已 resolved：由现有 Fastify API 在当前 HTTPS origin 返回少量服务端 HTML；验证成功页也由服务端返回，不引入独立前端部署。
+- “浏览器是否也要保持长期登录”已 rejected：浏览器状态只服务于当前授权事务；持久会话属于 launcher，Device Authorization 完成后关闭页面或清空 Cookie 不影响后续使用，完成前中断则安全地重新开始登录。
+- “短期 access token 从哪里来”已 resolved：它由 Enterprise Hub token 接口在 Device Authorization 成功后签发，有效期 10 分钟且只驻留 launcher 内存；它不是密码、浏览器 Cookie、阿里云或 GitHub 凭证。
 - “access token 是 JWT 还是随机字符串”已 resolved：正式 token 使用至少 256 位随机强度的不透明字符串，服务端只存哈希并按请求查询；token 不携带可解码的员工、组织或权限声明。
-- “launcher 多久需要重新登录”已 resolved：长期会话固定为浏览器密码登录后的 30 天，不另设闲置超时且不能滑动延长；到期后 launcher 自动重新打开浏览器。
+- “launcher 多久需要重新登录”已 resolved：有安全存储时长期会话固定为浏览器密码登录后的 30 天，不另设闲置超时且不能滑动延长；到期后重新发起 Device Authorization。无头内存态 launcher 在进程重启后也需重新登录。
 - “长期凭证是否固定不变”已 rejected：每次续取 access token 都返回新长期凭证并消费旧值；旧值再次出现即视为可能复制并撤销整个会话家族，不设置重放宽限期。
-- “系统安全存储不可用时是否写普通文件”已 rejected：launcher 必须停止认证并给出安全提示；长期凭证只允许进入 Keychain 或 Credential Manager，缺失记录只表示未登录。
+- “系统安全存储不可用时是否写普通文件”已 rejected：桌面预期安全存储被锁定、拒绝或失败时 launcher 停止认证并给出安全提示；真正无安全存储的无头主机只保存在内存，任何形态都不写普通文件。
 - “同一台电脑上的不同 Agent 是否分别登录”已 rejected：同一操作系统用户下的所有 Agent 共享一个 Enterprise Hub 账号和安全存储记录；beta 假设用户只有一个账号，不设计账号切换或多账号操作。
-- “launcher 是否需要动态注册客户端”已 rejected：所有 official launcher 使用一个固定 public client 和固定 Enterprise Hub API/MCP 资源；服务端只提供授权码 + PKCE、token 与 metadata 契约。
+- “launcher 是否需要动态注册客户端”已 rejected：所有 official launcher 使用一个固定 public client 和固定 Enterprise Hub API/MCP 资源；当前契约提供 Device Authorization、token 与 metadata，旧授权码 + PKCE 仅为 0.1.x 兼容。
 - “launcher 源码应该放在 skills repo、独立 repo 还是主仓库”已 resolved：源码留在产品主仓库并作为公开版本化 npm 包发行；skills repo 只保留安装/使用指导和批准版本。
 - “谁执行 launcher 安装和 MCP 配置”已 resolved：skill 负责给出权威步骤，员工拥有的 agent 执行；launcher 不自行修改系统，员工也不需要亲自运行命令。
 - “是否只能支持预先写死的 agent”已 rejected：Codex 与 OpenClaw 是首批正式验收对象，但 skill 必须允许其他具备本地 MCP 能力的 agent 根据自身帮助和配置进行受约束的自适应安装；未经端到端验收时只是不承诺正式支持。
@@ -634,7 +634,7 @@ _Avoid_: 多租户 SaaS
 - “单因素密码最低是否使用 NIST 建议的 15 字符”已 rejected for beta：产品决定最低 8 字符、最高 128 字符，其他无组合规则、常见密码拦截、完整验证和 Argon2id 存储要求保持不变。
 - “是否保留本地测试用 dev-login/JWT”已 rejected：旧认证实现完全弃用并删除，不设计迁移或双栈兼容；测试同样使用新系统的正式凭证模型，只能通过内部 fixture/factory 加速准备。
 - “CLI 重置密码”可能被理解为开发者设置或掌握员工密码；已 resolved：beta CLI 只签发 **密码设置链接**，密码始终由员工本人在浏览器页面设置。
-- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、浏览器 Authorization Code + PKCE、不透明 access token 和系统安全存储长期会话，不保留 development email/JWT 兼容路径；固定版本 `enterprise-hub-mcp-launcher@0.1.0` 已在 npm 发布。macOS Codex 真实浏览器登录、Keychain 持久化、MCP 工具发现和认证后只读调用已通过；Windows 与 OpenClaw 桌面验收仍是发布门。
+- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、OAuth Device Authorization、不透明 access token、桌面安全存储长期会话和无头内存态会话，不保留 development email/JWT 兼容路径；固定版本 `enterprise-hub-mcp-launcher@0.2.0` 已在 npm 发布。原生 macOS/Windows 包验收和无头 Linux 登录到业务工具闭环已通过；此前 macOS Codex 0.1.x 真实浏览器/Keychain 验收保留为兼容证据，用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍是发布门。
 - “权限管理”容易被过度设计成逐字段或逐文件控制；已 resolved：第一阶段采用 **粗颗粒度权限**，只以 **归属标签** 是否命中判断访问。
 - “归属”不应设计成单选组织范围；已 resolved：资料和员工账号都使用多值 **归属标签**，任一标签命中即可访问。
 - “区域标签/门店标签继承”暂不采用；已 resolved：第一阶段保留 **门店标签**，不做区域标签，也不做自动展开。

@@ -1,6 +1,6 @@
 # Beta User Onboarding Runbook
 
-Last updated: 2026-07-30
+Last updated: 2026-08-10
 
 This runbook is for the first controlled macOS + Codex beta pilot. It is an operator checklist, not
 an employee-facing product page. Do not paste passwords, setup links, tokens, credentials, full
@@ -12,8 +12,8 @@ Use this runbook only for:
 
 - macOS + Codex;
 - the official Enterprise Hub skill;
-- `enterprise-hub-mcp-launcher@0.1.0`;
-- browser password setup/login;
+- `enterprise-hub-mcp-launcher@0.2.0`;
+- browser password setup and Device Authorization login;
 - fixture or explicitly approved non-sensitive data.
 
 Windows, OpenClaw, real customer-confidential data, self-service registration, MFA, password-reset
@@ -155,7 +155,7 @@ The employee should ask their agent naturally, for example:
 
 The agent must follow `skills/enterprise-hub-mcp/SKILL.md`:
 
-- install `enterprise-hub-mcp-launcher@0.1.0` into the current-user versioned directory;
+- install `enterprise-hub-mcp-launcher@0.2.0` into the current-user versioned directory;
 - configure a local stdio MCP entry named `enterprise-hub`;
 - set only `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz`;
 - call `enterprise_hub_login` if authentication is required;
@@ -164,13 +164,14 @@ The agent must follow `skills/enterprise-hub-mcp/SKILL.md`:
 
 Login timing:
 
-- `enterprise_hub_login` opens a browser sign-in page at `https://api.smedatacenter.xyz`;
+- `enterprise_hub_login` starts Device Authorization and opens its first-party verification link in
+  the system browser;
 - the employee enters their email and password there, not in the agent chat;
 - that browser login transaction is valid for 10 minutes;
 - if the employee waits longer than 10 minutes, the page expires and the agent should call
   `enterprise_hub_login` again instead of reusing the old page;
-- after successful browser login, the one-time authorization code returned to the local launcher is
-  valid for 60 seconds;
+- the launcher polls the token endpoint over its back channel and never asks the employee or agent
+  to relay an authorization code or token;
 - normal access tokens last 10 minutes, and the launcher refreshes them using its operating-system
   secure-store durable credential.
 

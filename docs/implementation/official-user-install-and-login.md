@@ -1,9 +1,9 @@
 # Official User Installation, Login, and Session Design
 
-Status: desktop browser flow accepted and ready for implementation planning; remote/headless and
-secondary-device login reopened and in progress
+Status: implemented and released; launcher 0.2.0 uses OAuth Device Authorization for desktop,
+remote/headless, and secondary-device login
 
-Last updated: 2026-08-07
+Last updated: 2026-08-10
 
 ## Purpose
 
@@ -26,15 +26,14 @@ In scope:
 
 - installing the Enterprise Hub MCP skill and local launcher;
 - initial interactive browser login;
-- browser-to-launcher authorization completion;
+- first-party browser verification and launcher token polling;
 - access-token and refresh-token lifecycle;
 - local secure credential storage;
 - automatic reuse, refresh, reauthentication, logout, and revocation;
 - the boundary between the employee, agent/model, launcher, browser, identity system, and API;
 - macOS and Windows client behavior;
 - remote/headless and secondary-device (mobile) login via OAuth Device Authorization Grant semantics,
-  including the first-party tap-link verification page and headless-agent token polling
-  (design and implementation in progress).
+  including the first-party tap-link verification page and headless-agent token polling.
 
 Out of scope for this design:
 
@@ -49,7 +48,7 @@ Out of scope for this design:
 The official flow has replaced the temporary implementation described below. This table is retained
 only as historical rationale and is not a compatibility constraint or current runtime description.
 
-| Boundary             | Current implementation                                                                                                                          | Design consequence                                                                    |
+| Boundary             | Withdrawn historical implementation                                                                                                             | Design consequence                                                                    |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Employee Account     | Prisma `Employee` contains email, display name, role, disabled state, organization, and labels; it has no password or external-identity field   | The future password-verification owner and identity mapping must be designed          |
 | Development login    | `POST /auth/dev-login` accepts only a seeded employee email and issues a one-hour HS256 JWT                                                     | Delete the route, JWT issuance, verification, configuration, tests, and documentation |
@@ -72,11 +71,11 @@ only as historical rationale and is not a compatibility constraint or current ru
 - Normal installation, login, later use, refresh, and logout must not require the employee to
   personally use a terminal, type commands, edit environment variables, edit MCP configuration, or
   manage an operating-system credential store.
-- Remote/headless and secondary-device login is now in scope: an agent running without a local
+- Remote/headless and secondary-device login is implemented: an agent running without a local
   system browser can send the employee a first-party login/verification link, the employee
   authenticates in a mobile or desktop browser, and the agent completes the flow by polling the
-  token endpoint. This extension is under active design and implementation (see
-  “In-Progress: Remote/Headless And Secondary-Device Login”).
+  token endpoint. Launcher 0.2.0 uses this same flow on interactive desktops, opening the link
+  automatically when possible.
 
 ### Installation
 
@@ -164,39 +163,40 @@ use a reviewed password-authentication library and, at minimum:
 - test timing-safe verification, enumeration resistance, brute-force controls, replay, revocation,
   concurrent refresh, and future identity-provider migration boundaries.
 
-## Accepted End-To-End Browser And Launcher Direction
+## Current End-To-End Browser And Launcher Flow
 
-The official flow is a browser login with an authorization-code handoff:
+The pinned launcher 0.2.0 uses OAuth Device Authorization:
 
 1. the MCP client starts the launcher;
-2. the launcher creates a one-time request, proof challenge, and state;
-3. the launcher opens the system browser to the Enterprise Hub HTTPS login page;
-4. the employee enters the login identifier and password only in that page;
-5. after successful authentication, the browser returns a short-lived one-time result to the
-   initiating launcher through a protected callback;
-6. the launcher exchanges it for a short-lived access token and a rotating refresh token;
-7. the launcher keeps the access token in memory and stores only the refresh token in the
-   operating-system secure credential store;
-8. subsequent MCP requests refresh silently when possible and reopen the browser only when user
-   authentication is required.
+2. the launcher requests a short-lived `device_code` / `user_code` pair and first-party verification
+   link;
+3. an interactive desktop launcher opens the link automatically; a remote/headless launcher returns
+   it for the employee-owned agent to surface through the employee channel;
+4. the employee confirms the displayed agent instance and enters the login identifier and password
+   only on the Enterprise Hub HTTPS page;
+5. the launcher polls the token endpoint and, after authorization, receives a short-lived access
+   token plus a rotating durable credential over the back channel;
+6. the launcher keeps the access token in memory and stores the durable credential only in the
+   operating-system secure store when one is available; headless hosts without a secure store keep
+   the session in memory only; and
+7. subsequent MCP requests refresh silently when possible and start a new Device Authorization flow
+   only when employee authentication is required.
 
-The handoff uses the accepted OAuth public-client contract and reviewed protocol/library support,
-not an improvised password-to-token exchange. Future external OIDC migration remains a mandatory
-design constraint.
+The server still accepts the older Authorization Code + PKCE contract for minimum-compatible 0.1.x
+launchers. That compatibility path is not the pinned or recommended employee flow. Future external
+OIDC migration remains a mandatory design constraint.
 
 ## Documentation Conflicts To Retire
 
 - ADR 0021 is a proposed, unimplemented beta bridge based on an operator-issued opaque token handed
   to a local credential helper. It was withdrawn on 2026-07-23 and must not be implemented.
-- `mcp-user-flow.md`, `mcp-user-flow.zh.md`, `mcp-endpoint.md`, the implementation plan, beta
-  readiness document, and both Enterprise Hub MCP skill copies describe the current development
-  email-login or the earlier opaque-token proposal. They remain implementation history/current-state
-  evidence, not the official future login design.
+- Historical documents may describe the removed development email login, the withdrawn opaque-token
+  proposal, or the superseded loopback-first launcher. They are implementation history only and do
+  not override this document, the current README, or the dual-homed Enterprise Hub MCP skill.
 - Old implementation and design documents never take precedence over this accepted decision log.
   Retain old material only when it accurately describes current code or useful history, and mark it
   accordingly; delete or supersede conflicting recommendations.
-- The remaining documents and skills must be reconciled after this design interview reaches an
-  implementable boundary.
+- The repo-local and standalone skills pin launcher 0.2.0 and its Device Authorization behavior.
 
 ## Decision Log
 
@@ -223,7 +223,7 @@ design constraint.
 | 2026-07-23 | Confirmed                 | The normalized login email is globally unique, trimmed and compared case-insensitively, without provider-specific dot or plus-address rewriting; public failures never disclose identity existence                                                                                             |
 | 2026-07-23 | Confirmed                 | Password login allows five consecutive failures, then applies per-identity cooldowns of 5, 10, 20, 40, and at most 60 minutes; cooldown requests neither increment nor extend it                                                                                                               |
 | 2026-07-23 | Deferred                  | Beta has no employee-facing or admin-UI account disable/reactivate/delete lifecycle; an emergency developer CLI operation may be added, while hard-delete semantics are explicitly outside this design                                                                                         |
-| 2026-07-23 | Confirmed                 | The launcher uses the native-app Authorization Code flow with PKCE, system browser, exact IPv4 loopback callback on an ephemeral port, one-time code, and no embedded client secret                                                                                                            |
+| 2026-07-23 | Superseded                | The 0.1.x launcher used Authorization Code + PKCE with a system browser and exact IPv4 loopback callback; the server retains it only for minimum-version compatibility                                                                                                                         |
 | 2026-07-23 | Confirmed                 | Login, password setup, and safe error pages are server-rendered by the existing Fastify API on its current HTTPS origin; beta adds no frontend framework, container, domain, or admin-web implementation                                                                                       |
 | 2026-07-23 | Confirmed                 | The browser keeps no durable login session; clearing or closing it after code handoff has no effect, while incomplete flows simply restart and durable MCP access belongs only to the launcher                                                                                                 |
 | 2026-07-24 | Confirmed                 | Enterprise Hub's token endpoint issues a 10-minute bearer access token kept only in launcher memory; the launcher renews it automatically from the durable session, including after a launcher restart                                                                                         |
@@ -232,7 +232,7 @@ design constraint.
 | 2026-07-24 | Confirmed                 | The opaque durable credential rotates after every access-token renewal; reuse of any consumed generation revokes the whole session family and requires browser login                                                                                                                           |
 | 2026-07-24 | Confirmed                 | Durable credentials are stored only in macOS Keychain or Windows Credential Manager; unavailable or failed secure storage stops authentication and never falls back to plaintext                                                                                                               |
 | 2026-07-24 | Confirmed                 | One operating-system user has one active Enterprise Hub account per service origin; every local agent client shares it, account switching is absent, and refresh is cross-process single-flight                                                                                                |
-| 2026-07-24 | Confirmed                 | All official launchers use one fixed non-secret public client ID, Authorization Code + PKCE endpoints and server metadata; there is no dynamic registration, password grant, client secret, scope, or audience selection                                                                       |
+| 2026-07-24 | Superseded                | All official launchers use one fixed public client ID and server metadata. Device Authorization is now official; Authorization Code + PKCE remains only for 0.1.x compatibility                                                                                                                |
 | 2026-07-24 | Confirmed                 | Authoritative launcher source remains in `apps/mcp-launcher` in the product monorepo and is released as a public, versioned npm package; skills pin and install the package but do not duplicate its source                                                                                    |
 | 2026-07-24 | Confirmed                 | The skill is the installation runbook and the employee-owned agent performs its steps; the employee requests installation in natural language and only directly interacts with the browser login                                                                                               |
 | 2026-07-24 | Confirmed                 | Codex and OpenClaw on macOS and Windows are the first explicitly verified clients; the skill also gives other capable agents a guarded adaptive path to locate and update their own MCP configuration                                                                                          |
@@ -245,7 +245,9 @@ design constraint.
 | 2026-07-24 | Deferred                  | Source-IP and endpoint-specific authentication limits, CAPTCHA, and external anti-bot services are not part of the minimal beta; the accepted per-identity progressive cooldown remains                                                                                                        |
 | 2026-07-24 | Confirmed                 | Beta passwords are 8–128 Unicode characters with no composition or periodic-change rule, a small local common-password blocklist, and reviewed benchmarked Argon2id storage                                                                                                                    |
 | 2026-07-24 | Confirmed                 | The temporary development email/JWT authentication system is deleted completely; every environment and test moves to the official identity/session model with no compatibility period                                                                                                          |
-| 2026-08-07 | Confirmed                 | Device-code/headless/secondary-device login is reopened and in progress: adopt the OAuth Device Authorization Grant (RFC 8628) semantics with a first-party mobile-friendly tap-link verification page and headless-agent token polling; open branches are recorded in the In-Progress section |
+| 2026-08-07 | Implemented               | Device-code/headless/secondary-device login was reopened and implemented using the OAuth Device Authorization Grant (RFC 8628) with a first-party mobile-friendly tap-link verification page and headless-agent token polling; PR #107 fully completed it and launcher 0.2.0 made it official. |
+| 2026-08-08 | Implemented               | PR #107 implemented the server Device Authorization state machine and routes, first-party verification page, launcher polling, desktop auto-open, and memory-only headless session mode; Authorization Code remains only as a minimum-compatible 0.1.x server path                             |
+| 2026-08-09 | Released                  | PR #108 published and verified `enterprise-hub-mcp-launcher@0.2.0`; PR #109 synchronized server metadata and the repo-local skill to the released recommended version                                                                                                                          |
 
 ## Design Tree
 
@@ -265,10 +267,11 @@ Resolve these branches in dependency order:
    atomic; login emails are globally unique after conservative normalization; initial password and
    reset use the 24-hour setup-link flow; failed passwords use the accepted finite progressive
    cooldown. Disable/reactivate/delete lifecycle design is deferred.
-6. **OAuth/OIDC client shape**: resolved — one fixed public client uses the system browser,
-   Authorization Code, PKCE `S256`, `state`, an exact ephemeral IPv4 loopback callback, fixed
-   Enterprise Hub resource, token endpoint, and authorization-server metadata. Dynamic client
-   registration and password grant do not exist.
+6. **OAuth/OIDC client shape**: implemented — one fixed public client uses OAuth Device
+   Authorization, a first-party verification link, token polling, the fixed Enterprise Hub resource,
+   and authorization-server metadata. Dynamic client registration, password grant, and embedded
+   client secrets do not exist. The older Authorization Code + PKCE path remains server-compatible
+   for minimum-supported 0.1.x launchers only.
 7. **Session model**: resolved — opaque access tokens last 10 minutes and remain in launcher memory;
    opaque durable credentials rotate on every renewal within a fixed 30-day family, and replay
    revokes the family. Both token types are restricted to the Enterprise Hub API/MCP resource.
@@ -282,9 +285,9 @@ Resolve these branches in dependency order:
    verified adapters, with a guarded adaptive path for other agents. Updates are skill-driven and
    exact-version pinned; logout, per-agent removal, and complete uninstall have distinct,
    non-destructive meanings. Repair reuses the same idempotent skill-driven install and self-check.
-10. **Runtime recovery**: resolved for current scope — authentication, connectivity, authorization,
-    and upgrade failures are distinct typed conditions; the skill guides recovery, browser
-    cancellation does not loop, callback binding retries once, and the agent retries the original
+10. **Runtime recovery**: implemented for current scope — authentication, pending authentication,
+    connectivity, authorization, and upgrade failures are distinct typed conditions; the skill
+    guides recovery, browser cancellation does not loop, and the agent retries the original
     operation once after successful reauthentication.
 11. **Multiple contexts**: resolved for beta — one account is shared across all agent clients under
     one OS user; concurrent refresh is single-flight; separate computers/OS users have separate
@@ -293,14 +296,13 @@ Resolve these branches in dependency order:
     IP/endpoint limits, CAPTCHA, and external anti-bot services are deferred. A minimal
     credential-free 90-day security audit, per-identity progressive cooldown, and secret-free
     launcher self-check are accepted; dashboards and real-time alerts are not beta requirements.
-13. **Acceptance**: resolved at the design level — verify macOS/Windows first-run and repeat-use for
-    Codex/OpenClaw plus login, expiry, retry, logout, password reset, reinstall, upgrade,
-    interrupted callback, and lost-device recovery. Exact automated/manual cases belong in the
-    implementation plan.
-14. **Remote/headless login**: resolved at the design level — the OAuth Device Authorization Grant
-    is the single official flow; split secrets, pairing confirmation, headless credential custody,
-    and the per-instance session model are resolved. See ADR 0022 and the In-Progress section;
-    implementation is in progress on `codex/device-code-login`.
+13. **Acceptance**: partially complete — automated server/launcher tests, macOS and Windows native
+    launcher release acceptance, and a full headless Linux container loop pass. Full user-visible
+    OpenClaw and support-class-C phone/browser acceptance remain external release evidence.
+14. **Remote/headless login**: implemented — OAuth Device Authorization is the pinned 0.2.0 flow;
+    split secrets, pairing confirmation, headless credential custody, and the per-instance session
+    model are implemented. See ADR 0022 and `device-code-login-plan.md` for design and delivery
+    history.
 
 ## Accepted Password-Setup Policy
 
@@ -321,7 +323,11 @@ The minimal page and backend flow are shared by initial setup and developer-init
 Initial-setup and beta password-reset links use one 24-hour expiry. If the employee misses the
 window, the developer issues a replacement link.
 
-## Accepted Browser Authorization Flow
+## Historical Superseded Loopback Authorization Flow
+
+The following Authorization Code + PKCE flow shipped in launcher 0.1.x and remains accepted by the
+server while 0.1.x is minimum-compatible. Launcher 0.2.0 and the current employee skill do not use
+it; the Device Authorization section below is the pinned and recommended flow.
 
 1. The launcher binds an ephemeral HTTP listener on `127.0.0.1`, generates a random `state` and PKCE
    verifier/challenge, and opens the system browser.
@@ -338,12 +344,11 @@ access or refresh token. The launcher binds only to IPv4 loopback on a random av
 server enforces the exact callback from the authorization request, and requests without PKCE are
 rejected. No custom URL scheme is required.
 
-## In-Progress: Remote/Headless And Secondary-Device Login
+## Current Official Device Authorization Login
 
-Status: design completed on 2026-08-07; implementation in progress on branch
-`codex/device-code-login` (see `docs/implementation/device-code-login-plan.md`). The desktop
-browser flow above remains the accepted, shipped boundary until the device-code flow ships; this
-section records the active extension.
+Status: implemented in merged PR #107, published as launcher 0.2.0 in PR #108, and synchronized to
+the current repo-local skill/server metadata in PR #109. See `docs/implementation/device-code-login-plan.md`
+and ADR 0022 for delivery history.
 
 **Motivation.** Agents that run on a headless remote server — for example OpenClaw-family
 deployments controlled from a phone, such as QClaw/小艺Claw-style setups — have no local system
@@ -380,9 +385,8 @@ desktop browser.
 - Preserve the existing secret boundaries: passwords and tokens never enter agent/model-visible
   channels; the browser never receives durable credentials; tokens continue to flow only over the
   back-channel poll response.
-- Once shipped, this flow becomes the single official login flow and replaces the loopback
-  Authorization Code flow described above; the accepted loopback sections remain current shipped
-  state until then.
+- This is the pinned and recommended employee login flow. The loopback Authorization Code flow is a
+  minimum-compatible 0.1.x server path, not current skill guidance.
 
 **Resolved design decisions (2026-08-07).**
 
@@ -411,11 +415,9 @@ desktop browser.
   active pending request (a new request revokes the old); the employee link is the standard
   `verification_uri_complete`; audit events cover creation, completion, expiry, and revocation.
 
-All design branches for this flow are resolved. Implementation has not started; the remaining work
-is implementation decomposition, server endpoints, the verification page, launcher flow selection,
-and test mechanics.
-
-This section does not yet change shipped desktop launcher behavior.
+All design branches for this flow are resolved and implemented. Remaining work is external
+acceptance evidence for user-visible OpenClaw and support-class-C phone/browser scenarios, not core
+server or launcher implementation.
 
 ## Accepted Browser Page Delivery
 
@@ -426,21 +428,20 @@ Current staging runs one Fastify API container behind nginx and TLS at
 - the initial/reset password form;
 - the invalid or expired setup-link page.
 
-The launcher loopback listener renders the successful-login page. Pages use plain server-rendered
-HTML with no React/Next.js bundle, client-side authentication state, external script/CDN, separate
+The Device Authorization verification page renders the successful-login state. Pages use plain
+server-rendered HTML with no React/Next.js bundle, client-side authentication state, external script/CDN, separate
 frontend container, new domain, or `apps/admin-web` implementation. They require strict security
 headers, CSRF and authorization-transaction checks, form-level tests, accessibility basics, and
 neutral styling. Login pages keep the normal same-origin form target and add only
-`http://127.0.0.1:*` to CSP `form-action` so Chrome can follow the successful form POST's redirect
-to the validated ephemeral launcher callback; all non-login auth pages remain
-`form-action 'self'`. Exact redirect validation, `state`, and PKCE remain mandatory. Existing
-Docker, nginx, TLS, and deployment topology remains unchanged.
+`form-action 'self'`. The retained 0.1.x loopback compatibility page additionally permits only a
+validated `http://127.0.0.1:*` form redirect. Existing Docker, nginx, TLS, and deployment topology
+remains unchanged.
 
 ## Accepted Browser Session Behavior
 
 The browser has no durable SSO session. It receives only a short-lived, `Secure`, `HttpOnly`,
 `SameSite=Lax` authorization-transaction cookie that expires after 10 minutes and is deleted on
-completion. Once the authorization code reaches the launcher, closing the page or clearing all
+completion. Once Device Authorization completes, closing the page or clearing all
 browser cookies has no effect on continued MCP use.
 
 Closing or clearing the browser before code handoff leaves no authenticated launcher session; the
@@ -450,7 +451,7 @@ launcher and operating-system credential store.
 
 ## Accepted Access-Token Lifetime
 
-After authorization-code exchange, Enterprise Hub's token endpoint issues the launcher a bearer
+After Device Authorization redemption, Enterprise Hub's token endpoint issues the launcher a bearer
 access token valid for 10 minutes. The launcher keeps it only in process memory and automatically
 uses its durable session credential to obtain a replacement shortly before expiry. A launcher
 restart discards any access token and obtains a new one without opening the browser.
@@ -495,16 +496,16 @@ may therefore require browser login but cannot silently weaken replay detection.
 
 ## Accepted Secure-Store Policy
 
-The launcher stores a durable credential only in macOS Keychain or Windows Credential Manager. It
-never writes one to `.env`, JSON, MCP configuration, shell profiles, logs, the clipboard, or an
-ordinary file. These stores are operating-system features and require no separate account,
-subscription, or application installation, although the operating system may display its own
-permission or unlock prompt.
+On macOS and Windows, the launcher stores a durable credential only in Keychain or Credential
+Manager. On a headless host where the secure store is unavailable, it keeps the credential in memory
+only and requires a new login after process or host restart. It never writes a credential to `.env`,
+JSON, MCP configuration, shell profiles, logs, the clipboard, or an ordinary file.
 
-Unavailable, locked, denied, or failed secure storage stops the authentication flow with a safe
-actionable status. A failed rotating-credential write causes the launcher to discard the associated
-access token and start browser login after secure storage is usable. A missing record means signed
-out; there is no insecure fallback.
+On a platform expected to provide a secure store, locked, denied, or failed storage stops the
+authentication flow with a safe actionable status. A failed rotating-credential write causes the
+launcher to discard the associated access token and start login after secure storage is usable. A
+missing record means signed out. Memory-only mode is selected only when the platform genuinely has
+no secure store; it is not a fallback for a denied or broken desktop store.
 
 ## Accepted Local Account And Concurrency Scope
 
@@ -526,17 +527,24 @@ affecting other computers.
 All official launcher instances use the fixed, non-secret client ID
 `enterprise-hub-desktop-launcher`. Enterprise Hub exposes:
 
-- `GET /oauth/authorize` with `response_type=code`, the fixed client ID, exact IPv4 loopback
-  redirect URI, random `state`, and mandatory PKCE `S256`;
-- `POST /oauth/token` for authorization-code exchange and rotating durable-credential renewal;
+- `POST /oauth/device_authorization` for a device code, user code, verification URI, complete
+  verification URI, polling interval, and bounded expiry;
+- `GET /oauth/device/verify` and `POST /oauth/device/verify/login` for the first-party,
+  mobile-friendly password and agent-pairing confirmation page;
+- `POST /oauth/token` for the RFC 8628 device-code grant and rotating durable-credential renewal;
 - `GET /.well-known/oauth-authorization-server` metadata advertising the authoritative issuer,
-  endpoints, code flow, and PKCE methods.
+  device authorization endpoint, token endpoint, and supported grant types.
 
-Authorization codes contain at least 256 random bits, expire after 60 seconds, are single use, are
-stored only as hashes, and bind to the client ID, exact redirect URI, PKCE challenge, Login
-Identity, and authorization transaction. The token endpoint has no password grant, client secret,
-arbitrary audience, or arbitrary scope. Issued tokens are restricted to the Enterprise Hub API/MCP
-resource. Dynamic client registration does not exist.
+Device and user codes are short-lived, single-use, stored only as hashes where secret, and bound to
+the client ID, requesting agent metadata, Login Identity, and authorization transaction. Polling is
+rate-limited and returns the standard pending, slow-down, expiry, denial, and success states. The
+token endpoint has no password grant, client secret, arbitrary audience, or arbitrary scope. Issued
+tokens are restricted to the Enterprise Hub API/MCP resource. Dynamic client registration does not
+exist.
+
+For the server's minimum-compatible 0.1.x launcher range only, Enterprise Hub also retains
+`GET /oauth/authorize` plus authorization-code exchange with exact IPv4 loopback redirect, random
+`state`, and PKCE `S256`. This is not the pinned, recommended, or documented employee login path.
 
 ## Accepted Launcher Source And Distribution Boundary
 
@@ -553,12 +561,14 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Release status as of 2026-07-28: `enterprise-hub-mcp-launcher@0.1.0` is public. Its registry
-integrity matches the reviewed tarball; exact-version clean installation, CLI execution, and the
-installed production dependency audit passed. The npm Trusted Publisher is bound to
-`YinXiaoyu-1998/SME_DATA_CENTER` and `launcher-release.yml` with stage-publish-only permission.
-Because `0.1.0` required the one-time first publish, the first live OIDC staged publish will be
-verified on a later version.
+Release status as of 2026-08-09: `enterprise-hub-mcp-launcher@0.2.0` is public, pinned by both skill
+copies, and recommended by server metadata; the server minimum remains 0.1.0 for compatibility. Its
+registry integrity matches the reviewed tarball; exact-version clean installation, CLI execution,
+native macOS/Windows package acceptance, headless Linux container acceptance, and the installed
+production dependency audit passed. The npm Trusted Publisher is bound to
+`YinXiaoyu-1998/SME_DATA_CENTER` and `launcher-release.yml` with stage-publish-only permission, and
+the 0.2.0 release verified the live OIDC staged-publish path. Npm provenance remains unavailable
+because the source repository is private and is not an approval gate.
 
 The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
 only `ENTERPRISE_HUB_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
@@ -588,7 +598,8 @@ The runbook directs the agent to:
 3. install the skill-approved exact launcher package version for the current user;
 4. back up and idempotently update only the invoking agent's MCP configuration;
 5. run a local launcher self-check; and
-6. start the launcher, which opens the system browser for password login.
+6. start the launcher, which uses Device Authorization: desktop clients open the system browser,
+   while headless or secondary-device clients present the same first-party verification link.
 
 The normal path must not require `sudo` or administrator rights and must not alter unrelated MCP
 servers or agent configuration. If a safe automatic step is unavailable, the runbook stops and
@@ -638,8 +649,8 @@ skill copies agree. Npm provenance is neither available nor an approval gate whi
 repository remains private. Updating the launcher preserves the secure-store session, non-secret
 local state, and MCP configuration.
 
-Implementing this design therefore requires material coordinated changes in both the repo-local
-skill and the standalone skills repository; launcher/package work alone is incomplete.
+The released 0.2.0 update is coordinated across the launcher, server metadata, repo-local skill, and
+standalone skill repository; future behavior changes must preserve that dual-home rule.
 
 ## Accepted Logout And Uninstall Semantics
 
@@ -702,8 +713,9 @@ Failure classes remain distinct:
 - authorization denial returns `forbidden` and does not open the browser;
 - an incompatible launcher returns `launcher_upgrade_required` and follows the skill-driven update
   path; and
-- failure to bind the loopback callback retries once with a new ephemeral port, then returns a
-  focused diagnostic.
+- Device Authorization expiry or polling failure returns a focused typed diagnostic and does not
+  silently fall back to agent-visible credentials. The retained 0.1.x compatibility flow keeps its
+  bounded loopback callback retry.
 
 The launcher reports typed conditions; the skill guides the agent's recovery while preserving the
 employee's original intent.
@@ -719,10 +731,9 @@ are revoked. Until that happens, the fixed 30-day absolute session lifetime rema
 Per-session identification and immediate operator revoke may be reconsidered only when real usage
 demonstrates the need.
 
-The reopened remote/headless flow does create such a need for the new path: each headless agent
-instance requires its own identifiable session family, so session identification and inventory are
-open branches there even though the desktop beta keeps them deferred (see
-“In-Progress: Remote/Headless And Secondary-Device Login”).
+Each headless launcher process receives its own identifiable server-side session family. General
+session inventory and per-session revoke remain deferred for beta; password reset still revokes all
+families for the identity.
 
 ## Accepted Minimal Authentication Security Audit
 
@@ -790,7 +801,7 @@ verification, or a JWT-based launcher login/logout flow.
 The cutover includes:
 
 - migrating local, integration, CI, staging, and production tests and runtime behavior to the
-  official Login Identity, Authorization Code + PKCE, opaque access-token, and rotating
+  official Login Identity, OAuth Device Authorization, opaque access-token, and rotating
   durable-session model;
 - deleting `JWT_SECRET` and `STAGING_JWT_SECRET` from code, environment inventories, local/staging
   runtime configuration, GitHub staging secrets, deployment scripts, and runbooks;
@@ -817,14 +828,11 @@ whether a durable record exists, server reachability, compatibility status, and 
 status. It never emits email, Employee/Login Identity IDs, tokens, credential hashes, setup links,
 authorization codes, PKCE material, passwords, or complete configuration files.
 
-## Design Interview Status
+## Current Delivery Status
 
-The official beta installation, browser login, token/session, local storage, skill orchestration,
-recovery, password, audit, and hard-cutover decisions have reached an implementable boundary.
-Remaining choices are implementation decomposition and test mechanics, not unresolved employee
-experience or authentication policy.
-
-The remote/headless and secondary-device login flow reached its implementable boundary on
-2026-08-07: the device-code flow, link delivery, pairing, credential custody, and session model are
-resolved. Implementation is in progress on `codex/device-code-login`
-(see `docs/implementation/device-code-login-plan.md`).
+The official beta installation, Device Authorization login, token/session, secure-store and
+memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
+implemented. Launcher 0.2.0 is the pinned and recommended release. Automated server/launcher tests,
+native macOS/Windows package acceptance, and a full headless Linux container login-to-business-tool
+loop pass. Full user-visible OpenClaw and support-class-C phone/browser acceptance remain external
+release evidence.
