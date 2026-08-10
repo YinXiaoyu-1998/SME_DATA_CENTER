@@ -243,18 +243,18 @@ rerun health/readiness checks before accepting new uploads.
 
 Use the explicit operator boundary, `npm run staging:cleanup-upload-domain`, only from the
 quiesced staging release-operations environment. The support module alone performs no cleanup: the
-CLI loads the reviewed adapter named by `STAGING_UPLOAD_DOMAIN_CLEANUP_ADAPTER`, which must enumerate
-the exact staging database inventory and implement the injected DB/OSS/Qdrant operations. The CLI
-defaults to dry-run and refuses any target other than `--target staging`; execution additionally
-requires `--execute --confirm delete-upload-domain`. Review the dry-run's non-sensitive counts and
-IDs before the explicit execution invocation:
+CLI constructs the repo-contained staging adapter from the live runtime environment. That adapter
+enumerates the exact database inventory, exact OSS keys, and exact Qdrant collection/point IDs, then
+performs only the injected scoped DB/OSS/Qdrant operations. It fails closed when `DATABASE_URL` or
+`QDRANT_URL` is absent, malformed, or local. The CLI defaults to dry-run and refuses any target
+other than `--target staging`; execution additionally requires `--execute --confirm
+delete-upload-domain`. Review the dry-run's non-sensitive counts and IDs before the explicit
+execution invocation:
 
 ```bash
-STAGING_UPLOAD_DOMAIN_CLEANUP_ADAPTER=/secure/operator/staging-upload-domain-adapter.mjs \
-  npm run staging:cleanup-upload-domain -- --target staging
+npm run staging:cleanup-upload-domain -- --target staging
 
-STAGING_UPLOAD_DOMAIN_CLEANUP_ADAPTER=/secure/operator/staging-upload-domain-adapter.mjs \
-  npm run staging:cleanup-upload-domain -- \
+npm run staging:cleanup-upload-domain -- \
   --execute --target staging --confirm delete-upload-domain
 ```
 

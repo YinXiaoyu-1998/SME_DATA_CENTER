@@ -1,4 +1,3 @@
-import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   buildStagingUploadDomainCleanupPlan,
@@ -9,6 +8,7 @@ import {
   type StagingUploadDomainCleanupPlan,
   type StagingUploadDomainCleanupSafeLog
 } from "./staging-upload-domain-cleanup-support.js";
+import { createStagingUploadDomainCleanupAdapter } from "./staging-upload-domain-cleanup-adapter.js";
 
 type PostCleanupCounts = StagingUploadDomainCleanupSafeLog["counts"];
 
@@ -32,6 +32,12 @@ export interface StagingUploadDomainCleanupAdapter {
 export interface RunStagingUploadDomainCleanupInput {
   argv: string[];
   adapter: StagingUploadDomainCleanupAdapter;
+  log(value: unknown): void;
+}
+
+export interface RunStagingUploadDomainCleanupCliInput {
+  argv: string[];
+  createAdapter(): Promise<StagingUploadDomainCleanupAdapter>;
   log(value: unknown): void;
 }
 
@@ -71,6 +77,20 @@ export async function runStagingUploadDomainCleanup(
   return plan;
 }
 
+export async function runStagingUploadDomainCleanupCli(
+  input: RunStagingUploadDomainCleanupCliInput
+): Promise<StagingUploadDomainCleanupPlan> {
+  const options = parseStagingUploadDomainCleanupArgs(input.argv);
+  validateStagingUploadDomainCleanupOptions(options);
+  const adapter = await input.createAdapter();
+
+  return await runStagingUploadDomainCleanup({
+    argv: input.argv,
+    adapter,
+    log: input.log
+  });
+}
+
 function assertZeroPostCleanupCounts(counts: PostCleanupCounts): void {
   const remaining = Object.entries(counts).filter(([, count]) => count !== 0);
   if (remaining.length > 0) {
@@ -82,36 +102,10 @@ function assertZeroPostCleanupCounts(counts: PostCleanupCounts): void {
   }
 }
 
-interface AdapterModule {
-  createStagingUploadDomainCleanupAdapter?: () =>
-    StagingUploadDomainCleanupAdapter | Promise<StagingUploadDomainCleanupAdapter>;
-}
-
-async function loadAdapter(
-  modulePath: string | undefined
-): Promise<StagingUploadDomainCleanupAdapter> {
-  if (!modulePath) {
-    throw new Error(
-      "Set STAGING_UPLOAD_DOMAIN_CLEANUP_ADAPTER to a reviewed operator adapter module before running cleanup."
-    );
-  }
-
-  const resolvedPath = path.resolve(process.cwd(), modulePath);
-  const module = (await import(pathToFileURL(resolvedPath).href)) as AdapterModule;
-  if (!module.createStagingUploadDomainCleanupAdapter) {
-    throw new Error(
-      "The staging upload-domain cleanup adapter must export createStagingUploadDomainCleanupAdapter."
-    );
-  }
-
-  return await module.createStagingUploadDomainCleanupAdapter();
-}
-
 if (isMainModule()) {
-  const adapter = await loadAdapter(process.env["STAGING_UPLOAD_DOMAIN_CLEANUP_ADAPTER"]);
-  await runStagingUploadDomainCleanup({
+  await runStagingUploadDomainCleanupCli({
     argv: process.argv.slice(2),
-    adapter,
+    createAdapter: async () => createStagingUploadDomainCleanupAdapter(process.env),
     log: (value) => console.log(JSON.stringify(value))
   });
 }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { StagingUploadDomainCleanupInventory } from "./staging-upload-domain-cleanup-support.js";
 import {
   runStagingUploadDomainCleanup,
+  runStagingUploadDomainCleanupCli,
   type StagingUploadDomainCleanupAdapter
 } from "./staging-upload-domain-cleanup.js";
 
@@ -90,6 +91,26 @@ describe("staging upload-domain cleanup CLI", () => {
       })
     ).rejects.toThrow("--confirm delete-upload-domain");
     expect(adapter.collectInventory).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid CLI flags before constructing the runtime adapter", async () => {
+    const adapterFactory = vi.fn(async () => createAdapter());
+
+    await expect(
+      runStagingUploadDomainCleanupCli({
+        argv: ["--execute", "--target", "production", "--confirm", "delete-upload-domain"],
+        createAdapter: adapterFactory,
+        log: vi.fn()
+      })
+    ).rejects.toThrow("--target staging");
+    await expect(
+      runStagingUploadDomainCleanupCli({
+        argv: ["--execute", "--target", "staging", "--confirm", "no"],
+        createAdapter: adapterFactory,
+        log: vi.fn()
+      })
+    ).rejects.toThrow("--confirm delete-upload-domain");
+    expect(adapterFactory).not.toHaveBeenCalled();
   });
 
   it("executes only the plan's enumerated DB, OSS, and Qdrant targets after confirmation", async () => {
