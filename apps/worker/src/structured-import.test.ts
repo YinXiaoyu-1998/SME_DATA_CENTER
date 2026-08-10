@@ -1,0 +1,404 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import {
+  PROCESSING_ERROR_CODES,
+  ProcessingLeaseLostError,
+  runWorkerOnce,
+  type ClaimedProcessingRun,
+  type ProcessingWorkerRepository
+} from "./worker.js";
+
+describe("structured import processing worker", () => {
+  let storageRoot: string | undefined;
+
+  afterEach(async () => {
+    if (storageRoot) {
+      await rm(storageRoot, { recursive: true, force: true });
+      storageRoot = undefined;
+    }
+  });
+
+  it("applies a valid CSV import through the leased worker", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_structured_csv",
+      fileName: "dishes.csv",
+      contentType: "text/csv",
+      body: await readFile("fixtures/structured/dishes-valid.csv")
+    });
+    const repository = createStructuredImportRepository({
+      storageObjectKey: stored.key,
+      originalFileName: "dishes.csv",
+      fileType: "csv"
+    });
+
+    const result = await runWorkerOnce({
+      repository,
+      storage,
+      workerId: "worker-structured",
+      now: () => new Date("2026-07-20T00:00:00.000Z")
+    });
+
+    expect(result).toEqual({
+      processed: true,
+      documentId: "doc_structured_csv",
+      status: "active"
+    });
+    expect(repository.document.status).toBe("active");
+    expect(repository.importBatch).toMatchObject({
+      status: "applied",
+      totalRowCount: 1,
+      appliedRowCount: 1,
+      validationErrorCount: 0,
+      sourceSheetSummary: [expect.objectContaining({ name: "Sheet1", dataRowCount: 1 })]
+    });
+    expect(repository.rows).toEqual([
+      expect.objectContaining({
+        sourceSheetIndex: 0,
+        sourceSheetName: "Sheet1",
+        sourceRowNumber: 2
+      })
+    ]);
+  });
+
+  it("preserves sheet lineage for single-sheet and multi-sheet XLSX imports", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+
+    const single = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_single_xlsx",
+      fileName: "single.xlsx",
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      body: await readFile("fixtures/structured/xlsx/typed-cells.xlsx")
+    });
+    const singleRepository = createStructuredImportRepository({
+      storageObjectKey: single.key,
+      originalFileName: "single.xlsx",
+      fileType: "xlsx"
+    });
+
+    await expect(
+      runWorkerOnce({ repository: singleRepository, storage, workerId: "worker-single-xlsx" })
+    ).resolves.toMatchObject({ status: "active" });
+    expect(singleRepository.rows).toEqual([
+      expect.objectContaining({ sourceSheetIndex: 0, sourceSheetName: "Data" })
+    ]);
+
+    const multi = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_multi_xlsx",
+      fileName: "multi.xlsx",
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      body: await readFile("fixtures/structured/xlsx/cross-sheet.xlsx")
+    });
+    const multiRepository = createStructuredImportRepository({
+      storageObjectKey: multi.key,
+      originalFileName: "multi.xlsx",
+      fileType: "xlsx"
+    });
+
+    await expect(
+      runWorkerOnce({ repository: multiRepository, storage, workerId: "worker-multi-xlsx" })
+    ).resolves.toMatchObject({ status: "active" });
+    expect(multiRepository.rows).toHaveLength(2);
+    expect(multiRepository.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceSheetIndex: 0, sourceSheetName: "First" }),
+        expect.objectContaining({ sourceSheetIndex: 1, sourceSheetName: "Second" })
+      ])
+    );
+    expect(multiRepository.importBatch.sourceSheetSummary).toEqual([
+      expect.objectContaining({ name: "First", dataRowCount: 1 }),
+      expect.objectContaining({ name: "Second", dataRowCount: 1 })
+    ]);
+  });
+
+  it("rejects invalid headers without publishing rows", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_invalid_headers",
+      fileName: "invalid.csv",
+      contentType: "text/csv",
+      body: await readFile("fixtures/structured/dishes-invalid-unknown-column.csv")
+    });
+    const repository = createStructuredImportRepository({
+      storageObjectKey: stored.key,
+      originalFileName: "invalid.csv",
+      fileType: "csv"
+    });
+
+    await expect(
+      runWorkerOnce({ repository, storage, workerId: "worker-reject" })
+    ).resolves.toEqual({
+      processed: true,
+      documentId: "doc_structured_csv",
+      status: "rejected"
+    });
+    expect(repository.importBatch.status).toBe("rejected");
+    expect(repository.importBatch.validationErrorCount).toBeGreaterThan(0);
+    expect(repository.rows).toHaveLength(0);
+    expect(repository.failures).toHaveLength(0);
+  });
+
+  it("retries transient storage failures and marks the batch failed after max attempts", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const repository = createStructuredImportRepository({
+      storageObjectKey: "missing-object",
+      originalFileName: "dishes.csv",
+      fileType: "csv"
+    });
+
+    await expect(
+      runWorkerOnce({ repository, storage, workerId: "worker-retry", maxAttempts: 2 })
+    ).resolves.toMatchObject({ status: "retry_scheduled" });
+    await expect(
+      runWorkerOnce({ repository, storage, workerId: "worker-retry", maxAttempts: 2 })
+    ).resolves.toMatchObject({ status: "processing_failed" });
+
+    expect(repository.failures).toEqual([
+      { errorCode: PROCESSING_ERROR_CODES.storageReadFailed, willRetry: true },
+      { errorCode: PROCESSING_ERROR_CODES.storageReadFailed, willRetry: false }
+    ]);
+    expect(repository.importBatch.status).toBe("failed");
+  });
+
+  it("does not publish rows or terminal state after losing its lease", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_lease_lost",
+      fileName: "dishes.csv",
+      contentType: "text/csv",
+      body: await readFile("fixtures/structured/dishes-valid.csv")
+    });
+    const repository = createStructuredImportRepository({
+      storageObjectKey: stored.key,
+      originalFileName: "dishes.csv",
+      fileType: "csv",
+      completeError: "lease_lost"
+    });
+
+    await expect(runWorkerOnce({ repository, storage, workerId: "worker-lease" })).resolves.toEqual(
+      {
+        processed: true,
+        documentId: "doc_structured_csv",
+        status: "retry_scheduled"
+      }
+    );
+    expect(repository.rows).toHaveLength(0);
+    expect(repository.run.status).toBe("running");
+    expect(repository.failures).toHaveLength(0);
+  });
+
+  it("allows only one worker to claim and apply a structured import", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_race",
+      fileName: "dishes.csv",
+      contentType: "text/csv",
+      body: await readFile("fixtures/structured/dishes-valid.csv")
+    });
+    const repository = createStructuredImportRepository({
+      storageObjectKey: stored.key,
+      originalFileName: "dishes.csv",
+      fileType: "csv"
+    });
+
+    const results = await Promise.all([
+      runWorkerOnce({ repository, storage, workerId: "worker-a" }),
+      runWorkerOnce({ repository, storage, workerId: "worker-b" })
+    ]);
+
+    expect(results).toEqual(
+      expect.arrayContaining([
+        { processed: true, documentId: "doc_structured_csv", status: "active" },
+        { processed: false }
+      ])
+    );
+    expect(repository.rows).toHaveLength(1);
+  });
+
+  it("keeps existing rows intact when atomic apply fails", async () => {
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const stored = await storage.putObject({
+      orgId: "default-org",
+      documentId: "doc_atomic_failure",
+      fileName: "dishes.csv",
+      contentType: "text/csv",
+      body: await readFile("fixtures/structured/dishes-valid.csv")
+    });
+    const existingRow = { sourceRowNumber: 99 };
+    const repository = createStructuredImportRepository({
+      storageObjectKey: stored.key,
+      originalFileName: "dishes.csv",
+      fileType: "csv",
+      completeError: "apply_failure",
+      initialRows: [existingRow]
+    });
+
+    await expect(
+      runWorkerOnce({ repository, storage, workerId: "worker-atomic" })
+    ).resolves.toMatchObject({
+      status: "retry_scheduled"
+    });
+    expect(repository.rows).toEqual([existingRow]);
+  });
+});
+
+function createStructuredImportRepository(options: {
+  storageObjectKey: string;
+  originalFileName: string;
+  fileType: "csv" | "xlsx";
+  completeError?: "lease_lost" | "apply_failure";
+  initialRows?: unknown[];
+}): ProcessingWorkerRepository & {
+  document: { status: string };
+  importBatch: {
+    status: string;
+    totalRowCount: number;
+    appliedRowCount: number;
+    validationErrorCount: number;
+    sourceSheetSummary: unknown[];
+  };
+  rows: unknown[];
+  run: { status: string; retryCount: number; attemptNumber: number };
+  failures: Array<{ errorCode: string; willRetry: boolean }>;
+  rejectCount: number;
+} {
+  const document = {
+    id: "doc_structured_csv",
+    orgId: "default-org",
+    uploaderId: "emp_1",
+    status: "pending_processing",
+    storageObjectKey: options.storageObjectKey,
+    originalFileName: options.originalFileName,
+    documentKind: "structured",
+    fileType: options.fileType
+  };
+  const run = {
+    id: "run_structured_csv",
+    orgId: document.orgId,
+    documentId: document.id,
+    status: "queued",
+    attemptNumber: 0,
+    retryCount: 0,
+    lockedBy: null as string | null,
+    lockedUntil: null as Date | null
+  };
+  const importBatch = {
+    status: "pending",
+    totalRowCount: 0,
+    appliedRowCount: 0,
+    validationErrorCount: 0,
+    sourceSheetSummary: [] as unknown[]
+  };
+  const rows: unknown[] = [...(options.initialRows ?? [])];
+  const failures: Array<{ errorCode: string; willRetry: boolean }> = [];
+  let rejectCount = 0;
+
+  return {
+    document,
+    importBatch,
+    rows,
+    run,
+    failures,
+    get rejectCount() {
+      return rejectCount;
+    },
+    async claimNextProcessingRun({
+      workerId,
+      now,
+      leaseSeconds
+    }): Promise<ClaimedProcessingRun | null> {
+      if (!(["queued", "retry_scheduled"] as string[]).includes(run.status)) return null;
+      run.status = "running";
+      run.attemptNumber += 1;
+      run.lockedBy = workerId;
+      run.lockedUntil = new Date(now.getTime() + leaseSeconds * 1_000);
+      document.status = "processing";
+      importBatch.status = "validating";
+      return {
+        id: run.id,
+        orgId: run.orgId,
+        documentId: run.documentId,
+        retryCount: run.retryCount,
+        attemptNumber: run.attemptNumber,
+        jobType: "structured_import",
+        lockedBy: run.lockedBy,
+        lockedUntil: run.lockedUntil,
+        structuredImport: {
+          importBatchId: "batch_structured_csv",
+          dataset: "dishes",
+          startDate: "20260701",
+          endDate: "20260731"
+        },
+        document: { ...document }
+      };
+    },
+    async failProcessingRun(input) {
+      if (run.lockedBy !== input.workerId || !run.lockedUntil || run.lockedUntil <= input.now) {
+        throw new ProcessingLeaseLostError(input.runId);
+      }
+      failures.push({ errorCode: input.errorCode, willRetry: input.willRetry });
+      run.retryCount += 1;
+      run.lockedBy = null;
+      run.lockedUntil = null;
+      run.status = input.willRetry ? "retry_scheduled" : "failed";
+      document.status = input.willRetry ? "pending_processing" : "processing_failed";
+      if (!input.willRetry) importBatch.status = "failed";
+    },
+    async beginStructuredImportApply() {
+      importBatch.status = "applying";
+    },
+    async rejectStructuredImport(input) {
+      rejectCount += 1;
+      importBatch.status = "rejected";
+      importBatch.sourceSheetSummary = input.result.sheetSummary;
+      importBatch.validationErrorCount = input.result.validationErrorCount;
+      document.status = "processing_failed";
+      run.status = "failed";
+      run.lockedBy = null;
+      run.lockedUntil = null;
+    },
+    async completeStructuredImport(input: {
+      result: { rows: unknown[]; sheetSummary: unknown[] };
+    }) {
+      if (options.completeError === "lease_lost") throw new ProcessingLeaseLostError(run.id);
+      if (options.completeError === "apply_failure") throw new Error("database write failed");
+      rows.splice(0, rows.length);
+      rows.push(...input.result.rows);
+      importBatch.status = "applied";
+      importBatch.totalRowCount = input.result.rows.length;
+      importBatch.appliedRowCount = input.result.rows.length;
+      importBatch.sourceSheetSummary = input.result.sheetSummary;
+      document.status = "active";
+      run.status = "succeeded";
+    }
+  } as ProcessingWorkerRepository & {
+    document: { status: string };
+    importBatch: {
+      status: string;
+      totalRowCount: number;
+      appliedRowCount: number;
+      validationErrorCount: number;
+      sourceSheetSummary: unknown[];
+    };
+    rows: unknown[];
+    run: { status: string; retryCount: number; attemptNumber: number };
+    failures: Array<{ errorCode: string; willRetry: boolean }>;
+    rejectCount: number;
+  };
+}

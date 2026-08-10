@@ -1,17 +1,31 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { DocumentStatus, Prisma, PrismaClient, ProcessingRunStatus } from "@prisma/client";
+import {
+  DocumentStatus,
+  ImportBatchStatus,
+  ImportDataset,
+  Prisma,
+  PrismaClient,
+  ProcessingRunStatus
+} from "@prisma/client";
 import {
   AUDIT_ACTIONS,
   EvidenceParseError,
   PHASE3_RUNTIME_LIMIT_DEFAULTS
 } from "@enterprise-hub/domain";
 import type { StorageAdapter } from "@enterprise-hub/storage";
+import {
+  parseStructuredFile,
+  type StructuredIngestionLimits,
+  type StructuredParseResult
+} from "@enterprise-hub/structured-ingestion";
 
 export const PROCESSING_ERROR_CODES = {
   unsupportedFileType: "UNSUPPORTED_FILE_TYPE",
   storageReadFailed: "STORAGE_READ_FAILED",
   evidenceIndexingFailed: "EVIDENCE_INDEXING_FAILED",
+  structuredImportFailed: "STRUCTURED_IMPORT_FAILED",
+  structuredImportRejected: "STRUCTURED_IMPORT_REJECTED",
   unsupportedProcessingJobType: "UNSUPPORTED_PROCESSING_JOB_TYPE",
   leaseLost: "PROCESSING_LEASE_LOST"
 } as const;
@@ -25,6 +39,12 @@ export interface ClaimedProcessingRun {
   jobType: string;
   lockedBy: string | null;
   lockedUntil: Date | null;
+  structuredImport?: {
+    importBatchId: string;
+    dataset: "dishes" | "business";
+    startDate: string;
+    endDate: string;
+  };
   document: {
     id: string;
     orgId: string;
@@ -107,10 +127,30 @@ export interface FailProcessingRunInput {
   nextAvailableAt: Date;
 }
 
+export interface BeginStructuredImportApplyInput {
+  runId: string;
+  documentId: string;
+  importBatchId: string;
+  workerId: string;
+  now: Date;
+}
+
+export interface CompleteStructuredImportInput extends BeginStructuredImportApplyInput {
+  result: StructuredParseResult;
+  batchInsertSize: number;
+}
+
+export interface RejectStructuredImportInput extends BeginStructuredImportApplyInput {
+  result: StructuredParseResult;
+}
+
 export interface ProcessingWorkerRepository {
   claimNextProcessingRun(input: ClaimProcessingRunInput): Promise<ClaimedProcessingRun | null>;
   heartbeatProcessingRun?(input: HeartbeatProcessingRunInput): Promise<boolean>;
   completeEvidenceIndexing?(input: CompleteEvidenceIndexingInput): Promise<void>;
+  beginStructuredImportApply?(input: BeginStructuredImportApplyInput): Promise<void>;
+  completeStructuredImport?(input: CompleteStructuredImportInput): Promise<void>;
+  rejectStructuredImport?(input: RejectStructuredImportInput): Promise<void>;
   failProcessingRun(input: FailProcessingRunInput): Promise<void>;
   disconnect?(): Promise<void>;
 }
@@ -122,13 +162,15 @@ export type RunWorkerOnceResult =
   | {
       processed: true;
       documentId: string;
-      status: "active" | "processing_failed" | "retry_scheduled";
+      status: "active" | "processing_failed" | "retry_scheduled" | "rejected";
     };
 
 export interface RunWorkerLoopInput {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
   evidenceIndexer?: EvidenceIndexer;
+  structuredIngestionLimits?: StructuredIngestionLimits;
+  structuredImportBatchInsertSize?: number;
   workerId?: string;
   workerConcurrency?: number;
   leaseSeconds?: number;
@@ -146,6 +188,8 @@ export async function runWorkerOnce(input: {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
   evidenceIndexer?: EvidenceIndexer;
+  structuredIngestionLimits?: StructuredIngestionLimits;
+  structuredImportBatchInsertSize?: number;
   workerId?: string;
   leaseSeconds?: number;
   maxAttempts?: number;
@@ -178,40 +222,99 @@ export async function runWorkerOnce(input: {
   });
 
   try {
-    if (run.jobType !== "evidence_document_index") {
+    if (run.jobType === "evidence_document_index") {
+      if (!input.evidenceIndexer || !input.repository.completeEvidenceIndexing) {
+        throw new ProcessingError(
+          PROCESSING_ERROR_CODES.unsupportedFileType,
+          "Evidence indexing is not configured.",
+          false
+        );
+      }
+
+      const content = await readDocumentContent(run.document, input.storage);
+      const result = await input.evidenceIndexer.indexDocument({ run, content });
+      await input.repository.completeEvidenceIndexing({
+        runId: run.id,
+        documentId: run.documentId,
+        workerId,
+        now: now(),
+        result,
+        chunks: result.chunks
+      });
+
+      return {
+        processed: true,
+        documentId: run.documentId,
+        status: "active"
+      };
+    }
+
+    if (run.jobType === "structured_import") {
+      if (
+        !run.structuredImport ||
+        !input.repository.beginStructuredImportApply ||
+        !input.repository.completeStructuredImport ||
+        !input.repository.rejectStructuredImport
+      ) {
+        throw new ProcessingError(
+          PROCESSING_ERROR_CODES.unsupportedFileType,
+          "Structured import processing is not configured.",
+          false
+        );
+      }
+
+      const content = await readDocumentContent(run.document, input.storage);
+      const result = await parseStructuredFile({
+        dataset: run.structuredImport.dataset,
+        content,
+        fileType: structuredFileType(run.document.fileType),
+        startDate: run.structuredImport.startDate,
+        endDate: run.structuredImport.endDate,
+        fileName: run.document.originalFileName ?? "structured-import",
+        limits: input.structuredIngestionLimits ?? structuredIngestionLimits(),
+        validationMode: "collect"
+      });
+      const transition = {
+        runId: run.id,
+        documentId: run.documentId,
+        importBatchId: run.structuredImport.importBatchId,
+        workerId,
+        now: now()
+      };
+
+      if (result.validationErrorCount > 0) {
+        await input.repository.rejectStructuredImport({ ...transition, result });
+        return {
+          processed: true,
+          documentId: run.documentId,
+          status: "rejected"
+        };
+      }
+
+      await input.repository.beginStructuredImportApply(transition);
+      await input.repository.completeStructuredImport({
+        ...transition,
+        result,
+        batchInsertSize:
+          input.structuredImportBatchInsertSize ??
+          PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportBatchInsertSize
+      });
+      return {
+        processed: true,
+        documentId: run.documentId,
+        status: "active"
+      };
+    }
+
+    {
       throw new ProcessingError(
         PROCESSING_ERROR_CODES.unsupportedProcessingJobType,
         `Unsupported processing job type: ${run.jobType}`,
         false
       );
     }
-
-    if (!input.evidenceIndexer || !input.repository.completeEvidenceIndexing) {
-      throw new ProcessingError(
-        PROCESSING_ERROR_CODES.unsupportedFileType,
-        "Evidence indexing is not configured.",
-        false
-      );
-    }
-
-    const content = await readDocumentContent(run.document, input.storage);
-    const result = await input.evidenceIndexer.indexDocument({ run, content });
-    await input.repository.completeEvidenceIndexing({
-      runId: run.id,
-      documentId: run.documentId,
-      workerId,
-      now: now(),
-      result,
-      chunks: result.chunks
-    });
-
-    return {
-      processed: true,
-      documentId: run.documentId,
-      status: "active"
-    };
   } catch (error) {
-    const processingError = toProcessingError(error);
+    const processingError = toProcessingError(error, run.jobType);
     if (processingError.code === PROCESSING_ERROR_CODES.leaseLost) {
       return {
         processed: true,
@@ -262,6 +365,8 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
             repository: input.repository,
             storage: input.storage,
             evidenceIndexer: input.evidenceIndexer,
+            structuredIngestionLimits: input.structuredIngestionLimits,
+            structuredImportBatchInsertSize: input.structuredImportBatchInsertSize,
             workerId,
             leaseSeconds: input.leaseSeconds,
             maxAttempts: input.maxAttempts,
@@ -371,6 +476,58 @@ export function createPrismaProcessingWorkerRepository(
           }
         });
 
+        let structuredImport: ClaimedProcessingRun["structuredImport"];
+        if (run.jobType === "structured_import") {
+          const batch = await tx.importBatch.findFirst({
+            where: {
+              sourceDocumentId: run.documentId,
+              orgId: run.orgId,
+              status: {
+                in: [
+                  ImportBatchStatus.pending,
+                  ImportBatchStatus.validating,
+                  ImportBatchStatus.applying,
+                  ImportBatchStatus.failed
+                ]
+              }
+            }
+          });
+          if (!batch) {
+            throw new Error(
+              `Structured import batch is not claimable for processing run ${run.id}.`
+            );
+          }
+          await tx.importBatch.update({
+            where: { id: batch.id },
+            data: {
+              status: ImportBatchStatus.validating,
+              errorCode: null,
+              errorSummary: null
+            }
+          });
+          structuredImport = {
+            importBatchId: batch.id,
+            dataset: batch.dataset,
+            startDate: formatDateWindow(batch.startDate),
+            endDate: formatDateWindow(batch.endDate)
+          };
+          await tx.auditLog.create({
+            data: {
+              orgId: run.orgId,
+              actorEmployeeId: null,
+              action: "structured_import.validating",
+              targetType: "import_batch",
+              targetId: batch.id,
+              result: "succeeded",
+              metadata: {
+                processingRunId: run.id,
+                workerId: input.workerId,
+                dataset: batch.dataset
+              }
+            }
+          });
+        }
+
         await tx.auditLog.create({
           data: {
             orgId: run.orgId,
@@ -392,7 +549,7 @@ export function createPrismaProcessingWorkerRepository(
           include: { document: true }
         });
 
-        return toClaimedProcessingRun(claimedRun, document);
+        return toClaimedProcessingRun(claimedRun, document, structuredImport);
       });
     },
     async heartbeatProcessingRun(input) {
@@ -540,6 +697,176 @@ export function createPrismaProcessingWorkerRepository(
         });
       });
     },
+    async beginStructuredImportApply(input) {
+      await prisma.$transaction(async (tx) => {
+        const leased = await tx.processingRun.updateMany({
+          where: activeLeaseWhere(input),
+          data: { lastHeartbeatAt: input.now }
+        });
+        if (leased.count !== 1) throw new ProcessingLeaseLostError(input.runId);
+
+        const batch = await tx.importBatch.updateMany({
+          where: {
+            id: input.importBatchId,
+            sourceDocumentId: input.documentId,
+            status: ImportBatchStatus.validating
+          },
+          data: { status: ImportBatchStatus.applying }
+        });
+        if (batch.count !== 1) {
+          throw new Error(`Structured import batch ${input.importBatchId} cannot begin applying.`);
+        }
+
+        await tx.auditLog.create({
+          data: {
+            orgId: (await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } })).orgId,
+            actorEmployeeId: null,
+            action: "structured_import.applying",
+            targetType: "import_batch",
+            targetId: input.importBatchId,
+            result: "succeeded",
+            metadata: { processingRunId: input.runId, workerId: input.workerId }
+          }
+        });
+      });
+    },
+    async completeStructuredImport(input) {
+      await prisma.$transaction(async (tx) => {
+        const leased = await tx.processingRun.updateMany({
+          where: activeLeaseWhere(input),
+          data: {
+            status: ProcessingRunStatus.succeeded,
+            lockedBy: null,
+            lockedUntil: null,
+            errorCode: null,
+            errorSummary: null,
+            finishedAt: input.now
+          }
+        });
+        if (leased.count !== 1) throw new ProcessingLeaseLostError(input.runId);
+
+        const run = await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } });
+        const batch = await tx.importBatch.findFirst({
+          where: {
+            id: input.importBatchId,
+            sourceDocumentId: input.documentId,
+            orgId: run.orgId,
+            status: ImportBatchStatus.applying
+          }
+        });
+        if (!batch)
+          throw new Error(`Structured import batch ${input.importBatchId} cannot complete.`);
+
+        if (batch.dataset === ImportDataset.dishes) {
+          await tx.dishRow.deleteMany({ where: { importBatchId: batch.id } });
+          await insertStructuredRows(tx, "dishes", batch, input.result.rows, input.batchInsertSize);
+        } else {
+          await tx.businessRow.deleteMany({ where: { importBatchId: batch.id } });
+          await insertStructuredRows(
+            tx,
+            "business",
+            batch,
+            input.result.rows,
+            input.batchInsertSize
+          );
+        }
+
+        await tx.importBatch.update({
+          where: { id: batch.id },
+          data: {
+            status: ImportBatchStatus.applied,
+            sourceSheetSummary: input.result.sheetSummary as unknown as Prisma.InputJsonValue,
+            validationErrors: [],
+            validationErrorCount: 0,
+            totalRowCount: input.result.rows.length,
+            appliedRowCount: input.result.rows.length,
+            errorCode: null,
+            errorSummary: null
+          }
+        });
+        await tx.document.update({
+          where: { id: input.documentId },
+          data: { status: DocumentStatus.active }
+        });
+        await tx.auditLog.create({
+          data: {
+            orgId: run.orgId,
+            actorEmployeeId: null,
+            action: AUDIT_ACTIONS.structuredImportApplied,
+            targetType: "import_batch",
+            targetId: batch.id,
+            result: "succeeded",
+            metadata: {
+              processingRunId: input.runId,
+              workerId: input.workerId,
+              dataset: batch.dataset,
+              sourceDocumentId: input.documentId,
+              appliedRowCount: input.result.rows.length,
+              sheetCount: input.result.sheetSummary.length
+            }
+          }
+        });
+      });
+    },
+    async rejectStructuredImport(input) {
+      await prisma.$transaction(async (tx) => {
+        const leased = await tx.processingRun.updateMany({
+          where: activeLeaseWhere(input),
+          data: {
+            status: ProcessingRunStatus.failed,
+            lockedBy: null,
+            lockedUntil: null,
+            errorCode: PROCESSING_ERROR_CODES.structuredImportRejected,
+            errorSummary: "Structured import validation failed.",
+            finishedAt: input.now
+          }
+        });
+        if (leased.count !== 1) throw new ProcessingLeaseLostError(input.runId);
+
+        const run = await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } });
+        const batch = await tx.importBatch.updateMany({
+          where: {
+            id: input.importBatchId,
+            sourceDocumentId: input.documentId,
+            orgId: run.orgId,
+            status: { in: [ImportBatchStatus.validating, ImportBatchStatus.applying] }
+          },
+          data: {
+            status: ImportBatchStatus.rejected,
+            sourceSheetSummary: input.result.sheetSummary as unknown as Prisma.InputJsonValue,
+            validationErrors: input.result.validationErrors as unknown as Prisma.InputJsonValue,
+            validationErrorCount: input.result.validationErrorCount,
+            totalRowCount: input.result.rows.length,
+            appliedRowCount: 0,
+            errorCode: PROCESSING_ERROR_CODES.structuredImportRejected,
+            errorSummary: "Structured import validation failed."
+          }
+        });
+        if (batch.count !== 1)
+          throw new Error(`Structured import batch ${input.importBatchId} cannot reject.`);
+
+        await tx.document.update({
+          where: { id: input.documentId },
+          data: { status: DocumentStatus.processing_failed }
+        });
+        await tx.auditLog.create({
+          data: {
+            orgId: run.orgId,
+            actorEmployeeId: null,
+            action: "structured_import.rejected",
+            targetType: "import_batch",
+            targetId: input.importBatchId,
+            result: "failed",
+            metadata: {
+              processingRunId: input.runId,
+              workerId: input.workerId,
+              validationErrorCount: input.result.validationErrorCount,
+              validationErrorsTruncated: input.result.validationErrorsTruncated
+            }
+          }
+        });
+      });
+    },
     async failProcessingRun(input) {
       await prisma.$transaction(async (tx) => {
         const claimed = await tx.processingRun.updateMany({
@@ -567,6 +894,58 @@ export function createPrismaProcessingWorkerRepository(
             id: input.runId
           }
         });
+
+        if (run.jobType === "structured_import" && !input.willRetry) {
+          const batch = await tx.importBatch.findFirst({
+            where: {
+              sourceDocumentId: input.documentId,
+              orgId: run.orgId,
+              status: {
+                in: [
+                  ImportBatchStatus.pending,
+                  ImportBatchStatus.validating,
+                  ImportBatchStatus.applying,
+                  ImportBatchStatus.failed
+                ]
+              }
+            },
+            select: { id: true }
+          });
+          await tx.importBatch.updateMany({
+            where: {
+              sourceDocumentId: input.documentId,
+              orgId: run.orgId,
+              status: {
+                in: [
+                  ImportBatchStatus.pending,
+                  ImportBatchStatus.validating,
+                  ImportBatchStatus.applying,
+                  ImportBatchStatus.failed
+                ]
+              }
+            },
+            data: {
+              status: ImportBatchStatus.failed,
+              errorCode: input.errorCode,
+              errorSummary: input.errorSummary
+            }
+          });
+          await tx.auditLog.create({
+            data: {
+              orgId: run.orgId,
+              actorEmployeeId: null,
+              action: "structured_import.failed",
+              targetType: "import_batch",
+              targetId: batch?.id ?? input.documentId,
+              result: "failed",
+              metadata: {
+                processingRunId: input.runId,
+                workerId: input.workerId,
+                errorCode: input.errorCode
+              }
+            }
+          });
+        }
 
         await tx.document.update({
           where: {
@@ -610,7 +989,7 @@ async function readDocumentContent(
   storage: StorageAdapter
 ): Promise<Buffer> {
   try {
-    return streamToBuffer(await storage.getObjectStream(document.storageObjectKey));
+    return await streamToBuffer(await storage.getObjectStream(document.storageObjectKey));
   } catch (error) {
     throw new ProcessingError(
       PROCESSING_ERROR_CODES.storageReadFailed,
@@ -650,7 +1029,7 @@ export class ProcessingLeaseLostError extends Error {
   }
 }
 
-function toProcessingError(error: unknown): ProcessingError {
+function toProcessingError(error: unknown, jobType?: string): ProcessingError {
   if (error instanceof ProcessingError) {
     return error;
   }
@@ -676,7 +1055,9 @@ function toProcessingError(error: unknown): ProcessingError {
   }
 
   return new ProcessingError(
-    PROCESSING_ERROR_CODES.evidenceIndexingFailed,
+    jobType === "structured_import"
+      ? PROCESSING_ERROR_CODES.structuredImportFailed
+      : PROCESSING_ERROR_CODES.evidenceIndexingFailed,
     error instanceof Error ? error.message : "Processing failed.",
     true
   );
@@ -684,7 +1065,8 @@ function toProcessingError(error: unknown): ProcessingError {
 
 function toClaimedProcessingRun(
   run: Prisma.ProcessingRunGetPayload<{ include: { document: true } }>,
-  document: Prisma.DocumentGetPayload<Record<string, never>>
+  document: Prisma.DocumentGetPayload<Record<string, never>>,
+  structuredImport?: ClaimedProcessingRun["structuredImport"]
 ): ClaimedProcessingRun {
   return {
     id: run.id,
@@ -695,6 +1077,7 @@ function toClaimedProcessingRun(
     jobType: run.jobType,
     lockedBy: run.lockedBy,
     lockedUntil: run.lockedUntil,
+    structuredImport,
     document: {
       id: document.id,
       orgId: document.orgId,
@@ -717,6 +1100,57 @@ function requireDatabaseUrl(): string {
   }
 
   return databaseUrl;
+}
+
+async function insertStructuredRows(
+  tx: Prisma.TransactionClient,
+  dataset: "dishes" | "business",
+  batch: { id: string; orgId: string; sourceDocumentId: string },
+  rows: StructuredParseResult["rows"],
+  batchInsertSize: number
+): Promise<void> {
+  for (let offset = 0; offset < rows.length; offset += batchInsertSize) {
+    const data = rows.slice(offset, offset + batchInsertSize).map((row) => ({
+      orgId: batch.orgId,
+      sourceDocumentId: batch.sourceDocumentId,
+      importBatchId: batch.id,
+      sourceSheetIndex: row.sourceSheetIndex,
+      sourceSheetName: row.sourceSheetName,
+      sourceRowNumber: row.sourceRowNumber,
+      payload: row.payload as Prisma.InputJsonValue
+    }));
+    if (dataset === "dishes") {
+      await tx.dishRow.createMany({ data });
+    } else {
+      await tx.businessRow.createMany({ data });
+    }
+  }
+}
+
+function structuredFileType(fileType: string | null | undefined): "csv" | "xlsx" {
+  if (fileType === "csv" || fileType === "xlsx") return fileType;
+  throw new ProcessingError(
+    PROCESSING_ERROR_CODES.unsupportedFileType,
+    "Structured import file type is not supported.",
+    false
+  );
+}
+
+function structuredIngestionLimits(): StructuredIngestionLimits {
+  return {
+    maxStructuredImportRows: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxStructuredImportRows,
+    maxXlsxSheets: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxXlsxSheets,
+    maxStructuredCellChars: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxStructuredCellChars,
+    maxXlsxUncompressedBytes: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxXlsxUncompressedBytes,
+    maxXlsxZipEntries: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxXlsxZipEntries,
+    maxXlsxCompressionRatio: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxXlsxCompressionRatio
+  };
+}
+
+function formatDateWindow(value: Date): string {
+  return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(
+    value.getUTCDate()
+  ).padStart(2, "0")}`;
 }
 
 function retrievalConfigJson(result: EvidenceIndexingResult): Prisma.InputJsonObject {
