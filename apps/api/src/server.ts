@@ -1,12 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import { performance } from "node:perf_hooks";
-import multipart from "@fastify/multipart";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@prisma/client";
-import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import {
-  AUTH_ERROR_CODES,
   DEFAULT_RETRIEVAL_CONFIG_VERSION,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_QUERY_LIMITS,
@@ -23,95 +19,32 @@ import {
   type StructuredDatasetName
 } from "@enterprise-hub/domain";
 import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
+import { createOriginalObjectKey } from "@enterprise-hub/storage";
+import { type AuditLogRecord, type CatalogLabel, type DocumentStatusRecord } from "./documents.js";
+import { EvidenceSearchCursorError } from "./evidence.js";
+import { type SkillDirectoryEntry } from "./skills.js";
 import {
-  createOriginalObjectKey,
-  createStorageAdapter,
-  type StorageAdapter
-} from "@enterprise-hub/storage";
-import {
-  createPrismaDocumentCatalogRepository,
-  type AuditLogRecord,
-  type CatalogLabel,
-  type DocumentCatalogRepository,
-  type DocumentStatusRecord
-} from "./documents.js";
-import type { EmployeeRepository } from "./employees.js";
-import {
-  EvidenceSearchCursorError,
-  createPrismaEvidenceSearchRepository,
-  type EvidenceSearchRepository
-} from "./evidence.js";
-import {
-  createPrismaSkillDirectoryRepository,
-  type SkillDirectoryEntry,
-  type SkillDirectoryRepository
-} from "./skills.js";
-import {
-  createPrismaStructuredImportRepository,
   StructuredImportError,
   type StructuredImportBatchRecord,
   type StructuredImportRepository,
   type StructuredImportTimingEvent
 } from "./structured-imports.js";
-import { loadApiRuntimeLimits, type ApiRuntimeLimits } from "./config/runtime-limits.js";
-import {
-  createPrismaStructuredQueryRepository,
-  type StructuredQueryRepository
-} from "./structured-query.js";
 import { registerMcpHttpRoute } from "./mcp/http.js";
-import { AuthCore, type AuthRequestAudit } from "./auth/auth-core.js";
-import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
-import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
-import { isPayloadTooLargeError, registerApiErrorHandler } from "./request-errors.js";
 import {
-  createRequestAuditContext,
-  isTrustedLoopbackProxy,
-  normalizeRequestId,
-  verifyInternalDelegationProof
-} from "./request-audit-context.js";
+  errorResponse,
+  isPayloadTooLargeError,
+  phase3ErrorResponse,
+  registerApiErrorHandler,
+  validationError
+} from "./request-errors.js";
+import { isTrustedLoopbackProxy, normalizeRequestId } from "./request-audit-context.js";
+import { createApiServerContext, type ApiServerOptions } from "./app-context.js";
+import { createRequestAuth, type AuthenticatedRequest } from "./request-auth.js";
+import { readMultipartFile, registerApiMultipart, type MultipartPart } from "./http/multipart.js";
 
 const SERVICE_NAME = "enterprise-hub-api";
-export interface ApiServerOptions {
-  employeeRepository?: EmployeeRepository;
-  documentRepository?: DocumentCatalogRepository;
-  structuredImportRepository?: StructuredImportRepository;
-  skillRepository?: SkillDirectoryRepository;
-  structuredQueryRepository?: StructuredQueryRepository;
-  evidenceRepository?: EvidenceSearchRepository;
-  storageAdapter?: StorageAdapter;
-  authCore?: AuthCore;
-  authenticateAccessToken?: (
-    token: string,
-    audit: AuthRequestAudit
-  ) => Promise<AuthenticatedEmployee | null>;
-  cursorSigningSecret?: string;
-  logger?: boolean;
-  runtimeLimits?: ApiRuntimeLimits;
-  runtimeEnv?: NodeJS.ProcessEnv;
-  readinessCheck?: () => Promise<ReadinessReport>;
-  internalDelegationProof?: string;
-}
-
-interface AuthenticatedRequest extends FastifyRequest {
-  employee: AuthenticatedEmployee;
-}
-
-interface MultipartFieldPart {
-  type: "field";
-  fieldname: string;
-  value: unknown;
-}
-
-interface MultipartFilePart {
-  type: "file";
-  fieldname: string;
-  filename: string;
-  mimetype?: string;
-  file: AsyncIterable<Buffer | Uint8Array | string>;
-}
-
-type MultipartPart = MultipartFieldPart | MultipartFilePart;
+export type { ApiServerOptions } from "./app-context.js";
 
 interface ParsedUpload {
   file?: {
@@ -178,44 +111,6 @@ interface AuditListQuery {
 interface SkillListQuery {
   q?: string;
   category?: string;
-}
-
-function requireCursorSigningSecret(environment: NodeJS.ProcessEnv): string {
-  const secret = environment["CURSOR_SIGNING_SECRET"];
-  if (!secret) {
-    throw new Error("CURSOR_SIGNING_SECRET is required to start the API.");
-  }
-  return secret;
-}
-
-function errorResponse(code: string, message: string) {
-  return {
-    error: {
-      code,
-      message
-    }
-  };
-}
-
-function phase3ErrorResponse(
-  request: FastifyRequest,
-  code: string,
-  message: string,
-  details: Record<string, unknown> = {}
-) {
-  return {
-    error: {
-      code,
-      message,
-      retryable: false,
-      details,
-      requestId: request.id
-    }
-  };
-}
-
-function validationError(reply: FastifyReply, code: string, message: string) {
-  return reply.code(400).send(errorResponse(code, message));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -354,16 +249,6 @@ function validateEvidenceSearchBody(value: unknown): EvidenceSearchValidation {
   };
 }
 
-function bearerToken(request: FastifyRequest): string | null {
-  const authorization = request.headers.authorization;
-
-  if (!authorization?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  return authorization.slice("Bearer ".length).trim() || null;
-}
-
 function employeeResponse(employee: AuthenticatedEmployee) {
   return {
     id: employee.id,
@@ -494,16 +379,6 @@ async function parseStructuredImportUpload(
 
   upload.labelKeys = uniqueSorted(upload.labelKeys);
   return upload;
-}
-
-async function readMultipartFile(file: MultipartFilePart["file"]): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-
-  for await (const chunk of file) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  return Buffer.concat(chunks);
 }
 
 function validateStructuredImportMetadata(upload: ParsedStructuredImportUpload):
@@ -966,102 +841,18 @@ function forbiddenRequestedLabels(
     .sort();
 }
 
-async function authenticate(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  authenticateAccessToken: (
-    token: string,
-    request: FastifyRequest
-  ) => Promise<AuthenticatedEmployee | null>
-): Promise<boolean> {
-  const token = bearerToken(request);
-
-  if (!token) {
-    reply
-      .code(401)
-      .send(errorResponse(AUTH_ERROR_CODES.unauthenticated, "Authentication is required."));
-    return false;
-  }
-
-  try {
-    const employee = await authenticateAccessToken(token, request);
-    if (!employee) {
-      reply
-        .code(401)
-        .send(errorResponse(AUTH_ERROR_CODES.unauthenticated, "Authentication is required."));
-      return false;
-    }
-
-    if (employee.disabled) {
-      reply
-        .code(403)
-        .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
-      return false;
-    }
-
-    (request as AuthenticatedRequest).employee = employee;
-    return true;
-  } catch {
-    reply
-      .code(401)
-      .send(errorResponse(AUTH_ERROR_CODES.unauthenticated, "Authentication is required."));
-    return false;
-  }
-}
-
 export function buildApiServer(options: ApiServerOptions = {}) {
-  const environment = options.runtimeEnv ?? process.env;
-  const delegationProof = options.internalDelegationProof ?? randomBytes(32).toString("base64url");
-  const legacyEmployeeRepository = options.employeeRepository;
-  let documentRepository = options.documentRepository;
-  let structuredImportRepository = options.structuredImportRepository;
-  let skillRepository = options.skillRepository;
-  let structuredQueryRepository = options.structuredQueryRepository;
-  let evidenceRepository = options.evidenceRepository;
-  let storageAdapter = options.storageAdapter;
-  const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
-  const cursorSigningSecret =
-    options.cursorSigningSecret ?? requireCursorSigningSecret(environment);
-  const readinessCheck = options.readinessCheck ?? (() => checkRuntimeReadiness());
-  let authPrisma: PrismaClient | undefined;
-  let authCore = options.authCore;
-  if (!authCore && !options.authenticateAccessToken) {
-    const databaseUrl = environment["DATABASE_URL"];
-    if (!databaseUrl) {
-      throw new Error("DATABASE_URL is required to start the official authentication service.");
-    }
-    authPrisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
-    authCore = new AuthCore(createPrismaAuthCoreRepository(authPrisma));
-  }
-  const authenticateOfficialAccessToken = (token: string, request: FastifyRequest) => {
-    const context = createRequestAuditContext(request, authenticationClientSource(request));
-    const audit: AuthRequestAudit = {
-      requestId: context.requestId,
-      sourceIp: context.sourceIp,
-      launcherVersion: context.launcherVersion
-    };
-    if (options.authenticateAccessToken) {
-      return options.authenticateAccessToken(token, audit);
-    }
-    if (!authCore) {
-      throw new Error("Official authentication service is unavailable.");
-    }
-    return authCore.authenticateAccessToken(token, audit);
-  };
-
-  function authenticationClientSource(request: FastifyRequest) {
-    if (
-      request.url === "/mcp" ||
-      request.url.startsWith("/mcp?") ||
-      verifyInternalDelegationProof(
-        request.headers["x-enterprise-hub-internal-delegation"],
-        delegationProof
-      )
-    ) {
-      return "mcp_launcher" as const;
-    }
-    return "http_api" as const;
-  }
+  const context = createApiServerContext(options);
+  const requestAuth = createRequestAuth(context);
+  const { environment, delegationProof, runtimeLimits, cursorSigningSecret, readinessCheck } =
+    context;
+  const documents = context.documents;
+  const storage = context.storage;
+  const structuredImports = context.structuredImports;
+  const structuredQueries = context.structuredQueries;
+  const skills = context.skills;
+  const evidence = context.evidence;
+  const createBusinessRequestAudit = context.createBusinessRequestAudit;
 
   const app = Fastify({
     logger: options.logger ?? true,
@@ -1081,23 +872,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.addHook("onClose", async () => {
-    await legacyEmployeeRepository?.disconnect?.();
-    await authPrisma?.$disconnect();
-    await documentRepository?.disconnect?.();
-    await structuredImportRepository?.disconnect?.();
-    await skillRepository?.disconnect?.();
-    await structuredQueryRepository?.disconnect?.();
-    await evidenceRepository?.disconnect?.();
+    await context.close();
   });
 
-  void app.register(multipart, {
-    limits: {
-      fileSize: runtimeLimits.maxUploadBytes,
-      files: PUBLIC_INPUT_LIMITS.multipartFiles,
-      fields: PUBLIC_INPUT_LIMITS.multipartFields,
-      parts: PUBLIC_INPUT_LIMITS.multipartParts
-    }
-  });
+  registerApiMultipart(app, { maxUploadBytes: runtimeLimits.maxUploadBytes });
 
   registerMcpHttpRoute(app, {
     maxUploadBytes: runtimeLimits.maxUploadBytes,
@@ -1105,7 +883,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
     publicOrigin: (options.runtimeEnv ?? process.env)["ENTERPRISE_HUB_PUBLIC_ORIGIN"],
     authenticate: async (request, reply) => {
-      const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+      const authenticated = await requestAuth.authenticate(request, reply);
 
       if (!authenticated) {
         return null;
@@ -1115,22 +893,18 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
   });
 
-  function createBusinessRequestAudit(request: FastifyRequest) {
-    return createRequestAuditContext(request, authenticationClientSource(request));
-  }
-
-  if (authCore) {
+  if (context.authCore) {
     const publicOrigin = environment["ENTERPRISE_HUB_PUBLIC_ORIGIN"];
     if (!publicOrigin) {
       throw new Error("ENTERPRISE_HUB_PUBLIC_ORIGIN is required for official authentication.");
     }
-    registerOfficialAuthRoutes(app, { auth: authCore, publicOrigin });
-    void authCore.pruneSecurityEvents().catch((error: unknown) => {
+    registerOfficialAuthRoutes(app, { auth: context.authCore, publicOrigin });
+    void context.authCore.pruneSecurityEvents().catch((error: unknown) => {
       app.log.error({ err: error }, "Failed to prune expired authentication security events.");
     });
     const pruneTimer = setInterval(
       () => {
-        void authCore?.pruneSecurityEvents().catch((error: unknown) => {
+        void context.authCore?.pruneSecurityEvents().catch((error: unknown) => {
           app.log.error({ err: error }, "Failed to prune expired authentication security events.");
         });
       },
@@ -1138,39 +912,6 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     );
     pruneTimer.unref();
     app.addHook("onClose", async () => clearInterval(pruneTimer));
-  }
-
-  function documents(): DocumentCatalogRepository {
-    documentRepository ??= createPrismaDocumentCatalogRepository();
-    return documentRepository;
-  }
-
-  function storage(): StorageAdapter {
-    storageAdapter ??= createStorageAdapter(options.runtimeEnv ?? process.env);
-    return storageAdapter;
-  }
-
-  function structuredImports(): StructuredImportRepository {
-    structuredImportRepository ??= createPrismaStructuredImportRepository({
-      transactionTimeoutMs: runtimeLimits.structuredImportTransactionTimeoutMs,
-      batchInsertSize: runtimeLimits.structuredImportBatchInsertSize
-    });
-    return structuredImportRepository;
-  }
-
-  function structuredQueries(): StructuredQueryRepository {
-    structuredQueryRepository ??= createPrismaStructuredQueryRepository();
-    return structuredQueryRepository;
-  }
-
-  function skills(): SkillDirectoryRepository {
-    skillRepository ??= createPrismaSkillDirectoryRepository();
-    return skillRepository;
-  }
-
-  function evidence(): EvidenceSearchRepository {
-    evidenceRepository ??= createPrismaEvidenceSearchRepository();
-    return evidenceRepository;
   }
 
   app.get("/healthz", async () => ({
@@ -1191,7 +932,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.get("/me", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
@@ -1203,7 +944,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.post("/v1/documents/evidence", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
@@ -1324,7 +1065,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   app.get<{ Params: { documentId: string } }>(
     "/v1/documents/evidence/:documentId/status",
     async (request, reply) => {
-      const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+      const authenticated = await requestAuth.authenticate(request, reply);
 
       if (!authenticated) {
         return;
@@ -1349,7 +1090,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   );
 
   app.post<{ Body: EvidenceSearchBody }>("/v1/evidence/search", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
@@ -1430,7 +1171,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       }
     };
 
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
@@ -1690,7 +1431,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   app.get<{ Params: { importBatchId: string } }>(
     "/v1/structured/imports/:importBatchId",
     async (request, reply) => {
-      const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+      const authenticated = await requestAuth.authenticate(request, reply);
 
       if (!authenticated) {
         return;
@@ -1726,7 +1467,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     }
   );
   app.get("/v1/structured/datasets", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
@@ -1735,7 +1476,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     return structuredDatasetRegistryResponse();
   });
   app.post("/v1/structured/query", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
@@ -1790,7 +1531,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.get("/labels", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
@@ -1805,7 +1546,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.get<{ Querystring: SkillListQuery }>("/skills", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
@@ -1825,7 +1566,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   app.get<{ Querystring: AuditListQuery }>("/audit", async (request, reply) => {
-    const authenticated = await authenticate(request, reply, authenticateOfficialAccessToken);
+    const authenticated = await requestAuth.authenticate(request, reply);
 
     if (!authenticated) {
       return;
