@@ -78,7 +78,8 @@ function importBatchRecord(status = "pending") {
       fileType: "csv",
       storageObjectKey: "org/org_1/documents/doc_1/original/data.csv",
       originalFileName: "data.csv",
-      documentLabels: [{ label: { key: "all_staff" } }]
+      documentLabels: [{ label: { key: "all_staff" } }],
+      processingRuns: []
     }
   };
 }
@@ -178,5 +179,28 @@ describe("Prisma structured import audit provenance", () => {
         })
       })
     );
+  });
+
+  it("creates a queued structured-import processing run only after a reservation exists", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+
+    await repository.enqueueReservedStructuredImport({
+      orgId: "org_1",
+      importBatchId: "imp_1"
+    });
+
+    expect(prisma.processingRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        orgId: "org_1",
+        documentId: "doc_1",
+        jobKey: "structured_import:imp_1",
+        status: "queued",
+        jobType: "structured_import"
+      })
+    });
   });
 });

@@ -115,7 +115,35 @@ describe("structured imports", () => {
     });
   }
 
-  it("applies valid CSV imports as active structured documents with canonical storage names", async () => {
+  it("accepts unrecognized headers as a queued import without inserting business rows", async () => {
+    const { app, documentRepository, structuredImportRepository } =
+      await buildStructuredImportTestServer();
+
+    const response = await postStructuredImport(app, {
+      idempotencyKey: "queued-invalid-header",
+      body: Buffer.from("unrecognized_header\nvalue\n", "utf8")
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      document: { status: "pending_processing" },
+      processing: { processingRunId: expect.any(String), status: "queued" },
+      importBatch: {
+        status: "pending",
+        sourceSheetSummary: [],
+        validationErrors: [],
+        validationErrorCount: 0,
+        validationErrorsTruncated: false,
+        totalRowCount: 0,
+        appliedRowCount: 0,
+        queryableRowCount: 0
+      }
+    });
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(0);
+  });
+
+  it("queues valid CSV imports with canonical storage names", async () => {
     const { app, documentRepository, structuredImportRepository } =
       await buildStructuredImportTestServer();
 
@@ -130,26 +158,27 @@ describe("structured imports", () => {
       document: {
         documentKind: "structured",
         fileType: "csv",
-        status: "active",
+        status: "pending_processing",
         originalFileName: "original-dishes.csv"
       },
       importBatch: {
         dataset: "dishes",
-        status: "applied",
+        status: "pending",
         startDate: "20260701",
         endDate: "20260705",
-        appliedRowCount: 1
+        appliedRowCount: 0,
+        totalRowCount: 0
       }
     });
     expect(response.json().document.storageObjectKey).toContain(
       "u4fdd_u5229_u5e97_dishes_20260701_20260705.csv"
     );
     expect(documentRepository.documents[0]).toMatchObject({
-      status: "active",
+      status: "pending_processing",
       documentType: "structured_dataset",
       originalFileName: "original-dishes.csv"
     });
-    expect(structuredImportRepository.queryableRowCount("dishes")).toBe(1);
+    expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
     expect(documentRepository.auditLogs).toEqual([
       expect.objectContaining({
         action: "structured_import.started",
@@ -164,25 +193,7 @@ describe("structured imports", () => {
           dataset: "dishes",
           startDate: "20260701",
           endDate: "20260705",
-          rowCount: 1,
-          sourceDocumentId: response.json().document.documentId
-        }
-      }),
-      expect.objectContaining({
-        action: "structured_import.applied",
-        actorEmployeeId: baoliManagerEmployee.id,
-        targetType: "import_batch",
-        targetId: response.json().importBatch.importBatchId,
-        result: "succeeded",
-        requestId: "req_http_1",
-        clientIp: "198.51.100.8",
-        clientSource: "http_api",
-        launcherVersion: null,
-        metadata: {
-          dataset: "dishes",
-          startDate: "20260701",
-          endDate: "20260705",
-          appliedRowCount: 1,
+          rowCount: 0,
           sourceDocumentId: response.json().document.documentId
         }
       })
@@ -241,7 +252,7 @@ describe("structured imports", () => {
     expect(documentRepository.documents).toHaveLength(0);
   });
 
-  it("finds a structured XLSX header after prefatory title rows", async () => {
+  it("defers XLSX header discovery until worker processing", async () => {
     const { app } = await buildStructuredImportTestServer();
 
     const response = await postStructuredImport(app, {
@@ -260,20 +271,14 @@ describe("structured imports", () => {
     expect(response.json()).toMatchObject({
       importBatch: {
         dataset: "dishes",
-        status: "applied",
-        appliedRowCount: 1,
-        sourceSheetSummary: [
-          {
-            name: "Data",
-            headerRowNumber: 3,
-            dataRowCount: 1
-          }
-        ]
+        status: "pending",
+        appliedRowCount: 0,
+        sourceSheetSummary: []
       }
     });
   });
 
-  it("skips explicit structured summary footer rows", async () => {
+  it("defers structured summary parsing until worker processing", async () => {
     const { app, structuredImportRepository } = await buildStructuredImportTestServer();
     const registry = getStructuredRegistry("business");
     const footer = ["合计", ...registry.fields.slice(1).map(() => "--")].join(",");
@@ -291,12 +296,12 @@ describe("structured imports", () => {
     expect(response.json()).toMatchObject({
       importBatch: {
         dataset: "business",
-        status: "applied",
-        appliedRowCount: 1,
-        totalRowCount: 1
+        status: "pending",
+        appliedRowCount: 0,
+        totalRowCount: 0
       }
     });
-    expect(structuredImportRepository.queryableRowCount("business")).toBe(1);
+    expect(structuredImportRepository.queryableRowCount("business")).toBe(0);
   });
 
   it("handles import idempotency and active/in-progress window conflicts", async () => {
@@ -340,7 +345,7 @@ describe("structured imports", () => {
     });
     expect(activeWindowResponse.statusCode).toBe(409);
     expect(activeWindowResponse.json()).toMatchObject({
-      error: { code: "ACTIVE_IMPORT_EXISTS" }
+      error: { code: "IMPORT_IN_PROGRESS" }
     });
     expect(inProgressWindowResponse.statusCode).toBe(409);
     expect(inProgressWindowResponse.json()).toMatchObject({
@@ -349,7 +354,7 @@ describe("structured imports", () => {
     expect(storagePutCalls()).toBe(1);
     expect(documentRepository.documents).toHaveLength(1);
     expect(structuredImportRepository.batches).toHaveLength(1);
-    expect(structuredImportRepository.rows).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(0);
     expect(
       documentRepository.auditLogs.filter(
         (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportStarted
@@ -359,7 +364,7 @@ describe("structured imports", () => {
       documentRepository.auditLogs.filter(
         (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportApplied
       )
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   it("reuses the reserved document and object key after a transient storage failure", async () => {
@@ -369,9 +374,9 @@ describe("structured imports", () => {
     const first = await postStructuredImport(app, { idempotencyKey: "storage-recovery" });
     expect(first.statusCode).toBe(500);
     expect(documentRepository.documents).toHaveLength(1);
-    expect(documentRepository.documents[0]?.status).toBe("processing_failed");
+    expect(documentRepository.documents[0]?.status).toBe("pending_processing");
     expect(structuredImportRepository.batches).toHaveLength(1);
-    expect(structuredImportRepository.batches[0]?.status).toBe("failed");
+    expect(structuredImportRepository.batches[0]?.status).toBe("pending");
     expect(structuredImportRepository.rows).toHaveLength(0);
 
     const replay = await postStructuredImport(app, { idempotencyKey: "storage-recovery" });
@@ -383,7 +388,7 @@ describe("structured imports", () => {
     expect(storagePutCalls()).toBe(2);
     expect(documentRepository.documents).toHaveLength(1);
     expect(structuredImportRepository.batches).toHaveLength(1);
-    expect(structuredImportRepository.rows).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(0);
     expect(
       documentRepository.auditLogs.filter(
         (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportStarted
@@ -393,15 +398,15 @@ describe("structured imports", () => {
       documentRepository.auditLogs.filter(
         (auditLog) => auditLog.action === AUDIT_ACTIONS.structuredImportApplied
       )
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
-  it("keeps the reserved object referenced and deterministically resumes after DB apply failure", async () => {
+  it("recovers a stored object when queue publication fails before a processing run exists", async () => {
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
       await buildStructuredImportTestServer();
-    structuredImportRepository.failNextApply("simulated transactional audit failure");
+    structuredImportRepository.failNextEnqueue("simulated queue publication failure");
 
-    const first = await postStructuredImport(app, { idempotencyKey: "apply-recovery" });
+    const first = await postStructuredImport(app, { idempotencyKey: "queue-recovery" });
     expect(first.statusCode).toBe(500);
     expect(documentRepository.documents).toHaveLength(1);
     expect(documentRepository.documents[0]?.status).toBe("pending_processing");
@@ -409,17 +414,17 @@ describe("structured imports", () => {
     expect(structuredImportRepository.rows).toHaveLength(0);
     expect(await storedObjectCount(storageRoot)).toBe(1);
 
-    const replay = await postStructuredImport(app, { idempotencyKey: "apply-recovery" });
+    const replay = await postStructuredImport(app, { idempotencyKey: "queue-recovery" });
     expect(replay.statusCode).toBe(202);
     expect(replay.json().document.documentId).toBe(documentRepository.documents[0]?.id);
     expect(storagePutCalls()).toBe(2);
     expect(await storedObjectCount(storageRoot)).toBe(1);
     expect(documentRepository.documents).toHaveLength(1);
     expect(structuredImportRepository.batches).toHaveLength(1);
-    expect(structuredImportRepository.rows).toHaveLength(1);
+    expect(structuredImportRepository.rows).toHaveLength(0);
   });
 
-  it("rejects invalid files atomically and fails hidden or explanation workbook sheets", async () => {
+  it("accepts worker-validated header and worksheet errors without exposing rows", async () => {
     const { app, structuredImportRepository } = await buildStructuredImportTestServer();
 
     const invalidCsvResponse = await postStructuredImport(app, {
@@ -428,33 +433,32 @@ describe("structured imports", () => {
     });
     const hiddenSheetResponse = await postStructuredImport(app, {
       idempotencyKey: "hidden-sheet",
+      startDate: "20260706",
+      endDate: "20260710",
       fileName: "hidden.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       body: await structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
     });
     const explanationSheetResponse = await postStructuredImport(app, {
       idempotencyKey: "explanation-sheet",
+      startDate: "20260711",
+      endDate: "20260715",
       fileName: "explanation.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       body: await structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
     });
 
-    expect(invalidCsvResponse.statusCode).toBe(400);
-    expect(invalidCsvResponse.json()).toMatchObject({
-      error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
-    });
-    expect(hiddenSheetResponse.statusCode).toBe(400);
-    expect(hiddenSheetResponse.json()).toMatchObject({
-      error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
-    });
-    expect(explanationSheetResponse.statusCode).toBe(400);
-    expect(explanationSheetResponse.json()).toMatchObject({
-      error: { code: "STRUCTURED_IMPORT_VALIDATION_FAILED" }
-    });
+    for (const response of [invalidCsvResponse, hiddenSheetResponse, explanationSheetResponse]) {
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toMatchObject({
+        processing: { status: "queued" },
+        importBatch: { status: "pending", validationErrors: [], totalRowCount: 0 }
+      });
+    }
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
   });
 
-  it("does not publish malformed or over-limit CSV/XLSX imports to storage or durable repositories", async () => {
+  it("keeps costly row and workbook limits out of the API acceptance path", async () => {
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
       await buildStructuredImportTestServer(undefined, {
         runtimeEnv: {
@@ -475,26 +479,36 @@ describe("structured imports", () => {
       }),
       postStructuredImport(app, {
         idempotencyKey: "atomic-over-limit-csv",
+        startDate: "20260706",
+        endDate: "20260710",
         body: overLimitCsv
       }),
       postStructuredImport(app, {
         idempotencyKey: "atomic-long-cell-csv",
+        startDate: "20260711",
+        endDate: "20260715",
         body: Buffer.from(validStructuredCsv("dishes", { product_name: "x".repeat(101) }), "utf8")
       }),
       postStructuredImport(app, {
         idempotencyKey: "atomic-malformed-xlsx",
+        startDate: "20260716",
+        endDate: "20260720",
         fileName: "malformed.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         body: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00])
       }),
       postStructuredImport(app, {
         idempotencyKey: "atomic-over-limit-xlsx",
+        startDate: "20260721",
+        endDate: "20260725",
         fileName: "over-limit.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         body: await structuredWorkbook({ dataset: "dishes", rowCount: 2 })
       }),
       postStructuredImport(app, {
         idempotencyKey: "atomic-unevaluated-formula-xlsx",
+        startDate: "20260726",
+        endDate: "20260730",
         fileName: "unevaluated-formula.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         body: await structuredWorkbook({
@@ -505,23 +519,22 @@ describe("structured imports", () => {
     ]);
 
     for (const response of responses) {
-      expect(response.statusCode).toBe(400);
+      expect(response.statusCode).toBe(202);
       expect(response.json()).toMatchObject({
-        error: {
-          code: "STRUCTURED_IMPORT_VALIDATION_FAILED",
-          message: "Structured import validation failed."
-        }
+        document: { status: "pending_processing" },
+        processing: { status: "queued" },
+        importBatch: { status: "pending", totalRowCount: 0, appliedRowCount: 0 }
       });
     }
     expect(responses[3]?.payload).not.toContain("Malformed XLSX ZIP archive");
-    expect(storagePutCalls()).toBe(0);
-    expect(documentRepository.documents).toHaveLength(0);
-    expect(documentRepository.auditLogs).toHaveLength(0);
-    expect(structuredImportRepository.batches).toHaveLength(0);
+    expect(storagePutCalls()).toBe(6);
+    expect(documentRepository.documents).toHaveLength(6);
+    expect(documentRepository.auditLogs).toHaveLength(6);
+    expect(structuredImportRepository.batches).toHaveLength(6);
     expect(structuredImportRepository.rows).toHaveLength(0);
   });
 
-  it("retains rows but makes them non-queryable when the source document is archived", async () => {
+  it("keeps queued imports non-queryable when the source document is archived", async () => {
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
       await buildStructuredImportTestServer();
     const importResponse = await postStructuredImport(app, {
@@ -550,12 +563,12 @@ describe("structured imports", () => {
     const replayResponse = await postStructuredImport(app, { idempotencyKey: "archive-rows" });
 
     expect(archivedDocument?.status).toBe("archived");
-    expect(structuredImportRepository.storedRowCount("dishes")).toBe(1);
+    expect(structuredImportRepository.storedRowCount("dishes")).toBe(0);
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
     expect(statusResponse.json()).toMatchObject({
       importBatch: {
         status: "archived",
-        totalRowCount: 1,
+        totalRowCount: 0,
         queryableRowCount: 0
       }
     });

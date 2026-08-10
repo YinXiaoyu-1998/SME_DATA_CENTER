@@ -975,3 +975,18 @@ benchmark:xlsx-parse` (old ExcelJS vs streaming extraction vs full pipeline with
   one-time setup link, finish real browser login and MCP calls on macOS, retain Windows as an
   explicit external acceptance gate, and merge the synchronized live-status documentation/skill
   PRs.
+
+## 2026-08-10 - structured-import async Task 3 API acceptance
+
+- Branch/worktree: `codex/structured-import-async-task3` at
+  `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER-worktrees/structured-import-async-task3`,
+  based on `60b085b`.
+- API structured uploads now use `preflightStructuredFile`, reserve pending document/import state,
+  write and stat-verify the object, then create a queued `structured_import` ProcessingRun in one
+  transaction. The response and status endpoint expose document, processing, and importBatch
+  states; parsing and row writes are absent from the request path.
+- Same-key queue-publication recovery and terminal failed/rejected date-window reuse are covered
+  in repository/fixture behavior. Task 1/2 changes must be integrated before a real database
+  async worker loop can be exercised together.
+- Verified: `npm run lint`; focused API/query/worker Vitest run (53 passing); `npm run typecheck`;
+  `npm run format:check`.

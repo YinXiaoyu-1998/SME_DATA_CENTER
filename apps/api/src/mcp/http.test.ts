@@ -223,13 +223,17 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     endDate: "20260731",
     sourceSheetSummary: [],
     validationErrors: [],
+    validationErrorCount: 0,
+    validationErrorsTruncated: false,
     totalRowCount: 2,
     appliedRowCount: 2,
     queryableRowCount: 2,
     sourceDocumentStatus: "active",
     sourceDocumentFileType: "csv",
     storageObjectKey: "org/default-org/documents/doc_structured/original/data.csv",
-    originalFileName: "data.csv"
+    originalFileName: "data.csv",
+    processingRunId: "run_status",
+    processingStatus: "succeeded"
   };
 
   return {
@@ -238,6 +242,9 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     },
     async applyReservedStructuredImport() {
       throw new Error("applyReservedStructuredImport should not be called by this test.");
+    },
+    async enqueueReservedStructuredImport() {
+      throw new Error("enqueueReservedStructuredImport should not be called by this test.");
     },
     async markStructuredImportStorageFailure() {
       throw new Error("markStructuredImportStorageFailure should not be called by this test.");
