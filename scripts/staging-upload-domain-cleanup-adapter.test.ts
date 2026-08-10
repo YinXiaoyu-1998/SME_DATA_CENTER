@@ -161,5 +161,13 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         QDRANT_URL: "http://localhost:6333"
       })
     ).toThrow("QDRANT_URL");
+    for (const qdrantUrl of ["http://[::1]:6333", "http://[0:0:0:0:0:0:0:1]:6333"]) {
+      expect(() =>
+        createStagingUploadDomainCleanupAdapter({
+          DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+          QDRANT_URL: qdrantUrl
+        })
+      ).toThrow("QDRANT_URL");
+    }
   });
 });

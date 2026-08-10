@@ -189,9 +189,10 @@ function createRuntimeProviders(env: NodeJS.ProcessEnv): StagingUploadDomainClea
   } catch {
     throw new Error("Staging cleanup requires an absolute HTTP(S) QDRANT_URL.");
   }
+  const qdrantHostname = qdrantTarget.hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (
     !["http:", "https:"].includes(qdrantTarget.protocol) ||
-    ["localhost", "127.0.0.1", "::1"].includes(qdrantTarget.hostname)
+    ["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"].includes(qdrantHostname)
   ) {
     throw new Error("Staging cleanup refuses a local or non-HTTP(S) QDRANT_URL.");
   }
