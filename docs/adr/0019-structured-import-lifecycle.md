@@ -6,7 +6,7 @@ CSV/XLSX 导入会把源文件中的菜品/营业数据写入 MySQL 查询表。
 
 源 `Document` 归档后，相关结构化 rows 可以保留在 MySQL 中用于审计、追溯、故障排查和未来恢复，但必须立即不可查询。结构化查询资格同时要求 `ImportBatch.status = applied`、source `Document.status = active`、当前员工有 source Document 标签权限且账号有效。明细、count、sum/avg/min/max、groupBy 和 pagination 都必须在这个权限/状态 scope 后执行。
 
-Phase 3 baseline 不提供普通生产 hard delete/purge，也不提供自动 replace/overwrite/append/reuse。错误 active import 的恢复路径是显式两步：archive old source document/import batch，然后重新上传同窗口新文件。Failed/rejected import 不永久占用 active window；in-progress import 由 worker lease/retry 恢复或失败。
+Phase 3 baseline 不提供普通生产 hard delete/purge，也不提供自动 replace/overwrite/append/reuse。错误 active import 的恢复路径是显式两步：archive old source document/import batch，然后重新上传同窗口新文件。`202` 只表示已排队，不表示完成：客户端轮询可见的 `Document`、`ProcessingRun`、`ImportBatch` 视图，只有 `applied` 可报告成功；`rejected` 或 `failed` 是终态非成功，并给出安全校验/纠正建议。10 分钟仍未终态时报告仍在处理并保留 IDs 供以后查询，不得将其报告为失败或用重传替代轮询。Failed/rejected import 不永久占用 active window；in-progress import 由 worker lease/retry 恢复或失败。
 
 **Considered Options**: 允许同窗口自动覆盖；允许 append/delta import；将 rows 物理删除作为归档语义；提供普通用户 hard delete/purge；让同窗口相同文件自动复用；将 replace 做成 Phase 3 baseline 的一步操作。
 

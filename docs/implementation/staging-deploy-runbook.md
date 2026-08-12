@@ -229,6 +229,58 @@ host is rebuilt, follow the original provisioning/readiness records, recreate
 the root-only runtime env, mirror `qdrant:v1.15.4`, run the synthetic seed, and
 restore nginx/certbot before using the repeatable release command.
 
+## Structured-import async one-time cutover
+
+This is a single direct staging switch, not a parallel or canary upload path. Merge the complete
+backward-compatible migration and async-import PR to `main`, then let the canonical GitHub Actions
+staging workflow deploy that exact `main` commit. Do not deploy a PR branch and do not use a local
+release command except for an explicitly approved recovery or workflow diagnosis.
+
+After the deployed API and worker have passed their normal health/readiness checks, briefly stop
+the API and worker so no upload, retry, or indexing work races the cleanup. Keep Qdrant and RDS
+available to the operator. Restore the API and worker immediately after the one-time cleanup, then
+rerun health/readiness checks before accepting new uploads.
+
+Use the explicit operator boundary, `npm run staging:cleanup-upload-domain`, only from the
+quiesced staging release-operations environment. The support module alone performs no cleanup: the
+CLI constructs the repo-contained staging adapter from the live runtime environment. That adapter
+enumerates the exact database inventory, exact OSS keys, and exact Qdrant collection/point IDs, then
+performs only the injected scoped DB/OSS/Qdrant operations. It fails closed when `DATABASE_URL` or
+`QDRANT_URL` is absent, malformed, or local. The CLI defaults to dry-run and refuses any target
+other than `--target staging`; execution additionally requires `--execute --confirm
+delete-upload-domain`. Review the dry-run's non-sensitive counts and IDs before the explicit
+execution invocation:
+
+```bash
+npm run staging:cleanup-upload-domain -- --target staging
+
+npm run staging:cleanup-upload-domain -- \
+  --execute --target staging --confirm delete-upload-domain
+```
+
+The CLI logs only the plan's safe counts/IDs and post-clean counts; it deliberately excludes DSNs,
+credentials, file contents, and OSS object keys. Do not reuse `npm run purge-data`: it remains
+local-only and must continue refusing non-local database hosts.
+
+Delete only the enumerated upload domain, never a key prefix or a whole collection:
+
+- each `Document` and its `DocumentLabel, ProcessingRun, DocumentChunk, DocumentIndex` dependents;
+- each related `ImportBatch, ImportWindowClaim, DishRow, and BusinessRow` record;
+- upload audit events whose target/action belongs to the exact document/import identifiers;
+- the exact OSS object keys recorded by those `Document` rows; and
+- the exact Qdrant collection/point identifiers recorded by those `DocumentChunk` rows.
+
+Post-clean verification must report zero remaining upload-domain documents, document labels,
+processing runs, chunks, indexes, import batches, import-window claims, dish rows, business rows,
+related upload audit events, enumerated OSS objects, and enumerated Qdrant points. It must preserve
+Organization, Employee, login identity and authorization records, Label, SkillEntry,
+RetrievalConfig, and auth audit records.
+
+Complete `npm run test:official-manual` only after services are restored. The official acceptance
+must use a fresh synthetic account and show a valid table reaching `applied`, an invalid table
+reaching `rejected`, an evidence text upload reaching `ready`, and hard deletion of all acceptance
+account/test data afterward.
+
 ## Manual rollback
 
 The release command records the last API/worker/release-ops image references
@@ -240,7 +292,8 @@ npm run deploy:staging:rollback
 ```
 
 For an older known tag rather than the immediately previous release, use the
-`--tag ... --skip-build --skip-migrate` form above. A rollback never reverses a
-forward-only Prisma migration.
+`--tag ... --skip-build --skip-migrate` form above. Image rollback does not reverse Prisma
+migrations: migrations are forward-only, so the prior image must remain compatible with every
+already-applied migration.
 
 Do not delete the Qdrant volume or RDS data during a routine image rollback.

@@ -13,6 +13,7 @@ import {
   assertStagingRuntimeDatabaseTarget,
   createStructuredWindow,
   deleteStorageObjects,
+  pollStructuredImportStatus,
   rewriteKnownValuesFixture,
   type CleanupCounts,
   type StructuredWindow
@@ -53,7 +54,12 @@ interface EvidenceSearchResult extends ToolTextResult {
 }
 
 interface StructuredUploadResult extends ToolTextResult {
-  importBatch: { importBatchId: string; status: string; appliedRowCount?: number };
+  importBatch: {
+    importBatchId: string;
+    status: string;
+    appliedRowCount?: number;
+    validationErrorCount?: number;
+  };
   document: { documentId: string };
 }
 
@@ -211,9 +217,21 @@ async function runAcceptance(
         labelKeys: [DEFAULT_LABEL_KEY]
       }
     );
-    if (structuredUpload.importBatch.status !== "applied") {
+    if (structuredUpload.importBatch.status !== "pending") {
       throw new Error(
-        `Expected structured import applied; got ${structuredUpload.importBatch.status}.`
+        `Expected structured import to be accepted as pending; got ${structuredUpload.importBatch.status}.`
+      );
+    }
+    const structuredCompletion = await pollStructuredImportStatus({
+      importBatchId: structuredUpload.importBatch.importBatchId,
+      getStatus: () =>
+        callJson<StructuredUploadResult>(client, "get_import_status", {
+          importBatchId: structuredUpload.importBatch.importBatchId
+        })
+    });
+    if (structuredCompletion.importBatch.status !== "applied") {
+      throw new Error(
+        `Expected structured import to apply after polling; got ${structuredCompletion.importBatch.status}.`
       );
     }
 
@@ -257,22 +275,43 @@ async function runAcceptance(
     }
 
     const invalidFile = await writeRunInvalidStructuredFixture(run, structuredWindow);
-    const invalidImport = await callJson<ToolTextResult>(client, "upload_structured_dataset", {
-      file: {
-        name: path.basename(invalidFile),
-        mediaType: "text/csv",
-        encoding: "base64",
-        contentBase64: await fileBase64(invalidFile)
-      },
-      dataset: "dishes",
-      enterpriseName: run.enterpriseName,
-      startDate: structuredWindow.invalidCompact,
-      endDate: structuredWindow.invalidCompact,
-      idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`,
-      labelKeys: [DEFAULT_LABEL_KEY]
+    const invalidImport = await callJson<StructuredUploadResult>(
+      client,
+      "upload_structured_dataset",
+      {
+        file: {
+          name: path.basename(invalidFile),
+          mediaType: "text/csv",
+          encoding: "base64",
+          contentBase64: await fileBase64(invalidFile)
+        },
+        dataset: "dishes",
+        enterpriseName: run.enterpriseName,
+        startDate: structuredWindow.invalidCompact,
+        endDate: structuredWindow.invalidCompact,
+        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`,
+        labelKeys: [DEFAULT_LABEL_KEY]
+      }
+    );
+    if (invalidImport.importBatch.status !== "pending") {
+      throw new Error(
+        `Expected invalid structured import to be accepted as pending; got ${invalidImport.importBatch.status}.`
+      );
+    }
+    const invalidCompletion = await pollStructuredImportStatus({
+      importBatchId: invalidImport.importBatch.importBatchId,
+      getStatus: () =>
+        callJson<StructuredUploadResult>(client, "get_import_status", {
+          importBatchId: invalidImport.importBatch.importBatchId
+        })
     });
-    if (!invalidImport["isError"] && !JSON.stringify(invalidImport).includes("validation")) {
-      throw new Error("Invalid structured import did not return a validation-style failure.");
+    if (
+      invalidCompletion.importBatch.status !== "rejected" ||
+      (invalidCompletion.importBatch.validationErrorCount ?? 0) === 0
+    ) {
+      throw new Error(
+        "Expected invalid structured import to be rejected after polling with safe validation errors."
+      );
     }
 
     return {

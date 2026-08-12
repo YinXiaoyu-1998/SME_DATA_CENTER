@@ -271,7 +271,7 @@ function structuredImportResponse(input: {
     fileType: "xlsx" | "csv";
     storageObjectKey: string;
     originalFileName: string;
-    status: "active" | "archived";
+    status: StructuredImportBatchRecord["sourceDocumentStatus"];
   };
 }) {
   return {
@@ -284,8 +284,8 @@ function structuredImportResponse(input: {
       originalFileName: input.document.originalFileName
     },
     processing: {
-      processingRunId: null,
-      status: "succeeded"
+      processingRunId: input.importBatch.processingRunId,
+      status: input.importBatch.processingStatus
     },
     importBatch: importBatchResponse(input.importBatch)
   };
@@ -299,7 +299,7 @@ export function responseForReservedImport(importBatch: StructuredImportBatchReco
       fileType: importBatch.sourceDocumentFileType,
       storageObjectKey: importBatch.storageObjectKey,
       originalFileName: importBatch.originalFileName,
-      status: importBatch.sourceDocumentStatus === "archived" ? "archived" : "active"
+      status: importBatch.sourceDocumentStatus
     }
   });
 }
@@ -318,6 +318,8 @@ export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
     endDate: importBatch.endDate,
     sourceSheetSummary: importBatch.sourceSheetSummary,
     validationErrors: importBatch.validationErrors,
+    validationErrorCount: importBatch.validationErrorCount,
+    validationErrorsTruncated: importBatch.validationErrorsTruncated,
     totalRowCount: importBatch.totalRowCount,
     appliedRowCount: importBatch.appliedRowCount,
     queryableRowCount: importBatch.queryableRowCount

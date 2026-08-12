@@ -150,12 +150,16 @@ export function createInMemoryStructuredImportRepository(
     appliedRowCount: number;
     sourceSheetSummary: unknown[];
     validationErrors: unknown[];
+    validationErrorCount: number;
+    processingRunId: string | null;
+    processingStatus: string | null;
   };
 
   const batches: StoredBatch[] = [];
   const rows: StoredRow[] = [];
   const inProgressWindows = new Set<string>();
   let nextApplyFailure: Error | null = null;
+  let nextEnqueueFailure: Error | null = null;
 
   function windowKey(input: {
     dataset: StructuredDatasetName;
@@ -170,6 +174,9 @@ export function createInMemoryStructuredImportRepository(
     rows,
     failNextApply(message = "simulated apply failure") {
       nextApplyFailure = new Error(message);
+    },
+    failNextEnqueue(message = "simulated enqueue failure") {
+      nextEnqueueFailure = new Error(message);
     },
     markWindowInProgress(input: {
       dataset: StructuredDatasetName;
@@ -207,7 +214,10 @@ export function createInMemoryStructuredImportRepository(
         sourceDocumentStatus: sourceDocument?.status ?? "processing_failed",
         sourceDocumentFileType: sourceDocument?.fileType ?? "csv",
         storageObjectKey: sourceDocument?.storageObjectKey ?? "",
-        originalFileName: sourceDocument?.originalFileName ?? "file"
+        originalFileName: sourceDocument?.originalFileName ?? "file",
+        validationErrorsTruncated: batch.validationErrorCount > batch.validationErrors.length,
+        processingRunId: batch.processingRunId,
+        processingStatus: batch.processingStatus
       };
     },
     async reserveStructuredImport(input: {
@@ -246,7 +256,7 @@ export function createInMemoryStructuredImportRepository(
         }
 
         return {
-          state: existingIdempotencyBatch.status === "applied" ? "existing" : "resumable",
+          state: existingIdempotencyBatch.processingRunId ? "existing" : "resumable",
           importBatch: await this.findImportBatch(input.orgId, existingIdempotencyBatch.id)
         };
       }
@@ -263,13 +273,21 @@ export function createInMemoryStructuredImportRepository(
           batch.dataset === input.dataset &&
           batch.startDate === input.startDate &&
           batch.endDate === input.endDate &&
-          batch.status === "applied"
+          !["rejected", "failed"].includes(batch.status)
       );
 
       if (existingWindowBatch) {
-        throw Object.assign(new Error("ACTIVE_IMPORT_EXISTS"), {
-          code: "ACTIVE_IMPORT_EXISTS"
-        });
+        throw Object.assign(
+          new Error(
+            existingWindowBatch.status === "applied" ? "ACTIVE_IMPORT_EXISTS" : "IMPORT_IN_PROGRESS"
+          ),
+          {
+            code:
+              existingWindowBatch.status === "applied"
+                ? "ACTIVE_IMPORT_EXISTS"
+                : "IMPORT_IN_PROGRESS"
+          }
+        );
       }
 
       const batch: StoredBatch = {
@@ -282,17 +300,20 @@ export function createInMemoryStructuredImportRepository(
         requestFingerprint: input.requestFingerprint,
         status: "pending",
         sourceDocumentId: input.documentId,
-        totalRowCount: input.totalRowCount,
+        totalRowCount: 0,
         appliedRowCount: 0,
-        sourceSheetSummary: input.sourceSheetSummary,
-        validationErrors: []
+        sourceSheetSummary: [],
+        validationErrors: [],
+        validationErrorCount: 0,
+        processingRunId: null,
+        processingStatus: null
       };
       batches.push(batch);
       documents.push({
         id: input.documentId,
         orgId: input.orgId,
         uploaderId: input.actorEmployeeId,
-        status: "pending_processing",
+        status: "uploading",
         title: input.document.title,
         documentType: "structured_dataset",
         documentKind: "structured",
@@ -337,6 +358,25 @@ export function createInMemoryStructuredImportRepository(
         state: "created",
         importBatch: await this.findImportBatch(input.orgId, batch.id)
       };
+    },
+    async enqueueReservedStructuredImport(input: { orgId: string; importBatchId: string }) {
+      const batch = batches.find(
+        (candidate) => candidate.id === input.importBatchId && candidate.orgId === input.orgId
+      );
+      if (!batch) throw new Error("Reserved import batch was not found.");
+      if (batch.processingRunId) return this.findImportBatch(input.orgId, batch.id);
+      if (nextEnqueueFailure) {
+        const failure = nextEnqueueFailure;
+        nextEnqueueFailure = null;
+        throw failure;
+      }
+      batch.processingRunId = `run_${batch.id}`;
+      batch.processingStatus = "queued";
+      const document = documents.find((candidate) => candidate.id === batch.sourceDocumentId);
+      if (!document) throw new Error("Reserved source document was not found.");
+      document.status = "pending_processing";
+      document.processingRunStatus = "queued";
+      return this.findImportBatch(input.orgId, batch.id);
     },
     async applyReservedStructuredImport(input: {
       orgId: string;

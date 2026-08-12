@@ -51,6 +51,8 @@ export interface StructuredImportBatchRecord {
   endDate: string;
   sourceSheetSummary: unknown[];
   validationErrors: unknown[];
+  validationErrorCount: number;
+  validationErrorsTruncated: boolean;
   totalRowCount: number;
   appliedRowCount: number;
   queryableRowCount: number;
@@ -58,6 +60,8 @@ export interface StructuredImportBatchRecord {
   sourceDocumentFileType: Extract<Phase3FileType, "xlsx" | "csv">;
   storageObjectKey: string;
   originalFileName: string;
+  processingRunId: string | null;
+  processingStatus: string | null;
 }
 
 export interface ReserveStructuredImportInput {
@@ -109,6 +113,10 @@ export interface StructuredImportRepository {
   applyReservedStructuredImport(
     input: ApplyReservedStructuredImportInput
   ): Promise<StructuredImportBatchRecord>;
+  enqueueReservedStructuredImport(input: {
+    orgId: string;
+    importBatchId: string;
+  }): Promise<StructuredImportBatchRecord>;
   markStructuredImportStorageFailure(
     input: MarkStructuredImportStorageFailureInput
   ): Promise<StructuredImportBatchRecord>;
@@ -147,6 +155,12 @@ const importBatchInclude = {
             }
           }
         }
+      },
+      processingRuns: {
+        where: { jobType: ProcessingJobType.structured_import },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, status: true }
       }
     }
   }
@@ -273,7 +287,9 @@ export function createPrismaStructuredImportRepository(options: {
 
       return {
         state:
-          existingIdempotencyBatch.status === ImportBatchStatus.applied ? "existing" : "resumable",
+          existingIdempotencyBatch.sourceDocument.processingRuns.length > 0
+            ? "existing"
+            : "resumable",
         importBatch: toImportBatchRecord(existingIdempotencyBatch)
       };
     }
@@ -297,6 +313,14 @@ export function createPrismaStructuredImportRepository(options: {
     if (existingClaim?.importBatch) {
       if (existingClaim.importBatch.status === ImportBatchStatus.applied) {
         throw new StructuredImportError("ACTIVE_IMPORT_EXISTS");
+      }
+
+      if (
+        existingClaim.importBatch.status === ImportBatchStatus.rejected ||
+        existingClaim.importBatch.status === ImportBatchStatus.failed
+      ) {
+        await prisma.importWindowClaim.delete({ where: { id: existingClaim.id } });
+        return null;
       }
 
       throw new StructuredImportError("IMPORT_IN_PROGRESS");
@@ -332,7 +356,7 @@ export function createPrismaStructuredImportRepository(options: {
                 documentType: DocumentType.structured_dataset,
                 documentKind: DocumentKind.structured,
                 fileType: input.fileType as FileType,
-                status: DocumentStatus.pending_processing,
+                status: DocumentStatus.uploading,
                 storageObjectKey: input.document.storageObjectKey,
                 originalFileName: input.document.originalFileName,
                 contentType: input.document.contentType,
@@ -364,9 +388,10 @@ export function createPrismaStructuredImportRepository(options: {
                 idempotencyKey: input.idempotencyKey,
                 requestFingerprint: input.requestFingerprint,
                 status: ImportBatchStatus.pending,
-                sourceSheetSummary: input.sourceSheetSummary as Prisma.InputJsonValue,
+                sourceSheetSummary: [],
                 validationErrors: [],
-                totalRowCount: input.totalRowCount,
+                validationErrorCount: 0,
+                totalRowCount: 0,
                 appliedRowCount: 0
               }
             });
@@ -596,6 +621,57 @@ export function createPrismaStructuredImportRepository(options: {
         });
       }
     },
+    async enqueueReservedStructuredImport(input) {
+      try {
+        const batch = await prisma.$transaction(
+          async (tx) => {
+            const existing = await tx.importBatch.findFirst({
+              where: { id: input.importBatchId, orgId: input.orgId },
+              include: importBatchInclude
+            });
+
+            if (!existing) {
+              throw new Error("Reserved import batch was not found.");
+            }
+
+            if (existing.sourceDocument.processingRuns.length > 0) {
+              return existing;
+            }
+
+            await tx.document.update({
+              where: { id: existing.sourceDocumentId },
+              data: { status: DocumentStatus.pending_processing }
+            });
+            await tx.processingRun.create({
+              data: {
+                orgId: input.orgId,
+                documentId: existing.sourceDocumentId,
+                jobKey: `structured_import:${existing.id}`,
+                status: ProcessingRunStatus.queued,
+                jobType: ProcessingJobType.structured_import
+              }
+            });
+            return tx.importBatch.findUniqueOrThrow({
+              where: { id: existing.id },
+              include: importBatchInclude
+            });
+          },
+          { timeout: options.transactionTimeoutMs }
+        );
+        return toImportBatchRecord(batch);
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          const authoritative = await prisma.importBatch.findFirst({
+            where: { id: input.importBatchId, orgId: input.orgId },
+            include: importBatchInclude
+          });
+          if (authoritative?.sourceDocument.processingRuns.length) {
+            return toImportBatchRecord(authoritative);
+          }
+        }
+        throw error;
+      }
+    },
     async markStructuredImportStorageFailure(input) {
       const batch = await prisma.$transaction(
         async (tx) => {
@@ -661,6 +737,8 @@ function toImportBatchRecord(
   }>
 ): StructuredImportBatchRecord {
   const archived = batch.sourceDocument.status === DocumentStatus.archived;
+  const processingRun = batch.sourceDocument.processingRuns[0];
+  const validationErrors = arrayJson(batch.validationErrors);
 
   return {
     id: batch.id,
@@ -674,7 +752,9 @@ function toImportBatchRecord(
     startDate: formatDateWindowDate(batch.startDate),
     endDate: formatDateWindowDate(batch.endDate),
     sourceSheetSummary: arrayJson(batch.sourceSheetSummary),
-    validationErrors: arrayJson(batch.validationErrors),
+    validationErrors,
+    validationErrorCount: batch.validationErrorCount,
+    validationErrorsTruncated: batch.validationErrorCount > validationErrors.length,
     totalRowCount: batch.totalRowCount,
     appliedRowCount: batch.appliedRowCount,
     queryableRowCount: archived ? 0 : batch.appliedRowCount,
@@ -684,7 +764,9 @@ function toImportBatchRecord(
       "xlsx" | "csv"
     >,
     storageObjectKey: batch.sourceDocument.storageObjectKey,
-    originalFileName: batch.sourceDocument.originalFileName ?? "file"
+    originalFileName: batch.sourceDocument.originalFileName ?? "file",
+    processingRunId: processingRun?.id ?? null,
+    processingStatus: processingRun?.status ?? null
   };
 }
 

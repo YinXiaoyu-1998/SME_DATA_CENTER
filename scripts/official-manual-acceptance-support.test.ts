@@ -4,6 +4,7 @@ import {
   assertStagingRuntimeDatabaseTarget,
   createStructuredWindow,
   deleteStorageObjects,
+  pollStructuredImportStatus,
   rewriteKnownValuesFixture
 } from "./official-manual-acceptance-support.js";
 import {
@@ -79,6 +80,51 @@ describe("official manual acceptance structured windows", () => {
     expect(rewritten).toContain(window.dates[2]!);
     expect(rewritten).not.toContain("2030-01");
     expect(rewritten).not.toContain("2026-07");
+  });
+});
+
+describe("official manual acceptance structured import polling", () => {
+  it("uses the documented polling cadence until the import is applied", async () => {
+    const delays: number[] = [];
+    const statuses = ["pending", "validating", "applied"];
+
+    const result = await pollStructuredImportStatus({
+      importBatchId: "imp_manual",
+      getStatus: async () => ({
+        importBatch: {
+          importBatchId: "imp_manual",
+          status: statuses.shift() ?? "applied"
+        }
+      }),
+      sleep: async (delayMs) => {
+        delays.push(delayMs);
+      }
+    });
+
+    expect(result.importBatch.status).toBe("applied");
+    expect(delays).toEqual([2_000, 5_000, 10_000]);
+  });
+
+  it("stops after ten minutes and tells the employee the import is still processing", async () => {
+    let now = 0;
+    const delays: number[] = [];
+
+    await expect(
+      pollStructuredImportStatus({
+        importBatchId: "imp_stuck",
+        getStatus: async () => ({
+          importBatch: { importBatchId: "imp_stuck", status: "pending" }
+        }),
+        now: () => now,
+        sleep: async (delayMs) => {
+          delays.push(delayMs);
+          now += delayMs;
+        }
+      })
+    ).rejects.toThrow("still processing after 10 minutes");
+
+    expect(delays.slice(0, 4)).toEqual([2_000, 5_000, 10_000, 15_000]);
+    expect(delays.reduce((total, delayMs) => total + delayMs, 0)).toBe(600_000);
   });
 });
 

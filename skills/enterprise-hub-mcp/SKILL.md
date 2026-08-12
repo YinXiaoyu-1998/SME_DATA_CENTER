@@ -81,6 +81,26 @@ payload bytes; inline `file.encoding:"base64"` uploads remain subject to host to
 (OpenAI Codex in practice caps a single model-emitted argument at about 1 MiB) — see Large
 Structured Uploads.
 
+## Upload Completion And Status Polling
+
+Treat every text/evidence or structured-table upload response with HTTP `202` as accepted for
+background processing, not as a completed upload. Keep the returned `documentId`; for a structured
+upload also keep `importBatchId`. Poll `get_evidence_document_status` or `get_import_status` after
+**2 seconds, then 5 seconds, then 10 seconds, then every 15 seconds**, for at most **10 minutes**.
+
+- Tell the employee an upload succeeded only after its terminal success state: evidence is
+  `active/ready`; a structured import is `importBatch.status=applied` (with the returned document
+  and processing views complete). Never call a queued/pending response successful.
+- On terminal `rejected` or `failed`, summarize only safe tool-returned errors and give correction
+  advice (for example fix headers, values, date window, labels, or file format). Never expose
+  internal exceptions, stacks, credentials, or infrastructure details.
+- At 10 minutes with no terminal state, report **still processing**, include the Document and
+  ImportBatch IDs when present, and say the employee can check later with the corresponding status
+  tool. This is not a failure.
+- Do not re-upload instead of polling. Upload retries must follow idempotency rules: reuse a
+  structured idempotency key only for the exact same file bytes and metadata; use a new key only
+  after the employee intentionally corrects or changes the upload.
+
 ## Large Structured Uploads
 
 When an employee asks to upload a large XLSX/CSV structured table, prefer small business-safe
@@ -108,9 +128,8 @@ subject to host caps (OpenAI Codex roughly **700–750 KiB** of raw bytes per ca
   file — and upload serially.
 - Keep chunk windows non-overlapping and complete. Do not create overlapping `startDate`/`endDate`
   ranges, because structured queries aggregate all `applied` rows in visible matching windows.
-- Upload chunks serially, not in parallel. After each structured upload, keep the returned
-  `importBatchId` and call the import-status tool until that chunk is `applied` or failed before
-  starting the next chunk.
+- Upload chunks serially, not in parallel. After each structured upload, follow Upload Completion
+  And Status Polling before starting the next chunk.
 - Give every chunk its own stable idempotency key that names the original file and chunk window,
   for example `maijia-business-20240701-20240715-part01-v1`. Reuse that key only for the exact
   same chunk bytes and metadata.
@@ -387,7 +406,7 @@ For authorized service tools:
 - Prefer `file.encoding:"path"` uploads with the file's absolute local path; the launcher reads
   exact bytes mechanically. Use `file.encoding:"base64"` only for small inline payloads. Never
   reconstruct, normalize, or translate upload contents.
-- Poll document/import status gently when the employee asks; never start a worker.
+- Follow Upload Completion And Status Polling after every `202` upload; never start a worker.
 - Reuse a structured-import idempotency key only for the exact same file and metadata. Treat an
   import-status 404 as "not visible or missing" and do not infer hidden metadata.
 - Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged

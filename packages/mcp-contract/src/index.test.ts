@@ -301,6 +301,20 @@ describe("Enterprise Hub MCP contract", () => {
     expect(ENTERPRISE_HUB_MCP_TOOL_NAMES).not.toContain("enterprise_hub_login_dev");
   });
 
+  it("describes structured uploads as queued work and status as the async completion view", () => {
+    const structuredUpload = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+      (contract) => contract.name === "upload_structured_dataset"
+    );
+    const importStatus = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+      (contract) => contract.name === "get_import_status"
+    );
+
+    expect(structuredUpload?.description).toContain("202");
+    expect(structuredUpload?.description).toContain("queued");
+    expect(importStatus?.description).toContain("terminal");
+    expect(importStatus?.resultShape).toEqual(["document", "processing", "importBatch"]);
+  });
+
   it("keeps every tool metadata object valid and registration-ready", () => {
     for (const contract of ENTERPRISE_HUB_MCP_TOOL_CONTRACTS) {
       expect(() => mcpToolContractSchema.parse(contract)).not.toThrow();

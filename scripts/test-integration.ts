@@ -14,7 +14,6 @@ import {
   ProcessingJobType,
   ProcessingRunStatus
 } from "@prisma/client";
-import { createPrismaStructuredImportRepository } from "../apps/api/src/structured-imports.js";
 import { AuthCore } from "../apps/api/src/auth/auth-core.js";
 import {
   createLauncherToolDependencies,
@@ -28,7 +27,7 @@ import {
 } from "../apps/api/src/auth/http-contract.js";
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
-import { createOriginalObjectKey, LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 
 const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
@@ -56,6 +55,8 @@ interface StructuredUploadResponse {
     importBatchId: string;
     status: string;
     appliedRowCount: number;
+    validationErrorCount: number;
+    validationErrors: Array<{ code?: string; message?: string }>;
   };
 }
 
@@ -176,11 +177,24 @@ try {
     form.append("labelKeys[]", "store:baoli");
     return form;
   };
-  const structuredUpload = await apiJson<StructuredUploadResponse>("/v1/structured/imports", {
-    method: "POST",
-    headers: auth,
-    body: structuredFormFor(structuredFixture, structuredIdempotencyKey)
-  });
+  const structuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
+    "/v1/structured/imports",
+    {
+      method: "POST",
+      headers: auth,
+      body: structuredFormFor(structuredFixture, structuredIdempotencyKey)
+    }
+  );
+  const structuredUpload = structuredUploadResult.body;
+  assert(
+    structuredUploadResult.status === 202,
+    "Structured upload should return HTTP 202 quickly."
+  );
+  assert(
+    structuredUpload.importBatch.status === "pending" &&
+      structuredUpload.document.status === "pending_processing",
+    "Structured upload should be queued before any parsing or business-row writes."
+  );
   const structuredReplays = await Promise.all(
     Array.from({ length: 9 }, async () => {
       return apiJson<StructuredUploadResponse>("/v1/structured/imports", {
@@ -200,7 +214,7 @@ try {
       "Concurrent exact replays must return the authoritative persisted identifiers and status."
     );
   }
-  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload);
+  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload, "pending");
   const fingerprintConflict = await fetch(`${apiUrl}/v1/structured/imports`, {
     method: "POST",
     headers: auth,
@@ -226,15 +240,37 @@ try {
     "A changed exact-replay fingerprint must conflict before publication."
   );
   assert(
-    windowConflict.status === 409 && windowConflictBody.error?.code === "ACTIVE_IMPORT_EXISTS",
-    "A second idempotency key for an active window must conflict before publication."
+    windowConflict.status === 409 && windowConflictBody.error?.code === "IMPORT_IN_PROGRESS",
+    "A second idempotency key must not bypass a queued import for the same date window."
   );
-  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload);
-  assert(structuredUpload.importBatch.status === "applied", "Structured import should apply.");
+  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload, "pending");
+  const pendingStructuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+    method: "POST",
+    headers: { ...auth, "content-type": "application/json" },
+    body: JSON.stringify({ dataset: "dishes", aggregates: [{ op: "count", as: "row_count" }] })
+  });
   assert(
-    structuredUpload.importBatch.appliedRowCount === 1,
+    pendingStructuredQuery.rows[0]?.["row_count"] === 0,
+    "Pending structured import data must not be queryable."
+  );
+  const structuredWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+  );
+  assert(
+    structuredWorker.documentId === structuredUpload.document.documentId &&
+      structuredWorker.status === "active",
+    "Worker should apply the queued structured import."
+  );
+  const appliedStructuredUpload = await waitForStructuredImportStatus(
+    structuredUpload.importBatch.importBatchId,
+    auth,
+    "applied"
+  );
+  assert(
+    appliedStructuredUpload.importBatch.appliedRowCount === 1,
     "Structured import should load one fixture row."
   );
+  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload, "applied");
 
   const structuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
     method: "POST",
@@ -250,7 +286,7 @@ try {
     structuredUpload.importBatch.importBatchId,
     structuredUpload.document.documentId
   );
-  await assertStructuredRecoveryPaths();
+  await assertStructuredApplyRollback();
 
   const launcherPathCsv = Buffer.from(
     structuredFixture.toString("utf8").replace("2026-07-01,", "2026-07-06,"),
@@ -305,11 +341,24 @@ try {
     launcherPathResult.content[0]?.text ?? "null"
   ) as StructuredUploadResponse;
   assert(
-    launcherPathBody.importBatch.status === "applied",
-    "Launcher path-mode import should apply."
+    launcherPathBody.importBatch.status === "pending",
+    "Launcher path-mode import should report its queued state."
+  );
+  const launcherStructuredWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
   );
   assert(
-    launcherPathBody.importBatch.appliedRowCount === 1,
+    launcherStructuredWorker.documentId === launcherPathBody.document.documentId &&
+      launcherStructuredWorker.status === "active",
+    "Worker should apply the launcher path-mode structured import."
+  );
+  const launcherPathCompletion = await waitForStructuredImportStatus(
+    launcherPathBody.importBatch.importBatchId,
+    auth,
+    "applied"
+  );
+  assert(
+    launcherPathCompletion.importBatch.appliedRowCount === 1,
     "Launcher path-mode import should load one row."
   );
   const storedObject = await new LocalFileSystemStorageAdapter({
@@ -341,7 +390,7 @@ try {
   allStaffStructuredForm.append("endDate", "20260712");
   allStaffStructuredForm.append("idempotencyKey", `integration-all-staff-${Date.now()}`);
   allStaffStructuredForm.append("labelKeys[]", "all_staff");
-  const allStaffStructuredUpload = await apiJson<StructuredUploadResponse>(
+  const allStaffStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
     "/v1/structured/imports",
     {
       method: "POST",
@@ -349,10 +398,28 @@ try {
       body: allStaffStructuredForm
     }
   );
+  const allStaffStructuredUpload = allStaffStructuredUploadResult.body;
   assert(
-    allStaffStructuredUpload.importBatch.status === "applied" &&
-      allStaffStructuredUpload.importBatch.appliedRowCount > 0,
-    "Admin should import the all_staff structured fixture."
+    allStaffStructuredUploadResult.status === 202 &&
+      allStaffStructuredUpload.importBatch.status === "pending",
+    "Admin structured upload should be accepted as pending."
+  );
+  const allStaffStructuredWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+  );
+  assert(
+    allStaffStructuredWorker.documentId === allStaffStructuredUpload.document.documentId &&
+      allStaffStructuredWorker.status === "active",
+    "Worker should apply the all_staff structured import."
+  );
+  const allStaffStructuredCompletion = await waitForStructuredImportStatus(
+    allStaffStructuredUpload.importBatch.importBatchId,
+    adminAuth,
+    "applied"
+  );
+  assert(
+    allStaffStructuredCompletion.importBatch.appliedRowCount > 0,
+    "Admin all_staff structured fixture should apply after polling."
   );
 
   const allStaffStructuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
@@ -363,6 +430,52 @@ try {
   assert(
     Number(allStaffStructuredQuery.rows[0]?.["row_count"]) > 0,
     "A non-admin should query the imported all_staff row."
+  );
+
+  const invalidStructuredFixture = await readFile(
+    path.join(rootDir, "fixtures", "manual-acceptance", "structured", "dishes-invalid-atomic.csv")
+  );
+  const invalidStructuredForm = new FormData();
+  invalidStructuredForm.append(
+    "file",
+    new Blob([new Uint8Array(invalidStructuredFixture)]),
+    "dishes-invalid-atomic.csv"
+  );
+  invalidStructuredForm.append("dataset", "dishes");
+  invalidStructuredForm.append("enterprise_name", "Integration Invalid");
+  invalidStructuredForm.append("startDate", "20260820");
+  invalidStructuredForm.append("endDate", "20260820");
+  invalidStructuredForm.append("idempotencyKey", `integration-invalid-${Date.now()}`);
+  invalidStructuredForm.append("labelKeys[]", "store:baoli");
+  const invalidStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
+    "/v1/structured/imports",
+    { method: "POST", headers: auth, body: invalidStructuredForm }
+  );
+  const invalidStructuredUpload = invalidStructuredUploadResult.body;
+  assert(
+    invalidStructuredUploadResult.status === 202 &&
+      invalidStructuredUpload.importBatch.status === "pending",
+    "Invalid structured headers must be accepted first and validated by the worker."
+  );
+  const invalidStructuredWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+  );
+  assert(
+    invalidStructuredWorker.documentId === invalidStructuredUpload.document.documentId &&
+      invalidStructuredWorker.status === "rejected",
+    "Worker should reject the invalid structured header."
+  );
+  const rejectedStructuredUpload = await waitForStructuredImportStatus(
+    invalidStructuredUpload.importBatch.importBatchId,
+    auth,
+    "rejected"
+  );
+  const rejectedPayload = JSON.stringify(rejectedStructuredUpload);
+  assert(
+    rejectedStructuredUpload.importBatch.validationErrorCount > 0 &&
+      !rejectedPayload.includes("不应写入的菜品") &&
+      !rejectedPayload.includes("should-fail"),
+    "Rejected structured imports should expose safe errors without raw cell values."
   );
 
   const suzhouAccessToken = await createOfficialIntegrationAccessToken("emp_suzhou_manager");
@@ -465,8 +578,8 @@ try {
           "official_session_authentication",
           "phase3_structured_import",
           "phase3_structured_concurrent_exact_replay",
+          "phase3_structured_apply_transaction_rollback",
           "launcher_local_path_upload",
-          "phase3_structured_storage_and_apply_recovery",
           "phase3_structured_typed_query",
           "phase3_structured_query",
           "phase3_structured_all_staff_import",
@@ -681,6 +794,13 @@ function authorizationHeader(token: string): HeadersInit {
 }
 
 async function apiJson<T>(pathName: string, init: RequestInit): Promise<T> {
+  return (await apiJsonWithStatus<T>(pathName, init)).body;
+}
+
+async function apiJsonWithStatus<T>(
+  pathName: string,
+  init: RequestInit
+): Promise<{ status: number; body: T }> {
   const response = await fetch(`${apiUrl}${pathName}`, init);
   const body = (await response.json()) as T;
 
@@ -688,12 +808,29 @@ async function apiJson<T>(pathName: string, init: RequestInit): Promise<T> {
     throw new Error(`API request failed: ${response.status} ${JSON.stringify(body)}`);
   }
 
-  return body;
+  return { status: response.status, body };
+}
+
+async function waitForStructuredImportStatus(
+  importBatchId: string,
+  headers: HeadersInit,
+  expectedStatus: "applied" | "rejected"
+): Promise<StructuredUploadResponse> {
+  let latest: StructuredUploadResponse | null = null;
+  await waitForCondition(`Structured import ${expectedStatus}`, async () => {
+    latest = await apiJson<StructuredUploadResponse>(
+      `/v1/structured/imports/${encodeURIComponent(importBatchId)}`,
+      { headers }
+    );
+    return latest.importBatch.status === expectedStatus;
+  });
+  return latest!;
 }
 
 async function assertStructuredReplayCardinality(
   idempotencyKey: string,
-  response: StructuredUploadResponse
+  response: StructuredUploadResponse,
+  expectedStatus: "pending" | "applied"
 ): Promise<void> {
   const adapter = new PrismaMariaDb(integrationEnv["DATABASE_URL"]!);
   const prisma = new PrismaClient({ adapter });
@@ -706,7 +843,10 @@ async function assertStructuredReplayCardinality(
         }
       }
     });
-    assert(batch?.id === response.importBatch.importBatchId, "One authoritative batch must exist.");
+    assert(
+      batch?.id === response.importBatch.importBatchId && batch.status === expectedStatus,
+      "One authoritative batch must exist in the expected lifecycle state."
+    );
     const [documents, batches, claims, rows, startedAudits, appliedAudits, processingRuns] =
       await Promise.all([
         prisma.document.count({ where: { id: response.document.documentId } }),
@@ -732,10 +872,16 @@ async function assertStructuredReplayCardinality(
     assert(documents === 1, "Concurrent replay must create one Document.");
     assert(batches === 1, "Concurrent replay must create one ImportBatch.");
     assert(claims === 1, "Concurrent replay must create one ImportWindowClaim.");
-    assert(rows === 1, "Concurrent replay must create one row set.");
+    assert(
+      rows === (expectedStatus === "applied" ? 1 : 0),
+      "Concurrent replay must not publish rows before worker application."
+    );
     assert(startedAudits === 1, "Concurrent replay must create one started audit.");
-    assert(appliedAudits === 1, "Concurrent replay must create one applied audit.");
-    assert(processingRuns === 1, "Concurrent replay must create one successful ProcessingRun.");
+    assert(
+      appliedAudits === (expectedStatus === "applied" ? 1 : 0),
+      "Concurrent replay must create one applied audit only after worker application."
+    );
+    assert(processingRuns === 1, "Concurrent replay must create one ProcessingRun.");
 
     const storageEntries = await readdir(storageRoot, { recursive: true, withFileTypes: true });
     const storedObjects = storageEntries.filter(
@@ -887,223 +1033,17 @@ function typedDishRow(
   };
 }
 
-async function assertStructuredRecoveryPaths(): Promise<void> {
-  const databaseUrl = integrationEnv["DATABASE_URL"]!;
-  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
-  const repository = createPrismaStructuredImportRepository({
-    databaseUrl,
-    transactionTimeoutMs: 60_000,
-    batchInsertSize: 500
-  });
-  const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
-  try {
-    const [employee, label] = await Promise.all([
-      prisma.employee.findFirst({
-        where: { orgId: "default-org", email: "baoli.manager@example.com" }
-      }),
-      prisma.label.findUnique({
-        where: { orgId_key: { orgId: "default-org", key: "store:baoli" } }
-      })
-    ]);
-    assert(Boolean(employee && label), "Recovery integration prerequisites must be seeded.");
-
-    const reservationInput = (input: {
-      documentId: string;
-      idempotencyKey: string;
-      startDate: string;
-      content: Buffer;
-    }) => {
-      const fileName = `${input.idempotencyKey}.csv`;
-      const checksum = createHash("sha256").update(input.content).digest("hex");
-      return {
-        orgId: "default-org",
-        actorEmployeeId: employee!.id,
-        documentId: input.documentId,
-        dataset: "dishes" as const,
-        fileType: "csv" as const,
-        startDate: input.startDate,
-        endDate: input.startDate,
-        idempotencyKey: input.idempotencyKey,
-        requestFingerprint: createHash("sha256")
-          .update(`${input.idempotencyKey}:${checksum}`)
-          .digest("hex"),
-        document: {
-          title: input.idempotencyKey,
-          storageObjectKey: createOriginalObjectKey({
-            orgId: "default-org",
-            documentId: input.documentId,
-            fileName
-          }),
-          originalFileName: fileName,
-          contentType: "text/csv",
-          byteSize: input.content.byteLength,
-          checksumSha256: checksum,
-          labelIds: [label!.id],
-          labels: [label!.key]
-        },
-        sourceSheetSummary: [],
-        totalRowCount: 1,
-        audit: {
-          requestId: `request:${input.idempotencyKey}`,
-          sourceIp: "127.0.0.1",
-          clientSource: "http_api" as const,
-          launcherVersion: null
-        }
-      };
-    };
-
-    const applyContent = Buffer.from("apply recovery", "utf8");
-    const applyInput = reservationInput({
-      documentId: "doc_apply_recovery",
-      idempotencyKey: "integration-apply-recovery",
-      startDate: "20260801",
-      content: applyContent
-    });
-    const applyReservation = await repository.reserveStructuredImport(applyInput);
-    await storage.putObject({
-      orgId: applyInput.orgId,
-      documentId: applyReservation.importBatch.sourceDocumentId,
-      fileName: applyInput.document.originalFileName,
-      body: applyContent,
-      contentType: "text/csv"
-    });
-    let applyFailed = false;
-    try {
-      await repository.applyReservedStructuredImport({
-        orgId: applyInput.orgId,
-        actorEmployeeId: "missing_employee",
-        importBatchId: applyReservation.importBatch.id,
-        rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-01" } }],
-        audit: {
-          requestId: "request:apply-failure",
-          sourceIp: "127.0.0.1",
-          clientSource: "http_api",
-          launcherVersion: null
-        }
-      });
-    } catch {
-      applyFailed = true;
+async function assertStructuredApplyRollback(): Promise<void> {
+  await run(
+    "npx",
+    ["vitest", "run", "apps/worker/src/structured-import.prisma.integration.test.ts"],
+    {
+      env: {
+        ...integrationEnv,
+        RUN_WORKER_PRISMA_INTEGRATION: "1"
+      }
     }
-    assert(applyFailed, "A transactional applied-audit failure must reject the apply.");
-    const [pendingBatch, pendingDocument, pendingRows, retainedObject] = await Promise.all([
-      prisma.importBatch.findUnique({ where: { id: applyReservation.importBatch.id } }),
-      prisma.document.findUnique({ where: { id: applyReservation.importBatch.sourceDocumentId } }),
-      prisma.dishRow.count({ where: { importBatchId: applyReservation.importBatch.id } }),
-      storage.statObject(applyReservation.importBatch.storageObjectKey)
-    ]);
-    assert(
-      pendingBatch?.status === "pending",
-      "Failed DB apply must roll the batch back to pending."
-    );
-    assert(
-      pendingDocument?.status === "pending_processing",
-      "Failed DB apply must not activate its Document."
-    );
-    assert(pendingRows === 0, "Failed DB apply must not leave partial rows.");
-    assert(
-      retainedObject.key === applyReservation.importBatch.storageObjectKey,
-      "Failed DB apply must retain the referenced deterministic object."
-    );
-    const recoveredApply = await repository.applyReservedStructuredImport({
-      orgId: applyInput.orgId,
-      actorEmployeeId: employee!.id,
-      importBatchId: applyReservation.importBatch.id,
-      rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-01" } }],
-      audit: {
-        requestId: "request:apply-recovery",
-        sourceIp: "127.0.0.1",
-        clientSource: "http_api",
-        launcherVersion: null
-      }
-    });
-    assert(
-      recoveredApply.status === "applied" &&
-        recoveredApply.sourceDocumentId === applyReservation.importBatch.sourceDocumentId,
-      "A DB apply replay must recover the same reservation."
-    );
-
-    const storageContent = Buffer.from("storage recovery", "utf8");
-    const storageInput = reservationInput({
-      documentId: "doc_storage_recovery",
-      idempotencyKey: "integration-storage-recovery",
-      startDate: "20260802",
-      content: storageContent
-    });
-    const storageReservation = await repository.reserveStructuredImport(storageInput);
-    const failedStorageBatch = await repository.markStructuredImportStorageFailure({
-      orgId: storageInput.orgId,
-      importBatchId: storageReservation.importBatch.id,
-      errorCode: "STORAGE_WRITE_FAILED",
-      errorSummary: "simulated transient storage failure"
-    });
-    assert(
-      failedStorageBatch.status === "failed" &&
-        failedStorageBatch.sourceDocumentStatus === "processing_failed",
-      "Storage failure must persist a resumable failed state."
-    );
-    const resumedStorage = await repository.reserveStructuredImport(storageInput);
-    assert(
-      resumedStorage.state === "resumable" &&
-        resumedStorage.importBatch.id === storageReservation.importBatch.id &&
-        resumedStorage.importBatch.sourceDocumentId ===
-          storageReservation.importBatch.sourceDocumentId,
-      "Storage replay must reuse the original reservation."
-    );
-    await storage.putObject({
-      orgId: storageInput.orgId,
-      documentId: resumedStorage.importBatch.sourceDocumentId,
-      fileName: storageInput.document.originalFileName,
-      body: storageContent,
-      contentType: "text/csv"
-    });
-    const recoveredStorage = await repository.applyReservedStructuredImport({
-      orgId: storageInput.orgId,
-      actorEmployeeId: employee!.id,
-      importBatchId: resumedStorage.importBatch.id,
-      rows: [{ sourceRowNumber: 2, payload: { business_date: "2026-08-02" } }],
-      audit: {
-        requestId: "request:storage-recovery",
-        sourceIp: "127.0.0.1",
-        clientSource: "http_api",
-        launcherVersion: null
-      }
-    });
-    const [storageDocuments, storageBatches, storageClaims, storageStarted, storageApplied] =
-      await Promise.all([
-        prisma.document.count({ where: { id: storageReservation.importBatch.sourceDocumentId } }),
-        prisma.importBatch.count({ where: { id: storageReservation.importBatch.id } }),
-        prisma.importWindowClaim.count({
-          where: { importBatchId: storageReservation.importBatch.id }
-        }),
-        prisma.auditLog.count({
-          where: {
-            targetId: storageReservation.importBatch.id,
-            action: "structured_import.started"
-          }
-        }),
-        prisma.auditLog.count({
-          where: {
-            targetId: storageReservation.importBatch.id,
-            action: "structured_import.applied"
-          }
-        })
-      ]);
-    assert(
-      recoveredStorage.status === "applied",
-      "Storage failure replay must apply successfully."
-    );
-    assert(
-      storageDocuments === 1 &&
-        storageBatches === 1 &&
-        storageClaims === 1 &&
-        storageStarted === 1 &&
-        storageApplied === 1,
-      "Storage recovery must retain single-cardinality records and audits."
-    );
-  } finally {
-    await repository.disconnect?.();
-    await prisma.$disconnect();
-  }
+  );
 }
 
 async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {

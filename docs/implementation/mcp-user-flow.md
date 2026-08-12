@@ -101,6 +101,12 @@ explicitly authorized lifecycle action.
   Never reconstruct, normalize, translate, or retype the content.
 - Status polling is allowed only to observe service state. Do not start workers or operate any
   Enterprise Hub service component.
+- After a text/evidence or structured-table upload returns `202`, keep its Document ID and, for a
+  structured upload, ImportBatch ID. Poll the matching status tool after 2 seconds, then 5 seconds,
+  then 10 seconds, then every 15 seconds, up to 10 minutes. Report success only at a terminal
+  success state; safely summarize `rejected`/`failed` with correction advice. At 10 minutes without
+  a terminal result, say still processing with the IDs and how to check later; do not report failure
+  or re-upload instead of polling.
 - Reuse a structured-import idempotency key only for exact replay. Treat an import-status 404 as
   not visible or missing, without inferring a hidden batch.
 - Treat evidence cursors as opaque same-query continuations. On `INVALID_CURSOR`, restart without

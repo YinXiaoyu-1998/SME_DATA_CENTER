@@ -6,7 +6,7 @@ import {
   canEmployeeAccessDocument,
   type AuthenticatedEmployee
 } from "@enterprise-hub/domain";
-import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
+import { preflightStructuredFile } from "@enterprise-hub/structured-ingestion";
 import { createOriginalObjectKey, type StorageAdapter } from "@enterprise-hub/storage";
 import type { ApiRuntimeLimits } from "../../config/runtime-limits.js";
 import type { CatalogLabel, DocumentCatalogRepository } from "../../documents.js";
@@ -14,8 +14,7 @@ import type { RequestAuditContext } from "../../request-audit-context.js";
 import type { RequestAuth } from "../../request-auth.js";
 import {
   StructuredImportError,
-  type StructuredImportRepository,
-  type StructuredImportTimingEvent
+  type StructuredImportRepository
 } from "../../structured-imports.js";
 import { errorResponse, isPayloadTooLargeError, validationError } from "../../request-errors.js";
 import { readMultipartFile, type MultipartPart } from "../../http/multipart.js";
@@ -23,7 +22,6 @@ import {
   canonicalStructuredImportFileName,
   createStructuredImportDocumentId,
   hasStructuredImportCode,
-  importBatchResponse,
   responseForReservedImport,
   structuredImportConflictMessage,
   structuredImportFingerprint,
@@ -135,19 +133,6 @@ export function registerStructuredImportRoutes(
         "structured import timing"
       );
     };
-    const logApplyTiming = (event: StructuredImportTimingEvent) => {
-      request.log.info(
-        {
-          event: "structured_import_timing",
-          elapsedMs: timingDurationMs(importRequestStarted),
-          ...timingContext,
-          ...event,
-          stage: event.stage,
-          durationMs: event.durationMs
-        },
-        "structured import timing"
-      );
-    };
     const measureTiming = async <T>(
       stage: string,
       workload: () => Promise<T>,
@@ -241,40 +226,23 @@ export function registerStructuredImportRoutes(
       return validationError(reply, "UNLABELED_DOCUMENT", "Structured import must have labels.");
     }
 
-    let validation: Awaited<ReturnType<typeof parseStructuredFile>>;
-
     try {
-      validation = await measureTiming("upload.parse_file", () =>
-        parseStructuredFile({
-          dataset,
+      await measureTiming("upload.preflight_file", async () =>
+        preflightStructuredFile({
           content: uploadedFile.body,
           fileType,
-          startDate,
-          endDate,
-          fileName: uploadedFile.fileName,
-          limits: {
-            maxStructuredImportRows: dependencies.runtimeLimits.maxStructuredImportRows,
-            maxXlsxSheets: dependencies.runtimeLimits.maxXlsxSheets,
-            maxStructuredCellChars: dependencies.runtimeLimits.maxStructuredCellChars,
-            maxXlsxUncompressedBytes: dependencies.runtimeLimits.maxXlsxUncompressedBytes,
-            maxXlsxZipEntries: dependencies.runtimeLimits.maxXlsxZipEntries,
-            maxXlsxCompressionRatio: dependencies.runtimeLimits.maxXlsxCompressionRatio
-          }
+          fileName: uploadedFile.fileName
         })
       );
     } catch (error) {
-      request.log.warn({ err: error }, "structured import validation failed");
-      logTiming("upload.total", importRequestStarted, { outcome: "parse_failed" });
+      request.log.warn({ err: error }, "structured import preflight failed");
+      logTiming("upload.total", importRequestStarted, { outcome: "preflight_failed" });
       return validationError(
         reply,
         "STRUCTURED_IMPORT_VALIDATION_FAILED",
-        "Structured import validation failed."
+        "Structured import preflight failed."
       );
     }
-    Object.assign(timingContext, {
-      rowCount: validation.rows.length,
-      sheetCount: validation.sheetSummary.length
-    });
 
     const candidateDocumentId = createStructuredImportDocumentId();
     const originalFileName = uploadedFile.fileName;
@@ -325,8 +293,8 @@ export function registerStructuredImportRoutes(
               labelIds: requestedLabels.map((label) => label.id),
               labels: requestedLabels.map((label) => label.key).sort()
             },
-            sourceSheetSummary: validation.sheetSummary,
-            totalRowCount: validation.rows.length,
+            sourceSheetSummary: [],
+            totalRowCount: 0,
             audit
           }),
         { sourceDocumentId: candidateDocumentId }
@@ -371,23 +339,17 @@ export function registerStructuredImportRoutes(
       ) {
         throw new Error("Published structured import object does not match its reservation.");
       }
-    } catch (error) {
-      try {
-        const authoritative = await dependencies
-          .structuredImports()
-          .markStructuredImportStorageFailure({
-            orgId: employee.orgId,
-            importBatchId: reservedBatch.id,
-            errorCode: "STORAGE_WRITE_FAILED",
-            errorSummary: error instanceof Error ? error.message : "Storage write failed."
-          });
-        if (authoritative.status === "applied") {
-          logTiming("upload.total", importRequestStarted, { outcome: "storage_failed_applied" });
-          return reply.code(202).send(responseForReservedImport(authoritative));
-        }
-      } catch (markError) {
-        request.log.error({ err: markError }, "failed to record structured storage failure");
+      const verifiedObject = await dependencies
+        .storage()
+        .statObject(reservedBatch.storageObjectKey);
+      if (
+        !verifiedObject ||
+        verifiedObject.hash !== fileHash ||
+        verifiedObject.size !== uploadedFile.body.byteLength
+      ) {
+        throw new Error("Published structured import object could not be verified.");
       }
+    } catch (error) {
       request.log.error({ err: error }, "structured import storage publication failed");
       logTiming("upload.total", importRequestStarted, { outcome: "storage_failed" });
       return reply
@@ -396,24 +358,20 @@ export function registerStructuredImportRoutes(
     }
 
     try {
-      const importBatch = await measureTiming("upload.apply_import", () =>
-        dependencies.structuredImports().applyReservedStructuredImport({
+      const importBatch = await measureTiming("upload.enqueue_processing", () =>
+        dependencies.structuredImports().enqueueReservedStructuredImport({
           orgId: employee.orgId,
-          actorEmployeeId: employee.id,
-          importBatchId: reservedBatch.id,
-          rows: validation.rows,
-          audit,
-          onTiming: logApplyTiming
+          importBatchId: reservedBatch.id
         })
       );
-      logTiming("upload.total", importRequestStarted, { outcome: "applied" });
+      logTiming("upload.total", importRequestStarted, { outcome: "queued" });
       return reply.code(202).send(responseForReservedImport(importBatch));
     } catch (error) {
       request.log.error(
         { err: error, documentId: reservedBatch.sourceDocumentId },
-        "structured import apply failed"
+        "structured import queue publication failed"
       );
-      logTiming("upload.total", importRequestStarted, { outcome: "apply_failed" });
+      logTiming("upload.total", importRequestStarted, { outcome: "enqueue_failed" });
       return reply
         .code(500)
         .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
@@ -452,9 +410,7 @@ export function registerStructuredImportRoutes(
           .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
       }
 
-      return {
-        importBatch: importBatchResponse(importBatch)
-      };
+      return responseForReservedImport(importBatch);
     }
   );
 }

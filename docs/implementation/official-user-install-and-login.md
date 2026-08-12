@@ -696,6 +696,16 @@ has no code to read them and requires the employee to complete the browser login
 
 ## Accepted Reauthentication And Interrupted-Request Recovery
 
+### Async Upload Completion
+
+After an authenticated text/evidence or structured-table upload returns `202`, the employee-owned
+agent keeps the returned Document ID and, when present, ImportBatch ID and polls the matching status
+tool after 2 seconds, then 5 seconds, then 10 seconds, then every 15 seconds, for a default maximum
+of 10 minutes. It reports success only after a terminal success state; it safely summarizes terminal
+`rejected`/`failed` errors with correction advice. At the limit without a terminal state it reports
+still processing with the IDs and how to check later, not failure. It must not re-upload instead of
+polling; structured retry keys are reused only for an exact replay.
+
 When an MCP operation has no usable durable session, the launcher returns the stable,
 machine-readable `authentication_required` condition. Missing, expired, revoked, and
 replay-revoked sessions use this condition; they never masquerade as an empty result or permission

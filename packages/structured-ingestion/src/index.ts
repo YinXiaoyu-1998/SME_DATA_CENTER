@@ -8,6 +8,8 @@ import {
 } from "@enterprise-hub/domain";
 import { readXlsxRows } from "./xlsx-stream.js";
 const MAX_HEADER_SCAN_ROWS = 10;
+export const STRUCTURED_IMPORT_DEFAULT_SHEET_NAME = "Sheet1";
+export const MAX_RETAINED_VALIDATION_ERRORS = 100;
 
 export interface StructuredIngestionLimits {
   maxStructuredImportRows: number;
@@ -19,10 +21,13 @@ export interface StructuredIngestionLimits {
 }
 
 export interface StructuredImportRow {
+  sourceSheetIndex: number;
+  sourceSheetName: string;
   sourceRowNumber: number;
   payload: Record<string, unknown>;
 }
 export interface StructuredSheetSummary {
+  sheetIndex: number;
   name: string;
   hidden: boolean;
   headerRowNumber: number;
@@ -47,54 +52,217 @@ export interface ParseStructuredFileInput {
   startDate: string;
   endDate: string;
   limits: StructuredIngestionLimits;
+  /**
+   * The legacy synchronous importer throws after parsing; the worker-facing
+   * contract collects deterministic validation issues for durable reporting.
+   */
+  validationMode?: "throw" | "collect";
 }
 
-export async function parseStructuredFile(input: ParseStructuredFileInput): Promise<{
+export interface StructuredValidationIssue {
+  code: string;
+  message: string;
+  sheetName: string | null;
+  sheetIndex: number | null;
+  rowNumber: number | null;
+  column: string | null;
+}
+
+export interface StructuredParseResult {
   sheetSummary: StructuredSheetSummary[];
   rows: StructuredImportRow[];
-}> {
+  validationErrors: StructuredValidationIssue[];
+  validationErrorCount: number;
+  validationErrorsTruncated: boolean;
+}
+
+export interface StructuredFilePreflightInput {
+  fileName: string;
+  fileType: "csv" | "xlsx";
+  content: Buffer;
+}
+
+/**
+ * Transport-safe checks for the API acceptance path. Structured headers,
+ * worksheet contents, row counts, ZIP extraction, and cell limits remain in
+ * the worker-facing parse contract.
+ */
+export function preflightStructuredFile(input: StructuredFilePreflightInput): void {
   assertFileType(input);
-  const sheets =
-    input.fileType === "csv"
-      ? [{ name: "Sheet1", hidden: false, rows: parseCsvRows(input.content, input.limits) }]
-      : await readXlsxRows(input.content, input.limits);
+  if (input.fileType === "csv") assertCsvUtf8Text(input.content);
+}
+
+export async function parseStructuredFile(
+  input: ParseStructuredFileInput
+): Promise<StructuredParseResult> {
   const sheetSummary: StructuredSheetSummary[] = [];
   const rows: StructuredImportRow[] = [];
-  const window = dateWindow(input.startDate, input.endDate);
+  const issues = new ValidationIssueCollector();
+  let window: ReturnType<typeof dateWindow>;
+  let sheets: Array<{ name: string; hidden: boolean; rows: string[][]; sheetIndex: number }>;
+
+  try {
+    assertFileType(input);
+    window = dateWindow(input.startDate, input.endDate);
+    const parsedSheets =
+      input.fileType === "csv"
+        ? [
+            {
+              name: STRUCTURED_IMPORT_DEFAULT_SHEET_NAME,
+              hidden: false,
+              rows: parseCsvRows(input.content, input.limits)
+            }
+          ]
+        : await readXlsxRows(input.content, input.limits);
+    sheets = parsedSheets.map((sheet, sheetIndex) => ({ ...sheet, sheetIndex }));
+  } catch (error) {
+    issues.add({
+      code: "INVALID_FILE",
+      message: "Structured file validation failed.",
+      sheetName: null,
+      sheetIndex: null,
+      rowNumber: null,
+      column: null,
+      legacyMessage: errorMessage(error)
+    });
+    return finishParse(input, sheetSummary, rows, issues);
+  }
+
+  let rowLimitReported = false;
 
   for (const sheet of sheets) {
     if (isEmpty(sheet.rows)) continue;
-    if (sheet.hidden) throw validation(`Hidden non-empty sheet ${sheet.name} is not allowed.`);
+    if (sheet.hidden) {
+      issues.add({
+        code: "HIDDEN_SHEET",
+        message: "Non-empty hidden worksheets are not allowed.",
+        sheetName: sheet.name,
+        sheetIndex: sheet.sheetIndex,
+        rowNumber: null,
+        column: null,
+        legacyMessage: `Hidden non-empty sheet ${sheet.name} is not allowed.`
+      });
+      continue;
+    }
     const candidate = findHeader(input.dataset, sheet.rows);
-    if (!candidate)
-      throw validation(`Sheet ${sheet.name} has no recognized ${input.dataset} header.`);
-    if (!candidate.resolution.ok)
-      throw validation(
-        `Sheet ${sheet.name} failed header validation: ${candidate.resolution.errors.map((error: HeaderValidationError) => `${error.code}:${error.column}`).join(",")}`
-      );
+    if (!candidate) {
+      issues.add({
+        code: "UNRECOGNIZED_HEADER",
+        message: "Worksheet has no recognized dataset header.",
+        sheetName: sheet.name,
+        sheetIndex: sheet.sheetIndex,
+        rowNumber: null,
+        column: null,
+        legacyMessage: `Sheet ${sheet.name} has no recognized ${input.dataset} header.`
+      });
+      continue;
+    }
+    if (!candidate.resolution.ok) {
+      for (const error of candidate.resolution.errors) {
+        issues.add({
+          code: "INVALID_HEADER",
+          message: "Worksheet header is invalid.",
+          sheetName: sheet.name,
+          sheetIndex: sheet.sheetIndex,
+          rowNumber: candidate.index + 1,
+          column: safeHeaderColumn(error),
+          legacyMessage: `Sheet ${sheet.name} failed header validation: ${candidate.resolution.errors.map((headerError: HeaderValidationError) => `${headerError.code}:${headerError.column}`).join(",")}`
+        });
+      }
+      continue;
+    }
     const data = dataRowsFor(sheet, candidate);
     sheetSummary.push({
+      sheetIndex: sheet.sheetIndex,
       name: sheet.name,
       hidden: sheet.hidden,
       headerRowNumber: candidate.index + 1,
       dataRowCount: data.length
     });
     for (const item of data) {
-      const payload = payloadFor(input.dataset, candidate.resolution.fields, item.row);
+      if (
+        item.row.length > candidate.width &&
+        item.row.slice(candidate.width).some((value) => value.trim())
+      ) {
+        issues.add({
+          code: "EXTRA_DATA_COLUMN",
+          message: "Row has data outside the resolved header width.",
+          sheetName: sheet.name,
+          sheetIndex: sheet.sheetIndex,
+          rowNumber: item.sourceRowNumber,
+          column: null,
+          legacyMessage: `Row ${item.sourceRowNumber} has data outside the resolved header width.`
+        });
+        continue;
+      }
+      const parsed = payloadFor(input.dataset, candidate.resolution.fields, item.row);
+      if (parsed.errors.length) {
+        for (const error of parsed.errors) {
+          issues.add({
+            code: "INVALID_FIELD_VALUE",
+            message: "Field value is invalid.",
+            sheetName: sheet.name,
+            sheetIndex: sheet.sheetIndex,
+            rowNumber: item.sourceRowNumber,
+            column: error.column,
+            legacyMessage: error.message
+          });
+        }
+        continue;
+      }
+      const payload = parsed.payload;
       const businessDate = parseDate(String(payload.business_date ?? ""), false);
       if (
         !businessDate ||
         businessDate.getTime() < window.start.getTime() ||
         businessDate.getTime() > window.end.getTime()
-      )
-        throw validation(`Row ${item.sourceRowNumber} business_date is outside import window.`);
-      rows.push({ sourceRowNumber: item.sourceRowNumber, payload });
-      if (rows.length > input.limits.maxStructuredImportRows)
-        throw validation("Structured import row limit exceeded.");
+      ) {
+        issues.add({
+          code: "BUSINESS_DATE_OUTSIDE_WINDOW",
+          message: "Business date is outside the import window.",
+          sheetName: sheet.name,
+          sheetIndex: sheet.sheetIndex,
+          rowNumber: item.sourceRowNumber,
+          column: "business_date",
+          legacyMessage: `Row ${item.sourceRowNumber} business_date is outside import window.`
+        });
+        continue;
+      }
+      if (rows.length >= input.limits.maxStructuredImportRows) {
+        if (!rowLimitReported) {
+          issues.add({
+            code: "ROW_LIMIT_EXCEEDED",
+            message: "Structured import row limit exceeded.",
+            sheetName: sheet.name,
+            sheetIndex: sheet.sheetIndex,
+            rowNumber: item.sourceRowNumber,
+            column: null,
+            legacyMessage: "Structured import row limit exceeded."
+          });
+          rowLimitReported = true;
+        }
+        continue;
+      }
+      rows.push({
+        sourceSheetIndex: sheet.sheetIndex,
+        sourceSheetName: sheet.name,
+        sourceRowNumber: item.sourceRowNumber,
+        payload
+      });
     }
   }
-  if (!sheetSummary.length) throw validation("Workbook has no non-empty import sheets.");
-  return { sheetSummary, rows };
+  if (!sheetSummary.length) {
+    issues.add({
+      code: "NO_IMPORT_SHEETS",
+      message: "Workbook has no non-empty import sheets.",
+      sheetName: null,
+      sheetIndex: null,
+      rowNumber: null,
+      column: null,
+      legacyMessage: "Workbook has no non-empty import sheets."
+    });
+  }
+  return finishParse(input, sheetSummary, rows, issues);
 }
 
 export async function profileStructuredFile(
@@ -103,7 +271,13 @@ export async function profileStructuredFile(
   assertFileType(input);
   const sheets =
     input.fileType === "csv"
-      ? [{ name: "Sheet1", hidden: false, rows: parseCsvRows(input.content, input.limits) }]
+      ? [
+          {
+            name: STRUCTURED_IMPORT_DEFAULT_SHEET_NAME,
+            hidden: false,
+            rows: parseCsvRows(input.content, input.limits)
+          }
+        ]
       : await readXlsxRows(input.content, input.limits);
   const profile: StructuredSheetProfile[] = [];
   const ignoredEmptySheets: string[] = [];
@@ -120,10 +294,12 @@ export async function profileStructuredFile(
         `VALIDATION_FAILED: ${sheet.name} has no recognized ${input.dataset} header`
       );
     const data = dataRowsFor(sheet, candidate);
+    assertWithinHeaderWidth(data, candidate);
     dataRowCount += data.length;
     if (dataRowCount > input.limits.maxStructuredImportRows)
       throw validation("Structured import row limit exceeded.");
     profile.push({
+      sheetIndex: sheets.indexOf(sheet),
       name: sheet.name,
       hidden: sheet.hidden,
       headerRowNumber: candidate.index + 1,
@@ -143,11 +319,17 @@ export async function profileStructuredFile(
 }
 
 function dataRowsFor(sheet: { rows: string[][] }, candidate: { index: number; width: number }) {
-  const data = sheet.rows
+  return sheet.rows
     .slice(candidate.index + 1)
     .map((row, index) => ({ row, sourceRowNumber: candidate.index + index + 2 }))
     .filter(({ row }) => row.some((cell) => cell.trim()))
     .filter(({ row }) => !isSummary(row));
+}
+
+function assertWithinHeaderWidth(
+  data: Array<{ row: string[]; sourceRowNumber: number }>,
+  candidate: { width: number }
+) {
   for (const item of data) {
     if (
       item.row.length > candidate.width &&
@@ -155,7 +337,6 @@ function dataRowsFor(sheet: { rows: string[][] }, candidate: { index: number; wi
     )
       throw validation(`Row ${item.sourceRowNumber} has data outside the resolved header width.`);
   }
-  return data;
 }
 
 function assertFileType(input: { fileName: string; fileType: "csv" | "xlsx"; content: Buffer }) {
@@ -168,11 +349,18 @@ function assertFileType(input: { fileName: string; fileType: "csv" | "xlsx"; con
     throw validation("XLSX file does not have a ZIP signature.");
 }
 function parseCsvRows(content: Buffer, limits: StructuredIngestionLimits): string[][] {
-  if (content.includes(0)) throw validation("CSV content must be UTF-8 text.");
-  const decoded = new TextDecoder("utf-8", { fatal: true }).decode(content);
+  const decoded = assertCsvUtf8Text(content);
   return parseCsv(decoded, { bom: true, relax_column_count: true, skip_empty_lines: false }).map(
     (row: unknown[]) => row.map((value) => checkedCellText(String(value), limits))
   );
+}
+function assertCsvUtf8Text(content: Buffer): string {
+  if (content.includes(0)) throw validation("CSV content must be UTF-8 text.");
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(content);
+  } catch {
+    throw validation("CSV content must be UTF-8 text.");
+  }
 }
 function checkedCellText(text: string, limits: StructuredIngestionLimits): string {
   if (text.length > limits.maxStructuredCellChars)
@@ -200,12 +388,19 @@ function payloadFor(
   const fields = new Map(
     getStructuredRegistry(dataset).fields.map((field) => [field.canonicalName, field])
   );
-  return Object.fromEntries(
-    mappings.map((mapping) => [
-      mapping.canonicalName,
-      parseCell(fields.get(mapping.canonicalName)!, row[mapping.sourceColumnIndex] ?? "")
-    ])
-  );
+  const payload: Record<string, unknown> = {};
+  const errors: Array<{ column: string; message: string }> = [];
+  for (const mapping of mappings) {
+    try {
+      payload[mapping.canonicalName] = parseCell(
+        fields.get(mapping.canonicalName)!,
+        row[mapping.sourceColumnIndex] ?? ""
+      );
+    } catch (error) {
+      errors.push({ column: mapping.canonicalName, message: errorMessage(error) });
+    }
+  }
+  return { payload, errors };
 }
 function parseCell(field: StructuredFieldRegistryEntry, value: string): unknown {
   const text = value.trim();
@@ -287,4 +482,56 @@ function isSummary(row: string[]) {
 }
 function validation(message: string) {
   return new Error(message);
+}
+
+interface ValidationIssueInput extends StructuredValidationIssue {
+  legacyMessage: string;
+}
+
+class ValidationIssueCollector {
+  readonly issues: StructuredValidationIssue[] = [];
+  count = 0;
+  firstLegacyMessage: string | null = null;
+
+  add(issue: ValidationIssueInput) {
+    this.count += 1;
+    this.firstLegacyMessage ??= issue.legacyMessage;
+    if (this.issues.length < MAX_RETAINED_VALIDATION_ERRORS) {
+      this.issues.push({
+        code: issue.code,
+        message: issue.message,
+        sheetName: issue.sheetName,
+        sheetIndex: issue.sheetIndex,
+        rowNumber: issue.rowNumber,
+        column: issue.column
+      });
+    }
+  }
+}
+
+function finishParse(
+  input: ParseStructuredFileInput,
+  sheetSummary: StructuredSheetSummary[],
+  rows: StructuredImportRow[],
+  issues: ValidationIssueCollector
+): StructuredParseResult {
+  const result: StructuredParseResult = {
+    sheetSummary,
+    rows,
+    validationErrors: issues.issues,
+    validationErrorCount: issues.count,
+    validationErrorsTruncated: issues.count > MAX_RETAINED_VALIDATION_ERRORS
+  };
+  if (issues.count > 0 && input.validationMode !== "collect") {
+    throw validation(issues.firstLegacyMessage ?? "Structured import validation failed.");
+  }
+  return result;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Structured import validation failed.";
+}
+
+function safeHeaderColumn(error: HeaderValidationError): string | null {
+  return error.code === "MISSING_REQUIRED_COLUMN" ? error.column : null;
 }

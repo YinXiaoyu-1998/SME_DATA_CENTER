@@ -401,7 +401,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload Enterprise Hub structured dataset",
     description:
-      "Upload XLSX/CSV structured data by calling authenticated multipart POST /v1/structured/imports.",
+      "Queue XLSX/CSV structured data with authenticated multipart POST /v1/structured/imports; a 202 queued response requires status polling before success is reported.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: [
       { name: "file", required: true, description: "Base64 upload file payload." },
@@ -441,12 +441,12 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     name: "get_import_status",
     title: "Get Enterprise Hub structured import status",
     description:
-      "Read structured import status by calling authenticated GET /v1/structured/imports/:importBatchId.",
+      "Read structured import status and its terminal outcome by calling authenticated GET /v1/structured/imports/:importBatchId.",
     inputSchema: importStatusInputSchema,
     inputFields: [
       { name: "importBatchId", required: true, description: "Structured import batch id." }
     ],
-    resultShape: ["importBatch"]
+    resultShape: ["document", "processing", "importBatch"]
   })
 ] as const satisfies readonly EnterpriseHubMcpToolContract[];
 

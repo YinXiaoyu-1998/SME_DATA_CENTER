@@ -93,6 +93,10 @@ sequenceDiagram
 - 只读取用户选择或明确指定文件的精确字节。优先使用 launcher 的 `file.encoding="path"` 和绝对
   本地路径；仅对小文件使用 inline base64。不得重建、规范化、翻译或重输内容。
 - 只能轮询服务状态；不得启动 worker 或操作任何 Enterprise Hub 服务组件。
+- 文本/证据或结构化表格上传返回 `202` 后，保留 Document ID；结构化上传还保留 ImportBatch ID。按
+  2 秒、5 秒、10 秒、之后每 15 秒的节奏轮询对应 status tool，默认最多 10 分钟。只有到达成功终态才可
+  告知上传成功；`rejected`/`failed` 只总结安全返回的错误并给出修改建议。10 分钟仍未终态时报告仍在
+  处理中、附带 IDs 和稍后查询方式；不得报告失败，也不得用重新上传替代轮询。
 - 只有精确重放时复用 structured-import idempotency key。import-status 404 只能理解为不可见或不存在，
   不得推断隐藏 batch。
 - evidence cursor 是不透明的同 query continuation。`INVALID_CURSOR` 时不带 cursor 重新开始；

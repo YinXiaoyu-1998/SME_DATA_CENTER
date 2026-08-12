@@ -130,6 +130,35 @@ npm run auth:operator -- delete-test-account \
 `manual-acceptance-*` or `manual-full-flow-*` `@example.invalid` emails, requires exact
 confirmation, and refuses to delete while the test employee still owns uploaded documents.
 
+## Async Upload Completion Rule
+
+For every evidence or structured-table MCP upload that returns `202`, retain the returned Document
+ID and, for structured data, ImportBatch ID. Poll the relevant status tool after **2 seconds, then
+5 seconds, then 10 seconds, then every 15 seconds**, for at most **10 minutes**. Do not report
+success before a terminal success state (`active/ready` for evidence or `applied` for a structured
+import). Do not re-upload instead of polling; exact retries retain the same structured idempotency
+key, while a corrected file needs a new one.
+
+For a terminal `rejected` or `failed` result, record only safe returned errors and correction
+advice. At the 10-minute limit without a terminal status, report **still processing**, keep the
+Document/ImportBatch IDs in acceptance evidence, and say it can be checked later with the status
+tool; this is not a failure.
+
+## Structured-import async cutover acceptance
+
+Run this section after the single staging cutover has restored the API and worker. With a fresh
+synthetic acceptance account and separate ordinary employee tasks, the required terminal evidence
+is:
+
+- valid table -> `applied` after polling its upload status;
+- invalid table -> `rejected` with no partial structured rows; and
+- text -> `ready` after polling the evidence document status.
+
+Then use the official controller cleanup to verify that the run's documents, structured rows/import
+batches/window claims, exact OSS objects, and exact Qdrant points are gone. Only after that cleanup
+succeeds may the controller hard-delete the synthetic acceptance account. Never run this acceptance
+against the human owner's account.
+
 ## macOS Codex User Flow
 
 For the current macOS user:
@@ -165,11 +194,12 @@ For the current macOS user:
     result comes from this run.
 11. Upload a structured CSV derived from
     `fixtures/manual-acceptance/structured/dishes-known-values.csv` with a unique
-    `enterpriseName=ManualAcceptance_<runId>` and a dedicated business window.
+    `enterpriseName=ManualAcceptance_<runId>` and a dedicated business window, then poll
+    `get_import_status` to terminal `applied` before querying it.
 12. Query the structured rows: expected count `3`, gross sales sum `91`, top two dishes
     `合成凉皮`, `合成肉夹馍`.
 13. Upload `fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv`; it must fail
-    validation and must not change the successful row count.
+    worker validation, reach a `rejected` terminal state, and not change the successful row count.
 14. Call `enterprise_hub_logout` at the end of the full-flow test. It signs out all local agents
     sharing the Enterprise Hub credential for this OS user.
 15. Clean test evidence, Qdrant points, OSS objects, structured rows, import batches, and documents.

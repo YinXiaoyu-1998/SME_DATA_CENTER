@@ -108,6 +108,42 @@ describe("manual acceptance scenario manifest", () => {
     expect(guide).not.toContain("staging:access-tunnel");
     expect(guide).not.toContain("dates changed to `2030-01-01`");
   });
+
+  it("requires async structured-upload polling in the employee skill and official acceptance guide", async () => {
+    const [skill, guide] = await Promise.all([
+      readFile(path.join(root, "skills", "enterprise-hub-mcp", "SKILL.md"), "utf8"),
+      readFile(path.join(root, "docs", "implementation", "official-manual-acceptance.md"), "utf8")
+    ]);
+
+    for (const content of [skill, guide]) {
+      expect(content).toMatch(
+        /2 seconds, then\s+5 seconds, then\s+10 seconds, then every 15 seconds/
+      );
+      expect(content).toContain("10 minutes");
+      expect(content).toContain("still processing");
+      expect(content).toContain("Do not re-upload instead of polling");
+    }
+    expect(skill).toContain("terminal success state");
+    expect(skill).toContain("rejected");
+    expect(skill).toContain("failed");
+    expect(guide).toContain("`rejected` terminal state");
+  });
+
+  it("makes the official acceptance runner poll accepted structured imports to terminal status", async () => {
+    const runner = await readFile(
+      path.join(root, "scripts", "official-manual-acceptance.ts"),
+      "utf8"
+    );
+
+    expect(runner).toContain("pollStructuredImportStatus");
+    expect(runner).toContain('"get_import_status"');
+    expect(runner).toContain("Expected structured import to apply after polling");
+    expect(runner).toContain("Expected invalid structured import to be rejected after polling");
+    expect(runner).not.toContain("Expected structured import applied; got");
+    expect(runner).not.toContain(
+      "Invalid structured import did not return a validation-style failure."
+    );
+  });
 });
 
 describe("manual acceptance evidence fixtures", () => {
