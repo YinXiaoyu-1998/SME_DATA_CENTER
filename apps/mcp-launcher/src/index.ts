@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { loadLauncherRuntimeConfig } from "./config.js";
 import { formatLauncherCommandResult } from "./cli.js";
 import { createOfficialLauncherAuthentication } from "./launcher.js";
+import { LAUNCHER_VERSION } from "./oauth-client.js";
 import { runMcpLauncherStdioServer } from "./server.js";
 
 export {
@@ -38,10 +39,10 @@ if (isMainModule()) {
   void runCommand();
 }
 
-async function runCommand(): Promise<void> {
+export async function runCommand(): Promise<void> {
   const command = process.argv[2] ?? "serve";
   if (command === "--version" || command === "-v") {
-    process.stdout.write("0.2.0\n");
+    process.stdout.write(`${LAUNCHER_VERSION}\n`);
     return;
   }
   try {

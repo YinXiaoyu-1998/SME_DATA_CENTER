@@ -102,7 +102,7 @@ describe("OAuth typed failures", () => {
 
     expect(metadata).toMatchObject({ compatible: true, recommendedUpdateAvailable: false });
     expect(token).toMatchObject({ accessToken: "eh_at_test", refreshToken: "eh_rt_test" });
-    expect(tokenRequest?.launcherVersion).toBe("0.2.1");
+    expect(tokenRequest?.launcherVersion).toBe("0.2.2");
     expect(Object.fromEntries(tokenRequest!.body)).toMatchObject({
       grant_type: "authorization_code",
       client_id: "enterprise-hub-desktop-launcher",
@@ -189,7 +189,7 @@ describe("device authorization grant", () => {
       intervalSeconds: 5
     });
     expect(device.verificationUriComplete?.toString()).toContain("user_code=ABCDEFGH");
-    expect(deviceRequest?.launcherVersion).toBe("0.2.1");
+    expect(deviceRequest?.launcherVersion).toBe("0.2.2");
     expect(deviceRequest?.body.get("client_id")).toBe("enterprise-hub-desktop-launcher");
     expect(deviceRequest?.body.get("instanceName")).toBe("agent-a");
     expect(deviceRequest?.body.get("instanceHostname")).toBe("vps-1");

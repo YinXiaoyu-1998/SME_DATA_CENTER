@@ -1049,3 +1049,16 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   validation errors, run-scoped cleanup verified, then the synthetic account was hard-deleted and
   the launcher session revoked. The locally built 0.2.1 must be replaced by the published npm
   package after the release; QA installs the published 0.2.1 via the skill.
+
+## 2026-08-12 - launcher 0.2.2 CLI version fix
+
+- Branch/worktree: `codex/launcher-0.2.2-cli-version-fix` based on `origin/main` `fd71d68`.
+- Post-publish verification of `enterprise-hub-mcp-launcher@0.2.1` (approved staged publish)
+  confirmed registry integrity matches the local artifact content file-for-file and a clean
+  exact-version install self-checks as 0.2.1, but the CLI `--version` printed a stale hardcoded
+  "0.2.0" (`apps/mcp-launcher/src/index.ts`). The CLI now writes `LAUNCHER_VERSION`, a regression
+  test pins the `--version` output to `LAUNCHER_VERSION`, and launcher 0.2.2 bumps apply to the
+  package, runtime constants, server recommended version, official acceptance runner, and
+  dual-homed skill/docs pins (standalone skill PR mirrors byte-for-byte).
+- Verified: format, lint, typecheck, 602 unit tests (82 files). Publishing 0.2.2 follows the
+  `mcp-launcher-v0.2.2` tag + staged publish approval flow.

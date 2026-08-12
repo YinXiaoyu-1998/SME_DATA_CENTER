@@ -15,7 +15,7 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `enterprise-hub-mcp-launcher@0.2.1`. Do not substitute another
+the exact npm package `enterprise-hub-mcp-launcher@0.2.2`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself.
 
@@ -155,14 +155,14 @@ current OS user and only on the invoking agent's configuration.
 
    | Platform | Launcher directory                                                      |
    | -------- | ----------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.1/` |
-   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.1\\`           |
+   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/` |
+   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.2\\`           |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.2.1
+   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.2.2
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -174,12 +174,12 @@ current OS user and only on the invoking agent's configuration.
 
    ```sh
    ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.1/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.1\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.2\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
    ```
 
    The stable self-check contract is safe machine-readable JSON with this shape:
@@ -187,7 +187,7 @@ current OS user and only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.2.1",
+     "launcherVersion": "0.2.2",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -216,8 +216,8 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                                              | Arguments | Environment                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.1/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.1\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.2\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -225,7 +225,7 @@ setting.
 
 ## Device-Code Login Flow
 
-Starting with launcher 0.2.1, every login uses the OAuth Device Authorization Grant: the launcher
+Starting with launcher 0.2.2, every login uses the OAuth Device Authorization Grant: the launcher
 obtains a first-party Enterprise Hub verification link, opens it automatically when a system
 browser is available (desktop agents), or returns it for the agent to surface through the employee
 channel (phone-remote-controlled and headless agents). The employee confirms the agent instance
@@ -242,7 +242,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `enterprise_hub_login` to obtain a new link.
 
-This flow is available in launcher 0.2.1 and later, which is the version pinned in this document.
+This flow is available in launcher 0.2.2 and later, which is the version pinned in this document.
 
 ## Configure The Invoking Agent
 
@@ -290,7 +290,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
   enterprise-hub -- \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.1/node_modules/.bin/enterprise-hub-mcp-launcher" serve
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher" serve
 "$CODEX_BIN" mcp get enterprise-hub --json
 ```
 
@@ -302,7 +302,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.1\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.2\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get enterprise-hub --json
 ```
@@ -338,7 +338,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for Enterprise Hub.
 
    ```sh
    openclaw mcp add enterprise-hub \
-     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.1/node_modules/.bin/enterprise-hub-mcp-launcher" \
+     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher" \
      --arg serve \
      --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -458,12 +458,12 @@ the pinned launcher directly:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.1/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher" logout
 ```
 
 ```powershell
 $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.1\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.2\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
 ```
 
 The stable logout contract returns only
