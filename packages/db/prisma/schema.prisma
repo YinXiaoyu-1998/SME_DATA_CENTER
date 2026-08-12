@@ -78,6 +78,7 @@ enum DocumentIndexStatus {
 enum ImportDataset {
   dishes
   business
+  vip
 }
 
 enum ImportBatchStatus {
@@ -150,6 +151,7 @@ model Organization {
   importClaims    ImportWindowClaim[]
   dishRows        DishRow[]
   businessRows    BusinessRow[]
+  vipRows         VipRow[]
   auditLogs       AuditLog[]
   skillEntries    SkillEntry[]
   loginIdentities LoginIdentity[]
@@ -245,6 +247,7 @@ model Document {
   importBatch      ImportBatch?
   dishRows         DishRow[]
   businessRows     BusinessRow[]
+  vipRows          VipRow[]
 
   @@index([orgId, status])
   @@index([orgId, documentType])
@@ -392,6 +395,7 @@ model ImportBatch {
   windowClaim        ImportWindowClaim?
   dishRows           DishRow[]
   businessRows       BusinessRow[]
+  vipRows            VipRow[]
 
   @@unique([orgId, idempotencyKey])
   @@index([orgId, dataset, status])
@@ -450,6 +454,25 @@ model BusinessRow {
   @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "business_rows_batch_sheet_row_uq")
   @@index([orgId, importBatchId])
   @@map("business_rows")
+}
+
+model VipRow {
+  id               String       @id @default(cuid()) @db.VarChar(32)
+  orgId            String       @map("org_id") @db.VarChar(64)
+  sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
+  importBatchId    String       @map("import_batch_id") @db.VarChar(32)
+  sourceSheetIndex Int          @default(0) @map("source_sheet_index")
+  sourceSheetName  String       @default("Sheet1") @map("source_sheet_name") @db.VarChar(255)
+  sourceRowNumber  Int          @map("source_row_number")
+  payload          Json
+  createdAt        DateTime     @default(now()) @map("created_at")
+  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "vip_rows_batch_sheet_row_uq")
+  @@index([orgId, importBatchId])
+  @@map("vip_rows")
 }
 
 model AuditLog {

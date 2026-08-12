@@ -369,6 +369,31 @@ describe("structured query compiler", () => {
     expect(compiled.params).toContain("$.discount_rate");
   });
 
+  it("compiles vip member dataset queries against vip_rows", () => {
+    const compiled = compileStructuredQuery({
+      employee: {
+        role: "manager",
+        labels: ["all_staff"]
+      },
+      orgId: "default-org",
+      query: {
+        dataset: "vip",
+        select: ["member_card_no", "topup_count"],
+        filter: {
+          field: "topup_count",
+          op: "gte",
+          value: 1
+        },
+        page: { limit: 50 }
+      },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.mode).toBe("detail");
+    expect(compiled.sql).toContain("FROM vip_rows r");
+    expect(compiled.params).toContain("$.topup_count");
+  });
+
   it("uses typed SQL expressions for numeric and date-time sort, comparison, and min/max", () => {
     const compiled = compileStructuredQuery({
       employee: {

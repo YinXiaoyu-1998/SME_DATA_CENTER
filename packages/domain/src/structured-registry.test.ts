@@ -11,6 +11,7 @@ describe("structured field registries", () => {
   test("cover every reviewed dishes and business export column", () => {
     expect(getStructuredRegistry("dishes").fields).toHaveLength(51);
     expect(getStructuredRegistry("business").fields).toHaveLength(152);
+    expect(getStructuredRegistry("vip").fields).toHaveLength(66);
   });
 
   test("define public names, exact aliases, value semantics, and MySQL payload mappings", () => {
@@ -42,6 +43,39 @@ describe("structured field registries", () => {
       }
     });
     expect(business.fields.some((field) => field.type === "percent")).toBe(true);
+
+    const vip = getStructuredRegistry("vip");
+    expect(vip.fields.find((field) => field.canonicalName === "business_date")).toMatchObject({
+      sourceColumn: "日期",
+      type: "date",
+      aliases: ["日期", "营业日期", "营业日"],
+      storage: {
+        table: "vip_rows",
+        column: "payload",
+        jsonPath: "$.business_date"
+      }
+    });
+    expect(vip.fields.find((field) => field.canonicalName === "member_card_no")).toMatchObject({
+      sourceColumn: "会员卡号",
+      type: "string",
+      capabilities: expect.objectContaining({ filter: true, group: true, aggregate: false })
+    });
+    expect(vip.fields.find((field) => field.canonicalName === "topup_count")).toMatchObject({
+      sourceColumn: "充值笔数",
+      type: "decimal"
+    });
+    expect(
+      vip.fields.find((field) => field.canonicalName === "opening_points_balance")
+    ).toMatchObject({
+      sourceColumn: "期初余额_积分",
+      type: "decimal"
+    });
+    expect(
+      vip.fields.find((field) => field.canonicalName === "closing_recharge_balance_total")
+    ).toMatchObject({
+      sourceColumn: "期末储值余额_合计",
+      type: "decimal"
+    });
   });
 
   test("reject unknown, missing, ambiguous, and fuzzy-renamed headers", () => {
@@ -98,6 +132,22 @@ describe("structured field registries", () => {
         { canonicalName: "dish_sales_quantity", sourceColumnIndex: productIndex },
         { canonicalName: "matched_product_name", sourceColumnIndex: quantityIndex }
       ])
+    });
+  });
+
+  test("accepts the reviewed vip member export header and rejects missing columns", () => {
+    const validHeaders = STRUCTURED_DATASET_REGISTRIES.vip.fields.map(
+      (field) => field.sourceColumn
+    );
+
+    expect(validateStructuredHeaders("vip", validHeaders)).toEqual({
+      ok: true,
+      fields: STRUCTURED_DATASET_REGISTRIES.vip.fields.map((field) => field.canonicalName)
+    });
+
+    expect(validateStructuredHeaders("vip", validHeaders.slice(1))).toMatchObject({
+      ok: false,
+      errors: [expect.objectContaining({ code: "MISSING_REQUIRED_COLUMN", column: "日期" })]
     });
   });
 });

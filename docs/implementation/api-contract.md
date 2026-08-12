@@ -330,7 +330,7 @@ Multipart form fields:
 | Field             | Required | Notes                                   |
 | ----------------- | -------- | --------------------------------------- |
 | `file`            | yes      | CSV/XLSX                                |
-| `dataset`         | yes      | `dishes` or `business`                  |
+| `dataset`         | yes      | `dishes`, `business`, or `vip`          |
 | `enterprise_name` | yes      | Metadata supplied by caller             |
 | `startDate`       | yes      | Business-day start, `YYYYMMDD`          |
 | `endDate`         | yes      | Business-day end, `YYYYMMDD`            |
@@ -414,6 +414,7 @@ Supported datasets:
 
 - `dishes`
 - `business`
+- `vip`
 
 ## Structured Query
 

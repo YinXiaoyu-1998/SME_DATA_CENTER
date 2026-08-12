@@ -81,6 +81,7 @@ Supported datasets:
 
 - `dishes`
 - `business`
+- `vip`
 
 Required behavior:
 

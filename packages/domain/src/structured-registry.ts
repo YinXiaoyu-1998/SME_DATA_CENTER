@@ -1,4 +1,4 @@
-export const STRUCTURED_DATASETS = ["dishes", "business"] as const;
+export const STRUCTURED_DATASETS = ["dishes", "business", "vip"] as const;
 
 export type StructuredDatasetName = (typeof STRUCTURED_DATASETS)[number];
 
@@ -13,7 +13,7 @@ export interface StructuredFieldCapabilities {
 }
 
 export interface StructuredFieldStorageMapping {
-  table: "dish_rows" | "business_rows";
+  table: "dish_rows" | "business_rows" | "vip_rows";
   column: "payload";
   jsonPath: string;
 }
@@ -41,7 +41,7 @@ export interface StructuredFieldRegistryEntry {
 export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
   version: string;
-  rowTable: "dish_rows" | "business_rows";
+  rowTable: "dish_rows" | "business_rows" | "vip_rows";
   fields: StructuredFieldRegistryEntry[];
 }
 
@@ -270,6 +270,75 @@ const BUSINESS_SOURCE_COLUMNS = [
   "营业天数"
 ] as const;
 
+const VIP_SOURCE_COLUMNS = [
+  "日期",
+  "周",
+  "储值门店名称",
+  "省份",
+  "城市",
+  "会员卡号",
+  "会员卡类型名称",
+  "会员卡等级名称",
+  "会员卡种类名称",
+  "会员ID",
+  "会员手机号",
+  "月份",
+  "开卡门店名称",
+  "商户号",
+  "收款方式",
+  "储值消费金额_本金(元)",
+  "储值消费金额_赠金(元)",
+  "储值消费金额_合计(元)",
+  "净储值消费金额_本金(元)",
+  "净储值消费金额_赠金(元)",
+  "净储值消费金额_合计(元)",
+  "储值金额_储值消费_本金(元)",
+  "储值金额_储值消费_赠金(元)",
+  "储值金额_储值消费_合计(元)",
+  "储值金额_本金_消费退款(元)",
+  "储值金额_赠金_消费退款(元)",
+  "储值金额_合计_消费退款(元)",
+  "储值金额_本金_充值(元)",
+  "储值金额_赠金_充值(元)",
+  "储值金额_合计_充值(元)",
+  "储值金额_本金_充值退款(元)",
+  "储值金额_赠金_充值退款(元)",
+  "储值金额_合计_充值退款(元)",
+  "净储值金额_本金_充值(元)",
+  "净储值金额_赠金_充值(元)",
+  "净储值金额_合计_充值(元)",
+  "充值笔数",
+  "充值退款笔数",
+  "净储值金额_充值笔数",
+  "期初余额_积分",
+  "期初导入_积分",
+  "储值积分_充值退款",
+  "储值积分_减少场景（剔除消费）",
+  "储值积分_消费",
+  "储值积分_消费退款",
+  "净储值积分_充值",
+  "储值积分_储值",
+  "净储值消费积分_合计",
+  "期末余额_积分",
+  "付费券包售卖会员数",
+  "付费券包售卖流水数",
+  "付费券包售卖数量",
+  "付费券包售卖金额",
+  "付费券包退货数量",
+  "付费券包退货金额",
+  "付费权益卡售卖会员数",
+  "付费权益卡售卖流水数",
+  "付费权益卡售卖数量",
+  "付费权益卡售卖金额",
+  "付费权益卡退货数量",
+  "储值消费流水数",
+  "储值消费流水数_退款",
+  "付费权益卡退货金额",
+  "期末储值余额_本金",
+  "期末储值余额_赠金",
+  "期末储值余额_合计"
+] as const;
+
 const DISH_CANONICAL_OVERRIDES: Record<string, string> = {
   下单时间: "order_time",
   门店: "store_name",
@@ -313,6 +382,75 @@ const BUSINESS_CANONICAL_OVERRIDES: Record<string, string> = {
   营业天数: "business_day_count"
 };
 
+const VIP_CANONICAL_OVERRIDES: Record<string, string> = {
+  日期: "business_date",
+  周: "business_week",
+  储值门店名称: "store_name",
+  省份: "province",
+  城市: "city",
+  会员卡号: "member_card_no",
+  会员卡类型名称: "member_card_type_name",
+  会员卡等级名称: "member_card_level_name",
+  会员卡种类名称: "member_card_kind_name",
+  会员ID: "member_id",
+  会员手机号: "member_phone",
+  月份: "business_month",
+  开卡门店名称: "opening_store_name",
+  商户号: "merchant_id",
+  收款方式: "payment_method",
+  "储值消费金额_本金(元)": "recharge_consumption_amount_principal",
+  "储值消费金额_赠金(元)": "recharge_consumption_amount_bonus",
+  "储值消费金额_合计(元)": "recharge_consumption_amount_total",
+  "净储值消费金额_本金(元)": "net_recharge_consumption_amount_principal",
+  "净储值消费金额_赠金(元)": "net_recharge_consumption_amount_bonus",
+  "净储值消费金额_合计(元)": "net_recharge_consumption_amount_total",
+  "储值金额_储值消费_本金(元)": "recharge_amount_consumption_principal",
+  "储值金额_储值消费_赠金(元)": "recharge_amount_consumption_bonus",
+  "储值金额_储值消费_合计(元)": "recharge_amount_consumption_total",
+  "储值金额_本金_消费退款(元)": "recharge_amount_principal_consumption_refund",
+  "储值金额_赠金_消费退款(元)": "recharge_amount_bonus_consumption_refund",
+  "储值金额_合计_消费退款(元)": "recharge_amount_total_consumption_refund",
+  "储值金额_本金_充值(元)": "recharge_amount_principal_topup",
+  "储值金额_赠金_充值(元)": "recharge_amount_bonus_topup",
+  "储值金额_合计_充值(元)": "recharge_amount_total_topup",
+  "储值金额_本金_充值退款(元)": "recharge_amount_principal_topup_refund",
+  "储值金额_赠金_充值退款(元)": "recharge_amount_bonus_topup_refund",
+  "储值金额_合计_充值退款(元)": "recharge_amount_total_topup_refund",
+  "净储值金额_本金_充值(元)": "net_recharge_amount_principal_topup",
+  "净储值金额_赠金_充值(元)": "net_recharge_amount_bonus_topup",
+  "净储值金额_合计_充值(元)": "net_recharge_amount_total_topup",
+  充值笔数: "topup_count",
+  充值退款笔数: "topup_refund_count",
+  净储值金额_充值笔数: "net_recharge_amount_topup_count",
+  期初余额_积分: "opening_points_balance",
+  期初导入_积分: "opening_imported_points",
+  储值积分_充值退款: "recharge_points_topup_refund",
+  "储值积分_减少场景（剔除消费）": "recharge_points_reduction_excluding_consumption",
+  储值积分_消费: "recharge_points_consumption",
+  储值积分_消费退款: "recharge_points_consumption_refund",
+  净储值积分_充值: "net_recharge_points_topup",
+  储值积分_储值: "recharge_points_recharge",
+  净储值消费积分_合计: "net_recharge_consumption_points_total",
+  期末余额_积分: "closing_points_balance",
+  付费券包售卖会员数: "paid_coupon_pack_sold_member_count",
+  付费券包售卖流水数: "paid_coupon_pack_sold_flow_count",
+  付费券包售卖数量: "paid_coupon_pack_sold_quantity",
+  付费券包售卖金额: "paid_coupon_pack_sold_amount",
+  付费券包退货数量: "paid_coupon_pack_return_quantity",
+  付费券包退货金额: "paid_coupon_pack_return_amount",
+  付费权益卡售卖会员数: "paid_benefit_card_sold_member_count",
+  付费权益卡售卖流水数: "paid_benefit_card_sold_flow_count",
+  付费权益卡售卖数量: "paid_benefit_card_sold_quantity",
+  付费权益卡售卖金额: "paid_benefit_card_sold_amount",
+  付费权益卡退货数量: "paid_benefit_card_return_quantity",
+  储值消费流水数: "recharge_consumption_flow_count",
+  储值消费流水数_退款: "recharge_consumption_flow_refund_count",
+  付费权益卡退货金额: "paid_benefit_card_return_amount",
+  期末储值余额_本金: "closing_recharge_balance_principal",
+  期末储值余额_赠金: "closing_recharge_balance_bonus",
+  期末储值余额_合计: "closing_recharge_balance_total"
+};
+
 export const STRUCTURED_DATASET_REGISTRIES = {
   dishes: createRegistry({
     dataset: "dishes",
@@ -327,6 +465,13 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     rowTable: "business_rows",
     sourceColumns: BUSINESS_SOURCE_COLUMNS,
     canonicalOverrides: BUSINESS_CANONICAL_OVERRIDES
+  }),
+  vip: createRegistry({
+    dataset: "vip",
+    version: "vip.2026-08-12.v1",
+    rowTable: "vip_rows",
+    sourceColumns: VIP_SOURCE_COLUMNS,
+    canonicalOverrides: VIP_CANONICAL_OVERRIDES
   })
 } as const satisfies Record<StructuredDatasetName, StructuredDatasetRegistry>;
 
@@ -452,7 +597,7 @@ export function resolveStructuredHeaders(
 function createRegistry(input: {
   dataset: StructuredDatasetName;
   version: string;
-  rowTable: "dish_rows" | "business_rows";
+  rowTable: "dish_rows" | "business_rows" | "vip_rows";
   sourceColumns: readonly string[];
   canonicalOverrides: Record<string, string>;
 }): StructuredDatasetRegistry {
@@ -498,21 +643,39 @@ function createRegistry(input: {
 }
 
 function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): string[] {
-  const aliases =
-    dataset === "dishes"
-      ? {
-          下单时间: ["订单时间"],
-          门店: ["门店名称"],
-          营业日: ["营业日期"]
-        }[sourceColumn]
-      : {
-          营业日期: ["营业日"],
-          门店名称: ["门店"]
-        }[sourceColumn];
-  return [sourceColumn, ...(aliases ?? [])];
+  const aliasesByDataset: Record<StructuredDatasetName, Record<string, string[]>> = {
+    dishes: {
+      下单时间: ["订单时间"],
+      门店: ["门店名称"],
+      营业日: ["营业日期"]
+    },
+    business: {
+      营业日期: ["营业日"],
+      门店名称: ["门店"]
+    },
+    vip: {
+      日期: ["营业日期", "营业日"],
+      周: ["营业周"],
+      月份: ["月"],
+      储值门店名称: ["门店名称"]
+    }
+  };
+  return [sourceColumn, ...(aliasesByDataset[dataset][sourceColumn] ?? [])];
 }
 
 function inferFieldType(dataset: StructuredDatasetName, sourceColumn: string): StructuredFieldType {
+  if (dataset === "vip") {
+    if (sourceColumn === "日期") {
+      return "date";
+    }
+    if (
+      /积分|笔数|流水数|会员数|数量|次数|金额|余额|收入|优惠|折扣|营业额|售价/.test(sourceColumn)
+    ) {
+      return "decimal";
+    }
+    return "string";
+  }
+
   if (["营业日", "营业日期"].includes(sourceColumn)) {
     return "date";
   }

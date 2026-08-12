@@ -13,6 +13,7 @@ import {
   EvidenceParseError,
   PHASE3_RUNTIME_LIMIT_DEFAULTS
 } from "@enterprise-hub/domain";
+import type { StructuredDatasetName } from "@enterprise-hub/domain";
 import type { StorageAdapter } from "@enterprise-hub/storage";
 import {
   parseStructuredFile,
@@ -41,7 +42,7 @@ export interface ClaimedProcessingRun {
   lockedUntil: Date | null;
   structuredImport?: {
     importBatchId: string;
-    dataset: "dishes" | "business";
+    dataset: StructuredDatasetName;
     startDate: string;
     endDate: string;
   };
@@ -785,7 +786,7 @@ export function createPrismaProcessingWorkerRepository(
         if (batch.dataset === ImportDataset.dishes) {
           await tx.dishRow.deleteMany({ where: { importBatchId: batch.id } });
           await insertStructuredRows(tx, "dishes", batch, input.result.rows, input.batchInsertSize);
-        } else {
+        } else if (batch.dataset === ImportDataset.business) {
           await tx.businessRow.deleteMany({ where: { importBatchId: batch.id } });
           await insertStructuredRows(
             tx,
@@ -794,6 +795,9 @@ export function createPrismaProcessingWorkerRepository(
             input.result.rows,
             input.batchInsertSize
           );
+        } else {
+          await tx.vipRow.deleteMany({ where: { importBatchId: batch.id } });
+          await insertStructuredRows(tx, "vip", batch, input.result.rows, input.batchInsertSize);
         }
 
         await tx.importBatch.update({
@@ -1149,7 +1153,7 @@ function requireDatabaseUrl(): string {
 
 async function insertStructuredRows(
   tx: Prisma.TransactionClient,
-  dataset: "dishes" | "business",
+  dataset: StructuredDatasetName,
   batch: { id: string; orgId: string; sourceDocumentId: string },
   rows: StructuredParseResult["rows"],
   batchInsertSize: number
@@ -1166,8 +1170,10 @@ async function insertStructuredRows(
     }));
     if (dataset === "dishes") {
       await tx.dishRow.createMany({ data });
-    } else {
+    } else if (dataset === "business") {
       await tx.businessRow.createMany({ data });
+    } else {
+      await tx.vipRow.createMany({ data });
     }
   }
 }
