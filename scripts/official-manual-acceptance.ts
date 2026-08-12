@@ -27,7 +27,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.2.0";
+const LAUNCHER_VERSION = "0.2.1";
 const DEFAULT_LABEL_KEY = "store:baoli";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
@@ -87,7 +87,7 @@ async function runLocalAcceptance(args: ParsedArgs): Promise<void> {
       runId: run.runId,
       cleanedOnly: true,
       cleanupVerified: true,
-      controller: "staging-api-container"
+      controller: "staging-release-ops"
     });
     printSafe({ ok: true, command: "cleanup", runId: run.runId });
     return;
@@ -114,7 +114,7 @@ async function runLocalAcceptance(args: ParsedArgs): Promise<void> {
     : {
         ...outcome,
         cleanupVerified,
-        controller: "staging-api-container"
+        controller: "staging-release-ops"
       };
   await writeReport(run, finalOutcome);
   printSafe({ ok: true, command: "run", runId: run.runId, report: reportPath(run) });
