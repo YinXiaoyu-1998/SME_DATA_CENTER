@@ -127,7 +127,9 @@ Use the documented `.env`/Keychain/runtime secret locations. Never echo or copy 
 Create the employee and one-time password setup link:
 
 ```sh
-npm run auth:operator -- onboard \
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/auth-operator.js onboard \
   --org-id <org-id> \
   --email <beta-email> \
   --display-name "<display-name>" \
@@ -244,7 +246,9 @@ Employee-initiated logout:
 Operator password reset:
 
 ```sh
-npm run auth:operator -- reset-password --employee-id <employee-id>
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/auth-operator.js reset-password --employee-id <employee-id>
 ```
 
 Rules:
@@ -262,10 +266,16 @@ runner and `delete-test-account` command cover the narrow `manual-* @example.inv
 
 ```sh
 npm run test:official-manual -- cleanup --run-id=<run-id>
-npm run auth:operator -- delete-test-account \
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/auth-operator.js delete-test-account \
   --email manual-full-flow-<run-id>@example.invalid \
   --confirm-email manual-full-flow-<run-id>@example.invalid
 ```
+
+The operator CLI ships compiled as `dist/release/auth-operator.js` in the release-ops image and
+always runs against the staging runtime env; never point `npm run auth:operator` (the local
+entrypoint) at staging from the local development `.env`.
 
 For a real beta user, do not hard-delete the account or data unless the pilot owner explicitly
 approves the deletion scope. Record whether data should be retained for debugging, archived, or

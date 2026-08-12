@@ -14,7 +14,15 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { releaseEntries } from "../tsup.release.config.js";
 
-const releaseArtifacts = ["api", "worker", "readiness", "staging-smoke"] as const;
+const releaseArtifacts = [
+  "api",
+  "worker",
+  "readiness",
+  "staging-smoke",
+  "official-manual-acceptance",
+  "auth-operator",
+  "staging-upload-domain-cleanup"
+] as const;
 
 describe("release build", () => {
   it("compiles service and release-operation entrypoints with internal packages bundled", async () => {
@@ -22,7 +30,10 @@ describe("release build", () => {
       api: "apps/api/src/index.ts",
       worker: "apps/worker/src/dev-loop.ts",
       readiness: "scripts/readiness.ts",
-      "staging-smoke": "scripts/staging-smoke.ts"
+      "staging-smoke": "scripts/staging-smoke.ts",
+      "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
+      "auth-operator": "apps/api/src/auth/operator-cli.ts",
+      "staging-upload-domain-cleanup": "scripts/staging-upload-domain-cleanup.ts"
     });
 
     execFileSync("npm", ["run", "build:release"], {
@@ -44,7 +55,14 @@ describe("release build", () => {
         copyFileSync(artifactPath, join(cleanReleaseDir, `${artifact}.js`));
       }
 
-      for (const artifact of ["worker", "readiness", "staging-smoke"] as const) {
+      for (const artifact of [
+        "worker",
+        "readiness",
+        "staging-smoke",
+        "official-manual-acceptance",
+        "auth-operator",
+        "staging-upload-domain-cleanup"
+      ] as const) {
         execFileSync(
           process.execPath,
           ["--input-type=module", "--eval", `await import('./dist/release/${artifact}.js')`],

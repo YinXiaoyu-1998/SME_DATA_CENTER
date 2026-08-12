@@ -241,26 +241,35 @@ the API and worker so no upload, retry, or indexing work races the cleanup. Keep
 available to the operator. Restore the API and worker immediately after the one-time cleanup, then
 rerun health/readiness checks before accepting new uploads.
 
-Use the explicit operator boundary, `npm run staging:cleanup-upload-domain`, only from the
-quiesced staging release-operations environment. The support module alone performs no cleanup: the
-CLI constructs the repo-contained staging adapter from the live runtime environment. That adapter
+Use the explicit operator boundary (the `staging:cleanup-upload-domain` operator CLI ships compiled
+as `dist/release/staging-upload-domain-cleanup.js` in the release-ops image) only from the quiesced
+staging release-operations environment. The support module alone performs no cleanup: the CLI
+constructs the repo-contained staging adapter from the live runtime environment. That adapter
 enumerates the exact database inventory, exact OSS keys, and exact Qdrant collection/point IDs, then
 performs only the injected scoped DB/OSS/Qdrant operations. It fails closed when `DATABASE_URL` or
-`QDRANT_URL` is absent, malformed, or local. The CLI defaults to dry-run and refuses any target
-other than `--target staging`; execution additionally requires `--execute --confirm
-delete-upload-domain`. Review the dry-run's non-sensitive counts and IDs before the explicit
-execution invocation:
+`QDRANT_URL` is absent, malformed, or local; loopback Qdrant (the real host-network staging shape)
+is accepted only when the paired `DATABASE_URL` provably targets the known staging private RDS. The
+CLI defaults to dry-run and refuses any target other than `--target staging`; execution additionally
+requires `--execute --confirm delete-upload-domain`. Review the dry-run's non-sensitive counts and
+IDs before the explicit execution invocation:
 
 ```bash
-npm run staging:cleanup-upload-domain -- --target staging
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/staging-upload-domain-cleanup.js --target staging
 
-npm run staging:cleanup-upload-domain -- \
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/staging-upload-domain-cleanup.js \
   --execute --target staging --confirm delete-upload-domain
 ```
 
-The CLI logs only the plan's safe counts/IDs and post-clean counts; it deliberately excludes DSNs,
-credentials, file contents, and OSS object keys. Do not reuse `npm run purge-data`: it remains
-local-only and must continue refusing non-local database hosts.
+The local `npm run staging:cleanup-upload-domain` name remains the source entrypoint for tests and
+local dry-runs; it must never be pointed at staging from a machine whose runtime env is not the
+quiesced staging release-ops environment. The CLI logs only the plan's safe counts/IDs and
+post-clean counts; it deliberately excludes DSNs, credentials, file contents, and OSS object keys.
+Do not reuse `npm run purge-data`: it remains local-only and must continue refusing non-local
+database hosts.
 
 Delete only the enumerated upload domain, never a key prefix or a whole collection:
 

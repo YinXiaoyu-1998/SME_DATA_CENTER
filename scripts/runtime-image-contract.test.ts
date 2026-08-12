@@ -34,9 +34,16 @@ describe("runtime image contracts", () => {
 
   it("provides release operations as an explicit ephemeral Compose profile", () => {
     const releaseOpsSection = composeService("release-ops");
+    const releaseOpsDockerfile = dockerfile.slice(
+      dockerfile.indexOf("FROM runtime-base AS release-ops")
+    );
 
     expect(dockerfile).toContain("FROM manifests AS release-ops-deps");
     expect(dockerfile).toContain("FROM runtime-base AS release-ops");
+    expect(releaseOpsDockerfile).toContain("dist/release/official-manual-acceptance.js");
+    expect(releaseOpsDockerfile).toContain("dist/release/auth-operator.js");
+    expect(releaseOpsDockerfile).toContain("dist/release/staging-upload-domain-cleanup.js");
+    expect(releaseOpsDockerfile).toContain('CMD ["node", "dist/release/readiness.js"]');
     expect(compose).toContain('profiles: ["release"]');
     expect(compose).toContain("${ENTERPRISE_HUB_RELEASE_OPS_IMAGE}");
     expect(releaseOpsSection).not.toContain("restart:");

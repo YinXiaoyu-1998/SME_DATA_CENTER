@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
 
-export const STAGING_RDS_HOST = "rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com";
-export const STAGING_RDS_DATABASE = "enterprise_hub";
-export const STAGING_RDS_USER = "enterprise_hub_app";
+import { isStagingRuntimeDatabaseUrl } from "./staging-runtime-targets.js";
+
+export {
+  STAGING_RDS_DATABASE,
+  STAGING_RDS_HOST,
+  STAGING_RDS_USER
+} from "./staging-runtime-targets.js";
 
 export interface StructuredWindow {
   dates: [string, string, string];
@@ -66,17 +70,7 @@ export async function pollStructuredImportStatus<T extends StructuredImportPollR
 }
 
 export function assertStagingRuntimeDatabaseTarget(databaseUrl: string): void {
-  const parsed = new URL(databaseUrl);
-  const databaseName = parsed.pathname.replace(/^\/+/, "");
-  const username = decodeURIComponent(parsed.username);
-  const port = Number(parsed.port || "3306");
-
-  if (username !== STAGING_RDS_USER || databaseName !== STAGING_RDS_DATABASE) {
-    throw new Error(
-      `Official manual acceptance requires staging database ${STAGING_RDS_DATABASE} as ${STAGING_RDS_USER}.`
-    );
-  }
-  if (parsed.hostname !== STAGING_RDS_HOST || port !== 3306) {
+  if (!isStagingRuntimeDatabaseUrl(databaseUrl)) {
     throw new Error(
       "Official manual controller cleanup must run inside staging against the private RDS endpoint."
     );

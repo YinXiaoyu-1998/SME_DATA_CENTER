@@ -1,11 +1,58 @@
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 import { createStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
+import { isStagingRuntimeDatabaseUrl } from "./staging-runtime-targets.js";
 import type {
   QdrantPointTarget,
   StagingUploadDomainCleanupPlan
 } from "./staging-upload-domain-cleanup-support.js";
 import type { StagingUploadDomainCleanupAdapter } from "./staging-upload-domain-cleanup.js";
+
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]);
+
+function normalizeHostname(hostname: string): string {
+  return hostname.replace(/^\[|\]$/g, "").toLowerCase();
+}
+
+function isLocalHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(normalizeHostname(hostname));
+}
+
+/**
+ * Fail-closed runtime boundary for the one-time upload-domain cleanup. The
+ * cleanup is only allowed when the database is a non-local MySQL target and
+ * the Qdrant URL is HTTP(S). Loopback Qdrant (the actual staging shape, where
+ * Qdrant listens on 127.0.0.1 under host networking) is accepted only when
+ * the paired DATABASE_URL provably targets the known staging private RDS.
+ */
+export function assertStagingCleanupRuntimeTargets(env: NodeJS.ProcessEnv): void {
+  const databaseUrl = env["DATABASE_URL"];
+  const qdrantUrl = env["QDRANT_URL"];
+  if (!databaseUrl || !qdrantUrl) {
+    throw new Error("Staging cleanup requires DATABASE_URL and QDRANT_URL at runtime.");
+  }
+
+  const database = new URL(databaseUrl);
+  if (database.protocol !== "mysql:" || isLocalHostname(database.hostname)) {
+    throw new Error("Staging cleanup refuses a local or non-MySQL DATABASE_URL.");
+  }
+
+  let qdrantTarget: URL;
+  try {
+    qdrantTarget = new URL(qdrantUrl);
+  } catch {
+    throw new Error("Staging cleanup requires an absolute HTTP(S) QDRANT_URL.");
+  }
+
+  const qdrantIsLocal = isLocalHostname(qdrantTarget.hostname);
+  const qdrantIsStagingLoopback = qdrantIsLocal && isStagingRuntimeDatabaseUrl(databaseUrl);
+  if (
+    !["http:", "https:"].includes(qdrantTarget.protocol) ||
+    (qdrantIsLocal && !qdrantIsStagingLoopback)
+  ) {
+    throw new Error("Staging cleanup refuses a local or non-HTTP(S) QDRANT_URL.");
+  }
+}
 
 type StorageCleanupAdapter = Pick<StorageAdapter, "deleteObject" | "statObject">;
 
@@ -176,26 +223,9 @@ export function createStagingUploadDomainCleanupAdapter(
 }
 
 function createRuntimeProviders(env: NodeJS.ProcessEnv): StagingUploadDomainCleanupProviders {
-  const databaseUrl = env["DATABASE_URL"];
-  const qdrantUrl = env["QDRANT_URL"];
-  if (!databaseUrl || !qdrantUrl)
-    throw new Error("Staging cleanup requires DATABASE_URL and QDRANT_URL at runtime.");
-  const url = new URL(databaseUrl);
-  if (url.protocol !== "mysql:" || ["localhost", "127.0.0.1", "::1"].includes(url.hostname))
-    throw new Error("Staging cleanup refuses a local or non-MySQL DATABASE_URL.");
-  let qdrantTarget: URL;
-  try {
-    qdrantTarget = new URL(qdrantUrl);
-  } catch {
-    throw new Error("Staging cleanup requires an absolute HTTP(S) QDRANT_URL.");
-  }
-  const qdrantHostname = qdrantTarget.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (
-    !["http:", "https:"].includes(qdrantTarget.protocol) ||
-    ["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"].includes(qdrantHostname)
-  ) {
-    throw new Error("Staging cleanup refuses a local or non-HTTP(S) QDRANT_URL.");
-  }
+  assertStagingCleanupRuntimeTargets(env);
+  const databaseUrl = env["DATABASE_URL"]!;
+  const qdrantUrl = env["QDRANT_URL"]!;
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
   return {
     prisma,

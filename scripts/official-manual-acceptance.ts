@@ -1,6 +1,7 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
@@ -26,7 +27,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.1.0";
+const LAUNCHER_VERSION = "0.2.0";
 const DEFAULT_LABEL_KEY = "store:baoli";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
@@ -67,11 +68,13 @@ interface StructuredQueryResult extends ToolTextResult {
   rows: Array<Record<string, unknown>>;
 }
 
-const parsedArgs = parseArgs(process.argv.slice(2));
-if (parsedArgs.command.startsWith("controller-")) {
-  await runControllerCommand(parsedArgs);
-} else {
-  await runLocalAcceptance(parsedArgs);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const parsedArgs = parseArgs(process.argv.slice(2));
+  if (parsedArgs.command.startsWith("controller-")) {
+    await runControllerCommand(parsedArgs);
+  } else {
+    await runLocalAcceptance(parsedArgs);
+  }
 }
 
 async function runLocalAcceptance(args: ParsedArgs): Promise<void> {

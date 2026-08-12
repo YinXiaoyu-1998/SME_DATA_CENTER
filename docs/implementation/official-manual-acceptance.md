@@ -98,7 +98,9 @@ Expected:
 Use a fresh synthetic email owned by the controller, never a real customer address:
 
 ```sh
-npm run auth:operator -- onboard \
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/auth-operator.js onboard \
   --org-id default-org \
   --email manual-full-flow-<run-id>@example.invalid \
   --display-name "Manual Acceptance <run-id>" \
@@ -113,7 +115,9 @@ agent-generated throwaway password in the browser page. Do not ask the human to 
 Password reset uses the same browser-only setup flow:
 
 ```sh
-npm run auth:operator -- reset-password --employee-id <employee-id>
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/auth-operator.js reset-password --employee-id <employee-id>
 ```
 
 Successful password reset must revoke old launcher sessions. A later product slice should add an
@@ -121,7 +125,9 @@ operator disable/reactivate command for real users. Synthetic full-flow test acc
 deleted after cleanup:
 
 ```sh
-npm run auth:operator -- delete-test-account \
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/auth-operator.js delete-test-account \
   --email manual-full-flow-<run-id>@example.invalid \
   --confirm-email manual-full-flow-<run-id>@example.invalid
 ```
@@ -129,6 +135,9 @@ npm run auth:operator -- delete-test-account \
 `delete-test-account` is intentionally narrow. It accepts only
 `manual-acceptance-*` or `manual-full-flow-*` `@example.invalid` emails, requires exact
 confirmation, and refuses to delete while the test employee still owns uploaded documents.
+
+The `auth:operator` CLI ships compiled as `dist/release/auth-operator.js` in the release-ops image
+and runs with the staging runtime env; it must never be pointed at the local development `.env`.
 
 ## Async Upload Completion Rule
 
@@ -226,8 +235,9 @@ The runner:
 
 - requires a current authenticated launcher session;
 - never reads staging database credentials from the local `.env`;
-- resolves the live staging API container over strict-host-key SSH and runs controller-only
-  window allocation/cleanup there;
+- resolves the live staging runtime over strict-host-key SSH and runs controller-only window
+  allocation/cleanup through the release-ops image (`docker compose --profile release run --rm
+release-ops node dist/release/official-manual-acceptance.js controller-...`);
 - refuses controller cleanup unless the container runtime points to the private staging RDS endpoint
   with the dedicated staging database account;
 - uses `sourceSystem=manual_acceptance_<runId>` for evidence;
