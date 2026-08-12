@@ -95,6 +95,9 @@ COPY --chown=node:node packages/db/prisma.config.ts ./packages/db/prisma.config.
 COPY --chown=node:node packages/db/prisma ./packages/db/prisma
 COPY --from=build --chown=node:node /app/dist/release/readiness.js ./dist/release/readiness.js
 COPY --from=build --chown=node:node /app/dist/release/staging-smoke.js ./dist/release/staging-smoke.js
+COPY --from=build --chown=node:node /app/dist/release/official-manual-acceptance.js ./dist/release/official-manual-acceptance.js
+COPY --from=build --chown=node:node /app/dist/release/auth-operator.js ./dist/release/auth-operator.js
+COPY --from=build --chown=node:node /app/dist/release/staging-upload-domain-cleanup.js ./dist/release/staging-upload-domain-cleanup.js
 COPY --chown=node:node fixtures/evidence/kitchen-sop.md ./fixtures/evidence/kitchen-sop.md
 COPY --chown=node:node fixtures/evidence/shift-notes.txt ./fixtures/evidence/shift-notes.txt
 

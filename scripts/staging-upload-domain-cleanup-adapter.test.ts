@@ -1,6 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
-import { createStagingUploadDomainCleanupAdapter } from "./staging-upload-domain-cleanup-adapter.js";
+import {
+  assertStagingCleanupRuntimeTargets,
+  createStagingUploadDomainCleanupAdapter
+} from "./staging-upload-domain-cleanup-adapter.js";
 import { buildStagingUploadDomainCleanupPlan } from "./staging-upload-domain-cleanup-support.js";
 
 describe("repo-contained staging upload-domain cleanup adapter", () => {
@@ -169,5 +172,55 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         })
       ).toThrow("QDRANT_URL");
     }
+  });
+
+  it("allows the staging loopback Qdrant only when the database provably targets the staging RDS", () => {
+    const stagingDatabaseUrl =
+      "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3306/enterprise_hub";
+
+    for (const qdrantUrl of [
+      "http://127.0.0.1:6333",
+      "http://localhost:6333",
+      "http://[::1]:6333",
+      "http://[0:0:0:0:0:0:0:1]:6333"
+    ]) {
+      expect(() =>
+        assertStagingCleanupRuntimeTargets({
+          DATABASE_URL: stagingDatabaseUrl,
+          QDRANT_URL: qdrantUrl
+        })
+      ).not.toThrow();
+    }
+  });
+
+  it("still refuses loopback Qdrant for any non-staging database target", () => {
+    for (const databaseUrl of [
+      "mysql://operator:secret@staging.example/enterprise_hub",
+      "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3306/other_db",
+      "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3307/enterprise_hub"
+    ]) {
+      expect(() =>
+        assertStagingCleanupRuntimeTargets({
+          DATABASE_URL: databaseUrl,
+          QDRANT_URL: "http://127.0.0.1:6333"
+        })
+      ).toThrow("QDRANT_URL");
+    }
+    expect(() =>
+      assertStagingCleanupRuntimeTargets({
+        DATABASE_URL: "mysql://enterprise_hub_app:secret@127.0.0.1:3307/enterprise_hub",
+        QDRANT_URL: "http://127.0.0.1:6333"
+      })
+    ).toThrow("DATABASE_URL");
+  });
+
+  it("requires both runtime URLs before any cleanup planning", () => {
+    const stagingDatabaseUrl =
+      "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3306/enterprise_hub";
+
+    expect(() => assertStagingCleanupRuntimeTargets({ DATABASE_URL: stagingDatabaseUrl })).toThrow(
+      "DATABASE_URL and QDRANT_URL"
+    );
+    expect(() => assertStagingCleanupRuntimeTargets({})).toThrow("DATABASE_URL and QDRANT_URL");
   });
 });

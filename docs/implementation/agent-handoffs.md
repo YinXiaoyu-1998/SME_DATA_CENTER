@@ -1003,3 +1003,24 @@ benchmark:xlsx-parse` (old ExcelJS vs streaming extraction vs full pipeline with
 
 - Parameterized terminal import-window coverage over both `rejected` and `failed` batches.
 - Verified: 36 focused API/query/worker tests, typecheck, format check, and diff check.
+
+## 2026-08-12 - acceptance tooling release-ops fixes
+
+- Branch/worktree: `codex/acceptance-tooling-release-ops-20260812` based on `origin/main` `8151606`.
+- Root cause: the 2026-07-31 lean-runtime split removed `tsx`/repo scripts from runtime images,
+  but `scripts/official-manual-remote-controller.ts` still `docker exec`ed `/app/node_modules/.bin/tsx
+/app/scripts/official-manual-acceptance.ts` into the API container, so `npm run test:official-manual`
+  could not run against the current deployment. Separately, the upload-domain cleanup CLI failed
+  closed on the real staging `QDRANT_URL=http://127.0.0.1:6333` (host-network loopback), so the
+  Task 6 one-time cutover cleanup could not execute.
+- Fixes: added `official-manual-acceptance`, `auth-operator`, and `staging-upload-domain-cleanup`
+  release entries; copied the compiled bundles into the release-ops image; rewrote the remote
+  controller to `docker compose --profile release run --rm release-ops node
+dist/release/official-manual-acceptance.js controller-...`; extracted shared staging RDS target
+  constants into `scripts/staging-runtime-targets.ts`; the cleanup guard now accepts loopback Qdrant
+  only when `DATABASE_URL` matches the known staging private RDS (still refuses local/unknown DBs);
+  bumped the acceptance runner launcher pin to 0.2.0; updated the manual-test skill example and the
+  acceptance/onboarding/runbook docs to the release-ops container invocations.
+- Verified: format, lint, typecheck, 600 unit tests (81 files), release-ops image build, and
+  in-image bundle execution (missing-env fail-closed paths). No staging deploy or acceptance run
+  happened in this branch; those follow after merge per the canonical staging workflow.

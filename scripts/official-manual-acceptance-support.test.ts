@@ -31,22 +31,25 @@ describe("official manual acceptance staging database target", () => {
 describe("official manual acceptance remote controller", () => {
   it("uses strict SSH host verification and the staging container runtime", () => {
     const sshArgs = buildStagingSshArgs();
-    const command = buildRemoteControllerCommand(
-      "enterprise-hub-staging-api-1",
-      "cleanup",
-      "safe-run"
-    );
+    const command = buildRemoteControllerCommand("cleanup", "safe-run");
 
     expect(sshArgs).toContain("StrictHostKeyChecking=yes");
     expect(sshArgs.some((arg) => arg.startsWith("UserKnownHostsFile="))).toBe(true);
     expect(command).toEqual([
       "docker",
-      "exec",
-      "-w",
-      "/tmp",
-      "enterprise-hub-staging-api-1",
-      "/app/node_modules/.bin/tsx",
-      "/app/scripts/official-manual-acceptance.ts",
+      "compose",
+      "--profile",
+      "release",
+      "--env-file",
+      "/opt/enterprise-hub/runtime.env",
+      "-f",
+      "/opt/enterprise-hub/docker-compose.yml",
+      "run",
+      "-T",
+      "--rm",
+      "release-ops",
+      "node",
+      "dist/release/official-manual-acceptance.js",
       "controller-cleanup",
       "--run-id=safe-run"
     ]);

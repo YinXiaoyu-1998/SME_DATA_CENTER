@@ -4,7 +4,10 @@ export const releaseEntries = {
   api: "apps/api/src/index.ts",
   worker: "apps/worker/src/dev-loop.ts",
   readiness: "scripts/readiness.ts",
-  "staging-smoke": "scripts/staging-smoke.ts"
+  "staging-smoke": "scripts/staging-smoke.ts",
+  "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
+  "auth-operator": "apps/api/src/auth/operator-cli.ts",
+  "staging-upload-domain-cleanup": "scripts/staging-upload-domain-cleanup.ts"
 } as const;
 
 const thirdPartyPackageImport = /^(?!@enterprise-hub(?:\/|$))[^./]/;

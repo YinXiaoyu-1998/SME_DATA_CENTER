@@ -7,6 +7,8 @@ import type { StructuredWindow } from "./official-manual-acceptance-support.js";
 const execFileAsync = promisify(execFile);
 const DEFAULT_STAGING_HOST = "39.96.66.185";
 const DEFAULT_STAGING_USER = "root";
+const STAGING_COMPOSE_FILE = "/opt/enterprise-hub/docker-compose.yml";
+const STAGING_RUNTIME_ENV_FILE = "/opt/enterprise-hub/runtime.env";
 
 export type RemoteControllerCommand = "cleanup" | "window";
 
@@ -28,18 +30,24 @@ export function buildStagingSshArgs(): string[] {
 }
 
 export function buildRemoteControllerCommand(
-  containerName: string,
   command: RemoteControllerCommand,
   runId: string
 ): string[] {
   return [
     "docker",
-    "exec",
-    "-w",
-    "/tmp",
-    containerName,
-    "/app/node_modules/.bin/tsx",
-    "/app/scripts/official-manual-acceptance.ts",
+    "compose",
+    "--profile",
+    "release",
+    "--env-file",
+    STAGING_RUNTIME_ENV_FILE,
+    "-f",
+    STAGING_COMPOSE_FILE,
+    "run",
+    "-T",
+    "--rm",
+    "release-ops",
+    "node",
+    "dist/release/official-manual-acceptance.js",
     `controller-${command}`,
     `--run-id=${runId}`
   ];
@@ -78,7 +86,7 @@ export async function runStagingController<T>(
   const { stdout } = await execFileAsync("ssh", [
     ...sshArgs,
     target,
-    ...buildRemoteControllerCommand(containers[0]!, command, runId)
+    ...buildRemoteControllerCommand(command, runId)
   ]);
   return JSON.parse(stdout) as T;
 }
