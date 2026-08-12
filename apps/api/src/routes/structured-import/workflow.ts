@@ -4,6 +4,7 @@ import {
   PHASE3_ERROR_CODES,
   PHASE3_FILE_TYPES,
   PUBLIC_INPUT_LIMITS,
+  STRUCTURED_DATASETS,
   type Phase3FileType,
   type StructuredDatasetName
 } from "@enterprise-hub/domain";
@@ -60,11 +61,11 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
     };
   }
 
-  if (!upload.dataset || !["dishes", "business"].includes(upload.dataset)) {
+  if (!upload.dataset || !(STRUCTURED_DATASETS as readonly string[]).includes(upload.dataset)) {
     return {
       ok: false,
       code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
-      message: "dataset must be dishes or business."
+      message: "dataset must be dishes, business, or vip."
     };
   }
 

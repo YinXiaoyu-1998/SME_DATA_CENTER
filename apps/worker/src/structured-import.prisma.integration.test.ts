@@ -355,6 +355,7 @@ async function clearTestRecords(prisma: PrismaClient) {
   await prisma.auditLog.deleteMany({ where: { orgId } });
   await prisma.dishRow.deleteMany({ where: { orgId } });
   await prisma.businessRow.deleteMany({ where: { orgId } });
+  await prisma.vipRow.deleteMany({ where: { orgId } });
   await prisma.processingRun.deleteMany({ where: { orgId } });
   await prisma.importWindowClaim.deleteMany({ where: { orgId } });
   await prisma.importBatch.deleteMany({ where: { orgId } });

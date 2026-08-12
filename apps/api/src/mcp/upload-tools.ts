@@ -10,6 +10,7 @@ import {
 } from "@enterprise-hub/mcp-contract";
 import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
+import type { StructuredDatasetName } from "@enterprise-hub/domain";
 
 interface InlineUploadFile {
   name: string;
@@ -20,7 +21,7 @@ interface InlineUploadFile {
 
 interface UploadStructuredDatasetInput {
   file: InlineUploadFile;
-  dataset: "dishes" | "business";
+  dataset: StructuredDatasetName;
   enterpriseName: string;
   startDate: string;
   endDate: string;

@@ -331,6 +331,20 @@ describe("Enterprise Hub MCP contract", () => {
     }
   });
 
+  it("accepts the vip structured dataset in query and upload contracts", () => {
+    const query = parseTool("query_structured_dataset", {
+      ...validInputs.query_structured_dataset,
+      dataset: "vip"
+    }) as { dataset: string };
+    const upload = parseTool("upload_structured_dataset", {
+      ...validInputs.upload_structured_dataset,
+      dataset: "vip"
+    }) as { dataset: string };
+
+    expect(query.dataset).toBe("vip");
+    expect(upload.dataset).toBe("vip");
+  });
+
   it("rejects table-driven invalid schema cases for every Phase 3 tool", () => {
     expect(invalidInputCases.map((entry) => entry.tool)).toEqual(ENTERPRISE_HUB_MCP_TOOL_NAMES);
 

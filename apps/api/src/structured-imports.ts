@@ -19,7 +19,7 @@ import type {
   Phase3FileType,
   StructuredDatasetName
 } from "@enterprise-hub/domain";
-import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
+import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface StructuredImportRowInput {
@@ -222,7 +222,7 @@ async function insertStructuredRows(
     onTiming?: (event: StructuredImportTimingEvent) => void;
   }
 ): Promise<void> {
-  const tableName = input.dataset === "dishes" ? "dish_rows" : "business_rows";
+  const tableName = getStructuredRegistry(input.dataset).rowTable;
   const batchSize = input.batchInsertSize;
 
   for (
@@ -491,10 +491,17 @@ export function createPrismaStructuredImportRepository(options: {
             await measureStructuredImportStage(
               input,
               "apply.delete_existing_rows",
-              () =>
-                existing.dataset === ImportDataset.dishes
-                  ? tx.dishRow.deleteMany({ where: { importBatchId: input.importBatchId } })
-                  : tx.businessRow.deleteMany({ where: { importBatchId: input.importBatchId } }),
+              () => {
+                if (existing.dataset === ImportDataset.dishes) {
+                  return tx.dishRow.deleteMany({ where: { importBatchId: input.importBatchId } });
+                }
+                if (existing.dataset === ImportDataset.business) {
+                  return tx.businessRow.deleteMany({
+                    where: { importBatchId: input.importBatchId }
+                  });
+                }
+                return tx.vipRow.deleteMany({ where: { importBatchId: input.importBatchId } });
+              },
               baseTiming
             );
             await measureStructuredImportStage(

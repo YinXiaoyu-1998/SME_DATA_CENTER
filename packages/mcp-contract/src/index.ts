@@ -14,7 +14,7 @@ export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
 const structuredDataset = z
-  .enum(["dishes", "business"])
+  .enum(["dishes", "business", "vip"])
   .describe("Phase 3 structured dataset name.");
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -386,7 +386,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       "Execute a controlled read-only structured query by calling authenticated POST /v1/structured/query.",
     inputSchema: queryStructuredDatasetInputSchema,
     inputFields: [
-      { name: "dataset", required: true, description: "`dishes` or `business`." },
+      { name: "dataset", required: true, description: "`dishes`, `business`, or `vip`." },
       { name: "registryVersion", required: false, description: "Optional registry version." },
       { name: "select", required: false, description: "Selected field names." },
       { name: "filter", required: false, description: "Controlled filter tree." },
@@ -405,7 +405,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: [
       { name: "file", required: true, description: "Base64 upload file payload." },
-      { name: "dataset", required: true, description: "`dishes` or `business`." },
+      { name: "dataset", required: true, description: "`dishes`, `business`, or `vip`." },
       { name: "enterpriseName", required: true, description: "Enterprise/source name." },
       { name: "startDate", required: true, description: "YYYYMMDD business window start." },
       { name: "endDate", required: true, description: "YYYYMMDD business window end." },
