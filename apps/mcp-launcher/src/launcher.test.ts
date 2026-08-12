@@ -3,6 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ENTERPRISE_HUB_MCP_TOOL_NAMES } from "@enterprise-hub/mcp-contract";
 import { createLauncherRuntimeConfig } from "./config.js";
 import {
@@ -198,6 +201,17 @@ describe("launcher local path upload proxy", () => {
     idempotencyKey: "base64-upload-key",
     labelKeys: ["store:baoli"]
   };
+  const evidenceInput = () => ({
+    file: {
+      name: "sop.md",
+      mediaType: "text/markdown",
+      encoding: "path",
+      filePath: "/tmp/sop.md"
+    },
+    title: "Baoli Roujiamo SOP",
+    sourceSystem: "manual_acceptance_probe",
+    labelKeys: ["store:baoli"]
+  });
 
   it("registers path-capable schemas for both upload tools", () => {
     const registered: Array<{ name: string; shape: Record<string, unknown> }> = [];
@@ -206,19 +220,82 @@ describe("launcher local path upload proxy", () => {
       createLauncherToolDependencies({ config, auth: fakeAuth() })
     );
 
-    for (const name of ["upload_structured_dataset", "upload_evidence_document"]) {
+    for (const name of ["upload_structured_dataset", "upload_evidence_document"] as const) {
       const shape = registered.find((entry) => entry.name === name)?.shape;
       const schema = z.object(shape as z.ZodRawShape);
-      expect(schema.safeParse(pathInput("/tmp/dishes.csv").file).success).toBe(true);
-      expect(schema.safeParse(base64Input.file).success).toBe(true);
+      const input =
+        name === "upload_structured_dataset" ? pathInput("/tmp/dishes.csv") : evidenceInput();
+      expect(schema.safeParse(input).success).toBe(true);
+      const base64 =
+        name === "upload_structured_dataset"
+          ? base64Input
+          : { ...evidenceInput(), file: base64Input.file };
+      expect(schema.safeParse(base64).success).toBe(true);
+      expect(
+        schema.safeParse({
+          ...input,
+          file: {
+            name: "dishes.csv",
+            mediaType: "text/csv",
+            encoding: "path",
+            filePath: "relative.csv"
+          }
+        }).success
+      ).toBe(false);
       expect(
         schema.safeParse({
           name: "dishes.csv",
           mediaType: "text/csv",
-          encoding: "path",
-          filePath: "relative.csv"
+          encoding: "base64",
+          contentBase64: "YSwNCg=="
         }).success
       ).toBe(false);
+      if (name === "upload_structured_dataset") {
+        expect(Object.keys(shape ?? {})).toEqual(
+          expect.arrayContaining([
+            "file",
+            "dataset",
+            "enterpriseName",
+            "startDate",
+            "endDate",
+            "idempotencyKey",
+            "labelKeys"
+          ])
+        );
+      } else {
+        expect(Object.keys(shape ?? {})).toEqual(
+          expect.arrayContaining(["file", "title", "sourceSystem", "labelKeys"])
+        );
+      }
+    }
+  });
+
+  it("accepts nested upload files through the real MCP server boundary", async () => {
+    const server = new McpServer({ name: "launcher-schema-test", version: "1.0.0" });
+    registerLauncherTools(
+      server,
+      createLauncherToolDependencies({
+        config,
+        auth: fakeAuth(),
+        fetchImplementation: async () => {
+          throw new Error("probe fetch must not be used");
+        }
+      })
+    );
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: "launcher-schema-test-client", version: "1.0.0" });
+    await client.connect(clientTransport);
+    try {
+      const result = await client.callTool(
+        { name: "upload_structured_dataset", arguments: base64Input },
+        undefined,
+        { timeout: 5_000 }
+      );
+      expect(JSON.stringify(result)).not.toContain("Input validation error");
+      expect(JSON.stringify(result)).not.toContain("-32602");
+    } finally {
+      await client.close();
     }
   });
 

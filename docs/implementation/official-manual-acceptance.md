@@ -21,7 +21,7 @@ The acceptance run must exercise both sides of the real product boundary:
 | --------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Operator onboarding   | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, personal label, and setup link.      |
 | Password setup/reset  | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.    |
-| Client installation   | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.0` is installed and configured as a Codex stdio MCP.     |
+| Client installation   | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.1` is installed and configured as a Codex stdio MCP.     |
 | Durable login         | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.      |
 | Continued use         | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.           |
 | Evidence workflow     | Employee-owned MCP client         | Upload fixture bytes, poll index status, search only authorized evidence, and clean test data.   |
@@ -67,7 +67,7 @@ The macOS user must have:
 
 - Node.js 22+ and npm;
 - the published launcher installed at
-  `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.0/`;
+  `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.1/`;
 - Codex configured with the exact `enterprise-hub` stdio MCP entry from
   `skills/enterprise-hub-mcp/SKILL.md`;
 - SSH access to the staging host through the committed strict `known_hosts` identity.
@@ -83,7 +83,7 @@ Credential-free preflight:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.1/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
 ```
 
 Expected:

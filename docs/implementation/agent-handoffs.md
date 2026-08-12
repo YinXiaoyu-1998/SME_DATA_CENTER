@@ -1024,3 +1024,28 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
 - Verified: format, lint, typecheck, 600 unit tests (81 files), release-ops image build, and
   in-image bundle execution (missing-env fail-closed paths). No staging deploy or acceptance run
   happened in this branch; those follow after merge per the canonical staging workflow.
+
+## 2026-08-12 - launcher 0.2.1 upload schema fix + staging cutover/acceptance
+
+- Branch/worktree: `codex/launcher-upload-schema-fix-20260812` based on `origin/main` `273a491`.
+- New blocker found during official acceptance: launcher 0.2.0 registered the two upload tools with
+  `launcherUploadFileInputShape` (top-level `name/mediaType/encoding/contentBase64/filePath`) while
+  its handler, tests, and the service contract all use the nested `file` object plus business args;
+  the SDK server validated against the registered shape, so every real MCP-client upload returned
+  `-32602`. Fixed by registering `{ ...contract.inputSchema.shape, file: launcherUploadFileInputSchema }`
+  for upload tools; added regression tests asserting the registered schema accepts the canonical
+  nested inputs and a real `McpServer` (InMemoryTransport) call no longer yields a validation error.
+  Bumped launcher to 0.2.1 (package, `LAUNCHER_VERSION`, `MCP_LAUNCHER_SERVER_VERSION`), server
+  `enterprise_hub_launcher_recommended_version` to 0.2.1, and dual-homed skill/official-acceptance
+  docs pins to 0.2.1.
+- Staging cutover executed (2026-08-12): quiesced API/worker, ran the fixed upload-domain cleanup
+  dry-run then execute (deleted 166 docs/163 batches/14,159 dish rows/114,265 business rows/336
+  upload audits/166 OSS objects/3 Qdrant points), restored services, verified zero upload-domain
+  residue with identity/config domains preserved (7 employees/7 identities/10 labels/1 org/2 skills).
+- Official manual acceptance passed with a locally built launcher 0.2.1 tarball:
+  `manual-full-flow-20260812-1115` (report under `.data/official-manual-acceptance/...`): labels,
+  two evidence uploads -> `ready` + search hit, structured CSV `pending` -> `applied` with
+  row_count=3/gross_sales=91/top dishes 合成凉皮, 合成肉夹馍, invalid CSV -> `rejected` with safe
+  validation errors, run-scoped cleanup verified, then the synthetic account was hard-deleted and
+  the launcher session revoked. The locally built 0.2.1 must be replaced by the published npm
+  package after the release; QA installs the published 0.2.1 via the skill.

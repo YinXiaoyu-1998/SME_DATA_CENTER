@@ -9,7 +9,6 @@ import {
   errorToolResult,
   jsonToolResult,
   launcherUploadFileInputSchema,
-  launcherUploadFileInputShape,
   toolNotFoundResult,
   validationErrorToolResult
 } from "@enterprise-hub/mcp-contract";
@@ -41,6 +40,15 @@ const LOCAL_PATH_UPLOAD_TOOL_NAMES = new Set<LauncherBusinessToolName>([
   "upload_structured_dataset",
   "upload_evidence_document"
 ]);
+
+function launcherUploadToolInputShape(
+  contract: (typeof ENTERPRISE_HUB_MCP_TOOL_CONTRACTS)[number]
+): z.ZodRawShape {
+  return {
+    ...contract.inputSchema.shape,
+    file: launcherUploadFileInputSchema
+  };
+}
 
 export interface LauncherToolResult {
   [key: string]: unknown;
@@ -151,7 +159,7 @@ export function registerLauncherTools(
         title: tool.title,
         description: tool.description,
         inputSchema: LOCAL_PATH_UPLOAD_TOOL_NAMES.has(tool.name)
-          ? launcherUploadFileInputShape
+          ? launcherUploadToolInputShape(tool)
           : tool.inputShape
       },
       createLauncherToolHandler(tool.name, dependencies)
