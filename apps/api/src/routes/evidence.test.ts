@@ -597,4 +597,46 @@ describe("evidence routes", () => {
     expect(documentRepository.catalogWriteOrgIds).toEqual(["org-b"]);
     expect(documentRepository.auditWriteOrgIds).toEqual(["org-b"]);
   });
+
+  it("rejects evidence uploads in unsupported formats", async () => {
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository: createDocumentRepository(),
+      storageAdapter: new LocalFileSystemStorageAdapter({
+        root: await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-evidence-format-"))
+      }),
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const accessToken = await accessTokenFor(adminEmployee);
+    const multipartPayload = createMultipartPayload([
+      {
+        name: "file",
+        fileName: "invalid-format.pdf",
+        contentType: "application/pdf",
+        value: Buffer.from("%PDF-1.4 fake evidence", "utf8")
+      },
+      { name: "title", value: "PDF 不是支持的证据格式" },
+      { name: "labelKeys[]", value: "all_staff" }
+    ]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/documents/evidence",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": multipartPayload.contentType
+      },
+      payload: multipartPayload.body
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "INVALID_DOCUMENT_KIND_FILE_TYPE",
+        message: "Evidence documents must be .md, .txt, or .docx files."
+      }
+    });
+  });
 });
