@@ -146,6 +146,23 @@ MCP 配置、环境和文件中不得保存 bearer token。
 
 MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登录员工推导。Evidence search 的 cursor 是不透明、短期有效的翻页 token：下一页必须沿用相同 query/filter/limit 原样传回 `page.nextCursor`。遇到 `INVALID_CURSOR` 可不带 cursor 重新开始；遇到 `CURSOR_EXPIRED`，先说明 cursor 已过期，只有用户仍希望继续时才重新搜索。结构化导入只有在同一个文件和同一组 metadata 精确重试时才复用 `idempotencyKey`；精确重放会返回第一次持久化的 ID/storage key，不可见的 import status 与不存在批次一样返回非枚举 404。
 
+## 菜品目录快照
+
+`dish_catalog` 是一份完整、只追加的菜品目录快照，不是营业日期窗口导入。上传时只提供
+`snapshotDate`（`YYYYMMDD`），不得提供 `startDate` 或 `endDate`；服务内部把该日期同时作为
+批次起止日期。每个组织只有一条按日期排列的目录时间线：可乱序补录历史快照，但同一日期只能有
+一份未归档快照。同日内容纠错应先归档错误快照，再上传新文件；新快照不会自动归档旧快照。
+
+CSV 与 XLSX 都必须使用以下十个受控表头（列顺序可变）：`菜品编码（SPUID）`、
+`菜品编码（SKUID）`、`菜品名称`、`品牌`、`基础分类`、`一级分类编码`、`二级分类编码`、
+`规格名称`、`售卖价`、`菜品别名`。`二级分类编码`、`规格名称`、`菜品别名` 可空，其余七列必填；
+售卖价为 decimal，`0` 合法。同一完整快照中的 SKUID 必须唯一，SPUID 可以因多规格重复。
+
+XLSX 会合并所有表头完全匹配的可见 sheet，sheet 名称不参与识别；不匹配的 sheet（包括总部套餐
+sheet）会被忽略并在状态中留下安全摘要。隐藏且匹配的 sheet 会使导入失败。通过 schema discovery
+和受控查询中的 `snapshot_date` 查询历史；服务不会选择当前/最新目录、生成 diff，或推断新增、删除、
+下架等跨快照状态。
+
 ## 当前 MCP Tools
 
 | Tool                           | 用途                                        |

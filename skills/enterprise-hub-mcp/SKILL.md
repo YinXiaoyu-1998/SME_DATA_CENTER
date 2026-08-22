@@ -104,7 +104,9 @@ upload also keep `importBatchId`. Poll `get_evidence_document_status` or `get_im
 ## Large Structured Uploads
 
 When an employee asks to upload a large XLSX/CSV structured table, prefer small business-safe
-chunks over one very large upload. Two limits apply, and the stricter one wins:
+chunks over one very large upload. This chunking guidance applies to business-window datasets;
+never split one `dish_catalog` snapshot into multiple uploads, because every catalog upload must be
+complete. Two limits apply, and the stricter one wins:
 
 - **Service contract:** upload content is at most 50 MiB after decoding; keep structured files
   below this even when the tool schema would permit more.
@@ -139,6 +141,33 @@ subject to host caps (OpenAI Codex roughly **700–750 KiB** of raw bytes per ca
 - In the final handoff, summarize the original file, each chunk filename/window, each
   `importBatchId`, and the final status so later tasks can query the intended uploaded data
   without guessing.
+
+## Dish Catalog Snapshot Uploads
+
+Use this path only when `list_structured_datasets` reports `dish_catalog` as available. It is a
+complete, append-only menu snapshot rather than a sales/business date-window dataset.
+
+- Call `upload_structured_dataset` with `dataset: "dish_catalog"`, `snapshotDate: "YYYYMMDD"`,
+  `enterpriseName`, an existing `labelKeys` value, a stable `idempotencyKey`, and the CSV/XLSX
+  file. Do not include `startDate` or `endDate`.
+- Treat the uploaded file as the full directory for that date. Do not split it into CSV parts,
+  upload only changed rows, use the service to merge it with another file, or describe a partial
+  file as a complete catalog.
+- The file needs exactly these controlled headers, in any order:
+  `菜品编码（SPUID）`, `菜品编码（SKUID）`, `菜品名称`, `品牌`, `基础分类`, `一级分类编码`,
+  `二级分类编码`, `规格名称`, `售卖价`, and `菜品别名`. Only `二级分类编码`, `规格名称`, and
+  `菜品别名` may be blank. Sale price is decimal and may be `0`; SKUID must be unique within the
+  snapshot, while SPUID may repeat across specifications.
+- For XLSX, the service merges every visible sheet whose header exactly matches the catalog schema.
+  Sheet names do not select data. Nonmatching sheets (such as a headquarters-combo sheet) are
+  ignored with a safe status summary. A matching hidden sheet rejects the entire upload.
+- The organization can upload historical snapshots out of date order, but only one non-archived
+  snapshot may occupy a date. For a same-date correction with different content, tell the employee that
+  the existing snapshot must be archived through the authorized maintenance path before a new
+  upload. Never imply that uploading a newer snapshot archives or replaces older history.
+- After `importBatch.status=applied`, query catalog rows through the discovery-reported
+  `snapshot_date` field. Do not claim that the service identifies the current/latest menu,
+  calculates a diff, or infers added, removed, discontinued, or other cross-snapshot status.
 
 ## Official Install Or Update
 

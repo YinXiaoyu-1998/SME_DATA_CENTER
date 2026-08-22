@@ -327,15 +327,20 @@ When the fixed 200-candidate retrieval window is reached, responses include `EVI
 
 Multipart form fields:
 
-| Field             | Required | Notes                                   |
-| ----------------- | -------- | --------------------------------------- |
-| `file`            | yes      | CSV/XLSX                                |
-| `dataset`         | yes      | `dishes`, `business`, or `vip`          |
-| `enterprise_name` | yes      | Metadata supplied by caller             |
-| `startDate`       | yes      | Business-day start, `YYYYMMDD`          |
-| `endDate`         | yes      | Business-day end, `YYYYMMDD`            |
-| `idempotencyKey`  | yes      | Prevents duplicate imports              |
-| `labelKeys[]`     | yes      | One or more existing allowed label keys |
+| Field             | Required    | Notes                                                                |
+| ----------------- | ----------- | -------------------------------------------------------------------- |
+| `file`            | yes         | CSV/XLSX                                                             |
+| `dataset`         | yes         | `dishes`, `business`, `vip`, or `dish_catalog`                       |
+| `enterprise_name` | yes         | Metadata supplied by caller                                          |
+| `startDate`       | conditional | Required only for `dishes`, `business`, and `vip`; `YYYYMMDD` window |
+| `endDate`         | conditional | Required only for `dishes`, `business`, and `vip`; `YYYYMMDD` window |
+| `snapshotDate`    | conditional | Required only for `dish_catalog`; `YYYYMMDD` complete snapshot date  |
+| `idempotencyKey`  | yes         | Prevents duplicate imports                                           |
+| `labelKeys[]`     | yes         | One or more existing allowed label keys                              |
+
+`dish_catalog` rejects `startDate` and `endDate`; its public date is the one required
+`snapshotDate`. Internally, the import batch normalizes that value to identical start/end dates.
+The other datasets reject `snapshotDate` and retain their ordinary business-date-window rules.
 
 Behavior:
 
@@ -354,6 +359,43 @@ Behavior:
 - exact replay of the same `idempotencyKey` and request fingerprint returns the originally persisted `documentId`, `importBatchId`, storage key, and status without writing duplicate storage objects, rows, claims, or audits;
 - same idempotency key with a different fingerprint returns a conflict before durable side effects;
 - queues the structured-import worker path rather than applying rows on the HTTP request path.
+
+### `dish_catalog` snapshot contract
+
+Each upload is one complete, append-only catalog snapshot for the authenticated organization. The
+service keeps one date-ordered catalog timeline per organization: it permits out-of-order historical
+uploads, but permits only one non-archived snapshot for a given `snapshotDate`. To correct a same-date
+snapshot with different content, archive the existing snapshot first and then upload the replacement;
+an exact idempotent replay remains a replay of the existing batch. A new snapshot never auto-archives
+an older one.
+
+The service accepts CSV or XLSX. The exact controlled headers below are required, but their column
+order may vary. `二级分类编码`, `规格名称`, and `菜品别名` may be blank; all other file fields are
+required. `售卖价` is a decimal and `0` is valid.
+
+| Source header       | Query field             | Requirement                                   |
+| ------------------- | ----------------------- | --------------------------------------------- |
+| `菜品编码（SPUID）` | `spu_id`                | required; may repeat for multiple SKUs        |
+| `菜品编码（SKUID）` | `sku_id`                | required; unique across the complete snapshot |
+| `菜品名称`          | `dish_name`             | required                                      |
+| `品牌`              | `brand_name`            | required                                      |
+| `基础分类`          | `base_category_name`    | required                                      |
+| `一级分类编码`      | `level_1_category_code` | required                                      |
+| `二级分类编码`      | `level_2_category_code` | nullable                                      |
+| `规格名称`          | `specification_name`    | nullable                                      |
+| `售卖价`            | `sale_price`            | required decimal; zero is allowed             |
+| `菜品别名`          | `dish_alias`            | nullable                                      |
+
+`snapshot_date` is added to every imported row from `snapshotDate` and is available through
+discovery and controlled structured queries. In XLSX, every visible worksheet whose header exactly
+matches this schema contributes rows to the same snapshot; worksheet names do not matter. A
+nonmatching worksheet (for example, a headquarters-combo sheet) is ignored and represented only by
+a safe `SCHEMA_NOT_MATCHED` status summary. A matching hidden worksheet rejects the whole import;
+hidden nonmatching worksheets are ignored. A snapshot requires at least one valid SKU row.
+
+The API deliberately does not choose a current/latest catalog, compute a snapshot diff, infer
+added/removed/discontinued status, or otherwise infer state across snapshots. Callers must explicitly
+filter or compare `snapshot_date` values.
 
 Response shape:
 
@@ -415,6 +457,7 @@ Supported datasets:
 - `dishes`
 - `business`
 - `vip`
+- `dish_catalog` — complete catalog snapshots, including the metadata-derived `snapshot_date`
 
 ## Structured Query
 
@@ -454,6 +497,18 @@ Example explicit mechanical aggregate:
   },
   "aggregates": [{ "field": "dish_sales_quantity", "op": "sum", "as": "quantity_sum" }],
   "groupBy": ["product_name"],
+  "page": { "limit": 100 }
+}
+```
+
+Example catalog snapshot query:
+
+```json
+{
+  "dataset": "dish_catalog",
+  "filter": { "field": "snapshot_date", "op": "eq", "value": "2026-08-19" },
+  "select": ["snapshot_date", "sku_id", "dish_name", "sale_price"],
+  "sort": [{ "field": "sku_id", "direction": "asc" }],
   "page": { "limit": 100 }
 }
 ```
