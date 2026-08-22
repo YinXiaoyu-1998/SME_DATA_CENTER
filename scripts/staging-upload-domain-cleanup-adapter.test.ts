@@ -31,7 +31,9 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
             id: "batch-1",
             windowClaim: { id: "claim-1" },
             dishRows: [{ id: "dish-1" }],
-            businessRows: [{ id: "business-1" }]
+            businessRows: [{ id: "business-1" }],
+            vipRows: [{ id: "vip-1" }],
+            dishCatalogRows: [{ id: "catalog-1" }]
           }
         ]),
         deleteMany: vi.fn(async () => ({})),
@@ -55,7 +57,9 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       documentLabel: { count: vi.fn(async () => 1), deleteMany: vi.fn(async () => ({})) },
       importWindowClaim: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
       dishRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
-      businessRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) }
+      businessRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
+      vipRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
+      dishCatalogRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) }
     } as unknown as PrismaClient;
     const storage = {
       deleteObject: vi.fn(async () => undefined),
@@ -81,6 +85,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     expect(inventory).toMatchObject({
       documentIds: ["doc-1"],
       importBatchIds: ["batch-1"],
+      vipRowIds: ["vip-1"],
+      dishCatalogRowIds: ["catalog-1"],
       storageObjectKeys: ["uploads/doc-1"],
       qdrantPoints: [{ collection: "evidence", pointId: "point-1" }]
     });
@@ -118,6 +124,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       importWindowClaim: emptyCount,
       dishRow: emptyCount,
       businessRow: emptyCount,
+      vipRow: emptyCount,
+      dishCatalogRow: emptyCount,
       auditLog: emptyCount
     } as unknown as PrismaClient;
     const adapter = createStagingUploadDomainCleanupAdapter(
@@ -143,6 +151,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         importWindowClaimIds: [],
         dishRowIds: [],
         businessRowIds: [],
+        vipRowIds: [],
+        dishCatalogRowIds: [],
         uploadAuditLogIds: [],
         storageObjectKeys: ["uploads/doc-1"],
         qdrantPoints: []

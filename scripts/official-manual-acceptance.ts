@@ -444,6 +444,8 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     if (importBatchIds.length > 0) {
       await tx.dishRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.businessRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
+      await tx.vipRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
+      await tx.dishCatalogRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.importWindowClaim.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.importBatch.deleteMany({ where: { id: { in: importBatchIds } } });
     }
@@ -526,37 +528,53 @@ async function verifyCleanup(
     }
   }
 
-  const [documents, importBatches, dishRows, businessRows, windowClaims, qdrantPoints] =
-    await Promise.all([
-      prisma.document.count({
-        where: {
-          OR: [
-            { sourceSystem: run.evidenceSourceSystem },
-            { title: { startsWith: `${run.enterpriseName}_` } },
-            { title: { startsWith: run.titlePrefix } }
-          ]
-        }
-      }),
-      countByIds(deleted.importBatchIds, (ids) =>
-        prisma.importBatch.count({ where: { id: { in: ids } } })
-      ),
-      countByIds(deleted.importBatchIds, (ids) =>
-        prisma.dishRow.count({ where: { importBatchId: { in: ids } } })
-      ),
-      countByIds(deleted.importBatchIds, (ids) =>
-        prisma.businessRow.count({ where: { importBatchId: { in: ids } } })
-      ),
-      countByIds(deleted.importBatchIds, (ids) =>
-        prisma.importWindowClaim.count({ where: { importBatchId: { in: ids } } })
-      ),
-      retrieveQdrantPointCount(deleted.qdrantPointIds)
-    ]);
+  const [
+    documents,
+    importBatches,
+    dishRows,
+    businessRows,
+    vipRows,
+    dishCatalogRows,
+    windowClaims,
+    qdrantPoints
+  ] = await Promise.all([
+    prisma.document.count({
+      where: {
+        OR: [
+          { sourceSystem: run.evidenceSourceSystem },
+          { title: { startsWith: `${run.enterpriseName}_` } },
+          { title: { startsWith: run.titlePrefix } }
+        ]
+      }
+    }),
+    countByIds(deleted.importBatchIds, (ids) =>
+      prisma.importBatch.count({ where: { id: { in: ids } } })
+    ),
+    countByIds(deleted.importBatchIds, (ids) =>
+      prisma.dishRow.count({ where: { importBatchId: { in: ids } } })
+    ),
+    countByIds(deleted.importBatchIds, (ids) =>
+      prisma.businessRow.count({ where: { importBatchId: { in: ids } } })
+    ),
+    countByIds(deleted.importBatchIds, (ids) =>
+      prisma.vipRow.count({ where: { importBatchId: { in: ids } } })
+    ),
+    countByIds(deleted.importBatchIds, (ids) =>
+      prisma.dishCatalogRow.count({ where: { importBatchId: { in: ids } } })
+    ),
+    countByIds(deleted.importBatchIds, (ids) =>
+      prisma.importWindowClaim.count({ where: { importBatchId: { in: ids } } })
+    ),
+    retrieveQdrantPointCount(deleted.qdrantPointIds)
+  ]);
 
   const counts: CleanupCounts = {
     documents,
     importBatches,
     dishRows,
     businessRows,
+    vipRows,
+    dishCatalogRows,
     windowClaims,
     qdrantPoints,
     storageObjects

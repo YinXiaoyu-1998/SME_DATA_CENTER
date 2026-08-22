@@ -16,6 +16,8 @@ const inventory: StagingUploadDomainCleanupInventory = {
   importWindowClaimIds: ["claim-1"],
   dishRowIds: ["dish-1"],
   businessRowIds: ["business-1"],
+  vipRowIds: ["vip-1"],
+  dishCatalogRowIds: ["catalog-1"],
   uploadAuditLogIds: ["audit-1"],
   storageObjectKeys: ["uploads/private.csv"],
   qdrantPoints: [{ collection: "evidence", pointId: "point-1" }]
@@ -34,6 +36,8 @@ function createAdapter(): StagingUploadDomainCleanupAdapter {
     deleteImportWindowClaims: vi.fn(async () => undefined),
     deleteDishRows: vi.fn(async () => undefined),
     deleteBusinessRows: vi.fn(async () => undefined),
+    deleteVipRows: vi.fn(async () => undefined),
+    deleteDishCatalogRows: vi.fn(async () => undefined),
     deleteImportBatches: vi.fn(async () => undefined),
     deleteDocuments: vi.fn(async () => undefined),
     verifyPostCleanup: vi.fn(async () => ({
@@ -46,6 +50,8 @@ function createAdapter(): StagingUploadDomainCleanupAdapter {
       importWindowClaims: 0,
       dishRows: 0,
       businessRows: 0,
+      vipRows: 0,
+      dishCatalogRows: 0,
       uploadAuditLogs: 0,
       storageObjects: 0,
       qdrantPoints: 0
@@ -133,6 +139,8 @@ describe("staging upload-domain cleanup CLI", () => {
     expect(adapter.deleteImportWindowClaims).toHaveBeenCalledWith(inventory.importWindowClaimIds);
     expect(adapter.deleteDishRows).toHaveBeenCalledWith(inventory.dishRowIds);
     expect(adapter.deleteBusinessRows).toHaveBeenCalledWith(inventory.businessRowIds);
+    expect(adapter.deleteVipRows).toHaveBeenCalledWith(inventory.vipRowIds);
+    expect(adapter.deleteDishCatalogRows).toHaveBeenCalledWith(inventory.dishCatalogRowIds);
     expect(adapter.deleteImportBatches).toHaveBeenCalledWith(inventory.importBatchIds);
     expect(adapter.deleteDocuments).toHaveBeenCalledWith(inventory.documentIds);
     expect(adapter.verifyPostCleanup).toHaveBeenCalledOnce();

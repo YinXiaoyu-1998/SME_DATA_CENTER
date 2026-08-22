@@ -365,6 +365,8 @@ interface ManualTestSnapshot {
     importBatches: number;
     dishRows: number;
     businessRows: number;
+    vipRows: number;
+    dishCatalogRows: number;
     auditLogs: number;
     qdrantPoints: number;
     storageFiles: number;
@@ -401,6 +403,8 @@ async function captureManualTestSnapshot(
       importBatches,
       dishRows,
       businessRows,
+      vipRows,
+      dishCatalogRows,
       auditLogs,
       documentRecords,
       qdrantPoints,
@@ -416,6 +420,8 @@ async function captureManualTestSnapshot(
       prisma.importBatch.count(),
       prisma.dishRow.count(),
       prisma.businessRow.count(),
+      prisma.vipRow.count(),
+      prisma.dishCatalogRow.count(),
       prisma.auditLog.count(),
       prisma.document.findMany({
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -451,6 +457,8 @@ async function captureManualTestSnapshot(
         importBatches,
         dishRows,
         businessRows,
+        vipRows,
+        dishCatalogRows,
         auditLogs,
         qdrantPoints,
         storageFiles
@@ -507,6 +515,8 @@ function assertCleanBusinessState(snapshot: ManualTestSnapshot): void {
     importBatches: snapshot.counts.importBatches,
     dishRows: snapshot.counts.dishRows,
     businessRows: snapshot.counts.businessRows,
+    vipRows: snapshot.counts.vipRows,
+    dishCatalogRows: snapshot.counts.dishCatalogRows,
     auditLogs: snapshot.counts.auditLogs,
     qdrantPoints: snapshot.counts.qdrantPoints,
     storageFiles: snapshot.counts.storageFiles

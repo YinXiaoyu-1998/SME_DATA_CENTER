@@ -100,7 +100,9 @@ export function createStagingUploadDomainCleanupAdapter(
           id: true,
           windowClaim: { select: { id: true } },
           dishRows: { select: { id: true } },
-          businessRows: { select: { id: true } }
+          businessRows: { select: { id: true } },
+          vipRows: { select: { id: true } },
+          dishCatalogRows: { select: { id: true } }
         }
       });
       const importBatchIds = batches.map((batch) => batch.id);
@@ -136,6 +138,8 @@ export function createStagingUploadDomainCleanupAdapter(
         ),
         dishRowIds: batches.flatMap((batch) => batch.dishRows.map((row) => row.id)),
         businessRowIds: batches.flatMap((batch) => batch.businessRows.map((row) => row.id)),
+        vipRowIds: batches.flatMap((batch) => batch.vipRows.map((row) => row.id)),
+        dishCatalogRowIds: batches.flatMap((batch) => batch.dishCatalogRows.map((row) => row.id)),
         uploadAuditLogIds: audits.map((row) => row.id),
         storageObjectKeys: documents.map((document) => document.storageObjectKey),
         qdrantPoints
@@ -162,6 +166,9 @@ export function createStagingUploadDomainCleanupAdapter(
     deleteDishRows: async (values) => void (await runtime.prisma.dishRow.deleteMany(ids(values))),
     deleteBusinessRows: async (values) =>
       void (await runtime.prisma.businessRow.deleteMany(ids(values))),
+    deleteVipRows: async (values) => void (await runtime.prisma.vipRow.deleteMany(ids(values))),
+    deleteDishCatalogRows: async (values) =>
+      void (await runtime.prisma.dishCatalogRow.deleteMany(ids(values))),
     deleteImportBatches: async (values) =>
       void (await runtime.prisma.importBatch.deleteMany(ids(values))),
     deleteDocuments: async (values) => void (await runtime.prisma.document.deleteMany(ids(values))),
@@ -176,6 +183,8 @@ export function createStagingUploadDomainCleanupAdapter(
         importWindowClaims,
         dishRows,
         businessRows,
+        vipRows,
+        dishCatalogRows,
         uploadAuditLogs,
         qdrantPoints
       ] = await Promise.all([
@@ -188,6 +197,8 @@ export function createStagingUploadDomainCleanupAdapter(
         runtime.prisma.importWindowClaim.count(ids(plan.importWindowClaimIds)),
         runtime.prisma.dishRow.count(ids(plan.dishRowIds)),
         runtime.prisma.businessRow.count(ids(plan.businessRowIds)),
+        runtime.prisma.vipRow.count(ids(plan.vipRowIds)),
+        runtime.prisma.dishCatalogRow.count(ids(plan.dishCatalogRowIds)),
         runtime.prisma.auditLog.count(ids(plan.uploadAuditLogIds)),
         runtime.qdrant.countPoints(plan.qdrantPoints)
       ]);
@@ -214,6 +225,8 @@ export function createStagingUploadDomainCleanupAdapter(
         importWindowClaims,
         dishRows,
         businessRows,
+        vipRows,
+        dishCatalogRows,
         uploadAuditLogs,
         storageObjects,
         qdrantPoints
