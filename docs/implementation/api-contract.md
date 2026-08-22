@@ -429,6 +429,26 @@ Response shape:
 }
 ```
 
+For `dish_catalog`, the upload response and later import-status response use `snapshotDate` and
+omit public `startDate` and `endDate`:
+
+```json
+{
+  "importBatch": {
+    "importBatchId": "imp_...",
+    "sourceDocumentId": "doc_...",
+    "dataset": "dish_catalog",
+    "status": "pending",
+    "snapshotDate": "20260819",
+    "sourceSheetSummary": [],
+    "validationErrors": [],
+    "totalRowCount": 0,
+    "appliedRowCount": 0,
+    "queryableRowCount": 0
+  }
+}
+```
+
 ## Structured Import Status
 
 ### `GET /v1/structured/imports/:importBatchId`

@@ -72,8 +72,11 @@ Keep tool input within the public service contract:
   at most 32,767 characters.
 
 If a tool rejects an input at one of these boundaries, report the validation error and ask the
-employee to shorten the text, reduce filters/labels, or split the source file as appropriate.
-Never silently truncate a title, key, query, cursor, filter value, or file.
+employee to shorten the text, reduce filters/labels, or split a source file only when that is
+semantically allowed for a business-window dataset. Never split `dish_catalog`: keep one complete
+snapshot and ask the employee to remove unrelated sheets/columns outside the catalog schema, use a
+service-supported larger limit, or seek operator help. Never silently truncate a title, key, query,
+cursor, filter value, or file.
 
 The 50 MiB contract is the service-side ceiling. Prefer `file.encoding:"path"` uploads with the
 file's absolute local path so the launcher reads the file locally and the model never emits
