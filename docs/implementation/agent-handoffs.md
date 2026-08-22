@@ -1062,22 +1062,3 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   dual-homed skill/docs pins (standalone skill PR mirrors byte-for-byte).
 - Verified: format, lint, typecheck, 602 unit tests (82 files). Publishing 0.2.2 follows the
   `mcp-launcher-v0.2.2` tag + staged publish approval flow.
-
-## 2026-08-22 - dish catalog structured dataset Task 1
-
-- Branch/worktree: `codex/dish-catalog-dataset`.
-- Added the `dish_catalog` registry (`dish_catalog.2026-08-22.v1`) with metadata-derived
-  `snapshot_date`, the ten confirmed catalog file fields, `dish_catalog_rows`, default result
-  fields, typed query capabilities, `import_matching_visible`, and `snapshot_metadata` policies.
-- The parser scans ten header rows, merges matching visible sheets, ignores visible schema
-  mismatches via `ignoredSheets`/`SCHEMA_NOT_MATCHED`, rejects matching hidden/no-match/empty
-  snapshot conditions, injects `YYYY-MM-DD` snapshot metadata, preserves zero sale price, and
-  enforces snapshot-global `sku_id` uniqueness. Existing datasets retain strict-sheet and
-  row-business-date policies.
-- Added the byte-identical 1123-row real Maijia catalog workbook fixture (SHA-256
-  `30857282e785853a265eda476a12b549736383b4123843602f6de4dda095f2c6`) and focused
-  registry/query/CSV/XLSX tests. Final verification: `npm test` passed 83 files / 624 tests,
-  with 3 files / 19 tests skipped; typecheck, lint, explicit changed-file Prettier check, and
-  diff check passed.
-- Follow-on Task 2 owns Prisma/worker persistence and must add the dataset enum/model/write path;
-  this task deliberately stops at registry/query compiler/parser/fixture scope.
