@@ -750,6 +750,134 @@ describe("structured ingestion", () => {
     });
   });
 
+  test("imports a catalog CSV snapshot with a zero sale price", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "catalog.csv",
+      fileType: "csv",
+      content: Buffer.from(
+        `${catalogHeaders().join(",")}\n${catalogRow({ sale_price: "0" }).join(",")}\n`,
+        "utf8"
+      ),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.payload).toMatchObject({
+      snapshot_date: "2026-08-19",
+      sku_id: "sku-001",
+      sale_price: 0
+    });
+  });
+
+  test("rejects duplicate catalog sku_ids across a CSV snapshot", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "duplicate-catalog.csv",
+      fileType: "csv",
+      content: Buffer.from(
+        `${catalogHeaders().join(",")}\n${catalogRow().join(",")}\n${catalogRow({ dish_name: "Duplicate SKU" }).join(",")}\n`,
+        "utf8"
+      ),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits,
+      validationMode: "collect"
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.validationErrors).toEqual([
+      expect.objectContaining({ code: "DUPLICATE_KEY", column: "sku_id", rowNumber: 3 })
+    ]);
+  });
+
+  test("rejects a header-only catalog CSV as an empty snapshot", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "empty-catalog.csv",
+      fileType: "csv",
+      content: Buffer.from(`${catalogHeaders().join(",")}\n`, "utf8"),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits,
+      validationMode: "collect"
+    });
+
+    expect(result.validationErrors).toEqual([expect.objectContaining({ code: "EMPTY_SNAPSHOT" })]);
+  });
+
+  test("rejects a catalog CSV with no matching sheet schema", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "unmatched-catalog.csv",
+      fileType: "csv",
+      content: Buffer.from("unrelated column\nvalue\n", "utf8"),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits,
+      validationMode: "collect"
+    });
+
+    expect(result.rows).toHaveLength(0);
+    expect(result.ignoredSheets).toEqual([
+      expect.objectContaining({ name: "Sheet1", reason: "SCHEMA_NOT_MATCHED" })
+    ]);
+    expect(result.validationErrors).toEqual([
+      expect.objectContaining({ code: "NO_MATCHING_SHEET" })
+    ]);
+  });
+
+  test("merges matching visible catalog worksheets and ignores nonmatching worksheets", async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet("Catalog A").addRows([catalogHeaders(), catalogRow()]);
+    workbook.addWorksheet("总部套餐").addRows([["套餐名称"], ["Ignored set"]]);
+    workbook
+      .addWorksheet("Catalog B")
+      .addRows([catalogHeaders(), catalogRow({ sku_id: "sku-002", dish_name: "Second dish" })]);
+    workbook
+      .addWorksheet("Hidden notes", { state: "hidden" })
+      .addRows([["Not a catalog header"], ["Ignored note"]]);
+
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "catalog-workbook.xlsx",
+      fileType: "xlsx",
+      content: Buffer.from(await workbook.xlsx.writeBuffer()),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits: limitsFor({ maxXlsxSheets: 4 }),
+      validationMode: "collect"
+    });
+
+    expect(result.validationErrorCount).toBe(0);
+    expect(result.rows.map((row) => row.payload.sku_id)).toEqual(["sku-001", "sku-002"]);
+    expect(result.ignoredSheets).toEqual([
+      expect.objectContaining({ name: "总部套餐", reason: "SCHEMA_NOT_MATCHED" })
+    ]);
+  });
+
+  test("rejects a matching hidden catalog worksheet", async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook
+      .addWorksheet("Hidden catalog", { state: "hidden" })
+      .addRows([catalogHeaders(), catalogRow()]);
+
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "hidden-catalog.xlsx",
+      fileType: "xlsx",
+      content: Buffer.from(await workbook.xlsx.writeBuffer()),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits,
+      validationMode: "collect"
+    });
+
+    expect(result.validationErrors).toEqual([expect.objectContaining({ code: "HIDDEN_SHEET" })]);
+  });
+
   test("preflight checks only transport-safe CSV properties without parsing business rows", () => {
     expect(() =>
       preflightStructuredFile({
@@ -770,6 +898,31 @@ describe("structured ingestion", () => {
 
 function dishesHeaders() {
   return getStructuredRegistry("dishes").fields.map((field) => field.sourceColumn);
+}
+
+function catalogHeaders() {
+  return getStructuredRegistry("dish_catalog")
+    .fields.filter((field) => field.inputSource === "file")
+    .map((field) => field.sourceColumn);
+}
+
+function catalogRow(overrides: Record<string, string> = {}) {
+  const values: Record<string, string> = {
+    spu_id: "spu-001",
+    sku_id: "sku-001",
+    dish_name: "Catalog dish",
+    brand_name: "Catalog brand",
+    base_category_name: "Catalog category",
+    level_1_category_code: "L1",
+    level_2_category_code: "L2",
+    specification_name: "Regular",
+    sale_price: "12.5",
+    dish_alias: "Catalog alias",
+    ...overrides
+  };
+  return getStructuredRegistry("dish_catalog")
+    .fields.filter((field) => field.inputSource === "file")
+    .map((field) => values[field.canonicalName]!);
 }
 
 function dishesRow() {
@@ -975,5 +1128,27 @@ describe("committed XLSX fixture pipeline", () => {
     });
 
     expect(result.rows.map((row) => row.payload.product_name)).toEqual(["First", "Second"]);
+  });
+
+  test("imports the real catalog snapshot and safely reports its nonmatching sheet", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "maijia_dish_catalog_20260819.xlsx",
+      fileType: "xlsx",
+      content: await readFile(
+        path.join(process.cwd(), "fixtures", "structured", "maijia_dish_catalog_20260819.xlsx")
+      ),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits: PHASE3_RUNTIME_LIMIT_DEFAULTS,
+      validationMode: "collect"
+    });
+
+    expect(result.validationErrorCount).toBe(0);
+    expect(result.rows).toHaveLength(1123);
+    expect(result.ignoredSheets).toEqual([
+      expect.objectContaining({ name: "总部套餐", reason: "SCHEMA_NOT_MATCHED" })
+    ]);
+    expect(result.rows[0]?.payload.snapshot_date).toBe("2026-08-19");
   });
 });

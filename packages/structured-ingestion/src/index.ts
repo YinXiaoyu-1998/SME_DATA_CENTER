@@ -33,6 +33,11 @@ export interface StructuredSheetSummary {
   headerRowNumber: number;
   dataRowCount: number;
 }
+export interface IgnoredStructuredSheet {
+  sheetIndex: number;
+  name: string;
+  reason: "SCHEMA_NOT_MATCHED";
+}
 export interface StructuredSheetProfile extends StructuredSheetSummary {
   columnCount: number;
   validationErrors: HeaderValidationError[];
@@ -70,6 +75,7 @@ export interface StructuredValidationIssue {
 
 export interface StructuredParseResult {
   sheetSummary: StructuredSheetSummary[];
+  ignoredSheets: IgnoredStructuredSheet[];
   rows: StructuredImportRow[];
   validationErrors: StructuredValidationIssue[];
   validationErrorCount: number;
@@ -96,6 +102,7 @@ export async function parseStructuredFile(
   input: ParseStructuredFileInput
 ): Promise<StructuredParseResult> {
   const sheetSummary: StructuredSheetSummary[] = [];
+  const ignoredSheets: IgnoredStructuredSheet[] = [];
   const rows: StructuredImportRow[] = [];
   const issues = new ValidationIssueCollector();
   let window: ReturnType<typeof dateWindow>;
@@ -125,13 +132,46 @@ export async function parseStructuredFile(
       column: null,
       legacyMessage: errorMessage(error)
     });
-    return finishParse(input, sheetSummary, rows, issues);
+    return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
   }
 
+  const registry = getStructuredRegistry(input.dataset);
   let rowLimitReported = false;
+  let matchedSheetCount = 0;
+  let matchingSheetFound = false;
+  let matchingDataRowCount = 0;
+  const catalogSkuRows = new Map<string, StructuredImportRow>();
 
   for (const sheet of sheets) {
     if (isEmpty(sheet.rows)) continue;
+    const candidate = findHeader(input.dataset, sheet.rows);
+    const isMatchingSheet = candidate?.resolution.ok === true;
+    matchingSheetFound ||= isMatchingSheet;
+
+    if (registry.sheetPolicy === "import_matching_visible") {
+      if (sheet.hidden) {
+        if (isMatchingSheet) {
+          issues.add({
+            code: "HIDDEN_SHEET",
+            message: "Matching hidden worksheets are not allowed.",
+            sheetName: sheet.name,
+            sheetIndex: sheet.sheetIndex,
+            rowNumber: null,
+            column: null,
+            legacyMessage: `Matching hidden sheet ${sheet.name} is not allowed.`
+          });
+        }
+        continue;
+      }
+      if (!isMatchingSheet) {
+        ignoredSheets.push({
+          sheetIndex: sheet.sheetIndex,
+          name: sheet.name,
+          reason: "SCHEMA_NOT_MATCHED"
+        });
+        continue;
+      }
+    }
     if (sheet.hidden) {
       issues.add({
         code: "HIDDEN_SHEET",
@@ -144,7 +184,6 @@ export async function parseStructuredFile(
       });
       continue;
     }
-    const candidate = findHeader(input.dataset, sheet.rows);
     if (!candidate) {
       issues.add({
         code: "UNRECOGNIZED_HEADER",
@@ -171,7 +210,9 @@ export async function parseStructuredFile(
       }
       continue;
     }
+    matchedSheetCount += 1;
     const data = dataRowsFor(sheet, candidate);
+    matchingDataRowCount += data.length;
     sheetSummary.push({
       sheetIndex: sheet.sheetIndex,
       name: sheet.name,
@@ -211,22 +252,26 @@ export async function parseStructuredFile(
         continue;
       }
       const payload = parsed.payload;
-      const businessDate = parseDate(String(payload.business_date ?? ""), false);
-      if (
-        !businessDate ||
-        businessDate.getTime() < window.start.getTime() ||
-        businessDate.getTime() > window.end.getTime()
-      ) {
-        issues.add({
-          code: "BUSINESS_DATE_OUTSIDE_WINDOW",
-          message: "Business date is outside the import window.",
-          sheetName: sheet.name,
-          sheetIndex: sheet.sheetIndex,
-          rowNumber: item.sourceRowNumber,
-          column: "business_date",
-          legacyMessage: `Row ${item.sourceRowNumber} business_date is outside import window.`
-        });
-        continue;
+      if (registry.datePolicy === "row_business_date") {
+        const businessDate = parseDate(String(payload.business_date ?? ""), false);
+        if (
+          !businessDate ||
+          businessDate.getTime() < window.start.getTime() ||
+          businessDate.getTime() > window.end.getTime()
+        ) {
+          issues.add({
+            code: "BUSINESS_DATE_OUTSIDE_WINDOW",
+            message: "Business date is outside the import window.",
+            sheetName: sheet.name,
+            sheetIndex: sheet.sheetIndex,
+            rowNumber: item.sourceRowNumber,
+            column: "business_date",
+            legacyMessage: `Row ${item.sourceRowNumber} business_date is outside import window.`
+          });
+          continue;
+        }
+      } else {
+        payload.snapshot_date = dateString(window.start);
       }
       if (rows.length >= input.limits.maxStructuredImportRows) {
         if (!rowLimitReported) {
@@ -243,15 +288,57 @@ export async function parseStructuredFile(
         }
         continue;
       }
-      rows.push({
+      const parsedRow = {
         sourceSheetIndex: sheet.sheetIndex,
         sourceSheetName: sheet.name,
         sourceRowNumber: item.sourceRowNumber,
         payload
-      });
+      };
+      if (registry.dataset === "dish_catalog") {
+        const skuId = String(payload.sku_id);
+        const existing = catalogSkuRows.get(skuId);
+        if (existing) {
+          issues.add({
+            code: "DUPLICATE_KEY",
+            message: "sku_id must be unique within a catalog snapshot.",
+            sheetName: sheet.name,
+            sheetIndex: sheet.sheetIndex,
+            rowNumber: item.sourceRowNumber,
+            column: "sku_id",
+            legacyMessage: `Duplicate sku_id ${skuId} in catalog snapshot.`
+          });
+          continue;
+        }
+        catalogSkuRows.set(skuId, parsedRow);
+      }
+      rows.push(parsedRow);
     }
   }
-  if (!sheetSummary.length) {
+  if (registry.sheetPolicy === "import_matching_visible" && !matchingSheetFound) {
+    issues.add({
+      code: "NO_MATCHING_SHEET",
+      message: "Workbook has no matching visible import sheets.",
+      sheetName: null,
+      sheetIndex: null,
+      rowNumber: null,
+      column: null,
+      legacyMessage: "Workbook has no matching visible import sheets."
+    });
+  } else if (
+    registry.sheetPolicy === "import_matching_visible" &&
+    matchedSheetCount > 0 &&
+    matchingDataRowCount === 0
+  ) {
+    issues.add({
+      code: "EMPTY_SNAPSHOT",
+      message: "Catalog snapshot contains no rows.",
+      sheetName: null,
+      sheetIndex: null,
+      rowNumber: null,
+      column: null,
+      legacyMessage: "Catalog snapshot contains no rows."
+    });
+  } else if (registry.sheetPolicy === "strict_all_nonempty" && !sheetSummary.length) {
     issues.add({
       code: "NO_IMPORT_SHEETS",
       message: "Workbook has no non-empty import sheets.",
@@ -262,7 +349,7 @@ export async function parseStructuredFile(
       legacyMessage: "Workbook has no non-empty import sheets."
     });
   }
-  return finishParse(input, sheetSummary, rows, issues);
+  return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
 }
 
 export async function profileStructuredFile(
@@ -281,19 +368,31 @@ export async function profileStructuredFile(
       : await readXlsxRows(input.content, input.limits);
   const profile: StructuredSheetProfile[] = [];
   const ignoredEmptySheets: string[] = [];
+  const registry = getStructuredRegistry(input.dataset);
   let dataRowCount = 0;
+  let matchedSheetCount = 0;
   for (const sheet of sheets) {
     if (isEmpty(sheet.rows)) {
       ignoredEmptySheets.push(sheet.name);
       continue;
     }
-    if (sheet.hidden) throw validation(`Hidden non-empty sheet ${sheet.name} is not allowed.`);
     const candidate = findHeader(input.dataset, sheet.rows);
+    const isMatchingSheet = candidate?.resolution.ok === true;
+    if (registry.sheetPolicy === "import_matching_visible") {
+      if (sheet.hidden) {
+        if (isMatchingSheet)
+          throw validation(`Matching hidden sheet ${sheet.name} is not allowed.`);
+        continue;
+      }
+      if (!isMatchingSheet) continue;
+    }
+    if (sheet.hidden) throw validation(`Hidden non-empty sheet ${sheet.name} is not allowed.`);
     if (!candidate || !candidate.resolution.ok)
       throw validation(
         `VALIDATION_FAILED: ${sheet.name} has no recognized ${input.dataset} header`
       );
     const data = dataRowsFor(sheet, candidate);
+    matchedSheetCount += 1;
     assertWithinHeaderWidth(data, candidate);
     dataRowCount += data.length;
     if (dataRowCount > input.limits.maxStructuredImportRows)
@@ -308,7 +407,10 @@ export async function profileStructuredFile(
       validationErrors: []
     });
   }
-  const registry = getStructuredRegistry(input.dataset);
+  if (registry.sheetPolicy === "import_matching_visible" && matchedSheetCount === 0)
+    throw validation("Workbook has no matching visible import sheets.");
+  if (registry.sheetPolicy === "import_matching_visible" && dataRowCount === 0)
+    throw validation("Catalog snapshot contains no rows.");
   return {
     dataset: input.dataset,
     registryVersion: registry.version,
@@ -512,11 +614,13 @@ class ValidationIssueCollector {
 function finishParse(
   input: ParseStructuredFileInput,
   sheetSummary: StructuredSheetSummary[],
+  ignoredSheets: IgnoredStructuredSheet[],
   rows: StructuredImportRow[],
   issues: ValidationIssueCollector
 ): StructuredParseResult {
   const result: StructuredParseResult = {
     sheetSummary,
+    ignoredSheets,
     rows,
     validationErrors: issues.issues,
     validationErrorCount: issues.count,

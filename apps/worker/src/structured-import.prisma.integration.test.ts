@@ -298,6 +298,7 @@ function structuredResult(overrides: { sourceSheetName?: string } = {}): Structu
     sheetSummary: [
       { sheetIndex: 0, name: "Sheet1", hidden: false, headerRowNumber: 1, dataRowCount: 1 }
     ],
+    ignoredSheets: [],
     rows: [
       {
         sourceSheetIndex: 0,

@@ -1186,6 +1186,7 @@ function structuredFileType(fileType: string | null | undefined): "csv" | "xlsx"
 function unsupportedStructuredFileResult(): StructuredParseResult {
   return {
     sheetSummary: [],
+    ignoredSheets: [],
     rows: [],
     validationErrors: [
       {
