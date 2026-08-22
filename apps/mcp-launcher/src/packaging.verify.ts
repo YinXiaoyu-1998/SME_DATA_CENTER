@@ -103,6 +103,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
+    expect(manifest.version).toBe("0.2.3");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -135,6 +136,23 @@ describe("published launcher artifact", () => {
           "enterprise_hub_auth_status"
         ])
       );
+      const structuredUpload = tools.tools.find(
+        (tool) => tool.name === "upload_structured_dataset"
+      );
+      expect(structuredUpload?.inputSchema).toMatchObject({
+        type: "object",
+        properties: {
+          dataset: { enum: expect.arrayContaining(["dish_catalog"]) },
+          snapshotDate: { type: "string" }
+        }
+      });
+      expect(structuredUpload?.inputSchema.required).not.toEqual(
+        expect.arrayContaining(["startDate", "endDate", "snapshotDate"])
+      );
+      const structuredQuery = tools.tools.find((tool) => tool.name === "query_structured_dataset");
+      expect(structuredQuery?.inputSchema).toMatchObject({
+        properties: { dataset: { enum: expect.arrayContaining(["dish_catalog"]) } }
+      });
     } finally {
       await client.close();
     }
