@@ -169,6 +169,56 @@ describeIntegration("Prisma structured import worker repository", () => {
     await Promise.all([repositoryA.disconnect?.(), repositoryB.disconnect?.()]);
   });
 
+  it("applies a catalog snapshot to dish_catalog_rows with safe ignored-sheet status", async () => {
+    const repository = createPrismaProcessingWorkerRepository(databaseUrl);
+    const fixture = await createStructuredRun(prisma, "catalog", ImportDataset.dish_catalog);
+    const now = new Date("2026-08-19T00:00:00.000Z");
+    await repository.claimNextProcessingRun({
+      workerId: "worker-catalog",
+      leaseSeconds: 120,
+      now
+    });
+    await repository.beginStructuredImportApply?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      workerId: "worker-catalog",
+      now
+    });
+    const result = structuredResult();
+    result.rows[0]!.payload = { snapshot_date: "2026-08-19", sku_id: "sku-1" };
+    result.ignoredSheets = [{ sheetIndex: 1, name: "总部套餐", reason: "SCHEMA_NOT_MATCHED" }];
+    await repository.completeStructuredImport?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      workerId: "worker-catalog",
+      now,
+      batchInsertSize: 500,
+      result
+    });
+
+    expect(
+      await prisma.dishCatalogRow.findMany({ where: { importBatchId: fixture.importBatchId } })
+    ).toEqual([
+      expect.objectContaining({
+        sourceSheetIndex: 0,
+        sourceSheetName: "Sheet1",
+        sourceRowNumber: 2,
+        payload: { snapshot_date: "2026-08-19", sku_id: "sku-1" }
+      })
+    ]);
+    expect(await prisma.vipRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(0);
+    expect(
+      (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
+        .sourceSheetSummary
+    ).toEqual([
+      expect.objectContaining({ name: "Sheet1", status: "imported" }),
+      { sheetIndex: 1, name: "总部套餐", reason: "SCHEMA_NOT_MATCHED", status: "ignored" }
+    ]);
+    await repository.disconnect?.();
+  });
+
   it("rejects stale Prisma success, reject, and fail transitions while allowing the new lease owner", async () => {
     const repositoryA = createPrismaProcessingWorkerRepository(databaseUrl);
     const repositoryB = createPrismaProcessingWorkerRepository(databaseUrl);
@@ -244,7 +294,11 @@ describeIntegration("Prisma structured import worker repository", () => {
   });
 });
 
-async function createStructuredRun(prisma: PrismaClient, suffix: string) {
+async function createStructuredRun(
+  prisma: PrismaClient,
+  suffix: string,
+  dataset: ImportDataset = ImportDataset.dishes
+) {
   const documentId = `worker_prisma_doc_${suffix}`;
   const importBatchId = `worker_prisma_batch_${suffix}`;
   const runId = `worker_prisma_run_${suffix}`;
@@ -271,7 +325,7 @@ async function createStructuredRun(prisma: PrismaClient, suffix: string) {
       id: importBatchId,
       orgId,
       sourceDocumentId: documentId,
-      dataset: ImportDataset.dishes,
+      dataset,
       startDate: new Date("2026-08-10T00:00:00.000Z"),
       endDate: new Date("2026-08-10T00:00:00.000Z"),
       idempotencyKey: `worker-prisma-${suffix}`,
@@ -357,6 +411,7 @@ async function clearTestRecords(prisma: PrismaClient) {
   await prisma.dishRow.deleteMany({ where: { orgId } });
   await prisma.businessRow.deleteMany({ where: { orgId } });
   await prisma.vipRow.deleteMany({ where: { orgId } });
+  await prisma.dishCatalogRow.deleteMany({ where: { orgId } });
   await prisma.processingRun.deleteMany({ where: { orgId } });
   await prisma.importWindowClaim.deleteMany({ where: { orgId } });
   await prisma.importBatch.deleteMany({ where: { orgId } });

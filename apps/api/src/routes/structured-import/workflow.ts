@@ -20,6 +20,7 @@ export interface ParsedStructuredImportUpload {
   enterpriseName?: string;
   startDate?: string;
   endDate?: string;
+  snapshotDate?: string;
   idempotencyKey?: string;
   labelKeys: string[];
 }
@@ -39,6 +40,7 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
       fileType: Extract<Phase3FileType, "xlsx" | "csv">;
       startDate: string;
       endDate: string;
+      snapshotDate?: string;
     }
   | {
       ok: false;
@@ -65,7 +67,7 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
     return {
       ok: false,
       code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
-      message: "dataset must be dishes, business, or vip."
+      message: "dataset must be dishes, business, vip, or dish_catalog."
     };
   }
 
@@ -101,12 +103,40 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
     };
   }
 
-  if (!upload.startDate || !upload.endDate || !isDateWindow(upload.startDate, upload.endDate)) {
-    return {
-      ok: false,
-      code: PHASE3_ERROR_CODES.invalidDateWindow,
-      message: "startDate and endDate must be valid YYYYMMDD dates."
-    };
+  let startDate: string;
+  let endDate: string;
+
+  if (upload.dataset === "dish_catalog") {
+    if (
+      upload.startDate !== undefined ||
+      upload.endDate !== undefined ||
+      !upload.snapshotDate ||
+      !isDateWindow(upload.snapshotDate, upload.snapshotDate)
+    ) {
+      return {
+        ok: false,
+        code: PHASE3_ERROR_CODES.invalidDateWindow,
+        message: "dish_catalog requires snapshotDate and does not accept startDate or endDate."
+      };
+    }
+    startDate = upload.snapshotDate;
+    endDate = upload.snapshotDate;
+  } else {
+    if (
+      upload.snapshotDate !== undefined ||
+      !upload.startDate ||
+      !upload.endDate ||
+      !isDateWindow(upload.startDate, upload.endDate)
+    ) {
+      return {
+        ok: false,
+        code: PHASE3_ERROR_CODES.invalidDateWindow,
+        message:
+          "dishes, business, and vip require startDate and endDate and do not accept snapshotDate."
+      };
+    }
+    startDate = upload.startDate;
+    endDate = upload.endDate;
   }
 
   if (upload.labelKeys.length === 0) {
@@ -142,8 +172,9 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
     ok: true,
     dataset: upload.dataset as StructuredDatasetName,
     fileType,
-    startDate: upload.startDate,
-    endDate: upload.endDate
+    startDate,
+    endDate,
+    ...(upload.dataset === "dish_catalog" ? { snapshotDate: startDate } : {})
   };
 }
 
@@ -192,8 +223,9 @@ function parseDateParts(yearValue: string, monthValue: string, dayValue: string)
 export function canonicalStructuredImportFileName(input: {
   enterpriseName: string;
   dataset: StructuredDatasetName;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
+  snapshotDate?: string;
   fileType: "xlsx" | "csv";
 }) {
   let enterpriseSegment =
@@ -209,7 +241,9 @@ export function canonicalStructuredImportFileName(input: {
       })
       .join("_") || "enterprise";
 
-  const suffix = `_${input.dataset}_${input.startDate}_${input.endDate}.${input.fileType}`;
+  const dateSegment =
+    input.dataset === "dish_catalog" ? input.snapshotDate : `${input.startDate}_${input.endDate}`;
+  const suffix = `_${input.dataset}_${dateSegment}.${input.fileType}`;
   const maxEnterpriseSegmentChars = PUBLIC_INPUT_LIMITS.uploadFilenameChars - suffix.length;
 
   if (enterpriseSegment.length > maxEnterpriseSegmentChars) {
@@ -227,12 +261,23 @@ export function canonicalStructuredImportFileName(input: {
 export function structuredImportFingerprint(input: {
   dataset: StructuredDatasetName;
   enterpriseName: string;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
+  snapshotDate?: string;
   labelKeys: string[];
   fileHash: string;
 }): string {
-  return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+  const semanticInput = {
+    dataset: input.dataset,
+    enterpriseName: input.enterpriseName,
+    ...(input.dataset === "dish_catalog"
+      ? { snapshotDate: input.snapshotDate }
+      : { startDate: input.startDate, endDate: input.endDate }),
+    labelKeys: input.labelKeys,
+    fileHash: input.fileHash
+  };
+
+  return createHash("sha256").update(JSON.stringify(semanticInput)).digest("hex");
 }
 
 export function hasStructuredImportCode(error: unknown): error is { code: string } {
@@ -310,13 +355,11 @@ export function timingDurationMs(started: number): number {
 }
 
 export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
-  return {
+  const response = {
     importBatchId: importBatch.id,
     sourceDocumentId: importBatch.sourceDocumentId,
     dataset: importBatch.dataset,
     status: importBatch.status,
-    startDate: importBatch.startDate,
-    endDate: importBatch.endDate,
     sourceSheetSummary: importBatch.sourceSheetSummary,
     validationErrors: importBatch.validationErrors,
     validationErrorCount: importBatch.validationErrorCount,
@@ -325,4 +368,8 @@ export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
     appliedRowCount: importBatch.appliedRowCount,
     queryableRowCount: importBatch.queryableRowCount
   };
+
+  return importBatch.dataset === "dish_catalog"
+    ? { ...response, snapshotDate: importBatch.startDate }
+    : { ...response, startDate: importBatch.startDate, endDate: importBatch.endDate };
 }

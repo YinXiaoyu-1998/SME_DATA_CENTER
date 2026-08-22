@@ -101,8 +101,9 @@ export async function structuredWorkbook(input: {
 export function createStructuredImportMultipart(input: {
   dataset?: StructuredDatasetName;
   enterpriseName?: string;
-  startDate?: string;
-  endDate?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  snapshotDate?: string;
   idempotencyKey?: string;
   labelKeys?: string[];
   fileName?: string;
@@ -112,8 +113,11 @@ export function createStructuredImportMultipart(input: {
   return createMultipartPayload([
     { name: "dataset", value: input.dataset ?? "dishes" },
     { name: "enterprise_name", value: input.enterpriseName ?? "保利店" },
-    { name: "startDate", value: input.startDate ?? "20260701" },
-    { name: "endDate", value: input.endDate ?? "20260705" },
+    ...(input.startDate === null
+      ? []
+      : [{ name: "startDate", value: input.startDate ?? "20260701" }]),
+    ...(input.endDate === null ? [] : [{ name: "endDate", value: input.endDate ?? "20260705" }]),
+    ...(input.snapshotDate ? [{ name: "snapshotDate", value: input.snapshotDate }] : []),
     { name: "idempotencyKey", value: input.idempotencyKey ?? "import-key-1" },
     ...(input.labelKeys ?? ["store:baoli"]).map((labelKey) => ({
       name: "labelKeys[]",
@@ -382,7 +386,12 @@ export function createInMemoryStructuredImportRepository(
       orgId: string;
       actorEmployeeId: string;
       importBatchId: string;
-      rows: Array<{ payload: Record<string, unknown>; sourceRowNumber: number }>;
+      rows: Array<{
+        payload: Record<string, unknown>;
+        sourceSheetIndex: number;
+        sourceSheetName: string;
+        sourceRowNumber: number;
+      }>;
       audit: RequestAuditContext;
     }) {
       const batch = batches.find(

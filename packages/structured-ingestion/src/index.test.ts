@@ -772,6 +772,20 @@ describe("structured ingestion", () => {
     });
   });
 
+  test("rejects a catalog direct-parser call whose internal date window spans multiple days", async () => {
+    await expect(
+      parseStructuredFile({
+        dataset: "dish_catalog",
+        fileName: "catalog.csv",
+        fileType: "csv",
+        content: Buffer.from(`${catalogHeaders().join(",")}\n${catalogRow().join(",")}\n`, "utf8"),
+        startDate: "20260819",
+        endDate: "20260820",
+        limits
+      })
+    ).rejects.toThrow("dish_catalog requires startDate and endDate to be the same snapshot date");
+  });
+
   test("rejects duplicate catalog sku_ids across a CSV snapshot", async () => {
     const result = await parseStructuredFile({
       dataset: "dish_catalog",

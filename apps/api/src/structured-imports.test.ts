@@ -24,6 +24,12 @@ const prisma = vi.hoisted(() => ({
   businessRow: {
     deleteMany: vi.fn()
   },
+  vipRow: {
+    deleteMany: vi.fn()
+  },
+  dishCatalogRow: {
+    deleteMany: vi.fn()
+  },
   processingRun: {
     create: vi.fn()
   },
@@ -64,13 +70,14 @@ const audit = {
 
 function importBatchRecord(
   status = "pending",
-  processingRuns: Array<{ id: string; status: string }> = []
+  processingRuns: Array<{ id: string; status: string }> = [],
+  dataset = "dishes"
 ) {
   return {
     id: "imp_1",
     orgId: "org_1",
     sourceDocumentId: "doc_1",
-    dataset: "dishes",
+    dataset,
     status,
     startDate: new Date("2026-07-01T00:00:00.000Z"),
     endDate: new Date("2026-07-05T00:00:00.000Z"),
@@ -112,6 +119,8 @@ describe("Prisma structured import audit provenance", () => {
     prisma.document.update.mockResolvedValue({});
     prisma.dishRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.businessRow.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.vipRow.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.dishCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.processingRun.create.mockResolvedValue({});
     prisma.$executeRaw.mockResolvedValue(1);
   });
@@ -171,7 +180,14 @@ describe("Prisma structured import audit provenance", () => {
       orgId: "org_1",
       actorEmployeeId: "emp_1",
       importBatchId: "imp_1",
-      rows: [{ sourceRowNumber: 2, payload: { product_name: "Tea" } }],
+      rows: [
+        {
+          sourceSheetIndex: 0,
+          sourceSheetName: "Sheet1",
+          sourceRowNumber: 2,
+          payload: { product_name: "Tea" }
+        }
+      ],
       audit
     });
 
@@ -185,6 +201,41 @@ describe("Prisma structured import audit provenance", () => {
         })
       })
     );
+  });
+
+  it("uses the dedicated catalog row branch when reapplying a reserved snapshot", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    prisma.importBatch.findFirst.mockResolvedValueOnce(
+      importBatchRecord("pending", [], "dish_catalog")
+    );
+    prisma.importBatch.update.mockResolvedValueOnce(
+      importBatchRecord("applied", [], "dish_catalog")
+    );
+
+    await repository.applyReservedStructuredImport({
+      orgId: "org_1",
+      actorEmployeeId: "emp_1",
+      importBatchId: "imp_1",
+      rows: [
+        {
+          sourceSheetIndex: 2,
+          sourceSheetName: "Catalog B",
+          sourceRowNumber: 2,
+          payload: { sku_id: "sku-1" }
+        }
+      ],
+      audit
+    });
+
+    expect(prisma.dishCatalogRow.deleteMany).toHaveBeenCalledWith({
+      where: { importBatchId: "imp_1" }
+    });
+    expect(prisma.vipRow.deleteMany).not.toHaveBeenCalled();
+    expect(JSON.stringify(prisma.$executeRaw.mock.calls)).toContain("Catalog B");
   });
 
   it("creates a queued structured-import processing run only after a reservation exists", async () => {

@@ -111,6 +111,9 @@ export async function parseStructuredFile(
   try {
     assertFileType(input);
     window = dateWindow(input.startDate, input.endDate);
+    if (input.dataset === "dish_catalog" && window.start.getTime() !== window.end.getTime()) {
+      throw validation("dish_catalog requires startDate and endDate to be the same snapshot date.");
+    }
     const parsedSheets =
       input.fileType === "csv"
         ? [

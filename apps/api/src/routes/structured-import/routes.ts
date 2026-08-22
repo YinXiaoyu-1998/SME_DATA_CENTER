@@ -97,6 +97,11 @@ async function parseStructuredImportUpload(
       continue;
     }
 
+    if (part.fieldname === "snapshotDate") {
+      upload.snapshotDate = value;
+      continue;
+    }
+
     if (part.fieldname === "idempotencyKey") {
       upload.idempotencyKey = value;
     }
@@ -181,6 +186,8 @@ export function registerStructuredImportRoutes(
     }
 
     const { dataset, fileType, startDate, endDate } = metadataValidation;
+    const snapshotDate =
+      metadataValidation.dataset === "dish_catalog" ? metadataValidation.snapshotDate : undefined;
     const uploadedFile = upload.file;
     const enterpriseName = upload.enterpriseName;
     const idempotencyKey = upload.idempotencyKey;
@@ -251,14 +258,14 @@ export function registerStructuredImportRoutes(
       dataset,
       startDate,
       endDate,
+      snapshotDate,
       fileType
     });
     const fileHash = createHash("sha256").update(uploadedFile.body).digest("hex");
     const requestFingerprint = structuredImportFingerprint({
       dataset,
       enterpriseName,
-      startDate,
-      endDate,
+      ...(dataset === "dish_catalog" ? { snapshotDate } : { startDate, endDate }),
       labelKeys: requestedLabels.map((label) => label.key).sort(),
       fileHash
     });
@@ -284,7 +291,10 @@ export function registerStructuredImportRoutes(
             idempotencyKey,
             requestFingerprint,
             document: {
-              title: `${enterpriseName}_${dataset}_${startDate}_${endDate}`,
+              title:
+                dataset === "dish_catalog"
+                  ? `${enterpriseName}_${dataset}_${snapshotDate}`
+                  : `${enterpriseName}_${dataset}_${startDate}_${endDate}`,
               storageObjectKey: candidateStorageObjectKey,
               originalFileName,
               contentType: uploadedFile.contentType,

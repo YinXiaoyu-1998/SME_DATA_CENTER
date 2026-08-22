@@ -345,6 +345,50 @@ describe("Enterprise Hub MCP contract", () => {
     expect(upload.dataset).toBe("vip");
   });
 
+  it("keeps the structured upload schema object-shaped while enforcing conditional dates", () => {
+    const contract = contractsByName.get("upload_structured_dataset");
+    const catalogInput = {
+      ...validInputs.upload_structured_dataset,
+      dataset: "dish_catalog",
+      snapshotDate: "20260819",
+      startDate: undefined,
+      endDate: undefined
+    };
+
+    expect(contract?.inputSchema).toBeInstanceOf(z.ZodObject);
+    expect(Object.keys(contract?.inputSchema.shape ?? {})).toEqual(
+      expect.arrayContaining(["startDate", "endDate", "snapshotDate"])
+    );
+    expect(parseTool("upload_structured_dataset", catalogInput)).toMatchObject({
+      dataset: "dish_catalog",
+      snapshotDate: "20260819"
+    });
+    expect(
+      parseTool("query_structured_dataset", {
+        ...validInputs.query_structured_dataset,
+        dataset: "dish_catalog"
+      })
+    ).toMatchObject({ dataset: "dish_catalog" });
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...catalogInput,
+        snapshotDate: undefined
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...catalogInput,
+        startDate: "20260819"
+      }).success
+    ).toBe(false);
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
+        snapshotDate: "20260819"
+      }).success
+    ).toBe(false);
+  });
+
   it("rejects table-driven invalid schema cases for every Phase 3 tool", () => {
     expect(invalidInputCases.map((entry) => entry.tool)).toEqual(ENTERPRISE_HUB_MCP_TOOL_NAMES);
 

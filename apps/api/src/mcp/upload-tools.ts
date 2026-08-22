@@ -23,8 +23,9 @@ interface UploadStructuredDatasetInput {
   file: InlineUploadFile;
   dataset: StructuredDatasetName;
   enterpriseName: string;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
+  snapshotDate?: string;
   idempotencyKey: string;
   labelKeys: string[];
 }
@@ -123,7 +124,7 @@ async function uploadStructuredDataset(
     return decodedFile.result;
   }
 
-  const multipart = createMultipartBody([
+  const parts: MultipartPart[] = [
     {
       type: "file",
       name: "file",
@@ -133,15 +134,22 @@ async function uploadStructuredDataset(
     },
     { type: "field", name: "dataset", value: uploadInput.dataset },
     { type: "field", name: "enterpriseName", value: uploadInput.enterpriseName },
-    { type: "field", name: "startDate", value: uploadInput.startDate },
-    { type: "field", name: "endDate", value: uploadInput.endDate },
     { type: "field", name: "idempotencyKey", value: uploadInput.idempotencyKey },
     ...uploadInput.labelKeys.map((labelKey) => ({
       type: "field" as const,
       name: "labelKeys[]",
       value: labelKey
     }))
-  ]);
+  ];
+  if (uploadInput.dataset === "dish_catalog") {
+    parts.push({ type: "field", name: "snapshotDate", value: uploadInput.snapshotDate! });
+  } else {
+    parts.push(
+      { type: "field", name: "startDate", value: uploadInput.startDate! },
+      { type: "field", name: "endDate", value: uploadInput.endDate! }
+    );
+  }
+  const multipart = createMultipartBody(parts);
 
   return delegateMultipartRequest(options.delegate, delegation, {
     url: "/v1/structured/imports",
