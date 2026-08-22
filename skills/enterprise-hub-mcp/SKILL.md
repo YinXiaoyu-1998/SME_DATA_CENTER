@@ -465,8 +465,11 @@ Example employee-facing reply (Chinese):
 > 或重新拖入文件。
 
 For `MCP_LOCAL_FILE_NOT_FOUND` / `MCP_LOCAL_FILE_INVALID`, ask the employee to re-check the file
-location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, split the file by a business
-boundary and upload the chunks serially.
+location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, split and upload serially only when
+the dataset is an ordinary business-window dataset and a business-boundary split preserves its
+meaning. Never split `dish_catalog`: retain one complete snapshot and ask the employee to remove
+unrelated non-schema material, use a service-supported larger limit if one is actually available,
+or seek operator help.
 
 ## Typed Recovery
 
