@@ -11,7 +11,8 @@ export function validStructuredCsv(
   overrides: Record<string, string> = {}
 ) {
   const registry = getStructuredRegistry(dataset);
-  const values = registry.fields.map((field, index) => {
+  const fileFields = registry.fields.filter((field) => field.inputSource === "file");
+  const values = fileFields.map((field, index) => {
     if (overrides[field.canonicalName] !== undefined) {
       return overrides[field.canonicalName];
     }
@@ -39,7 +40,7 @@ export function validStructuredCsv(
     return `value_${index + 1}`;
   });
 
-  return `${registry.fields.map((field) => field.sourceColumn).join(",")}\n${values.join(",")}\n`;
+  return `${fileFields.map((field) => field.sourceColumn).join(",")}\n${values.join(",")}\n`;
 }
 
 export async function structuredWorkbook(input: {
@@ -51,9 +52,10 @@ export async function structuredWorkbook(input: {
   cellOverrides?: Record<string, unknown>;
 }) {
   const registry = getStructuredRegistry(input.dataset);
+  const fileFields = registry.fields.filter((field) => field.inputSource === "file");
   const workbook = new ExcelJS.Workbook();
-  const headers = registry.fields.map((field) => field.sourceColumn);
-  const row = registry.fields.map((field, index): unknown => {
+  const headers = fileFields.map((field) => field.sourceColumn);
+  const row = fileFields.map((field, index): unknown => {
     if (input.cellOverrides?.[field.canonicalName] !== undefined) {
       return input.cellOverrides[field.canonicalName];
     }

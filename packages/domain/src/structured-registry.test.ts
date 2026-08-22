@@ -260,6 +260,27 @@ describe("structured field registries", () => {
     });
   });
 
+  test("requires the catalog header to be the exact nonblank controlled set in any order", () => {
+    const headers = getStructuredRegistry("dish_catalog")
+      .fields.filter((field) => field.inputSource === "file")
+      .map((field) => field.sourceColumn);
+    const reordered = [...headers].reverse();
+
+    expect(validateStructuredHeaders("dish_catalog", reordered)).toMatchObject({ ok: true });
+    expect(
+      validateStructuredHeaders("dish_catalog", [...headers.slice(0, 4), "", ...headers.slice(4)])
+    ).toMatchObject({ ok: false });
+    expect(
+      validateStructuredHeaders("dish_catalog", ["未知列", ...headers.slice(1)])
+    ).toMatchObject({ ok: false });
+    expect(
+      validateStructuredHeaders("dish_catalog", [headers[1]!, ...headers.slice(1)])
+    ).toMatchObject({ ok: false });
+    expect(validateStructuredHeaders("dish_catalog", headers.slice(1))).toMatchObject({
+      ok: false
+    });
+  });
+
   test("accepts the reviewed vip member export header and rejects missing columns", () => {
     const validHeaders = STRUCTURED_DATASET_REGISTRIES.vip.fields.map(
       (field) => field.sourceColumn

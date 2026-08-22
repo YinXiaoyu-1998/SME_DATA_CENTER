@@ -593,14 +593,20 @@ export function resolveStructuredHeaders(
   | { ok: true; fields: Array<{ canonicalName: string; sourceColumnIndex: number }> }
   | { ok: false; errors: HeaderValidationError[] } {
   const registry = getStructuredRegistry(dataset);
-  const lookup = buildStructuredHeaderLookup(
-    registry.fields.filter((field) => field.inputSource === "file")
-  );
+  const fileFields = registry.fields.filter((field) => field.inputSource === "file");
+  const lookup = buildStructuredHeaderLookup(fileFields);
   const errors: HeaderValidationError[] = [];
   const seenCanonicalNames = new Set<string>();
   const seenHeaders = new Set<string>();
 
   const fields: Array<{ canonicalName: string; sourceColumnIndex: number }> = [];
+
+  if (
+    dataset === "dish_catalog" &&
+    (headers.length !== fileFields.length || headers.some((header) => !normalizeHeader(header)))
+  ) {
+    errors.push({ code: "UNKNOWN_COLUMN", column: "" });
+  }
 
   for (const [sourceColumnIndex, rawHeader] of headers.entries()) {
     const header = normalizeHeader(rawHeader);
@@ -636,7 +642,7 @@ export function resolveStructuredHeaders(
     fields.push({ canonicalName: match.field.canonicalName, sourceColumnIndex });
   }
 
-  for (const field of registry.fields.filter((field) => field.inputSource === "file")) {
+  for (const field of fileFields) {
     if (!seenCanonicalNames.has(field.canonicalName)) {
       errors.push({ code: "MISSING_REQUIRED_COLUMN", column: field.sourceColumn });
     }

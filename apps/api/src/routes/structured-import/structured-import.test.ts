@@ -204,6 +204,11 @@ describe("structured imports", () => {
 
   it("queues a catalog snapshot with its dedicated public date and canonical filename", async () => {
     const { app, structuredImportRepository } = await buildStructuredImportTestServer();
+    const catalogCsv = validStructuredCsv("dish_catalog");
+
+    expect(catalogCsv.split("\n")[0]?.split(",")).toHaveLength(10);
+    expect(catalogCsv.split("\n")[1]?.split(",")).toHaveLength(10);
+    expect(catalogCsv.split("\n")[0]?.split(",")).not.toContain("snapshot_date");
 
     const response = await postStructuredImport(app, {
       dataset: "dish_catalog",
@@ -213,7 +218,7 @@ describe("structured imports", () => {
       snapshotDate: "20260819",
       idempotencyKey: "catalog-20260819",
       fileName: "catalog.csv",
-      body: Buffer.from(validStructuredCsv("dish_catalog"), "utf8")
+      body: Buffer.from(catalogCsv, "utf8")
     });
 
     expect(response.statusCode).toBe(202);

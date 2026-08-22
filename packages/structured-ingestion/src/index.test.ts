@@ -772,6 +772,121 @@ describe("structured ingestion", () => {
     });
   });
 
+  test("imports a reordered ten-column catalog header", async () => {
+    const headers = catalogHeaders().reverse();
+    const catalogValues = catalogRow();
+    const rowByHeader = new Map(
+      catalogHeaders().map((header, index) => [header, catalogValues[index]!])
+    );
+    const row = headers.map((header) => rowByHeader.get(header)!);
+
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "reordered-catalog.csv",
+      fileType: "csv",
+      content: Buffer.from(`${headers.join(",")}\n${row.join(",")}\n`, "utf8"),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits
+    });
+
+    expect(result.rows[0]?.payload).toMatchObject({
+      spu_id: "spu-001",
+      sku_id: "sku-001",
+      dish_name: "Catalog dish"
+    });
+  });
+
+  test.each([
+    ["an internal blank", (headers: string[]) => [...headers.slice(0, 4), "", ...headers.slice(4)]],
+    ["an unknown", (headers: string[]) => ["未知列", ...headers.slice(1)]],
+    ["a duplicate", (headers: string[]) => [headers[1]!, ...headers.slice(1)]],
+    ["a missing", (headers: string[]) => headers.slice(1)]
+  ])("ignores a catalog worksheet with %s header", async (_name, mutateHeaders) => {
+    const workbook = new ExcelJS.Workbook();
+    workbook
+      .addWorksheet("Invalid catalog")
+      .addRows([mutateHeaders(catalogHeaders()), catalogRow()]);
+
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "invalid-catalog.xlsx",
+      fileType: "xlsx",
+      content: Buffer.from(await workbook.xlsx.writeBuffer()),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits,
+      validationMode: "collect"
+    });
+
+    expect(result.rows).toEqual([]);
+    expect(result.ignoredSheets).toEqual([
+      expect.objectContaining({ name: "Invalid catalog", reason: "SCHEMA_NOT_MATCHED" })
+    ]);
+    expect(result.validationErrors).toEqual([
+      expect.objectContaining({ code: "NO_MATCHING_SHEET" })
+    ]);
+  });
+
+  test("reports data under an unnamed trailing catalog column instead of discarding it", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "unnamed-data.csv",
+      fileType: "csv",
+      content: Buffer.from(
+        `${[...catalogHeaders(), ""].join(",")}\n${[...catalogRow(), "must-not-disappear"].join(",")}\n`,
+        "utf8"
+      ),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits,
+      validationMode: "collect"
+    });
+
+    expect(result.rows).toEqual([]);
+    expect(result.validationErrors).toEqual([
+      expect.objectContaining({ code: "EXTRA_DATA_COLUMN", rowNumber: 2 })
+    ]);
+  });
+
+  test("preserves a catalog row whose first physical value is 合计", async () => {
+    const headers = catalogHeaders();
+    const dishNameIndex = headers.indexOf("菜品名称");
+    [headers[0], headers[dishNameIndex]] = [headers[dishNameIndex]!, headers[0]!];
+    const row = catalogRow({ dish_name: "合计" });
+    [row[0], row[dishNameIndex]] = [row[dishNameIndex]!, row[0]!];
+
+    const result = await parseStructuredFile({
+      dataset: "dish_catalog",
+      fileName: "catalog-total-name.csv",
+      fileType: "csv",
+      content: Buffer.from(`${headers.join(",")}\n${row.join(",")}\n`, "utf8"),
+      startDate: "20260819",
+      endDate: "20260819",
+      limits
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.payload).toMatchObject({ dish_name: "合计", sku_id: "sku-001" });
+  });
+
+  test("continues suppressing physical-first-cell summary rows for ordinary datasets", async () => {
+    const result = await parseStructuredFile({
+      dataset: "dishes",
+      fileName: "ordinary-summary.csv",
+      fileType: "csv",
+      content: Buffer.from(
+        `${dishesHeaders().join(",")}\n${dishesRow().join(",")}\n${["合计", ...dishesRow().slice(1)].join(",")}\n`,
+        "utf8"
+      ),
+      startDate: "20260701",
+      endDate: "20260701",
+      limits
+    });
+
+    expect(result.rows).toHaveLength(1);
+  });
+
   test("rejects a catalog direct-parser call whose internal date window spans multiple days", async () => {
     await expect(
       parseStructuredFile({

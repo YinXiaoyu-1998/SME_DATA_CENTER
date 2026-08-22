@@ -214,7 +214,7 @@ export async function parseStructuredFile(
       continue;
     }
     matchedSheetCount += 1;
-    const data = dataRowsFor(sheet, candidate);
+    const data = dataRowsFor(input.dataset, sheet, candidate);
     matchingDataRowCount += data.length;
     sheetSummary.push({
       sheetIndex: sheet.sheetIndex,
@@ -394,7 +394,7 @@ export async function profileStructuredFile(
       throw validation(
         `VALIDATION_FAILED: ${sheet.name} has no recognized ${input.dataset} header`
       );
-    const data = dataRowsFor(sheet, candidate);
+    const data = dataRowsFor(input.dataset, sheet, candidate);
     matchedSheetCount += 1;
     assertWithinHeaderWidth(data, candidate);
     dataRowCount += data.length;
@@ -423,12 +423,16 @@ export async function profileStructuredFile(
   };
 }
 
-function dataRowsFor(sheet: { rows: string[][] }, candidate: { index: number; width: number }) {
+function dataRowsFor(
+  dataset: StructuredDatasetName,
+  sheet: { rows: string[][] },
+  candidate: { index: number; width: number }
+) {
   return sheet.rows
     .slice(candidate.index + 1)
     .map((row, index) => ({ row, sourceRowNumber: candidate.index + index + 2 }))
     .filter(({ row }) => row.some((cell) => cell.trim()))
-    .filter(({ row }) => !isSummary(row));
+    .filter(({ row }) => dataset === "dish_catalog" || !isSummary(row));
 }
 
 function assertWithinHeaderWidth(
