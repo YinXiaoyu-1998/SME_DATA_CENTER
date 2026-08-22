@@ -7,7 +7,8 @@ const prisma = vi.hoisted(() => ({
   },
   importBatch: {
     findFirst: vi.fn(),
-    update: vi.fn()
+    update: vi.fn(),
+    updateMany: vi.fn()
   },
   dishRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   businessRow: { deleteMany: vi.fn(), createMany: vi.fn() },
@@ -53,6 +54,7 @@ describe("Prisma structured worker persistence", () => {
       dataset: "dish_catalog"
     });
     prisma.importBatch.update.mockResolvedValue({});
+    prisma.importBatch.updateMany.mockResolvedValue({ count: 1 });
     prisma.dishCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.dishCatalogRow.createMany.mockResolvedValue({ count: 1 });
     prisma.vipRow.deleteMany.mockResolvedValue({ count: 0 });
@@ -125,5 +127,94 @@ describe("Prisma structured worker persistence", () => {
       })
     );
     expect(JSON.stringify(prisma.importBatch.update.mock.calls)).not.toContain("Ignored cell");
+  });
+
+  it("preserves the exact legacy sheet summary shape for an applied window dataset", async () => {
+    prisma.importBatch.findFirst.mockResolvedValueOnce({
+      id: "imp_1",
+      orgId: "org_1",
+      sourceDocumentId: "doc_1",
+      dataset: "dishes"
+    });
+    prisma.dishRow.deleteMany.mockResolvedValueOnce({ count: 0 });
+    prisma.dishRow.createMany.mockResolvedValueOnce({ count: 1 });
+    const repository = createPrismaProcessingWorkerRepository("mysql://test");
+    const sheetSummary = [
+      { sheetIndex: 0, name: "Sheet1", hidden: false, headerRowNumber: 1, dataRowCount: 1 }
+    ];
+
+    await repository.completeStructuredImport?.({
+      runId: "run_1",
+      documentId: "doc_1",
+      importBatchId: "imp_1",
+      workerId: "worker_1",
+      now: new Date("2026-08-19T00:00:00.000Z"),
+      batchInsertSize: 500,
+      result: {
+        sheetSummary,
+        ignoredSheets: [{ sheetIndex: 1, name: "Ignored", reason: "SCHEMA_NOT_MATCHED" }],
+        rows: [
+          {
+            sourceSheetIndex: 0,
+            sourceSheetName: "Sheet1",
+            sourceRowNumber: 2,
+            payload: { product_name: "Tea" }
+          }
+        ],
+        validationErrors: [],
+        validationErrorCount: 0,
+        validationErrorsTruncated: false
+      }
+    });
+
+    expect(prisma.importBatch.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ sourceSheetSummary: sheetSummary })
+      })
+    );
+  });
+
+  it("preserves the exact legacy sheet summary shape for a rejected window dataset", async () => {
+    prisma.importBatch.findFirst.mockResolvedValueOnce({
+      id: "imp_1",
+      orgId: "org_1",
+      sourceDocumentId: "doc_1",
+      dataset: "business"
+    });
+    const repository = createPrismaProcessingWorkerRepository("mysql://test");
+    const sheetSummary = [
+      { sheetIndex: 0, name: "Sheet1", hidden: false, headerRowNumber: 1, dataRowCount: 1 }
+    ];
+
+    await repository.rejectStructuredImport?.({
+      runId: "run_1",
+      documentId: "doc_1",
+      importBatchId: "imp_1",
+      workerId: "worker_1",
+      now: new Date("2026-08-19T00:00:00.000Z"),
+      result: {
+        sheetSummary,
+        ignoredSheets: [{ sheetIndex: 1, name: "Ignored", reason: "SCHEMA_NOT_MATCHED" }],
+        rows: [],
+        validationErrors: [
+          {
+            code: "INVALID_NUMBER",
+            message: "invalid",
+            sheetName: "Sheet1",
+            sheetIndex: 0,
+            rowNumber: 2,
+            column: "gross_sales"
+          }
+        ],
+        validationErrorCount: 1,
+        validationErrorsTruncated: false
+      }
+    });
+
+    expect(prisma.importBatch.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ sourceSheetSummary: sheetSummary })
+      })
+    );
   });
 });

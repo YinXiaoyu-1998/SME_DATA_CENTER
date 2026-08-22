@@ -815,7 +815,7 @@ export function createPrismaProcessingWorkerRepository(
           where: { id: batch.id },
           data: {
             status: ImportBatchStatus.applied,
-            sourceSheetSummary: structuredSourceSheetSummary(input.result),
+            sourceSheetSummary: persistedSourceSheetSummary(batch.dataset, input.result),
             validationErrors: [],
             validationErrorCount: 0,
             totalRowCount: input.result.rows.length,
@@ -864,7 +864,18 @@ export function createPrismaProcessingWorkerRepository(
         if (leased.count !== 1) throw new ProcessingLeaseLostError(input.runId);
 
         const run = await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } });
-        const batch = await tx.importBatch.updateMany({
+        const batch = await tx.importBatch.findFirst({
+          where: {
+            id: input.importBatchId,
+            sourceDocumentId: input.documentId,
+            orgId: run.orgId,
+            status: { in: [ImportBatchStatus.validating, ImportBatchStatus.applying] }
+          }
+        });
+        if (!batch)
+          throw new Error(`Structured import batch ${input.importBatchId} cannot reject.`);
+
+        const updated = await tx.importBatch.updateMany({
           where: {
             id: input.importBatchId,
             sourceDocumentId: input.documentId,
@@ -873,7 +884,7 @@ export function createPrismaProcessingWorkerRepository(
           },
           data: {
             status: ImportBatchStatus.rejected,
-            sourceSheetSummary: structuredSourceSheetSummary(input.result),
+            sourceSheetSummary: persistedSourceSheetSummary(batch.dataset, input.result),
             validationErrors: input.result.validationErrors as unknown as Prisma.InputJsonValue,
             validationErrorCount: input.result.validationErrorCount,
             totalRowCount: input.result.rows.length,
@@ -882,7 +893,7 @@ export function createPrismaProcessingWorkerRepository(
             errorSummary: "Structured import validation failed."
           }
         });
-        if (batch.count !== 1)
+        if (updated.count !== 1)
           throw new Error(`Structured import batch ${input.importBatchId} cannot reject.`);
 
         await tx.document.update({
@@ -1193,9 +1204,14 @@ async function insertStructuredRows(
   }
 }
 
-function structuredSourceSheetSummary(
+function persistedSourceSheetSummary(
+  dataset: ImportDataset,
   result: Pick<StructuredParseResult, "sheetSummary" | "ignoredSheets">
 ): Prisma.InputJsonValue {
+  if (dataset !== ImportDataset.dish_catalog) {
+    return result.sheetSummary as unknown as Prisma.InputJsonValue;
+  }
+
   return [
     ...result.sheetSummary.map((sheet) => ({ ...sheet, status: "imported" as const })),
     ...result.ignoredSheets.map((sheet) => ({ ...sheet, status: "ignored" as const }))

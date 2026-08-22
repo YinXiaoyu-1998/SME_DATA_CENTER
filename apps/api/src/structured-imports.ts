@@ -314,6 +314,15 @@ export function createPrismaStructuredImportRepository(options: {
 
     if (existingClaim?.importBatch) {
       if (existingClaim.importBatch.status === ImportBatchStatus.applied) {
+        if (existingClaim.importBatch.sourceDocument.status === DocumentStatus.archived) {
+          await prisma.importWindowClaim.deleteMany({
+            where: {
+              id: existingClaim.id,
+              importBatchId: existingClaim.importBatch.id
+            }
+          });
+          return null;
+        }
         throw new StructuredImportError("ACTIVE_IMPORT_EXISTS");
       }
 

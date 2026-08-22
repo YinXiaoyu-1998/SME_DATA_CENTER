@@ -277,7 +277,9 @@ export function createInMemoryStructuredImportRepository(
           batch.dataset === input.dataset &&
           batch.startDate === input.startDate &&
           batch.endDate === input.endDate &&
-          !["rejected", "failed"].includes(batch.status)
+          !["rejected", "failed"].includes(batch.status) &&
+          documents.find((document) => document.id === batch.sourceDocumentId)?.status !==
+            "archived"
       );
 
       if (existingWindowBatch) {

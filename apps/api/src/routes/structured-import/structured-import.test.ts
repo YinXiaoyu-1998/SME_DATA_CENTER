@@ -699,6 +699,66 @@ describe("structured imports", () => {
     expect(storagePutCalls()).toBe(1);
   });
 
+  it("replaces an archived catalog snapshot with a new key while replaying the original batch", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer();
+    const originalInput = {
+      dataset: "dish_catalog" as const,
+      startDate: null,
+      endDate: null,
+      snapshotDate: "20260819",
+      idempotencyKey: "catalog-original",
+      fileName: "catalog.csv",
+      body: Buffer.from(validStructuredCsv("dish_catalog"), "utf8")
+    };
+    const original = await postStructuredImport(app, originalInput);
+    const originalBatchId = original.json().importBatch.importBatchId;
+    const originalDocumentId = original.json().document.documentId;
+
+    await structuredImportRepository.applyReservedStructuredImport({
+      orgId: "default-org",
+      actorEmployeeId: baoliManagerEmployee.id,
+      importBatchId: originalBatchId,
+      rows: [],
+      audit: {
+        requestId: "test-apply",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
+    });
+    await documentRepository.archiveDocument({
+      orgId: "default-org",
+      documentId: originalDocumentId,
+      actorEmployeeId: baoliManagerEmployee.id,
+      audit: {
+        requestId: "test-archive",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
+    });
+
+    const replacement = await postStructuredImport(app, {
+      ...originalInput,
+      idempotencyKey: "catalog-replacement"
+    });
+    const replay = await postStructuredImport(app, originalInput);
+
+    expect(replacement.statusCode).toBe(202);
+    expect(replacement.json()).toMatchObject({
+      document: { status: "pending_processing" },
+      importBatch: { dataset: "dish_catalog", snapshotDate: "20260819", status: "pending" }
+    });
+    expect(replacement.json().importBatch.importBatchId).not.toBe(originalBatchId);
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json()).toMatchObject({
+      document: { documentId: originalDocumentId, status: "archived" },
+      importBatch: { importBatchId: originalBatchId, status: "archived", snapshotDate: "20260819" }
+    });
+    expect(storagePutCalls()).toBe(2);
+  });
+
   it("returns import status only to same-org callers authorized by source document labels", async () => {
     const { app } = await buildStructuredImportTestServer([
       adminEmployee,
