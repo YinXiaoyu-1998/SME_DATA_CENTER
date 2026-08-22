@@ -1,4 +1,4 @@
-export const STRUCTURED_DATASETS = ["dishes", "business", "vip"] as const;
+export const STRUCTURED_DATASETS = ["dishes", "business", "vip", "dish_catalog"] as const;
 
 export type StructuredDatasetName = (typeof STRUCTURED_DATASETS)[number];
 
@@ -13,7 +13,7 @@ export interface StructuredFieldCapabilities {
 }
 
 export interface StructuredFieldStorageMapping {
-  table: "dish_rows" | "business_rows" | "vip_rows";
+  table: "dish_rows" | "business_rows" | "vip_rows" | "dish_catalog_rows";
   column: "payload";
   jsonPath: string;
 }
@@ -24,6 +24,7 @@ export interface StructuredFieldRegistryEntry {
   aliases: string[];
   type: StructuredFieldType;
   nullable: boolean;
+  inputSource: "file" | "upload_metadata";
   sensitivity: "normal" | "business_metric";
   lifecycle: "active";
   volatility: "stable_export" | "review_on_export_change";
@@ -41,7 +42,9 @@ export interface StructuredFieldRegistryEntry {
 export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
   version: string;
-  rowTable: "dish_rows" | "business_rows" | "vip_rows";
+  rowTable: "dish_rows" | "business_rows" | "vip_rows" | "dish_catalog_rows";
+  sheetPolicy: "strict_all_nonempty" | "import_matching_visible";
+  datePolicy: "row_business_date" | "snapshot_metadata";
   fields: StructuredFieldRegistryEntry[];
 }
 
@@ -270,6 +273,32 @@ const BUSINESS_SOURCE_COLUMNS = [
   "营业天数"
 ] as const;
 
+const DISH_CATALOG_SOURCE_COLUMNS = [
+  "菜品编码（SPUID）",
+  "菜品编码（SKUID）",
+  "菜品名称",
+  "品牌",
+  "基础分类",
+  "一级分类编码",
+  "二级分类编码",
+  "规格名称",
+  "售卖价",
+  "菜品别名"
+] as const;
+
+const DISH_CATALOG_CANONICAL_OVERRIDES: Record<string, string> = {
+  "菜品编码（SPUID）": "spu_id",
+  "菜品编码（SKUID）": "sku_id",
+  菜品名称: "dish_name",
+  品牌: "brand_name",
+  基础分类: "base_category_name",
+  一级分类编码: "level_1_category_code",
+  二级分类编码: "level_2_category_code",
+  规格名称: "specification_name",
+  售卖价: "sale_price",
+  菜品别名: "dish_alias"
+};
+
 const VIP_SOURCE_COLUMNS = [
   "日期",
   "周",
@@ -456,6 +485,8 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     dataset: "dishes",
     version: "dishes.2026-07-11.v1",
     rowTable: "dish_rows",
+    sheetPolicy: "strict_all_nonempty",
+    datePolicy: "row_business_date",
     sourceColumns: DISH_SOURCE_COLUMNS,
     canonicalOverrides: DISH_CANONICAL_OVERRIDES
   }),
@@ -463,6 +494,8 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     dataset: "business",
     version: "business.2026-07-11.v1",
     rowTable: "business_rows",
+    sheetPolicy: "strict_all_nonempty",
+    datePolicy: "row_business_date",
     sourceColumns: BUSINESS_SOURCE_COLUMNS,
     canonicalOverrides: BUSINESS_CANONICAL_OVERRIDES
   }),
@@ -470,8 +503,28 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     dataset: "vip",
     version: "vip.2026-08-12.v1",
     rowTable: "vip_rows",
+    sheetPolicy: "strict_all_nonempty",
+    datePolicy: "row_business_date",
     sourceColumns: VIP_SOURCE_COLUMNS,
     canonicalOverrides: VIP_CANONICAL_OVERRIDES
+  }),
+  dish_catalog: createRegistry({
+    dataset: "dish_catalog",
+    version: "dish_catalog.2026-08-22.v1",
+    rowTable: "dish_catalog_rows",
+    sheetPolicy: "import_matching_visible",
+    datePolicy: "snapshot_metadata",
+    sourceColumns: DISH_CATALOG_SOURCE_COLUMNS,
+    canonicalOverrides: DISH_CATALOG_CANONICAL_OVERRIDES,
+    nullableCanonicalNames: new Set(["level_2_category_code", "specification_name", "dish_alias"]),
+    metadataFields: [
+      {
+        canonicalName: "snapshot_date",
+        sourceColumn: "snapshot_date",
+        type: "date",
+        nullable: false
+      }
+    ]
   })
 } as const satisfies Record<StructuredDatasetName, StructuredDatasetRegistry>;
 
@@ -540,12 +593,20 @@ export function resolveStructuredHeaders(
   | { ok: true; fields: Array<{ canonicalName: string; sourceColumnIndex: number }> }
   | { ok: false; errors: HeaderValidationError[] } {
   const registry = getStructuredRegistry(dataset);
-  const lookup = buildStructuredHeaderLookup(registry.fields);
+  const fileFields = registry.fields.filter((field) => field.inputSource === "file");
+  const lookup = buildStructuredHeaderLookup(fileFields);
   const errors: HeaderValidationError[] = [];
   const seenCanonicalNames = new Set<string>();
   const seenHeaders = new Set<string>();
 
   const fields: Array<{ canonicalName: string; sourceColumnIndex: number }> = [];
+
+  if (
+    dataset === "dish_catalog" &&
+    (headers.length !== fileFields.length || headers.some((header) => !normalizeHeader(header)))
+  ) {
+    errors.push({ code: "UNKNOWN_COLUMN", column: "" });
+  }
 
   for (const [sourceColumnIndex, rawHeader] of headers.entries()) {
     const header = normalizeHeader(rawHeader);
@@ -581,7 +642,7 @@ export function resolveStructuredHeaders(
     fields.push({ canonicalName: match.field.canonicalName, sourceColumnIndex });
   }
 
-  for (const field of registry.fields) {
+  for (const field of fileFields) {
     if (!seenCanonicalNames.has(field.canonicalName)) {
       errors.push({ code: "MISSING_REQUIRED_COLUMN", column: field.sourceColumn });
     }
@@ -597,48 +658,85 @@ export function resolveStructuredHeaders(
 function createRegistry(input: {
   dataset: StructuredDatasetName;
   version: string;
-  rowTable: "dish_rows" | "business_rows" | "vip_rows";
+  rowTable: "dish_rows" | "business_rows" | "vip_rows" | "dish_catalog_rows";
+  sheetPolicy: StructuredDatasetRegistry["sheetPolicy"];
+  datePolicy: StructuredDatasetRegistry["datePolicy"];
   sourceColumns: readonly string[];
   canonicalOverrides: Record<string, string>;
+  nullableCanonicalNames?: ReadonlySet<string>;
+  metadataFields?: Array<
+    Pick<StructuredFieldRegistryEntry, "canonicalName" | "sourceColumn" | "type" | "nullable">
+  >;
 }): StructuredDatasetRegistry {
   return {
     dataset: input.dataset,
     version: input.version,
     rowTable: input.rowTable,
-    fields: input.sourceColumns.map((sourceColumn, index) => {
-      const canonicalName =
-        input.canonicalOverrides[sourceColumn] ??
-        `${input.dataset}_${String(index + 1).padStart(3, "0")}_${fallbackAsciiName(sourceColumn)}`;
-      const type = inferFieldType(input.dataset, sourceColumn);
-      const isMeasure = isMeasureColumn(sourceColumn, type);
-
-      return {
-        canonicalName,
-        sourceColumn,
-        aliases: aliasesFor(input.dataset, sourceColumn),
-        type,
-        nullable: canonicalName !== "business_date",
-        sensitivity: isMeasure ? "business_metric" : "normal",
-        lifecycle: "active",
-        volatility: "review_on_export_change",
-        defaultReturn:
-          index < 20 || ["business_date", "matched_product_name"].includes(canonicalName),
-        operators: operatorsForType(type),
+    sheetPolicy: input.sheetPolicy,
+    datePolicy: input.datePolicy,
+    fields: [
+      ...(input.metadataFields ?? []).map((field) => ({
+        ...field,
+        aliases: [field.sourceColumn],
+        inputSource: "upload_metadata" as const,
+        sensitivity: "normal" as const,
+        lifecycle: "active" as const,
+        volatility: "stable_export" as const,
+        defaultReturn: true,
+        operators: operatorsForType(field.type),
         capabilities: {
           filter: true,
-          sort: type !== "string" || index < 25,
-          group: !isMeasure,
-          aggregate: isMeasure
+          sort: true,
+          group: true,
+          aggregate: false
         },
-        indexStatus: "planned",
-        valueLimits: valueLimitsForType(type),
+        indexStatus: "planned" as const,
+        valueLimits: valueLimitsForType(field.type),
         storage: {
           table: input.rowTable,
-          column: "payload",
-          jsonPath: `$.${canonicalName}`
+          column: "payload" as const,
+          jsonPath: `$.${field.canonicalName}`
         }
-      };
-    })
+      })),
+      ...input.sourceColumns.map((sourceColumn, index) => {
+        const canonicalName =
+          input.canonicalOverrides[sourceColumn] ??
+          `${input.dataset}_${String(index + 1).padStart(3, "0")}_${fallbackAsciiName(sourceColumn)}`;
+        const type = inferFieldType(input.dataset, sourceColumn);
+        const isMeasure = isMeasureColumn(sourceColumn, type);
+
+        return {
+          canonicalName,
+          sourceColumn,
+          aliases: aliasesFor(input.dataset, sourceColumn),
+          type,
+          nullable:
+            input.nullableCanonicalNames?.has(canonicalName) ?? canonicalName !== "business_date",
+          inputSource: "file" as const,
+          sensitivity: isMeasure ? ("business_metric" as const) : ("normal" as const),
+          lifecycle: "active" as const,
+          volatility: "review_on_export_change" as const,
+          defaultReturn:
+            input.dataset === "dish_catalog" ||
+            index < 20 ||
+            ["business_date", "matched_product_name"].includes(canonicalName),
+          operators: operatorsForType(type),
+          capabilities: {
+            filter: true,
+            sort: type !== "string" || index < 25,
+            group: !isMeasure,
+            aggregate: isMeasure
+          },
+          indexStatus: "planned" as const,
+          valueLimits: valueLimitsForType(type),
+          storage: {
+            table: input.rowTable,
+            column: "payload" as const,
+            jsonPath: `$.${canonicalName}`
+          }
+        };
+      })
+    ]
   };
 }
 
@@ -658,7 +756,8 @@ function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): strin
       周: ["营业周"],
       月份: ["月"],
       储值门店名称: ["门店名称"]
-    }
+    },
+    dish_catalog: {}
   };
   return [sourceColumn, ...(aliasesByDataset[dataset][sourceColumn] ?? [])];
 }
@@ -674,6 +773,10 @@ function inferFieldType(dataset: StructuredDatasetName, sourceColumn: string): S
       return "decimal";
     }
     return "string";
+  }
+
+  if (dataset === "dish_catalog") {
+    return sourceColumn === "售卖价" ? "decimal" : "string";
   }
 
   if (["营业日", "营业日期"].includes(sourceColumn)) {

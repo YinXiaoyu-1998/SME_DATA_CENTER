@@ -25,6 +25,8 @@ export interface CleanupCounts {
   importBatches: number;
   dishRows: number;
   businessRows: number;
+  vipRows: number;
+  dishCatalogRows: number;
   windowClaims: number;
   qdrantPoints: number;
   storageObjects: number;

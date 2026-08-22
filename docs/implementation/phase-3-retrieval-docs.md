@@ -1,7 +1,7 @@
 # Phase 3 Retrieval And Structured Data Decisions
 
-Status: living decision log
-Last updated: 2026-07-11
+Status: living decision log with implemented amendments
+Last updated: 2026-08-22
 Branch: `codex/phase3-retrieval-readiness-docs`
 Worktree: `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER_WORKTREES/phase3-retrieval-readiness-docs`
 
@@ -1471,19 +1471,43 @@ See ADR 0015 for external model data-egress boundaries.
 
 ## Structured Upload Scope
 
-CSV/XLSX are only supported for two datasets:
+CSV/XLSX are supported for these structured datasets:
 
 - `dishes`
 - `business`
+- `vip`
+- `dish_catalog`
 
-The upload metadata must explicitly provide:
+For the business-window datasets (`dishes`, `business`, and `vip`), upload metadata must explicitly
+provide:
 
-- `dataset`: `dishes` or `business`
+- `dataset`
 - `enterprise_name`
 - `start_date`
 - `end_date`
 
 `start_date` and `end_date` use `YYYYMMDD` and refer to `business_date`, not `order_time`.
+
+`dish_catalog` is an implemented exception to the window model: its external metadata is
+`dataset=dish_catalog`, `enterprise_name`, and one `snapshotDate` (`YYYYMMDD`), with no
+`startDate` or `endDate`. The batch stores the snapshot internally as equal start/end dates and
+writes the normalized `snapshot_date` onto every catalog row. The catalog is a complete,
+append-only snapshot on one organization timeline, not a delta, overwrite, or SCD history.
+Historical snapshots may arrive out of order. One non-archived snapshot per organization/date is allowed;
+to correct a date, archive the existing snapshot before uploading different content. New snapshots
+do not auto-archive older snapshots.
+
+The catalog's exact controlled headers are `菜品编码（SPUID）`, `菜品编码（SKUID）`, `菜品名称`,
+`品牌`, `基础分类`, `一级分类编码`, `二级分类编码`, `规格名称`, `售卖价`, and `菜品别名`; order is
+flexible. `二级分类编码`, `规格名称`, and `菜品别名` are nullable. SKUID is unique within one
+snapshot, SPUID may repeat, and decimal `售卖价` permits zero. All visible XLSX sheets with that
+exact schema merge into the snapshot regardless of name. Nonmatching sheets are ignored with safe
+`SCHEMA_NOT_MATCHED` summaries; matching hidden sheets reject the upload. CSV follows the same
+schema as a one-sheet workbook.
+
+Discovery and controlled query expose `snapshot_date`; they intentionally do not select a
+current/latest catalog, calculate diffs, or infer added/removed/discontinued state. ADR 0023 is the
+authoritative decision record for these catalog-specific rules.
 
 `enterprise_name` is a display and canonical file-name component. It is not the durable enterprise key, permission key, duplicate-import key, or query key.
 
@@ -1500,7 +1524,8 @@ Structured imports should introduce an `ImportBatch` or equivalent first-class m
 Minimal relationships:
 
 - `Document` remains the uploaded source file, permission, state, and OSS asset anchor
-- `ImportBatch` represents one structured import attempt/result for one dataset and one declared business-date window
+- `ImportBatch` represents one structured import attempt/result for one dataset and its declared
+  business-date window or catalog snapshot date
 - `ProcessingRun` should reference both `Document` and `ImportBatch` for structured import runs
 - `DishRow` and `BusinessRow` rows belong to exactly one `ImportBatch` and retain `documentId` for lineage
 - audit logs for structured data changes should reference both `Document` and `ImportBatch`
@@ -1542,6 +1567,8 @@ Canonical import/source names:
 
 - `{enterprise_name}_dishes_{start_date}_{end_date}`
 - `{enterprise_name}_business_{start_date}_{end_date}`
+- `{enterprise_name}_vip_{start_date}_{end_date}`
+- `{enterprise_name}_dish_catalog_{snapshot_date}`
 
 After validation, the source file copy in OSS should be stored once under the canonical import batch name. Do not split multi-day XLSX/CSV uploads into daily OSS files. Day-level filtering is handled through MySQL fields such as `business_date`.
 
@@ -1562,7 +1589,10 @@ Any failure keeps the upload out of ordinary structured query results.
 
 Validation must be robust against real exports. Some real rows have empty cells; nullable fields must be defined from real sample data and should not be treated as malformed simply because they are blank.
 
-The dishes and business MySQL schemas and structured API field registry must fully cover the current real export column sets. Do not implement only a demo subset of fields. If a field exists in the supported real export, the caller's agent should be able to discover its definition and request it through the structured API when authorized.
+The dishes, business, vip, and dish-catalog MySQL schemas and structured API field registry must
+fully cover their current supported export column sets. Do not implement only a demo subset of
+fields. If a field exists in a supported real export, the caller's agent should be able to discover
+its definition and request it through the structured API when authorized.
 
 Complete coverage does not mean every field supports every query capability. Phase 3 uses a complete but capability-scoped field registry: every current export field has a public canonical definition, while filter/sort/group/aggregation/operator support is declared per field.
 

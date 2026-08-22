@@ -150,7 +150,15 @@ async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeR
         OR: [{ targetType: "document" }, { action: { startsWith: "document." } }]
       }
     });
-    const documents = await prisma.document.deleteMany({});
+    const documents = await prisma.$transaction(async (tx) => {
+      await tx.dishRow.deleteMany({});
+      await tx.businessRow.deleteMany({});
+      await tx.vipRow.deleteMany({});
+      await tx.dishCatalogRow.deleteMany({});
+      await tx.importWindowClaim.deleteMany({});
+      await tx.importBatch.deleteMany({});
+      return tx.document.deleteMany({});
+    });
 
     return {
       target,

@@ -15,6 +15,8 @@ const inventory = {
   importWindowClaimIds: ["claim-1"],
   dishRowIds: ["dish-1"],
   businessRowIds: ["business-1"],
+  vipRowIds: ["vip-1"],
+  dishCatalogRowIds: ["catalog-1"],
   uploadAuditLogIds: ["audit-1"],
   storageObjectKeys: ["uploads/doc-1.csv"],
   qdrantPoints: [{ collection: "evidence", pointId: "point-1" }]
@@ -116,6 +118,8 @@ describe("staging upload-domain cleanup support", () => {
       "ImportWindowClaim",
       "DishRow",
       "BusinessRow",
+      "VipRow",
+      "DishCatalogRow",
       "ImportBatch",
       "Document"
     ]);

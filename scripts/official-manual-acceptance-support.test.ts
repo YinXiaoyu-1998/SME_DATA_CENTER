@@ -151,6 +151,8 @@ describe("official manual acceptance cleanup", () => {
         importBatches: 0,
         dishRows: 3,
         businessRows: 0,
+        vipRows: 0,
+        dishCatalogRows: 0,
         windowClaims: 1,
         qdrantPoints: 0,
         storageObjects: 0

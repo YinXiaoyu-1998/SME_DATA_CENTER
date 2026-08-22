@@ -23,6 +23,8 @@ import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface StructuredImportRowInput {
+  sourceSheetIndex: number;
+  sourceSheetName: string;
   sourceRowNumber: number;
   payload: Record<string, unknown>;
 }
@@ -234,12 +236,12 @@ async function insertStructuredRows(
     const batch = input.rows.slice(offset, offset + batchSize);
     const values = batch.map(
       (row) =>
-        Prisma.sql`(${createStructuredRowId()}, ${input.orgId}, ${input.sourceDocumentId}, ${input.importBatchId}, ${row.sourceRowNumber}, ${JSON.stringify(row.payload)})`
+        Prisma.sql`(${createStructuredRowId()}, ${input.orgId}, ${input.sourceDocumentId}, ${input.importBatchId}, ${row.sourceSheetIndex}, ${row.sourceSheetName}, ${row.sourceRowNumber}, ${JSON.stringify(row.payload)})`
     );
 
     await tx.$executeRaw`
       INSERT INTO ${Prisma.raw(tableName)}
-        (id, org_id, source_document_id, import_batch_id, source_row_number, payload)
+        (id, org_id, source_document_id, import_batch_id, source_sheet_index, source_sheet_name, source_row_number, payload)
       VALUES ${Prisma.join(values)}
     `;
     input.onTiming?.({
@@ -312,6 +314,15 @@ export function createPrismaStructuredImportRepository(options: {
 
     if (existingClaim?.importBatch) {
       if (existingClaim.importBatch.status === ImportBatchStatus.applied) {
+        if (existingClaim.importBatch.sourceDocument.status === DocumentStatus.archived) {
+          await prisma.importWindowClaim.deleteMany({
+            where: {
+              id: existingClaim.id,
+              importBatchId: existingClaim.importBatch.id
+            }
+          });
+          return null;
+        }
         throw new StructuredImportError("ACTIVE_IMPORT_EXISTS");
       }
 
@@ -500,7 +511,15 @@ export function createPrismaStructuredImportRepository(options: {
                     where: { importBatchId: input.importBatchId }
                   });
                 }
-                return tx.vipRow.deleteMany({ where: { importBatchId: input.importBatchId } });
+                if (existing.dataset === ImportDataset.vip) {
+                  return tx.vipRow.deleteMany({ where: { importBatchId: input.importBatchId } });
+                }
+                if (existing.dataset === ImportDataset.dish_catalog) {
+                  return tx.dishCatalogRow.deleteMany({
+                    where: { importBatchId: input.importBatchId }
+                  });
+                }
+                throw new Error(`Unsupported structured dataset: ${String(existing.dataset)}`);
               },
               baseTiming
             );

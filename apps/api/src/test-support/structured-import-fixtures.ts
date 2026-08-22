@@ -11,7 +11,8 @@ export function validStructuredCsv(
   overrides: Record<string, string> = {}
 ) {
   const registry = getStructuredRegistry(dataset);
-  const values = registry.fields.map((field, index) => {
+  const fileFields = registry.fields.filter((field) => field.inputSource === "file");
+  const values = fileFields.map((field, index) => {
     if (overrides[field.canonicalName] !== undefined) {
       return overrides[field.canonicalName];
     }
@@ -39,7 +40,7 @@ export function validStructuredCsv(
     return `value_${index + 1}`;
   });
 
-  return `${registry.fields.map((field) => field.sourceColumn).join(",")}\n${values.join(",")}\n`;
+  return `${fileFields.map((field) => field.sourceColumn).join(",")}\n${values.join(",")}\n`;
 }
 
 export async function structuredWorkbook(input: {
@@ -51,9 +52,10 @@ export async function structuredWorkbook(input: {
   cellOverrides?: Record<string, unknown>;
 }) {
   const registry = getStructuredRegistry(input.dataset);
+  const fileFields = registry.fields.filter((field) => field.inputSource === "file");
   const workbook = new ExcelJS.Workbook();
-  const headers = registry.fields.map((field) => field.sourceColumn);
-  const row = registry.fields.map((field, index): unknown => {
+  const headers = fileFields.map((field) => field.sourceColumn);
+  const row = fileFields.map((field, index): unknown => {
     if (input.cellOverrides?.[field.canonicalName] !== undefined) {
       return input.cellOverrides[field.canonicalName];
     }
@@ -101,8 +103,9 @@ export async function structuredWorkbook(input: {
 export function createStructuredImportMultipart(input: {
   dataset?: StructuredDatasetName;
   enterpriseName?: string;
-  startDate?: string;
-  endDate?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  snapshotDate?: string;
   idempotencyKey?: string;
   labelKeys?: string[];
   fileName?: string;
@@ -112,8 +115,11 @@ export function createStructuredImportMultipart(input: {
   return createMultipartPayload([
     { name: "dataset", value: input.dataset ?? "dishes" },
     { name: "enterprise_name", value: input.enterpriseName ?? "保利店" },
-    { name: "startDate", value: input.startDate ?? "20260701" },
-    { name: "endDate", value: input.endDate ?? "20260705" },
+    ...(input.startDate === null
+      ? []
+      : [{ name: "startDate", value: input.startDate ?? "20260701" }]),
+    ...(input.endDate === null ? [] : [{ name: "endDate", value: input.endDate ?? "20260705" }]),
+    ...(input.snapshotDate ? [{ name: "snapshotDate", value: input.snapshotDate }] : []),
     { name: "idempotencyKey", value: input.idempotencyKey ?? "import-key-1" },
     ...(input.labelKeys ?? ["store:baoli"]).map((labelKey) => ({
       name: "labelKeys[]",
@@ -273,7 +279,9 @@ export function createInMemoryStructuredImportRepository(
           batch.dataset === input.dataset &&
           batch.startDate === input.startDate &&
           batch.endDate === input.endDate &&
-          !["rejected", "failed"].includes(batch.status)
+          !["rejected", "failed"].includes(batch.status) &&
+          documents.find((document) => document.id === batch.sourceDocumentId)?.status !==
+            "archived"
       );
 
       if (existingWindowBatch) {
@@ -382,7 +390,12 @@ export function createInMemoryStructuredImportRepository(
       orgId: string;
       actorEmployeeId: string;
       importBatchId: string;
-      rows: Array<{ payload: Record<string, unknown>; sourceRowNumber: number }>;
+      rows: Array<{
+        payload: Record<string, unknown>;
+        sourceSheetIndex: number;
+        sourceSheetName: string;
+        sourceRowNumber: number;
+      }>;
       audit: RequestAuditContext;
     }) {
       const batch = batches.find(

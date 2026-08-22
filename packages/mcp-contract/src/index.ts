@@ -14,7 +14,7 @@ export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
 const structuredDataset = z
-  .enum(["dishes", "business", "vip"])
+  .enum(["dishes", "business", "vip", "dish_catalog"])
   .describe("Phase 3 structured dataset name.");
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -220,11 +220,18 @@ const uploadStructuredDatasetInputSchema = z
     startDate: z
       .string()
       .regex(/^\d{8}$/)
-      .describe("YYYYMMDD business window start."),
+      .optional()
+      .describe("YYYYMMDD business window start for dishes, business, or vip."),
     endDate: z
       .string()
       .regex(/^\d{8}$/)
-      .describe("YYYYMMDD business window end."),
+      .optional()
+      .describe("YYYYMMDD business window end for dishes, business, or vip."),
+    snapshotDate: z
+      .string()
+      .regex(/^\d{8}$/)
+      .optional()
+      .describe("YYYYMMDD complete snapshot date for dish_catalog."),
     idempotencyKey: z
       .string()
       .min(1)
@@ -236,7 +243,45 @@ const uploadStructuredDatasetInputSchema = z
       .max(PUBLIC_INPUT_LIMITS.labelsPerRequest)
       .describe("Explicit existing label keys/visibility for rows and source document.")
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => {
+    if (input.dataset === "dish_catalog") {
+      if (!input.snapshotDate) {
+        context.addIssue({
+          code: "custom",
+          message: "dish_catalog requires snapshotDate.",
+          path: ["snapshotDate"]
+        });
+      }
+      for (const field of ["startDate", "endDate"] as const) {
+        if (input[field] !== undefined) {
+          context.addIssue({
+            code: "custom",
+            message: `dish_catalog does not accept ${field}.`,
+            path: [field]
+          });
+        }
+      }
+      return;
+    }
+
+    if (input.snapshotDate !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "Window datasets do not accept snapshotDate.",
+        path: ["snapshotDate"]
+      });
+    }
+    for (const field of ["startDate", "endDate"] as const) {
+      if (!input[field]) {
+        context.addIssue({
+          code: "custom",
+          message: `${field} is required for window datasets.`,
+          path: [field]
+        });
+      }
+    }
+  });
 
 const uploadEvidenceDocumentInputSchema = z
   .object({
@@ -386,7 +431,11 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       "Execute a controlled read-only structured query by calling authenticated POST /v1/structured/query.",
     inputSchema: queryStructuredDatasetInputSchema,
     inputFields: [
-      { name: "dataset", required: true, description: "`dishes`, `business`, or `vip`." },
+      {
+        name: "dataset",
+        required: true,
+        description: "`dishes`, `business`, `vip`, or `dish_catalog`."
+      },
       { name: "registryVersion", required: false, description: "Optional registry version." },
       { name: "select", required: false, description: "Selected field names." },
       { name: "filter", required: false, description: "Controlled filter tree." },
@@ -405,10 +454,15 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: [
       { name: "file", required: true, description: "Base64 upload file payload." },
-      { name: "dataset", required: true, description: "`dishes`, `business`, or `vip`." },
+      {
+        name: "dataset",
+        required: true,
+        description: "`dishes`, `business`, `vip`, or `dish_catalog`."
+      },
       { name: "enterpriseName", required: true, description: "Enterprise/source name." },
-      { name: "startDate", required: true, description: "YYYYMMDD business window start." },
-      { name: "endDate", required: true, description: "YYYYMMDD business window end." },
+      { name: "startDate", required: false, description: "YYYYMMDD business window start." },
+      { name: "endDate", required: false, description: "YYYYMMDD business window end." },
+      { name: "snapshotDate", required: false, description: "YYYYMMDD catalog snapshot date." },
       { name: "idempotencyKey", required: true, description: "Retry/idempotency key." },
       { name: "labelKeys", required: true, description: "Explicit existing label keys." }
     ],

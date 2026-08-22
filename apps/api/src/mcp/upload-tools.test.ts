@@ -248,6 +248,29 @@ describe("upload MCP tool handlers", () => {
     ]);
   });
 
+  it("maps a catalog snapshot to multipart snapshotDate without window fields", async () => {
+    const { handlers, requests } = createHandlers({});
+    const result = await handlers.upload_structured_dataset?.(
+      validStructuredInput({
+        dataset: "dish_catalog",
+        snapshotDate: "20260819",
+        startDate: undefined,
+        endDate: undefined
+      }),
+      mcpContext
+    );
+
+    expect(parseResult(result!)).toEqual({
+      ok: true,
+      requestPath: "/v1/structured/imports"
+    });
+    expect(requests).toHaveLength(1);
+    const fields = multipartFields(requests[0]!);
+    expect(textField(fields, "snapshotDate")).toBe("20260819");
+    expect(textField(fields, "startDate")).toBeUndefined();
+    expect(textField(fields, "endDate")).toBeUndefined();
+  });
+
   it("rejects malformed base64 before decoding or delegating", async () => {
     const requests: UploadApiDelegationRequest[] = [];
     const malformedBase64 = "not canonical base64";

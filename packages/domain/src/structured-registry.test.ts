@@ -14,6 +14,131 @@ describe("structured field registries", () => {
     expect(getStructuredRegistry("vip").fields).toHaveLength(66);
   });
 
+  test("registers the catalog snapshot schema and its metadata date policy", () => {
+    const catalog = getStructuredRegistry("dish_catalog");
+
+    expect(catalog).toMatchObject({
+      dataset: "dish_catalog",
+      version: "dish_catalog.2026-08-22.v1",
+      rowTable: "dish_catalog_rows",
+      sheetPolicy: "import_matching_visible",
+      datePolicy: "snapshot_metadata"
+    });
+    expect(catalog.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          canonicalName: "snapshot_date",
+          sourceColumn: "snapshot_date",
+          type: "date",
+          nullable: false,
+          inputSource: "upload_metadata",
+          defaultReturn: true
+        }),
+        expect.objectContaining({
+          canonicalName: "sku_id",
+          sourceColumn: "菜品编码（SKUID）",
+          type: "string",
+          nullable: false
+        }),
+        expect.objectContaining({
+          canonicalName: "sale_price",
+          sourceColumn: "售卖价",
+          type: "decimal",
+          nullable: false,
+          capabilities: expect.objectContaining({ aggregate: true, filter: true, sort: true })
+        })
+      ])
+    );
+    expect(catalog.fields).toHaveLength(11);
+    expect(
+      catalog.fields.map(({ canonicalName, sourceColumn, type, nullable, inputSource }) => ({
+        canonicalName,
+        sourceColumn,
+        type,
+        nullable,
+        inputSource
+      }))
+    ).toEqual([
+      {
+        canonicalName: "snapshot_date",
+        sourceColumn: "snapshot_date",
+        type: "date",
+        nullable: false,
+        inputSource: "upload_metadata"
+      },
+      {
+        canonicalName: "spu_id",
+        sourceColumn: "菜品编码（SPUID）",
+        type: "string",
+        nullable: false,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "sku_id",
+        sourceColumn: "菜品编码（SKUID）",
+        type: "string",
+        nullable: false,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "dish_name",
+        sourceColumn: "菜品名称",
+        type: "string",
+        nullable: false,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "brand_name",
+        sourceColumn: "品牌",
+        type: "string",
+        nullable: false,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "base_category_name",
+        sourceColumn: "基础分类",
+        type: "string",
+        nullable: false,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "level_1_category_code",
+        sourceColumn: "一级分类编码",
+        type: "string",
+        nullable: false,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "level_2_category_code",
+        sourceColumn: "二级分类编码",
+        type: "string",
+        nullable: true,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "specification_name",
+        sourceColumn: "规格名称",
+        type: "string",
+        nullable: true,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "sale_price",
+        sourceColumn: "售卖价",
+        type: "decimal",
+        nullable: false,
+        inputSource: "file"
+      },
+      {
+        canonicalName: "dish_alias",
+        sourceColumn: "菜品别名",
+        type: "string",
+        nullable: true,
+        inputSource: "file"
+      }
+    ]);
+  });
+
   test("define public names, exact aliases, value semantics, and MySQL payload mappings", () => {
     const dishes = getStructuredRegistry("dishes");
     const quantity = dishes.fields.find((field) => field.canonicalName === "dish_sales_quantity");
@@ -132,6 +257,27 @@ describe("structured field registries", () => {
         { canonicalName: "dish_sales_quantity", sourceColumnIndex: productIndex },
         { canonicalName: "matched_product_name", sourceColumnIndex: quantityIndex }
       ])
+    });
+  });
+
+  test("requires the catalog header to be the exact nonblank controlled set in any order", () => {
+    const headers = getStructuredRegistry("dish_catalog")
+      .fields.filter((field) => field.inputSource === "file")
+      .map((field) => field.sourceColumn);
+    const reordered = [...headers].reverse();
+
+    expect(validateStructuredHeaders("dish_catalog", reordered)).toMatchObject({ ok: true });
+    expect(
+      validateStructuredHeaders("dish_catalog", [...headers.slice(0, 4), "", ...headers.slice(4)])
+    ).toMatchObject({ ok: false });
+    expect(
+      validateStructuredHeaders("dish_catalog", ["未知列", ...headers.slice(1)])
+    ).toMatchObject({ ok: false });
+    expect(
+      validateStructuredHeaders("dish_catalog", [headers[1]!, ...headers.slice(1)])
+    ).toMatchObject({ ok: false });
+    expect(validateStructuredHeaders("dish_catalog", headers.slice(1))).toMatchObject({
+      ok: false
     });
   });
 

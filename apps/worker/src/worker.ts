@@ -795,16 +795,27 @@ export function createPrismaProcessingWorkerRepository(
             input.result.rows,
             input.batchInsertSize
           );
-        } else {
+        } else if (batch.dataset === ImportDataset.vip) {
           await tx.vipRow.deleteMany({ where: { importBatchId: batch.id } });
           await insertStructuredRows(tx, "vip", batch, input.result.rows, input.batchInsertSize);
+        } else if (batch.dataset === ImportDataset.dish_catalog) {
+          await tx.dishCatalogRow.deleteMany({ where: { importBatchId: batch.id } });
+          await insertStructuredRows(
+            tx,
+            "dish_catalog",
+            batch,
+            input.result.rows,
+            input.batchInsertSize
+          );
+        } else {
+          throw new Error(`Unsupported structured dataset: ${String(batch.dataset)}`);
         }
 
         await tx.importBatch.update({
           where: { id: batch.id },
           data: {
             status: ImportBatchStatus.applied,
-            sourceSheetSummary: input.result.sheetSummary as unknown as Prisma.InputJsonValue,
+            sourceSheetSummary: persistedSourceSheetSummary(batch.dataset, input.result),
             validationErrors: [],
             validationErrorCount: 0,
             totalRowCount: input.result.rows.length,
@@ -853,7 +864,18 @@ export function createPrismaProcessingWorkerRepository(
         if (leased.count !== 1) throw new ProcessingLeaseLostError(input.runId);
 
         const run = await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } });
-        const batch = await tx.importBatch.updateMany({
+        const batch = await tx.importBatch.findFirst({
+          where: {
+            id: input.importBatchId,
+            sourceDocumentId: input.documentId,
+            orgId: run.orgId,
+            status: { in: [ImportBatchStatus.validating, ImportBatchStatus.applying] }
+          }
+        });
+        if (!batch)
+          throw new Error(`Structured import batch ${input.importBatchId} cannot reject.`);
+
+        const updated = await tx.importBatch.updateMany({
           where: {
             id: input.importBatchId,
             sourceDocumentId: input.documentId,
@@ -862,7 +884,7 @@ export function createPrismaProcessingWorkerRepository(
           },
           data: {
             status: ImportBatchStatus.rejected,
-            sourceSheetSummary: input.result.sheetSummary as unknown as Prisma.InputJsonValue,
+            sourceSheetSummary: persistedSourceSheetSummary(batch.dataset, input.result),
             validationErrors: input.result.validationErrors as unknown as Prisma.InputJsonValue,
             validationErrorCount: input.result.validationErrorCount,
             totalRowCount: input.result.rows.length,
@@ -871,7 +893,7 @@ export function createPrismaProcessingWorkerRepository(
             errorSummary: "Structured import validation failed."
           }
         });
-        if (batch.count !== 1)
+        if (updated.count !== 1)
           throw new Error(`Structured import batch ${input.importBatchId} cannot reject.`);
 
         await tx.document.update({
@@ -1172,10 +1194,28 @@ async function insertStructuredRows(
       await tx.dishRow.createMany({ data });
     } else if (dataset === "business") {
       await tx.businessRow.createMany({ data });
-    } else {
+    } else if (dataset === "vip") {
       await tx.vipRow.createMany({ data });
+    } else if (dataset === "dish_catalog") {
+      await tx.dishCatalogRow.createMany({ data });
+    } else {
+      throw new Error(`Unsupported structured dataset: ${String(dataset)}`);
     }
   }
+}
+
+function persistedSourceSheetSummary(
+  dataset: ImportDataset,
+  result: Pick<StructuredParseResult, "sheetSummary" | "ignoredSheets">
+): Prisma.InputJsonValue {
+  if (dataset !== ImportDataset.dish_catalog) {
+    return result.sheetSummary as unknown as Prisma.InputJsonValue;
+  }
+
+  return [
+    ...result.sheetSummary.map((sheet) => ({ ...sheet, status: "imported" as const })),
+    ...result.ignoredSheets.map((sheet) => ({ ...sheet, status: "ignored" as const }))
+  ] as Prisma.InputJsonValue;
 }
 
 function structuredFileType(fileType: string | null | undefined): "csv" | "xlsx" | null {
@@ -1186,6 +1226,7 @@ function structuredFileType(fileType: string | null | undefined): "csv" | "xlsx"
 function unsupportedStructuredFileResult(): StructuredParseResult {
   return {
     sheetSummary: [],
+    ignoredSheets: [],
     rows: [],
     validationErrors: [
       {

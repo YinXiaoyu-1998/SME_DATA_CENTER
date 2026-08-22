@@ -21,6 +21,8 @@ export interface StagingUploadDomainCleanupInventory {
   importWindowClaimIds: string[];
   dishRowIds: string[];
   businessRowIds: string[];
+  vipRowIds: string[];
+  dishCatalogRowIds: string[];
   uploadAuditLogIds: string[];
   storageObjectKeys: string[];
   qdrantPoints: QdrantPointTarget[];
@@ -37,6 +39,8 @@ export interface StagingUploadDomainCleanupPlan {
   importWindowClaimIds: string[];
   dishRowIds: string[];
   businessRowIds: string[];
+  vipRowIds: string[];
+  dishCatalogRowIds: string[];
   uploadAuditLogIds: string[];
   storageObjectKeys: string[];
   qdrantPoints: QdrantPointTarget[];
@@ -60,6 +64,8 @@ export interface StagingUploadDomainCleanupSafeLog {
     importWindowClaims: number;
     dishRows: number;
     businessRows: number;
+    vipRows: number;
+    dishCatalogRows: number;
     uploadAuditLogs: number;
     storageObjects: number;
     qdrantPoints: number;
@@ -87,6 +93,8 @@ export const UPLOAD_DOMAIN_DELETION_TARGETS = [
   "ImportWindowClaim",
   "DishRow",
   "BusinessRow",
+  "VipRow",
+  "DishCatalogRow",
   "ImportBatch",
   "Document"
 ] as const;
@@ -145,6 +153,8 @@ export function buildStagingUploadDomainCleanupPlan(input: {
   const importWindowClaimIds = sortIds(input.inventory.importWindowClaimIds);
   const dishRowIds = sortIds(input.inventory.dishRowIds);
   const businessRowIds = sortIds(input.inventory.businessRowIds);
+  const vipRowIds = sortIds(input.inventory.vipRowIds);
+  const dishCatalogRowIds = sortIds(input.inventory.dishCatalogRowIds);
   const uploadAuditLogIds = sortIds(input.inventory.uploadAuditLogIds);
   const storageObjectKeys = [...input.inventory.storageObjectKeys].sort();
   const qdrantPoints = [...input.inventory.qdrantPoints].sort(compareQdrantPointTargets);
@@ -160,6 +170,8 @@ export function buildStagingUploadDomainCleanupPlan(input: {
     importWindowClaimIds,
     dishRowIds,
     businessRowIds,
+    vipRowIds,
+    dishCatalogRowIds,
     uploadAuditLogIds,
     storageObjectKeys,
     qdrantPoints,
@@ -179,6 +191,8 @@ export function buildStagingUploadDomainCleanupPlan(input: {
         importWindowClaims: importWindowClaimIds.length,
         dishRows: dishRowIds.length,
         businessRows: businessRowIds.length,
+        vipRows: vipRowIds.length,
+        dishCatalogRows: dishCatalogRowIds.length,
         uploadAuditLogs: uploadAuditLogIds.length,
         storageObjects: storageObjectKeys.length,
         qdrantPoints: qdrantPoints.length
@@ -211,6 +225,8 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
   validateUniqueNonEmpty(inventory.importWindowClaimIds, "import-window claim ID");
   validateUniqueNonEmpty(inventory.dishRowIds, "dish row ID");
   validateUniqueNonEmpty(inventory.businessRowIds, "business row ID");
+  validateUniqueNonEmpty(inventory.vipRowIds, "VIP row ID");
+  validateUniqueNonEmpty(inventory.dishCatalogRowIds, "dish catalog row ID");
   validateUniqueNonEmpty(inventory.uploadAuditLogIds, "upload audit log ID");
   validateUniqueNonEmpty(inventory.storageObjectKeys, "storage object key");
 

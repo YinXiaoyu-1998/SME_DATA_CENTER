@@ -19,6 +19,30 @@ function expectStructuredError(run: () => unknown, code: string) {
 }
 
 describe("structured query compiler", () => {
+  it("compiles catalog snapshot price filters against the catalog row table", () => {
+    const compiled = compileStructuredQuery({
+      employee: { role: "admin", labels: [] },
+      orgId: "default-org",
+      query: {
+        dataset: "dish_catalog",
+        registryVersion: "dish_catalog.2026-08-22.v1",
+        select: ["snapshot_date", "sku_id", "sale_price"],
+        filter: { field: "sale_price", op: "eq", value: 0 },
+        sort: [{ field: "snapshot_date", direction: "desc" }]
+      },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.sql).toContain("FROM dish_catalog_rows r");
+    expect(compiled.sql).toContain(
+      "CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6)) = ?"
+    );
+    expect(compiled.params).toContain("$.snapshot_date");
+    expect(compiled.params).toContain("$.sku_id");
+    expect(compiled.params).toContain("$.sale_price");
+    expect(compiled.params).toContain(0);
+  });
+
   it("compiles a controlled detail query to parameterized SQL with permission scope before filters", () => {
     const compiled = compileStructuredQuery({
       employee: {

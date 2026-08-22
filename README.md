@@ -186,6 +186,28 @@ and do not weaken the launcher's HTTPS requirement.
 
 MCP callers never provide an organization ID; the service derives organization scope from the logged-in employee. Evidence search cursors are opaque, short-lived continuation tokens: pass `page.nextCursor` back unchanged with the same query/filter/limit to fetch the next page. Restart without a cursor on `INVALID_CURSOR`; on `CURSOR_EXPIRED`, explain the expiry and restart only if the user still wants more results. Structured import retries should reuse an `idempotencyKey` only for the exact same file and metadata; exact replay returns the original persisted IDs/storage key, while inaccessible import status returns the same non-enumerating 404 as a missing batch.
 
+## Dish catalog snapshots
+
+`dish_catalog` is a complete, append-only menu snapshot, not a business-date-window import. Upload
+it with `snapshotDate` (`YYYYMMDD`) and without `startDate` or `endDate`; the service internally
+uses the same date for both. The organization has one date-ordered timeline: historical snapshots
+may be uploaded out of order, but only one non-archived snapshot may occupy a date. Archive an
+incorrect same-date snapshot before uploading a corrected one. New snapshots do not auto-archive
+older ones.
+
+Both CSV and XLSX use exactly these ten controlled headers, in any column order:
+`菜品编码（SPUID）`, `菜品编码（SKUID）`, `菜品名称`, `品牌`, `基础分类`, `一级分类编码`,
+`二级分类编码`, `规格名称`, `售卖价`, and `菜品别名`. The latter three nullable fields are
+`二级分类编码`, `规格名称`, and `菜品别名`; the other seven are required. Sale price is decimal and
+may be zero. A complete snapshot must contain unique SKUID values; SPUID can repeat for different
+specifications.
+
+For XLSX, all visible sheets with the exact schema are merged; sheet names are irrelevant.
+Nonmatching sheets (including a headquarters-combo sheet) are ignored with a safe summary, while a
+matching hidden sheet rejects the import. Query catalog history through `snapshot_date` returned by
+dataset discovery. The service does not choose a current/latest menu, calculate diffs, or infer
+added, removed, discontinued, or other cross-snapshot state.
+
 To run the launcher manually when the API is already running:
 
 ```sh

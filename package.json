@@ -67,5 +67,10 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    }
   }
 }

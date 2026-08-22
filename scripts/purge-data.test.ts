@@ -1,6 +1,29 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { resolveLocalDatabaseTarget, resolvePurgeTargets } from "./purge-data.js";
+
+const prisma = vi.hoisted(() => ({
+  auditLog: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  dishRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  businessRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  vipRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  dishCatalogRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  importWindowClaim: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  importBatch: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  document: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  $transaction: vi.fn(),
+  $disconnect: vi.fn(async () => undefined)
+}));
+
+vi.mock("@prisma/adapter-mariadb", () => ({ PrismaMariaDb: class PrismaMariaDb {} }));
+vi.mock("@prisma/client", () => ({
+  PrismaClient: class PrismaClient {
+    constructor() {
+      return prisma;
+    }
+  }
+}));
+
+import { purgeLocalData, resolveLocalDatabaseTarget, resolvePurgeTargets } from "./purge-data.js";
 
 describe("purge-data target resolution", () => {
   const cwd = "/workspace/enterprise-hub";
@@ -103,5 +126,30 @@ describe("purge-data database target resolution", () => {
         DATABASE_URL: "mysql://enterprise_hub:password@localhost:3306/production_hub"
       })
     ).toThrow("database other than enterprise_hub");
+  });
+
+  it("deletes all four structured row tables before import batches and documents", async () => {
+    vi.clearAllMocks();
+    prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
+      callback(prisma)
+    );
+
+    await purgeLocalData({
+      all: false,
+      dryRun: false,
+      filesOnly: false,
+      cwd: "/workspace/enterprise-hub",
+      env: { DATABASE_URL: "mysql://user:password@localhost:3307/enterprise_hub" }
+    });
+
+    for (const rows of [prisma.dishRow, prisma.businessRow, prisma.vipRow, prisma.dishCatalogRow]) {
+      expect(rows.deleteMany).toHaveBeenCalledWith({});
+      expect(rows.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.importBatch.deleteMany.mock.invocationCallOrder[0]!
+      );
+    }
+    expect(prisma.importWindowClaim.deleteMany).toHaveBeenCalledWith({});
+    expect(prisma.importBatch.deleteMany).toHaveBeenCalledWith({});
+    expect(prisma.document.deleteMany).toHaveBeenCalledWith({});
   });
 });
