@@ -8,6 +8,7 @@ import {
   parseDeployArgs,
   releaseOpsImageReference,
   remoteScriptsForValidation,
+  stagingBuildxBuildArgs,
   trivyRuntimeImageScanArgs,
   validateGitShaTag
 } from "./deploy-staging.js";
@@ -103,6 +104,34 @@ describe("deploy-staging runtime image scans", () => {
       "--platform",
       "linux/amd64",
       "registry.example.com/api:0123456789ab"
+    ]);
+  });
+});
+
+describe("deploy-staging image build", () => {
+  it("disables BuildKit attestations for the ACR Personal Edition registry", () => {
+    expect(
+      stagingBuildxBuildArgs(
+        "api",
+        "registry.example.com/enterprise-hub/api:0123456789ab",
+        "0123456789ab"
+      )
+    ).toEqual([
+      "buildx",
+      "build",
+      "--pull",
+      "--platform",
+      "linux/amd64",
+      "--target",
+      "api",
+      "--label",
+      "org.opencontainers.image.revision=0123456789ab",
+      "--provenance=false",
+      "--sbom=false",
+      "--tag",
+      "registry.example.com/enterprise-hub/api:0123456789ab",
+      "--push",
+      "."
     ]);
   });
 });

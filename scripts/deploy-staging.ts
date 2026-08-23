@@ -378,6 +378,26 @@ export function trivyRuntimeImageScanArgs(reportPath: string, image: string): st
   ];
 }
 
+export function stagingBuildxBuildArgs(target: string, image: string, tag: string): string[] {
+  return [
+    "buildx",
+    "build",
+    "--pull",
+    "--platform",
+    "linux/amd64",
+    "--target",
+    target,
+    "--label",
+    `org.opencontainers.image.revision=${tag}`,
+    "--provenance=false",
+    "--sbom=false",
+    "--tag",
+    image,
+    "--push",
+    "."
+  ];
+}
+
 export function remoteScriptsForValidation(): string[] {
   return [
     REMOTE_ROLLOUT_SCRIPT,
@@ -605,55 +625,13 @@ async function buildAndPush(
   tag: string
 ): Promise<void> {
   console.log("\n==> Build and push linux/amd64 API image");
-  await run("docker", [
-    "buildx",
-    "build",
-    "--pull",
-    "--platform",
-    "linux/amd64",
-    "--target",
-    "api",
-    "--label",
-    `org.opencontainers.image.revision=${tag}`,
-    "--tag",
-    apiImage,
-    "--push",
-    "."
-  ]);
+  await run("docker", stagingBuildxBuildArgs("api", apiImage, tag));
 
   console.log("\n==> Build and push linux/amd64 worker image");
-  await run("docker", [
-    "buildx",
-    "build",
-    "--pull",
-    "--platform",
-    "linux/amd64",
-    "--target",
-    "worker",
-    "--label",
-    `org.opencontainers.image.revision=${tag}`,
-    "--tag",
-    workerImage,
-    "--push",
-    "."
-  ]);
+  await run("docker", stagingBuildxBuildArgs("worker", workerImage, tag));
 
   console.log("\n==> Build and push linux/amd64 release-ops image");
-  await run("docker", [
-    "buildx",
-    "build",
-    "--pull",
-    "--platform",
-    "linux/amd64",
-    "--target",
-    "release-ops",
-    "--label",
-    `org.opencontainers.image.revision=${tag}`,
-    "--tag",
-    releaseOpsImage,
-    "--push",
-    "."
-  ]);
+  await run("docker", stagingBuildxBuildArgs("release-ops", releaseOpsImage, tag));
 }
 
 async function scanImages(
