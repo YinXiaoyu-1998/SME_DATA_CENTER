@@ -15,7 +15,7 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `enterprise-hub-mcp-launcher@0.2.2`. Do not substitute another
+the exact npm package `enterprise-hub-mcp-launcher@0.2.3`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself.
 
@@ -47,6 +47,8 @@ discover them by hand.
   service's business tools (upload, query, import status, evidence, and more) dynamically. The
   proxied set can change with the service; discover exact tool names from the connected host
   instead of assuming a fixed inventory.
+- Call `list_structured_datasets` before using `dish_catalog`; use that dataset only when the
+  discovery response advertises it and its supported fields.
 - If Enterprise Hub tools are not visible: run the pinned launcher's credential-free self-check
   (see Official Install Or Update), verify the invoking agent's MCP entry (`codex mcp list` /
   `codex mcp get enterprise-hub` or the host equivalent), reload or restart the host, then
@@ -72,11 +74,11 @@ Keep tool input within the public service contract:
   at most 32,767 characters.
 
 If a tool rejects an input at one of these boundaries, report the validation error and ask the
-employee to shorten the text, reduce filters/labels, or split a source file only when that is
+employee to shorten the text, reduce filters/labels, or split the source file only when that is
 semantically allowed for a business-window dataset. Never split `dish_catalog`: keep one complete
 snapshot and ask the employee to remove unrelated sheets/columns outside the catalog schema, use a
-service-supported larger limit, or seek operator help. Never silently truncate a title, key, query,
-cursor, filter value, or file.
+service-supported larger limit, or seek operator help. Never silently truncate a title, key,
+query, cursor, filter value, or file.
 
 The 50 MiB contract is the service-side ceiling. Prefer `file.encoding:"path"` uploads with the
 file's absolute local path so the launcher reads the file locally and the model never emits
@@ -108,8 +110,8 @@ upload also keep `importBatchId`. Poll `get_evidence_document_status` or `get_im
 
 When an employee asks to upload a large XLSX/CSV structured table, prefer small business-safe
 chunks over one very large upload. This chunking guidance applies to business-window datasets;
-never split one `dish_catalog` snapshot into multiple uploads, because every catalog upload must be
-complete. Two limits apply, and the stricter one wins:
+never split one `dish_catalog` snapshot into multiple uploads, because every catalog upload must
+be complete. Two limits apply, and the stricter one wins:
 
 - **Service contract:** upload content is at most 50 MiB after decoding; keep structured files
   below this even when the tool schema would permit more.
@@ -156,21 +158,24 @@ complete, append-only menu snapshot rather than a sales/business date-window dat
 - Treat the uploaded file as the full directory for that date. Do not split it into CSV parts,
   upload only changed rows, use the service to merge it with another file, or describe a partial
   file as a complete catalog.
-- The file needs exactly these controlled headers, in any order:
+- The file must contain exactly these controlled headers, in any column order:
   `菜品编码（SPUID）`, `菜品编码（SKUID）`, `菜品名称`, `品牌`, `基础分类`, `一级分类编码`,
-  `二级分类编码`, `规格名称`, `售卖价`, and `菜品别名`. Only `二级分类编码`, `规格名称`, and
-  `菜品别名` may be blank. Sale price is decimal and may be `0`; SKUID must be unique within the
-  snapshot, while SPUID may repeat across specifications.
-- For XLSX, the service merges every visible sheet whose header exactly matches the catalog schema.
-  Sheet names do not select data. Nonmatching sheets (such as a headquarters-combo sheet) are
-  ignored with a safe status summary. A matching hidden sheet rejects the entire upload.
+  `二级分类编码`, `规格名称`, `售卖价`, and `菜品别名`.
+- Every row requires SPUID, SKUID, dish name, brand, base category, level-1 category code, and
+  sale price. Only level-2 category code, specification name, and dish alias may be blank. Treat
+  all codes as strings (including leading zeros); sale price must be a finite decimal, and `0` is
+  valid. SKUID must be unique within the merged snapshot; SPUID may repeat across specifications.
+- For XLSX, the service merges every visible sheet whose header exactly matches the catalog
+  schema. Sheet names do not select data. Nonmatching sheets, including headquarters combo
+  sheets, are not imported and are reported in the safe status summary. A matching hidden sheet
+  rejects the entire upload.
 - The organization can upload historical snapshots out of date order, but only one non-archived
-  snapshot may occupy a date. For a same-date correction with different content, tell the employee that
-  the existing snapshot must be archived through the authorized maintenance path before a new
-  upload. Never imply that uploading a newer snapshot archives or replaces older history.
+  snapshot may occupy a date. For a same-date correction with different content, the existing
+  snapshot must be archived through the authorized maintenance path before a new upload. Uploading
+  a newer snapshot does not archive or replace older history.
 - After `importBatch.status=applied`, query catalog rows through the discovery-reported
-  `snapshot_date` field. Do not claim that the service identifies the current/latest menu,
-  calculates a diff, or infers added, removed, discontinued, or other cross-snapshot status.
+  `snapshot_date` field. Do not infer a current/latest menu, a diff, or added, removed,
+  discontinued, or other cross-snapshot status.
 
 ## Official Install Or Update
 
@@ -187,14 +192,14 @@ current OS user and only on the invoking agent's configuration.
 
    | Platform | Launcher directory                                                      |
    | -------- | ----------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/` |
-   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.2\\`           |
+   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.3/` |
+   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.3\\`           |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.2.2
+   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.2.3
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -206,12 +211,12 @@ current OS user and only on the invoking agent's configuration.
 
    ```sh
    ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.3/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.2\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.3\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
    ```
 
    The stable self-check contract is safe machine-readable JSON with this shape:
@@ -219,7 +224,7 @@ current OS user and only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.2.2",
+     "launcherVersion": "0.2.3",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -248,8 +253,8 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                                              | Arguments | Environment                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.2\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.3/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.3\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -274,7 +279,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `enterprise_hub_login` to obtain a new link.
 
-This flow is available in launcher 0.2.2 and later, which is the version pinned in this document.
+This flow is available in launcher 0.2.2 and later; this document pins launcher 0.2.3.
 
 ## Configure The Invoking Agent
 
@@ -322,7 +327,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
   enterprise-hub -- \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher" serve
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.3/node_modules/.bin/enterprise-hub-mcp-launcher" serve
 "$CODEX_BIN" mcp get enterprise-hub --json
 ```
 
@@ -334,7 +339,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.2\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.3\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get enterprise-hub --json
 ```
@@ -370,7 +375,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for Enterprise Hub.
 
    ```sh
    openclaw mcp add enterprise-hub \
-     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher" \
+     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.3/node_modules/.bin/enterprise-hub-mcp-launcher" \
      --arg serve \
      --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -415,9 +420,9 @@ the employee explicitly asks you to inspect a local file outside Enterprise Hub.
 
 Local files are upload inputs only. After uploading a file, keep the returned service metadata
 needed for follow-up questions: document id, import batch id, dataset id, labels, declared business
-date window, enterprise/store name, and status. In a later task, rediscover available labels and
-datasets through MCP; if the intended uploaded table/document cannot be identified safely, ask one
-short natural clarification instead of querying all visible history.
+date window or `snapshotDate`, enterprise/store name, and status. In a later task, rediscover
+available labels and datasets through MCP; if the intended uploaded table/document cannot be
+identified safely, ask one short natural clarification instead of querying all visible history.
 
 For structured-table questions:
 
@@ -426,6 +431,8 @@ For structured-table questions:
 - Scope follow-up questions about a recent upload to that upload's returned import metadata,
   declared business-date window, enterprise/store name, or other explicit service-returned
   metadata. Avoid broad unbounded queries for phrases like “这份表”, “刚才那张表”, or “我刚传的”.
+- For `dish_catalog`, scope queries with the discovery-reported `snapshot_date` field. Do not
+  infer latest/current catalog state, diffs, or row status across snapshots.
 - If the employee asks about a local spreadsheet before it has been uploaded, offer to upload it
   first. Do not compute final Enterprise Hub answers directly from the local spreadsheet unless the
   employee explicitly says they want a local-file-only inspection.
@@ -465,11 +472,10 @@ Example employee-facing reply (Chinese):
 > 或重新拖入文件。
 
 For `MCP_LOCAL_FILE_NOT_FOUND` / `MCP_LOCAL_FILE_INVALID`, ask the employee to re-check the file
-location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, split and upload serially only when
-the dataset is an ordinary business-window dataset and a business-boundary split preserves its
-meaning. Never split `dish_catalog`: retain one complete snapshot and ask the employee to remove
-unrelated non-schema material, use a service-supported larger limit if one is actually available,
-or seek operator help.
+location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, split a business-window dataset by
+a business boundary and upload chunks serially. For `dish_catalog`, never split the snapshot; ask
+the employee to remove unrelated sheets/columns outside the catalog schema, use a
+service-supported larger limit, or seek operator help.
 
 ## Typed Recovery
 
@@ -493,12 +499,12 @@ the pinned launcher directly:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.2/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.3/node_modules/.bin/enterprise-hub-mcp-launcher" logout
 ```
 
 ```powershell
 $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.2\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.3\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
 ```
 
 The stable logout contract returns only

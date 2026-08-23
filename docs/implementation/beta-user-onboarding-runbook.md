@@ -1,6 +1,6 @@
 # Beta User Onboarding Runbook
 
-Last updated: 2026-08-10
+Last updated: 2026-08-23
 
 This runbook is for the first controlled macOS + Codex beta pilot. It is an operator checklist, not
 an employee-facing product page. Do not paste passwords, setup links, tokens, credentials, full
@@ -12,7 +12,7 @@ Use this runbook only for:
 
 - macOS + Codex;
 - the official Enterprise Hub skill;
-- `enterprise-hub-mcp-launcher@0.2.0`;
+- `enterprise-hub-mcp-launcher@0.2.3`;
 - browser password setup and Device Authorization login;
 - fixture or explicitly approved non-sensitive data.
 
@@ -157,7 +157,7 @@ The employee should ask their agent naturally, for example:
 
 The agent must follow `skills/enterprise-hub-mcp/SKILL.md`:
 
-- install `enterprise-hub-mcp-launcher@0.2.0` into the current-user versioned directory;
+- install `enterprise-hub-mcp-launcher@0.2.3` into the current-user versioned directory;
 - configure a local stdio MCP entry named `enterprise-hub`;
 - set only `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz`;
 - call `enterprise_hub_login` if authentication is required;
