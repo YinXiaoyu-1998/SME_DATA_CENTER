@@ -16,7 +16,7 @@ describe("official manual acceptance staging database target", () => {
   it("accepts only the private staging RDS target inside the remote runtime", () => {
     expect(() =>
       assertStagingRuntimeDatabaseTarget(
-        "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3306/enterprise_hub"
+        "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/enterprise_hub"
       )
     ).not.toThrow();
 

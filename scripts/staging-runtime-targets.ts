@@ -3,7 +3,7 @@
  * refuse to touch any other database. Loopback Qdrant access is only trusted
  * when the paired DATABASE_URL provably points at this exact private RDS.
  */
-export const STAGING_RDS_HOST = "rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com";
+export const STAGING_RDS_HOST = "rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com";
 export const STAGING_RDS_DATABASE = "enterprise_hub";
 export const STAGING_RDS_USER = "enterprise_hub_app";
 
