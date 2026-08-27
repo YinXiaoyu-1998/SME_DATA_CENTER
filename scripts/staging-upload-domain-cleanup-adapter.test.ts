@@ -176,7 +176,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
 
   it("allows the staging loopback Qdrant only when the database provably targets the staging RDS", () => {
     const stagingDatabaseUrl =
-      "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3306/enterprise_hub";
+      "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/enterprise_hub";
 
     for (const qdrantUrl of [
       "http://127.0.0.1:6333",
@@ -196,8 +196,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
   it("still refuses loopback Qdrant for any non-staging database target", () => {
     for (const databaseUrl of [
       "mysql://operator:secret@staging.example/enterprise_hub",
-      "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3306/other_db",
-      "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3307/enterprise_hub"
+      "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/other_db",
+      "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3307/enterprise_hub"
     ]) {
       expect(() =>
         assertStagingCleanupRuntimeTargets({
@@ -216,7 +216,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
 
   it("requires both runtime URLs before any cleanup planning", () => {
     const stagingDatabaseUrl =
-      "mysql://enterprise_hub_app:secret@rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3306/enterprise_hub";
+      "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/enterprise_hub";
 
     expect(() => assertStagingCleanupRuntimeTargets({ DATABASE_URL: stagingDatabaseUrl })).toThrow(
       "DATABASE_URL and QDRANT_URL"
