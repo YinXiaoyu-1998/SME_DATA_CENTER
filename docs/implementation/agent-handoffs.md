@@ -1062,3 +1062,28 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   dual-homed skill/docs pins (standalone skill PR mirrors byte-for-byte).
 - Verified: format, lint, typecheck, 602 unit tests (82 files). Publishing 0.2.2 follows the
   `mcp-launcher-v0.2.2` tag + staged publish approval flow.
+
+## 2026-08-24 - PR #122 merge + staging deploy verification (continuation)
+
+- User merged PR #122 (`Fix staging ACR image pushes with Buildx attestations disabled`) at
+  `4b39098` (2026-08-23T18:26:57Z) and handed the continuation here.
+- Continuation verification: Phase 3 quality gates run 32658069830 succeeded; the auto
+  Deploy staging run 32658370192 succeeded in 5m39s deploying head `4b39098`; live
+  `/.well-known/oauth-authorization-server` now returns
+  `enterprise_hub_launcher_recommended_version: "0.2.3"` (minimum still 0.1.0) and `/healthz`
+  is OK. The previous failure was confirmed as
+  `denied: unknown manifest class for application/vnd.oci.empty.v1+json`; the
+  `--provenance=false --sbom=false` buildx args are now covered by `stagingBuildxBuildArgs`
+  in `scripts/deploy-staging.ts` plus a focused unit test.
+- Skill sync re-verified after merge: `skills/enterprise-hub-mcp` on origin/main == standalone
+  `enterprise-hub-mcp-skill` main (`c35a5ec`) == installed
+  `/Users/xiaoyuyin/.agents/skills/enterprise-hub-mcp`, byte-identical; npm
+  `enterprise-hub-mcp-launcher@0.2.3` remains public.
+- Cleanup: removed the clean #122 worktree, ran `git worktree prune`, and deleted the merged
+  local branch `codex/staging-acr-disable-attestations` (tip preserved on origin/main and the
+  origin PR-head branch). Main-workspace dirty changes were left untouched; the
+  structured-import worktrees were left in place.
+- Note for the human: local `main` is still behind `origin/main` because the uncommitted
+  workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
+  edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
+  branch for #122 if desired.

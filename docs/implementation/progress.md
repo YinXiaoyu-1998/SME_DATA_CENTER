@@ -3,11 +3,12 @@
 ## Current Phase
 
 - Phase: Phase 4 official access is deployed in staging; launcher 0.2.0 Device Authorization is implemented, published, and synchronized to current server metadata and skill guidance. Full user-visible OpenClaw and support-class-C phone/browser acceptance plus real-data readiness controls remain gates.
-- Date: 2026-08-10
+- Date: 2026-08-23
 - Lead branch: `main`
 - Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package. Exact immutable release tags are recorded in dated readiness and verification evidence.
 - 2026-08-07: remote/headless and secondary-device login design completed in `docs/implementation/official-user-install-and-login.md` and ADR 0022 (uniform Device Authorization flow, split secrets, pairing confirmation, memory-only headless credential custody, per-process session model).
 - 2026-08-09: PR #107 merged the Device Authorization implementation; PR #108 published and verified launcher 0.2.0; PR #109 synchronized server recommended metadata and the repo-local skill to 0.2.0. Native macOS/Windows package acceptance and a full headless Linux container loop pass; full user-visible OpenClaw/support-class-C phone-browser evidence remains.
+- 2026-08-23: staging MySQL was migrated from the expired Beijing prepaid HA instance to Beijing Serverless Basic `rm-2ze2m5q387ydb9724` (0.5-2 RCU, 20 GB ESSD). The exact 28-table/880-row match, runtime cutover, readiness, authenticated fixture smoke and post-cutover snapshot passed; the empty Hangzhou Serverless instance was deleted. The expired prepaid source cannot be manually released and is awaiting Alibaba Cloud automatic release.
 
 ## Active Workstreams
 
@@ -278,7 +279,7 @@
 - Phase 3 implementation, final verification, and review are complete and merged through PRs #69-#70.
 - Staging readiness intake is established for the former online-ready phase, now Phase 4. Deployment target/runtime shape and OSS access are verified; the reset server now has the approved host prerequisites. Evidence is in `staging-readiness.md`, historical PRs #35-#45, and `server-runtime-prerequisites.md`.
 - Phase 4 Day 2 is deployed in staging: the Alibaba OSS adapter, `local` or `oss` runtime selection, live lifecycle cleanup test, dual-homed exact-byte client guidance, fake/real manual acceptance, secure runtime delivery, readiness, and fixture smoke have passed.
-- Phase 4 RDS readiness has a provisioned Alibaba Cloud RDS MySQL 8.0 app database/account: `enterprise_hub` / `enterprise_hub_app` on internal host `rm-2zesq01oq9opworc7.mysql.rds.aliyuncs.com:3306`. The password is stored in Keychain/server runtime storage only; app-account `SELECT 1` and GitHub Actions `prisma migrate deploy` passed. Final SSL mode and backup/restore expectations remain open.
+- Phase 4 RDS readiness now uses Alibaba Cloud RDS MySQL 8.0 Serverless Basic: `enterprise_hub` / `enterprise_hub_app` on internal host `rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306`. The password is stored in Keychain/server runtime storage only; exact data comparison, app readiness, authenticated fixture smoke and a post-cutover snapshot passed. Final SSL mode and restore objectives/drill remain open.
 - Repository verification for this audit passed after dependency install and Prisma client generation: `npm test` (13 files / 75 tests), `npm run typecheck`, `npm run lint`, `npm run format:check`, and `git diff --check`.
 
 ### Incomplete Or Partial Work
@@ -512,3 +513,4 @@
 - [x] Start the 2026-08-23 launcher 0.2.3 post-release sync on `codex/launcher-0.2.3-sync`: the approved staged publish is public as npm `latest`, a clean exact-version install reports 0.2.3 with zero production audit findings, and the public package contents are byte-identical to the reviewed local package after extraction.
 - [x] Verify the launcher 0.2.3 post-release sync: server metadata, official acceptance tooling, current user documentation, and byte-identical dual-homed skills pin 0.2.3 while preserving 0.2.0/0.2.2 introduction history; 651 unit tests pass with 20 environment-gated skips, and format, lint, typecheck, production audit, release build, skill byte comparison, and diff checks pass.
 - [x] Diagnose and fix the 2026-08-23 post-merge staging deploy failure on `codex/staging-acr-disable-attestations`: GitHub Actions built the release image successfully but ACR Personal Edition rejected BuildKit OCI attestation manifests (`application/vnd.oci.empty.v1+json`), so staging image pushes now disable provenance/SBOM attestations while preserving immutable SHA tags and Trivy runtime scans. Focused deploy tests, typecheck, format, and lint pass.
+- [x] Verify the 2026-08-23 launcher 0.2.3 staging deploy after PR #122 merge at `4b39098`: Phase 3 quality gates passed, the auto Deploy staging run 32658370192 succeeded in 5m39s (deployed head `4b39098`), and the live OAuth metadata endpoint now advertises `enterprise_hub_launcher_recommended_version: "0.2.3"` with `/healthz` OK. The prior failure was confirmed as ACR Personal Edition rejecting Buildx attestation manifests (`denied: unknown manifest class for application/vnd.oci.empty.v1+json`); repo-local, standalone, and installed `enterprise-hub-mcp` skills were re-verified byte-identical, and the clean #122 worktree was removed with `git worktree prune`.
