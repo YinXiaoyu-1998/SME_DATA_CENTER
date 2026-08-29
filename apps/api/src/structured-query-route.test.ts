@@ -544,6 +544,56 @@ describe("structured query supplier enrichment", () => {
     expect(calls[3]?.[0]).toContain("IN (?)");
   });
 
+  it("preserves interleaved stored and dynamic select order and omits unrequested fields", async () => {
+    const { result } = await executeEnrichedQuery({
+      select: [
+        "supplier_contact_phone",
+        "receipt_number",
+        "supplier_unit_address",
+        "supplier_name"
+      ],
+      baseRows: [
+        {
+          structured_query_supplier_name: "Supplier A",
+          receipt_number: "R-1",
+          supplier_name: "Supplier A",
+          item_name: "not selected"
+        }
+      ],
+      latest: { id: "batch_current", source_document_id: "doc_current" },
+      catalogRows: [{ supplier_name: "Supplier A", contact_phone: "138", unit_address: "Address" }]
+    });
+
+    expect(Object.keys(result.rows[0]!)).toEqual([
+      "supplier_contact_phone",
+      "receipt_number",
+      "supplier_unit_address",
+      "supplier_name"
+    ]);
+    expect(result.rows[0]).not.toHaveProperty("item_name");
+  });
+
+  it("does not enrich from a same-batch row belonging to another source document", async () => {
+    const { result, calls } = await executeEnrichedQuery({
+      latest: { id: "batch_current", source_document_id: "doc_current" },
+      catalogRows: [
+        {
+          supplier_name: "Supplier A",
+          contact_phone: "wrong-document",
+          unit_address: "wrong-document",
+          source_document_id: "doc_other"
+        }
+      ]
+    });
+
+    expect(result.rows[0]).toMatchObject({
+      supplier_contact_phone: null,
+      supplier_unit_address: null
+    });
+    expect(calls[3]?.[0]).toContain("scr.source_document_id = ?");
+    expect(calls[3]).toContain("doc_current");
+  });
+
   it("authorizes the exact current catalog for a labeled non-admin", async () => {
     const { result, calls } = await executeEnrichedQuery({
       employee: { id: "emp_baoli", role: "manager", labels: ["store:baoli"] },
@@ -625,6 +675,8 @@ describe("structured query supplier enrichment", () => {
     expect(result.rows[0]).toMatchObject({ supplier_contact_phone: "last-applied" });
     expect(calls[1]?.[0]).toContain("ib.status = ?");
     expect(calls[1]?.[0]).toContain("ib.applied_at IS NOT NULL");
+    expect(calls[1]?.[0]).not.toContain("JOIN documents");
+    expect(calls[1]?.[0]).toContain("ORDER BY ib.applied_at DESC, ib.id DESC");
     expect(calls[1]).toContain("applied");
   });
 

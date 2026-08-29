@@ -91,7 +91,7 @@ export function createPrismaStructuredQueryRepository(
         compiled.dynamicSelectedFields.map((field) => [field, null])
       );
       const publicRows = visibleRows.map((row) => {
-        return { ...withoutInternalSupplierName(row), ...nullDynamicValues };
+        return serializeStructuredDetailRow(row, compiled, nullDynamicValues);
       });
 
       if (supplierNames.length === 0) {
@@ -124,12 +124,19 @@ export function createPrismaStructuredQueryRepository(
       const catalogRows = await findSupplierCatalogMatches(
         prisma,
         currentCatalog.id,
+        currentCatalog.source_document_id,
         supplierNames,
         compiled.dynamicSelectedFields,
         compiled.authorizationScope.orgId
       );
       const matchesByName = new Map<string, Array<Record<string, unknown>>>();
       for (const catalogRow of catalogRows) {
+        if (
+          typeof catalogRow["source_document_id"] === "string" &&
+          catalogRow["source_document_id"] !== currentCatalog.source_document_id
+        ) {
+          continue;
+        }
         const supplierName = catalogRow["supplier_name"];
         if (typeof supplierName !== "string") {
           continue;
@@ -144,11 +151,7 @@ export function createPrismaStructuredQueryRepository(
           const supplierName = row[STRUCTURED_QUERY_SUPPLIER_NAME] ?? row["supplier_name"];
           const matches = typeof supplierName === "string" ? matchesByName.get(supplierName) : [];
           const values = matches?.length === 1 ? dynamicValuesFor(matches[0]!, compiled) : {};
-          return serializeStructuredQueryRow({
-            ...withoutInternalSupplierName(row),
-            ...nullDynamicValues,
-            ...values
-          });
+          return serializeStructuredDetailRow(row, compiled, { ...nullDynamicValues, ...values });
         }),
         hasMore: rows.length > compiled.limit
       };
@@ -166,24 +169,16 @@ async function findCurrentSupplierCatalog(
   const rows = (await prisma.$queryRawUnsafe(
     `SELECT ib.id, ib.source_document_id AS source_document_id
        FROM import_batches ib
-       JOIN documents d ON d.id = ib.source_document_id
       WHERE ib.org_id = ?
         AND ib.dataset = ?
         AND ib.status = ?
         AND ib.applied_at IS NOT NULL
         AND ib.archived_at IS NULL
-        AND d.org_id = ?
-        AND d.document_kind = ?
-        AND d.status = ?
-        AND d.archived_at IS NULL
       ORDER BY ib.applied_at DESC, ib.id DESC
       LIMIT 1`,
     scope.orgId,
     "supplier_catalog",
-    "applied",
-    scope.orgId,
-    "structured",
-    "active"
+    "applied"
   )) as Array<CurrentSupplierCatalog>;
 
   return rows[0] ?? null;
@@ -227,11 +222,15 @@ async function canReadCurrentSupplierCatalog(
 async function findSupplierCatalogMatches(
   prisma: PrismaClient,
   importBatchId: string,
+  sourceDocumentId: string,
   supplierNames: string[],
   dynamicFields: string[],
   orgId: string
 ): Promise<Array<Record<string, unknown>>> {
-  const selectedColumns = [`JSON_UNQUOTE(JSON_EXTRACT(scr.payload, ?)) AS supplier_name`];
+  const selectedColumns = [
+    "scr.source_document_id AS source_document_id",
+    `JSON_UNQUOTE(JSON_EXTRACT(scr.payload, ?)) AS supplier_name`
+  ];
   const params: Array<string> = ["$.supplier_name"];
   if (dynamicFields.includes(SUPPLIER_CONTACT_PHONE)) {
     selectedColumns.push(`JSON_UNQUOTE(JSON_EXTRACT(scr.payload, ?)) AS contact_phone`);
@@ -242,12 +241,13 @@ async function findSupplierCatalogMatches(
     params.push("$.unit_address");
   }
 
-  params.push(orgId, importBatchId, "$.supplier_name", ...supplierNames);
+  params.push(orgId, importBatchId, sourceDocumentId, "$.supplier_name", ...supplierNames);
   const rows = (await prisma.$queryRawUnsafe(
     `SELECT ${selectedColumns.join(", ")}
        FROM supplier_catalog_rows scr
       WHERE scr.org_id = ?
         AND scr.import_batch_id = ?
+        AND scr.source_document_id = ?
         AND JSON_UNQUOTE(JSON_EXTRACT(scr.payload, ?)) IN (${supplierNames.map(() => "?").join(", ")})`,
     ...params
   )) as Array<Record<string, unknown>>;
@@ -285,4 +285,19 @@ function withoutInternalSupplierName(row: Record<string, unknown>): Record<strin
   const publicRow = { ...row };
   delete publicRow[STRUCTURED_QUERY_SUPPLIER_NAME];
   return publicRow;
+}
+
+function serializeStructuredDetailRow(
+  row: Record<string, unknown>,
+  compiled: StructuredCompiledQuery,
+  dynamicValues: Record<string, unknown>
+): Record<string, unknown> {
+  const values = { ...withoutInternalSupplierName(row), ...dynamicValues };
+  return serializeStructuredQueryRow(
+    Object.fromEntries(
+      compiled.selectedFields
+        .filter((field) => Object.prototype.hasOwnProperty.call(values, field))
+        .map((field) => [field, values[field]])
+    )
+  );
 }

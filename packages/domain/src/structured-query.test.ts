@@ -81,6 +81,65 @@ describe("structured query compiler", () => {
     );
   });
 
+  it("rejects dynamic fields nested inside combined filters", () => {
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          employee: { role: "admin", labels: [] },
+          orgId: "default-org",
+          query: {
+            dataset: "delivery_ledger",
+            filter: {
+              and: [
+                { field: "supplier_name", op: "eq", value: "Supplier A" },
+                {
+                  or: [{ field: "supplier_contact_phone", op: "eq", value: "13800138000" }]
+                }
+              ]
+            }
+          },
+          cursorSecret: "cursor-secret"
+        }),
+      PHASE3_ERROR_CODES.unsupportedCapability
+    );
+  });
+
+  it("rejects mixed dynamic and stored sort capabilities", () => {
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          employee: { role: "admin", labels: [] },
+          orgId: "default-org",
+          query: {
+            dataset: "delivery_ledger",
+            sort: [
+              { field: "supplier_name", direction: "asc" },
+              { field: "supplier_unit_address", direction: "asc" }
+            ]
+          },
+          cursorSecret: "cursor-secret"
+        }),
+      PHASE3_ERROR_CODES.unsupportedCapability
+    );
+  });
+
+  it("rejects dynamic aggregate aliases and mixed grouping capabilities", () => {
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          employee: { role: "admin", labels: [] },
+          orgId: "default-org",
+          query: {
+            dataset: "delivery_ledger",
+            groupBy: ["supplier_name"],
+            aggregates: [{ op: "count", field: "supplier_contact_phone", as: "phone_count" }]
+          },
+          cursorSecret: "cursor-secret"
+        }),
+      PHASE3_ERROR_CODES.unsupportedCapability
+    );
+  });
+
   it("compiles catalog snapshot price filters against the catalog row table", () => {
     const compiled = compileStructuredQuery({
       employee: { role: "admin", labels: [] },
