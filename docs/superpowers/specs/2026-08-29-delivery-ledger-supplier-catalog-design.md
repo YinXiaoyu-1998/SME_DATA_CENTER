@@ -89,21 +89,21 @@ All numeric source-sequence rows after the detail header and before the summary/
 ledger rows, including non-food categories. `合计` and footer/signature rows are never imported.
 Every ledger row contains:
 
-| Canonical field | Source or rule |
-| --- | --- |
-| `entry_id` | Generated RFC 4122 UUID for this ledger row |
-| `purchase_date` | `收货日期`, normalized to `YYYY-MM-DD` |
-| `store_name` | `订货机构` |
-| `receipt_number` | `单据号` |
-| `supplier_name` | `送货机构`, never `供货机构` |
-| `item_name` | `物品名称` |
-| `specification` | `规格型号` |
-| `purchase_quantity` | `收货数量` as a decimal |
-| `purchase_amount` | `收货金额` as a decimal |
-| `production_date_or_batch` | Always `null` |
-| `shelf_life` | Always `null` |
-| `supplier_contact_phone` | Dynamic virtual field |
-| `supplier_unit_address` | Dynamic virtual field |
+| Canonical field            | Source or rule                              |
+| -------------------------- | ------------------------------------------- |
+| `entry_id`                 | Generated RFC 4122 UUID for this ledger row |
+| `purchase_date`            | `收货日期`, normalized to `YYYY-MM-DD`      |
+| `store_name`               | `订货机构`                                  |
+| `receipt_number`           | `单据号`                                    |
+| `supplier_name`            | `送货机构`, never `供货机构`                |
+| `item_name`                | `物品名称`                                  |
+| `specification`            | `规格型号`                                  |
+| `purchase_quantity`        | `收货数量` as a decimal                     |
+| `purchase_amount`          | `收货金额` as a decimal                     |
+| `production_date_or_batch` | Always `null`                               |
+| `shelf_life`               | Always `null`                               |
+| `supplier_contact_phone`   | Dynamic virtual field                       |
+| `supplier_unit_address`    | Dynamic virtual field                       |
 
 The source sequence remains available through `sourceRowNumber` lineage, but it is not the
 electronic ledger's public row identifier. The original document remains addressable through the
