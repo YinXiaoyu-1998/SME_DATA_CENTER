@@ -100,6 +100,10 @@ export interface LauncherToolDependencies {
   fetchImplementation: typeof fetch;
 }
 
+type LauncherAuthenticationEnv = Partial<
+  Record<"NODE_ENV" | "ENTERPRISE_HUB_LOCAL_TEST_ACCESS_TOKEN", string | undefined>
+>;
+
 export interface LauncherToolRegistrar {
   registerTool(
     name: string,
@@ -139,6 +143,46 @@ export function createLauncherToolDependencies(input: {
     config: input.config,
     auth: input.auth ?? createOfficialLauncherAuthentication(input.config),
     fetchImplementation: input.fetchImplementation ?? fetch
+  };
+}
+
+export function createLauncherAuthenticationFromEnvironment(
+  config: LauncherRuntimeConfig,
+  env: LauncherAuthenticationEnv = process.env
+): LauncherAuthentication {
+  const accessToken = env.ENTERPRISE_HUB_LOCAL_TEST_ACCESS_TOKEN?.trim();
+  if (!accessToken) return createOfficialLauncherAuthentication(config);
+
+  const serviceUrl = new URL(config.serviceUrl);
+  if (
+    env.NODE_ENV !== "test" ||
+    serviceUrl.protocol !== "http:" ||
+    !isLoopbackHostname(serviceUrl.hostname)
+  ) {
+    throw new Error("Local test access tokens require a loopback HTTP test launcher.");
+  }
+
+  return {
+    login: async () => ({ authenticated: true }),
+    logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
+    status: async () => ({ authenticated: true }),
+    accessToken: async () => accessToken,
+    invalidate: async () => undefined,
+    selfCheck: async () => ({
+      ok: true,
+      launcherVersion: LAUNCHER_VERSION,
+      serviceOrigin: config.serviceUrl,
+      platform: process.platform,
+      secureStore: { available: false, durableCredentialPresent: false },
+      server: {
+        reachable: true,
+        metadataCompatible: true,
+        minimumLauncherVersion: null,
+        recommendedLauncherVersion: null,
+        recommendedUpdateAvailable: false
+      },
+      mcp: { handshake: "ok" }
+    })
   };
 }
 
@@ -578,4 +622,8 @@ function errorCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error
     ? String((error as { code?: unknown }).code)
     : undefined;
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return new Set(["127.0.0.1", "localhost", "[::1]"]).has(hostname);
 }

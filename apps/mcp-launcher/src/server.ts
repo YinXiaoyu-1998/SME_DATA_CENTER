@@ -1,7 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { LauncherRuntimeConfig } from "./config.js";
-import { createLauncherToolDependencies, registerLauncherTools } from "./launcher.js";
+import {
+  createLauncherAuthenticationFromEnvironment,
+  createLauncherToolDependencies,
+  registerLauncherTools
+} from "./launcher.js";
 
 export const MCP_LAUNCHER_SERVER_NAME = "enterprise-hub-mcp-launcher";
 export const MCP_LAUNCHER_SERVER_VERSION = "0.2.3";
@@ -12,7 +16,13 @@ export function createEnterpriseHubMcpLauncherServer(config: LauncherRuntimeConf
     version: MCP_LAUNCHER_SERVER_VERSION
   });
 
-  registerLauncherTools(server, createLauncherToolDependencies({ config }));
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({
+      config,
+      auth: createLauncherAuthenticationFromEnvironment(config)
+    })
+  );
 
   return server;
 }

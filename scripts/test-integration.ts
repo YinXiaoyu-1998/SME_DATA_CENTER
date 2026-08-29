@@ -4,6 +4,8 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import {
   DocumentKind,
@@ -31,6 +33,7 @@ import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worke
 import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 
 const DEFAULT_MYSQL_PORT = "3307";
+const INTEGRATION_COMPOSE_PROJECT = "enterprise-hub-task7-integration";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
   `mysql://enterprise_hub:enterprise_hub_local_password@localhost:${mysqlPort}/enterprise_hub`;
 const DEFAULT_CURSOR_SIGNING_SECRET = "replace-with-local-development-cursor-secret";
@@ -110,8 +113,17 @@ interface McpStructuredQueryResponse {
   rows: Array<Record<string, unknown>>;
 }
 
+type McpToolCaller = <T>(
+  requestId: string,
+  name: string,
+  argumentsInput: Record<string, unknown>
+) => Promise<T>;
+
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
+assert(mysqlPort === DEFAULT_MYSQL_PORT, "Integration cleanup is restricted to MYSQL_PORT=3307.");
+const databaseUrl = process.env["DATABASE_URL"] ?? DEFAULT_DATABASE_URL(mysqlPort);
+assertLocalIntegrationDatabase(databaseUrl, mysqlPort);
 const integrationPort = optionalEnv("HUB_INTEGRATION_PORT") ?? String(await findAvailablePort());
 const apiUrl = `http://127.0.0.1:${integrationPort}`;
 const integrationRoot = path.join(rootDir, ".data", "integration");
@@ -120,7 +132,7 @@ const storageRoot = path.join(integrationRoot, "storage");
 const integrationEnv: NodeJS.ProcessEnv = {
   ...process.env,
   MYSQL_PORT: mysqlPort,
-  DATABASE_URL: process.env["DATABASE_URL"] ?? DEFAULT_DATABASE_URL(mysqlPort),
+  DATABASE_URL: databaseUrl,
   CURSOR_SIGNING_SECRET: process.env["CURSOR_SIGNING_SECRET"] ?? DEFAULT_CURSOR_SIGNING_SECRET,
   ENTERPRISE_HUB_PUBLIC_ORIGIN:
     process.env["ENTERPRISE_HUB_PUBLIC_ORIGIN"] ?? "https://api.smedatacenter.xyz",
@@ -143,13 +155,18 @@ const integrationEnv: NodeJS.ProcessEnv = {
   HOST: "127.0.0.1",
   PORT: integrationPort
 };
+assertLocalIntegrationQdrant(integrationEnv["QDRANT_URL"]!);
 
 let apiProcess: ReturnType<typeof spawn> | null = null;
 const officialSessionCleanup: Array<() => Promise<void>> = [];
 
 try {
   await prepareLocalWorkspace();
-  await run("docker", ["compose", "up", "-d", "mysql", "qdrant"], { env: integrationEnv });
+  await run(
+    "docker",
+    ["compose", "--project-name", INTEGRATION_COMPOSE_PROJECT, "up", "-d", "mysql", "qdrant"],
+    { env: integrationEnv }
+  );
   await waitForMysqlHealth();
   await run("npm", ["run", "db:generate"], { env: integrationEnv });
   await run(
@@ -591,9 +608,11 @@ try {
           "launcher_local_path_upload",
           "phase3_structured_typed_query",
           "phase3_structured_query",
+          "real_launcher_stdio_to_local_api_mcp",
           "mcp_delivery_without_catalog_returns_null_enrichment",
           "mcp_delivery_supplier_dynamic_enrichment",
           "mcp_latest_supplier_catalog_replaces_enrichment",
+          "mcp_delivery_row_identity_content_and_scope_isolation",
           "phase3_structured_all_staff_import",
           "phase3_structured_all_staff_query",
           "phase3_structured_import_status_non_enumeration",
@@ -609,10 +628,7 @@ try {
     )
   );
 } finally {
-  await Promise.allSettled(officialSessionCleanup.splice(0).map((cleanup) => cleanup()));
-  if (apiProcess) {
-    await stopApi(apiProcess);
-  }
+  await cleanupIntegrationRun();
 }
 
 async function createOfficialIntegrationAccessToken(employeeId: string): Promise<string> {
@@ -678,6 +694,162 @@ async function stopApi(child: ReturnType<typeof spawn>): Promise<void> {
 
     child.kill("SIGTERM");
   });
+}
+
+async function cleanupIntegrationRun(): Promise<void> {
+  const failures: string[] = [];
+  if (apiProcess) {
+    try {
+      await stopApi(apiProcess);
+    } catch {
+      failures.push("API child process");
+    } finally {
+      apiProcess = null;
+    }
+  }
+
+  const sessions = officialSessionCleanup.splice(0);
+  const sessionResults = await Promise.allSettled(sessions.map((cleanup) => cleanup()));
+  if (sessionResults.some((result) => result.status === "rejected")) {
+    failures.push("official auth sessions");
+  }
+
+  for (const [label, cleanup] of [
+    ["local integration database rows", cleanupIntegrationDatabase],
+    ["local integration Qdrant collection", cleanupIntegrationQdrant]
+  ] as const) {
+    try {
+      await cleanup();
+    } catch {
+      failures.push(label);
+    }
+  }
+
+  try {
+    await rm(integrationRoot, { recursive: true, force: true });
+    assert(!(await pathExists(integrationRoot)), "Integration storage directory must be removed.");
+  } catch {
+    failures.push("local integration storage and artifacts");
+  }
+
+  const down = await run(
+    "docker",
+    ["compose", "--project-name", INTEGRATION_COMPOSE_PROJECT, "down", "-v", "--remove-orphans"],
+    { env: integrationEnv, rejectOnFailure: false }
+  );
+  if (down.stdout.trim() && down.stdout.includes("ERROR")) {
+    failures.push("local Docker compose teardown");
+  }
+
+  for (const [label, command, args] of [
+    [
+      "containers",
+      "docker",
+      ["ps", "-aq", "--filter", `label=com.docker.compose.project=${INTEGRATION_COMPOSE_PROJECT}`]
+    ],
+    [
+      "volumes",
+      "docker",
+      [
+        "volume",
+        "ls",
+        "-q",
+        "--filter",
+        `label=com.docker.compose.project=${INTEGRATION_COMPOSE_PROJECT}`
+      ]
+    ],
+    [
+      "networks",
+      "docker",
+      [
+        "network",
+        "ls",
+        "-q",
+        "--filter",
+        `label=com.docker.compose.project=${INTEGRATION_COMPOSE_PROJECT}`
+      ]
+    ]
+  ] as const) {
+    const remaining = await run(command, [...args], {
+      env: integrationEnv,
+      rejectOnFailure: false
+    });
+    if (remaining.stdout.trim()) failures.push(`Docker ${label}`);
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Integration cleanup failed for: ${failures.join(", ")}.`);
+  }
+}
+
+async function cleanupIntegrationDatabase(): Promise<void> {
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.deliveryLedgerRow.deleteMany({});
+      await tx.supplierCatalogRow.deleteMany({});
+      await tx.dishRow.deleteMany({});
+      await tx.businessRow.deleteMany({});
+      await tx.vipRow.deleteMany({});
+      await tx.dishCatalogRow.deleteMany({});
+      await tx.importWindowClaim.deleteMany({});
+      await tx.importBatch.deleteMany({});
+      await tx.document.deleteMany({});
+      await tx.oAuthAuthorizationCode.deleteMany({});
+      await tx.oAuthAuthorizationTransaction.deleteMany({});
+      await tx.deviceAuthorization.deleteMany({});
+      await tx.authSecurityEvent.deleteMany({});
+      await tx.authSession.deleteMany({});
+      await tx.auditLog.deleteMany({});
+    });
+
+    const counts = await Promise.all([
+      prisma.document.count(),
+      prisma.importBatch.count(),
+      prisma.deliveryLedgerRow.count(),
+      prisma.supplierCatalogRow.count(),
+      prisma.dishRow.count(),
+      prisma.businessRow.count(),
+      prisma.vipRow.count(),
+      prisma.dishCatalogRow.count(),
+      prisma.processingRun.count(),
+      prisma.documentChunk.count(),
+      prisma.documentIndex.count(),
+      prisma.authSession.count(),
+      prisma.durableCredential.count(),
+      prisma.oAuthAccessToken.count(),
+      prisma.authSecurityEvent.count(),
+      prisma.auditLog.count()
+    ]);
+    assert(
+      counts.every((count) => count === 0),
+      "Integration cleanup must leave no run-scoped DB rows or sessions."
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function cleanupIntegrationQdrant(): Promise<void> {
+  const response = await fetch(integrationQdrantCollectionUrl(), { method: "DELETE" });
+  assert(
+    response.ok || response.status === 404,
+    `Qdrant integration cleanup failed with HTTP ${response.status}.`
+  );
+  const verification = await fetch(integrationQdrantCollectionUrl());
+  assert(
+    verification.status === 404,
+    "Integration cleanup must remove the run-scoped Qdrant collection."
+  );
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await readdir(target);
+    return true;
+  } catch (error) {
+    return !(error instanceof Error && "code" in error && error.code === "ENOENT");
+  }
 }
 
 async function waitForMysqlHealth(): Promise<void> {
@@ -845,132 +1017,201 @@ async function assertMcpDeliveryLedgerSupplierCatalogFlow(
   const runId = `mcp-ledger-supplier-${Date.now()}`;
   const receiptNumber = `MCP-${Date.now()}`;
   const supplierName = "MCP Synthetic Supplier";
-  const deliveryUpload = await uploadStructuredDatasetThroughMcp(accessToken, {
-    requestId: `${runId}-delivery`,
-    fileName: "mcp-delivery-ledger.csv",
-    content: deliveryLedgerCsvForIntegration(receiptNumber, supplierName),
-    dataset: "delivery_ledger",
-    enterpriseName: "MCP Delivery Smoke",
-    idempotencyKey: `${runId}-delivery-key`
-  });
-  assert(
-    deliveryUpload.importBatch.status === "pending",
-    "MCP delivery upload should be queued before worker application."
-  );
-  const deliveryWorker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
-  );
-  assert(
-    deliveryWorker.documentId === deliveryUpload.document.documentId &&
-      deliveryWorker.status === "active",
-    "Worker should apply the MCP delivery upload."
-  );
-  const appliedDelivery = await waitForMcpImportStatus(
-    accessToken,
-    deliveryUpload.importBatch.importBatchId,
-    `${runId}-delivery-status`
-  );
-  assert(
-    appliedDelivery.importBatch.appliedRowCount === 1,
-    "MCP delivery upload should apply one ledger row."
-  );
+  const launcher = await startRealLauncherMcpClient(accessToken);
+  const call = launcher.call;
+  try {
+    const listedDatasets = await call<{
+      datasets: Array<{ dataset: string }>;
+    }>(`${runId}-list`, "list_structured_datasets", {});
+    assert(
+      listedDatasets.datasets.some(({ dataset }) => dataset === "delivery_ledger") &&
+        listedDatasets.datasets.some(({ dataset }) => dataset === "supplier_catalog"),
+      "Real launcher list_structured_datasets must expose delivery and supplier datasets."
+    );
 
-  const noCatalogQuery = await queryDeliveryThroughMcp(
-    accessToken,
-    receiptNumber,
-    `${runId}-no-catalog-query`
-  );
-  assert(
-    noCatalogQuery.rows.length === 1 &&
-      noCatalogQuery.rows[0]?.supplier_contact_phone === null &&
-      noCatalogQuery.rows[0]?.supplier_unit_address === null,
-    "A delivery query before any supplier catalog must return null enrichment."
-  );
+    const deliveryUpload = await uploadStructuredDatasetThroughMcp(call, {
+      requestId: `${runId}-delivery`,
+      fileName: "mcp-delivery-ledger.csv",
+      content: deliveryLedgerCsvForIntegration(receiptNumber, supplierName),
+      dataset: "delivery_ledger",
+      enterpriseName: "MCP Delivery Smoke",
+      idempotencyKey: `${runId}-delivery-key`
+    });
+    assert(
+      deliveryUpload.importBatch.status === "pending",
+      "MCP delivery upload should be queued before worker application."
+    );
+    const deliveryWorker = parseJson<WorkerResponse>(
+      (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+    );
+    assert(
+      deliveryWorker.documentId === deliveryUpload.document.documentId &&
+        deliveryWorker.status === "active",
+      "Worker should apply the MCP delivery upload."
+    );
+    const appliedDelivery = await waitForMcpImportStatus(
+      call,
+      deliveryUpload.importBatch.importBatchId,
+      `${runId}-delivery-status`
+    );
+    await assertImportBatchScope(deliveryUpload.importBatch.importBatchId, "delivery_ledger");
+    assert(
+      appliedDelivery.importBatch.appliedRowCount === 1,
+      "MCP delivery upload should apply one ledger row."
+    );
 
-  const supplierUpload = await uploadStructuredDatasetThroughMcp(accessToken, {
-    requestId: `${runId}-supplier-initial`,
-    fileName: "mcp-supplier-catalog.csv",
-    content: supplierCatalogCsvForIntegration(supplierName, "13800000001", "MCP Initial Address"),
-    dataset: "supplier_catalog",
-    enterpriseName: "MCP Supplier Smoke",
-    idempotencyKey: `${runId}-supplier-initial-key`
-  });
-  const supplierWorker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
-  );
-  assert(
-    supplierWorker.documentId === supplierUpload.document.documentId &&
-      supplierWorker.status === "active",
-    "Worker should apply the initial MCP supplier catalog upload."
-  );
-  const appliedSupplier = await waitForMcpImportStatus(
-    accessToken,
-    supplierUpload.importBatch.importBatchId,
-    `${runId}-supplier-initial-status`
-  );
-  assert(
-    appliedSupplier.importBatch.appliedRowCount === 1,
-    "Initial MCP supplier catalog upload should apply one supplier row."
-  );
+    const noCatalogQuery = await queryDeliveryThroughMcp(
+      call,
+      receiptNumber,
+      `${runId}-no-catalog-query`
+    );
+    assert(
+      noCatalogQuery.rows.length === 1 &&
+        noCatalogQuery.rows[0]?.supplier_contact_phone === null &&
+        noCatalogQuery.rows[0]?.supplier_unit_address === null,
+      "A delivery query before any supplier catalog must return null enrichment."
+    );
+    const historicalRowBeforeCatalog = noCatalogQuery.rows[0]!;
+    assert(
+      Boolean(historicalRowBeforeCatalog.entry_id) &&
+        historicalRowBeforeCatalog.store_name === "MCP Synthetic Store" &&
+        historicalRowBeforeCatalog.receipt_number === receiptNumber &&
+        historicalRowBeforeCatalog.item_name === "MCP Synthetic Item" &&
+        historicalRowBeforeCatalog.supplier_name === supplierName &&
+        numericQueryValue(historicalRowBeforeCatalog.purchase_quantity) === 2 &&
+        numericQueryValue(historicalRowBeforeCatalog.purchase_amount) === 100,
+      "Delivery query must expose the stable identity and source content before enrichment."
+    );
+    const deliveryDbRowBeforeCatalog = await readDeliveryLedgerDbRow(
+      deliveryUpload.importBatch.importBatchId
+    );
 
-  const initialEnrichment = await queryDeliveryThroughMcp(
-    accessToken,
-    receiptNumber,
-    `${runId}-initial-query`
-  );
-  assert(
-    initialEnrichment.rows[0]?.supplier_contact_phone === "13800000001" &&
-      initialEnrichment.rows[0]?.supplier_unit_address === "MCP Initial Address",
-    "MCP delivery query should dynamically enrich from the current supplier catalog."
-  );
+    const supplierUpload = await uploadStructuredDatasetThroughMcp(call, {
+      requestId: `${runId}-supplier-initial`,
+      fileName: "mcp-supplier-catalog.csv",
+      content: supplierCatalogCsvForIntegration(supplierName, "13800000001", "MCP Initial Address"),
+      dataset: "supplier_catalog",
+      enterpriseName: "MCP Supplier Smoke",
+      idempotencyKey: `${runId}-supplier-initial-key`
+    });
+    const supplierWorker = parseJson<WorkerResponse>(
+      (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+    );
+    assert(
+      supplierWorker.documentId === supplierUpload.document.documentId &&
+        supplierWorker.status === "active",
+      "Worker should apply the initial MCP supplier catalog upload."
+    );
+    const appliedSupplier = await waitForMcpImportStatus(
+      call,
+      supplierUpload.importBatch.importBatchId,
+      `${runId}-supplier-initial-status`
+    );
+    await assertImportBatchScope(supplierUpload.importBatch.importBatchId, "supplier_catalog");
+    assert(
+      appliedSupplier.importBatch.appliedRowCount === 1,
+      "Initial MCP supplier catalog upload should apply one supplier row."
+    );
 
-  await delay(10);
-  const newerSupplierUpload = await uploadStructuredDatasetThroughMcp(accessToken, {
-    requestId: `${runId}-supplier-newer`,
-    fileName: "mcp-supplier-catalog-newer.csv",
-    content: supplierCatalogCsvForIntegration(supplierName, "13900000002", "MCP Newer Address"),
-    dataset: "supplier_catalog",
-    enterpriseName: "MCP Supplier Smoke",
-    idempotencyKey: `${runId}-supplier-newer-key`
-  });
-  const newerSupplierWorker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
-  );
-  assert(
-    newerSupplierWorker.documentId === newerSupplierUpload.document.documentId &&
-      newerSupplierWorker.status === "active",
-    "Worker should apply the newer MCP supplier catalog upload."
-  );
-  const appliedNewerSupplier = await waitForMcpImportStatus(
-    accessToken,
-    newerSupplierUpload.importBatch.importBatchId,
-    `${runId}-supplier-newer-status`
-  );
-  assert(
-    appliedNewerSupplier.importBatch.appliedRowCount === 1,
-    "Newer MCP supplier catalog upload should apply one supplier row."
-  );
+    const initialEnrichment = await queryDeliveryThroughMcp(
+      call,
+      receiptNumber,
+      `${runId}-initial-query`
+    );
+    assert(
+      initialEnrichment.rows.length === 1 &&
+        initialEnrichment.rows[0]?.supplier_contact_phone === "13800000001" &&
+        initialEnrichment.rows[0]?.supplier_unit_address === "MCP Initial Address",
+      "MCP delivery query should dynamically enrich from the current supplier catalog."
+    );
 
-  const newerEnrichment = await queryDeliveryThroughMcp(
-    accessToken,
-    receiptNumber,
-    `${runId}-newer-query`
-  );
-  assert(
-    newerEnrichment.rows[0]?.receipt_number === receiptNumber &&
-      newerEnrichment.rows[0]?.supplier_contact_phone === "13900000002" &&
-      newerEnrichment.rows[0]?.supplier_unit_address === "MCP Newer Address",
-    "The same historical delivery row must reflect the latest supplier phone and address."
-  );
+    await delay(10);
+    const newerSupplierUpload = await uploadStructuredDatasetThroughMcp(call, {
+      requestId: `${runId}-supplier-newer`,
+      fileName: "mcp-supplier-catalog-newer.csv",
+      content: supplierCatalogCsvForIntegration(supplierName, "13900000002", "MCP Newer Address"),
+      dataset: "supplier_catalog",
+      enterpriseName: "MCP Supplier Smoke",
+      idempotencyKey: `${runId}-supplier-newer-key`
+    });
+    const newerSupplierWorker = parseJson<WorkerResponse>(
+      (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+    );
+    assert(
+      newerSupplierWorker.documentId === newerSupplierUpload.document.documentId &&
+        newerSupplierWorker.status === "active",
+      "Worker should apply the newer MCP supplier catalog upload."
+    );
+    const appliedNewerSupplier = await waitForMcpImportStatus(
+      call,
+      newerSupplierUpload.importBatch.importBatchId,
+      `${runId}-supplier-newer-status`
+    );
+    await assertImportBatchScope(newerSupplierUpload.importBatch.importBatchId, "supplier_catalog");
+    assert(
+      appliedNewerSupplier.importBatch.appliedRowCount === 1,
+      "Newer MCP supplier catalog upload should apply one supplier row."
+    );
 
-  return {
-    deliveryImportBatchId: deliveryUpload.importBatch.importBatchId,
-    supplierImportBatchId: newerSupplierUpload.importBatch.importBatchId
-  };
+    const newerEnrichment = await queryDeliveryThroughMcp(
+      call,
+      receiptNumber,
+      `${runId}-newer-query`
+    );
+    assert(
+      newerEnrichment.rows[0]?.receipt_number === receiptNumber &&
+        newerEnrichment.rows[0]?.supplier_contact_phone === "13900000002" &&
+        newerEnrichment.rows[0]?.supplier_unit_address === "MCP Newer Address",
+      "The same historical delivery row must reflect the latest supplier phone and address."
+    );
+    const historicalRowAfterReplacement = newerEnrichment.rows[0]!;
+    for (const field of [
+      "entry_id",
+      "store_name",
+      "receipt_number",
+      "item_name",
+      "supplier_name",
+      "purchase_quantity",
+      "purchase_amount"
+    ]) {
+      assert(
+        historicalRowAfterReplacement[field] === historicalRowBeforeCatalog[field],
+        `Historical delivery field ${field} must remain unchanged after supplier replacement.`
+      );
+    }
+    const deliveryDbRowAfterReplacement = await readDeliveryLedgerDbRow(
+      deliveryUpload.importBatch.importBatchId
+    );
+    assert(
+      deliveryDbRowAfterReplacement.id === deliveryDbRowBeforeCatalog.id &&
+        JSON.stringify(deliveryDbRowAfterReplacement.payload) ===
+          JSON.stringify(deliveryDbRowBeforeCatalog.payload),
+      "Supplier replacement must not rewrite or replace the persisted delivery ledger row."
+    );
+
+    const zeroStoreLabelToken = await createOfficialIntegrationAccessToken("emp_lijie");
+    const zeroStoreLabelQuery = await queryDeliveryThroughMcp(
+      (requestId, name, argumentsInput) =>
+        callMcpTool(zeroStoreLabelToken, requestId, name, argumentsInput),
+      receiptNumber,
+      `${runId}-zero-store-label-query`
+    );
+    assert(
+      zeroStoreLabelQuery.rows.length === 0,
+      "An employee without the delivery label must not see delivery or supplier rows."
+    );
+
+    return {
+      deliveryImportBatchId: deliveryUpload.importBatch.importBatchId,
+      supplierImportBatchId: newerSupplierUpload.importBatch.importBatchId
+    };
+  } finally {
+    await launcher.close();
+  }
 }
 
 async function uploadStructuredDatasetThroughMcp(
-  accessToken: string,
+  call: McpToolCaller,
   input: {
     requestId: string;
     fileName: string;
@@ -980,38 +1221,36 @@ async function uploadStructuredDatasetThroughMcp(
     idempotencyKey: string;
   }
 ): Promise<StructuredUploadResponse> {
-  return callMcpTool<StructuredUploadResponse>(
-    accessToken,
-    input.requestId,
-    "upload_structured_dataset",
-    {
-      file: {
-        name: input.fileName,
-        mediaType: "text/csv",
-        encoding: "base64",
-        contentBase64: Buffer.from(input.content, "utf8").toString("base64")
-      },
-      dataset: input.dataset,
-      enterpriseName: input.enterpriseName,
-      idempotencyKey: input.idempotencyKey,
-      labelKeys: ["store:baoli"]
-    }
-  );
+  return call<StructuredUploadResponse>(input.requestId, "upload_structured_dataset", {
+    file: {
+      name: input.fileName,
+      mediaType: "text/csv",
+      encoding: "base64",
+      contentBase64: Buffer.from(input.content, "utf8").toString("base64")
+    },
+    dataset: input.dataset,
+    enterpriseName: input.enterpriseName,
+    idempotencyKey: input.idempotencyKey,
+    labelKeys: ["store:baoli"]
+  });
 }
 
 async function waitForMcpImportStatus(
-  accessToken: string,
+  call: McpToolCaller,
   importBatchId: string,
   requestId: string
 ): Promise<StructuredUploadResponse> {
   let latest: StructuredUploadResponse | null = null;
   let pollNumber = 0;
   await waitForCondition(`MCP structured import ${importBatchId}`, async () => {
-    latest = await callMcpTool<StructuredUploadResponse>(
-      accessToken,
+    latest = await call<StructuredUploadResponse>(
       `${requestId}-${pollNumber++}`,
       "get_import_status",
       { importBatchId }
+    );
+    assert(
+      latest.importBatch.importBatchId === importBatchId,
+      `MCP status response must match the exact requested batch ${importBatchId}.`
     );
     return latest.importBatch.status === "applied";
   });
@@ -1019,26 +1258,105 @@ async function waitForMcpImportStatus(
 }
 
 async function queryDeliveryThroughMcp(
-  accessToken: string,
+  call: McpToolCaller,
   receiptNumber: string,
   requestId: string
 ): Promise<McpStructuredQueryResponse> {
-  return callMcpTool<McpStructuredQueryResponse>(
-    accessToken,
-    requestId,
-    "query_structured_dataset",
-    {
-      dataset: "delivery_ledger",
-      select: [
-        "receipt_number",
-        "supplier_name",
-        "supplier_contact_phone",
-        "supplier_unit_address"
-      ],
-      filter: { field: "receipt_number", op: "eq", value: receiptNumber },
-      page: { limit: 10 }
-    }
+  return call<McpStructuredQueryResponse>(requestId, "query_structured_dataset", {
+    dataset: "delivery_ledger",
+    select: [
+      "entry_id",
+      "store_name",
+      "receipt_number",
+      "item_name",
+      "supplier_name",
+      "purchase_quantity",
+      "purchase_amount",
+      "supplier_contact_phone",
+      "supplier_unit_address"
+    ],
+    filter: { field: "receipt_number", op: "eq", value: receiptNumber },
+    page: { limit: 10 }
+  });
+}
+
+async function assertImportBatchScope(
+  importBatchId: string,
+  expectedDataset: "delivery_ledger" | "supplier_catalog"
+): Promise<void> {
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  try {
+    const batch = await prisma.importBatch.findUnique({
+      where: { id: importBatchId },
+      select: { id: true, orgId: true, dataset: true }
+    });
+    assert(
+      batch?.id === importBatchId &&
+        batch.orgId === "default-org" &&
+        batch.dataset === expectedDataset,
+      `MCP ${expectedDataset} import ${importBatchId} must remain in default-org.`
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function readDeliveryLedgerDbRow(importBatchId: string): Promise<{
+  id: string;
+  payload: unknown;
+}> {
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  try {
+    const rows = await prisma.deliveryLedgerRow.findMany({
+      where: { orgId: "default-org", importBatchId },
+      select: { id: true, payload: true }
+    });
+    assert(rows.length === 1, `Expected exactly one delivery row for batch ${importBatchId}.`);
+    return rows[0]!;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function startRealLauncherMcpClient(accessToken: string): Promise<{
+  call: McpToolCaller;
+  close: () => Promise<void>;
+}> {
+  const launcherEnv = Object.fromEntries(
+    Object.entries({
+      ...process.env,
+      NODE_ENV: "test",
+      ENTERPRISE_HUB_BASE_URL: apiUrl,
+      ENTERPRISE_HUB_LOCAL_TEST_ACCESS_TOKEN: accessToken
+    }).filter((entry): entry is [string, string] => entry[1] !== undefined)
   );
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: ["--import", "tsx", "apps/mcp-launcher/src/index.ts", "serve"],
+    cwd: rootDir,
+    env: launcherEnv
+  });
+  const client = new Client({ name: "enterprise-hub-integration-real-launcher", version: "0.2.3" });
+  await client.connect(transport);
+  return {
+    call: async <T>(requestId: string, name: string, argumentsInput: Record<string, unknown>) => {
+      const result = (await client.callTool({ name, arguments: argumentsInput }, undefined, {
+        timeout: 30_000
+      })) as { isError?: boolean; content: Array<{ type: string; text?: string }> };
+      const text = result.content.find(
+        (content): content is { type: "text"; text: string } =>
+          content.type === "text" && typeof content.text === "string"
+      )?.text;
+      assert(
+        result.isError !== true && Boolean(text),
+        `Real launcher MCP ${name} failed for ${requestId}.`
+      );
+      return JSON.parse(text!) as T;
+    },
+    close: async () => {
+      await client.close().catch(() => undefined);
+    }
+  };
 }
 
 async function callMcpTool<T>(
@@ -2176,6 +2494,39 @@ function assert(condition: boolean, message: string): asserts condition {
 function optionalEnv(key: string): string | undefined {
   const value = process.env[key]?.trim();
   return value ? value : undefined;
+}
+
+function assertLocalIntegrationDatabase(databaseUrl: string, expectedPort: string): void {
+  let url: URL;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    throw new Error("Integration DATABASE_URL must target the local enterprise_hub database.");
+  }
+  assert(
+    url.protocol === "mysql:" &&
+      new Set(["localhost", "127.0.0.1", "[::1]"]).has(url.hostname) &&
+      url.port === expectedPort &&
+      url.pathname === "/enterprise_hub",
+    "Integration DATABASE_URL must target localhost:3307/enterprise_hub only."
+  );
+}
+
+function assertLocalIntegrationQdrant(qdrantUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(qdrantUrl);
+  } catch {
+    throw new Error("Integration QDRANT_URL must target local Qdrant.");
+  }
+  assert(
+    url.protocol === "http:" && new Set(["localhost", "127.0.0.1", "[::1]"]).has(url.hostname),
+    "Integration QDRANT_URL must target a loopback Qdrant only."
+  );
+}
+
+function numericQueryValue(value: unknown): number {
+  return typeof value === "number" ? value : Number(value);
 }
 
 async function findAvailablePort(): Promise<number> {

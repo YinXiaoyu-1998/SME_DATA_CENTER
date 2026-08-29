@@ -28,7 +28,7 @@ try {
         proved: [
           "root_mcp_launcher_script",
           "api_http_post_mcp_endpoint",
-          "launcher_stdio_to_http_proxy",
+          "launcher_unit_contracts",
           "mcp_structured_pending_status",
           "mcp_delivery_supplier_contract_and_delegation"
         ]
