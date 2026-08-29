@@ -50,6 +50,7 @@ export interface ApiServerOptions {
   logger?: boolean;
   runtimeLimits?: ApiRuntimeLimits;
   runtimeEnv?: NodeJS.ProcessEnv;
+  structuredImportProfiler?: typeof import("@enterprise-hub/structured-ingestion").profileStructuredFile;
   readinessCheck?: () => Promise<ReadinessReport>;
   internalDelegationProof?: string;
 }

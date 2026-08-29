@@ -175,7 +175,9 @@ describe("structured import workflow metadata", () => {
     expect(nameA).not.toBe(nameB);
     expect(nameA).toMatch(/\.xlsx$/);
     expect(nameA.length).toBeLessThanOrEqual(200);
+    expect(Buffer.byteLength(nameA, "utf8")).toBeLessThanOrEqual(200);
     expect(keyA.length).toBeLessThan(512);
+    expect(Buffer.byteLength(keyA, "utf8")).toBeLessThan(512);
     expect(nameA).toContain("delivery_ledger");
     expect(nameA).toContain("u6536");
   });
