@@ -32,6 +32,11 @@ export interface StructuredQueryEmployeeScope {
   labels: string[];
 }
 
+export interface StructuredQueryAuthorizationScope {
+  orgId: string;
+  employee: StructuredQueryEmployeeScope;
+}
+
 export interface StructuredCompiledQuery {
   dataset: StructuredDatasetName;
   registryVersion: string;
@@ -39,10 +44,12 @@ export interface StructuredCompiledQuery {
   sql: string;
   params: Array<string | number>;
   selectedFields: string[];
+  dynamicSelectedFields: string[];
   aggregateAliases: string[];
   limit: number;
   offset: number;
   shapeHash: string;
+  authorizationScope: StructuredQueryAuthorizationScope;
 }
 
 export class StructuredQueryValidationError extends Error {
@@ -183,6 +190,12 @@ export function compileStructuredQuery(
     mode === "detail"
       ? query.select
       : [...query.groupBy, ...query.aggregates.map((aggregate) => aggregateAlias(aggregate))];
+  const dynamicSelectedFields =
+    mode === "detail"
+      ? query.select.filter(
+          (fieldName) => requireField(fields, fieldName).inputSource === "dynamic_lookup"
+        )
+      : [];
   const projection = buildProjection(query, fields, mode);
   const from = baseFromAndWhere({
     registry,
@@ -209,10 +222,15 @@ export function compileStructuredQuery(
       sql: `SELECT ${projection.sql} FROM ${registry.rowTable} r ${whereSql}${groupBy}${order.sql} LIMIT ? OFFSET ?`,
       params: [...params, ...order.params, query.page.limit, offset],
       selectedFields,
+      dynamicSelectedFields,
       aggregateAliases: query.aggregates.map((aggregate) => aggregateAlias(aggregate)),
       limit: query.page.limit,
       offset,
-      shapeHash
+      shapeHash,
+      authorizationScope: {
+        orgId: input.orgId,
+        employee: { ...input.employee, labels: [...input.employee.labels] }
+      }
     };
   }
 
@@ -223,10 +241,15 @@ export function compileStructuredQuery(
     sql: `SELECT ${projection.sql} FROM ${registry.rowTable} r ${whereSql}${order.sql} LIMIT ? OFFSET ?`,
     params: [...params, ...order.params, query.page.limit, offset],
     selectedFields,
+    dynamicSelectedFields,
     aggregateAliases: [],
     limit: query.page.limit,
     offset,
-    shapeHash
+    shapeHash,
+    authorizationScope: {
+      orgId: input.orgId,
+      employee: { ...input.employee, labels: [...input.employee.labels] }
+    }
   };
 }
 
@@ -692,7 +715,14 @@ function validateAggregates(
   for (const aggregate of query.aggregates) {
     if (aggregate.op === "count") {
       if (aggregate.field) {
-        requireField(fields, aggregate.field);
+        const field = requireField(fields, aggregate.field);
+        if (!field.capabilities.aggregate && !field.capabilities.group) {
+          throw new StructuredQueryValidationError(
+            PHASE3_ERROR_CODES.unsupportedCapability,
+            "Field does not support counting.",
+            { field: aggregate.field }
+          );
+        }
       }
       continue;
     }
@@ -880,14 +910,27 @@ function buildProjection(
     return { sql: parts.join(", "), params };
   }
 
+  const storedFields = query.select.filter(
+    (fieldName) => requireField(fields, fieldName).inputSource !== "dynamic_lookup"
+  );
+  const parts = storedFields.map((fieldName) => {
+    const field = requireField(fields, fieldName);
+    return `${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`;
+  });
+  const params = storedFields.map((fieldName) => requireField(fields, fieldName).storage.jsonPath);
+
+  if (
+    query.select.some(
+      (fieldName) => requireField(fields, fieldName).inputSource === "dynamic_lookup"
+    )
+  ) {
+    parts.push(`${jsonValueExpression()} AS ${quoteIdentifier("structured_query_supplier_name")}`);
+    params.push(requireField(fields, "supplier_name").storage.jsonPath);
+  }
+
   return {
-    sql: query.select
-      .map((fieldName) => {
-        const field = requireField(fields, fieldName);
-        return `${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`;
-      })
-      .join(", "),
-    params: query.select.map((fieldName) => requireField(fields, fieldName).storage.jsonPath)
+    sql: parts.join(", "),
+    params
   };
 }
 
@@ -915,7 +958,8 @@ function baseFromAndWhere(input: {
     "AND ib.status = ?",
     "AND ib.archived_at IS NULL",
     "AND d.document_kind = ?",
-    "AND d.status = ?"
+    "AND d.status = ?",
+    "AND d.archived_at IS NULL"
   ];
 
   if (input.employee.role !== "admin") {

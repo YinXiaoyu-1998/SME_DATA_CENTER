@@ -19,6 +19,68 @@ function expectStructuredError(run: () => unknown, code: string) {
 }
 
 describe("structured query compiler", () => {
+  it("partitions delivery dynamic fields from the stored SQL projection", () => {
+    const compiled = compileStructuredQuery({
+      employee: { id: "emp_admin", role: "admin", labels: [] },
+      orgId: "default-org",
+      query: {
+        dataset: "delivery_ledger",
+        select: [
+          "receipt_number",
+          "supplier_name",
+          "supplier_contact_phone",
+          "supplier_unit_address"
+        ]
+      },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.selectedFields).toEqual([
+      "receipt_number",
+      "supplier_name",
+      "supplier_contact_phone",
+      "supplier_unit_address"
+    ]);
+    expect(compiled.dynamicSelectedFields).toEqual([
+      "supplier_contact_phone",
+      "supplier_unit_address"
+    ]);
+    expect(compiled.sql).toContain("`receipt_number`");
+    expect(compiled.sql).toContain("`supplier_name`");
+    expect(compiled.sql).not.toContain("`supplier_contact_phone`");
+    expect(compiled.sql).not.toContain("`supplier_unit_address`");
+    expect(compiled.params).not.toContain("$.supplier_contact_phone");
+    expect(compiled.params).not.toContain("$.supplier_unit_address");
+    expect(compiled.authorizationScope).toEqual({
+      orgId: "default-org",
+      employee: { id: "emp_admin", role: "admin", labels: [] }
+    });
+  });
+
+  it.each([
+    ["filter", { filter: { field: "supplier_contact_phone", op: "eq", value: "138" } }],
+    ["sort", { sort: [{ field: "supplier_unit_address", direction: "asc" }] }],
+    [
+      "group",
+      { groupBy: ["supplier_contact_phone"], aggregates: [{ op: "count", as: "row_count" }] }
+    ],
+    [
+      "aggregate",
+      { aggregates: [{ op: "count", field: "supplier_unit_address", as: "address_count" }] }
+    ]
+  ])("rejects dynamic delivery fields in %s capabilities", (_capability, query) => {
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          employee: { role: "admin", labels: [] },
+          orgId: "default-org",
+          query: { dataset: "delivery_ledger", ...query },
+          cursorSecret: "cursor-secret"
+        }),
+      PHASE3_ERROR_CODES.unsupportedCapability
+    );
+  });
+
   it("compiles catalog snapshot price filters against the catalog row table", () => {
     const compiled = compileStructuredQuery({
       employee: { role: "admin", labels: [] },

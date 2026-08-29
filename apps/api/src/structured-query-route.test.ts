@@ -1,12 +1,35 @@
-import { describe, expect, it, afterEach } from "vitest";
+import { beforeEach, describe, expect, it, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { compileStructuredQuery, type AuthenticatedEmployee } from "@enterprise-hub/domain";
 import { buildApiServer } from "./server.js";
 import type { EmployeeRepository } from "./employees.js";
 import type {
   ExecuteStructuredQueryResult,
   StructuredQueryRepository
 } from "./structured-query.js";
+import { createPrismaStructuredQueryRepository } from "./structured-query.js";
+
+const prisma = vi.hoisted(() => ({
+  $queryRawUnsafe: vi.fn(),
+  $disconnect: vi.fn()
+}));
+
+vi.mock("@prisma/adapter-mariadb", () => ({
+  PrismaMariaDb: class PrismaMariaDb {}
+}));
+
+vi.mock("@prisma/client", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@prisma/client")>();
+
+  return {
+    ...original,
+    PrismaClient: class PrismaClient {
+      constructor() {
+        return prisma;
+      }
+    }
+  };
+});
 
 const jwtSecret = "test-local-jwt-secret";
 const officialTestTokens = new Map<string, AuthenticatedEmployee>();
@@ -194,6 +217,16 @@ describe("structured query API", () => {
       nextCursor: expect.any(String)
     });
     expect(structuredQueryRepository.calls).toHaveLength(1);
+    expect(structuredQueryRepository.calls[0]).toMatchObject({
+      authorizationScope: {
+        orgId: "default-org",
+        employee: {
+          id: baoliManagerEmployee.id,
+          role: baoliManagerEmployee.role,
+          labels: baoliManagerEmployee.labels
+        }
+      }
+    });
   });
 
   it("rejects invalid controlled-query input before repository execution", async () => {
@@ -423,5 +456,215 @@ describe("structured query API", () => {
       }
     });
     expect(structuredQueryRepository.calls).toHaveLength(0);
+  });
+});
+
+describe("structured query supplier enrichment", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function compiledDeliveryQuery(
+    employee: { id?: string; role: "admin" | "manager" | "employee"; labels: string[] } = {
+      id: "emp_admin",
+      role: "admin",
+      labels: []
+    },
+    select = ["receipt_number", "supplier_name", "supplier_contact_phone", "supplier_unit_address"]
+  ) {
+    return compileStructuredQuery({
+      orgId: "default-org",
+      employee,
+      query: { dataset: "delivery_ledger", select },
+      cursorSecret: jwtSecret
+    });
+  }
+
+  async function executeEnrichedQuery(input: {
+    employee?: { id?: string; role: "admin" | "manager" | "employee"; labels: string[] };
+    select?: string[];
+    latest?: { id: string; source_document_id: string } | null;
+    catalogAuthorized?: boolean;
+    catalogRows?: Array<Record<string, unknown>>;
+    baseRows?: Array<Record<string, unknown>>;
+  }) {
+    const repository = createPrismaStructuredQueryRepository("mysql://test");
+    const select = input.select ?? [
+      "receipt_number",
+      "supplier_name",
+      "supplier_contact_phone",
+      "supplier_unit_address"
+    ];
+    const baseRow: Record<string, unknown> = {
+      receipt_number: "R-1",
+      structured_query_supplier_name: "Supplier A"
+    };
+    if (select.includes("supplier_name")) {
+      baseRow.supplier_name = "Supplier A";
+    }
+    const compiled = compiledDeliveryQuery(input.employee, select);
+    prisma.$queryRawUnsafe.mockResolvedValueOnce(input.baseRows ?? [baseRow]);
+    prisma.$queryRawUnsafe.mockResolvedValueOnce(input.latest ? [input.latest] : []);
+    if (input.latest) {
+      prisma.$queryRawUnsafe.mockResolvedValueOnce(
+        input.catalogAuthorized === false ? [] : [{ id: input.latest.source_document_id }]
+      );
+      if (input.catalogAuthorized !== false) {
+        prisma.$queryRawUnsafe.mockResolvedValueOnce(input.catalogRows ?? []);
+      }
+    }
+
+    return {
+      result: await repository.execute(compiled),
+      calls: prisma.$queryRawUnsafe.mock.calls as Array<[string, ...unknown[]]>
+    };
+  }
+
+  it("enriches an admin page from the unique current catalog match", async () => {
+    const { result, calls } = await executeEnrichedQuery({
+      latest: { id: "batch_current", source_document_id: "doc_current" },
+      catalogRows: [
+        { supplier_name: "Supplier A", contact_phone: "13800138000", unit_address: "Address A" }
+      ]
+    });
+
+    expect(result).toEqual({
+      rows: [
+        {
+          receipt_number: "R-1",
+          supplier_name: "Supplier A",
+          supplier_contact_phone: "13800138000",
+          supplier_unit_address: "Address A"
+        }
+      ],
+      hasMore: false
+    });
+    expect(calls).toHaveLength(4);
+    expect(calls[1]?.[0]).not.toContain("document_labels");
+    expect(calls[3]?.[0]).toContain("IN (?)");
+  });
+
+  it("authorizes the exact current catalog for a labeled non-admin", async () => {
+    const { result, calls } = await executeEnrichedQuery({
+      employee: { id: "emp_baoli", role: "manager", labels: ["store:baoli"] },
+      latest: { id: "batch_current", source_document_id: "doc_current" },
+      catalogRows: [{ supplier_name: "Supplier A", contact_phone: "138", unit_address: "Address" }]
+    });
+
+    expect(result.rows[0]).toMatchObject({ supplier_contact_phone: "138" });
+    expect(calls[2]?.[0]).toContain("document_labels");
+    expect(calls[2]).toContain("all_staff");
+    expect(calls[2]).toContain("store:baoli");
+  });
+
+  it("uses only all_staff for a zero-label non-admin catalog authorization", async () => {
+    const { calls } = await executeEnrichedQuery({
+      employee: { id: "emp_label_less", role: "employee", labels: [] },
+      latest: { id: "batch_current", source_document_id: "doc_current" },
+      catalogRows: [{ supplier_name: "Supplier A", contact_phone: "138", unit_address: "Address" }]
+    });
+
+    expect(calls[2]?.[0]).toContain("l.key = ?");
+    expect(calls[2]?.[0]).not.toContain("l.key IN");
+    expect(calls[2]).toContain("all_staff");
+  });
+
+  it("returns null dynamic values when no current catalog exists", async () => {
+    const { result, calls } = await executeEnrichedQuery({ latest: null });
+
+    expect(result.rows[0]).toEqual({
+      receipt_number: "R-1",
+      supplier_name: "Supplier A",
+      supplier_contact_phone: null,
+      supplier_unit_address: null
+    });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("returns null dynamic values when the current catalog is invisible", async () => {
+    const { result, calls } = await executeEnrichedQuery({
+      employee: { id: "emp_baoli", role: "manager", labels: ["store:baoli"] },
+      latest: { id: "batch_current", source_document_id: "doc_hidden" },
+      catalogAuthorized: false,
+      catalogRows: [
+        { supplier_name: "Supplier A", contact_phone: "hidden", unit_address: "hidden" }
+      ]
+    });
+
+    expect(result.rows[0]).toMatchObject({
+      supplier_contact_phone: null,
+      supplier_unit_address: null
+    });
+    expect(calls).toHaveLength(3);
+  });
+
+  it("does not fall back to an older visible catalog when the latest is unauthorized", async () => {
+    const { result, calls } = await executeEnrichedQuery({
+      employee: { id: "emp_baoli", role: "manager", labels: ["store:baoli"] },
+      latest: { id: "batch_latest", source_document_id: "doc_latest" },
+      catalogAuthorized: false,
+      catalogRows: [{ supplier_name: "Supplier A", contact_phone: "older", unit_address: "older" }]
+    });
+
+    expect(result.rows[0]).toMatchObject({
+      supplier_contact_phone: null,
+      supplier_unit_address: null
+    });
+    expect(calls).toHaveLength(3);
+    expect(calls[2]).toContain("doc_latest");
+  });
+
+  it("uses the last applied catalog when a newer upload is not applied", async () => {
+    const { result, calls } = await executeEnrichedQuery({
+      latest: { id: "batch_last_applied", source_document_id: "doc_last_applied" },
+      catalogRows: [
+        { supplier_name: "Supplier A", contact_phone: "last-applied", unit_address: "Address" }
+      ]
+    });
+
+    expect(result.rows[0]).toMatchObject({ supplier_contact_phone: "last-applied" });
+    expect(calls[1]?.[0]).toContain("ib.status = ?");
+    expect(calls[1]?.[0]).toContain("ib.applied_at IS NOT NULL");
+    expect(calls[1]).toContain("applied");
+  });
+
+  it.each([
+    ["supplier_contact_phone", { contact_phone: "   " }, { supplier_contact_phone: null }],
+    ["supplier_unit_address", { unit_address: "" }, { supplier_unit_address: null }]
+  ])("returns null for a blank %s", async (field, catalogRow, expected) => {
+    const { result } = await executeEnrichedQuery({
+      select: ["receipt_number", field],
+      latest: { id: "batch_current", source_document_id: "doc_current" },
+      catalogRows: [{ supplier_name: "Supplier A", ...catalogRow }]
+    });
+
+    expect(result.rows[0]).toEqual({ receipt_number: "R-1", ...expected });
+  });
+
+  it("returns null when the current catalog has no matching supplier", async () => {
+    const { result } = await executeEnrichedQuery({
+      latest: { id: "batch_current", source_document_id: "doc_current" },
+      catalogRows: [{ supplier_name: "Supplier B", contact_phone: "138", unit_address: "Address" }]
+    });
+
+    expect(result.rows[0]).toMatchObject({
+      supplier_contact_phone: null,
+      supplier_unit_address: null
+    });
+  });
+
+  it("returns null when the current catalog has an ambiguous supplier name", async () => {
+    const { result } = await executeEnrichedQuery({
+      latest: { id: "batch_current", source_document_id: "doc_current" },
+      catalogRows: [
+        { supplier_name: "Supplier A", contact_phone: "138", unit_address: "Address 1" },
+        { supplier_name: "Supplier A", contact_phone: "139", unit_address: "Address 2" }
+      ]
+    });
+
+    expect(result.rows[0]).toMatchObject({
+      supplier_contact_phone: null,
+      supplier_unit_address: null
+    });
   });
 });
