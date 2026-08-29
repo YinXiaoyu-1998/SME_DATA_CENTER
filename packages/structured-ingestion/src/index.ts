@@ -104,6 +104,25 @@ interface DeliveryLedgerMetadata extends StructuredDerivedMetadata {
   supplierName: string;
 }
 
+interface SupplierCatalogHeader {
+  index: number;
+  width: number;
+  fields: Array<{ canonicalName: string; sourceColumnIndex: number }>;
+}
+
+interface SupplierCatalogHeaderProblem {
+  index: number;
+  errors: HeaderValidationError[];
+  hasInvalidPhysicalHeaders: boolean;
+}
+
+interface SupplierCatalogSheetSelection {
+  matching: Array<{ sheet: StructuredSheetRows; header: SupplierCatalogHeader }>;
+  hiddenMatching: StructuredSheetRows[];
+  nonMatchingVisible: StructuredSheetRows[];
+  problems: Array<{ sheet: StructuredSheetRows; problem: SupplierCatalogHeaderProblem }>;
+}
+
 export interface StructuredFilePreflightInput {
   fileName: string;
   fileType: "csv" | "xlsx";
@@ -574,40 +593,55 @@ function parseSupplierCatalogSheets(
   const sheetSummary: StructuredSheetSummary[] = [];
   const ignoredSheets: IgnoredStructuredSheet[] = [];
   const rows: StructuredImportRow[] = [];
-  const sheet = oneNonEmptyVisibleSheet(sheets, issues, "supplier catalog");
-  if (!sheet) return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
-  const candidate = findHeader("supplier_catalog", sheet.rows);
-  if (!candidate || !candidate.resolution.ok) {
-    const errors = candidate && !candidate.resolution.ok ? candidate.resolution.errors : [];
-    if (errors.length) {
-      for (const error of errors) {
-        addIssue(issues, {
-          code: "INVALID_HEADER",
-          message: "Supplier catalog header is invalid.",
-          sheet,
-          rowNumber: candidate!.index + 1,
-          column: safeHeaderColumn(error),
-          legacyMessage: `Supplier catalog header validation failed: ${error.code}:${error.column}`
-        });
-      }
-    } else {
+  const selection = selectSupplierCatalogSheets(sheets);
+  for (const sheet of selection.hiddenMatching) {
+    addIssue(issues, {
+      code: "HIDDEN_SHEET",
+      message: "Matching hidden worksheets are not allowed.",
+      sheet,
+      rowNumber: null,
+      column: null,
+      legacyMessage: `Matching hidden sheet ${sheet.name} is not allowed.`
+    });
+  }
+  if (selection.matching.length !== 1) {
+    if (selection.matching.length > 1) {
       addIssue(issues, {
-        code: "UNRECOGNIZED_HEADER",
-        message: "Supplier catalog has no recognized header.",
-        sheet,
+        code: "INVALID_SHEET_COUNT",
+        message: "Supplier catalog file must contain exactly one recognized worksheet.",
+        sheet: null,
         rowNumber: null,
         column: null,
-        legacyMessage: "Supplier catalog has no recognized header."
+        legacyMessage: "Supplier catalog file must contain exactly one recognized worksheet."
+      });
+    } else if (selection.problems.length) {
+      addSupplierCatalogHeaderIssues(issues, selection.problems[0]!);
+    } else if (!selection.hiddenMatching.length) {
+      addIssue(issues, {
+        code: "NO_MATCHING_SHEET",
+        message: "Workbook has no matching visible import sheets.",
+        sheet: null,
+        rowNumber: null,
+        column: null,
+        legacyMessage: "Workbook has no matching visible import sheets."
       });
     }
     return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
   }
-  const data = dataRowsFor("supplier_catalog", sheet, candidate);
+  ignoredSheets.push(
+    ...selection.nonMatchingVisible.map((sheet) => ({
+      sheetIndex: sheet.sheetIndex,
+      name: sheet.name,
+      reason: "SCHEMA_NOT_MATCHED" as const
+    }))
+  );
+  const { sheet, header } = selection.matching[0]!;
+  const data = dataRowsFor("supplier_catalog", sheet, header);
   sheetSummary.push({
     sheetIndex: sheet.sheetIndex,
     name: sheet.name,
     hidden: sheet.hidden,
-    headerRowNumber: candidate.index + 1,
+    headerRowNumber: header.index + 1,
     dataRowCount: data.length
   });
   if (!data.length) {
@@ -623,8 +657,8 @@ function parseSupplierCatalogSheets(
   let rowLimitReported = false;
   for (const item of data) {
     if (
-      item.row.length > candidate.width &&
-      item.row.slice(candidate.width).some((value) => value.trim())
+      item.row.length > header.width &&
+      item.row.slice(header.width).some((value) => value.trim())
     ) {
       addIssue(issues, {
         code: "EXTRA_DATA_COLUMN",
@@ -636,7 +670,7 @@ function parseSupplierCatalogSheets(
       });
       continue;
     }
-    const parsed = payloadFor("supplier_catalog", candidate.resolution.fields, item.row);
+    const parsed = payloadFor("supplier_catalog", header.fields, item.row);
     if (parsed.errors.length) {
       for (const error of parsed.errors) {
         addIssue(issues, {
@@ -713,15 +747,22 @@ function profileSupplierCatalogSheets(
   input: Omit<ParseStructuredFileInput, "startDate" | "endDate">,
   sheets: StructuredSheetRows[]
 ): StructuredWorkbookProfile {
-  const sheet = oneProfiledNonEmptyVisibleSheet(sheets, "supplier catalog");
-  const candidate = findHeader("supplier_catalog", sheet.rows);
-  if (!candidate || !candidate.resolution.ok)
-    throw validation(`VALIDATION_FAILED: ${sheet.name} has no recognized supplier_catalog header`);
-  const data = dataRowsFor("supplier_catalog", sheet, candidate);
+  const selection = selectSupplierCatalogSheets(sheets);
+  if (selection.hiddenMatching.length)
+    throw validation(`Matching hidden sheet ${selection.hiddenMatching[0]!.name} is not allowed.`);
+  if (selection.matching.length > 1)
+    throw validation("Supplier catalog file must contain exactly one recognized worksheet.");
+  if (!selection.matching.length) {
+    const firstProblem = selection.problems[0];
+    if (firstProblem) throw validation(supplierCatalogHeaderLegacyMessage(firstProblem.problem));
+    throw validation("Workbook has no matching visible import sheets.");
+  }
+  const { sheet, header } = selection.matching[0]!;
+  const data = dataRowsFor("supplier_catalog", sheet, header);
   if (!data.length) throw validation("Catalog snapshot contains no rows.");
   if (data.length > input.limits.maxStructuredImportRows)
     throw validation("Structured import row limit exceeded.");
-  assertWithinHeaderWidth(data, candidate);
+  assertWithinHeaderWidth(data, header);
   return {
     dataset: input.dataset,
     registryVersion: getStructuredRegistry(input.dataset).version,
@@ -731,8 +772,8 @@ function profileSupplierCatalogSheets(
         sheetIndex: sheet.sheetIndex,
         name: sheet.name,
         hidden: sheet.hidden,
-        headerRowNumber: candidate.index + 1,
-        columnCount: candidate.width,
+        headerRowNumber: header.index + 1,
+        columnCount: header.width,
         dataRowCount: data.length,
         validationErrors: []
       }
@@ -741,6 +782,93 @@ function profileSupplierCatalogSheets(
       .filter((candidate) => isEmpty(candidate.rows))
       .map((candidate) => candidate.name)
   };
+}
+
+function selectSupplierCatalogSheets(sheets: StructuredSheetRows[]): SupplierCatalogSheetSelection {
+  const selection: SupplierCatalogSheetSelection = {
+    matching: [],
+    hiddenMatching: [],
+    nonMatchingVisible: [],
+    problems: []
+  };
+  for (const sheet of sheets) {
+    if (isEmpty(sheet.rows)) continue;
+    const inspection = inspectSupplierCatalogHeader(sheet.rows);
+    if (inspection?.kind === "match") {
+      if (sheet.hidden) selection.hiddenMatching.push(sheet);
+      else selection.matching.push({ sheet, header: inspection.header });
+      continue;
+    }
+    if (sheet.hidden) continue;
+    selection.nonMatchingVisible.push(sheet);
+    if (inspection?.kind === "problem")
+      selection.problems.push({ sheet, problem: inspection.problem });
+  }
+  return selection;
+}
+
+function inspectSupplierCatalogHeader(
+  rows: string[][]
+):
+  | { kind: "match"; header: SupplierCatalogHeader }
+  | { kind: "problem"; problem: SupplierCatalogHeaderProblem }
+  | undefined {
+  const fields = getStructuredRegistry("supplier_catalog").fields.filter(
+    (field) => field.inputSource === "file"
+  );
+  let firstProblem: SupplierCatalogHeaderProblem | undefined;
+  for (let index = 0; index < Math.min(MAX_SPECIAL_HEADER_SCAN_ROWS, rows.length); index++) {
+    const headers = rows[index] ?? [];
+    const resolution = resolveStructuredHeaders("supplier_catalog", headers);
+    const hasControlledHeader = headers.some((header) =>
+      fields.some((field) => field.aliases.includes(header))
+    );
+    const hasInvalidPhysicalHeaders =
+      headers.length !== fields.length || headers.some((header) => !header.trim());
+    if (resolution.ok && !hasInvalidPhysicalHeaders) {
+      return {
+        kind: "match",
+        header: { index, width: headers.length, fields: resolution.fields }
+      };
+    }
+    if (hasControlledHeader && !firstProblem) {
+      firstProblem = {
+        index,
+        errors: [
+          ...(resolution.ok ? [] : resolution.errors),
+          ...(hasInvalidPhysicalHeaders ? [{ code: "UNKNOWN_COLUMN", column: "" } as const] : [])
+        ],
+        hasInvalidPhysicalHeaders
+      };
+    }
+  }
+  return firstProblem ? { kind: "problem", problem: firstProblem } : undefined;
+}
+
+function addSupplierCatalogHeaderIssues(
+  issues: ValidationIssueCollector,
+  input: { sheet: StructuredSheetRows; problem: SupplierCatalogHeaderProblem }
+) {
+  for (const error of input.problem.errors) {
+    addIssue(issues, {
+      code: "INVALID_HEADER",
+      message: "Supplier catalog header is invalid.",
+      sheet: input.sheet,
+      rowNumber: input.problem.index + 1,
+      column: safeHeaderColumn(error),
+      legacyMessage: supplierCatalogHeaderLegacyMessage(input.problem, error)
+    });
+  }
+}
+
+function supplierCatalogHeaderLegacyMessage(
+  problem: SupplierCatalogHeaderProblem,
+  error?: HeaderValidationError
+) {
+  if (problem.hasInvalidPhysicalHeaders)
+    return "Supplier catalog header must contain exactly 33 nonblank controlled columns.";
+  const firstError = error ?? problem.errors[0];
+  return `Supplier catalog header validation failed: ${firstError?.code}:${firstError?.column}`;
 }
 
 function oneNonEmptyVisibleSheet(

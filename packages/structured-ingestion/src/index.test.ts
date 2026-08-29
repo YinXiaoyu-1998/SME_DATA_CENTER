@@ -35,21 +35,25 @@ describe("structured ingestion", () => {
       receiptDate: "2026-08-26"
     });
     expect(result.rows).toHaveLength(13);
-    expect(result.rows[0]?.payload).toMatchObject({
-      purchase_date: "2026-08-26",
-      store_name: "合成门店",
-      receipt_number: "SH2608250117",
-      supplier_name: "一次性-测试供应商",
-      item_name: "合成物品1",
-      specification: "件/6卷",
-      purchase_quantity: 1,
-      purchase_amount: 80,
-      production_date_or_batch: null,
-      shelf_life: null
-    });
-    expect(result.rows[0]?.payload.entry_id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-    );
+    const entryIds = result.rows.map((row) => String(row.payload.entry_id));
+    expect(new Set(entryIds)).toHaveLength(13);
+    for (const [index, row] of result.rows.entries()) {
+      expect(row.payload).toMatchObject({
+        purchase_date: "2026-08-26",
+        store_name: "合成门店",
+        receipt_number: "SH2608250117",
+        supplier_name: "一次性-测试供应商",
+        item_name: `合成物品${index + 1}`,
+        specification: "件/6卷",
+        purchase_quantity: 1,
+        purchase_amount: 80,
+        production_date_or_batch: null,
+        shelf_life: null
+      });
+      expect(entryIds[index]).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+      );
+    }
     expect(JSON.stringify(result.rows)).not.toContain("supplier_contact_phone");
     expect(JSON.stringify(result.rows)).not.toContain("supplier_unit_address");
   });
@@ -80,15 +84,44 @@ describe("structured ingestion", () => {
     });
 
     expect(result.rows).toHaveLength(2);
-    expect(result.rows[0]?.payload).toMatchObject({
-      supplier_code: "S-001",
-      supplier_name: "一次性-测试供应商",
-      contact_phone: null,
-      unit_address: "合成地址1",
-      tax_rate: 13,
-      operated_at: "2026-08-26T10:30:00"
+    expect(result.rows.map((row) => row.payload)).toEqual(expectedSupplierCatalogPayloads());
+  });
+
+  test("imports one supplier table while reporting a visible instructions sheet", async () => {
+    const result = await parseStructuredFile({
+      dataset: "supplier_catalog",
+      fileName: "supplier-with-cover.xlsx",
+      fileType: "xlsx",
+      content: await workbookBuffer([
+        [["导入说明"], ["请勿修改供应商目录工作表"]],
+        supplierCatalogRows()
+      ]),
+      limits
     });
-    expect(Object.keys(result.rows[0]?.payload ?? {})).toHaveLength(33);
+
+    expect(result.rows.map((row) => row.payload)).toEqual(expectedSupplierCatalogPayloads());
+    expect(result.ignoredSheets).toEqual([
+      { sheetIndex: 0, name: "Sheet1", reason: "SCHEMA_NOT_MATCHED" }
+    ]);
+  });
+
+  test("rejects an internal unnamed supplier header column instead of dropping its data", async () => {
+    const headers = supplierCatalogHeaders();
+    const row = supplierCatalogRow();
+    headers.splice(8, 0, "");
+    row.splice(8, 0, "must-not-disappear");
+
+    await expect(
+      parseStructuredFile({
+        dataset: "supplier_catalog",
+        fileName: "supplier-unnamed-column.csv",
+        fileType: "csv",
+        content: Buffer.from(`${headers.join(",")}\n${row.join(",")}\n`, "utf8"),
+        limits
+      })
+    ).rejects.toThrow(
+      "Supplier catalog header must contain exactly 33 nonblank controlled columns."
+    );
   });
 
   test("keeps delivery and supplier CSV/XLSX payloads equivalent", async () => {
@@ -1276,6 +1309,53 @@ function supplierCatalogRows() {
       供应商名称: "测试供应商2",
       联系人电话: "13800138000"
     })
+  ];
+}
+
+function expectedSupplierCatalogPayloads() {
+  const first = {
+    supplier_code: "S-001",
+    supplier_name: "一次性-测试供应商",
+    supplier_short_name: "值3",
+    supplier_mnemonic: "值4",
+    supplier_category: "值5",
+    settlement_method: "值6",
+    tax_rate: 13,
+    order_summary_rule: "值8",
+    scope_control: "值9",
+    supply_relationship: "值10",
+    applicable_organization: "值11",
+    procurement_receipt_depends_on_supplier_delivery: "值12",
+    delivery_depends_on_supplier_delivery: "值13",
+    record_batch_on_delivery: "值14",
+    synchronize_receipt_data: "值15",
+    batch_editable: "值16",
+    supplier_managed_inventory: "值17",
+    outsourcing_allowed: "值18",
+    order_time_control: "值19",
+    orderable_time: "值20",
+    supplier_reconciliation_mode: "值21",
+    close_order_allowed: "值22",
+    enabled_status: "值23",
+    contact_name: "值24",
+    contact_phone: null,
+    email_address: "值26",
+    contact_address: "值27",
+    remarks: "值28",
+    unit_name: "值29",
+    taxpayer_identification_number: "值30",
+    phone: "值31",
+    unit_address: "合成地址1",
+    operated_at: "2026-08-26T10:30:00"
+  };
+  return [
+    first,
+    {
+      ...first,
+      supplier_code: "S-002",
+      supplier_name: "测试供应商2",
+      contact_phone: "13800138000"
+    }
   ];
 }
 
