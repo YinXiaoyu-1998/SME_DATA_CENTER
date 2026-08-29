@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { createOriginalObjectKey } from "@enterprise-hub/storage";
 import {
   canonicalStructuredImportFileName,
   structuredImportFingerprint,
@@ -149,5 +150,33 @@ describe("structured import workflow metadata", () => {
       )
       .digest("hex");
     expect(structuredImportFingerprint(supplierInput)).toBe(expectedSupplierFingerprint);
+  });
+
+  it("bounds expanded receipt names and keeps long receipt values deterministically unique", () => {
+    const receiptA = `${"收".repeat(254)}甲`;
+    const receiptB = `${"收".repeat(254)}乙`;
+    const input = {
+      dataset: "delivery_ledger" as const,
+      enterpriseName: "Maijia",
+      startDate: "20260826",
+      endDate: "20260826",
+      fileType: "xlsx" as const
+    };
+    const nameA = canonicalStructuredImportFileName({ ...input, receiptNumber: receiptA });
+    const nameARepeat = canonicalStructuredImportFileName({ ...input, receiptNumber: receiptA });
+    const nameB = canonicalStructuredImportFileName({ ...input, receiptNumber: receiptB });
+    const keyA = createOriginalObjectKey({
+      orgId: "default-org",
+      documentId: "doc_123456789012345678901234",
+      fileName: nameA
+    });
+
+    expect(nameA).toBe(nameARepeat);
+    expect(nameA).not.toBe(nameB);
+    expect(nameA).toMatch(/\.xlsx$/);
+    expect(nameA.length).toBeLessThanOrEqual(200);
+    expect(keyA.length).toBeLessThan(512);
+    expect(nameA).toContain("delivery_ledger");
+    expect(nameA).toContain("u6536");
   });
 });

@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,6 +7,7 @@ import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
 import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
+import { structuredImportFingerprint } from "./workflow.js";
 import { buildApiServer } from "../../server.js";
 import {
   adminEmployee,
@@ -47,13 +49,15 @@ describe("structured imports", () => {
       runtimeEnv?: NodeJS.ProcessEnv;
       storageAdapter?: StorageAdapter;
       failStoragePuts?: number;
+      eventLog?: string[];
     } = {}
   ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
     const documentRepository = createDocumentRepository();
     const structuredImportRepository = createInMemoryStructuredImportRepository(
       documentRepository.documents,
-      documentRepository.auditLogs
+      documentRepository.auditLogs,
+      { eventLog: options.eventLog }
     );
     const localStorage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     let storagePutCalls = 0;
@@ -62,6 +66,7 @@ describe("structured imports", () => {
     const storageAdapter: StorageAdapter = {
       async putObject(input) {
         storagePutCalls++;
+        options.eventLog?.push("storage");
         if (remainingStorageFailures > 0) {
           remainingStorageFailures--;
           throw new Error("simulated storage failure");
@@ -260,8 +265,9 @@ describe("structured imports", () => {
   });
 
   it("derives delivery metadata before reservation and replays by receipt without another storage write", async () => {
+    const eventLog: string[] = [];
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
-      await buildStructuredImportTestServer();
+      await buildStructuredImportTestServer(undefined, { eventLog });
     const body = Buffer.from(deliveryReceiptCsv(), "utf8");
 
     const first = await postStructuredImport(app, {
@@ -296,17 +302,30 @@ describe("structured imports", () => {
     expect(first.json().document.storageObjectKey).toContain(
       "u4fdd_u5229_u5e97_delivery_ledger_SH2608250117_20260826.csv"
     );
+    expect(structuredImportRepository.batches[0]?.requestFingerprint).toBe(
+      structuredImportFingerprint({
+        dataset: "delivery_ledger",
+        enterpriseName: "保利店",
+        startDate: "20260826",
+        endDate: "20260826",
+        naturalKey: "SH2608250117",
+        labelKeys: ["store:baoli"],
+        fileHash: createHash("sha256").update(body).digest("hex")
+      })
+    );
     expect(replay.statusCode).toBe(202);
     expect(replay.json().importBatch.importBatchId).toBe(first.json().importBatch.importBatchId);
     expect(replay.json().document).toEqual(first.json().document);
     expect(storagePutCalls()).toBe(1);
     expect(documentRepository.documents).toHaveLength(1);
     expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(eventLog).toEqual(["profile", "reservation", "storage", "profile", "reservation"]);
   });
 
   it("rejects a changed delivery receipt before creating a document or writing storage", async () => {
+    const eventLog: string[] = [];
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
-      await buildStructuredImportTestServer();
+      await buildStructuredImportTestServer(undefined, { eventLog });
     const first = await postStructuredImport(app, {
       dataset: "delivery_ledger",
       startDate: null,
@@ -336,6 +355,25 @@ describe("structured imports", () => {
     expect(documentRepository.documents).toHaveLength(1);
     expect(structuredImportRepository.batches).toHaveLength(1);
     expect(JSON.stringify(conflict.json())).not.toContain("不同内容");
+    expect(eventLog).toEqual(["profile", "reservation", "storage", "profile", "reservation"]);
+  });
+
+  it("accepts a maximum-expansion receipt without a storage-key overflow or 500", async () => {
+    const { app, storagePutCalls } = await buildStructuredImportTestServer();
+    const response = await postStructuredImport(app, {
+      dataset: "delivery_ledger",
+      startDate: null,
+      endDate: null,
+      idempotencyKey: "delivery-long-receipt",
+      fileName: "delivery.csv",
+      contentType: "text/csv",
+      body: Buffer.from(deliveryReceiptCsv({ receiptNumber: "收".repeat(255) }), "utf8")
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json().document.storageObjectKey.length).toBeLessThan(512);
+    expect(response.json().document.storageObjectKey).toMatch(/\.csv$/);
+    expect(storagePutCalls()).toBe(1);
   });
 
   it("queues an undated supplier catalog with a content-digest canonical name and no row metadata", async () => {

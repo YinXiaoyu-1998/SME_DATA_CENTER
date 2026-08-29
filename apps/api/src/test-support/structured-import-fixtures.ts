@@ -136,7 +136,8 @@ export function createStructuredImportMultipart(input: {
 
 export function createInMemoryStructuredImportRepository(
   documents: RecordedDocument[],
-  auditLogs: RecordedAuditLog[]
+  auditLogs: RecordedAuditLog[],
+  options: { eventLog?: string[] } = {}
 ) {
   type StoredRow = {
     dataset: StructuredDatasetName;
@@ -253,6 +254,10 @@ export function createInMemoryStructuredImportRepository(
       totalRowCount: number;
       audit: RequestAuditContext;
     }) {
+      if (input.dataset === "delivery_ledger" && input.naturalKey !== undefined) {
+        options.eventLog?.push("profile");
+      }
+      options.eventLog?.push("reservation");
       const existingIdempotencyBatch = batches.find(
         (batch) => batch.orgId === input.orgId && batch.idempotencyKey === input.idempotencyKey
       );

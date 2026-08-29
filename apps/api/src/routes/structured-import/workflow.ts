@@ -11,6 +11,8 @@ import {
 } from "@enterprise-hub/domain";
 import type { StructuredImportBatchRecord } from "../../structured-imports.js";
 
+const MAX_CANONICAL_FILE_NAME_CHARS = 200;
+
 export interface ParsedStructuredImportUpload {
   file?: {
     fileName: string;
@@ -252,7 +254,7 @@ export function canonicalStructuredImportFileName(input: {
   fileHash?: string;
   fileType: "xlsx" | "csv";
 }) {
-  let enterpriseSegment =
+  const enterpriseSegment =
     input.enterpriseName
       .trim()
       .split("")
@@ -268,25 +270,49 @@ export function canonicalStructuredImportFileName(input: {
   const registry = getStructuredRegistry(input.dataset);
   const metadataSegment =
     registry.metadataPolicy === "snapshot"
-      ? input.snapshotDate
+      ? (input.snapshotDate ?? "snapshot")
       : registry.metadataPolicy === "derived_receipt"
         ? `${canonicalValueSegment(input.receiptNumber ?? "receipt")}_${input.startDate ?? "undated"}`
         : registry.metadataPolicy === "none"
           ? (input.contentDigest ?? input.fileHash ?? "content")
           : `${input.startDate}_${input.endDate}`;
-  const suffix = `_${input.dataset}_${metadataSegment}.${input.fileType}`;
-  const maxEnterpriseSegmentChars = PUBLIC_INPUT_LIMITS.uploadFilenameChars - suffix.length;
+  const extension = `.${input.fileType}`;
+  const fullStem = `${enterpriseSegment}_${input.dataset}_${metadataSegment}`;
+  const fullName = `${fullStem}${extension}`;
+  if (fullName.length <= MAX_CANONICAL_FILE_NAME_CHARS) return fullName;
 
-  if (enterpriseSegment.length > maxEnterpriseSegmentChars) {
-    const digest = createHash("sha256").update(input.enterpriseName).digest("hex").slice(0, 12);
-    const hashSuffix = `_h${digest}`;
-    enterpriseSegment = `${enterpriseSegment.slice(
-      0,
-      maxEnterpriseSegmentChars - hashSuffix.length
-    )}${hashSuffix}`;
+  const fullCanonicalInput = JSON.stringify({
+    enterpriseName: input.enterpriseName,
+    enterpriseSegment,
+    dataset: input.dataset,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    snapshotDate: input.snapshotDate,
+    receiptNumber: input.receiptNumber,
+    metadataSegment,
+    contentDigest: input.contentDigest ?? input.fileHash
+  });
+  const hashSuffix = `_h${createHash("sha256").update(fullCanonicalInput).digest("hex").slice(0, 24)}`;
+  const availableStemChars = MAX_CANONICAL_FILE_NAME_CHARS - extension.length - hashSuffix.length;
+  let boundedStem: string;
+
+  if (registry.metadataPolicy === "derived_receipt") {
+    const datasetPrefix = `${input.dataset}_`;
+    const availableReadableChars = availableStemChars - datasetPrefix.length - 1;
+    const metadataChars = Math.min(
+      metadataSegment.length,
+      Math.max(0, availableReadableChars - Math.min(enterpriseSegment.length, 48))
+    );
+    const enterpriseChars = availableReadableChars - metadataChars;
+    boundedStem =
+      enterpriseChars > 0
+        ? `${enterpriseSegment.slice(0, enterpriseChars)}_${datasetPrefix}${metadataSegment.slice(0, metadataChars)}${hashSuffix}`
+        : `${fullStem.slice(0, Math.max(0, availableStemChars))}${hashSuffix}`;
+  } else {
+    boundedStem = `${fullStem.slice(0, Math.max(0, availableStemChars))}${hashSuffix}`;
   }
 
-  return `${enterpriseSegment}${suffix}`;
+  return `${boundedStem}${extension}`;
 }
 
 export function structuredImportFingerprint(input: {
