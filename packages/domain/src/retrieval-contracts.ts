@@ -58,6 +58,7 @@ export const PHASE3_ERROR_CODES = {
   activeImportExists: "ACTIVE_IMPORT_EXISTS",
   importInProgress: "IMPORT_IN_PROGRESS",
   idempotencyKeyConflict: "IDEMPOTENCY_KEY_CONFLICT",
+  receiptNumberConflict: "RECEIPT_NUMBER_CONFLICT",
   processingFailed: "PROCESSING_FAILED",
   temporarilyUnavailable: "TEMPORARILY_UNAVAILABLE",
   internalError: "INTERNAL_ERROR"

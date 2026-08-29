@@ -26,5 +26,6 @@ describe("Phase 3 retrieval contracts", () => {
     expect(PHASE3_ERROR_CODES.unsupportedFileType).toBe("UNSUPPORTED_FILE_TYPE");
     expect(PHASE3_ERROR_CODES.temporarilyUnavailable).toBe("TEMPORARILY_UNAVAILABLE");
     expect(PHASE3_ERROR_CODES.idempotencyKeyConflict).toBe("IDEMPOTENCY_KEY_CONFLICT");
+    expect(PHASE3_ERROR_CODES.receiptNumberConflict).toBe("RECEIPT_NUMBER_CONFLICT");
   });
 });

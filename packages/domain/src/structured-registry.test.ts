@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   STRUCTURED_DATASET_REGISTRIES,
+  STRUCTURED_DATASETS,
   buildStructuredHeaderLookup,
   getStructuredRegistry,
   resolveStructuredHeaders,
@@ -8,13 +9,153 @@ import {
 } from "./structured-registry.js";
 
 describe("structured field registries", () => {
+  test("registers delivery-ledger and supplier-catalog dataset contracts", () => {
+    expect(STRUCTURED_DATASETS).toEqual([
+      "dishes",
+      "business",
+      "vip",
+      "dish_catalog",
+      "delivery_ledger",
+      "supplier_catalog"
+    ]);
+
+    expect(getStructuredRegistry("delivery_ledger")).toMatchObject({
+      dataset: "delivery_ledger",
+      version: "delivery_ledger.2026-08-29.v1",
+      rowTable: "delivery_ledger_rows",
+      metadataPolicy: "derived_receipt"
+    });
+    expect(getStructuredRegistry("supplier_catalog")).toMatchObject({
+      dataset: "supplier_catalog",
+      version: "supplier_catalog.2026-08-29.v1",
+      rowTable: "supplier_catalog_rows",
+      metadataPolicy: "none"
+    });
+  });
+
+  test("publishes the complete delivery-ledger field contract", () => {
+    const ledger = getStructuredRegistry("delivery_ledger");
+
+    expect(ledger.fields.map((field) => field.canonicalName)).toEqual([
+      "entry_id",
+      "purchase_date",
+      "store_name",
+      "receipt_number",
+      "supplier_name",
+      "item_name",
+      "specification",
+      "purchase_quantity",
+      "purchase_amount",
+      "production_date_or_batch",
+      "shelf_life",
+      "supplier_contact_phone",
+      "supplier_unit_address"
+    ]);
+    expect(ledger.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          canonicalName: "entry_id",
+          inputSource: "derived",
+          type: "string"
+        }),
+        expect.objectContaining({
+          canonicalName: "purchase_date",
+          sourceColumn: "收货日期",
+          inputSource: "derived",
+          type: "date"
+        }),
+        expect.objectContaining({
+          canonicalName: "item_name",
+          sourceColumn: "物品名称",
+          inputSource: "file",
+          type: "string"
+        }),
+        expect.objectContaining({
+          canonicalName: "purchase_quantity",
+          sourceColumn: "收货数量",
+          inputSource: "file",
+          type: "decimal"
+        }),
+        expect.objectContaining({
+          canonicalName: "production_date_or_batch",
+          inputSource: "derived",
+          nullable: true
+        }),
+        expect.objectContaining({
+          canonicalName: "shelf_life",
+          inputSource: "derived",
+          nullable: true
+        })
+      ])
+    );
+  });
+
+  test("preserves every controlled supplier source column with stable lookup fields", () => {
+    const supplier = getStructuredRegistry("supplier_catalog");
+
+    expect(supplier.fields.map((field) => field.sourceColumn)).toEqual([
+      "供应商编码",
+      "供应商名称",
+      "供应商简称",
+      "供应商助记码",
+      "供应商类别",
+      "结算方式",
+      "税率",
+      "订单汇总规则",
+      "范围控制",
+      "供货关系",
+      "适用机构",
+      "采购收货依赖供应商发货",
+      "配送依赖供应商发货",
+      "发货时录入批次",
+      "同步收货数据",
+      "批次允许编辑",
+      "供应商管理库存",
+      "允许委外",
+      "控制下单时间",
+      "可下单时间",
+      "供应商对账模式",
+      "允许关闭订单",
+      "启用状态",
+      "联系人",
+      "联系人电话",
+      "邮箱地址",
+      "联系地址",
+      "备注",
+      "单位名称",
+      "纳税人识别号",
+      "电话",
+      "单位地址",
+      "操作时间"
+    ]);
+    expect(supplier.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ canonicalName: "supplier_code", sourceColumn: "供应商编码" }),
+        expect.objectContaining({ canonicalName: "supplier_name", sourceColumn: "供应商名称" }),
+        expect.objectContaining({ canonicalName: "contact_phone", sourceColumn: "联系人电话" }),
+        expect.objectContaining({ canonicalName: "unit_address", sourceColumn: "单位地址" })
+      ])
+    );
+  });
+
+  test("limits dynamic delivery supplier fields to result enrichment", () => {
+    const ledger = getStructuredRegistry("delivery_ledger");
+
+    for (const canonicalName of ["supplier_contact_phone", "supplier_unit_address"]) {
+      expect(ledger.fields.find((field) => field.canonicalName === canonicalName)).toMatchObject({
+        inputSource: "dynamic_lookup",
+        capabilities: { filter: false, sort: false, group: false, aggregate: false }
+      });
+    }
+  });
+
   test("cover every reviewed dishes and business export column", () => {
     expect(getStructuredRegistry("dishes").fields).toHaveLength(51);
     expect(getStructuredRegistry("business").fields).toHaveLength(152);
     expect(getStructuredRegistry("vip").fields).toHaveLength(66);
   });
 
-  test("registers the catalog snapshot schema and its metadata date policy", () => {
+  test("registers the catalog snapshot schema and its metadata policy", () => {
     const catalog = getStructuredRegistry("dish_catalog");
 
     expect(catalog).toMatchObject({
@@ -22,7 +163,7 @@ describe("structured field registries", () => {
       version: "dish_catalog.2026-08-22.v1",
       rowTable: "dish_catalog_rows",
       sheetPolicy: "import_matching_visible",
-      datePolicy: "snapshot_metadata"
+      metadataPolicy: "snapshot"
     });
     expect(catalog.fields).toEqual(
       expect.arrayContaining([
