@@ -214,6 +214,60 @@ describe("structured ingestion", () => {
     }
   });
 
+  test("rejects ambiguous duplicate delivery headers and metadata labels", async () => {
+    const duplicateItemHeader = deliveryLedgerRows();
+    duplicateItemHeader[3]!.splice(2, 0, "物品名称");
+    for (const row of duplicateItemHeader.slice(4, 17)) row.splice(2, 0, "冲突物品");
+
+    const duplicateMetadata = deliveryLedgerRows({
+      metadataRows: [
+        ["单据号", "SH2608250117", "订货机构", "合成门店"],
+        ["单据号", "SH-CONFLICT", "送货机构", "一次性-测试供应商", "收货日期", "2026-08-26"]
+      ]
+    });
+
+    for (const [rows, error] of [
+      [duplicateItemHeader, "Delivery receipt item header contains duplicate 物品名称 columns."],
+      [duplicateMetadata, "Delivery receipt metadata 单据号 must appear exactly once."]
+    ] as const) {
+      await expect(
+        parseStructuredFile({
+          dataset: "delivery_ledger",
+          fileName: "ambiguous-delivery.xlsx",
+          fileType: "xlsx",
+          content: await workbookBuffer([rows]),
+          limits: limitsFor({ maxStructuredImportRows: 20 })
+        })
+      ).rejects.toThrow(error);
+    }
+
+    for (const [fileName, fileType, content] of [
+      [
+        "ambiguous-delivery.csv",
+        "csv",
+        Buffer.from(duplicateItemHeader.map((row) => row.join(",")).join("\n"), "utf8")
+      ],
+      ["ambiguous-delivery.xlsx", "xlsx", await workbookBuffer([duplicateItemHeader])]
+    ] as const) {
+      const collected = await parseStructuredFile({
+        dataset: "delivery_ledger",
+        fileName,
+        fileType,
+        content,
+        limits: limitsFor({ maxStructuredImportRows: 20 }),
+        validationMode: "collect"
+      });
+
+      expect(collected.rows).toEqual([]);
+      expect(collected.validationErrors).toContainEqual(
+        expect.objectContaining({
+          code: "INVALID_HEADER",
+          message: "Delivery receipt item header is ambiguous."
+        })
+      );
+    }
+  });
+
   test("rejects an XLSX supplier catalog with a controlled-header mismatch", async () => {
     const headers = supplierCatalogHeaders();
     headers[headers.indexOf("单位地址")] = "地址";

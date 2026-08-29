@@ -487,7 +487,20 @@ function parseDeliveryLedgerSheets(
   const sheet = oneNonEmptyVisibleSheet(sheets, issues, "delivery receipt");
   if (!sheet) return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
 
-  const header = findDeliveryDetailHeader(sheet.rows);
+  let header: ReturnType<typeof findDeliveryDetailHeader>;
+  try {
+    header = findDeliveryDetailHeader(sheet.rows);
+  } catch (error) {
+    addIssue(issues, {
+      code: "INVALID_HEADER",
+      message: "Delivery receipt item header is ambiguous.",
+      sheet,
+      rowNumber: null,
+      column: null,
+      legacyMessage: errorMessage(error)
+    });
+    return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
+  }
   if (!header) {
     addIssue(issues, {
       code: "MISSING_REQUIRED_COLUMN",
@@ -940,6 +953,10 @@ function addIssue(
 function findDeliveryDetailHeader(rows: string[][]) {
   for (let index = 0; index < Math.min(MAX_SPECIAL_HEADER_SCAN_ROWS, rows.length); index++) {
     const headers = trimTail(rows[index] ?? []);
+    for (const column of DELIVERY_ITEM_COLUMNS) {
+      if (headers.filter((header) => header === column).length > 1)
+        throw validation(`Delivery receipt item header contains duplicate ${column} columns.`);
+    }
     const columns = new Map(headers.map((header, column) => [header, column]));
     if (DELIVERY_ITEM_COLUMNS.every((column) => columns.has(column)))
       return { index, width: headers.length, columns };
@@ -972,14 +989,19 @@ function deliveryDerivedMetadataOrThrow(
   headerIndex: number
 ): DeliveryLedgerMetadata {
   const metadata = new Map<string, string>();
+  const seenLabels = new Set<string>();
   for (const row of sheet.rows.slice(0, headerIndex)) {
     for (let column = 0; column < row.length - 1; column++) {
       const label = row[column]?.trim();
       if (
         label &&
         DELIVERY_METADATA_COLUMNS.includes(label as (typeof DELIVERY_METADATA_COLUMNS)[number])
-      )
+      ) {
+        if (seenLabels.has(label))
+          throw validation(`Delivery receipt metadata ${label} must appear exactly once.`);
+        seenLabels.add(label);
         metadata.set(label, row[column + 1]?.trim() ?? "");
+      }
     }
   }
   for (const label of DELIVERY_METADATA_COLUMNS) {
