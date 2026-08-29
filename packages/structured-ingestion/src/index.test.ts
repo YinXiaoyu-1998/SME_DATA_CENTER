@@ -21,6 +21,189 @@ const limits: StructuredIngestionLimits = {
 };
 
 describe("structured ingestion", () => {
+  test("transforms a delivery ledger CSV into one electronic row per item", async () => {
+    const result = await parseStructuredFile({
+      dataset: "delivery_ledger",
+      fileName: "delivery.csv",
+      fileType: "csv",
+      content: Buffer.from(deliveryLedgerCsv(), "utf8"),
+      limits: limitsFor({ maxStructuredImportRows: 20 })
+    });
+
+    expect(result.derivedMetadata).toEqual({
+      receiptNumber: "SH2608250117",
+      receiptDate: "2026-08-26"
+    });
+    expect(result.rows).toHaveLength(13);
+    expect(result.rows[0]?.payload).toMatchObject({
+      purchase_date: "2026-08-26",
+      store_name: "合成门店",
+      receipt_number: "SH2608250117",
+      supplier_name: "一次性-测试供应商",
+      item_name: "合成物品1",
+      specification: "件/6卷",
+      purchase_quantity: 1,
+      purchase_amount: 80,
+      production_date_or_batch: null,
+      shelf_life: null
+    });
+    expect(result.rows[0]?.payload.entry_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
+    expect(JSON.stringify(result.rows)).not.toContain("supplier_contact_phone");
+    expect(JSON.stringify(result.rows)).not.toContain("supplier_unit_address");
+  });
+
+  test("profiles receipt metadata without generating ledger entry UUIDs", async () => {
+    const profile = await profileStructuredFile({
+      dataset: "delivery_ledger",
+      fileName: "delivery.csv",
+      fileType: "csv",
+      content: Buffer.from(deliveryLedgerCsv(), "utf8"),
+      limits: limitsFor({ maxStructuredImportRows: 20 })
+    });
+
+    expect(profile.derivedMetadata).toEqual({
+      receiptNumber: "SH2608250117",
+      receiptDate: "2026-08-26"
+    });
+    expect(JSON.stringify(profile)).not.toContain("entry_id");
+  });
+
+  test("preserves every controlled supplier catalog CSV value and nullable cell", async () => {
+    const result = await parseStructuredFile({
+      dataset: "supplier_catalog",
+      fileName: "suppliers.csv",
+      fileType: "csv",
+      content: Buffer.from(supplierCatalogCsv(), "utf8"),
+      limits
+    });
+
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]?.payload).toMatchObject({
+      supplier_code: "S-001",
+      supplier_name: "一次性-测试供应商",
+      contact_phone: null,
+      unit_address: "合成地址1",
+      tax_rate: 13,
+      operated_at: "2026-08-26T10:30:00"
+    });
+    expect(Object.keys(result.rows[0]?.payload ?? {})).toHaveLength(33);
+  });
+
+  test("keeps delivery and supplier CSV/XLSX payloads equivalent", async () => {
+    const [deliveryCsv, deliveryXlsx, supplierCsv, supplierXlsx] = await Promise.all([
+      parseStructuredFile({
+        dataset: "delivery_ledger",
+        fileName: "delivery.csv",
+        fileType: "csv",
+        content: Buffer.from(deliveryLedgerCsv(), "utf8"),
+        limits: limitsFor({ maxStructuredImportRows: 20 })
+      }),
+      parseStructuredFile({
+        dataset: "delivery_ledger",
+        fileName: "delivery.xlsx",
+        fileType: "xlsx",
+        content: await workbookBuffer([deliveryLedgerRows()]),
+        limits: limitsFor({ maxStructuredImportRows: 20 })
+      }),
+      parseStructuredFile({
+        dataset: "supplier_catalog",
+        fileName: "suppliers.csv",
+        fileType: "csv",
+        content: Buffer.from(supplierCatalogCsv(), "utf8"),
+        limits
+      }),
+      parseStructuredFile({
+        dataset: "supplier_catalog",
+        fileName: "suppliers.xlsx",
+        fileType: "xlsx",
+        content: await workbookBuffer([supplierCatalogRows()]),
+        limits
+      })
+    ]);
+
+    expect(withoutEntryIds(deliveryXlsx.rows)).toEqual(withoutEntryIds(deliveryCsv.rows));
+    expect(supplierXlsx.rows).toEqual(supplierCsv.rows);
+  });
+
+  test("does not import numeric-looking delivery rows after a receipt summary", async () => {
+    const rows = deliveryLedgerRows();
+    rows.push(["99", "页脚物品", "件/6卷", "1", "80"]);
+    const result = await parseStructuredFile({
+      dataset: "delivery_ledger",
+      fileName: "delivery-footer.xlsx",
+      fileType: "xlsx",
+      content: await workbookBuffer([rows]),
+      limits: limitsFor({ maxStructuredImportRows: 20 })
+    });
+
+    expect(result.rows).toHaveLength(13);
+    expect(result.rows.map((row) => row.payload.item_name)).not.toContain("页脚物品");
+  });
+
+  test("rejects XLSX delivery workbook policy violations", async () => {
+    const missingMetadata = deliveryLedgerRows({
+      metadataRows: [
+        ["单据号", "SH2608250117", "订货机构", "合成门店"],
+        ["送货机构", "一次性-测试供应商", "收货日期", ""]
+      ]
+    });
+    const invalidDate = deliveryLedgerRows({
+      metadataRows: [
+        ["单据号", "SH2608250117", "订货机构", "合成门店"],
+        ["送货机构", "一次性-测试供应商", "收货日期", "2026-02-30"]
+      ]
+    });
+    const invalidDecimal = deliveryLedgerRows({ itemRows: [["1", "物品", "件", "1.", "80"]] });
+    const emptyItems = deliveryLedgerRows({ itemRows: [] });
+    const hidden = new ExcelJS.Workbook();
+    hidden.addWorksheet("Visible").addRows(deliveryLedgerRows());
+    hidden.addWorksheet("Hidden", { state: "hidden" }).addRows(deliveryLedgerRows());
+
+    for (const [content, error] of [
+      [await workbookBuffer([deliveryLedgerRows(), deliveryLedgerRows()]), "exactly one non-empty"],
+      [await workbookBuffer([missingMetadata]), "收货日期 is required"],
+      [await workbookBuffer([invalidDate]), "收货日期 must be a date"],
+      [await workbookBuffer([invalidDecimal]), "purchase_quantity must be numeric"],
+      [await workbookBuffer([emptyItems]), "contains no item rows"],
+      [Buffer.from(await hidden.xlsx.writeBuffer()), "Hidden non-empty sheet Hidden is not allowed"]
+    ] as const) {
+      await expect(
+        parseStructuredFile({
+          dataset: "delivery_ledger",
+          fileName: "invalid-delivery.xlsx",
+          fileType: "xlsx",
+          content,
+          limits: limitsFor({ maxStructuredImportRows: 20 })
+        })
+      ).rejects.toThrow(error);
+    }
+  });
+
+  test("rejects an XLSX supplier catalog with a controlled-header mismatch", async () => {
+    const headers = supplierCatalogHeaders();
+    headers[headers.indexOf("单位地址")] = "地址";
+
+    await expect(
+      parseStructuredFile({
+        dataset: "supplier_catalog",
+        fileName: "invalid-suppliers.xlsx",
+        fileType: "xlsx",
+        content: await workbookBuffer([
+          [
+            ["供应商目录"],
+            ["导出机构", "合成门店"],
+            ["导出日期", "2026-08-26"],
+            headers,
+            supplierCatalogRow()
+          ]
+        ]),
+        limits
+      })
+    ).rejects.toThrow("UNKNOWN_COLUMN:地址");
+  });
+
   test("rejects a hidden non-empty XLSX worksheet during profiling", async () => {
     const workbook = new ExcelJS.Workbook();
     workbook.addWorksheet("Visible");
@@ -1027,6 +1210,95 @@ describe("structured ingestion", () => {
 
 function dishesHeaders() {
   return getStructuredRegistry("dishes").fields.map((field) => field.sourceColumn);
+}
+
+function deliveryLedgerRows(overrides: { metadataRows?: string[][]; itemRows?: string[][] } = {}) {
+  const metadataRows = overrides.metadataRows ?? [
+    ["单据号", "SH2608250117", "订货机构", "合成门店"],
+    ["送货机构", "一次性-测试供应商", "收货日期", "2026-08-26"]
+  ];
+  const itemRows =
+    overrides.itemRows ??
+    Array.from({ length: 13 }, (_, index) => [
+      String(index + 1),
+      `合成物品${index + 1}`,
+      "件/6卷",
+      "1",
+      "80"
+    ]);
+  return [
+    ["送货单"],
+    ...metadataRows,
+    ["序号", "物品名称", "规格型号", "收货数量", "收货金额"],
+    ...itemRows,
+    ["合计", "", "", "13", "1040"],
+    ["验收人", "合成验收人"]
+  ];
+}
+
+function deliveryLedgerCsv(overrides: { metadataRows?: string[][]; itemRows?: string[][] } = {}) {
+  return deliveryLedgerRows(overrides)
+    .map((row) => row.join(","))
+    .join("\n");
+}
+
+function supplierCatalogHeaders() {
+  return getStructuredRegistry("supplier_catalog")
+    .fields.filter((field) => field.inputSource === "file")
+    .map((field) => field.sourceColumn);
+}
+
+function supplierCatalogRow(overrides: Record<string, string> = {}): string[] {
+  const values = Object.fromEntries(
+    supplierCatalogHeaders().map((header, index) => [header, `值${index + 1}`])
+  );
+  Object.assign(values, {
+    供应商编码: "S-001",
+    供应商名称: "一次性-测试供应商",
+    税率: "13",
+    联系人电话: "",
+    单位地址: "合成地址1",
+    操作时间: "2026-08-26 10:30:00",
+    ...overrides
+  });
+  return supplierCatalogHeaders().map((header) => values[header]!);
+}
+
+function supplierCatalogRows() {
+  return [
+    ["供应商目录"],
+    ["导出机构", "合成门店"],
+    ["导出日期", "2026-08-26"],
+    supplierCatalogHeaders(),
+    supplierCatalogRow(),
+    supplierCatalogRow({
+      供应商编码: "S-002",
+      供应商名称: "测试供应商2",
+      联系人电话: "13800138000"
+    })
+  ];
+}
+
+function supplierCatalogCsv() {
+  return supplierCatalogRows()
+    .map((row) => row.join(","))
+    .join("\n");
+}
+
+async function workbookBuffer(sheets: string[][][]) {
+  const workbook = new ExcelJS.Workbook();
+  for (const [index, rows] of sheets.entries()) {
+    workbook.addWorksheet(`Sheet${index + 1}`).addRows(rows);
+  }
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+function withoutEntryIds(rows: Array<{ payload: Record<string, unknown> }>) {
+  return rows.map(({ payload, ...row }) => {
+    const stablePayload = { ...payload };
+    delete stablePayload.entry_id;
+    return { ...row, payload: stablePayload };
+  });
 }
 
 function catalogHeaders() {
