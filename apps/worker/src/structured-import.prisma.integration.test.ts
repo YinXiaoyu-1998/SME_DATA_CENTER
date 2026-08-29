@@ -216,6 +216,88 @@ describeIntegration("Prisma structured import worker repository", () => {
       expect.objectContaining({ name: "Sheet1", status: "imported" }),
       { sheetIndex: 1, name: "总部套餐", reason: "SCHEMA_NOT_MATCHED", status: "ignored" }
     ]);
+    expect(
+      (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
+        .appliedAt
+    ).toEqual(now);
+    await repository.disconnect?.();
+  });
+
+  it("publishes delivery ledger rows and appliedAt in one transaction", async () => {
+    const repository = createPrismaProcessingWorkerRepository(databaseUrl);
+    const fixture = await createStructuredRun(prisma, "dlgr", ImportDataset.delivery_ledger);
+    const now = new Date("2026-08-29T03:00:00.000Z");
+    await repository.claimNextProcessingRun({
+      workerId: "worker-delivery",
+      leaseSeconds: 120,
+      now
+    });
+    await repository.beginStructuredImportApply?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      workerId: "worker-delivery",
+      now
+    });
+    await repository.completeStructuredImport?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      workerId: "worker-delivery",
+      now,
+      batchInsertSize: 500,
+      result: structuredResult()
+    });
+
+    expect(
+      await prisma.deliveryLedgerRow.count({ where: { importBatchId: fixture.importBatchId } })
+    ).toBe(1);
+    expect(
+      await prisma.supplierCatalogRow.count({ where: { importBatchId: fixture.importBatchId } })
+    ).toBe(0);
+    expect(
+      (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
+        .appliedAt
+    ).toEqual(now);
+    await repository.disconnect?.();
+  });
+
+  it("publishes supplier catalog rows and appliedAt in one transaction", async () => {
+    const repository = createPrismaProcessingWorkerRepository(databaseUrl);
+    const fixture = await createStructuredRun(prisma, "supcat", ImportDataset.supplier_catalog);
+    const now = new Date("2026-08-29T04:00:00.000Z");
+    await repository.claimNextProcessingRun({
+      workerId: "worker-supplier",
+      leaseSeconds: 120,
+      now
+    });
+    await repository.beginStructuredImportApply?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      workerId: "worker-supplier",
+      now
+    });
+    await repository.completeStructuredImport?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      workerId: "worker-supplier",
+      now,
+      batchInsertSize: 500,
+      result: structuredResult()
+    });
+
+    expect(
+      await prisma.supplierCatalogRow.count({ where: { importBatchId: fixture.importBatchId } })
+    ).toBe(1);
+    expect(
+      await prisma.deliveryLedgerRow.count({ where: { importBatchId: fixture.importBatchId } })
+    ).toBe(0);
+    expect(
+      (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
+        .appliedAt
+    ).toEqual(now);
     await repository.disconnect?.();
   });
 
@@ -412,6 +494,8 @@ async function clearTestRecords(prisma: PrismaClient) {
   await prisma.businessRow.deleteMany({ where: { orgId } });
   await prisma.vipRow.deleteMany({ where: { orgId } });
   await prisma.dishCatalogRow.deleteMany({ where: { orgId } });
+  await prisma.deliveryLedgerRow.deleteMany({ where: { orgId } });
+  await prisma.supplierCatalogRow.deleteMany({ where: { orgId } });
   await prisma.processingRun.deleteMany({ where: { orgId } });
   await prisma.importWindowClaim.deleteMany({ where: { orgId } });
   await prisma.importBatch.deleteMany({ where: { orgId } });

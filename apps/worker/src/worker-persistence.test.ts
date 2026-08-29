@@ -14,6 +14,8 @@ const prisma = vi.hoisted(() => ({
   businessRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   vipRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   dishCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+  deliveryLedgerRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+  supplierCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   document: { update: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
@@ -57,6 +59,10 @@ describe("Prisma structured worker persistence", () => {
     prisma.importBatch.updateMany.mockResolvedValue({ count: 1 });
     prisma.dishCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.dishCatalogRow.createMany.mockResolvedValue({ count: 1 });
+    prisma.deliveryLedgerRow.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.deliveryLedgerRow.createMany.mockResolvedValue({ count: 1 });
+    prisma.supplierCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.supplierCatalogRow.createMany.mockResolvedValue({ count: 1 });
     prisma.vipRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.vipRow.createMany.mockResolvedValue({ count: 1 });
     prisma.document.update.mockResolvedValue({});
@@ -127,6 +133,132 @@ describe("Prisma structured worker persistence", () => {
       })
     );
     expect(JSON.stringify(prisma.importBatch.update.mock.calls)).not.toContain("Ignored cell");
+  });
+
+  it("publishes delivery ledger rows with lineage and the completion timestamp", async () => {
+    prisma.importBatch.findFirst.mockResolvedValueOnce({
+      id: "imp_delivery",
+      orgId: "org_1",
+      sourceDocumentId: "doc_delivery",
+      dataset: "delivery_ledger"
+    });
+    const now = new Date("2026-08-29T01:02:03.000Z");
+    const repository = createPrismaProcessingWorkerRepository("mysql://test");
+
+    await repository.completeStructuredImport?.({
+      runId: "run_delivery",
+      documentId: "doc_delivery",
+      importBatchId: "imp_delivery",
+      workerId: "worker_delivery",
+      now,
+      batchInsertSize: 500,
+      result: {
+        sheetSummary: [
+          { sheetIndex: 0, name: "Receipt", hidden: false, headerRowNumber: 4, dataRowCount: 1 }
+        ],
+        ignoredSheets: [],
+        rows: [
+          {
+            sourceSheetIndex: 0,
+            sourceSheetName: "Receipt",
+            sourceRowNumber: 8,
+            payload: { receipt_number: "SH-1", item_name: "Rice" }
+          }
+        ],
+        validationErrors: [],
+        validationErrorCount: 0,
+        validationErrorsTruncated: false
+      }
+    });
+
+    expect(prisma.deliveryLedgerRow.deleteMany).toHaveBeenCalledWith({
+      where: { importBatchId: "imp_delivery" }
+    });
+    expect(prisma.deliveryLedgerRow.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          orgId: "org_1",
+          sourceDocumentId: "doc_delivery",
+          importBatchId: "imp_delivery",
+          sourceSheetIndex: 0,
+          sourceSheetName: "Receipt",
+          sourceRowNumber: 8,
+          payload: { receipt_number: "SH-1", item_name: "Rice" }
+        }
+      ]
+    });
+    expect(prisma.supplierCatalogRow.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.supplierCatalogRow.createMany).not.toHaveBeenCalled();
+    expect(prisma.importBatch.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "imp_delivery" },
+        data: expect.objectContaining({ status: "applied", appliedAt: now })
+      })
+    );
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+  });
+
+  it("publishes supplier catalog rows with lineage and the completion timestamp", async () => {
+    prisma.importBatch.findFirst.mockResolvedValueOnce({
+      id: "imp_supplier",
+      orgId: "org_1",
+      sourceDocumentId: "doc_supplier",
+      dataset: "supplier_catalog"
+    });
+    const now = new Date("2026-08-29T04:05:06.000Z");
+    const repository = createPrismaProcessingWorkerRepository("mysql://test");
+
+    await repository.completeStructuredImport?.({
+      runId: "run_supplier",
+      documentId: "doc_supplier",
+      importBatchId: "imp_supplier",
+      workerId: "worker_supplier",
+      now,
+      batchInsertSize: 500,
+      result: {
+        sheetSummary: [
+          { sheetIndex: 0, name: "Suppliers", hidden: false, headerRowNumber: 2, dataRowCount: 1 }
+        ],
+        ignoredSheets: [],
+        rows: [
+          {
+            sourceSheetIndex: 0,
+            sourceSheetName: "Suppliers",
+            sourceRowNumber: 3,
+            payload: { supplier_name: "Supplier A", contact_phone: "13800000000" }
+          }
+        ],
+        validationErrors: [],
+        validationErrorCount: 0,
+        validationErrorsTruncated: false
+      }
+    });
+
+    expect(prisma.supplierCatalogRow.deleteMany).toHaveBeenCalledWith({
+      where: { importBatchId: "imp_supplier" }
+    });
+    expect(prisma.supplierCatalogRow.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          orgId: "org_1",
+          sourceDocumentId: "doc_supplier",
+          importBatchId: "imp_supplier",
+          sourceSheetIndex: 0,
+          sourceSheetName: "Suppliers",
+          sourceRowNumber: 3,
+          payload: { supplier_name: "Supplier A", contact_phone: "13800000000" }
+        }
+      ]
+    });
+    expect(prisma.deliveryLedgerRow.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.deliveryLedgerRow.createMany).not.toHaveBeenCalled();
+    expect(prisma.importBatch.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "imp_supplier" },
+        data: expect.objectContaining({ status: "applied", appliedAt: now })
+      })
+    );
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
   });
 
   it("preserves the exact legacy sheet summary shape for an applied window dataset", async () => {

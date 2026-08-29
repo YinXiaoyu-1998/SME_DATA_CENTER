@@ -807,6 +807,24 @@ export function createPrismaProcessingWorkerRepository(
             input.result.rows,
             input.batchInsertSize
           );
+        } else if (batch.dataset === ImportDataset.delivery_ledger) {
+          await tx.deliveryLedgerRow.deleteMany({ where: { importBatchId: batch.id } });
+          await insertStructuredRows(
+            tx,
+            "delivery_ledger",
+            batch,
+            input.result.rows,
+            input.batchInsertSize
+          );
+        } else if (batch.dataset === ImportDataset.supplier_catalog) {
+          await tx.supplierCatalogRow.deleteMany({ where: { importBatchId: batch.id } });
+          await insertStructuredRows(
+            tx,
+            "supplier_catalog",
+            batch,
+            input.result.rows,
+            input.batchInsertSize
+          );
         } else {
           throw new Error(`Unsupported structured dataset: ${String(batch.dataset)}`);
         }
@@ -815,6 +833,7 @@ export function createPrismaProcessingWorkerRepository(
           where: { id: batch.id },
           data: {
             status: ImportBatchStatus.applied,
+            appliedAt: input.now,
             sourceSheetSummary: persistedSourceSheetSummary(batch.dataset, input.result),
             validationErrors: [],
             validationErrorCount: 0,
@@ -1198,6 +1217,10 @@ async function insertStructuredRows(
       await tx.vipRow.createMany({ data });
     } else if (dataset === "dish_catalog") {
       await tx.dishCatalogRow.createMany({ data });
+    } else if (dataset === "delivery_ledger") {
+      await tx.deliveryLedgerRow.createMany({ data });
+    } else if (dataset === "supplier_catalog") {
+      await tx.supplierCatalogRow.createMany({ data });
     } else {
       throw new Error(`Unsupported structured dataset: ${String(dataset)}`);
     }
