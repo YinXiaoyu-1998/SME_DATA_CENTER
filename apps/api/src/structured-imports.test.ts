@@ -31,6 +31,12 @@ const prisma = vi.hoisted(() => ({
   dishCatalogRow: {
     deleteMany: vi.fn()
   },
+  deliveryLedgerRow: {
+    deleteMany: vi.fn()
+  },
+  supplierCatalogRow: {
+    deleteMany: vi.fn()
+  },
   processingRun: {
     create: vi.fn()
   },
@@ -80,6 +86,9 @@ function importBatchRecord(
     sourceDocumentId: "doc_1",
     dataset,
     status,
+    requestFingerprint: "fingerprint_1",
+    naturalKey: null,
+    appliedAt: null,
     startDate: new Date("2026-07-01T00:00:00.000Z"),
     endDate: new Date("2026-07-05T00:00:00.000Z"),
     sourceSheetSummary: [],
@@ -94,6 +103,40 @@ function importBatchRecord(
       documentLabels: [{ label: { key: "all_staff" } }],
       processingRuns
     }
+  };
+}
+
+function reservationInput(
+  overrides: Partial<
+    Parameters<
+      ReturnType<typeof createPrismaStructuredImportRepository>["reserveStructuredImport"]
+    >[0]
+  > = {}
+) {
+  return {
+    orgId: "org_1",
+    actorEmployeeId: "emp_1",
+    documentId: "doc_1",
+    dataset: "dishes" as const,
+    fileType: "csv" as const,
+    startDate: "20260701",
+    endDate: "20260705",
+    idempotencyKey: "idem_1",
+    requestFingerprint: "fingerprint_1",
+    document: {
+      title: "Structured import",
+      storageObjectKey: "org/org_1/documents/doc_1/original/data.csv",
+      originalFileName: "data.csv",
+      contentType: "text/csv",
+      byteSize: 10,
+      checksumSha256: "hash",
+      labelIds: ["label_1"],
+      labels: ["all_staff"]
+    },
+    sourceSheetSummary: [],
+    totalRowCount: 1,
+    audit,
+    ...overrides
   };
 }
 
@@ -123,6 +166,8 @@ describe("Prisma structured import audit provenance", () => {
     prisma.businessRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.vipRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.dishCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.deliveryLedgerRow.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.supplierCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.processingRun.create.mockResolvedValue({});
     prisma.$executeRaw.mockResolvedValue(1);
   });
@@ -413,5 +458,220 @@ describe("Prisma structured import audit provenance", () => {
       importBatch: { id: "imp_archived", status: "archived", sourceDocumentStatus: "archived" }
     });
     expect(prisma.importWindowClaim.findUnique).toHaveBeenCalledOnce();
+  });
+
+  it("replays an existing delivery receipt by natural key before checking date claims", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    const existing = {
+      ...importBatchRecord(
+        "applied",
+        [{ id: "run_delivery", status: "succeeded" }],
+        "delivery_ledger"
+      ),
+      requestFingerprint: "same",
+      naturalKey: "SH2608250117"
+    };
+    prisma.importBatch.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(existing);
+
+    await expect(
+      repository.reserveStructuredImport(
+        reservationInput({
+          dataset: "delivery_ledger",
+          naturalKey: "SH2608250117",
+          requestFingerprint: "same"
+        })
+      )
+    ).resolves.toMatchObject({ state: "existing", importBatch: { id: "imp_1" } });
+    expect(prisma.importWindowClaim.findUnique).not.toHaveBeenCalled();
+    expect(prisma.document.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a delivery receipt natural-key replay with a different fingerprint", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    prisma.importBatch.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      ...importBatchRecord(
+        "applied",
+        [{ id: "run_delivery", status: "succeeded" }],
+        "delivery_ledger"
+      ),
+      requestFingerprint: "same",
+      naturalKey: "SH2608250117"
+    });
+
+    await expect(
+      repository.reserveStructuredImport(
+        reservationInput({
+          dataset: "delivery_ledger",
+          naturalKey: "SH2608250117",
+          requestFingerprint: "different"
+        })
+      )
+    ).rejects.toMatchObject({ code: "RECEIPT_NUMBER_CONFLICT" });
+    expect(prisma.document.create).not.toHaveBeenCalled();
+  });
+
+  it("allows two delivery receipt natural keys on the same date to reserve independently", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    prisma.importBatch.findUniqueOrThrow.mockResolvedValue(
+      importBatchRecord("pending", [], "delivery_ledger")
+    );
+
+    await repository.reserveStructuredImport(
+      reservationInput({ dataset: "delivery_ledger", naturalKey: "SH2608250117" })
+    );
+    await repository.reserveStructuredImport(
+      reservationInput({
+        documentId: "doc_2",
+        idempotencyKey: "idem_2",
+        dataset: "delivery_ledger",
+        naturalKey: "SH2608250118"
+      })
+    );
+
+    expect(prisma.document.create).toHaveBeenCalledTimes(2);
+    expect(prisma.importBatch.create).toHaveBeenCalledTimes(2);
+    expect(prisma.importWindowClaim.create).not.toHaveBeenCalled();
+  });
+
+  it("reserves a supplier catalog with nullable dates and no window claim or raw row metadata", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    prisma.importBatch.findUniqueOrThrow.mockResolvedValue(
+      importBatchRecord("pending", [], "supplier_catalog")
+    );
+
+    await repository.reserveStructuredImport(
+      reservationInput({
+        dataset: "supplier_catalog",
+        startDate: null,
+        endDate: null,
+        totalRowCount: 2
+      })
+    );
+
+    expect(prisma.importWindowClaim.create).not.toHaveBeenCalled();
+    expect(prisma.importBatch.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        dataset: "supplier_catalog",
+        startDate: null,
+        endDate: null
+      })
+    });
+    expect(prisma.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sourceMetadata: {
+            dataset: "supplier_catalog",
+            startDate: null,
+            endDate: null,
+            naturalKey: null
+          }
+        })
+      })
+    );
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: {
+            dataset: "supplier_catalog",
+            startDate: null,
+            endDate: null,
+            naturalKey: null,
+            rowCount: 2,
+            sourceDocumentId: "doc_1"
+          }
+        })
+      })
+    );
+  });
+
+  it("recovers a natural-key unique-index race using the authoritative delivery batch", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    const raced = {
+      ...importBatchRecord("pending", [], "delivery_ledger"),
+      requestFingerprint: "same",
+      naturalKey: "SH2608250117"
+    };
+    prisma.importBatch.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(raced);
+    prisma.$transaction.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("duplicate receipt", {
+        code: "P2002",
+        clientVersion: "test"
+      })
+    );
+
+    await expect(
+      repository.reserveStructuredImport(
+        reservationInput({
+          dataset: "delivery_ledger",
+          naturalKey: "SH2608250117",
+          requestFingerprint: "same"
+        })
+      )
+    ).resolves.toMatchObject({ state: "resumable", importBatch: { id: "imp_1" } });
+  });
+
+  it("marks a successfully applied supplier catalog with appliedAt", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    prisma.importBatch.findFirst.mockResolvedValueOnce(
+      importBatchRecord("pending", [], "supplier_catalog")
+    );
+    prisma.importBatch.update.mockResolvedValueOnce(
+      importBatchRecord("applied", [], "supplier_catalog")
+    );
+
+    await repository.applyReservedStructuredImport({
+      orgId: "org_1",
+      actorEmployeeId: "emp_1",
+      importBatchId: "imp_1",
+      rows: [
+        {
+          sourceSheetIndex: 0,
+          sourceSheetName: "Suppliers",
+          sourceRowNumber: 2,
+          payload: { supplier_name: "Supplier A" }
+        }
+      ],
+      audit
+    });
+
+    expect(prisma.supplierCatalogRow.deleteMany).toHaveBeenCalledWith({
+      where: { importBatchId: "imp_1" }
+    });
+    expect(prisma.importBatch.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "applied",
+          appliedAt: expect.any(Date)
+        })
+      })
+    );
   });
 });

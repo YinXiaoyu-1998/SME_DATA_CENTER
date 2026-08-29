@@ -49,8 +49,8 @@ export interface StructuredImportBatchRecord {
   sourceDocumentLabelKeys: string[];
   dataset: StructuredDatasetName;
   status: ImportBatchStatusName;
-  startDate: string;
-  endDate: string;
+  startDate: string | null;
+  endDate: string | null;
   sourceSheetSummary: unknown[];
   validationErrors: unknown[];
   validationErrorCount: number;
@@ -72,8 +72,9 @@ export interface ReserveStructuredImportInput {
   documentId: string;
   dataset: StructuredDatasetName;
   fileType: Extract<Phase3FileType, "xlsx" | "csv">;
-  startDate: string;
-  endDate: string;
+  startDate: string | null;
+  endDate: string | null;
+  naturalKey?: string;
   idempotencyKey: string;
   requestFingerprint: string;
   document: {
@@ -296,13 +297,43 @@ export function createPrismaStructuredImportRepository(options: {
       };
     }
 
+    if (input.dataset === "delivery_ledger" && input.naturalKey !== undefined) {
+      const existingNaturalKeyBatch = await prisma.importBatch.findUnique({
+        where: {
+          orgId_dataset_naturalKey: {
+            orgId: input.orgId,
+            dataset: input.dataset as ImportDataset,
+            naturalKey: input.naturalKey
+          }
+        },
+        include: importBatchInclude
+      });
+
+      if (existingNaturalKeyBatch) {
+        if (existingNaturalKeyBatch.requestFingerprint !== input.requestFingerprint) {
+          throw new StructuredImportError("RECEIPT_NUMBER_CONFLICT");
+        }
+
+        return {
+          state:
+            existingNaturalKeyBatch.sourceDocument.processingRuns.length > 0
+              ? "existing"
+              : "resumable",
+          importBatch: toImportBatchRecord(existingNaturalKeyBatch)
+        };
+      }
+    }
+
+    const metadataPolicy = getStructuredRegistry(input.dataset).metadataPolicy;
+    if (metadataPolicy !== "window" && metadataPolicy !== "snapshot") return null;
+
     const existingClaim = await prisma.importWindowClaim.findUnique({
       where: {
         orgId_dataset_startDate_endDate: {
           orgId: input.orgId,
           dataset: input.dataset as ImportDataset,
-          startDate: parseDateWindowDate(input.startDate),
-          endDate: parseDateWindowDate(input.endDate)
+          startDate: parseDateWindowDate(input.startDate!),
+          endDate: parseDateWindowDate(input.endDate!)
         }
       },
       include: {
@@ -378,7 +409,8 @@ export function createPrismaStructuredImportRepository(options: {
                 sourceMetadata: {
                   dataset: input.dataset,
                   startDate: input.startDate,
-                  endDate: input.endDate
+                  endDate: input.endDate,
+                  naturalKey: input.naturalKey ?? null
                 },
                 documentLabels: {
                   create: input.document.labelIds.map((labelId) => ({
@@ -394,10 +426,11 @@ export function createPrismaStructuredImportRepository(options: {
                 orgId: input.orgId,
                 sourceDocumentId: input.documentId,
                 dataset: input.dataset as ImportDataset,
-                startDate: parseDateWindowDate(input.startDate),
-                endDate: parseDateWindowDate(input.endDate),
+                startDate: input.startDate ? parseDateWindowDate(input.startDate) : null,
+                endDate: input.endDate ? parseDateWindowDate(input.endDate) : null,
                 idempotencyKey: input.idempotencyKey,
                 requestFingerprint: input.requestFingerprint,
+                naturalKey: input.naturalKey,
                 status: ImportBatchStatus.pending,
                 sourceSheetSummary: [],
                 validationErrors: [],
@@ -407,15 +440,20 @@ export function createPrismaStructuredImportRepository(options: {
               }
             });
 
-            await tx.importWindowClaim.create({
-              data: {
-                orgId: input.orgId,
-                dataset: input.dataset as ImportDataset,
-                startDate: parseDateWindowDate(input.startDate),
-                endDate: parseDateWindowDate(input.endDate),
-                importBatchId
-              }
-            });
+            if (
+              getStructuredRegistry(input.dataset).metadataPolicy === "window" ||
+              getStructuredRegistry(input.dataset).metadataPolicy === "snapshot"
+            ) {
+              await tx.importWindowClaim.create({
+                data: {
+                  orgId: input.orgId,
+                  dataset: input.dataset as ImportDataset,
+                  startDate: parseDateWindowDate(input.startDate!),
+                  endDate: parseDateWindowDate(input.endDate!),
+                  importBatchId
+                }
+              });
+            }
 
             await tx.auditLog.create({
               data: {
@@ -429,6 +467,7 @@ export function createPrismaStructuredImportRepository(options: {
                   dataset: input.dataset,
                   startDate: input.startDate,
                   endDate: input.endDate,
+                  naturalKey: input.naturalKey ?? null,
                   rowCount: input.totalRowCount,
                   sourceDocumentId: input.documentId
                 },
@@ -519,6 +558,16 @@ export function createPrismaStructuredImportRepository(options: {
                     where: { importBatchId: input.importBatchId }
                   });
                 }
+                if (existing.dataset === ImportDataset.delivery_ledger) {
+                  return tx.deliveryLedgerRow.deleteMany({
+                    where: { importBatchId: input.importBatchId }
+                  });
+                }
+                if (existing.dataset === ImportDataset.supplier_catalog) {
+                  return tx.supplierCatalogRow.deleteMany({
+                    where: { importBatchId: input.importBatchId }
+                  });
+                }
                 throw new Error(`Unsupported structured dataset: ${String(existing.dataset)}`);
               },
               baseTiming
@@ -575,7 +624,8 @@ export function createPrismaStructuredImportRepository(options: {
                   data: {
                     status: ImportBatchStatus.applied,
                     appliedRowCount: input.rows.length,
-                    totalRowCount: input.rows.length
+                    totalRowCount: input.rows.length,
+                    appliedAt: now
                   },
                   include: importBatchInclude
                 }),
@@ -597,6 +647,7 @@ export function createPrismaStructuredImportRepository(options: {
                       dataset: batch.dataset,
                       startDate: formatDateWindowDate(batch.startDate),
                       endDate: formatDateWindowDate(batch.endDate),
+                      naturalKey: batch.naturalKey,
                       appliedRowCount: input.rows.length,
                       sourceDocumentId: batch.sourceDocumentId
                     },
@@ -810,7 +861,9 @@ function parseDateWindowDate(value: string): Date {
   );
 }
 
-function formatDateWindowDate(value: Date): string {
+function formatDateWindowDate(value: Date | null): string | null {
+  if (!value) return null;
+
   const year = value.getUTCFullYear();
   const month = String(value.getUTCMonth() + 1).padStart(2, "0");
   const day = String(value.getUTCDate()).padStart(2, "0");

@@ -43,8 +43,8 @@ export interface ClaimedProcessingRun {
   structuredImport?: {
     importBatchId: string;
     dataset: StructuredDatasetName;
-    startDate: string;
-    endDate: string;
+    startDate?: string;
+    endDate?: string;
   };
   document: {
     id: string;
@@ -534,8 +534,8 @@ export function createPrismaProcessingWorkerRepository(
           structuredImport = {
             importBatchId: batch.id,
             dataset: batch.dataset,
-            startDate: formatDateWindow(batch.startDate),
-            endDate: formatDateWindow(batch.endDate)
+            ...(batch.startDate ? { startDate: formatDateWindow(batch.startDate) } : {}),
+            ...(batch.endDate ? { endDate: formatDateWindow(batch.endDate) } : {})
           };
           await tx.auditLog.create({
             data: {
