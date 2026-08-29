@@ -503,7 +503,6 @@ describe("structured query supplier enrichment", () => {
     prisma.$queryRawUnsafe.mockResolvedValueOnce(input.baseRows ?? [baseRow]);
     prisma.$queryRawUnsafe.mockResolvedValueOnce(input.latest ? [input.latest] : []);
     if (input.latest) {
-      prisma.$queryRawUnsafe.mockResolvedValueOnce([{ id: input.latest.source_document_id }]);
       prisma.$queryRawUnsafe.mockResolvedValueOnce(input.catalogRows ?? []);
     }
 
@@ -532,9 +531,9 @@ describe("structured query supplier enrichment", () => {
       ],
       hasMore: false
     });
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(3);
     expect(calls[1]?.[0]).not.toContain("document_labels");
-    expect(calls[3]?.[0]).toContain("IN (?)");
+    expect(calls[2]?.[0]).toContain("IN (?)");
   });
 
   it("preserves interleaved stored and dynamic select order and omits unrequested fields", async () => {

@@ -410,7 +410,9 @@ filter or compare `snapshot_date` values.
 
 ### `delivery_ledger` receipt contract
 
-Each CSV/XLSX file represents exactly one delivery receipt. It must contain the document fields
+Each CSV/XLSX file represents exactly one delivery receipt. A workbook may also contain empty,
+hidden, or visible instruction sheets; the importer selects exactly one visible worksheet with the
+receipt item header and rejects multiple matching receipt worksheets. The receipt worksheet must contain the document fields
 `单据号`, `订货机构`, `送货机构`, and `收货日期`, plus item columns `序号`, `物品名称`, `规格型号`,
 `收货数量`, and `收货金额`. The receipt number and normalized `purchase_date` are derived from
 the file; callers must not send date metadata. Every numeric item row before the footer becomes one
@@ -433,9 +435,12 @@ and shelf-life fields are always `null`.
 
 ### `supplier_catalog` snapshot contract
 
-Each CSV/XLSX file is one complete supplier master-data snapshot with exactly the controlled 33
-columns, including `供应商编码`, `供应商名称`, `联系人电话`, and `单位地址`. Empty cells remain
-nullable; `供应商名称` is the exact enrichment key. The latest successful `applied` catalog for
+Each CSV/XLSX file is one supplier master-data snapshot using the controlled supplier columns.
+`供应商名称` is required and is the exact enrichment key; the other controlled columns, including
+`联系人电话` and `单位地址`, are optional and preserve present values while absent or empty values
+remain null. Unknown or unnamed columns are rejected rather than silently discarded. A workbook
+must contain exactly one visible matching supplier worksheet; unrelated visible and all hidden
+worksheets are ignored. The latest successful `applied` catalog for
 the organization is the only current source for delivery enrichment. Older applied snapshots remain
 queryable history but are not used as a fallback, and a failed/rejected/in-progress snapshot never
 becomes current.
@@ -529,7 +534,7 @@ Supported datasets:
 - `vip`
 - `dish_catalog` — complete catalog snapshots, including the metadata-derived `snapshot_date`
 - `delivery_ledger` — one receipt per CSV/XLSX file, with receipt date derived from `收货日期`
-- `supplier_catalog` — complete 33-column CSV/XLSX supplier snapshots used for current enrichment
+- `supplier_catalog` — CSV/XLSX supplier snapshots using controlled columns for current enrichment
 
 ## Structured Query
 

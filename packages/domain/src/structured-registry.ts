@@ -315,77 +315,43 @@ const DISH_CATALOG_CANONICAL_OVERRIDES: Record<string, string> = {
   菜品别名: "dish_alias"
 };
 
-const SUPPLIER_CATALOG_SOURCE_COLUMNS = [
-  "供应商编码",
-  "供应商名称",
-  "供应商简称",
-  "供应商助记码",
-  "供应商类别",
-  "结算方式",
-  "税率",
-  "订单汇总规则",
-  "范围控制",
-  "供货关系",
-  "适用机构",
-  "采购收货依赖供应商发货",
-  "配送依赖供应商发货",
-  "发货时录入批次",
-  "同步收货数据",
-  "批次允许编辑",
-  "供应商管理库存",
-  "允许委外",
-  "控制下单时间",
-  "可下单时间",
-  "供应商对账模式",
-  "允许关闭订单",
-  "启用状态",
-  "联系人",
-  "联系人电话",
-  "邮箱地址",
-  "联系地址",
-  "备注",
-  "单位名称",
-  "纳税人识别号",
-  "电话",
-  "单位地址",
-  "操作时间"
+const SUPPLIER_CATALOG_COLUMNS = [
+  ["供应商编码", "supplier_code"],
+  ["供应商名称", "supplier_name"],
+  ["供应商简称", "supplier_short_name"],
+  ["供应商助记码", "supplier_mnemonic"],
+  ["供应商类别", "supplier_category"],
+  ["结算方式", "settlement_method"],
+  ["税率", "tax_rate"],
+  ["订单汇总规则", "order_summary_rule"],
+  ["范围控制", "scope_control"],
+  ["供货关系", "supply_relationship"],
+  ["适用机构", "applicable_organization"],
+  ["采购收货依赖供应商发货", "procurement_receipt_depends_on_supplier_delivery"],
+  ["配送依赖供应商发货", "delivery_depends_on_supplier_delivery"],
+  ["发货时录入批次", "record_batch_on_delivery"],
+  ["同步收货数据", "synchronize_receipt_data"],
+  ["批次允许编辑", "batch_editable"],
+  ["供应商管理库存", "supplier_managed_inventory"],
+  ["允许委外", "outsourcing_allowed"],
+  ["控制下单时间", "order_time_control"],
+  ["可下单时间", "orderable_time"],
+  ["供应商对账模式", "supplier_reconciliation_mode"],
+  ["允许关闭订单", "close_order_allowed"],
+  ["启用状态", "enabled_status"],
+  ["联系人", "contact_name"],
+  ["联系人电话", "contact_phone"],
+  ["邮箱地址", "email_address"],
+  ["联系地址", "contact_address"],
+  ["备注", "remarks"],
+  ["单位名称", "unit_name"],
+  ["纳税人识别号", "taxpayer_identification_number"],
+  ["电话", "phone"],
+  ["单位地址", "unit_address"],
+  ["操作时间", "operated_at"]
 ] as const;
-
-const SUPPLIER_CATALOG_CANONICAL_OVERRIDES: Record<string, string> = {
-  供应商编码: "supplier_code",
-  供应商名称: "supplier_name",
-  供应商简称: "supplier_short_name",
-  供应商助记码: "supplier_mnemonic",
-  供应商类别: "supplier_category",
-  结算方式: "settlement_method",
-  税率: "tax_rate",
-  订单汇总规则: "order_summary_rule",
-  范围控制: "scope_control",
-  供货关系: "supply_relationship",
-  适用机构: "applicable_organization",
-  采购收货依赖供应商发货: "procurement_receipt_depends_on_supplier_delivery",
-  配送依赖供应商发货: "delivery_depends_on_supplier_delivery",
-  发货时录入批次: "record_batch_on_delivery",
-  同步收货数据: "synchronize_receipt_data",
-  批次允许编辑: "batch_editable",
-  供应商管理库存: "supplier_managed_inventory",
-  允许委外: "outsourcing_allowed",
-  控制下单时间: "order_time_control",
-  可下单时间: "orderable_time",
-  供应商对账模式: "supplier_reconciliation_mode",
-  允许关闭订单: "close_order_allowed",
-  启用状态: "enabled_status",
-  联系人: "contact_name",
-  联系人电话: "contact_phone",
-  邮箱地址: "email_address",
-  联系地址: "contact_address",
-  备注: "remarks",
-  单位名称: "unit_name",
-  纳税人识别号: "taxpayer_identification_number",
-  电话: "phone",
-  单位地址: "unit_address",
-  操作时间: "operated_at"
-};
+const SUPPLIER_CATALOG_SOURCE_COLUMNS = SUPPLIER_CATALOG_COLUMNS.map(([source]) => source);
+const SUPPLIER_CATALOG_CANONICAL_OVERRIDES = Object.fromEntries(SUPPLIER_CATALOG_COLUMNS);
 
 const VIP_SOURCE_COLUMNS = [
   "日期",
@@ -568,99 +534,28 @@ const VIP_CANONICAL_OVERRIDES: Record<string, string> = {
   期末储值余额_合计: "closing_recharge_balance_total"
 };
 
-const DELIVERY_LEDGER_FIELDS: StructuredFieldRegistryEntry[] = [
-  createDeliveryLedgerField({
-    canonicalName: "entry_id",
-    sourceColumn: "entry_id",
-    type: "string",
-    nullable: false,
-    inputSource: "derived"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "purchase_date",
-    sourceColumn: "收货日期",
-    type: "date",
-    nullable: false,
-    inputSource: "derived"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "store_name",
-    sourceColumn: "订货机构",
-    type: "string",
-    nullable: false,
-    inputSource: "derived"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "receipt_number",
-    sourceColumn: "单据号",
-    type: "string",
-    nullable: false,
-    inputSource: "derived"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "supplier_name",
-    sourceColumn: "送货机构",
-    type: "string",
-    nullable: false,
-    inputSource: "derived"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "item_name",
-    sourceColumn: "物品名称",
-    type: "string",
-    nullable: false,
-    inputSource: "file"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "specification",
-    sourceColumn: "规格型号",
-    type: "string",
-    nullable: false,
-    inputSource: "file"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "purchase_quantity",
-    sourceColumn: "收货数量",
-    type: "decimal",
-    nullable: false,
-    inputSource: "file"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "purchase_amount",
-    sourceColumn: "收货金额",
-    type: "decimal",
-    nullable: false,
-    inputSource: "file"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "production_date_or_batch",
-    sourceColumn: "production_date_or_batch",
-    type: "string",
-    nullable: true,
-    inputSource: "derived"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "shelf_life",
-    sourceColumn: "shelf_life",
-    type: "string",
-    nullable: true,
-    inputSource: "derived"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "supplier_contact_phone",
-    sourceColumn: "supplier_contact_phone",
-    type: "string",
-    nullable: true,
-    inputSource: "dynamic_lookup"
-  }),
-  createDeliveryLedgerField({
-    canonicalName: "supplier_unit_address",
-    sourceColumn: "supplier_unit_address",
-    type: "string",
-    nullable: true,
-    inputSource: "dynamic_lookup"
-  })
-];
+const DELIVERY_LEDGER_FIELD_DEFINITIONS = [
+  ["entry_id", "entry_id", "string", false, "derived"],
+  ["purchase_date", "收货日期", "date", false, "derived"],
+  ["store_name", "订货机构", "string", false, "derived"],
+  ["receipt_number", "单据号", "string", false, "derived"],
+  ["supplier_name", "送货机构", "string", false, "derived"],
+  ["item_name", "物品名称", "string", false, "file"],
+  ["specification", "规格型号", "string", false, "file"],
+  ["purchase_quantity", "收货数量", "decimal", false, "file"],
+  ["purchase_amount", "收货金额", "decimal", false, "file"],
+  ["production_date_or_batch", "production_date_or_batch", "string", true, "derived"],
+  ["shelf_life", "shelf_life", "string", true, "derived"],
+  ["supplier_contact_phone", "supplier_contact_phone", "string", true, "dynamic_lookup"],
+  ["supplier_unit_address", "supplier_unit_address", "string", true, "dynamic_lookup"]
+] satisfies Array<
+  [string, string, StructuredFieldType, boolean, "file" | "derived" | "dynamic_lookup"]
+>;
+const DELIVERY_LEDGER_FIELDS: StructuredFieldRegistryEntry[] =
+  DELIVERY_LEDGER_FIELD_DEFINITIONS.map(
+    ([canonicalName, sourceColumn, type, nullable, inputSource]) =>
+      createDeliveryLedgerField({ canonicalName, sourceColumn, type, nullable, inputSource })
+  );
 
 export const STRUCTURED_DATASET_REGISTRIES = {
   dishes: createRegistry({
@@ -727,7 +622,12 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     sheetPolicy: "import_matching_visible",
     metadataPolicy: "none",
     sourceColumns: SUPPLIER_CATALOG_SOURCE_COLUMNS,
-    canonicalOverrides: SUPPLIER_CATALOG_CANONICAL_OVERRIDES
+    canonicalOverrides: SUPPLIER_CATALOG_CANONICAL_OVERRIDES,
+    nullableCanonicalNames: new Set(
+      Object.values(SUPPLIER_CATALOG_CANONICAL_OVERRIDES).filter(
+        (canonicalName) => canonicalName !== "supplier_name"
+      )
+    )
   })
 } as const satisfies Record<StructuredDatasetName, StructuredDatasetRegistry>;
 
@@ -810,6 +710,9 @@ export function resolveStructuredHeaders(
   ) {
     errors.push({ code: "UNKNOWN_COLUMN", column: "" });
   }
+  if (dataset === "supplier_catalog" && headers.some((header) => !normalizeHeader(header))) {
+    errors.push({ code: "UNKNOWN_COLUMN", column: "" });
+  }
 
   for (const [sourceColumnIndex, rawHeader] of headers.entries()) {
     const header = normalizeHeader(rawHeader);
@@ -846,6 +749,7 @@ export function resolveStructuredHeaders(
   }
 
   for (const field of fileFields) {
+    if (dataset === "supplier_catalog" && field.nullable) continue;
     if (!seenCanonicalNames.has(field.canonicalName)) {
       errors.push({ code: "MISSING_REQUIRED_COLUMN", column: field.sourceColumn });
     }

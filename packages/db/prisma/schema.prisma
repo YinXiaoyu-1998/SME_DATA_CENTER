@@ -141,54 +141,54 @@ enum AuthSecurityOutcome {
 }
 
 model Organization {
-  id                   String                   @id @db.VarChar(64)
-  name                 String                   @db.VarChar(255)
-  createdAt            DateTime                 @default(now()) @map("created_at")
-  updatedAt            DateTime                 @updatedAt @map("updated_at")
-  employees            Employee[]
-  labels               Label[]
-  documents            Document[]
-  processingRuns       ProcessingRun[]
-  documentIndexes      DocumentIndex[]
-  importBatches        ImportBatch[]
-  importClaims         ImportWindowClaim[]
-  dishRows             DishRow[]
-  businessRows         BusinessRow[]
-  vipRows              VipRow[]
-  dishCatalogRows      DishCatalogRow[]
-  deliveryLedgerRows   DeliveryLedgerRow[]
-  supplierCatalogRows  SupplierCatalogRow[]
-  auditLogs            AuditLog[]
-  skillEntries         SkillEntry[]
-  loginIdentities      LoginIdentity[]
-  authSessions         AuthSession[]
-  oauthCodes           OAuthAuthorizationCode[]
+  id              String                   @id @db.VarChar(64)
+  name            String                   @db.VarChar(255)
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+  employees       Employee[]
+  labels          Label[]
+  documents       Document[]
+  processingRuns  ProcessingRun[]
+  documentIndexes DocumentIndex[]
+  importBatches   ImportBatch[]
+  importClaims    ImportWindowClaim[]
+  dishRows        DishRow[]
+  businessRows    BusinessRow[]
+  vipRows         VipRow[]
+  dishCatalogRows DishCatalogRow[]
+  deliveryLedgerRows DeliveryLedgerRow[]
+  supplierCatalogRows SupplierCatalogRow[]
+  auditLogs       AuditLog[]
+  skillEntries    SkillEntry[]
+  loginIdentities LoginIdentity[]
+  authSessions    AuthSession[]
+  oauthCodes      OAuthAuthorizationCode[]
   deviceAuthorizations DeviceAuthorization[]
-  oauthTokens          OAuthAccessToken[]
-  authEvents           AuthSecurityEvent[]
+  oauthTokens     OAuthAccessToken[]
+  authEvents      AuthSecurityEvent[]
 
   @@map("organizations")
 }
 
 model Employee {
-  id                   String                   @id @default(cuid()) @db.VarChar(32)
-  orgId                String                   @map("org_id") @db.VarChar(64)
-  email                String                   @unique @db.VarChar(320)
-  displayName          String                   @map("display_name") @db.VarChar(255)
-  role                 EmployeeRole             @default(employee)
-  disabled             Boolean                  @default(false)
-  createdAt            DateTime                 @default(now()) @map("created_at")
-  updatedAt            DateTime                 @updatedAt @map("updated_at")
-  organization         Organization             @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  employeeLabels       EmployeeLabel[]
-  uploadedDocs         Document[]               @relation("DocumentUploader")
-  auditLogs            AuditLog[]               @relation("AuditActor")
-  loginIdentities      LoginIdentity[]
-  authSessions         AuthSession[]
-  oauthCodes           OAuthAuthorizationCode[]
+  id              String                   @id @default(cuid()) @db.VarChar(32)
+  orgId           String                   @map("org_id") @db.VarChar(64)
+  email           String                   @unique @db.VarChar(320)
+  displayName     String                   @map("display_name") @db.VarChar(255)
+  role            EmployeeRole             @default(employee)
+  disabled        Boolean                  @default(false)
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+  organization    Organization             @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  employeeLabels  EmployeeLabel[]
+  uploadedDocs    Document[]               @relation("DocumentUploader")
+  auditLogs       AuditLog[]               @relation("AuditActor")
+  loginIdentities LoginIdentity[]
+  authSessions    AuthSession[]
+  oauthCodes      OAuthAuthorizationCode[]
   deviceAuthorizations DeviceAuthorization[]
-  oauthTokens          OAuthAccessToken[]
-  authEvents           AuthSecurityEvent[]
+  oauthTokens     OAuthAccessToken[]
+  authEvents      AuthSecurityEvent[]
 
   @@index([orgId])
   @@map("employees")
@@ -224,38 +224,38 @@ model EmployeeLabel {
 }
 
 model Document {
-  id                  String               @id @default(cuid()) @db.VarChar(32)
-  orgId               String               @map("org_id") @db.VarChar(64)
-  title               String               @db.VarChar(512)
-  documentType        DocumentType         @map("document_type")
-  documentKind        DocumentKind?        @map("document_kind")
-  fileType            FileType?            @map("file_type")
-  status              DocumentStatus       @default(uploading)
-  contentVersion      Int                  @default(1) @map("content_version")
-  storageObjectKey    String               @map("storage_object_key") @db.VarChar(1024)
-  originalFileName    String?              @map("original_file_name") @db.VarChar(512)
-  contentType         String?              @map("content_type") @db.VarChar(255)
-  byteSize            BigInt?              @map("byte_size")
-  checksumSha256      String?              @map("checksum_sha256") @db.VarChar(64)
-  uploaderId          String               @map("uploader_employee_id") @db.VarChar(32)
-  sourceSystem        String?              @map("source_system") @db.VarChar(255)
-  sourceTime          DateTime?            @map("source_time")
-  sourceMetadata      Json?                @map("source_metadata")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
-  archivedAt          DateTime?            @map("archived_at")
-  organization        Organization         @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  uploader            Employee             @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
-  documentLabels      DocumentLabel[]
-  processingRuns      ProcessingRun[]
-  chunks              DocumentChunk[]
-  indexes             DocumentIndex[]
-  importBatch         ImportBatch?
-  dishRows            DishRow[]
-  businessRows        BusinessRow[]
-  vipRows             VipRow[]
-  dishCatalogRows     DishCatalogRow[]
-  deliveryLedgerRows  DeliveryLedgerRow[]
+  id               String          @id @default(cuid()) @db.VarChar(32)
+  orgId            String          @map("org_id") @db.VarChar(64)
+  title            String          @db.VarChar(512)
+  documentType     DocumentType    @map("document_type")
+  documentKind     DocumentKind?   @map("document_kind")
+  fileType         FileType?       @map("file_type")
+  status           DocumentStatus  @default(uploading)
+  contentVersion   Int             @default(1) @map("content_version")
+  storageObjectKey String          @map("storage_object_key") @db.VarChar(1024)
+  originalFileName String?         @map("original_file_name") @db.VarChar(512)
+  contentType      String?         @map("content_type") @db.VarChar(255)
+  byteSize         BigInt?         @map("byte_size")
+  checksumSha256   String?         @map("checksum_sha256") @db.VarChar(64)
+  uploaderId       String          @map("uploader_employee_id") @db.VarChar(32)
+  sourceSystem     String?         @map("source_system") @db.VarChar(255)
+  sourceTime       DateTime?       @map("source_time")
+  sourceMetadata   Json?           @map("source_metadata")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  archivedAt       DateTime?       @map("archived_at")
+  organization     Organization    @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  uploader         Employee        @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  documentLabels   DocumentLabel[]
+  processingRuns   ProcessingRun[]
+  chunks           DocumentChunk[]
+  indexes          DocumentIndex[]
+  importBatch      ImportBatch?
+  dishRows         DishRow[]
+  businessRows     BusinessRow[]
+  vipRows          VipRow[]
+  dishCatalogRows  DishCatalogRow[]
+  deliveryLedgerRows DeliveryLedgerRow[]
   supplierCatalogRows SupplierCatalogRow[]
 
   @@index([orgId, status])
@@ -380,36 +380,36 @@ model DocumentIndex {
 }
 
 model ImportBatch {
-  id                   String               @id @default(cuid()) @db.VarChar(32)
-  orgId                String               @map("org_id") @db.VarChar(64)
-  sourceDocumentId     String               @unique @map("source_document_id") @db.VarChar(32)
-  dataset              ImportDataset
-  startDate            DateTime?            @map("start_date") @db.Date
-  endDate              DateTime?            @map("end_date") @db.Date
-  idempotencyKey       String               @map("idempotency_key") @db.VarChar(255)
-  requestFingerprint   String               @map("request_fingerprint") @db.VarChar(64)
-  naturalKey           String?              @map("natural_key") @db.VarChar(255)
-  appliedAt            DateTime?            @map("applied_at")
-  status               ImportBatchStatus    @default(pending)
-  sourceSheetSummary   Json?                @map("source_sheet_summary")
-  validationErrors     Json?                @map("validation_errors")
-  validationErrorCount Int                  @default(0) @map("validation_error_count")
-  totalRowCount        Int                  @default(0) @map("total_row_count")
-  appliedRowCount      Int                  @default(0) @map("applied_row_count")
-  errorCode            String?              @map("error_code") @db.VarChar(128)
-  errorSummary         String?              @map("error_summary") @db.Text
-  createdAt            DateTime             @default(now()) @map("created_at")
-  updatedAt            DateTime             @updatedAt @map("updated_at")
-  archivedAt           DateTime?            @map("archived_at")
-  organization         Organization         @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  sourceDocument       Document             @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
-  windowClaim          ImportWindowClaim?
-  dishRows             DishRow[]
-  businessRows         BusinessRow[]
-  vipRows              VipRow[]
-  dishCatalogRows      DishCatalogRow[]
-  deliveryLedgerRows   DeliveryLedgerRow[]
-  supplierCatalogRows  SupplierCatalogRow[]
+  id                 String             @id @default(cuid()) @db.VarChar(32)
+  orgId              String             @map("org_id") @db.VarChar(64)
+  sourceDocumentId   String             @unique @map("source_document_id") @db.VarChar(32)
+  dataset            ImportDataset
+  startDate          DateTime?          @map("start_date") @db.Date
+  endDate            DateTime?          @map("end_date") @db.Date
+  idempotencyKey     String             @map("idempotency_key") @db.VarChar(255)
+  requestFingerprint String             @map("request_fingerprint") @db.VarChar(64)
+  naturalKey         String?            @map("natural_key") @db.VarChar(255)
+  appliedAt          DateTime?          @map("applied_at")
+  status             ImportBatchStatus  @default(pending)
+  sourceSheetSummary Json?              @map("source_sheet_summary")
+  validationErrors   Json?              @map("validation_errors")
+  validationErrorCount Int               @default(0) @map("validation_error_count")
+  totalRowCount      Int                @default(0) @map("total_row_count")
+  appliedRowCount    Int                @default(0) @map("applied_row_count")
+  errorCode          String?            @map("error_code") @db.VarChar(128)
+  errorSummary       String?            @map("error_summary") @db.Text
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  archivedAt         DateTime?          @map("archived_at")
+  organization       Organization       @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument     Document           @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  windowClaim        ImportWindowClaim?
+  dishRows           DishRow[]
+  businessRows       BusinessRow[]
+  vipRows            VipRow[]
+  dishCatalogRows    DishCatalogRow[]
+  deliveryLedgerRows DeliveryLedgerRow[]
+  supplierCatalogRows SupplierCatalogRow[]
 
   @@unique([orgId, idempotencyKey])
   @@unique([orgId, dataset, naturalKey], map: "import_batches_org_dataset_natural_key_uq")
@@ -591,29 +591,29 @@ model SkillEntry {
 }
 
 model LoginIdentity {
-  id                   String                          @id @default(cuid()) @db.VarChar(32)
-  orgId                String                          @map("org_id") @db.VarChar(64)
-  employeeId           String                          @map("employee_id") @db.VarChar(32)
-  provider             LoginIdentityProvider           @default(local_password)
+  id                 String                          @id @default(cuid()) @db.VarChar(32)
+  orgId              String                          @map("org_id") @db.VarChar(64)
+  employeeId         String                          @map("employee_id") @db.VarChar(32)
+  provider           LoginIdentityProvider           @default(local_password)
   /// Login email is application-normalized and stored with the exact utf8mb4_bin migration collation.
-  normalizedEmail      String                          @unique @map("normalized_email") @db.VarChar(320)
-  passwordHash         String?                         @map("password_hash") @db.Text
-  disabled             Boolean                         @default(false)
-  failedAttemptCount   Int                             @default(0) @map("failed_attempt_count")
-  cooldownLevel        Int                             @default(0) @map("cooldown_level")
-  cooldownUntil        DateTime?                       @map("cooldown_until")
-  createdAt            DateTime                        @default(now()) @map("created_at")
-  updatedAt            DateTime                        @updatedAt @map("updated_at")
-  organization         Organization                    @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  employee             Employee                        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  setupGrants          PasswordSetupGrant[]
-  setupSessions        PasswordSetupSession[]
-  authorizationTxns    OAuthAuthorizationTransaction[]
-  authorizationCodes   OAuthAuthorizationCode[]
-  authSessions         AuthSession[]
-  accessTokens         OAuthAccessToken[]
+  normalizedEmail    String                          @unique @map("normalized_email") @db.VarChar(320)
+  passwordHash       String?                         @map("password_hash") @db.Text
+  disabled           Boolean                         @default(false)
+  failedAttemptCount Int                             @default(0) @map("failed_attempt_count")
+  cooldownLevel      Int                             @default(0) @map("cooldown_level")
+  cooldownUntil      DateTime?                       @map("cooldown_until")
+  createdAt          DateTime                        @default(now()) @map("created_at")
+  updatedAt          DateTime                        @updatedAt @map("updated_at")
+  organization       Organization                    @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  employee           Employee                        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  setupGrants        PasswordSetupGrant[]
+  setupSessions      PasswordSetupSession[]
+  authorizationTxns  OAuthAuthorizationTransaction[]
+  authorizationCodes OAuthAuthorizationCode[]
+  authSessions       AuthSession[]
+  accessTokens       OAuthAccessToken[]
   deviceAuthorizations DeviceAuthorization[]
-  securityEvents       AuthSecurityEvent[]
+  securityEvents     AuthSecurityEvent[]
 
   @@index([orgId, employeeId])
   @@index([employeeId, provider, disabled])

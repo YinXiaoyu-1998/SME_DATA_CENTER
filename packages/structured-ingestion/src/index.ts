@@ -35,6 +35,7 @@ export interface StructuredSheetSummary {
   name: string;
   hidden: boolean;
   headerRowNumber: number;
+  columnCount?: number;
   dataRowCount: number;
 }
 export interface IgnoredStructuredSheet {
@@ -104,25 +105,6 @@ interface DeliveryLedgerMetadata extends StructuredDerivedMetadata {
   supplierName: string;
 }
 
-interface SupplierCatalogHeader {
-  index: number;
-  width: number;
-  fields: Array<{ canonicalName: string; sourceColumnIndex: number }>;
-}
-
-interface SupplierCatalogHeaderProblem {
-  index: number;
-  errors: HeaderValidationError[];
-  hasInvalidPhysicalHeaders: boolean;
-}
-
-interface SupplierCatalogSheetSelection {
-  matching: Array<{ sheet: StructuredSheetRows; header: SupplierCatalogHeader }>;
-  hiddenMatching: StructuredSheetRows[];
-  nonMatchingVisible: StructuredSheetRows[];
-  problems: Array<{ sheet: StructuredSheetRows; problem: SupplierCatalogHeaderProblem }>;
-}
-
 export interface StructuredFilePreflightInput {
   fileName: string;
   fileType: "csv" | "xlsx";
@@ -179,7 +161,6 @@ export async function parseStructuredFile(
 
   if (registry.metadataPolicy === "derived_receipt")
     return parseDeliveryLedgerSheets(input, sheets, issues);
-  if (registry.metadataPolicy === "none") return parseSupplierCatalogSheets(input, sheets, issues);
   const activeWindow = window!;
 
   let rowLimitReported = false;
@@ -196,7 +177,7 @@ export async function parseStructuredFile(
 
     if (registry.sheetPolicy === "import_matching_visible") {
       if (sheet.hidden) {
-        if (isMatchingSheet) {
+        if (isMatchingSheet && input.dataset !== "supplier_catalog") {
           issues.add({
             code: "HIDDEN_SHEET",
             message: "Matching hidden worksheets are not allowed.",
@@ -370,6 +351,17 @@ export async function parseStructuredFile(
       column: null,
       legacyMessage: "Workbook has no matching visible import sheets."
     });
+  } else if (input.dataset === "supplier_catalog" && matchedSheetCount > 1) {
+    rows.length = 0;
+    issues.add({
+      code: "INVALID_SHEET_COUNT",
+      message: "Supplier catalog file must contain exactly one recognized worksheet.",
+      sheetName: null,
+      sheetIndex: null,
+      rowNumber: null,
+      column: null,
+      legacyMessage: "Supplier catalog file must contain exactly one recognized worksheet."
+    });
   } else if (
     registry.sheetPolicy === "import_matching_visible" &&
     matchedSheetCount > 0 &&
@@ -401,14 +393,26 @@ export async function parseStructuredFile(
 export async function profileStructuredFile(
   input: Omit<ParseStructuredFileInput, "startDate" | "endDate">
 ): Promise<StructuredWorkbookProfile> {
+  const registry = getStructuredRegistry(input.dataset);
+  if (registry.metadataPolicy === "derived_receipt") {
+    const result = await parseStructuredFile(input);
+    return {
+      dataset: input.dataset,
+      registryVersion: registry.version,
+      fileName: input.fileName,
+      sheets: result.sheetSummary.map((sheet) => ({
+        ...sheet,
+        columnCount: sheet.columnCount ?? 0,
+        validationErrors: []
+      })),
+      ignoredEmptySheets: [],
+      ...(result.derivedMetadata ? { derivedMetadata: result.derivedMetadata } : {})
+    };
+  }
   assertFileType(input);
   const sheets = await readStructuredSheets(input);
   const profile: StructuredSheetProfile[] = [];
   const ignoredEmptySheets: string[] = [];
-  const registry = getStructuredRegistry(input.dataset);
-  if (registry.metadataPolicy === "derived_receipt")
-    return profileDeliveryLedgerSheets(input, sheets);
-  if (registry.metadataPolicy === "none") return profileSupplierCatalogSheets(input, sheets);
   let dataRowCount = 0;
   let matchedSheetCount = 0;
   for (const sheet of sheets) {
@@ -420,7 +424,7 @@ export async function profileStructuredFile(
     const isMatchingSheet = candidate?.resolution.ok === true;
     if (registry.sheetPolicy === "import_matching_visible") {
       if (sheet.hidden) {
-        if (isMatchingSheet)
+        if (isMatchingSheet && input.dataset !== "supplier_catalog")
           throw validation(`Matching hidden sheet ${sheet.name} is not allowed.`);
         continue;
       }
@@ -449,6 +453,8 @@ export async function profileStructuredFile(
   }
   if (registry.sheetPolicy === "import_matching_visible" && matchedSheetCount === 0)
     throw validation("Workbook has no matching visible import sheets.");
+  if (input.dataset === "supplier_catalog" && matchedSheetCount > 1)
+    throw validation("Supplier catalog file must contain exactly one recognized worksheet.");
   if (registry.sheetPolicy === "import_matching_visible" && dataRowCount === 0)
     throw validation("Catalog snapshot contains no rows.");
   return {
@@ -484,34 +490,21 @@ function parseDeliveryLedgerSheets(
   const sheetSummary: StructuredSheetSummary[] = [];
   const ignoredSheets: IgnoredStructuredSheet[] = [];
   const rows: StructuredImportRow[] = [];
-  const sheet = oneNonEmptyVisibleSheet(sheets, issues, "delivery receipt");
-  if (!sheet) return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
-
-  let header: ReturnType<typeof findDeliveryDetailHeader>;
+  let selection: ReturnType<typeof selectDeliverySheet>;
   try {
-    header = findDeliveryDetailHeader(sheet.rows);
+    selection = selectDeliverySheet(sheets);
   } catch (error) {
     addIssue(issues, {
       code: "INVALID_HEADER",
-      message: "Delivery receipt item header is ambiguous.",
-      sheet,
+      message: "Delivery receipt worksheet could not be selected.",
+      sheet: null,
       rowNumber: null,
       column: null,
       legacyMessage: errorMessage(error)
     });
     return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
   }
-  if (!header) {
-    addIssue(issues, {
-      code: "MISSING_REQUIRED_COLUMN",
-      message: "Delivery receipt item header is missing required columns.",
-      sheet,
-      rowNumber: null,
-      column: null,
-      legacyMessage: "Delivery receipt item header is missing required columns."
-    });
-    return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
-  }
+  const { sheet, header } = selection;
   const receiptMetadata = deliveryDerivedMetadata(sheet, header.index, issues);
   if (!receiptMetadata) return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
 
@@ -521,6 +514,7 @@ function parseDeliveryLedgerSheets(
     name: sheet.name,
     hidden: sheet.hidden,
     headerRowNumber: header.index + 1,
+    columnCount: header.width,
     dataRowCount: items.length
   });
   if (!items.length) {
@@ -598,334 +592,21 @@ function parseDeliveryLedgerSheets(
   );
 }
 
-function parseSupplierCatalogSheets(
-  input: ParseStructuredFileInput,
-  sheets: StructuredSheetRows[],
-  issues: ValidationIssueCollector
-): StructuredParseResult {
-  const sheetSummary: StructuredSheetSummary[] = [];
-  const ignoredSheets: IgnoredStructuredSheet[] = [];
-  const rows: StructuredImportRow[] = [];
-  const selection = selectSupplierCatalogSheets(sheets);
-  for (const sheet of selection.hiddenMatching) {
-    addIssue(issues, {
-      code: "HIDDEN_SHEET",
-      message: "Matching hidden worksheets are not allowed.",
-      sheet,
-      rowNumber: null,
-      column: null,
-      legacyMessage: `Matching hidden sheet ${sheet.name} is not allowed.`
-    });
-  }
-  if (selection.matching.length !== 1) {
-    if (selection.matching.length > 1) {
-      addIssue(issues, {
-        code: "INVALID_SHEET_COUNT",
-        message: "Supplier catalog file must contain exactly one recognized worksheet.",
-        sheet: null,
-        rowNumber: null,
-        column: null,
-        legacyMessage: "Supplier catalog file must contain exactly one recognized worksheet."
-      });
-    } else if (selection.problems.length) {
-      addSupplierCatalogHeaderIssues(issues, selection.problems[0]!);
-    } else if (!selection.hiddenMatching.length) {
-      addIssue(issues, {
-        code: "NO_MATCHING_SHEET",
-        message: "Workbook has no matching visible import sheets.",
-        sheet: null,
-        rowNumber: null,
-        column: null,
-        legacyMessage: "Workbook has no matching visible import sheets."
-      });
-    }
-    return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
-  }
-  ignoredSheets.push(
-    ...selection.nonMatchingVisible.map((sheet) => ({
-      sheetIndex: sheet.sheetIndex,
-      name: sheet.name,
-      reason: "SCHEMA_NOT_MATCHED" as const
-    }))
-  );
-  const { sheet, header } = selection.matching[0]!;
-  const data = dataRowsFor("supplier_catalog", sheet, header);
-  sheetSummary.push({
-    sheetIndex: sheet.sheetIndex,
-    name: sheet.name,
-    hidden: sheet.hidden,
-    headerRowNumber: header.index + 1,
-    dataRowCount: data.length
-  });
-  if (!data.length) {
-    addIssue(issues, {
-      code: "EMPTY_SNAPSHOT",
-      message: "Catalog snapshot contains no rows.",
-      sheet,
-      rowNumber: null,
-      column: null,
-      legacyMessage: "Catalog snapshot contains no rows."
-    });
-  }
-  let rowLimitReported = false;
-  for (const item of data) {
-    if (
-      item.row.length > header.width &&
-      item.row.slice(header.width).some((value) => value.trim())
-    ) {
-      addIssue(issues, {
-        code: "EXTRA_DATA_COLUMN",
-        message: "Row has data outside the resolved header width.",
-        sheet,
-        rowNumber: item.sourceRowNumber,
-        column: null,
-        legacyMessage: `Row ${item.sourceRowNumber} has data outside the resolved header width.`
-      });
-      continue;
-    }
-    const parsed = payloadFor("supplier_catalog", header.fields, item.row);
-    if (parsed.errors.length) {
-      for (const error of parsed.errors) {
-        addIssue(issues, {
-          code: "INVALID_FIELD_VALUE",
-          message: "Field value is invalid.",
-          sheet,
-          rowNumber: item.sourceRowNumber,
-          column: error.column,
-          legacyMessage: error.message
-        });
-      }
-      continue;
-    }
-    if (rows.length >= input.limits.maxStructuredImportRows) {
-      if (!rowLimitReported) {
-        addIssue(issues, {
-          code: "ROW_LIMIT_EXCEEDED",
-          message: "Structured import row limit exceeded.",
-          sheet,
-          rowNumber: item.sourceRowNumber,
-          column: null,
-          legacyMessage: "Structured import row limit exceeded."
-        });
-        rowLimitReported = true;
-      }
-      continue;
-    }
-    rows.push({
-      sourceSheetIndex: sheet.sheetIndex,
-      sourceSheetName: sheet.name,
-      sourceRowNumber: item.sourceRowNumber,
-      payload: parsed.payload
-    });
-  }
-  return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
-}
-
-function profileDeliveryLedgerSheets(
-  input: Omit<ParseStructuredFileInput, "startDate" | "endDate">,
-  sheets: StructuredSheetRows[]
-): StructuredWorkbookProfile {
-  const sheet = oneProfiledNonEmptyVisibleSheet(sheets, "delivery receipt");
-  const header = findDeliveryDetailHeader(sheet.rows);
-  if (!header) throw validation("Delivery receipt item header is missing required columns.");
-  const receiptMetadata = deliveryDerivedMetadataOrThrow(sheet, header.index);
-  const items = deliveryItemRows(sheet, header);
-  if (!items.length) throw validation("Delivery receipt contains no item rows.");
-  if (items.length > input.limits.maxStructuredImportRows)
-    throw validation("Structured import row limit exceeded.");
-  assertWithinHeaderWidth(items, header);
-  return {
-    dataset: input.dataset,
-    registryVersion: getStructuredRegistry(input.dataset).version,
-    fileName: input.fileName,
-    sheets: [
-      {
-        sheetIndex: sheet.sheetIndex,
-        name: sheet.name,
-        hidden: sheet.hidden,
-        headerRowNumber: header.index + 1,
-        columnCount: header.width,
-        dataRowCount: items.length,
-        validationErrors: []
-      }
-    ],
-    ignoredEmptySheets: sheets
-      .filter((candidate) => isEmpty(candidate.rows))
-      .map((candidate) => candidate.name),
-    derivedMetadata: toDerivedMetadata(receiptMetadata)
-  };
-}
-
-function profileSupplierCatalogSheets(
-  input: Omit<ParseStructuredFileInput, "startDate" | "endDate">,
-  sheets: StructuredSheetRows[]
-): StructuredWorkbookProfile {
-  const selection = selectSupplierCatalogSheets(sheets);
-  if (selection.hiddenMatching.length)
-    throw validation(`Matching hidden sheet ${selection.hiddenMatching[0]!.name} is not allowed.`);
-  if (selection.matching.length > 1)
-    throw validation("Supplier catalog file must contain exactly one recognized worksheet.");
-  if (!selection.matching.length) {
-    const firstProblem = selection.problems[0];
-    if (firstProblem) throw validation(supplierCatalogHeaderLegacyMessage(firstProblem.problem));
-    throw validation("Workbook has no matching visible import sheets.");
-  }
-  const { sheet, header } = selection.matching[0]!;
-  const data = dataRowsFor("supplier_catalog", sheet, header);
-  if (!data.length) throw validation("Catalog snapshot contains no rows.");
-  if (data.length > input.limits.maxStructuredImportRows)
-    throw validation("Structured import row limit exceeded.");
-  assertWithinHeaderWidth(data, header);
-  return {
-    dataset: input.dataset,
-    registryVersion: getStructuredRegistry(input.dataset).version,
-    fileName: input.fileName,
-    sheets: [
-      {
-        sheetIndex: sheet.sheetIndex,
-        name: sheet.name,
-        hidden: sheet.hidden,
-        headerRowNumber: header.index + 1,
-        columnCount: header.width,
-        dataRowCount: data.length,
-        validationErrors: []
-      }
-    ],
-    ignoredEmptySheets: sheets
-      .filter((candidate) => isEmpty(candidate.rows))
-      .map((candidate) => candidate.name)
-  };
-}
-
-function selectSupplierCatalogSheets(sheets: StructuredSheetRows[]): SupplierCatalogSheetSelection {
-  const selection: SupplierCatalogSheetSelection = {
-    matching: [],
-    hiddenMatching: [],
-    nonMatchingVisible: [],
-    problems: []
-  };
-  for (const sheet of sheets) {
-    if (isEmpty(sheet.rows)) continue;
-    const inspection = inspectSupplierCatalogHeader(sheet.rows);
-    if (inspection?.kind === "match") {
-      if (sheet.hidden) selection.hiddenMatching.push(sheet);
-      else selection.matching.push({ sheet, header: inspection.header });
-      continue;
-    }
-    if (sheet.hidden) continue;
-    selection.nonMatchingVisible.push(sheet);
-    if (inspection?.kind === "problem")
-      selection.problems.push({ sheet, problem: inspection.problem });
-  }
-  return selection;
-}
-
-function inspectSupplierCatalogHeader(
-  rows: string[][]
-):
-  | { kind: "match"; header: SupplierCatalogHeader }
-  | { kind: "problem"; problem: SupplierCatalogHeaderProblem }
-  | undefined {
-  const fields = getStructuredRegistry("supplier_catalog").fields.filter(
-    (field) => field.inputSource === "file"
-  );
-  let firstProblem: SupplierCatalogHeaderProblem | undefined;
-  for (let index = 0; index < Math.min(MAX_SPECIAL_HEADER_SCAN_ROWS, rows.length); index++) {
-    const headers = rows[index] ?? [];
-    const resolution = resolveStructuredHeaders("supplier_catalog", headers);
-    const hasControlledHeader = headers.some((header) =>
-      fields.some((field) => field.aliases.includes(header))
+function selectDeliverySheet(sheets: StructuredSheetRows[]) {
+  const matches = sheets
+    .filter((sheet) => !sheet.hidden && !isEmpty(sheet.rows))
+    .map((sheet) => ({ sheet, header: findDeliveryDetailHeader(sheet.rows) }))
+    .filter(
+      (
+        candidate
+      ): candidate is {
+        sheet: StructuredSheetRows;
+        header: NonNullable<ReturnType<typeof findDeliveryDetailHeader>>;
+      } => candidate.header !== null
     );
-    const hasInvalidPhysicalHeaders =
-      headers.length !== fields.length || headers.some((header) => !header.trim());
-    if (resolution.ok && !hasInvalidPhysicalHeaders) {
-      return {
-        kind: "match",
-        header: { index, width: headers.length, fields: resolution.fields }
-      };
-    }
-    if (hasControlledHeader && !firstProblem) {
-      firstProblem = {
-        index,
-        errors: [
-          ...(resolution.ok ? [] : resolution.errors),
-          ...(hasInvalidPhysicalHeaders ? [{ code: "UNKNOWN_COLUMN", column: "" } as const] : [])
-        ],
-        hasInvalidPhysicalHeaders
-      };
-    }
-  }
-  return firstProblem ? { kind: "problem", problem: firstProblem } : undefined;
-}
-
-function addSupplierCatalogHeaderIssues(
-  issues: ValidationIssueCollector,
-  input: { sheet: StructuredSheetRows; problem: SupplierCatalogHeaderProblem }
-) {
-  for (const error of input.problem.errors) {
-    addIssue(issues, {
-      code: "INVALID_HEADER",
-      message: "Supplier catalog header is invalid.",
-      sheet: input.sheet,
-      rowNumber: input.problem.index + 1,
-      column: safeHeaderColumn(error),
-      legacyMessage: supplierCatalogHeaderLegacyMessage(input.problem, error)
-    });
-  }
-}
-
-function supplierCatalogHeaderLegacyMessage(
-  problem: SupplierCatalogHeaderProblem,
-  error?: HeaderValidationError
-) {
-  if (problem.hasInvalidPhysicalHeaders)
-    return "Supplier catalog header must contain exactly 33 nonblank controlled columns.";
-  const firstError = error ?? problem.errors[0];
-  return `Supplier catalog header validation failed: ${firstError?.code}:${firstError?.column}`;
-}
-
-function oneNonEmptyVisibleSheet(
-  sheets: StructuredSheetRows[],
-  issues: ValidationIssueCollector,
-  subject: string
-): StructuredSheetRows | null {
-  const nonEmpty = sheets.filter((sheet) => !isEmpty(sheet.rows));
-  const hidden = nonEmpty.find((sheet) => sheet.hidden);
-  if (hidden) {
-    addIssue(issues, {
-      code: "HIDDEN_SHEET",
-      message: "Non-empty hidden worksheets are not allowed.",
-      sheet: hidden,
-      rowNumber: null,
-      column: null,
-      legacyMessage: `Hidden non-empty sheet ${hidden.name} is not allowed.`
-    });
-    return null;
-  }
-  if (nonEmpty.length !== 1) {
-    addIssue(issues, {
-      code: "INVALID_SHEET_COUNT",
-      message: `${subject} file must contain exactly one non-empty worksheet.`,
-      sheet: null,
-      rowNumber: null,
-      column: null,
-      legacyMessage: `${subject} file must contain exactly one non-empty worksheet.`
-    });
-    return null;
-  }
-  return nonEmpty[0]!;
-}
-
-function oneProfiledNonEmptyVisibleSheet(
-  sheets: StructuredSheetRows[],
-  subject: string
-): StructuredSheetRows {
-  const nonEmpty = sheets.filter((sheet) => !isEmpty(sheet.rows));
-  const hidden = nonEmpty.find((sheet) => sheet.hidden);
-  if (hidden) throw validation(`Hidden non-empty sheet ${hidden.name} is not allowed.`);
-  if (nonEmpty.length !== 1)
-    throw validation(`${subject} file must contain exactly one non-empty worksheet.`);
-  return nonEmpty[0]!;
+  if (matches.length !== 1)
+    throw validation("Delivery receipt file must contain exactly one recognized worksheet.");
+  return matches[0]!;
 }
 
 function addIssue(

@@ -93,9 +93,10 @@ Required behavior:
   and `supplier_catalog` uses no dates; all uploads also carry enterprise identity/name, an
   idempotency key, and labels;
 - file name is not trusted for business logic;
-- XLSX sheet selection is dataset-specific: `delivery_ledger` requires exactly one non-empty
-  visible receipt sheet; `supplier_catalog` imports exactly one recognized visible 33-column table
-  and ignores/reports nonmatching visible sheets; `dish_catalog` follows its
+- XLSX sheet selection is dataset-specific: `delivery_ledger` selects exactly one recognized visible
+  receipt sheet and ignores instructions/hidden sheets; `supplier_catalog` imports exactly one
+  recognized visible controlled-column table and ignores nonmatching visible and hidden sheets;
+  `dish_catalog` follows its
   `import_matching_visible` policy; the other structured datasets retain their existing policy;
 - controlled header aliases map uploaded headers to canonical fields;
 - entire import fails atomically on validation/date/permission/idempotency/active-window failure;
@@ -111,8 +112,9 @@ The delivery and supplier datasets are now implemented on this same surface:
   document metadata, with no caller-supplied date fields, and each item row becomes one ledger row;
 - delivery uploads use organization-scoped receipt-number natural-key idempotency, while the
   supplied idempotency key remains the retry identity for other structured uploads;
-- `supplier_catalog` accepts one complete strict 33-column CSV/XLSX snapshot, keeps historical
-  applied batches, and makes only the latest successfully applied snapshot current;
+- `supplier_catalog` requires `供应商名称`, accepts the other controlled columns when present,
+  rejects unknown or unnamed columns, keeps historical applied batches, and makes only the latest
+  successfully applied snapshot current;
 - delivery ledger queries can select dynamically resolved supplier phone/address fields, but those
   fields are selection-only and return `null` for absent, invisible, blank, unmatched, or ambiguous
   current catalog data; an older catalog is never used as a fallback;
@@ -137,7 +139,7 @@ Active MCP tools:
 Done criteria:
 
 - strict schema/date-window validation;
-- strict delivery receipt and complete supplier-catalog validation for CSV/XLSX;
+- delivery receipt validation and controlled-column supplier-catalog validation for CSV/XLSX;
 - receipt-number natural-key replay/conflict behavior and derived delivery metadata;
 - source file storage and audit;
 - atomic MySQL row import;

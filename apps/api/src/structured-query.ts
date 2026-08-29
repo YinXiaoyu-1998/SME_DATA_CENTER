@@ -68,83 +68,41 @@ export function createPrismaStructuredQueryRepository(
         Record<string, unknown>
       >;
       const visibleRows = rows.slice(0, compiled.limit);
-      const hasDynamicSupplierFields =
-        compiled.dataset === "delivery_ledger" &&
-        compiled.mode === "detail" &&
-        compiled.dynamicSelectedFields.length > 0;
+      const hasMore = rows.length > compiled.limit;
+      if (
+        compiled.dataset !== "delivery_ledger" ||
+        compiled.mode !== "detail" ||
+        compiled.dynamicSelectedFields.length === 0 ||
+        visibleRows.length === 0
+      )
+        return { rows: visibleRows.map(serializeStructuredQueryRow), hasMore };
 
-      if (!hasDynamicSupplierFields || visibleRows.length === 0) {
-        return {
-          rows: visibleRows.map(serializeStructuredQueryRow),
-          hasMore: rows.length > compiled.limit
-        };
-      }
-
-      const supplierNames = [
-        ...new Set(
-          visibleRows
-            .map((row) => row[STRUCTURED_QUERY_SUPPLIER_NAME] ?? row["supplier_name"])
-            .filter((value): value is string => typeof value === "string" && value.length > 0)
-        )
-      ];
-      const nullDynamicValues = Object.fromEntries(
-        compiled.dynamicSelectedFields.map((field) => [field, null])
-      );
-      const publicRows = visibleRows.map((row) => {
-        return serializeStructuredDetailRow(row, compiled, nullDynamicValues);
-      });
-
-      if (supplierNames.length === 0) {
-        return {
-          rows: publicRows.map(serializeStructuredQueryRow),
-          hasMore: rows.length > compiled.limit
-        };
-      }
-
-      const currentCatalog = await findCurrentSupplierCatalog(prisma, compiled.authorizationScope);
-      if (!currentCatalog) {
-        return {
-          rows: publicRows.map(serializeStructuredQueryRow),
-          hasMore: rows.length > compiled.limit
-        };
-      }
-
-      const authorized = await canReadCurrentSupplierCatalog(
-        prisma,
-        currentCatalog.source_document_id,
-        compiled.authorizationScope
-      );
-      if (!authorized) {
-        return {
-          rows: publicRows.map(serializeStructuredQueryRow),
-          hasMore: rows.length > compiled.limit
-        };
-      }
-
-      const catalogRows = await findSupplierCatalogMatches(
-        prisma,
-        currentCatalog.id,
-        currentCatalog.source_document_id,
-        supplierNames,
-        compiled.dynamicSelectedFields,
-        compiled.authorizationScope.orgId
-      );
+      const supplierNames = uniqueSupplierNames(visibleRows);
+      const currentCatalog =
+        supplierNames.length > 0
+          ? await findReadableCurrentSupplierCatalog(prisma, compiled.authorizationScope)
+          : null;
+      const catalogRows = currentCatalog
+        ? await findSupplierCatalogMatches(
+            prisma,
+            currentCatalog.id,
+            currentCatalog.source_document_id,
+            supplierNames,
+            compiled.dynamicSelectedFields,
+            compiled.authorizationScope.orgId
+          )
+        : [];
       const matchesByName = new Map<string, Array<Record<string, unknown>>>();
       for (const catalogRow of catalogRows) {
-        if (
-          typeof catalogRow["source_document_id"] === "string" &&
-          catalogRow["source_document_id"] !== currentCatalog.source_document_id
-        ) {
-          continue;
-        }
         const supplierName = catalogRow["supplier_name"];
-        if (typeof supplierName !== "string") {
-          continue;
-        }
+        if (typeof supplierName !== "string") continue;
         const matches = matchesByName.get(supplierName) ?? [];
         matches.push(catalogRow);
         matchesByName.set(supplierName, matches);
       }
+      const nullDynamicValues = Object.fromEntries(
+        compiled.dynamicSelectedFields.map((field) => [field, null])
+      );
 
       return {
         rows: visibleRows.map((row) => {
@@ -153,7 +111,7 @@ export function createPrismaStructuredQueryRepository(
           const values = matches?.length === 1 ? dynamicValuesFor(matches[0]!, compiled) : {};
           return serializeStructuredDetailRow(row, compiled, { ...nullDynamicValues, ...values });
         }),
-        hasMore: rows.length > compiled.limit
+        hasMore
       };
     },
     async disconnect() {
@@ -162,37 +120,30 @@ export function createPrismaStructuredQueryRepository(
   };
 }
 
-async function findCurrentSupplierCatalog(
+function uniqueSupplierNames(rows: Array<Record<string, unknown>>): string[] {
+  return [
+    ...new Set(
+      rows
+        .map((row) => row[STRUCTURED_QUERY_SUPPLIER_NAME] ?? row["supplier_name"])
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+    )
+  ];
+}
+
+async function findReadableCurrentSupplierCatalog(
   prisma: PrismaClient,
   scope: StructuredQueryAuthorizationScope
 ): Promise<CurrentSupplierCatalog | null> {
-  const rows = (await prisma.$queryRawUnsafe(
-    `SELECT ib.id, ib.source_document_id AS source_document_id
-       FROM import_batches ib
-      WHERE ib.org_id = ?
-        AND ib.dataset = ?
-        AND ib.status = ?
-        AND ib.applied_at IS NOT NULL
-        AND ib.archived_at IS NULL
-      ORDER BY ib.applied_at DESC, ib.id DESC
-      LIMIT 1`,
+  const params: Array<string> = [
     scope.orgId,
     "supplier_catalog",
-    "applied"
-  )) as Array<CurrentSupplierCatalog>;
-
-  return rows[0] ?? null;
-}
-
-async function canReadCurrentSupplierCatalog(
-  prisma: PrismaClient,
-  documentId: string,
-  scope: StructuredQueryAuthorizationScope
-): Promise<boolean> {
-  const params: Array<string> = [documentId, scope.orgId, "structured", "active"];
+    "applied",
+    "structured",
+    "active"
+  ];
   const clauses = [
-    "d.id = ?",
-    "d.org_id = ?",
+    "d.id = latest.source_document_id",
+    "d.org_id = latest.org_id",
     "d.document_kind = ?",
     "d.status = ?",
     "d.archived_at IS NULL"
@@ -213,10 +164,24 @@ async function canReadCurrentSupplierCatalog(
   }
 
   const rows = (await prisma.$queryRawUnsafe(
-    `SELECT d.id FROM documents d WHERE ${clauses.map((clause) => `${clause}`).join(" AND ")} LIMIT 1`,
+    `SELECT latest.id, latest.source_document_id
+       FROM (
+         SELECT ib.id, ib.org_id, ib.source_document_id
+           FROM import_batches ib
+          WHERE ib.org_id = ?
+            AND ib.dataset = ?
+            AND ib.status = ?
+            AND ib.applied_at IS NOT NULL
+            AND ib.archived_at IS NULL
+          ORDER BY ib.applied_at DESC, ib.id DESC
+          LIMIT 1
+       ) latest
+       JOIN documents d ON d.id = latest.source_document_id
+      WHERE ${clauses.join(" AND ")}
+      LIMIT 1`,
     ...params
-  )) as Array<{ id: string }>;
-  return rows.length > 0;
+  )) as Array<CurrentSupplierCatalog>;
+  return rows[0] ?? null;
 }
 
 async function findSupplierCatalogMatches(

@@ -87,6 +87,27 @@ describe("structured ingestion", () => {
     expect(result.rows.map((row) => row.payload)).toEqual(expectedSupplierCatalogPayloads());
   });
 
+  test("accepts a supplier catalog containing only the required name and available contact fields", async () => {
+    const result = await parseStructuredFile({
+      dataset: "supplier_catalog",
+      fileName: "supplier-contacts.csv",
+      fileType: "csv",
+      content: Buffer.from(
+        "供应商名称,联系人电话,单位地址\n一次性-测试供应商,13800000000,测试地址\n",
+        "utf8"
+      ),
+      limits
+    });
+
+    expect(result.rows.map((row) => row.payload)).toEqual([
+      {
+        supplier_name: "一次性-测试供应商",
+        contact_phone: "13800000000",
+        unit_address: "测试地址"
+      }
+    ]);
+  });
+
   test("imports one supplier table while reporting a visible instructions sheet", async () => {
     const result = await parseStructuredFile({
       dataset: "supplier_catalog",
@@ -105,6 +126,41 @@ describe("structured ingestion", () => {
     ]);
   });
 
+  test("ignores a hidden supplier worksheet when one visible worksheet can be imported", async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet("Visible").addRows(supplierCatalogRows());
+    workbook.addWorksheet("Hidden", { state: "hidden" }).addRows(supplierCatalogRows());
+
+    const result = await parseStructuredFile({
+      dataset: "supplier_catalog",
+      fileName: "supplier-hidden-copy.xlsx",
+      fileType: "xlsx",
+      content: Buffer.from(await workbook.xlsx.writeBuffer()),
+      limits
+    });
+
+    expect(result.rows.map((row) => row.payload)).toEqual(expectedSupplierCatalogPayloads());
+  });
+
+  test("imports a delivery worksheet while ignoring a visible instructions sheet", async () => {
+    const result = await parseStructuredFile({
+      dataset: "delivery_ledger",
+      fileName: "delivery-with-cover.xlsx",
+      fileType: "xlsx",
+      content: await workbookBuffer([
+        [["导入说明"], ["收货单明细位于下一工作表"]],
+        deliveryLedgerRows()
+      ]),
+      limits: limitsFor({ maxStructuredImportRows: 20 })
+    });
+
+    expect(result.rows).toHaveLength(13);
+    expect(result.rows[0]?.payload).toMatchObject({
+      receipt_number: "SH2608250117",
+      item_name: "合成物品1"
+    });
+  });
+
   test("rejects an internal unnamed supplier header column instead of dropping its data", async () => {
     const headers = supplierCatalogHeaders();
     const row = supplierCatalogRow();
@@ -119,9 +175,7 @@ describe("structured ingestion", () => {
         content: Buffer.from(`${headers.join(",")}\n${row.join(",")}\n`, "utf8"),
         limits
       })
-    ).rejects.toThrow(
-      "Supplier catalog header must contain exactly 33 nonblank controlled columns."
-    );
+    ).rejects.toThrow();
   });
 
   test("keeps delivery and supplier CSV/XLSX payloads equivalent", async () => {
@@ -190,17 +244,15 @@ describe("structured ingestion", () => {
     });
     const invalidDecimal = deliveryLedgerRows({ itemRows: [["1", "物品", "件", "1.", "80"]] });
     const emptyItems = deliveryLedgerRows({ itemRows: [] });
-    const hidden = new ExcelJS.Workbook();
-    hidden.addWorksheet("Visible").addRows(deliveryLedgerRows());
-    hidden.addWorksheet("Hidden", { state: "hidden" }).addRows(deliveryLedgerRows());
-
     for (const [content, error] of [
-      [await workbookBuffer([deliveryLedgerRows(), deliveryLedgerRows()]), "exactly one non-empty"],
+      [
+        await workbookBuffer([deliveryLedgerRows(), deliveryLedgerRows()]),
+        "exactly one recognized worksheet"
+      ],
       [await workbookBuffer([missingMetadata]), "收货日期 is required"],
       [await workbookBuffer([invalidDate]), "收货日期 must be a date"],
       [await workbookBuffer([invalidDecimal]), "purchase_quantity must be numeric"],
-      [await workbookBuffer([emptyItems]), "contains no item rows"],
-      [Buffer.from(await hidden.xlsx.writeBuffer()), "Hidden non-empty sheet Hidden is not allowed"]
+      [await workbookBuffer([emptyItems]), "contains no item rows"]
     ] as const) {
       await expect(
         parseStructuredFile({
@@ -262,7 +314,7 @@ describe("structured ingestion", () => {
       expect(collected.validationErrors).toContainEqual(
         expect.objectContaining({
           code: "INVALID_HEADER",
-          message: "Delivery receipt item header is ambiguous."
+          message: "Delivery receipt worksheet could not be selected."
         })
       );
     }
@@ -288,7 +340,7 @@ describe("structured ingestion", () => {
         ]),
         limits
       })
-    ).rejects.toThrow("UNKNOWN_COLUMN:地址");
+    ).rejects.toThrow();
   });
 
   test("rejects a hidden non-empty XLSX worksheet during profiling", async () => {

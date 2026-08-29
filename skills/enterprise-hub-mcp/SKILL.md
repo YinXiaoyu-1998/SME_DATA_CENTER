@@ -187,9 +187,12 @@ or `snapshotDate`.
   and date are derived from `单据号` and `收货日期`; each item row becomes one ledger row. The
   normalized receipt number is the organization-scoped natural idempotency key, so different
   content for the same receipt is a conflict rather than an overwrite.
-- `supplier_catalog` accepts one complete 33-column CSV/XLSX supplier snapshot, not a delta or
-  chunk. `供应商名称` is the exact match key. The latest successfully applied snapshot is current;
-  older history is not a fallback, and an in-progress, failed, or rejected upload cannot replace it.
+- `supplier_catalog` requires `供应商名称` and accepts the other controlled supplier columns,
+  including `联系人电话` and `单位地址`, when present. Unknown or unnamed columns are rejected.
+  Unrelated visible sheets and hidden sheets are ignored, while multiple visible matching supplier
+  sheets are rejected. `供应商名称` is the exact match key. The latest successfully applied
+  snapshot is current; older history is not a fallback, and an in-progress, failed, or rejected
+  upload cannot replace it.
 - Keep the returned `importBatchId` and poll `get_import_status` until
   `importBatch.status=applied` before querying. A queued or pending response is not success.
 - In delivery detail queries, `supplier_contact_phone` and `supplier_unit_address` are selectable

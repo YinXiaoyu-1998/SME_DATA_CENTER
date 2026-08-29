@@ -281,38 +281,9 @@ export function canonicalStructuredImportFileName(input: {
   const fullName = `${fullStem}${extension}`;
   if (fullName.length <= MAX_CANONICAL_FILE_NAME_CHARS) return fullName;
 
-  const fullCanonicalInput = JSON.stringify({
-    enterpriseName: input.enterpriseName,
-    enterpriseSegment,
-    dataset: input.dataset,
-    startDate: input.startDate,
-    endDate: input.endDate,
-    snapshotDate: input.snapshotDate,
-    receiptNumber: input.receiptNumber,
-    metadataSegment,
-    contentDigest: input.contentDigest ?? input.fileHash
-  });
-  const hashSuffix = `_h${createHash("sha256").update(fullCanonicalInput).digest("hex").slice(0, 24)}`;
+  const hashSuffix = `_h${createHash("sha256").update(fullName).digest("hex").slice(0, 24)}`;
   const availableStemChars = MAX_CANONICAL_FILE_NAME_CHARS - extension.length - hashSuffix.length;
-  let boundedStem: string;
-
-  if (registry.metadataPolicy === "derived_receipt") {
-    const datasetPrefix = `${input.dataset}_`;
-    const availableReadableChars = availableStemChars - datasetPrefix.length - 1;
-    const metadataChars = Math.min(
-      metadataSegment.length,
-      Math.max(0, availableReadableChars - Math.min(enterpriseSegment.length, 48))
-    );
-    const enterpriseChars = availableReadableChars - metadataChars;
-    boundedStem =
-      enterpriseChars > 0
-        ? `${enterpriseSegment.slice(0, enterpriseChars)}_${datasetPrefix}${metadataSegment.slice(0, metadataChars)}${hashSuffix}`
-        : `${fullStem.slice(0, Math.max(0, availableStemChars))}${hashSuffix}`;
-  } else {
-    boundedStem = `${fullStem.slice(0, Math.max(0, availableStemChars))}${hashSuffix}`;
-  }
-
-  return `${boundedStem}${extension}`;
+  return `${fullStem.slice(0, Math.max(0, availableStemChars))}${hashSuffix}${extension}`;
 }
 
 export function structuredImportFingerprint(input: {
