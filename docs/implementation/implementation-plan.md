@@ -1,6 +1,6 @@
 # 企业资料中枢 Implementation Plan
 
-Last updated: 2026-07-13
+Last updated: 2026-08-29
 
 ## Product Boundary
 
@@ -82,12 +82,22 @@ Supported datasets:
 - `dishes`
 - `business`
 - `vip`
+- `dish_catalog`
+- `delivery_ledger`
+- `supplier_catalog`
 
 Required behavior:
 
-- metadata supplies enterprise identity/name, dataset, business-day `startDate`/`endDate`, idempotency key, and labels;
+- metadata is policy-specific: window datasets use `startDate`/`endDate`, `dish_catalog` uses
+  `snapshotDate`, `delivery_ledger` derives the receipt number/date and rejects user-supplied dates,
+  and `supplier_catalog` uses no dates; all uploads also carry enterprise identity/name, an
+  idempotency key, and labels;
 - file name is not trusted for business logic;
-- every sheet/table in an XLSX must satisfy the dataset structure;
+- XLSX sheet selection is dataset-specific: `delivery_ledger` selects exactly one recognized visible
+  receipt sheet and ignores instructions/hidden sheets; `supplier_catalog` imports exactly one
+  recognized visible controlled-column table and ignores nonmatching visible and hidden sheets;
+  `dish_catalog` follows its
+  `import_matching_visible` policy; the other structured datasets retain their existing policy;
 - controlled header aliases map uploaded headers to canonical fields;
 - entire import fails atomically on validation/date/permission/idempotency/active-window failure;
 - ingestion validates CSV/XLSX format and resource limits before storage or DB publication;
@@ -95,6 +105,22 @@ Required behavior:
 - imported rows are stored in dataset-specific MySQL tables;
 - structured query is controlled read-only JSON, not raw SQL;
 - numeric/date comparisons, sorting, and aggregates use field-type semantics rather than string ordering.
+
+The delivery and supplier datasets are now implemented on this same surface:
+
+- `delivery_ledger` accepts one CSV/XLSX receipt per file; receipt number and date are derived from
+  document metadata, with no caller-supplied date fields, and each item row becomes one ledger row;
+- delivery uploads use organization-scoped receipt-number natural-key idempotency, while the
+  supplied idempotency key remains the retry identity for other structured uploads;
+- `supplier_catalog` requires `供应商名称`, accepts the other controlled columns when present,
+  rejects unknown or unnamed columns, keeps historical applied batches, and makes only the latest
+  successfully applied snapshot current;
+- delivery ledger queries can select dynamically resolved supplier phone/address fields, but those
+  fields are selection-only and return `null` for absent, invisible, blank, unmatched, or ambiguous
+  current catalog data; an older catalog is never used as a fallback;
+- enrichment is performed only after the authorized ledger page is selected and requires visibility
+  of the current catalog source document, so it does not change filtering, ordering, grouping,
+  aggregation, or pagination.
 
 Active HTTP endpoints:
 
@@ -113,9 +139,12 @@ Active MCP tools:
 Done criteria:
 
 - strict schema/date-window validation;
+- delivery receipt validation and controlled-column supplier-catalog validation for CSV/XLSX;
+- receipt-number natural-key replay/conflict behavior and derived delivery metadata;
 - source file storage and audit;
 - atomic MySQL row import;
 - backend permission filtering;
+- latest-applied-catalog dynamic enrichment with safe nullable behavior;
 - no mutation operators exposed through query;
 - explicit mechanical aggregates are supported only when requested by the query.
 

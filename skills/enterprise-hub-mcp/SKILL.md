@@ -47,8 +47,8 @@ discover them by hand.
   service's business tools (upload, query, import status, evidence, and more) dynamically. The
   proxied set can change with the service; discover exact tool names from the connected host
   instead of assuming a fixed inventory.
-- Call `list_structured_datasets` before using `dish_catalog`; use that dataset only when the
-  discovery response advertises it and its supported fields.
+- Call `list_structured_datasets` before using any structured dataset; use `dish_catalog`,
+  `delivery_ledger`, or `supplier_catalog` only when discovery advertises it and its fields.
 - If Enterprise Hub tools are not visible: run the pinned launcher's credential-free self-check
   (see Official Install Or Update), verify the invoking agent's MCP entry (`codex mcp list` /
   `codex mcp get enterprise-hub` or the host equivalent), reload or restart the host, then
@@ -176,6 +176,30 @@ complete, append-only menu snapshot rather than a sales/business date-window dat
 - After `importBatch.status=applied`, query catalog rows through the discovery-reported
   `snapshot_date` field. Do not infer a current/latest menu, a diff, or added, removed,
   discontinued, or other cross-snapshot status.
+
+## Delivery Ledgers And Supplier Catalogs
+
+For `delivery_ledger` and `supplier_catalog`, call `upload_structured_dataset` with `file`,
+`enterpriseName`, `idempotencyKey`, and existing `labelKeys`. Do not send `startDate`, `endDate`,
+or `snapshotDate`.
+
+- `delivery_ledger` accepts one complete CSV/XLSX delivery receipt per file. The receipt number
+  and date are derived from `单据号` and `收货日期`; each item row becomes one ledger row. The
+  normalized receipt number is the organization-scoped natural idempotency key, so different
+  content for the same receipt is a conflict rather than an overwrite.
+- `supplier_catalog` requires `供应商名称` and accepts the other controlled supplier columns,
+  including `联系人电话` and `单位地址`, when present. Unknown or unnamed columns are rejected.
+  Unrelated visible sheets and hidden sheets are ignored, while multiple visible matching supplier
+  sheets are rejected. `供应商名称` is the exact match key. The latest successfully applied
+  snapshot is current; older history is not a fallback, and an in-progress, failed, or rejected
+  upload cannot replace it.
+- Keep the returned `importBatchId` and poll `get_import_status` until
+  `importBatch.status=applied` before querying. A queued or pending response is not success.
+- In delivery detail queries, `supplier_contact_phone` and `supplier_unit_address` are selectable
+  dynamic fields only; they cannot filter, sort, group, or aggregate. They may be `null` when no
+  current catalog is available or visible, no exact match exists, the source value is blank, or the
+  supplier name is ambiguous. Enrichment never changes the authorized ledger page or falls back to
+  an older catalog.
 
 ## Official Install Or Update
 

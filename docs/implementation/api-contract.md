@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-08-10
+Last updated: 2026-08-29
 
 This contract describes the current public surface after the legacy ordinary document upload/search flow was removed.
 
@@ -327,20 +327,23 @@ When the fixed 200-candidate retrieval window is reached, responses include `EVI
 
 Multipart form fields:
 
-| Field             | Required    | Notes                                                                |
-| ----------------- | ----------- | -------------------------------------------------------------------- |
-| `file`            | yes         | CSV/XLSX                                                             |
-| `dataset`         | yes         | `dishes`, `business`, `vip`, or `dish_catalog`                       |
-| `enterprise_name` | yes         | Metadata supplied by caller                                          |
-| `startDate`       | conditional | Required only for `dishes`, `business`, and `vip`; `YYYYMMDD` window |
-| `endDate`         | conditional | Required only for `dishes`, `business`, and `vip`; `YYYYMMDD` window |
-| `snapshotDate`    | conditional | Required only for `dish_catalog`; `YYYYMMDD` complete snapshot date  |
-| `idempotencyKey`  | yes         | Prevents duplicate imports                                           |
-| `labelKeys[]`     | yes         | One or more existing allowed label keys                              |
+| Field             | Required    | Notes                                                                                 |
+| ----------------- | ----------- | ------------------------------------------------------------------------------------- |
+| `file`            | yes         | CSV/XLSX                                                                              |
+| `dataset`         | yes         | `dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog` |
+| `enterprise_name` | yes         | Metadata supplied by caller                                                           |
+| `startDate`       | conditional | Required only for `dishes`, `business`, and `vip`; `YYYYMMDD` window                  |
+| `endDate`         | conditional | Required only for `dishes`, `business`, and `vip`; `YYYYMMDD` window                  |
+| `snapshotDate`    | conditional | Required only for `dish_catalog`; `YYYYMMDD` complete snapshot date                   |
+| `idempotencyKey`  | yes         | Prevents duplicate imports                                                            |
+| `labelKeys[]`     | yes         | One or more existing allowed label keys                                               |
 
-`dish_catalog` rejects `startDate` and `endDate`; its public date is the one required
-`snapshotDate`. Internally, the import batch normalizes that value to identical start/end dates.
-The other datasets reject `snapshotDate` and retain their ordinary business-date-window rules.
+`dish_catalog` rejects `startDate` and `endDate`; its public date is the one required `snapshotDate`.
+`delivery_ledger` and `supplier_catalog` reject all date fields: delivery receipt date is derived
+from the file's `收货日期`, while a supplier catalog is an undated complete snapshot. Internally,
+the `dish_catalog` import batch normalizes `snapshotDate` to identical start/end dates; delivery
+stores its derived receipt date for status/reporting compatibility without reserving a date window.
+The other datasets retain their ordinary business-date-window rules.
 
 Behavior:
 
@@ -353,11 +356,19 @@ Behavior:
   than as an immediate upload response;
 - only `importBatch.status=applied` is a terminal structured-upload success; `rejected` and
   `failed` are terminal non-success outcomes;
-- reserves `Document`, `ImportBatch`, window claim, deterministic object key, and started audit in MySQL before writing storage;
+- reserves `Document`, `ImportBatch`, deterministic object key, and started audit in MySQL before
+  writing storage; window and snapshot datasets also reserve date claims, `delivery_ledger` uses
+  an organization+dataset+receipt natural key instead, and `supplier_catalog` uses neither a date
+  claim nor a natural key;
 - stores the original file with canonical metadata;
 - the worker writes each row into the dataset-specific MySQL table and applies the batch in one transaction;
 - exact replay of the same `idempotencyKey` and request fingerprint returns the originally persisted `documentId`, `importBatchId`, storage key, and status without writing duplicate storage objects, rows, claims, or audits;
 - same idempotency key with a different fingerprint returns a conflict before durable side effects;
+- delivery uploads also use the exact normalized receipt number as an organization-scoped natural
+  key: an exact replay returns the original import even with a different idempotency key, while
+  different content or metadata for that receipt returns `RECEIPT_NUMBER_CONFLICT` before storage;
+- supplier catalog uploads use the caller idempotency key for retry identity and never replace the
+  current catalog until a worker applies the complete snapshot successfully;
 - queues the structured-import worker path rather than applying rows on the HTTP request path.
 
 ### `dish_catalog` snapshot contract
@@ -396,6 +407,50 @@ hidden nonmatching worksheets are ignored. A snapshot requires at least one vali
 The API deliberately does not choose a current/latest catalog, compute a snapshot diff, infer
 added/removed/discontinued status, or otherwise infer state across snapshots. Callers must explicitly
 filter or compare `snapshot_date` values.
+
+### `delivery_ledger` receipt contract
+
+Each CSV/XLSX file represents exactly one delivery receipt. A workbook may also contain empty,
+hidden, or visible instruction sheets; the importer selects exactly one visible worksheet with the
+receipt item header and rejects multiple matching receipt worksheets. The receipt worksheet must contain the document fields
+`单据号`, `订货机构`, `送货机构`, and `收货日期`, plus item columns `序号`, `物品名称`, `规格型号`,
+`收货数量`, and `收货金额`. The receipt number and normalized `purchase_date` are derived from
+the file; callers must not send date metadata. Every numeric item row before the footer becomes one
+ledger row, including non-food items. `supplier_name` comes from `送货机构`, and production/batch
+and shelf-life fields are always `null`.
+
+| Query field                                       | Source or rule                                      |
+| ------------------------------------------------- | --------------------------------------------------- |
+| `entry_id`                                        | generated UUID per imported item                    |
+| `purchase_date`                                   | derived from `收货日期`, normalized to `YYYY-MM-DD` |
+| `store_name`                                      | `订货机构`                                          |
+| `receipt_number`                                  | `单据号`                                            |
+| `supplier_name`                                   | `送货机构`                                          |
+| `item_name`                                       | `物品名称`                                          |
+| `specification`                                   | `规格型号`                                          |
+| `purchase_quantity`                               | `收货数量` as decimal                               |
+| `purchase_amount`                                 | `收货金额` as decimal                               |
+| `production_date_or_batch`, `shelf_life`          | always `null`                                       |
+| `supplier_contact_phone`, `supplier_unit_address` | dynamic current-catalog lookup                      |
+
+### `supplier_catalog` snapshot contract
+
+Each CSV/XLSX file is one supplier master-data snapshot using the controlled supplier columns.
+`供应商名称` is required and is the exact enrichment key; the other controlled columns, including
+`联系人电话` and `单位地址`, are optional and preserve present values while absent or empty values
+remain null. Unknown or unnamed columns are rejected rather than silently discarded. A workbook
+must contain exactly one visible matching supplier worksheet; unrelated visible and all hidden
+worksheets are ignored. The latest successful `applied` catalog for
+the organization is the only current source for delivery enrichment. Older applied snapshots remain
+queryable history but are not used as a fallback, and a failed/rejected/in-progress snapshot never
+becomes current.
+
+The source document must also be visible to the employee for dynamic enrichment. Delivery queries
+may select `supplier_contact_phone` and `supplier_unit_address`; these virtual fields are selection
+only (`filter=false`, `sort=false`, `group=false`, `aggregate=false`). They are `null` when there is
+no current catalog, the current catalog is not visible, no exact match exists, the source value is
+blank, or the exact supplier name is ambiguous. Enrichment is limited to supplier names on the
+authorized ledger result page and does not alter filtering, sorting, pagination, or aggregation.
 
 Response shape:
 
@@ -478,6 +533,8 @@ Supported datasets:
 - `business`
 - `vip`
 - `dish_catalog` — complete catalog snapshots, including the metadata-derived `snapshot_date`
+- `delivery_ledger` — one receipt per CSV/XLSX file, with receipt date derived from `收货日期`
+- `supplier_catalog` — CSV/XLSX supplier snapshots using controlled columns for current enrichment
 
 ## Structured Query
 

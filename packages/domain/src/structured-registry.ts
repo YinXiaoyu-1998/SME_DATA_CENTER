@@ -1,4 +1,11 @@
-export const STRUCTURED_DATASETS = ["dishes", "business", "vip", "dish_catalog"] as const;
+export const STRUCTURED_DATASETS = [
+  "dishes",
+  "business",
+  "vip",
+  "dish_catalog",
+  "delivery_ledger",
+  "supplier_catalog"
+] as const;
 
 export type StructuredDatasetName = (typeof STRUCTURED_DATASETS)[number];
 
@@ -12,8 +19,16 @@ export interface StructuredFieldCapabilities {
   aggregate: boolean;
 }
 
+type StructuredRowTableName =
+  | "dish_rows"
+  | "business_rows"
+  | "vip_rows"
+  | "dish_catalog_rows"
+  | "delivery_ledger_rows"
+  | "supplier_catalog_rows";
+
 export interface StructuredFieldStorageMapping {
-  table: "dish_rows" | "business_rows" | "vip_rows" | "dish_catalog_rows";
+  table: StructuredRowTableName;
   column: "payload";
   jsonPath: string;
 }
@@ -24,7 +39,7 @@ export interface StructuredFieldRegistryEntry {
   aliases: string[];
   type: StructuredFieldType;
   nullable: boolean;
-  inputSource: "file" | "upload_metadata";
+  inputSource: "file" | "upload_metadata" | "derived" | "dynamic_lookup";
   sensitivity: "normal" | "business_metric";
   lifecycle: "active";
   volatility: "stable_export" | "review_on_export_change";
@@ -42,9 +57,10 @@ export interface StructuredFieldRegistryEntry {
 export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
   version: string;
-  rowTable: "dish_rows" | "business_rows" | "vip_rows" | "dish_catalog_rows";
+  rowTable: StructuredRowTableName;
   sheetPolicy: "strict_all_nonempty" | "import_matching_visible";
-  datePolicy: "row_business_date" | "snapshot_metadata";
+  metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
+  datePolicy?: "row_business_date" | "snapshot_metadata";
   fields: StructuredFieldRegistryEntry[];
 }
 
@@ -299,6 +315,44 @@ const DISH_CATALOG_CANONICAL_OVERRIDES: Record<string, string> = {
   菜品别名: "dish_alias"
 };
 
+const SUPPLIER_CATALOG_COLUMNS = [
+  ["供应商编码", "supplier_code"],
+  ["供应商名称", "supplier_name"],
+  ["供应商简称", "supplier_short_name"],
+  ["供应商助记码", "supplier_mnemonic"],
+  ["供应商类别", "supplier_category"],
+  ["结算方式", "settlement_method"],
+  ["税率", "tax_rate"],
+  ["订单汇总规则", "order_summary_rule"],
+  ["范围控制", "scope_control"],
+  ["供货关系", "supply_relationship"],
+  ["适用机构", "applicable_organization"],
+  ["采购收货依赖供应商发货", "procurement_receipt_depends_on_supplier_delivery"],
+  ["配送依赖供应商发货", "delivery_depends_on_supplier_delivery"],
+  ["发货时录入批次", "record_batch_on_delivery"],
+  ["同步收货数据", "synchronize_receipt_data"],
+  ["批次允许编辑", "batch_editable"],
+  ["供应商管理库存", "supplier_managed_inventory"],
+  ["允许委外", "outsourcing_allowed"],
+  ["控制下单时间", "order_time_control"],
+  ["可下单时间", "orderable_time"],
+  ["供应商对账模式", "supplier_reconciliation_mode"],
+  ["允许关闭订单", "close_order_allowed"],
+  ["启用状态", "enabled_status"],
+  ["联系人", "contact_name"],
+  ["联系人电话", "contact_phone"],
+  ["邮箱地址", "email_address"],
+  ["联系地址", "contact_address"],
+  ["备注", "remarks"],
+  ["单位名称", "unit_name"],
+  ["纳税人识别号", "taxpayer_identification_number"],
+  ["电话", "phone"],
+  ["单位地址", "unit_address"],
+  ["操作时间", "operated_at"]
+] as const;
+const SUPPLIER_CATALOG_SOURCE_COLUMNS = SUPPLIER_CATALOG_COLUMNS.map(([source]) => source);
+const SUPPLIER_CATALOG_CANONICAL_OVERRIDES = Object.fromEntries(SUPPLIER_CATALOG_COLUMNS);
+
 const VIP_SOURCE_COLUMNS = [
   "日期",
   "周",
@@ -480,12 +534,36 @@ const VIP_CANONICAL_OVERRIDES: Record<string, string> = {
   期末储值余额_合计: "closing_recharge_balance_total"
 };
 
+const DELIVERY_LEDGER_FIELD_DEFINITIONS = [
+  ["entry_id", "entry_id", "string", false, "derived"],
+  ["purchase_date", "收货日期", "date", false, "derived"],
+  ["store_name", "订货机构", "string", false, "derived"],
+  ["receipt_number", "单据号", "string", false, "derived"],
+  ["supplier_name", "送货机构", "string", false, "derived"],
+  ["item_name", "物品名称", "string", false, "file"],
+  ["specification", "规格型号", "string", false, "file"],
+  ["purchase_quantity", "收货数量", "decimal", false, "file"],
+  ["purchase_amount", "收货金额", "decimal", false, "file"],
+  ["production_date_or_batch", "production_date_or_batch", "string", true, "derived"],
+  ["shelf_life", "shelf_life", "string", true, "derived"],
+  ["supplier_contact_phone", "supplier_contact_phone", "string", true, "dynamic_lookup"],
+  ["supplier_unit_address", "supplier_unit_address", "string", true, "dynamic_lookup"]
+] satisfies Array<
+  [string, string, StructuredFieldType, boolean, "file" | "derived" | "dynamic_lookup"]
+>;
+const DELIVERY_LEDGER_FIELDS: StructuredFieldRegistryEntry[] =
+  DELIVERY_LEDGER_FIELD_DEFINITIONS.map(
+    ([canonicalName, sourceColumn, type, nullable, inputSource]) =>
+      createDeliveryLedgerField({ canonicalName, sourceColumn, type, nullable, inputSource })
+  );
+
 export const STRUCTURED_DATASET_REGISTRIES = {
   dishes: createRegistry({
     dataset: "dishes",
     version: "dishes.2026-07-11.v1",
     rowTable: "dish_rows",
     sheetPolicy: "strict_all_nonempty",
+    metadataPolicy: "window",
     datePolicy: "row_business_date",
     sourceColumns: DISH_SOURCE_COLUMNS,
     canonicalOverrides: DISH_CANONICAL_OVERRIDES
@@ -495,6 +573,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     version: "business.2026-07-11.v1",
     rowTable: "business_rows",
     sheetPolicy: "strict_all_nonempty",
+    metadataPolicy: "window",
     datePolicy: "row_business_date",
     sourceColumns: BUSINESS_SOURCE_COLUMNS,
     canonicalOverrides: BUSINESS_CANONICAL_OVERRIDES
@@ -504,6 +583,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     version: "vip.2026-08-12.v1",
     rowTable: "vip_rows",
     sheetPolicy: "strict_all_nonempty",
+    metadataPolicy: "window",
     datePolicy: "row_business_date",
     sourceColumns: VIP_SOURCE_COLUMNS,
     canonicalOverrides: VIP_CANONICAL_OVERRIDES
@@ -513,6 +593,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     version: "dish_catalog.2026-08-22.v1",
     rowTable: "dish_catalog_rows",
     sheetPolicy: "import_matching_visible",
+    metadataPolicy: "snapshot",
     datePolicy: "snapshot_metadata",
     sourceColumns: DISH_CATALOG_SOURCE_COLUMNS,
     canonicalOverrides: DISH_CATALOG_CANONICAL_OVERRIDES,
@@ -525,6 +606,28 @@ export const STRUCTURED_DATASET_REGISTRIES = {
         nullable: false
       }
     ]
+  }),
+  delivery_ledger: {
+    dataset: "delivery_ledger",
+    version: "delivery_ledger.2026-08-29.v1",
+    rowTable: "delivery_ledger_rows",
+    sheetPolicy: "strict_all_nonempty",
+    metadataPolicy: "derived_receipt",
+    fields: DELIVERY_LEDGER_FIELDS
+  },
+  supplier_catalog: createRegistry({
+    dataset: "supplier_catalog",
+    version: "supplier_catalog.2026-08-29.v1",
+    rowTable: "supplier_catalog_rows",
+    sheetPolicy: "import_matching_visible",
+    metadataPolicy: "none",
+    sourceColumns: SUPPLIER_CATALOG_SOURCE_COLUMNS,
+    canonicalOverrides: SUPPLIER_CATALOG_CANONICAL_OVERRIDES,
+    nullableCanonicalNames: new Set(
+      Object.values(SUPPLIER_CATALOG_CANONICAL_OVERRIDES).filter(
+        (canonicalName) => canonicalName !== "supplier_name"
+      )
+    )
   })
 } as const satisfies Record<StructuredDatasetName, StructuredDatasetRegistry>;
 
@@ -607,6 +710,9 @@ export function resolveStructuredHeaders(
   ) {
     errors.push({ code: "UNKNOWN_COLUMN", column: "" });
   }
+  if (dataset === "supplier_catalog" && headers.some((header) => !normalizeHeader(header))) {
+    errors.push({ code: "UNKNOWN_COLUMN", column: "" });
+  }
 
   for (const [sourceColumnIndex, rawHeader] of headers.entries()) {
     const header = normalizeHeader(rawHeader);
@@ -643,6 +749,7 @@ export function resolveStructuredHeaders(
   }
 
   for (const field of fileFields) {
+    if (dataset === "supplier_catalog" && field.nullable) continue;
     if (!seenCanonicalNames.has(field.canonicalName)) {
       errors.push({ code: "MISSING_REQUIRED_COLUMN", column: field.sourceColumn });
     }
@@ -658,9 +765,10 @@ export function resolveStructuredHeaders(
 function createRegistry(input: {
   dataset: StructuredDatasetName;
   version: string;
-  rowTable: "dish_rows" | "business_rows" | "vip_rows" | "dish_catalog_rows";
+  rowTable: StructuredRowTableName;
   sheetPolicy: StructuredDatasetRegistry["sheetPolicy"];
-  datePolicy: StructuredDatasetRegistry["datePolicy"];
+  metadataPolicy: StructuredDatasetRegistry["metadataPolicy"];
+  datePolicy?: StructuredDatasetRegistry["datePolicy"];
   sourceColumns: readonly string[];
   canonicalOverrides: Record<string, string>;
   nullableCanonicalNames?: ReadonlySet<string>;
@@ -673,6 +781,7 @@ function createRegistry(input: {
     version: input.version,
     rowTable: input.rowTable,
     sheetPolicy: input.sheetPolicy,
+    metadataPolicy: input.metadataPolicy,
     datePolicy: input.datePolicy,
     fields: [
       ...(input.metadataFields ?? []).map((field) => ({
@@ -740,6 +849,41 @@ function createRegistry(input: {
   };
 }
 
+function createDeliveryLedgerField(input: {
+  canonicalName: string;
+  sourceColumn: string;
+  type: StructuredFieldType;
+  nullable: boolean;
+  inputSource: "file" | "derived" | "dynamic_lookup";
+}): StructuredFieldRegistryEntry {
+  const isDynamic = input.inputSource === "dynamic_lookup";
+
+  return {
+    ...input,
+    aliases: [input.sourceColumn],
+    sensitivity: input.type === "decimal" ? ("business_metric" as const) : ("normal" as const),
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: true,
+    operators: isDynamic ? [] : operatorsForType(input.type),
+    capabilities: isDynamic
+      ? { filter: false, sort: false, group: false, aggregate: false }
+      : {
+          filter: true,
+          sort: true,
+          group: input.type === "string" || input.type === "date",
+          aggregate: input.type === "decimal"
+        },
+    indexStatus: "planned",
+    valueLimits: valueLimitsForType(input.type),
+    storage: {
+      table: "delivery_ledger_rows",
+      column: "payload",
+      jsonPath: `$.${input.canonicalName}`
+    }
+  };
+}
+
 function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): string[] {
   const aliasesByDataset: Record<StructuredDatasetName, Record<string, string[]>> = {
     dishes: {
@@ -757,7 +901,9 @@ function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): strin
       月份: ["月"],
       储值门店名称: ["门店名称"]
     },
-    dish_catalog: {}
+    dish_catalog: {},
+    delivery_ledger: {},
+    supplier_catalog: {}
   };
   return [sourceColumn, ...(aliasesByDataset[dataset][sourceColumn] ?? [])];
 }
@@ -777,6 +923,16 @@ function inferFieldType(dataset: StructuredDatasetName, sourceColumn: string): S
 
   if (dataset === "dish_catalog") {
     return sourceColumn === "售卖价" ? "decimal" : "string";
+  }
+
+  if (dataset === "supplier_catalog") {
+    if (sourceColumn === "税率") {
+      return "decimal";
+    }
+    if (sourceColumn === "操作时间") {
+      return "date_time";
+    }
+    return "string";
   }
 
   if (["营业日", "营业日期"].includes(sourceColumn)) {

@@ -579,6 +579,7 @@ try {
           "phase3_structured_import",
           "phase3_structured_concurrent_exact_replay",
           "phase3_structured_apply_transaction_rollback",
+          "delivery_supplier_query_authorization",
           "launcher_local_path_upload",
           "phase3_structured_typed_query",
           "phase3_structured_query",
@@ -1044,6 +1045,12 @@ async function assertStructuredApplyRollback(): Promise<void> {
       }
     }
   );
+  await run("npx", ["vitest", "run", "apps/api/src/structured-query.prisma.integration.test.ts"], {
+    env: {
+      ...integrationEnv,
+      RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION: "1"
+    }
+  });
 }
 
 async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {

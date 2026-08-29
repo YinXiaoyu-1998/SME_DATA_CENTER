@@ -37,11 +37,12 @@ describe("structured import processing worker", () => {
       fileType: "csv"
     });
 
+    const appliedAt = new Date("2026-07-20T00:00:00.000Z");
     const result = await runWorkerOnce({
       repository,
       storage,
       workerId: "worker-structured",
-      now: () => new Date("2026-07-20T00:00:00.000Z")
+      now: () => appliedAt
     });
 
     expect(result).toEqual({
@@ -52,6 +53,7 @@ describe("structured import processing worker", () => {
     expect(repository.document.status).toBe("active");
     expect(repository.importBatch).toMatchObject({
       status: "applied",
+      appliedAt,
       totalRowCount: 1,
       appliedRowCount: 1,
       validationErrorCount: 0,
@@ -143,6 +145,7 @@ describe("structured import processing worker", () => {
       status: "rejected"
     });
     expect(repository.importBatch.status).toBe("rejected");
+    expect(repository.importBatch.appliedAt).toBeNull();
     expect(repository.importBatch.validationErrorCount).toBeGreaterThan(0);
     expect(repository.rows).toHaveLength(0);
     expect(repository.failures).toHaveLength(0);
@@ -200,6 +203,7 @@ describe("structured import processing worker", () => {
       { errorCode: PROCESSING_ERROR_CODES.storageReadFailed, willRetry: false }
     ]);
     expect(repository.importBatch.status).toBe("failed");
+    expect(repository.importBatch.appliedAt).toBeNull();
   });
 
   it("does not publish rows or terminal state after losing its lease", async () => {
@@ -227,6 +231,7 @@ describe("structured import processing worker", () => {
       }
     );
     expect(repository.rows).toHaveLength(0);
+    expect(repository.importBatch.appliedAt).toBeNull();
     expect(repository.run.status).toBe("running");
     expect(repository.failures).toHaveLength(0);
   });
@@ -355,6 +360,7 @@ describe("structured import processing worker", () => {
     });
     expect(repository.applyAttempts).toEqual([{ deletedRowCount: 1, insertedRowCount: 1 }]);
     expect(repository.rows).toEqual([existingRow]);
+    expect(repository.importBatch.appliedAt).toBeNull();
   });
 });
 
@@ -369,6 +375,7 @@ function createStructuredImportRepository(options: {
   document: { status: string };
   importBatch: {
     status: string;
+    appliedAt: Date | null;
     totalRowCount: number;
     appliedRowCount: number;
     validationErrorCount: number;
@@ -402,6 +409,7 @@ function createStructuredImportRepository(options: {
   };
   const importBatch = {
     status: "pending",
+    appliedAt: null as Date | null,
     totalRowCount: 0,
     appliedRowCount: 0,
     validationErrorCount: 0,
@@ -501,6 +509,7 @@ function createStructuredImportRepository(options: {
       if (options.completeError === "apply_failure") throw new Error("database write failed");
       rows.splice(0, rows.length, ...stagedRows);
       importBatch.status = "applied";
+      importBatch.appliedAt = input.now;
       importBatch.totalRowCount = input.result.rows.length;
       importBatch.appliedRowCount = input.result.rows.length;
       importBatch.sourceSheetSummary = input.result.sheetSummary;
@@ -511,6 +520,7 @@ function createStructuredImportRepository(options: {
     document: { status: string };
     importBatch: {
       status: string;
+      appliedAt: Date | null;
       totalRowCount: number;
       appliedRowCount: number;
       validationErrorCount: number;

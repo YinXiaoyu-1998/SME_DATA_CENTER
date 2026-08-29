@@ -271,6 +271,55 @@ describe("upload MCP tool handlers", () => {
     expect(textField(fields, "endDate")).toBeUndefined();
   });
 
+  it.each([
+    ["delivery_ledger", "delivery-ledger.csv", "text/csv"],
+    [
+      "supplier_catalog",
+      "supplier-catalog.xlsx",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ]
+  ] as const)(
+    "maps %s uploads to multipart without any date fields",
+    async (dataset, filename, mediaType) => {
+      const content = Buffer.from(`${dataset},synthetic\n`, "utf8");
+      const { handlers, requests } = createHandlers({});
+      const result = await handlers.upload_structured_dataset?.(
+        validStructuredInput({
+          file: inlineFile(filename, mediaType, content),
+          dataset,
+          startDate: undefined,
+          endDate: undefined,
+          snapshotDate: undefined,
+          enterpriseName: "Supplier and Delivery Smoke",
+          idempotencyKey: `${dataset}-upload-key`,
+          labelKeys: ["store:baoli"]
+        }),
+        mcpContext
+      );
+
+      expect(parseResult(result!)).toEqual({
+        ok: true,
+        requestPath: "/v1/structured/imports"
+      });
+      expect(requests).toHaveLength(1);
+      const parts = parseMultipart(requests[0]!);
+      const file = parts.find((part) => part.name === "file");
+      const fields = multipartFields(requests[0]!);
+
+      expect(file).toMatchObject({ filename, contentType: mediaType });
+      expect(file?.body).toEqual(content);
+      expect(textField(fields, "dataset")).toBe(dataset);
+      expect(textField(fields, "enterpriseName")).toBe("Supplier and Delivery Smoke");
+      expect(textField(fields, "idempotencyKey")).toBe(`${dataset}-upload-key`);
+      expect(fields.get("labelKeys[]")?.map((value) => value.toString("utf8"))).toEqual([
+        "store:baoli"
+      ]);
+      expect(textField(fields, "startDate")).toBeUndefined();
+      expect(textField(fields, "endDate")).toBeUndefined();
+      expect(textField(fields, "snapshotDate")).toBeUndefined();
+    }
+  );
+
   it("rejects malformed base64 before decoding or delegating", async () => {
     const requests: UploadApiDelegationRequest[] = [];
     const malformedBase64 = "not canonical base64";

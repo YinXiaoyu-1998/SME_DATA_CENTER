@@ -136,7 +136,8 @@ export function createStructuredImportMultipart(input: {
 
 export function createInMemoryStructuredImportRepository(
   documents: RecordedDocument[],
-  auditLogs: RecordedAuditLog[]
+  auditLogs: RecordedAuditLog[],
+  options: { eventLog?: string[] } = {}
 ) {
   type StoredRow = {
     dataset: StructuredDatasetName;
@@ -146,10 +147,12 @@ export function createInMemoryStructuredImportRepository(
     id: string;
     orgId: string;
     dataset: StructuredDatasetName;
-    startDate: string;
-    endDate: string;
+    startDate: string | null;
+    endDate: string | null;
     idempotencyKey: string;
     requestFingerprint: string;
+    naturalKey: string | null;
+    appliedAt: Date | null;
     status: string;
     sourceDocumentId: string;
     totalRowCount: number;
@@ -169,8 +172,8 @@ export function createInMemoryStructuredImportRepository(
 
   function windowKey(input: {
     dataset: StructuredDatasetName;
-    startDate: string;
-    endDate: string;
+    startDate: string | null;
+    endDate: string | null;
   }) {
     return `${input.dataset}:${input.startDate}:${input.endDate}`;
   }
@@ -232,8 +235,9 @@ export function createInMemoryStructuredImportRepository(
       documentId: string;
       dataset: StructuredDatasetName;
       fileType: "xlsx" | "csv";
-      startDate: string;
-      endDate: string;
+      startDate: string | null;
+      endDate: string | null;
+      naturalKey?: string;
       idempotencyKey: string;
       requestFingerprint: string;
       document: {
@@ -250,6 +254,10 @@ export function createInMemoryStructuredImportRepository(
       totalRowCount: number;
       audit: RequestAuditContext;
     }) {
+      if (input.dataset === "delivery_ledger" && input.naturalKey !== undefined) {
+        options.eventLog?.push("profile");
+      }
+      options.eventLog?.push("reservation");
       const existingIdempotencyBatch = batches.find(
         (batch) => batch.orgId === input.orgId && batch.idempotencyKey === input.idempotencyKey
       );
@@ -267,7 +275,31 @@ export function createInMemoryStructuredImportRepository(
         };
       }
 
-      if (inProgressWindows.has(windowKey(input))) {
+      if (input.dataset === "delivery_ledger" && input.naturalKey !== undefined) {
+        const existingNaturalKeyBatch = batches.find(
+          (batch) =>
+            batch.orgId === input.orgId &&
+            batch.dataset === input.dataset &&
+            batch.naturalKey === input.naturalKey
+        );
+
+        if (existingNaturalKeyBatch) {
+          if (existingNaturalKeyBatch.requestFingerprint !== input.requestFingerprint) {
+            throw Object.assign(new Error("RECEIPT_NUMBER_CONFLICT"), {
+              code: "RECEIPT_NUMBER_CONFLICT"
+            });
+          }
+
+          return {
+            state: existingNaturalKeyBatch.processingRunId ? "existing" : "resumable",
+            importBatch: await this.findImportBatch(input.orgId, existingNaturalKeyBatch.id)
+          };
+        }
+      }
+
+      const usesWindowClaim =
+        input.dataset !== "delivery_ledger" && input.dataset !== "supplier_catalog";
+      if (usesWindowClaim && inProgressWindows.has(windowKey(input))) {
         throw Object.assign(new Error("IMPORT_IN_PROGRESS"), {
           code: "IMPORT_IN_PROGRESS"
         });
@@ -275,6 +307,7 @@ export function createInMemoryStructuredImportRepository(
 
       const existingWindowBatch = batches.find(
         (batch) =>
+          usesWindowClaim &&
           batch.orgId === input.orgId &&
           batch.dataset === input.dataset &&
           batch.startDate === input.startDate &&
@@ -306,6 +339,8 @@ export function createInMemoryStructuredImportRepository(
         endDate: input.endDate,
         idempotencyKey: input.idempotencyKey,
         requestFingerprint: input.requestFingerprint,
+        naturalKey: input.naturalKey ?? null,
+        appliedAt: null,
         status: "pending",
         sourceDocumentId: input.documentId,
         totalRowCount: 0,
@@ -339,7 +374,12 @@ export function createInMemoryStructuredImportRepository(
         createdAt: new Date(),
         sourceMetadata: {
           dataset: input.dataset,
-          importBatchId: batch.id
+          importBatchId: batch.id,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
+            ? { naturalKey: input.naturalKey }
+            : {})
         },
         chunks: []
       });
@@ -353,6 +393,9 @@ export function createInMemoryStructuredImportRepository(
           dataset: input.dataset,
           startDate: input.startDate,
           endDate: input.endDate,
+          ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
+            ? { naturalKey: input.naturalKey }
+            : {}),
           rowCount: input.totalRowCount,
           sourceDocumentId: input.documentId
         },
@@ -420,6 +463,7 @@ export function createInMemoryStructuredImportRepository(
       batch.status = "applied";
       batch.totalRowCount = input.rows.length;
       batch.appliedRowCount = input.rows.length;
+      batch.appliedAt = new Date();
       const document = documents.find((candidate) => candidate.id === batch.sourceDocumentId);
       if (!document) throw new Error("Reserved source document was not found.");
       document.status = "active";
@@ -434,6 +478,9 @@ export function createInMemoryStructuredImportRepository(
           dataset: batch.dataset,
           startDate: batch.startDate,
           endDate: batch.endDate,
+          ...(batch.dataset === "delivery_ledger" && batch.naturalKey !== null
+            ? { naturalKey: batch.naturalKey }
+            : {}),
           appliedRowCount: input.rows.length,
           sourceDocumentId: batch.sourceDocumentId
         },

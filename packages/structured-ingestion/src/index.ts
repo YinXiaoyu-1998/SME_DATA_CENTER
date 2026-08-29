@@ -1,4 +1,5 @@
 import { parse as parseCsv } from "csv-parse/sync";
+import { randomUUID } from "node:crypto";
 import {
   getStructuredRegistry,
   resolveStructuredHeaders,
@@ -8,6 +9,9 @@ import {
 } from "@enterprise-hub/domain";
 import { readXlsxRows } from "./xlsx-stream.js";
 const MAX_HEADER_SCAN_ROWS = 10;
+const MAX_SPECIAL_HEADER_SCAN_ROWS = 20;
+const DELIVERY_METADATA_COLUMNS = ["单据号", "订货机构", "送货机构", "收货日期"] as const;
+const DELIVERY_ITEM_COLUMNS = ["序号", "物品名称", "规格型号", "收货数量", "收货金额"] as const;
 export const STRUCTURED_IMPORT_DEFAULT_SHEET_NAME = "Sheet1";
 export const MAX_RETAINED_VALIDATION_ERRORS = 100;
 
@@ -31,6 +35,7 @@ export interface StructuredSheetSummary {
   name: string;
   hidden: boolean;
   headerRowNumber: number;
+  columnCount?: number;
   dataRowCount: number;
 }
 export interface IgnoredStructuredSheet {
@@ -48,14 +53,19 @@ export interface StructuredWorkbookProfile {
   fileName: string;
   sheets: StructuredSheetProfile[];
   ignoredEmptySheets: string[];
+  derivedMetadata?: StructuredDerivedMetadata;
+}
+export interface StructuredDerivedMetadata {
+  receiptNumber: string;
+  receiptDate: string;
 }
 export interface ParseStructuredFileInput {
   dataset: StructuredDatasetName;
   fileName: string;
   fileType: "csv" | "xlsx";
   content: Buffer;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
   limits: StructuredIngestionLimits;
   /**
    * The legacy synchronous importer throws after parsing; the worker-facing
@@ -80,6 +90,19 @@ export interface StructuredParseResult {
   validationErrors: StructuredValidationIssue[];
   validationErrorCount: number;
   validationErrorsTruncated: boolean;
+  derivedMetadata?: StructuredDerivedMetadata;
+}
+
+interface StructuredSheetRows {
+  name: string;
+  hidden: boolean;
+  rows: string[][];
+  sheetIndex: number;
+}
+
+interface DeliveryLedgerMetadata extends StructuredDerivedMetadata {
+  storeName: string;
+  supplierName: string;
 }
 
 export interface StructuredFilePreflightInput {
@@ -105,26 +128,24 @@ export async function parseStructuredFile(
   const ignoredSheets: IgnoredStructuredSheet[] = [];
   const rows: StructuredImportRow[] = [];
   const issues = new ValidationIssueCollector();
-  let window: ReturnType<typeof dateWindow>;
-  let sheets: Array<{ name: string; hidden: boolean; rows: string[][]; sheetIndex: number }>;
+  let window: ReturnType<typeof dateWindow> | undefined;
+  let sheets: StructuredSheetRows[];
+  const registry = getStructuredRegistry(input.dataset);
 
   try {
     assertFileType(input);
-    window = dateWindow(input.startDate, input.endDate);
-    if (input.dataset === "dish_catalog" && window.start.getTime() !== window.end.getTime()) {
-      throw validation("dish_catalog requires startDate and endDate to be the same snapshot date.");
+    if (registry.metadataPolicy === "window" || registry.metadataPolicy === "snapshot") {
+      window = dateWindow(input.startDate, input.endDate);
+      if (
+        registry.metadataPolicy === "snapshot" &&
+        window.start.getTime() !== window.end.getTime()
+      ) {
+        throw validation(
+          "dish_catalog requires startDate and endDate to be the same snapshot date."
+        );
+      }
     }
-    const parsedSheets =
-      input.fileType === "csv"
-        ? [
-            {
-              name: STRUCTURED_IMPORT_DEFAULT_SHEET_NAME,
-              hidden: false,
-              rows: parseCsvRows(input.content, input.limits)
-            }
-          ]
-        : await readXlsxRows(input.content, input.limits);
-    sheets = parsedSheets.map((sheet, sheetIndex) => ({ ...sheet, sheetIndex }));
+    sheets = await readStructuredSheets(input);
   } catch (error) {
     issues.add({
       code: "INVALID_FILE",
@@ -138,7 +159,10 @@ export async function parseStructuredFile(
     return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
   }
 
-  const registry = getStructuredRegistry(input.dataset);
+  if (registry.metadataPolicy === "derived_receipt")
+    return parseDeliveryLedgerSheets(input, sheets, issues);
+  const activeWindow = window!;
+
   let rowLimitReported = false;
   let matchedSheetCount = 0;
   let matchingSheetFound = false;
@@ -153,7 +177,7 @@ export async function parseStructuredFile(
 
     if (registry.sheetPolicy === "import_matching_visible") {
       if (sheet.hidden) {
-        if (isMatchingSheet) {
+        if (isMatchingSheet && input.dataset !== "supplier_catalog") {
           issues.add({
             code: "HIDDEN_SHEET",
             message: "Matching hidden worksheets are not allowed.",
@@ -259,8 +283,8 @@ export async function parseStructuredFile(
         const businessDate = parseDate(String(payload.business_date ?? ""), false);
         if (
           !businessDate ||
-          businessDate.getTime() < window.start.getTime() ||
-          businessDate.getTime() > window.end.getTime()
+          businessDate.getTime() < activeWindow.start.getTime() ||
+          businessDate.getTime() > activeWindow.end.getTime()
         ) {
           issues.add({
             code: "BUSINESS_DATE_OUTSIDE_WINDOW",
@@ -273,8 +297,8 @@ export async function parseStructuredFile(
           });
           continue;
         }
-      } else {
-        payload.snapshot_date = dateString(window.start);
+      } else if (registry.datePolicy === "snapshot_metadata") {
+        payload.snapshot_date = dateString(window!.start);
       }
       if (rows.length >= input.limits.maxStructuredImportRows) {
         if (!rowLimitReported) {
@@ -327,6 +351,17 @@ export async function parseStructuredFile(
       column: null,
       legacyMessage: "Workbook has no matching visible import sheets."
     });
+  } else if (input.dataset === "supplier_catalog" && matchedSheetCount > 1) {
+    rows.length = 0;
+    issues.add({
+      code: "INVALID_SHEET_COUNT",
+      message: "Supplier catalog file must contain exactly one recognized worksheet.",
+      sheetName: null,
+      sheetIndex: null,
+      rowNumber: null,
+      column: null,
+      legacyMessage: "Supplier catalog file must contain exactly one recognized worksheet."
+    });
   } else if (
     registry.sheetPolicy === "import_matching_visible" &&
     matchedSheetCount > 0 &&
@@ -358,20 +393,26 @@ export async function parseStructuredFile(
 export async function profileStructuredFile(
   input: Omit<ParseStructuredFileInput, "startDate" | "endDate">
 ): Promise<StructuredWorkbookProfile> {
+  const registry = getStructuredRegistry(input.dataset);
+  if (registry.metadataPolicy === "derived_receipt") {
+    const result = await parseStructuredFile(input);
+    return {
+      dataset: input.dataset,
+      registryVersion: registry.version,
+      fileName: input.fileName,
+      sheets: result.sheetSummary.map((sheet) => ({
+        ...sheet,
+        columnCount: sheet.columnCount ?? 0,
+        validationErrors: []
+      })),
+      ignoredEmptySheets: [],
+      ...(result.derivedMetadata ? { derivedMetadata: result.derivedMetadata } : {})
+    };
+  }
   assertFileType(input);
-  const sheets =
-    input.fileType === "csv"
-      ? [
-          {
-            name: STRUCTURED_IMPORT_DEFAULT_SHEET_NAME,
-            hidden: false,
-            rows: parseCsvRows(input.content, input.limits)
-          }
-        ]
-      : await readXlsxRows(input.content, input.limits);
+  const sheets = await readStructuredSheets(input);
   const profile: StructuredSheetProfile[] = [];
   const ignoredEmptySheets: string[] = [];
-  const registry = getStructuredRegistry(input.dataset);
   let dataRowCount = 0;
   let matchedSheetCount = 0;
   for (const sheet of sheets) {
@@ -383,7 +424,7 @@ export async function profileStructuredFile(
     const isMatchingSheet = candidate?.resolution.ok === true;
     if (registry.sheetPolicy === "import_matching_visible") {
       if (sheet.hidden) {
-        if (isMatchingSheet)
+        if (isMatchingSheet && input.dataset !== "supplier_catalog")
           throw validation(`Matching hidden sheet ${sheet.name} is not allowed.`);
         continue;
       }
@@ -412,6 +453,8 @@ export async function profileStructuredFile(
   }
   if (registry.sheetPolicy === "import_matching_visible" && matchedSheetCount === 0)
     throw validation("Workbook has no matching visible import sheets.");
+  if (input.dataset === "supplier_catalog" && matchedSheetCount > 1)
+    throw validation("Supplier catalog file must contain exactly one recognized worksheet.");
   if (registry.sheetPolicy === "import_matching_visible" && dataRowCount === 0)
     throw validation("Catalog snapshot contains no rows.");
   return {
@@ -421,6 +464,292 @@ export async function profileStructuredFile(
     sheets: profile,
     ignoredEmptySheets
   };
+}
+
+async function readStructuredSheets(
+  input: Pick<ParseStructuredFileInput, "fileType" | "content" | "limits">
+): Promise<StructuredSheetRows[]> {
+  const parsedSheets =
+    input.fileType === "csv"
+      ? [
+          {
+            name: STRUCTURED_IMPORT_DEFAULT_SHEET_NAME,
+            hidden: false,
+            rows: parseCsvRows(input.content, input.limits)
+          }
+        ]
+      : await readXlsxRows(input.content, input.limits);
+  return parsedSheets.map((sheet, sheetIndex) => ({ ...sheet, sheetIndex }));
+}
+
+function parseDeliveryLedgerSheets(
+  input: ParseStructuredFileInput,
+  sheets: StructuredSheetRows[],
+  issues: ValidationIssueCollector
+): StructuredParseResult {
+  const sheetSummary: StructuredSheetSummary[] = [];
+  const ignoredSheets: IgnoredStructuredSheet[] = [];
+  const rows: StructuredImportRow[] = [];
+  let selection: ReturnType<typeof selectDeliverySheet>;
+  try {
+    selection = selectDeliverySheet(sheets);
+  } catch (error) {
+    addIssue(issues, {
+      code: "INVALID_HEADER",
+      message: "Delivery receipt worksheet could not be selected.",
+      sheet: null,
+      rowNumber: null,
+      column: null,
+      legacyMessage: errorMessage(error)
+    });
+    return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
+  }
+  const { sheet, header } = selection;
+  const receiptMetadata = deliveryDerivedMetadata(sheet, header.index, issues);
+  if (!receiptMetadata) return finishParse(input, sheetSummary, ignoredSheets, rows, issues);
+
+  const items = deliveryItemRows(sheet, header);
+  sheetSummary.push({
+    sheetIndex: sheet.sheetIndex,
+    name: sheet.name,
+    hidden: sheet.hidden,
+    headerRowNumber: header.index + 1,
+    columnCount: header.width,
+    dataRowCount: items.length
+  });
+  if (!items.length) {
+    addIssue(issues, {
+      code: "EMPTY_RECEIPT",
+      message: "Delivery receipt contains no item rows.",
+      sheet,
+      rowNumber: null,
+      column: null,
+      legacyMessage: "Delivery receipt contains no item rows."
+    });
+  }
+
+  const fields = new Map(
+    getStructuredRegistry("delivery_ledger").fields.map((field) => [field.canonicalName, field])
+  );
+  let rowLimitReported = false;
+  for (const item of items) {
+    if (
+      item.row.length > header.width &&
+      item.row.slice(header.width).some((value) => value.trim())
+    ) {
+      addIssue(issues, {
+        code: "EXTRA_DATA_COLUMN",
+        message: "Row has data outside the resolved header width.",
+        sheet,
+        rowNumber: item.sourceRowNumber,
+        column: null,
+        legacyMessage: `Row ${item.sourceRowNumber} has data outside the resolved header width.`
+      });
+      continue;
+    }
+    const parsed = deliveryPayloadFor(fields, header, item.row, receiptMetadata);
+    if (parsed.errors.length) {
+      for (const error of parsed.errors) {
+        addIssue(issues, {
+          code: "INVALID_FIELD_VALUE",
+          message: "Field value is invalid.",
+          sheet,
+          rowNumber: item.sourceRowNumber,
+          column: error.column,
+          legacyMessage: error.message
+        });
+      }
+      continue;
+    }
+    if (rows.length >= input.limits.maxStructuredImportRows) {
+      if (!rowLimitReported) {
+        addIssue(issues, {
+          code: "ROW_LIMIT_EXCEEDED",
+          message: "Structured import row limit exceeded.",
+          sheet,
+          rowNumber: item.sourceRowNumber,
+          column: null,
+          legacyMessage: "Structured import row limit exceeded."
+        });
+        rowLimitReported = true;
+      }
+      continue;
+    }
+    rows.push({
+      sourceSheetIndex: sheet.sheetIndex,
+      sourceSheetName: sheet.name,
+      sourceRowNumber: item.sourceRowNumber,
+      payload: parsed.payload
+    });
+  }
+  return finishParse(
+    input,
+    sheetSummary,
+    ignoredSheets,
+    rows,
+    issues,
+    toDerivedMetadata(receiptMetadata)
+  );
+}
+
+function selectDeliverySheet(sheets: StructuredSheetRows[]) {
+  const matches = sheets
+    .filter((sheet) => !sheet.hidden && !isEmpty(sheet.rows))
+    .map((sheet) => ({ sheet, header: findDeliveryDetailHeader(sheet.rows) }))
+    .filter(
+      (
+        candidate
+      ): candidate is {
+        sheet: StructuredSheetRows;
+        header: NonNullable<ReturnType<typeof findDeliveryDetailHeader>>;
+      } => candidate.header !== null
+    );
+  if (matches.length !== 1)
+    throw validation("Delivery receipt file must contain exactly one recognized worksheet.");
+  return matches[0]!;
+}
+
+function addIssue(
+  issues: ValidationIssueCollector,
+  input: {
+    code: string;
+    message: string;
+    sheet: StructuredSheetRows | null;
+    rowNumber: number | null;
+    column: string | null;
+    legacyMessage: string;
+  }
+) {
+  issues.add({
+    code: input.code,
+    message: input.message,
+    sheetName: input.sheet?.name ?? null,
+    sheetIndex: input.sheet?.sheetIndex ?? null,
+    rowNumber: input.rowNumber,
+    column: input.column,
+    legacyMessage: input.legacyMessage
+  });
+}
+
+function findDeliveryDetailHeader(rows: string[][]) {
+  for (let index = 0; index < Math.min(MAX_SPECIAL_HEADER_SCAN_ROWS, rows.length); index++) {
+    const headers = trimTail(rows[index] ?? []);
+    for (const column of DELIVERY_ITEM_COLUMNS) {
+      if (headers.filter((header) => header === column).length > 1)
+        throw validation(`Delivery receipt item header contains duplicate ${column} columns.`);
+    }
+    const columns = new Map(headers.map((header, column) => [header, column]));
+    if (DELIVERY_ITEM_COLUMNS.every((column) => columns.has(column)))
+      return { index, width: headers.length, columns };
+  }
+  return null;
+}
+
+function deliveryDerivedMetadata(
+  sheet: StructuredSheetRows,
+  headerIndex: number,
+  issues: ValidationIssueCollector
+): DeliveryLedgerMetadata | null {
+  try {
+    return deliveryDerivedMetadataOrThrow(sheet, headerIndex);
+  } catch (error) {
+    addIssue(issues, {
+      code: "MISSING_DELIVERY_METADATA",
+      message: "Delivery receipt metadata is invalid or incomplete.",
+      sheet,
+      rowNumber: null,
+      column: null,
+      legacyMessage: errorMessage(error)
+    });
+    return null;
+  }
+}
+
+function deliveryDerivedMetadataOrThrow(
+  sheet: StructuredSheetRows,
+  headerIndex: number
+): DeliveryLedgerMetadata {
+  const metadata = new Map<string, string>();
+  const seenLabels = new Set<string>();
+  for (const row of sheet.rows.slice(0, headerIndex)) {
+    for (let column = 0; column < row.length - 1; column++) {
+      const label = row[column]?.trim();
+      if (
+        label &&
+        DELIVERY_METADATA_COLUMNS.includes(label as (typeof DELIVERY_METADATA_COLUMNS)[number])
+      ) {
+        if (seenLabels.has(label))
+          throw validation(`Delivery receipt metadata ${label} must appear exactly once.`);
+        seenLabels.add(label);
+        metadata.set(label, row[column + 1]?.trim() ?? "");
+      }
+    }
+  }
+  for (const label of DELIVERY_METADATA_COLUMNS) {
+    if (!metadata.get(label)) throw validation(`Delivery receipt metadata ${label} is required.`);
+  }
+  const receiptDate = parseDate(metadata.get("收货日期")!, false);
+  if (!receiptDate) throw validation("收货日期 must be a date.");
+  return {
+    receiptNumber: metadata.get("单据号")!,
+    receiptDate: dateString(receiptDate),
+    storeName: metadata.get("订货机构")!,
+    supplierName: metadata.get("送货机构")!
+  };
+}
+
+function toDerivedMetadata(metadata: DeliveryLedgerMetadata): StructuredDerivedMetadata {
+  return { receiptNumber: metadata.receiptNumber, receiptDate: metadata.receiptDate };
+}
+
+function deliveryItemRows(
+  sheet: StructuredSheetRows,
+  header: { index: number; width: number; columns: Map<string, number> }
+) {
+  const afterHeader = sheet.rows.slice(header.index + 1);
+  const boundaryIndex = afterHeader.findIndex(isDeliveryBoundary);
+  const sourceRows = boundaryIndex === -1 ? afterHeader : afterHeader.slice(0, boundaryIndex);
+  return sourceRows
+    .map((row, index) => ({ row, sourceRowNumber: header.index + index + 2 }))
+    .filter(({ row }) => /^[+-]?\d+$/.test(row[header.columns.get("序号")!] ?? ""));
+}
+
+function isDeliveryBoundary(row: string[]) {
+  return isSummary(row) || ["验收人", "收货人", "制单人", "签字"].includes(row[0]?.trim() ?? "");
+}
+
+function deliveryPayloadFor(
+  fields: Map<string, StructuredFieldRegistryEntry>,
+  header: { columns: Map<string, number> },
+  row: string[],
+  receiptMetadata: DeliveryLedgerMetadata
+) {
+  const payload: Record<string, unknown> = {
+    entry_id: randomUUID(),
+    purchase_date: receiptMetadata.receiptDate,
+    store_name: receiptMetadata.storeName,
+    receipt_number: receiptMetadata.receiptNumber,
+    supplier_name: receiptMetadata.supplierName,
+    production_date_or_batch: null,
+    shelf_life: null
+  };
+  const errors: Array<{ column: string; message: string }> = [];
+  for (const [canonicalName, sourceColumn] of [
+    ["item_name", "物品名称"],
+    ["specification", "规格型号"],
+    ["purchase_quantity", "收货数量"],
+    ["purchase_amount", "收货金额"]
+  ] as const) {
+    try {
+      payload[canonicalName] = parseCell(
+        fields.get(canonicalName)!,
+        row[header.columns.get(sourceColumn)!] ?? ""
+      );
+    } catch (error) {
+      errors.push({ column: canonicalName, message: errorMessage(error) });
+    }
+  }
+  return { payload, errors };
 }
 
 function dataRowsFor(
@@ -480,11 +809,22 @@ function findHeader(dataset: StructuredDatasetName, rows: string[][]) {
   let fallback:
     | { index: number; width: number; resolution: ReturnType<typeof resolveStructuredHeaders> }
     | undefined;
-  for (let index = 0; index < Math.min(MAX_HEADER_SCAN_ROWS, rows.length); index++) {
+  const maximumRows =
+    dataset === "delivery_ledger" || dataset === "supplier_catalog"
+      ? MAX_SPECIAL_HEADER_SCAN_ROWS
+      : MAX_HEADER_SCAN_ROWS;
+  for (let index = 0; index < Math.min(maximumRows, rows.length); index++) {
     const headers = trimTail(rows[index] ?? []);
     const resolution = resolveStructuredHeaders(dataset, headers);
     if (resolution.ok) return { index, width: headers.length, resolution };
-    if (!fallback && headers.some((value) => value))
+    const supplierHeaderSignal =
+      dataset === "supplier_catalog" &&
+      headers.some((header) =>
+        getStructuredRegistry("supplier_catalog").fields.some((field) =>
+          field.aliases.includes(header)
+        )
+      );
+    if ((!fallback || supplierHeaderSignal) && headers.some((value) => value))
       fallback = { index, width: headers.length, resolution };
   }
   return fallback;
@@ -563,7 +903,9 @@ function parseDate(text: string, dateTime: boolean): Date | null {
     ? value
     : null;
 }
-function dateWindow(start: string, end: string) {
+function dateWindow(start: string | undefined, end: string | undefined) {
+  if (start === undefined || end === undefined)
+    throw validation("startDate and endDate must be valid YYYYMMDD dates.");
   const startDate = parseDate(start, false),
     endDate = parseDate(end, false);
   if (!startDate || !endDate || startDate > endDate)
@@ -623,7 +965,8 @@ function finishParse(
   sheetSummary: StructuredSheetSummary[],
   ignoredSheets: IgnoredStructuredSheet[],
   rows: StructuredImportRow[],
-  issues: ValidationIssueCollector
+  issues: ValidationIssueCollector,
+  derivedMetadata?: StructuredDerivedMetadata
 ): StructuredParseResult {
   const result: StructuredParseResult = {
     sheetSummary,
@@ -631,7 +974,8 @@ function finishParse(
     rows,
     validationErrors: issues.issues,
     validationErrorCount: issues.count,
-    validationErrorsTruncated: issues.count > MAX_RETAINED_VALIDATION_ERRORS
+    validationErrorsTruncated: issues.count > MAX_RETAINED_VALIDATION_ERRORS,
+    ...(derivedMetadata ? { derivedMetadata } : {})
   };
   if (issues.count > 0 && input.validationMode !== "collect") {
     throw validation(issues.firstLegacyMessage ?? "Structured import validation failed.");

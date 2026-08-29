@@ -29,6 +29,22 @@ adds `snapshot_date` to each imported row. Its exact controlled headers are
 unique within the snapshot; SPUID may repeat; the nullable fields are
 `二级分类编码`, `规格名称`, and `菜品别名`; a sale price of `0` is valid.
 
+## External local acceptance inputs
+
+The Task 8 sample workbooks are intentionally untracked files in the primary
+checkout, not fixture files in this repository. Use the production parser for
+local-only validation and do not copy, export, or commit them:
+
+- `delivery_sheet_SH2608250117.xlsx` — 13 ledger rows, receipt `SH2608250117`.
+- `delivery_sheet_SH2608260003.xlsx` — 1 ledger row, receipt `SH2608260003`.
+- `supplier_catalog.xlsx` — 134 supplier snapshot rows.
+
+The two delivery samples' supplier keys each have one matching row in the
+sample catalog. Temporary CSV conversions may be used for parser parity checks,
+but must be created under `mktemp` and removed after parsing. Record only counts,
+receipt IDs, and pass/fail evidence; never commit or disclose raw contacts or
+other customer rows.
+
 ## Rejected (failure) fixtures
 
 Each file below is expected to be rejected by the service for the stated

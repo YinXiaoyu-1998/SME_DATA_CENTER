@@ -80,6 +80,8 @@ enum ImportDataset {
   business
   vip
   dish_catalog
+  delivery_ledger
+  supplier_catalog
 }
 
 enum ImportBatchStatus {
@@ -154,6 +156,8 @@ model Organization {
   businessRows    BusinessRow[]
   vipRows         VipRow[]
   dishCatalogRows DishCatalogRow[]
+  deliveryLedgerRows DeliveryLedgerRow[]
+  supplierCatalogRows SupplierCatalogRow[]
   auditLogs       AuditLog[]
   skillEntries    SkillEntry[]
   loginIdentities LoginIdentity[]
@@ -251,6 +255,8 @@ model Document {
   businessRows     BusinessRow[]
   vipRows          VipRow[]
   dishCatalogRows  DishCatalogRow[]
+  deliveryLedgerRows DeliveryLedgerRow[]
+  supplierCatalogRows SupplierCatalogRow[]
 
   @@index([orgId, status])
   @@index([orgId, documentType])
@@ -378,10 +384,12 @@ model ImportBatch {
   orgId              String             @map("org_id") @db.VarChar(64)
   sourceDocumentId   String             @unique @map("source_document_id") @db.VarChar(32)
   dataset            ImportDataset
-  startDate          DateTime           @map("start_date") @db.Date
-  endDate            DateTime           @map("end_date") @db.Date
+  startDate          DateTime?          @map("start_date") @db.Date
+  endDate            DateTime?          @map("end_date") @db.Date
   idempotencyKey     String             @map("idempotency_key") @db.VarChar(255)
   requestFingerprint String             @map("request_fingerprint") @db.VarChar(64)
+  naturalKey         String?            @map("natural_key") @db.VarChar(255)
+  appliedAt          DateTime?          @map("applied_at")
   status             ImportBatchStatus  @default(pending)
   sourceSheetSummary Json?              @map("source_sheet_summary")
   validationErrors   Json?              @map("validation_errors")
@@ -400,8 +408,11 @@ model ImportBatch {
   businessRows       BusinessRow[]
   vipRows            VipRow[]
   dishCatalogRows    DishCatalogRow[]
+  deliveryLedgerRows DeliveryLedgerRow[]
+  supplierCatalogRows SupplierCatalogRow[]
 
   @@unique([orgId, idempotencyKey])
+  @@unique([orgId, dataset, naturalKey], map: "import_batches_org_dataset_natural_key_uq")
   @@index([orgId, dataset, status])
   @@index([orgId, dataset, startDate, endDate])
   @@map("import_batches")
@@ -496,6 +507,44 @@ model DishCatalogRow {
   @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "dish_catalog_rows_batch_sheet_row_uq")
   @@index([orgId, importBatchId])
   @@map("dish_catalog_rows")
+}
+
+model DeliveryLedgerRow {
+  id               String       @id @default(cuid()) @db.VarChar(32)
+  orgId            String       @map("org_id") @db.VarChar(64)
+  sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
+  importBatchId    String       @map("import_batch_id") @db.VarChar(32)
+  sourceSheetIndex Int          @default(0) @map("source_sheet_index")
+  sourceSheetName  String       @default("Sheet1") @map("source_sheet_name") @db.VarChar(255)
+  sourceRowNumber  Int          @map("source_row_number")
+  payload          Json
+  createdAt        DateTime     @default(now()) @map("created_at")
+  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "delivery_ledger_rows_batch_sheet_row_uq")
+  @@index([orgId, importBatchId])
+  @@map("delivery_ledger_rows")
+}
+
+model SupplierCatalogRow {
+  id               String       @id @default(cuid()) @db.VarChar(32)
+  orgId            String       @map("org_id") @db.VarChar(64)
+  sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
+  importBatchId    String       @map("import_batch_id") @db.VarChar(32)
+  sourceSheetIndex Int          @default(0) @map("source_sheet_index")
+  sourceSheetName  String       @default("Sheet1") @map("source_sheet_name") @db.VarChar(255)
+  sourceRowNumber  Int          @map("source_row_number")
+  payload          Json
+  createdAt        DateTime     @default(now()) @map("created_at")
+  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "supplier_catalog_rows_batch_sheet_row_uq")
+  @@index([orgId, importBatchId])
+  @@map("supplier_catalog_rows")
 }
 
 model AuditLog {

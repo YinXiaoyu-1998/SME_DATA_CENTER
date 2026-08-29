@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,6 +7,7 @@ import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
 import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
+import { structuredImportFingerprint } from "./workflow.js";
 import { buildApiServer } from "../../server.js";
 import {
   adminEmployee,
@@ -47,13 +49,15 @@ describe("structured imports", () => {
       runtimeEnv?: NodeJS.ProcessEnv;
       storageAdapter?: StorageAdapter;
       failStoragePuts?: number;
+      eventLog?: string[];
     } = {}
   ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
     const documentRepository = createDocumentRepository();
     const structuredImportRepository = createInMemoryStructuredImportRepository(
       documentRepository.documents,
-      documentRepository.auditLogs
+      documentRepository.auditLogs,
+      { eventLog: options.eventLog }
     );
     const localStorage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     let storagePutCalls = 0;
@@ -62,6 +66,7 @@ describe("structured imports", () => {
     const storageAdapter: StorageAdapter = {
       async putObject(input) {
         storagePutCalls++;
+        options.eventLog?.push("storage");
         if (remainingStorageFailures > 0) {
           remainingStorageFailures--;
           throw new Error("simulated storage failure");
@@ -113,6 +118,26 @@ describe("structured imports", () => {
       remoteAddress: "198.51.100.8",
       payload: multipartBody.body
     });
+  }
+
+  function deliveryReceiptCsv(
+    input: {
+      receiptNumber?: string;
+      itemName?: string;
+      receiptDate?: string;
+    } = {}
+  ) {
+    return [
+      ["送货单"],
+      ["单据号", input.receiptNumber ?? "SH2608250117", "订货机构", "保利店"],
+      ["送货机构", "一次性-测试供应商", "收货日期", input.receiptDate ?? "2026-08-26"],
+      ["序号", "物品名称", "规格型号", "收货数量", "收货金额"],
+      ["1", input.itemName ?? "合成物品1", "件/6卷", "1", "80"],
+      ["合计", "", "", "1", "80"],
+      ["验收人", "合成验收人"]
+    ]
+      .map((row) => row.join(","))
+      .join("\n");
   }
 
   it("accepts unrecognized headers as a queued import without inserting business rows", async () => {
@@ -239,6 +264,145 @@ describe("structured imports", () => {
     });
   });
 
+  it("derives delivery metadata before reservation and replays by receipt without another storage write", async () => {
+    const eventLog: string[] = [];
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer(undefined, { eventLog });
+    const body = Buffer.from(deliveryReceiptCsv(), "utf8");
+
+    const first = await postStructuredImport(app, {
+      dataset: "delivery_ledger",
+      enterpriseName: "保利店",
+      startDate: null,
+      endDate: null,
+      idempotencyKey: "delivery-first",
+      fileName: "delivery.csv",
+      body
+    });
+    const replay = await postStructuredImport(app, {
+      dataset: "delivery_ledger",
+      enterpriseName: "保利店",
+      startDate: null,
+      endDate: null,
+      idempotencyKey: "delivery-retry-key",
+      fileName: "delivery.csv",
+      body
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(first.json()).toMatchObject({
+      document: { status: "pending_processing" },
+      importBatch: {
+        dataset: "delivery_ledger",
+        startDate: "20260826",
+        endDate: "20260826",
+        naturalKey: "SH2608250117"
+      }
+    });
+    expect(first.json().document.storageObjectKey).toContain(
+      "u4fdd_u5229_u5e97_delivery_ledger_SH2608250117_20260826.csv"
+    );
+    expect(structuredImportRepository.batches[0]?.requestFingerprint).toBe(
+      structuredImportFingerprint({
+        dataset: "delivery_ledger",
+        enterpriseName: "保利店",
+        startDate: "20260826",
+        endDate: "20260826",
+        naturalKey: "SH2608250117",
+        labelKeys: ["store:baoli"],
+        fileHash: createHash("sha256").update(body).digest("hex")
+      })
+    );
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json().importBatch.importBatchId).toBe(first.json().importBatch.importBatchId);
+    expect(replay.json().document).toEqual(first.json().document);
+    expect(storagePutCalls()).toBe(1);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(eventLog).toEqual(["profile", "reservation", "storage", "profile", "reservation"]);
+  });
+
+  it("rejects a changed delivery receipt before creating a document or writing storage", async () => {
+    const eventLog: string[] = [];
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer(undefined, { eventLog });
+    const first = await postStructuredImport(app, {
+      dataset: "delivery_ledger",
+      startDate: null,
+      endDate: null,
+      idempotencyKey: "delivery-conflict-first",
+      fileName: "delivery.csv",
+      body: Buffer.from(deliveryReceiptCsv(), "utf8")
+    });
+    const conflict = await postStructuredImport(app, {
+      dataset: "delivery_ledger",
+      startDate: null,
+      endDate: null,
+      idempotencyKey: "delivery-conflict-retry",
+      fileName: "delivery.csv",
+      body: Buffer.from(deliveryReceiptCsv({ itemName: "不同内容" }), "utf8")
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toEqual({
+      error: {
+        code: "RECEIPT_NUMBER_CONFLICT",
+        message: "Receipt number was reused with different import content."
+      }
+    });
+    expect(storagePutCalls()).toBe(1);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+    expect(JSON.stringify(conflict.json())).not.toContain("不同内容");
+    expect(eventLog).toEqual(["profile", "reservation", "storage", "profile", "reservation"]);
+  });
+
+  it("accepts a maximum-expansion receipt without a storage-key overflow or 500", async () => {
+    const { app, storagePutCalls } = await buildStructuredImportTestServer();
+    const response = await postStructuredImport(app, {
+      dataset: "delivery_ledger",
+      startDate: null,
+      endDate: null,
+      idempotencyKey: "delivery-long-receipt",
+      fileName: "delivery.csv",
+      contentType: "text/csv",
+      body: Buffer.from(deliveryReceiptCsv({ receiptNumber: "收".repeat(255) }), "utf8")
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json().document.storageObjectKey.length).toBeLessThan(512);
+    expect(response.json().document.storageObjectKey).toMatch(/\.csv$/);
+    expect(storagePutCalls()).toBe(1);
+  });
+
+  it("queues an undated supplier catalog with a content-digest canonical name and no row metadata", async () => {
+    const { app, documentRepository, structuredImportRepository } =
+      await buildStructuredImportTestServer();
+    const body = Buffer.from(validStructuredCsv("supplier_catalog"), "utf8");
+
+    const response = await postStructuredImport(app, {
+      dataset: "supplier_catalog",
+      startDate: null,
+      endDate: null,
+      idempotencyKey: "supplier-catalog-upload",
+      fileName: "suppliers.csv",
+      body
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      importBatch: { dataset: "supplier_catalog", startDate: null, endDate: null }
+    });
+    expect(response.json().importBatch).not.toHaveProperty("naturalKey");
+    expect(response.json().document.storageObjectKey).toMatch(
+      /u4fdd_u5229_u5e97_supplier_catalog_[0-9a-f]{64}\.csv/
+    );
+    expect(JSON.stringify(response.json())).not.toContain("value_1");
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(structuredImportRepository.batches).toHaveLength(1);
+  });
+
   it.each([
     {
       name: "catalog without snapshotDate",
@@ -265,6 +429,21 @@ describe("structured imports", () => {
     {
       name: "window dataset with snapshotDate",
       input: { dataset: "dishes" as const, snapshotDate: "20260819" }
+    },
+    {
+      name: "delivery dataset with startDate",
+      input: {
+        dataset: "delivery_ledger" as const,
+        startDate: "20260826",
+        endDate: null
+      }
+    },
+    {
+      name: "supplier dataset with snapshotDate",
+      input: {
+        dataset: "supplier_catalog" as const,
+        snapshotDate: "20260826"
+      }
     }
   ])("rejects invalid conditional date metadata for $name", async ({ name, input }) => {
     const { app, documentRepository, storagePutCalls } = await buildStructuredImportTestServer();
