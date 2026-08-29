@@ -372,7 +372,9 @@ export function createInMemoryStructuredImportRepository(
           importBatchId: batch.id,
           startDate: input.startDate,
           endDate: input.endDate,
-          naturalKey: input.naturalKey ?? null
+          ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
+            ? { naturalKey: input.naturalKey }
+            : {})
         },
         chunks: []
       });
@@ -386,7 +388,9 @@ export function createInMemoryStructuredImportRepository(
           dataset: input.dataset,
           startDate: input.startDate,
           endDate: input.endDate,
-          naturalKey: input.naturalKey ?? null,
+          ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
+            ? { naturalKey: input.naturalKey }
+            : {}),
           rowCount: input.totalRowCount,
           sourceDocumentId: input.documentId
         },
@@ -469,7 +473,9 @@ export function createInMemoryStructuredImportRepository(
           dataset: batch.dataset,
           startDate: batch.startDate,
           endDate: batch.endDate,
-          naturalKey: batch.naturalKey,
+          ...(batch.dataset === "delivery_ledger" && batch.naturalKey !== null
+            ? { naturalKey: batch.naturalKey }
+            : {}),
           appliedRowCount: input.rows.length,
           sourceDocumentId: batch.sourceDocumentId
         },

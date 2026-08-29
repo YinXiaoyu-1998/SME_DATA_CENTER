@@ -410,7 +410,9 @@ export function createPrismaStructuredImportRepository(options: {
                   dataset: input.dataset,
                   startDate: input.startDate,
                   endDate: input.endDate,
-                  naturalKey: input.naturalKey ?? null
+                  ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
+                    ? { naturalKey: input.naturalKey }
+                    : {})
                 },
                 documentLabels: {
                   create: input.document.labelIds.map((labelId) => ({
@@ -467,7 +469,9 @@ export function createPrismaStructuredImportRepository(options: {
                   dataset: input.dataset,
                   startDate: input.startDate,
                   endDate: input.endDate,
-                  naturalKey: input.naturalKey ?? null,
+                  ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
+                    ? { naturalKey: input.naturalKey }
+                    : {}),
                   rowCount: input.totalRowCount,
                   sourceDocumentId: input.documentId
                 },
@@ -647,7 +651,9 @@ export function createPrismaStructuredImportRepository(options: {
                       dataset: batch.dataset,
                       startDate: formatDateWindowDate(batch.startDate),
                       endDate: formatDateWindowDate(batch.endDate),
-                      naturalKey: batch.naturalKey,
+                      ...(batch.dataset === "delivery_ledger" && batch.naturalKey !== null
+                        ? { naturalKey: batch.naturalKey }
+                        : {}),
                       appliedRowCount: input.rows.length,
                       sourceDocumentId: batch.sourceDocumentId
                     },
