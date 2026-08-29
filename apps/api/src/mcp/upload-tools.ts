@@ -10,7 +10,7 @@ import {
 } from "@enterprise-hub/mcp-contract";
 import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
-import type { StructuredDatasetName } from "@enterprise-hub/domain";
+import { getStructuredRegistry, type StructuredDatasetName } from "@enterprise-hub/domain";
 
 interface InlineUploadFile {
   name: string;
@@ -141,20 +141,33 @@ async function uploadStructuredDataset(
       value: labelKey
     }))
   ];
-  if (uploadInput.dataset === "dish_catalog") {
-    parts.push({ type: "field", name: "snapshotDate", value: uploadInput.snapshotDate! });
-  } else {
-    parts.push(
-      { type: "field", name: "startDate", value: uploadInput.startDate! },
-      { type: "field", name: "endDate", value: uploadInput.endDate! }
-    );
-  }
+  appendStructuredMetadataParts(parts, uploadInput);
   const multipart = createMultipartBody(parts);
 
   return delegateMultipartRequest(options.delegate, delegation, {
     url: "/v1/structured/imports",
     multipart
   });
+}
+
+function appendStructuredMetadataParts(
+  parts: MultipartPart[],
+  input: UploadStructuredDatasetInput
+): void {
+  switch (getStructuredRegistry(input.dataset).metadataPolicy) {
+    case "snapshot":
+      parts.push({ type: "field", name: "snapshotDate", value: input.snapshotDate! });
+      return;
+    case "window":
+      parts.push(
+        { type: "field", name: "startDate", value: input.startDate! },
+        { type: "field", name: "endDate", value: input.endDate! }
+      );
+      return;
+    case "derived_receipt":
+    case "none":
+      return;
+  }
 }
 
 async function uploadEvidenceDocument(

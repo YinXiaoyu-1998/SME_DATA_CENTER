@@ -345,6 +345,73 @@ describe("Enterprise Hub MCP contract", () => {
     expect(upload.dataset).toBe("vip");
   });
 
+  it.each(["delivery_ledger", "supplier_catalog"] as const)(
+    "accepts the date-free %s dataset with CSV and XLSX upload inputs",
+    (dataset) => {
+      for (const file of [
+        {
+          name: `${dataset}.csv`,
+          mediaType: "text/csv"
+        },
+        {
+          name: `${dataset}.xlsx`,
+          mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      ]) {
+        const input = {
+          ...validInputs.upload_structured_dataset,
+          file: {
+            ...validInputs.upload_structured_dataset.file,
+            ...file
+          },
+          dataset,
+          startDate: undefined,
+          endDate: undefined,
+          snapshotDate: undefined
+        };
+
+        expect(parseTool("upload_structured_dataset", input)).toEqual(input);
+        expect(
+          parseTool("query_structured_dataset", {
+            ...validInputs.query_structured_dataset,
+            dataset
+          })
+        ).toMatchObject({ dataset });
+      }
+
+      for (const dateField of ["startDate", "endDate", "snapshotDate"] as const) {
+        expect(
+          safeParseTool("upload_structured_dataset", {
+            ...validInputs.upload_structured_dataset,
+            dataset,
+            [dateField]: "20260829"
+          }).success
+        ).toBe(false);
+      }
+    }
+  );
+
+  it("lists all structured datasets in query and upload field descriptions", () => {
+    const expectedDatasets = [
+      "dishes",
+      "business",
+      "vip",
+      "dish_catalog",
+      "delivery_ledger",
+      "supplier_catalog"
+    ];
+
+    for (const toolName of ["query_structured_dataset", "upload_structured_dataset"] as const) {
+      const field = contractsByName
+        .get(toolName)
+        ?.inputFields.find((inputField) => inputField.name === "dataset");
+
+      for (const dataset of expectedDatasets) {
+        expect(field?.description).toContain(dataset);
+      }
+    }
+  });
+
   it("keeps the structured upload schema object-shaped while enforcing conditional dates", () => {
     const contract = contractsByName.get("upload_structured_dataset");
     const catalogInput = {

@@ -146,6 +146,30 @@ describe("read-only MCP tool handlers", () => {
     expect(JSON.stringify(calls)).not.toContain("undefined");
   });
 
+  it.each(["delivery_ledger", "supplier_catalog"] as const)(
+    "delegates %s structured queries through the existing read tool",
+    async (dataset) => {
+      const { calls, handlers } = createCapturingDelegate();
+
+      const result = await handlers.query_structured_dataset?.(
+        { dataset, select: ["supplier_name"], page: { limit: 1 } },
+        {} as never
+      );
+
+      expect(parseToolResult(result!)).toMatchObject({ ok: true });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({
+        method: "POST",
+        url: "/v1/structured/query",
+        payload: {
+          dataset,
+          select: ["supplier_name"],
+          page: { limit: 1 }
+        }
+      });
+    }
+  );
+
   it("validates inputs with shared strict schemas before API injection", async () => {
     const { calls, handlers } = createCapturingDelegate("secret-token");
 

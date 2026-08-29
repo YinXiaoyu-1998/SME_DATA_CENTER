@@ -3,7 +3,9 @@ import { z } from "zod";
 import {
   PHASE3_RUNTIME_LIMIT_DEFAULTS,
   PUBLIC_INPUT_LIMITS,
-  STRUCTURED_QUERY_LIMITS
+  STRUCTURED_DATASETS,
+  STRUCTURED_QUERY_LIMITS,
+  getStructuredRegistry
 } from "@enterprise-hub/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
@@ -13,9 +15,7 @@ export const MCP_LOCAL_FILE_PATH_MAX_LENGTH = 4096;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
-const structuredDataset = z
-  .enum(["dishes", "business", "vip", "dish_catalog"])
-  .describe("Phase 3 structured dataset name.");
+const structuredDataset = z.enum(STRUCTURED_DATASETS).describe("Phase 3 structured dataset name.");
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
   z.number(),
@@ -245,41 +245,57 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
-    if (input.dataset === "dish_catalog") {
-      if (!input.snapshotDate) {
-        context.addIssue({
-          code: "custom",
-          message: "dish_catalog requires snapshotDate.",
-          path: ["snapshotDate"]
-        });
-      }
-      for (const field of ["startDate", "endDate"] as const) {
-        if (input[field] !== undefined) {
+    const metadataPolicy = getStructuredRegistry(input.dataset).metadataPolicy;
+
+    switch (metadataPolicy) {
+      case "snapshot":
+        if (!input.snapshotDate) {
           context.addIssue({
             code: "custom",
-            message: `dish_catalog does not accept ${field}.`,
-            path: [field]
+            message: `${input.dataset} requires snapshotDate.`,
+            path: ["snapshotDate"]
           });
         }
-      }
-      return;
-    }
-
-    if (input.snapshotDate !== undefined) {
-      context.addIssue({
-        code: "custom",
-        message: "Window datasets do not accept snapshotDate.",
-        path: ["snapshotDate"]
-      });
-    }
-    for (const field of ["startDate", "endDate"] as const) {
-      if (!input[field]) {
-        context.addIssue({
-          code: "custom",
-          message: `${field} is required for window datasets.`,
-          path: [field]
-        });
-      }
+        for (const field of ["startDate", "endDate"] as const) {
+          if (input[field] !== undefined) {
+            context.addIssue({
+              code: "custom",
+              message: `${input.dataset} does not accept ${field}.`,
+              path: [field]
+            });
+          }
+        }
+        return;
+      case "window":
+        if (input.snapshotDate !== undefined) {
+          context.addIssue({
+            code: "custom",
+            message: "Window datasets do not accept snapshotDate.",
+            path: ["snapshotDate"]
+          });
+        }
+        for (const field of ["startDate", "endDate"] as const) {
+          if (!input[field]) {
+            context.addIssue({
+              code: "custom",
+              message: `${field} is required for window datasets.`,
+              path: [field]
+            });
+          }
+        }
+        return;
+      case "derived_receipt":
+      case "none":
+        for (const field of ["startDate", "endDate", "snapshotDate"] as const) {
+          if (input[field] !== undefined) {
+            context.addIssue({
+              code: "custom",
+              message: `${input.dataset} does not accept ${field}.`,
+              path: [field]
+            });
+          }
+        }
+        return;
     }
   });
 
@@ -434,7 +450,8 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       {
         name: "dataset",
         required: true,
-        description: "`dishes`, `business`, `vip`, or `dish_catalog`."
+        description:
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
       },
       { name: "registryVersion", required: false, description: "Optional registry version." },
       { name: "select", required: false, description: "Selected field names." },
@@ -457,7 +474,8 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       {
         name: "dataset",
         required: true,
-        description: "`dishes`, `business`, `vip`, or `dish_catalog`."
+        description:
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
       },
       { name: "enterpriseName", required: true, description: "Enterprise/source name." },
       { name: "startDate", required: false, description: "YYYYMMDD business window start." },

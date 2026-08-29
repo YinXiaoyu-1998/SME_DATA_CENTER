@@ -15,7 +15,10 @@ try {
     "vitest",
     "run",
     "apps/api/src/mcp/http.test.ts",
-    "apps/mcp-launcher/src/launcher.test.ts"
+    "apps/mcp-launcher/src/launcher.test.ts",
+    "packages/mcp-contract/src/index.test.ts",
+    "apps/api/src/mcp/upload-tools.test.ts",
+    "apps/api/src/mcp/read-tools.test.ts"
   ]);
 
   console.log(
@@ -26,7 +29,8 @@ try {
           "root_mcp_launcher_script",
           "api_http_post_mcp_endpoint",
           "launcher_stdio_to_http_proxy",
-          "mcp_structured_pending_status"
+          "mcp_structured_pending_status",
+          "mcp_delivery_supplier_contract_and_delegation"
         ]
       },
       null,

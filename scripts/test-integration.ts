@@ -19,6 +19,7 @@ import {
   createLauncherToolDependencies,
   createLauncherToolHandler
 } from "../apps/mcp-launcher/src/index.js";
+import { getStructuredRegistry } from "@enterprise-hub/domain";
 import {
   OAUTH_CLIENT_ID,
   OAUTH_TRANSACTION_COOKIE,
@@ -103,6 +104,10 @@ interface McpToolEnvelope {
     content?: Array<{ type: string; text?: string }>;
     isError?: boolean;
   };
+}
+
+interface McpStructuredQueryResponse {
+  rows: Array<Record<string, unknown>>;
 }
 
 const rootDir = process.cwd();
@@ -287,6 +292,8 @@ try {
     structuredUpload.document.documentId
   );
   await assertStructuredApplyRollback();
+  const deliveryLedgerSupplierCatalog =
+    await assertMcpDeliveryLedgerSupplierCatalogFlow(employeeAccessToken);
 
   const launcherPathCsv = Buffer.from(
     structuredFixture.toString("utf8").replace("2026-07-01,", "2026-07-06,"),
@@ -570,6 +577,8 @@ try {
       {
         ok: true,
         structuredImportBatchId: structuredUpload.importBatch.importBatchId,
+        deliveryLedgerImportBatchId: deliveryLedgerSupplierCatalog.deliveryImportBatchId,
+        supplierCatalogImportBatchId: deliveryLedgerSupplierCatalog.supplierImportBatchId,
         evidenceDocumentId: evidenceUpload.document.documentId,
         apiUrl,
         mysqlPort,
@@ -582,6 +591,9 @@ try {
           "launcher_local_path_upload",
           "phase3_structured_typed_query",
           "phase3_structured_query",
+          "mcp_delivery_without_catalog_returns_null_enrichment",
+          "mcp_delivery_supplier_dynamic_enrichment",
+          "mcp_latest_supplier_catalog_replaces_enrichment",
           "phase3_structured_all_staff_import",
           "phase3_structured_all_staff_query",
           "phase3_structured_import_status_non_enumeration",
@@ -825,6 +837,273 @@ async function waitForStructuredImportStatus(
     return latest.importBatch.status === expectedStatus;
   });
   return latest!;
+}
+
+async function assertMcpDeliveryLedgerSupplierCatalogFlow(
+  accessToken: string
+): Promise<{ deliveryImportBatchId: string; supplierImportBatchId: string }> {
+  const runId = `mcp-ledger-supplier-${Date.now()}`;
+  const receiptNumber = `MCP-${Date.now()}`;
+  const supplierName = "MCP Synthetic Supplier";
+  const deliveryUpload = await uploadStructuredDatasetThroughMcp(accessToken, {
+    requestId: `${runId}-delivery`,
+    fileName: "mcp-delivery-ledger.csv",
+    content: deliveryLedgerCsvForIntegration(receiptNumber, supplierName),
+    dataset: "delivery_ledger",
+    enterpriseName: "MCP Delivery Smoke",
+    idempotencyKey: `${runId}-delivery-key`
+  });
+  assert(
+    deliveryUpload.importBatch.status === "pending",
+    "MCP delivery upload should be queued before worker application."
+  );
+  const deliveryWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+  );
+  assert(
+    deliveryWorker.documentId === deliveryUpload.document.documentId &&
+      deliveryWorker.status === "active",
+    "Worker should apply the MCP delivery upload."
+  );
+  const appliedDelivery = await waitForMcpImportStatus(
+    accessToken,
+    deliveryUpload.importBatch.importBatchId,
+    `${runId}-delivery-status`
+  );
+  assert(
+    appliedDelivery.importBatch.appliedRowCount === 1,
+    "MCP delivery upload should apply one ledger row."
+  );
+
+  const noCatalogQuery = await queryDeliveryThroughMcp(
+    accessToken,
+    receiptNumber,
+    `${runId}-no-catalog-query`
+  );
+  assert(
+    noCatalogQuery.rows.length === 1 &&
+      noCatalogQuery.rows[0]?.supplier_contact_phone === null &&
+      noCatalogQuery.rows[0]?.supplier_unit_address === null,
+    "A delivery query before any supplier catalog must return null enrichment."
+  );
+
+  const supplierUpload = await uploadStructuredDatasetThroughMcp(accessToken, {
+    requestId: `${runId}-supplier-initial`,
+    fileName: "mcp-supplier-catalog.csv",
+    content: supplierCatalogCsvForIntegration(supplierName, "13800000001", "MCP Initial Address"),
+    dataset: "supplier_catalog",
+    enterpriseName: "MCP Supplier Smoke",
+    idempotencyKey: `${runId}-supplier-initial-key`
+  });
+  const supplierWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+  );
+  assert(
+    supplierWorker.documentId === supplierUpload.document.documentId &&
+      supplierWorker.status === "active",
+    "Worker should apply the initial MCP supplier catalog upload."
+  );
+  const appliedSupplier = await waitForMcpImportStatus(
+    accessToken,
+    supplierUpload.importBatch.importBatchId,
+    `${runId}-supplier-initial-status`
+  );
+  assert(
+    appliedSupplier.importBatch.appliedRowCount === 1,
+    "Initial MCP supplier catalog upload should apply one supplier row."
+  );
+
+  const initialEnrichment = await queryDeliveryThroughMcp(
+    accessToken,
+    receiptNumber,
+    `${runId}-initial-query`
+  );
+  assert(
+    initialEnrichment.rows[0]?.supplier_contact_phone === "13800000001" &&
+      initialEnrichment.rows[0]?.supplier_unit_address === "MCP Initial Address",
+    "MCP delivery query should dynamically enrich from the current supplier catalog."
+  );
+
+  await delay(10);
+  const newerSupplierUpload = await uploadStructuredDatasetThroughMcp(accessToken, {
+    requestId: `${runId}-supplier-newer`,
+    fileName: "mcp-supplier-catalog-newer.csv",
+    content: supplierCatalogCsvForIntegration(supplierName, "13900000002", "MCP Newer Address"),
+    dataset: "supplier_catalog",
+    enterpriseName: "MCP Supplier Smoke",
+    idempotencyKey: `${runId}-supplier-newer-key`
+  });
+  const newerSupplierWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+  );
+  assert(
+    newerSupplierWorker.documentId === newerSupplierUpload.document.documentId &&
+      newerSupplierWorker.status === "active",
+    "Worker should apply the newer MCP supplier catalog upload."
+  );
+  const appliedNewerSupplier = await waitForMcpImportStatus(
+    accessToken,
+    newerSupplierUpload.importBatch.importBatchId,
+    `${runId}-supplier-newer-status`
+  );
+  assert(
+    appliedNewerSupplier.importBatch.appliedRowCount === 1,
+    "Newer MCP supplier catalog upload should apply one supplier row."
+  );
+
+  const newerEnrichment = await queryDeliveryThroughMcp(
+    accessToken,
+    receiptNumber,
+    `${runId}-newer-query`
+  );
+  assert(
+    newerEnrichment.rows[0]?.receipt_number === receiptNumber &&
+      newerEnrichment.rows[0]?.supplier_contact_phone === "13900000002" &&
+      newerEnrichment.rows[0]?.supplier_unit_address === "MCP Newer Address",
+    "The same historical delivery row must reflect the latest supplier phone and address."
+  );
+
+  return {
+    deliveryImportBatchId: deliveryUpload.importBatch.importBatchId,
+    supplierImportBatchId: newerSupplierUpload.importBatch.importBatchId
+  };
+}
+
+async function uploadStructuredDatasetThroughMcp(
+  accessToken: string,
+  input: {
+    requestId: string;
+    fileName: string;
+    content: string;
+    dataset: "delivery_ledger" | "supplier_catalog";
+    enterpriseName: string;
+    idempotencyKey: string;
+  }
+): Promise<StructuredUploadResponse> {
+  return callMcpTool<StructuredUploadResponse>(
+    accessToken,
+    input.requestId,
+    "upload_structured_dataset",
+    {
+      file: {
+        name: input.fileName,
+        mediaType: "text/csv",
+        encoding: "base64",
+        contentBase64: Buffer.from(input.content, "utf8").toString("base64")
+      },
+      dataset: input.dataset,
+      enterpriseName: input.enterpriseName,
+      idempotencyKey: input.idempotencyKey,
+      labelKeys: ["store:baoli"]
+    }
+  );
+}
+
+async function waitForMcpImportStatus(
+  accessToken: string,
+  importBatchId: string,
+  requestId: string
+): Promise<StructuredUploadResponse> {
+  let latest: StructuredUploadResponse | null = null;
+  let pollNumber = 0;
+  await waitForCondition(`MCP structured import ${importBatchId}`, async () => {
+    latest = await callMcpTool<StructuredUploadResponse>(
+      accessToken,
+      `${requestId}-${pollNumber++}`,
+      "get_import_status",
+      { importBatchId }
+    );
+    return latest.importBatch.status === "applied";
+  });
+  return latest!;
+}
+
+async function queryDeliveryThroughMcp(
+  accessToken: string,
+  receiptNumber: string,
+  requestId: string
+): Promise<McpStructuredQueryResponse> {
+  return callMcpTool<McpStructuredQueryResponse>(
+    accessToken,
+    requestId,
+    "query_structured_dataset",
+    {
+      dataset: "delivery_ledger",
+      select: [
+        "receipt_number",
+        "supplier_name",
+        "supplier_contact_phone",
+        "supplier_unit_address"
+      ],
+      filter: { field: "receipt_number", op: "eq", value: receiptNumber },
+      page: { limit: 10 }
+    }
+  );
+}
+
+async function callMcpTool<T>(
+  accessToken: string,
+  requestId: string,
+  name: string,
+  argumentsInput: Record<string, unknown>
+): Promise<T> {
+  const response = await fetch(`${apiUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+      "mcp-protocol-version": "2025-11-25",
+      "x-enterprise-hub-launcher-version": "0.2.3",
+      "x-request-id": requestId
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "tools/call",
+      params: { name, arguments: argumentsInput }
+    })
+  });
+  const envelope = (await response.json()) as McpToolEnvelope;
+  const toolResult = envelope.result;
+  const text = toolResult?.content?.find((content) => content.type === "text")?.text;
+  assert(response.status === 200, `MCP ${name} must return HTTP 200.`);
+  assert(toolResult?.isError === false && Boolean(text), `MCP ${name} must succeed.`);
+  return JSON.parse(text!) as T;
+}
+
+function deliveryLedgerCsvForIntegration(receiptNumber: string, supplierName: string): string {
+  return [
+    ["送货单"],
+    ["单据号", receiptNumber, "订货机构", "MCP Synthetic Store"],
+    ["送货机构", supplierName, "收货日期", "2026-08-29"],
+    ["序号", "物品名称", "规格型号", "收货数量", "收货金额"],
+    ["1", "MCP Synthetic Item", "件", "2", "100"],
+    ["合计", "", "", "2", "100"],
+    ["验收人", "MCP Synthetic Receiver"]
+  ]
+    .map((row) => row.join(","))
+    .join("\n");
+}
+
+function supplierCatalogCsvForIntegration(
+  supplierName: string,
+  phone: string,
+  address: string
+): string {
+  const headers = getStructuredRegistry("supplier_catalog")
+    .fields.filter((field) => field.inputSource === "file")
+    .map((field) => field.sourceColumn);
+  const values = headers.map((header, index) => {
+    if (header === "供应商编码") return "MCP-S-001";
+    if (header === "供应商名称") return supplierName;
+    if (header === "税率") return "13";
+    if (header === "联系人电话") return phone;
+    if (header === "单位地址") return address;
+    if (header === "操作时间") return "2026-08-29 10:30:00";
+    return `MCP值${index + 1}`;
+  });
+  return [headers, values].map((row) => row.join(",")).join("\n");
 }
 
 async function assertStructuredReplayCardinality(
