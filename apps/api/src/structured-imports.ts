@@ -51,6 +51,7 @@ export interface StructuredImportBatchRecord {
   status: ImportBatchStatusName;
   startDate: string | null;
   endDate: string | null;
+  naturalKey?: string | null;
   sourceSheetSummary: unknown[];
   validationErrors: unknown[];
   validationErrorCount: number;
@@ -834,6 +835,7 @@ function toImportBatchRecord(
     status: archived ? "archived" : batch.status,
     startDate: formatDateWindowDate(batch.startDate),
     endDate: formatDateWindowDate(batch.endDate),
+    naturalKey: batch.naturalKey,
     sourceSheetSummary: arrayJson(batch.sourceSheetSummary),
     validationErrors,
     validationErrorCount: batch.validationErrorCount,

@@ -359,7 +359,7 @@ describe("api auth shell", () => {
     });
   });
 
-  it("requires backend authorization for every non-health Phase 3 endpoint", async () => {
+  it("requires backend authorization for every non-health Phase 3 endpoint, including new structured datasets", async () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
       documentRepository: createDocumentRepository(),

@@ -4,9 +4,13 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   PHASE3_ERROR_CODES,
   canEmployeeAccessDocument,
+  getStructuredRegistry,
   type AuthenticatedEmployee
 } from "@enterprise-hub/domain";
-import { preflightStructuredFile } from "@enterprise-hub/structured-ingestion";
+import {
+  preflightStructuredFile,
+  profileStructuredFile
+} from "@enterprise-hub/structured-ingestion";
 import { createOriginalObjectKey, type StorageAdapter } from "@enterprise-hub/storage";
 import type { ApiRuntimeLimits } from "../../config/runtime-limits.js";
 import type { CatalogLabel, DocumentCatalogRepository } from "../../documents.js";
@@ -43,6 +47,28 @@ function forbiddenRequestedLabels(
     .filter((label) => label.type === "all_staff" || !employee.labels.includes(label.key))
     .map((label) => label.key)
     .sort();
+}
+
+function importDocumentTitle(input: {
+  enterpriseName: string;
+  dataset: string;
+  metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
+  startDate: string | null;
+  endDate: string | null;
+  snapshotDate?: string;
+  naturalKey?: string;
+  contentDigest: string;
+}): string {
+  if (input.metadataPolicy === "snapshot") {
+    return `${input.enterpriseName}_${input.dataset}_${input.snapshotDate}`;
+  }
+  if (input.metadataPolicy === "derived_receipt") {
+    return `${input.enterpriseName}_${input.dataset}_${input.naturalKey}_${input.startDate}`;
+  }
+  if (input.metadataPolicy === "none") {
+    return `${input.enterpriseName}_${input.dataset}_${input.contentDigest.slice(0, 12)}`;
+  }
+  return `${input.enterpriseName}_${input.dataset}_${input.startDate}_${input.endDate}`;
 }
 
 async function parseStructuredImportUpload(
@@ -185,9 +211,11 @@ export function registerStructuredImportRoutes(
       return validationError(reply, metadataValidation.code, metadataValidation.message);
     }
 
-    const { dataset, fileType, startDate, endDate } = metadataValidation;
+    const { dataset, fileType } = metadataValidation;
+    const registry = getStructuredRegistry(dataset);
+    let { startDate, endDate } = metadataValidation;
     const snapshotDate =
-      metadataValidation.dataset === "dish_catalog" ? metadataValidation.snapshotDate : undefined;
+      registry.metadataPolicy === "snapshot" ? metadataValidation.snapshotDate : undefined;
     const uploadedFile = upload.file;
     const enterpriseName = upload.enterpriseName;
     const idempotencyKey = upload.idempotencyKey;
@@ -251,21 +279,63 @@ export function registerStructuredImportRoutes(
       );
     }
 
+    let naturalKey: string | undefined;
+    if (registry.metadataPolicy === "derived_receipt") {
+      try {
+        const profile = await measureTiming("upload.profile_file", () =>
+          profileStructuredFile({
+            dataset,
+            fileName: uploadedFile.fileName,
+            fileType,
+            content: uploadedFile.body,
+            limits: {
+              maxStructuredImportRows: dependencies.runtimeLimits.maxStructuredImportRows,
+              maxXlsxSheets: dependencies.runtimeLimits.maxXlsxSheets,
+              maxStructuredCellChars: dependencies.runtimeLimits.maxStructuredCellChars,
+              maxXlsxUncompressedBytes: dependencies.runtimeLimits.maxXlsxUncompressedBytes,
+              maxXlsxZipEntries: dependencies.runtimeLimits.maxXlsxZipEntries,
+              maxXlsxCompressionRatio: dependencies.runtimeLimits.maxXlsxCompressionRatio
+            }
+          })
+        );
+        const derivedMetadata = profile.derivedMetadata;
+        if (!derivedMetadata) throw new Error("Delivery receipt metadata is missing.");
+        startDate = derivedMetadata.receiptDate.replaceAll("-", "");
+        endDate = startDate;
+        naturalKey = derivedMetadata.receiptNumber;
+      } catch (error) {
+        request.log.warn({ err: error }, "structured import profile failed");
+        logTiming("upload.total", importRequestStarted, { outcome: "profile_failed" });
+        return validationError(
+          reply,
+          "STRUCTURED_IMPORT_VALIDATION_FAILED",
+          "Structured import metadata could not be derived."
+        );
+      }
+    }
+
     const candidateDocumentId = createStructuredImportDocumentId();
     const originalFileName = uploadedFile.fileName;
+    const fileHash = createHash("sha256").update(uploadedFile.body).digest("hex");
     const canonicalFileName = canonicalStructuredImportFileName({
       enterpriseName,
       dataset,
       startDate,
       endDate,
       snapshotDate,
+      receiptNumber: naturalKey,
+      contentDigest: fileHash,
       fileType
     });
-    const fileHash = createHash("sha256").update(uploadedFile.body).digest("hex");
     const requestFingerprint = structuredImportFingerprint({
       dataset,
       enterpriseName,
-      ...(dataset === "dish_catalog" ? { snapshotDate } : { startDate, endDate }),
+      ...(registry.metadataPolicy === "snapshot"
+        ? { snapshotDate }
+        : registry.metadataPolicy === "window" || registry.metadataPolicy === "derived_receipt"
+          ? { startDate, endDate }
+          : {}),
+      ...(naturalKey ? { naturalKey } : {}),
       labelKeys: requestedLabels.map((label) => label.key).sort(),
       fileHash
     });
@@ -288,13 +358,20 @@ export function registerStructuredImportRoutes(
             fileType,
             startDate,
             endDate,
+            ...(naturalKey ? { naturalKey } : {}),
             idempotencyKey,
             requestFingerprint,
             document: {
-              title:
-                dataset === "dish_catalog"
-                  ? `${enterpriseName}_${dataset}_${snapshotDate}`
-                  : `${enterpriseName}_${dataset}_${startDate}_${endDate}`,
+              title: importDocumentTitle({
+                enterpriseName,
+                dataset,
+                metadataPolicy: registry.metadataPolicy,
+                startDate,
+                endDate,
+                snapshotDate,
+                naturalKey,
+                contentDigest: fileHash
+              }),
               storageObjectKey: candidateStorageObjectKey,
               originalFileName,
               contentType: uploadedFile.contentType,
