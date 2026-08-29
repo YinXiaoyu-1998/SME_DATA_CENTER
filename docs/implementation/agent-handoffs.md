@@ -1087,3 +1087,11 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
+
+## 2026-08-29 - delivery ledger and supplier catalog Task 8
+
+- Branch/worktree: `codex/delivery-ledger-supplier-catalog` at `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER-worktrees/delivery-ledger-supplier-catalog`; standalone skill branch `codex/delivery-ledger-supplier-catalog` at `/Users/xiaoyuyin/Desktop/YXY_DEV/enterprise-hub-mcp-skill`.
+- Production-parser acceptance passed: delivery counts `13` and `1` with receipts `SH2608250117` and `SH2608260003`; supplier catalog count `134`; both sample supplier keys had unique catalog matches. Temporary delivery/catalog CSV conversions parsed with counts `13`/`134` and were removed successfully. No raw rows or contact values were recorded.
+- Updated API contract, test matrix, implementation plan, fixture manifest, progress, repo-local skill, and standalone English/Chinese README guidance. The two `SKILL.md` files are byte-identical.
+- Verified: focused parser/registry/query tests `118/118`; full `npm test` `720 passed`, `33 skipped`; typecheck, lint, targeted Prettier, `git diff --check`, both `quick_validate.py` runs, and `cmp` passed. No staging deployment, push, or PR was performed.
+- Commit SHAs and final repository status are recorded in the Task 8 report. The pre-existing SDD plan remains untracked and is intentionally excluded from commits.
