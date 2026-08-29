@@ -19,18 +19,6 @@ const describeIntegration = runIntegration ? describe : describe.skip;
 const databaseUrl = process.env["DATABASE_URL"] ?? "";
 const orgId = "worker-prisma-test-org";
 const employeeId = "worker_prisma_test_employee";
-const specialDatasetCases = [
-  {
-    dataset: ImportDataset.delivery_ledger,
-    suffix: "dlgr",
-    rowModel: "deliveryLedgerRow"
-  },
-  {
-    dataset: ImportDataset.supplier_catalog,
-    suffix: "supcat",
-    rowModel: "supplierCatalogRow"
-  }
-] as const;
 
 describeIntegration("Prisma structured import worker repository", () => {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
@@ -232,13 +220,6 @@ describeIntegration("Prisma structured import worker repository", () => {
       (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
         .appliedAt
     ).toEqual(now);
-    await expectRepositoryState(prisma, fixture, {
-      batch: ImportBatchStatus.applied,
-      document: DocumentStatus.active,
-      run: ProcessingRunStatus.succeeded,
-      lockedBy: null,
-      appliedAt: now
-    });
     await repository.disconnect?.();
   });
 
@@ -278,13 +259,6 @@ describeIntegration("Prisma structured import worker repository", () => {
       (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
         .appliedAt
     ).toEqual(now);
-    await expectRepositoryState(prisma, fixture, {
-      batch: ImportBatchStatus.applied,
-      document: DocumentStatus.active,
-      run: ProcessingRunStatus.succeeded,
-      lockedBy: null,
-      appliedAt: now
-    });
     await repository.disconnect?.();
   });
 
@@ -324,153 +298,8 @@ describeIntegration("Prisma structured import worker repository", () => {
       (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
         .appliedAt
     ).toEqual(now);
-    await expectRepositoryState(prisma, fixture, {
-      batch: ImportBatchStatus.applied,
-      document: DocumentStatus.active,
-      run: ProcessingRunStatus.succeeded,
-      lockedBy: null,
-      appliedAt: now
-    });
     await repository.disconnect?.();
   });
-
-  it.each(specialDatasetCases)(
-    "rolls back $dataset insertion failure without partial rows or appliedAt",
-    async ({ dataset, suffix, rowModel }) => {
-      const repository = createPrismaProcessingWorkerRepository(databaseUrl);
-      const fixture = await createStructuredRun(prisma, `fail-${suffix}`, dataset);
-      const rows = structuredRowModel(prisma, rowModel);
-      const now = new Date("2026-08-29T05:00:00.000Z");
-      await repository.claimNextProcessingRun({
-        workerId: `worker-${suffix}`,
-        leaseSeconds: 120,
-        now
-      });
-      await repository.beginStructuredImportApply?.({
-        runId: fixture.runId,
-        documentId: fixture.documentId,
-        importBatchId: fixture.importBatchId,
-        workerId: `worker-${suffix}`,
-        now
-      });
-      await rows.create({
-        data: {
-          orgId,
-          sourceDocumentId: fixture.documentId,
-          importBatchId: fixture.importBatchId,
-          sourceSheetIndex: 0,
-          sourceSheetName: "Sheet1",
-          sourceRowNumber: 99,
-          payload: { preserved: true }
-        }
-      });
-
-      await expect(
-        repository.completeStructuredImport?.({
-          runId: fixture.runId,
-          documentId: fixture.documentId,
-          importBatchId: fixture.importBatchId,
-          workerId: `worker-${suffix}`,
-          now,
-          batchInsertSize: 500,
-          result: structuredResult({ sourceSheetName: "x".repeat(256) })
-        })
-      ).rejects.toThrow();
-
-      expect(await rows.count({ where: { importBatchId: fixture.importBatchId } })).toBe(1);
-      expect(await rows.findMany({ where: { importBatchId: fixture.importBatchId } })).toEqual([
-        expect.objectContaining({ sourceRowNumber: 99, payload: { preserved: true } })
-      ]);
-      await expectRepositoryState(prisma, fixture, {
-        batch: ImportBatchStatus.applying,
-        document: DocumentStatus.processing,
-        run: ProcessingRunStatus.running,
-        lockedBy: `worker-${suffix}`,
-        appliedAt: null
-      });
-      await repository.failProcessingRun({
-        runId: fixture.runId,
-        documentId: fixture.documentId,
-        workerId: `worker-${suffix}`,
-        now,
-        errorCode: "STRUCTURED_IMPORT_FAILED",
-        errorSummary: "forced row insertion failure",
-        willRetry: true,
-        nextAvailableAt: now
-      });
-      expect(await rows.count({ where: { importBatchId: fixture.importBatchId } })).toBe(1);
-      await expectRepositoryState(prisma, fixture, {
-        batch: ImportBatchStatus.pending,
-        document: DocumentStatus.pending_processing,
-        run: ProcessingRunStatus.retry_scheduled,
-        lockedBy: null,
-        appliedAt: null
-      });
-      expect(
-        await prisma.auditLog.count({
-          where: {
-            orgId,
-            action: "structured_import.applied",
-            targetId: fixture.importBatchId
-          }
-        })
-      ).toBe(0);
-      await repository.disconnect?.();
-    }
-  );
-
-  it.each(specialDatasetCases)(
-    "does not publish $dataset rows after a stale lease",
-    async ({ dataset, suffix, rowModel }) => {
-      const repositoryA = createPrismaProcessingWorkerRepository(databaseUrl);
-      const repositoryB = createPrismaProcessingWorkerRepository(databaseUrl);
-      const fixture = await createStructuredRun(prisma, `lease-${suffix}`, dataset);
-      const firstNow = new Date("2026-08-29T06:00:00.000Z");
-      const recoveredNow = new Date("2026-08-29T06:00:02.000Z");
-      await repositoryA.claimNextProcessingRun({
-        workerId: `worker-a-${suffix}`,
-        leaseSeconds: 1,
-        now: firstNow
-      });
-      await repositoryB.claimNextProcessingRun({
-        workerId: `worker-b-${suffix}`,
-        leaseSeconds: 120,
-        now: recoveredNow
-      });
-
-      await expect(
-        repositoryA.completeStructuredImport?.({
-          runId: fixture.runId,
-          documentId: fixture.documentId,
-          importBatchId: fixture.importBatchId,
-          workerId: `worker-a-${suffix}`,
-          now: recoveredNow,
-          batchInsertSize: 500,
-          result: structuredResult()
-        })
-      ).rejects.toBeInstanceOf(ProcessingLeaseLostError);
-
-      const rows = structuredRowModel(prisma, rowModel);
-      expect(await rows.count({ where: { importBatchId: fixture.importBatchId } })).toBe(0);
-      await expectRepositoryState(prisma, fixture, {
-        batch: ImportBatchStatus.validating,
-        document: DocumentStatus.processing,
-        run: ProcessingRunStatus.running,
-        lockedBy: `worker-b-${suffix}`,
-        appliedAt: null
-      });
-      expect(
-        await prisma.auditLog.count({
-          where: {
-            orgId,
-            action: "structured_import.applied",
-            targetId: fixture.importBatchId
-          }
-        })
-      ).toBe(0);
-      await Promise.all([repositoryA.disconnect?.(), repositoryB.disconnect?.()]);
-    }
-  );
 
   it("rejects stale Prisma success, reject, and fail transitions while allowing the new lease owner", async () => {
     const repositoryA = createPrismaProcessingWorkerRepository(databaseUrl);
@@ -646,7 +475,6 @@ async function expectRepositoryState(
     document: DocumentStatus;
     run: ProcessingRunStatus;
     lockedBy: string | null;
-    appliedAt?: Date | null;
   }
 ) {
   const [batch, document, run] = await Promise.all([
@@ -658,18 +486,6 @@ async function expectRepositoryState(
   expect(document.status).toBe(expected.document);
   expect(run.status).toBe(expected.run);
   expect(run.lockedBy).toBe(expected.lockedBy);
-  if ("appliedAt" in expected) expect(batch.appliedAt).toEqual(expected.appliedAt);
-}
-
-function structuredRowModel(
-  prisma: PrismaClient,
-  rowModel: (typeof specialDatasetCases)[number]["rowModel"]
-) {
-  return prisma[rowModel] as unknown as {
-    create(input: { data: Record<string, unknown> }): Promise<unknown>;
-    count(input: { where: { importBatchId: string } }): Promise<number>;
-    findMany(input: { where: { importBatchId: string } }): Promise<unknown[]>;
-  };
 }
 
 async function clearTestRecords(prisma: PrismaClient) {

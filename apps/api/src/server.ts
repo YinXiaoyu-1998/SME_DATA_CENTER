@@ -105,8 +105,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     storage,
     structuredImports,
     runtimeLimits,
-    createBusinessRequestAudit,
-    profileStructuredFile: options.structuredImportProfiler
+    createBusinessRequestAudit
   });
 
   registerStructuredQueryRoutes(app, { auth: requestAuth, structuredQueries, cursorSigningSecret });

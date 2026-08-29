@@ -7,12 +7,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ENTERPRISE_HUB_MCP_TOOL_NAMES } from "@enterprise-hub/mcp-contract";
-import { createLauncherRuntimeConfig, loadLauncherRuntimeConfig } from "./config.js";
+import { createLauncherRuntimeConfig } from "./config.js";
 import {
   LAUNCHER_BOOTSTRAP_TOOL_NAMES,
   type LauncherLoginResult,
   canOpenBrowser,
-  createLauncherAuthenticationFromEnvironment,
   createLauncherToolDependencies,
   createLauncherToolHandler,
   mapMcpError,
@@ -23,22 +22,6 @@ import {
 const config = createLauncherRuntimeConfig({ enterpriseHubBaseUrl: "https://hub.example.test" });
 
 describe("official launcher bootstrap tools", () => {
-  it("uses a local test token only for the loopback test launcher", async () => {
-    const auth = createLauncherAuthenticationFromEnvironment(
-      loadLauncherRuntimeConfig({
-        NODE_ENV: "test",
-        ENTERPRISE_HUB_BASE_URL: "http://127.0.0.1:43123"
-      }),
-      {
-        NODE_ENV: "test",
-        ENTERPRISE_HUB_LOCAL_TEST_ACCESS_TOKEN: "local-test-token"
-      }
-    );
-
-    expect(await auth.accessToken()).toBe("local-test-token");
-    expect(await auth.status()).toEqual({ authenticated: true });
-  });
-
   it("registers empty strict login, logout, and auth-status tools", () => {
     const registered: Array<{ name: string; shape: Record<string, unknown> }> = [];
     registerLauncherTools(

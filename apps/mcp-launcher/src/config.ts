@@ -7,9 +7,7 @@ export interface LauncherRuntimeConfigInput {
   enterpriseHubBaseUrl: string;
 }
 
-type LauncherRuntimeEnv = Partial<
-  Record<"ENTERPRISE_HUB_BASE_URL" | "NODE_ENV", string | undefined>
->;
+type LauncherRuntimeEnv = Partial<Record<"ENTERPRISE_HUB_BASE_URL", string | undefined>>;
 
 const CONFIG_INPUT_KEYS = new Set(["enterpriseHubBaseUrl"]);
 
@@ -33,10 +31,7 @@ export function loadLauncherRuntimeConfig(
     throw new Error("ENTERPRISE_HUB_BASE_URL is required.");
   }
 
-  return {
-    serviceUrl: normalizeEnterpriseHubBaseUrl(enterpriseHubBaseUrl, env.NODE_ENV === "test"),
-    transport: "stdio"
-  };
+  return createLauncherRuntimeConfig({ enterpriseHubBaseUrl });
 }
 
 function assertOnlyBaseUrlInput(input: LauncherRuntimeConfigInput): void {
@@ -47,7 +42,7 @@ function assertOnlyBaseUrlInput(input: LauncherRuntimeConfigInput): void {
   }
 }
 
-function normalizeEnterpriseHubBaseUrl(value: string, allowLoopbackHttp = false): string {
+function normalizeEnterpriseHubBaseUrl(value: string): string {
   const trimmed = value.trim();
 
   if (!trimmed) {
@@ -62,9 +57,7 @@ function normalizeEnterpriseHubBaseUrl(value: string, allowLoopbackHttp = false)
     throw new Error("Enterprise Hub base URL must be an http(s) URL.");
   }
 
-  const loopbackHttp =
-    allowLoopbackHttp && url.protocol === "http:" && isLoopbackHostname(url.hostname);
-  if (url.protocol !== "https:" && !loopbackHttp) {
+  if (url.protocol !== "https:") {
     throw new Error("Enterprise Hub base URL must be a canonical HTTPS origin.");
   }
 
@@ -77,8 +70,4 @@ function normalizeEnterpriseHubBaseUrl(value: string, allowLoopbackHttp = false)
   }
 
   return url.origin;
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  return new Set(["127.0.0.1", "localhost", "[::1]"]).has(hostname);
 }

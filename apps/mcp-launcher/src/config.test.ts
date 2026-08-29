@@ -24,25 +24,6 @@ describe("Enterprise Hub MCP launcher config", () => {
     });
   });
 
-  it("accepts loopback HTTP only for the explicit local launcher test environment", () => {
-    expect(
-      loadLauncherRuntimeConfig({
-        ENTERPRISE_HUB_BASE_URL: "http://127.0.0.1:43123",
-        NODE_ENV: "test"
-      })
-    ).toEqual({
-      serviceUrl: "http://127.0.0.1:43123",
-      transport: "stdio"
-    });
-
-    expect(() =>
-      loadLauncherRuntimeConfig({
-        ENTERPRISE_HUB_BASE_URL: "http://127.0.0.1:43123",
-        NODE_ENV: "development"
-      })
-    ).toThrow("Enterprise Hub base URL must be a canonical HTTPS origin.");
-  });
-
   it("rejects the removed legacy ENTERPRISE_HUB_API_URL alias", () => {
     expect(() =>
       loadLauncherRuntimeConfig({ ENTERPRISE_HUB_API_URL: "https://old.example" } as never)

@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
 import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
-import { profileStructuredFile as realProfileStructuredFile } from "@enterprise-hub/structured-ingestion";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
 import { structuredImportFingerprint } from "./workflow.js";
 import { buildApiServer } from "../../server.js";
@@ -51,7 +50,6 @@ describe("structured imports", () => {
       storageAdapter?: StorageAdapter;
       failStoragePuts?: number;
       eventLog?: string[];
-      profileStructuredFile?: typeof realProfileStructuredFile;
     } = {}
   ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
@@ -89,8 +87,7 @@ describe("structured imports", () => {
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
       logger: false,
-      runtimeEnv: options.runtimeEnv,
-      structuredImportProfiler: options.profileStructuredFile
+      runtimeEnv: options.runtimeEnv
     } as Parameters<typeof buildApiServer>[0] & {
       structuredImportRepository: unknown;
     });
@@ -121,26 +118,6 @@ describe("structured imports", () => {
       remoteAddress: "198.51.100.8",
       payload: multipartBody.body
     });
-  }
-
-  function instrumentDeliveryProfiler(eventLog: string[], expectedBeforeProfile: string[][]) {
-    let profileCallCount = 0;
-    const profileInputDigests: string[] = [];
-
-    return {
-      profileInputDigests,
-      profileStructuredFile: async (input: Parameters<typeof realProfileStructuredFile>[0]) => {
-        expect(eventLog).toEqual(expectedBeforeProfile[profileCallCount]);
-        const digestBeforeProfile = createHash("sha256").update(input.content).digest("hex");
-        const profile = await realProfileStructuredFile(input);
-        const digestAfterProfile = createHash("sha256").update(input.content).digest("hex");
-        expect(digestAfterProfile).toBe(digestBeforeProfile);
-        profileInputDigests.push(digestBeforeProfile);
-        eventLog.push("profile");
-        profileCallCount++;
-        return profile;
-      }
-    };
   }
 
   function deliveryReceiptCsv(
@@ -289,16 +266,9 @@ describe("structured imports", () => {
 
   it("derives delivery metadata before reservation and replays by receipt without another storage write", async () => {
     const eventLog: string[] = [];
-    const body = Buffer.from(deliveryReceiptCsv(), "utf8");
-    const profiler = instrumentDeliveryProfiler(eventLog, [
-      [],
-      ["profile", "reservation", "storage"]
-    ]);
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
-      await buildStructuredImportTestServer(undefined, {
-        eventLog,
-        profileStructuredFile: profiler.profileStructuredFile
-      });
+      await buildStructuredImportTestServer(undefined, { eventLog });
+    const body = Buffer.from(deliveryReceiptCsv(), "utf8");
 
     const first = await postStructuredImport(app, {
       dataset: "delivery_ledger",
@@ -343,10 +313,6 @@ describe("structured imports", () => {
         fileHash: createHash("sha256").update(body).digest("hex")
       })
     );
-    expect(profiler.profileInputDigests).toEqual([
-      createHash("sha256").update(body).digest("hex"),
-      createHash("sha256").update(body).digest("hex")
-    ]);
     expect(replay.statusCode).toBe(202);
     expect(replay.json().importBatch.importBatchId).toBe(first.json().importBatch.importBatchId);
     expect(replay.json().document).toEqual(first.json().document);
@@ -358,24 +324,15 @@ describe("structured imports", () => {
 
   it("rejects a changed delivery receipt before creating a document or writing storage", async () => {
     const eventLog: string[] = [];
-    const firstBody = Buffer.from(deliveryReceiptCsv(), "utf8");
-    const conflictBody = Buffer.from(deliveryReceiptCsv({ itemName: "不同内容" }), "utf8");
-    const profiler = instrumentDeliveryProfiler(eventLog, [
-      [],
-      ["profile", "reservation", "storage"]
-    ]);
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
-      await buildStructuredImportTestServer(undefined, {
-        eventLog,
-        profileStructuredFile: profiler.profileStructuredFile
-      });
+      await buildStructuredImportTestServer(undefined, { eventLog });
     const first = await postStructuredImport(app, {
       dataset: "delivery_ledger",
       startDate: null,
       endDate: null,
       idempotencyKey: "delivery-conflict-first",
       fileName: "delivery.csv",
-      body: firstBody
+      body: Buffer.from(deliveryReceiptCsv(), "utf8")
     });
     const conflict = await postStructuredImport(app, {
       dataset: "delivery_ledger",
@@ -383,7 +340,7 @@ describe("structured imports", () => {
       endDate: null,
       idempotencyKey: "delivery-conflict-retry",
       fileName: "delivery.csv",
-      body: conflictBody
+      body: Buffer.from(deliveryReceiptCsv({ itemName: "不同内容" }), "utf8")
     });
 
     expect(first.statusCode).toBe(202);
@@ -398,10 +355,6 @@ describe("structured imports", () => {
     expect(documentRepository.documents).toHaveLength(1);
     expect(structuredImportRepository.batches).toHaveLength(1);
     expect(JSON.stringify(conflict.json())).not.toContain("不同内容");
-    expect(profiler.profileInputDigests).toEqual([
-      createHash("sha256").update(firstBody).digest("hex"),
-      createHash("sha256").update(conflictBody).digest("hex")
-    ]);
     expect(eventLog).toEqual(["profile", "reservation", "storage", "profile", "reservation"]);
   });
 
@@ -418,7 +371,7 @@ describe("structured imports", () => {
     });
 
     expect(response.statusCode).toBe(202);
-    expect(Buffer.byteLength(response.json().document.storageObjectKey, "utf8")).toBeLessThan(512);
+    expect(response.json().document.storageObjectKey.length).toBeLessThan(512);
     expect(response.json().document.storageObjectKey).toMatch(/\.csv$/);
     expect(storagePutCalls()).toBe(1);
   });

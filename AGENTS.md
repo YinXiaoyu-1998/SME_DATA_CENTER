@@ -10,7 +10,7 @@
 
 ## Branch And PR Rules
 
-- Lead integration branch: `codex/enterprise-hub-implementation`.
+- Define each task's base/lead branch in its plan or PR. If none is specified, verify and use the repository's current default branch; never rely on a permanently fixed historical lead branch.
 - Subagents must use their own branch and stay inside their assigned day/workstream.
 - Update `docs/implementation/progress.md` at session start/end and for meaningful work milestones only: branch/worktree start, baseline verification, phase/day/workstream completion, merged PR evidence, blocker/readiness state changes, recovery audits, and final handoff state.
 - Do not use `docs/implementation/progress.md` as a running design-decision log or chat transcript. During requirements grilling or design discovery, record detailed decisions in a dedicated design document, ADR, API contract draft, or implementation plan section, then add at most one concise progress summary when that design artifact is created or materially completed.

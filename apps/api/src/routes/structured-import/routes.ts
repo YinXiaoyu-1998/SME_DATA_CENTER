@@ -146,7 +146,6 @@ export function registerStructuredImportRoutes(
     structuredImports: () => StructuredImportRepository;
     runtimeLimits: ApiRuntimeLimits;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
-    profileStructuredFile?: typeof profileStructuredFile;
   }
 ): void {
   app.post("/v1/structured/imports", async (request, reply) => {
@@ -284,7 +283,7 @@ export function registerStructuredImportRoutes(
     if (registry.metadataPolicy === "derived_receipt") {
       try {
         const profile = await measureTiming("upload.profile_file", () =>
-          (dependencies.profileStructuredFile ?? profileStructuredFile)({
+          profileStructuredFile({
             dataset,
             fileName: uploadedFile.fileName,
             fileType,

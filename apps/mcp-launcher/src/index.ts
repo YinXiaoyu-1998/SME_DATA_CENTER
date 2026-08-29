@@ -20,7 +20,6 @@ export {
 } from "./server.js";
 export {
   LAUNCHER_BOOTSTRAP_TOOL_NAMES,
-  createLauncherAuthenticationFromEnvironment,
   createOfficialLauncherAuthentication,
   createLauncherToolDependencies,
   createLauncherToolHandler,
