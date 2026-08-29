@@ -1,26 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const prisma = vi.hoisted(() => ({
-  processingRun: {
-    updateMany: vi.fn(),
-    findUniqueOrThrow: vi.fn()
-  },
-  importBatch: {
-    findFirst: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn()
-  },
-  dishRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  businessRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  vipRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  dishCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  deliveryLedgerRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  supplierCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  document: { update: vi.fn() },
-  auditLog: { create: vi.fn() },
-  $transaction: vi.fn(),
-  $disconnect: vi.fn()
-}));
+const { rootPrisma, tx } = vi.hoisted(() => {
+  const createPrismaMock = () => ({
+    processingRun: {
+      updateMany: vi.fn(),
+      findUniqueOrThrow: vi.fn()
+    },
+    importBatch: {
+      findFirst: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn()
+    },
+    dishRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+    businessRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+    vipRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+    dishCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+    deliveryLedgerRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+    supplierCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+    document: { update: vi.fn() },
+    auditLog: { create: vi.fn() },
+    $transaction: vi.fn(),
+    $disconnect: vi.fn()
+  });
+
+  return { rootPrisma: createPrismaMock(), tx: createPrismaMock() };
+});
+
+const prisma = tx;
 
 vi.mock("@prisma/adapter-mariadb", () => ({
   PrismaMariaDb: class PrismaMariaDb {}
@@ -33,7 +39,7 @@ vi.mock("@prisma/client", async (importOriginal) => {
     ...original,
     PrismaClient: class PrismaClient {
       constructor() {
-        return prisma;
+        return rootPrisma;
       }
     }
   };
@@ -44,8 +50,8 @@ import { createPrismaProcessingWorkerRepository } from "./worker.js";
 describe("Prisma structured worker persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
-      callback(prisma)
+    rootPrisma.$transaction.mockImplementation(
+      async (callback: (transaction: typeof tx) => unknown) => callback(tx)
     );
     prisma.processingRun.updateMany.mockResolvedValue({ count: 1 });
     prisma.processingRun.findUniqueOrThrow.mockResolvedValue({ orgId: "org_1" });
@@ -195,7 +201,8 @@ describe("Prisma structured worker persistence", () => {
         data: expect.objectContaining({ status: "applied", appliedAt: now })
       })
     );
-    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expectNoRootTransactionWrites();
+    expect(rootPrisma.$transaction).toHaveBeenCalledOnce();
   });
 
   it("publishes supplier catalog rows with lineage and the completion timestamp", async () => {
@@ -258,7 +265,8 @@ describe("Prisma structured worker persistence", () => {
         data: expect.objectContaining({ status: "applied", appliedAt: now })
       })
     );
-    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expectNoRootTransactionWrites();
+    expect(rootPrisma.$transaction).toHaveBeenCalledOnce();
   });
 
   it("preserves the exact legacy sheet summary shape for an applied window dataset", async () => {
@@ -350,3 +358,23 @@ describe("Prisma structured worker persistence", () => {
     );
   });
 });
+
+function expectNoRootTransactionWrites() {
+  expect(rootPrisma.processingRun.updateMany).not.toHaveBeenCalled();
+  expect(rootPrisma.importBatch.update).not.toHaveBeenCalled();
+  expect(rootPrisma.importBatch.updateMany).not.toHaveBeenCalled();
+  expect(rootPrisma.dishRow.deleteMany).not.toHaveBeenCalled();
+  expect(rootPrisma.dishRow.createMany).not.toHaveBeenCalled();
+  expect(rootPrisma.businessRow.deleteMany).not.toHaveBeenCalled();
+  expect(rootPrisma.businessRow.createMany).not.toHaveBeenCalled();
+  expect(rootPrisma.vipRow.deleteMany).not.toHaveBeenCalled();
+  expect(rootPrisma.vipRow.createMany).not.toHaveBeenCalled();
+  expect(rootPrisma.dishCatalogRow.deleteMany).not.toHaveBeenCalled();
+  expect(rootPrisma.dishCatalogRow.createMany).not.toHaveBeenCalled();
+  expect(rootPrisma.deliveryLedgerRow.deleteMany).not.toHaveBeenCalled();
+  expect(rootPrisma.deliveryLedgerRow.createMany).not.toHaveBeenCalled();
+  expect(rootPrisma.supplierCatalogRow.deleteMany).not.toHaveBeenCalled();
+  expect(rootPrisma.supplierCatalogRow.createMany).not.toHaveBeenCalled();
+  expect(rootPrisma.document.update).not.toHaveBeenCalled();
+  expect(rootPrisma.auditLog.create).not.toHaveBeenCalled();
+}
