@@ -1095,3 +1095,10 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
 - Updated API contract, test matrix, implementation plan, fixture manifest, progress, repo-local skill, and standalone English/Chinese README guidance. The two `SKILL.md` files are byte-identical.
 - Verified: focused parser/registry/query tests `118/118`; full `npm test` `720 passed`, `33 skipped`; typecheck, lint, targeted Prettier, `git diff --check`, both `quick_validate.py` runs, and `cmp` passed. No staging deployment, push, or PR was performed.
 - Commit SHAs and final repository status are recorded in the Task 8 report. The pre-existing SDD plan remains untracked and is intentionally excluded from commits.
+
+## 2026-08-29 - delivery ledger and supplier catalog final handoff
+
+- Feature branch `codex/delivery-ledger-supplier-catalog` is ready for PR handoff against the lead integration branch; the matching standalone skill branch is ready against its `main`.
+- Fresh verification: `npm test` (720 passed, 33 environment-gated skips), typecheck, lint, local MySQL/Qdrant integration, MCP smoke, Phase 3 golden/performance gates, both skill validators, byte comparison, formatting, and diff checks passed. The first concurrently loaded unit run timed out in an unchanged 5-second golden test; the focused test completed in 453 ms and the required serial full rerun passed.
+- Environment: no local `.env` was available, so external paid provider integration is not claimed. No staging deployment or customer data access occurred.
+- Process-only SDD reports, the execution plan, generated `.data` reports, and user-provided sample workbooks are excluded from the branch.
