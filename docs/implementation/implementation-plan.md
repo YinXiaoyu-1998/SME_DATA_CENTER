@@ -88,9 +88,15 @@ Supported datasets:
 
 Required behavior:
 
-- metadata supplies enterprise identity/name, dataset, business-day `startDate`/`endDate`, idempotency key, and labels;
+- metadata is policy-specific: window datasets use `startDate`/`endDate`, `dish_catalog` uses
+  `snapshotDate`, `delivery_ledger` derives the receipt number/date and rejects user-supplied dates,
+  and `supplier_catalog` uses no dates; all uploads also carry enterprise identity/name, an
+  idempotency key, and labels;
 - file name is not trusted for business logic;
-- every sheet/table in an XLSX must satisfy the dataset structure;
+- XLSX sheet selection is dataset-specific: `delivery_ledger` requires exactly one non-empty
+  visible receipt sheet; `supplier_catalog` imports exactly one recognized visible 33-column table
+  and ignores/reports nonmatching visible sheets; `dish_catalog` follows its
+  `import_matching_visible` policy; the other structured datasets retain their existing policy;
 - controlled header aliases map uploaded headers to canonical fields;
 - entire import fails atomically on validation/date/permission/idempotency/active-window failure;
 - ingestion validates CSV/XLSX format and resource limits before storage or DB publication;

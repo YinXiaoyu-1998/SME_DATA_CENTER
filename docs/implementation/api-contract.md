@@ -356,7 +356,10 @@ Behavior:
   than as an immediate upload response;
 - only `importBatch.status=applied` is a terminal structured-upload success; `rejected` and
   `failed` are terminal non-success outcomes;
-- reserves `Document`, `ImportBatch`, window claim, deterministic object key, and started audit in MySQL before writing storage;
+- reserves `Document`, `ImportBatch`, deterministic object key, and started audit in MySQL before
+  writing storage; window and snapshot datasets also reserve date claims, `delivery_ledger` uses
+  an organization+dataset+receipt natural key instead, and `supplier_catalog` uses neither a date
+  claim nor a natural key;
 - stores the original file with canonical metadata;
 - the worker writes each row into the dataset-specific MySQL table and applies the batch in one transaction;
 - exact replay of the same `idempotencyKey` and request fingerprint returns the originally persisted `documentId`, `importBatchId`, storage key, and status without writing duplicate storage objects, rows, claims, or audits;
