@@ -149,14 +149,14 @@ The Prisma schema gains:
 - `ImportDataset.delivery_ledger` and `ImportDataset.supplier_catalog`;
 - `DeliveryLedgerRow`, using the existing row lineage/payload pattern;
 - `SupplierCatalogRow`, using the same row lineage/payload pattern;
-- an optional `ImportBatch.naturalKey` for receipt-number identity;
-- `ImportNaturalKeyClaim`, unique by `(orgId, dataset, naturalKey)`;
-- `SupplierCatalogHead`, one row per organization pointing to the current applied supplier-catalog
-  import batch.
+- an optional `ImportBatch.naturalKey` for receipt-number identity, with a unique
+  `(orgId, dataset, naturalKey)` index;
+- an optional `ImportBatch.appliedAt` completion timestamp used to identify the latest successful
+  supplier-catalog import.
 
-Date-window datasets continue to use `ImportWindowClaim`. Delivery receipts use
-`ImportNaturalKeyClaim`. Supplier catalogs use neither claim type; the supplied idempotency key
-handles retries, while each distinct successful upload advances `SupplierCatalogHead`.
+Date-window datasets continue to use `ImportWindowClaim`. Delivery receipts and supplier catalogs
+do not create window claims. The receipt's natural-key unique index handles concurrent duplicate
+delivery uploads, while the supplied idempotency key handles supplier-catalog retries.
 
 `ImportBatch.startDate` and `endDate` become nullable for supplier catalogs. Delivery imports store
 the derived receipt date in both fields for status/reporting compatibility but do not reserve a
@@ -164,9 +164,9 @@ date window, allowing any number of receipts on the same day.
 
 Worker publication remains atomic:
 
-- transformed rows, import status, document status, and any claim/head transition commit together;
+- transformed rows, import status, document status, and `appliedAt` commit together;
 - retry or failure leaves no partially queryable rows;
-- a supplier-catalog head changes only in the successful apply transaction.
+- failed, rejected, and in-progress supplier catalogs have no `appliedAt` and cannot become current.
 
 ## Delivery Idempotency
 
@@ -187,23 +187,29 @@ different receipt correction.
 
 `supplier_contact_phone` and `supplier_unit_address` are virtual delivery-ledger fields. They are
 default-return/selectable fields but advertise `filter=false`, `sort=false`, `group=false`, and
-`aggregate=false`.
+`aggregate=false`. The controlled query compiler records them as requested dynamic fields but does
+not project them from the ledger payload.
 
-When a delivery-ledger detail query selects them, the query compiler projects permission-scoped
-scalar lookups against the organization's `SupplierCatalogHead`:
+After the normal authorized ledger query returns one page, the query repository performs one
+bounded enrichment lookup:
 
-1. select only the head's current successfully applied supplier-catalog batch;
-2. require its source document to be active and visible to the authenticated employee under the
-   same backend document policy used by normal structured queries;
-3. match catalog `supplier_name` exactly to ledger `supplier_name`;
+1. find the organization's latest non-archived, successfully applied supplier-catalog batch by
+   `appliedAt DESC, id DESC`, independently of the caller's labels;
+2. require that exact current catalog's source document to be active and visible to the
+   authenticated employee under the same backend document policy used by normal structured
+   queries;
+3. fetch only catalog rows whose exact `supplier_name` appears on the current ledger page;
 4. return `contact_phone` from `联系人电话` and `unit_address` from `单位地址` only when exactly one
-   catalog row matches;
-5. return `null` when no catalog exists, the current catalog is not visible, no row matches, the
-   source field is blank, or the supplier name is ambiguous.
+   catalog row matches a supplier name;
+5. decorate the ledger page with those values, or `null` when no catalog exists, the current
+   catalog is not visible, no row matches, the source field is blank, or the supplier name is
+   ambiguous.
 
 The query never falls back to an older visible catalog when the current catalog is missing or
-inaccessible. This preserves the organization-wide definition of "current" and prevents hidden
-supplier data from leaking through a visible ledger.
+inaccessible. Enrichment is limited to supplier names already present on the authorized result
+page, so it does not change filtering, sorting, pagination, or aggregation semantics. This
+preserves the organization-wide definition of "current" and prevents hidden supplier data from
+leaking through a visible ledger.
 
 ## Authorization And Safety
 
@@ -239,7 +245,7 @@ Implementation follows RED-GREEN-REFACTOR. Committed tests use synthetic data an
 - equivalent CSV and XLSX 33-column supplier-catalog imports;
 - forced-null production/shelf-life fields;
 - receipt-number replay, same-number conflict, and same-date different receipts;
-- worker atomicity and current-catalog head transition only on successful apply;
+- worker atomicity and `appliedAt` assignment only on successful apply;
 - latest-catalog dynamic phone/address values;
 - no catalog, no match, blank values, duplicate supplier names, and hidden catalog behavior;
 - backend authorization for both base ledger rows and enrichment source;
