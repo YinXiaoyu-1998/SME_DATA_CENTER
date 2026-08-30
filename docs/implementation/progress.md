@@ -2,8 +2,8 @@
 
 ## Current Phase
 
-- Phase: Phase 4 official access is deployed in staging; launcher 0.2.0 Device Authorization is implemented, published, and synchronized to current server metadata and skill guidance. Full user-visible OpenClaw and support-class-C phone/browser acceptance plus real-data readiness controls remain gates.
-- Date: 2026-08-23
+- Phase: Phase 4 official access is deployed in staging; launcher 0.2.4 is published and its server-metadata and skill synchronization is in progress. Full user-visible OpenClaw and support-class-C phone/browser acceptance plus real-data readiness controls remain gates.
+- Date: 2026-08-30
 - Lead branch: `main`
 - Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package. Exact immutable release tags are recorded in dated readiness and verification evidence.
 - 2026-08-07: remote/headless and secondary-device login design completed in `docs/implementation/official-user-install-and-login.md` and ADR 0022 (uniform Device Authorization flow, split secrets, pairing confirmation, memory-only headless credential custody, per-process session model).
@@ -13,6 +13,7 @@
 - 2026-08-29: started Task 8 documentation and local sample-acceptance handoff on `codex/delivery-ledger-supplier-catalog`; the supplied XLSX files remain outside both repositories.
 - 2026-08-29: Task 8 production-parser acceptance passed for the two delivery samples (13 and 1 rows; receipts `SH2608250117` and `SH2608260003`) and supplier catalog (134 rows); both sample supplier keys had unique catalog matches, temporary CSV parity conversions passed, and cleanup passed. Durable docs and both skill homes are ready for handoff; no sample rows or contact values were recorded.
 - 2026-08-30: staging deployed delivery-ledger/supplier-catalog commit `5cd1ca8d3120` and migration `20260829130000_delivery_ledger_supplier_catalog`; official macOS acceptance then reproduced that published launcher 0.2.3 rejects the two new dataset enum values before upload. The synthetic account/session was removed with no uploaded records, and `codex/launcher-0.2.4-structured-contract` now prepares the minimal reviewed launcher release needed to resume acceptance.
+- 2026-08-30: launcher 0.2.4 was published as npm `latest` after native macOS/Windows acceptance; its five published files match the reviewed build byte-for-byte, and an exact local install, CLI self-check, and production audit passed. Follow-up work on `codex/launcher-0.2.4-sync-deploy-retention` synchronizes the server and both skill homes and makes successful staging releases retain only the current and rollback image sets.
 
 ## Active Workstreams
 

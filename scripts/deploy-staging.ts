@@ -269,6 +269,46 @@ install -o root -g root -m 0644 "$temp_file" "$current_file"
 rm -f "$temp_file"
 `;
 
+const REMOTE_IMAGE_CLEANUP_SCRIPT = String.raw`
+set -Eeuo pipefail
+previous_file=/opt/enterprise-hub/previous-release.env
+api_image="$1"
+worker_image="$2"
+release_ops_image="$3"
+
+exec 9>/opt/enterprise-hub/deploy.lock
+if ! flock -n 9; then
+  echo "Another staging deployment is already running." >&2
+  exit 75
+fi
+
+test -f "$previous_file"
+previous_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
+test -n "$api_image"
+test -n "$worker_image"
+test -n "$release_ops_image"
+test -n "$previous_api"
+test -n "$previous_worker"
+test -n "$previous_release_ops"
+
+api_repository="${BASH_DOLLAR}{api_image%:*}"
+worker_repository="${BASH_DOLLAR}{worker_image%:*}"
+while IFS= read -r image; do
+  case "$image" in
+    "$api_image"|"$worker_image"|"$release_ops_image"|\
+    "$previous_api"|"$previous_worker"|"$previous_release_ops")
+      continue
+      ;;
+    "${BASH_DOLLAR}{api_repository}:"*|"${BASH_DOLLAR}{worker_repository}:"*)
+      docker image rm "$image"
+      ;;
+  esac
+done < <(docker image ls --format '{{.Repository}}:{{.Tag}}')
+docker image prune --force
+`;
+
 const REMOTE_SMOKE_SCRIPT = String.raw`
 set -Eeuo pipefail
 docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
@@ -403,7 +443,8 @@ export function remoteScriptsForValidation(): string[] {
     REMOTE_ROLLOUT_SCRIPT,
     REMOTE_ROLLBACK_SCRIPT,
     REMOTE_FINALIZE_SCRIPT,
-    REMOTE_SMOKE_SCRIPT
+    REMOTE_SMOKE_SCRIPT,
+    REMOTE_IMAGE_CLEANUP_SCRIPT
   ];
 }
 
@@ -753,7 +794,8 @@ function printPlan(
         migrate: !options.skipMigrate && !options.rollback,
         smoke: !options.skipSmoke,
         vulnerabilityScan: !options.rollback,
-        autoRollbackOnFailure: true
+        autoRollbackOnFailure: true,
+        imageRetention: options.rollback ? "unchanged" : "current-and-previous"
       },
       null,
       2
@@ -767,7 +809,8 @@ function helpText(): string {
 Builds immutable linux/amd64 API, worker, and release-ops images, pushes them to
 the approved Beijing ACR registry, rolls them out on staging, applies Prisma
 migrations, checks local readiness/public liveness, and runs the fixture-only
-smoke test.
+smoke test. A verified forward deployment retains its current and previous
+release images and removes older images from the same ACR repositories.
 
 Options:
   --dry-run        Print the release plan without Docker, SSH, or cloud changes
@@ -858,6 +901,12 @@ async function main(): Promise<void> {
       releaseOpsImage
     ]);
     releaseNeedsRollback = false;
+    await runRemoteScript(
+      config,
+      "Remove staging images older than the rollback release",
+      REMOTE_IMAGE_CLEANUP_SCRIPT,
+      [apiImage, workerImage, releaseOpsImage]
+    );
   } catch (error) {
     if (releaseNeedsRollback) {
       console.error("\nPost-rollout verification failed; restoring the previous image release.");

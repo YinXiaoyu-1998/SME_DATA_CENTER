@@ -1,7 +1,7 @@
 # Enterprise Hub MCP User Flow
 
 > **Official implementation:** This is the implemented employee flow. The pinned npm package
-> `enterprise-hub-mcp-launcher@0.2.3` is published and the official service is deployed in staging.
+> `enterprise-hub-mcp-launcher@0.2.4` is published and the official service is deployed in staging.
 > Native macOS/Windows package acceptance and the headless Linux loop pass; user-visible OpenClaw
 > and support-class-C phone/browser acceptance remain release evidence. There is no
 > development-login or JWT compatibility path.
@@ -11,7 +11,7 @@ Last updated: 2026-08-10
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `enterprise-hub-mcp` skill. The official remote origin
 is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`enterprise-hub-mcp-launcher@0.2.3`.
+`enterprise-hub-mcp-launcher@0.2.4`.
 
 ## Participants And Credential Boundary
 

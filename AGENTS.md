@@ -27,13 +27,15 @@
   - repo-local skill: `skills/enterprise-hub-mcp/`
   - standalone skill repo: `YinXiaoyu-1998/enterprise-hub-mcp-skill`
 - When MCP tool behavior, API contracts, or usage guidance changes, update both the repo-local skill and the standalone skill repo. If the standalone repo is not already available locally, clone/fetch it from GitHub, create an independent branch there, make the matching skill/documentation change, and open/update a standalone skill PR. Do not assume a machine-specific checkout path.
+- Treat `apps/mcp-launcher/` and the MCP contracts bundled into its published artifact as one release boundary. Any change to launcher runtime behavior or bundled tool names/input schemas must bump the launcher version and its alignment/package tests in the same PR; never merge such a contract change while leaving the published launcher version unchanged.
+- Publish and independently verify the bumped launcher before updating server recommended-version metadata and both skill pins; complete that synchronization immediately after publication so staging never advertises or documents an unavailable launcher.
 - After any lead/subagent task is verified and fully merged into `main`, remove its clean, inactive local worktree and run `git worktree prune`; never force-remove worktrees with changes or active processes.
 
 ## Local Manual Acceptance Trigger
 
 - A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 Enterprise Hub 人工验收”, or an equivalent request explicitly authorizes the official manual acceptance workflow.
 - Before running that workflow, read `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/official-manual-acceptance.md`. The old local email-login/HTTP-launcher manual acceptance document has been deleted; do not look for or recreate it.
-- The active default is official staging + macOS Codex + browser auth + `enterprise-hub-mcp-launcher@0.2.3`. Do not revive the deleted development email-login or HTTP-launcher assumptions.
+- The active default is official staging + macOS Codex + browser auth + `enterprise-hub-mcp-launcher@0.2.4`. Do not revive the deleted development email-login or HTTP-launcher assumptions.
 - Full manual acceptance must create a fresh synthetic account such as `manual-full-flow-<runId>@example.invalid`, generate its own throwaway password, control Chrome to complete password setup/login, then hard-delete that account after all test data is cleaned. Do not use the human owner's real account or require the human to type test credentials.
 - Full manual acceptance must mimic normal low-technical employee usage with multiple new user-visible Codex tasks/sessions. Each employee-client task should receive exactly one ordinary natural-language request, such as install/login, upload a file, ask a business question, or query a structured file. Do not collapse the flow into one controller-style prompt that lists internal expected steps; the resulting task transcripts are part of the acceptance evidence and may be archived by the human afterward.
 - The employee-client path must use the official launcher and MCP tools. Controller DB/storage/Qdrant access is allowed only for operator setup, verification, and run-scoped cleanup.

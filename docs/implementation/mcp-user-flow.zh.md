@@ -1,7 +1,7 @@
 # Enterprise Hub MCP 用户流程
 
 > **正式实现：** 本文描述已经实现的员工流程。固定版本 npm 包
-> `enterprise-hub-mcp-launcher@0.2.3` 已发布，正式服务已部署到 staging；原生 macOS/Windows
+> `enterprise-hub-mcp-launcher@0.2.4` 已发布，正式服务已部署到 staging；原生 macOS/Windows
 > 包验收和无头 Linux 闭环已通过，用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍待补齐。
 > 不存在 development login 或 JWT 兼容路径。
 
@@ -9,7 +9,7 @@
 
 本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
 `enterprise-hub-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
-launcher 发行包为 `enterprise-hub-mcp-launcher@0.2.3`。
+launcher 发行包为 `enterprise-hub-mcp-launcher@0.2.4`。
 
 ## 参与者与凭证边界
 
