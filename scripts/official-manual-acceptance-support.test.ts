@@ -149,14 +149,16 @@ describe("official manual acceptance cleanup", () => {
       assertCleanupCountsAreZero({
         documents: 0,
         importBatches: 0,
-        dishRows: 3,
+        dishRows: 0,
         businessRows: 0,
         vipRows: 0,
         dishCatalogRows: 0,
+        deliveryLedgerRows: 3,
+        supplierCatalogRows: 0,
         windowClaims: 1,
         qdrantPoints: 0,
         storageObjects: 0
       })
-    ).toThrow("dishRows=3");
+    ).toThrow("deliveryLedgerRows=3");
   });
 });

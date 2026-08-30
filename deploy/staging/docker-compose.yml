@@ -44,6 +44,7 @@ services:
       - ${ENTERPRISE_HUB_RUNTIME_ENV_FILE:-/opt/enterprise-hub/runtime.env}
     environment:
       NODE_ENV: production
+      ENTERPRISE_HUB_PUBLIC_ORIGIN: ${ENTERPRISE_HUB_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}
 
 volumes:
   qdrant_data:
