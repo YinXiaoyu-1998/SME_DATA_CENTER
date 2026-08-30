@@ -253,4 +253,73 @@ cp "\${files[0]}" "\${files[1]}"
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("removes stale release images while retaining current and rollback versions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "enterprise-hub-image-cleanup-"));
+    const fakeBin = join(root, "bin");
+    const removedImages = join(root, "removed-images");
+    const currentApi = "registry.example.com/enterprise-hub/api:bbbbbbbbbbbb";
+    const currentWorker = "registry.example.com/enterprise-hub/worker:bbbbbbbbbbbb";
+    const currentOps = "registry.example.com/enterprise-hub/api:ops-bbbbbbbbbbbb";
+    const previousApi = "registry.example.com/enterprise-hub/api:aaaaaaaaaaaa";
+    const previousWorker = "registry.example.com/enterprise-hub/worker:aaaaaaaaaaaa";
+    const previousOps = "registry.example.com/enterprise-hub/api:ops-aaaaaaaaaaaa";
+    const staleImages = [
+      "registry.example.com/enterprise-hub/api:999999999999",
+      "registry.example.com/enterprise-hub/api:ops-999999999999",
+      "registry.example.com/enterprise-hub/worker:999999999999"
+    ];
+
+    try {
+      await mkdir(fakeBin);
+      await writeFile(removedImages, "");
+      await writeFile(
+        join(root, "previous-release.env"),
+        `ENTERPRISE_HUB_API_IMAGE=${previousApi}\nENTERPRISE_HUB_WORKER_IMAGE=${previousWorker}\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=${previousOps}\n`
+      );
+      await writeFile(
+        join(fakeBin, "docker"),
+        `#!/usr/bin/env bash
+set -euo pipefail
+case "$1:$2" in
+  image:ls) printf '%s\n' "$FAKE_DOCKER_IMAGES" ;;
+  image:rm) printf '%s\n' "$3" >> "$FAKE_REMOVED_IMAGES" ;;
+  image:prune) ;;
+  *) exit 64 ;;
+esac
+`
+      );
+      await writeFile(join(fakeBin, "flock"), "#!/usr/bin/env bash\nexit 0\n");
+      await Promise.all(["docker", "flock"].map((command) => chmod(join(fakeBin, command), 0o755)));
+
+      const cleanup = (remoteScriptsForValidation()[4] ?? "").replaceAll(
+        "/opt/enterprise-hub",
+        root
+      );
+      const result = spawnSync("bash", ["-s", "--", currentApi, currentWorker, currentOps], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          FAKE_DOCKER_IMAGES: [
+            currentApi,
+            currentWorker,
+            currentOps,
+            previousApi,
+            previousWorker,
+            previousOps,
+            ...staleImages,
+            "registry.example.com/enterprise-hub/qdrant:v1.15.4"
+          ].join("\n"),
+          FAKE_REMOVED_IMAGES: removedImages,
+          PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`
+        },
+        input: cleanup
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect((await readFile(removedImages, "utf8")).trim().split("\n")).toEqual(staleImages);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

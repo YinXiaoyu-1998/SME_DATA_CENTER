@@ -30,8 +30,8 @@ separate acceptance gates before claiming broad desktop-agent support.
 | Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                     | deployed to staging; 0.1.x Authorization Code + PKCE remains server-compatible only         |
 | Development auth      | old dev email/JWT login and staging JWT secret                                                             | removed from staging runtime/GitHub/local Keychain                                          |
 | Public MCP            | unauthenticated public `/mcp`                                                                              | rejects unauthenticated requests; authenticated launcher calls succeed                      |
-| Launcher package      | public npm package `enterprise-hub-mcp-launcher@0.2.3`                                                     | exact install, native macOS/Windows package acceptance, registry integrity, and audit pass. |
-| macOS Codex client    | 0.1.x user-visible flow plus 0.2.3 native package acceptance                                               | passed at those scopes; full user-visible 0.2.3 rerun is not yet recorded                   |
+| Launcher package      | public npm package `enterprise-hub-mcp-launcher@0.2.4`                                                     | exact install, native macOS/Windows package acceptance, registry integrity, and audit pass. |
+| macOS Codex client    | 0.1.x user-visible flow plus 0.2.4 native package acceptance                                               | passed at those scopes; full user-visible 0.2.4 rerun is not yet recorded                   |
 | Full macOS Codex flow | fresh synthetic account, 11 natural user-visible Codex sessions, upload/search/query/logout/reset/re-login | passed core auth/evidence lifecycle; structured-query usability observations remain         |
 | Cleanup               | manual acceptance cleanup                                                                                  | removed run documents, import batch, Qdrant points, dish rows, identity, employee, session  |
 | Deployment            | GitHub `main` quality gates and staging deploy workflow                                                    | successful deployment observed at immutable tag `bbb227421fa5`                              |
@@ -41,7 +41,7 @@ separate acceptance gates before claiming broad desktop-agent support.
 | RDS lifecycle         | prepaid RDS expiry and deletion-protection facts recorded in staging readiness                             | human renewal/protection decision still required before customer data                       |
 
 The earlier 0.2.0 headless Linux loop remains compatibility evidence; it was not rerun against
-0.2.3.
+0.2.4.
 
 ## First Pilot Scope
 
@@ -49,7 +49,7 @@ The recommended first pilot is:
 
 - one real beta user;
 - macOS + Codex only;
-- official skill installation and `enterprise-hub-mcp-launcher@0.2.3`;
+- official skill installation and `enterprise-hub-mcp-launcher@0.2.4`;
 - browser password setup and Device Authorization login only;
 - fixture or explicitly approved non-sensitive documents;
 - one or a few simple visibility labels;
