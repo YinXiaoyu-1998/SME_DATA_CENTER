@@ -103,7 +103,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.2.3");
+    expect(manifest.version).toBe("0.2.4");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -142,7 +142,9 @@ describe("published launcher artifact", () => {
       expect(structuredUpload?.inputSchema).toMatchObject({
         type: "object",
         properties: {
-          dataset: { enum: expect.arrayContaining(["dish_catalog"]) },
+          dataset: {
+            enum: expect.arrayContaining(["dish_catalog", "delivery_ledger", "supplier_catalog"])
+          },
           snapshotDate: { type: "string" }
         }
       });
@@ -151,7 +153,11 @@ describe("published launcher artifact", () => {
       );
       const structuredQuery = tools.tools.find((tool) => tool.name === "query_structured_dataset");
       expect(structuredQuery?.inputSchema).toMatchObject({
-        properties: { dataset: { enum: expect.arrayContaining(["dish_catalog"]) } }
+        properties: {
+          dataset: {
+            enum: expect.arrayContaining(["dish_catalog", "delivery_ledger", "supplier_catalog"])
+          }
+        }
       });
     } finally {
       await client.close();

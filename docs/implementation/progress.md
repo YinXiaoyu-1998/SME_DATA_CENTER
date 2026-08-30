@@ -12,6 +12,7 @@
 - 2026-08-29: started `codex/delivery-ledger-supplier-catalog` in an isolated worktree to implement CSV/XLSX delivery-sheet conversion, supplier-catalog snapshots, receipt-number idempotency, and permission-scoped dynamic supplier enrichment. After `npm install` and the required `npm run db:generate`, the clean baseline passed `npm test` (85 files / 652 tests passed; 3 files / 20 tests skipped by their existing integration gates).
 - 2026-08-29: started Task 8 documentation and local sample-acceptance handoff on `codex/delivery-ledger-supplier-catalog`; the supplied XLSX files remain outside both repositories.
 - 2026-08-29: Task 8 production-parser acceptance passed for the two delivery samples (13 and 1 rows; receipts `SH2608250117` and `SH2608260003`) and supplier catalog (134 rows); both sample supplier keys had unique catalog matches, temporary CSV parity conversions passed, and cleanup passed. Durable docs and both skill homes are ready for handoff; no sample rows or contact values were recorded.
+- 2026-08-30: staging deployed delivery-ledger/supplier-catalog commit `5cd1ca8d3120` and migration `20260829130000_delivery_ledger_supplier_catalog`; official macOS acceptance then reproduced that published launcher 0.2.3 rejects the two new dataset enum values before upload. The synthetic account/session was removed with no uploaded records, and `codex/launcher-0.2.4-structured-contract` now prepares the minimal reviewed launcher release needed to resume acceptance.
 
 ## Active Workstreams
 

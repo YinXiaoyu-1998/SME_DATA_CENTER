@@ -1,6 +1,6 @@
 {
   "name": "enterprise-hub-mcp-launcher",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Official desktop stdio MCP launcher for Enterprise Hub",
   "license": "MIT",
   "repository": {
