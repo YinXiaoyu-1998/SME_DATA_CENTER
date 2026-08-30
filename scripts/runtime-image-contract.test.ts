@@ -16,7 +16,9 @@ function dockerStage(name: string) {
 
 function composeService(name: string) {
   const start = compose.indexOf(`  ${name}:`);
-  const next = compose.indexOf("\n  ", start + 1);
+  const remainder = compose.slice(start + 1);
+  const nextService = remainder.match(/\n {2}\S[^\n]*:\n/);
+  const next = nextService?.index === undefined ? -1 : start + 1 + nextService.index;
 
   return compose.slice(start, next === -1 ? undefined : next);
 }
@@ -48,5 +50,11 @@ describe("runtime image contracts", () => {
     expect(compose).toContain("${ENTERPRISE_HUB_RELEASE_OPS_IMAGE}");
     expect(releaseOpsSection).not.toContain("restart:");
     expect(releaseOpsSection).not.toContain("depends_on:");
+  });
+
+  it("passes the public origin to release operations", () => {
+    expect(composeService("release-ops")).toContain(
+      "ENTERPRISE_HUB_PUBLIC_ORIGIN: ${ENTERPRISE_HUB_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}"
+    );
   });
 });

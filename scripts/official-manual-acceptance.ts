@@ -405,14 +405,21 @@ async function callJson<T>(
 }
 
 async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig>): Promise<void> {
-  const documents = await prisma.document.findMany({
+  const identities = await prisma.loginIdentity.findMany({
     where: {
-      OR: [
-        { sourceSystem: run.evidenceSourceSystem },
-        { title: { startsWith: `${run.enterpriseName}_` } },
-        { title: { startsWith: run.titlePrefix } }
-      ]
+      normalizedEmail: {
+        in: [
+          `manual-full-flow-${run.runId}@example.invalid`,
+          `manual-acceptance-${run.runId}@example.invalid`
+        ]
+      }
     },
+    select: { employeeId: true }
+  });
+  const uploaderEmployeeIds = identities.map((identity) => identity.employeeId);
+  const documentFilters = officialManualDocumentFilters(run, uploaderEmployeeIds);
+  const documents = await prisma.document.findMany({
+    where: { OR: documentFilters },
     select: {
       id: true,
       storageObjectKey: true,
@@ -456,8 +463,21 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     documentIds,
     importBatchIds,
     qdrantPointIds,
-    storageObjectKeys
+    storageObjectKeys,
+    uploaderEmployeeIds
   });
+}
+
+function officialManualDocumentFilters(
+  run: ReturnType<typeof runConfig>,
+  uploaderEmployeeIds: string[]
+) {
+  return [
+    { sourceSystem: run.evidenceSourceSystem },
+    { title: { startsWith: `${run.enterpriseName}_` } },
+    { title: { startsWith: run.titlePrefix } },
+    ...(uploaderEmployeeIds.length > 0 ? [{ uploaderId: { in: uploaderEmployeeIds } }] : [])
+  ];
 }
 
 async function deleteQdrantPoints(pointIds: string[]): Promise<void> {
@@ -515,6 +535,7 @@ async function verifyCleanup(
     importBatchIds: string[];
     qdrantPointIds: string[];
     storageObjectKeys: string[];
+    uploaderEmployeeIds: string[];
   }
 ): Promise<void> {
   const storage = createStorageAdapter(process.env);
@@ -535,17 +556,13 @@ async function verifyCleanup(
     businessRows,
     vipRows,
     dishCatalogRows,
+    deliveryLedgerRows,
+    supplierCatalogRows,
     windowClaims,
     qdrantPoints
   ] = await Promise.all([
     prisma.document.count({
-      where: {
-        OR: [
-          { sourceSystem: run.evidenceSourceSystem },
-          { title: { startsWith: `${run.enterpriseName}_` } },
-          { title: { startsWith: run.titlePrefix } }
-        ]
-      }
+      where: { OR: officialManualDocumentFilters(run, deleted.uploaderEmployeeIds) }
     }),
     countByIds(deleted.importBatchIds, (ids) =>
       prisma.importBatch.count({ where: { id: { in: ids } } })
@@ -563,6 +580,12 @@ async function verifyCleanup(
       prisma.dishCatalogRow.count({ where: { importBatchId: { in: ids } } })
     ),
     countByIds(deleted.importBatchIds, (ids) =>
+      prisma.deliveryLedgerRow.count({ where: { importBatchId: { in: ids } } })
+    ),
+    countByIds(deleted.importBatchIds, (ids) =>
+      prisma.supplierCatalogRow.count({ where: { importBatchId: { in: ids } } })
+    ),
+    countByIds(deleted.importBatchIds, (ids) =>
       prisma.importWindowClaim.count({ where: { importBatchId: { in: ids } } })
     ),
     retrieveQdrantPointCount(deleted.qdrantPointIds)
@@ -575,6 +598,8 @@ async function verifyCleanup(
     businessRows,
     vipRows,
     dishCatalogRows,
+    deliveryLedgerRows,
+    supplierCatalogRows,
     windowClaims,
     qdrantPoints,
     storageObjects

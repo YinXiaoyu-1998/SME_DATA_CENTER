@@ -85,7 +85,8 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 12. Subsequent tasks should be separate natural chats for upload, cold search, prompt-injection
     resistance, structured upload/query, logout/reset/re-login, and any scoped recovery probes.
     Upload and cold-search must not be collapsed into the same employee-client task when independent
-    retrieval evidence matters.
+    retrieval evidence matters. When the local-only delivery samples are available, include separate
+    supplier-catalog, XLSX-receipt, CSV-receipt, and dynamically enriched ledger-query tasks.
 13. Optionally run the official macOS Codex business-flow runner as an extra smoke, but do not treat
     it as a replacement for the new user-visible task:
 
@@ -116,10 +117,11 @@ there is an explicit reason to keep data temporarily.
 Manual staging uploads must not accumulate.
 
 - Evidence uploads must use `sourceSystem=manual_acceptance_<runId>`.
-- Structured uploads must use unique `enterpriseName=ManualAcceptance_<runId>` and a dedicated
-  date window.
-- Cleanup must remove test documents, import rows/batches/window claims, OSS objects, and Qdrant
-  points associated with the run.
+- Runner-owned structured uploads must use unique `enterpriseName=ManualAcceptance_<runId>` and a
+  dedicated date window. Natural employee tasks may use the real business/store name; cleanup must
+  therefore also select every document uploaded by the run's synthetic employee.
+- Cleanup must remove test documents, all structured row types (including delivery and supplier
+  rows), import batches/window claims, OSS objects, and Qdrant points associated with the run.
 - Synthetic test accounts must be deleted with `delete-test-account` after uploaded documents are
   removed.
 - If cleanup fails, stop and report that as a release blocker before further beta testing.
