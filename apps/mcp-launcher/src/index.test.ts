@@ -20,8 +20,8 @@ describe("launcher CLI entrypoint", () => {
     expect(write).toHaveBeenCalledWith(`${LAUNCHER_VERSION}\n`);
   });
 
-  it("keeps the package, protocol server, and runtime release on 0.2.3", () => {
-    expect(LAUNCHER_VERSION).toBe("0.2.3");
+  it("keeps the package, protocol server, and runtime release on 0.2.4", () => {
+    expect(LAUNCHER_VERSION).toBe("0.2.4");
     expect(MCP_LAUNCHER_SERVER_VERSION).toBe(LAUNCHER_VERSION);
   });
 });
