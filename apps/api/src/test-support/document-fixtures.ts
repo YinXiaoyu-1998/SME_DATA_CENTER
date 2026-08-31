@@ -1,6 +1,16 @@
-import type { DocumentStatusName, DocumentTypeName, Phase3FileType } from "@enterprise-hub/domain";
+import type {
+  DocumentKindName,
+  DocumentStatusName,
+  DocumentTypeName,
+  Phase3FileType
+} from "@enterprise-hub/domain";
 import type { StorageAdapter } from "@enterprise-hub/storage";
 import type { DocumentCatalogRepository } from "../documents.js";
+import type {
+  CreateQuarantineCertificateInput,
+  QuarantineCertificateRepository
+} from "../quarantine-certificates.js";
+import type { SourceDocumentRepository } from "../source-documents.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import {
   adminEmployee,
@@ -18,7 +28,7 @@ export interface RecordedDocument {
   status: DocumentStatusName;
   title: string;
   documentType: DocumentTypeName;
-  documentKind: "evidence" | "structured" | null;
+  documentKind: DocumentKindName | null;
   fileType: Phase3FileType | null;
   sourceSystem: string | null;
   sourceTime: Date | null;
@@ -155,7 +165,7 @@ export function createDocumentRepository() {
         "contentType" | "processingRunStatus" | "documentIndexStatus" | "documentKind" | "fileType"
       > & {
         contentType?: string;
-        documentKind?: "evidence" | "structured";
+        documentKind?: DocumentKindName;
         fileType?: Phase3FileType;
         processingJobType: string;
         audit: RequestAuditContext;
@@ -278,6 +288,238 @@ export function createDocumentRepository() {
         nextCursor:
           orderedAuditLogs.length > offset + input.limit ? String(offset + input.limit) : null
       };
+    }
+  };
+}
+
+export function createInMemoryQuarantineCertificateRepository(
+  documents: RecordedDocument[],
+  auditLogs: RecordedAuditLog[]
+): QuarantineCertificateRepository & {
+  certificates: Array<{
+    sourceDocumentId: string;
+    orgId: string;
+    receiptId: string;
+    idempotencyKey: string;
+    requestFingerprint: string;
+    createdAt: Date;
+  }>;
+} {
+  const certificates: Array<{
+    sourceDocumentId: string;
+    orgId: string;
+    receiptId: string;
+    idempotencyKey: string;
+    requestFingerprint: string;
+    createdAt: Date;
+  }> = [];
+
+  function toRecord(certificate: (typeof certificates)[number]) {
+    const document = documents.find((candidate) => candidate.id === certificate.sourceDocumentId);
+    if (!document) throw new Error("missing source document");
+
+    return {
+      sourceDocumentId: certificate.sourceDocumentId,
+      receiptId: certificate.receiptId,
+      originalFileName: document.originalFileName,
+      contentType: document.contentType ?? "",
+      byteSize: document.byteSize,
+      uploadedAt: certificate.createdAt,
+      uploaderId: document.uploaderId,
+      labelKeys: [...document.labels].sort(),
+      storageObjectKey: document.storageObjectKey,
+      requestFingerprint: certificate.requestFingerprint
+    };
+  }
+
+  return {
+    certificates,
+    async findByIdempotencyKey(orgId, idempotencyKey) {
+      const certificate = certificates.find(
+        (candidate) => candidate.orgId === orgId && candidate.idempotencyKey === idempotencyKey
+      );
+      return certificate ? toRecord(certificate) : null;
+    },
+    async createCertificate(input: CreateQuarantineCertificateInput) {
+      const now = new Date();
+      documents.push({
+        id: input.sourceDocumentId,
+        orgId: input.orgId,
+        uploaderId: input.actorEmployeeId,
+        status: "active",
+        title: input.title,
+        documentType: "raw_material",
+        documentKind: "quarantine_certificate",
+        fileType: input.fileType,
+        sourceSystem: null,
+        sourceTime: null,
+        storageObjectKey: input.storageObjectKey,
+        originalFileName: input.originalFileName,
+        contentType: input.contentType,
+        byteSize: input.byteSize,
+        checksumSha256: input.checksumSha256,
+        labels: [...input.labelKeys].sort(),
+        processingRunStatus: null,
+        documentIndexStatus: null,
+        createdAt: now
+      });
+      const certificate = {
+        sourceDocumentId: input.sourceDocumentId,
+        orgId: input.orgId,
+        receiptId: input.receiptId,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint: input.requestFingerprint,
+        createdAt: now
+      };
+      certificates.push(certificate);
+      auditLogs.push({
+        action: "document.uploaded",
+        actorEmployeeId: input.actorEmployeeId,
+        targetType: "quarantine_certificate",
+        targetId: input.sourceDocumentId,
+        result: "succeeded",
+        metadata: { receiptId: input.receiptId, labelKeys: input.labelKeys },
+        requestId: input.audit.requestId,
+        clientIp: input.audit.sourceIp,
+        clientSource: input.audit.clientSource,
+        launcherVersion: input.audit.launcherVersion,
+        createdAt: now
+      });
+      return toRecord(certificate);
+    },
+    async queryVisibleByReceiptIds(input) {
+      return certificates
+        .filter(
+          (certificate) =>
+            certificate.orgId === input.orgId && input.receiptIds.includes(certificate.receiptId)
+        )
+        .map(toRecord)
+        .filter((certificate) => {
+          const document = documents.find(
+            (candidate) => candidate.id === certificate.sourceDocumentId
+          );
+          return document?.status !== "archived";
+        })
+        .filter((certificate) => {
+          if (input.employee.role === "admin") return true;
+          if (certificate.labelKeys.includes("all_staff")) return true;
+          return certificate.labelKeys.some((labelKey) => input.employee.labels.includes(labelKey));
+        })
+        .sort((first, second) => {
+          const timeDifference = second.uploadedAt.getTime() - first.uploadedAt.getTime();
+          return timeDifference || second.sourceDocumentId.localeCompare(first.sourceDocumentId);
+        });
+    },
+    async archiveBySourceDocumentId(input) {
+      const certificate = certificates.find(
+        (candidate) =>
+          candidate.orgId === input.orgId && candidate.sourceDocumentId === input.sourceDocumentId
+      );
+      if (!certificate) return null;
+      const document = documents.find((candidate) => candidate.id === certificate.sourceDocumentId);
+      if (!document) return null;
+      if (document.uploaderId !== input.employee.id && input.employee.role !== "admin") return null;
+      if (document.status === "archived") return 0;
+      document.status = "archived";
+      auditLogs.push({
+        action: "document.archived",
+        actorEmployeeId: input.employee.id,
+        targetType: "quarantine_certificate",
+        targetId: input.sourceDocumentId,
+        result: "succeeded",
+        metadata: { receiptId: certificate.receiptId, mode: "sourceDocumentId" },
+        requestId: input.audit.requestId,
+        clientIp: input.audit.sourceIp,
+        clientSource: input.audit.clientSource,
+        launcherVersion: input.audit.launcherVersion,
+        createdAt: new Date()
+      });
+      return 1;
+    },
+    async archiveByReceiptId(input) {
+      if (input.employee.role !== "admin") return 0;
+      const matching = certificates.filter(
+        (certificate) =>
+          certificate.orgId === input.orgId && certificate.receiptId === input.receiptId
+      );
+      let archivedCount = 0;
+      for (const certificate of matching) {
+        const document = documents.find(
+          (candidate) => candidate.id === certificate.sourceDocumentId
+        );
+        if (document && document.status !== "archived") {
+          document.status = "archived";
+          archivedCount++;
+        }
+      }
+      if (archivedCount > 0) {
+        auditLogs.push({
+          action: "document.archived",
+          actorEmployeeId: input.employee.id,
+          targetType: "quarantine_certificate",
+          targetId: input.receiptId,
+          result: "succeeded",
+          metadata: { receiptId: input.receiptId, mode: "receiptId" },
+          requestId: input.audit.requestId,
+          clientIp: input.audit.sourceIp,
+          clientSource: input.audit.clientSource,
+          launcherVersion: input.audit.launcherVersion,
+          createdAt: new Date()
+        });
+      }
+      return archivedCount;
+    }
+  };
+}
+
+export function createInMemorySourceDocumentRepository(
+  documents: RecordedDocument[],
+  auditLogs: RecordedAuditLog[]
+): SourceDocumentRepository {
+  return {
+    async findDownloadableSourceDocument(input) {
+      const document = documents.find(
+        (candidate) => candidate.id === input.sourceDocumentId && candidate.orgId === input.orgId
+      );
+      if (
+        !document ||
+        !["pending_processing", "processing", "active", "processing_failed"].includes(
+          document.status
+        )
+      ) {
+        return null;
+      }
+      if (input.employee.role !== "admin") {
+        const visible =
+          document.labels.includes("all_staff") ||
+          document.labels.some((labelKey) => input.employee.labels.includes(labelKey));
+        if (!visible) return null;
+      }
+      return {
+        sourceDocumentId: document.id,
+        orgId: document.orgId,
+        status: document.status,
+        storageObjectKey: document.storageObjectKey,
+        originalFileName: document.originalFileName,
+        contentType: document.contentType ?? "application/octet-stream",
+        byteSize: document.byteSize,
+        labelKeys: document.labels
+      };
+    },
+    async recordDownloadIssued(input) {
+      auditLogs.push({
+        action: "document.downloaded",
+        actorEmployeeId: input.employee.id,
+        targetType: "document",
+        targetId: input.sourceDocumentId,
+        result: "succeeded",
+        metadata: null,
+        requestId: input.audit.requestId,
+        clientIp: input.audit.sourceIp,
+        clientSource: input.audit.clientSource,
+        launcherVersion: input.audit.launcherVersion,
+        createdAt: new Date()
+      });
     }
   };
 }

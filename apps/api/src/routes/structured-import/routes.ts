@@ -302,7 +302,7 @@ export function registerStructuredImportRoutes(
         if (!derivedMetadata) throw new Error("Delivery receipt metadata is missing.");
         startDate = derivedMetadata.receiptDate.replaceAll("-", "");
         endDate = startDate;
-        naturalKey = derivedMetadata.receiptNumber;
+        naturalKey = derivedMetadata.receiptId;
       } catch (error) {
         request.log.warn({ err: error }, "structured import profile failed");
         logTiming("upload.total", importRequestStarted, { outcome: "profile_failed" });
@@ -323,7 +323,7 @@ export function registerStructuredImportRoutes(
       startDate,
       endDate,
       snapshotDate,
-      receiptNumber: naturalKey,
+      receiptId: naturalKey,
       contentDigest: fileHash,
       fileType
     });

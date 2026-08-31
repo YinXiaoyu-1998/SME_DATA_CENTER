@@ -465,7 +465,7 @@ describe("structured query supplier enrichment", () => {
   });
 
   function compiledDeliveryQuery(
-    select = ["receipt_number", "supplier_name", "supplier_contact_phone", "supplier_unit_address"]
+    select = ["receipt_id", "supplier_name", "supplier_contact_phone", "supplier_unit_address"]
   ) {
     return compileStructuredQuery({
       orgId: "default-org",
@@ -487,13 +487,13 @@ describe("structured query supplier enrichment", () => {
   }) {
     const repository = createPrismaStructuredQueryRepository("mysql://test");
     const select = input.select ?? [
-      "receipt_number",
+      "receipt_id",
       "supplier_name",
       "supplier_contact_phone",
       "supplier_unit_address"
     ];
     const baseRow: Record<string, unknown> = {
-      receipt_number: "R-1",
+      receipt_id: "R-1",
       structured_query_supplier_name: "Supplier A"
     };
     if (select.includes("supplier_name")) {
@@ -523,7 +523,7 @@ describe("structured query supplier enrichment", () => {
     expect(result).toEqual({
       rows: [
         {
-          receipt_number: "R-1",
+          receipt_id: "R-1",
           supplier_name: "Supplier A",
           supplier_contact_phone: "13800138000",
           supplier_unit_address: "Address A"
@@ -538,16 +538,11 @@ describe("structured query supplier enrichment", () => {
 
   it("preserves interleaved stored and dynamic select order and omits unrequested fields", async () => {
     const { result } = await executeEnrichedQuery({
-      select: [
-        "supplier_contact_phone",
-        "receipt_number",
-        "supplier_unit_address",
-        "supplier_name"
-      ],
+      select: ["supplier_contact_phone", "receipt_id", "supplier_unit_address", "supplier_name"],
       baseRows: [
         {
           structured_query_supplier_name: "Supplier A",
-          receipt_number: "R-1",
+          receipt_id: "R-1",
           supplier_name: "Supplier A",
           item_name: "not selected"
         }
@@ -558,7 +553,7 @@ describe("structured query supplier enrichment", () => {
 
     expect(Object.keys(result.rows[0]!)).toEqual([
       "supplier_contact_phone",
-      "receipt_number",
+      "receipt_id",
       "supplier_unit_address",
       "supplier_name"
     ]);
@@ -569,7 +564,7 @@ describe("structured query supplier enrichment", () => {
     const { result, calls } = await executeEnrichedQuery({ latest: null });
 
     expect(result.rows[0]).toEqual({
-      receipt_number: "R-1",
+      receipt_id: "R-1",
       supplier_name: "Supplier A",
       supplier_contact_phone: null,
       supplier_unit_address: null
@@ -582,12 +577,12 @@ describe("structured query supplier enrichment", () => {
     ["supplier_unit_address", { unit_address: "" }, { supplier_unit_address: null }]
   ])("returns null for a blank %s", async (field, catalogRow, expected) => {
     const { result } = await executeEnrichedQuery({
-      select: ["receipt_number", field],
+      select: ["receipt_id", field],
       latest: { id: "batch_current", source_document_id: "doc_current" },
       catalogRows: [{ supplier_name: "Supplier A", ...catalogRow }]
     });
 
-    expect(result.rows[0]).toEqual({ receipt_number: "R-1", ...expected });
+    expect(result.rows[0]).toEqual({ receipt_id: "R-1", ...expected });
   });
 
   it("returns null when the current catalog has no matching supplier", async () => {

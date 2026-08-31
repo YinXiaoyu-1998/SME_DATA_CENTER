@@ -37,6 +37,13 @@ interface UploadEvidenceDocumentInput {
   labelKeys: string[];
 }
 
+interface UploadQuarantineCertificateInput {
+  file: InlineUploadFile;
+  receiptId: string;
+  idempotencyKey: string;
+  labelKeys: string[];
+}
+
 export interface UploadApiDelegationContext {
   authorization: string;
   audit: RequestAuditContext;
@@ -46,7 +53,8 @@ export interface UploadApiDelegationContext {
 
 export interface UploadApiDelegationRequest {
   method: "POST";
-  url: "/v1/structured/imports" | "/v1/documents/evidence";
+  url:
+    "/v1/structured/imports" | "/v1/documents/evidence" | "/v1/documents/quarantine-certificates";
   headers: Record<string, string>;
   payload: Buffer;
   remoteAddress: string;
@@ -83,6 +91,7 @@ type MultipartPart =
 
 const uploadStructuredDatasetContract = requireToolContract("upload_structured_dataset");
 const uploadEvidenceDocumentContract = requireToolContract("upload_evidence_document");
+const uploadQuarantineCertificateContract = requireToolContract("upload_quarantine_certificate");
 
 export function createUploadToolHandlers(
   options: UploadToolHandlerOptions
@@ -91,7 +100,9 @@ export function createUploadToolHandlers(
     upload_structured_dataset: async (input, context) =>
       uploadStructuredDataset(input, context, options),
     upload_evidence_document: async (input, context) =>
-      uploadEvidenceDocument(input, context, options)
+      uploadEvidenceDocument(input, context, options),
+    upload_quarantine_certificate: async (input, context) =>
+      uploadQuarantineCertificate(input, context, options)
   };
 }
 
@@ -221,6 +232,58 @@ async function uploadEvidenceDocument(
 
   return delegateMultipartRequest(options.delegate, delegation, {
     url: "/v1/documents/evidence",
+    multipart: createMultipartBody(parts)
+  });
+}
+
+async function uploadQuarantineCertificate(
+  input: unknown,
+  context: McpRequestContext,
+  options: UploadToolHandlerOptions
+): Promise<McpJsonToolResult> {
+  if (context.abortSignal?.aborted) {
+    return requestCancelledUploadError(context.audit.requestId);
+  }
+
+  const delegation = options.getDelegationContext(context);
+  const encodedSize = preflightEncodedUploadSize(input, delegation);
+
+  if (!encodedSize.ok) {
+    return encodedSize.result;
+  }
+
+  const parsedInput = uploadQuarantineCertificateContract.inputSchema.safeParse(input);
+
+  if (!parsedInput.success) {
+    return validationErrorToolResult(sanitizeValidationIssues(parsedInput.error.issues));
+  }
+
+  const uploadInput = parsedInput.data as unknown as UploadQuarantineCertificateInput;
+  const decodedFile = decodeUploadFile(uploadInput.file, delegation);
+
+  if (!decodedFile.ok) {
+    return decodedFile.result;
+  }
+
+  const parts: MultipartPart[] = [
+    {
+      type: "file",
+      name: "file",
+      filename: uploadInput.file.name,
+      contentType: uploadInput.file.mediaType,
+      body: decodedFile.body
+    },
+    { type: "field", name: "receiptId", value: uploadInput.receiptId },
+    { type: "field", name: "idempotencyKey", value: uploadInput.idempotencyKey },
+    ...uploadInput.labelKeys.map((labelKey) => ({
+      type: "field" as const,
+      name: "labelKeys[]",
+      value: labelKey
+    }))
+  ];
+
+  return delegateMultipartRequest(options.delegate, delegation, {
+    url: "/v1/documents/quarantine-certificates",
     multipart: createMultipartBody(parts)
   });
 }

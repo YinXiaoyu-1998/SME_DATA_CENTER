@@ -898,7 +898,7 @@ function buildProjection(
     for (const fieldName of query.groupBy) {
       const field = requireField(fields, fieldName);
       parts.push(`${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`);
-      params.push(field.storage.jsonPath);
+      params.push(requireJsonPath(field));
     }
 
     for (const aggregate of query.aggregates) {
@@ -915,9 +915,15 @@ function buildProjection(
   );
   const parts = storedFields.map((fieldName) => {
     const field = requireField(fields, fieldName);
+    if (field.storage.column === "source_document_id") {
+      return `r.source_document_id AS ${quoteIdentifier(field.canonicalName)}`;
+    }
     return `${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`;
   });
-  const params = storedFields.map((fieldName) => requireField(fields, fieldName).storage.jsonPath);
+  const params = storedFields
+    .map((fieldName) => requireField(fields, fieldName))
+    .filter((field) => field.storage.column === "payload")
+    .map((field) => requireJsonPath(field));
 
   if (
     query.select.some(
@@ -925,7 +931,7 @@ function buildProjection(
     )
   ) {
     parts.push(`${jsonValueExpression()} AS ${quoteIdentifier("structured_query_supplier_name")}`);
-    params.push(requireField(fields, "supplier_name").storage.jsonPath);
+    params.push(requireJsonPath(requireField(fields, "supplier_name")));
   }
 
   return {
@@ -1009,31 +1015,31 @@ function compileFilter(
     case "eq":
       return {
         sql: `${expression} = ?`,
-        params: [field.storage.jsonPath, scalarParam(node.value)]
+        params: [requireJsonPath(field), scalarParam(node.value)]
       };
     case "contains":
       return {
         sql: `${expression} LIKE ?`,
-        params: [field.storage.jsonPath, `%${String(node.value)}%`]
+        params: [requireJsonPath(field), `%${String(node.value)}%`]
       };
     case "starts_with":
       return {
         sql: `${expression} LIKE ?`,
-        params: [field.storage.jsonPath, `${String(node.value)}%`]
+        params: [requireJsonPath(field), `${String(node.value)}%`]
       };
     case "between": {
       const values = node.value as ScalarValue[];
       const [start, end] = values as [ScalarValue, ScalarValue];
       return {
         sql: `${expression} BETWEEN ? AND ?`,
-        params: [field.storage.jsonPath, scalarParam(start), scalarParam(end)]
+        params: [requireJsonPath(field), scalarParam(start), scalarParam(end)]
       };
     }
     case "in": {
       const values = node.value as ScalarValue[];
       return {
         sql: `${expression} IN (${values.map(() => "?").join(", ")})`,
-        params: [field.storage.jsonPath, ...values.map(scalarParam)]
+        params: [requireJsonPath(field), ...values.map(scalarParam)]
       };
     }
     case "gt":
@@ -1043,7 +1049,7 @@ function compileFilter(
       const operators = { gt: ">", gte: ">=", lt: "<", lte: "<=" };
       return {
         sql: `${expression} ${operators[node.op]} ?`,
-        params: [field.storage.jsonPath, scalarParam(node.value)]
+        params: [requireJsonPath(field), scalarParam(node.value)]
       };
     }
     default:
@@ -1075,7 +1081,7 @@ function buildOrderBy(
             `${typedFieldExpression(requireField(fields, item.field))} ${item.direction.toUpperCase()}`
         )
         .join(", ")}`,
-      params: sort.map((item) => requireField(fields, item.field).storage.jsonPath)
+      params: sort.map((item) => requireJsonPath(requireField(fields, item.field)))
     };
   }
 
@@ -1089,7 +1095,7 @@ function buildOrderBy(
       "r.source_row_number ASC",
       "r.id ASC"
     ].join(", ")}`,
-    params: sort.map((item) => requireField(fields, item.field).storage.jsonPath)
+    params: sort.map((item) => requireJsonPath(requireField(fields, item.field)))
   };
 }
 
@@ -1108,17 +1114,17 @@ function aggregateExpression(
 
   switch (aggregate.op) {
     case "count":
-      return { sql: `COUNT(${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
+      return { sql: `COUNT(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
     case "countDistinct":
-      return { sql: `COUNT(DISTINCT ${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
+      return { sql: `COUNT(DISTINCT ${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
     case "sum":
-      return { sql: `SUM(${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
+      return { sql: `SUM(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
     case "avg":
-      return { sql: `AVG(${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
+      return { sql: `AVG(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
     case "min":
-      return { sql: `MIN(${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
+      return { sql: `MIN(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
     case "max":
-      return { sql: `MAX(${expression}) AS ${alias}`, params: [field.storage.jsonPath] };
+      return { sql: `MAX(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
   }
 }
 
@@ -1170,6 +1176,18 @@ function requireField(
   }
 
   return field;
+}
+
+function requireJsonPath(field: StructuredFieldRegistryEntry): string {
+  if (!field.storage.jsonPath) {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.unsupportedCapability,
+      "Field does not use JSON payload storage.",
+      { field: field.canonicalName }
+    );
+  }
+
+  return field.storage.jsonPath;
 }
 
 function hashQueryShape(query: unknown): string {

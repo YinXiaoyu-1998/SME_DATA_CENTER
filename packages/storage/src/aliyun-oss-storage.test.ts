@@ -8,7 +8,10 @@ import {
   type S3Client
 } from "@aws-sdk/client-s3";
 import { describe, expect, it, vi } from "vitest";
-import { AliyunOssStorageAdapter } from "./aliyun-oss-storage.js";
+import {
+  AliyunOssStorageAdapter,
+  type AliyunOssStorageAdapterOptions
+} from "./aliyun-oss-storage.js";
 
 interface FakeObject {
   body: Buffer;
@@ -86,7 +89,7 @@ describe("AliyunOssStorageAdapter", () => {
       secretAccessKey: "test-secret-key",
       keyPrefix: "enterprise-hub-tests/",
       client: fake.client,
-      presign
+      presign: presign as unknown as NonNullable<AliyunOssStorageAdapterOptions["presign"]>
     });
     const originalBytes = Buffer.from("document bytes\nwith exact content", "utf8");
 
@@ -111,11 +114,20 @@ describe("AliyunOssStorageAdapter", () => {
     await expect(readStream(await adapter.getObjectStream(storedObject.key))).resolves.toEqual(
       originalBytes
     );
-    await expect(adapter.createDownloadUrl(storedObject.key)).resolves.toBe(
-      "https://download.example.test/signed"
-    );
+    await expect(
+      adapter.createDownloadUrl(storedObject.key, {
+        expiresInSeconds: 86_400,
+        downloadFileName: "检疫证明.png"
+      })
+    ).resolves.toBe("https://download.example.test/signed");
     expect(presign).toHaveBeenCalledWith(fake.client, expect.any(GetObjectCommand), {
-      expiresIn: 900
+      expiresIn: 86_400
+    });
+    const presignCalls = presign.mock.calls as unknown as unknown[][];
+    const getObjectCommand = presignCalls[0]?.[1] as GetObjectCommand;
+    expect(getObjectCommand.input).toMatchObject({
+      ResponseContentDisposition:
+        "attachment; filename*=UTF-8''%E6%A3%80%E7%96%AB%E8%AF%81%E6%98%8E.png"
     });
 
     await adapter.deleteObject(storedObject.key);

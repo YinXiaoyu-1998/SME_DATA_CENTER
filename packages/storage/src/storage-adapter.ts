@@ -13,10 +13,15 @@ export interface StorageObject {
   contentType?: string;
 }
 
+export interface CreateDownloadUrlOptions {
+  expiresInSeconds?: number;
+  downloadFileName?: string;
+}
+
 export interface StorageAdapter {
   putObject(input: PutObjectInput): Promise<StorageObject>;
   getObjectStream(key: string): Promise<NodeJS.ReadableStream>;
   statObject(key: string): Promise<StorageObject>;
-  createDownloadUrl(key: string): Promise<string>;
+  createDownloadUrl(key: string, options?: CreateDownloadUrlOptions): Promise<string>;
   deleteObject(key: string): Promise<void>;
 }

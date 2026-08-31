@@ -45,6 +45,8 @@ describe("read-only MCP tool handlers", () => {
       "search_document_evidence",
       "list_structured_datasets",
       "query_structured_dataset",
+      "query_quarantine_certificates",
+      "get_source_document_download_url",
       "get_evidence_document_status",
       "get_import_status"
     ]);
@@ -86,6 +88,11 @@ describe("read-only MCP tool handlers", () => {
     );
     await handlers.get_evidence_document_status?.({ documentId: "doc/1" }, {} as never);
     await handlers.get_import_status?.({ importBatchId: "imp/1" }, {} as never);
+    await handlers.query_quarantine_certificates?.(
+      { receiptIds: ["SH2608250117", "SH2608260003"] },
+      {} as never
+    );
+    await handlers.get_source_document_download_url?.({ sourceDocumentId: "doc/2" }, {} as never);
 
     expect(
       calls.map(({ method, url, query, payload }) => ({ method, url, query, payload }))
@@ -138,6 +145,18 @@ describe("read-only MCP tool handlers", () => {
       {
         method: "GET",
         url: "/v1/structured/imports/imp%2F1",
+        query: undefined,
+        payload: undefined
+      },
+      {
+        method: "POST",
+        url: "/v1/quarantine-certificates/query",
+        query: undefined,
+        payload: { receiptIds: ["SH2608250117", "SH2608260003"] }
+      },
+      {
+        method: "POST",
+        url: "/v1/source-documents/doc%2F2/download-url",
         query: undefined,
         payload: undefined
       }
@@ -219,6 +238,7 @@ describe("read-only MCP tool handlers", () => {
 
     expect(handlers.upload_evidence_document).toBeUndefined();
     expect(handlers.upload_structured_dataset).toBeUndefined();
+    expect(handlers.archive_quarantine_certificates).toBeUndefined();
   });
 
   it("honors already-aborted contexts before read API injection without leaking input data", async () => {

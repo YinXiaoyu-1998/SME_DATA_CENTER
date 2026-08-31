@@ -47,6 +47,22 @@ on headless hosts.
 The no-durable-credential mode used when no Secure store exists; the session ends when the
 launcher process exits and the employee taps the login link again.
 
+**收货单据号 (Receipt ID)**:
+收货单上的业务编号，是台账与配套检疫证明之间由业务人员识别、经统一规范化后匹配的关联键。
+_Avoid_: 售后单据号、Source document ID.
+
+**源文档 ID (Source document ID)**:
+企业资料中枢为每个已上传原文件分配的系统标识，用于定位受权限保护的原文件。
+_Avoid_: 收货单据号、文件名、对象存储键.
+
+**源文件下载链接 (Source File Download Link)**:
+员工通过后端授权后获得的、不暴露存储供应商契约且自签发起 24 小时有效的临时文件访问地址。
+_Avoid_: 永久链接、公开链接、Source document ID.
+
+**检疫证明 (Quarantine Certificate)**:
+与 evidence、structured 平行的第三类企业资料，以 JPG 或 PNG 原文件保存并按收货单据号关联收货业务。
+_Avoid_: 通用图片资料、台账行附件.
+
 **Support class A**:
 Interactive desktop agent on macOS/Windows with a local system browser.
 
@@ -68,6 +84,16 @@ Fully unattended agent with no interactive login; out of scope for login flows.
   credentials to the agent.
 - The employee completes login through the **employee channel** on any device that can open a web
   page.
+- Employees use quarantine-certificate and source-file capabilities through the official
+  MCP/launcher. HTTP remains the service contract; MCP is a thin authenticated adapter.
+- Public receipt business keys are `receiptId` in JSON/API/MCP and `receipt_id` in structured
+  query rows. Do not add `receiptNumber`, `receipt_number`, or `RECEIPT_NUMBER_*` compatibility.
+- A receipt ID may have zero, one, or many quarantine certificates. Each certificate links to at
+  most one receipt ID and may be uploaded before the corresponding delivery ledger exists.
+- Quarantine certificates require independent labels and are authorized by their own source
+  document labels; they do not inherit access from a delivery ledger with the same receipt ID.
+- Every structured detail row can expose selectable-only `source_document_id`. Downloading still
+  requires a fresh authorization check through the generic source-document download-link endpoint.
 
 ## Example dialogue
 

@@ -38,6 +38,7 @@ enum DocumentType {
 enum DocumentKind {
   evidence
   structured
+  quarantine_certificate
 }
 
 enum FileType {
@@ -46,6 +47,9 @@ enum FileType {
   docx
   xlsx
   csv
+  jpg
+  jpeg
+  png
 }
 
 enum ProcessingRunStatus {
@@ -158,6 +162,7 @@ model Organization {
   dishCatalogRows DishCatalogRow[]
   deliveryLedgerRows DeliveryLedgerRow[]
   supplierCatalogRows SupplierCatalogRow[]
+  quarantineCertificates QuarantineCertificate[]
   auditLogs       AuditLog[]
   skillEntries    SkillEntry[]
   loginIdentities LoginIdentity[]
@@ -257,6 +262,7 @@ model Document {
   dishCatalogRows  DishCatalogRow[]
   deliveryLedgerRows DeliveryLedgerRow[]
   supplierCatalogRows SupplierCatalogRow[]
+  quarantineCertificate QuarantineCertificate?
 
   @@index([orgId, status])
   @@index([orgId, documentType])
@@ -431,6 +437,22 @@ model ImportWindowClaim {
 
   @@unique([orgId, dataset, startDate, endDate])
   @@map("import_window_claims")
+}
+
+model QuarantineCertificate {
+  id                 String       @id @default(cuid()) @db.VarChar(32)
+  orgId              String       @map("org_id") @db.VarChar(64)
+  sourceDocumentId   String       @unique @map("source_document_id") @db.VarChar(32)
+  receiptId          String       @map("receipt_id") @db.VarChar(255)
+  idempotencyKey     String       @map("idempotency_key") @db.VarChar(255)
+  requestFingerprint String       @map("request_fingerprint") @db.VarChar(64)
+  createdAt          DateTime     @default(now()) @map("created_at")
+  organization       Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument     Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+
+  @@unique([orgId, idempotencyKey])
+  @@index([orgId, receiptId])
+  @@map("quarantine_certificates")
 }
 
 model DishRow {

@@ -6,7 +6,12 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 import { assertSafeObjectKey, createOriginalObjectKey } from "./object-key.js";
-import type { PutObjectInput, StorageAdapter, StorageObject } from "./storage-adapter.js";
+import type {
+  CreateDownloadUrlOptions,
+  PutObjectInput,
+  StorageAdapter,
+  StorageObject
+} from "./storage-adapter.js";
 
 interface LocalFileSystemStorageAdapterOptions {
   root?: string;
@@ -82,7 +87,8 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
     };
   }
 
-  async createDownloadUrl(key: string): Promise<string> {
+  async createDownloadUrl(key: string, options: CreateDownloadUrlOptions = {}): Promise<string> {
+    void options;
     return pathToFileURL(this.resolveObjectPath(key)).href;
   }
 

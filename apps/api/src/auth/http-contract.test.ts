@@ -103,7 +103,7 @@ describe("official OAuth HTTP contract", () => {
       token_endpoint_auth_methods_supported: ["none"],
       enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher",
       enterprise_hub_launcher_minimum_version: "0.1.0",
-      enterprise_hub_launcher_recommended_version: "0.2.4"
+      enterprise_hub_launcher_recommended_version: "0.2.5"
     });
     expect(() => oauthMetadata("http://api.smedatacenter.xyz")).toThrow(
       "public origin must be canonical HTTPS"

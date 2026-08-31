@@ -312,7 +312,7 @@ export function createPrismaStructuredImportRepository(options: {
 
       if (existingNaturalKeyBatch) {
         if (existingNaturalKeyBatch.requestFingerprint !== input.requestFingerprint) {
-          throw new StructuredImportError("RECEIPT_NUMBER_CONFLICT");
+          throw new StructuredImportError("RECEIPT_ID_CONFLICT");
         }
 
         return {

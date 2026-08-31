@@ -657,7 +657,7 @@ describe("Prisma structured import audit provenance", () => {
           requestFingerprint: "different"
         })
       )
-    ).rejects.toMatchObject({ code: "RECEIPT_NUMBER_CONFLICT" });
+    ).rejects.toMatchObject({ code: "RECEIPT_ID_CONFLICT" });
     expect(prisma.document.create).not.toHaveBeenCalled();
   });
 
@@ -776,7 +776,7 @@ describe("Prisma structured import audit provenance", () => {
 
   it.each([
     { fingerprint: "same", expected: { state: "existing" } },
-    { fingerprint: "different", expected: { code: "RECEIPT_NUMBER_CONFLICT" } }
+    { fingerprint: "different", expected: { code: "RECEIPT_ID_CONFLICT" } }
   ])(
     "executes the transaction before resolving a natural-key race for $fingerprint fingerprint",
     async ({ fingerprint, expected }) => {

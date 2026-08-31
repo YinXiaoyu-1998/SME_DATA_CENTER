@@ -89,7 +89,7 @@ Supported datasets:
 Required behavior:
 
 - metadata is policy-specific: window datasets use `startDate`/`endDate`, `dish_catalog` uses
-  `snapshotDate`, `delivery_ledger` derives the receipt number/date and rejects user-supplied dates,
+  `snapshotDate`, `delivery_ledger` derives the receipt ID/date and rejects user-supplied dates,
   and `supplier_catalog` uses no dates; all uploads also carry enterprise identity/name, an
   idempotency key, and labels;
 - file name is not trusted for business logic;
@@ -108,9 +108,9 @@ Required behavior:
 
 The delivery and supplier datasets are now implemented on this same surface:
 
-- `delivery_ledger` accepts one CSV/XLSX receipt per file; receipt number and date are derived from
+- `delivery_ledger` accepts one CSV/XLSX receipt per file; receipt ID and date are derived from
   document metadata, with no caller-supplied date fields, and each item row becomes one ledger row;
-- delivery uploads use organization-scoped receipt-number natural-key idempotency, while the
+- delivery uploads use organization-scoped receipt-ID natural-key idempotency, while the
   supplied idempotency key remains the retry identity for other structured uploads;
 - `supplier_catalog` requires `供应商名称`, accepts the other controlled columns when present,
   rejects unknown or unnamed columns, keeps historical applied batches, and makes only the latest

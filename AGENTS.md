@@ -11,6 +11,7 @@
 ## Branch And PR Rules
 
 - Define each task's base/lead branch in its plan or PR. If none is specified, verify and use the repository's current default branch; never rely on a permanently fixed historical lead branch.
+- When subagents are useful and available, prefer model `gpt-5.5` with `high` reasoning effort. If that combination is unavailable or unsupported, use the configured/default suitable model rather than blocking the task.
 - Subagents must use their own branch and stay inside their assigned day/workstream.
 - Update `docs/implementation/progress.md` at session start/end and for meaningful work milestones only: branch/worktree start, baseline verification, phase/day/workstream completion, merged PR evidence, blocker/readiness state changes, recovery audits, and final handoff state.
 - Do not use `docs/implementation/progress.md` as a running design-decision log or chat transcript. During requirements grilling or design discovery, record detailed decisions in a dedicated design document, ADR, API contract draft, or implementation plan section, then add at most one concise progress summary when that design artifact is created or materially completed.
@@ -30,6 +31,12 @@
 - Treat `apps/mcp-launcher/` and the MCP contracts bundled into its published artifact as one release boundary. Any change to launcher runtime behavior or bundled tool names/input schemas must bump the launcher version and its alignment/package tests in the same PR; never merge such a contract change while leaving the published launcher version unchanged.
 - Publish and independently verify the bumped launcher before updating server recommended-version metadata and both skill pins; complete that synchronization immediately after publication so staging never advertises or documents an unavailable launcher.
 - After any lead/subagent task is verified and fully merged into `main`, remove its clean, inactive local worktree and run `git worktree prune`; never force-remove worktrees with changes or active processes.
+
+## Testing Scope
+
+- Keep tests proportional to feature risk. Cover the critical public path, authorization/data-boundary behavior, and regressions that could realistically recur; do not build exhaustive case matrices or new harnesses for simple changes.
+- During development, run the smallest focused test set that proves the current change. Run required repository-wide gates once on the final tree before PR handoff; do not repeatedly rerun unchanged long suites after every small edit unless a failure or high-risk change justifies it.
+- Keep manual acceptance focused on the changed workflow unless the user explicitly requests the full official acceptance suite or the touched release boundary requires it.
 
 ## Local Manual Acceptance Trigger
 

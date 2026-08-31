@@ -18,6 +18,8 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "search_document_evidence",
   "list_structured_datasets",
   "query_structured_dataset",
+  "query_quarantine_certificates",
+  "get_source_document_download_url",
   "get_evidence_document_status",
   "get_import_status"
 ] as const satisfies readonly EnterpriseHubMcpToolName[];
@@ -104,6 +106,19 @@ function routeForReadOnlyTool(
           groupBy: input["groupBy"],
           aggregates: input["aggregates"]
         }
+      };
+    case "query_quarantine_certificates":
+      return {
+        method: "POST",
+        path: "/v1/quarantine-certificates/query",
+        body: {
+          receiptIds: input["receiptIds"]
+        }
+      };
+    case "get_source_document_download_url":
+      return {
+        method: "POST",
+        path: `/v1/source-documents/${encodeURIComponent(String(input["sourceDocumentId"]))}/download-url`
       };
     case "get_evidence_document_status":
       return {
