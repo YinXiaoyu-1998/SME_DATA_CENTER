@@ -17,16 +17,18 @@ acceptance gates.
 
 The acceptance run must exercise both sides of the real product boundary:
 
-| Area                  | Who performs it                   | Required proof                                                                                   |
-| --------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Operator onboarding   | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, personal label, and setup link.      |
-| Password setup/reset  | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.    |
-| Client installation   | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.5` is installed and configured as a Codex stdio MCP.     |
-| Durable login         | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.      |
-| Continued use         | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.           |
-| Evidence workflow     | Employee-owned MCP client         | Upload fixture bytes, poll index status, search only authorized evidence, and clean test data.   |
-| Structured workflow   | Employee-owned MCP client         | Upload fixture CSV, query aggregate/top rows, reject invalid atomic import, and clean test data. |
-| Logout/reset recovery | Employee-owned MCP client/browser | Logout removes local credential; reset password revokes old sessions and requires browser login. |
+| Area                                | Who performs it                   | Required proof                                                                                              |
+| ----------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, personal label, and setup link.                 |
+| Password setup/reset                | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.               |
+| Client installation                 | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.5` is installed and configured as a Codex stdio MCP.                |
+| Durable login                       | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.                 |
+| Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                      |
+| Evidence workflow                   | Employee-owned MCP client         | Upload fixture bytes, poll index status, search only authorized evidence, and clean test data.              |
+| Structured workflow                 | Employee-owned MCP client         | Upload fixture CSV, query aggregate/top rows, reject invalid atomic import, and clean test data.            |
+| Delivery-ledger workflow            | Employee-owned MCP client         | Upload supplier catalog plus XLSX/CSV receipts, query all ledger rows as a row-level table, and clean data. |
+| Quarantine/source-download workflow | Employee-owned MCP client         | Upload one JPG/PNG certificate by receipt ID, query explicit receipt IDs, issue download link, and archive. |
+| Logout/reset recovery               | Employee-owned MCP client/browser | Logout removes local credential; reset password revokes old sessions and requires browser login.            |
 
 The controller may use database/storage/Qdrant access only for operator setup, verification, and
 cleanup. The employee-client path must use the official launcher and MCP tools.
@@ -196,6 +198,11 @@ For the current macOS user:
      receipt, and the temporary CSV conversion of the second receipt from separate tasks; then use
      one fresh task with an ordinary request such as “请查询 Enterprise Hub 里的全部收货台账，并按
      台账字段逐行显示成一个表格。” Do not ask only for receipt counts or an enrichment summary.
+   - when the quarantine-certificate slice is in scope, use a separate ordinary task with one
+     JPG/PNG image and a prompt such as “帮我把这张检疫证明关联到收货单据 SH2608250117。” Then use
+     fresh tasks to query explicit receipt IDs, request the source-file download link for a returned
+     `sourceDocumentId`, and archive the uploaded certificate by `sourceDocumentId`. The employee
+     task must not query all certificates or fetch/proxy the file bytes.
    - logout/reset/re-login when the run includes recovery: “帮我退出 Enterprise Hub。” then after
      reset/setup, “我又要用 Enterprise Hub 查资料，帮我重新登录。”
 5. Do not tell employee-client tasks hidden oracle values such as exact label keys, idempotency
@@ -225,11 +232,19 @@ For the current macOS user:
     see exactly the 14 uploaded item rows (13 + 1); verify supplier contacts are enriched per row,
     blank source addresses remain blank, and production/batch plus shelf-life fields remain empty.
     A receipt-level count or field-enrichment summary does not pass this step.
-15. Call `enterprise_hub_logout` at the end of the full-flow test. It signs out all local agents
+15. When the quarantine-certificate slice is in scope, use a run-scoped JPG/PNG test image and a
+    fresh employee-client task to upload exactly one certificate linked to a specific receipt ID
+    such as `SH2608250117`. Query `query_quarantine_certificates` with explicit `receiptIds` that
+    include that receipt, verify the returned certificate exposes a `sourceDocumentId`, call
+    `get_source_document_download_url`, and confirm the tool returns a 24-hour attachment download
+    link without fetching the bytes. Archive the uploaded certificate by `sourceDocumentId` and
+    verify a repeat explicit query no longer returns it. If the admin receipt-ID archive path is
+    tested, use an admin acceptance account and state that scope explicitly.
+16. Call `enterprise_hub_logout` at the end of the full-flow test. It signs out all local agents
     sharing the Enterprise Hub credential for this OS user.
-16. Clean test evidence, Qdrant points, OSS objects, structured rows (including delivery and
-    supplier rows), import batches, and documents.
-17. Hard-delete the synthetic test account with `delete-test-account`.
+17. Clean test evidence, quarantine certificates, Qdrant points, OSS objects, structured rows
+    (including delivery and supplier rows), import batches, and documents.
+18. Hard-delete the synthetic test account with `delete-test-account`.
 
 ## Runner
 
@@ -299,6 +314,8 @@ Pass only when:
 - the official launcher session is authenticated and survives a new process;
 - MCP labels, evidence upload/status/search, structured import/query, and invalid atomic rejection
   pass;
+- quarantine certificate upload/query/source-download/archive passes when that feature slice is in
+  scope;
 - cleanup removes test data from DB/storage/Qdrant;
 - no credential, setup link, token, full DSN, provider secret, or authorization header appears in
   git diff, logs, or reports.

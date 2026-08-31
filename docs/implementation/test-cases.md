@@ -1,6 +1,6 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-08-29
+Last updated: 2026-08-31
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
@@ -53,18 +53,20 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 | Structured query typed semantics         | `npm test -- packages/domain/src/structured-query.test.ts apps/api/src/structured-query-route.test.ts apps/api/src/routes/structured-query.test.ts` plus `MYSQL_PORT=3307 npm run test:integration` | Numeric/date filters, sort, min/max/sum/avg use typed semantics; cursor scope includes org/employee/role/current labels; integration proof `phase3_structured_typed_query` passes                                              |
 | Delivery dynamic enrichment              | `npm test -- apps/api/src/structured-query.test.ts apps/api/src/routes/structured-query.test.ts`                                                                                                    | Latest successful applied supplier catalog supplies exact-match phone/address only when its source document is visible; missing, blank, ambiguous, stale, or hidden sources return `null` without fallback                     |
 | Dynamic-field query restrictions         | `npm test -- packages/domain/src/structured-registry.test.ts packages/domain/src/structured-query.test.ts`                                                                                          | `supplier_contact_phone` and `supplier_unit_address` are selectable virtual fields only, never filterable, sortable, groupable, or aggregatable                                                                                |
+| Quarantine certificate APIs              | `npm test -- apps/api/src/routes/quarantine-certificates.test.ts apps/api/src/routes/source-documents.test.ts`                                                                                      | One JPG/PNG certificate uploads synchronously with exact idempotent replay, queries group by explicit receipt IDs, archives by source document or admin receipt ID, and issues authorized 24-hour attachment download URLs     |
 | Archived source docs excluded            | `npm test -- apps/api/src/routes/structured-import/structured-import.test.ts`                                                                                                                       | Rows remain stored but inactive/archived source documents are not queryable                                                                                                                                                    |
 | Worker lease and crash recovery          | `npm test -- apps/worker/src/worker.test.ts apps/worker/src/evidence-index.test.ts` plus `MYSQL_PORT=3307 npm run test:integration`                                                                 | DB CAS lease, heartbeat, terminal/transient retry classification, and old-worker publish protection pass; integration proof `phase3_worker_lease_crash_recovery` passes                                                        |
 
 ## Active MCP Cases
 
-| Case                     | Test / Command                                        | Expected                                                                                                                                                                                 |
-| ------------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTTP endpoint guards     | `npm test -- apps/api/src/mcp/http.test.ts`           | Official-host/loopback peer, opaque auth, stateless protocol, size/concurrency, and discovery are enforced                                                                               |
-| Core MCP contract        | `npm test -- packages/mcp-contract/src/index.test.ts` | Strict tool inputs reject legacy session/path fields and invalid inline upload content                                                                                                   |
-| API MCP tool delegation  | `npm test -- apps/api/src/mcp`                        | Read/upload tools preserve existing API authorization and multipart validation                                                                                                           |
-| Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                   | Device Authorization, desktop auto-open/headless link delivery, secure-store or memory-only session custody, refresh serialization, logout, typed failures, and authenticated proxy pass |
-| Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                    | Launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy representatives pass                                                                                          |
+| Case                     | Test / Command                                                                                                                                                        | Expected                                                                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP endpoint guards     | `npm test -- apps/api/src/mcp/http.test.ts`                                                                                                                           | Official-host/loopback peer, opaque auth, stateless protocol, size/concurrency, and discovery are enforced                                                                               |
+| Core MCP contract        | `npm test -- packages/mcp-contract/src/index.test.ts`                                                                                                                 | Strict tool inputs reject legacy session/path fields and invalid inline upload content                                                                                                   |
+| API MCP tool delegation  | `npm test -- apps/api/src/mcp`                                                                                                                                        | Read/upload tools preserve existing API authorization and multipart validation                                                                                                           |
+| Quarantine/download MCP  | `npm test -- apps/api/src/mcp/upload-tools.test.ts apps/api/src/mcp/read-tools.test.ts apps/api/src/mcp/action-tools.test.ts packages/mcp-contract/src/index.test.ts` | Quarantine upload/query/archive and source-document download URL tools keep the public MCP contract, receiptId naming, and backend authorization boundary                                |
+| Launcher bootstrap/proxy | `npm test -- apps/mcp-launcher/src`                                                                                                                                   | Device Authorization, desktop auto-open/headless link delivery, secure-store or memory-only session custody, refresh serialization, logout, typed failures, and authenticated proxy pass |
+| Local MCP smoke          | `MYSQL_PORT=3307 npm run test:mcp`                                                                                                                                    | Launcher entrypoint, authenticated HTTP `/mcp`, and launcher-to-HTTP proxy representatives pass                                                                                          |
 
 ## Deleted Phase 3 Local Manual Acceptance
 
@@ -88,7 +90,9 @@ This runner uses the installed `enterprise-hub-mcp-launcher@0.2.5`, the user's o
 secure-store session, and the public staging service. It covers authenticated label discovery,
 evidence upload/status/search, structured CSV import/query, invalid atomic import rejection, and
 run-scoped cleanup of evidence, Qdrant points, OSS objects, structured rows, import batches, and
-documents. Password setup/reset remains browser-only and is proved separately through
+documents. The stricter user-visible flow also covers delivery-ledger uploads/queries and the
+quarantine certificate/source-document download slice when that feature is in scope. Password
+setup/reset remains browser-only and is proved separately through
 `auth:operator onboard` / `auth:operator reset-password` without recording full setup links.
 
 The full manual acceptance gate is stricter than the runner: it must create a fresh

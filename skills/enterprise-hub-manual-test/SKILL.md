@@ -58,8 +58,9 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
    `git fetch origin`, `git switch main`, `git pull --ff-only`.
 3. Read the required sources above.
 4. Inspect whether the current manual flow still covers account lifecycle, password setup/reset,
-   launcher install/config, durable login, normal MCP business tools, logout/reset recovery, and
-   cleanup. Update docs/scripts if the coverage is stale.
+   launcher install/config, durable login, normal MCP business tools, evidence, structured data,
+   delivery ledgers, quarantine certificates, source-file download links, logout/reset recovery,
+   and cleanup. Update docs/scripts if the coverage is stale.
 5. Run normal repository checks proportionate to the change. For documentation-only changes,
    run at least `npm run format:check`. For runner or script changes, run the focused tests plus
    TypeScript checking when practical.
@@ -91,6 +92,12 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     all visible delivery-ledger rows and display them as a row-level Markdown table. The query task
     must follow every returned page cursor until no page remains; a receipt-level count or enrichment
     summary is not a substitute for displaying the ledger.
+    For the quarantine-certificate slice, use separate ordinary tasks to upload one JPG/PNG
+    certificate image linked to an explicit `receiptId`, query certificates with explicit
+    `receiptIds`, request a 24-hour source-file download link for a returned `sourceDocumentId`,
+    and archive the uploaded certificate by `sourceDocumentId`. Do not query all certificates, do
+    not fetch file bytes directly, and use receipt-ID archive only when the acceptance account is an
+    admin and that admin path is explicitly in scope.
 13. Optionally run the official macOS Codex business-flow runner as an extra smoke, but do not treat
     it as a replacement for the new user-visible task:
 
@@ -124,8 +131,9 @@ Manual staging uploads must not accumulate.
 - Runner-owned structured uploads must use unique `enterpriseName=ManualAcceptance_<runId>` and a
   dedicated date window. Natural employee tasks may use the real business/store name; cleanup must
   therefore also select every document uploaded by the run's synthetic employee.
-- Cleanup must remove test documents, all structured row types (including delivery and supplier
-  rows), import batches/window claims, OSS objects, and Qdrant points associated with the run.
+- Cleanup must remove test documents, quarantine certificates, all structured row types (including
+  delivery and supplier rows), import batches/window claims, OSS objects, and Qdrant points
+  associated with the run.
 - Synthetic test accounts must be deleted with `delete-test-account` after uploaded documents are
   removed.
 - If cleanup fails, stop and report that as a release blocker before further beta testing.
@@ -137,6 +145,6 @@ Manual staging uploads must not accumulate.
 - Do not inspect, print, copy, or store Keychain/credential values.
 - Do not ask the user to expose passwords, setup links, access tokens, refresh tokens, authorization
   codes, full DSNs, provider keys, or raw headers.
-- Do not report "beta-ready" unless the browser login, launcher persistence, business tools, and
-  cleanup have actually run.
+- Do not report "beta-ready" unless the browser login, launcher persistence, business tools,
+  quarantine/source-download coverage when in scope, and cleanup have actually run.
 - When Windows/OpenClaw are skipped by scope, say so explicitly.
