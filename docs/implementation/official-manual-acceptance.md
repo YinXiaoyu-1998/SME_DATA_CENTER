@@ -1,6 +1,6 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-08-10
+Last updated: 2026-08-31
 
 This is the active manual acceptance flow for a real beta-style Enterprise Hub user on macOS
 Codex. The old local Phase 3 email-login/HTTP-launcher manual acceptance document has been deleted
@@ -34,8 +34,9 @@ cleanup. The employee-client path must use the official launcher and MCP tools.
 The employee-client evidence must be natural chat, not a controller script. Full manual acceptance
 creates several new user-visible Codex tasks/sessions, each with one ordinary low-technical employee
 request. The human owner is expected to inspect those transcripts and may archive or delete them
-afterward. A single all-in-one prompt that lists install, login, upload, search, and expected
-outcomes is only a guided conformance smoke, not full manual acceptance.
+afterward. Keep them visible when the run finishes: automated staging-data cleanup must not archive
+or delete Codex tasks. A single all-in-one prompt that lists install, login, upload, search, and
+expected outcomes is only a guided conformance smoke, not full manual acceptance.
 
 ## Password And Secret Rules
 
@@ -192,8 +193,9 @@ For the current macOS user:
    - structured upload/query from separate tasks: “这份菜品销售表帮我传进去。” then
      “这份表一共有多少条记录？销售额加起来是多少？销售额最高的两个菜是什么？”
    - when the untracked delivery samples are available, upload the supplier catalog, one XLSX
-     receipt, and the temporary CSV conversion of the second receipt from separate tasks; then ask
-     for receipt line counts and whether supplier phone/address fields were dynamically enriched.
+     receipt, and the temporary CSV conversion of the second receipt from separate tasks; then use
+     one fresh task with an ordinary request such as “请查询 Enterprise Hub 里的全部收货台账，并按
+     台账字段逐行显示成一个表格。” Do not ask only for receipt counts or an enrichment summary.
    - logout/reset/re-login when the run includes recovery: “帮我退出 Enterprise Hub。” then after
      reset/setup, “我又要用 Enterprise Hub 查资料，帮我重新登录。”
 5. Do not tell employee-client tasks hidden oracle values such as exact label keys, idempotency
@@ -215,9 +217,14 @@ For the current macOS user:
 13. Upload `fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv`; it must fail
     worker validation, reach a `rejected` terminal state, and not change the successful row count.
 14. When the local-only delivery fixtures are available, verify the supplier catalog applies 134
-    rows, the XLSX receipt applies 13 ledger rows, its CSV peer applies 1 row, supplier contacts are
-    enriched at query time, blank source addresses remain blank, and production/batch plus shelf-life
-    fields remain empty.
+    rows, the XLSX receipt applies 13 ledger rows, and its CSV peer applies 1 row. In a fresh
+    employee-client task, query `delivery_ledger` without a receipt filter, follow every opaque page
+    cursor until no page remains, and render all visible rows as one Markdown table with these
+    columns: 序号、门店名、单据号、进货日期、供货单位名称、食品名称、规格、进货数量、进货金额、
+    生产日期或生产批号、保质期、供货单位地址、供货单位联系方式. The acceptance account should
+    see exactly the 14 uploaded item rows (13 + 1); verify supplier contacts are enriched per row,
+    blank source addresses remain blank, and production/batch plus shelf-life fields remain empty.
+    A receipt-level count or field-enrichment summary does not pass this step.
 15. Call `enterprise_hub_logout` at the end of the full-flow test. It signs out all local agents
     sharing the Enterprise Hub credential for this OS user.
 16. Clean test evidence, Qdrant points, OSS objects, structured rows (including delivery and

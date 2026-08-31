@@ -26,8 +26,9 @@ Full manual acceptance must also look like normal low-technical employee usage. 
 new user-visible Codex tasks/sessions, one ordinary natural-language request at a time. Do not
 collapse install, login, upload, search, structured query, reset/logout, and safety probes into one
 controller-style mega-prompt. The visible task transcripts are part of the acceptance evidence; it
-is fine if this creates many sessions because the human owner can inspect, archive, or delete them
-afterward.
+is fine if this creates many sessions. Leave them visible after the run so the human owner can
+inspect them; do not archive or delete them as part of automatic test-data cleanup. Archive them
+only when the human explicitly asks afterward.
 
 ## Required Sources
 
@@ -86,7 +87,10 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     resistance, structured upload/query, logout/reset/re-login, and any scoped recovery probes.
     Upload and cold-search must not be collapsed into the same employee-client task when independent
     retrieval evidence matters. When the local-only delivery samples are available, include separate
-    supplier-catalog, XLSX-receipt, CSV-receipt, and dynamically enriched ledger-query tasks.
+    supplier-catalog, XLSX-receipt, and CSV-receipt tasks, followed by one ordinary request to query
+    all visible delivery-ledger rows and display them as a row-level Markdown table. The query task
+    must follow every returned page cursor until no page remains; a receipt-level count or enrichment
+    summary is not a substitute for displaying the ledger.
 13. Optionally run the official macOS Codex business-flow runner as an extra smoke, but do not treat
     it as a replacement for the new user-visible task:
 
