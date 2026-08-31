@@ -32,13 +32,18 @@ export type LauncherBusinessToolName =
   | "query_structured_dataset"
   | "upload_structured_dataset"
   | "upload_evidence_document"
+  | "upload_quarantine_certificate"
+  | "query_quarantine_certificates"
+  | "archive_quarantine_certificates"
+  | "get_source_document_download_url"
   | "get_evidence_document_status"
   | "get_import_status";
 export type LauncherToolName = LauncherBootstrapToolName | LauncherBusinessToolName;
 
 const LOCAL_PATH_UPLOAD_TOOL_NAMES = new Set<LauncherBusinessToolName>([
   "upload_structured_dataset",
-  "upload_evidence_document"
+  "upload_evidence_document",
+  "upload_quarantine_certificate"
 ]);
 
 function launcherUploadToolInputShape(

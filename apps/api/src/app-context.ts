@@ -20,6 +20,14 @@ import {
   type StructuredQueryRepository
 } from "./structured-query.js";
 import {
+  createPrismaQuarantineCertificateRepository,
+  type QuarantineCertificateRepository
+} from "./quarantine-certificates.js";
+import {
+  createPrismaSourceDocumentRepository,
+  type SourceDocumentRepository
+} from "./source-documents.js";
+import {
   createOriginalObjectKey,
   createStorageAdapter,
   type StorageAdapter
@@ -39,6 +47,8 @@ export interface ApiServerOptions {
   structuredImportRepository?: StructuredImportRepository;
   skillRepository?: SkillDirectoryRepository;
   structuredQueryRepository?: StructuredQueryRepository;
+  quarantineCertificateRepository?: QuarantineCertificateRepository;
+  sourceDocumentRepository?: SourceDocumentRepository;
   evidenceRepository?: EvidenceSearchRepository;
   storageAdapter?: StorageAdapter;
   authCore?: AuthCore;
@@ -71,6 +81,8 @@ export interface ApiServerContext {
   storage: () => StorageAdapter;
   structuredImports: () => StructuredImportRepository;
   structuredQueries: () => StructuredQueryRepository;
+  quarantineCertificates: () => QuarantineCertificateRepository;
+  sourceDocuments: () => SourceDocumentRepository;
   skills: () => SkillDirectoryRepository;
   evidence: () => EvidenceSearchRepository;
   close: () => Promise<void>;
@@ -92,6 +104,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let structuredImportRepository = options.structuredImportRepository;
   let skillRepository = options.skillRepository;
   let structuredQueryRepository = options.structuredQueryRepository;
+  let quarantineCertificateRepository = options.quarantineCertificateRepository;
+  let sourceDocumentRepository = options.sourceDocumentRepository;
   let evidenceRepository = options.evidenceRepository;
   let storageAdapter = options.storageAdapter;
   const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
@@ -164,6 +178,16 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return structuredQueryRepository;
   }
 
+  function quarantineCertificates(): QuarantineCertificateRepository {
+    quarantineCertificateRepository ??= createPrismaQuarantineCertificateRepository();
+    return quarantineCertificateRepository;
+  }
+
+  function sourceDocuments(): SourceDocumentRepository {
+    sourceDocumentRepository ??= createPrismaSourceDocumentRepository();
+    return sourceDocumentRepository;
+  }
+
   function skills(): SkillDirectoryRepository {
     skillRepository ??= createPrismaSkillDirectoryRepository();
     return skillRepository;
@@ -185,6 +209,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     await structuredImportRepository?.disconnect?.();
     await skillRepository?.disconnect?.();
     await structuredQueryRepository?.disconnect?.();
+    await quarantineCertificateRepository?.disconnect?.();
+    await sourceDocumentRepository?.disconnect?.();
     await evidenceRepository?.disconnect?.();
   }
 
@@ -204,6 +230,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     storage,
     structuredImports,
     structuredQueries,
+    quarantineCertificates,
+    sourceDocuments,
     skills,
     evidence,
     close

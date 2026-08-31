@@ -162,7 +162,7 @@ describe("Prisma structured worker persistence", () => {
             sourceSheetIndex: 0,
             sourceSheetName: "Receipt",
             sourceRowNumber: 8,
-            payload: { receipt_number: "SH-1", item_name: "Rice" }
+            payload: { receipt_id: "SH-1", item_name: "Rice" }
           }
         ],
         validationErrors: [],
@@ -183,7 +183,7 @@ describe("Prisma structured worker persistence", () => {
           sourceSheetIndex: 0,
           sourceSheetName: "Receipt",
           sourceRowNumber: 8,
-          payload: { receipt_number: "SH-1", item_name: "Rice" }
+          payload: { receipt_id: "SH-1", item_name: "Rice" }
         }
       ]
     });

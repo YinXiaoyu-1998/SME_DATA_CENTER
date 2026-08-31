@@ -80,12 +80,12 @@ describeIntegration("Prisma structured supplier enrichment authorization", () =>
     await createLedgerDocument(prisma, {
       suffix: "visible-ledger",
       labels: [allStaffLabelId],
-      rows: [{ supplierName: "Visible Supplier", receiptNumber: "R-visible" }]
+      rows: [{ supplierName: "Visible Supplier", receiptId: "R-visible" }]
     });
     await createLedgerDocument(prisma, {
       suffix: "hidden-ledger",
       labels: [hiddenLabelId],
-      rows: [{ supplierName: "Hidden Supplier", receiptNumber: "R-hidden" }]
+      rows: [{ supplierName: "Hidden Supplier", receiptId: "R-hidden" }]
     });
     await createCatalog(prisma, {
       suffix: "auth-catalog",
@@ -140,8 +140,8 @@ describeIntegration("Prisma structured supplier enrichment authorization", () =>
       suffix: "lineage-ledger",
       labels: [allStaffLabelId],
       rows: [
-        { supplierName: "Current Supplier", receiptNumber: "R-current" },
-        { supplierName: "Poison Supplier", receiptNumber: "R-poison" }
+        { supplierName: "Current Supplier", receiptId: "R-current" },
+        { supplierName: "Poison Supplier", receiptId: "R-poison" }
       ]
     });
     const catalog = await createCatalog(prisma, {
@@ -194,7 +194,7 @@ describeIntegration("Prisma structured supplier enrichment authorization", () =>
     await createLedgerDocument(prisma, {
       suffix: `latest-${_state}`,
       labels: [allStaffLabelId],
-      rows: [{ supplierName: "Head Supplier", receiptNumber: "R-head" }]
+      rows: [{ supplierName: "Head Supplier", receiptId: "R-head" }]
     });
     await createCatalog(prisma, {
       suffix: `older-${_state}`,
@@ -232,7 +232,7 @@ describeIntegration("Prisma structured supplier enrichment authorization", () =>
     await createLedgerDocument(prisma, {
       suffix: "order-ledger",
       labels: [allStaffLabelId],
-      rows: [{ supplierName: "Order Supplier", receiptNumber: "R-order" }]
+      rows: [{ supplierName: "Order Supplier", receiptId: "R-order" }]
     });
     await createCatalog(prisma, {
       suffix: "order-older",
@@ -265,7 +265,7 @@ describeIntegration("Prisma structured supplier enrichment authorization", () =>
     await createLedgerDocument(prisma, {
       suffix: "failed-newer-ledger",
       labels: [allStaffLabelId],
-      rows: [{ supplierName: "Successful Supplier", receiptNumber: "R-success" }]
+      rows: [{ supplierName: "Successful Supplier", receiptId: "R-success" }]
     });
     await createCatalog(prisma, {
       suffix: "successful-catalog",
@@ -297,13 +297,8 @@ async function executeFor(
     employee,
     query: {
       dataset: "delivery_ledger",
-      select: [
-        "supplier_contact_phone",
-        "supplier_name",
-        "receipt_number",
-        "supplier_unit_address"
-      ],
-      sort: [{ field: "receipt_number", direction: "asc" }]
+      select: ["supplier_contact_phone", "supplier_name", "receipt_id", "supplier_unit_address"],
+      sort: [{ field: "receipt_id", direction: "asc" }]
     },
     cursorSecret: "query-review-secret"
   });
@@ -317,7 +312,7 @@ async function createLedgerDocument(
   input: {
     suffix: string;
     labels: string[];
-    rows: Array<{ supplierName: string; receiptNumber: string }>;
+    rows: Array<{ supplierName: string; receiptId: string }>;
   }
 ) {
   const document = await createDocument(prisma, `ledger-${input.suffix}`, input.labels);
@@ -346,7 +341,7 @@ async function createLedgerDocument(
       sourceRowNumber: index + 2,
       payload: {
         entry_id: `entry-${input.suffix}-${index}`,
-        receipt_number: row.receiptNumber,
+        receipt_id: row.receiptId,
         supplier_name: row.supplierName,
         purchase_date: "2026-08-29",
         store_name: "Review Store"

@@ -5,6 +5,7 @@ import {
 } from "@enterprise-hub/mcp-contract";
 import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
 import type { RequestAuditContext } from "../request-audit-context.js";
+import { createActionMcpToolHandlers } from "./action-tools.js";
 import { createReadOnlyMcpToolHandlers } from "./read-tools.js";
 import type { ApiDelegationContext } from "./api-delegation.js";
 import {
@@ -55,9 +56,16 @@ export function createEnterpriseHubMcpToolHandlers(
       maxUploadBytes: options.maxUploadBytes
     })
   });
+  const actionHandlers = createActionMcpToolHandlers({
+    bearerToken: options.bearerToken,
+    audit: options.audit,
+    delegationProof: options.delegationProof,
+    inject: options.inject
+  });
 
   return {
     ...readOnlyHandlers,
+    ...actionHandlers,
     ...uploadHandlers
   };
 }

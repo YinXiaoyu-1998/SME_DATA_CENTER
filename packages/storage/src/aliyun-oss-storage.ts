@@ -8,7 +8,12 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { assertSafeObjectKey, createOriginalObjectKey } from "./object-key.js";
-import type { PutObjectInput, StorageAdapter, StorageObject } from "./storage-adapter.js";
+import type {
+  CreateDownloadUrlOptions,
+  PutObjectInput,
+  StorageAdapter,
+  StorageObject
+} from "./storage-adapter.js";
 
 const DEFAULT_KEY_PREFIX = "enterprise-hub";
 const DEFAULT_PRESIGN_EXPIRES_SECONDS = 900;
@@ -143,14 +148,17 @@ export class AliyunOssStorageAdapter implements StorageAdapter {
     };
   }
 
-  async createDownloadUrl(key: string): Promise<string> {
+  async createDownloadUrl(key: string, options: CreateDownloadUrlOptions = {}): Promise<string> {
     return this.presign(
       this.client,
       new GetObjectCommand({
         Bucket: this.bucket,
-        Key: this.physicalKey(key)
+        Key: this.physicalKey(key),
+        ...(options.downloadFileName
+          ? { ResponseContentDisposition: attachmentDisposition(options.downloadFileName) }
+          : {})
       }),
-      { expiresIn: this.presignExpiresInSeconds }
+      { expiresIn: options.expiresInSeconds ?? this.presignExpiresInSeconds }
     );
   }
 
@@ -167,6 +175,10 @@ export class AliyunOssStorageAdapter implements StorageAdapter {
     assertSafeObjectKey(key);
     return this.keyPrefix ? `${this.keyPrefix}/${key}` : key;
   }
+}
+
+function attachmentDisposition(fileName: string): string {
+  return `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
 async function bodyToBuffer(body: PutObjectInput["body"]): Promise<Buffer> {

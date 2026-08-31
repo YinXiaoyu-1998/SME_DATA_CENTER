@@ -1,14 +1,24 @@
-export const DOCUMENT_KINDS = ["evidence", "structured"] as const;
+export const DOCUMENT_KINDS = ["evidence", "structured", "quarantine_certificate"] as const;
 
 export type DocumentKindName = (typeof DOCUMENT_KINDS)[number];
 
-export const PHASE3_FILE_TYPES = ["md", "txt", "docx", "xlsx", "csv"] as const;
+export const PHASE3_FILE_TYPES = [
+  "md",
+  "txt",
+  "docx",
+  "xlsx",
+  "csv",
+  "jpg",
+  "jpeg",
+  "png"
+] as const;
 
 export type Phase3FileType = (typeof PHASE3_FILE_TYPES)[number];
 
 const FILE_TYPES_BY_DOCUMENT_KIND: Record<DocumentKindName, readonly Phase3FileType[]> = {
   evidence: ["md", "txt", "docx"],
-  structured: ["xlsx", "csv"]
+  structured: ["xlsx", "csv"],
+  quarantine_certificate: ["jpg", "jpeg", "png"]
 };
 
 export const PROCESSING_JOB_TYPES = ["evidence_document_index", "structured_import"] as const;
@@ -58,7 +68,7 @@ export const PHASE3_ERROR_CODES = {
   activeImportExists: "ACTIVE_IMPORT_EXISTS",
   importInProgress: "IMPORT_IN_PROGRESS",
   idempotencyKeyConflict: "IDEMPOTENCY_KEY_CONFLICT",
-  receiptNumberConflict: "RECEIPT_NUMBER_CONFLICT",
+  receiptIdConflict: "RECEIPT_ID_CONFLICT",
   processingFailed: "PROCESSING_FAILED",
   temporarilyUnavailable: "TEMPORARILY_UNAVAILABLE",
   internalError: "INTERNAL_ERROR"

@@ -333,6 +333,47 @@ const importStatusInputSchema = z
   })
   .strict();
 
+const receiptId = z.string().min(1).max(255);
+
+const uploadQuarantineCertificateInputSchema = z
+  .object({
+    file: uploadFileInputSchema,
+    receiptId: receiptId.describe("Receipt ID linked to this certificate."),
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.idempotencyKeyChars)
+      .describe("Client-generated retry/idempotency key."),
+    labelKeys: z
+      .array(labelKey)
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.labelsPerRequest)
+      .describe("Explicit existing label keys/visibility for the certificate.")
+  })
+  .strict();
+
+const queryQuarantineCertificatesInputSchema = z
+  .object({
+    receiptIds: z.array(receiptId).min(1).max(100).describe("Receipt IDs to query.")
+  })
+  .strict();
+
+const archiveQuarantineCertificatesInputSchema = z
+  .object({
+    sourceDocumentId: z.string().min(1).optional().describe("Source document ID to archive."),
+    receiptId: receiptId.optional().describe("Receipt ID whose certificates should be archived.")
+  })
+  .strict()
+  .refine((input) => Boolean(input.sourceDocumentId) !== Boolean(input.receiptId), {
+    message: "Provide exactly one of sourceDocumentId or receiptId."
+  });
+
+const sourceDocumentDownloadUrlInputSchema = z
+  .object({
+    sourceDocumentId: z.string().min(1).describe("Source document ID to download.")
+  })
+  .strict();
+
 export const ENTERPRISE_HUB_MCP_TOOL_NAMES = [
   "enterprise_hub_list_labels",
   "enterprise_hub_list_skills",
@@ -341,6 +382,10 @@ export const ENTERPRISE_HUB_MCP_TOOL_NAMES = [
   "query_structured_dataset",
   "upload_structured_dataset",
   "upload_evidence_document",
+  "upload_quarantine_certificate",
+  "query_quarantine_certificates",
+  "archive_quarantine_certificates",
+  "get_source_document_download_url",
   "get_evidence_document_status",
   "get_import_status"
 ] as const;
@@ -499,6 +544,68 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       { name: "labelKeys", required: true, description: "Explicit existing label keys." }
     ],
     resultShape: ["document", "processing", "documentIndex"]
+  }),
+  defineToolContract({
+    name: "upload_quarantine_certificate",
+    title: "Upload Enterprise Hub quarantine certificate",
+    description:
+      "Upload one JPG/PNG quarantine certificate linked to a receipt ID by calling authenticated multipart POST /v1/documents/quarantine-certificates.",
+    inputSchema: uploadQuarantineCertificateInputSchema,
+    inputFields: [
+      { name: "file", required: true, description: "Base64 upload image payload." },
+      { name: "receiptId", required: true, description: "Receipt ID linked to this image." },
+      { name: "idempotencyKey", required: true, description: "Retry/idempotency key." },
+      { name: "labelKeys", required: true, description: "Explicit existing label keys." }
+    ],
+    resultShape: [
+      "sourceDocumentId",
+      "receiptId",
+      "originalFileName",
+      "contentType",
+      "byteSize",
+      "uploadedAt"
+    ]
+  }),
+  defineToolContract({
+    name: "query_quarantine_certificates",
+    title: "Query Enterprise Hub quarantine certificates",
+    description:
+      "Query visible quarantine certificates by receipt IDs using authenticated POST /v1/quarantine-certificates/query.",
+    inputSchema: queryQuarantineCertificatesInputSchema,
+    inputFields: [{ name: "receiptIds", required: true, description: "1-100 receipt IDs." }],
+    resultShape: ["results[]: { receiptId, certificates[] }"]
+  }),
+  defineToolContract({
+    name: "archive_quarantine_certificates",
+    title: "Archive Enterprise Hub quarantine certificates",
+    description:
+      "Archive one quarantine certificate by source document ID, or admin-archive all certificates under one receipt ID.",
+    inputSchema: archiveQuarantineCertificatesInputSchema,
+    inputFields: [
+      { name: "sourceDocumentId", required: false, description: "Single source document ID." },
+      {
+        name: "receiptId",
+        required: false,
+        description: "Single receipt ID for admin bulk archive."
+      }
+    ],
+    resultShape: ["archivedCount"]
+  }),
+  defineToolContract({
+    name: "get_source_document_download_url",
+    title: "Get Enterprise Hub source document download URL",
+    description:
+      "Issue an authorized temporary source-file download URL using authenticated POST /v1/source-documents/:sourceDocumentId/download-url.",
+    inputSchema: sourceDocumentDownloadUrlInputSchema,
+    inputFields: [{ name: "sourceDocumentId", required: true, description: "Source document ID." }],
+    resultShape: [
+      "sourceDocumentId",
+      "downloadUrl",
+      "expiresAt",
+      "originalFileName",
+      "contentType",
+      "byteSize"
+    ]
   }),
   defineToolContract({
     name: "get_evidence_document_status",

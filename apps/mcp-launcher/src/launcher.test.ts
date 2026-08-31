@@ -201,6 +201,12 @@ describe("launcher local path upload proxy", () => {
     idempotencyKey: "base64-upload-key",
     labelKeys: ["store:baoli"]
   };
+  const base64QuarantineFile = {
+    name: "quarantine.png",
+    mediaType: "image/png",
+    encoding: "base64" as const,
+    contentBase64: "iVBORw0KGgo="
+  };
   const evidenceInput = () => ({
     file: {
       name: "sop.md",
@@ -212,24 +218,45 @@ describe("launcher local path upload proxy", () => {
     sourceSystem: "manual_acceptance_probe",
     labelKeys: ["store:baoli"]
   });
+  const quarantineInput = (filePath: string) => ({
+    file: {
+      name: "quarantine.png",
+      mediaType: "image/png",
+      encoding: "path",
+      filePath
+    },
+    receiptId: "SH2608250117",
+    idempotencyKey: "quarantine-upload-key",
+    labelKeys: ["store:baoli"]
+  });
 
-  it("registers path-capable schemas for both upload tools", () => {
+  it("registers path-capable schemas for upload tools", () => {
     const registered: Array<{ name: string; shape: Record<string, unknown> }> = [];
     registerLauncherTools(
       { registerTool: (name, options) => registered.push({ name, shape: options.inputSchema }) },
       createLauncherToolDependencies({ config, auth: fakeAuth() })
     );
 
-    for (const name of ["upload_structured_dataset", "upload_evidence_document"] as const) {
+    for (const name of [
+      "upload_structured_dataset",
+      "upload_evidence_document",
+      "upload_quarantine_certificate"
+    ] as const) {
       const shape = registered.find((entry) => entry.name === name)?.shape;
       const schema = z.object(shape as z.ZodRawShape);
       const input =
-        name === "upload_structured_dataset" ? pathInput("/tmp/dishes.csv") : evidenceInput();
+        name === "upload_structured_dataset"
+          ? pathInput("/tmp/dishes.csv")
+          : name === "upload_evidence_document"
+            ? evidenceInput()
+            : quarantineInput("/tmp/quarantine.png");
       expect(schema.safeParse(input).success).toBe(true);
       const base64 =
         name === "upload_structured_dataset"
           ? base64Input
-          : { ...evidenceInput(), file: base64Input.file };
+          : name === "upload_evidence_document"
+            ? { ...evidenceInput(), file: base64Input.file }
+            : { ...quarantineInput("/tmp/quarantine.png"), file: base64QuarantineFile };
       expect(schema.safeParse(base64).success).toBe(true);
       expect(
         schema.safeParse({
@@ -262,9 +289,13 @@ describe("launcher local path upload proxy", () => {
             "labelKeys"
           ])
         );
-      } else {
+      } else if (name === "upload_evidence_document") {
         expect(Object.keys(shape ?? {})).toEqual(
           expect.arrayContaining(["file", "title", "sourceSystem", "labelKeys"])
+        );
+      } else {
+        expect(Object.keys(shape ?? {})).toEqual(
+          expect.arrayContaining(["file", "receiptId", "idempotencyKey", "labelKeys"])
         );
       }
     }

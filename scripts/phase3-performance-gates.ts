@@ -269,9 +269,10 @@ function buildQdrantPayloads() {
 
 function generateStructuredCsv(rowCount: number) {
   const registry = getStructuredRegistry("dishes");
-  const header = registry.fields.map((field) => csvCell(field.sourceColumn)).join(",");
+  const fileFields = registry.fields.filter((field) => field.inputSource === "file");
+  const header = fileFields.map((field) => csvCell(field.sourceColumn)).join(",");
   const rows = Array.from({ length: rowCount }, (_, index) =>
-    registry.fields
+    fileFields
       .map((field) =>
         csvCell(
           field.canonicalName === "business_date"

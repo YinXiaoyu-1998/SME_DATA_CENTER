@@ -32,7 +32,9 @@ function escapeXml(value: string): string {
  * so the workbook stays representative without a huge shared string table.
  */
 export async function buildSyntheticDishesXlsx(dataRowCount: number): Promise<Buffer> {
-  const headers = getStructuredRegistry("dishes").fields.map((field) => field.sourceColumn);
+  const headers = getStructuredRegistry("dishes")
+    .fields.filter((field) => field.inputSource === "file")
+    .map((field) => field.sourceColumn);
   const shared = ["", ...headers, "2026-07-01", "2026-07-01 08:00:00", "合成门店", "合成菜品"];
   const sharedIndex = new Map(shared.map((value, index) => [value, index]));
   const cell = (column: number, row: number, text: string) =>

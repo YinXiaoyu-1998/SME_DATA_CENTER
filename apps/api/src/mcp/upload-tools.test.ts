@@ -89,6 +89,20 @@ function validStructuredInput(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function validQuarantineInput(overrides: Record<string, unknown> = {}) {
+  return {
+    file: inlineFile(
+      "quarantine.png",
+      "image/png",
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    ),
+    receiptId: "SH2608250117",
+    idempotencyKey: "quarantine-upload-key",
+    labelKeys: ["store:baoli"],
+    ...overrides
+  };
+}
+
 function inlineFile(name: string, mediaType: string, content: string | Buffer) {
   const body = Buffer.isBuffer(content) ? content : Buffer.from(content, "utf8");
 
@@ -164,6 +178,7 @@ describe("upload MCP tool handlers", () => {
 
     expect(Object.keys(handlers).sort()).toEqual([
       "upload_evidence_document",
+      "upload_quarantine_certificate",
       "upload_structured_dataset"
     ]);
   });
@@ -243,6 +258,38 @@ describe("upload MCP tool handlers", () => {
     expect(textField(fields, "startDate")).toBe("20260701");
     expect(textField(fields, "endDate")).toBe("20260731");
     expect(textField(fields, "idempotencyKey")).toBe("structured-upload-key");
+    expect(fields.get("labelKeys[]")?.map((value) => value.toString("utf8"))).toEqual([
+      "store:baoli"
+    ]);
+  });
+
+  it("maps quarantine certificate uploads to the dedicated multipart route", async () => {
+    const { handlers, requests } = createHandlers({});
+    const result = await handlers.upload_quarantine_certificate?.(
+      validQuarantineInput(),
+      mcpContext
+    );
+
+    expect(parseResult(result!)).toEqual({
+      ok: true,
+      requestPath: "/v1/documents/quarantine-certificates"
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      method: "POST",
+      url: "/v1/documents/quarantine-certificates"
+    });
+
+    const parts = parseMultipart(requests[0]!);
+    const file = parts.find((part) => part.name === "file");
+    const fields = multipartFields(requests[0]!);
+
+    expect(file).toMatchObject({
+      filename: "quarantine.png",
+      contentType: "image/png"
+    });
+    expect(textField(fields, "receiptId")).toBe("SH2608250117");
+    expect(textField(fields, "idempotencyKey")).toBe("quarantine-upload-key");
     expect(fields.get("labelKeys[]")?.map((value) => value.toString("utf8"))).toEqual([
       "store:baoli"
     ]);

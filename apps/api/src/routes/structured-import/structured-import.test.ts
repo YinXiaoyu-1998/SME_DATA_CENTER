@@ -122,14 +122,14 @@ describe("structured imports", () => {
 
   function deliveryReceiptCsv(
     input: {
-      receiptNumber?: string;
+      receiptId?: string;
       itemName?: string;
       receiptDate?: string;
     } = {}
   ) {
     return [
       ["送货单"],
-      ["单据号", input.receiptNumber ?? "SH2608250117", "订货机构", "保利店"],
+      ["单据号", input.receiptId ?? "SH2608250117", "订货机构", "保利店"],
       ["送货机构", "一次性-测试供应商", "收货日期", input.receiptDate ?? "2026-08-26"],
       ["序号", "物品名称", "规格型号", "收货数量", "收货金额"],
       ["1", input.itemName ?? "合成物品1", "件/6卷", "1", "80"],
@@ -347,8 +347,8 @@ describe("structured imports", () => {
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json()).toEqual({
       error: {
-        code: "RECEIPT_NUMBER_CONFLICT",
-        message: "Receipt number was reused with different import content."
+        code: "RECEIPT_ID_CONFLICT",
+        message: "Receipt ID was reused with different import content."
       }
     });
     expect(storagePutCalls()).toBe(1);
@@ -367,7 +367,7 @@ describe("structured imports", () => {
       idempotencyKey: "delivery-long-receipt",
       fileName: "delivery.csv",
       contentType: "text/csv",
-      body: Buffer.from(deliveryReceiptCsv({ receiptNumber: "收".repeat(255) }), "utf8")
+      body: Buffer.from(deliveryReceiptCsv({ receiptId: "收".repeat(255) }), "utf8")
     });
 
     expect(response.statusCode).toBe(202);

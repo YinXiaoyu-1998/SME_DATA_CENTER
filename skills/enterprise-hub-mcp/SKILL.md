@@ -15,7 +15,7 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `enterprise-hub-mcp-launcher@0.2.4`. Do not substitute another
+the exact npm package `enterprise-hub-mcp-launcher@0.2.5`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself.
 
@@ -67,6 +67,7 @@ Keep tool input within the public service contract:
   characters;
 - an evidence title is at most 512 characters and `sourceSystem` is at most 255 characters;
 - structured `enterpriseName` and `idempotencyKey` are each at most 255 characters;
+- receipt IDs and quarantine-certificate `idempotencyKey` values are each at most 255 characters;
 - each label key is at most 128 characters, with at most 50 labels per upload;
 - an evidence question is at most 4,000 characters; each evidence filter ID is at most 64
   characters, with at most 100 IDs in each filter group;
@@ -183,9 +184,9 @@ For `delivery_ledger` and `supplier_catalog`, call `upload_structured_dataset` w
 `enterpriseName`, `idempotencyKey`, and existing `labelKeys`. Do not send `startDate`, `endDate`,
 or `snapshotDate`.
 
-- `delivery_ledger` accepts one complete CSV/XLSX delivery receipt per file. The receipt number
+- `delivery_ledger` accepts one complete CSV/XLSX delivery receipt per file. The receipt ID
   and date are derived from `单据号` and `收货日期`; each item row becomes one ledger row. The
-  normalized receipt number is the organization-scoped natural idempotency key, so different
+  normalized receipt ID is the organization-scoped natural idempotency key, so different
   content for the same receipt is a conflict rather than an overwrite.
 - `supplier_catalog` requires `供应商名称` and accepts the other controlled supplier columns,
   including `联系人电话` and `单位地址`, when present. Unknown or unnamed columns are rejected.
@@ -200,6 +201,32 @@ or `snapshotDate`.
   current catalog is available or visible, no exact match exists, the source value is blank, or the
   supplier name is ambiguous. Enrichment never changes the authorized ledger page or falls back to
   an older catalog.
+- Select `source_document_id` on detail-row structured queries when the employee needs the
+  original uploaded receipt file. This field is not returned by default and cannot filter, sort,
+  group, or aggregate.
+
+## Quarantine Certificates And Source Downloads
+
+Use quarantine-certificate tools only for animal quarantine certificate images that should be
+linked to delivery-ledger receipt IDs. The service does not inspect whether the photo actually
+looks like a certificate.
+
+- Upload with `upload_quarantine_certificate`: provide one JPG/JPEG/PNG file, one `receiptId`, one
+  stable `idempotencyKey`, and one or more existing `labelKeys`. Use `file.encoding:"path"` when
+  possible. If the employee gives several photos for the same receipt, call the tool once per
+  photo.
+- `receiptId` is the public business key for both delivery ledgers and certificates. The service
+  trims and uppercases it. Do not call it `receiptNumber`, do not treat it as a count, and do not
+  require the corresponding delivery ledger to already exist.
+- Query with `query_quarantine_certificates` using explicit `receiptIds` only. It returns one group
+  per requested receipt ID, each with zero or more certificates. An empty group means no visible
+  matching certificate; do not infer whether a hidden one exists.
+- Archive with `archive_quarantine_certificates`. Use `sourceDocumentId` for a single visible
+  certificate. Only admins may archive by `receiptId`, which archives all visible certificates
+  under that receipt ID.
+- For downloading originals, call `get_source_document_download_url` with a visible
+  `sourceDocumentId`. The result is a 24-hour attachment link; return the link to the employee
+  rather than fetching or proxying the file bytes yourself.
 
 ## Official Install Or Update
 
@@ -216,14 +243,14 @@ current OS user and only on the invoking agent's configuration.
 
    | Platform | Launcher directory                                                      |
    | -------- | ----------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.4/` |
-   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.4\\`           |
+   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/` |
+   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.5\\`           |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.2.4
+   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.2.5
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -235,12 +262,12 @@ current OS user and only on the invoking agent's configuration.
 
    ```sh
    ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.4/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.4\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.5\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
    ```
 
    The stable self-check contract is safe machine-readable JSON with this shape:
@@ -248,7 +275,7 @@ current OS user and only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.2.4",
+     "launcherVersion": "0.2.5",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -277,8 +304,8 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                                              | Arguments | Environment                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.4/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.4\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.5\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -303,7 +330,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `enterprise_hub_login` to obtain a new link.
 
-This flow is available in launcher 0.2.2 and later; this document pins launcher 0.2.4.
+This flow is available in launcher 0.2.2 and later; this document pins launcher 0.2.5.
 
 ## Configure The Invoking Agent
 
@@ -351,7 +378,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
   enterprise-hub -- \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.4/node_modules/.bin/enterprise-hub-mcp-launcher" serve
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher" serve
 "$CODEX_BIN" mcp get enterprise-hub --json
 ```
 
@@ -363,7 +390,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.4\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.5\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get enterprise-hub --json
 ```
@@ -399,7 +426,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for Enterprise Hub.
 
    ```sh
    openclaw mcp add enterprise-hub \
-     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.4/node_modules/.bin/enterprise-hub-mcp-launcher" \
+     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher" \
      --arg serve \
      --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -470,8 +497,16 @@ For authorized service tools:
   exact bytes mechanically. Use `file.encoding:"base64"` only for small inline payloads. Never
   reconstruct, normalize, or translate upload contents.
 - Follow Upload Completion And Status Polling after every `202` upload; never start a worker.
+- Quarantine-certificate uploads are synchronous `201` operations, not background imports. Call
+  `upload_quarantine_certificate` once per JPG/PNG image with exactly one `receiptId`, one
+  idempotency key, and existing label keys. A receipt ID may have zero, one, or multiple
+  certificates; one certificate upload request contains only one image.
 - Reuse a structured-import idempotency key only for the exact same file and metadata. Treat an
   import-status 404 as "not visible or missing" and do not infer hidden metadata.
+- Reuse a quarantine-certificate idempotency key only for the exact same image bytes, receipt ID,
+  and label keys. Use `query_quarantine_certificates` with explicit `receiptIds`; never try to
+  query all quarantine certificates. Use `get_source_document_download_url` with a returned
+  `sourceDocumentId` when the employee asks to download or view the original source file.
 - Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged
   with the same query, filters, and limit. Restart without it on `INVALID_CURSOR`; on
   `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more results.
@@ -523,12 +558,12 @@ the pinned launcher directly:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.4/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher" logout
 ```
 
 ```powershell
 $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.4\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.5\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
 ```
 
 The stable logout contract returns only

@@ -76,6 +76,24 @@ const validInputs = {
     sourceSystem: "manual",
     labelKeys: ["all_staff"]
   },
+  upload_quarantine_certificate: {
+    file: {
+      name: "quarantine.png",
+      mediaType: "image/png",
+      encoding: "base64",
+      contentBase64: "iVBORw0KGgo="
+    },
+    receiptId: "SH2608250117",
+    idempotencyKey: "quarantine-retry-key",
+    labelKeys: ["store:baoli"]
+  },
+  query_quarantine_certificates: {
+    receiptIds: ["SH2608250117", "SH2608260003"]
+  },
+  archive_quarantine_certificates: {
+    sourceDocumentId: "doc_1"
+  },
+  get_source_document_download_url: { sourceDocumentId: "doc_1" },
   get_evidence_document_status: { documentId: "doc_1" },
   get_import_status: { importBatchId: "imp_1" }
 } satisfies Record<EnterpriseHubMcpToolName, Record<string, unknown>>;
@@ -266,6 +284,41 @@ const invalidInputCases = [
     ]
   },
   {
+    tool: "upload_quarantine_certificate",
+    cases: [
+      { label: "missing inline file", input: { receiptId: "SH1", labelKeys: ["store:baoli"] } },
+      {
+        label: "empty receipt id",
+        input: { ...validInputs.upload_quarantine_certificate, receiptId: "" }
+      },
+      {
+        label: "empty label keys",
+        input: { ...validInputs.upload_quarantine_certificate, labelKeys: [] }
+      }
+    ]
+  },
+  {
+    tool: "query_quarantine_certificates",
+    cases: [
+      { label: "missing receipt ids", input: {} },
+      { label: "empty receipt ids", input: { receiptIds: [] } }
+    ]
+  },
+  {
+    tool: "archive_quarantine_certificates",
+    cases: [
+      { label: "missing selector", input: {} },
+      { label: "both selectors", input: { sourceDocumentId: "doc_1", receiptId: "SH1" } }
+    ]
+  },
+  {
+    tool: "get_source_document_download_url",
+    cases: [
+      { label: "missing source document id", input: {} },
+      { label: "empty source document id", input: { sourceDocumentId: "" } }
+    ]
+  },
+  {
     tool: "get_evidence_document_status",
     cases: [
       { label: "missing document id", input: {} },
@@ -294,6 +347,10 @@ describe("Enterprise Hub MCP contract", () => {
       "query_structured_dataset",
       "upload_structured_dataset",
       "upload_evidence_document",
+      "upload_quarantine_certificate",
+      "query_quarantine_certificates",
+      "archive_quarantine_certificates",
+      "get_source_document_download_url",
       "get_evidence_document_status",
       "get_import_status"
     ]);

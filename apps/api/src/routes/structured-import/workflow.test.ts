@@ -85,7 +85,7 @@ describe("structured import workflow metadata", () => {
       canonicalStructuredImportFileName({
         dataset: "delivery_ledger",
         enterpriseName: "Maijia",
-        receiptNumber: "SH2608250117",
+        receiptId: "SH2608250117",
         startDate: "20260826",
         endDate: "20260826",
         fileType: "csv"
@@ -162,9 +162,9 @@ describe("structured import workflow metadata", () => {
       endDate: "20260826",
       fileType: "xlsx" as const
     };
-    const nameA = canonicalStructuredImportFileName({ ...input, receiptNumber: receiptA });
-    const nameARepeat = canonicalStructuredImportFileName({ ...input, receiptNumber: receiptA });
-    const nameB = canonicalStructuredImportFileName({ ...input, receiptNumber: receiptB });
+    const nameA = canonicalStructuredImportFileName({ ...input, receiptId: receiptA });
+    const nameARepeat = canonicalStructuredImportFileName({ ...input, receiptId: receiptA });
+    const nameB = canonicalStructuredImportFileName({ ...input, receiptId: receiptB });
     const keyA = createOriginalObjectKey({
       orgId: "default-org",
       documentId: "doc_123456789012345678901234",

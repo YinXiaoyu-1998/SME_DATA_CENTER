@@ -29,8 +29,8 @@ type StructuredRowTableName =
 
 export interface StructuredFieldStorageMapping {
   table: StructuredRowTableName;
-  column: "payload";
-  jsonPath: string;
+  column: "payload" | "source_document_id";
+  jsonPath?: string;
 }
 
 export interface StructuredFieldRegistryEntry {
@@ -535,10 +535,11 @@ const VIP_CANONICAL_OVERRIDES: Record<string, string> = {
 };
 
 const DELIVERY_LEDGER_FIELD_DEFINITIONS = [
+  ["source_document_id", "source_document_id", "string", false, "derived"],
   ["entry_id", "entry_id", "string", false, "derived"],
   ["purchase_date", "收货日期", "date", false, "derived"],
   ["store_name", "订货机构", "string", false, "derived"],
-  ["receipt_number", "单据号", "string", false, "derived"],
+  ["receipt_id", "单据号", "string", false, "derived"],
   ["supplier_name", "送货机构", "string", false, "derived"],
   ["item_name", "物品名称", "string", false, "file"],
   ["specification", "规格型号", "string", false, "file"],
@@ -784,6 +785,7 @@ function createRegistry(input: {
     metadataPolicy: input.metadataPolicy,
     datePolicy: input.datePolicy,
     fields: [
+      createSourceDocumentIdField(input.rowTable),
       ...(input.metadataFields ?? []).map((field) => ({
         ...field,
         aliases: [field.sourceColumn],
@@ -857,6 +859,7 @@ function createDeliveryLedgerField(input: {
   inputSource: "file" | "derived" | "dynamic_lookup";
 }): StructuredFieldRegistryEntry {
   const isDynamic = input.inputSource === "dynamic_lookup";
+  const isSourceDocumentId = input.canonicalName === "source_document_id";
 
   return {
     ...input,
@@ -864,22 +867,53 @@ function createDeliveryLedgerField(input: {
     sensitivity: input.type === "decimal" ? ("business_metric" as const) : ("normal" as const),
     lifecycle: "active",
     volatility: "stable_export",
-    defaultReturn: true,
+    defaultReturn: !isSourceDocumentId,
     operators: isDynamic ? [] : operatorsForType(input.type),
-    capabilities: isDynamic
-      ? { filter: false, sort: false, group: false, aggregate: false }
-      : {
-          filter: true,
-          sort: true,
-          group: input.type === "string" || input.type === "date",
-          aggregate: input.type === "decimal"
-        },
+    capabilities:
+      isDynamic || isSourceDocumentId
+        ? { filter: false, sort: false, group: false, aggregate: false }
+        : {
+            filter: true,
+            sort: true,
+            group: input.type === "string" || input.type === "date",
+            aggregate: input.type === "decimal"
+          },
     indexStatus: "planned",
     valueLimits: valueLimitsForType(input.type),
+    storage: isSourceDocumentId
+      ? {
+          table: "delivery_ledger_rows",
+          column: "source_document_id"
+        }
+      : {
+          table: "delivery_ledger_rows",
+          column: "payload",
+          jsonPath: `$.${input.canonicalName}`
+        }
+  };
+}
+
+function createSourceDocumentIdField(
+  rowTable: StructuredRowTableName
+): StructuredFieldRegistryEntry {
+  return {
+    canonicalName: "source_document_id",
+    sourceColumn: "source_document_id",
+    aliases: ["source_document_id"],
+    type: "string",
+    nullable: false,
+    inputSource: "derived",
+    sensitivity: "normal",
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: false,
+    operators: operatorsForType("string"),
+    capabilities: { filter: false, sort: false, group: false, aggregate: false },
+    indexStatus: "not_indexed",
+    valueLimits: valueLimitsForType("string"),
     storage: {
-      table: "delivery_ledger_rows",
-      column: "payload",
-      jsonPath: `$.${input.canonicalName}`
+      table: rowTable,
+      column: "source_document_id"
     }
   };
 }

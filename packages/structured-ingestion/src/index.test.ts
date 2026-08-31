@@ -31,7 +31,7 @@ describe("structured ingestion", () => {
     });
 
     expect(result.derivedMetadata).toEqual({
-      receiptNumber: "SH2608250117",
+      receiptId: "SH2608250117",
       receiptDate: "2026-08-26"
     });
     expect(result.rows).toHaveLength(13);
@@ -41,7 +41,7 @@ describe("structured ingestion", () => {
       expect(row.payload).toMatchObject({
         purchase_date: "2026-08-26",
         store_name: "合成门店",
-        receipt_number: "SH2608250117",
+        receipt_id: "SH2608250117",
         supplier_name: "一次性-测试供应商",
         item_name: `合成物品${index + 1}`,
         specification: "件/6卷",
@@ -68,7 +68,7 @@ describe("structured ingestion", () => {
     });
 
     expect(profile.derivedMetadata).toEqual({
-      receiptNumber: "SH2608250117",
+      receiptId: "SH2608250117",
       receiptDate: "2026-08-26"
     });
     expect(JSON.stringify(profile)).not.toContain("entry_id");
@@ -156,7 +156,7 @@ describe("structured ingestion", () => {
 
     expect(result.rows).toHaveLength(13);
     expect(result.rows[0]?.payload).toMatchObject({
-      receipt_number: "SH2608250117",
+      receipt_id: "SH2608250117",
       item_name: "合成物品1"
     });
   });
@@ -944,7 +944,7 @@ describe("structured ingestion", () => {
   });
 
   test("maps reordered CSV headers and RFC4180 quoted fields by their resolved source index", async () => {
-    const headers = getStructuredRegistry("dishes").fields.map((field) => field.sourceColumn);
+    const headers = dishesHeaders();
     const productIndex = headers.indexOf("菜品名称");
     const dateIndex = headers.indexOf("营业日");
     [headers[productIndex], headers[dateIndex]] = [headers[dateIndex]!, headers[productIndex]!];
@@ -974,7 +974,7 @@ describe("structured ingestion", () => {
   });
 
   test("rejects malformed CSV quoting and scalar suffix junk", async () => {
-    const headers = getStructuredRegistry("dishes").fields.map((field) => field.sourceColumn);
+    const headers = dishesHeaders();
     const row = headers.map(() => "");
     row[headers.indexOf("营业日")] = "20260701";
     row[headers.indexOf("菜品销售数量")] = "12abc";
@@ -1348,7 +1348,9 @@ describe("structured ingestion", () => {
 });
 
 function dishesHeaders() {
-  return getStructuredRegistry("dishes").fields.map((field) => field.sourceColumn);
+  return getStructuredRegistry("dishes")
+    .fields.filter((field) => field.inputSource === "file")
+    .map((field) => field.sourceColumn);
 }
 
 function deliveryLedgerRows(overrides: { metadataRows?: string[][]; itemRows?: string[][] } = {}) {
@@ -1513,14 +1515,16 @@ function catalogRow(overrides: Record<string, string> = {}) {
 }
 
 function dishesRow() {
-  return getStructuredRegistry("dishes").fields.map((field, index) => {
-    if (field.canonicalName === "business_date") return "2026-07-01";
-    if (field.type === "integer") return String(index + 1);
-    if (field.type === "decimal" || field.type === "percent") return `${index + 1}.5`;
-    if (field.type === "date") return "2026-07-01";
-    if (field.type === "date_time") return "2026-07-01 12:30:00";
-    return `value_${index + 1}`;
-  });
+  return getStructuredRegistry("dishes")
+    .fields.filter((field) => field.inputSource === "file")
+    .map((field, index) => {
+      if (field.canonicalName === "business_date") return "2026-07-01";
+      if (field.type === "integer") return String(index + 1);
+      if (field.type === "decimal" || field.type === "percent") return `${index + 1}.5`;
+      if (field.type === "date") return "2026-07-01";
+      if (field.type === "date_time") return "2026-07-01 12:30:00";
+      return `value_${index + 1}`;
+    });
 }
 
 function validDishesCsvRows(rows: string[][]) {

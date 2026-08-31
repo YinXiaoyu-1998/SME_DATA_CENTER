@@ -37,10 +37,11 @@ describe("structured field registries", () => {
     const ledger = getStructuredRegistry("delivery_ledger");
 
     expect(ledger.fields.map((field) => field.canonicalName)).toEqual([
+      "source_document_id",
       "entry_id",
       "purchase_date",
       "store_name",
-      "receipt_number",
+      "receipt_id",
       "supplier_name",
       "item_name",
       "specification",
@@ -53,6 +54,16 @@ describe("structured field registries", () => {
     ]);
     expect(ledger.fields).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          canonicalName: "source_document_id",
+          inputSource: "derived",
+          defaultReturn: false,
+          capabilities: { filter: false, sort: false, group: false, aggregate: false },
+          storage: {
+            table: "delivery_ledger_rows",
+            column: "source_document_id"
+          }
+        }),
         expect.objectContaining({
           canonicalName: "entry_id",
           inputSource: "derived",
@@ -93,7 +104,11 @@ describe("structured field registries", () => {
   test("preserves every controlled supplier source column with stable lookup fields", () => {
     const supplier = getStructuredRegistry("supplier_catalog");
 
-    expect(supplier.fields.map((field) => field.sourceColumn)).toEqual([
+    expect(
+      supplier.fields
+        .filter((field) => field.inputSource === "file")
+        .map((field) => field.sourceColumn)
+    ).toEqual([
       "供应商编码",
       "供应商名称",
       "供应商简称",
@@ -149,10 +164,26 @@ describe("structured field registries", () => {
     }
   });
 
+  test("publishes source document ID as a detail-only system field for every dataset", () => {
+    for (const dataset of STRUCTURED_DATASETS) {
+      expect(getStructuredRegistry(dataset).fields[0]).toMatchObject({
+        canonicalName: "source_document_id",
+        sourceColumn: "source_document_id",
+        inputSource: "derived",
+        defaultReturn: false,
+        capabilities: { filter: false, sort: false, group: false, aggregate: false },
+        storage: {
+          table: getStructuredRegistry(dataset).rowTable,
+          column: "source_document_id"
+        }
+      });
+    }
+  });
+
   test("cover every reviewed dishes and business export column", () => {
-    expect(getStructuredRegistry("dishes").fields).toHaveLength(51);
-    expect(getStructuredRegistry("business").fields).toHaveLength(152);
-    expect(getStructuredRegistry("vip").fields).toHaveLength(66);
+    expect(getStructuredRegistry("dishes").fields).toHaveLength(52);
+    expect(getStructuredRegistry("business").fields).toHaveLength(153);
+    expect(getStructuredRegistry("vip").fields).toHaveLength(67);
   });
 
   test("registers the catalog snapshot schema and its metadata policy", () => {
@@ -190,15 +221,17 @@ describe("structured field registries", () => {
         })
       ])
     );
-    expect(catalog.fields).toHaveLength(11);
+    expect(catalog.fields).toHaveLength(12);
     expect(
-      catalog.fields.map(({ canonicalName, sourceColumn, type, nullable, inputSource }) => ({
-        canonicalName,
-        sourceColumn,
-        type,
-        nullable,
-        inputSource
-      }))
+      catalog.fields
+        .filter((field) => field.canonicalName !== "source_document_id")
+        .map(({ canonicalName, sourceColumn, type, nullable, inputSource }) => ({
+          canonicalName,
+          sourceColumn,
+          type,
+          nullable,
+          inputSource
+        }))
     ).toEqual([
       {
         canonicalName: "snapshot_date",
@@ -345,13 +378,14 @@ describe("structured field registries", () => {
   });
 
   test("reject unknown, missing, ambiguous, and fuzzy-renamed headers", () => {
-    const validHeaders = STRUCTURED_DATASET_REGISTRIES.dishes.fields.map(
-      (field) => field.sourceColumn
+    const validFields = STRUCTURED_DATASET_REGISTRIES.dishes.fields.filter(
+      (field) => field.inputSource === "file"
     );
+    const validHeaders = validFields.map((field) => field.sourceColumn);
 
     expect(validateStructuredHeaders("dishes", validHeaders)).toEqual({
       ok: true,
-      fields: STRUCTURED_DATASET_REGISTRIES.dishes.fields.map((field) => field.canonicalName)
+      fields: validFields.map((field) => field.canonicalName)
     });
 
     expect(validateStructuredHeaders("dishes", [...validHeaders, "不存在的列"])).toMatchObject({
@@ -384,7 +418,9 @@ describe("structured field registries", () => {
   });
 
   test("resolves reordered headers to their actual source indices", () => {
-    const headers = STRUCTURED_DATASET_REGISTRIES.dishes.fields.map((field) => field.sourceColumn);
+    const headers = STRUCTURED_DATASET_REGISTRIES.dishes.fields
+      .filter((field) => field.inputSource === "file")
+      .map((field) => field.sourceColumn);
     const quantityIndex = headers.indexOf("菜品销售数量");
     const productIndex = headers.indexOf("关联菜品名称");
     [headers[quantityIndex], headers[productIndex]] = [
@@ -423,13 +459,14 @@ describe("structured field registries", () => {
   });
 
   test("accepts the reviewed vip member export header and rejects missing columns", () => {
-    const validHeaders = STRUCTURED_DATASET_REGISTRIES.vip.fields.map(
-      (field) => field.sourceColumn
+    const validFields = STRUCTURED_DATASET_REGISTRIES.vip.fields.filter(
+      (field) => field.inputSource === "file"
     );
+    const validHeaders = validFields.map((field) => field.sourceColumn);
 
     expect(validateStructuredHeaders("vip", validHeaders)).toEqual({
       ok: true,
-      fields: STRUCTURED_DATASET_REGISTRIES.vip.fields.map((field) => field.canonicalName)
+      fields: validFields.map((field) => field.canonicalName)
     });
 
     expect(validateStructuredHeaders("vip", validHeaders.slice(1))).toMatchObject({

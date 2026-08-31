@@ -12,6 +12,8 @@ import { registerCatalogRoutes } from "./routes/catalog.js";
 import { registerStructuredQueryRoutes } from "./routes/structured-query.js";
 import { registerEvidenceRoutes } from "./routes/evidence.js";
 import { registerStructuredImportRoutes } from "./routes/structured-import/routes.js";
+import { registerQuarantineCertificateRoutes } from "./routes/quarantine-certificates.js";
+import { registerSourceDocumentRoutes } from "./routes/source-documents.js";
 
 export type { ApiServerOptions } from "./app-context.js";
 
@@ -24,6 +26,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   const storage = context.storage;
   const structuredImports = context.structuredImports;
   const structuredQueries = context.structuredQueries;
+  const quarantineCertificates = context.quarantineCertificates;
+  const sourceDocuments = context.sourceDocuments;
   const skills = context.skills;
   const evidence = context.evidence;
   const createBusinessRequestAudit = context.createBusinessRequestAudit;
@@ -105,6 +109,21 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     storage,
     structuredImports,
     runtimeLimits,
+    createBusinessRequestAudit
+  });
+
+  registerQuarantineCertificateRoutes(app, {
+    auth: requestAuth,
+    documents,
+    storage,
+    quarantineCertificates,
+    createBusinessRequestAudit
+  });
+
+  registerSourceDocumentRoutes(app, {
+    auth: requestAuth,
+    sourceDocuments,
+    storage,
     createBusinessRequestAudit
   });
 

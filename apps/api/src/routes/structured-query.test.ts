@@ -44,6 +44,12 @@ function context(repository: StructuredQueryRepository): ApiServerContext {
     evidence: () => {
       throw new Error("not used");
     },
+    quarantineCertificates: () => {
+      throw new Error("not used");
+    },
+    sourceDocuments: () => {
+      throw new Error("not used");
+    },
     close: async () => undefined
   };
 }

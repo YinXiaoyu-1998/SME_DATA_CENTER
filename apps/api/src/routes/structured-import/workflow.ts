@@ -249,7 +249,7 @@ export function canonicalStructuredImportFileName(input: {
   startDate?: string | null;
   endDate?: string | null;
   snapshotDate?: string;
-  receiptNumber?: string;
+  receiptId?: string;
   contentDigest?: string;
   fileHash?: string;
   fileType: "xlsx" | "csv";
@@ -272,7 +272,7 @@ export function canonicalStructuredImportFileName(input: {
     registry.metadataPolicy === "snapshot"
       ? (input.snapshotDate ?? "snapshot")
       : registry.metadataPolicy === "derived_receipt"
-        ? `${canonicalValueSegment(input.receiptNumber ?? "receipt")}_${input.startDate ?? "undated"}`
+        ? `${canonicalValueSegment(input.receiptId ?? "receipt")}_${input.startDate ?? "undated"}`
         : registry.metadataPolicy === "none"
           ? (input.contentDigest ?? input.fileHash ?? "content")
           : `${input.startDate}_${input.endDate}`;
@@ -325,7 +325,7 @@ export function hasStructuredImportCode(error: unknown): error is { code: string
     code === "IDEMPOTENCY_KEY_CONFLICT" ||
     code === "ACTIVE_IMPORT_EXISTS" ||
     code === "IMPORT_IN_PROGRESS" ||
-    code === "RECEIPT_NUMBER_CONFLICT"
+    code === "RECEIPT_ID_CONFLICT"
   );
 }
 
@@ -342,8 +342,8 @@ export function structuredImportConflictMessage(code: string): string {
     return "An import is already in progress for this dataset date window.";
   }
 
-  if (code === "RECEIPT_NUMBER_CONFLICT") {
-    return "Receipt number was reused with different import content.";
+  if (code === "RECEIPT_ID_CONFLICT") {
+    return "Receipt ID was reused with different import content.";
   }
 
   return "Structured import conflict.";

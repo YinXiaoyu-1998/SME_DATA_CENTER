@@ -26,7 +26,8 @@ describe("structured query compiler", () => {
       query: {
         dataset: "delivery_ledger",
         select: [
-          "receipt_number",
+          "receipt_id",
+          "source_document_id",
           "supplier_name",
           "supplier_contact_phone",
           "supplier_unit_address"
@@ -36,7 +37,8 @@ describe("structured query compiler", () => {
     });
 
     expect(compiled.selectedFields).toEqual([
-      "receipt_number",
+      "receipt_id",
+      "source_document_id",
       "supplier_name",
       "supplier_contact_phone",
       "supplier_unit_address"
@@ -45,7 +47,8 @@ describe("structured query compiler", () => {
       "supplier_contact_phone",
       "supplier_unit_address"
     ]);
-    expect(compiled.sql).toContain("`receipt_number`");
+    expect(compiled.sql).toContain("`receipt_id`");
+    expect(compiled.sql).toContain("r.source_document_id AS `source_document_id`");
     expect(compiled.sql).toContain("`supplier_name`");
     expect(compiled.sql).not.toContain("`supplier_contact_phone`");
     expect(compiled.sql).not.toContain("`supplier_unit_address`");
@@ -69,6 +72,24 @@ describe("structured query compiler", () => {
       { aggregates: [{ op: "count", field: "supplier_unit_address", as: "address_count" }] }
     ]
   ])("rejects dynamic delivery fields in %s capabilities", (_capability, query) => {
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          employee: { role: "admin", labels: [] },
+          orgId: "default-org",
+          query: { dataset: "delivery_ledger", ...query },
+          cursorSecret: "cursor-secret"
+        }),
+      PHASE3_ERROR_CODES.unsupportedCapability
+    );
+  });
+
+  it.each([
+    ["filter", { filter: { field: "source_document_id", op: "eq", value: "doc_1" } }],
+    ["sort", { sort: [{ field: "source_document_id", direction: "asc" }] }],
+    ["group", { groupBy: ["source_document_id"], aggregates: [{ op: "count", as: "row_count" }] }],
+    ["aggregate", { aggregates: [{ op: "count", field: "source_document_id", as: "source_docs" }] }]
+  ])("rejects source_document_id in %s capabilities", (_capability, query) => {
     expectStructuredError(
       () =>
         compileStructuredQuery({

@@ -285,8 +285,8 @@ export function createInMemoryStructuredImportRepository(
 
         if (existingNaturalKeyBatch) {
           if (existingNaturalKeyBatch.requestFingerprint !== input.requestFingerprint) {
-            throw Object.assign(new Error("RECEIPT_NUMBER_CONFLICT"), {
-              code: "RECEIPT_NUMBER_CONFLICT"
+            throw Object.assign(new Error("RECEIPT_ID_CONFLICT"), {
+              code: "RECEIPT_ID_CONFLICT"
             });
           }
 

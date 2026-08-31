@@ -47,30 +47,34 @@ Authorization rules:
 
 ## Active Public HTTP Surface
 
-| Method | Path                                        | Purpose                                      |
-| ------ | ------------------------------------------- | -------------------------------------------- |
-| `GET`  | `/healthz`                                  | Liveness                                     |
-| `GET`  | `/.well-known/oauth-authorization-server`   | OAuth discovery and launcher version policy  |
-| `GET`  | `/oauth/authorize`                          | Browser authorization transaction            |
-| `POST` | `/oauth/authorize/login`                    | Browser password verification                |
-| `POST` | `/oauth/token`                              | Code exchange or durable credential rotation |
-| `POST` | `/oauth/revoke`                             | Revoke a durable session family              |
-| `GET`  | `/auth/password/setup`                      | Fragment-safe setup bootstrap                |
-| `POST` | `/auth/password/setup/session`              | Exchange a one-time setup grant              |
-| `GET`  | `/auth/password/setup/form`                 | Render the protected password form           |
-| `POST` | `/auth/password/setup/complete`             | Set/reset password and revoke old sessions   |
-| `POST` | `/mcp`                                      | Authenticated stateless Streamable HTTP MCP  |
-| `GET`  | `/me`                                       | Current employee/session metadata            |
-| `GET`  | `/labels`                                   | Label catalog                                |
-| `GET`  | `/skills`                                   | Approved Skill Directory metadata            |
-| `GET`  | `/audit`                                    | Admin audit query                            |
-| `POST` | `/v1/documents/evidence`                    | Upload MD/TXT/DOCX evidence document         |
-| `GET`  | `/v1/documents/evidence/:documentId/status` | Evidence document + index status             |
-| `POST` | `/v1/evidence/search`                       | Search visible evidence chunks               |
-| `POST` | `/v1/structured/imports`                    | Import supported CSV/XLSX structured dataset |
-| `GET`  | `/v1/structured/imports/:importBatchId`     | Structured import status                     |
-| `GET`  | `/v1/structured/datasets`                   | Structured dataset schema discovery          |
-| `POST` | `/v1/structured/query`                      | Controlled read-only structured query        |
+| Method | Path                                            | Purpose                                      |
+| ------ | ----------------------------------------------- | -------------------------------------------- |
+| `GET`  | `/healthz`                                      | Liveness                                     |
+| `GET`  | `/.well-known/oauth-authorization-server`       | OAuth discovery and launcher version policy  |
+| `GET`  | `/oauth/authorize`                              | Browser authorization transaction            |
+| `POST` | `/oauth/authorize/login`                        | Browser password verification                |
+| `POST` | `/oauth/token`                                  | Code exchange or durable credential rotation |
+| `POST` | `/oauth/revoke`                                 | Revoke a durable session family              |
+| `GET`  | `/auth/password/setup`                          | Fragment-safe setup bootstrap                |
+| `POST` | `/auth/password/setup/session`                  | Exchange a one-time setup grant              |
+| `GET`  | `/auth/password/setup/form`                     | Render the protected password form           |
+| `POST` | `/auth/password/setup/complete`                 | Set/reset password and revoke old sessions   |
+| `POST` | `/mcp`                                          | Authenticated stateless Streamable HTTP MCP  |
+| `GET`  | `/me`                                           | Current employee/session metadata            |
+| `GET`  | `/labels`                                       | Label catalog                                |
+| `GET`  | `/skills`                                       | Approved Skill Directory metadata            |
+| `GET`  | `/audit`                                        | Admin audit query                            |
+| `POST` | `/v1/documents/evidence`                        | Upload MD/TXT/DOCX evidence document         |
+| `GET`  | `/v1/documents/evidence/:documentId/status`     | Evidence document + index status             |
+| `POST` | `/v1/evidence/search`                           | Search visible evidence chunks               |
+| `POST` | `/v1/documents/quarantine-certificates`         | Upload one JPG/PNG quarantine certificate    |
+| `POST` | `/v1/quarantine-certificates/query`             | Query certificates by receipt IDs            |
+| `POST` | `/v1/quarantine-certificates/archive`           | Archive certificate(s)                       |
+| `POST` | `/v1/source-documents/:documentId/download-url` | Issue a temporary source-file download URL   |
+| `POST` | `/v1/structured/imports`                        | Import supported CSV/XLSX structured dataset |
+| `GET`  | `/v1/structured/imports/:importBatchId`         | Structured import status                     |
+| `GET`  | `/v1/structured/datasets`                       | Structured dataset schema discovery          |
+| `POST` | `/v1/structured/query`                          | Controlled read-only structured query        |
 
 ## Private HTTP Surface
 
@@ -87,6 +91,7 @@ HTTP and MCP use the same semantic input limits:
 | Evidence `sourceSystem`                         |                    255 characters |
 | Structured `enterpriseName` / `enterprise_name` |                    255 characters |
 | Structured `idempotencyKey`                     |                    255 characters |
+| Receipt ID / quarantine idempotency key         |                    255 characters |
 | Label key / labels per request                  |        128 characters / 50 labels |
 | Evidence query                                  |                  4,000 characters |
 | Evidence filter ID / IDs per group              |           64 characters / 100 IDs |
@@ -321,6 +326,146 @@ Cursor failures:
 
 When the fixed 200-candidate retrieval window is reached, responses include `EVIDENCE_CANDIDATE_WINDOW_TRUNCATED` in `warnings`; clients should treat that as a bounded-window warning, not proof that every possible match was traversed.
 
+## Quarantine Certificates
+
+Quarantine certificates are source documents linked to delivery ledgers by `receiptId`. They are
+stored as original files and are not parsed, OCRed, embedded, indexed into Qdrant, or converted
+into structured rows.
+
+### `POST /v1/documents/quarantine-certificates`
+
+Multipart form fields:
+
+| Field            | Required | Notes                                                |
+| ---------------- | -------- | ---------------------------------------------------- |
+| `file`           | yes      | Exactly one JPG/JPEG/PNG image, up to 50 MiB decoded |
+| `receiptId`      | yes      | Delivery receipt ID, trimmed and uppercased          |
+| `idempotencyKey` | yes      | Retry/idempotency key                                |
+| `labelKeys[]`    | yes      | One or more existing allowed label keys              |
+
+Behavior:
+
+- preserves the original image bytes in configured storage;
+- validates filename extension, declared MIME type, and image magic bytes consistently;
+- creates a source document record with `documentKind=quarantine_certificate`;
+- creates one `QuarantineCertificate` record linked to that source document and normalized
+  `receiptId`;
+- permits linking to a `receiptId` whose delivery ledger has not been uploaded yet;
+- exact replay of the same organization, idempotency key, file bytes, receipt ID, and label set
+  returns the same source document metadata; reusing the idempotency key for changed input returns
+  `409` / `IDEMPOTENCY_KEY_CONFLICT`;
+- does not deduplicate different idempotency keys by image content, so multiple real certificates
+  may be attached to the same receipt ID.
+
+Response shape:
+
+```json
+{
+  "sourceDocumentId": "doc_...",
+  "receiptId": "SH2608250117",
+  "originalFileName": "quarantine.png",
+  "contentType": "image/png",
+  "byteSize": 12345,
+  "uploadedAt": "2026-08-31T08:00:00.000Z"
+}
+```
+
+### `POST /v1/quarantine-certificates/query`
+
+Request shape:
+
+```json
+{
+  "receiptIds": ["SH2608250117", "SH2608260003"]
+}
+```
+
+The request must contain 1-100 receipt IDs. The API trims, uppercases, and deduplicates them while
+preserving first-seen order. There is intentionally no "query all certificates" mode and no
+pagination in this endpoint.
+
+Response shape:
+
+```json
+{
+  "results": [
+    {
+      "receiptId": "SH2608250117",
+      "certificates": [
+        {
+          "sourceDocumentId": "doc_...",
+          "receiptId": "SH2608250117",
+          "originalFileName": "quarantine.png",
+          "contentType": "image/png",
+          "byteSize": 12345,
+          "uploadedAt": "2026-08-31T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "receiptId": "SH2608260003",
+      "certificates": []
+    }
+  ]
+}
+```
+
+Missing receipts, certificates hidden by labels, cross-org data, archived source documents, and
+disabled employees all resolve to empty certificate arrays rather than leaking existence.
+
+### `POST /v1/quarantine-certificates/archive`
+
+Request shape, exactly one selector:
+
+```json
+{ "sourceDocumentId": "doc_..." }
+```
+
+or:
+
+```json
+{ "receiptId": "SH2608250117" }
+```
+
+Archiving by `sourceDocumentId` is allowed for the uploader or an admin. Archiving by `receiptId`
+is admin-only and archives all visible quarantine certificates under that receipt ID for the
+organization.
+
+Response shape:
+
+```json
+{
+  "archivedCount": 1
+}
+```
+
+## Source Document Download Links
+
+### `POST /v1/source-documents/:documentId/download-url`
+
+Request body is empty. The caller must be authorized for the source document through the same
+organization, employee status, and label policy used by evidence/structured data. The endpoint is
+generic: it can issue a link for any visible source document kind, including quarantine
+certificates, structured uploads, and evidence uploads.
+
+Response shape:
+
+```json
+{
+  "sourceDocumentId": "doc_...",
+  "downloadUrl": "https://...",
+  "expiresAt": "2026-09-01T08:00:00.000Z",
+  "originalFileName": "quarantine.png",
+  "contentType": "image/png",
+  "byteSize": 12345
+}
+```
+
+The link is valid for 24 hours and uses attachment disposition so clicking it downloads the
+original file. The API returns a link only; it does not proxy file bytes. Missing objects,
+archived/deleted source documents, cross-org documents, and label-inaccessible documents all return
+the same non-enumerating `404`.
+
 ## Structured Import
 
 ### `POST /v1/structured/imports`
@@ -364,9 +509,9 @@ Behavior:
 - the worker writes each row into the dataset-specific MySQL table and applies the batch in one transaction;
 - exact replay of the same `idempotencyKey` and request fingerprint returns the originally persisted `documentId`, `importBatchId`, storage key, and status without writing duplicate storage objects, rows, claims, or audits;
 - same idempotency key with a different fingerprint returns a conflict before durable side effects;
-- delivery uploads also use the exact normalized receipt number as an organization-scoped natural
+- delivery uploads also use the exact normalized receipt ID as an organization-scoped natural
   key: an exact replay returns the original import even with a different idempotency key, while
-  different content or metadata for that receipt returns `RECEIPT_NUMBER_CONFLICT` before storage;
+  different content or metadata for that receipt returns `RECEIPT_ID_CONFLICT` before storage;
 - supplier catalog uploads use the caller idempotency key for retry identity and never replace the
   current catalog until a worker applies the complete snapshot successfully;
 - queues the structured-import worker path rather than applying rows on the HTTP request path.
@@ -414,17 +559,18 @@ Each CSV/XLSX file represents exactly one delivery receipt. A workbook may also 
 hidden, or visible instruction sheets; the importer selects exactly one visible worksheet with the
 receipt item header and rejects multiple matching receipt worksheets. The receipt worksheet must contain the document fields
 `单据号`, `订货机构`, `送货机构`, and `收货日期`, plus item columns `序号`, `物品名称`, `规格型号`,
-`收货数量`, and `收货金额`. The receipt number and normalized `purchase_date` are derived from
+`收货数量`, and `收货金额`. The receipt ID and normalized `purchase_date` are derived from
 the file; callers must not send date metadata. Every numeric item row before the footer becomes one
 ledger row, including non-food items. `supplier_name` comes from `送货机构`, and production/batch
 and shelf-life fields are always `null`.
 
 | Query field                                       | Source or rule                                      |
 | ------------------------------------------------- | --------------------------------------------------- |
+| `source_document_id`                              | source document ID for the uploaded receipt file    |
 | `entry_id`                                        | generated UUID per imported item                    |
 | `purchase_date`                                   | derived from `收货日期`, normalized to `YYYY-MM-DD` |
 | `store_name`                                      | `订货机构`                                          |
-| `receipt_number`                                  | `单据号`                                            |
+| `receipt_id`                                      | `单据号`                                            |
 | `supplier_name`                                   | `送货机构`                                          |
 | `item_name`                                       | `物品名称`                                          |
 | `specification`                                   | `规格型号`                                          |
@@ -544,6 +690,10 @@ This is a controlled read-only JSON API. It is semantically similar to a constra
 
 Structured query evaluates document visibility with the same policy used by evidence and import status: same org first, disabled denied, same-org admin access, then `all_staff` or current label intersection for non-admins. Numeric, date, and boolean fields use typed SQL expressions for filters, sorting, `min`, `max`, `sum`, and `avg`; string fields keep text semantics. The public response scalar representation remains compatible with the current schema.
 
+Every structured dataset exposes `source_document_id` for detail-row selection so an employee
+agent can retrieve the original source file through the download-link endpoint. It is not returned
+by default and cannot be used for filters, sorting, grouping, or aggregates.
+
 Example detail-row request:
 
 ```json
@@ -617,9 +767,13 @@ Service MCP tools:
 - `get_evidence_document_status`
 - `search_document_evidence`
 - `upload_structured_dataset`
+- `upload_quarantine_certificate`
 - `get_import_status`
 - `list_structured_datasets`
 - `query_structured_dataset`
+- `query_quarantine_certificates`
+- `archive_quarantine_certificates`
+- `get_source_document_download_url`
 
 The service exposes authenticated stateless Streamable HTTP only at `POST /mcp`; every initialize,
 discovery, and tool request requires an official opaque bearer access token. The launcher silently

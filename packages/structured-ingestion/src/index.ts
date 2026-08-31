@@ -56,7 +56,7 @@ export interface StructuredWorkbookProfile {
   derivedMetadata?: StructuredDerivedMetadata;
 }
 export interface StructuredDerivedMetadata {
-  receiptNumber: string;
+  receiptId: string;
   receiptDate: string;
 }
 export interface ParseStructuredFileInput {
@@ -691,7 +691,7 @@ function deliveryDerivedMetadataOrThrow(
   const receiptDate = parseDate(metadata.get("收货日期")!, false);
   if (!receiptDate) throw validation("收货日期 must be a date.");
   return {
-    receiptNumber: metadata.get("单据号")!,
+    receiptId: metadata.get("单据号")!,
     receiptDate: dateString(receiptDate),
     storeName: metadata.get("订货机构")!,
     supplierName: metadata.get("送货机构")!
@@ -699,7 +699,7 @@ function deliveryDerivedMetadataOrThrow(
 }
 
 function toDerivedMetadata(metadata: DeliveryLedgerMetadata): StructuredDerivedMetadata {
-  return { receiptNumber: metadata.receiptNumber, receiptDate: metadata.receiptDate };
+  return { receiptId: metadata.receiptId, receiptDate: metadata.receiptDate };
 }
 
 function deliveryItemRows(
@@ -728,7 +728,7 @@ function deliveryPayloadFor(
     entry_id: randomUUID(),
     purchase_date: receiptMetadata.receiptDate,
     store_name: receiptMetadata.storeName,
-    receipt_number: receiptMetadata.receiptNumber,
+    receipt_id: receiptMetadata.receiptId,
     supplier_name: receiptMetadata.supplierName,
     production_date_or_batch: null,
     shelf_life: null
