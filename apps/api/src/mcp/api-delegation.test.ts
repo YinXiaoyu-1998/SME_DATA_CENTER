@@ -58,6 +58,39 @@ describe("MCP API delegation", () => {
     ]);
   });
 
+  it("does not send a JSON content type for bodyless POST requests", async () => {
+    const calls: unknown[] = [];
+    const context: ApiDelegationContext = {
+      bearerToken: "secret-token",
+      audit,
+      delegationProof,
+      async inject(request) {
+        calls.push(request);
+
+        return {
+          statusCode: 200,
+          payload: JSON.stringify({ ok: true })
+        };
+      }
+    };
+
+    const result = await delegateJsonApiRequest(context, {
+      method: "POST",
+      path: "/v1/source-documents/doc_123/download-url"
+    });
+
+    expect(result.isError).toBe(false);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url: "/v1/source-documents/doc_123/download-url",
+      payload: undefined
+    });
+    expect((calls[0] as { headers: Record<string, string> }).headers).not.toHaveProperty(
+      "content-type"
+    );
+  });
+
   it("preserves shared safe API error fields without details", async () => {
     const context: ApiDelegationContext = {
       bearerToken: "secret-token",

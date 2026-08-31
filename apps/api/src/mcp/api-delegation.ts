@@ -48,19 +48,23 @@ export async function delegateJsonApiRequest(
   }
 
   try {
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${context.bearerToken}`,
+      "x-request-id": context.audit.requestId,
+      "x-enterprise-hub-internal-delegation": context.delegationProof,
+      ...(context.audit.launcherVersion
+        ? { "x-enterprise-hub-launcher-version": context.audit.launcherVersion }
+        : {})
+    };
+    if (request.body !== undefined) {
+      headers["content-type"] = "application/json";
+    }
+
     const response = await context.inject({
       method: request.method,
       url: request.path,
       query: normalizedQuery(request.query),
-      headers: {
-        authorization: `Bearer ${context.bearerToken}`,
-        "content-type": "application/json",
-        "x-request-id": context.audit.requestId,
-        "x-enterprise-hub-internal-delegation": context.delegationProof,
-        ...(context.audit.launcherVersion
-          ? { "x-enterprise-hub-launcher-version": context.audit.launcherVersion }
-          : {})
-      },
+      headers,
       payload: request.body,
       remoteAddress: context.audit.sourceIp
     });
