@@ -76,9 +76,12 @@ describe("published launcher artifact", () => {
       "utf8"
     );
     expect(workflow).not.toMatch(/enterprise-hub-mcp-launcher-\d+\.\d+\.\d+\.tgz/);
+    expect(workflow).toMatch(/branches:\s*\n\s*- main/);
     expect(workflow).toMatch(/npm pack --workspace enterprise-hub-mcp-launcher --json/);
     expect(workflow).toContain("${{ steps.pack.outputs.tarball }}");
     expect(workflow).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
+    expect(workflow).toContain('if [[ "$GITHUB_REF_TYPE" = "tag" ]]');
+    expect(workflow).toContain('diff -qr "$compare_dir/extracted-registry/package"');
     expect(workflow).toContain("npm stage publish");
     expect(workflow).not.toContain("npm publish --workspace");
   });
