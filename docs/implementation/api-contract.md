@@ -674,6 +674,13 @@ Missing, cross-org, disabled, or same-org-but-label-inaccessible batches all ret
 
 Returns supported datasets, canonical fields, aliases, operators, aggregate support, sorting, grouping, pagination limits, and query safety limits.
 
+Field name semantics:
+
+- `canonicalName` is the stable public API field name. It is the only field identifier accepted by structured query inputs such as `select`, `filter.field`, `sort.field`, `groupBy`, and aggregate `field`.
+- `sourceColumn` is the original or canonical source-table label. `aliases` are controlled alternative labels, including user-facing paper/table terms and accepted upload header variants.
+- `sourceColumn` and `aliases` cannot be used directly as structured query field names. Employee agents should first map a user phrase such as `进货数量` to its field's `canonicalName` such as `purchase_quantity`, then send the canonical name in `POST /v1/structured/query`.
+- When presenting query results to a user, agents may use `sourceColumn` or the matched alias as the table header instead of exposing the English `canonicalName`.
+
 Supported datasets:
 
 - `dishes`

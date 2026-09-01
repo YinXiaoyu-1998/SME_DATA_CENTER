@@ -480,10 +480,13 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     name: "list_structured_datasets",
     title: "List Enterprise Hub structured datasets",
     description:
-      "Discover registry-backed structured datasets by calling authenticated GET /v1/structured/datasets.",
+      "Discover registry-backed structured datasets by calling authenticated GET /v1/structured/datasets. Field canonicalName values are the structured-query field names; sourceColumn and aliases are for mapping user-facing/source labels to canonicalName and for result presentation.",
     inputSchema: listStructuredDatasetsInputSchema,
     inputFields: [],
-    resultShape: ["limits", "datasets[]: registry versions, fields, operators, capabilities"]
+    resultShape: [
+      "limits",
+      "datasets[]: registry versions, fields with canonicalName/sourceColumn/aliases, operators, capabilities"
+    ]
   }),
   defineToolContract({
     name: "query_structured_dataset",
@@ -499,12 +502,36 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
           "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
       },
       { name: "registryVersion", required: false, description: "Optional registry version." },
-      { name: "select", required: false, description: "Selected field names." },
-      { name: "filter", required: false, description: "Controlled filter tree." },
-      { name: "sort", required: false, description: "Controlled sort fields." },
+      {
+        name: "select",
+        required: false,
+        description:
+          "Selected canonicalName values only. Do not send sourceColumn or aliases directly."
+      },
+      {
+        name: "filter",
+        required: false,
+        description:
+          "Controlled filter tree. Field references must use canonicalName values from discovery."
+      },
+      {
+        name: "sort",
+        required: false,
+        description:
+          "Controlled sort fields. Field references must use canonicalName values from discovery."
+      },
       { name: "page", required: false, description: "Page limit/cursor." },
-      { name: "groupBy", required: false, description: "Aggregate group-by fields." },
-      { name: "aggregates", required: false, description: "Explicit mechanical aggregations." }
+      {
+        name: "groupBy",
+        required: false,
+        description: "Aggregate group-by canonicalName values only."
+      },
+      {
+        name: "aggregates",
+        required: false,
+        description:
+          "Explicit mechanical aggregations. Aggregate field references must use canonicalName values from discovery."
+      }
     ],
     resultShape: ["dataset", "registryVersion", "mode", "rows[]", "nextCursor"]
   }),
