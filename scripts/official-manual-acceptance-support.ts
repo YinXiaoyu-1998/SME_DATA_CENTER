@@ -29,6 +29,7 @@ export interface CleanupCounts {
   dishCatalogRows: number;
   deliveryLedgerRows: number;
   supplierCatalogRows: number;
+  quarantineCertificates: number;
   windowClaims: number;
   qdrantPoints: number;
   storageObjects: number;

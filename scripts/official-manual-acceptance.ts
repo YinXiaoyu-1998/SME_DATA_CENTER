@@ -453,8 +453,17 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
       await tx.businessRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.vipRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.dishCatalogRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
+      await tx.deliveryLedgerRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
+      await tx.supplierCatalogRow.deleteMany({
+        where: { importBatchId: { in: importBatchIds } }
+      });
       await tx.importWindowClaim.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.importBatch.deleteMany({ where: { id: { in: importBatchIds } } });
+    }
+    if (documentIds.length > 0) {
+      await tx.quarantineCertificate.deleteMany({
+        where: { sourceDocumentId: { in: documentIds } }
+      });
     }
     await tx.document.deleteMany({ where: { id: { in: documentIds } } });
   });
@@ -558,6 +567,7 @@ async function verifyCleanup(
     dishCatalogRows,
     deliveryLedgerRows,
     supplierCatalogRows,
+    quarantineCertificates,
     windowClaims,
     qdrantPoints
   ] = await Promise.all([
@@ -585,6 +595,9 @@ async function verifyCleanup(
     countByIds(deleted.importBatchIds, (ids) =>
       prisma.supplierCatalogRow.count({ where: { importBatchId: { in: ids } } })
     ),
+    countByIds(deleted.documentIds, (ids) =>
+      prisma.quarantineCertificate.count({ where: { sourceDocumentId: { in: ids } } })
+    ),
     countByIds(deleted.importBatchIds, (ids) =>
       prisma.importWindowClaim.count({ where: { importBatchId: { in: ids } } })
     ),
@@ -600,6 +613,7 @@ async function verifyCleanup(
     dishCatalogRows,
     deliveryLedgerRows,
     supplierCatalogRows,
+    quarantineCertificates,
     windowClaims,
     qdrantPoints,
     storageObjects
