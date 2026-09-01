@@ -4,7 +4,7 @@
 
 - Phase: Phase 4 official access is deployed in staging; launcher 0.2.5 is published and synchronized. Full user-visible OpenClaw and support-class-C phone/browser acceptance plus real-data readiness controls remain gates.
 - Date: 2026-09-01
-- Lead branch: `codex/delivery-ledger-field-aliases`
+- Lead branch: `codex/skill-upload-original-files`
 - Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package. Exact immutable release tags are recorded in dated readiness and verification evidence.
 - 2026-08-07: remote/headless and secondary-device login design completed in `docs/implementation/official-user-install-and-login.md` and ADR 0022 (uniform Device Authorization flow, split secrets, pairing confirmation, memory-only headless credential custody, per-process session model).
 - 2026-08-09: PR #107 merged the Device Authorization implementation; PR #108 published and verified launcher 0.2.0; PR #109 synchronized server recommended metadata and the repo-local skill to 0.2.0. Native macOS/Windows package acceptance and a full headless Linux container loop pass; full user-visible OpenClaw/support-class-C phone-browser evidence remains.
@@ -17,6 +17,7 @@
 - 2026-08-31: `codex/quarantine-certificate-apis` implements quarantine-certificate upload/query/archive, generic source-document download-link issuance, structured `source_document_id` selection, MCP tools, launcher 0.2.5 contract bump, and dual-homed skill updates. Verification passed format, lint, typecheck, full unit tests, local integration, MCP smoke, launcher packaging, and diff check.
 - 2026-09-01: `codex/use-real-quarantine-fixture` started to replace synthetic quarantine-certificate manual-acceptance images with the user-approved JPG fixture and align the manual-test skill guidance.
 - 2026-09-01: `codex/delivery-ledger-field-aliases` adds paper-ledger Chinese aliases to the `delivery_ledger` structured registry so employee agents can map terms like `进货数量`, `供货单位名称`, and `保质期` without guessing similar English field names.
+- 2026-09-01: `codex/skill-upload-original-files` narrows base Enterprise Hub MCP guidance so employees' agents upload original structured files instead of treating registry metadata as dataset-specific local ETL instructions.
 
 ## Active Workstreams
 

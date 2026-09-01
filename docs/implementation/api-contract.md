@@ -490,6 +490,17 @@ the `dish_catalog` import batch normalizes `snapshotDate` to identical start/end
 stores its derived receipt date for status/reporting compatibility without reserving a date window.
 The other datasets retain their ordinary business-date-window rules.
 
+Client upload behavior:
+
+- Clients should upload the user's original CSV/XLSX bytes and let the service perform
+  dataset-specific parsing, validation, conversion, and safe error reporting.
+- Dataset registry metadata is not a recipe for clients to reconstruct files. Clients must not
+  rewrite headers, duplicate receipt-level metadata into detail rows, or generate replacement files
+  unless the user explicitly asks for a separate local file-conversion task.
+- General transport handling is still allowed: clients may prefer path-based upload, avoid inline
+  payload limits, or split legitimately large business-window uploads by stable non-overlapping
+  business boundaries when that preserves row meaning.
+
 Behavior:
 
 - preflights request metadata, validates authorized labels/date-window eligibility, reserves its

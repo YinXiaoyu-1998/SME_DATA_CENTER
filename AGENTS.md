@@ -38,6 +38,12 @@
 - During development, run the smallest focused test set that proves the current change. Run required repository-wide gates once on the final tree before PR handoff; do not repeatedly rerun unchanged long suites after every small edit unless a failure or high-risk change justifies it.
 - Keep manual acceptance focused on the changed workflow unless the user explicitly requests the full official acceptance suite or the touched release boundary requires it.
 
+## Skill Content Boundaries
+
+- Keep the base `enterprise-hub-mcp` skill focused on MCP usage, login/install, tool parameters, status handling, authorization-safe error handling, general upload transport constraints, and structured-query field semantics.
+- Do not put dataset-specific file transformation recipes in the base skill, such as exact table-header lists, instructions to rename/reorder headers, duplicate header metadata into detail rows, rewrite workbooks, or generate normalized replacement CSV/XLSX files for a particular business document type.
+- If a workflow needs dataset-specific repair or conversion behavior, implement it in the service or in a separate explicit skill for that workflow. The base skill may tell agents to upload original files and report service-returned validation errors.
+
 ## CI And Deployment Waiting
 
 - When waiting on GitHub Actions, npm publishing, staging deployment, DNS, or another external asynchronous blocker, check once, then wait at least 3 minutes before checking the same blocker again. Prefer a quiet long-interval watch or one-shot status checks over frequent polling, and do not narrate unchanged intermediate states.

@@ -53,6 +53,10 @@ discover them by hand.
   `aliases` are not accepted directly by `query_structured_dataset`; use them to map the user's
   wording or source-table headers to `canonicalName`, and to choose friendly table headers when
   presenting results.
+- Discovery metadata is not an upload template. Do not rewrite, reshape, normalize, rename
+  headers, duplicate receipt metadata into item rows, or generate a replacement CSV/XLSX to make a
+  file match registry fields unless the employee explicitly asks for a separate local conversion
+  task.
 - If Enterprise Hub tools are not visible: run the pinned launcher's credential-free self-check
   (see Official Install Or Update), verify the invoking agent's MCP entry (`codex mcp list` /
   `codex mcp get enterprise-hub` or the host equivalent), reload or restart the host, then
@@ -102,8 +106,9 @@ upload also keep `importBatchId`. Poll `get_evidence_document_status` or `get_im
   `active/ready`; a structured import is `importBatch.status=applied` (with the returned document
   and processing views complete). Never call a queued/pending response successful.
 - On terminal `rejected` or `failed`, summarize only safe tool-returned errors and give correction
-  advice (for example fix headers, values, date window, labels, or file format). Never expose
-  internal exceptions, stacks, credentials, or infrastructure details.
+  advice, usually by asking the employee for a corrected source file or metadata. Do not silently
+  rewrite and re-upload the file yourself. Never expose internal exceptions, stacks, credentials,
+  or infrastructure details.
 - At 10 minutes with no terminal state, report **still processing**, include the Document and
   ImportBatch IDs when present, and say the employee can check later with the corresponding status
   tool. This is not a failure.
@@ -132,6 +137,8 @@ subject to host caps (OpenAI Codex roughly **700–750 KiB** of raw bytes per ca
 - Split by a real business boundary first: date window, month/week, store, or another explicit
   non-overlapping partition that preserves row meaning. For sales/business tables, date-window
   chunks are preferred.
+- Chunking is only for upload size and transport safety. Preserve business meaning and source
+  headers; do not use chunking as an excuse to redesign a file into a dataset-specific template.
 - Never split an XLSX by raw bytes. XLSX is a ZIP workbook; byte chunks are corrupt files. Read the
   workbook locally and write each chunk as **CSV (UTF-8, headers preserved)** whenever the target
   dataset accepts CSV: the service parses CSV chunks cheaply, while XLSX chunks go through a
@@ -163,17 +170,10 @@ complete, append-only menu snapshot rather than a sales/business date-window dat
 - Treat the uploaded file as the full directory for that date. Do not split it into CSV parts,
   upload only changed rows, use the service to merge it with another file, or describe a partial
   file as a complete catalog.
-- The file must contain exactly these controlled headers, in any column order:
-  `菜品编码（SPUID）`, `菜品编码（SKUID）`, `菜品名称`, `品牌`, `基础分类`, `一级分类编码`,
-  `二级分类编码`, `规格名称`, `售卖价`, and `菜品别名`.
-- Every row requires SPUID, SKUID, dish name, brand, base category, level-1 category code, and
-  sale price. Only level-2 category code, specification name, and dish alias may be blank. Treat
-  all codes as strings (including leading zeros); sale price must be a finite decimal, and `0` is
-  valid. SKUID must be unique within the merged snapshot; SPUID may repeat across specifications.
-- For XLSX, the service merges every visible sheet whose header exactly matches the catalog
-  schema. Sheet names do not select data. Nonmatching sheets, including headquarters combo
-  sheets, are not imported and are reported in the safe status summary. A matching hidden sheet
-  rejects the entire upload.
+- The service validates catalog headers, sheets, and row values after upload. If validation rejects
+  the upload, summarize the safe returned errors and ask for a corrected source file or explicit
+  local-conversion instruction; do not pre-normalize or regenerate the catalog file from registry
+  metadata.
 - The organization can upload historical snapshots out of date order, but only one non-archived
   snapshot may occupy a date. For a same-date correction with different content, the existing
   snapshot must be archived through the authorized maintenance path before a new upload. Uploading
@@ -189,17 +189,18 @@ For `delivery_ledger` and `supplier_catalog`, call `upload_structured_dataset` w
 or `snapshotDate`.
 
 - `delivery_ledger` accepts one complete CSV/XLSX delivery receipt per file. The receipt ID
-  and date are derived from `单据号` and `收货日期`; each item row becomes one ledger row. The
-  normalized receipt ID is the organization-scoped natural idempotency key, so different
-  content for the same receipt is a conflict rather than an overwrite.
+  and date are extracted by the service, and each item row becomes one ledger row. Upload the
+  original receipt file as provided, even when receipt-level fields appear in header rows rather
+  than in the item table. Do not generate a normalized CSV with repeated receipt metadata. The
+  normalized receipt ID is the organization-scoped natural idempotency key, so different content
+  for the same receipt is a conflict rather than an overwrite.
 - For delivery-ledger queries, use the `list_structured_datasets` registry's `canonicalName`,
   `sourceColumn`, and `aliases` instead of guessing English field names. Paper-ledger terms such as
   `进货数量`, `进货金额`, and `供货单位名称` are aliases for the matching fields; resolve them to
   `purchase_quantity`, `purchase_amount`, and `supplier_name` before querying.
-- `supplier_catalog` requires `供应商名称` and accepts the other controlled supplier columns,
-  including `联系人电话` and `单位地址`, when present. Unknown or unnamed columns are rejected.
-  Unrelated visible sheets and hidden sheets are ignored, while multiple visible matching supplier
-  sheets are rejected. `供应商名称` is the exact match key. The latest successfully applied
+- `supplier_catalog` is the current supplier snapshot used for delivery-ledger enrichment. Upload
+  the provided supplier catalog file as-is; do not rewrite it locally to match registry metadata.
+  The service validates required and optional columns after upload. The latest successfully applied
   snapshot is current; older history is not a fallback, and an in-progress, failed, or rejected
   upload cannot replace it.
 - Keep the returned `importBatchId` and poll `get_import_status` until
@@ -506,8 +507,9 @@ For authorized service tools:
 
 - List labels before uploading; use only returned label keys.
 - Prefer `file.encoding:"path"` uploads with the file's absolute local path; the launcher reads
-  exact bytes mechanically. Use `file.encoding:"base64"` only for small inline payloads. Never
-  reconstruct, normalize, or translate upload contents.
+  exact bytes mechanically. Use `file.encoding:"base64"` only for small inline payloads. Do not
+  alter business content, schema, headers, or row meaning unless the employee explicitly asks for a
+  local file-conversion task before upload.
 - Follow Upload Completion And Status Polling after every `202` upload; never start a worker.
 - Quarantine-certificate uploads are synchronous `201` operations, not background imports. Call
   `upload_quarantine_certificate` once per JPG/PNG image with exactly one `receiptId`, one
