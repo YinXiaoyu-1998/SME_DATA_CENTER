@@ -3,6 +3,8 @@
 Test fixtures for the Enterprise Hub upload and processing paths. Files under
 `structured/` exercise the structured import pipeline (`csv`/`xlsx`); files
 under `evidence/` exercise the evidence document pipeline (`md`/`txt`/`docx`).
+Files under `manual-acceptance/` are used by the official staging manual acceptance
+flow.
 
 ## Typical (accepted) files
 
@@ -20,6 +22,10 @@ under `evidence/` exercise the evidence document pipeline (`md`/`txt`/`docx`).
   catalog sheets are selected by the exact ten-column schema rather than by name.
 - `structured/dishes-valid.csv`, `structured/xlsx/typed-cells.xlsx` — small
   deterministic valid cases used by unit tests.
+- `manual-acceptance/quarantine/animal-quarantine-certificate.jpg` — user-approved
+  JPG fixture for quarantine-certificate upload/download acceptance. The
+  acceptance flow uses the original bytes and validates service metadata and
+  download-link issuance; it does not visually inspect the downloaded image.
 
 `dish_catalog` fixtures represent a complete snapshot, not a partial delta. The
 catalog import requires `snapshotDate` and no business date-window metadata; it

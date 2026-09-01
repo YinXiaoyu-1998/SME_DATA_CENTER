@@ -198,11 +198,12 @@ For the current macOS user:
      receipt, and the temporary CSV conversion of the second receipt from separate tasks; then use
      one fresh task with an ordinary request such as “请查询 Enterprise Hub 里的全部收货台账，并按
      台账字段逐行显示成一个表格。” Do not ask only for receipt counts or an enrichment summary.
-   - when the quarantine-certificate slice is in scope, use a separate ordinary task with one
-     JPG/PNG image and a prompt such as “帮我把这张检疫证明关联到收货单据 SH2608250117。” Then use
-     fresh tasks to query explicit receipt IDs, request the source-file download link for a returned
-     `sourceDocumentId`, and archive the uploaded certificate by `sourceDocumentId`. The employee
-     task must not query all certificates or fetch/proxy the file bytes.
+   - when the quarantine-certificate slice is in scope, use a separate ordinary task with
+     `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` and a prompt such as
+     “帮我把这张检疫证明关联到收货单据 SH2608250117。” Then use fresh tasks to query explicit receipt
+     IDs, request the source-file download link for a returned `sourceDocumentId`, and archive the
+     uploaded certificate by `sourceDocumentId`. The employee task must not query all certificates
+     or fetch/proxy the file bytes.
    - logout/reset/re-login when the run includes recovery: “帮我退出 Enterprise Hub。” then after
      reset/setup, “我又要用 Enterprise Hub 查资料，帮我重新登录。”
 5. Do not tell employee-client tasks hidden oracle values such as exact label keys, idempotency
@@ -232,14 +233,16 @@ For the current macOS user:
     see exactly the 14 uploaded item rows (13 + 1); verify supplier contacts are enriched per row,
     blank source addresses remain blank, and production/batch plus shelf-life fields remain empty.
     A receipt-level count or field-enrichment summary does not pass this step.
-15. When the quarantine-certificate slice is in scope, use a run-scoped JPG/PNG test image and a
-    fresh employee-client task to upload exactly one certificate linked to a specific receipt ID
-    such as `SH2608250117`. Query `query_quarantine_certificates` with explicit `receiptIds` that
-    include that receipt, verify the returned certificate exposes a `sourceDocumentId`, call
+15. When the quarantine-certificate slice is in scope, use
+    `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` and a fresh
+    employee-client task to upload exactly one certificate linked to a specific receipt ID such as
+    `SH2608250117`. Query `query_quarantine_certificates` with explicit `receiptIds` that include
+    that receipt, verify the returned certificate exposes a `sourceDocumentId`, call
     `get_source_document_download_url`, and confirm the tool returns a 24-hour attachment download
-    link without fetching the bytes. Archive the uploaded certificate by `sourceDocumentId` and
-    verify a repeat explicit query no longer returns it. If the admin receipt-ID archive path is
-    tested, use an admin acceptance account and state that scope explicitly.
+    link without fetching the bytes or visually verifying the downloaded image contents. Archive the
+    uploaded certificate by `sourceDocumentId` and verify a repeat explicit query no longer returns
+    it. If the admin receipt-ID archive path is tested, use an admin acceptance account and state
+    that scope explicitly.
 16. Call `enterprise_hub_logout` at the end of the full-flow test. It signs out all local agents
     sharing the Enterprise Hub credential for this OS user.
 17. Clean test evidence, quarantine certificates, Qdrant points, OSS objects, structured rows

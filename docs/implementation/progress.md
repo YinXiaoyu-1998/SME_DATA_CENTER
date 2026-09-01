@@ -2,9 +2,9 @@
 
 ## Current Phase
 
-- Phase: Phase 4 official access is deployed in staging; launcher 0.2.4 is published and its server-metadata and skill synchronization is in progress. Full user-visible OpenClaw and support-class-C phone/browser acceptance plus real-data readiness controls remain gates.
-- Date: 2026-08-31
-- Lead branch: `codex/quarantine-certificate-apis`
+- Phase: Phase 4 official access is deployed in staging; launcher 0.2.5 is published and synchronized. Full user-visible OpenClaw and support-class-C phone/browser acceptance plus real-data readiness controls remain gates.
+- Date: 2026-09-01
+- Lead branch: `codex/use-real-quarantine-fixture`
 - Deployment target: Alibaba Cloud staging runs official browser OAuth, opaque sessions, public authenticated MCP, and the independent launcher package. Exact immutable release tags are recorded in dated readiness and verification evidence.
 - 2026-08-07: remote/headless and secondary-device login design completed in `docs/implementation/official-user-install-and-login.md` and ADR 0022 (uniform Device Authorization flow, split secrets, pairing confirmation, memory-only headless credential custody, per-process session model).
 - 2026-08-09: PR #107 merged the Device Authorization implementation; PR #108 published and verified launcher 0.2.0; PR #109 synchronized server recommended metadata and the repo-local skill to 0.2.0. Native macOS/Windows package acceptance and a full headless Linux container loop pass; full user-visible OpenClaw/support-class-C phone-browser evidence remains.
@@ -15,6 +15,7 @@
 - 2026-08-30: staging deployed delivery-ledger/supplier-catalog commit `5cd1ca8d3120` and migration `20260829130000_delivery_ledger_supplier_catalog`; official macOS acceptance then reproduced that published launcher 0.2.3 rejects the two new dataset enum values before upload. The synthetic account/session was removed with no uploaded records, and `codex/launcher-0.2.4-structured-contract` now prepares the minimal reviewed launcher release needed to resume acceptance.
 - 2026-08-30: launcher 0.2.4 was published as npm `latest` after native macOS/Windows acceptance; its five published files match the reviewed build byte-for-byte, and an exact local install, CLI self-check, and production audit passed. Follow-up work on `codex/launcher-0.2.4-sync-deploy-retention` synchronizes the server and both skill homes and makes successful staging releases retain only the current and rollback image sets.
 - 2026-08-31: `codex/quarantine-certificate-apis` implements quarantine-certificate upload/query/archive, generic source-document download-link issuance, structured `source_document_id` selection, MCP tools, launcher 0.2.5 contract bump, and dual-homed skill updates. Verification passed format, lint, typecheck, full unit tests, local integration, MCP smoke, launcher packaging, and diff check.
+- 2026-09-01: `codex/use-real-quarantine-fixture` started to replace synthetic quarantine-certificate manual-acceptance images with the user-approved JPG fixture and align the manual-test skill guidance.
 
 ## Active Workstreams
 

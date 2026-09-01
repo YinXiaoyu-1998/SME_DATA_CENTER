@@ -185,6 +185,17 @@ describe("manual acceptance structured fixtures", () => {
   });
 });
 
+describe("manual acceptance quarantine fixture", () => {
+  it("keeps a real JPG certificate image for quarantine upload/download acceptance", async () => {
+    const bytes = await readFile(
+      path.join(fixtureRoot, "quarantine", "animal-quarantine-certificate.jpg")
+    );
+
+    expect(bytes.byteLength).toBeGreaterThan(1024);
+    expect([...bytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+  });
+});
+
 function csvRows(content: string): string[][] {
   return content
     .trim()
