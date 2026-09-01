@@ -92,12 +92,13 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     all visible delivery-ledger rows and display them as a row-level Markdown table. The query task
     must follow every returned page cursor until no page remains; a receipt-level count or enrichment
     summary is not a substitute for displaying the ledger.
-    For the quarantine-certificate slice, use separate ordinary tasks to upload one JPG/PNG
-    certificate image linked to an explicit `receiptId`, query certificates with explicit
-    `receiptIds`, request a 24-hour source-file download link for a returned `sourceDocumentId`,
-    and archive the uploaded certificate by `sourceDocumentId`. Do not query all certificates, do
-    not fetch file bytes directly, and use receipt-ID archive only when the acceptance account is an
-    admin and that admin path is explicitly in scope.
+    For the quarantine-certificate slice, use separate ordinary tasks to upload
+    `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` linked to an explicit
+    `receiptId`, query certificates with explicit `receiptIds`, request a 24-hour source-file
+    download link for a returned `sourceDocumentId`, and archive the uploaded certificate by
+    `sourceDocumentId`. Do not query all certificates, do not fetch file bytes directly, do not
+    visually verify downloaded image contents in the automated flow, and use receipt-ID archive only
+    when the acceptance account is an admin and that admin path is explicitly in scope.
 13. Optionally run the official macOS Codex business-flow runner as an extra smoke, but do not treat
     it as a replacement for the new user-visible task:
 
