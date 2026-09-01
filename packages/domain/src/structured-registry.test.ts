@@ -101,6 +101,33 @@ describe("structured field registries", () => {
     );
   });
 
+  test("publishes paper-ledger Chinese aliases for delivery-ledger fields", () => {
+    const ledger = getStructuredRegistry("delivery_ledger");
+    const aliasesByField = Object.fromEntries(
+      ledger.fields.map((field) => [field.canonicalName, field.aliases])
+    );
+
+    expect(aliasesByField).toMatchObject({
+      entry_id: expect.arrayContaining(["entry_id", "序号"]),
+      item_name: expect.arrayContaining(["物品名称", "食品名称"]),
+      specification: expect.arrayContaining(["规格型号", "规格"]),
+      purchase_quantity: expect.arrayContaining(["收货数量", "进货数量"]),
+      purchase_amount: expect.arrayContaining(["收货金额", "进货金额"]),
+      production_date_or_batch: expect.arrayContaining([
+        "production_date_or_batch",
+        "生产日期或生产批号"
+      ]),
+      shelf_life: expect.arrayContaining(["shelf_life", "保质期"]),
+      supplier_name: expect.arrayContaining(["送货机构", "供货单位名称"]),
+      supplier_unit_address: expect.arrayContaining(["supplier_unit_address", "供货单位地址"]),
+      supplier_contact_phone: expect.arrayContaining([
+        "supplier_contact_phone",
+        "供货单位联系方式"
+      ]),
+      purchase_date: expect.arrayContaining(["收货日期", "进货日期"])
+    });
+  });
+
   test("preserves every controlled supplier source column with stable lookup fields", () => {
     const supplier = getStructuredRegistry("supplier_catalog");
 

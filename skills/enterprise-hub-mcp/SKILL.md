@@ -49,6 +49,10 @@ discover them by hand.
   instead of assuming a fixed inventory.
 - Call `list_structured_datasets` before using any structured dataset; use `dish_catalog`,
   `delivery_ledger`, or `supplier_catalog` only when discovery advertises it and its fields.
+- In structured dataset discovery, `canonicalName` is the queryable field name. `sourceColumn` and
+  `aliases` are not accepted directly by `query_structured_dataset`; use them to map the user's
+  wording or source-table headers to `canonicalName`, and to choose friendly table headers when
+  presenting results.
 - If Enterprise Hub tools are not visible: run the pinned launcher's credential-free self-check
   (see Official Install Or Update), verify the invoking agent's MCP entry (`codex mcp list` /
   `codex mcp get enterprise-hub` or the host equivalent), reload or restart the host, then
@@ -188,6 +192,10 @@ or `snapshotDate`.
   and date are derived from `单据号` and `收货日期`; each item row becomes one ledger row. The
   normalized receipt ID is the organization-scoped natural idempotency key, so different
   content for the same receipt is a conflict rather than an overwrite.
+- For delivery-ledger queries, use the `list_structured_datasets` registry's `canonicalName`,
+  `sourceColumn`, and `aliases` instead of guessing English field names. Paper-ledger terms such as
+  `进货数量`, `进货金额`, and `供货单位名称` are aliases for the matching fields; resolve them to
+  `purchase_quantity`, `purchase_amount`, and `supplier_name` before querying.
 - `supplier_catalog` requires `供应商名称` and accepts the other controlled supplier columns,
   including `联系人电话` and `单位地址`, when present. Unknown or unnamed columns are rejected.
   Unrelated visible sheets and hidden sheets are ignored, while multiple visible matching supplier
@@ -479,6 +487,10 @@ For structured-table questions:
 
 - Call `list_structured_datasets` before constructing a structured query unless you already have a
   fresh compatible registry from the same MCP session.
+- Resolve field wording through the registry before every structured query: match user-facing terms
+  against `sourceColumn`/`aliases`, then send only `canonicalName` values in `select`, filters,
+  sorts, groups, and aggregates. Use `sourceColumn` or the matched alias as the displayed table
+  header when that is clearer for the employee.
 - Scope follow-up questions about a recent upload to that upload's returned import metadata,
   declared business-date window, enterprise/store name, or other explicit service-returned
   metadata. Avoid broad unbounded queries for phrases like “这份表”, “刚才那张表”, or “我刚传的”.
