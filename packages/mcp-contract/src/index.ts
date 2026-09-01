@@ -539,10 +539,15 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload Enterprise Hub structured dataset",
     description:
-      "Queue XLSX/CSV structured data with authenticated multipart POST /v1/structured/imports; a 202 queued response requires status polling before success is reported.",
+      "Queue the user's XLSX/CSV structured file with authenticated multipart POST /v1/structured/imports; a 202 queued response requires status polling before success is reported.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: [
-      { name: "file", required: true, description: "Base64 upload file payload." },
+      {
+        name: "file",
+        required: true,
+        description:
+          "Original upload file payload. Registry metadata is not a reason to synthesize a replacement file unless the user explicitly asked for local conversion."
+      },
       {
         name: "dataset",
         required: true,
