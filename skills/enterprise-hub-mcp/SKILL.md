@@ -188,6 +188,9 @@ or `snapshotDate`.
   and date are derived from `单据号` and `收货日期`; each item row becomes one ledger row. The
   normalized receipt ID is the organization-scoped natural idempotency key, so different
   content for the same receipt is a conflict rather than an overwrite.
+- For delivery-ledger queries, use the `list_structured_datasets` registry's `canonicalName`,
+  `sourceColumn`, and `aliases` instead of guessing English field names. Paper-ledger terms such as
+  `进货数量`, `进货金额`, and `供货单位名称` are aliases for the matching query fields.
 - `supplier_catalog` requires `供应商名称` and accepts the other controlled supplier columns,
   including `联系人电话` and `单位地址`, when present. Unknown or unnamed columns are rejected.
   Unrelated visible sheets and hidden sheets are ignored, while multiple visible matching supplier

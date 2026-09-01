@@ -535,27 +535,55 @@ const VIP_CANONICAL_OVERRIDES: Record<string, string> = {
 };
 
 const DELIVERY_LEDGER_FIELD_DEFINITIONS = [
-  ["source_document_id", "source_document_id", "string", false, "derived"],
-  ["entry_id", "entry_id", "string", false, "derived"],
-  ["purchase_date", "收货日期", "date", false, "derived"],
-  ["store_name", "订货机构", "string", false, "derived"],
-  ["receipt_id", "单据号", "string", false, "derived"],
-  ["supplier_name", "送货机构", "string", false, "derived"],
-  ["item_name", "物品名称", "string", false, "file"],
-  ["specification", "规格型号", "string", false, "file"],
-  ["purchase_quantity", "收货数量", "decimal", false, "file"],
-  ["purchase_amount", "收货金额", "decimal", false, "file"],
-  ["production_date_or_batch", "production_date_or_batch", "string", true, "derived"],
-  ["shelf_life", "shelf_life", "string", true, "derived"],
-  ["supplier_contact_phone", "supplier_contact_phone", "string", true, "dynamic_lookup"],
-  ["supplier_unit_address", "supplier_unit_address", "string", true, "dynamic_lookup"]
+  ["source_document_id", "source_document_id", "string", false, "derived", []],
+  ["entry_id", "entry_id", "string", false, "derived", ["序号"]],
+  ["purchase_date", "收货日期", "date", false, "derived", ["进货日期"]],
+  ["store_name", "订货机构", "string", false, "derived", []],
+  ["receipt_id", "单据号", "string", false, "derived", []],
+  ["supplier_name", "送货机构", "string", false, "derived", ["供货单位名称"]],
+  ["item_name", "物品名称", "string", false, "file", ["食品名称"]],
+  ["specification", "规格型号", "string", false, "file", ["规格"]],
+  ["purchase_quantity", "收货数量", "decimal", false, "file", ["进货数量"]],
+  ["purchase_amount", "收货金额", "decimal", false, "file", ["进货金额"]],
+  [
+    "production_date_or_batch",
+    "production_date_or_batch",
+    "string",
+    true,
+    "derived",
+    ["生产日期或生产批号"]
+  ],
+  ["shelf_life", "shelf_life", "string", true, "derived", ["保质期"]],
+  [
+    "supplier_contact_phone",
+    "supplier_contact_phone",
+    "string",
+    true,
+    "dynamic_lookup",
+    ["供货单位联系方式"]
+  ],
+  [
+    "supplier_unit_address",
+    "supplier_unit_address",
+    "string",
+    true,
+    "dynamic_lookup",
+    ["供货单位地址"]
+  ]
 ] satisfies Array<
-  [string, string, StructuredFieldType, boolean, "file" | "derived" | "dynamic_lookup"]
+  [string, string, StructuredFieldType, boolean, "file" | "derived" | "dynamic_lookup", string[]]
 >;
 const DELIVERY_LEDGER_FIELDS: StructuredFieldRegistryEntry[] =
   DELIVERY_LEDGER_FIELD_DEFINITIONS.map(
-    ([canonicalName, sourceColumn, type, nullable, inputSource]) =>
-      createDeliveryLedgerField({ canonicalName, sourceColumn, type, nullable, inputSource })
+    ([canonicalName, sourceColumn, type, nullable, inputSource, aliases]) =>
+      createDeliveryLedgerField({
+        canonicalName,
+        sourceColumn,
+        type,
+        nullable,
+        inputSource,
+        aliases
+      })
   );
 
 export const STRUCTURED_DATASET_REGISTRIES = {
@@ -857,13 +885,14 @@ function createDeliveryLedgerField(input: {
   type: StructuredFieldType;
   nullable: boolean;
   inputSource: "file" | "derived" | "dynamic_lookup";
+  aliases: string[];
 }): StructuredFieldRegistryEntry {
   const isDynamic = input.inputSource === "dynamic_lookup";
   const isSourceDocumentId = input.canonicalName === "source_document_id";
 
   return {
     ...input,
-    aliases: [input.sourceColumn],
+    aliases: [...new Set([input.sourceColumn, ...input.aliases])],
     sensitivity: input.type === "decimal" ? ("business_metric" as const) : ("normal" as const),
     lifecycle: "active",
     volatility: "stable_export",

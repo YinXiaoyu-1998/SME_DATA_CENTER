@@ -564,20 +564,21 @@ the file; callers must not send date metadata. Every numeric item row before the
 ledger row, including non-food items. `supplier_name` comes from `送货机构`, and production/batch
 and shelf-life fields are always `null`.
 
-| Query field                                       | Source or rule                                      |
-| ------------------------------------------------- | --------------------------------------------------- |
-| `source_document_id`                              | source document ID for the uploaded receipt file    |
-| `entry_id`                                        | generated UUID per imported item                    |
-| `purchase_date`                                   | derived from `收货日期`, normalized to `YYYY-MM-DD` |
-| `store_name`                                      | `订货机构`                                          |
-| `receipt_id`                                      | `单据号`                                            |
-| `supplier_name`                                   | `送货机构`                                          |
-| `item_name`                                       | `物品名称`                                          |
-| `specification`                                   | `规格型号`                                          |
-| `purchase_quantity`                               | `收货数量` as decimal                               |
-| `purchase_amount`                                 | `收货金额` as decimal                               |
-| `production_date_or_batch`, `shelf_life`          | always `null`                                       |
-| `supplier_contact_phone`, `supplier_unit_address` | dynamic current-catalog lookup                      |
+| Query field                                       | Source or rule                                      | Aliases                            |
+| ------------------------------------------------- | --------------------------------------------------- | ---------------------------------- |
+| `source_document_id`                              | source document ID for the uploaded receipt file    |                                    |
+| `entry_id`                                        | generated UUID per imported item                    | `序号`                             |
+| `purchase_date`                                   | derived from `收货日期`, normalized to `YYYY-MM-DD` | `进货日期`                         |
+| `store_name`                                      | `订货机构`                                          |                                    |
+| `receipt_id`                                      | `单据号`                                            |                                    |
+| `supplier_name`                                   | `送货机构`                                          | `供货单位名称`                     |
+| `item_name`                                       | `物品名称`                                          | `食品名称`                         |
+| `specification`                                   | `规格型号`                                          | `规格`                             |
+| `purchase_quantity`                               | `收货数量` as decimal                               | `进货数量`                         |
+| `purchase_amount`                                 | `收货金额` as decimal                               | `进货金额`                         |
+| `production_date_or_batch`                        | always `null`                                       | `生产日期或生产批号`               |
+| `shelf_life`                                      | always `null`                                       | `保质期`                           |
+| `supplier_contact_phone`, `supplier_unit_address` | dynamic current-catalog lookup                      | `供货单位联系方式`, `供货单位地址` |
 
 ### `supplier_catalog` snapshot contract
 
