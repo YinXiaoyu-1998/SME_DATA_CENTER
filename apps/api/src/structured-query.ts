@@ -1,4 +1,4 @@
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import { PrismaClient } from "@prisma/client";
 import type { StructuredCompiledQuery } from "@enterprise-hub/domain";
 
@@ -56,7 +56,7 @@ function requireDatabaseUrl(): string {
 export function createPrismaStructuredQueryRepository(
   databaseUrl = requireDatabaseUrl()
 ): StructuredQueryRepository {
-  const adapter = new PrismaMariaDb(databaseUrl);
+  const adapter = createDatabaseAdapter(databaseUrl);
   const prisma = new PrismaClient({ adapter });
 
   return {

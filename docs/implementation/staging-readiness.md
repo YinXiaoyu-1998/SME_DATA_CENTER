@@ -8,6 +8,14 @@ It is intentionally safe to commit. Do not store secret values here.
 
 ## Status Vocabulary
 
+Database upload incident update (2026-09-03): the current Serverless instance
+`rm-2ze2m5q387ydb9724` is running and unlocked after the account was recharged.
+The application database password was rotated and synchronized to Keychain and
+the root-only runtime configuration; API/worker health was reverified. RDS slow
+logging (`ON`, 1 second) and error verbosity (`3`) were already enabled; deadlock
+logging is now enabled without an RDS restart. Protocol diagnosis, the safe log
+collector and recovery semantics are in [database-diagnostics.md](database-diagnostics.md).
+
 | Status         | Meaning                                                                             |
 | -------------- | ----------------------------------------------------------------------------------- |
 | `missing`      | Required information has not been provided.                                         |

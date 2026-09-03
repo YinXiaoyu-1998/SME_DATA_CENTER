@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import { PrismaClient } from "@prisma/client";
 import type { EmployeeRoleName } from "@enterprise-hub/domain";
 import {
@@ -253,7 +253,7 @@ async function main(): Promise<void> {
   if (!publicOrigin) {
     throw new Error("ENTERPRISE_HUB_PUBLIC_ORIGIN is required.");
   }
-  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+  const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
   const repository = createPrismaAuthOperatorRepository(prisma);
   try {
     await runOperatorCommand(parseOperatorCommand(process.argv.slice(2)), {

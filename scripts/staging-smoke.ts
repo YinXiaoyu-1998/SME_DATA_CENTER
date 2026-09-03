@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import { PrismaClient } from "@prisma/client";
 import { createStorageAdapter } from "@enterprise-hub/storage";
 import { AuthCore } from "../apps/api/src/auth/auth-core.js";
@@ -46,7 +46,7 @@ async function main() {
     throw new Error("DATABASE_URL is required for the server-side official staging smoke.");
   }
 
-  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+  const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
   const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
   await cleanupStagingFixtureDocuments(prisma);
 

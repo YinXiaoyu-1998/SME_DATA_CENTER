@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import { PrismaClient } from "@prisma/client";
 import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
 import { loadApiRuntimeLimits, type ApiRuntimeLimits } from "./config/runtime-limits.js";
@@ -121,7 +121,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     if (!databaseUrl) {
       throw new Error("DATABASE_URL is required to start the official authentication service.");
     }
-    authPrisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+    authPrisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
     authCore = new AuthCore(createPrismaAuthCoreRepository(authPrisma));
   }
 
