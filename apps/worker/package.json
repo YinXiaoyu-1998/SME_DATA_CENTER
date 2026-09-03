@@ -5,6 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
+    "@enterprise-hub/db": "0.0.0",
     "@enterprise-hub/domain": "^0.0.0",
     "@enterprise-hub/storage": "^0.0.0",
     "@enterprise-hub/structured-ingestion": "^0.0.0",

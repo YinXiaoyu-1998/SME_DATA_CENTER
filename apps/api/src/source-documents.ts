@@ -1,4 +1,4 @@
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import { DocumentStatus, Prisma, PrismaClient } from "@prisma/client";
 import {
   AUDIT_ACTIONS,
@@ -55,7 +55,7 @@ const documentInclude = {
 export function createPrismaSourceDocumentRepository(
   databaseUrl = requireDatabaseUrl()
 ): SourceDocumentRepository {
-  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+  const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
 
   return {
     async findDownloadableSourceDocument(input) {

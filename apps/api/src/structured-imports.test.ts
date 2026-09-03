@@ -451,6 +451,105 @@ describe("Prisma structured import audit provenance", () => {
     });
   });
 
+  it("retries a rolled-back reservation and recovers a lost commit acknowledgement", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    const transient = new Prisma.PrismaClientKnownRequestError("protocol failure", {
+      code: "P2039",
+      clientVersion: "test",
+      meta: {
+        driverAdapterError: {
+          cause: { originalCode: "1835", kind: "mysql", code: 1835, state: "HY000" }
+        }
+      }
+    });
+    prisma.$transaction.mockRejectedValueOnce(transient);
+    const onDatabaseRetry = vi.fn();
+    await expect(
+      repository.reserveStructuredImport({ ...reservationInput(), onDatabaseRetry })
+    ).resolves.toMatchObject({ state: "created" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(onDatabaseRetry).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "recovered", attempt: 2 })
+    );
+
+    prisma.$transaction.mockImplementationOnce(
+      async (callback: (tx: typeof prisma) => Promise<unknown>) => {
+        await callback(prisma);
+        prisma.importBatch.findUnique.mockResolvedValue(importBatchRecord());
+        throw transient;
+      }
+    );
+    await expect(repository.reserveStructuredImport(reservationInput())).resolves.toMatchObject({
+      state: "resumable"
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries enqueue reads and returns the committed run after an ambiguous commit", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    const transient = new Prisma.PrismaClientKnownRequestError("connection closed", {
+      code: "P1017",
+      clientVersion: "test"
+    });
+    prisma.importBatch.findFirst.mockRejectedValueOnce(transient);
+    prisma.$transaction
+      .mockImplementationOnce(async (callback: (tx: typeof prisma) => unknown) => callback(prisma))
+      .mockImplementationOnce(async (callback: (tx: typeof prisma) => Promise<unknown>) => {
+        await callback(prisma);
+        prisma.importBatch.findFirst.mockResolvedValue(
+          importBatchRecord("pending", [{ id: "run_1", status: "queued" }])
+        );
+        throw transient;
+      });
+    await expect(
+      repository.enqueueReservedStructuredImport({ orgId: "org_1", importBatchId: "imp_1" })
+    ).resolves.toMatchObject({ processingRunId: "run_1" });
+    expect(prisma.processingRun.create).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("bounds transient retries and does not retry permanent database errors", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    const transient = new Prisma.PrismaClientKnownRequestError("connection closed", {
+      code: "P1017",
+      clientVersion: "test"
+    });
+    prisma.$transaction.mockRejectedValue(transient);
+    const onDatabaseRetry = vi.fn();
+    await expect(
+      repository.enqueueReservedStructuredImport({
+        orgId: "org_1",
+        importBatchId: "imp_1",
+        onDatabaseRetry
+      })
+    ).rejects.toBe(transient);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    expect(onDatabaseRetry).toHaveBeenLastCalledWith(
+      expect.objectContaining({ outcome: "exhausted", attempt: 3 })
+    );
+    const permanent = new Prisma.PrismaClientKnownRequestError("missing table", {
+      code: "P2021",
+      clientVersion: "test"
+    });
+    prisma.$transaction.mockRejectedValue(permanent);
+    await expect(
+      repository.enqueueReservedStructuredImport({ orgId: "org_1", importBatchId: "imp_1" })
+    ).rejects.toBe(permanent);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(4);
+  });
+
   it("returns the authoritative queued run when a concurrent replay wins the job-key race", async () => {
     const repository = createPrismaStructuredImportRepository({
       databaseUrl: "mysql://test",

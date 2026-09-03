@@ -1,4 +1,4 @@
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import { Prisma, PrismaClient, SkillEntryStatus } from "@prisma/client";
 import type { SkillEntryStatusName } from "@enterprise-hub/domain";
 
@@ -38,7 +38,7 @@ function requireDatabaseUrl(): string {
 export function createPrismaSkillDirectoryRepository(
   databaseUrl = requireDatabaseUrl()
 ): SkillDirectoryRepository {
-  const adapter = new PrismaMariaDb(databaseUrl);
+  const adapter = createDatabaseAdapter(databaseUrl);
   const prisma = new PrismaClient({ adapter });
 
   return {

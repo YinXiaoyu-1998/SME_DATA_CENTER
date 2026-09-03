@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import {
   DocumentStatus,
   ImportBatchStatus,
@@ -420,7 +420,7 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
 export function createPrismaProcessingWorkerRepository(
   databaseUrl = requireDatabaseUrl()
 ): ProcessingWorkerRepository {
-  const adapter = new PrismaMariaDb(databaseUrl);
+  const adapter = createDatabaseAdapter(databaseUrl);
   const prisma = new PrismaClient({ adapter });
 
   return {

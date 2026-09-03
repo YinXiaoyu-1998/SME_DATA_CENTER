@@ -1,4 +1,4 @@
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import {
   DocumentKind,
   DocumentStatus,
@@ -183,7 +183,7 @@ function requireDatabaseUrl(): string {
 export function createPrismaDocumentCatalogRepository(
   databaseUrl = requireDatabaseUrl()
 ): DocumentCatalogRepository {
-  const adapter = new PrismaMariaDb(databaseUrl);
+  const adapter = createDatabaseAdapter(databaseUrl);
   const prisma = new PrismaClient({ adapter });
 
   return {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { databaseErrorDetails, type DatabaseRetryEvent } from "@enterprise-hub/db";
 import {
   PHASE3_ERROR_CODES,
   canEmployeeAccessDocument,
@@ -151,6 +152,12 @@ export function registerStructuredImportRoutes(
   app.post("/v1/structured/imports", async (request, reply) => {
     const importRequestStarted = performance.now();
     const timingContext: Record<string, unknown> = {};
+    const logDatabaseRetry = (stage: string) => (event: DatabaseRetryEvent) => {
+      request.log.warn(
+        { event: "structured_import_db_retry", stage, ...timingContext, ...event },
+        "structured import database recovery"
+      );
+    };
     const logTiming = (stage: string, started: number, extra: Record<string, unknown> = {}) => {
       request.log.info(
         {
@@ -351,6 +358,7 @@ export function registerStructuredImportRoutes(
         "upload.reserve_import",
         () =>
           dependencies.structuredImports().reserveStructuredImport({
+            onDatabaseRetry: logDatabaseRetry("reserve_import"),
             orgId: employee.orgId,
             actorEmployeeId: employee.id,
             documentId: candidateDocumentId,
@@ -393,7 +401,10 @@ export function registerStructuredImportRoutes(
           .code(409)
           .send(errorResponse(error.code, structuredImportConflictMessage(error.code)));
       }
-      request.log.error({ err: error }, "structured import reservation failed");
+      request.log.error(
+        { ...databaseErrorDetails(error), ...timingContext, stage: "reserve_import" },
+        "structured import reservation failed"
+      );
       return reply
         .code(500)
         .send(errorResponse(PHASE3_ERROR_CODES.internalError, "Structured import failed."));
@@ -447,6 +458,7 @@ export function registerStructuredImportRoutes(
     try {
       const importBatch = await measureTiming("upload.enqueue_processing", () =>
         dependencies.structuredImports().enqueueReservedStructuredImport({
+          onDatabaseRetry: logDatabaseRetry("enqueue_processing"),
           orgId: employee.orgId,
           importBatchId: reservedBatch.id
         })
@@ -455,7 +467,12 @@ export function registerStructuredImportRoutes(
       return reply.code(202).send(responseForReservedImport(importBatch));
     } catch (error) {
       request.log.error(
-        { err: error, documentId: reservedBatch.sourceDocumentId },
+        {
+          ...databaseErrorDetails(error),
+          ...timingContext,
+          stage: "enqueue_processing",
+          documentId: reservedBatch.sourceDocumentId
+        },
         "structured import queue publication failed"
       );
       logTiming("upload.total", importRequestStarted, { outcome: "enqueue_failed" });

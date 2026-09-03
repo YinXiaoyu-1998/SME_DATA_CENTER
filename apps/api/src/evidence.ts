@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import { DocumentIndexStatus, DocumentKind, DocumentStatus, PrismaClient } from "@prisma/client";
 import {
   QDRANT_DENSE_VECTOR_NAME,
@@ -871,7 +871,7 @@ function prismaClientFromEnv() {
   }
 
   return new PrismaClient({
-    adapter: new PrismaMariaDb(databaseUrl)
+    adapter: createDatabaseAdapter(databaseUrl)
   });
 }
 

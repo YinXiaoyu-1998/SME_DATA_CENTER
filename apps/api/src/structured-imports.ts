@@ -1,6 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import {
+  createDatabaseAdapter,
+  retryIdempotentDatabaseOperation,
+  type DatabaseRetryEvent
+} from "@enterprise-hub/db";
 import {
   DocumentKind,
   DocumentStatus,
@@ -68,6 +72,7 @@ export interface StructuredImportBatchRecord {
 }
 
 export interface ReserveStructuredImportInput {
+  onDatabaseRetry?: (event: DatabaseRetryEvent) => void;
   orgId: string;
   actorEmployeeId: string;
   documentId: string;
@@ -120,6 +125,7 @@ export interface StructuredImportRepository {
   enqueueReservedStructuredImport(input: {
     orgId: string;
     importBatchId: string;
+    onDatabaseRetry?: (event: DatabaseRetryEvent) => void;
   }): Promise<StructuredImportBatchRecord>;
   markStructuredImportStorageFailure(
     input: MarkStructuredImportStorageFailureInput
@@ -267,7 +273,7 @@ export function createPrismaStructuredImportRepository(options: {
   batchInsertSize: number;
 }): StructuredImportRepository {
   const databaseUrl = options.databaseUrl ?? requireDatabaseUrl();
-  const adapter = new PrismaMariaDb(databaseUrl);
+  const adapter = createDatabaseAdapter(databaseUrl);
   const prisma = new PrismaClient({ adapter });
 
   async function resolveExistingReservation(input: ReserveStructuredImportInput): Promise<{
@@ -385,119 +391,121 @@ export function createPrismaStructuredImportRepository(options: {
       return batch ? toImportBatchRecord(batch) : null;
     },
     async reserveStructuredImport(input) {
-      const existing = await resolveExistingReservation(input);
-      if (existing) return existing;
-      const importBatchId = createImportBatchId();
-      try {
-        const batch = await prisma.$transaction(
-          async (tx) => {
-            await tx.document.create({
-              data: {
-                id: input.documentId,
-                orgId: input.orgId,
-                title: input.document.title,
-                documentType: DocumentType.structured_dataset,
-                documentKind: DocumentKind.structured,
-                fileType: input.fileType as FileType,
-                status: DocumentStatus.uploading,
-                storageObjectKey: input.document.storageObjectKey,
-                originalFileName: input.document.originalFileName,
-                contentType: input.document.contentType,
-                byteSize: input.document.byteSize,
-                checksumSha256: input.document.checksumSha256,
-                uploaderId: input.actorEmployeeId,
-                sourceSystem: "structured_import",
-                sourceMetadata: {
-                  dataset: input.dataset,
-                  startDate: input.startDate,
-                  endDate: input.endDate,
-                  ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
-                    ? { naturalKey: input.naturalKey }
-                    : {})
-                },
-                documentLabels: {
-                  create: input.document.labelIds.map((labelId) => ({
-                    labelId
-                  }))
-                }
-              }
-            });
-
-            await tx.importBatch.create({
-              data: {
-                id: importBatchId,
-                orgId: input.orgId,
-                sourceDocumentId: input.documentId,
-                dataset: input.dataset as ImportDataset,
-                startDate: input.startDate ? parseDateWindowDate(input.startDate) : null,
-                endDate: input.endDate ? parseDateWindowDate(input.endDate) : null,
-                idempotencyKey: input.idempotencyKey,
-                requestFingerprint: input.requestFingerprint,
-                naturalKey: input.naturalKey,
-                status: ImportBatchStatus.pending,
-                sourceSheetSummary: [],
-                validationErrors: [],
-                validationErrorCount: 0,
-                totalRowCount: 0,
-                appliedRowCount: 0
-              }
-            });
-
-            if (
-              getStructuredRegistry(input.dataset).metadataPolicy === "window" ||
-              getStructuredRegistry(input.dataset).metadataPolicy === "snapshot"
-            ) {
-              await tx.importWindowClaim.create({
+      return retryIdempotentDatabaseOperation(async () => {
+        const existing = await resolveExistingReservation(input);
+        if (existing) return existing;
+        const importBatchId = createImportBatchId();
+        try {
+          const batch = await prisma.$transaction(
+            async (tx) => {
+              await tx.document.create({
                 data: {
+                  id: input.documentId,
                   orgId: input.orgId,
-                  dataset: input.dataset as ImportDataset,
-                  startDate: parseDateWindowDate(input.startDate!),
-                  endDate: parseDateWindowDate(input.endDate!),
-                  importBatchId
+                  title: input.document.title,
+                  documentType: DocumentType.structured_dataset,
+                  documentKind: DocumentKind.structured,
+                  fileType: input.fileType as FileType,
+                  status: DocumentStatus.uploading,
+                  storageObjectKey: input.document.storageObjectKey,
+                  originalFileName: input.document.originalFileName,
+                  contentType: input.document.contentType,
+                  byteSize: input.document.byteSize,
+                  checksumSha256: input.document.checksumSha256,
+                  uploaderId: input.actorEmployeeId,
+                  sourceSystem: "structured_import",
+                  sourceMetadata: {
+                    dataset: input.dataset,
+                    startDate: input.startDate,
+                    endDate: input.endDate,
+                    ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
+                      ? { naturalKey: input.naturalKey }
+                      : {})
+                  },
+                  documentLabels: {
+                    create: input.document.labelIds.map((labelId) => ({
+                      labelId
+                    }))
+                  }
                 }
               });
-            }
 
-            await tx.auditLog.create({
-              data: {
-                orgId: input.orgId,
-                actorEmployeeId: input.actorEmployeeId,
-                action: AUDIT_ACTIONS.structuredImportStarted,
-                targetType: "import_batch",
-                targetId: importBatchId,
-                result: "succeeded",
-                metadata: {
-                  dataset: input.dataset,
-                  startDate: input.startDate,
-                  endDate: input.endDate,
-                  ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
-                    ? { naturalKey: input.naturalKey }
-                    : {}),
-                  rowCount: input.totalRowCount,
-                  sourceDocumentId: input.documentId
-                },
-                requestId: input.audit.requestId,
-                clientIp: input.audit.sourceIp,
-                clientSource: input.audit.clientSource,
-                launcherVersion: input.audit.launcherVersion
+              await tx.importBatch.create({
+                data: {
+                  id: importBatchId,
+                  orgId: input.orgId,
+                  sourceDocumentId: input.documentId,
+                  dataset: input.dataset as ImportDataset,
+                  startDate: input.startDate ? parseDateWindowDate(input.startDate) : null,
+                  endDate: input.endDate ? parseDateWindowDate(input.endDate) : null,
+                  idempotencyKey: input.idempotencyKey,
+                  requestFingerprint: input.requestFingerprint,
+                  naturalKey: input.naturalKey,
+                  status: ImportBatchStatus.pending,
+                  sourceSheetSummary: [],
+                  validationErrors: [],
+                  validationErrorCount: 0,
+                  totalRowCount: 0,
+                  appliedRowCount: 0
+                }
+              });
+
+              if (
+                getStructuredRegistry(input.dataset).metadataPolicy === "window" ||
+                getStructuredRegistry(input.dataset).metadataPolicy === "snapshot"
+              ) {
+                await tx.importWindowClaim.create({
+                  data: {
+                    orgId: input.orgId,
+                    dataset: input.dataset as ImportDataset,
+                    startDate: parseDateWindowDate(input.startDate!),
+                    endDate: parseDateWindowDate(input.endDate!),
+                    importBatchId
+                  }
+                });
               }
-            });
 
-            return tx.importBatch.findUniqueOrThrow({
-              where: { id: importBatchId },
-              include: importBatchInclude
-            });
-          },
-          { timeout: options.transactionTimeoutMs }
-        );
-        return { state: "created" as const, importBatch: toImportBatchRecord(batch) };
-      } catch (error) {
-        if (isUniqueConstraintError(error)) {
-          const raced = await resolveExistingReservation(input);
-          if (raced) return raced;
+              await tx.auditLog.create({
+                data: {
+                  orgId: input.orgId,
+                  actorEmployeeId: input.actorEmployeeId,
+                  action: AUDIT_ACTIONS.structuredImportStarted,
+                  targetType: "import_batch",
+                  targetId: importBatchId,
+                  result: "succeeded",
+                  metadata: {
+                    dataset: input.dataset,
+                    startDate: input.startDate,
+                    endDate: input.endDate,
+                    ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
+                      ? { naturalKey: input.naturalKey }
+                      : {}),
+                    rowCount: input.totalRowCount,
+                    sourceDocumentId: input.documentId
+                  },
+                  requestId: input.audit.requestId,
+                  clientIp: input.audit.sourceIp,
+                  clientSource: input.audit.clientSource,
+                  launcherVersion: input.audit.launcherVersion
+                }
+              });
+
+              return tx.importBatch.findUniqueOrThrow({
+                where: { id: importBatchId },
+                include: importBatchInclude
+              });
+            },
+            { timeout: options.transactionTimeoutMs }
+          );
+          return { state: "created" as const, importBatch: toImportBatchRecord(batch) };
+        } catch (error) {
+          if (isUniqueConstraintError(error)) {
+            const raced = await resolveExistingReservation(input);
+            if (raced) return raced;
+          }
+          throw error;
         }
-        throw error;
-      }
+      }, input.onDatabaseRetry);
     },
     async applyReservedStructuredImport(input) {
       const applyStarted = performance.now();
@@ -706,55 +714,57 @@ export function createPrismaStructuredImportRepository(options: {
       }
     },
     async enqueueReservedStructuredImport(input) {
-      try {
-        const batch = await prisma.$transaction(
-          async (tx) => {
-            const existing = await tx.importBatch.findFirst({
+      return retryIdempotentDatabaseOperation(async () => {
+        try {
+          const batch = await prisma.$transaction(
+            async (tx) => {
+              const existing = await tx.importBatch.findFirst({
+                where: { id: input.importBatchId, orgId: input.orgId },
+                include: importBatchInclude
+              });
+
+              if (!existing) {
+                throw new Error("Reserved import batch was not found.");
+              }
+
+              if (existing.sourceDocument.processingRuns.length > 0) {
+                return existing;
+              }
+
+              await tx.document.update({
+                where: { id: existing.sourceDocumentId },
+                data: { status: DocumentStatus.pending_processing }
+              });
+              await tx.processingRun.create({
+                data: {
+                  orgId: input.orgId,
+                  documentId: existing.sourceDocumentId,
+                  jobKey: `structured_import:${existing.id}`,
+                  status: ProcessingRunStatus.queued,
+                  jobType: ProcessingJobType.structured_import
+                }
+              });
+              return tx.importBatch.findUniqueOrThrow({
+                where: { id: existing.id },
+                include: importBatchInclude
+              });
+            },
+            { timeout: options.transactionTimeoutMs }
+          );
+          return toImportBatchRecord(batch);
+        } catch (error) {
+          if (isUniqueConstraintError(error)) {
+            const authoritative = await prisma.importBatch.findFirst({
               where: { id: input.importBatchId, orgId: input.orgId },
               include: importBatchInclude
             });
-
-            if (!existing) {
-              throw new Error("Reserved import batch was not found.");
+            if (authoritative?.sourceDocument.processingRuns.length) {
+              return toImportBatchRecord(authoritative);
             }
-
-            if (existing.sourceDocument.processingRuns.length > 0) {
-              return existing;
-            }
-
-            await tx.document.update({
-              where: { id: existing.sourceDocumentId },
-              data: { status: DocumentStatus.pending_processing }
-            });
-            await tx.processingRun.create({
-              data: {
-                orgId: input.orgId,
-                documentId: existing.sourceDocumentId,
-                jobKey: `structured_import:${existing.id}`,
-                status: ProcessingRunStatus.queued,
-                jobType: ProcessingJobType.structured_import
-              }
-            });
-            return tx.importBatch.findUniqueOrThrow({
-              where: { id: existing.id },
-              include: importBatchInclude
-            });
-          },
-          { timeout: options.transactionTimeoutMs }
-        );
-        return toImportBatchRecord(batch);
-      } catch (error) {
-        if (isUniqueConstraintError(error)) {
-          const authoritative = await prisma.importBatch.findFirst({
-            where: { id: input.importBatchId, orgId: input.orgId },
-            include: importBatchInclude
-          });
-          if (authoritative?.sourceDocument.processingRuns.length) {
-            return toImportBatchRecord(authoritative);
           }
+          throw error;
         }
-        throw error;
-      }
+      }, input.onDatabaseRetry);
     },
     async markStructuredImportStorageFailure(input) {
       const batch = await prisma.$transaction(

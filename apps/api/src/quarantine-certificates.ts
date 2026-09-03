@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createDatabaseAdapter } from "@enterprise-hub/db";
 import {
   DocumentKind,
   DocumentStatus,
@@ -135,7 +135,7 @@ export function quarantineCertificateFingerprint(input: {
 export function createPrismaQuarantineCertificateRepository(
   databaseUrl = requireDatabaseUrl()
 ): QuarantineCertificateRepository {
-  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
+  const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
 
   return {
     async findByIdempotencyKey(orgId, idempotencyKey) {
