@@ -43,6 +43,7 @@ export interface ClaimedProcessingRun {
   structuredImport?: {
     importBatchId: string;
     dataset: StructuredDatasetName;
+    registryVersion: string;
     startDate?: string;
     endDate?: string;
   };
@@ -534,6 +535,7 @@ export function createPrismaProcessingWorkerRepository(
           structuredImport = {
             importBatchId: batch.id,
             dataset: batch.dataset,
+            registryVersion: batch.registryVersion,
             ...(batch.startDate ? { startDate: formatDateWindow(batch.startDate) } : {}),
             ...(batch.endDate ? { endDate: formatDateWindow(batch.endDate) } : {})
           };
@@ -859,6 +861,7 @@ export function createPrismaProcessingWorkerRepository(
               processingRunId: input.runId,
               workerId: input.workerId,
               dataset: batch.dataset,
+              registryVersion: batch.registryVersion,
               sourceDocumentId: input.documentId,
               appliedRowCount: input.result.rows.length,
               sheetCount: input.result.sheetSummary.length
@@ -930,6 +933,7 @@ export function createPrismaProcessingWorkerRepository(
             metadata: {
               processingRunId: input.runId,
               workerId: input.workerId,
+              registryVersion: batch.registryVersion,
               validationErrorCount: input.result.validationErrorCount,
               validationErrorsTruncated: input.result.validationErrorsTruncated
             }

@@ -11,7 +11,6 @@ import {
   ProcessingRunStatus
 } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { getStructuredRegistry, type StructuredDatasetName } from "@enterprise-hub/domain";
 import type { StructuredParseResult } from "@enterprise-hub/structured-ingestion";
 import { createPrismaProcessingWorkerRepository, ProcessingLeaseLostError } from "./worker.js";
 
@@ -58,6 +57,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       now
     });
     expect(claimed?.id).toBe(fixture.runId);
+    expect(claimed?.structuredImport?.registryVersion).toBe(fixture.registryVersion);
     await repository.beginStructuredImportApply?.({
       runId: fixture.runId,
       documentId: fixture.documentId,
@@ -299,6 +299,43 @@ describeIntegration("Prisma structured import worker repository", () => {
       (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
         .appliedAt
     ).toEqual(now);
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { orgId, targetId: fixture.importBatchId, action: "structured_import.applied" }
+      })
+    ).toMatchObject({
+      metadata: expect.objectContaining({ registryVersion: fixture.registryVersion })
+    });
+    await repository.disconnect?.();
+  });
+
+  it("records registry version when rejecting a queued structured import", async () => {
+    const repository = createPrismaProcessingWorkerRepository(databaseUrl);
+    const fixture = await createStructuredRun(prisma, "reject-audit");
+    const now = new Date("2026-08-10T05:00:00.000Z");
+    const claimed = await repository.claimNextProcessingRun({
+      workerId: "worker-reject-audit",
+      leaseSeconds: 120,
+      now
+    });
+
+    expect(claimed?.structuredImport?.registryVersion).toBe(fixture.registryVersion);
+    await repository.rejectStructuredImport?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      workerId: "worker-reject-audit",
+      now,
+      result: rejectedStructuredResult()
+    });
+
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { orgId, targetId: fixture.importBatchId, action: "structured_import.rejected" }
+      })
+    ).toMatchObject({
+      metadata: expect.objectContaining({ registryVersion: fixture.registryVersion })
+    });
     await repository.disconnect?.();
   });
 
@@ -385,6 +422,7 @@ async function createStructuredRun(
   const documentId = `worker_prisma_doc_${suffix}`;
   const importBatchId = `worker_prisma_batch_${suffix}`;
   const runId = `worker_prisma_run_${suffix}`;
+  const registryVersion = `stored-registry-version-${suffix}`;
   await prisma.document.create({
     data: {
       id: documentId,
@@ -409,7 +447,7 @@ async function createStructuredRun(
       orgId,
       sourceDocumentId: documentId,
       dataset,
-      registryVersion: getStructuredRegistry(dataset as StructuredDatasetName).version,
+      registryVersion,
       startDate: new Date("2026-08-10T00:00:00.000Z"),
       endDate: new Date("2026-08-10T00:00:00.000Z"),
       idempotencyKey: `worker-prisma-${suffix}`,
@@ -428,7 +466,7 @@ async function createStructuredRun(
       availableAt: new Date("2026-08-10T00:00:00.000Z")
     }
   });
-  return { documentId, importBatchId, runId };
+  return { documentId, importBatchId, runId, registryVersion };
 }
 
 function structuredResult(overrides: { sourceSheetName?: string } = {}): StructuredParseResult {

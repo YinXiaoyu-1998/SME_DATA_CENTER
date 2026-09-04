@@ -455,6 +455,7 @@ function createStructuredImportRepository(options: {
         structuredImport: {
           importBatchId: "batch_structured_csv",
           dataset: "dishes",
+          registryVersion: "dishes.2026-09-04.v2",
           startDate: "20260701",
           endDate: "20260731"
         },
