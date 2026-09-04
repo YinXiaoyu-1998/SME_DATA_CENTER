@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a public, installable `maijia-business-analyses-smedc` skill that queries Enterprise Hub through MCP and deterministically generates weekly and monthly meeting reports, including honest partial reports when source coverage is incomplete.
+**Goal:** Build a public, installable `maijia-business-analyses-smedc` skill that queries Enterprise Hub through MCP and deterministically generates operating diagnoses plus weekly and monthly meeting reports, including honest partial reports when source coverage is incomplete.
 
 **Architecture:** The agent uses Enterprise Hub MCP tools to discover registries/coverage and execute a generated manifest of controlled queries. Python scripts never authenticate or call HTTP; they validate saved MCP response envelopes, assemble a versioned query bundle, derive fact tables, and render self-contained HTML. The original local-file skill supplies reporting definitions and visual generators, but all local XLSX/download logic and the monthly-profit workflow are removed.
 
@@ -14,7 +14,7 @@
 
 - Repository name is exactly `maijia-business-analyses-smedc`; GitHub visibility is public; license is MIT.
 - Use only Enterprise Hub MCP tools for remote data access. Scripts must not accept passwords/tokens or implement direct HTTP/OAuth.
-- Supported report types are weekly meeting and monthly meeting only. Do not include profit scripts, profit docs, profit flags, or profit tests.
+- Supported report types are operating diagnosis, weekly meeting, and monthly meeting. Do not include profit scripts, profit docs, profit flags, or profit tests.
 - Data insufficiency is normal. Missing coverage/modules produce explicit notices and partial reports; they are not service errors.
 - Preserve the original skill's KPI definitions, dual denominator product-sales-per-10K panels, stall mapping, daypart attribution, and self-contained HTML style where the queried data supports them.
 - Raw MCP envelopes, manifests, derived CSV/JSON, and reports are run artifacts and must be gitignored.
@@ -27,6 +27,7 @@
 ### Task 1: Initialize the standalone skill repository and contract fixtures
 
 **Files:**
+
 - Create: `README.md`
 - Create: `README.zh.md`
 - Create: `LICENSE`
@@ -39,6 +40,7 @@
 - Create: `tests/fixtures/coverage_dish_catalog.json`
 
 **Interfaces:**
+
 - Produces: one public-ready skill repo with config schema version `1`.
 - Produces: config sections `datasets`, `fields`, `dimensions`, `measures`, `reportModules`, and `queryLimits`.
 
@@ -52,7 +54,7 @@ Ignore `output/`, `runs/`, `*.html`, generated `*.csv`, generated summaries, `__
 
 - [ ] **Step 3: Define the reporting config and fixtures**
 
-Use canonical dataset names `business`, `dishes`, `dish_catalog`. Define semantic field names for dates, stores, channel/order source, meal period, time slot, revenues, gross sales, discounts, order counts, diners, dish identity, dish quantity/revenue, and catalog category/stall mapping. Fixture responses must match the approved service response envelopes and use synthetic stores only.
+Use canonical dataset names `business`, `dishes`, `dish_catalog`. Define semantic field names for dates, stores, channel/order source, meal period, time slot, revenues, gross sales, discounts, order counts, diners, dish identity, dish quantity/revenue, and catalog category/stall mapping. Fixture responses must match the approved service response envelopes and use synthetic stores only. Window coverage sources use `startDate`/`endDate`; snapshot coverage sources use `snapshotDate` and omit window fields.
 
 - [ ] **Step 4: Commit**
 
@@ -64,16 +66,18 @@ git commit -m "chore: initialize SMEDC reporting skill"
 ### Task 2: Generate a registry-bound query manifest
 
 **Files:**
+
 - Create: `scripts/build_query_plan.py`
 - Create: `tests/test_build_query_plan.py`
 
 **Interfaces:**
-- Produces CLI: `python3 scripts/build_query_plan.py --report-type weekly|monthly --current-start YYYY-MM-DD --current-end YYYY-MM-DD --previous-start YYYY-MM-DD --previous-end YYYY-MM-DD --yoy-start YYYY-MM-DD --yoy-end YYYY-MM-DD --registry-response PATH --coverage-dir PATH --output PATH`.
+
+- Produces CLI: `python3 scripts/build_query_plan.py --report-type diagnosis|weekly|monthly --current-start YYYY-MM-DD --current-end YYYY-MM-DD --previous-start YYYY-MM-DD --previous-end YYYY-MM-DD --yoy-start YYYY-MM-DD --yoy-end YYYY-MM-DD --registry-response PATH --coverage-dir PATH --output PATH`.
 - Produces JSON: `{ schemaVersion, report, coverage, notices, jobs[] }`, where every job has `id`, `tool`, `input`, `outputFile`, `module`.
 
 - [ ] **Step 1: Write failing manifest tests**
 
-Assert weekly jobs include current/previous/YoY store totals, 16-week trend, channel, daypart, and optional dish/catalog modules. Assert monthly jobs include current/previous/YoY, six natural-month current/prior-year trends, channel, daypart, and optional dish/catalog modules. A missing readable dataset/window disables only dependent modules and adds a machine-readable notice.
+Assert diagnosis jobs include business KPI, store, channel/platform, membership, payment, and operating-efficiency facts. Assert weekly jobs include current/previous/YoY store totals, 16-week trend, channel, daypart, and optional dish/catalog modules. Assert monthly jobs include current/previous/YoY, six natural-month current/prior-year trends, channel, daypart, and optional dish/catalog modules. A missing readable dataset/window disables only dependent modules and adds a machine-readable notice.
 
 - [ ] **Step 2: Run tests and confirm RED**
 
@@ -103,10 +107,12 @@ git commit -m "feat: build Enterprise Hub report query plans"
 ### Task 3: Assemble and validate MCP query bundles
 
 **Files:**
+
 - Create: `scripts/assemble_query_bundle.py`
 - Create: `tests/test_assemble_query_bundle.py`
 
 **Interfaces:**
+
 - Consumes: Task 2 manifest plus one saved JSON response per `jobs[].outputFile`.
 - Produces: `bundle.json` with schema version, report windows, registry versions, coverage sources, notices, and `resultsByJobId`.
 
@@ -138,32 +144,38 @@ git commit -m "feat: assemble validated query bundles"
 ### Task 4: Derive weekly and monthly report facts
 
 **Files:**
+
 - Create: `scripts/report_common.py`
+- Create: `scripts/profile_business_data.py`
 - Create: `scripts/profile_weekly_data.py`
 - Create: `scripts/profile_monthly_data.py`
+- Create: `tests/fixtures/diagnosis_bundle.json`
 - Create: `tests/fixtures/weekly_bundle.json`
 - Create: `tests/fixtures/monthly_bundle.json`
+- Create: `tests/test_profile_business_data.py`
 - Create: `tests/test_profile_weekly_data.py`
 - Create: `tests/test_profile_monthly_data.py`
 
 **Interfaces:**
+
+- Produces CLI: `profile_business_data.py --bundle PATH --output-dir PATH`.
 - Produces CLI: `profile_weekly_data.py --bundle PATH --output-dir PATH`.
 - Produces CLI: `profile_monthly_data.py --bundle PATH --output-dir PATH`.
 - Produces the weekly/monthly CSV and summary filenames consumed by the original HTML generators, excluding monthly-profit artifacts.
 
-- [ ] **Step 1: Write one synthetic weekly and one monthly golden test**
+- [ ] **Step 1: Write one synthetic diagnosis, weekly, and monthly golden test**
 
-Use two stores, two channels, two dayparts, two stalls, and a deliberate missing optional module. Assert store totals, comparison deltas, weighted rates, trend bucket labels, store-size classification, channel/daypart driver selection, stall attribution, both product-sales-per-10K denominators, and the missing-module notice.
+Use two stores, two channels, two dayparts, two stalls, and a deliberate missing optional module. Assert diagnosis KPI/channel/platform/member/payment/efficiency facts, store totals, comparison deltas, weighted rates, trend bucket labels, store-size classification, channel/daypart driver selection, stall attribution, both product-sales-per-10K denominators, and the missing-module notice.
 
 - [ ] **Step 2: Run tests and confirm RED**
 
-Run: `python3 -m unittest tests.test_profile_weekly_data tests.test_profile_monthly_data -v`
+Run: `python3 -m unittest tests.test_profile_business_data tests.test_profile_weekly_data tests.test_profile_monthly_data -v`
 
 Expected: modules missing.
 
 - [ ] **Step 3: Port deterministic transformations from the original skill**
 
-Reuse business definitions from `profile_weekly_meeting_data.py` and `profile_monthly_meeting_data.py`, replacing XLSX scanning with named aggregate job rows from `bundle.json`. Centralize decimal parsing, safe division, percent formatting inputs, comparison deltas, notice propagation, and CSV writing in `report_common.py`.
+Reimplement business definitions from `profile_business_data.py`, `profile_weekly_meeting_data.py`, and `profile_monthly_meeting_data.py`, replacing XLSX scanning with named aggregate job rows from `bundle.json`. Centralize decimal parsing, safe division, percent formatting inputs, comparison deltas, notice propagation, and CSV writing in `report_common.py`.
 
 - [ ] **Step 4: Preserve attribution and denominator semantics**
 
@@ -171,32 +183,36 @@ Map `dishes.matched_product_name`/`product_name` to `dish_catalog` category/stal
 
 - [ ] **Step 5: Run tests and commit**
 
-Run: `python3 -m unittest tests.test_profile_weekly_data tests.test_profile_monthly_data -v`
+Run: `python3 -m unittest tests.test_profile_business_data tests.test_profile_weekly_data tests.test_profile_monthly_data -v`
 
 Expected: PASS.
 
 ```bash
-git add scripts/report_common.py scripts/profile_weekly_data.py scripts/profile_monthly_data.py tests/fixtures/weekly_bundle.json tests/fixtures/monthly_bundle.json tests/test_profile_weekly_data.py tests/test_profile_monthly_data.py
-git commit -m "feat: derive weekly and monthly report facts"
+git add scripts/report_common.py scripts/profile_business_data.py scripts/profile_weekly_data.py scripts/profile_monthly_data.py tests/fixtures/diagnosis_bundle.json tests/fixtures/weekly_bundle.json tests/fixtures/monthly_bundle.json tests/test_profile_business_data.py tests/test_profile_weekly_data.py tests/test_profile_monthly_data.py
+git commit -m "feat: derive diagnosis and meeting report facts"
 ```
 
 ### Task 5: Render self-contained weekly and monthly HTML
 
 **Files:**
+
+- Create: `scripts/generate_business_report_html.py`
 - Create: `scripts/generate_weekly_report_html.py`
 - Create: `scripts/generate_monthly_report_html.py`
+- Create: `scripts/run_business_report.py`
 - Create: `scripts/run_weekly_report.py`
 - Create: `scripts/run_monthly_report.py`
 - Create: `tests/test_report_html.py`
 - Create: `references/report_style.zh.md`
 
 **Interfaces:**
+
 - Consumes: Task 4 output directories.
 - Produces: standalone HTML files with embedded CSS/data/scripts and no network dependencies.
 
 - [ ] **Step 1: Write failing renderer smoke tests**
 
-Assert each HTML includes title/window/source provenance, current-vs-previous-vs-YoY summary, trend, store quadrant/ranking, channel, hourly/daypart, stall mix and product panels when available, visible partial-data notices when unavailable, accessible table fallbacks, and no external `<script src>` or stylesheet URL.
+Assert the diagnosis HTML includes source provenance, KPI/channel/platform/member/payment/efficiency facts, store comparisons, and notices. Assert weekly/monthly HTML includes title/window/source provenance, current-vs-previous-vs-YoY summary, trend, store quadrant/ranking, channel, hourly/daypart, stall mix and product panels when available, visible partial-data notices when unavailable, accessible table fallbacks, and no external `<script src>` or stylesheet URL.
 
 - [ ] **Step 2: Run tests and confirm RED**
 
@@ -206,11 +222,11 @@ Expected: renderer modules missing.
 
 - [ ] **Step 3: Adapt the original generators**
 
-Port the approved self-contained visual layout and interactions from the original weekly/monthly meeting generators. Rename entry points and inputs for bundle-derived facts. Remove every monthly-profit reference and every instruction that asks for local Meituan workbook paths.
+Independently reimplement the approved self-contained visual layout and interactions using the original reports as behavioral reference; do not copy upstream source verbatim because the upstream repository currently exposes no license metadata. Rename entry points and inputs for bundle-derived facts. Remove every monthly-profit reference and every instruction that asks for local Meituan workbook paths.
 
 - [ ] **Step 4: Implement runners**
 
-Runners call only the corresponding profiler and renderer. They accept `--bundle`, `--output-dir`, and `--report`; they print a final JSON object naming created artifacts and propagated notices.
+Runners call only the corresponding profiler and renderer. Diagnosis, weekly, and monthly runners accept `--bundle`, `--output-dir`, and `--report`; they print a final JSON object naming created artifacts and propagated notices.
 
 - [ ] **Step 5: Run tests and commit**
 
@@ -219,13 +235,14 @@ Run: `python3 -m unittest tests.test_report_html -v`
 Expected: PASS.
 
 ```bash
-git add scripts/generate_weekly_report_html.py scripts/generate_monthly_report_html.py scripts/run_weekly_report.py scripts/run_monthly_report.py tests/test_report_html.py references/report_style.zh.md
-git commit -m "feat: render SMEDC weekly and monthly reports"
+git add scripts/generate_business_report_html.py scripts/generate_weekly_report_html.py scripts/generate_monthly_report_html.py scripts/run_business_report.py scripts/run_weekly_report.py scripts/run_monthly_report.py tests/test_report_html.py references/report_style.zh.md
+git commit -m "feat: render SMEDC operating reports"
 ```
 
 ### Task 6: Author the skill workflow and validate the repository
 
 **Files:**
+
 - Create: `SKILL.md`
 - Modify: `README.md`
 - Modify: `README.zh.md`
@@ -233,6 +250,7 @@ git commit -m "feat: render SMEDC weekly and monthly reports"
 - Create: `tests/test_skill_contract.py`
 
 **Interfaces:**
+
 - Produces: an agent workflow that installs/logs in through `enterprise-hub-mcp`, obtains registries and coverage, executes manifest jobs including cursors, saves responses, assembles the bundle, and runs the requested report renderer.
 
 - [ ] **Step 1: Read the `skill-creator` and `superpowers:writing-skills` instructions in full**
@@ -241,7 +259,7 @@ Validate frontmatter, naming, progressive disclosure, test conventions, and pack
 
 - [ ] **Step 2: Write failing contract tests**
 
-Assert `SKILL.md` names all three required MCP tools, launcher `0.2.6`, both supported report types, pagination, partial-report behavior, and cleanup/provenance. Assert it contains no `monthly_profit`, profit-workbook, signed-download, direct HTTP, password, or token-handling workflow.
+Assert `SKILL.md` names all three required MCP tools, launcher `0.2.6`, all three supported report types, pagination, partial-report behavior, and cleanup/provenance. Assert it contains no `monthly_profit`, profit-workbook, signed-download, direct HTTP, password, or token-handling workflow.
 
 - [ ] **Step 3: Write the complete agent workflow**
 
@@ -255,6 +273,7 @@ Run:
 python3 -m unittest discover -s tests -v
 python3 scripts/build_query_plan.py --help
 python3 scripts/assemble_query_bundle.py --help
+python3 scripts/run_business_report.py --help
 python3 scripts/run_weekly_report.py --help
 python3 scripts/run_monthly_report.py --help
 ```

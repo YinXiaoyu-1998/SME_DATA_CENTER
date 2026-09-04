@@ -27,10 +27,12 @@
 ### Task 1: Review and open the service PR
 
 **Files:**
+
 - Modify: only defects found by review in the service branch
 - Remove before PR diff: `docs/superpowers/plans/2026-09-04-*.md` and the process-only `docs/superpowers/specs/2026-09-04-maijia-smedc-reporting-design.md` unless the human explicitly asks to commit them
 
 **Interfaces:**
+
 - Consumes: completed general structured-query branch and green gates.
 - Produces: one reviewable SME_DATA_CENTER PR based on current `main`.
 
@@ -53,9 +55,11 @@ The PR description includes scope, tests, environment changes, human inputs, kno
 ### Task 2: Merge and verify launcher publication
 
 **Files:**
+
 - No repository edits unless release diagnosis finds a real defect.
 
 **Interfaces:**
+
 - Produces: merged service code on `main` and independently verified `enterprise-hub-mcp-launcher@0.2.6`.
 
 - [ ] **Step 1: Wait for required PR checks and merge**
@@ -73,11 +77,13 @@ In a fresh temporary directory, run `npm pack enterprise-hub-mcp-launcher@0.2.6`
 ### Task 3: Synchronize recommended metadata and both Enterprise Hub MCP skills
 
 **Files:**
+
 - Modify in SME_DATA_CENTER: `apps/api/src/auth/http-contract.ts` and its tests
 - Modify in SME_DATA_CENTER: `skills/enterprise-hub-mcp/SKILL.md`, `README.md`, and pin/alignment tests
 - Modify in standalone repo: matching `SKILL.md`, `README.md`, and metadata/tests
 
 **Interfaces:**
+
 - Produces: server recommendation and both skill homes aligned to verified launcher `0.2.6` and the new tool/query contract.
 
 - [ ] **Step 1: Update the repo-local recommendation and pin**
@@ -95,9 +101,11 @@ Include separate diff composition reports. Merge the standalone skill PR and SME
 ### Task 4: Publish the public reporting skill repository
 
 **Files:**
+
 - Modify only review fixes in the standalone `maijia-business-analyses-smedc` repository.
 
 **Interfaces:**
+
 - Produces: public GitHub repository `YinXiaoyu-1998/maijia-business-analyses-smedc` with default branch `main`.
 
 - [ ] **Step 1: Review the skill against the released service**
@@ -115,10 +123,12 @@ Set a concise description/topics, confirm MIT license detection, and verify inst
 ### Task 5: Deploy and validate official staging APIs
 
 **Files:**
+
 - Modify: `docs/implementation/progress.md`
 - Modify: `docs/implementation/staging-readiness.md` only if non-secret readiness facts changed
 
 **Interfaces:**
+
 - Verifies: deployed dataset registry v2, coverage endpoint/tool, multi-field grouping, weighted average, alias sort, cursor pagination, and authorization boundaries.
 
 - [ ] **Step 1: Confirm the canonical staging deployment**
@@ -142,9 +152,11 @@ Update progress with deployment run/commit and validation evidence, not a comman
 ### Task 6: Multi-task end-user skill acceptance and cleanup
 
 **Files:**
+
 - Generated run artifacts only; do not commit them.
 
 **Interfaces:**
+
 - Produces: evidence that ordinary Codex users can install/use the public skill with Enterprise Hub to create weekly, monthly, and partial reports.
 
 - [ ] **Step 1: Create separate user-visible Codex tasks**

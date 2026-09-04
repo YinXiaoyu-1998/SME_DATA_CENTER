@@ -29,6 +29,7 @@
 ### Task 1: Explicit v2 field registries for `business` and `dishes`
 
 **Files:**
+
 - Modify: `packages/domain/src/structured-registry.ts`
 - Modify: `packages/domain/src/structured-registry.test.ts`
 - Modify: `packages/structured-ingestion/src/index.test.ts`
@@ -40,6 +41,7 @@
 - Modify: `apps/api/src/routes/structured-import/structured-import.test.ts`
 
 **Interfaces:**
+
 - Produces: `business.2026-09-04.v2` and `dishes.2026-09-04.v2` registries whose report-relevant source columns have stable canonical names and explicit numeric/date types.
 - Produces: required `ImportBatch.registryVersion` provenance carried from file profile/reservation into MySQL and API records.
 - Consumes: existing `StructuredFieldRegistryEntry`, header alias resolution, and JSON-payload storage.
@@ -74,7 +76,7 @@ Expected: failures showing missing canonical mappings, wrong string types, or ol
 
 - [ ] **Step 3: Make field contracts explicit**
 
-Extend `DISH_CANONICAL_OVERRIDES` and `BUSINESS_CANONICAL_OVERRIDES` for all fields consumed by the original weekly/monthly meeting pipelines. Add an `explicitTypes?: Record<string, StructuredFieldType>` input to `createRegistry`, and resolve types with:
+Extend `DISH_CANONICAL_OVERRIDES` and `BUSINESS_CANONICAL_OVERRIDES` for all fields consumed by the retained original operating-diagnosis, weekly-meeting, and monthly-meeting pipelines. Add an `explicitTypes?: Record<string, StructuredFieldType>` input to `createRegistry`, and resolve types with:
 
 ```ts
 const type = input.explicitTypes?.[sourceColumn] ?? inferFieldType(input.dataset, sourceColumn);
@@ -106,12 +108,14 @@ git commit -m "feat: publish explicit business dataset registries"
 ### Task 2: General aggregate query language
 
 **Files:**
+
 - Modify: `packages/domain/src/structured-query.ts`
 - Modify: `packages/domain/src/structured-query.test.ts`
 - Modify: `packages/mcp-contract/src/index.ts`
 - Modify: `packages/mcp-contract/src/index.test.ts`
 
 **Interfaces:**
+
 - Produces: aggregate spec `{ op: "weightedAvg", field: string, weightField: string, as?: string }` in addition to existing operators.
 - Produces: sort spec field resolution against group fields or aggregate aliases in aggregate mode.
 - Produces: limits `{ maxGroupByFields: 4, maxAggregates: 12, maxAggregateGroups: 200 }` shared by domain and MCP validation.
@@ -184,6 +188,7 @@ git commit -m "feat: extend controlled aggregate queries"
 ### Task 3: Authorization-safe structured dataset coverage
 
 **Files:**
+
 - Create: `packages/domain/src/structured-coverage.ts`
 - Create: `packages/domain/src/structured-coverage.test.ts`
 - Modify: `packages/domain/src/index.ts`
@@ -195,6 +200,7 @@ git commit -m "feat: extend controlled aggregate queries"
 - Modify: `apps/api/src/routes/structured-query.test.ts`
 
 **Interfaces:**
+
 - Produces: `compileStructuredCoverageQuery(input: { orgId: string; employee: StructuredQueryEmployeeScope; dataset: StructuredDatasetName }): StructuredCompiledCoverageQuery`.
 - Produces: `StructuredCoverageRepository.list(compiled): Promise<StructuredDatasetCoverage>`.
 - Produces: authenticated `GET /v1/structured/datasets/:dataset/coverage`.
@@ -204,20 +210,33 @@ git commit -m "feat: extend controlled aggregate queries"
 Use this stable response shape:
 
 ```ts
-interface StructuredDatasetCoverage {
-  dataset: StructuredDatasetName;
-  registryVersion: string;
-  metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
-  sources: Array<{
-    importBatchId: string;
-    sourceDocumentId: string;
-    sourceDocumentTitle: string;
-    startDate: string | null;
-    endDate: string | null;
-    appliedAt: string;
-    rowCount: number;
-  }>;
-}
+type StructuredCoverageSourceBase = {
+  importBatchId: string;
+  sourceDocumentId: string;
+  sourceDocumentTitle: string;
+  appliedAt: string;
+  rowCount: number;
+};
+
+type StructuredDatasetCoverage =
+  | {
+      dataset: StructuredDatasetName;
+      registryVersion: string;
+      metadataPolicy: "window";
+      sources: Array<StructuredCoverageSourceBase & { startDate: string; endDate: string }>;
+    }
+  | {
+      dataset: StructuredDatasetName;
+      registryVersion: string;
+      metadataPolicy: "snapshot";
+      sources: Array<StructuredCoverageSourceBase & { snapshotDate: string }>;
+    }
+  | {
+      dataset: StructuredDatasetName;
+      registryVersion: string;
+      metadataPolicy: "derived_receipt" | "none";
+      sources: [];
+    };
 ```
 
 Compiler tests must assert organization scoping, applied/non-archived import filtering, active/non-archived structured document filtering, exact persisted registry-version filtering, `all_staff OR employee-label` filtering for non-admins, no label predicate for admins, deterministic `start_date, end_date, applied_at, id` ordering, and registry-version/metadata-policy projection.
@@ -254,6 +273,7 @@ git commit -m "feat: expose structured dataset coverage"
 ### Task 4: MCP read tool for coverage and enriched queries
 
 **Files:**
+
 - Modify: `packages/mcp-contract/src/index.ts`
 - Modify: `packages/mcp-contract/src/index.test.ts`
 - Modify: `apps/api/src/mcp/read-tools.ts`
@@ -262,6 +282,7 @@ git commit -m "feat: expose structured dataset coverage"
 - Modify: `apps/api/src/structured-query-route.test.ts`
 
 **Interfaces:**
+
 - Produces: MCP tool `describe_structured_dataset_coverage` with input `{ dataset: StructuredDatasetName }` delegating to the coverage HTTP route.
 - Preserves: `query_structured_dataset` name and response envelope while accepting Task 2's richer generic query body.
 
@@ -293,6 +314,7 @@ git commit -m "feat: add structured coverage MCP tool"
 ### Task 5: Launcher 0.2.6 release boundary
 
 **Files:**
+
 - Modify: `apps/mcp-launcher/package.json`
 - Modify: `package-lock.json`
 - Modify: `apps/mcp-launcher/src/index.test.ts`
@@ -302,6 +324,7 @@ git commit -m "feat: add structured coverage MCP tool"
 - Modify: relevant durable API/OpenAPI documentation identified by `rg "query_structured_dataset|structured/datasets" docs apps`
 
 **Interfaces:**
+
 - Produces: package `enterprise-hub-mcp-launcher@0.2.6` containing the new MCP contract.
 - Documents: the generic HTTP/MCP contract while leaving recommended-version metadata and both base-skill pins at `0.2.5` until npm publication is independently verified.
 
@@ -337,10 +360,12 @@ git commit -m "chore: prepare enterprise hub launcher 0.2.6"
 ### Task 6: Service integration proof and final gates
 
 **Files:**
+
 - Modify: `apps/api/src/structured-query.prisma.integration.test.ts`
 - Modify: `docs/implementation/progress.md`
 
 **Interfaces:**
+
 - Verifies: real MySQL execution for multi-group weighted aggregation, alias sort, coverage authorization, and pagination.
 
 - [ ] **Step 1: Add one focused Prisma integration scenario**
