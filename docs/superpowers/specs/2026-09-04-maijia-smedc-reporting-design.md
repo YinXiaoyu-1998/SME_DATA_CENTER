@@ -64,6 +64,8 @@ Counts and physical quantities use numeric registry types. Use `decimal` where a
 
 Existing staging `business` and `dishes` imports are removed before final acceptance and replaced with data imported under the v2 payload keys. No dual-key lookup or compatibility alias is added.
 
+Registry provenance is persisted on every import batch as a required `registry_version`. The migration records the exact historical active version for existing batches, and every new reservation uses the parser/profile registry version. Structured row queries and coverage discovery include only batches whose persisted version equals the requested active registry version. This is a permanent, dataset-agnostic contract that prevents any future registry replacement from silently reading JSON payloads written under a different schema; it is not a compatibility read path. QA `business` and `dishes` v1 batches are then hard-deleted after the v2 release is ready.
+
 ## Controlled Structured Query Language
 
 Every change in this section is a dataset-agnostic extension of the public structured-query language. The compiler, schemas, limits, errors, discovery metadata, and tests must describe reusable query primitives without naming Maijia, restaurants, reports, weeks, months, stalls, dishes, or any consumer workflow. Any registered structured dataset may use a primitive when its field capabilities permit it. The reporting skill is only the first demanding consumer and must not receive a privileged endpoint, hidden query mode, dataset-name branch, or server-side query template.
@@ -111,7 +113,7 @@ Add:
 - `GET /v1/structured/datasets/:dataset/coverage`
 - MCP tool `describe_structured_dataset_coverage`
 
-The endpoint accepts one supported dataset name and returns only currently visible, active, applied sources. It uses the same organization, employee state, label, document-kind/status/archive, and import-status/archive predicates as structured query.
+The endpoint accepts one supported dataset name and returns only currently visible, active, applied sources written under the active registry version. It uses the same organization, employee state, label, document-kind/status/archive, import-status/archive, and registry-version predicates as structured query.
 
 For window datasets it returns ordered non-overlapping visible import-window records containing dataset, start date, end date, applied row count, source document ID, import batch ID, and applied timestamp. For snapshot datasets it returns ordered snapshot records with snapshot date and the same safe lineage/count fields. Datasets without window or snapshot metadata return an empty coverage collection with their metadata policy.
 
