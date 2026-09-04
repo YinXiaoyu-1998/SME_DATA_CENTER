@@ -4,6 +4,7 @@ import {
   compileStructuredQuery,
   createStructuredCursor,
   decodeStructuredCursor,
+  STRUCTURED_QUERY_LIMITS,
   StructuredQueryValidationError
 } from "./structured-query.js";
 import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
@@ -229,6 +230,7 @@ describe("structured query compiler", () => {
       "default-org",
       "default-org",
       "dishes",
+      "dishes.2026-09-04.v2",
       "applied",
       "structured",
       "active",
@@ -260,6 +262,7 @@ describe("structured query compiler", () => {
       "default-org",
       "default-org",
       "dishes",
+      "dishes.2026-09-04.v2",
       "applied",
       "structured",
       "active",
@@ -361,6 +364,17 @@ describe("structured query compiler", () => {
         code: PHASE3_ERROR_CODES.invalidQuery
       },
       {
+        query: {
+          dataset: "dishes",
+          sort: [{ field: "business_date", direction: "asc", expression: "COUNT(*)" }]
+        },
+        code: PHASE3_ERROR_CODES.invalidQuery
+      },
+      {
+        query: { dataset: "dishes", page: { limit: 50, offset: 1 } },
+        code: PHASE3_ERROR_CODES.invalidQuery
+      },
+      {
         query: { dataset: "dishes", page: { limit: 201 } },
         code: PHASE3_ERROR_CODES.limitExceeded
       }
@@ -438,8 +452,8 @@ describe("structured query compiler", () => {
       },
       {
         query: {
-          dataset: "dishes",
-          groupBy: ["business_date", "matched_product_name"],
+          dataset: "business",
+          groupBy: ["store_name", "order_source", "meal_period", "business_date", "city"],
           aggregates: [{ op: "count", as: "row_count" }]
         },
         code: PHASE3_ERROR_CODES.limitExceeded
@@ -447,11 +461,14 @@ describe("structured query compiler", () => {
       {
         query: {
           dataset: "dishes",
-          aggregates: Array.from({ length: 6 }, (_, index) => ({
-            op: "sum",
-            field: "dish_sales_quantity",
-            as: `sum_${index}`
-          }))
+          aggregates: Array.from(
+            { length: STRUCTURED_QUERY_LIMITS.maxAggregates + 1 },
+            (_, index) => ({
+              op: "sum",
+              field: "dish_sales_quantity",
+              as: `sum_${index}`
+            })
+          )
         },
         code: PHASE3_ERROR_CODES.limitExceeded
       }
@@ -533,6 +550,206 @@ describe("structured query compiler", () => {
     expect(compiled.sql.indexOf("EXISTS (")).toBeLessThan(compiled.sql.indexOf("GROUP BY"));
     expect(compiled.params).toContain("$.gross_sales_amount");
     expect(compiled.params).toContain("$.discount_rate");
+  });
+
+  it("compiles bounded weighted aggregate queries with alias-aware sorting and registry provenance", () => {
+    const baseInput = {
+      employee: {
+        role: "manager" as const,
+        labels: ["store:baoli"]
+      },
+      orgId: "default-org",
+      cursorSecret: "cursor-secret"
+    };
+    const query = {
+      dataset: "business",
+      registryVersion: "business.2026-09-04.v2",
+      groupBy: ["store_name", "order_source", "meal_period"],
+      aggregates: [
+        { op: "sum", field: "order_revenue", as: "revenue" },
+        {
+          op: "weightedAvg",
+          field: "discount_rate",
+          weightField: "gross_sales_amount",
+          as: "weighted_discount_rate"
+        }
+      ],
+      sort: [{ field: "revenue", direction: "desc" }],
+      page: { limit: 200 }
+    };
+    const compiled = compileStructuredQuery({ ...baseInput, query });
+
+    expect(compiled.mode).toBe("aggregate");
+    expect(compiled.limit).toBe(STRUCTURED_QUERY_LIMITS.maxAggregateGroups);
+    expect(compiled.selectedFields).toEqual([
+      "store_name",
+      "order_source",
+      "meal_period",
+      "revenue",
+      "weighted_discount_rate"
+    ]);
+    expect(compiled.aggregateAliases).toEqual(["revenue", "weighted_discount_rate"]);
+    expect(compiled.sql).toContain("ib.registry_version = ?");
+    expect(compiled.sql).toContain(
+      "SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6))) AS `revenue`"
+    );
+    expect(compiled.sql).toContain(
+      "SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6)) * CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6))) / NULLIF(SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6))), 0) AS `weighted_discount_rate`"
+    );
+    expect(compiled.sql).toContain("GROUP BY `store_name`, `order_source`, `meal_period`");
+    expect(compiled.sql).toContain("ORDER BY `revenue` DESC");
+    expect(compiled.params).toEqual([
+      "$.store_name",
+      "$.order_source",
+      "$.meal_period",
+      "$.order_revenue",
+      "$.discount_rate",
+      "$.gross_sales_amount",
+      "$.gross_sales_amount",
+      "default-org",
+      "default-org",
+      "default-org",
+      "business",
+      "business.2026-09-04.v2",
+      "applied",
+      "structured",
+      "active",
+      "all_staff",
+      "store:baoli",
+      200,
+      0
+    ]);
+
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          ...baseInput,
+          query: {
+            ...query,
+            aggregates: [
+              { op: "sum", field: "order_revenue", as: "revenue" },
+              { op: "avg", field: "discount_rate", as: "revenue" }
+            ]
+          }
+        }),
+      PHASE3_ERROR_CODES.invalidAggregation
+    );
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          ...baseInput,
+          query: {
+            ...query,
+            aggregates: [{ op: "sum", field: "order_revenue", as: "store_name" }]
+          }
+        }),
+      PHASE3_ERROR_CODES.invalidAggregation
+    );
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          ...baseInput,
+          query: { ...query, sort: [{ field: "unknown_alias", direction: "desc" }] }
+        }),
+      PHASE3_ERROR_CODES.invalidField
+    );
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          ...baseInput,
+          query: {
+            ...query,
+            aggregates: [
+              {
+                op: "weightedAvg",
+                field: "store_name",
+                weightField: "gross_sales_amount",
+                as: "bad_value"
+              }
+            ]
+          }
+        }),
+      PHASE3_ERROR_CODES.unsupportedCapability
+    );
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          ...baseInput,
+          query: {
+            ...query,
+            aggregates: [
+              {
+                op: "weightedAvg",
+                field: "discount_rate",
+                weightField: "store_name",
+                as: "bad_weight"
+              }
+            ]
+          }
+        }),
+      PHASE3_ERROR_CODES.unsupportedCapability
+    );
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          ...baseInput,
+          query: {
+            ...query,
+            aggregates: [{ op: "weightedAvg", field: "discount_rate", as: "missing_weight" }]
+          }
+        }),
+      PHASE3_ERROR_CODES.invalidAggregation
+    );
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          ...baseInput,
+          query: {
+            ...query,
+            aggregates: [
+              {
+                op: "weightedAvg",
+                field: "discount_rate",
+                weightField: "gross_sales_amount",
+                as: "weighted_discount_rate",
+                formula: "discount_rate * gross_sales_amount"
+              }
+            ]
+          }
+        }),
+      PHASE3_ERROR_CODES.invalidQuery
+    );
+
+    for (const variantQuery of [
+      {
+        ...query,
+        aggregates: [{ op: "sum", field: "gross_sales_amount", as: "revenue" }, query.aggregates[1]]
+      },
+      { ...query, sort: [{ field: "weighted_discount_rate", direction: "asc" }] }
+    ]) {
+      const variant = compileStructuredQuery({ ...baseInput, query: variantQuery });
+      expect(variant.shapeHash).not.toBe(compiled.shapeHash);
+      expectStructuredError(
+        () =>
+          compileStructuredQuery({
+            ...baseInput,
+            query: {
+              ...variantQuery,
+              page: {
+                limit: query.page.limit,
+                cursor: createStructuredCursor({
+                  offset: query.page.limit,
+                  shapeHash: compiled.shapeHash,
+                  secret: baseInput.cursorSecret,
+                  now: new Date("2026-09-04T00:00:00.000Z")
+                })
+              }
+            },
+            now: new Date("2026-09-04T00:01:00.000Z")
+          }),
+        PHASE3_ERROR_CODES.invalidCursor
+      );
+    }
   });
 
   it("compiles vip member dataset queries against vip_rows", () => {

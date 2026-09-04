@@ -13,13 +13,13 @@ import {
 export const STRUCTURED_QUERY_LIMITS = {
   defaultLimit: 50,
   maxRows: 200,
-  maxAggregateGroups: 100,
+  maxAggregateGroups: 200,
   maxBooleanDepth: 3,
   maxConditions: 20,
   maxInValues: 100,
   maxSortFields: 2,
-  maxGroupByFields: 1,
-  maxAggregates: 5,
+  maxGroupByFields: 4,
+  maxAggregates: 12,
   maxSelectedFields: 50,
   cursorTtlSeconds: 900
 } as const;
@@ -113,11 +113,10 @@ interface SortSpec {
   direction: "asc" | "desc";
 }
 
-interface AggregateSpec {
-  op: "count" | "countDistinct" | "sum" | "avg" | "min" | "max";
-  field?: string;
-  as?: string;
-}
+type AggregateSpec =
+  | { op: "count"; field?: string; as?: string }
+  | { op: "countDistinct" | "sum" | "avg" | "min" | "max"; field: string; as?: string }
+  | { op: "weightedAvg"; field: string; weightField: string; as?: string };
 
 interface SqlFragment {
   sql: string;
@@ -142,7 +141,20 @@ const TOP_LEVEL_KEYS = new Set([
   "aggregates"
 ]);
 
-const AGGREGATE_OPERATORS = new Set(["count", "countDistinct", "sum", "avg", "min", "max"]);
+const AGGREGATE_OPERATORS = new Set([
+  "count",
+  "countDistinct",
+  "sum",
+  "avg",
+  "min",
+  "max",
+  "weightedAvg"
+]);
+const COUNT_AGGREGATE_KEYS = new Set(["op", "field", "as"]);
+const FIELD_AGGREGATE_KEYS = new Set(["op", "field", "as"]);
+const WEIGHTED_AVERAGE_AGGREGATE_KEYS = new Set(["op", "field", "weightField", "as"]);
+const SORT_KEYS = new Set(["field", "direction"]);
+const PAGE_KEYS = new Set(["limit", "cursor"]);
 
 export function compileStructuredQuery(
   input: CompileStructuredQueryInput
@@ -166,8 +178,8 @@ export function compileStructuredQuery(
   const mode: StructuredQueryMode =
     query.aggregates.length > 0 || query.groupBy.length > 0 ? "aggregate" : "detail";
   validateSelectedFields(query, fields, mode);
-  validateSort(query.sort, fields);
   validateAggregates(query, fields);
+  validateSort(query, fields, mode);
   validateFilter(query.filter, fields);
 
   const shapeHash = hashQueryShape({
@@ -199,6 +211,7 @@ export function compileStructuredQuery(
   const projection = buildProjection(query, fields, mode);
   const from = baseFromAndWhere({
     registry,
+    registryVersion: query.registryVersion,
     employee: input.employee,
     orgId: input.orgId
   });
@@ -470,6 +483,7 @@ function normalizeSort(input: unknown): SortSpec[] {
 
   return input.map((item) => {
     const object = requirePlainObject(item, "sort item must be an object.");
+    rejectUnknownKeys(object, SORT_KEYS);
     const field = object["field"];
     const direction = object["direction"] ?? "asc";
 
@@ -490,6 +504,7 @@ function normalizePage(input: unknown, mode: StructuredQueryMode) {
   }
 
   const object = requirePlainObject(input, "page must be an object.");
+  rejectUnknownKeys(object, PAGE_KEYS);
   const limit = object["limit"] ?? STRUCTURED_QUERY_LIMITS.defaultLimit;
   const cursor = object["cursor"] ?? null;
   const maxLimit =
@@ -541,19 +556,13 @@ function normalizeAggregates(input: unknown): AggregateSpec[] {
     const object = requirePlainObject(item, "aggregate item must be an object.");
     const op = object["op"];
     const field = object["field"];
+    const weightField = object["weightField"];
     const alias = object["as"];
 
     if (typeof op !== "string" || !AGGREGATE_OPERATORS.has(op)) {
       throw new StructuredQueryValidationError(
         PHASE3_ERROR_CODES.invalidAggregation,
         "Aggregate operator is invalid."
-      );
-    }
-
-    if (field !== undefined && typeof field !== "string") {
-      throw new StructuredQueryValidationError(
-        PHASE3_ERROR_CODES.invalidAggregation,
-        "Aggregate field is invalid."
       );
     }
 
@@ -564,11 +573,52 @@ function normalizeAggregates(input: unknown): AggregateSpec[] {
       );
     }
 
-    return {
-      op: op as AggregateSpec["op"],
-      field,
-      as: alias
-    };
+    if (op === "count") {
+      rejectUnknownKeys(object, COUNT_AGGREGATE_KEYS);
+      if (field !== undefined && typeof field !== "string") {
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.invalidAggregation,
+          "Aggregate field is invalid."
+        );
+      }
+
+      return { op, field, as: alias } satisfies AggregateSpec;
+    }
+
+    if (op === "weightedAvg") {
+      rejectUnknownKeys(object, WEIGHTED_AVERAGE_AGGREGATE_KEYS);
+      if (typeof field !== "string" || typeof weightField !== "string") {
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.invalidAggregation,
+          "Weighted aggregate fields are required."
+        );
+      }
+
+      return { op, field, weightField, as: alias } satisfies AggregateSpec;
+    }
+
+    switch (op) {
+      case "countDistinct":
+      case "sum":
+      case "avg":
+      case "min":
+      case "max": {
+        rejectUnknownKeys(object, FIELD_AGGREGATE_KEYS);
+        if (typeof field !== "string") {
+          throw new StructuredQueryValidationError(
+            PHASE3_ERROR_CODES.invalidAggregation,
+            "Aggregate field is required."
+          );
+        }
+
+        return { op, field, as: alias } satisfies AggregateSpec;
+      }
+    }
+
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.invalidAggregation,
+      "Aggregate operator is invalid."
+    );
   });
 }
 
@@ -688,19 +738,6 @@ function validateSelectedFields(
   }
 }
 
-function validateSort(sort: SortSpec[], fields: Map<string, StructuredFieldRegistryEntry>) {
-  for (const item of sort) {
-    const field = requireField(fields, item.field);
-    if (!field.capabilities.sort) {
-      throw new StructuredQueryValidationError(
-        PHASE3_ERROR_CODES.unsupportedCapability,
-        "Field does not support sorting.",
-        { field: item.field }
-      );
-    }
-  }
-}
-
 function validateAggregates(
   query: NormalizedQuery,
   fields: Map<string, StructuredFieldRegistryEntry>
@@ -727,13 +764,6 @@ function validateAggregates(
       continue;
     }
 
-    if (!aggregate.field) {
-      throw new StructuredQueryValidationError(
-        PHASE3_ERROR_CODES.invalidAggregation,
-        "Aggregate field is required."
-      );
-    }
-
     const field = requireField(fields, aggregate.field);
     if (aggregate.op === "countDistinct") {
       if (!field.capabilities.group && !field.capabilities.aggregate) {
@@ -746,6 +776,13 @@ function validateAggregates(
       continue;
     }
 
+    if (aggregate.op === "weightedAvg") {
+      validateWeightedAggregateField(field, aggregate.field);
+      const weightField = requireField(fields, aggregate.weightField);
+      validateWeightedAggregateField(weightField, aggregate.weightField);
+      continue;
+    }
+
     if (!field.capabilities.aggregate) {
       throw new StructuredQueryValidationError(
         PHASE3_ERROR_CODES.unsupportedCapability,
@@ -754,6 +791,93 @@ function validateAggregates(
       );
     }
   }
+
+  requireUniqueAggregateAliases(query.aggregates, query.groupBy);
+}
+
+function validateSort(
+  query: NormalizedQuery,
+  fields: Map<string, StructuredFieldRegistryEntry>,
+  mode: StructuredQueryMode
+) {
+  if (mode === "aggregate") {
+    const groupFields = new Set(query.groupBy);
+    const aggregateAliases = uniqueAggregateAliases(query.aggregates, groupFields);
+
+    for (const item of query.sort) {
+      if (groupFields.has(item.field)) {
+        continue;
+      }
+
+      if (aggregateAliases.has(item.field)) {
+        continue;
+      }
+
+      throw new StructuredQueryValidationError(
+        PHASE3_ERROR_CODES.invalidField,
+        "Aggregate sort field must be a group field or aggregate alias.",
+        { field: item.field }
+      );
+    }
+
+    return;
+  }
+
+  for (const item of query.sort) {
+    const field = requireField(fields, item.field);
+    if (!field.capabilities.sort) {
+      throw new StructuredQueryValidationError(
+        PHASE3_ERROR_CODES.unsupportedCapability,
+        "Field does not support sorting.",
+        { field: item.field }
+      );
+    }
+  }
+}
+
+function validateWeightedAggregateField(field: StructuredFieldRegistryEntry, fieldName: string) {
+  if (
+    field.storage.column !== "payload" ||
+    !field.capabilities.aggregate ||
+    !["integer", "decimal", "percent"].includes(field.type)
+  ) {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.unsupportedCapability,
+      "Field does not support weighted aggregation.",
+      { field: fieldName }
+    );
+  }
+}
+
+function requireUniqueAggregateAliases(
+  aggregates: AggregateSpec[],
+  reservedAliases: Iterable<string> = []
+) {
+  const seen = new Set<string>();
+
+  for (const alias of reservedAliases) {
+    seen.add(alias);
+  }
+
+  for (const aggregate of aggregates) {
+    const alias = aggregateAlias(aggregate);
+    if (seen.has(alias)) {
+      throw new StructuredQueryValidationError(
+        PHASE3_ERROR_CODES.invalidAggregation,
+        "Aggregate aliases must be unique.",
+        { alias }
+      );
+    }
+    seen.add(alias);
+  }
+}
+
+function uniqueAggregateAliases(
+  aggregates: AggregateSpec[],
+  reservedAliases: Iterable<string> = []
+): Set<string> {
+  requireUniqueAggregateAliases(aggregates, reservedAliases);
+  return new Set(aggregates.map((aggregate) => aggregateAlias(aggregate)));
 }
 
 function validateFilter(
@@ -942,6 +1066,7 @@ function buildProjection(
 
 function baseFromAndWhere(input: {
   registry: StructuredDatasetRegistry;
+  registryVersion: string;
   employee: StructuredQueryEmployeeScope;
   orgId: string;
 }): SqlFragment {
@@ -950,6 +1075,7 @@ function baseFromAndWhere(input: {
     input.orgId,
     input.orgId,
     input.registry.dataset,
+    input.registryVersion,
     "applied",
     "structured",
     "active"
@@ -961,6 +1087,7 @@ function baseFromAndWhere(input: {
     "AND ib.org_id = ?",
     "AND d.org_id = ?",
     "AND ib.dataset = ?",
+    "AND ib.registry_version = ?",
     "AND ib.status = ?",
     "AND ib.archived_at IS NULL",
     "AND d.document_kind = ?",
@@ -1076,12 +1203,9 @@ function buildOrderBy(
 
     return {
       sql: ` ORDER BY ${sort
-        .map(
-          (item) =>
-            `${typedFieldExpression(requireField(fields, item.field))} ${item.direction.toUpperCase()}`
-        )
+        .map((item) => `${quoteIdentifier(item.field)} ${item.direction.toUpperCase()}`)
         .join(", ")}`,
-      params: sort.map((item) => requireJsonPath(requireField(fields, item.field)))
+      params: []
     };
   }
 
@@ -1125,6 +1249,14 @@ function aggregateExpression(
       return { sql: `MIN(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
     case "max":
       return { sql: `MAX(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
+    case "weightedAvg": {
+      const weightField = requireField(fields, aggregate.weightField);
+      const weightExpression = typedFieldExpression(weightField);
+      return {
+        sql: `SUM(${expression} * ${weightExpression}) / NULLIF(SUM(${weightExpression}), 0) AS ${alias}`,
+        params: [requireJsonPath(field), requireJsonPath(weightField), requireJsonPath(weightField)]
+      };
+    }
   }
 }
 

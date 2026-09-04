@@ -156,6 +156,35 @@ const searchDocumentEvidenceInputSchema = z
 
 const listStructuredDatasetsInputSchema = z.object({}).strict();
 
+const aggregateAlias = z.string().min(1);
+const countAggregateInputSchema = z
+  .object({
+    op: z.literal("count"),
+    field: z.string().min(1).optional(),
+    as: aggregateAlias.optional()
+  })
+  .strict();
+const fieldAggregateInputSchema = z
+  .object({
+    op: z.enum(["countDistinct", "sum", "avg", "min", "max"]),
+    field: z.string().min(1),
+    as: aggregateAlias.optional()
+  })
+  .strict();
+const weightedAverageAggregateInputSchema = z
+  .object({
+    op: z.literal("weightedAvg"),
+    field: z.string().min(1),
+    weightField: z.string().min(1),
+    as: aggregateAlias.optional()
+  })
+  .strict();
+const structuredAggregateInputSchema = z.discriminatedUnion("op", [
+  countAggregateInputSchema,
+  fieldAggregateInputSchema,
+  weightedAverageAggregateInputSchema
+]);
+
 const queryStructuredDatasetInputSchema = z
   .object({
     dataset: structuredDataset,
@@ -192,15 +221,7 @@ const queryStructuredDatasetInputSchema = z
       .optional()
       .describe("Optional aggregate group-by field."),
     aggregates: z
-      .array(
-        z
-          .object({
-            op: z.enum(["count", "countDistinct", "sum", "avg", "min", "max"]),
-            field: z.string().min(1).optional(),
-            as: z.string().min(1).optional()
-          })
-          .strict()
-      )
+      .array(structuredAggregateInputSchema)
       .max(MCP_STRUCTURED_QUERY_LIMITS.maxAggregates)
       .optional()
       .describe("Optional explicit mechanical aggregations.")
@@ -848,7 +869,7 @@ function validateStructuredQueryBounds(
     filter?: unknown;
     page?: { limit?: number };
     groupBy?: string[];
-    aggregates?: unknown[];
+    aggregates?: Array<{ op: string; field?: string; as?: string }>;
   },
   context: z.RefinementCtx
 ): void {
@@ -868,6 +889,36 @@ function validateStructuredQueryBounds(
   if (input.filter !== undefined) {
     validateStructuredFilterBounds(input.filter, 1, context, ["filter"]);
   }
+
+  if (input.aggregates !== undefined) {
+    validateStructuredAggregateAliases(input.aggregates, input.groupBy ?? [], context);
+  }
+}
+
+function validateStructuredAggregateAliases(
+  aggregates: Array<{ op: string; field?: string; as?: string }>,
+  reservedAliases: Iterable<string>,
+  context: z.RefinementCtx
+): void {
+  const seen = new Set<string>();
+
+  for (const alias of reservedAliases) {
+    seen.add(alias);
+  }
+
+  aggregates.forEach((aggregate, index) => {
+    const alias =
+      aggregate.as ?? (aggregate.field ? `${aggregate.op}_${aggregate.field}` : "count");
+    if (seen.has(alias)) {
+      context.addIssue({
+        code: "custom",
+        message: "Aggregate aliases must be unique.",
+        path: ["aggregates", index, "as"]
+      });
+      return;
+    }
+    seen.add(alias);
+  });
 }
 
 function validateStructuredFilterBounds(

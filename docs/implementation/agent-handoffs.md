@@ -1105,3 +1105,35 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   aggregate capabilities for `dish_sales_amount`, `dine_in_revenue`, and `table_count`.
 - Concern: `npm run format:check` still fails only on three pre-existing unmodified plan docs under
   `docs/superpowers/plans/`; touched TypeScript files were formatted separately and unchanged.
+
+## 2026-09-05 00:09 CST - general structured query enhancements Task 2
+
+- Branch/worktree: `codex/maijia-smedc-query-language` in
+  `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER-worktrees/maijia-smedc-service-task2`,
+  based on `c6523b1`.
+- Scope completed: extended the dataset-agnostic controlled structured-query language to four
+  group fields, 12 aggregates, and 200 aggregate groups; added `weightedAvg(field, weightField,
+as?)` as a strict discriminated aggregate; required unique aggregate aliases, including no
+  collisions with group-field output names; allowed aggregate-mode sorting by validated group
+  fields or aggregate aliases only; and added exact `ib.registry_version = ?` filtering to base
+  structured queries.
+- Contract checks: weighted average compiles as `SUM(value * weight) / NULLIF(SUM(weight), 0)`,
+  with SQL placeholder parameters ordered as group fields, aggregate value/weight JSON paths,
+  base authorization/provenance predicates, pagination limit, and offset. Cursor shape now rejects
+  cursors when aggregate or aggregate-sort shape changes. MCP schema rejects 5 group fields,
+  13 aggregates, missing `weightField` on `weightedAvg`, and `weightField` on non-weighted
+  operators.
+- RED evidence: with only production implementation temporarily reversed and tests left in place,
+  `npm test -- packages/domain/src/structured-query.test.ts packages/mcp-contract/src/index.test.ts`
+  failed on old limits, missing registry-version predicate/param, missing weighted aggregate
+  support, duplicate alias acceptance, and strict sort/page shape acceptance.
+- GREEN verification: focused structured-query/MCP tests passed (58/58); API discovery route test
+  passed (15/15); `npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check`,
+  and full `npm test` passed (89 files passed, 743 tests passed, 5 files/31 tests skipped by
+  existing gates).
+- Cleanup: no repo `.data` directory existed after unit tests. Docker containers, volumes, and
+  networks were inspected; no repo-owned Docker resources were started by this task, so unrelated
+  local services were left untouched.
+- Files changed: `packages/domain/src/structured-query.ts`, `packages/domain/src/structured-query.test.ts`,
+  `packages/mcp-contract/src/index.ts`, `packages/mcp-contract/src/index.test.ts`,
+  `apps/api/src/structured-query-route.test.ts`, `docs/implementation/progress.md`, and this handoff.

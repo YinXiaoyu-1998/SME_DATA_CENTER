@@ -102,13 +102,13 @@ describe("structured dataset discovery", () => {
       limits: {
         defaultLimit: 50,
         maxRows: 200,
-        maxAggregateGroups: 100,
+        maxAggregateGroups: 200,
         maxBooleanDepth: 3,
         maxConditions: 20,
         maxInValues: 100,
         maxSortFields: 2,
-        maxGroupByFields: 1,
-        maxAggregates: 5,
+        maxGroupByFields: 4,
+        maxAggregates: 12,
         maxSelectedFields: 50
       },
       datasets: expect.arrayContaining([

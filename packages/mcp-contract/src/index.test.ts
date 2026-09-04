@@ -214,7 +214,11 @@ const invalidInputCases = [
       },
       {
         label: "too many group-by fields",
-        input: { dataset: "dishes", groupBy: ["store_name", "city_name"] }
+        input: {
+          dataset: "business",
+          groupBy: ["store_name", "order_source", "meal_period", "business_date", "city"],
+          aggregates: [{ op: "count", as: "rows" }]
+        }
       },
       {
         label: "too many aggregates",
@@ -229,6 +233,45 @@ const invalidInputCases = [
       {
         label: "invalid aggregate op",
         input: { dataset: "dishes", aggregates: [{ op: "median" }] }
+      },
+      {
+        label: "weighted aggregate missing weight field",
+        input: {
+          dataset: "business",
+          aggregates: [{ op: "weightedAvg", field: "discount_rate", as: "weighted_discount" }]
+        }
+      },
+      {
+        label: "non-weighted aggregate with weight field",
+        input: {
+          dataset: "business",
+          aggregates: [
+            {
+              op: "avg",
+              field: "discount_rate",
+              weightField: "gross_sales_amount",
+              as: "weighted_discount"
+            }
+          ]
+        }
+      },
+      {
+        label: "duplicate aggregate alias",
+        input: {
+          dataset: "business",
+          aggregates: [
+            { op: "sum", field: "order_revenue", as: "revenue" },
+            { op: "avg", field: "discount_rate", as: "revenue" }
+          ]
+        }
+      },
+      {
+        label: "aggregate alias collides with group field",
+        input: {
+          dataset: "business",
+          groupBy: ["store_name"],
+          aggregates: [{ op: "sum", field: "order_revenue", as: "store_name" }]
+        }
       }
     ]
   },
@@ -782,13 +825,13 @@ describe("Enterprise Hub MCP contract", () => {
     expect(MCP_STRUCTURED_QUERY_LIMITS).toEqual({
       defaultLimit: 50,
       maxRows: 200,
-      maxAggregateGroups: 100,
+      maxAggregateGroups: 200,
       maxBooleanDepth: 3,
       maxConditions: 20,
       maxInValues: 100,
       maxSortFields: 2,
-      maxGroupByFields: 1,
-      maxAggregates: 5,
+      maxGroupByFields: 4,
+      maxAggregates: 12,
       maxSelectedFields: 50,
       cursorTtlSeconds: 900
     });
@@ -803,6 +846,28 @@ describe("Enterprise Hub MCP contract", () => {
       safeParseTool("query_structured_dataset", {
         dataset: "dishes",
         aggregates: [{ op: "count", as: "rows" }],
+        page: { limit: MCP_STRUCTURED_QUERY_LIMITS.maxAggregateGroups }
+      }).success
+    ).toBe(true);
+    expect(
+      safeParseTool("query_structured_dataset", {
+        dataset: "business",
+        registryVersion: "business.2026-09-04.v2",
+        groupBy: ["store_name", "order_source", "meal_period", "business_date"],
+        aggregates: [
+          ...Array.from({ length: MCP_STRUCTURED_QUERY_LIMITS.maxAggregates - 1 }, (_, index) => ({
+            op: "sum" as const,
+            field: "order_revenue",
+            as: `revenue_${index}`
+          })),
+          {
+            op: "weightedAvg",
+            field: "discount_rate",
+            weightField: "gross_sales_amount",
+            as: "weighted_discount"
+          }
+        ],
+        sort: [{ field: "weighted_discount", direction: "desc" }],
         page: { limit: MCP_STRUCTURED_QUERY_LIMITS.maxAggregateGroups }
       }).success
     ).toBe(true);
