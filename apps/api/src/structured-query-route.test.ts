@@ -114,7 +114,7 @@ describe("structured dataset discovery", () => {
       datasets: expect.arrayContaining([
         expect.objectContaining({
           dataset: "dishes",
-          registryVersion: "dishes.2026-07-11.v1",
+          registryVersion: "dishes.2026-09-04.v2",
           rowTable: "dish_rows",
           fields: expect.arrayContaining([
             expect.objectContaining({
@@ -190,7 +190,7 @@ describe("structured query API", () => {
       },
       payload: {
         dataset: "dishes",
-        registryVersion: "dishes.2026-07-11.v1",
+        registryVersion: "dishes.2026-09-04.v2",
         select: ["business_date", "matched_product_name", "dish_sales_quantity"],
         filter: {
           field: "matched_product_name",
@@ -205,7 +205,7 @@ describe("structured query API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       dataset: "dishes",
-      registryVersion: "dishes.2026-07-11.v1",
+      registryVersion: "dishes.2026-09-04.v2",
       mode: "detail",
       rows: [
         {
@@ -393,7 +393,7 @@ describe("structured query API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       dataset: "business",
-      registryVersion: "business.2026-07-11.v1",
+      registryVersion: "business.2026-09-04.v2",
       mode: "aggregate",
       rows: [
         {

@@ -9,7 +9,7 @@ import {
   PrismaClient
 } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { compileStructuredQuery } from "@enterprise-hub/domain";
+import { compileStructuredQuery, getStructuredRegistry } from "@enterprise-hub/domain";
 import { createPrismaStructuredQueryRepository } from "./structured-query.js";
 
 const runIntegration = process.env["RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION"] === "1";
@@ -322,6 +322,7 @@ async function createLedgerDocument(
       orgId,
       sourceDocumentId: document.id,
       dataset: ImportDataset.delivery_ledger,
+      registryVersion: getStructuredRegistry("delivery_ledger").version,
       startDate: new Date("2026-08-29T00:00:00.000Z"),
       endDate: new Date("2026-08-29T00:00:00.000Z"),
       idempotencyKey: `query-prisma-review-ledger-${input.suffix}`,
@@ -377,6 +378,7 @@ async function createCatalog(
       orgId,
       sourceDocumentId: document.id,
       dataset: ImportDataset.supplier_catalog,
+      registryVersion: getStructuredRegistry("supplier_catalog").version,
       idempotencyKey: `query-prisma-review-catalog-${input.suffix}`,
       requestFingerprint: input.suffix.padEnd(64, "0").slice(0, 64),
       status: input.status ?? ImportBatchStatus.applied,

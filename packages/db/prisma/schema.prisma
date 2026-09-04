@@ -390,6 +390,7 @@ model ImportBatch {
   orgId              String             @map("org_id") @db.VarChar(64)
   sourceDocumentId   String             @unique @map("source_document_id") @db.VarChar(32)
   dataset            ImportDataset
+  registryVersion    String             @map("registry_version") @db.VarChar(128)
   startDate          DateTime?          @map("start_date") @db.Date
   endDate            DateTime?          @map("end_date") @db.Date
   idempotencyKey     String             @map("idempotency_key") @db.VarChar(255)

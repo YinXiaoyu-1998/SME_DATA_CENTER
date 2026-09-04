@@ -213,6 +213,76 @@ describe("structured field registries", () => {
     expect(getStructuredRegistry("vip").fields).toHaveLength(67);
   });
 
+  test("publishes v2 report fields with explicit semantic names and numeric aggregation", () => {
+    const expected = [
+      ["business", "桌台数量", "table_count", "integer"],
+      ["business", "桌台使用次数", "table_use_count", "integer"],
+      ["business", "桌台数x营业天数", "table_days", "integer"],
+      ["business", "消费桌数", "served_table_count", "integer"],
+      ["business", "消费次数", "consumption_count", "integer"],
+      ["business", "店内营业收入", "dine_in_revenue", "decimal"],
+      ["business", "外卖营业收入", "delivery_revenue", "decimal"],
+      ["dishes", "菜品销售额", "dish_sales_amount", "decimal"],
+      ["dishes", "菜品收入", "dish_revenue", "decimal"],
+      ["dishes", "菜品总销售额", "dish_total_sales_amount", "decimal"],
+      ["dishes", "菜品总收入", "dish_total_revenue", "decimal"]
+    ] as const;
+
+    expect(getStructuredRegistry("business").version).toBe("business.2026-09-04.v2");
+    expect(getStructuredRegistry("dishes").version).toBe("dishes.2026-09-04.v2");
+
+    for (const [dataset, sourceColumn, canonicalName, type] of expected) {
+      expect(getStructuredRegistry(dataset).fields).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceColumn,
+            canonicalName,
+            type,
+            capabilities: expect.objectContaining({ aggregate: true })
+          })
+        ])
+      );
+    }
+  });
+
+  test("marks report grouping dimensions as groupable in the v2 business and dishes registries", () => {
+    const expected = [
+      ["business", "business_date"],
+      ["business", "business_week"],
+      ["business", "business_month"],
+      ["business", "store_name"],
+      ["business", "city"],
+      ["business", "merchant_id"],
+      ["business", "order_category"],
+      ["business", "order_source"],
+      ["business", "meal_period"],
+      ["business", "time_slot"],
+      ["business", "is_member"],
+      ["business", "dining_method"],
+      ["dishes", "business_date"],
+      ["dishes", "business_week"],
+      ["dishes", "business_month"],
+      ["dishes", "store_name"],
+      ["dishes", "product_name"],
+      ["dishes", "matched_product_name"],
+      ["dishes", "order_category"],
+      ["dishes", "time_slot"],
+      ["dishes", "merchant_id"],
+      ["dishes", "organization_code"]
+    ] as const;
+
+    for (const [dataset, canonicalName] of expected) {
+      expect(getStructuredRegistry(dataset).fields).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            canonicalName,
+            capabilities: expect.objectContaining({ group: true })
+          })
+        ])
+      );
+    }
+  });
+
   test("registers the catalog snapshot schema and its metadata policy", () => {
     const catalog = getStructuredRegistry("dish_catalog");
 

@@ -464,12 +464,12 @@ describe("structured ingestion", () => {
 
   test("preserves bare and suffixed percent scalar values with the same meaning", async () => {
     const [bare, suffixed] = await Promise.all([
-      parseDishesCsv({ dishes_043_field: "12.5" }),
-      parseDishesCsv({ dishes_043_field: "12.5%" })
+      parseDishesCsv({ dish_sales_quantity_share: "12.5" }),
+      parseDishesCsv({ dish_sales_quantity_share: "12.5%" })
     ]);
 
-    expect(bare.rows[0]?.payload.dishes_043_field).toBe(12.5);
-    expect(suffixed.rows[0]?.payload.dishes_043_field).toBe(12.5);
+    expect(bare.rows[0]?.payload.dish_sales_quantity_share).toBe(12.5);
+    expect(suffixed.rows[0]?.payload.dish_sales_quantity_share).toBe(12.5);
   });
 
   test("rejects empty required scalar cells before date-window evaluation", async () => {
@@ -582,15 +582,15 @@ describe("structured ingestion", () => {
   });
 
   test.each([
-    ["integer suffix", { dishes_049_served: "12abc" }, "must be an integer"],
-    ["integer exponent", { dishes_049_served: "1e3" }, "must be an integer"],
+    ["integer suffix", { serving_order_count: "12abc" }, "must be an integer"],
+    ["integer exponent", { serving_order_count: "1e3" }, "must be an integer"],
     ["decimal suffix", { dish_sales_quantity: "12abc" }, "must be numeric"],
     ["malformed decimal", { dish_sales_quantity: "1." }, "must be numeric"],
     ["non-finite number", { dish_sales_quantity: "Infinity" }, "must be numeric"],
     ["non-finite NaN", { dish_sales_quantity: "NaN" }, "must be numeric"],
-    ["malformed percent", { dishes_043_field: "10%%" }, "must be numeric"],
-    ["percent suffix junk", { dishes_043_field: "12.5%junk" }, "must be numeric"],
-    ["malformed percent decimal", { dishes_043_field: "12.%" }, "must be numeric"],
+    ["malformed percent", { dish_sales_quantity_share: "10%%" }, "must be numeric"],
+    ["percent suffix junk", { dish_sales_quantity_share: "12.5%junk" }, "must be numeric"],
+    ["malformed percent decimal", { dish_sales_quantity_share: "12.%" }, "must be numeric"],
     ["date suffix", { business_date: "2026-07-01T00:00:00" }, "must be a date"],
     ["impossible date", { business_date: "2026-02-30" }, "must be a date"],
     ["mixed date separators", { business_date: "2026-07/01" }, "must be a date"],
@@ -930,9 +930,10 @@ describe("structured ingestion", () => {
     });
 
     expect(profile.sheets).toEqual([expect.objectContaining({ dataRowCount: 997 })]);
+    expect(profile.registryVersion).toBe(getStructuredRegistry(dataset).version);
     expect(imported.rows).toHaveLength(997);
     if (dataset === "dishes") {
-      expect(imported.rows[0]?.payload.dishes_050_dish_gross_margin_rate).toBe(1);
+      expect(imported.rows[0]?.payload.dish_total_gross_margin_rate_after_discount).toBe(1);
     }
     if (dataset === "business") {
       expect(imported.rows[0]?.payload).toMatchObject({
@@ -1664,7 +1665,7 @@ describe("committed XLSX fixture pipeline", () => {
       is_member: "true",
       matched_product_name: "Inline product",
       order_category: "堂食",
-      dishes_024_dish_sales_amount: 10.5
+      dish_sales_amount: 10.5
     });
   });
 

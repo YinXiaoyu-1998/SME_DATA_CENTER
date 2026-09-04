@@ -1087,3 +1087,21 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
+
+## 2026-09-04 - general structured query enhancements Task 1
+
+- Branch/worktree: `codex/maijia-smedc-service-task1` in
+  `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER-worktrees/maijia-smedc-service-task1`.
+- Scope completed: published explicit `business.2026-09-04.v2` and `dishes.2026-09-04.v2`
+  registry mappings for report-consumed business/dish fields, added explicit ambiguous numeric
+  typing, and added permanent `ImportBatch.registryVersion` provenance from profile/reservation
+  through Prisma records, document source metadata, audit facts, in-memory fixtures, and public
+  import-batch responses. Historical migration backfills exact v1 dataset versions and does not
+  relabel old rows as v2.
+- Verification: RED registry command failed on old `business.2026-07-11.v1`; RED import command
+  failed on missing `registryVersion` persistence/response/mismatch rejection. GREEN checks passed:
+  `npm run db:generate`; focused 4-file suite 152/152; version-fallout suite 95/95; `npm run lint`;
+  `npm run typecheck`; `git diff --check`. Dataset route snapshot returned v2 versions with numeric
+  aggregate capabilities for `dish_sales_amount`, `dine_in_revenue`, and `table_count`.
+- Concern: `npm run format:check` still fails only on three pre-existing unmodified plan docs under
+  `docs/superpowers/plans/`; touched TypeScript files were formatted separately and unchanged.

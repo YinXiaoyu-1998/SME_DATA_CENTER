@@ -39,7 +39,7 @@ const validInputs = {
   list_structured_datasets: {},
   query_structured_dataset: {
     dataset: "dishes",
-    registryVersion: "dishes.2026-07-11.v1",
+    registryVersion: "dishes.2026-09-04.v2",
     select: ["business_date"],
     filter: {
       field: "matched_product_name",

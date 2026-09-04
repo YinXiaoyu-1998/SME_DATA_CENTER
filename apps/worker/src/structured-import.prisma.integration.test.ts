@@ -11,6 +11,7 @@ import {
   ProcessingRunStatus
 } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { getStructuredRegistry, type StructuredDatasetName } from "@enterprise-hub/domain";
 import type { StructuredParseResult } from "@enterprise-hub/structured-ingestion";
 import { createPrismaProcessingWorkerRepository, ProcessingLeaseLostError } from "./worker.js";
 
@@ -408,6 +409,7 @@ async function createStructuredRun(
       orgId,
       sourceDocumentId: documentId,
       dataset,
+      registryVersion: getStructuredRegistry(dataset as StructuredDatasetName).version,
       startDate: new Date("2026-08-10T00:00:00.000Z"),
       endDate: new Date("2026-08-10T00:00:00.000Z"),
       idempotencyKey: `worker-prisma-${suffix}`,

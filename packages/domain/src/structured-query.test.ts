@@ -194,7 +194,7 @@ describe("structured query compiler", () => {
       orgId: "default-org",
       query: {
         dataset: "dishes",
-        registryVersion: "dishes.2026-07-11.v1",
+        registryVersion: "dishes.2026-09-04.v2",
         select: ["business_date", "matched_product_name", "dish_sales_quantity"],
         filter: {
           and: [
@@ -511,7 +511,7 @@ describe("structured query compiler", () => {
       orgId: "default-org",
       query: {
         dataset: "business",
-        registryVersion: "business.2026-07-11.v1",
+        registryVersion: "business.2026-09-04.v2",
         groupBy: ["business_date"],
         aggregates: [
           { op: "count", as: "row_count" },

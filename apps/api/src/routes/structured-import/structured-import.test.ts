@@ -188,6 +188,7 @@ describe("structured imports", () => {
       },
       importBatch: {
         dataset: "dishes",
+        registryVersion: "dishes.2026-09-04.v2",
         status: "pending",
         startDate: "20260701",
         endDate: "20260705",
@@ -201,7 +202,13 @@ describe("structured imports", () => {
     expect(documentRepository.documents[0]).toMatchObject({
       status: "pending_processing",
       documentType: "structured_dataset",
-      originalFileName: "original-dishes.csv"
+      originalFileName: "original-dishes.csv",
+      sourceMetadata: expect.objectContaining({
+        registryVersion: "dishes.2026-09-04.v2"
+      })
+    });
+    expect(structuredImportRepository.batches[0]).toMatchObject({
+      registryVersion: "dishes.2026-09-04.v2"
     });
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
     expect(documentRepository.auditLogs).toEqual([
@@ -216,6 +223,7 @@ describe("structured imports", () => {
         launcherVersion: null,
         metadata: {
           dataset: "dishes",
+          registryVersion: "dishes.2026-09-04.v2",
           startDate: "20260701",
           endDate: "20260705",
           rowCount: 0,

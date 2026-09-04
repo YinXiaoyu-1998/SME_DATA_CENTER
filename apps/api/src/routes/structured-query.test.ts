@@ -115,7 +115,7 @@ describe("structured query routes", () => {
       headers: { authorization: "Bearer valid" },
       payload: {
         dataset: "dishes",
-        registryVersion: "dishes.2026-07-11.v1",
+        registryVersion: "dishes.2026-09-04.v2",
         select: ["business_date", "matched_product_name", "dish_sales_quantity"],
         filter: { field: "matched_product_name", op: "contains", value: "肉夹馍" },
         page: { limit: 1 }
