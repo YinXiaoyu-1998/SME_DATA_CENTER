@@ -66,11 +66,13 @@ Existing staging `business` and `dishes` imports are removed before final accept
 
 ## Controlled Structured Query Language
 
+Every change in this section is a dataset-agnostic extension of the public structured-query language. The compiler, schemas, limits, errors, discovery metadata, and tests must describe reusable query primitives without naming Maijia, restaurants, reports, weeks, months, stalls, dishes, or any consumer workflow. Any registered structured dataset may use a primitive when its field capabilities permit it. The reporting skill is only the first demanding consumer and must not receive a privileged endpoint, hidden query mode, dataset-name branch, or server-side query template.
+
 ### Grouping
 
 Increase `maxGroupByFields` from 1 to 4. Every group field must retain registry `group=true`. The compiler emits a deterministic order over every group field when the caller does not specify an order, preserving stable cursor pagination.
 
-The four-field ceiling supports the largest required mechanical shapes without arbitrary query expansion:
+The four-field ceiling is a general complexity bound. It also supports the largest mechanical shapes needed by the first reporting consumer:
 
 - store + business date/week/month;
 - store + order category + order source;
