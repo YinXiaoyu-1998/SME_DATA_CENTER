@@ -156,6 +156,12 @@ const searchDocumentEvidenceInputSchema = z
 
 const listStructuredDatasetsInputSchema = z.object({}).strict();
 
+const describeStructuredDatasetCoverageInputSchema = z
+  .object({
+    dataset: structuredDataset
+  })
+  .strict();
+
 const aggregateAlias = z.string().min(1);
 const countAggregateInputSchema = z
   .object({
@@ -401,6 +407,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_NAMES = [
   "search_document_evidence",
   "list_structured_datasets",
   "query_structured_dataset",
+  "describe_structured_dataset_coverage",
   "upload_structured_dataset",
   "upload_evidence_document",
   "upload_quarantine_certificate",
@@ -555,6 +562,27 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       }
     ],
     resultShape: ["dataset", "registryVersion", "mode", "rows[]", "nextCursor"]
+  }),
+  defineToolContract({
+    name: "describe_structured_dataset_coverage",
+    title: "Describe Enterprise Hub structured dataset coverage",
+    description:
+      "Return readable applied structured source coverage facts by calling authenticated GET /v1/structured/datasets/:dataset/coverage. This tool reports sources only; clients decide completeness and reporting sufficiency.",
+    inputSchema: describeStructuredDatasetCoverageInputSchema,
+    inputFields: [
+      {
+        name: "dataset",
+        required: true,
+        description:
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
+      }
+    ],
+    resultShape: [
+      "dataset",
+      "registryVersion",
+      "metadataPolicy",
+      "sources[]: readable applied source windows or snapshots"
+    ]
   }),
   defineToolContract({
     name: "upload_structured_dataset",

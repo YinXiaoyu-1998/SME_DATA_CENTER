@@ -15,11 +15,14 @@ function parseToolResult(result: { content: Array<{ text: string }> }): unknown 
   return JSON.parse(result.content[0]?.text ?? "null");
 }
 
-function createCapturingDelegate(token = "manager-token") {
+function createCapturingDelegate(
+  token = "manager-token",
+  auditContext: ApiDelegationContext["audit"] = audit
+) {
   const calls: ApiDelegationInjectRequest[] = [];
   const context: ApiDelegationContext = {
     bearerToken: token,
-    audit,
+    audit: auditContext,
     delegationProof,
     async inject(request) {
       calls.push(request);
@@ -45,6 +48,7 @@ describe("read-only MCP tool handlers", () => {
       "search_document_evidence",
       "list_structured_datasets",
       "query_structured_dataset",
+      "describe_structured_dataset_coverage",
       "query_quarantine_certificates",
       "get_source_document_download_url",
       "get_evidence_document_status",
@@ -86,6 +90,12 @@ describe("read-only MCP tool handlers", () => {
       },
       {} as never
     );
+    await (
+      handlers as Record<
+        string,
+        (input: unknown, context: Record<string, unknown>) => Promise<unknown>
+      >
+    )["describe_structured_dataset_coverage"]?.({ dataset: "dish_catalog" }, {} as never);
     await handlers.get_evidence_document_status?.({ documentId: "doc/1" }, {} as never);
     await handlers.get_import_status?.({ importBatchId: "imp/1" }, {} as never);
     await handlers.query_quarantine_certificates?.(
@@ -135,6 +145,12 @@ describe("read-only MCP tool handlers", () => {
           groupBy: ["dish_category"],
           aggregates: [{ op: "sum", field: "sales_amount", as: "sales" }]
         }
+      },
+      {
+        method: "GET",
+        url: "/v1/structured/datasets/dish_catalog/coverage",
+        query: undefined,
+        payload: undefined
       },
       {
         method: "GET",
@@ -211,6 +227,152 @@ describe("read-only MCP tool handlers", () => {
     });
     expect(parseToolResult(queryResult!)).toMatchObject({
       error: { code: "MCP_INPUT_VALIDATION_ERROR" }
+    });
+  });
+
+  it("rejects invalid structured coverage inputs before API injection", async () => {
+    const { calls, handlers } = createCapturingDelegate("secret-token");
+    const coverageHandler = (
+      handlers as Record<
+        string,
+        (
+          input: unknown,
+          context: Record<string, unknown>
+        ) => Promise<{ isError: boolean; content: Array<{ text: string }> }>
+      >
+    )["describe_structured_dataset_coverage"];
+
+    const invalidDataset = await coverageHandler?.({ dataset: "orders" }, {} as never);
+    const extraField = await coverageHandler?.(
+      { dataset: "dishes", report: "weekly" },
+      {} as never
+    );
+
+    expect(calls).toEqual([]);
+    expect(invalidDataset?.isError).toBe(true);
+    expect(extraField?.isError).toBe(true);
+    expect(parseToolResult(invalidDataset!)).toMatchObject({
+      error: { code: "MCP_INPUT_VALIDATION_ERROR" }
+    });
+    expect(parseToolResult(extraField!)).toMatchObject({
+      error: { code: "MCP_INPUT_VALIDATION_ERROR" }
+    });
+  });
+
+  it("delegates structured coverage with request and launcher audit headers", async () => {
+    const { calls, handlers } = createCapturingDelegate("manager-token", {
+      ...audit,
+      requestId: "req_coverage_mcp",
+      launcherVersion: "0.2.6"
+    });
+
+    await (
+      handlers as Record<
+        string,
+        (input: unknown, context: Record<string, unknown>) => Promise<unknown>
+      >
+    )["describe_structured_dataset_coverage"]?.({ dataset: "delivery_ledger" }, {} as never);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      method: "GET",
+      url: "/v1/structured/datasets/delivery_ledger/coverage",
+      headers: {
+        authorization: "Bearer manager-token",
+        "x-request-id": "req_coverage_mcp",
+        "x-enterprise-hub-internal-delegation": delegationProof,
+        "x-enterprise-hub-launcher-version": "0.2.6"
+      },
+      remoteAddress: audit.sourceIp
+    });
+  });
+
+  it("returns structured coverage API success envelopes without interpretation", async () => {
+    const coverage = {
+      dataset: "business",
+      registryVersion: "business.2026-09-04.v2",
+      metadataPolicy: "window",
+      sources: [
+        {
+          importBatchId: "imp_coverage",
+          sourceDocumentId: "doc_coverage",
+          sourceDocumentTitle: "July business export",
+          appliedAt: "2026-08-01T00:00:00.000Z",
+          rowCount: 31,
+          startDate: "2026-07-01",
+          endDate: "2026-07-31"
+        }
+      ]
+    };
+    const handlers = createReadOnlyMcpToolHandlers({
+      bearerToken: "manager-token",
+      audit,
+      delegationProof,
+      async inject() {
+        return {
+          statusCode: 200,
+          payload: JSON.stringify(coverage)
+        };
+      }
+    });
+    const coverageHandler = (
+      handlers as Record<
+        string,
+        (
+          input: unknown,
+          context: Record<string, unknown>
+        ) => Promise<{ content: Array<{ text: string }>; isError: boolean }>
+      >
+    )["describe_structured_dataset_coverage"];
+
+    const result = await coverageHandler?.({ dataset: "business" }, {} as never);
+
+    expect(result?.isError).toBe(false);
+    expect(parseToolResult(result!)).toEqual(coverage);
+    expect(JSON.stringify(result)).not.toMatch(/complete|incomplete|sufficient|report/i);
+  });
+
+  it("returns delegated structured coverage API error envelopes through the existing adapter", async () => {
+    const context: ApiDelegationContext = {
+      bearerToken: "manager-token",
+      audit,
+      delegationProof,
+      async inject() {
+        return {
+          statusCode: 400,
+          payload: JSON.stringify({
+            error: {
+              code: "INVALID_QUERY",
+              message: "Dataset is invalid.",
+              retryable: false,
+              requestId: "req_coverage_api",
+              details: { dataset: "orders" }
+            }
+          })
+        };
+      }
+    };
+    const handlers = createReadOnlyMcpToolHandlers(context);
+    const coverageHandler = (
+      handlers as Record<
+        string,
+        (
+          input: unknown,
+          context: Record<string, unknown>
+        ) => Promise<{ content: Array<{ text: string }>; isError: boolean }>
+      >
+    )["describe_structured_dataset_coverage"];
+
+    const result = await coverageHandler?.({ dataset: "dishes" }, {} as never);
+
+    expect(result?.isError).toBe(true);
+    expect(parseToolResult(result!)).toEqual({
+      error: {
+        code: "INVALID_QUERY",
+        message: "Dataset is invalid.",
+        retryable: false,
+        requestId: "req_coverage_api"
+      }
     });
   });
 

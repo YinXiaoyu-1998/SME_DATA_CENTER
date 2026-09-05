@@ -30,6 +30,7 @@ export type LauncherBusinessToolName =
   | "search_document_evidence"
   | "list_structured_datasets"
   | "query_structured_dataset"
+  | "describe_structured_dataset_coverage"
   | "upload_structured_dataset"
   | "upload_evidence_document"
   | "upload_quarantine_certificate"

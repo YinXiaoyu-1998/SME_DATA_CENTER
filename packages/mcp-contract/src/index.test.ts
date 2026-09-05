@@ -51,6 +51,9 @@ const validInputs = {
     groupBy: ["store_name"],
     aggregates: [{ op: "sum", field: "gmv", as: "gmv_total" }]
   },
+  describe_structured_dataset_coverage: {
+    dataset: "dishes"
+  },
   upload_structured_dataset: {
     file: {
       name: "maijia-dishes.csv",
@@ -276,6 +279,14 @@ const invalidInputCases = [
     ]
   },
   {
+    tool: "describe_structured_dataset_coverage" as EnterpriseHubMcpToolName,
+    cases: [
+      { label: "invalid dataset", input: { dataset: "orders" } },
+      { label: "missing dataset", input: {} },
+      { label: "extra field", input: { dataset: "dishes", completeness: true } }
+    ]
+  },
+  {
     tool: "upload_structured_dataset",
     cases: [
       { label: "missing inline file", input: { dataset: "dishes" } },
@@ -388,6 +399,7 @@ describe("Enterprise Hub MCP contract", () => {
       "search_document_evidence",
       "list_structured_datasets",
       "query_structured_dataset",
+      "describe_structured_dataset_coverage",
       "upload_structured_dataset",
       "upload_evidence_document",
       "upload_quarantine_certificate",
@@ -397,6 +409,11 @@ describe("Enterprise Hub MCP contract", () => {
       "get_evidence_document_status",
       "get_import_status"
     ]);
+    expect(
+      ENTERPRISE_HUB_MCP_TOOL_NAMES.filter(
+        (toolName) => toolName === "describe_structured_dataset_coverage"
+      )
+    ).toHaveLength(1);
 
     expect(ENTERPRISE_HUB_MCP_TOOL_NAMES).not.toContain("enterprise_hub_login_dev");
   });
@@ -510,6 +527,32 @@ describe("Enterprise Hub MCP contract", () => {
         expect(field?.description).toContain(dataset);
       }
     }
+  });
+
+  it("defines a strict dataset-only coverage input contract", () => {
+    const coverage = contractsByName.get(
+      "describe_structured_dataset_coverage" as EnterpriseHubMcpToolName
+    );
+
+    expect(coverage?.inputSchema.parse({ dataset: "business" })).toEqual({
+      dataset: "business"
+    });
+    expect(Object.keys(coverage?.inputShape ?? {})).toEqual(["dataset"]);
+    expect(coverage?.inputFields).toEqual([
+      {
+        name: "dataset",
+        required: true,
+        description:
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
+      }
+    ]);
+    expect(coverage?.description).toContain("/v1/structured/datasets/:dataset/coverage");
+    expect(coverage?.resultShape).toEqual([
+      "dataset",
+      "registryVersion",
+      "metadataPolicy",
+      "sources[]: readable applied source windows or snapshots"
+    ]);
   });
 
   it("keeps the structured upload schema object-shaped while enforcing conditional dates", () => {

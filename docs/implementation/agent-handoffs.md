@@ -1168,3 +1168,27 @@ as?)` as a strict discriminated aggregate; required unique aggregate aliases, in
   `apps/api/src/app-context.ts`, `apps/api/src/server.ts`,
   `apps/api/src/routes/structured-query.ts`, `apps/api/src/routes/structured-query.test.ts`,
   plus nearby context/auth/server tests and this handoff.
+
+## 2026-09-05 14:23 CST - general structured query enhancements Task 4
+
+- Branch/worktree: `codex/maijia-smedc-coverage-mcp` in
+  `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER-worktrees/maijia-smedc-service-task4`,
+  based on `c973646`.
+- Scope completed: added strict MCP read tool `describe_structured_dataset_coverage` with
+  dataset-only input validation, shared contract metadata, read-only handler delegation to
+  `GET /v1/structured/datasets/{dataset}/coverage`, request/delegation/launcher audit header
+  propagation through the existing API delegator, and live MCP framing coverage. Preserved the
+  enriched `query_structured_dataset` aggregate route contract with a four-field
+  `weightedAvg`/alias-sort route test.
+- Verification: RED focused command first failed on the missing MCP tool/schema/handler; initial
+  route loading also required `npm run db:generate` in the fresh worktree. GREEN checks passed:
+  focused Task 4 plus launcher registration suite 98/98; `npm run lint`; `npm run typecheck`;
+  `npm run format:check`.
+- Cleanup: no `.data` files were created by the unit tests. Docker containers, volumes, networks,
+  and worktrees were inspected; no repo-owned Docker services were started by this task, so
+  unrelated existing local resources were left untouched.
+- Files changed: `packages/mcp-contract/src/index.ts`,
+  `packages/mcp-contract/src/index.test.ts`, `apps/api/src/mcp/read-tools.ts`,
+  `apps/api/src/mcp/read-tools.test.ts`, `apps/api/src/mcp/http.test.ts`,
+  `apps/api/src/structured-query-route.test.ts`, `apps/mcp-launcher/src/launcher.ts`, and this
+  handoff.

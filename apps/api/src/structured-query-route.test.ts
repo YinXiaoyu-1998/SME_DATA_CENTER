@@ -411,6 +411,92 @@ describe("structured query API", () => {
     expect(JSON.stringify(response.json())).not.toMatch(/analysis|trend|summary|insight/i);
   });
 
+  it("preserves the enriched generic aggregate query body through the HTTP route", async () => {
+    const structuredQueryRepository = createStructuredRepository({
+      rows: [
+        {
+          store_name: "Baoli",
+          order_source: "dine-in",
+          meal_period: "lunch",
+          business_date: "2026-07-01",
+          revenue: "256.00",
+          weighted_discount: "0.125"
+        }
+      ],
+      hasMore: false
+    });
+    app = buildApiServer({
+      employeeRepository: createRepository([baoliManagerEmployee]),
+      structuredQueryRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      },
+      payload: {
+        dataset: "business",
+        registryVersion: "business.2026-09-04.v2",
+        groupBy: ["store_name", "order_source", "meal_period", "business_date"],
+        aggregates: [
+          { op: "sum", field: "order_revenue", as: "revenue" },
+          {
+            op: "weightedAvg",
+            field: "discount_rate",
+            weightField: "gross_sales_amount",
+            as: "weighted_discount"
+          }
+        ],
+        sort: [{ field: "weighted_discount", direction: "desc" }],
+        page: { limit: 200 }
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      dataset: "business",
+      registryVersion: "business.2026-09-04.v2",
+      mode: "aggregate",
+      rows: [
+        {
+          store_name: "Baoli",
+          order_source: "dine-in",
+          meal_period: "lunch",
+          business_date: "2026-07-01",
+          revenue: "256.00",
+          weighted_discount: "0.125"
+        }
+      ],
+      nextCursor: null
+    });
+    expect(structuredQueryRepository.calls).toHaveLength(1);
+    expect(structuredQueryRepository.calls[0]).toMatchObject({
+      dataset: "business",
+      registryVersion: "business.2026-09-04.v2",
+      mode: "aggregate",
+      limit: 200,
+      selectedFields: [
+        "store_name",
+        "order_source",
+        "meal_period",
+        "business_date",
+        "revenue",
+        "weighted_discount"
+      ],
+      aggregateAliases: ["revenue", "weighted_discount"]
+    });
+    const compiledSql = String((structuredQueryRepository.calls[0] as { sql?: unknown }).sql ?? "");
+    expect(compiledSql).toContain("SUM(");
+    expect(compiledSql).toContain("NULLIF(SUM(");
+    expect(compiledSql).toContain("GROUP BY");
+    expect(compiledSql).toContain("ORDER BY `weighted_discount` DESC");
+  });
+
   it("rejects cursor query-shape changes before repository execution", async () => {
     const structuredQueryRepository = createStructuredRepository({
       rows: [{ business_date: "2026-07-01" }],
