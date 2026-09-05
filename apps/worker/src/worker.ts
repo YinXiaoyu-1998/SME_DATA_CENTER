@@ -132,6 +132,7 @@ export interface BeginStructuredImportApplyInput {
   runId: string;
   documentId: string;
   importBatchId: string;
+  dataset: StructuredDatasetName;
   workerId: string;
   now: Date;
 }
@@ -269,6 +270,7 @@ export async function runWorkerOnce(input: {
         runId: run.id,
         documentId: run.documentId,
         importBatchId: structuredImport.importBatchId,
+        dataset: structuredImport.dataset,
         workerId,
         now: now()
       });
@@ -548,7 +550,8 @@ export function createPrismaProcessingWorkerRepository(
               metadata: {
                 processingRunId: run.id,
                 workerId: input.workerId,
-                dataset: batch.dataset
+                dataset: batch.dataset,
+                sourceDocumentId: batch.sourceDocumentId
               }
             }
           });
@@ -751,7 +754,12 @@ export function createPrismaProcessingWorkerRepository(
             targetType: "import_batch",
             targetId: input.importBatchId,
             result: "succeeded",
-            metadata: { processingRunId: input.runId, workerId: input.workerId }
+            metadata: {
+              processingRunId: input.runId,
+              workerId: input.workerId,
+              dataset: input.dataset,
+              sourceDocumentId: input.documentId
+            }
           }
         });
       });

@@ -1087,10 +1087,3 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
-
-## 2026-09-06 - codex/maijia-smedc-remove-data-version
-
-- Scope: Removed the newly added per-import/data registry-version compatibility layer from the Maijia SME data-center branch. `ImportBatch.registryVersion`, its migration/backfill, import reservation/profile persistence, import status response field, source/audit metadata writes tied to stored batch version, worker claim/plumbing/audit version fields, structured query `ib.registry_version` predicates, coverage version predicates, and supplier-catalog enrichment version filtering were removed. Active dataset registry versions and the API/discovery/query `registryVersion` handshake remain.
-- Tests and verification: observed RED failures in `packages/domain/src/structured-query.test.ts` and `packages/domain/src/structured-coverage.test.ts` for `ib.registry_version` SQL; then passed `npm run db:generate`, focused unit route/repository/compiler tests (130 passed, 17 integration-gated skipped), `npx prisma validate --config packages/db/prisma.config.ts`, real MySQL touched integrations with `RUN_WORKER_PRISMA_INTEGRATION=1 RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION=1` (17 passed), `npm test` (757 passed, 33 skipped), `npm run lint`, `npm run typecheck`, `npm run format:check`, and `git diff --check`.
-- Cleanup: stopped and removed the run-created local MySQL container, volume, and network with `MYSQL_PORT=3307 docker compose down -v`; moved generated `dist/release` build output out of the repository; verified no repo-owned Docker residue for this worktree.
-- Remaining references: only current API/query/discovery/profile registry-version contract fields remain. The only remaining `ib.registry_version` references are negative regression assertions proving SQL does not use the deleted column.

@@ -21,7 +21,6 @@
 - 2026-09-01: `codex/use-real-quarantine-fixture` started to replace synthetic quarantine-certificate manual-acceptance images with the user-approved JPG fixture and align the manual-test skill guidance.
 - 2026-09-01: `codex/delivery-ledger-field-aliases` adds paper-ledger Chinese aliases to the `delivery_ledger` structured registry so employee agents can map terms like `进货数量`, `供货单位名称`, and `保质期` without guessing similar English field names.
 - 2026-09-01: `codex/skill-upload-original-files` narrows base Enterprise Hub MCP guidance so employees' agents upload original structured files instead of treating registry metadata as dataset-specific local ETL instructions.
-- 2026-09-06: `codex/maijia-smedc-remove-data-version` removes the newly added per-import `ImportBatch.registryVersion` storage/filtering layer while preserving active structured dataset registry versions and stale-client query rejection. Focused tests, Prisma generate/validate, touched real MySQL Prisma integrations, full unit, lint, typecheck, format, and diff checks passed; local MySQL test resources were cleaned.
 
 ## Active Workstreams
 
