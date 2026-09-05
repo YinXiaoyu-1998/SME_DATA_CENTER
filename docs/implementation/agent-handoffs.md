@@ -1192,3 +1192,31 @@ as?)` as a strict discriminated aggregate; required unique aggregate aliases, in
   `apps/api/src/mcp/read-tools.test.ts`, `apps/api/src/mcp/http.test.ts`,
   `apps/api/src/structured-query-route.test.ts`, `apps/mcp-launcher/src/launcher.ts`, and this
   handoff.
+
+## 2026-09-05 14:41 CST - general structured query enhancements Task 5
+
+- Branch/worktree: `codex/maijia-smedc-launcher-026` in
+  `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER-worktrees/maijia-smedc-service-task5`,
+  based on `6848d39`.
+- Scope completed: prepared the launcher `0.2.6` release boundary by bumping the authoritative
+  launcher package/runtime/server version and lockfile workspace entry; added installed-package
+  verification that `describe_structured_dataset_coverage` is bundled and that
+  `query_structured_dataset` exposes the strict `weightedAvg(field, weightField, as?)` aggregate
+  schema; updated durable API/MCP docs for multi-field grouping, weighted averages, aggregate-alias
+  sorting, and coverage discovery. Did not update server recommended-version metadata,
+  auth-contract recommendation tests, repo-local skill pins, standalone skill pins, or publish npm.
+- RED evidence: after `npm install` in the fresh worktree, focused launcher tests failed because
+  runtime/header expectations were advanced to `0.2.6` while production still returned `0.2.5`.
+  The brief's package verifier command is stale; the repo's actual verified command is
+  `npm run test:package --workspace enterprise-hub-mcp-launcher`.
+- GREEN verification: focused launcher/MCP contract tests passed (3 files, 37 tests);
+  launcher packaging verification passed (1 file, 5 tests); `npm run lint`; `npm run format:check`;
+  `npm run db:generate && npm run typecheck`; and `git diff --check` passed.
+- Cleanup: no `.data` artifacts were present; package verifier artifacts stayed in OS temp
+  directories; no repo-owned Docker containers/volumes/networks were started. Existing unrelated
+  local Docker resources were inspected and left untouched.
+- Files changed: `apps/mcp-launcher/package.json`, `apps/mcp-launcher/src/index.test.ts`,
+  `apps/mcp-launcher/src/oauth-client.test.ts`, `apps/mcp-launcher/src/oauth-client.ts`,
+  `apps/mcp-launcher/src/packaging.verify.ts`, `apps/mcp-launcher/src/server.ts`,
+  `docs/implementation/api-contract.md`, `docs/implementation/phase-3-retrieval-docs.md`,
+  `package-lock.json`, and this handoff.

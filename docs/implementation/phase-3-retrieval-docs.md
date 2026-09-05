@@ -713,6 +713,31 @@ Structured query request shape:
 - optional explicit mechanical `aggregates`
 - page limit and opaque cursor
 
+Aggregate query request shape:
+
+- `groupBy`: up to 4 canonical field names with registry grouping capability
+- `aggregates`: up to 12 mechanical aggregate specs
+- aggregate specs are `{ op: "count", field?, as? }`,
+  `{ op: "countDistinct" | "sum" | "avg" | "min" | "max", field, as? }`, or
+  `{ op: "weightedAvg", field, weightField, as? }`
+- `weightedAvg` is `SUM(field * weightField) / NULLIF(SUM(weightField), 0)`; both fields must be
+  numeric aggregatable fields from the same dataset and a zero denominator returns `null`
+- aggregate-mode `sort.field` may name a grouped canonical field or a unique aggregate alias from
+  the same request; aliases are validated before SQL generation and are never raw SQL
+
+Coverage discovery request/response shape:
+
+- HTTP: `GET /v1/structured/datasets/:dataset/coverage`
+- MCP: `describe_structured_dataset_coverage` with `{ "dataset": "<structured dataset>" }`
+- response: `dataset`, `registryVersion`, `metadataPolicy`, and `sources`
+- window sources include `importBatchId`, `sourceDocumentId`, `sourceDocumentTitle`, `appliedAt`,
+  `rowCount`, `startDate`, and `endDate`
+- snapshot sources include `importBatchId`, `sourceDocumentId`, `sourceDocumentTitle`, `appliedAt`,
+  `rowCount`, and `snapshotDate`
+- `derived_receipt` and `none` metadata policies return an empty `sources` array
+- coverage reports readable applied sources only; caller agents decide completeness and reporting
+  sufficiency
+
 Structured query response shape:
 
 - dataset, effective registry version, query id
@@ -752,14 +777,14 @@ Baseline structured query limits:
 
 - default row limit: 50
 - max detail row limit: 200
-- max aggregate group limit: 100
+- max aggregate group limit: 200
 - max boolean depth: 3
 - max total conditions: 20
 - max children per `and`/`or`: 10
 - max `in` values: 100
 - max sort fields: 2
-- max group-by fields: 1
-- max aggregate functions: 5
+- max group-by fields: 4
+- max aggregate functions: 12
 - max selected fields: 50 unless a future export-style endpoint is added
 
 Structured query performance boundary:
@@ -1040,7 +1065,8 @@ Baseline employee-agent MCP tools:
 
 - `search_document_evidence`: evidence-only retrieval over authorized MD/TXT/DOCX documents
 - `list_structured_datasets`: schema discovery for dataset field registry, capabilities, operators, limits, lifecycle, and versions
-- `query_structured_dataset`: controlled structured query wrapper for `dishes` / `business`
+- `query_structured_dataset`: controlled structured query wrapper for registered structured datasets, including multi-field grouping, mechanical weighted averages, and aggregate-alias sorting
+- `describe_structured_dataset_coverage`: readable applied structured source coverage facts; caller agents decide completeness and reporting sufficiency
 - `upload_structured_dataset`: structured CSV/XLSX upload through the same HTTP upload/import endpoint, including dataset, metadata, labels, idempotency key, active-window conflicts, audit, and import batch status
 - `get_import_status`: status and safe validation errors for uploads/imports the caller can access
 
