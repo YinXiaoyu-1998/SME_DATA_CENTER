@@ -268,40 +268,6 @@ describeIntegration("Prisma structured supplier enrichment authorization", () =>
     expect(JSON.stringify(rows)).not.toContain("tie-a");
   });
 
-  it("ignores newer stale-version supplier catalogs and keeps current-version tie selection", async () => {
-    await createLedgerDocument(prisma, {
-      suffix: "version-ledger",
-      labels: [allStaffLabelId],
-      rows: [{ supplierName: "Versioned Supplier", receiptId: "R-version" }]
-    });
-    await createCatalog(prisma, {
-      suffix: "version-current-a",
-      batchId: "qpr_batch_version_current_a",
-      labels: [allStaffLabelId],
-      appliedAt: new Date("2026-08-29T09:00:00.000Z"),
-      rows: [{ supplierName: "Versioned Supplier", phone: "current-a", address: "current-a" }]
-    });
-    await createCatalog(prisma, {
-      suffix: "version-current-z",
-      batchId: "qpr_batch_version_current_z",
-      labels: [allStaffLabelId],
-      appliedAt: new Date("2026-08-29T09:00:00.000Z"),
-      rows: [{ supplierName: "Versioned Supplier", phone: "current-z", address: "current-z" }]
-    });
-    await createCatalog(prisma, {
-      suffix: "version-stale-newer",
-      labels: [allStaffLabelId],
-      appliedAt: new Date("2026-08-29T10:00:00.000Z"),
-      registryVersion: "supplier_catalog.2026-01-01.stale",
-      rows: [{ supplierName: "Versioned Supplier", phone: "stale", address: "stale" }]
-    });
-
-    const rows = await executeFor(prisma, { id: adminId, role: "admin", labels: [] });
-    expect(rows[0]).toMatchObject({ supplier_contact_phone: "current-z" });
-    expect(JSON.stringify(rows)).not.toContain("current-a");
-    expect(JSON.stringify(rows)).not.toContain("stale");
-  });
-
   it("ignores a newer failed or unapplied upload and uses the latest successful one", async () => {
     await createLedgerDocument(prisma, {
       suffix: "failed-newer-ledger",
@@ -519,7 +485,6 @@ async function createLedgerDocument(
       orgId,
       sourceDocumentId: document.id,
       dataset: ImportDataset.delivery_ledger,
-      registryVersion: getStructuredRegistry("delivery_ledger").version,
       startDate: new Date("2026-08-29T00:00:00.000Z"),
       endDate: new Date("2026-08-29T00:00:00.000Z"),
       idempotencyKey: `query-prisma-review-ledger-${input.suffix}`,
@@ -557,7 +522,6 @@ async function createCatalog(
     labels: string[];
     appliedAt: Date | null;
     status?: ImportBatchStatus;
-    registryVersion?: string;
     documentStatus?: DocumentStatus;
     archivedAt?: Date | null;
     rows: Array<{ supplierName: string; phone: string; address: string }>;
@@ -576,7 +540,6 @@ async function createCatalog(
       orgId,
       sourceDocumentId: document.id,
       dataset: ImportDataset.supplier_catalog,
-      registryVersion: input.registryVersion ?? getStructuredRegistry("supplier_catalog").version,
       idempotencyKey: `query-prisma-review-catalog-${input.suffix}`,
       requestFingerprint: input.suffix.padEnd(64, "0").slice(0, 64),
       status: input.status ?? ImportBatchStatus.applied,
@@ -627,7 +590,6 @@ async function createBusinessDocument(
       orgId,
       sourceDocumentId: document.id,
       dataset: ImportDataset.business,
-      registryVersion: getStructuredRegistry("business").version,
       startDate: new Date(`${input.startDate}T00:00:00.000Z`),
       endDate: new Date(`${input.endDate}T00:00:00.000Z`),
       idempotencyKey: `query-prisma-review-business-${input.suffix}`,

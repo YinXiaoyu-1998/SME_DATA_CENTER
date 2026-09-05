@@ -71,7 +71,6 @@ export function compileStructuredCoverageQuery(input: {
     input.orgId,
     input.orgId,
     registry.dataset,
-    registry.version,
     "applied",
     "structured",
     "active"
@@ -80,7 +79,6 @@ export function compileStructuredCoverageQuery(input: {
     "WHERE ib.org_id = ?",
     "AND d.org_id = ?",
     "AND ib.dataset = ?",
-    "AND ib.registry_version = ?",
     "AND ib.status = ?",
     "AND ib.applied_at IS NOT NULL",
     "AND ib.archived_at IS NULL",

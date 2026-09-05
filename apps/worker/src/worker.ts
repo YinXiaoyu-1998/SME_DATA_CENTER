@@ -43,7 +43,6 @@ export interface ClaimedProcessingRun {
   structuredImport?: {
     importBatchId: string;
     dataset: StructuredDatasetName;
-    registryVersion: string;
     startDate?: string;
     endDate?: string;
   };
@@ -133,26 +132,16 @@ export interface BeginStructuredImportApplyInput {
   runId: string;
   documentId: string;
   importBatchId: string;
-  dataset: StructuredDatasetName;
-  registryVersion: string;
   workerId: string;
   now: Date;
 }
 
-interface StructuredImportTransitionInput {
-  runId: string;
-  documentId: string;
-  importBatchId: string;
-  workerId: string;
-  now: Date;
-}
-
-export interface CompleteStructuredImportInput extends StructuredImportTransitionInput {
+export interface CompleteStructuredImportInput extends BeginStructuredImportApplyInput {
   result: StructuredParseResult;
   batchInsertSize: number;
 }
 
-export interface RejectStructuredImportInput extends StructuredImportTransitionInput {
+export interface RejectStructuredImportInput extends BeginStructuredImportApplyInput {
   result: StructuredParseResult;
 }
 
@@ -280,8 +269,6 @@ export async function runWorkerOnce(input: {
         runId: run.id,
         documentId: run.documentId,
         importBatchId: structuredImport.importBatchId,
-        dataset: structuredImport.dataset,
-        registryVersion: structuredImport.registryVersion,
         workerId,
         now: now()
       });
@@ -547,7 +534,6 @@ export function createPrismaProcessingWorkerRepository(
           structuredImport = {
             importBatchId: batch.id,
             dataset: batch.dataset,
-            registryVersion: batch.registryVersion,
             ...(batch.startDate ? { startDate: formatDateWindow(batch.startDate) } : {}),
             ...(batch.endDate ? { endDate: formatDateWindow(batch.endDate) } : {})
           };
@@ -562,9 +548,7 @@ export function createPrismaProcessingWorkerRepository(
               metadata: {
                 processingRunId: run.id,
                 workerId: input.workerId,
-                dataset: batch.dataset,
-                registryVersion: batch.registryVersion,
-                sourceDocumentId: batch.sourceDocumentId
+                dataset: batch.dataset
               }
             }
           });
@@ -767,13 +751,7 @@ export function createPrismaProcessingWorkerRepository(
             targetType: "import_batch",
             targetId: input.importBatchId,
             result: "succeeded",
-            metadata: {
-              processingRunId: input.runId,
-              workerId: input.workerId,
-              dataset: input.dataset,
-              registryVersion: input.registryVersion,
-              sourceDocumentId: input.documentId
-            }
+            metadata: { processingRunId: input.runId, workerId: input.workerId }
           }
         });
       });
@@ -881,7 +859,6 @@ export function createPrismaProcessingWorkerRepository(
               processingRunId: input.runId,
               workerId: input.workerId,
               dataset: batch.dataset,
-              registryVersion: batch.registryVersion,
               sourceDocumentId: input.documentId,
               appliedRowCount: input.result.rows.length,
               sheetCount: input.result.sheetSummary.length
@@ -954,7 +931,6 @@ export function createPrismaProcessingWorkerRepository(
               processingRunId: input.runId,
               workerId: input.workerId,
               dataset: batch.dataset,
-              registryVersion: batch.registryVersion,
               sourceDocumentId: input.documentId,
               validationErrorCount: input.result.validationErrorCount,
               validationErrorsTruncated: input.result.validationErrorsTruncated

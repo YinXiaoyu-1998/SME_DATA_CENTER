@@ -1,6 +1,6 @@
 import { createDatabaseAdapter } from "@enterprise-hub/db";
 import { PrismaClient } from "@prisma/client";
-import { getStructuredRegistry, type StructuredCompiledQuery } from "@enterprise-hub/domain";
+import type { StructuredCompiledQuery } from "@enterprise-hub/domain";
 
 export interface ExecuteStructuredQueryResult {
   rows: Array<Record<string, unknown>>;
@@ -80,11 +80,7 @@ export function createPrismaStructuredQueryRepository(
       const supplierNames = uniqueSupplierNames(visibleRows);
       const currentCatalog =
         supplierNames.length > 0
-          ? await findReadableCurrentSupplierCatalog(
-              prisma,
-              compiled.authorizationScope,
-              getStructuredRegistry("supplier_catalog").version
-            )
+          ? await findReadableCurrentSupplierCatalog(prisma, compiled.authorizationScope)
           : null;
       const catalogRows = currentCatalog
         ? await findSupplierCatalogMatches(
@@ -136,13 +132,11 @@ function uniqueSupplierNames(rows: Array<Record<string, unknown>>): string[] {
 
 async function findReadableCurrentSupplierCatalog(
   prisma: PrismaClient,
-  scope: StructuredQueryAuthorizationScope,
-  registryVersion: string
+  scope: StructuredQueryAuthorizationScope
 ): Promise<CurrentSupplierCatalog | null> {
   const params: Array<string> = [
     scope.orgId,
     "supplier_catalog",
-    registryVersion,
     "applied",
     "structured",
     "active"
@@ -172,11 +166,10 @@ async function findReadableCurrentSupplierCatalog(
   const rows = (await prisma.$queryRawUnsafe(
     `SELECT latest.id, latest.source_document_id
        FROM (
-         SELECT ib.id, ib.org_id, ib.source_document_id
-          FROM import_batches ib
+          SELECT ib.id, ib.org_id, ib.source_document_id
+           FROM import_batches ib
           WHERE ib.org_id = ?
             AND ib.dataset = ?
-            AND ib.registry_version = ?
             AND ib.status = ?
             AND ib.applied_at IS NOT NULL
             AND ib.archived_at IS NULL

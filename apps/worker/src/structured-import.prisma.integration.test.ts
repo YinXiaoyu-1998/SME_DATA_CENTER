@@ -57,13 +57,10 @@ describeIntegration("Prisma structured import worker repository", () => {
       now
     });
     expect(claimed?.id).toBe(fixture.runId);
-    expect(claimed?.structuredImport?.registryVersion).toBe(fixture.registryVersion);
     await repository.beginStructuredImportApply?.({
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
-      dataset: fixture.dataset,
-      registryVersion: fixture.registryVersion,
       workerId: "worker-rollback",
       now
     });
@@ -117,8 +114,6 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
-      dataset: fixture.dataset,
-      registryVersion: fixture.registryVersion,
       workerId: "worker-retry-after-rollback",
       now
     });
@@ -187,8 +182,6 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
-      dataset: fixture.dataset,
-      registryVersion: fixture.registryVersion,
       workerId: "worker-catalog",
       now
     });
@@ -243,8 +236,6 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
-      dataset: fixture.dataset,
-      registryVersion: fixture.registryVersion,
       workerId: "worker-delivery",
       now
     });
@@ -284,8 +275,6 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
-      dataset: fixture.dataset,
-      registryVersion: fixture.registryVersion,
       workerId: "worker-supplier",
       now
     });
@@ -309,17 +298,10 @@ describeIntegration("Prisma structured import worker repository", () => {
       (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
         .appliedAt
     ).toEqual(now);
-    expect(
-      await prisma.auditLog.findFirst({
-        where: { orgId, targetId: fixture.importBatchId, action: "structured_import.applied" }
-      })
-    ).toMatchObject({
-      metadata: expect.objectContaining({ registryVersion: fixture.registryVersion })
-    });
     await repository.disconnect?.();
   });
 
-  it("records queued transition provenance consistently with terminal import audit events", async () => {
+  it("records structured transition provenance without registry versions", async () => {
     const repository = createPrismaProcessingWorkerRepository(databaseUrl);
     const fixture = await createStructuredRun(prisma, "trans-audit");
     const now = new Date("2026-08-10T04:00:00.000Z");
@@ -332,8 +314,6 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
-      dataset: fixture.dataset,
-      registryVersion: fixture.registryVersion,
       workerId: "worker-transition-audit",
       now
     });
@@ -368,19 +348,28 @@ describeIntegration("Prisma structured import worker repository", () => {
       "structured_import.applying",
       "structured_import.applied"
     ]);
+    expect(auditLogs[0]?.metadata).toEqual(
+      expect.objectContaining({ dataset: ImportDataset.dishes })
+    );
+    expect(auditLogs[1]?.metadata).toEqual(
+      expect.objectContaining({
+        processingRunId: fixture.runId,
+        workerId: "worker-transition-audit"
+      })
+    );
+    expect(auditLogs[2]?.metadata).toEqual(
+      expect.objectContaining({
+        dataset: ImportDataset.dishes,
+        sourceDocumentId: fixture.documentId
+      })
+    );
     for (const auditLog of auditLogs) {
-      expect(auditLog.metadata).toEqual(
-        expect.objectContaining({
-          dataset: ImportDataset.dishes,
-          registryVersion: fixture.registryVersion,
-          sourceDocumentId: fixture.documentId
-        })
-      );
+      expect(auditLog.metadata).not.toHaveProperty("registryVersion");
     }
     await repository.disconnect?.();
   });
 
-  it("records registry version when rejecting a queued structured import", async () => {
+  it("records dataset provenance when rejecting a queued structured import", async () => {
     const repository = createPrismaProcessingWorkerRepository(databaseUrl);
     const fixture = await createStructuredRun(prisma, "reject-audit");
     const now = new Date("2026-08-10T05:00:00.000Z");
@@ -389,8 +378,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       leaseSeconds: 120,
       now
     });
-
-    expect(claimed?.structuredImport?.registryVersion).toBe(fixture.registryVersion);
+    expect(claimed?.structuredImport?.dataset).toBe(ImportDataset.dishes);
     await repository.rejectStructuredImport?.({
       runId: fixture.runId,
       documentId: fixture.documentId,
@@ -407,7 +395,6 @@ describeIntegration("Prisma structured import worker repository", () => {
     ).toMatchObject({
       metadata: expect.objectContaining({
         dataset: ImportDataset.dishes,
-        registryVersion: fixture.registryVersion,
         sourceDocumentId: fixture.documentId
       })
     });
@@ -470,8 +457,6 @@ describeIntegration("Prisma structured import worker repository", () => {
 
     await repositoryB.beginStructuredImportApply?.({
       ...transition,
-      dataset: fixture.dataset,
-      registryVersion: fixture.registryVersion,
       workerId: "worker-b"
     });
     await repositoryB.completeStructuredImport?.({
@@ -499,7 +484,6 @@ async function createStructuredRun(
   const documentId = `worker_prisma_doc_${suffix}`;
   const importBatchId = `worker_prisma_batch_${suffix}`;
   const runId = `worker_prisma_run_${suffix}`;
-  const registryVersion = `stored-registry-version-${suffix}`;
   await prisma.document.create({
     data: {
       id: documentId,
@@ -524,7 +508,6 @@ async function createStructuredRun(
       orgId,
       sourceDocumentId: documentId,
       dataset,
-      registryVersion,
       startDate: new Date("2026-08-10T00:00:00.000Z"),
       endDate: new Date("2026-08-10T00:00:00.000Z"),
       idempotencyKey: `worker-prisma-${suffix}`,
@@ -543,7 +526,7 @@ async function createStructuredRun(
       availableAt: new Date("2026-08-10T00:00:00.000Z")
     }
   });
-  return { documentId, importBatchId, runId, dataset, registryVersion };
+  return { documentId, importBatchId, runId, dataset };
 }
 
 function structuredResult(overrides: { sourceSheetName?: string } = {}): StructuredParseResult {

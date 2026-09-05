@@ -66,7 +66,6 @@ vi.mock("@prisma/client", async (importOriginal) => {
 });
 
 import { Prisma } from "@prisma/client";
-import { getStructuredRegistry, type StructuredDatasetName } from "@enterprise-hub/domain";
 import { createPrismaStructuredImportRepository } from "./structured-imports.js";
 
 const audit = {
@@ -81,17 +80,11 @@ function importBatchRecord(
   processingRuns: Array<{ id: string; status: string }> = [],
   dataset = "dishes"
 ) {
-  const registryVersion =
-    dataset === "business" || dataset === "dishes"
-      ? `${dataset}.2026-09-04.v2`
-      : getStructuredRegistry(dataset as StructuredDatasetName).version;
-
   return {
     id: "imp_1",
     orgId: "org_1",
     sourceDocumentId: "doc_1",
     dataset,
-    registryVersion,
     status,
     requestFingerprint: "fingerprint_1",
     naturalKey: null,
@@ -118,7 +111,7 @@ function reservationInput(
     Parameters<
       ReturnType<typeof createPrismaStructuredImportRepository>["reserveStructuredImport"]
     >[0]
-  > & { registryVersion?: string } = {}
+  > = {}
 ) {
   const dataset = overrides.dataset ?? "dishes";
 
@@ -127,8 +120,6 @@ function reservationInput(
     actorEmployeeId: "emp_1",
     documentId: "doc_1",
     dataset,
-    registryVersion:
-      overrides.registryVersion ?? getStructuredRegistry(dataset as StructuredDatasetName).version,
     fileType: "csv" as const,
     startDate: "20260701",
     endDate: "20260705",
@@ -324,7 +315,6 @@ describe("Prisma structured import audit provenance", () => {
       actorEmployeeId: "emp_1",
       documentId: "doc_1",
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       fileType: "csv",
       startDate: "20260701",
       endDate: "20260705",
@@ -357,7 +347,6 @@ describe("Prisma structured import audit provenance", () => {
     );
     expect(prisma.auditLog.create.mock.calls[0]?.[0].data.metadata).toEqual({
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       startDate: "20260701",
       endDate: "20260705",
       rowCount: 1,
@@ -365,7 +354,7 @@ describe("Prisma structured import audit provenance", () => {
     });
   });
 
-  it("persists the profiled registry version on the document, batch, record, and audit facts", async () => {
+  it("does not persist registry versions on reserved import facts", async () => {
     const repository = createPrismaStructuredImportRepository({
       databaseUrl: "mysql://test",
       transactionTimeoutMs: 1_000,
@@ -378,50 +367,36 @@ describe("Prisma structured import audit provenance", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           sourceMetadata: expect.objectContaining({
-            dataset: "dishes",
-            registryVersion: "dishes.2026-09-04.v2"
+            dataset: "dishes"
           })
         })
       })
     );
+    expect(prisma.document.create.mock.calls[0]?.[0].data.sourceMetadata).not.toHaveProperty(
+      "registryVersion"
+    );
     expect(prisma.importBatch.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        dataset: "dishes",
-        registryVersion: "dishes.2026-09-04.v2"
+        dataset: "dishes"
       })
     });
+    expect(prisma.importBatch.create.mock.calls[0]?.[0].data).not.toHaveProperty("registryVersion");
     expect(result.importBatch).toMatchObject({
-      dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2"
+      dataset: "dishes"
     });
+    expect(result.importBatch).not.toHaveProperty("registryVersion");
     expect(prisma.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           metadata: expect.objectContaining({
-            dataset: "dishes",
-            registryVersion: "dishes.2026-09-04.v2"
+            dataset: "dishes"
           })
         })
       })
     );
-  });
-
-  it("rejects a reservation whose profiled registry version differs from the active registry before writes", async () => {
-    const repository = createPrismaStructuredImportRepository({
-      databaseUrl: "mysql://test",
-      transactionTimeoutMs: 1_000,
-      batchInsertSize: 100
-    });
-
-    await expect(
-      repository.reserveStructuredImport(
-        reservationInput({ registryVersion: "dishes.2026-07-11.v1" })
-      )
-    ).rejects.toMatchObject({ code: "REGISTRY_VERSION_MISMATCH" });
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.document.create).not.toHaveBeenCalled();
-    expect(prisma.importBatch.create).not.toHaveBeenCalled();
-    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create.mock.calls[0]?.[0].data.metadata).not.toHaveProperty(
+      "registryVersion"
+    );
   });
 
   it("persists the complete audit context when applying a structured import", async () => {
@@ -458,7 +433,6 @@ describe("Prisma structured import audit provenance", () => {
     );
     expect(prisma.auditLog.create.mock.calls[0]?.[0].data.metadata).toEqual({
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       startDate: "20260701",
       endDate: "20260705",
       appliedRowCount: 1,
@@ -662,7 +636,6 @@ describe("Prisma structured import audit provenance", () => {
         actorEmployeeId: "emp_2",
         documentId: "doc_2",
         dataset: "dishes",
-        registryVersion: "dishes.2026-09-04.v2",
         fileType: "csv",
         startDate: "20260701",
         endDate: "20260705",
@@ -729,7 +702,6 @@ describe("Prisma structured import audit provenance", () => {
       orgId: "org_1",
       actorEmployeeId: "emp_1",
       dataset: "dish_catalog" as const,
-      registryVersion: "dish_catalog.2026-08-22.v1",
       fileType: "csv" as const,
       startDate: "20260819",
       endDate: "20260819",
@@ -867,7 +839,6 @@ describe("Prisma structured import audit provenance", () => {
     expect(prisma.auditLog.create.mock.calls.map(([call]) => call.data.metadata)).toEqual([
       {
         dataset: "delivery_ledger",
-        registryVersion: "delivery_ledger.2026-08-29.v1",
         startDate: "20260701",
         endDate: "20260705",
         naturalKey: "SH2608250117",
@@ -876,7 +847,6 @@ describe("Prisma structured import audit provenance", () => {
       },
       {
         dataset: "delivery_ledger",
-        registryVersion: "delivery_ledger.2026-08-29.v1",
         startDate: "20260701",
         endDate: "20260705",
         naturalKey: "SH2608250118",
@@ -916,7 +886,6 @@ describe("Prisma structured import audit provenance", () => {
         data: expect.objectContaining({
           sourceMetadata: {
             dataset: "supplier_catalog",
-            registryVersion: "supplier_catalog.2026-08-29.v1",
             startDate: null,
             endDate: null
           }
@@ -928,7 +897,6 @@ describe("Prisma structured import audit provenance", () => {
         data: expect.objectContaining({
           metadata: {
             dataset: "supplier_catalog",
-            registryVersion: "supplier_catalog.2026-08-29.v1",
             startDate: null,
             endDate: null,
             rowCount: 2,

@@ -623,8 +623,8 @@ describe("structured query supplier enrichment", () => {
     });
     expect(calls).toHaveLength(3);
     expect(calls[1]?.[0]).not.toContain("document_labels");
-    expect(calls[1]?.[0]).toContain("ib.registry_version = ?");
-    expect(calls[1]).toContain(getStructuredRegistry("supplier_catalog").version);
+    expect(calls[1]?.[0]).not.toContain("ib.registry_version");
+    expect(calls[1]).not.toContain(getStructuredRegistry("supplier_catalog").version);
     expect(calls[1]).not.toContain(getStructuredRegistry("delivery_ledger").version);
     expect(calls[2]?.[0]).toContain("IN (?)");
   });

@@ -147,7 +147,6 @@ export function createInMemoryStructuredImportRepository(
     id: string;
     orgId: string;
     dataset: StructuredDatasetName;
-    registryVersion: string;
     startDate: string | null;
     endDate: string | null;
     idempotencyKey: string;
@@ -235,7 +234,6 @@ export function createInMemoryStructuredImportRepository(
       actorEmployeeId: string;
       documentId: string;
       dataset: StructuredDatasetName;
-      registryVersion: string;
       fileType: "xlsx" | "csv";
       startDate: string | null;
       endDate: string | null;
@@ -337,7 +335,6 @@ export function createInMemoryStructuredImportRepository(
         id: `imp_${batches.length + 1}`,
         orgId: input.orgId,
         dataset: input.dataset,
-        registryVersion: input.registryVersion,
         startDate: input.startDate,
         endDate: input.endDate,
         idempotencyKey: input.idempotencyKey,
@@ -377,7 +374,6 @@ export function createInMemoryStructuredImportRepository(
         createdAt: new Date(),
         sourceMetadata: {
           dataset: input.dataset,
-          registryVersion: input.registryVersion,
           importBatchId: batch.id,
           startDate: input.startDate,
           endDate: input.endDate,
@@ -395,7 +391,6 @@ export function createInMemoryStructuredImportRepository(
         result: "succeeded",
         metadata: {
           dataset: input.dataset,
-          registryVersion: input.registryVersion,
           startDate: input.startDate,
           endDate: input.endDate,
           ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
@@ -481,7 +476,6 @@ export function createInMemoryStructuredImportRepository(
         result: "succeeded",
         metadata: {
           dataset: batch.dataset,
-          registryVersion: batch.registryVersion,
           startDate: batch.startDate,
           endDate: batch.endDate,
           ...(batch.dataset === "delivery_ledger" && batch.naturalKey !== null

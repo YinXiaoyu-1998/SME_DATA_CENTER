@@ -219,7 +219,6 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     sourceDocumentId: "doc_structured",
     sourceDocumentLabelKeys: ["store:baoli"],
     dataset: "dishes",
-    registryVersion: "dishes.2026-09-04.v2",
     status: "pending",
     startDate: "20260701",
     endDate: "20260731",

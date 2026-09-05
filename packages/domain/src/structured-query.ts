@@ -211,7 +211,6 @@ export function compileStructuredQuery(
   const projection = buildProjection(query, fields, mode);
   const from = baseFromAndWhere({
     registry,
-    registryVersion: query.registryVersion,
     employee: input.employee,
     orgId: input.orgId
   });
@@ -1072,7 +1071,6 @@ function buildProjection(
 
 function baseFromAndWhere(input: {
   registry: StructuredDatasetRegistry;
-  registryVersion: string;
   employee: StructuredQueryEmployeeScope;
   orgId: string;
 }): SqlFragment {
@@ -1081,7 +1079,6 @@ function baseFromAndWhere(input: {
     input.orgId,
     input.orgId,
     input.registry.dataset,
-    input.registryVersion,
     "applied",
     "structured",
     "active"
@@ -1093,7 +1090,6 @@ function baseFromAndWhere(input: {
     "AND ib.org_id = ?",
     "AND d.org_id = ?",
     "AND ib.dataset = ?",
-    "AND ib.registry_version = ?",
     "AND ib.status = ?",
     "AND ib.archived_at IS NULL",
     "AND d.document_kind = ?",

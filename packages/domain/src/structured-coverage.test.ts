@@ -37,7 +37,7 @@ describe("structured coverage compiler", () => {
       "SELECT ib.id AS import_batch_id, ib.source_document_id, d.title AS source_document_title, ib.applied_at, ib.applied_row_count AS row_count, ib.start_date, ib.end_date FROM import_batches ib JOIN documents d ON d.id = ib.source_document_id"
     );
     expect(compact(compiled.sql)).toContain(
-      "WHERE ib.org_id = ? AND d.org_id = ? AND ib.dataset = ? AND ib.registry_version = ? AND ib.status = ? AND ib.applied_at IS NOT NULL AND ib.archived_at IS NULL AND d.document_kind = ? AND d.status = ? AND d.archived_at IS NULL"
+      "WHERE ib.org_id = ? AND d.org_id = ? AND ib.dataset = ? AND ib.status = ? AND ib.applied_at IS NOT NULL AND ib.archived_at IS NULL AND d.document_kind = ? AND d.status = ? AND d.archived_at IS NULL"
     );
     expect(compact(compiled.sql)).toContain(
       "EXISTS (SELECT 1 FROM document_labels dl JOIN labels l ON l.id = dl.label_id WHERE dl.document_id = d.id AND (l.key = ? OR l.key IN (?)))"
@@ -49,7 +49,6 @@ describe("structured coverage compiler", () => {
       "org_1",
       "org_1",
       "dishes",
-      "dishes.2026-09-04.v2",
       "applied",
       "structured",
       "active",
@@ -70,7 +69,6 @@ describe("structured coverage compiler", () => {
       "org_1",
       "org_1",
       "business",
-      "business.2026-09-04.v2",
       "applied",
       "structured",
       "active"
@@ -93,7 +91,6 @@ describe("structured coverage compiler", () => {
       "org_1",
       "org_1",
       "dish_catalog",
-      "dish_catalog.2026-08-22.v1",
       "applied",
       "structured",
       "active",

@@ -19,12 +19,11 @@ import {
 } from "@prisma/client";
 import type {
   DocumentStatusName,
-  Phase3ErrorCode,
   ImportBatchStatusName,
   Phase3FileType,
   StructuredDatasetName
 } from "@enterprise-hub/domain";
-import { AUDIT_ACTIONS, PHASE3_ERROR_CODES, getStructuredRegistry } from "@enterprise-hub/domain";
+import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface StructuredImportRowInput {
@@ -53,7 +52,6 @@ export interface StructuredImportBatchRecord {
   sourceDocumentId: string;
   sourceDocumentLabelKeys: string[];
   dataset: StructuredDatasetName;
-  registryVersion: string;
   status: ImportBatchStatusName;
   startDate: string | null;
   endDate: string | null;
@@ -79,7 +77,6 @@ export interface ReserveStructuredImportInput {
   actorEmployeeId: string;
   documentId: string;
   dataset: StructuredDatasetName;
-  registryVersion: string;
   fileType: Extract<Phase3FileType, "xlsx" | "csv">;
   startDate: string | null;
   endDate: string | null;
@@ -142,7 +139,7 @@ export interface StructuredImportRepository {
 
 export class StructuredImportError extends Error {
   constructor(
-    readonly code: string | Phase3ErrorCode,
+    readonly code: string,
     message = code
   ) {
     super(message);
@@ -394,11 +391,6 @@ export function createPrismaStructuredImportRepository(options: {
       return batch ? toImportBatchRecord(batch) : null;
     },
     async reserveStructuredImport(input) {
-      const activeRegistryVersion = getStructuredRegistry(input.dataset).version;
-      if (input.registryVersion !== activeRegistryVersion) {
-        throw new StructuredImportError(PHASE3_ERROR_CODES.registryVersionMismatch);
-      }
-
       return retryIdempotentDatabaseOperation(async () => {
         const existing = await resolveExistingReservation(input);
         if (existing) return existing;
@@ -424,7 +416,6 @@ export function createPrismaStructuredImportRepository(options: {
                   sourceSystem: "structured_import",
                   sourceMetadata: {
                     dataset: input.dataset,
-                    registryVersion: input.registryVersion,
                     startDate: input.startDate,
                     endDate: input.endDate,
                     ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
@@ -445,7 +436,6 @@ export function createPrismaStructuredImportRepository(options: {
                   orgId: input.orgId,
                   sourceDocumentId: input.documentId,
                   dataset: input.dataset as ImportDataset,
-                  registryVersion: input.registryVersion,
                   startDate: input.startDate ? parseDateWindowDate(input.startDate) : null,
                   endDate: input.endDate ? parseDateWindowDate(input.endDate) : null,
                   idempotencyKey: input.idempotencyKey,
@@ -485,7 +475,6 @@ export function createPrismaStructuredImportRepository(options: {
                   result: "succeeded",
                   metadata: {
                     dataset: input.dataset,
-                    registryVersion: input.registryVersion,
                     startDate: input.startDate,
                     endDate: input.endDate,
                     ...(input.dataset === "delivery_ledger" && input.naturalKey !== undefined
@@ -669,7 +658,6 @@ export function createPrismaStructuredImportRepository(options: {
                     result: "succeeded",
                     metadata: {
                       dataset: batch.dataset,
-                      registryVersion: batch.registryVersion,
                       startDate: formatDateWindowDate(batch.startDate),
                       endDate: formatDateWindowDate(batch.endDate),
                       ...(batch.dataset === "delivery_ledger" && batch.naturalKey !== null
@@ -854,7 +842,6 @@ function toImportBatchRecord(
       (documentLabel) => documentLabel.label.key
     ),
     dataset: batch.dataset,
-    registryVersion: batch.registryVersion,
     status: archived ? "archived" : batch.status,
     startDate: formatDateWindowDate(batch.startDate),
     endDate: formatDateWindowDate(batch.endDate),

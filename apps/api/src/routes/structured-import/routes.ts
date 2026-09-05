@@ -287,27 +287,24 @@ export function registerStructuredImportRoutes(
     }
 
     let naturalKey: string | undefined;
-    let profiledRegistryVersion = registry.version;
-    const profileInput = {
-      dataset,
-      fileName: uploadedFile.fileName,
-      fileType,
-      content: uploadedFile.body,
-      limits: {
-        maxStructuredImportRows: dependencies.runtimeLimits.maxStructuredImportRows,
-        maxXlsxSheets: dependencies.runtimeLimits.maxXlsxSheets,
-        maxStructuredCellChars: dependencies.runtimeLimits.maxStructuredCellChars,
-        maxXlsxUncompressedBytes: dependencies.runtimeLimits.maxXlsxUncompressedBytes,
-        maxXlsxZipEntries: dependencies.runtimeLimits.maxXlsxZipEntries,
-        maxXlsxCompressionRatio: dependencies.runtimeLimits.maxXlsxCompressionRatio
-      }
-    };
     if (registry.metadataPolicy === "derived_receipt") {
       try {
         const profile = await measureTiming("upload.profile_file", () =>
-          profileStructuredFile(profileInput)
+          profileStructuredFile({
+            dataset,
+            fileName: uploadedFile.fileName,
+            fileType,
+            content: uploadedFile.body,
+            limits: {
+              maxStructuredImportRows: dependencies.runtimeLimits.maxStructuredImportRows,
+              maxXlsxSheets: dependencies.runtimeLimits.maxXlsxSheets,
+              maxStructuredCellChars: dependencies.runtimeLimits.maxStructuredCellChars,
+              maxXlsxUncompressedBytes: dependencies.runtimeLimits.maxXlsxUncompressedBytes,
+              maxXlsxZipEntries: dependencies.runtimeLimits.maxXlsxZipEntries,
+              maxXlsxCompressionRatio: dependencies.runtimeLimits.maxXlsxCompressionRatio
+            }
+          })
         );
-        profiledRegistryVersion = profile.registryVersion;
         const derivedMetadata = profile.derivedMetadata;
         if (!derivedMetadata) throw new Error("Delivery receipt metadata is missing.");
         startDate = derivedMetadata.receiptDate.replaceAll("-", "");
@@ -321,15 +318,6 @@ export function registerStructuredImportRoutes(
           "STRUCTURED_IMPORT_VALIDATION_FAILED",
           "Structured import metadata could not be derived."
         );
-      }
-    } else {
-      try {
-        const profile = await measureTiming("upload.profile_file", () =>
-          profileStructuredFile(profileInput)
-        );
-        profiledRegistryVersion = profile.registryVersion;
-      } catch (error) {
-        request.log.debug({ err: error }, "structured import profile deferred to worker");
       }
     }
 
@@ -375,7 +363,6 @@ export function registerStructuredImportRoutes(
             actorEmployeeId: employee.id,
             documentId: candidateDocumentId,
             dataset,
-            registryVersion: profiledRegistryVersion,
             fileType,
             startDate,
             endDate,

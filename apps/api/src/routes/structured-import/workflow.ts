@@ -398,7 +398,6 @@ export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
     importBatchId: importBatch.id,
     sourceDocumentId: importBatch.sourceDocumentId,
     dataset: importBatch.dataset,
-    registryVersion: importBatch.registryVersion,
     status: importBatch.status,
     sourceSheetSummary: importBatch.sourceSheetSummary,
     validationErrors: importBatch.validationErrors,

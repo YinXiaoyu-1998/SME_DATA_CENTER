@@ -230,7 +230,6 @@ describe("structured query compiler", () => {
       "default-org",
       "default-org",
       "dishes",
-      "dishes.2026-09-04.v2",
       "applied",
       "structured",
       "active",
@@ -262,7 +261,6 @@ describe("structured query compiler", () => {
       "default-org",
       "default-org",
       "dishes",
-      "dishes.2026-09-04.v2",
       "applied",
       "structured",
       "active",
@@ -596,7 +594,7 @@ describe("structured query compiler", () => {
       "weighted_discount_rate"
     ]);
     expect(compiled.aggregateAliases).toEqual(["revenue", "weighted_discount_rate"]);
-    expect(compiled.sql).toContain("ib.registry_version = ?");
+    expect(compiled.sql).not.toContain("ib.registry_version");
     expect(compiled.sql).toContain(
       "SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6))) AS `revenue`"
     );
@@ -617,7 +615,6 @@ describe("structured query compiler", () => {
       "default-org",
       "default-org",
       "business",
-      "business.2026-09-04.v2",
       "applied",
       "structured",
       "active",
