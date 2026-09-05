@@ -1137,3 +1137,34 @@ as?)` as a strict discriminated aggregate; required unique aggregate aliases, in
 - Files changed: `packages/domain/src/structured-query.ts`, `packages/domain/src/structured-query.test.ts`,
   `packages/mcp-contract/src/index.ts`, `packages/mcp-contract/src/index.test.ts`,
   `apps/api/src/structured-query-route.test.ts`, `docs/implementation/progress.md`, and this handoff.
+
+## 2026-09-05 08:46 CST - general structured query enhancements Task 3
+
+- Branch/worktree: `codex/maijia-smedc-coverage` in
+  `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER-worktrees/maijia-smedc-service-task3`,
+  based on `c66c892`.
+- Scope completed: added metadata-policy-driven structured dataset coverage compiler, Prisma
+  repository, and authenticated `GET /v1/structured/datasets/:dataset/coverage` route. Coverage
+  filters exact active registry version, applied/non-archived imports, active/non-archived
+  structured documents, tenant scope, and admin/non-admin label visibility. Window datasets return
+  `startDate`/`endDate`; snapshot datasets return `snapshotDate`; `derived_receipt`/`none`
+  datasets return empty `sources`.
+- Contract note: `rowCount` uses `ib.applied_row_count AS row_count`, following the SDD ledger
+  ruling rather than the earlier plan text that allowed `total_row_count`.
+- Verification: initial RED command required `npm install`; after install,
+  `npm test -- packages/domain/src/structured-coverage.test.ts` failed on missing
+  `./structured-coverage.js`. API RED failed on missing `apps/api/src/structured-coverage.js` and
+  missing route. GREEN checks passed: `npm run db:generate`; focused coverage suite 11/11; nearby
+  API/domain suite 47/47; `npm run typecheck`; `npm run lint`; `npm run format:check`;
+  `git diff --check`; full `npm test` passed (91 files passed, 752 tests passed, 5 files/32 tests
+  skipped).
+- Cleanup: full unit test build output `dist/` was moved out of the worktree to
+  `/tmp/smedc-service-task3-cleanup/dist-20260905-coverage` after direct deletion was blocked by
+  the environment. No `.data` files were present; Docker containers/volumes/networks were
+  inspected and only unrelated existing local services were found.
+- Files changed: `packages/domain/src/structured-coverage.ts`,
+  `packages/domain/src/structured-coverage.test.ts`, `packages/domain/src/index.ts`,
+  `apps/api/src/structured-coverage.ts`, `apps/api/src/structured-coverage.test.ts`,
+  `apps/api/src/app-context.ts`, `apps/api/src/server.ts`,
+  `apps/api/src/routes/structured-query.ts`, `apps/api/src/routes/structured-query.test.ts`,
+  plus nearby context/auth/server tests and this handoff.

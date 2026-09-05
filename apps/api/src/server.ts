@@ -26,6 +26,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   const storage = context.storage;
   const structuredImports = context.structuredImports;
   const structuredQueries = context.structuredQueries;
+  const structuredCoverage = context.structuredCoverage;
   const quarantineCertificates = context.quarantineCertificates;
   const sourceDocuments = context.sourceDocuments;
   const skills = context.skills;
@@ -127,7 +128,12 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     createBusinessRequestAudit
   });
 
-  registerStructuredQueryRoutes(app, { auth: requestAuth, structuredQueries, cursorSigningSecret });
+  registerStructuredQueryRoutes(app, {
+    auth: requestAuth,
+    structuredQueries,
+    structuredCoverage,
+    cursorSigningSecret
+  });
 
   registerCatalogRoutes(app, { auth: requestAuth, documents, skills });
 

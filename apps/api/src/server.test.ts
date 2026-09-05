@@ -403,6 +403,10 @@ describe("api auth shell", () => {
         url: "/v1/structured/datasets"
       },
       {
+        method: "GET",
+        url: "/v1/structured/datasets/dishes/coverage"
+      },
+      {
         method: "POST",
         url: "/v1/structured/query",
         payload: { dataset: "dishes", select: ["business_date"] }

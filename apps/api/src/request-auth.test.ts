@@ -53,6 +53,9 @@ function minimalContext(
     structuredQueries: () => {
       throw new Error("not used");
     },
+    structuredCoverage: () => {
+      throw new Error("not used");
+    },
     skills: () => {
       throw new Error("not used");
     },
