@@ -1220,3 +1220,21 @@ as?)` as a strict discriminated aggregate; required unique aggregate aliases, in
   `apps/mcp-launcher/src/packaging.verify.ts`, `apps/mcp-launcher/src/server.ts`,
   `docs/implementation/api-contract.md`, `docs/implementation/phase-3-retrieval-docs.md`,
   `package-lock.json`, and this handoff.
+
+## 2026-09-06 01:15 CST - Maijia SMEDC final service audit fix
+
+- Branch/worktree: `codex/maijia-smedc-audit-fix` in
+  `/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER-worktrees/maijia-smedc-service-final-fix`.
+- Scope completed: fixed the final service review Important audit-provenance finding. Queued
+  `structured_import.validating` and `structured_import.applying` audit rows now include
+  `dataset`, `registryVersion`, and `sourceDocumentId`; rejected terminal audit metadata was also
+  tightened to include the same provenance fields.
+- TDD evidence: after adding the Prisma integration assertion, the focused integration test failed
+  on missing `registryVersion` and `sourceDocumentId` in the validating event. After the fix, the
+  same test passed.
+- Verification: worker Prisma integration passed (9/9); nearby worker tests passed (15/15);
+  `npm run typecheck`, `npm run lint`, and `npm run format:check` passed.
+- Cleanup: local MySQL was started on `MYSQL_PORT=3307` for the Prisma integration because port
+  3306 was occupied by an unrelated container; the run-created compose container, volume, and
+  network were removed with `MYSQL_PORT=3307 docker compose down -v`. Generated `dist/` output
+  from the full unit suite was moved to `/tmp/smedc-service-final-fix-cleanup-dist-20260906-0115`.
