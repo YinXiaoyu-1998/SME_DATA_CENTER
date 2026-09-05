@@ -471,6 +471,13 @@ describe("structured query compiler", () => {
           )
         },
         code: PHASE3_ERROR_CODES.limitExceeded
+      },
+      {
+        query: {
+          dataset: "dishes",
+          aggregates: [{ op: "count", field: "", as: "blank_count" }]
+        },
+        code: PHASE3_ERROR_CODES.invalidAggregation
       }
     ];
 

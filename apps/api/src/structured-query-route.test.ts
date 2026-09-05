@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { compileStructuredQuery, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import {
+  compileStructuredQuery,
+  getStructuredRegistry,
+  type AuthenticatedEmployee
+} from "@enterprise-hub/domain";
 import { buildApiServer } from "./server.js";
 import type { EmployeeRepository } from "./employees.js";
 import type {
@@ -533,6 +537,9 @@ describe("structured query supplier enrichment", () => {
     });
     expect(calls).toHaveLength(3);
     expect(calls[1]?.[0]).not.toContain("document_labels");
+    expect(calls[1]?.[0]).toContain("ib.registry_version = ?");
+    expect(calls[1]).toContain(getStructuredRegistry("supplier_catalog").version);
+    expect(calls[1]).not.toContain(getStructuredRegistry("delivery_ledger").version);
     expect(calls[2]?.[0]).toContain("IN (?)");
   });
 

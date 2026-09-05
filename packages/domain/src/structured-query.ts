@@ -581,6 +581,12 @@ function normalizeAggregates(input: unknown): AggregateSpec[] {
           "Aggregate field is invalid."
         );
       }
+      if (field === "") {
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.invalidAggregation,
+          "Aggregate field is invalid."
+        );
+      }
 
       return { op, field, as: alias } satisfies AggregateSpec;
     }
