@@ -18,6 +18,7 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "search_document_evidence",
   "list_structured_datasets",
   "query_structured_dataset",
+  "describe_structured_dataset_coverage",
   "query_quarantine_certificates",
   "get_source_document_download_url",
   "get_evidence_document_status",
@@ -106,6 +107,11 @@ function routeForReadOnlyTool(
           groupBy: input["groupBy"],
           aggregates: input["aggregates"]
         }
+      };
+    case "describe_structured_dataset_coverage":
+      return {
+        method: "GET",
+        path: `/v1/structured/datasets/${encodeURIComponent(String(input["dataset"]))}/coverage`
       };
     case "query_quarantine_certificates":
       return {

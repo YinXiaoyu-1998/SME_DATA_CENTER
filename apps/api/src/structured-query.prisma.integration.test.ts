@@ -9,7 +9,13 @@ import {
   PrismaClient
 } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { compileStructuredQuery } from "@enterprise-hub/domain";
+import {
+  compileStructuredCoverageQuery,
+  compileStructuredQuery,
+  createStructuredCursor,
+  getStructuredRegistry
+} from "@enterprise-hub/domain";
+import { createPrismaStructuredCoverageRepository } from "./structured-coverage.js";
 import { createPrismaStructuredQueryRepository } from "./structured-query.js";
 
 const runIntegration = process.env["RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION"] === "1";
@@ -24,6 +30,7 @@ const visibleLabelId = "query_prisma_review_vis";
 const hiddenLabelId = "query_prisma_review_hid";
 let documentSequence = 0;
 let batchSequence = 0;
+let businessRowSequence = 0;
 
 describeIntegration("Prisma structured supplier enrichment authorization", () => {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
@@ -285,6 +292,118 @@ describeIntegration("Prisma structured supplier enrichment authorization", () =>
     expect(rows[0]).toMatchObject({ supplier_contact_phone: "successful" });
     expect(JSON.stringify(rows)).not.toContain("failed");
   });
+
+  it("aggregates visible business rows with weighted alias sorting, coverage scoping, and cursor pagination", async () => {
+    const visible = await createBusinessDocument(prisma, {
+      suffix: "aggregate-visible",
+      labels: [visibleLabelId],
+      startDate: "2026-09-01",
+      endDate: "2026-09-02",
+      appliedAt: new Date("2026-09-04T01:00:00.000Z"),
+      rows: [
+        {
+          storeName: "Visible Store",
+          orderSource: "dine-in",
+          mealPeriod: "lunch",
+          orderRevenue: "100.00",
+          discountRate: "0.10",
+          grossSalesAmount: "100.00"
+        },
+        {
+          storeName: "Visible Store",
+          orderSource: "dine-in",
+          mealPeriod: "lunch",
+          orderRevenue: "200.00",
+          discountRate: "0.20",
+          grossSalesAmount: "300.00"
+        },
+        {
+          storeName: "Visible Store",
+          orderSource: "delivery",
+          mealPeriod: "dinner",
+          orderRevenue: "80.00",
+          discountRate: "0.50",
+          grossSalesAmount: "100.00"
+        }
+      ]
+    });
+    await createBusinessDocument(prisma, {
+      suffix: "aggregate-hidden",
+      labels: [hiddenLabelId],
+      startDate: "2026-09-01",
+      endDate: "2026-09-02",
+      appliedAt: new Date("2026-09-04T02:00:00.000Z"),
+      rows: [
+        {
+          storeName: "Visible Store",
+          orderSource: "dine-in",
+          mealPeriod: "lunch",
+          orderRevenue: "10000.00",
+          discountRate: "0.90",
+          grossSalesAmount: "10000.00"
+        }
+      ]
+    });
+
+    const manager = {
+      id: labeledId,
+      role: "manager" as const,
+      labels: ["store:visible"]
+    };
+    const firstPage = await executeBusinessAggregateFor(manager);
+    const cursor = createStructuredCursor({
+      offset: firstPage.compiled.limit,
+      shapeHash: firstPage.compiled.shapeHash,
+      secret: "query-review-secret",
+      now: new Date("2026-09-05T00:00:00.000Z")
+    });
+    const secondPage = await executeBusinessAggregateFor(manager, cursor);
+    const coverage = await listBusinessCoverageFor(manager);
+
+    expect(firstPage.result).toMatchObject({
+      hasMore: true,
+      rows: [
+        {
+          store_name: "Visible Store",
+          order_source: "dine-in",
+          meal_period: "lunch"
+        }
+      ]
+    });
+    expect(Number(firstPage.result.rows[0]?.["revenue"])).toBe(300);
+    expect(Number(firstPage.result.rows[0]?.["weighted_discount_rate"])).toBeCloseTo(0.175, 6);
+    expect(secondPage.result).toMatchObject({
+      hasMore: false,
+      rows: [
+        {
+          store_name: "Visible Store",
+          order_source: "delivery",
+          meal_period: "dinner"
+        }
+      ]
+    });
+    expect(Number(secondPage.result.rows[0]?.["revenue"])).toBe(80);
+    expect(Number(secondPage.result.rows[0]?.["weighted_discount_rate"])).toBeCloseTo(0.5, 6);
+    expect(JSON.stringify([...firstPage.result.rows, ...secondPage.result.rows])).not.toContain(
+      "10000.00"
+    );
+    expect(coverage).toEqual({
+      dataset: "business",
+      registryVersion: getStructuredRegistry("business").version,
+      metadataPolicy: "window",
+      sources: [
+        {
+          importBatchId: visible.batch.id,
+          sourceDocumentId: visible.document.id,
+          sourceDocumentTitle: visible.document.title,
+          appliedAt: "2026-09-04T01:00:00.000Z",
+          rowCount: 3,
+          startDate: "2026-09-01",
+          endDate: "2026-09-02"
+        }
+      ]
+    });
+  });
 });
 
 async function executeFor(
@@ -305,6 +424,50 @@ async function executeFor(
   const result = await repository.execute(compiled);
   await repository.disconnect?.();
   return result.rows;
+}
+
+async function executeBusinessAggregateFor(
+  employee: { id: string; role: "admin" | "manager" | "employee"; labels: string[] },
+  cursor?: string
+) {
+  const repository = createPrismaStructuredQueryRepository(databaseUrl);
+  const compiled = compileStructuredQuery({
+    orgId,
+    employee,
+    query: {
+      dataset: "business",
+      registryVersion: getStructuredRegistry("business").version,
+      groupBy: ["store_name", "order_source", "meal_period"],
+      aggregates: [
+        { op: "sum", field: "order_revenue", as: "revenue" },
+        {
+          op: "weightedAvg",
+          field: "discount_rate",
+          weightField: "gross_sales_amount",
+          as: "weighted_discount_rate"
+        }
+      ],
+      sort: [{ field: "revenue", direction: "desc" }],
+      page: { limit: 1, ...(cursor ? { cursor } : {}) }
+    },
+    cursorSecret: "query-review-secret",
+    now: new Date("2026-09-05T00:01:00.000Z")
+  });
+  const result = await repository.execute(compiled);
+  await repository.disconnect?.();
+  return { compiled, result };
+}
+
+async function listBusinessCoverageFor(employee: {
+  id: string;
+  role: "admin" | "manager" | "employee";
+  labels: string[];
+}) {
+  const repository = createPrismaStructuredCoverageRepository(databaseUrl);
+  const compiled = compileStructuredCoverageQuery({ orgId, employee, dataset: "business" });
+  const result = await repository.list(compiled);
+  await repository.disconnect?.();
+  return result;
 }
 
 async function createLedgerDocument(
@@ -402,6 +565,64 @@ async function createCatalog(
   return { document, batch };
 }
 
+async function createBusinessDocument(
+  prisma: PrismaClient,
+  input: {
+    suffix: string;
+    labels: string[];
+    startDate: string;
+    endDate: string;
+    appliedAt: Date;
+    rows: Array<{
+      storeName: string;
+      orderSource: string;
+      mealPeriod: string;
+      orderRevenue: string;
+      discountRate: string;
+      grossSalesAmount: string;
+    }>;
+  }
+) {
+  const document = await createDocument(prisma, `business-${input.suffix}`, input.labels);
+  const batch = await prisma.importBatch.create({
+    data: {
+      id: `qpr_b_${batchSequence++}`,
+      orgId,
+      sourceDocumentId: document.id,
+      dataset: ImportDataset.business,
+      startDate: new Date(`${input.startDate}T00:00:00.000Z`),
+      endDate: new Date(`${input.endDate}T00:00:00.000Z`),
+      idempotencyKey: `query-prisma-review-business-${input.suffix}`,
+      requestFingerprint: input.suffix.padEnd(64, "0").slice(0, 64),
+      status: ImportBatchStatus.applied,
+      appliedAt: input.appliedAt,
+      totalRowCount: input.rows.length,
+      appliedRowCount: input.rows.length
+    }
+  });
+  await prisma.businessRow.createMany({
+    data: input.rows.map((row, index) => ({
+      id: `qpr_br_${businessRowSequence++}`,
+      orgId,
+      sourceDocumentId: document.id,
+      importBatchId: batch.id,
+      sourceSheetIndex: 0,
+      sourceSheetName: "Sheet1",
+      sourceRowNumber: index + 2,
+      payload: {
+        business_date: input.startDate,
+        store_name: row.storeName,
+        order_source: row.orderSource,
+        meal_period: row.mealPeriod,
+        order_revenue: row.orderRevenue,
+        discount_rate: row.discountRate,
+        gross_sales_amount: row.grossSalesAmount
+      }
+    }))
+  });
+  return { document, batch };
+}
+
 async function createDocument(
   prisma: PrismaClient,
   suffix: string,
@@ -438,6 +659,7 @@ async function createDocument(
 async function clearTestData(prisma: PrismaClient) {
   await prisma.supplierCatalogRow.deleteMany({ where: { orgId } });
   await prisma.deliveryLedgerRow.deleteMany({ where: { orgId } });
+  await prisma.businessRow.deleteMany({ where: { orgId } });
   await prisma.importBatch.deleteMany({ where: { orgId } });
   await prisma.document.deleteMany({ where: { orgId } });
 }

@@ -166,7 +166,7 @@ async function findReadableCurrentSupplierCatalog(
   const rows = (await prisma.$queryRawUnsafe(
     `SELECT latest.id, latest.source_document_id
        FROM (
-         SELECT ib.id, ib.org_id, ib.source_document_id
+          SELECT ib.id, ib.org_id, ib.source_document_id
            FROM import_batches ib
           WHERE ib.org_id = ?
             AND ib.dataset = ?

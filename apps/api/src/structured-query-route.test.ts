@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { compileStructuredQuery, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import {
+  compileStructuredQuery,
+  getStructuredRegistry,
+  type AuthenticatedEmployee
+} from "@enterprise-hub/domain";
 import { buildApiServer } from "./server.js";
 import type { EmployeeRepository } from "./employees.js";
 import type {
@@ -102,19 +106,19 @@ describe("structured dataset discovery", () => {
       limits: {
         defaultLimit: 50,
         maxRows: 200,
-        maxAggregateGroups: 100,
+        maxAggregateGroups: 200,
         maxBooleanDepth: 3,
         maxConditions: 20,
         maxInValues: 100,
         maxSortFields: 2,
-        maxGroupByFields: 1,
-        maxAggregates: 5,
+        maxGroupByFields: 4,
+        maxAggregates: 12,
         maxSelectedFields: 50
       },
       datasets: expect.arrayContaining([
         expect.objectContaining({
           dataset: "dishes",
-          registryVersion: "dishes.2026-07-11.v1",
+          registryVersion: "dishes.2026-09-04.v2",
           rowTable: "dish_rows",
           fields: expect.arrayContaining([
             expect.objectContaining({
@@ -190,7 +194,7 @@ describe("structured query API", () => {
       },
       payload: {
         dataset: "dishes",
-        registryVersion: "dishes.2026-07-11.v1",
+        registryVersion: "dishes.2026-09-04.v2",
         select: ["business_date", "matched_product_name", "dish_sales_quantity"],
         filter: {
           field: "matched_product_name",
@@ -205,7 +209,7 @@ describe("structured query API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       dataset: "dishes",
-      registryVersion: "dishes.2026-07-11.v1",
+      registryVersion: "dishes.2026-09-04.v2",
       mode: "detail",
       rows: [
         {
@@ -393,7 +397,7 @@ describe("structured query API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       dataset: "business",
-      registryVersion: "business.2026-07-11.v1",
+      registryVersion: "business.2026-09-04.v2",
       mode: "aggregate",
       rows: [
         {
@@ -405,6 +409,92 @@ describe("structured query API", () => {
       nextCursor: null
     });
     expect(JSON.stringify(response.json())).not.toMatch(/analysis|trend|summary|insight/i);
+  });
+
+  it("preserves the enriched generic aggregate query body through the HTTP route", async () => {
+    const structuredQueryRepository = createStructuredRepository({
+      rows: [
+        {
+          store_name: "Baoli",
+          order_source: "dine-in",
+          meal_period: "lunch",
+          business_date: "2026-07-01",
+          revenue: "256.00",
+          weighted_discount: "0.125"
+        }
+      ],
+      hasMore: false
+    });
+    app = buildApiServer({
+      employeeRepository: createRepository([baoliManagerEmployee]),
+      structuredQueryRepository,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+      },
+      payload: {
+        dataset: "business",
+        registryVersion: "business.2026-09-04.v2",
+        groupBy: ["store_name", "order_source", "meal_period", "business_date"],
+        aggregates: [
+          { op: "sum", field: "order_revenue", as: "revenue" },
+          {
+            op: "weightedAvg",
+            field: "discount_rate",
+            weightField: "gross_sales_amount",
+            as: "weighted_discount"
+          }
+        ],
+        sort: [{ field: "weighted_discount", direction: "desc" }],
+        page: { limit: 200 }
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      dataset: "business",
+      registryVersion: "business.2026-09-04.v2",
+      mode: "aggregate",
+      rows: [
+        {
+          store_name: "Baoli",
+          order_source: "dine-in",
+          meal_period: "lunch",
+          business_date: "2026-07-01",
+          revenue: "256.00",
+          weighted_discount: "0.125"
+        }
+      ],
+      nextCursor: null
+    });
+    expect(structuredQueryRepository.calls).toHaveLength(1);
+    expect(structuredQueryRepository.calls[0]).toMatchObject({
+      dataset: "business",
+      registryVersion: "business.2026-09-04.v2",
+      mode: "aggregate",
+      limit: 200,
+      selectedFields: [
+        "store_name",
+        "order_source",
+        "meal_period",
+        "business_date",
+        "revenue",
+        "weighted_discount"
+      ],
+      aggregateAliases: ["revenue", "weighted_discount"]
+    });
+    const compiledSql = String((structuredQueryRepository.calls[0] as { sql?: unknown }).sql ?? "");
+    expect(compiledSql).toContain("SUM(");
+    expect(compiledSql).toContain("NULLIF(SUM(");
+    expect(compiledSql).toContain("GROUP BY");
+    expect(compiledSql).toContain("ORDER BY `weighted_discount` DESC");
   });
 
   it("rejects cursor query-shape changes before repository execution", async () => {
@@ -533,6 +623,9 @@ describe("structured query supplier enrichment", () => {
     });
     expect(calls).toHaveLength(3);
     expect(calls[1]?.[0]).not.toContain("document_labels");
+    expect(calls[1]?.[0]).not.toContain("ib.registry_version");
+    expect(calls[1]).not.toContain(getStructuredRegistry("supplier_catalog").version);
+    expect(calls[1]).not.toContain(getStructuredRegistry("delivery_ledger").version);
     expect(calls[2]?.[0]).toContain("IN (?)");
   });
 

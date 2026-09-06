@@ -106,7 +106,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.2.5");
+    expect(manifest.version).toBe("0.2.6");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -136,7 +136,8 @@ describe("published launcher artifact", () => {
         expect.arrayContaining([
           "enterprise_hub_login",
           "enterprise_hub_logout",
-          "enterprise_hub_auth_status"
+          "enterprise_hub_auth_status",
+          "describe_structured_dataset_coverage"
         ])
       );
       const structuredUpload = tools.tools.find(
@@ -161,6 +162,30 @@ describe("published launcher artifact", () => {
             enum: expect.arrayContaining(["dish_catalog", "delivery_ledger", "supplier_catalog"])
           }
         }
+      });
+      const aggregateBranches = (
+        structuredQuery?.inputSchema as {
+          properties?: {
+            aggregates?: {
+              items?: {
+                oneOf?: Array<{
+                  properties?: { op?: { const?: string } };
+                  required?: string[];
+                }>;
+              };
+            };
+          };
+        }
+      ).properties?.aggregates?.items?.oneOf;
+      const weightedAverageAggregate = aggregateBranches?.find(
+        (branch) => branch.properties?.op?.const === "weightedAvg"
+      );
+      expect(weightedAverageAggregate).toMatchObject({
+        properties: {
+          field: { type: "string" },
+          weightField: { type: "string" }
+        },
+        required: expect.arrayContaining(["op", "field", "weightField"])
       });
     } finally {
       await client.close();

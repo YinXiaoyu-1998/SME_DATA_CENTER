@@ -61,6 +61,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-rollback",
       now
     });
@@ -81,6 +82,7 @@ describeIntegration("Prisma structured import worker repository", () => {
         runId: fixture.runId,
         documentId: fixture.documentId,
         importBatchId: fixture.importBatchId,
+        dataset: fixture.dataset,
         workerId: "worker-rollback",
         now,
         batchInsertSize: 500,
@@ -114,6 +116,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-retry-after-rollback",
       now
     });
@@ -123,6 +126,7 @@ describeIntegration("Prisma structured import worker repository", () => {
         runId: fixture.runId,
         documentId: fixture.documentId,
         importBatchId: fixture.importBatchId,
+        dataset: fixture.dataset,
         workerId: "worker-retry-after-rollback",
         now,
         batchInsertSize: 500,
@@ -182,6 +186,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-catalog",
       now
     });
@@ -192,6 +197,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-catalog",
       now,
       batchInsertSize: 500,
@@ -236,6 +242,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-delivery",
       now
     });
@@ -243,6 +250,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-delivery",
       now,
       batchInsertSize: 500,
@@ -275,6 +283,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-supplier",
       now
     });
@@ -282,6 +291,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-supplier",
       now,
       batchInsertSize: 500,
@@ -298,6 +308,114 @@ describeIntegration("Prisma structured import worker repository", () => {
       (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
         .appliedAt
     ).toEqual(now);
+    await repository.disconnect?.();
+  });
+
+  it("records structured transition provenance without registry versions", async () => {
+    const repository = createPrismaProcessingWorkerRepository(databaseUrl);
+    const fixture = await createStructuredRun(prisma, "trans-audit");
+    const now = new Date("2026-08-10T04:00:00.000Z");
+    await repository.claimNextProcessingRun({
+      workerId: "worker-transition-audit",
+      leaseSeconds: 120,
+      now
+    });
+    await repository.beginStructuredImportApply?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
+      workerId: "worker-transition-audit",
+      now
+    });
+    await repository.completeStructuredImport?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
+      workerId: "worker-transition-audit",
+      now,
+      batchInsertSize: 500,
+      result: structuredResult()
+    });
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: {
+        orgId,
+        targetId: fixture.importBatchId,
+        action: {
+          in: [
+            "structured_import.validating",
+            "structured_import.applying",
+            "structured_import.applied"
+          ]
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+
+    expect(auditLogs).toHaveLength(3);
+    expect(auditLogs.map((auditLog) => auditLog.action)).toEqual([
+      "structured_import.validating",
+      "structured_import.applying",
+      "structured_import.applied"
+    ]);
+    expect(auditLogs[0]?.metadata).toEqual(
+      expect.objectContaining({
+        dataset: ImportDataset.dishes,
+        sourceDocumentId: fixture.documentId
+      })
+    );
+    expect(auditLogs[1]?.metadata).toEqual(
+      expect.objectContaining({
+        processingRunId: fixture.runId,
+        workerId: "worker-transition-audit",
+        dataset: ImportDataset.dishes,
+        sourceDocumentId: fixture.documentId
+      })
+    );
+    expect(auditLogs[2]?.metadata).toEqual(
+      expect.objectContaining({
+        dataset: ImportDataset.dishes,
+        sourceDocumentId: fixture.documentId
+      })
+    );
+    for (const auditLog of auditLogs) {
+      expect(auditLog.metadata).not.toHaveProperty("registryVersion");
+    }
+    await repository.disconnect?.();
+  });
+
+  it("records dataset provenance when rejecting a queued structured import", async () => {
+    const repository = createPrismaProcessingWorkerRepository(databaseUrl);
+    const fixture = await createStructuredRun(prisma, "reject-audit");
+    const now = new Date("2026-08-10T05:00:00.000Z");
+    const claimed = await repository.claimNextProcessingRun({
+      workerId: "worker-reject-audit",
+      leaseSeconds: 120,
+      now
+    });
+    expect(claimed?.structuredImport?.dataset).toBe(ImportDataset.dishes);
+    await repository.rejectStructuredImport?.({
+      runId: fixture.runId,
+      documentId: fixture.documentId,
+      importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
+      workerId: "worker-reject-audit",
+      now,
+      result: rejectedStructuredResult()
+    });
+
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { orgId, targetId: fixture.importBatchId, action: "structured_import.rejected" }
+      })
+    ).toMatchObject({
+      metadata: expect.objectContaining({
+        dataset: ImportDataset.dishes,
+        sourceDocumentId: fixture.documentId
+      })
+    });
     await repository.disconnect?.();
   });
 
@@ -322,6 +440,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       runId: fixture.runId,
       documentId: fixture.documentId,
       importBatchId: fixture.importBatchId,
+      dataset: fixture.dataset,
       workerId: "worker-a",
       now: recoveredNow
     };
@@ -426,7 +545,7 @@ async function createStructuredRun(
       availableAt: new Date("2026-08-10T00:00:00.000Z")
     }
   });
-  return { documentId, importBatchId, runId };
+  return { documentId, importBatchId, runId, dataset };
 }
 
 function structuredResult(overrides: { sourceSheetName?: string } = {}): StructuredParseResult {

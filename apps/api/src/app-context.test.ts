@@ -66,6 +66,7 @@ describe("API server context", () => {
       imports: vi.fn(),
       skills: vi.fn(),
       queries: vi.fn(),
+      coverage: vi.fn(),
       evidence: vi.fn()
     };
     const context = createApiServerContext({
@@ -77,6 +78,7 @@ describe("API server context", () => {
       structuredImportRepository: { disconnect: disconnects.imports } as never,
       skillRepository: { disconnect: disconnects.skills } as never,
       structuredQueryRepository: { disconnect: disconnects.queries } as never,
+      structuredCoverageRepository: { disconnect: disconnects.coverage } as never,
       evidenceRepository: { disconnect: disconnects.evidence } as never
     });
 
@@ -88,6 +90,7 @@ describe("API server context", () => {
     expect(disconnects.imports).toHaveBeenCalledTimes(1);
     expect(disconnects.skills).toHaveBeenCalledTimes(1);
     expect(disconnects.queries).toHaveBeenCalledTimes(1);
+    expect(disconnects.coverage).toHaveBeenCalledTimes(1);
     expect(disconnects.evidence).toHaveBeenCalledTimes(1);
   });
 });

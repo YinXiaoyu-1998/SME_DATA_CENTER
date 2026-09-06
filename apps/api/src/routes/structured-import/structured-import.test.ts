@@ -201,7 +201,10 @@ describe("structured imports", () => {
     expect(documentRepository.documents[0]).toMatchObject({
       status: "pending_processing",
       documentType: "structured_dataset",
-      originalFileName: "original-dishes.csv"
+      originalFileName: "original-dishes.csv",
+      sourceMetadata: expect.objectContaining({
+        dataset: "dishes"
+      })
     });
     expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
     expect(documentRepository.auditLogs).toEqual([

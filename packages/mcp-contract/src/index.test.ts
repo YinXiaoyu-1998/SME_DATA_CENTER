@@ -39,7 +39,7 @@ const validInputs = {
   list_structured_datasets: {},
   query_structured_dataset: {
     dataset: "dishes",
-    registryVersion: "dishes.2026-07-11.v1",
+    registryVersion: "dishes.2026-09-04.v2",
     select: ["business_date"],
     filter: {
       field: "matched_product_name",
@@ -50,6 +50,9 @@ const validInputs = {
     page: { limit: 20, cursor: null },
     groupBy: ["store_name"],
     aggregates: [{ op: "sum", field: "gmv", as: "gmv_total" }]
+  },
+  describe_structured_dataset_coverage: {
+    dataset: "dishes"
   },
   upload_structured_dataset: {
     file: {
@@ -214,7 +217,11 @@ const invalidInputCases = [
       },
       {
         label: "too many group-by fields",
-        input: { dataset: "dishes", groupBy: ["store_name", "city_name"] }
+        input: {
+          dataset: "business",
+          groupBy: ["store_name", "order_source", "meal_period", "business_date", "city"],
+          aggregates: [{ op: "count", as: "rows" }]
+        }
       },
       {
         label: "too many aggregates",
@@ -229,7 +236,54 @@ const invalidInputCases = [
       {
         label: "invalid aggregate op",
         input: { dataset: "dishes", aggregates: [{ op: "median" }] }
+      },
+      {
+        label: "weighted aggregate missing weight field",
+        input: {
+          dataset: "business",
+          aggregates: [{ op: "weightedAvg", field: "discount_rate", as: "weighted_discount" }]
+        }
+      },
+      {
+        label: "non-weighted aggregate with weight field",
+        input: {
+          dataset: "business",
+          aggregates: [
+            {
+              op: "avg",
+              field: "discount_rate",
+              weightField: "gross_sales_amount",
+              as: "weighted_discount"
+            }
+          ]
+        }
+      },
+      {
+        label: "duplicate aggregate alias",
+        input: {
+          dataset: "business",
+          aggregates: [
+            { op: "sum", field: "order_revenue", as: "revenue" },
+            { op: "avg", field: "discount_rate", as: "revenue" }
+          ]
+        }
+      },
+      {
+        label: "aggregate alias collides with group field",
+        input: {
+          dataset: "business",
+          groupBy: ["store_name"],
+          aggregates: [{ op: "sum", field: "order_revenue", as: "store_name" }]
+        }
       }
+    ]
+  },
+  {
+    tool: "describe_structured_dataset_coverage" as EnterpriseHubMcpToolName,
+    cases: [
+      { label: "invalid dataset", input: { dataset: "orders" } },
+      { label: "missing dataset", input: {} },
+      { label: "extra field", input: { dataset: "dishes", completeness: true } }
     ]
   },
   {
@@ -345,6 +399,7 @@ describe("Enterprise Hub MCP contract", () => {
       "search_document_evidence",
       "list_structured_datasets",
       "query_structured_dataset",
+      "describe_structured_dataset_coverage",
       "upload_structured_dataset",
       "upload_evidence_document",
       "upload_quarantine_certificate",
@@ -354,6 +409,11 @@ describe("Enterprise Hub MCP contract", () => {
       "get_evidence_document_status",
       "get_import_status"
     ]);
+    expect(
+      ENTERPRISE_HUB_MCP_TOOL_NAMES.filter(
+        (toolName) => toolName === "describe_structured_dataset_coverage"
+      )
+    ).toHaveLength(1);
 
     expect(ENTERPRISE_HUB_MCP_TOOL_NAMES).not.toContain("enterprise_hub_login_dev");
   });
@@ -467,6 +527,32 @@ describe("Enterprise Hub MCP contract", () => {
         expect(field?.description).toContain(dataset);
       }
     }
+  });
+
+  it("defines a strict dataset-only coverage input contract", () => {
+    const coverage = contractsByName.get(
+      "describe_structured_dataset_coverage" as EnterpriseHubMcpToolName
+    );
+
+    expect(coverage?.inputSchema.parse({ dataset: "business" })).toEqual({
+      dataset: "business"
+    });
+    expect(Object.keys(coverage?.inputShape ?? {})).toEqual(["dataset"]);
+    expect(coverage?.inputFields).toEqual([
+      {
+        name: "dataset",
+        required: true,
+        description:
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
+      }
+    ]);
+    expect(coverage?.description).toContain("/v1/structured/datasets/:dataset/coverage");
+    expect(coverage?.resultShape).toEqual([
+      "dataset",
+      "registryVersion",
+      "metadataPolicy",
+      "sources[]: readable applied source windows or snapshots"
+    ]);
   });
 
   it("keeps the structured upload schema object-shaped while enforcing conditional dates", () => {
@@ -782,13 +868,13 @@ describe("Enterprise Hub MCP contract", () => {
     expect(MCP_STRUCTURED_QUERY_LIMITS).toEqual({
       defaultLimit: 50,
       maxRows: 200,
-      maxAggregateGroups: 100,
+      maxAggregateGroups: 200,
       maxBooleanDepth: 3,
       maxConditions: 20,
       maxInValues: 100,
       maxSortFields: 2,
-      maxGroupByFields: 1,
-      maxAggregates: 5,
+      maxGroupByFields: 4,
+      maxAggregates: 12,
       maxSelectedFields: 50,
       cursorTtlSeconds: 900
     });
@@ -803,6 +889,28 @@ describe("Enterprise Hub MCP contract", () => {
       safeParseTool("query_structured_dataset", {
         dataset: "dishes",
         aggregates: [{ op: "count", as: "rows" }],
+        page: { limit: MCP_STRUCTURED_QUERY_LIMITS.maxAggregateGroups }
+      }).success
+    ).toBe(true);
+    expect(
+      safeParseTool("query_structured_dataset", {
+        dataset: "business",
+        registryVersion: "business.2026-09-04.v2",
+        groupBy: ["store_name", "order_source", "meal_period", "business_date"],
+        aggregates: [
+          ...Array.from({ length: MCP_STRUCTURED_QUERY_LIMITS.maxAggregates - 1 }, (_, index) => ({
+            op: "sum" as const,
+            field: "order_revenue",
+            as: `revenue_${index}`
+          })),
+          {
+            op: "weightedAvg",
+            field: "discount_rate",
+            weightField: "gross_sales_amount",
+            as: "weighted_discount"
+          }
+        ],
+        sort: [{ field: "weighted_discount", direction: "desc" }],
         page: { limit: MCP_STRUCTURED_QUERY_LIMITS.maxAggregateGroups }
       }).success
     ).toBe(true);

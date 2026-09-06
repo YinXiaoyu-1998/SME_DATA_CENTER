@@ -701,6 +701,60 @@ Supported datasets:
 - `delivery_ledger` — one receipt per CSV/XLSX file, with receipt date derived from `收货日期`
 - `supplier_catalog` — CSV/XLSX supplier snapshots using controlled columns for current enrichment
 
+## Structured Dataset Coverage
+
+### `GET /v1/structured/datasets/:dataset/coverage`
+
+Returns the currently readable applied import sources for one structured dataset. The endpoint uses
+the same organization, employee state, document kind/status/archive, import status/archive,
+registry-version, and admin/label visibility predicates as structured query. It reports source
+facts only; clients decide whether the returned windows or snapshots are sufficient for their
+workflow.
+
+Window-dataset response shape:
+
+```json
+{
+  "dataset": "business",
+  "registryVersion": "business.2026-09-04.v2",
+  "metadataPolicy": "window",
+  "sources": [
+    {
+      "importBatchId": "imp_...",
+      "sourceDocumentId": "doc_...",
+      "sourceDocumentTitle": "Business July",
+      "appliedAt": "2026-08-01T03:04:05.000Z",
+      "rowCount": 3546,
+      "startDate": "2026-07-01",
+      "endDate": "2026-07-31"
+    }
+  ]
+}
+```
+
+Snapshot-dataset response shape:
+
+```json
+{
+  "dataset": "dish_catalog",
+  "registryVersion": "dish_catalog.2026-08-22.v1",
+  "metadataPolicy": "snapshot",
+  "sources": [
+    {
+      "importBatchId": "imp_...",
+      "sourceDocumentId": "doc_...",
+      "sourceDocumentTitle": "Catalog August",
+      "appliedAt": "2026-08-19T10:00:00.000Z",
+      "rowCount": 1200,
+      "snapshotDate": "2026-08-19"
+    }
+  ]
+}
+```
+
+Datasets with `derived_receipt` or `none` metadata policy return the dataset, registry version,
+metadata policy, and an empty `sources` array.
+
 ## Structured Query
 
 ### `POST /v1/structured/query`
@@ -747,6 +801,35 @@ Example explicit mechanical aggregate:
 }
 ```
 
+Aggregate query requests may group by up to four canonical fields and request up to twelve explicit
+mechanical aggregates. Aggregate sort fields may name either a group-by field or a unique aggregate
+alias from the same request; aliases are validated before SQL is generated and are never raw SQL.
+
+Weighted-average aggregate request shape:
+
+```json
+{
+  "dataset": "business",
+  "registryVersion": "business.2026-09-04.v2",
+  "groupBy": ["store_name", "order_source", "meal_period", "business_date"],
+  "aggregates": [
+    { "op": "sum", "field": "order_revenue", "as": "revenue" },
+    {
+      "op": "weightedAvg",
+      "field": "discount_rate",
+      "weightField": "gross_sales_amount",
+      "as": "weighted_discount"
+    }
+  ],
+  "sort": [{ "field": "weighted_discount", "direction": "desc" }],
+  "page": { "limit": 200 }
+}
+```
+
+The weighted average is equivalent to `SUM(field * weightField) / NULLIF(SUM(weightField), 0)`.
+Both `field` and `weightField` must be numeric, aggregatable canonical fields in the same dataset;
+zero or null total weight returns `null`.
+
 Example catalog snapshot query:
 
 ```json
@@ -790,6 +873,7 @@ Service MCP tools:
 - `get_import_status`
 - `list_structured_datasets`
 - `query_structured_dataset`
+- `describe_structured_dataset_coverage`
 - `query_quarantine_certificates`
 - `archive_quarantine_certificates`
 - `get_source_document_download_url`

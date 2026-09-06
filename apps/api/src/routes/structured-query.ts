@@ -1,13 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import {
   STRUCTURED_DATASET_REGISTRIES,
+  STRUCTURED_DATASETS,
   STRUCTURED_QUERY_LIMITS,
   StructuredQueryValidationError,
+  compileStructuredCoverageQuery,
   createStructuredCursor,
   compileStructuredQuery,
   PHASE3_ERROR_CODES
 } from "@enterprise-hub/domain";
 import type { RequestAuth } from "../request-auth.js";
+import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
 import { phase3ErrorResponse } from "../request-errors.js";
 
@@ -49,6 +52,7 @@ export function registerStructuredQueryRoutes(
   dependencies: {
     auth: RequestAuth;
     structuredQueries: () => StructuredQueryRepository;
+    structuredCoverage: () => StructuredCoverageRepository;
     cursorSigningSecret: string;
   }
 ): void {
@@ -60,6 +64,48 @@ export function registerStructuredQueryRoutes(
     }
 
     return structuredDatasetRegistryResponse();
+  });
+
+  app.get<{
+    Params: { dataset: string };
+  }>("/v1/structured/datasets/:dataset/coverage", async (request, reply) => {
+    const authenticated = await dependencies.auth.authenticate(request, reply);
+
+    if (!authenticated) {
+      return;
+    }
+
+    try {
+      const dataset = request.params.dataset;
+      if (!STRUCTURED_DATASETS.includes(dataset as (typeof STRUCTURED_DATASETS)[number])) {
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.invalidQuery,
+          "Dataset is invalid.",
+          { dataset }
+        );
+      }
+
+      const employee = dependencies.auth.employee(request);
+      const compiled = compileStructuredCoverageQuery({
+        orgId: employee.orgId,
+        employee: {
+          id: employee.id,
+          role: employee.role,
+          labels: employee.labels
+        },
+        dataset: dataset as (typeof STRUCTURED_DATASETS)[number]
+      });
+
+      return await dependencies.structuredCoverage().list(compiled);
+    } catch (error) {
+      if (error instanceof StructuredQueryValidationError) {
+        return reply
+          .code(400)
+          .send(phase3ErrorResponse(request, error.code, error.message, error.details));
+      }
+
+      throw error;
+    }
   });
 
   app.post("/v1/structured/query", async (request, reply) => {

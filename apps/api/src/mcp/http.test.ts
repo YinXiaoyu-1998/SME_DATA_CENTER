@@ -12,6 +12,7 @@ import type {
   StructuredImportBatchRecord,
   StructuredImportRepository
 } from "../structured-imports.js";
+import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
 import { registerMcpHttpRoute } from "./http.js";
 import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
@@ -266,6 +267,29 @@ function fakeStructuredQueryRepository(): StructuredQueryRepository {
   };
 }
 
+function fakeStructuredCoverageRepository(): StructuredCoverageRepository {
+  return {
+    async list(compiled) {
+      return {
+        dataset: compiled.dataset,
+        registryVersion: compiled.registryVersion,
+        metadataPolicy: "window",
+        sources: [
+          {
+            importBatchId: "imp_coverage",
+            sourceDocumentId: "doc_coverage",
+            sourceDocumentTitle: "Coverage source",
+            appliedAt: "2026-08-01T00:00:00.000Z",
+            rowCount: 2,
+            startDate: "2026-07-01",
+            endDate: "2026-07-31"
+          }
+        ]
+      };
+    }
+  };
+}
+
 function fakeEvidenceRepository(calls: EvidenceSearchInput[] = []): EvidenceSearchRepository {
   return {
     async searchEvidence(input) {
@@ -318,6 +342,7 @@ function buildLiveMcpApiTestServer(
     skillRepository: fakeSkillRepository(),
     structuredImportRepository: fakeStructuredImportRepository(),
     structuredQueryRepository: fakeStructuredQueryRepository(),
+    structuredCoverageRepository: fakeStructuredCoverageRepository(),
     evidenceRepository: fakeEvidenceRepository(evidenceCalls),
     ...overrides
   });
@@ -686,7 +711,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(toolNames).toEqual([...ENTERPRISE_HUB_MCP_TOOL_NAMES]);
   });
 
-  it("serves live labels, structured query, evidence search, and status tools through MCP framing", async () => {
+  it("serves live labels, structured coverage, structured query, evidence search, and status tools through MCP framing", async () => {
     app = buildLiveMcpApiTestServer();
 
     const labels = await postMcp(
@@ -730,6 +755,23 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
           arguments: {
             dataset: "dishes",
             page: { limit: 1 }
+          }
+        }
+      },
+      {
+        "mcp-protocol-version": "2025-11-25"
+      }
+    );
+    const structuredCoverage = await postMcp(
+      app,
+      {
+        jsonrpc: "2.0",
+        id: 15,
+        method: "tools/call",
+        params: {
+          name: "describe_structured_dataset_coverage",
+          arguments: {
+            dataset: "dishes"
           }
         }
       },
@@ -794,6 +836,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       labels,
       structuredDatasets,
       structuredQuery,
+      structuredCoverage,
       evidenceSearch,
       evidenceStatus,
       importStatus
@@ -812,6 +855,12 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(parseToolPayload(structuredQuery.payload).payload).toMatchObject({
       dataset: "dishes",
       rows: [{ dish_name: "Noodles", sales_amount: 128 }]
+    });
+    expect(parseToolPayload(structuredCoverage.payload).payload).toMatchObject({
+      dataset: "dishes",
+      registryVersion: "dishes.2026-09-04.v2",
+      metadataPolicy: "window",
+      sources: [expect.objectContaining({ importBatchId: "imp_coverage" })]
     });
     expect(parseToolPayload(evidenceSearch.payload).payload).toMatchObject({
       results: [expect.objectContaining({ chunkId: "chk_1" })],

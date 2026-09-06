@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { PHASE3_ERROR_CODES, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
 import type { ApiServerContext } from "../app-context.js";
 import { createRequestAuth } from "../request-auth.js";
@@ -15,7 +16,17 @@ const employee: AuthenticatedEmployee = {
   labels: ["all_staff", "store:baoli"]
 };
 
-function context(repository: StructuredQueryRepository): ApiServerContext {
+function context(
+  repository: StructuredQueryRepository,
+  coverageRepository: StructuredCoverageRepository = {
+    list: async () => ({
+      dataset: "dishes",
+      registryVersion: "dishes.2026-09-04.v2",
+      metadataPolicy: "window",
+      sources: []
+    })
+  }
+): ApiServerContext {
   return {
     environment: {},
     delegationProof: "proof",
@@ -38,6 +49,7 @@ function context(repository: StructuredQueryRepository): ApiServerContext {
       throw new Error("not used");
     },
     structuredQueries: () => repository,
+    structuredCoverage: () => coverageRepository,
     skills: () => {
       throw new Error("not used");
     },
@@ -68,6 +80,7 @@ describe("structured query routes", () => {
     registerStructuredQueryRoutes(app, {
       auth: createRequestAuth(dependencies),
       structuredQueries: dependencies.structuredQueries,
+      structuredCoverage: dependencies.structuredCoverage,
       cursorSigningSecret: dependencies.cursorSigningSecret
     });
 
@@ -106,6 +119,7 @@ describe("structured query routes", () => {
     registerStructuredQueryRoutes(app, {
       auth: createRequestAuth(dependencies),
       structuredQueries: dependencies.structuredQueries,
+      structuredCoverage: dependencies.structuredCoverage,
       cursorSigningSecret: dependencies.cursorSigningSecret
     });
 
@@ -115,7 +129,7 @@ describe("structured query routes", () => {
       headers: { authorization: "Bearer valid" },
       payload: {
         dataset: "dishes",
-        registryVersion: "dishes.2026-07-11.v1",
+        registryVersion: "dishes.2026-09-04.v2",
         select: ["business_date", "matched_product_name", "dish_sales_quantity"],
         filter: { field: "matched_product_name", op: "contains", value: "肉夹馍" },
         page: { limit: 1 }
@@ -146,6 +160,94 @@ describe("structured query routes", () => {
         code: PHASE3_ERROR_CODES.invalidQuery,
         requestId: expect.any(String),
         retryable: false
+      }
+    });
+  });
+
+  it("serves dataset coverage through the same authenticated structured route shell", async () => {
+    const calls: unknown[] = [];
+    const coverageRepository: StructuredCoverageRepository = {
+      async list(compiled) {
+        calls.push(compiled);
+        return {
+          dataset: compiled.dataset,
+          registryVersion: compiled.registryVersion,
+          metadataPolicy: "window",
+          sources: [
+            {
+              importBatchId: "batch_1",
+              sourceDocumentId: "doc_1",
+              sourceDocumentTitle: "Dishes July",
+              appliedAt: "2026-08-01T03:04:05.000Z",
+              rowCount: 42,
+              startDate: "2026-07-01",
+              endDate: "2026-07-31"
+            }
+          ]
+        };
+      }
+    };
+    const dependencies = context(
+      { execute: async () => ({ rows: [], hasMore: false }) },
+      coverageRepository
+    );
+    app = Fastify({ logger: false });
+    registerStructuredQueryRoutes(app, {
+      auth: createRequestAuth(dependencies),
+      structuredQueries: dependencies.structuredQueries,
+      structuredCoverage: dependencies.structuredCoverage,
+      cursorSigningSecret: dependencies.cursorSigningSecret
+    });
+
+    const missing = await app.inject({
+      method: "GET",
+      url: "/v1/structured/datasets/dishes/coverage"
+    });
+    const ok = await app.inject({
+      method: "GET",
+      url: "/v1/structured/datasets/dishes/coverage",
+      headers: { authorization: "Bearer valid" }
+    });
+    const invalid = await app.inject({
+      method: "GET",
+      url: "/v1/structured/datasets/missing/coverage",
+      headers: { authorization: "Bearer valid", "x-request-id": "req_coverage" }
+    });
+
+    expect(missing.statusCode).toBe(401);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({
+      dataset: "dishes",
+      registryVersion: "dishes.2026-09-04.v2",
+      metadataPolicy: "window",
+      sources: [
+        {
+          importBatchId: "batch_1",
+          sourceDocumentId: "doc_1",
+          sourceDocumentTitle: "Dishes July",
+          appliedAt: "2026-08-01T03:04:05.000Z",
+          rowCount: 42,
+          startDate: "2026-07-01",
+          endDate: "2026-07-31"
+        }
+      ]
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      authorizationScope: {
+        orgId: "default-org",
+        employee: {
+          id: employee.id,
+          role: "manager",
+          labels: employee.labels
+        }
+      }
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({
+      error: {
+        code: PHASE3_ERROR_CODES.invalidQuery,
+        requestId: expect.any(String)
       }
     });
   });

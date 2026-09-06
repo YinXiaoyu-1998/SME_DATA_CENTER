@@ -116,3 +116,9 @@ export {
   type StructuredQueryEmployeeScope,
   type StructuredQueryMode
 } from "./structured-query.js";
+export {
+  compileStructuredCoverageQuery,
+  type StructuredCompiledCoverageQuery,
+  type StructuredCoverageSourceBase,
+  type StructuredDatasetCoverage
+} from "./structured-coverage.js";

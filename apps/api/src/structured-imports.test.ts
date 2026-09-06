@@ -113,11 +113,13 @@ function reservationInput(
     >[0]
   > = {}
 ) {
+  const dataset = overrides.dataset ?? "dishes";
+
   return {
     orgId: "org_1",
     actorEmployeeId: "emp_1",
     documentId: "doc_1",
-    dataset: "dishes" as const,
+    dataset,
     fileType: "csv" as const,
     startDate: "20260701",
     endDate: "20260705",
@@ -350,6 +352,51 @@ describe("Prisma structured import audit provenance", () => {
       rowCount: 1,
       sourceDocumentId: "doc_1"
     });
+  });
+
+  it("does not persist registry versions on reserved import facts", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+
+    const result = await repository.reserveStructuredImport(reservationInput());
+
+    expect(prisma.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sourceMetadata: expect.objectContaining({
+            dataset: "dishes"
+          })
+        })
+      })
+    );
+    expect(prisma.document.create.mock.calls[0]?.[0].data.sourceMetadata).not.toHaveProperty(
+      "registryVersion"
+    );
+    expect(prisma.importBatch.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        dataset: "dishes"
+      })
+    });
+    expect(prisma.importBatch.create.mock.calls[0]?.[0].data).not.toHaveProperty("registryVersion");
+    expect(result.importBatch).toMatchObject({
+      dataset: "dishes"
+    });
+    expect(result.importBatch).not.toHaveProperty("registryVersion");
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            dataset: "dishes"
+          })
+        })
+      })
+    );
+    expect(prisma.auditLog.create.mock.calls[0]?.[0].data.metadata).not.toHaveProperty(
+      "registryVersion"
+    );
   });
 
   it("persists the complete audit context when applying a structured import", async () => {

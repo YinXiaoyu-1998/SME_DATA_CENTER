@@ -213,6 +213,228 @@ describe("structured field registries", () => {
     expect(getStructuredRegistry("vip").fields).toHaveLength(67);
   });
 
+  test("publishes v2 report fields with explicit semantic names and numeric aggregation", () => {
+    const expected = [
+      ["business", "桌台数量", "table_count", "integer"],
+      ["business", "桌台使用次数", "table_use_count", "integer"],
+      ["business", "桌台数x营业天数", "table_days", "integer"],
+      ["business", "消费桌数", "served_table_count", "integer"],
+      ["business", "消费次数", "consumption_count", "integer"],
+      ["business", "店内营业收入", "dine_in_revenue", "decimal"],
+      ["business", "外卖营业收入", "delivery_revenue", "decimal"],
+      ["dishes", "菜品销售额", "dish_sales_amount", "decimal"],
+      ["dishes", "菜品收入", "dish_revenue", "decimal"],
+      ["dishes", "菜品总销售额", "dish_total_sales_amount", "decimal"],
+      ["dishes", "菜品总收入", "dish_total_revenue", "decimal"]
+    ] as const;
+
+    expect(getStructuredRegistry("business").version).toBe("business.2026-09-04.v2");
+    expect(getStructuredRegistry("dishes").version).toBe("dishes.2026-09-04.v2");
+
+    for (const [dataset, sourceColumn, canonicalName, type] of expected) {
+      expect(getStructuredRegistry(dataset).fields).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceColumn,
+            canonicalName,
+            type,
+            capabilities: expect.objectContaining({ aggregate: true })
+          })
+        ])
+      );
+    }
+  });
+
+  test("publishes explicit semantic fields for every retained business workflow input", () => {
+    const retainedBusinessWorkflowSourceColumns = [
+      "营业日期",
+      "周",
+      "月",
+      "门店名称",
+      "城市",
+      "商户号",
+      "一级组织机构名称",
+      "二级组织机构名称",
+      "三级组织机构名称",
+      "四级组织机构名称",
+      "订单分类",
+      "订单来源",
+      "时段",
+      "餐段",
+      "退单类型名称",
+      "是否是会员",
+      "就餐方式",
+      "营业额(元)",
+      "桌台数量",
+      "桌台使用次数",
+      "开台率",
+      "翻台率",
+      "有效订单量",
+      "订单营业收入",
+      "优惠金额",
+      "逆向订单量",
+      "正向订单量",
+      "已结账订单量",
+      "桌台数x营业天数",
+      "消费桌数",
+      "消费次数",
+      "会员消费金额",
+      "会员订单收入",
+      "店内营业额",
+      "店内营业收入",
+      "店内优惠金额",
+      "店内正向单订单量",
+      "店内退单量",
+      "店内已结账订单量",
+      "店内退款金额",
+      "外卖营业额",
+      "店内订单量",
+      "外卖营业收入",
+      "外卖折扣金额",
+      "外卖订单量",
+      "外卖正向单订单量",
+      "外卖退单量",
+      "外卖退款金额",
+      "美团外卖营业额",
+      "美团外卖营业收入",
+      "美团外卖折扣金额",
+      "美团外卖订单量",
+      "美团外卖正向单订单量",
+      "美团外卖退单量",
+      "美团外卖已结账订单量",
+      "美团外卖退款金额",
+      "京东外卖营业额",
+      "京东外卖营业收入",
+      "京东外卖折扣金额",
+      "京东外卖订单量",
+      "京东外卖正向单订单量",
+      "京东外卖退单量",
+      "京东外卖已结账订单量",
+      "京东外卖退款金额",
+      "饿了么外卖营业额",
+      "饿了么外卖营业收入",
+      "饿了么外卖折扣金额",
+      "饿了么外卖订单量",
+      "饿了么外卖正向单订单量",
+      "饿了么外卖退单量",
+      "饿了么外卖已结账订单量",
+      "饿了么外卖退款金额",
+      "自提营业额",
+      "自提营业收入",
+      "自提折扣金额",
+      "自提订单量",
+      "自提正向单订单量",
+      "自提已结账订单量",
+      "自提退单量",
+      "自提退款金额",
+      "现金营业额",
+      "现金营业收入",
+      "现金优惠金额",
+      "现金支付次数",
+      "扫码支付营业收入",
+      "扫码支付营业额",
+      "扫码支付优惠金额",
+      "扫码支付支付次数",
+      "扫码支付微信营业额",
+      "扫码支付支付宝营业额",
+      "扫码支付微信营业收入",
+      "扫码支付支付宝营业收入",
+      "扫码支付微信优惠金额",
+      "扫码支付支付宝优惠金额",
+      "扫码支付微信支付次数",
+      "扫码支付支付宝支付次数",
+      "团购营业额",
+      "美团团购营业额",
+      "抖音团购营业额",
+      "快手团购营业额",
+      "团购营业收入",
+      "美团团购营业收入",
+      "抖音团购营业收入",
+      "快手团购营业收入",
+      "团购优惠金额",
+      "美团团购优惠金额",
+      "抖音团购优惠金额",
+      "快手团购优惠金额",
+      "团购支付次数",
+      "美团团购支付次数",
+      "抖音团购支付次数",
+      "快手团购支付次数",
+      "抵用券营业额",
+      "抵用券营业收入",
+      "抵用券优惠金额",
+      "抵用券支付次数",
+      "优惠券营业额",
+      "优惠券营业收入",
+      "优惠券优惠金额",
+      "优惠券支付次数",
+      "自定义记账营业额",
+      "自定义记账营业收入",
+      "自定义记账优惠金额",
+      "自定义记账支付次数",
+      "店内营销会员订单量",
+      "店内非会员订单量",
+      "外卖营销会员订单量",
+      "店内营销会员营业额",
+      "店内非会员营业额",
+      "店内营销会员营业收入",
+      "外卖营销会员营业额",
+      "外卖已结账订单量",
+      "用餐人数"
+    ];
+    const numericSourceColumns = new Set(retainedBusinessWorkflowSourceColumns.slice(17));
+    const registry = getStructuredRegistry("business");
+
+    for (const sourceColumn of retainedBusinessWorkflowSourceColumns) {
+      const field = registry.fields.find((candidate) => candidate.sourceColumn === sourceColumn);
+      expect(field, sourceColumn).toBeDefined();
+      expect(field?.canonicalName, sourceColumn).not.toMatch(/^business_\d{3}_/);
+    }
+
+    for (const sourceColumn of numericSourceColumns) {
+      const field = registry.fields.find((candidate) => candidate.sourceColumn === sourceColumn);
+      expect(field?.type, sourceColumn).toBeOneOf(["integer", "decimal", "percent"]);
+      expect(field?.capabilities.aggregate, sourceColumn).toBe(true);
+    }
+  });
+
+  test("marks report grouping dimensions as groupable in the v2 business and dishes registries", () => {
+    const expected = [
+      ["business", "business_date"],
+      ["business", "business_week"],
+      ["business", "business_month"],
+      ["business", "store_name"],
+      ["business", "city"],
+      ["business", "merchant_id"],
+      ["business", "order_category"],
+      ["business", "order_source"],
+      ["business", "meal_period"],
+      ["business", "time_slot"],
+      ["business", "is_member"],
+      ["business", "dining_method"],
+      ["dishes", "business_date"],
+      ["dishes", "business_week"],
+      ["dishes", "business_month"],
+      ["dishes", "store_name"],
+      ["dishes", "product_name"],
+      ["dishes", "matched_product_name"],
+      ["dishes", "order_category"],
+      ["dishes", "time_slot"],
+      ["dishes", "merchant_id"],
+      ["dishes", "organization_code"]
+    ] as const;
+
+    for (const [dataset, canonicalName] of expected) {
+      expect(getStructuredRegistry(dataset).fields).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            canonicalName,
+            capabilities: expect.objectContaining({ group: true })
+          })
+        ])
+      );
+    }
+  });
+
   test("registers the catalog snapshot schema and its metadata policy", () => {
     const catalog = getStructuredRegistry("dish_catalog");
 
