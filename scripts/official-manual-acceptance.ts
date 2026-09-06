@@ -27,7 +27,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.2.5";
+const LAUNCHER_VERSION = "0.2.6";
 const DEFAULT_LABEL_KEY = "store:baoli";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 

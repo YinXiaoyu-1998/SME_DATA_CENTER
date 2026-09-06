@@ -152,17 +152,18 @@ The API entrypoint automatically loads `.env` from the current working directory
 ## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
-`enterprise-hub-mcp-launcher@0.2.3` local stdio launcher. The dual-homed
+`enterprise-hub-mcp-launcher@0.2.6` local stdio launcher. The dual-homed
 `skills/enterprise-hub-mcp/` skill is the authoritative current-user install, configuration,
 browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
 email/password/token/code input, uses `enterprise_hub_login`, `enterprise_hub_logout`, and
 `enterprise_hub_auth_status`, and never operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
-`enterprise-hub-mcp-launcher@0.2.3` is published on npm and its registry integrity, clean install,
-CLI, and production dependency audit have been verified. The official auth cutover is deployed in
-staging. Real macOS Codex browser-login acceptance has passed; Windows Codex and macOS/Windows
-OpenClaw acceptance remain release gates.
+`enterprise-hub-mcp-launcher@0.2.6` is published on npm and its registry integrity, clean install,
+CLI, packaging, and production dependency audit have been verified. The official auth cutover is
+deployed in staging. Native macOS/Windows package acceptance and the headless Linux
+login-to-business-tool loop have passed; user-visible OpenClaw and support-class-C
+phone/browser acceptance remain release evidence.
 
 ## Official MCP Launcher
 
@@ -184,7 +185,7 @@ secure store; access tokens stay in memory. Local API/worker development is exer
 repository's unit and integration harnesses, which create official short-lived sessions internally
 and do not weaken the launcher's HTTPS requirement.
 
-MCP callers never provide an organization ID; the service derives organization scope from the logged-in employee. Evidence search cursors are opaque, short-lived continuation tokens: pass `page.nextCursor` back unchanged with the same query/filter/limit to fetch the next page. Restart without a cursor on `INVALID_CURSOR`; on `CURSOR_EXPIRED`, explain the expiry and restart only if the user still wants more results. Structured import retries should reuse an `idempotencyKey` only for the exact same file and metadata; exact replay returns the original persisted IDs/storage key, while inaccessible import status returns the same non-enumerating 404 as a missing batch.
+MCP callers never provide an organization ID; the service derives organization scope from the logged-in employee. Evidence search cursors are opaque, short-lived continuation tokens: pass `page.nextCursor` back unchanged with the same query/filter/limit to fetch the next page. Restart without a cursor on `INVALID_CURSOR`; on `CURSOR_EXPIRED`, explain the expiry and restart only if the user still wants more results. Structured import retries should reuse an `idempotencyKey` only for the exact same file and metadata; exact replay returns the original persisted IDs/storage key, while inaccessible import status returns the same non-enumerating 404 as a missing batch. For structured tables, discover `canonicalName` fields before querying and use `describe_structured_dataset_coverage` only to inspect readable applied source windows or snapshots; the client decides whether that coverage is enough for the user's question.
 
 ## Dish catalog snapshots
 
