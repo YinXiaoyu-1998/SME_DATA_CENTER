@@ -53,9 +53,12 @@ discover them by hand.
   `aliases` are not accepted directly by `query_structured_dataset`; use them to map the user's
   wording or source-table headers to `canonicalName`, and to choose friendly table headers when
   presenting results.
-- Use `describe_structured_dataset_coverage` to inspect which applied structured source windows or
-  snapshots are currently readable for the employee. Coverage reports sources only; it does not
-  certify completeness, choose a date range, or decide whether a query result is sufficient.
+- Discovery also advertises each field's operators and capabilities. A field can be present
+  without supporting every structured-query role; use only fields whose registry capabilities allow
+  the intended filtering, sorting, grouping, or aggregation.
+- Use `describe_structured_dataset_coverage` when the employee needs to know which uploaded
+  structured sources are currently readable for a dataset before deciding whether a query is scoped
+  enough. Treat coverage as source facts only, not a service-side completeness judgment.
 - Discovery metadata is not an upload template. Do not rewrite, reshape, normalize, rename
   headers, duplicate receipt metadata into item rows, or generate a replacement CSV/XLSX to make a
   file match registry fields unless the employee explicitly asks for a separate local conversion
@@ -84,6 +87,9 @@ Keep tool input within the public service contract:
   characters, with at most 100 IDs in each filter group;
 - an opaque cursor is at most 4,096 characters, and each structured-query string filter value is
   at most 32,767 characters.
+- a structured query returns at most 200 rows or aggregate groups per page, with up to 50 selected
+  fields, 2 sort fields, 4 group-by fields, 12 explicit aggregates, 20 filter conditions, 100 `in`
+  values, and boolean nesting depth 3.
 
 If a tool rejects an input at one of these boundaries, report the validation error and ask the
 employee to shorten the text, reduce filters/labels, or split the source file only when that is
@@ -495,13 +501,28 @@ For structured-table questions:
   against `sourceColumn`/`aliases`, then send only `canonicalName` values in `select`, filters,
   sorts, groups, and aggregates. Use `sourceColumn` or the matched alias as the displayed table
   header when that is clearer for the employee.
+- Respect registry capabilities for every field. Detail `select` entries must be registered
+  canonical fields; filter, sort, group, and aggregate only with fields whose advertised
+  capabilities permit that use. Dynamic enrichment fields are selectable detail fields only unless
+  discovery says otherwise.
+- Use explicit mechanical aggregates only: `count`, `countDistinct`, `sum`, `avg`, `min`, `max`,
+  and `weightedAvg`. Group by at most four canonical fields and request at most twelve aggregate
+  outputs. Aggregate sort fields must be either a group-by field or a unique aggregate alias from
+  the same request.
+- For `weightedAvg`, both `field` and `weightField` must be numeric aggregatable canonical fields
+  in the same dataset. It represents `SUM(field * weightField) / SUM(weightField)` with a `null`
+  result when total weight is zero or missing; do not describe it as a service-generated business
+  conclusion.
+- Select `source_document_id` on detail-row queries when the employee needs the original uploaded
+  file behind a structured row, then pass it to `get_source_document_download_url`. This field is
+  not returned by default and is not for filters, sorting, grouping, or aggregates.
+- Call `describe_structured_dataset_coverage` before answering whether Enterprise Hub has enough
+  readable applied data for a dataset, time window, snapshot, or source-file scope. Coverage shares
+  structured-query authorization and returns readable source windows or snapshots; decide and state
+  any sufficiency assumptions yourself.
 - Scope follow-up questions about a recent upload to that upload's returned import metadata,
   declared business-date window, enterprise/store name, or other explicit service-returned
   metadata. Avoid broad unbounded queries for phrases like “这份表”, “刚才那张表”, or “我刚传的”.
-- When the employee asks what table ranges or snapshots are available, call
-  `describe_structured_dataset_coverage` for the discovered dataset and present only readable
-  applied source facts. Do not infer hidden sources from omissions, and do not treat coverage as a
-  data-quality or business-completeness guarantee.
 - For `dish_catalog`, scope queries with the discovery-reported `snapshot_date` field. Do not
   infer latest/current catalog state, diffs, or row status across snapshots.
 - If the employee asks about a local spreadsheet before it has been uploaded, offer to upload it
