@@ -12,7 +12,7 @@ Use this runbook only for:
 
 - macOS + Codex;
 - the official Enterprise Hub skill;
-- `enterprise-hub-mcp-launcher@0.2.5`;
+- `enterprise-hub-mcp-launcher@0.2.6`;
 - browser password setup and Device Authorization login;
 - fixture or explicitly approved non-sensitive data.
 
@@ -157,7 +157,7 @@ The employee should ask their agent naturally, for example:
 
 The agent must follow `skills/enterprise-hub-mcp/SKILL.md`:
 
-- install `enterprise-hub-mcp-launcher@0.2.5` into the current-user versioned directory;
+- install `enterprise-hub-mcp-launcher@0.2.6` into the current-user versioned directory;
 - configure a local stdio MCP entry named `enterprise-hub`;
 - set only `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz`;
 - call `enterprise_hub_login` if authentication is required;
@@ -215,6 +215,11 @@ After uploading a table, the agent must retain or rediscover:
 - declared business-date window;
 - enterprise/store name if present;
 - labels used for the upload.
+
+The agent should call dataset discovery before structured queries and use only `canonicalName`
+fields. When the employee asks what data is available, the agent may use
+`describe_structured_dataset_coverage` to show readable applied source windows or snapshots, but it
+must not treat coverage as a completeness guarantee or infer hidden sources from missing entries.
 
 For follow-up questions such as “这份表一共有多少条记录？” the agent must query Enterprise Hub MCP
 with that context. It must not answer by reading the local CSV unless the employee explicitly asks

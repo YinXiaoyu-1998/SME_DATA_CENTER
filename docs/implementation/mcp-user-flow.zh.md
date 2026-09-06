@@ -1,7 +1,7 @@
 # Enterprise Hub MCP 用户流程
 
 > **正式实现：** 本文描述已经实现的员工流程。固定版本 npm 包
-> `enterprise-hub-mcp-launcher@0.2.5` 已发布，正式服务已部署到 staging；原生 macOS/Windows
+> `enterprise-hub-mcp-launcher@0.2.6` 已发布，正式服务已部署到 staging；原生 macOS/Windows
 > 包验收和无头 Linux 闭环已通过，用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍待补齐。
 > 不存在 development login 或 JWT 兼容路径。
 
@@ -9,7 +9,7 @@
 
 本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
 `enterprise-hub-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
-launcher 发行包为 `enterprise-hub-mcp-launcher@0.2.5`。
+launcher 发行包为 `enterprise-hub-mcp-launcher@0.2.6`。
 
 ## 参与者与凭证边界
 
@@ -99,6 +99,10 @@ sequenceDiagram
   处理中、附带 IDs 和稍后查询方式；不得报告失败，也不得用重新上传替代轮询。
 - 只有精确重放时复用 structured-import idempotency key。import-status 404 只能理解为不可见或不存在，
   不得推断隐藏 batch。
+- 结构化查询前先发现 dataset registry，只发送 `canonicalName` 字段；`sourceColumn` 和 aliases 只用于
+  理解员工措辞或展示结果表头。
+- `describe_structured_dataset_coverage` 只报告当前员工可读取的已应用 source window 或 snapshot。
+  它不是完整性保证，也不会自动判断查询答案是否充分；agent 需要自行决定查询、收窄范围或追问。
 - evidence cursor 是不透明的同 query continuation。`INVALID_CURSOR` 时不带 cursor 重新开始；
   `CURSOR_EXPIRED` 时说明过期，只有员工仍想继续时才重新开始。
 - `enterprise_hub_list_skills` 只返回目录元数据。不得执行条目、生成报告，或把 Enterprise Hub 变成

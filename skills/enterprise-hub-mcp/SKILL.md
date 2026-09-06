@@ -15,7 +15,7 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `enterprise-hub-mcp-launcher@0.2.5`. Do not substitute another
+the exact npm package `enterprise-hub-mcp-launcher@0.2.6`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself.
 
@@ -53,6 +53,12 @@ discover them by hand.
   `aliases` are not accepted directly by `query_structured_dataset`; use them to map the user's
   wording or source-table headers to `canonicalName`, and to choose friendly table headers when
   presenting results.
+- Discovery also advertises each field's operators and capabilities. A field can be present
+  without supporting every structured-query role; use only fields whose registry capabilities allow
+  the intended filtering, sorting, grouping, or aggregation.
+- Use `describe_structured_dataset_coverage` when the employee needs to know which uploaded
+  structured sources are currently readable for a dataset before deciding whether a query is scoped
+  enough. Treat coverage as source facts only, not a service-side completeness judgment.
 - Discovery metadata is not an upload template. Do not rewrite, reshape, normalize, rename
   headers, duplicate receipt metadata into item rows, or generate a replacement CSV/XLSX to make a
   file match registry fields unless the employee explicitly asks for a separate local conversion
@@ -81,6 +87,9 @@ Keep tool input within the public service contract:
   characters, with at most 100 IDs in each filter group;
 - an opaque cursor is at most 4,096 characters, and each structured-query string filter value is
   at most 32,767 characters.
+- a structured query returns at most 200 rows or aggregate groups per page, with up to 50 selected
+  fields, 2 sort fields, 4 group-by fields, 12 explicit aggregates, 20 filter conditions, 100 `in`
+  values, and boolean nesting depth 3.
 
 If a tool rejects an input at one of these boundaries, report the validation error and ask the
 employee to shorten the text, reduce filters/labels, or split the source file only when that is
@@ -252,14 +261,14 @@ current OS user and only on the invoking agent's configuration.
 
    | Platform | Launcher directory                                                      |
    | -------- | ----------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/` |
-   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.5\\`           |
+   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.6/` |
+   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.6\\`           |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.2.5
+   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.2.6
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -271,12 +280,12 @@ current OS user and only on the invoking agent's configuration.
 
    ```sh
    ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.6/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.5\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.6\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
    ```
 
    The stable self-check contract is safe machine-readable JSON with this shape:
@@ -284,7 +293,7 @@ current OS user and only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.2.5",
+     "launcherVersion": "0.2.6",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -313,8 +322,8 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                                              | Arguments | Environment                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.5\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.6/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.2.6\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -339,7 +348,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `enterprise_hub_login` to obtain a new link.
 
-This flow is available in launcher 0.2.2 and later; this document pins launcher 0.2.5.
+This flow is available in launcher 0.2.2 and later; this document pins launcher 0.2.6.
 
 ## Configure The Invoking Agent
 
@@ -387,7 +396,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
   enterprise-hub -- \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher" serve
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.6/node_modules/.bin/enterprise-hub-mcp-launcher" serve
 "$CODEX_BIN" mcp get enterprise-hub --json
 ```
 
@@ -399,7 +408,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.5\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.6\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get enterprise-hub --json
 ```
@@ -435,7 +444,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for Enterprise Hub.
 
    ```sh
    openclaw mcp add enterprise-hub \
-     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher" \
+     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.6/node_modules/.bin/enterprise-hub-mcp-launcher" \
      --arg serve \
      --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -492,6 +501,25 @@ For structured-table questions:
   against `sourceColumn`/`aliases`, then send only `canonicalName` values in `select`, filters,
   sorts, groups, and aggregates. Use `sourceColumn` or the matched alias as the displayed table
   header when that is clearer for the employee.
+- Respect registry capabilities for every field. Detail `select` entries must be registered
+  canonical fields; filter, sort, group, and aggregate only with fields whose advertised
+  capabilities permit that use. Dynamic enrichment fields are selectable detail fields only unless
+  discovery says otherwise.
+- Use explicit mechanical aggregates only: `count`, `countDistinct`, `sum`, `avg`, `min`, `max`,
+  and `weightedAvg`. Group by at most four canonical fields and request at most twelve aggregate
+  outputs. Aggregate sort fields must be either a group-by field or a unique aggregate alias from
+  the same request.
+- For `weightedAvg`, both `field` and `weightField` must be numeric aggregatable canonical fields
+  in the same dataset. It represents `SUM(field * weightField) / SUM(weightField)` with a `null`
+  result when total weight is zero or missing; do not describe it as a service-generated business
+  conclusion.
+- Select `source_document_id` on detail-row queries when the employee needs the original uploaded
+  file behind a structured row, then pass it to `get_source_document_download_url`. This field is
+  not returned by default and is not for filters, sorting, grouping, or aggregates.
+- Call `describe_structured_dataset_coverage` before answering whether Enterprise Hub has enough
+  readable applied data for a dataset, time window, snapshot, or source-file scope. Coverage shares
+  structured-query authorization and returns readable source windows or snapshots; decide and state
+  any sufficiency assumptions yourself.
 - Scope follow-up questions about a recent upload to that upload's returned import metadata,
   declared business-date window, enterprise/store name, or other explicit service-returned
   metadata. Avoid broad unbounded queries for phrases like “这份表”, “刚才那张表”, or “我刚传的”.
@@ -572,12 +600,12 @@ the pinned launcher directly:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.5/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.6/node_modules/.bin/enterprise-hub-mcp-launcher" logout
 ```
 
 ```powershell
 $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.5\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.2.6\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
 ```
 
 The stable logout contract returns only

@@ -1,7 +1,7 @@
 # Enterprise Hub MCP User Flow
 
 > **Official implementation:** This is the implemented employee flow. The pinned npm package
-> `enterprise-hub-mcp-launcher@0.2.5` is published and the official service is deployed in staging.
+> `enterprise-hub-mcp-launcher@0.2.6` is published and the official service is deployed in staging.
 > Native macOS/Windows package acceptance and the headless Linux loop pass; user-visible OpenClaw
 > and support-class-C phone/browser acceptance remain release evidence. There is no
 > development-login or JWT compatibility path.
@@ -11,7 +11,7 @@ Last updated: 2026-08-10
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `enterprise-hub-mcp` skill. The official remote origin
 is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`enterprise-hub-mcp-launcher@0.2.5`.
+`enterprise-hub-mcp-launcher@0.2.6`.
 
 ## Participants And Credential Boundary
 
@@ -109,6 +109,12 @@ explicitly authorized lifecycle action.
   or re-upload instead of polling.
 - Reuse a structured-import idempotency key only for exact replay. Treat an import-status 404 as
   not visible or missing, without inferring a hidden batch.
+- For structured queries, discover the dataset registry first, send only `canonicalName` field
+  values, and use source columns or aliases only to understand the user's wording or label result
+  columns.
+- `describe_structured_dataset_coverage` reports currently readable applied source windows or
+  snapshots for one dataset. It is source coverage, not a completeness guarantee or automatic
+  answer-quality verdict; the agent decides whether to query, narrow, or ask a clarification.
 - Treat evidence cursors as opaque same-query continuations. On `INVALID_CURSOR`, restart without
   it. On `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more.
 - `enterprise_hub_list_skills` returns directory metadata only. Do not execute an entry, generate a

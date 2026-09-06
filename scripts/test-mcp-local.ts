@@ -102,7 +102,7 @@ async function assertRootLauncherScript(): Promise<void> {
   ]);
 
   assert(
-    launcherVersion.stdout.trim() === "0.2.5",
+    launcherVersion.stdout.trim() === "0.2.6",
     "mcp:launcher should invoke the official launcher CLI at the expected pinned version."
   );
 }

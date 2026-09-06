@@ -1,9 +1,9 @@
 # Official User Installation, Login, and Session Design
 
-Status: implemented and released; launcher 0.2.4 uses OAuth Device Authorization for desktop,
+Status: implemented and released; launcher 0.2.6 uses OAuth Device Authorization for desktop,
 remote/headless, and secondary-device login
 
-Last updated: 2026-08-30
+Last updated: 2026-09-06
 
 ## Purpose
 
@@ -165,7 +165,7 @@ use a reviewed password-authentication library and, at minimum:
 
 ## Current End-To-End Browser And Launcher Flow
 
-The pinned launcher 0.2.4 uses OAuth Device Authorization:
+The pinned launcher 0.2.6 uses OAuth Device Authorization:
 
 1. the MCP client starts the launcher;
 2. the launcher requests a short-lived `device_code` / `user_code` pair and first-party verification
@@ -196,7 +196,7 @@ OIDC migration remains a mandatory design constraint.
 - Old implementation and design documents never take precedence over this accepted decision log.
   Retain old material only when it accurately describes current code or useful history, and mark it
   accordingly; delete or supersede conflicting recommendations.
-- The repo-local and standalone skills pin launcher 0.2.4 and its Device Authorization behavior.
+- The repo-local and standalone skills pin launcher 0.2.6 and its Device Authorization behavior.
 
 ## Decision Log
 
@@ -299,7 +299,7 @@ Resolve these branches in dependency order:
 13. **Acceptance**: partially complete — automated server/launcher tests, macOS and Windows native
     launcher release acceptance, and a full headless Linux container loop pass. Full user-visible
     OpenClaw and support-class-C phone/browser acceptance remain external release evidence.
-14. **Remote/headless login**: implemented — OAuth Device Authorization is the pinned 0.2.4 flow;
+14. **Remote/headless login**: implemented — OAuth Device Authorization is the pinned 0.2.6 flow;
     split secrets, pairing confirmation, headless credential custody, and the per-instance session
     model are implemented. See ADR 0022 and `device-code-login-plan.md` for design and delivery
     history.
@@ -326,7 +326,7 @@ window, the developer issues a replacement link.
 ## Historical Superseded Loopback Authorization Flow
 
 The following Authorization Code + PKCE flow shipped in launcher 0.1.x and remains accepted by the
-server while 0.1.x is minimum-compatible. Launcher 0.2.4 and the current employee skill do not use
+server while 0.1.x is minimum-compatible. Launcher 0.2.6 and the current employee skill do not use
 it; the Device Authorization section below is the pinned and recommended flow.
 
 1. The launcher binds an ephemeral HTTP listener on `127.0.0.1`, generates a random `state` and PKCE
@@ -561,11 +561,12 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Release status as of 2026-08-30: `enterprise-hub-mcp-launcher@0.2.4` is public, pinned by both skill
+Release status as of 2026-09-06: `enterprise-hub-mcp-launcher@0.2.6` is public, pinned by both skill
 copies, and recommended by server metadata; the server minimum remains 0.1.0 for compatibility. Its
 extracted registry contents match the reviewed package contents; exact-version clean installation,
-CLI execution, native macOS/Windows package acceptance, and the installed production dependency
-audit passed. The earlier 0.2.0 headless Linux container loop remains compatibility evidence. The
+CLI execution, native macOS/Windows package acceptance, structured-query coverage tool packaging,
+and the installed production dependency audit passed. The earlier headless Linux container loop
+remains compatibility evidence. The
 npm Trusted Publisher is bound to
 `YinXiaoyu-1998/SME_DATA_CENTER` and `launcher-release.yml` with stage-publish-only permission, and
 the 0.2.0 release verified the live OIDC staged-publish path. Npm provenance remains unavailable
@@ -843,7 +844,7 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 The official beta installation, Device Authorization login, token/session, secure-store and
 memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
-implemented. Launcher 0.2.4 is the pinned and recommended release. Automated server/launcher tests,
+implemented. Launcher 0.2.6 is the pinned and recommended release. Automated server/launcher tests,
 native macOS/Windows package acceptance, and a full headless Linux container login-to-business-tool
 loop pass. Full user-visible OpenClaw and support-class-C phone/browser acceptance remain external
 release evidence.
