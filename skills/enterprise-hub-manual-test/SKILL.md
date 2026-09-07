@@ -73,7 +73,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 
    ```sh
    ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.6/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.7/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
    ```
 
 9. Ensure the launcher starts logged out; call `enterprise_hub_logout` first when needed.
