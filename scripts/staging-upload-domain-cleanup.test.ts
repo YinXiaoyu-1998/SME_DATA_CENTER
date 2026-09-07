@@ -3,7 +3,7 @@ import type { StagingUploadDomainCleanupInventory } from "./staging-upload-domai
 import {
   runStagingUploadDomainCleanup,
   runStagingUploadDomainCleanupCli,
-  type StagingUploadDomainCleanupAdapter
+  type StagingUploadDomainCleanupRuntimeAdapter
 } from "./staging-upload-domain-cleanup.js";
 
 const inventory: StagingUploadDomainCleanupInventory = {
@@ -23,8 +23,9 @@ const inventory: StagingUploadDomainCleanupInventory = {
   qdrantPoints: [{ collection: "evidence", pointId: "point-1" }]
 };
 
-function createAdapter(): StagingUploadDomainCleanupAdapter {
+function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
   return {
+    close: vi.fn(async () => undefined),
     collectInventory: vi.fn(async () => inventory),
     deleteQdrantPoints: vi.fn(async () => undefined),
     deleteOssObjects: vi.fn(async () => undefined),
@@ -117,6 +118,38 @@ describe("staging upload-domain cleanup CLI", () => {
       })
     ).rejects.toThrow("--confirm delete-upload-domain");
     expect(adapterFactory).not.toHaveBeenCalled();
+  });
+
+  it("closes the runtime adapter after a successful CLI run", async () => {
+    const adapter = createAdapter();
+    const close = vi.fn(async () => undefined);
+
+    await runStagingUploadDomainCleanupCli({
+      argv: ["--target", "staging"],
+      createAdapter: vi.fn(async () => ({ ...adapter, close })),
+      log: vi.fn()
+    });
+
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("closes the runtime adapter when the CLI run fails", async () => {
+    const adapter = createAdapter();
+    const failure = new Error("inventory failed");
+    adapter.collectInventory = vi.fn(async () => {
+      throw failure;
+    });
+    const close = vi.fn(async () => undefined);
+
+    await expect(
+      runStagingUploadDomainCleanupCli({
+        argv: ["--target", "staging"],
+        createAdapter: vi.fn(async () => ({ ...adapter, close })),
+        log: vi.fn()
+      })
+    ).rejects.toThrow(failure);
+
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("executes only the plan's enumerated DB, OSS, and Qdrant targets after confirmation", async () => {
