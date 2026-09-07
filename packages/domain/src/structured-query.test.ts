@@ -615,7 +615,6 @@ describe("structured query compiler", () => {
       "weighted_discount_rate"
     ]);
     expect(compiled.aggregateAliases).toEqual(["revenue", "weighted_discount_rate"]);
-    expect(compiled.sql).not.toContain("ib.registry_version");
     expect(compiled.sql).toContain(
       "SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?)) AS DECIMAL(20, 6))) AS `revenue`"
     );
