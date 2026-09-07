@@ -930,7 +930,7 @@ describe("structured ingestion", () => {
     });
 
     expect(profile.sheets).toEqual([expect.objectContaining({ dataRowCount: 997 })]);
-    expect(profile.registryVersion).toBe(getStructuredRegistry(dataset).version);
+    expect(profile.dataset).toBe(dataset);
     expect(imported.rows).toHaveLength(997);
     if (dataset === "dishes") {
       expect(imported.rows[0]?.payload.dish_total_gross_margin_rate_after_discount).toBe(1);

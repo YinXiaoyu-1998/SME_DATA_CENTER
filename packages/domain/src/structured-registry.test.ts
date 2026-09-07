@@ -21,13 +21,11 @@ describe("structured field registries", () => {
 
     expect(getStructuredRegistry("delivery_ledger")).toMatchObject({
       dataset: "delivery_ledger",
-      version: "delivery_ledger.2026-08-29.v1",
       rowTable: "delivery_ledger_rows",
       metadataPolicy: "derived_receipt"
     });
     expect(getStructuredRegistry("supplier_catalog")).toMatchObject({
       dataset: "supplier_catalog",
-      version: "supplier_catalog.2026-08-29.v1",
       rowTable: "supplier_catalog_rows",
       metadataPolicy: "none"
     });
@@ -213,7 +211,7 @@ describe("structured field registries", () => {
     expect(getStructuredRegistry("vip").fields).toHaveLength(67);
   });
 
-  test("publishes v2 report fields with explicit semantic names and numeric aggregation", () => {
+  test("publishes report fields with explicit semantic names and numeric aggregation", () => {
     const expected = [
       ["business", "桌台数量", "table_count", "integer"],
       ["business", "桌台使用次数", "table_use_count", "integer"],
@@ -227,9 +225,6 @@ describe("structured field registries", () => {
       ["dishes", "菜品总销售额", "dish_total_sales_amount", "decimal"],
       ["dishes", "菜品总收入", "dish_total_revenue", "decimal"]
     ] as const;
-
-    expect(getStructuredRegistry("business").version).toBe("business.2026-09-04.v2");
-    expect(getStructuredRegistry("dishes").version).toBe("dishes.2026-09-04.v2");
 
     for (const [dataset, sourceColumn, canonicalName, type] of expected) {
       expect(getStructuredRegistry(dataset).fields).toEqual(
@@ -440,7 +435,6 @@ describe("structured field registries", () => {
 
     expect(catalog).toMatchObject({
       dataset: "dish_catalog",
-      version: "dish_catalog.2026-08-22.v1",
       rowTable: "dish_catalog_rows",
       sheetPolicy: "import_matching_visible",
       metadataPolicy: "snapshot"

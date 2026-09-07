@@ -21,7 +21,6 @@ function context(
   coverageRepository: StructuredCoverageRepository = {
     list: async () => ({
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       metadataPolicy: "window",
       sources: []
     })
@@ -97,6 +96,7 @@ describe("structured query routes", () => {
       limits: expect.any(Object),
       datasets: expect.arrayContaining([expect.objectContaining({ dataset: "dishes" })])
     });
+    expect(present.json().datasets.every((dataset: object) => "fields" in dataset)).toBe(true);
   });
 
   it("executes compiled structured queries and preserves Phase 3 error envelopes", async () => {
@@ -129,7 +129,6 @@ describe("structured query routes", () => {
       headers: { authorization: "Bearer valid" },
       payload: {
         dataset: "dishes",
-        registryVersion: "dishes.2026-09-04.v2",
         select: ["business_date", "matched_product_name", "dish_sales_quantity"],
         filter: { field: "matched_product_name", op: "contains", value: "肉夹馍" },
         page: { limit: 1 }
@@ -171,7 +170,6 @@ describe("structured query routes", () => {
         calls.push(compiled);
         return {
           dataset: compiled.dataset,
-          registryVersion: compiled.registryVersion,
           metadataPolicy: "window",
           sources: [
             {
@@ -218,7 +216,6 @@ describe("structured query routes", () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toEqual({
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       metadataPolicy: "window",
       sources: [
         {

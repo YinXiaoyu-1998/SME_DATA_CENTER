@@ -194,7 +194,6 @@ const structuredAggregateInputSchema = z.discriminatedUnion("op", [
 const queryStructuredDatasetInputSchema = z
   .object({
     dataset: structuredDataset,
-    registryVersion: z.string().min(1).optional().describe("Optional registry version."),
     select: z
       .array(z.string().min(1))
       .max(MCP_STRUCTURED_QUERY_LIMITS.maxSelectedFields)
@@ -513,7 +512,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     inputFields: [],
     resultShape: [
       "limits",
-      "datasets[]: registry versions, fields with canonicalName/sourceColumn/aliases, operators, capabilities"
+      "datasets[]: fields with canonicalName/sourceColumn/aliases, operators, capabilities"
     ]
   }),
   defineToolContract({
@@ -529,7 +528,6 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
         description:
           "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
       },
-      { name: "registryVersion", required: false, description: "Optional registry version." },
       {
         name: "select",
         required: false,
@@ -561,7 +559,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
           "Explicit mechanical aggregations. Aggregate field references must use canonicalName values from discovery."
       }
     ],
-    resultShape: ["dataset", "registryVersion", "mode", "rows[]", "nextCursor"]
+    resultShape: ["dataset", "mode", "rows[]", "nextCursor"]
   }),
   defineToolContract({
     name: "describe_structured_dataset_coverage",
@@ -579,7 +577,6 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     ],
     resultShape: [
       "dataset",
-      "registryVersion",
       "metadataPolicy",
       "sources[]: readable applied source windows or snapshots"
     ]

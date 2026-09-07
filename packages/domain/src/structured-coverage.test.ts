@@ -22,7 +22,6 @@ describe("structured coverage compiler", () => {
 
     expect(compiled).toMatchObject({
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       metadataPolicy: "window",
       authorizationScope: {
         orgId: "org_1",
@@ -83,7 +82,6 @@ describe("structured coverage compiler", () => {
     });
 
     expect(compiled.metadataPolicy).toBe("snapshot");
-    expect(compiled.registryVersion).toBe("dish_catalog.2026-08-22.v1");
     expect(compact(compiled.sql)).toContain(
       "ib.start_date, ib.end_date FROM import_batches ib JOIN documents d"
     );

@@ -44,7 +44,6 @@ export function createPrismaStructuredCoverageRepository(
       if (!compiled.sql) {
         return {
           dataset: compiled.dataset,
-          registryVersion: compiled.registryVersion,
           metadataPolicy: compiled.metadataPolicy,
           sources: []
         } as StructuredDatasetCoverage;
@@ -59,7 +58,6 @@ export function createPrismaStructuredCoverageRepository(
       if (compiled.metadataPolicy === "snapshot") {
         return {
           dataset: compiled.dataset,
-          registryVersion: compiled.registryVersion,
           metadataPolicy: compiled.metadataPolicy,
           sources: rows.map((row, index) => ({
             ...sources[index]!,
@@ -71,7 +69,6 @@ export function createPrismaStructuredCoverageRepository(
       if (compiled.metadataPolicy === "window") {
         return {
           dataset: compiled.dataset,
-          registryVersion: compiled.registryVersion,
           metadataPolicy: compiled.metadataPolicy,
           sources: rows.map((row, index) => ({
             ...sources[index]!,
@@ -83,7 +80,6 @@ export function createPrismaStructuredCoverageRepository(
 
       return {
         dataset: compiled.dataset,
-        registryVersion: compiled.registryVersion,
         metadataPolicy: compiled.metadataPolicy,
         sources: []
       } as StructuredDatasetCoverage;

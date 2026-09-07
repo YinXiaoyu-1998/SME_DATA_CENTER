@@ -40,7 +40,6 @@ function structuredDatasetRegistryResponse() {
     limits: STRUCTURED_QUERY_LIMITS,
     datasets: Object.values(STRUCTURED_DATASET_REGISTRIES).map((registry) => ({
       dataset: registry.dataset,
-      registryVersion: registry.version,
       rowTable: registry.rowTable,
       fields: registry.fields.map(structuredFieldResponse)
     }))
@@ -139,7 +138,6 @@ export function registerStructuredQueryRoutes(
 
       return {
         dataset: compiled.dataset,
-        registryVersion: compiled.registryVersion,
         mode: compiled.mode,
         rows: result.rows,
         nextCursor

@@ -707,7 +707,7 @@ Supported datasets:
 
 Returns the currently readable applied import sources for one structured dataset. The endpoint uses
 the same organization, employee state, document kind/status/archive, import status/archive,
-registry-version, and admin/label visibility predicates as structured query. It reports source
+schema and admin/label visibility predicates as structured query. It reports source
 facts only; clients decide whether the returned windows or snapshots are sufficient for their
 workflow.
 
@@ -716,7 +716,6 @@ Window-dataset response shape:
 ```json
 {
   "dataset": "business",
-  "registryVersion": "business.2026-09-04.v2",
   "metadataPolicy": "window",
   "sources": [
     {
@@ -737,7 +736,6 @@ Snapshot-dataset response shape:
 ```json
 {
   "dataset": "dish_catalog",
-  "registryVersion": "dish_catalog.2026-08-22.v1",
   "metadataPolicy": "snapshot",
   "sources": [
     {
@@ -752,8 +750,8 @@ Snapshot-dataset response shape:
 }
 ```
 
-Datasets with `derived_receipt` or `none` metadata policy return the dataset, registry version,
-metadata policy, and an empty `sources` array.
+Datasets with `derived_receipt` or `none` metadata policy return the dataset, metadata policy, and
+an empty `sources` array.
 
 ## Structured Query
 
@@ -810,7 +808,6 @@ Weighted-average aggregate request shape:
 ```json
 {
   "dataset": "business",
-  "registryVersion": "business.2026-09-04.v2",
   "groupBy": ["store_name", "order_source", "meal_period", "business_date"],
   "aggregates": [
     { "op": "sum", "field": "order_revenue", "as": "revenue" },

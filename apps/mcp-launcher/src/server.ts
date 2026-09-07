@@ -4,7 +4,7 @@ import type { LauncherRuntimeConfig } from "./config.js";
 import { createLauncherToolDependencies, registerLauncherTools } from "./launcher.js";
 
 export const MCP_LAUNCHER_SERVER_NAME = "enterprise-hub-mcp-launcher";
-export const MCP_LAUNCHER_SERVER_VERSION = "0.2.6";
+export const MCP_LAUNCHER_SERVER_VERSION = "0.2.7";
 
 export function createEnterpriseHubMcpLauncherServer(config: LauncherRuntimeConfig): McpServer {
   const server = new McpServer({

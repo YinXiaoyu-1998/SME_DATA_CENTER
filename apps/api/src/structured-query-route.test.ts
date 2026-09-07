@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import {
-  compileStructuredQuery,
-  getStructuredRegistry,
-  type AuthenticatedEmployee
-} from "@enterprise-hub/domain";
+import { compileStructuredQuery, type AuthenticatedEmployee } from "@enterprise-hub/domain";
 import { buildApiServer } from "./server.js";
 import type { EmployeeRepository } from "./employees.js";
 import type {
@@ -118,7 +114,6 @@ describe("structured dataset discovery", () => {
       datasets: expect.arrayContaining([
         expect.objectContaining({
           dataset: "dishes",
-          registryVersion: "dishes.2026-09-04.v2",
           rowTable: "dish_rows",
           fields: expect.arrayContaining([
             expect.objectContaining({
@@ -194,7 +189,6 @@ describe("structured query API", () => {
       },
       payload: {
         dataset: "dishes",
-        registryVersion: "dishes.2026-09-04.v2",
         select: ["business_date", "matched_product_name", "dish_sales_quantity"],
         filter: {
           field: "matched_product_name",
@@ -209,7 +203,6 @@ describe("structured query API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       mode: "detail",
       rows: [
         {
@@ -397,7 +390,6 @@ describe("structured query API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       dataset: "business",
-      registryVersion: "business.2026-09-04.v2",
       mode: "aggregate",
       rows: [
         {
@@ -441,7 +433,6 @@ describe("structured query API", () => {
       },
       payload: {
         dataset: "business",
-        registryVersion: "business.2026-09-04.v2",
         groupBy: ["store_name", "order_source", "meal_period", "business_date"],
         aggregates: [
           { op: "sum", field: "order_revenue", as: "revenue" },
@@ -460,7 +451,6 @@ describe("structured query API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       dataset: "business",
-      registryVersion: "business.2026-09-04.v2",
       mode: "aggregate",
       rows: [
         {
@@ -477,7 +467,6 @@ describe("structured query API", () => {
     expect(structuredQueryRepository.calls).toHaveLength(1);
     expect(structuredQueryRepository.calls[0]).toMatchObject({
       dataset: "business",
-      registryVersion: "business.2026-09-04.v2",
       mode: "aggregate",
       limit: 200,
       selectedFields: [
@@ -623,9 +612,6 @@ describe("structured query supplier enrichment", () => {
     });
     expect(calls).toHaveLength(3);
     expect(calls[1]?.[0]).not.toContain("document_labels");
-    expect(calls[1]?.[0]).not.toContain("ib.registry_version");
-    expect(calls[1]).not.toContain(getStructuredRegistry("supplier_catalog").version);
-    expect(calls[1]).not.toContain(getStructuredRegistry("delivery_ledger").version);
     expect(calls[2]?.[0]).toContain("IN (?)");
   });
 

@@ -99,7 +99,6 @@ function routeForReadOnlyTool(
         path: "/v1/structured/query",
         body: {
           dataset: input["dataset"],
-          registryVersion: input["registryVersion"],
           select: input["select"],
           filter: input["filter"],
           sort: input["sort"],

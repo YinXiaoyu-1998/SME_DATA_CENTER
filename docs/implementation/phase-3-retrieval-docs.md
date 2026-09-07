@@ -699,13 +699,12 @@ Schema discovery response shape:
 
 - API/schema version
 - dataset ids and display names
-- per-dataset registry version and limits
+- per-dataset limits
 - field registry entries: canonical name, source aliases, type, nullable, sensitivity, lifecycle/volatility, capabilities, operators, default-return flag, index status, and value limits
 
 Structured query request shape:
 
 - `dataset`
-- optional `registryVersion`
 - `select`
 - bounded `filter` tree
 - bounded `sort`
@@ -729,7 +728,7 @@ Coverage discovery request/response shape:
 
 - HTTP: `GET /v1/structured/datasets/:dataset/coverage`
 - MCP: `describe_structured_dataset_coverage` with `{ "dataset": "<structured dataset>" }`
-- response: `dataset`, `registryVersion`, `metadataPolicy`, and `sources`
+- response: `dataset`, `metadataPolicy`, and `sources`
 - window sources include `importBatchId`, `sourceDocumentId`, `sourceDocumentTitle`, `appliedAt`,
   `rowCount`, `startDate`, and `endDate`
 - snapshot sources include `importBatchId`, `sourceDocumentId`, `sourceDocumentTitle`, `appliedAt`,
@@ -740,7 +739,7 @@ Coverage discovery request/response shape:
 
 Structured query response shape:
 
-- dataset, effective registry version, query id
+- dataset and query id
 - rows for detail queries, or grouped rows/aggregate values for explicit aggregate queries
 - page metadata, warnings, and `requestId`
 - no natural-language interpretation, trend analysis, business conclusion, or generated SQL
@@ -748,14 +747,14 @@ Structured query response shape:
 Error envelope:
 
 - all failures return a stable machine-readable envelope with `code`, safe `message`, `retryable`, bounded `details`, and `requestId`
-- baseline codes include `INVALID_QUERY`, `INVALID_FIELD`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_CAPABILITY`, `TYPE_MISMATCH`, `INVALID_AGGREGATION`, `LIMIT_EXCEEDED`, `REGISTRY_VERSION_UNSUPPORTED`, `REGISTRY_VERSION_MISMATCH`, `DATASET_FORBIDDEN`, `ACTIVE_IMPORT_EXISTS`, `IMPORT_IN_PROGRESS`, `IDEMPOTENCY_KEY_CONFLICT`, `INVALID_CURSOR`, `CURSOR_EXPIRED`, `VALIDATION_FAILED`, `PROCESSING_FAILED`, `TEMPORARILY_UNAVAILABLE`, and `INTERNAL_ERROR`
+- baseline codes include `INVALID_QUERY`, `INVALID_FIELD`, `UNSUPPORTED_OPERATOR`, `UNSUPPORTED_CAPABILITY`, `TYPE_MISMATCH`, `INVALID_AGGREGATION`, `LIMIT_EXCEEDED`, `DATASET_FORBIDDEN`, `ACTIVE_IMPORT_EXISTS`, `IMPORT_IN_PROGRESS`, `IDEMPOTENCY_KEY_CONFLICT`, `INVALID_CURSOR`, `CURSOR_EXPIRED`, `VALIDATION_FAILED`, `PROCESSING_FAILED`, `TEMPORARILY_UNAVAILABLE`, and `INTERNAL_ERROR`
 - permission-hidden rows/documents are scoped out; no visible rows returns `200` with empty rows; dataset-level denial returns `403 DATASET_FORBIDDEN`
 - responses must not expose hidden row counts, hidden batch counts, or backend offsets
 
 Pagination / cursors:
 
 - baseline API uses cursor-based pagination, not offset as a stable external contract
-- cursors are opaque and internally bind caller, org, dataset/query shape, registry version, and sort
+- cursors are opaque and internally bind caller, org, dataset/query shape, and sort
 - query-shape changes invalidate old cursors
 - structured queries must have deterministic sort; if the caller does not provide one, the service uses a stable default and returns a warning
 - evidence cursors are signed opaque offset cursors with a bounded TTL; they bind org, employee, role, current label digest, query/filter/limit, retrieval config version, and next offset, and every page reruns retrieval plus authorization before slicing
@@ -768,10 +767,10 @@ Structured query pagination and consistency:
 - detail default sort should be stable lineage order, such as `importBatchId`, `sourceSheetIndex`, `sourceRowNumber`, and row id
 - aggregate default sort should be group key ascending
 - caller sort is allowed only for fields with registry `sort=true`; service appends stable tie-breakers
-- cursor binds org, caller/auth-scope hash, dataset, registry version, query-shape hash, effective filters, effective sort, limit, last seen sort values/tie-breakers, query mode, visible active import scope/version, creation time, and expiry
+- cursor binds org, caller/auth-scope hash, dataset, query-shape hash, effective filters, effective sort, limit, last seen sort values/tie-breakers, query mode, visible active import scope, creation time, and expiry
 - Phase 3 baseline does not promise long transaction snapshot consistency across pages
 - every page rechecks permissions and current visibility
-- if active import visibility scope or registry compatibility changes during pagination, return cursor-expired/invalid and require a fresh query
+- if active import visibility scope changes during pagination, return cursor-expired/invalid and require a fresh query
 
 Baseline structured query limits:
 
@@ -941,8 +940,8 @@ Schema evolution:
 - missing required columns fail the import in baseline
 - confirmed renamed columns are added as aliases while preserving stable public field names
 - semantic changes require a new field or lifecycle change, not silent reuse
-- confirmed removed fields are marked deprecated/removed in a new registry version; MySQL columns may remain nullable for compatibility
-- any schema change requires profiling, registry/schema diff review, migration, registry version bump, and tests
+- confirmed removed fields are removed from the current registry; MySQL columns may remain nullable until the corresponding migration is applied
+- any schema change requires profiling, registry/schema diff review, migration, current-registry update, and tests
 
 Baseline deliverables:
 
@@ -1654,9 +1653,9 @@ See ADR 0007 for the complete coverage and capability-scoped API decision.
 Schema discovery:
 
 - Phase 3 should expose `GET /structured/datasets` as the minimal schema discovery API
-- the response includes API/schema version, dataset metadata, dataset limits, registry version, and field registry entries
+- the response includes API/schema version, dataset metadata, dataset limits, and field registry entries
 - add `GET /structured/datasets/{datasetId}` only if the combined registry payload is too large
-- caller agents must use discovery before constructing structured queries or cache it with registry-version checks
+- caller agents must use discovery before constructing structured queries and refresh cached discovery when a query is rejected for field or capability changes
 - caller agents must not assume every field supports filtering, sorting, grouping, or aggregation just because it exists
 - caller agents should use stable public field names rather than source/export column names
 
@@ -1664,7 +1663,6 @@ Discovery metadata should include:
 
 - `apiVersion`
 - `schemaVersion`
-- per-dataset `registryVersion`
 - dataset `status`
 - default/max page size
 - boolean tree and `in` list limits
@@ -1850,8 +1848,6 @@ Core structured query error codes should include:
 - `INVALID_AGGREGATION`
 - `INVALID_DATE_WINDOW`
 - `LIMIT_EXCEEDED` or `QUERY_TOO_LARGE`
-- `REGISTRY_VERSION_UNSUPPORTED`
-- `REGISTRY_VERSION_MISMATCH`
 - `DATASET_FORBIDDEN`
 - `ACTIVE_IMPORT_EXISTS`
 - `IMPORT_IN_PROGRESS`
@@ -1859,14 +1855,11 @@ Core structured query error codes should include:
 - `TEMPORARILY_UNAVAILABLE`
 - `INTERNAL_ERROR`
 
-Registry/version behavior:
+Schema behavior:
 
-- callers may include an expected `registryVersion`
-- if omitted, the current registry is used
-- if provided and still supported, execute against that registry semantics where feasible
-- if no longer supported, return `REGISTRY_VERSION_UNSUPPORTED`
-- incompatible field/capability changes return registry/capability errors with safe details
-- successful responses include effective `registryVersion`
+- all requests use the single current schema published by discovery
+- unknown fields and unavailable capabilities return the corresponding stable field/capability errors
+- callers should refresh discovery and rebuild saved query templates when those errors indicate a schema change
 
 Permission-hidden data behavior:
 
@@ -2001,7 +1994,7 @@ Use the repository priority language:
 
 - richer schema-discovery ergonomics: descriptions, lifecycle, sensitivity/volatility display, registry diff/checksum
 - better structured query diagnostics: rejected-query reasons, field capability errors, query-limit warnings
-- query template validation against registry versions
+- query template validation against current discovery metadata
 - stronger aggregate guardrails: aggregate aliases, deterministic aggregate pagination/sorting, group-count truncation warnings
 - import profiling report per batch: null rates, cardinality estimates, max lengths, parse warnings
 - downloadable validation error report
