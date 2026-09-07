@@ -10,7 +10,9 @@ export async function main(): Promise<void> {
 
   const abortController = new AbortController();
   const runtimeLimits = loadWorkerRuntimeLimits(process.env);
-  const repository = createPrismaProcessingWorkerRepository();
+  const repository = createPrismaProcessingWorkerRepository(undefined, {
+    structuredImportTransactionTimeoutMs: runtimeLimits.structuredImportTransactionTimeoutMs
+  });
   const storage = createStorageAdapter(process.env);
   const evidenceIndexer = createEvidenceIndexerFromEnv();
 
@@ -26,6 +28,7 @@ export async function main(): Promise<void> {
       repository,
       storage,
       evidenceIndexer,
+      structuredImportBatchInsertSize: runtimeLimits.structuredImportBatchInsertSize,
       workerConcurrency: runtimeLimits.workerConcurrency,
       leaseSeconds: runtimeLimits.workerLeaseSeconds,
       maxAttempts: runtimeLimits.workerMaxAttempts,

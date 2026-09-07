@@ -419,11 +419,19 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
   }
 }
 
+export interface PrismaProcessingWorkerRepositoryOptions {
+  structuredImportTransactionTimeoutMs?: number;
+}
+
 export function createPrismaProcessingWorkerRepository(
-  databaseUrl = requireDatabaseUrl()
+  databaseUrl = requireDatabaseUrl(),
+  options: PrismaProcessingWorkerRepositoryOptions = {}
 ): ProcessingWorkerRepository {
   const adapter = createDatabaseAdapter(databaseUrl);
   const prisma = new PrismaClient({ adapter });
+  const structuredImportTransactionTimeoutMs =
+    options.structuredImportTransactionTimeoutMs ??
+    PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportTransactionTimeoutMs;
 
   return {
     async claimNextProcessingRun(input) {
@@ -765,7 +773,7 @@ export function createPrismaProcessingWorkerRepository(
       });
     },
     async completeStructuredImport(input) {
-      await prisma.$transaction(async (tx) => {
+      const publishStructuredImport = async (tx: Prisma.TransactionClient) => {
         const leased = await tx.processingRun.updateMany({
           where: activeLeaseWhere(input),
           data: {
@@ -873,6 +881,9 @@ export function createPrismaProcessingWorkerRepository(
             }
           }
         });
+      };
+      await prisma.$transaction(publishStructuredImport, {
+        timeout: structuredImportTransactionTimeoutMs
       });
     },
     async rejectStructuredImport(input) {

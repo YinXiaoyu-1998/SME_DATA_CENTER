@@ -70,7 +70,9 @@ describe("Prisma structured worker persistence", () => {
   });
 
   it("writes catalog rows through their own branch and stores safe imported/ignored summaries", async () => {
-    const repository = createPrismaProcessingWorkerRepository("mysql://test");
+    const repository = createPrismaProcessingWorkerRepository("mysql://test", {
+      structuredImportTransactionTimeoutMs: 42_000
+    });
 
     await repository.completeStructuredImport?.({
       runId: "run_1",
@@ -133,6 +135,7 @@ describe("Prisma structured worker persistence", () => {
         })
       })
     );
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 42_000 });
     expect(JSON.stringify(prisma.importBatch.update.mock.calls)).not.toContain("Ignored cell");
   });
 
