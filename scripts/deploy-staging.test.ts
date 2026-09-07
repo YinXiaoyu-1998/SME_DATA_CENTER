@@ -254,10 +254,11 @@ cp "\${files[0]}" "\${files[1]}"
     }
   });
 
-  it("removes stale release images while retaining current and rollback versions", async () => {
+  it("removes stopped stale references while preserving images used by running containers", async () => {
     const root = await mkdtemp(join(tmpdir(), "enterprise-hub-image-cleanup-"));
     const fakeBin = join(root, "bin");
     const removedImages = join(root, "removed-images");
+    const removedContainers = join(root, "removed-containers");
     const currentApi = "registry.example.com/enterprise-hub/api:bbbbbbbbbbbb";
     const currentWorker = "registry.example.com/enterprise-hub/worker:bbbbbbbbbbbb";
     const currentOps = "registry.example.com/enterprise-hub/api:ops-bbbbbbbbbbbb";
@@ -269,10 +270,14 @@ cp "\${files[0]}" "\${files[1]}"
       "registry.example.com/enterprise-hub/api:ops-999999999999",
       "registry.example.com/enterprise-hub/worker:999999999999"
     ];
+    const staleStoppedContainer = "stale-release-ops-container";
+    const staleRunningImage = "registry.example.com/enterprise-hub/worker:888888888888";
+    const staleRunningContainer = "running-stale-worker-container";
 
     try {
       await mkdir(fakeBin);
       await writeFile(removedImages, "");
+      await writeFile(removedContainers, "");
       await writeFile(
         join(root, "previous-release.env"),
         `ENTERPRISE_HUB_API_IMAGE=${previousApi}\nENTERPRISE_HUB_WORKER_IMAGE=${previousWorker}\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=${previousOps}\n`
@@ -283,8 +288,31 @@ cp "\${files[0]}" "\${files[1]}"
 set -euo pipefail
 case "$1:$2" in
   image:ls) printf '%s\n' "$FAKE_DOCKER_IMAGES" ;;
-  image:rm) printf '%s\n' "$3" >> "$FAKE_REMOVED_IMAGES" ;;
+  image:rm)
+    if [ "$3" = "$FAKE_STOPPED_CONTAINER_IMAGE" ] && ! grep -qx "$FAKE_STOPPED_CONTAINER" "$FAKE_REMOVED_CONTAINERS"; then
+      exit 1
+    fi
+    if [ "$3" = "$FAKE_RUNNING_CONTAINER_IMAGE" ]; then
+      exit 1
+    fi
+    printf '%s\n' "$3" >> "$FAKE_REMOVED_IMAGES"
+    ;;
   image:prune) ;;
+  ps:-aq)
+    if [ "$4" = "ancestor=$FAKE_STOPPED_CONTAINER_IMAGE" ]; then
+      printf '%s\n' "$FAKE_STOPPED_CONTAINER"
+    elif [ "$4" = "ancestor=$FAKE_RUNNING_CONTAINER_IMAGE" ]; then
+      printf '%s\n' "$FAKE_RUNNING_CONTAINER"
+    fi
+    ;;
+  inspect:--format)
+    if [ "$4" = "$FAKE_RUNNING_CONTAINER" ]; then
+      printf 'true\n'
+    else
+      printf 'false\n'
+    fi
+    ;;
+  container:rm) printf '%s\n' "$3" >> "$FAKE_REMOVED_CONTAINERS" ;;
   *) exit 64 ;;
 esac
 `
@@ -308,9 +336,15 @@ esac
             previousWorker,
             previousOps,
             ...staleImages,
+            staleRunningImage,
             "registry.example.com/enterprise-hub/qdrant:v1.15.4"
           ].join("\n"),
           FAKE_REMOVED_IMAGES: removedImages,
+          FAKE_REMOVED_CONTAINERS: removedContainers,
+          FAKE_STOPPED_CONTAINER: staleStoppedContainer,
+          FAKE_STOPPED_CONTAINER_IMAGE: staleImages[1],
+          FAKE_RUNNING_CONTAINER: staleRunningContainer,
+          FAKE_RUNNING_CONTAINER_IMAGE: staleRunningImage,
           PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`
         },
         input: cleanup
@@ -318,6 +352,7 @@ esac
 
       expect(result.status, result.stderr).toBe(0);
       expect((await readFile(removedImages, "utf8")).trim().split("\n")).toEqual(staleImages);
+      expect((await readFile(removedContainers, "utf8")).trim()).toBe(staleStoppedContainer);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
