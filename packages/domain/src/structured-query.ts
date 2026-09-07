@@ -39,7 +39,6 @@ export interface StructuredQueryAuthorizationScope {
 
 export interface StructuredCompiledQuery {
   dataset: StructuredDatasetName;
-  registryVersion: string;
   mode: StructuredQueryMode;
   sql: string;
   params: Array<string | number>;
@@ -74,7 +73,6 @@ interface CompileStructuredQueryInput {
 
 interface NormalizedQuery {
   dataset: StructuredDatasetName;
-  registryVersion: string;
   select: string[];
   filter: FilterNode | null;
   sort: SortSpec[];
@@ -132,7 +130,6 @@ interface CursorPayload {
 
 const TOP_LEVEL_KEYS = new Set([
   "dataset",
-  "registryVersion",
   "select",
   "filter",
   "sort",
@@ -161,18 +158,6 @@ export function compileStructuredQuery(
 ): StructuredCompiledQuery {
   const query = normalizeQuery(input.query);
   const registry = getStructuredRegistry(query.dataset);
-
-  if (query.registryVersion !== registry.version) {
-    throw new StructuredQueryValidationError(
-      PHASE3_ERROR_CODES.registryVersionMismatch,
-      "Registry version does not match the active dataset registry.",
-      {
-        dataset: query.dataset,
-        requestedVersion: query.registryVersion,
-        activeVersion: registry.version
-      }
-    );
-  }
 
   const fields = new Map(registry.fields.map((field) => [field.canonicalName, field]));
   const mode: StructuredQueryMode =
@@ -229,7 +214,6 @@ export function compileStructuredQuery(
 
     return {
       dataset: query.dataset,
-      registryVersion: query.registryVersion,
       mode,
       sql: `SELECT ${projection.sql} FROM ${registry.rowTable} r ${whereSql}${groupBy}${order.sql} LIMIT ? OFFSET ?`,
       params: [...params, ...order.params, query.page.limit, offset],
@@ -248,7 +232,6 @@ export function compileStructuredQuery(
 
   return {
     dataset: query.dataset,
-    registryVersion: query.registryVersion,
     mode,
     sql: `SELECT ${projection.sql} FROM ${registry.rowTable} r ${whereSql}${order.sql} LIMIT ? OFFSET ?`,
     params: [...params, ...order.params, query.page.limit, offset],
@@ -368,8 +351,6 @@ function normalizeQuery(input: unknown): NormalizedQuery {
   }
 
   const registry = getStructuredRegistry(dataset as StructuredDatasetName);
-  const registryVersion =
-    typeof object["registryVersion"] === "string" ? object["registryVersion"] : registry.version;
   const select = normalizeStringArray(
     object["select"],
     "select",
@@ -396,7 +377,6 @@ function normalizeQuery(input: unknown): NormalizedQuery {
 
   return {
     dataset: dataset as StructuredDatasetName,
-    registryVersion,
     select: effectiveSelect,
     filter: object["filter"] === undefined ? null : normalizeFilter(object["filter"], 1).node,
     sort,

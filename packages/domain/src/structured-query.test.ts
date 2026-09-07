@@ -20,6 +20,31 @@ function expectStructuredError(run: () => unknown, code: string) {
 }
 
 describe("structured query compiler", () => {
+  it("uses the single current schema and rejects unknown top-level input", () => {
+    const compiled = compileStructuredQuery({
+      employee: { role: "admin", labels: [] },
+      orgId: "default-org",
+      query: { dataset: "dishes", select: ["business_date"] },
+      cursorSecret: "cursor-secret"
+    });
+
+    expect(compiled.dataset).toBe("dishes");
+    expectStructuredError(
+      () =>
+        compileStructuredQuery({
+          employee: { role: "admin", labels: [] },
+          orgId: "default-org",
+          query: {
+            dataset: "dishes",
+            unexpectedField: "not-allowed",
+            select: ["business_date"]
+          },
+          cursorSecret: "cursor-secret"
+        }),
+      PHASE3_ERROR_CODES.invalidQuery
+    );
+  });
+
   it("partitions delivery dynamic fields from the stored SQL projection", () => {
     const compiled = compileStructuredQuery({
       employee: { id: "emp_admin", role: "admin", labels: [] },
@@ -168,7 +193,6 @@ describe("structured query compiler", () => {
       orgId: "default-org",
       query: {
         dataset: "dish_catalog",
-        registryVersion: "dish_catalog.2026-08-22.v1",
         select: ["snapshot_date", "sku_id", "sale_price"],
         filter: { field: "sale_price", op: "eq", value: 0 },
         sort: [{ field: "snapshot_date", direction: "desc" }]
@@ -195,7 +219,6 @@ describe("structured query compiler", () => {
       orgId: "default-org",
       query: {
         dataset: "dishes",
-        registryVersion: "dishes.2026-09-04.v2",
         select: ["business_date", "matched_product_name", "dish_sales_quantity"],
         filter: {
           and: [
@@ -533,7 +556,6 @@ describe("structured query compiler", () => {
       orgId: "default-org",
       query: {
         dataset: "business",
-        registryVersion: "business.2026-09-04.v2",
         groupBy: ["business_date"],
         aggregates: [
           { op: "count", as: "row_count" },
@@ -557,7 +579,7 @@ describe("structured query compiler", () => {
     expect(compiled.params).toContain("$.discount_rate");
   });
 
-  it("compiles bounded weighted aggregate queries with alias-aware sorting and registry provenance", () => {
+  it("compiles bounded weighted aggregate queries with alias-aware sorting", () => {
     const baseInput = {
       employee: {
         role: "manager" as const,
@@ -568,7 +590,6 @@ describe("structured query compiler", () => {
     };
     const query = {
       dataset: "business",
-      registryVersion: "business.2026-09-04.v2",
       groupBy: ["store_name", "order_source", "meal_period"],
       aggregates: [
         { op: "sum", field: "order_revenue", as: "revenue" },

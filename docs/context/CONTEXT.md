@@ -331,17 +331,17 @@ _Avoid_: 多租户 SaaS
 - 结构化查询必须支持分页和单次返回上限；默认 `limit` 和最大 `limit` 由 API 契约定义，超过单次上限时返回 `next_cursor` / `truncated` 等 metadata，调用方智能体通过分页获取完整数据
 - 结构化查询不能提供绕过分页的一次性全量导出能力，除非未来单独设计受控批量导出接口
 - 结构化明细查询默认按稳定行血缘排序，例如 import batch、sheet index、source row number 和 row id；聚合查询默认按 group key 排序，分页对象是 group rows 而不是原始 rows
-- 结构化查询 cursor 是绑定调用方、权限 scope、dataset、registry version、query shape、filter、sort、limit、位置、查询模式和 active import scope 的 opaque token；权限或 active scope 变化时 cursor 可失效
+- 结构化查询 cursor 是绑定调用方、权限 scope、dataset、query shape、filter、sort、limit、位置、查询模式和 active import scope 的 opaque token；权限或 active scope 变化时 cursor 可失效
 - Phase 3 不承诺多页查询的长事务 snapshot consistency；每一页必须重新授权并只返回当前可见数据
 - baseline 查询复杂度限制建议：默认 50 行、明细最大 200 行、聚合 group 最大 100、boolean depth 3、条件总数 20、`in` 值 100、sort 2、groupBy 1、aggregate 5、select 50
 - 无索引/高成本 filter、未 allowlist 的 `contains`、高基数字段 groupBy 和超限条件必须在 SQL 执行前拒绝，而不是尝试运行后超时
 - 结构化查询对外暴露正常可读的 JSON API 请求结构，可参考常见 Java MySQL query wrapper / specification 风格表达字段、条件、排序、分页和显式聚合；语义上覆盖常见 MySQL 查询，但不是 SQL 字符串或任意表达式
 - 结构化 API 错误必须是稳定、机器可读的 envelope，包含 error code、safe message、retryable、details 和 requestId；调用方智能体不应解析自然语言错误来恢复
-- 结构化查询可带 registryVersion；成功响应返回 effective registryVersion。registry 不兼容、字段/能力不支持、limit 超出、幂等冲突、active import 冲突、临时故障等必须有稳定错误码
+- 结构化查询始终使用服务端当前 schema。字段/能力不支持、limit 超出、幂等冲突、active import 冲突、临时故障等必须有稳定错误码
 - 权限隐藏的数据应被 scope out；没有可见行时返回成功空结果，不能通过错误、count、pagination 或 aggregate 泄露隐藏数据
 - Phase 3 HTTP API 是唯一权威后端契约；MCP 只是这些 HTTP endpoint 的薄适配，不能成为第二套权限、查询校验、导入或检索实现。ADR 0018 记录该边界
 - Phase 3 baseline HTTP API surface 包括 evidence search、structured import create/status、structured dataset discovery、controlled structured query；worker/admin/operator/provider/schema 控制保持 HTTP/admin-only 或内部运维入口
-- Phase 3 API baseline 使用 opaque cursor 分页；cursor 需要绑定调用方、org、query shape、registry version 和 sort，不能暴露 DB offset 或 Qdrant internals
+- Phase 3 API baseline 使用 opaque cursor 分页；cursor 需要绑定调用方、org、query shape 和 sort，不能暴露 DB offset 或 Qdrant internals
 - 结构化查询内部可以把受控字段/operator 编译为参数化 SQL；外部调用方不能拼接 SQL、`WHERE` 子句、`LIKE` 片段、正则表达式或任意函数
 - 结构化查询 operator 是服务端 allowlist 能力，例如 `eq`、`neq`、`in`、`not_in`、`gt`、`gte`、`lt`、`lte`、`between`、`contains`、`starts_with`、`ends_with`、`is_null`、`is_not_null`；每个字段必须声明允许的 operator、类型、nullable 和取值限制
 - 结构化查询应支持受控 `and` / `or` 条件树，但必须限制最大嵌套深度、最大条件数、最大 `in` 列表长度和其他复杂度指标；具体阈值在 API contract / 实施阶段确定
@@ -390,9 +390,9 @@ _Avoid_: 多租户 SaaS
 - 表格校验规则必须基于真实导出样本定义字段可空性和类型宽容度；真实数据中允许为空的字段不能被简单地当作必填错误
 - 菜品和营业 MySQL 表 schema 以及结构化 API 字段注册表必须完整覆盖当前真实导出的列集合；不能只挑选 demo 字段，否则员工智能体会遇到文件中存在但结构化 API 不可发现或不可请求的数据
 - 完整覆盖不等于每个字段支持所有查询能力；每个结构化字段必须定义 canonical name、原始表头 alias、类型、nullable、敏感度、兼容状态、是否默认返回、是否可显式选择、允许 operator、是否可排序、是否可聚合/分组、索引状态和取值限制
-- 真实 dishes/business XLSX 样本用于 profiling 和生成字段注册表初稿，但不能让运行时自动猜 schema；生产契约必须经过人工 review 后固化为 MySQL migration + versioned field registry
+- 真实 dishes/business XLSX 样本用于 profiling 和生成字段注册表初稿，但不能让运行时自动猜 schema；生产契约必须经过人工 review 后固化为 MySQL migration + 当前字段注册表
 - profiling 必须输出 source column、稳定 public field name、受控 header aliases、候选类型、null/blank 规则、cardinality、金额/百分比/日期语义、默认返回、字段能力和异常样例
-- 当前真实导出所有列必须进入 MySQL schema 和 field registry；未知新增列、缺失 required 列、模糊改名列在 baseline 都导致整份 workbook fail，直到人工 review 后发布新 registry version
+- 当前真实导出所有列必须进入 MySQL schema 和 field registry；未知新增列、缺失 required 列、模糊改名列在 baseline 都导致整份 workbook fail，直到人工 review 后更新 migration、字段注册表和测试
 - 金额字段使用 decimal，百分比字段必须明确 ratio/percentage-points 语义，业务编码/编号优先按 string 处理，不能仅因样本值像数字就开放数值聚合
 - 所有字段默认可被 schema discovery 发现，安全允许时可显式 select；filter/sort/group/aggregate/contains 等能力必须按字段 profile、cardinality 和业务语义逐项 allowlist
 - 结构化 API 必须采用完整但能力受控的字段注册表；高基数、自由文本、敏感或不稳定字段可以被发现和显式选择，但过滤、排序、聚合、分组和 `contains` 等能力必须逐字段 allowlist
@@ -643,12 +643,12 @@ _Avoid_: 多租户 SaaS
 - “结构化查询”可能被理解为允许调用方提交 SQL；已 resolved：采用 **受控结构化查询**，只开放服务端定义的只读字段、运算符、分页，以及调用方显式请求的纯机械分组和聚合，不接受 SQL，也不提供任何数据修改能力。
 - “结构化查询 API”可能被误解为分析服务；已 resolved：它只像 BI 数据提供层一样返回调用方 query 请求的数据和字段定义，不知道上游用户问题，也不生成趋势、结论或建议。
 - “结构化查询一次返回全量明细”已 resolved：必须分页并设置单次上限，调用方智能体需要完整数据时通过 cursor 分页拉取。
-- “结构化分页是否需要跨页 snapshot”已 resolved：baseline 不提供长事务 snapshot；每页重新授权。cursor 绑定权限/query/registry/sort/active import scope，scope 变化时 cursor 失效。
+- “结构化分页是否需要跨页 snapshot”已 resolved：baseline 不提供长事务 snapshot；每页重新授权。cursor 绑定权限/query/sort/active import scope，scope 变化时 cursor 失效。
 - “结构化查询复杂度是否可无限放开”已 resolved：不可以。baseline 有 max limit/depth/conditions/in/sort/group/aggregate/select，并在 SQL 执行前拒绝超限或高成本查询。
 - “operator 支持”可能被误解为允许调用方拼接查询；已 resolved：对外是可读 JSON API / query wrapper 风格结构，内部编译为参数化 SQL，所有 dataset、field、operator、sort、pagination 和 aggregation 都由服务端 allowlist 校验。
-- “结构化 API 错误模型”已 resolved：使用稳定机器可读错误 envelope 和 registryVersion 兼容语义；权限隐藏数据返回空结果或被 scope out，不用错误泄露。细节进入 API contract/test docs。
+- “结构化 API 错误模型”已 resolved：使用稳定机器可读错误 envelope；权限隐藏数据返回空结果或被 scope out，不用错误泄露。细节进入 API contract/test docs。
 - “Phase 3 HTTP 和 MCP 谁是权威契约”已 resolved：HTTP API 是唯一权威后端契约；MCP 只是薄适配，不直连存储、不复制权限/查询校验、不暴露 admin/operator 能力。ADR 0018 记录该边界。
-- “分页是否可以暴露 offset”已 resolved：baseline 采用 opaque cursor；cursor 内部绑定调用方、org、query shape、registry version 和 sort，不泄露 DB/Qdrant 实现细节。
+- “分页是否可以暴露 offset”已 resolved：baseline 采用 opaque cursor；cursor 内部绑定调用方、org、query shape 和 sort，不泄露 DB/Qdrant 实现细节。
 - “复杂条件查询”已 resolved：支持受控 `and` / `or` 条件树，但必须限制深度、条件数和列表长度；具体阈值后续在 API contract 和实现中确定。
 - “显式聚合”可能被误解为指标/分析服务；已 resolved：Phase 3 只支持逐字段 allowlist 的机械聚合函数，不支持公式、窗口函数、跨表 join、派生业务指标、趋势判断或自然语言结论。
 - “日期口径”可能被误解为企业资料中枢需要从用户自然语言里判断字段；已 resolved：中枢只定义并暴露字段/API，调用方智能体负责把用户意图映射到 `order_time`、`business_date` 等具体字段。
@@ -656,8 +656,8 @@ _Avoid_: 多租户 SaaS
 - “表格部分导入”可能看起来更宽容；已 resolved：菜品数据和营业数据采用整份文件原子失败，避免调用方查询到不完整的权威数据。校验器需要足够 robust，字段可空性和类型规则要参考真实导出样本定义。
 - “结构化导入错误信息”已 resolved：对调用方返回可操作的阶段/表/行/字段/原因和有限样例，不返回内部堆栈。
 - “结构化 schema 覆盖范围”已 resolved：菜品和营业表及结构化 API 字段注册表必须完整覆盖当前真实导出列集合；完整覆盖通过逐字段能力注册实现，不代表每个字段都可任意过滤、排序、聚合或 `contains` 查询。ADR 0007 记录该决策。
-- “真实样本 profiling 是否可直接成为生产 schema”已 resolved：不可以。样本只生成候选 profile/registry diff，生产契约必须人工 review 后固化到 MySQL migration 和 versioned field registry。
-- “未来新增/删除/改名列是否自动接受”已 resolved：baseline 不自动接受。未知列、缺失 required 列和模糊改名列都会失败；确认后通过 registry version bump、migration 和测试进入系统。
+- “真实样本 profiling 是否可直接成为生产 schema”已 resolved：不可以。样本只生成候选 profile/registry diff，生产契约必须人工 review 后固化到 MySQL migration 和当前字段注册表。
+- “未来新增/删除/改名列是否自动接受”已 resolved：baseline 不自动接受。未知列、缺失 required 列和模糊改名列都会失败；确认后通过 migration、字段注册表更新和测试进入系统。
 - “结构化 schema discovery”已 resolved：Phase 3 提供 `GET /structured/datasets` 一类 discovery API，调用方智能体基于字段注册表和 dataset 限制构造查询，而不是硬编码字段能力。
 - “上传文件名”可能被误用为业务判断依据；已 resolved：用户上传文件名只保存为原始元数据，系统内导入批次名和 OSS 结构化源文件副本使用 `{enterprise_name}_{dataset}_{start_date}_{end_date}` 规范化名称，不按营业日拆分；`enterprise_name`、`dataset`、`start_date` 和 `end_date` 来自上传接口 metadata；日期范围指营业日范围，表格类型和日期范围由内容结构、上传元数据和校验逻辑确认。
 - “enterprise_name 是否是业务主键”已 resolved：不是。结构化导入沿用现有 `Organization.id` / `orgId` 作为企业级主键和权限边界，`enterprise_name` 仅用于展示和规范文件名组件。

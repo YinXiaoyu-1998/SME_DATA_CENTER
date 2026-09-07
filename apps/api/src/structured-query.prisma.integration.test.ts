@@ -12,8 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   compileStructuredCoverageQuery,
   compileStructuredQuery,
-  createStructuredCursor,
-  getStructuredRegistry
+  createStructuredCursor
 } from "@enterprise-hub/domain";
 import { createPrismaStructuredCoverageRepository } from "./structured-coverage.js";
 import { createPrismaStructuredQueryRepository } from "./structured-query.js";
@@ -389,7 +388,6 @@ describeIntegration("Prisma structured supplier enrichment authorization", () =>
     );
     expect(coverage).toEqual({
       dataset: "business",
-      registryVersion: getStructuredRegistry("business").version,
       metadataPolicy: "window",
       sources: [
         {
@@ -436,7 +434,6 @@ async function executeBusinessAggregateFor(
     employee,
     query: {
       dataset: "business",
-      registryVersion: getStructuredRegistry("business").version,
       groupBy: ["store_name", "order_source", "meal_period"],
       aggregates: [
         { op: "sum", field: "order_revenue", as: "revenue" },

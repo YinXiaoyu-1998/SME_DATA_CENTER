@@ -47,7 +47,6 @@ describe("Prisma structured coverage repository", () => {
 
     await expect(repository.list(compiled)).resolves.toEqual({
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       metadataPolicy: "window",
       sources: [
         {
@@ -111,7 +110,6 @@ describe("Prisma structured coverage repository", () => {
       )
     ).resolves.toEqual({
       dataset: "supplier_catalog",
-      registryVersion: "supplier_catalog.2026-08-29.v1",
       metadataPolicy: "none",
       sources: []
     });

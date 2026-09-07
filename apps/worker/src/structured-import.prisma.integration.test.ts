@@ -311,7 +311,7 @@ describeIntegration("Prisma structured import worker repository", () => {
     await repository.disconnect?.();
   });
 
-  it("records structured transition provenance without registry versions", async () => {
+  it("records structured transition dataset provenance", async () => {
     const repository = createPrismaProcessingWorkerRepository(databaseUrl);
     const fixture = await createStructuredRun(prisma, "trans-audit");
     const now = new Date("2026-08-10T04:00:00.000Z");
@@ -380,9 +380,6 @@ describeIntegration("Prisma structured import worker repository", () => {
         sourceDocumentId: fixture.documentId
       })
     );
-    for (const auditLog of auditLogs) {
-      expect(auditLog.metadata).not.toHaveProperty("registryVersion");
-    }
     await repository.disconnect?.();
   });
 

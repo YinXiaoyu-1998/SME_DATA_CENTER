@@ -39,7 +39,6 @@ const validInputs = {
   list_structured_datasets: {},
   query_structured_dataset: {
     dataset: "dishes",
-    registryVersion: "dishes.2026-09-04.v2",
     select: ["business_date"],
     filter: {
       field: "matched_product_name",
@@ -549,10 +548,22 @@ describe("Enterprise Hub MCP contract", () => {
     expect(coverage?.description).toContain("/v1/structured/datasets/:dataset/coverage");
     expect(coverage?.resultShape).toEqual([
       "dataset",
-      "registryVersion",
       "metadataPolicy",
       "sources[]: readable applied source windows or snapshots"
     ]);
+  });
+
+  it("exposes the strict single-schema structured query contract", () => {
+    const query = contractsByName.get("query_structured_dataset");
+
+    expect(query?.inputFields.map((field) => field.name)).toContain("dataset");
+    expect(query?.resultShape).toContain("dataset");
+    expect(
+      safeParseTool("query_structured_dataset", {
+        dataset: "business",
+        unexpectedField: "not-allowed"
+      }).success
+    ).toBe(false);
   });
 
   it("keeps the structured upload schema object-shaped while enforcing conditional dates", () => {
@@ -895,7 +906,6 @@ describe("Enterprise Hub MCP contract", () => {
     expect(
       safeParseTool("query_structured_dataset", {
         dataset: "business",
-        registryVersion: "business.2026-09-04.v2",
         groupBy: ["store_name", "order_source", "meal_period", "business_date"],
         aggregates: [
           ...Array.from({ length: MCP_STRUCTURED_QUERY_LIMITS.maxAggregates - 1 }, (_, index) => ({

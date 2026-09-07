@@ -62,8 +62,6 @@ export const PHASE3_ERROR_CODES = {
   queryTooExpensive: "QUERY_TOO_EXPENSIVE",
   invalidCursor: "INVALID_CURSOR",
   cursorExpired: "CURSOR_EXPIRED",
-  registryVersionUnsupported: "REGISTRY_VERSION_UNSUPPORTED",
-  registryVersionMismatch: "REGISTRY_VERSION_MISMATCH",
   datasetForbidden: "DATASET_FORBIDDEN",
   activeImportExists: "ACTIVE_IMPORT_EXISTS",
   importInProgress: "IMPORT_IN_PROGRESS",

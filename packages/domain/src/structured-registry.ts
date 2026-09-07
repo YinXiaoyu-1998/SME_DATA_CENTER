@@ -56,7 +56,6 @@ export interface StructuredFieldRegistryEntry {
 
 export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
-  version: string;
   rowTable: StructuredRowTableName;
   sheetPolicy: "strict_all_nonempty" | "import_matching_visible";
   metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
@@ -809,7 +808,6 @@ const DELIVERY_LEDGER_FIELDS: StructuredFieldRegistryEntry[] =
 export const STRUCTURED_DATASET_REGISTRIES = {
   dishes: createRegistry({
     dataset: "dishes",
-    version: "dishes.2026-09-04.v2",
     rowTable: "dish_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
@@ -820,7 +818,6 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   }),
   business: createRegistry({
     dataset: "business",
-    version: "business.2026-09-04.v2",
     rowTable: "business_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
@@ -831,7 +828,6 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   }),
   vip: createRegistry({
     dataset: "vip",
-    version: "vip.2026-08-12.v1",
     rowTable: "vip_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
@@ -841,7 +837,6 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   }),
   dish_catalog: createRegistry({
     dataset: "dish_catalog",
-    version: "dish_catalog.2026-08-22.v1",
     rowTable: "dish_catalog_rows",
     sheetPolicy: "import_matching_visible",
     metadataPolicy: "snapshot",
@@ -860,7 +855,6 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   }),
   delivery_ledger: {
     dataset: "delivery_ledger",
-    version: "delivery_ledger.2026-08-29.v1",
     rowTable: "delivery_ledger_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "derived_receipt",
@@ -868,7 +862,6 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   },
   supplier_catalog: createRegistry({
     dataset: "supplier_catalog",
-    version: "supplier_catalog.2026-08-29.v1",
     rowTable: "supplier_catalog_rows",
     sheetPolicy: "import_matching_visible",
     metadataPolicy: "none",
@@ -1015,7 +1008,6 @@ export function resolveStructuredHeaders(
 
 function createRegistry(input: {
   dataset: StructuredDatasetName;
-  version: string;
   rowTable: StructuredRowTableName;
   sheetPolicy: StructuredDatasetRegistry["sheetPolicy"];
   metadataPolicy: StructuredDatasetRegistry["metadataPolicy"];
@@ -1030,7 +1022,6 @@ function createRegistry(input: {
 }): StructuredDatasetRegistry {
   return {
     dataset: input.dataset,
-    version: input.version,
     rowTable: input.rowTable,
     sheetPolicy: input.sheetPolicy,
     metadataPolicy: input.metadataPolicy,

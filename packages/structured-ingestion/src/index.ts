@@ -49,7 +49,6 @@ export interface StructuredSheetProfile extends StructuredSheetSummary {
 }
 export interface StructuredWorkbookProfile {
   dataset: StructuredDatasetName;
-  registryVersion: string;
   fileName: string;
   sheets: StructuredSheetProfile[];
   ignoredEmptySheets: string[];
@@ -398,7 +397,6 @@ export async function profileStructuredFile(
     const result = await parseStructuredFile(input);
     return {
       dataset: input.dataset,
-      registryVersion: registry.version,
       fileName: input.fileName,
       sheets: result.sheetSummary.map((sheet) => ({
         ...sheet,
@@ -459,7 +457,6 @@ export async function profileStructuredFile(
     throw validation("Catalog snapshot contains no rows.");
   return {
     dataset: input.dataset,
-    registryVersion: registry.version,
     fileName: input.fileName,
     sheets: profile,
     ignoredEmptySheets

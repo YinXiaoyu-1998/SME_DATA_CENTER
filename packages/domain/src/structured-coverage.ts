@@ -19,26 +19,22 @@ export type StructuredCoverageSourceBase = {
 export type StructuredDatasetCoverage =
   | {
       dataset: StructuredDatasetName;
-      registryVersion: string;
       metadataPolicy: "window";
       sources: Array<StructuredCoverageSourceBase & { startDate: string; endDate: string }>;
     }
   | {
       dataset: StructuredDatasetName;
-      registryVersion: string;
       metadataPolicy: "snapshot";
       sources: Array<StructuredCoverageSourceBase & { snapshotDate: string }>;
     }
   | {
       dataset: StructuredDatasetName;
-      registryVersion: string;
       metadataPolicy: "derived_receipt" | "none";
       sources: [];
     };
 
 export interface StructuredCompiledCoverageQuery {
   dataset: StructuredDatasetName;
-  registryVersion: string;
   metadataPolicy: StructuredDatasetRegistry["metadataPolicy"];
   sql: string | null;
   params: Array<string | number>;
@@ -59,7 +55,6 @@ export function compileStructuredCoverageQuery(input: {
   if (registry.metadataPolicy === "derived_receipt" || registry.metadataPolicy === "none") {
     return {
       dataset: registry.dataset,
-      registryVersion: registry.version,
       metadataPolicy: registry.metadataPolicy,
       sql: null,
       params: [],
@@ -104,7 +99,6 @@ export function compileStructuredCoverageQuery(input: {
 
   return {
     dataset: registry.dataset,
-    registryVersion: registry.version,
     metadataPolicy: registry.metadataPolicy,
     sql: `SELECT ib.id AS import_batch_id,
                  ib.source_document_id,

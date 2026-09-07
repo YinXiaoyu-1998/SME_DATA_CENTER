@@ -272,7 +272,6 @@ function fakeStructuredCoverageRepository(): StructuredCoverageRepository {
     async list(compiled) {
       return {
         dataset: compiled.dataset,
-        registryVersion: compiled.registryVersion,
         metadataPolicy: "window",
         sources: [
           {
@@ -858,7 +857,6 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     });
     expect(parseToolPayload(structuredCoverage.payload).payload).toMatchObject({
       dataset: "dishes",
-      registryVersion: "dishes.2026-09-04.v2",
       metadataPolicy: "window",
       sources: [expect.objectContaining({ importBatchId: "imp_coverage" })]
     });

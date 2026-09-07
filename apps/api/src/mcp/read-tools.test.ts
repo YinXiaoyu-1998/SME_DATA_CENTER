@@ -80,7 +80,6 @@ describe("read-only MCP tool handlers", () => {
     await handlers.query_structured_dataset?.(
       {
         dataset: "dishes",
-        registryVersion: "2026-01",
         select: ["dish_name", "sales_amount"],
         filter: { field: "store_label", op: "eq", value: "store:baoli" },
         sort: [{ field: "sales_amount", direction: "desc" }],
@@ -137,7 +136,6 @@ describe("read-only MCP tool handlers", () => {
         query: undefined,
         payload: {
           dataset: "dishes",
-          registryVersion: "2026-01",
           select: ["dish_name", "sales_amount"],
           filter: { field: "store_label", op: "eq", value: "store:baoli" },
           sort: [{ field: "sales_amount", direction: "desc" }],
@@ -290,7 +288,6 @@ describe("read-only MCP tool handlers", () => {
   it("returns structured coverage API success envelopes without interpretation", async () => {
     const coverage = {
       dataset: "business",
-      registryVersion: "business.2026-09-04.v2",
       metadataPolicy: "window",
       sources: [
         {
