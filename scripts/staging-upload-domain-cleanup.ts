@@ -31,6 +31,10 @@ export interface StagingUploadDomainCleanupAdapter {
   verifyPostCleanup(plan: StagingUploadDomainCleanupPlan): Promise<PostCleanupCounts>;
 }
 
+export interface StagingUploadDomainCleanupRuntimeAdapter extends StagingUploadDomainCleanupAdapter {
+  close(): Promise<void>;
+}
+
 export interface RunStagingUploadDomainCleanupInput {
   argv: string[];
   adapter: StagingUploadDomainCleanupAdapter;
@@ -39,7 +43,7 @@ export interface RunStagingUploadDomainCleanupInput {
 
 export interface RunStagingUploadDomainCleanupCliInput {
   argv: string[];
-  createAdapter(): Promise<StagingUploadDomainCleanupAdapter>;
+  createAdapter(): Promise<StagingUploadDomainCleanupRuntimeAdapter>;
   log(value: unknown): void;
 }
 
@@ -88,11 +92,15 @@ export async function runStagingUploadDomainCleanupCli(
   validateStagingUploadDomainCleanupOptions(options);
   const adapter = await input.createAdapter();
 
-  return await runStagingUploadDomainCleanup({
-    argv: input.argv,
-    adapter,
-    log: input.log
-  });
+  try {
+    return await runStagingUploadDomainCleanup({
+      argv: input.argv,
+      adapter,
+      log: input.log
+    });
+  } finally {
+    await adapter.close();
+  }
 }
 
 function assertZeroPostCleanupCounts(counts: PostCleanupCounts): void {

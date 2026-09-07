@@ -6,7 +6,7 @@ import type {
   QdrantPointTarget,
   StagingUploadDomainCleanupPlan
 } from "./staging-upload-domain-cleanup-support.js";
-import type { StagingUploadDomainCleanupAdapter } from "./staging-upload-domain-cleanup.js";
+import type { StagingUploadDomainCleanupRuntimeAdapter } from "./staging-upload-domain-cleanup.js";
 
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]);
 
@@ -70,11 +70,14 @@ export interface StagingUploadDomainCleanupProviders {
 export function createStagingUploadDomainCleanupAdapter(
   env: NodeJS.ProcessEnv = process.env,
   providers?: StagingUploadDomainCleanupProviders
-): StagingUploadDomainCleanupAdapter {
+): StagingUploadDomainCleanupRuntimeAdapter {
   const runtime = providers ?? createRuntimeProviders(env);
   const ids = (values: string[]) => ({ where: { id: { in: values } } });
 
   return {
+    async close() {
+      await runtime.prisma.$disconnect();
+    },
     async collectInventory() {
       const documents = await runtime.prisma.document.findMany({
         select: { id: true, storageObjectKey: true }

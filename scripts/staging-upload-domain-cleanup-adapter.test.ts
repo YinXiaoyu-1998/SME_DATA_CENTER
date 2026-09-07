@@ -9,6 +9,7 @@ import { buildStagingUploadDomainCleanupPlan } from "./staging-upload-domain-cle
 describe("repo-contained staging upload-domain cleanup adapter", () => {
   it("enumerates and deletes only exact DB, OSS, and Qdrant targets through injected providers", async () => {
     const prisma = {
+      $disconnect: vi.fn(async () => undefined),
       document: {
         findMany: vi.fn(async () => [{ id: "doc-1", storageObjectKey: "uploads/doc-1" }]),
         deleteMany: vi.fn(async () => ({})),
@@ -104,6 +105,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         })
       )
     ).resolves.toMatchObject({ storageObjects: 0 });
+    await adapter.close();
+    expect(prisma.$disconnect).toHaveBeenCalledOnce();
   });
 
   it("fails closed when OSS verification reports anything except an identified not-found error", async () => {
