@@ -3,6 +3,8 @@ import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@enterp
 export interface WorkerRuntimeLimits {
   maxDocumentChars: number;
   maxChunksPerDocument: number;
+  structuredImportBatchInsertSize: number;
+  structuredImportTransactionTimeoutMs: number;
   workerConcurrency: number;
   workerLeaseSeconds: number;
   workerPollIntervalMs: number;
@@ -19,6 +21,16 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
     maxChunksPerDocument: parsePositiveSafeInteger(env, "MAX_CHUNKS_PER_DOCUMENT", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxChunksPerDocument
     }),
+    structuredImportBatchInsertSize: parsePositiveSafeInteger(
+      env,
+      "STRUCTURED_IMPORT_BATCH_INSERT_SIZE",
+      { defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportBatchInsertSize }
+    ),
+    structuredImportTransactionTimeoutMs: parsePositiveSafeInteger(
+      env,
+      "STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS",
+      { defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportTransactionTimeoutMs }
+    ),
     workerConcurrency: parsePositiveSafeInteger(env, "WORKER_CONCURRENCY", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.workerConcurrency
     }),

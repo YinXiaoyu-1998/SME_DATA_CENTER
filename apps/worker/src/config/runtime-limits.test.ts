@@ -6,6 +6,8 @@ describe("worker runtime limits", () => {
     expect(loadWorkerRuntimeLimits({})).toEqual({
       maxDocumentChars: 5_000_000,
       maxChunksPerDocument: 5_000,
+      structuredImportBatchInsertSize: 500,
+      structuredImportTransactionTimeoutMs: 120_000,
       workerConcurrency: 2,
       workerLeaseSeconds: 120,
       workerPollIntervalMs: 1_000,
@@ -20,6 +22,8 @@ describe("worker runtime limits", () => {
       loadWorkerRuntimeLimits({
         MAX_DOCUMENT_CHARS: "1",
         MAX_CHUNKS_PER_DOCUMENT: "2",
+        STRUCTURED_IMPORT_BATCH_INSERT_SIZE: "8",
+        STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS: "9",
         WORKER_CONCURRENCY: "3",
         WORKER_LEASE_SECONDS: "4",
         WORKER_POLL_INTERVAL_MS: "100",
@@ -30,6 +34,8 @@ describe("worker runtime limits", () => {
     ).toEqual({
       maxDocumentChars: 1,
       maxChunksPerDocument: 2,
+      structuredImportBatchInsertSize: 8,
+      structuredImportTransactionTimeoutMs: 9,
       workerConcurrency: 3,
       workerLeaseSeconds: 4,
       workerPollIntervalMs: 100,

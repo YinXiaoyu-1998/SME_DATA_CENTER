@@ -11,7 +11,9 @@ export async function main(): Promise<void> {
   loadDotenv({ quiet: true, override: false });
   const runtimeLimits = loadWorkerRuntimeLimits(process.env);
 
-  const repository = createPrismaProcessingWorkerRepository();
+  const repository = createPrismaProcessingWorkerRepository(undefined, {
+    structuredImportTransactionTimeoutMs: runtimeLimits.structuredImportTransactionTimeoutMs
+  });
   const storage = createStorageAdapter(process.env);
   const evidenceIndexer = createEvidenceIndexerFromEnv();
 
@@ -20,6 +22,7 @@ export async function main(): Promise<void> {
       repository,
       storage,
       evidenceIndexer,
+      structuredImportBatchInsertSize: runtimeLimits.structuredImportBatchInsertSize,
       leaseSeconds: runtimeLimits.workerLeaseSeconds,
       maxAttempts: runtimeLimits.workerMaxAttempts,
       retryBaseMs: runtimeLimits.workerRetryBaseMs,
