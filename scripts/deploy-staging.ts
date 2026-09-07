@@ -302,6 +302,19 @@ while IFS= read -r image; do
       continue
       ;;
     "${BASH_DOLLAR}{api_repository}:"*|"${BASH_DOLLAR}{worker_repository}:"*)
+      image_has_running_container=0
+      while IFS= read -r container_id; do
+        test -n "$container_id" || continue
+        if [ "$(docker inspect --format '{{.State.Running}}' "$container_id")" = "true" ]; then
+          image_has_running_container=1
+        else
+          docker container rm "$container_id"
+        fi
+      done < <(docker ps -aq --filter "ancestor=$image")
+      if [ "$image_has_running_container" = "1" ]; then
+        echo "Retaining stale image used by a running container: $image" >&2
+        continue
+      fi
       docker image rm "$image"
       ;;
   esac
