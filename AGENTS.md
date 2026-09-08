@@ -11,7 +11,7 @@
 ## Branch And PR Rules
 
 - Define each task's base/lead branch in its plan or PR. If none is specified, verify and use the repository's current default branch; never rely on a permanently fixed historical lead branch.
-- When subagents are useful and available, prefer model `gpt-5.5` with `high` reasoning effort. If that combination is unavailable or unsupported, use the configured/default suitable model rather than blocking the task.
+- Default every spawned subagent and every new Codex task/chat/thread created for project work to model `gpt-5.5` with `high` reasoning effort. An explicit user-selected model or effort takes precedence; if this combination is unavailable, use the best supported configured model without blocking the task and report the fallback.
 - Subagents must use their own branch and stay inside their assigned day/workstream.
 - Update `docs/implementation/progress.md` at session start/end and for meaningful work milestones only: branch/worktree start, baseline verification, phase/day/workstream completion, merged PR evidence, blocker/readiness state changes, recovery audits, and final handoff state.
 - Do not use `docs/implementation/progress.md` as a running design-decision log or chat transcript. During requirements grilling or design discovery, record detailed decisions in a dedicated design document, ADR, API contract draft, or implementation plan section, then add at most one concise progress summary when that design artifact is created or materially completed.
