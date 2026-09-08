@@ -1569,7 +1569,6 @@ The shared source-document visibility policy is: disabled employees are denied; 
 - `endDate`
 - `sourceOssObjectKey`
 - `sourceContentHash`
-- `schemaRegistryVersion`
 - `status`: pending, validating, applied, failed, rejected, canceled
 - `idempotencyKey`
 - `requestFingerprint`
