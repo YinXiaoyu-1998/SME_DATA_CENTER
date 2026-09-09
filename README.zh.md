@@ -102,10 +102,11 @@ npm run worker:once
 ## 正式员工 MCP
 
 正式员工路径是通过固定版本的本机 stdio launcher
-`enterprise-hub-mcp-launcher@0.2.7` 访问远程 `https://api.smedatacenter.xyz`。双归属的
+`enterprise-hub-mcp-launcher@0.2.8` 访问远程 `https://api.smedatacenter.xyz`。双归属的
 `skills/enterprise-hub-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载
 权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `enterprise_hub_login`、
-`enterprise_hub_logout` 和 `enterprise_hub_auth_status`，且绝不操作服务基础设施。
+`enterprise_hub_logout`、`enterprise_hub_auth_status` 和仅查询当前身份的
+`enterprise_hub_get_current_user`，且绝不操作服务基础设施。
 
 正式 identity、公开远程 MCP 和固定 launcher 已部署；launcher npm 包已发布。macOS Codex
 浏览器登录、系统安全存储、tool discovery 和已认证调用验收已通过；Windows Codex 以及

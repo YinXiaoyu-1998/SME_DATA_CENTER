@@ -22,14 +22,15 @@ report generator, dashboard service, or skill execution platform.
 The official target profile must be actionable enough for an agent to:
 
 1. Verify Node.js 22 or newer plus npm, then install only
-   `enterprise-hub-mcp-launcher@0.2.7` with `npm install --prefix ... --save-exact` in the approved
+   `enterprise-hub-mcp-launcher@0.2.8` with `npm install --prefix ... --save-exact` in the approved
    macOS/Windows versioned directory; never install `latest` or self-update.
 2. Back up and idempotently configure only the invoking agent's local **stdio** entry. Codex uses
    its verified `mcp list`/`get`/`add`/`remove` CLI and bundled macOS binary fallback; OpenClaw uses
    `mcp add`/`set` and `mcp doctor --probe`, not direct remote OAuth storage.
-3. Use `enterprise_hub_auth_status`, `enterprise_hub_login`, and `enterprise_hub_logout`; every
-   login uses Device Authorization and never exposes passwords, tokens, device codes, headers, or
-   secure-store records to the agent/model.
+3. Use `enterprise_hub_auth_status`, `enterprise_hub_login`, `enterprise_hub_logout`, and the
+   zero-input `enterprise_hub_get_current_user`; account lookup returns only the authenticated
+   employee's display name, email, and role, while login never exposes passwords, tokens, device
+   codes, headers, or secure-store records to the agent/model.
 4. Treat browser cancellation, `authentication_required`, `service_unavailable`, `forbidden`, and
    `launcher_upgrade_required` as distinct typed outcomes. Retry the original operation exactly
    once after successful browser login.
@@ -55,13 +56,14 @@ The official target profile must be actionable enough for an agent to:
 
 - [x] Skill name is exactly `enterprise-hub-mcp`.
 - [x] Skill includes only the official remote employee profile.
-- [x] Skill pins `enterprise-hub-mcp-launcher@0.2.7`, rejects `latest`, and never directs launcher self-update.
+- [x] Skill pins `enterprise-hub-mcp-launcher@0.2.8`, rejects `latest`, and never directs launcher self-update.
 - [x] Skill contains no real tokens, passwords, customer data, endpoint secrets, or service-account material.
 - [x] Skill says MCP tools must use the HTTP API and inherit API authorization.
 - [x] Skill forbids direct DB/storage reads for data access.
 - [x] Skill forbids agent-visible passwords, raw bearer tokens, authorization codes, session files, or token persistence.
 - [x] Skill forbids claiming inaccessible documents exist.
 - [x] Skill forbids client-supplied org scope.
+- [x] Skill uses the self-scoped current-user tool without employee selectors, internal IDs, labels, or credentials.
 - [x] Skill explains import exact replay and non-enumerating import-status 404 behavior.
 - [x] Skill explains evidence cursor continuation and `INVALID_CURSOR`/`CURSOR_EXPIRED` handling.
 - [x] Skill forbids executing Skill Directory entries.

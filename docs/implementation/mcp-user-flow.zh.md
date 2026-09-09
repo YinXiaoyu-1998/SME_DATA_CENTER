@@ -1,7 +1,7 @@
 # Enterprise Hub MCP 用户流程
 
 > **正式实现：** 本文描述已经实现的员工流程。固定版本 npm 包
-> `enterprise-hub-mcp-launcher@0.2.7` 已发布，正式服务已部署到 staging；原生 macOS/Windows
+> `enterprise-hub-mcp-launcher@0.2.8` 已发布，正式服务已部署到 staging；原生 macOS/Windows
 > 包验收和无头 Linux 闭环已通过，用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍待补齐。
 > 不存在 development login 或 JWT 兼容路径。
 
@@ -9,7 +9,7 @@
 
 本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
 `enterprise-hub-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
-launcher 发行包为 `enterprise-hub-mcp-launcher@0.2.7`。
+launcher 发行包为 `enterprise-hub-mcp-launcher@0.2.8`。
 
 ## 参与者与凭证边界
 
@@ -89,6 +89,8 @@ sequenceDiagram
 
 ## 业务 Tool 使用
 
+- 员工询问“当前登录的是哪个账号”时，零参数调用 `enterprise_hub_get_current_user`，只返回其
+  display name、email 和 role；不得从本机配置推断身份，也不得接受 employee selector。
 - 上传前列出标签，只使用返回的 label key；不得传入 organization ID。
 - 只读取用户选择或明确指定文件的精确字节。优先使用 launcher 的 `file.encoding="path"` 和绝对
   本地路径；仅对小文件使用 inline base64。不得重建、规范化、翻译或重输内容。
