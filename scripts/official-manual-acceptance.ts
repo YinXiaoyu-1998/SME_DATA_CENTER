@@ -27,7 +27,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.2.7";
+const LAUNCHER_VERSION = "0.2.8";
 const DEFAULT_LABEL_KEY = "store:baoli";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
@@ -39,6 +39,12 @@ interface ParsedArgs {
 
 interface ToolTextResult {
   [key: string]: unknown;
+}
+
+interface CurrentUserResult extends ToolTextResult {
+  displayName: string;
+  email: string;
+  role: string;
 }
 
 interface EvidenceUploadResult extends ToolTextResult {
@@ -175,6 +181,23 @@ async function runAcceptance(
     const status = await callJson<ToolTextResult>(client, "enterprise_hub_auth_status", {});
     if (status["authenticated"] !== true) {
       throw new Error("Official launcher is not authenticated. Run enterprise_hub_login first.");
+    }
+
+    const currentUser = await callJson<CurrentUserResult>(
+      client,
+      "enterprise_hub_get_current_user",
+      {}
+    );
+    const expectedEmails = new Set([
+      `manual-full-flow-${run.runId}@example.invalid`,
+      `manual-acceptance-${run.runId}@example.invalid`
+    ]);
+    if (
+      !expectedEmails.has(currentUser.email) ||
+      !currentUser.displayName.trim() ||
+      currentUser.role !== "employee"
+    ) {
+      throw new Error("Current-user MCP result did not match the synthetic acceptance account.");
     }
 
     const labels = await callJson<ToolTextResult>(client, "enterprise_hub_list_labels", {});
@@ -322,6 +345,7 @@ async function runAcceptance(
       runId: run.runId,
       serviceOrigin: SERVICE_ORIGIN,
       launcherVersion: LAUNCHER_VERSION,
+      currentUserVerified: true,
       labelKey: DEFAULT_LABEL_KEY,
       evidenceDocuments: evidenceUploads.map((upload) => upload.document.documentId),
       structuredDocument: structuredUpload.document.documentId,

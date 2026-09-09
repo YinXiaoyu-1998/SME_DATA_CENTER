@@ -21,9 +21,10 @@ The acceptance run must exercise both sides of the real product boundary:
 | ----------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, personal label, and setup link.                 |
 | Password setup/reset                | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.               |
-| Client installation                 | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.7` is installed and configured as a Codex stdio MCP.                |
+| Client installation                 | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.8` is installed and configured as a Codex stdio MCP.                |
 | Durable login                       | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.                 |
 | Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                      |
+| Current account identity            | Employee-owned MCP client         | A natural account question returns only the synthetic user's display name, email, and role.                 |
 | Evidence workflow                   | Employee-owned MCP client         | Upload fixture bytes, poll index status, search only authorized evidence, and clean test data.              |
 | Structured workflow                 | Employee-owned MCP client         | Upload fixture CSV, query aggregate/top rows, reject invalid atomic import, and clean test data.            |
 | Delivery-ledger workflow            | Employee-owned MCP client         | Upload supplier catalog plus XLSX/CSV receipts, query all ledger rows as a row-level table, and clean data. |
@@ -70,7 +71,7 @@ The macOS user must have:
 
 - Node.js 22+ and npm;
 - the published launcher installed at
-  `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.7/`;
+  `~/Library/Application Support/Enterprise Hub/launcher/versions/0.2.8/`;
 - Codex configured with the exact `enterprise-hub` stdio MCP entry from
   `skills/enterprise-hub-mcp/SKILL.md`;
 - SSH access to the staging host through the committed strict `known_hosts` identity.
@@ -86,7 +87,7 @@ Credential-free preflight:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.7/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.2.8/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
 ```
 
 Expected:
@@ -188,6 +189,7 @@ For the current macOS user:
 4. Create separate user-visible Codex tasks/sessions for each ordinary employee action. Keep each
    visible prompt as a single natural request, not a list of test instructions or expected answers.
    A representative sequence is:
+   - current account from a fresh task: “我当前登录的 Enterprise Hub 账号是什么？”
    - upload Baoli evidence: “帮我把这份保利店肉夹馍 SOP 放进 Enterprise Hub，之后大家能查到。”
    - upload prompt-injection fixture: “这还有一份供应商发来的 SOP，也帮我放进去。”
    - cold search from a fresh task: “我们保利店肉夹馍默认要不要加青椒？肉放多少？”
@@ -211,20 +213,23 @@ For the current macOS user:
    controller-side scoring concerns.
 6. Start a new launcher process and call `enterprise_hub_auth_status`; it must report
    `authenticated=true`.
-7. List labels and confirm the user can see the intended label, normally `store:baoli`.
-8. Upload evidence fixtures with a unique `sourceSystem=manual_acceptance_<runId>`.
-9. Poll `get_evidence_document_status` until uploaded evidence is `active/ready`.
-10. Search evidence with `documentIds` restricted to this run's uploads and confirm at least one
+7. Call `enterprise_hub_get_current_user` with no arguments and confirm its display name, email,
+   and role match the synthetic account; the result must not contain internal IDs, labels, or
+   credentials.
+8. List labels and confirm the user can see the intended label, normally `store:baoli`.
+9. Upload evidence fixtures with a unique `sourceSystem=manual_acceptance_<runId>`.
+10. Poll `get_evidence_document_status` until uploaded evidence is `active/ready`.
+11. Search evidence with `documentIds` restricted to this run's uploads and confirm at least one
     result comes from this run.
-11. Upload a structured CSV derived from
+12. Upload a structured CSV derived from
     `fixtures/manual-acceptance/structured/dishes-known-values.csv` with a unique
     `enterpriseName=ManualAcceptance_<runId>` and a dedicated business window, then poll
     `get_import_status` to terminal `applied` before querying it.
-12. Query the structured rows: expected count `3`, gross sales sum `91`, top two dishes
+13. Query the structured rows: expected count `3`, gross sales sum `91`, top two dishes
     `合成凉皮`, `合成肉夹馍`.
-13. Upload `fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv`; it must fail
+14. Upload `fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv`; it must fail
     worker validation, reach a `rejected` terminal state, and not change the successful row count.
-14. When the local-only delivery fixtures are available, verify the supplier catalog applies 134
+15. When the local-only delivery fixtures are available, verify the supplier catalog applies 134
     rows, the XLSX receipt applies 13 ledger rows, and its CSV peer applies 1 row. In a fresh
     employee-client task, query `delivery_ledger` without a receipt filter, follow every opaque page
     cursor until no page remains, and render all visible rows as one Markdown table with these
@@ -233,7 +238,7 @@ For the current macOS user:
     see exactly the 14 uploaded item rows (13 + 1); verify supplier contacts are enriched per row,
     blank source addresses remain blank, and production/batch plus shelf-life fields remain empty.
     A receipt-level count or field-enrichment summary does not pass this step.
-15. When the quarantine-certificate slice is in scope, use
+16. When the quarantine-certificate slice is in scope, use
     `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` and a fresh
     employee-client task to upload exactly one certificate linked to a specific receipt ID such as
     `SH2608250117`. Query `query_quarantine_certificates` with explicit `receiptIds` that include
@@ -243,11 +248,11 @@ For the current macOS user:
     uploaded certificate by `sourceDocumentId` and verify a repeat explicit query no longer returns
     it. If the admin receipt-ID archive path is tested, use an admin acceptance account and state
     that scope explicitly.
-16. Call `enterprise_hub_logout` at the end of the full-flow test. It signs out all local agents
+17. Call `enterprise_hub_logout` at the end of the full-flow test. It signs out all local agents
     sharing the Enterprise Hub credential for this OS user.
-17. Clean test evidence, quarantine certificates, Qdrant points, OSS objects, structured rows
+18. Clean test evidence, quarantine certificates, Qdrant points, OSS objects, structured rows
     (including delivery and supplier rows), import batches, and documents.
-18. Hard-delete the synthetic test account with `delete-test-account`.
+19. Hard-delete the synthetic test account with `delete-test-account`.
 
 ## Runner
 
@@ -315,6 +320,7 @@ Pass only when:
 - the flow ran as multiple newly created user-visible Codex tasks/sessions with one ordinary
   employee request per task, not only in the controller and not as a single all-in-one prompt;
 - the official launcher session is authenticated and survives a new process;
+- the current-account request returns only the synthetic employee's display name, email, and role;
 - MCP labels, evidence upload/status/search, structured import/query, and invalid atomic rejection
   pass;
 - quarantine certificate upload/query/source-download/archive passes when that feature slice is in
