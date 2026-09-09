@@ -106,7 +106,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.2.7");
+    expect(manifest.version).toBe("0.2.8");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -137,6 +137,7 @@ describe("published launcher artifact", () => {
           "enterprise_hub_login",
           "enterprise_hub_logout",
           "enterprise_hub_auth_status",
+          "enterprise_hub_get_current_user",
           "describe_structured_dataset_coverage"
         ])
       );

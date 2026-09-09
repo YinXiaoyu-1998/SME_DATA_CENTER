@@ -29,6 +29,7 @@ try {
           "root_mcp_launcher_script",
           "api_http_post_mcp_endpoint",
           "launcher_stdio_to_http_proxy",
+          "mcp_current_authenticated_user",
           "mcp_structured_pending_status",
           "mcp_delivery_supplier_contract_and_delegation"
         ]
@@ -102,7 +103,7 @@ async function assertRootLauncherScript(): Promise<void> {
   ]);
 
   assert(
-    launcherVersion.stdout.trim() === "0.2.7",
+    launcherVersion.stdout.trim() === "0.2.8",
     "mcp:launcher should invoke the official launcher CLI at the expected pinned version."
   );
 }

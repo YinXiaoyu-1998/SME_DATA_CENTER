@@ -27,6 +27,7 @@ async function authenticateTestAccessToken(token: string) {
 const employee: AuthenticatedEmployee = {
   id: "emp_mcp",
   orgId: "default-org",
+  displayName: "MCP Manager",
   email: "mcp.employee@example.com",
   role: "manager",
   disabled: false,
@@ -36,6 +37,7 @@ const employee: AuthenticatedEmployee = {
 const adminEmployee: AuthenticatedEmployee = {
   id: "emp_mcp_admin",
   orgId: "default-org",
+  displayName: "MCP Administrator",
   email: "mcp.admin@example.com",
   role: "admin",
   disabled: false,
@@ -708,6 +710,47 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
     ).map((tool) => tool.name);
     expect(toolNames).toEqual([...ENTERPRISE_HUB_MCP_TOOL_NAMES]);
+  });
+
+  it("returns only the current authenticated employee's self-profile", async () => {
+    app = buildLiveMcpApiTestServer();
+    const request = (id: number) => ({
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: {
+        name: "enterprise_hub_get_current_user",
+        arguments: {}
+      }
+    });
+
+    const managerResponse = await postMcp(
+      app,
+      request(20),
+      { "mcp-protocol-version": "2025-11-25" },
+      { employee }
+    );
+    const adminResponse = await postMcp(
+      app,
+      request(21),
+      { "mcp-protocol-version": "2025-11-25" },
+      { employee: adminEmployee }
+    );
+
+    expect(parseToolPayload(managerResponse.payload).payload).toEqual({
+      user: {
+        displayName: "MCP Manager",
+        email: "mcp.employee@example.com",
+        role: "manager"
+      }
+    });
+    expect(parseToolPayload(adminResponse.payload).payload).toEqual({
+      user: {
+        displayName: "MCP Administrator",
+        email: "mcp.admin@example.com",
+        role: "admin"
+      }
+    });
   });
 
   it("serves live labels, structured coverage, structured query, evidence search, and status tools through MCP framing", async () => {

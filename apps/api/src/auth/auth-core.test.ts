@@ -63,6 +63,7 @@ class MemoryAuthRepository implements AuthCoreRepository {
     identityId: "identity-1",
     employeeId: "employee-1",
     orgId: "org-1",
+    displayName: "Test Person",
     email: "person@example.com",
     role: "employee",
     labels: ["person:employee-1"],
@@ -507,6 +508,21 @@ describe("AuthCore", () => {
       employeeDisabled: true
     };
     await expect(core.authenticateAccessToken("eh_at_token", oauthAudit)).resolves.toBeNull();
+  });
+
+  it("returns the authenticated employee display name for self-profile consumers", async () => {
+    const repository = new MemoryAuthRepository();
+    const core = new AuthCore(repository);
+
+    await expect(core.authenticateAccessToken("eh_at_token", oauthAudit)).resolves.toEqual({
+      id: "employee-1",
+      orgId: "org-1",
+      displayName: "Test Person",
+      email: "person@example.com",
+      role: "employee",
+      disabled: false,
+      labels: ["person:employee-1"]
+    });
   });
 
   it("passes route-derived audit metadata into access-token authentication", async () => {

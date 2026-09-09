@@ -25,6 +25,7 @@ export const LAUNCHER_BOOTSTRAP_TOOL_NAMES = [
 ] as const;
 export type LauncherBootstrapToolName = (typeof LAUNCHER_BOOTSTRAP_TOOL_NAMES)[number];
 export type LauncherBusinessToolName =
+  | "enterprise_hub_get_current_user"
   | "enterprise_hub_list_labels"
   | "enterprise_hub_list_skills"
   | "search_document_evidence"

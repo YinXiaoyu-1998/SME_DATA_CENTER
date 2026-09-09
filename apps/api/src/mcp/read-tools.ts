@@ -13,6 +13,7 @@ import {
 import type { McpRequestContext } from "./tool-handlers.js";
 
 export const READ_ONLY_MCP_TOOL_NAMES = [
+  "enterprise_hub_get_current_user",
   "enterprise_hub_list_labels",
   "enterprise_hub_list_skills",
   "search_document_evidence",
@@ -63,6 +64,12 @@ function routeForReadOnlyTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "enterprise_hub_get_current_user":
+      return {
+        method: "GET",
+        path: "/me",
+        mapSuccess: currentUserFromMe
+      };
     case "enterprise_hub_list_labels":
       return {
         method: "GET",
@@ -136,6 +143,34 @@ function routeForReadOnlyTool(
         path: `/v1/structured/imports/${encodeURIComponent(String(input["importBatchId"]))}`
       };
   }
+}
+
+function currentUserFromMe(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || !("employee" in value)) {
+    throw new Error("Invalid current-user response.");
+  }
+
+  const employee = value.employee;
+  if (
+    typeof employee !== "object" ||
+    employee === null ||
+    !("displayName" in employee) ||
+    typeof employee.displayName !== "string" ||
+    !("email" in employee) ||
+    typeof employee.email !== "string" ||
+    !("role" in employee) ||
+    !["admin", "manager", "employee"].includes(String(employee.role))
+  ) {
+    throw new Error("Invalid current-user response.");
+  }
+
+  return {
+    user: {
+      displayName: employee.displayName,
+      email: employee.email,
+      role: employee.role
+    }
+  };
 }
 
 function optionalString(value: unknown): string | undefined {

@@ -112,6 +112,7 @@ export const launcherUploadFileInputShape: z.ZodRawShape = {
   filePath: localFilePath.optional()
 };
 
+const currentUserInputSchema = z.object({}).strict();
 const listLabelsInputSchema = z.object({}).strict();
 
 const listSkillsInputSchema = z
@@ -401,6 +402,7 @@ const sourceDocumentDownloadUrlInputSchema = z
   .strict();
 
 export const ENTERPRISE_HUB_MCP_TOOL_NAMES = [
+  "enterprise_hub_get_current_user",
   "enterprise_hub_list_labels",
   "enterprise_hub_list_skills",
   "search_document_evidence",
@@ -470,6 +472,15 @@ export const MCP_ERROR_CODES = [
 export type McpErrorCode = (typeof MCP_ERROR_CODES)[number];
 
 export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
+  defineToolContract({
+    name: "enterprise_hub_get_current_user",
+    title: "Get current Enterprise Hub user",
+    description:
+      "Return the display name, email, and role of the employee authenticated for this Enterprise Hub MCP request.",
+    inputSchema: currentUserInputSchema,
+    inputFields: [],
+    resultShape: ["user: { displayName, email, role }"]
+  }),
   defineToolContract({
     name: "enterprise_hub_list_labels",
     title: "List Enterprise Hub labels",

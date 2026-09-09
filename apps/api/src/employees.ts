@@ -11,6 +11,7 @@ export interface EmployeeRepository {
 interface PrismaEmployeeRow {
   id: string;
   orgId: string;
+  displayName: string;
   email: string;
   role: EmployeeRoleName;
   disabled: boolean;
@@ -25,6 +26,7 @@ function toAuthenticatedEmployee(employee: PrismaEmployeeRow): AuthenticatedEmpl
   return {
     id: employee.id,
     orgId: employee.orgId,
+    displayName: employee.displayName,
     email: employee.email,
     role: employee.role,
     disabled: employee.disabled,

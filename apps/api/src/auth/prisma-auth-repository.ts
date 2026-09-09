@@ -856,6 +856,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
         identityId: token.identityId,
         employeeId: token.employeeId,
         orgId: token.orgId,
+        displayName: token.employee.displayName,
         email: token.employee.email,
         role: token.employee.role,
         labels: token.employee.employeeLabels.map(({ label }) => label.key).sort(),

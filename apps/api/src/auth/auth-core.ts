@@ -28,6 +28,7 @@ export interface AccessAuthenticationRecord {
   identityId: string;
   employeeId: string;
   orgId: string;
+  displayName: string;
   email: string;
   role: EmployeeRoleName;
   labels: string[];
@@ -615,6 +616,7 @@ export class AuthCore {
     return {
       id: record.employeeId,
       orgId: record.orgId,
+      displayName: record.displayName,
       email: record.email,
       role: record.role,
       disabled: false,

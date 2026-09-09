@@ -29,10 +29,24 @@ function createCapturingDelegate(
 
       return {
         statusCode: 200,
-        payload: JSON.stringify({
-          ok: true,
-          role: request.headers.authorization === "Bearer admin-token" ? "admin" : "manager"
-        })
+        payload: JSON.stringify(
+          request.url === "/me"
+            ? {
+                employee: {
+                  id: "employee-1",
+                  orgId: "default-org",
+                  displayName: "Current Employee",
+                  email: "current@example.com",
+                  role: "manager",
+                  disabled: false,
+                  labels: ["all_staff"]
+                }
+              }
+            : {
+                ok: true,
+                role: request.headers.authorization === "Bearer admin-token" ? "admin" : "manager"
+              }
+        )
       };
     }
   };
@@ -43,6 +57,7 @@ function createCapturingDelegate(
 describe("read-only MCP tool handlers", () => {
   it("exports exactly the read-only core business tools", () => {
     expect(READ_ONLY_MCP_TOOL_NAMES).toEqual([
+      "enterprise_hub_get_current_user",
       "enterprise_hub_list_labels",
       "enterprise_hub_list_skills",
       "search_document_evidence",
@@ -62,6 +77,7 @@ describe("read-only MCP tool handlers", () => {
   it("maps read-only tool inputs to the authenticated API routes", async () => {
     const { calls, handlers } = createCapturingDelegate();
 
+    const currentUser = await handlers.enterprise_hub_get_current_user?.({}, {} as never);
     await handlers.enterprise_hub_list_labels?.({}, {} as never);
     await handlers.enterprise_hub_list_skills?.(
       { q: "菜单", category: "menu-analysis" },
@@ -106,6 +122,7 @@ describe("read-only MCP tool handlers", () => {
     expect(
       calls.map(({ method, url, query, payload }) => ({ method, url, query, payload }))
     ).toEqual([
+      { method: "GET", url: "/me", query: undefined, payload: undefined },
       { method: "GET", url: "/labels", query: undefined, payload: undefined },
       {
         method: "GET",
@@ -175,8 +192,49 @@ describe("read-only MCP tool handlers", () => {
         payload: undefined
       }
     ]);
+    expect(parseToolResult(currentUser!)).toEqual({
+      user: {
+        displayName: "Current Employee",
+        email: "current@example.com",
+        role: "manager"
+      }
+    });
     expect(calls.every((call) => call.headers.authorization === "Bearer manager-token")).toBe(true);
     expect(JSON.stringify(calls)).not.toContain("undefined");
+  });
+
+  it("fails closed when the internal current-user response is malformed", async () => {
+    const handlers = createReadOnlyMcpToolHandlers({
+      bearerToken: "secret-token",
+      audit,
+      delegationProof,
+      async inject() {
+        return {
+          statusCode: 200,
+          payload: JSON.stringify({
+            employee: {
+              email: "current@example.com",
+              role: "manager",
+              credential: "must-not-escape"
+            }
+          })
+        };
+      }
+    });
+
+    const result = await handlers.enterprise_hub_get_current_user?.({}, {} as never);
+
+    expect(result?.isError).toBe(true);
+    expect(parseToolResult(result!)).toEqual({
+      error: {
+        code: "ENTERPRISE_HUB_API_ERROR",
+        message: "Enterprise Hub API request failed.",
+        retryable: true,
+        requestId: "req_mcp_123"
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("must-not-escape");
+    expect(JSON.stringify(result)).not.toContain("secret-token");
   });
 
   it.each(["delivery_ledger", "supplier_catalog"] as const)(

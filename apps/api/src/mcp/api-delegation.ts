@@ -37,6 +37,7 @@ export interface DelegateJsonApiRequest {
   path: string;
   query?: Record<string, string | undefined>;
   body?: unknown;
+  mapSuccess?: (value: unknown) => unknown;
 }
 
 export async function delegateJsonApiRequest(
@@ -75,7 +76,7 @@ export async function delegateJsonApiRequest(
     }
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      return jsonToolResult(parsed.value);
+      return jsonToolResult(request.mapSuccess ? request.mapSuccess(parsed.value) : parsed.value);
     }
 
     return apiErrorToolResult(parsed.value);
