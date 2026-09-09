@@ -2,11 +2,20 @@
 
 ## Quality gate scope
 
-Production JavaScript dependency advisories are enforced through
-`npm audit --omit=dev` against the public npm registry. Runtime image advisories
-are enforced with Trivy against the OS package layer only, using `--ignore-unfixed`
-so the gate blocks actionable fixed-version vulnerabilities rather than Debian
-tracker entries that cannot be patched by rebuilding or running `apt-get upgrade`.
+The Phase 3 quality workflow reports third-party vulnerability advisories without blocking
+PRs or main quality runs, regardless of severity. Production JavaScript dependencies are
+scanned with `npm audit --omit=dev`; runtime images are scanned with Trivy against the OS
+package layer using `--ignore-unfixed`. All three runtime images are checked even when an
+earlier image has findings. Audit findings or scan errors remain visible in step logs,
+warnings, and the job summary, but only the two audit steps allow failure. Dependency
+installation, image builds, tests, typecheck, lint, and formatting remain blocking.
+
+This is a quality-workflow policy. Direct `npm run audit:production` / `audit:report`,
+launcher publishing, and staging deployment retain their existing enforcement. To restore
+blocking quality audits, remove `continue-on-error` from the two audit steps.
+
+The entries below are historical; active exceptions are defined solely in
+`config/dependency-risk-acceptance.json`.
 
 ## ExcelJS read-only XLSX exception
 
