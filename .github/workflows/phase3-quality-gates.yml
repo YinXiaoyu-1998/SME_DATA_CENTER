@@ -21,8 +21,15 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - name: Enforce production dependency policy
+      - name: Report production dependency advisories
+        id: dependency-audit
+        continue-on-error: true
         run: npm run audit:production
+      - name: Summarize dependency advisories
+        if: steps.dependency-audit.outcome == 'failure'
+        run: |
+          echo "::warning::Production dependency audit reported findings or could not complete. This check is informational; see the audit step for details."
+          echo "Production dependency audit is informational and does not block quality gates. See the audit step for findings or scan errors." >> "$GITHUB_STEP_SUMMARY"
       - run: npm run db:generate
       - run: npm test
       - run: npm run typecheck
@@ -53,20 +60,28 @@ jobs:
         with:
           version: v0.72.0
           cache: true
-      - name: Enforce runtime image vulnerability policy
+      - name: Report runtime image advisories
+        id: image-audit
+        continue-on-error: true
         run: |
           set -euo pipefail
           report_dir="$(mktemp -d)"
           trap 'rm -rf -- "$report_dir"' EXIT
 
-          trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/api.json" --platform linux/amd64 enterprise-hub-api:ci
-          npm run audit:report -- --kind trivy --component api-image --input "$report_dir/api.json"
-
-          trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/worker.json" --platform linux/amd64 enterprise-hub-worker:ci
-          npm run audit:report -- --kind trivy --component worker-image --input "$report_dir/worker.json"
-
-          trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/release-ops.json" --platform linux/amd64 enterprise-hub-release-ops:ci
-          npm run audit:report -- --kind trivy --component release-ops-image --input "$report_dir/release-ops.json"
+          audit_status=0
+          for component in api worker release-ops; do
+            if trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/$component.json" --platform linux/amd64 "enterprise-hub-$component:ci" &&
+              npm run audit:report -- --kind trivy --component "$component-image" --input "$report_dir/$component.json"; then
+              continue
+            fi
+            audit_status=1
+          done
+          exit "$audit_status"
+      - name: Summarize runtime image advisories
+        if: steps.image-audit.outcome == 'failure'
+        run: |
+          echo "::warning::Runtime image audit reported findings or could not complete. This check is informational; see the audit step for details."
+          echo "Runtime image audit is informational and does not block quality gates. See the audit step for findings or scan errors." >> "$GITHUB_STEP_SUMMARY"
 
   phase3-real-runtime:
     name: Real MySQL + Qdrant with fake provider

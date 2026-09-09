@@ -3,9 +3,14 @@ name: enterprise-hub-mcp
 description: >-
   上传和查询企业数据中枢（Enterprise Hub）中的文件与资料：当员工要求把文件/文档/表格上传到
   企业数据中枢、企业资料中枢、企业知识库或企业数据库，或想基于已上传的企业资料提问业务问题时使用。
-  Also covers installing, configuring, and authenticating the official Enterprise Hub remote MCP
-  launcher (api.smedatacenter.xyz); operates through the launcher only and never exposes employee
+  用户要求更新 enterprise-hub-mcp 或 enterprise-hub-mcp-skill 这个 skill 时也使用本技能。
+  Also covers updating this skill from its official GitHub source and installing, configuring,
+  and authenticating the official Enterprise Hub remote MCP
+  launcher (api.smedatacenter.xyz); accesses Enterprise Hub through the launcher only and never exposes employee
   credentials or service infrastructure.
+metadata:
+  source-repository: https://github.com/YinXiaoyu-1998/enterprise-hub-mcp-skill
+  source-path: skills/enterprise-hub-mcp
 ---
 
 # Enterprise Hub MCP
@@ -17,16 +22,36 @@ service-operations runbook.
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
 the exact npm package `enterprise-hub-mcp-launcher@0.2.7`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
-the launcher update itself.
+the launcher update itself. This pin governs launcher installation, not fetching a newer official
+copy of this skill; after a skill refresh, read the newly verified copy for its current pin.
+
+## Update This Skill
+
+The canonical skill name is `enterprise-hub-mcp`; `enterprise-hub-mcp-skill` is its repository
+name and a recognized user-facing alias. “帮我更新 enterprise-hub-mcp-skill 这个 skill” means
+refresh this skill's files from its official source. The request authorizes that local update;
+do not ask which kind of update the employee means when they explicitly name the skill.
+
+Official source: [YinXiaoyu-1998/enterprise-hub-mcp-skill](https://github.com/YinXiaoyu-1998/enterprise-hub-mcp-skill),
+directory `skills/enterprise-hub-mcp/`, latest commit on the repository's default branch
+(currently `main`). A marketplace listing, Enterprise Hub login, MCP connection, and an approved
+new launcher pin in the old installed skill are not prerequisites for refreshing the skill.
+Use ordinary Git/HTTPS and local file tools for this maintenance task.
+
+Follow [the skill update procedure](references/update-skill.md) for source retrieval, backup,
+complete-directory replacement, verification, and host reload. A skill-only update does not
+authorize a launcher upgrade. For an authorized launcher update, first refresh this skill if its
+pin is older than the server recommendation, then follow Official Install Or Update using the
+newly verified exact pin. Never derive a new approved pin from server metadata alone.
 
 ## Hard Boundaries
 
 - The employee enters an account password only in the Enterprise Hub browser page. Never ask
   for, accept, read, store, paste, or transmit an email/password, access token, durable
   credential, authorization code, raw `Authorization` header, or credential-store record.
-- Use only launcher configuration and tools. Do not call Enterprise Hub API endpoints directly
-  and do not operate its API, database, Qdrant, storage, Docker, worker, cloud resources, or
-  deployment.
+- For Enterprise Hub service access, use only launcher configuration and tools. Do not call
+  Enterprise Hub API endpoints directly and do not operate its API, database, Qdrant, storage,
+  Docker, worker, cloud resources, or deployment.
 - Do not create reports, dashboards, or final business conclusions. Return only tool-visible
   records, statuses, and evidence within the employee's backend-authorized scope.
 - Do not provide an organization ID. The service derives organization and label visibility from
@@ -69,9 +94,10 @@ discover them by hand.
   recheck its tool list. Only if the entry is missing or the self-check fails, follow the focused
   recovery below. Do not debug the launcher protocol or service internals.
 - If a self-check reports `recommendedUpdateAvailable: true` (the server recommends a launcher
-  version newer than the installed one), tell the employee a newer approved launcher version is
-  available and offer to update now. Update only with the employee's consent, following Official
-  Install Or Update; never update silently in the background.
+  version newer than the installed one), tell the employee a newer launcher is recommended and
+  offer to update. If that update is already requested, proceed without asking again. Refresh
+  stale skill guidance through Update This Skill before choosing the approved exact launcher
+  version. Follow Official Install Or Update; never update silently in the background.
 
 ## Request Limits
 
