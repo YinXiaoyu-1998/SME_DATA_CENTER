@@ -5,6 +5,7 @@ import { createApiServerContext } from "./app-context.js";
 const employee: AuthenticatedEmployee = {
   id: "emp_1",
   orgId: "default-org",
+  displayName: "Employee One",
   email: "employee@example.com",
   role: "admin",
   disabled: false,

@@ -18,6 +18,7 @@ import {
 const employee: AuthenticatedEmployee = {
   id: "emp_admin",
   orgId: "default-org",
+  displayName: "Admin User",
   email: "admin@example.com",
   role: "admin",
   disabled: false,
@@ -27,6 +28,7 @@ const employee: AuthenticatedEmployee = {
 const baoliEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_manager",
   orgId: "default-org",
+  displayName: "Baoli Manager",
   email: "baoli.manager@example.com",
   role: "manager",
   disabled: false,

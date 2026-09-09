@@ -24,6 +24,7 @@ const contractsByName = new Map(
 );
 
 const validInputs = {
+  enterprise_hub_get_current_user: {},
   enterprise_hub_list_labels: {},
   enterprise_hub_list_skills: { q: "menu", category: "menu-analysis" },
   search_document_evidence: {
@@ -101,6 +102,10 @@ const validInputs = {
 } satisfies Record<EnterpriseHubMcpToolName, Record<string, unknown>>;
 
 const invalidInputCases = [
+  {
+    tool: "enterprise_hub_get_current_user",
+    cases: [{ label: "cross-employee selector", input: { employeeId: "someone-else" } }]
+  },
   {
     tool: "enterprise_hub_list_labels",
     cases: [{ label: "non-empty input", input: { unknown: true } }]
@@ -391,8 +396,9 @@ const invalidInputCases = [
 }>;
 
 describe("Enterprise Hub MCP contract", () => {
-  it("exports the stable Phase 3 business tool names without local-session tools", () => {
+  it("exports the stable business tool names without local-session tools", () => {
     expect(ENTERPRISE_HUB_MCP_TOOL_NAMES).toEqual([
+      "enterprise_hub_get_current_user",
       "enterprise_hub_list_labels",
       "enterprise_hub_list_skills",
       "search_document_evidence",
@@ -415,6 +421,16 @@ describe("Enterprise Hub MCP contract", () => {
     ).toHaveLength(1);
 
     expect(ENTERPRISE_HUB_MCP_TOOL_NAMES).not.toContain("enterprise_hub_login_dev");
+  });
+
+  it("defines a zero-input current-user tool with a minimal self-profile result", () => {
+    const currentUser = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+      (contract) => String(contract.name) === "enterprise_hub_get_current_user"
+    );
+
+    expect(currentUser?.inputSchema.safeParse({}).success).toBe(true);
+    expect(currentUser?.inputSchema.safeParse({ employeeId: "someone-else" }).success).toBe(false);
+    expect(currentUser?.resultShape).toEqual(["user: { displayName, email, role }"]);
   });
 
   it("describes structured uploads as queued work and status as the async completion view", () => {
@@ -441,7 +457,7 @@ describe("Enterprise Hub MCP contract", () => {
     }
   });
 
-  it("accepts valid business inputs for all Phase 3 tools", () => {
+  it("accepts valid business inputs for all business tools", () => {
     for (const toolName of ENTERPRISE_HUB_MCP_TOOL_NAMES) {
       expect(parseTool(toolName, validInputs[toolName])).toEqual(validInputs[toolName]);
     }
@@ -610,7 +626,7 @@ describe("Enterprise Hub MCP contract", () => {
     ).toBe(false);
   });
 
-  it("rejects table-driven invalid schema cases for every Phase 3 tool", () => {
+  it("rejects table-driven invalid schema cases for every business tool", () => {
     expect(invalidInputCases.map((entry) => entry.tool)).toEqual(ENTERPRISE_HUB_MCP_TOOL_NAMES);
 
     for (const { tool, cases } of invalidInputCases) {

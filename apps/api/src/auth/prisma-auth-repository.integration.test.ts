@@ -534,6 +534,7 @@ describeIntegration("Prisma auth core repository", () => {
 
     expect(await repository.authenticateAccessToken("d".repeat(64), now, oauthAudit)).toMatchObject(
       {
+        displayName: "Test Person",
         identityDisabled: false,
         employeeDisabled: false,
         labels: ["person:auth_test_employee"]

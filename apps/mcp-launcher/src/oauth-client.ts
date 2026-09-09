@@ -2,7 +2,7 @@ import * as oauth from "oauth4webapi";
 import semver from "semver";
 import { LauncherTypedError, type OAuthTokenClient } from "./session.js";
 
-export const LAUNCHER_VERSION = "0.2.7";
+export const LAUNCHER_VERSION = "0.2.8";
 const CLIENT: oauth.Client = { client_id: "enterprise-hub-desktop-launcher" };
 const VERSION_HEADER = { "x-enterprise-hub-launcher-version": LAUNCHER_VERSION };
 const REQUEST_TIMEOUT_MS = 10_000;

@@ -12,6 +12,7 @@ export async function authenticateTestAccessToken(token: string) {
 export const adminEmployee: AuthenticatedEmployee = {
   id: "emp_admin",
   orgId: "default-org",
+  displayName: "Admin User",
   email: "admin@example.com",
   role: "admin",
   disabled: false,
@@ -21,6 +22,7 @@ export const adminEmployee: AuthenticatedEmployee = {
 export const disabledEmployee: AuthenticatedEmployee = {
   id: "emp_disabled",
   orgId: "default-org",
+  displayName: "Disabled User",
   email: "disabled@example.com",
   role: "employee",
   disabled: true,
@@ -30,6 +32,7 @@ export const disabledEmployee: AuthenticatedEmployee = {
 export const baoliManagerEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_manager",
   orgId: "default-org",
+  displayName: "Baoli Manager",
   email: "baoli.manager@example.com",
   role: "manager",
   disabled: false,
@@ -39,6 +42,7 @@ export const baoliManagerEmployee: AuthenticatedEmployee = {
 export const suzhouManagerEmployee: AuthenticatedEmployee = {
   id: "emp_suzhou_manager",
   orgId: "default-org",
+  displayName: "Suzhou Manager",
   email: "suzhou.manager@example.com",
   role: "manager",
   disabled: false,
@@ -48,6 +52,7 @@ export const suzhouManagerEmployee: AuthenticatedEmployee = {
 export const lijieEmployee: AuthenticatedEmployee = {
   id: "emp_lijie",
   orgId: "default-org",
+  displayName: "Li Jie",
   email: "lijie@example.com",
   role: "employee",
   disabled: false,
@@ -57,6 +62,7 @@ export const lijieEmployee: AuthenticatedEmployee = {
 export const orgAAdminEmployee: AuthenticatedEmployee = {
   id: "emp_org_a_admin",
   orgId: "org-a",
+  displayName: "Organization A Admin",
   email: "org-a.admin@example.com",
   role: "admin",
   disabled: false,
@@ -66,6 +72,7 @@ export const orgAAdminEmployee: AuthenticatedEmployee = {
 export const orgBAdminEmployee: AuthenticatedEmployee = {
   id: "emp_org_b_admin",
   orgId: "org-b",
+  displayName: "Organization B Admin",
   email: "org-b.admin@example.com",
   role: "admin",
   disabled: false,
@@ -75,6 +82,7 @@ export const orgBAdminEmployee: AuthenticatedEmployee = {
 export const labelLessEmployee: AuthenticatedEmployee = {
   id: "emp_label_less",
   orgId: "default-org",
+  displayName: "Label-less Employee",
   email: "label.less@example.com",
   role: "employee",
   disabled: false,
@@ -84,6 +92,7 @@ export const labelLessEmployee: AuthenticatedEmployee = {
 export const unlabeledAdminEmployee: AuthenticatedEmployee = {
   id: "emp_unlabeled_admin",
   orgId: "default-org",
+  displayName: "Unlabeled Admin",
   email: "unlabeled.admin@example.com",
   role: "admin",
   disabled: false,

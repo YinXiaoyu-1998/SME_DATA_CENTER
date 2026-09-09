@@ -41,6 +41,7 @@ async function authenticateTestAccessToken(token: string) {
 const baoliManagerEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_manager",
   orgId: "default-org",
+  displayName: "Baoli Manager",
   email: "baoli.manager@example.com",
   role: "manager",
   disabled: false,
@@ -50,6 +51,7 @@ const baoliManagerEmployee: AuthenticatedEmployee = {
 const labelLessEmployee: AuthenticatedEmployee = {
   id: "emp_label_less",
   orgId: "default-org",
+  displayName: "Label-less Employee",
   email: "label.less@example.com",
   role: "employee",
   disabled: false,

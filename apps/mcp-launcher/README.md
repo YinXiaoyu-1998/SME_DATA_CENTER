@@ -6,6 +6,10 @@ are never accepted through command arguments, environment variables, or MCP tool
 
 Commands: `serve`, `self-check`, `logout`, and `--version`.
 
+The `serve` command exposes the authenticated `enterprise_hub_get_current_user` tool so an
+employee can confirm the current Enterprise Hub display name, email, and role without exposing
+credentials or accepting a selector for another account.
+
 `self-check` writes one safe JSON object with `ok`, `launcherVersion`, `serviceOrigin`, `platform`,
 `secureStore`, `server`, and `mcp` fields. `logout` always attempts local cleanup and writes
 `remoteRevocationConfirmed` and `localCredentialRemoved` booleans. Neither command writes
