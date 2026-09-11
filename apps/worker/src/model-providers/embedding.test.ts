@@ -5,6 +5,38 @@ import {
 } from "./embedding.js";
 
 describe("embedding providers", () => {
+  it("batches large embedding requests and keeps the original order", async () => {
+    const batchSizes: number[] = [];
+    const provider = createOpenAICompatibleEmbeddingProvider({
+      apiKey: "sk-test-secret",
+      baseUrl: "https://provider.example/v1",
+      model: "embedding-model",
+      version: "embedding-model@phase3.retrieval.v2",
+      dimension: 3,
+      externalModelEgressAcknowledged: true,
+      fetch: async (_url, init) => {
+        const body = JSON.parse(String(init?.body)) as { input: string[] };
+        batchSizes.push(body.input.length);
+
+        return new Response(
+          JSON.stringify({
+            data: body.input.map((text) => ({ embedding: [text.length, 0, 0] }))
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+    });
+    const texts = Array.from({ length: 23 }, (_, index) => "文".repeat(index + 1));
+
+    const result = await provider.embedTexts(texts);
+
+    expect(batchSizes).toEqual([10, 10, 3]);
+    expect(result.embeddings).toHaveLength(23);
+    expect(result.embeddings.map((embedding) => embedding[0])).toEqual(
+      texts.map((text) => text.length)
+    );
+  });
+
   it("produces deterministic fake embeddings with the configured dimension", async () => {
     const provider = createFakeEmbeddingProvider({
       model: "fake-embedding-v1",

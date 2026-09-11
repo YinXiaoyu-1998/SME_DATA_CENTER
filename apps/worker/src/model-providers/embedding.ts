@@ -64,31 +64,43 @@ export function createOpenAICompatibleEmbeddingProvider(input: {
     async embedTexts(texts) {
       assertExternalModelEgressAcknowledged(input.externalModelEgressAcknowledged);
 
-      const response = await fetchImpl(`${normalizeBaseUrl(input.baseUrl)}/embeddings`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${input.apiKey}`,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: input.model,
-          input: [...texts],
-          encoding_format: "float"
-        })
-      });
+      const embeddings: number[][] = [];
 
-      if (!response.ok) {
-        throw new Error(`Embedding provider request failed: HTTP ${response.status}`);
-      }
+      // Provider-side input caps (DashScope rejects batches above 10) make one request per chunk
+      // unsafe, so inputs are submitted in bounded batches and reassembled in order.
+      for (
+        let startIndex = 0;
+        startIndex < texts.length;
+        startIndex += EMBEDDING_REQUEST_BATCH_SIZE
+      ) {
+        const batch = texts.slice(startIndex, startIndex + EMBEDDING_REQUEST_BATCH_SIZE);
+        const response = await fetchImpl(`${normalizeBaseUrl(input.baseUrl)}/embeddings`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${input.apiKey}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            model: input.model,
+            input: [...batch],
+            encoding_format: "float"
+          })
+        });
 
-      const payload = (await response.json()) as OpenAIEmbeddingResponse;
-      const embeddings = payload.data.map((item) => item.embedding);
+        if (!response.ok) {
+          throw new Error(`Embedding provider request failed: HTTP ${response.status}`);
+        }
 
-      for (const embedding of embeddings) {
-        if (embedding.length !== input.dimension) {
-          throw new Error(
-            `Embedding provider returned dimension ${embedding.length}; expected ${input.dimension}.`
-          );
+        const payload = (await response.json()) as OpenAIEmbeddingResponse;
+
+        for (const item of payload.data) {
+          if (item.embedding.length !== input.dimension) {
+            throw new Error(
+              `Embedding provider returned dimension ${item.embedding.length}; expected ${input.dimension}.`
+            );
+          }
+
+          embeddings.push(item.embedding);
         }
       }
 
@@ -99,6 +111,8 @@ export function createOpenAICompatibleEmbeddingProvider(input: {
     }
   };
 }
+
+const EMBEDDING_REQUEST_BATCH_SIZE = 10;
 
 export function assertExternalModelEgressAcknowledged(acknowledged: boolean): void {
   if (!acknowledged) {
