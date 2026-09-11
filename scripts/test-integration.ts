@@ -86,6 +86,11 @@ interface EvidenceSearchResponse {
     chunkId: string;
     documentId: string;
     text: string;
+    sectionText: string;
+    sectionTruncated: boolean;
+    source: {
+      sectionHeadingPath: string[];
+    };
   }>;
   page: {
     nextCursor: string | null;
@@ -537,6 +542,23 @@ try {
         result.documentId === evidenceUpload.document.documentId && result.text.includes("差评处理")
     ),
     "Evidence search should return indexed evidence chunks."
+  );
+  const matchedSection = evidenceSearch.results.find(
+    (result) => result.documentId === evidenceUpload.document.documentId
+  );
+  assert(
+    typeof matchedSection?.sectionText === "string" &&
+      matchedSection.sectionText.includes("差评处理") &&
+      matchedSection.sectionText.length >= (matchedSection.text?.length ?? 0),
+    "Evidence search should expand each hit into its own heading section."
+  );
+  assert(
+    new Set(
+      evidenceSearch.results.map(
+        (result) => `${result.documentId}:${result.source.sectionHeadingPath.join("/")}`
+      )
+    ).size === evidenceSearch.results.length,
+    "Evidence search should return at most one result per document section."
   );
   const firstEvidencePage = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
     method: "POST",
@@ -1887,7 +1909,7 @@ function workerLeaseIndexingResult() {
     embeddingModel: "fake-embedding-v1",
     embeddingVersion: "fake-embedding-v1@phase3.worker-lease.integration",
     embeddingDimension: 8,
-    lexicalIndexVersion: "lexical.v1",
+    lexicalIndexVersion: "lexical.v2",
     rerankProvider: null,
     rerankModel: null,
     rerankVersion: null,

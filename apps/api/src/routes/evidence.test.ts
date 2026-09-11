@@ -77,7 +77,7 @@ describe("evidence routes", () => {
         },
         documentIndex: {
           status: "pending",
-          retrievalConfigVersion: "phase3.retrieval.v1"
+          retrievalConfigVersion: "phase3.retrieval.v2"
         }
       });
       expect(documentRepository.documents[0]).toMatchObject({
@@ -358,7 +358,7 @@ describe("evidence routes", () => {
       },
       documentIndex: {
         status: "ready",
-        retrievalConfigVersion: "phase3.retrieval.v1"
+        retrievalConfigVersion: "phase3.retrieval.v2"
       }
     });
     expect(adminResponse.statusCode).toBe(200);
@@ -415,7 +415,7 @@ describe("evidence routes", () => {
         }
       ],
       retrieval: {
-        retrievalConfigVersion: "phase3.retrieval.v1",
+        retrievalConfigVersion: "phase3.retrieval.v2",
         rerankStatus: "enabled"
       },
       requestId: expect.any(String)

@@ -29,6 +29,9 @@ export function createEvidenceSearchRepository(): EvidenceSearchRepository & {
             documentId: "doc_evidence",
             documentTitle: "客户反馈处理 SOP.docx",
             text: "差评处理 SOP：先联系客户，再登记处置结果。",
+            sectionText:
+              "## 差评处理\n\n差评处理 SOP：先联系客户，再登记处置结果。\n\n超过 24 小时未回复需升级到店长。",
+            sectionTruncated: false,
             source: {
               fileType: "docx",
               sectionHeadingPath: ["客户反馈", "差评处理"],
@@ -48,10 +51,10 @@ export function createEvidenceSearchRepository(): EvidenceSearchRepository & {
           hasMore: false
         },
         retrieval: {
-          retrievalConfigVersion: "phase3.retrieval.v1",
-          embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
-          lexicalIndexVersion: "lexical.v1",
-          rerankVersion: "fake-rerank-v1@phase3.retrieval.v1",
+          retrievalConfigVersion: "phase3.retrieval.v2",
+          embeddingVersion: "fake-embedding-v1@phase3.retrieval.v2",
+          lexicalIndexVersion: "lexical.v2",
+          rerankVersion: "fake-rerank-v1@phase3.retrieval.v2",
           rerankStatus: "enabled"
         },
         warnings: []

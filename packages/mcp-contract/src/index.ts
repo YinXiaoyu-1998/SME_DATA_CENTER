@@ -512,7 +512,12 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       { name: "limit", required: false, description: "1-50 result limit." },
       { name: "cursor", required: false, description: "Opaque pagination cursor." }
     ],
-    resultShape: ["results[]: evidence chunks and source metadata", "page", "retrieval", "warnings"]
+    resultShape: [
+      "results[]: one authorized section per hit, with the matched chunk text, expanded sectionText, and source metadata",
+      "page",
+      "retrieval",
+      "warnings"
+    ]
   }),
   defineToolContract({
     name: "list_structured_datasets",

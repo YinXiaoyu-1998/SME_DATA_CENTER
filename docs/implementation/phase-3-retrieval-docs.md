@@ -2095,6 +2095,76 @@ The existing `phase-3-readiness.md` has been renamed to `staging-readiness.md` a
 
 ## Continue Updating This File
 
+## Retrieval Quality Amendment (2026-09-11)
+
+Phase A of the retrieval quality work changed four things at once, all inside the existing
+1600-character chunking and the shared Qdrant collection:
+
+1. **Chunk overlap.** `createEvidenceChunks` carries the trailing blocks of a flushed chunk
+   (default 200 characters, `EVIDENCE_CHUNK_OVERLAP_CHARS`) into the next chunk, and never across a
+   heading boundary. Pathological long-block pieces carry a character-level tail.
+2. **Section dedup.** `search_document_evidence` now returns one result per
+   `(documentId, headingPath)` instead of one per chunk. Heading-less documents keep chunk identity.
+3. **Section expansion.** Each result gains `sectionText` and `sectionTruncated`, built from the
+   sibling chunks of the matched chunk's own heading path (capped by `EVIDENCE_SECTION_MAX_CHARS`
+   and `EVIDENCE_SECTION_MAX_CHUNKS`). Scoring is unchanged: rerank still scores the matched chunk.
+4. **Chinese tokenizer.** A new `@enterprise-hub/lexical` package owns the single
+   `tokenizeForSparseVector` used by both the index side and the query side (dictionary-based
+   `segmentit` segmentation with a curated stop-word list). `LEXICAL_INDEX_VERSION` moves to
+   `lexical.v2`. A native (N-API) segmenter was evaluated first and rejected: this repository's
+   Docker dependency stages install with `npm ci --workspace <app>`, which silently drops
+   platform-specific optional packages, so `@node-rs/jieba` could not load inside the API and
+   worker images. The pure-JS library installs and loads under that same install path on
+   `node:22-bookworm-slim`.
+
+`RETRIEVAL_CONFIG_VERSION` moves to `phase3.retrieval.v2`. Because chunk identity and the Qdrant
+payload filter both include that version, a reindex is a version switch rather than an in-place
+update: old points stay invisible and can be deleted once the corpus is re-uploaded.
+
+### Real-stack measurement
+
+The in-repo `phase3:golden` harness is an in-memory simulation and cannot see the parser, the
+chunker, or the tokenizer. `npm run test:retrieval:compare` (`scripts/retrieval-quality-compare.ts`)
+replaces it for this purpose: it ingests `fixtures/retrieval-quality/corpus.json` (9 synthetic
+Chinese documents, 35 labeled queries) through the real upload endpoint and worker, then measures
+the real search service plus the dense and lexical branches directly against Qdrant.
+
+Measured with the real DashScope provider (`text-embedding-v4` + `qwen3-rerank`), same corpus and
+same harness on `main` and on the Phase A branch. The baseline run needed the embedding-batching fix
+below applied in its worktree first, because the baseline cannot index a document with more than ten
+chunks at all; that fix is orthogonal to retrieval ranking.
+
+| Metric                              | Baseline (`main`) | Phase A    |
+| ----------------------------------- | ----------------- | ---------- |
+| hybrid hitRate@5                    | 1.0000            | 1.0000     |
+| hybrid MRR@10                       | 0.9479            | 0.9479     |
+| dense-only hitRate@5                | 1.0000            | 1.0000     |
+| **lexical-only hitRate@5**          | **0.0417**        | **0.8750** |
+| **lexical-only MRR@10**             | **0.0417**        | **0.7525** |
+| permission / archived / stale leaks | 0 / 0 / 0         | 0 / 0 / 0  |
+| indexed chunks                      | 49                | 49         |
+
+The lexical branch is the decisive number: before the tokenizer change it was effectively inert on
+Chinese text (4% hit rate, because a whole Chinese clause collapsed into one token), and it is now
+usable. Hybrid hit@5 was already 1.0 on this corpus, so the fused result had no headroom to improve;
+the change buys robustness rather than a higher top-line score on an easy set.
+
+### Phase B gate
+
+Phase B (sparse IDF modifier plus a new Qdrant collection) is gated on the Phase A real-provider
+report: it proceeds only when `lexical-only` hitRate@5 is below 70%. Phase A measured 87.5%, so the
+gate is **not** triggered and Phase B is deferred with this measurement as the reason. Re-open it if
+a later corpus shows the lexical branch regressing, or if real traffic is dominated by exact-code
+and rare-term lookups.
+
+### Known limitation found during verification
+
+The OpenAI-compatible embedding adapter submitted every chunk of a document in one request.
+DashScope rejects embedding batches larger than 10 inputs, so any evidence document producing more
+than 10 chunks failed to index and retried forever. The adapter now submits inputs in bounded
+batches of 10 and reassembles them in order. The in-repo fixtures were small enough to stay under
+the cap, which is why manual acceptance never surfaced it.
+
 For every remaining grilling decision:
 
 1. Append the confirmed decision here.

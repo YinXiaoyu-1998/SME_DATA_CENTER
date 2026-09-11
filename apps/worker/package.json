@@ -7,6 +7,7 @@
   "dependencies": {
     "@enterprise-hub/db": "0.0.0",
     "@enterprise-hub/domain": "^0.0.0",
+    "@enterprise-hub/lexical": "0.0.0",
     "@enterprise-hub/storage": "^0.0.0",
     "@enterprise-hub/structured-ingestion": "^0.0.0",
     "@prisma/adapter-mariadb": "7.9.1",

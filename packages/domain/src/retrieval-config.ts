@@ -80,7 +80,7 @@ const DEFAULT_FAKE_EMBEDDING_MODEL = "fake-embedding-v1";
 const DEFAULT_FAKE_RERANK_MODEL = "fake-rerank-v1";
 const FAKE_EMBEDDING_DIMENSION = 8;
 const OPENAI_COMPATIBLE_EMBEDDING_DIMENSION = 1536;
-const LEXICAL_INDEX_VERSION = "lexical.v1";
+const LEXICAL_INDEX_VERSION = "lexical.v2";
 
 export function buildRetrievalConfigSeed(
   input: RetrievalConfigSeedInput = {}

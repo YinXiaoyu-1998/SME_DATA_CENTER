@@ -55,7 +55,7 @@ describe("evidence indexer", () => {
           dimension: 8
         },
         lexical: {
-          version: "lexical.v1",
+          version: "lexical.v2",
           sparseModel: "qdrant-native-sparse-v1"
         },
         rerank: {
@@ -92,7 +92,7 @@ describe("evidence indexer", () => {
       embeddingModel: "fake-embedding-v1",
       embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
       embeddingDimension: 8,
-      lexicalIndexVersion: "lexical.v1",
+      lexicalIndexVersion: "lexical.v2",
       rerankProvider: "fake",
       rerankModel: "fake-rerank-v1",
       rerankVersion: "fake-rerank-v1@phase3.retrieval.v1"

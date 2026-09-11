@@ -1,7 +1,7 @@
 export const DEFAULT_QDRANT_URL = "http://127.0.0.1:6333";
 export const DEFAULT_QDRANT_COLLECTION_EVIDENCE = "enterprise_hub_evidence_local";
 export const DEFAULT_QDRANT_TIMEOUT_MS = 5_000;
-export const DEFAULT_RETRIEVAL_CONFIG_VERSION = "phase3.retrieval.v1";
+export const DEFAULT_RETRIEVAL_CONFIG_VERSION = "phase3.retrieval.v2";
 export const DEFAULT_LLM_PROVIDER = "fake";
 export const DEFAULT_LLM_MODEL = "fake-rerank";
 export const DEFAULT_LLM_EMBEDDING_MODEL = "fake-embedding";

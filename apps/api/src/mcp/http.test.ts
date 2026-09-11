@@ -303,6 +303,8 @@ function fakeEvidenceRepository(calls: EvidenceSearchInput[] = []): EvidenceSear
             documentId: "doc_evidence_status",
             documentTitle: "Evidence status doc",
             text: `result for ${input.query} as ${input.employee.email}`,
+            sectionText: `result for ${input.query} as ${input.employee.email}`,
+            sectionTruncated: false,
             source: {
               fileType: "md",
               sectionHeadingPath: ["Menu"],

@@ -13,7 +13,16 @@ import {
   type EvidenceSearchRetrievalMetadata,
   type RetrievalModelConfig
 } from "@enterprise-hub/domain";
+import { sparseVectorFromText } from "@enterprise-hub/lexical";
+import {
+  createPrismaEvidenceSectionExpander,
+  sectionKeyFromHeadingPath,
+  sourceLocationFromJson,
+  type EvidenceSectionExpander
+} from "./evidence-sections.js";
+export type { EvidenceSectionExpander } from "./evidence-sections.js";
 import { parseApiRetrievalRuntimeConfig } from "./config/retrieval-runtime.js";
+import { loadApiRuntimeLimits } from "./config/runtime-limits.js";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface EvidenceSearchFilters {
@@ -39,6 +48,8 @@ export interface EvidenceSearchResultItem {
   documentId: string;
   documentTitle: string;
   text: string;
+  sectionText: string;
+  sectionTruncated: boolean;
   source: {
     fileType: string | null;
     sectionHeadingPath: string[];
@@ -81,6 +92,8 @@ export interface QdrantEvidenceCandidate {
 
 export interface RevalidatedEvidenceCandidate extends QdrantEvidenceCandidate {
   documentTitle: string;
+  documentIndexId: string | null;
+  chunkIndex: number;
   fileType: string | null;
   sectionHeadingPath: string[];
   blockType: string | null;
@@ -133,6 +146,7 @@ export function createEvidenceSearchService(input: {
   qdrantSearcher: QdrantEvidenceSearcher;
   revalidator: EvidenceRevalidator;
   rerankProvider: EvidenceRerankProvider | null;
+  sectionExpander: EvidenceSectionExpander;
 }): EvidenceSearchRepository {
   return {
     async searchEvidence(searchInput) {
@@ -176,7 +190,7 @@ export function createEvidenceSearchService(input: {
         }
       }
 
-      const ordered = dedupeEvidenceCandidates(
+      const ordered = dedupeEvidenceCandidatesBySection(
         revalidated
           .map((candidate) => ({
             ...candidate,
@@ -200,6 +214,15 @@ export function createEvidenceSearchService(input: {
         candidates.length >= EVIDENCE_CANDIDATE_WINDOW
           ? ["EVIDENCE_CANDIDATE_WINDOW_TRUNCATED"]
           : [];
+      const expansions = await input.sectionExpander.expand(
+        visible.map((candidate) => ({
+          chunkId: candidate.chunkId,
+          documentIndexId: candidate.documentIndexId,
+          chunkIndex: candidate.chunkIndex,
+          sectionHeadingPath: candidate.sectionHeadingPath,
+          fallbackText: candidate.text
+        }))
+      );
 
       return {
         results: visible.map((candidate) => ({
@@ -207,6 +230,8 @@ export function createEvidenceSearchService(input: {
           documentId: candidate.documentId,
           documentTitle: candidate.documentTitle,
           text: candidate.text,
+          sectionText: expansions.get(candidate.chunkId)?.sectionText ?? candidate.text,
+          sectionTruncated: expansions.get(candidate.chunkId)?.sectionTruncated ?? false,
           source: {
             fileType: candidate.fileType,
             sectionHeadingPath: candidate.sectionHeadingPath,
@@ -231,15 +256,26 @@ export function createEvidenceSearchService(input: {
   };
 }
 
-function dedupeEvidenceCandidates(
+/**
+ * Keeps a single result per document section so callers do not receive several fragments of the
+ * same heading. Candidates arrive already sorted by score, so the first one seen wins. Documents
+ * without heading metadata (plain text uploads) keep chunk-level identity.
+ */
+function dedupeEvidenceCandidatesBySection(
   candidates: Array<RevalidatedEvidenceCandidate & { rerankScore: number | null }>
 ) {
   const seen = new Set<string>();
+
   return candidates.filter((candidate) => {
-    if (seen.has(candidate.chunkId)) {
+    const sectionKey = sectionKeyFromHeadingPath(candidate.sectionHeadingPath);
+    const key =
+      sectionKey.length > 0 ? `${candidate.documentId}${"\u001f"}${sectionKey}` : candidate.chunkId;
+
+    if (seen.has(key)) {
       return false;
     }
-    seen.add(candidate.chunkId);
+
+    seen.add(key);
     return true;
   });
 }
@@ -387,6 +423,7 @@ function stableJson(value: unknown): string {
 export function createPrismaEvidenceSearchRepository(): EvidenceSearchRepository {
   const prisma = prismaClientFromEnv();
   const runtime = parseApiRetrievalRuntimeConfig();
+  const runtimeLimits = loadApiRuntimeLimits(process.env);
   const retrievalConfig = loadActiveRetrievalConfig(
     buildRetrievalConfigSeed({
       retrievalConfigVersion: runtime.qdrant.retrievalConfigVersion,
@@ -430,7 +467,12 @@ export function createPrismaEvidenceSearchRepository(): EvidenceSearchRepository
       embeddingProvider
     }),
     revalidator: new PrismaEvidenceRevalidator(prisma),
-    rerankProvider
+    rerankProvider,
+    sectionExpander: createPrismaEvidenceSectionExpander({
+      prisma,
+      maxSectionChars: runtimeLimits.evidenceSectionMaxChars,
+      maxSectionChunks: runtimeLimits.evidenceSectionMaxChunks
+    })
   });
 
   return {
@@ -463,7 +505,7 @@ export class HttpQdrantEvidenceSearcher implements QdrantEvidenceSearcher {
       return [];
     }
 
-    const sparseVector = toSparseVector(input.query);
+    const sparseVector = sparseVectorFromText(input.query);
     const response = await this.queryQdrant(input, denseVector, sparseVector);
 
     return response.map((point) => qdrantPointToCandidate(point, input.retrievalConfig.version));
@@ -638,6 +680,8 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
         ...candidate,
         text: chunk.chunkText,
         documentTitle: chunk.document.title,
+        documentIndexId: chunk.documentIndexId,
+        chunkIndex: chunk.chunkIndex,
         fileType: chunk.document.fileType,
         sectionHeadingPath: sourceLocation.sectionHeadingPath,
         blockType: sourceLocation.blockType,
@@ -924,48 +968,6 @@ function qdrantPointToCandidate(
     text: stringPayload(payload, "text"),
     hybridScore: typeof point.score === "number" ? point.score : 0,
     matchedBy: ["dense", "lexical"]
-  };
-}
-
-function sourceLocationFromJson(value: unknown): {
-  sectionHeadingPath: string[];
-  blockType: string | null;
-  pageNumber: number | null;
-} {
-  if (!isRecord(value)) {
-    return {
-      sectionHeadingPath: [],
-      blockType: null,
-      pageNumber: null
-    };
-  }
-
-  const headingPath = Array.isArray(value["sectionHeadingPath"])
-    ? value["sectionHeadingPath"].filter((item): item is string => typeof item === "string")
-    : [];
-  const blockTypes = Array.isArray(value["blockTypes"])
-    ? value["blockTypes"].filter((item): item is string => typeof item === "string")
-    : [];
-
-  return {
-    sectionHeadingPath: headingPath,
-    blockType: blockTypes[0] ?? null,
-    pageNumber: typeof value["pageNumber"] === "number" ? value["pageNumber"] : null
-  };
-}
-
-function toSparseVector(text: string): SparseVector {
-  const counts = new Map<number, number>();
-
-  for (const token of text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []) {
-    const index = Number.parseInt(sha256(token).slice(0, 7), 16);
-    counts.set(index, (counts.get(index) ?? 0) + 1);
-  }
-
-  const entries = [...counts.entries()].sort((first, second) => first[0] - second[0]);
-  return {
-    indices: entries.map(([index]) => index),
-    values: entries.map(([, count]) => count)
   };
 }
 

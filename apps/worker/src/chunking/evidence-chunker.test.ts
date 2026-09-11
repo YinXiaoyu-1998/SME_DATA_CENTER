@@ -125,4 +125,103 @@ describe("evidence chunker", () => {
     ).toBe(true);
     expect(result.chunks.every((chunk) => chunk.text.length <= 120)).toBe(true);
   });
+
+  it("carries trailing blocks into the next chunk without exceeding the chunk size", () => {
+    const sectionBlocks: EvidenceChunkerBlock[] = [1, 2, 3, 4].map((line) => ({
+      blockType: "paragraph",
+      headingPath: ["Sanitation"],
+      text: String(line).repeat(80),
+      sourceLocation: { startLine: line, endLine: line }
+    }));
+
+    const withoutOverlap = createEvidenceChunks({
+      documentId: "doc_overlap",
+      contentVersion: 1,
+      retrievalConfigVersion: "phase3.retrieval.v2",
+      blocks: sectionBlocks,
+      maxChunkChars: 170
+    });
+    const withOverlap = createEvidenceChunks({
+      documentId: "doc_overlap",
+      contentVersion: 1,
+      retrievalConfigVersion: "phase3.retrieval.v2",
+      blocks: sectionBlocks,
+      maxChunkChars: 170,
+      overlapChars: 80
+    });
+
+    expect(withoutOverlap.chunks).toHaveLength(2);
+    expect(withOverlap.chunks).toHaveLength(3);
+    expect(withOverlap.chunks.every((chunk) => chunk.text.length <= 170)).toBe(true);
+    expect(withOverlap.chunks[1]?.text.startsWith("2".repeat(80))).toBe(true);
+    expect(withOverlap.chunks[1]?.text.endsWith("3".repeat(80))).toBe(true);
+    expect(withOverlap.chunks[1]?.sourceLocations).toEqual([
+      { startLine: 2, endLine: 2 },
+      { startLine: 3, endLine: 3 }
+    ]);
+  });
+
+  it("never carries overlap across a heading boundary", () => {
+    const result = createEvidenceChunks({
+      documentId: "doc_sections",
+      contentVersion: 1,
+      retrievalConfigVersion: "phase3.retrieval.v2",
+      maxChunkChars: 190,
+      overlapChars: 90,
+      blocks: [
+        {
+          blockType: "paragraph",
+          headingPath: ["First"],
+          text: "a".repeat(90),
+          sourceLocation: { startLine: 1, endLine: 1 }
+        },
+        {
+          blockType: "paragraph",
+          headingPath: ["First"],
+          text: "b".repeat(90),
+          sourceLocation: { startLine: 2, endLine: 2 }
+        },
+        {
+          blockType: "paragraph",
+          headingPath: ["Second"],
+          text: "c".repeat(90),
+          sourceLocation: { startLine: 3, endLine: 3 }
+        },
+        {
+          blockType: "paragraph",
+          headingPath: ["Second"],
+          text: "d".repeat(90),
+          sourceLocation: { startLine: 4, endLine: 4 }
+        }
+      ]
+    });
+
+    expect(result.chunks).toHaveLength(2);
+    expect(result.chunks[0]?.headingPath).toEqual(["First"]);
+    expect(result.chunks[0]?.text.includes("c")).toBe(false);
+    expect(result.chunks[1]?.headingPath).toEqual(["Second"]);
+    expect(result.chunks[1]?.text.includes("b")).toBe(false);
+  });
+
+  it("applies character-level overlap to pathological long block pieces within the chunk size", () => {
+    const result = createEvidenceChunks({
+      documentId: "doc_long_overlap",
+      contentVersion: 1,
+      retrievalConfigVersion: "phase3.retrieval.v2",
+      maxChunkChars: 120,
+      overlapChars: 40,
+      blocks: [
+        {
+          blockType: "paragraph",
+          headingPath: ["Long Policy"],
+          text: "policy ".repeat(80).trim(),
+          sourceLocation: { startLine: 1, endLine: 1 }
+        }
+      ]
+    });
+
+    expect(result.chunks.length).toBeGreaterThan(2);
+    expect(result.chunks.every((chunk) => chunk.text.length <= 120)).toBe(true);
+    expect(result.chunks[1]?.text.startsWith(result.chunks[0]?.text.slice(-40) ?? "")).toBe(true);
+  });
 });

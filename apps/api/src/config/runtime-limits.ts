@@ -11,6 +11,8 @@ export interface ApiRuntimeLimits {
   maxXlsxCompressionRatio: number;
   structuredImportBatchInsertSize: number;
   structuredImportTransactionTimeoutMs: number;
+  evidenceSectionMaxChars: number;
+  evidenceSectionMaxChunks: number;
 }
 
 export function loadApiRuntimeLimits(env: NodeJS.ProcessEnv): ApiRuntimeLimits {
@@ -48,6 +50,12 @@ export function loadApiRuntimeLimits(env: NodeJS.ProcessEnv): ApiRuntimeLimits {
       env,
       "STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS",
       { defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportTransactionTimeoutMs }
-    )
+    ),
+    evidenceSectionMaxChars: parsePositiveSafeInteger(env, "EVIDENCE_SECTION_MAX_CHARS", {
+      defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.evidenceSectionMaxChars
+    }),
+    evidenceSectionMaxChunks: parsePositiveSafeInteger(env, "EVIDENCE_SECTION_MAX_CHUNKS", {
+      defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.evidenceSectionMaxChunks
+    })
   };
 }

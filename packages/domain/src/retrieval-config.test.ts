@@ -85,7 +85,7 @@ describe("retrieval config seed and loader", () => {
     expect(toEvidenceSearchRetrievalMetadata(active)).toEqual({
       retrievalConfigVersion: "phase3.retrieval.v1",
       embeddingVersion: "embedding-model@phase3.retrieval.v1",
-      lexicalIndexVersion: "lexical.v1",
+      lexicalIndexVersion: "lexical.v2",
       rerankVersion: "rerank-model@phase3.retrieval.v1",
       rerankStatus: "enabled"
     });

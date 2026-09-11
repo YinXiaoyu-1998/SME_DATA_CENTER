@@ -1087,3 +1087,73 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
+
+## 2026-09-11 - retrieval quality Phase A (lead agent)
+
+Branch: `codex/retrieval-quality-phase-a` (base `main@1f61f23`).
+
+What changed:
+
+- Evidence chunk overlap: `createEvidenceChunks` carries trailing whole blocks whose combined trimmed
+  length fits `EVIDENCE_CHUNK_OVERLAP_CHARS` (default 200) into the next chunk of the same heading
+  path, never across a heading boundary. Pathological long-block pieces carry a character-level tail
+  while staying within the chunk size.
+- Section-level evidence results: `search_document_evidence` returns one result per
+  `(documentId, headingPath)`, keeps the highest-scoring chunk, and expands it to the whole heading
+  section as `sectionText` with a `sectionTruncated` flag. Caps: `EVIDENCE_SECTION_MAX_CHARS` (6000)
+  and `EVIDENCE_SECTION_MAX_CHUNKS` (6). Heading-less documents keep chunk identity and expand to
+  immediate neighbours only.
+- Shared Chinese tokenizer: new workspace package `@enterprise-hub/lexical` exporting
+  `tokenizeForSparseVector` and `sparseVectorFromText`; the worker index side, the API query side,
+  and `scripts/phase3-performance-gates.ts` now all call it.
+- Versions: `RETRIEVAL_CONFIG_VERSION` → `phase3.retrieval.v2`, `LEXICAL_INDEX_VERSION` →
+  `lexical.v2`. Chunk ids and the Qdrant payload filter both include the retrieval version, so a
+  reindex is a version switch; old points stay invisible until deleted.
+- Measurement: new `npm run test:retrieval:compare` and `fixtures/retrieval-quality/` (9 synthetic
+  Chinese documents with store labels, one archived and one stale-version fixture, 35 labeled
+  queries).
+- Defect fix: the OpenAI-compatible embedding adapter submitted all chunk texts in one request;
+  DashScope rejects batches above 10 inputs, so documents with more than 10 chunks retried forever.
+  Inputs are now submitted in bounded batches of 10 and reassembled in order.
+
+Evidence (real DashScope provider, same corpus and harness on both revisions):
+
+| metric                          | `main` baseline | Phase A |
+| ------------------------------- | --------------- | ------- |
+| hybrid hitRate@5                | 1.0000          | 1.0000  |
+| hybrid MRR@10                   | 0.9479          | 0.9479  |
+| lexical-only hitRate@5          | 0.0417          | 0.8750  |
+| lexical-only MRR@10             | 0.0417          | 0.7525  |
+| permission/archived/stale leaks | 0/0/0           | 0/0/0   |
+| indexed chunks                  | 49              | 49      |
+
+Verification run on the final tree: `npm run lint`, `npm run format:check`, `npm run typecheck`,
+`npm test` (93 files / 785 passed / 33 skipped), `npm run test:integration` (all 18 assertions pass,
+including the new `sectionText` and one-result-per-section checks), the real-provider comparison
+above, and a `node:22-bookworm-slim` container check that the tokenizer installs and loads through
+the repository's `npm ci --workspace @enterprise-hub/api` Docker path.
+
+Known limitations and follow-ups:
+
+- Chunk overlap shows no measurable quality delta on this corpus: section dedup plus expansion
+  already return the whole section, and hybrid hit@5 was already 1.0, so there is no headroom. Its
+  behaviour is covered by unit tests rather than by a retrieval metric.
+- The `phase3:golden` and `phase3:perf` harnesses remain in-memory simulations. They still pass and
+  still gate CI, but they cannot observe these changes; the real-stack harness is the evidence for
+  this work and is not wired into CI yet.
+- Phase B (sparse IDF modifier plus a new Qdrant collection) is gated at lexical-only hitRate@5 <
+  70% and is therefore deferred, with the measurement recorded in
+  `docs/implementation/phase-3-retrieval-docs.md`.
+- `@node-rs/jieba` was tried first and rejected: platform-specific optional packages are dropped by
+  this repository's workspace-filtered `npm ci`, so the native binding never reached the API or
+  worker image.
+- Staging is untouched. Deploying this requires bumping `RETRIEVAL_CONFIG_VERSION` in the staging
+  runtime env, wiping staging business data, re-uploading the corpus, and rerunning the official
+  manual acceptance; the deleted old-version Qdrant points need a one-off deletion.
+- The comparison harness recreates the local MySQL volume (`docker compose down -v`) instead of
+  running `prisma migrate reset`, which refuses to execute under an AI agent. `npm run
+test:integration` still calls `prisma migrate reset` and was run locally with
+  `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION` set to this repository's AGENTS.md local-cleanup
+  sentence; CI is unaffected.
+- The standalone skill companion PR is YinXiaoyu-1998/enterprise-hub-mcp-skill#36 and must merge
+  with the repo-local skill change.

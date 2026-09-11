@@ -20,6 +20,7 @@
     "test:mcp": "tsx scripts/test-mcp-local.ts",
     "test:phase3:golden": "tsx scripts/golden-retrieval-eval.ts",
     "test:phase3:perf": "tsx scripts/phase3-performance-gates.ts",
+    "test:retrieval:compare": "tsx scripts/retrieval-quality-compare.ts",
     "generate:xlsx-fixtures": "tsx scripts/generate-structured-xlsx-fixtures.ts",
     "generate:rejected-fixtures": "tsx scripts/generate-structured-rejected-upload-fixtures.ts",
     "benchmark:xlsx-parse": "tsx scripts/benchmark-xlsx-parse.ts",

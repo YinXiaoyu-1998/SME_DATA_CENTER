@@ -1,0 +1,10 @@
+{
+  "name": "@enterprise-hub/lexical",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "segmentit": "2.0.3"
+  }
+}

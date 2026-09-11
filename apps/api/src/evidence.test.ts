@@ -11,9 +11,23 @@ import {
   createApiRerankProvider,
   createEvidenceSearchService,
   type EvidenceRevalidator,
+  type EvidenceSectionExpander,
   type QdrantEvidenceCandidate,
   type QdrantEvidenceSearcher
 } from "./evidence.js";
+
+function passthroughSectionExpander(): EvidenceSectionExpander {
+  return {
+    async expand(candidates) {
+      return new Map(
+        candidates.map((candidate) => [
+          candidate.chunkId,
+          { sectionText: candidate.fallbackText, sectionTruncated: false }
+        ])
+      );
+    }
+  };
+}
 
 const employee: AuthenticatedEmployee = {
   id: "emp_admin",
@@ -196,6 +210,8 @@ describe("evidence search service", () => {
           .map((candidate) => ({
             ...candidate,
             documentTitle: "客户反馈处理 SOP.docx",
+            documentIndexId: "dix_active",
+            chunkIndex: 0,
             fileType: "docx",
             sectionHeadingPath: ["客户反馈", "差评处理"],
             blockType: "paragraph",
@@ -230,7 +246,8 @@ describe("evidence search service", () => {
             ]
           };
         }
-      }
+      },
+      sectionExpander: passthroughSectionExpander()
     });
 
     const result = await service.searchEvidence({
@@ -266,6 +283,8 @@ describe("evidence search service", () => {
         documentId: "doc_active",
         documentTitle: "客户反馈处理 SOP.docx",
         text: "差评处理 SOP：先联系客户，再登记处置结果。",
+        sectionText: "差评处理 SOP：先联系客户，再登记处置结果。",
+        sectionTruncated: false,
         source: {
           fileType: "docx",
           sectionHeadingPath: ["客户反馈", "差评处理"],
@@ -298,6 +317,8 @@ describe("evidence search service", () => {
         return input.candidates.map((next) => ({
           ...next,
           documentTitle: `Document ${next.documentId}`,
+          documentIndexId: `dix_${next.documentId}`,
+          chunkIndex: 0,
           fileType: "md",
           sectionHeadingPath: [],
           blockType: "paragraph",
@@ -315,7 +336,8 @@ describe("evidence search service", () => {
       ),
       qdrantSearcher,
       revalidator,
-      rerankProvider: null
+      rerankProvider: null,
+      sectionExpander: passthroughSectionExpander()
     });
     const baseInput = {
       orgId: "default-org",
@@ -371,6 +393,73 @@ describe("evidence search service", () => {
         query: "另一个问题"
       })
     ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
+  });
+
+  it("returns one result per document section and keeps heading-less chunks separate", async () => {
+    const qdrantSearcher: QdrantEvidenceSearcher = {
+      async hybridSearch() {
+        return [
+          { ...candidate("chk_section_top", 0.6), documentId: "doc_sop" },
+          { ...candidate("chk_section_best", 0.9), documentId: "doc_sop" },
+          { ...candidate("chk_plain_a", 0.5), documentId: "doc_notes" },
+          { ...candidate("chk_plain_b", 0.4), documentId: "doc_notes" }
+        ];
+      }
+    };
+    const revalidator: EvidenceRevalidator = {
+      async revalidate(input) {
+        return input.candidates.map((next, index) => ({
+          ...next,
+          documentTitle: "后厨卫生规范",
+          documentIndexId: "dix_1",
+          chunkIndex: index,
+          fileType: "md",
+          sectionHeadingPath: next.documentId === "doc_sop" ? ["后厨卫生规范", "地面清洁"] : [],
+          blockType: "paragraph",
+          pageNumber: null
+        }));
+      }
+    };
+    const service = createEvidenceSearchService({
+      retrievalConfig: loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          qdrantCollection: "enterprise_hub_evidence_test"
+        }),
+        "phase3.retrieval.v1"
+      ),
+      qdrantSearcher,
+      revalidator,
+      rerankProvider: null,
+      sectionExpander: passthroughSectionExpander()
+    });
+
+    const result = await service.searchEvidence({
+      orgId: "default-org",
+      employee,
+      query: "后厨卫生",
+      filters: {
+        fileTypes: [],
+        documentIds: [],
+        labelIds: []
+      },
+      limit: 10,
+      cursor: null,
+      cursorSecret: "cursor-secret",
+      audit: {
+        requestId: "req_http_1",
+        sourceIp: "198.51.100.8",
+        clientSource: "http_api" as const,
+        launcherVersion: null
+      }
+    });
+
+    expect(result.results.map((item) => item.chunkId)).toEqual([
+      "chk_section_best",
+      "chk_plain_a",
+      "chk_plain_b"
+    ]);
+    expect(result.results[0]?.sectionText).toBe("Evidence chk_section_best");
   });
 });
 

@@ -6,6 +6,7 @@ import {
   type Phase3FileType,
   type RetrievalModelConfig
 } from "@enterprise-hub/domain";
+import { sparseVectorFromText } from "@enterprise-hub/lexical";
 import { createEvidenceChunks } from "./chunking/evidence-chunker.js";
 import { type EmbeddingProvider } from "./model-providers/embedding.js";
 import { type RerankProvider } from "./model-providers/rerank.js";
@@ -46,6 +47,8 @@ export interface CreateEvidenceIndexerInput {
   qdrantWriter: QdrantEvidenceWriter;
   maxDocumentChars?: number;
   maxChunksPerDocument?: number;
+  evidenceChunkMaxChars?: number;
+  evidenceChunkOverlapChars?: number;
 }
 
 export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): EvidenceIndexer {
@@ -68,7 +71,13 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
         documentId: run.documentId,
         contentVersion: run.document.contentVersion ?? 1,
         retrievalConfigVersion: input.retrievalConfig.version,
-        blocks: parsed.blocks
+        blocks: parsed.blocks,
+        ...(input.evidenceChunkMaxChars === undefined
+          ? {}
+          : { maxChunkChars: input.evidenceChunkMaxChars }),
+        ...(input.evidenceChunkOverlapChars === undefined
+          ? {}
+          : { overlapChars: input.evidenceChunkOverlapChars })
       });
       if (
         input.maxChunksPerDocument !== undefined &&
@@ -117,7 +126,7 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
         points: chunks.map((chunk) => ({
           id: chunk.qdrantPointId,
           denseVector: chunk.denseVector,
-          sparseVector: toSparseVector(chunk.chunkText),
+          sparseVector: sparseVectorFromText(chunk.chunkText),
           payload: {
             orgId: run.orgId,
             documentId: run.documentId,
@@ -241,6 +250,8 @@ export function createEvidenceIndexerFromEnv(
     rerankProvider: providers.rerankProvider,
     maxDocumentChars: workerRuntime.maxDocumentChars,
     maxChunksPerDocument: workerRuntime.maxChunksPerDocument,
+    evidenceChunkMaxChars: workerRuntime.evidenceChunkMaxChars,
+    evidenceChunkOverlapChars: workerRuntime.evidenceChunkOverlapChars,
     qdrantWriter: new HttpQdrantEvidenceWriter({
       url: runtime.qdrant.url,
       apiKey: runtime.qdrant.apiKey,
@@ -272,21 +283,6 @@ function evidenceFileType(
   }
 
   throw new Error(`Unsupported evidence file type: ${fileType || "unknown"}`);
-}
-
-function toSparseVector(text: string): SparseVector {
-  const counts = new Map<number, number>();
-
-  for (const token of text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []) {
-    const index = Number.parseInt(sha256(token).slice(0, 7), 16);
-    counts.set(index, (counts.get(index) ?? 0) + 1);
-  }
-
-  const entries = [...counts.entries()].sort((first, second) => first[0] - second[0]);
-  return {
-    indices: entries.map(([index]) => index),
-    values: entries.map(([, count]) => count)
-  };
 }
 
 function stableUuid(value: string): string {

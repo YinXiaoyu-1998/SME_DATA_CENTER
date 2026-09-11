@@ -1,0 +1,405 @@
+{
+  "version": "2026-09-11.v1",
+  "description": "Synthetic Chinese restaurant SOP corpus and labeled queries for the real-stack retrieval comparison harness. All documents are fictional test data.",
+  "documents": [
+    {
+      "id": "kitchen-hygiene",
+      "file": "后厨卫生与清洁消毒规范.md",
+      "title": "门店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": ["all_staff"],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain",
+      "file": "冷链与温控管理规范.md",
+      "title": "门店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": ["all_staff"],
+      "status": "active"
+    },
+    {
+      "id": "staff-health",
+      "file": "员工健康与培训管理规范.md",
+      "title": "门店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": ["all_staff"],
+      "status": "active"
+    },
+    {
+      "id": "self-check",
+      "file": "门店食品安全自查清单.md",
+      "title": "门店食品安全自查清单",
+      "fileType": "md",
+      "labels": ["all_staff"],
+      "status": "active"
+    },
+    {
+      "id": "shift-handover",
+      "file": "值班交接与异常上报说明.txt",
+      "title": "值班交接与异常上报说明",
+      "fileType": "txt",
+      "labels": ["all_staff"],
+      "status": "active"
+    },
+    {
+      "id": "fry-baoli",
+      "file": "保利店油炸出品标准.md",
+      "title": "保利店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": ["store:baoli"],
+      "status": "active"
+    },
+    {
+      "id": "fry-suzhou",
+      "file": "苏州店油炸出品标准.md",
+      "title": "苏州店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": ["store:suzhou"],
+      "status": "active"
+    },
+    {
+      "id": "archived-hygiene",
+      "file": "已停用门店卫生补充说明.md",
+      "title": "已停用门店卫生补充说明",
+      "fileType": "md",
+      "labels": ["all_staff"],
+      "status": "archived"
+    },
+    {
+      "id": "stale-fry",
+      "file": "历史版油炸参数说明.md",
+      "title": "历史版油炸参数说明",
+      "fileType": "md",
+      "labels": ["all_staff"],
+      "status": "stale"
+    }
+  ],
+  "callers": [
+    {
+      "id": "all_staff_employee",
+      "employeeId": "emp_lijie",
+      "email": "lijie@example.com",
+      "role": "employee",
+      "labels": ["all_staff"]
+    },
+    {
+      "id": "baoli_manager",
+      "employeeId": "emp_baoli_manager",
+      "email": "baoli.manager@example.com",
+      "role": "manager",
+      "labels": ["all_staff", "store:baoli"]
+    },
+    {
+      "id": "suzhou_manager",
+      "employeeId": "emp_suzhou_manager",
+      "email": "suzhou.manager@example.com",
+      "role": "manager",
+      "labels": ["all_staff", "store:suzhou"]
+    },
+    {
+      "id": "admin",
+      "employeeId": "emp_admin",
+      "email": "admin@example.com",
+      "role": "admin",
+      "labels": ["all_staff"]
+    }
+  ],
+  "queries": [
+    {
+      "id": "exact-test-identifier",
+      "query": "RQ-KITCHEN-HYGIENE-V1",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"]
+    },
+    {
+      "id": "exact-peracetic-acid",
+      "query": "过氧乙酸类消毒液能不能用在食品接触面",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["7 消毒液配制与浓度核验细则"]
+    },
+    {
+      "id": "exact-quaternary-ammonium",
+      "query": "季铵盐类消毒液不得与什么混合使用",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["7 消毒液配制与浓度核验细则"]
+    },
+    {
+      "id": "exact-cold-storage-temperature",
+      "query": "冷藏库温度保持在多少摄氏度",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": ["cold-chain"],
+      "expectedSections": ["1 温度控制范围"]
+    },
+    {
+      "id": "exact-fry-baoli-temperature",
+      "query": "保利店下锅油温控制在多少度",
+      "callerId": "baoli_manager",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": ["fry-baoli"],
+      "expectedSections": ["1 油温与炸制时间"]
+    },
+    {
+      "id": "synonym-cleaning-tools",
+      "query": "抹布和拖把这些清洁工具平时怎么管",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["7 消毒液配制与浓度核验细则"]
+    },
+    {
+      "id": "synonym-dishwashing-storage",
+      "query": "洗完的碗碟放在哪里",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["2.4 洗碗间与餐具消毒"]
+    },
+    {
+      "id": "synonym-hand-wound",
+      "query": "员工手上破了口子还能进厨房加工食品吗",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["staff-health"],
+      "expectedSections": ["3 手部卫生与防护"]
+    },
+    {
+      "id": "synonym-storage-layout",
+      "query": "冷柜里的生肉和即食菜怎么摆放",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["cold-chain"],
+      "expectedSections": ["3 存储与分区分架"]
+    },
+    {
+      "id": "synonym-pest-sighting",
+      "query": "厨房里发现老鼠应该怎么处理",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["4 虫害控制"]
+    },
+    {
+      "id": "synonym-sick-cook",
+      "query": "厨师拉肚子还能继续上班吗",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["staff-health"],
+      "expectedSections": ["2 每日健康观察"]
+    },
+    {
+      "id": "synonym-shift-handover-checklist",
+      "query": "交接班的时候需要当面检查哪些区域",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["shift-handover"]
+    },
+    {
+      "id": "synonym-hood-cleaning",
+      "query": "油烟罩多久清洗一次",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["2.3 灶台、油烟罩与排烟管道"]
+    },
+    {
+      "id": "synonym-disinfectant-dilution",
+      "query": "消毒液怎么配比才合格",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["7 消毒液配制与浓度核验细则"]
+    },
+    {
+      "id": "multi-hop-compare-fry-temperature",
+      "query": "保利店和苏州店的油炸油温有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": ["fry-baoli", "fry-suzhou"]
+    },
+    {
+      "id": "multi-hop-compare-oil-change",
+      "query": "两家门店的炸锅用油更换周期哪个更长",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": ["fry-baoli", "fry-suzhou"]
+    },
+    {
+      "id": "multi-hop-compare-holding-time",
+      "query": "保利店和苏州店的油炸产品最长放置时间是多久",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": ["fry-baoli", "fry-suzhou"]
+    },
+    {
+      "id": "table-self-check-pest-owner",
+      "query": "自查清单里灭蝇灯由谁负责检查",
+      "callerId": "all_staff_employee",
+      "type": "table_or_clause",
+      "expectation": "answered",
+      "expectedDocuments": ["self-check"],
+      "expectedSections": ["2 自查条目与判定标准"]
+    },
+    {
+      "id": "table-self-check-cold-temperature-row",
+      "query": "自查清单里冷藏温度这一项的判定标准",
+      "callerId": "all_staff_employee",
+      "type": "table_or_clause",
+      "expectation": "answered",
+      "expectedDocuments": ["self-check"],
+      "expectedSections": ["2 自查条目与判定标准"]
+    },
+    {
+      "id": "table-high-risk-items",
+      "query": "自查中哪些条目属于高风险条目",
+      "callerId": "all_staff_employee",
+      "type": "table_or_clause",
+      "expectation": "answered",
+      "expectedDocuments": ["self-check"],
+      "expectedSections": ["3 高风险条目"]
+    },
+    {
+      "id": "table-temperature-log-frequency",
+      "query": "保温设备和展示设备的温度记录频率是多少",
+      "callerId": "all_staff_employee",
+      "type": "table_or_clause",
+      "expectation": "answered",
+      "expectedDocuments": ["cold-chain"],
+      "expectedSections": ["1 温度控制范围"]
+    },
+    {
+      "id": "table-cutting-board-crack",
+      "query": "砧板出现裂纹还能继续使用吗",
+      "callerId": "all_staff_employee",
+      "type": "table_or_clause",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["2.2 操作台与砧板"]
+    },
+    {
+      "id": "table-nonconformity-rectification",
+      "query": "常见的清洁不符合项有哪些",
+      "callerId": "all_staff_employee",
+      "type": "table_or_clause",
+      "expectation": "answered",
+      "expectedDocuments": ["kitchen-hygiene"],
+      "expectedSections": ["8 常见不符合项与整改要求"]
+    },
+    {
+      "id": "no-answer-membership-points",
+      "query": "门店会员积分规则是什么",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-annual-leave",
+      "query": "员工年假有多少天",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-supplier-payment",
+      "query": "供应商付款周期是多久",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-platform-commission",
+      "query": "外卖平台的抽成比例是多少",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "archived-marker-hidden",
+      "query": "停用条款-异味覆盖法",
+      "callerId": "all_staff_employee",
+      "type": "archived_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": ["archived-hygiene"]
+    },
+    {
+      "id": "archived-odor-masking",
+      "query": "能不能用空气清新剂盖住后厨异味",
+      "callerId": "all_staff_employee",
+      "type": "archived_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": ["archived-hygiene"]
+    },
+    {
+      "id": "stale-marker-hidden",
+      "query": "过期条款-两百摄氏度油温",
+      "callerId": "all_staff_employee",
+      "type": "stale_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": ["stale-fry"]
+    },
+    {
+      "id": "stale-outdated-fry-temperature",
+      "query": "油炸下锅油温 200 摄氏度是哪份文件规定的",
+      "callerId": "all_staff_employee",
+      "type": "stale_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": ["stale-fry"]
+    },
+    {
+      "id": "permission-suzhou-as-baoli",
+      "query": "苏州店的油炸油温设定值是多少",
+      "callerId": "baoli_manager",
+      "type": "permission_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": ["fry-suzhou"]
+    },
+    {
+      "id": "permission-baoli-as-suzhou",
+      "query": "保利店的炸锅用油几天换一次",
+      "callerId": "suzhou_manager",
+      "type": "permission_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": ["fry-baoli"]
+    },
+    {
+      "id": "permission-store-doc-hidden-from-employee",
+      "query": "保利店油炸产品超过多少分钟就不能卖了",
+      "callerId": "all_staff_employee",
+      "type": "permission_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": ["fry-baoli"]
+    },
+    {
+      "id": "permission-suzhou-visible-to-suzhou",
+      "query": "苏州店的鸡肉炸制时间是多少",
+      "callerId": "suzhou_manager",
+      "type": "permission_visible",
+      "expectation": "answered",
+      "expectedDocuments": ["fry-suzhou"],
+      "expectedSections": ["1 油温与炸制时间"]
+    }
+  ]
+}

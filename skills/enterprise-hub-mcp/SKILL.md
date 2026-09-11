@@ -584,6 +584,10 @@ For authorized service tools:
 - Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged
   with the same query, filters, and limit. Restart without it on `INVALID_CURSOR`; on
   `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more results.
+- Each evidence result is one document section, not one raw chunk: `text` is the matched chunk and
+  `sectionText` is the surrounding text of the same heading. Read `sectionText` when answering, and
+  check `sectionTruncated` before claiming a section was quoted in full. Do not ask for the same
+  section twice just because two chunks inside it matched.
 - `enterprise_hub_list_skills` exposes approved directory metadata only; do not execute an entry.
 
 ## Local File Read Errors

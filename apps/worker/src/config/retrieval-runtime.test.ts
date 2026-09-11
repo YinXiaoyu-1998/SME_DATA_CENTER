@@ -5,7 +5,7 @@ describe("worker retrieval runtime config", () => {
   it("uses the shared Phase 3 Qdrant and fake-provider defaults", () => {
     const config = parseWorkerRetrievalRuntimeConfig({});
 
-    expect(config.qdrant.retrievalConfigVersion).toBe("phase3.retrieval.v1");
+    expect(config.qdrant.retrievalConfigVersion).toBe("phase3.retrieval.v2");
     expect(config.modelProvider.embeddingModel).toBe("fake-embedding");
   });
 });

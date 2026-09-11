@@ -12,6 +12,7 @@ COPY apps/release-ops/package.json ./apps/release-ops/package.json
 COPY apps/worker/package.json ./apps/worker/package.json
 COPY packages/db/package.json ./packages/db/package.json
 COPY packages/domain/package.json ./packages/domain/package.json
+COPY packages/lexical/package.json ./packages/lexical/package.json
 COPY packages/mcp-contract/package.json ./packages/mcp-contract/package.json
 COPY packages/storage/package.json ./packages/storage/package.json
 COPY packages/structured-ingestion/package.json ./packages/structured-ingestion/package.json

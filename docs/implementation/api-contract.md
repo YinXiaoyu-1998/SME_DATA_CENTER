@@ -205,6 +205,12 @@ Behavior:
 
 Response shape:
 
+Each result is one authorized document section: `text` is the matched chunk, `sectionText` is the
+whole heading section the chunk belongs to (capped by `EVIDENCE_SECTION_MAX_CHARS`), and
+`sectionTruncated` reports whether that cap cut the section short. Repeating hits inside one section
+are collapsed to the highest-scoring chunk, and documents without headings fall back to chunk-level
+results with immediate neighbours.
+
 ```json
 {
   "document": {
@@ -284,6 +290,8 @@ Response shape:
       "chunkId": "chunk_...",
       "documentTitle": "差评处理 SOP",
       "text": "差评处理需要在 15 分钟内联系顾客...",
+      "sectionText": "## 差评处理\n\n差评处理需要在 15 分钟内联系顾客...\n\n超过 24 小时未回复需升级到店长。",
+      "sectionTruncated": false,
       "score": {
         "hybrid": 0.87,
         "rerank": null
@@ -298,9 +306,9 @@ Response shape:
     }
   ],
   "retrieval": {
-    "retrievalConfigVersion": "phase3.retrieval.v1",
-    "embeddingVersion": "fake-embedding-v1@phase3.retrieval.v1",
-    "lexicalIndexVersion": "lexical.v1",
+    "retrievalConfigVersion": "phase3.retrieval.v2",
+    "embeddingVersion": "fake-embedding-v1@phase3.retrieval.v2",
+    "lexicalIndexVersion": "lexical.v2",
     "rerankVersion": null,
     "rerankStatus": "rerank_disabled"
   },

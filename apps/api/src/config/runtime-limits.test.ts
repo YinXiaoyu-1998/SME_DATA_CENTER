@@ -13,7 +13,9 @@ describe("API runtime limits", () => {
       maxXlsxZipEntries: 10_000,
       maxXlsxCompressionRatio: 100,
       structuredImportBatchInsertSize: 500,
-      structuredImportTransactionTimeoutMs: 120_000
+      structuredImportTransactionTimeoutMs: 120_000,
+      evidenceSectionMaxChars: 6_000,
+      evidenceSectionMaxChunks: 6
     });
   });
 
@@ -29,7 +31,9 @@ describe("API runtime limits", () => {
         MAX_XLSX_ZIP_ENTRIES: "6",
         MAX_XLSX_COMPRESSION_RATIO: "7",
         STRUCTURED_IMPORT_BATCH_INSERT_SIZE: "8",
-        STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS: "9"
+        STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS: "9",
+        EVIDENCE_SECTION_MAX_CHARS: "10",
+        EVIDENCE_SECTION_MAX_CHUNKS: "11"
       })
     ).toEqual({
       maxUploadBytes: 1,
@@ -41,7 +45,9 @@ describe("API runtime limits", () => {
       maxXlsxZipEntries: 6,
       maxXlsxCompressionRatio: 7,
       structuredImportBatchInsertSize: 8,
-      structuredImportTransactionTimeoutMs: 9
+      structuredImportTransactionTimeoutMs: 9,
+      evidenceSectionMaxChars: 10,
+      evidenceSectionMaxChunks: 11
     });
   });
 

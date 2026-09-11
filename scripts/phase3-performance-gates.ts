@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { compileStructuredQuery, getStructuredRegistry } from "@enterprise-hub/domain";
+import { sparseVectorFromText } from "@enterprise-hub/lexical";
 import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
 import { evaluateGoldenRetrieval } from "./golden-retrieval-eval.js";
 import { buildSyntheticDishesXlsx } from "./synthetic-xlsx.js";
@@ -314,25 +315,7 @@ function deterministicVector(text: string, dimension: number) {
 }
 
 function sparseVector(text: string) {
-  const counts = new Map<number, number>();
-  for (const token of text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []) {
-    const index = Number.parseInt(hash(token).slice(0, 7), 16);
-    counts.set(index, (counts.get(index) ?? 0) + 1);
-  }
-  const entries = [...counts.entries()].sort((first, second) => first[0] - second[0]);
-  return {
-    indices: entries.map(([index]) => index),
-    values: entries.map(([, value]) => value)
-  };
-}
-
-function hash(value: string) {
-  let current = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    current ^= value.charCodeAt(index);
-    current = Math.imul(current, 0x01000193);
-  }
-  return (current >>> 0).toString(16).padStart(8, "0");
+  return sparseVectorFromText(text);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
