@@ -20,7 +20,9 @@ describe("embedding providers", () => {
 
         return new Response(
           JSON.stringify({
-            data: body.input.map((text) => ({ embedding: [text.length, 0, 0] }))
+            data: body.input
+              .map((text, index) => ({ embedding: [text.length, 0, 0], index }))
+              .reverse()
           }),
           { status: 200, headers: { "content-type": "application/json" } }
         );
@@ -96,7 +98,8 @@ describe("embedding providers", () => {
           JSON.stringify({
             data: [
               {
-                embedding: [0.1, 0.2, 0.3]
+                embedding: [0.1, 0.2, 0.3],
+                index: 0
               }
             ]
           }),

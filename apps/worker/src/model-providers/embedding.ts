@@ -92,15 +92,32 @@ export function createOpenAICompatibleEmbeddingProvider(input: {
         }
 
         const payload = (await response.json()) as OpenAIEmbeddingResponse;
+        const batchEmbeddings: Array<number[] | undefined> = Array(batch.length);
 
         for (const item of payload.data) {
+          if (!Number.isInteger(item.index) || item.index < 0 || item.index >= batch.length) {
+            throw new Error("Embedding provider returned an invalid input index.");
+          }
+
+          if (batchEmbeddings[item.index] !== undefined) {
+            throw new Error("Embedding provider returned a duplicate input index.");
+          }
+
           if (item.embedding.length !== input.dimension) {
             throw new Error(
               `Embedding provider returned dimension ${item.embedding.length}; expected ${input.dimension}.`
             );
           }
 
-          embeddings.push(item.embedding);
+          batchEmbeddings[item.index] = item.embedding;
+        }
+
+        for (const embedding of batchEmbeddings) {
+          if (embedding === undefined) {
+            throw new Error("Embedding provider did not return a vector for every input.");
+          }
+
+          embeddings.push(embedding);
         }
       }
 
@@ -129,6 +146,7 @@ export function normalizeBaseUrl(baseUrl: string): string {
 interface OpenAIEmbeddingResponse {
   data: Array<{
     embedding: number[];
+    index: number;
   }>;
 }
 
