@@ -1,0 +1,3616 @@
+{
+  "version": "2026-09-12.v1",
+  "generator": "scripts/generate-retrieval-quality-corpus.ts",
+  "documents": [
+    {
+      "id": "cold-chain-bl-spec",
+      "file": "generated/cold-chain-bl-spec.md",
+      "title": "保利店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-bl-checklist",
+      "file": "generated/cold-chain-bl-checklist.md",
+      "title": "保利店冷链与温度控制自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-sz-spec",
+      "file": "generated/cold-chain-sz-spec.md",
+      "title": "苏州店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-sz-checklist",
+      "file": "generated/cold-chain-sz-checklist.md",
+      "title": "苏州店冷链与温度控制自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-wj-spec",
+      "file": "generated/cold-chain-wj-spec.md",
+      "title": "望京店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-wj-checklist",
+      "file": "generated/cold-chain-wj-checklist.md",
+      "title": "望京店冷链与温度控制自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-th-spec",
+      "file": "generated/cold-chain-th-spec.md",
+      "title": "天河店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-th-checklist",
+      "file": "generated/cold-chain-th-checklist.md",
+      "title": "天河店冷链与温度控制自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-jb-spec",
+      "file": "generated/cold-chain-jb-spec.md",
+      "title": "江北店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-jb-checklist",
+      "file": "generated/cold-chain-jb-checklist.md",
+      "title": "江北店冷链与温度控制自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-xh-spec",
+      "file": "generated/cold-chain-xh-spec.md",
+      "title": "西湖店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-xh-checklist",
+      "file": "generated/cold-chain-xh-checklist.md",
+      "title": "西湖店冷链与温度控制自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-jj-spec",
+      "file": "generated/cold-chain-jj-spec.md",
+      "title": "锦江店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-jj-checklist",
+      "file": "generated/cold-chain-jj-checklist.md",
+      "title": "锦江店冷链与温度控制自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-ns-spec",
+      "file": "generated/cold-chain-ns-spec.md",
+      "title": "南山店冷链与温度控制管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "cold-chain-ns-checklist",
+      "file": "generated/cold-chain-ns-checklist.md",
+      "title": "南山店冷链与温度控制自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-bl-spec",
+      "file": "generated/hygiene-bl-spec.md",
+      "title": "保利店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-bl-checklist",
+      "file": "generated/hygiene-bl-checklist.md",
+      "title": "保利店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-sz-spec",
+      "file": "generated/hygiene-sz-spec.md",
+      "title": "苏州店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-sz-checklist",
+      "file": "generated/hygiene-sz-checklist.md",
+      "title": "苏州店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-wj-spec",
+      "file": "generated/hygiene-wj-spec.md",
+      "title": "望京店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-wj-checklist",
+      "file": "generated/hygiene-wj-checklist.md",
+      "title": "望京店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-th-spec",
+      "file": "generated/hygiene-th-spec.md",
+      "title": "天河店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-th-checklist",
+      "file": "generated/hygiene-th-checklist.md",
+      "title": "天河店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-jb-spec",
+      "file": "generated/hygiene-jb-spec.md",
+      "title": "江北店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-jb-checklist",
+      "file": "generated/hygiene-jb-checklist.md",
+      "title": "江北店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-xh-spec",
+      "file": "generated/hygiene-xh-spec.md",
+      "title": "西湖店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-xh-checklist",
+      "file": "generated/hygiene-xh-checklist.md",
+      "title": "西湖店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-jj-spec",
+      "file": "generated/hygiene-jj-spec.md",
+      "title": "锦江店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-jj-checklist",
+      "file": "generated/hygiene-jj-checklist.md",
+      "title": "锦江店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-ns-spec",
+      "file": "generated/hygiene-ns-spec.md",
+      "title": "南山店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "hygiene-ns-checklist",
+      "file": "generated/hygiene-ns-checklist.md",
+      "title": "南山店后厨卫生与清洁消毒规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-bl-spec",
+      "file": "generated/fry-bl-spec.md",
+      "title": "保利店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-bl-checklist",
+      "file": "generated/fry-bl-checklist.md",
+      "title": "保利店油炸类产品出品自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-sz-spec",
+      "file": "generated/fry-sz-spec.md",
+      "title": "苏州店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-sz-checklist",
+      "file": "generated/fry-sz-checklist.md",
+      "title": "苏州店油炸类产品出品自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-wj-spec",
+      "file": "generated/fry-wj-spec.md",
+      "title": "望京店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-wj-checklist",
+      "file": "generated/fry-wj-checklist.md",
+      "title": "望京店油炸类产品出品自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-th-spec",
+      "file": "generated/fry-th-spec.md",
+      "title": "天河店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-th-checklist",
+      "file": "generated/fry-th-checklist.md",
+      "title": "天河店油炸类产品出品自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-jb-spec",
+      "file": "generated/fry-jb-spec.md",
+      "title": "江北店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-jb-checklist",
+      "file": "generated/fry-jb-checklist.md",
+      "title": "江北店油炸类产品出品自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-xh-spec",
+      "file": "generated/fry-xh-spec.md",
+      "title": "西湖店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-xh-checklist",
+      "file": "generated/fry-xh-checklist.md",
+      "title": "西湖店油炸类产品出品自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-jj-spec",
+      "file": "generated/fry-jj-spec.md",
+      "title": "锦江店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-jj-checklist",
+      "file": "generated/fry-jj-checklist.md",
+      "title": "锦江店油炸类产品出品自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-ns-spec",
+      "file": "generated/fry-ns-spec.md",
+      "title": "南山店油炸类产品出品标准",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "fry-ns-checklist",
+      "file": "generated/fry-ns-checklist.md",
+      "title": "南山店油炸类产品出品自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-bl-spec",
+      "file": "generated/staff-bl-spec.md",
+      "title": "保利店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-bl-checklist",
+      "file": "generated/staff-bl-checklist.md",
+      "title": "保利店员工健康与食品安全培训自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-sz-spec",
+      "file": "generated/staff-sz-spec.md",
+      "title": "苏州店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-sz-checklist",
+      "file": "generated/staff-sz-checklist.md",
+      "title": "苏州店员工健康与食品安全培训自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-wj-spec",
+      "file": "generated/staff-wj-spec.md",
+      "title": "望京店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-wj-checklist",
+      "file": "generated/staff-wj-checklist.md",
+      "title": "望京店员工健康与食品安全培训自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-th-spec",
+      "file": "generated/staff-th-spec.md",
+      "title": "天河店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-th-checklist",
+      "file": "generated/staff-th-checklist.md",
+      "title": "天河店员工健康与食品安全培训自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-jb-spec",
+      "file": "generated/staff-jb-spec.md",
+      "title": "江北店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-jb-checklist",
+      "file": "generated/staff-jb-checklist.md",
+      "title": "江北店员工健康与食品安全培训自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-xh-spec",
+      "file": "generated/staff-xh-spec.md",
+      "title": "西湖店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-xh-checklist",
+      "file": "generated/staff-xh-checklist.md",
+      "title": "西湖店员工健康与食品安全培训自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-jj-spec",
+      "file": "generated/staff-jj-spec.md",
+      "title": "锦江店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-jj-checklist",
+      "file": "generated/staff-jj-checklist.md",
+      "title": "锦江店员工健康与食品安全培训自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-ns-spec",
+      "file": "generated/staff-ns-spec.md",
+      "title": "南山店员工健康与食品安全培训管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "staff-ns-checklist",
+      "file": "generated/staff-ns-checklist.md",
+      "title": "南山店员工健康与食品安全培训自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-bl-spec",
+      "file": "generated/receiving-bl-spec.md",
+      "title": "保利店收货验收与供应商管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-bl-checklist",
+      "file": "generated/receiving-bl-checklist.md",
+      "title": "保利店收货验收与供应商自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-sz-spec",
+      "file": "generated/receiving-sz-spec.md",
+      "title": "苏州店收货验收与供应商管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-sz-checklist",
+      "file": "generated/receiving-sz-checklist.md",
+      "title": "苏州店收货验收与供应商自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-wj-spec",
+      "file": "generated/receiving-wj-spec.md",
+      "title": "望京店收货验收与供应商管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-wj-checklist",
+      "file": "generated/receiving-wj-checklist.md",
+      "title": "望京店收货验收与供应商自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-th-spec",
+      "file": "generated/receiving-th-spec.md",
+      "title": "天河店收货验收与供应商管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-th-checklist",
+      "file": "generated/receiving-th-checklist.md",
+      "title": "天河店收货验收与供应商自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-jb-spec",
+      "file": "generated/receiving-jb-spec.md",
+      "title": "江北店收货验收与供应商管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-jb-checklist",
+      "file": "generated/receiving-jb-checklist.md",
+      "title": "江北店收货验收与供应商自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-xh-spec",
+      "file": "generated/receiving-xh-spec.md",
+      "title": "西湖店收货验收与供应商管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-xh-checklist",
+      "file": "generated/receiving-xh-checklist.md",
+      "title": "西湖店收货验收与供应商自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-jj-spec",
+      "file": "generated/receiving-jj-spec.md",
+      "title": "锦江店收货验收与供应商管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-jj-checklist",
+      "file": "generated/receiving-jj-checklist.md",
+      "title": "锦江店收货验收与供应商自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-ns-spec",
+      "file": "generated/receiving-ns-spec.md",
+      "title": "南山店收货验收与供应商管理规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "receiving-ns-checklist",
+      "file": "generated/receiving-ns-checklist.md",
+      "title": "南山店收货验收与供应商自查表",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-bl-spec",
+      "file": "generated/equipment-bl-spec.md",
+      "title": "保利店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-bl-checklist",
+      "file": "generated/equipment-bl-checklist.md",
+      "title": "保利店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-sz-spec",
+      "file": "generated/equipment-sz-spec.md",
+      "title": "苏州店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-sz-checklist",
+      "file": "generated/equipment-sz-checklist.md",
+      "title": "苏州店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-wj-spec",
+      "file": "generated/equipment-wj-spec.md",
+      "title": "望京店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-wj-checklist",
+      "file": "generated/equipment-wj-checklist.md",
+      "title": "望京店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-th-spec",
+      "file": "generated/equipment-th-spec.md",
+      "title": "天河店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-th-checklist",
+      "file": "generated/equipment-th-checklist.md",
+      "title": "天河店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-jb-spec",
+      "file": "generated/equipment-jb-spec.md",
+      "title": "江北店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-jb-checklist",
+      "file": "generated/equipment-jb-checklist.md",
+      "title": "江北店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-xh-spec",
+      "file": "generated/equipment-xh-spec.md",
+      "title": "西湖店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-xh-checklist",
+      "file": "generated/equipment-xh-checklist.md",
+      "title": "西湖店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-jj-spec",
+      "file": "generated/equipment-jj-spec.md",
+      "title": "锦江店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-jj-checklist",
+      "file": "generated/equipment-jj-checklist.md",
+      "title": "锦江店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-ns-spec",
+      "file": "generated/equipment-ns-spec.md",
+      "title": "南山店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "equipment-ns-checklist",
+      "file": "generated/equipment-ns-checklist.md",
+      "title": "南山店设备维护与虫害控制规范",
+      "fileType": "md",
+      "labels": [
+        "all_staff"
+      ],
+      "status": "active"
+    }
+  ],
+  "callers": [
+    {
+      "id": "all_staff_employee",
+      "employeeId": "emp_lijie",
+      "email": "lijie@example.com",
+      "role": "employee",
+      "labels": [
+        "all_staff"
+      ]
+    },
+    {
+      "id": "admin",
+      "employeeId": "emp_admin",
+      "email": "admin@example.com",
+      "role": "admin",
+      "labels": [
+        "all_staff"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "code-cold-chain-bl",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-bl-spec"
+      ]
+    },
+    {
+      "id": "param-cold-chain-bl-0",
+      "query": "保利店的冷藏库温度区间是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-bl-spec",
+        "cold-chain-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-bl-2",
+      "query": "广州的保利店对温度记录间隔有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-bl-spec",
+        "cold-chain-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-bl-4",
+      "query": "我们保利店现在执行的解冻后存放时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-bl-spec",
+        "cold-chain-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-cold-chain-sz",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-sz-spec"
+      ]
+    },
+    {
+      "id": "param-cold-chain-sz-0",
+      "query": "苏州店冷藏库温度区间的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-sz-spec",
+        "cold-chain-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-sz-2",
+      "query": "苏州店这份规范里温度记录间隔写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-sz-spec",
+        "cold-chain-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-sz-4",
+      "query": "苏州店的解冻后存放时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-sz-spec",
+        "cold-chain-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-cold-chain-wj",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-wj-spec"
+      ]
+    },
+    {
+      "id": "param-cold-chain-wj-0",
+      "query": "北京的望京店对冷藏库温度区间有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-wj-spec",
+        "cold-chain-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-wj-2",
+      "query": "我们望京店现在执行的温度记录间隔是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-wj-spec",
+        "cold-chain-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-wj-4",
+      "query": "望京店解冻后存放时限的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-wj-spec",
+        "cold-chain-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-cold-chain-th",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-th-spec"
+      ]
+    },
+    {
+      "id": "param-cold-chain-th-0",
+      "query": "天河店这份规范里冷藏库温度区间写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-th-spec",
+        "cold-chain-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-th-2",
+      "query": "天河店的温度记录间隔是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-th-spec",
+        "cold-chain-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-th-4",
+      "query": "广州的天河店对解冻后存放时限有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-th-spec",
+        "cold-chain-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-cold-chain-jb",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jb-spec"
+      ]
+    },
+    {
+      "id": "param-cold-chain-jb-0",
+      "query": "我们江北店现在执行的冷藏库温度区间是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jb-spec",
+        "cold-chain-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-jb-2",
+      "query": "江北店温度记录间隔的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jb-spec",
+        "cold-chain-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-jb-4",
+      "query": "江北店这份规范里解冻后存放时限写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jb-spec",
+        "cold-chain-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-cold-chain-xh",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-xh-spec"
+      ]
+    },
+    {
+      "id": "param-cold-chain-xh-0",
+      "query": "西湖店的冷藏库温度区间是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-xh-spec",
+        "cold-chain-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-xh-2",
+      "query": "杭州的西湖店对温度记录间隔有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-xh-spec",
+        "cold-chain-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-xh-4",
+      "query": "我们西湖店现在执行的解冻后存放时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-xh-spec",
+        "cold-chain-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-cold-chain-jj",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jj-spec"
+      ]
+    },
+    {
+      "id": "param-cold-chain-jj-0",
+      "query": "锦江店冷藏库温度区间的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jj-spec",
+        "cold-chain-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-jj-2",
+      "query": "锦江店这份规范里温度记录间隔写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jj-spec",
+        "cold-chain-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-jj-4",
+      "query": "锦江店的解冻后存放时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jj-spec",
+        "cold-chain-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-cold-chain-ns",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-ns-spec"
+      ]
+    },
+    {
+      "id": "param-cold-chain-ns-0",
+      "query": "深圳的南山店对冷藏库温度区间有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-ns-spec",
+        "cold-chain-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-ns-2",
+      "query": "我们南山店现在执行的温度记录间隔是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-ns-spec",
+        "cold-chain-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-cold-chain-ns-4",
+      "query": "南山店解冻后存放时限的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-ns-spec",
+        "cold-chain-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-hygiene-bl",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-bl-spec"
+      ]
+    },
+    {
+      "id": "param-hygiene-bl-0",
+      "query": "保利店的冷藏设备内部擦拭频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-bl-spec",
+        "hygiene-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-bl-2",
+      "query": "广州的保利店对排烟管道清洗周期有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-bl-spec",
+        "hygiene-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-bl-4",
+      "query": "我们保利店现在执行的虫害迹象上报处理时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-bl-spec",
+        "hygiene-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-hygiene-sz",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-sz-spec"
+      ]
+    },
+    {
+      "id": "param-hygiene-sz-0",
+      "query": "苏州店冷藏设备内部擦拭频次的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-sz-spec",
+        "hygiene-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-sz-2",
+      "query": "苏州店这份规范里排烟管道清洗周期写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-sz-spec",
+        "hygiene-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-sz-4",
+      "query": "苏州店的虫害迹象上报处理时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-sz-spec",
+        "hygiene-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-hygiene-wj",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-wj-spec"
+      ]
+    },
+    {
+      "id": "param-hygiene-wj-0",
+      "query": "北京的望京店对冷藏设备内部擦拭频次有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-wj-spec",
+        "hygiene-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-wj-2",
+      "query": "我们望京店现在执行的排烟管道清洗周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-wj-spec",
+        "hygiene-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-wj-4",
+      "query": "望京店虫害迹象上报处理时限的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-wj-spec",
+        "hygiene-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-hygiene-th",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-th-spec"
+      ]
+    },
+    {
+      "id": "param-hygiene-th-0",
+      "query": "天河店这份规范里冷藏设备内部擦拭频次写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-th-spec",
+        "hygiene-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-th-2",
+      "query": "天河店的排烟管道清洗周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-th-spec",
+        "hygiene-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-th-4",
+      "query": "广州的天河店对虫害迹象上报处理时限有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-th-spec",
+        "hygiene-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-hygiene-jb",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jb-spec"
+      ]
+    },
+    {
+      "id": "param-hygiene-jb-0",
+      "query": "我们江北店现在执行的冷藏设备内部擦拭频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jb-spec",
+        "hygiene-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-jb-2",
+      "query": "江北店排烟管道清洗周期的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jb-spec",
+        "hygiene-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-jb-4",
+      "query": "江北店这份规范里虫害迹象上报处理时限写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jb-spec",
+        "hygiene-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-hygiene-xh",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-xh-spec"
+      ]
+    },
+    {
+      "id": "param-hygiene-xh-0",
+      "query": "西湖店的冷藏设备内部擦拭频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-xh-spec",
+        "hygiene-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-xh-2",
+      "query": "杭州的西湖店对排烟管道清洗周期有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-xh-spec",
+        "hygiene-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-xh-4",
+      "query": "我们西湖店现在执行的虫害迹象上报处理时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-xh-spec",
+        "hygiene-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-hygiene-jj",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jj-spec"
+      ]
+    },
+    {
+      "id": "param-hygiene-jj-0",
+      "query": "锦江店冷藏设备内部擦拭频次的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jj-spec",
+        "hygiene-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-jj-2",
+      "query": "锦江店这份规范里排烟管道清洗周期写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jj-spec",
+        "hygiene-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-jj-4",
+      "query": "锦江店的虫害迹象上报处理时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jj-spec",
+        "hygiene-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-hygiene-ns",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-ns-spec"
+      ]
+    },
+    {
+      "id": "param-hygiene-ns-0",
+      "query": "深圳的南山店对冷藏设备内部擦拭频次有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-ns-spec",
+        "hygiene-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-ns-2",
+      "query": "我们南山店现在执行的排烟管道清洗周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-ns-spec",
+        "hygiene-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-hygiene-ns-4",
+      "query": "南山店虫害迹象上报处理时限的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-ns-spec",
+        "hygiene-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-fry-bl",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-bl-spec"
+      ]
+    },
+    {
+      "id": "param-fry-bl-0",
+      "query": "保利店的下锅油温是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-bl-spec",
+        "fry-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-bl-2",
+      "query": "广州的保利店对鸡肉类产品炸制时长有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-bl-spec",
+        "fry-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-bl-4",
+      "query": "我们保利店现在执行的产品最长存放时间是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-bl-spec",
+        "fry-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-fry-sz",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-sz-spec"
+      ]
+    },
+    {
+      "id": "param-fry-sz-0",
+      "query": "苏州店下锅油温的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-sz-spec",
+        "fry-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-sz-2",
+      "query": "苏州店这份规范里鸡肉类产品炸制时长写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-sz-spec",
+        "fry-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-sz-4",
+      "query": "苏州店的产品最长存放时间是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-sz-spec",
+        "fry-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-fry-wj",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-wj-spec"
+      ]
+    },
+    {
+      "id": "param-fry-wj-0",
+      "query": "北京的望京店对下锅油温有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-wj-spec",
+        "fry-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-wj-2",
+      "query": "我们望京店现在执行的鸡肉类产品炸制时长是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-wj-spec",
+        "fry-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-wj-4",
+      "query": "望京店产品最长存放时间的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-wj-spec",
+        "fry-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-fry-th",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-th-spec"
+      ]
+    },
+    {
+      "id": "param-fry-th-0",
+      "query": "天河店这份规范里下锅油温写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-th-spec",
+        "fry-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-th-2",
+      "query": "天河店的鸡肉类产品炸制时长是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-th-spec",
+        "fry-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-th-4",
+      "query": "广州的天河店对产品最长存放时间有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-th-spec",
+        "fry-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-fry-jb",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jb-spec"
+      ]
+    },
+    {
+      "id": "param-fry-jb-0",
+      "query": "我们江北店现在执行的下锅油温是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jb-spec",
+        "fry-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-jb-2",
+      "query": "江北店鸡肉类产品炸制时长的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jb-spec",
+        "fry-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-jb-4",
+      "query": "江北店这份规范里产品最长存放时间写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jb-spec",
+        "fry-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-fry-xh",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-xh-spec"
+      ]
+    },
+    {
+      "id": "param-fry-xh-0",
+      "query": "西湖店的下锅油温是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-xh-spec",
+        "fry-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-xh-2",
+      "query": "杭州的西湖店对鸡肉类产品炸制时长有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-xh-spec",
+        "fry-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-xh-4",
+      "query": "我们西湖店现在执行的产品最长存放时间是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-xh-spec",
+        "fry-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-fry-jj",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jj-spec"
+      ]
+    },
+    {
+      "id": "param-fry-jj-0",
+      "query": "锦江店下锅油温的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jj-spec",
+        "fry-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-jj-2",
+      "query": "锦江店这份规范里鸡肉类产品炸制时长写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jj-spec",
+        "fry-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-jj-4",
+      "query": "锦江店的产品最长存放时间是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jj-spec",
+        "fry-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-fry-ns",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-ns-spec"
+      ]
+    },
+    {
+      "id": "param-fry-ns-0",
+      "query": "深圳的南山店对下锅油温有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-ns-spec",
+        "fry-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-ns-2",
+      "query": "我们南山店现在执行的鸡肉类产品炸制时长是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-ns-spec",
+        "fry-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-fry-ns-4",
+      "query": "南山店产品最长存放时间的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-ns-spec",
+        "fry-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-staff-bl",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-bl-spec"
+      ]
+    },
+    {
+      "id": "param-staff-bl-0",
+      "query": "保利店的健康证明复检提醒提前量是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-bl-spec",
+        "staff-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-bl-2",
+      "query": "广州的保利店对培训频次有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-bl-spec",
+        "staff-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-bl-4",
+      "query": "我们保利店现在执行的培训记录保存期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-bl-spec",
+        "staff-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-staff-sz",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-sz-spec"
+      ]
+    },
+    {
+      "id": "param-staff-sz-0",
+      "query": "苏州店健康证明复检提醒提前量的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-sz-spec",
+        "staff-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-sz-2",
+      "query": "苏州店这份规范里培训频次写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-sz-spec",
+        "staff-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-sz-4",
+      "query": "苏州店的培训记录保存期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-sz-spec",
+        "staff-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-staff-wj",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-wj-spec"
+      ]
+    },
+    {
+      "id": "param-staff-wj-0",
+      "query": "北京的望京店对健康证明复检提醒提前量有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-wj-spec",
+        "staff-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-wj-2",
+      "query": "我们望京店现在执行的培训频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-wj-spec",
+        "staff-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-wj-4",
+      "query": "望京店培训记录保存期的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-wj-spec",
+        "staff-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-staff-th",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-th-spec"
+      ]
+    },
+    {
+      "id": "param-staff-th-0",
+      "query": "天河店这份规范里健康证明复检提醒提前量写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-th-spec",
+        "staff-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-th-2",
+      "query": "天河店的培训频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-th-spec",
+        "staff-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-th-4",
+      "query": "广州的天河店对培训记录保存期有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-th-spec",
+        "staff-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-staff-jb",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jb-spec"
+      ]
+    },
+    {
+      "id": "param-staff-jb-0",
+      "query": "我们江北店现在执行的健康证明复检提醒提前量是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jb-spec",
+        "staff-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-jb-2",
+      "query": "江北店培训频次的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jb-spec",
+        "staff-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-jb-4",
+      "query": "江北店这份规范里培训记录保存期写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jb-spec",
+        "staff-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-staff-xh",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-xh-spec"
+      ]
+    },
+    {
+      "id": "param-staff-xh-0",
+      "query": "西湖店的健康证明复检提醒提前量是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-xh-spec",
+        "staff-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-xh-2",
+      "query": "杭州的西湖店对培训频次有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-xh-spec",
+        "staff-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-xh-4",
+      "query": "我们西湖店现在执行的培训记录保存期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-xh-spec",
+        "staff-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-staff-jj",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jj-spec"
+      ]
+    },
+    {
+      "id": "param-staff-jj-0",
+      "query": "锦江店健康证明复检提醒提前量的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jj-spec",
+        "staff-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-jj-2",
+      "query": "锦江店这份规范里培训频次写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jj-spec",
+        "staff-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-jj-4",
+      "query": "锦江店的培训记录保存期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jj-spec",
+        "staff-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-staff-ns",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-ns-spec"
+      ]
+    },
+    {
+      "id": "param-staff-ns-0",
+      "query": "深圳的南山店对健康证明复检提醒提前量有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-ns-spec",
+        "staff-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-ns-2",
+      "query": "我们南山店现在执行的培训频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-ns-spec",
+        "staff-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-staff-ns-4",
+      "query": "南山店培训记录保存期的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-ns-spec",
+        "staff-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-receiving-bl",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-bl-spec"
+      ]
+    },
+    {
+      "id": "param-receiving-bl-0",
+      "query": "保利店的冷链到货验收时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-bl-spec",
+        "receiving-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-bl-2",
+      "query": "广州的保利店对拒收判定项数有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-bl-spec",
+        "receiving-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-bl-4",
+      "query": "我们保利店现在执行的供应商评级周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-bl-spec",
+        "receiving-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-receiving-sz",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-sz-spec"
+      ]
+    },
+    {
+      "id": "param-receiving-sz-0",
+      "query": "苏州店冷链到货验收时限的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-sz-spec",
+        "receiving-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-sz-2",
+      "query": "苏州店这份规范里拒收判定项数写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-sz-spec",
+        "receiving-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-sz-4",
+      "query": "苏州店的供应商评级周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-sz-spec",
+        "receiving-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-receiving-wj",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-wj-spec"
+      ]
+    },
+    {
+      "id": "param-receiving-wj-0",
+      "query": "北京的望京店对冷链到货验收时限有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-wj-spec",
+        "receiving-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-wj-2",
+      "query": "我们望京店现在执行的拒收判定项数是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-wj-spec",
+        "receiving-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-wj-4",
+      "query": "望京店供应商评级周期的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-wj-spec",
+        "receiving-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-receiving-th",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-th-spec"
+      ]
+    },
+    {
+      "id": "param-receiving-th-0",
+      "query": "天河店这份规范里冷链到货验收时限写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-th-spec",
+        "receiving-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-th-2",
+      "query": "天河店的拒收判定项数是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-th-spec",
+        "receiving-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-th-4",
+      "query": "广州的天河店对供应商评级周期有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-th-spec",
+        "receiving-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-receiving-jb",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jb-spec"
+      ]
+    },
+    {
+      "id": "param-receiving-jb-0",
+      "query": "我们江北店现在执行的冷链到货验收时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jb-spec",
+        "receiving-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-jb-2",
+      "query": "江北店拒收判定项数的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jb-spec",
+        "receiving-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-jb-4",
+      "query": "江北店这份规范里供应商评级周期写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jb-spec",
+        "receiving-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-receiving-xh",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-xh-spec"
+      ]
+    },
+    {
+      "id": "param-receiving-xh-0",
+      "query": "西湖店的冷链到货验收时限是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-xh-spec",
+        "receiving-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-xh-2",
+      "query": "杭州的西湖店对拒收判定项数有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-xh-spec",
+        "receiving-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-xh-4",
+      "query": "我们西湖店现在执行的供应商评级周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-xh-spec",
+        "receiving-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-receiving-jj",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jj-spec"
+      ]
+    },
+    {
+      "id": "param-receiving-jj-0",
+      "query": "锦江店冷链到货验收时限的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jj-spec",
+        "receiving-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-jj-2",
+      "query": "锦江店这份规范里拒收判定项数写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jj-spec",
+        "receiving-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-jj-4",
+      "query": "锦江店的供应商评级周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jj-spec",
+        "receiving-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-receiving-ns",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-ns-spec"
+      ]
+    },
+    {
+      "id": "param-receiving-ns-0",
+      "query": "深圳的南山店对冷链到货验收时限有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-ns-spec",
+        "receiving-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-ns-2",
+      "query": "我们南山店现在执行的拒收判定项数是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-ns-spec",
+        "receiving-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-receiving-ns-4",
+      "query": "南山店供应商评级周期的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-ns-spec",
+        "receiving-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-equipment-bl",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-bl-spec"
+      ]
+    },
+    {
+      "id": "param-equipment-bl-0",
+      "query": "保利店的冷藏设备除霜周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-bl-spec",
+        "equipment-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-bl-2",
+      "query": "广州的保利店对灭蝇灯清洁频次有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-bl-spec",
+        "equipment-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-bl-4",
+      "query": "我们保利店现在执行的备用设备配置要求是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-bl-spec",
+        "equipment-bl-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-equipment-sz",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-sz-spec"
+      ]
+    },
+    {
+      "id": "param-equipment-sz-0",
+      "query": "苏州店冷藏设备除霜周期的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-sz-spec",
+        "equipment-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-sz-2",
+      "query": "苏州店这份规范里灭蝇灯清洁频次写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-sz-spec",
+        "equipment-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-sz-4",
+      "query": "苏州店的备用设备配置要求是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-sz-spec",
+        "equipment-sz-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-equipment-wj",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-wj-spec"
+      ]
+    },
+    {
+      "id": "param-equipment-wj-0",
+      "query": "北京的望京店对冷藏设备除霜周期有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-wj-spec",
+        "equipment-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-wj-2",
+      "query": "我们望京店现在执行的灭蝇灯清洁频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-wj-spec",
+        "equipment-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-wj-4",
+      "query": "望京店备用设备配置要求的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-wj-spec",
+        "equipment-wj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-equipment-th",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-th-spec"
+      ]
+    },
+    {
+      "id": "param-equipment-th-0",
+      "query": "天河店这份规范里冷藏设备除霜周期写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-th-spec",
+        "equipment-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-th-2",
+      "query": "天河店的灭蝇灯清洁频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-th-spec",
+        "equipment-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-th-4",
+      "query": "广州的天河店对备用设备配置要求有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-th-spec",
+        "equipment-th-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-equipment-jb",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jb-spec"
+      ]
+    },
+    {
+      "id": "param-equipment-jb-0",
+      "query": "我们江北店现在执行的冷藏设备除霜周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jb-spec",
+        "equipment-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-jb-2",
+      "query": "江北店灭蝇灯清洁频次的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jb-spec",
+        "equipment-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-jb-4",
+      "query": "江北店这份规范里备用设备配置要求写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jb-spec",
+        "equipment-jb-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-equipment-xh",
+      "query": "{doc} 规定了什么",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-xh-spec"
+      ]
+    },
+    {
+      "id": "param-equipment-xh-0",
+      "query": "西湖店的冷藏设备除霜周期是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-xh-spec",
+        "equipment-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-xh-2",
+      "query": "杭州的西湖店对灭蝇灯清洁频次有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-xh-spec",
+        "equipment-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-xh-4",
+      "query": "我们西湖店现在执行的备用设备配置要求是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-xh-spec",
+        "equipment-xh-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-equipment-jj",
+      "query": "{doc}",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jj-spec"
+      ]
+    },
+    {
+      "id": "param-equipment-jj-0",
+      "query": "锦江店冷藏设备除霜周期的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jj-spec",
+        "equipment-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-jj-2",
+      "query": "锦江店这份规范里灭蝇灯清洁频次写着什么",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jj-spec",
+        "equipment-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-jj-4",
+      "query": "锦江店的备用设备配置要求是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jj-spec",
+        "equipment-jj-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "code-equipment-ns",
+      "query": "{doc} 是哪份文件",
+      "callerId": "all_staff_employee",
+      "type": "exact_keyword",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-ns-spec"
+      ]
+    },
+    {
+      "id": "param-equipment-ns-0",
+      "query": "深圳的南山店对冷藏设备除霜周期有什么要求",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-ns-spec",
+        "equipment-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-ns-2",
+      "query": "我们南山店现在执行的灭蝇灯清洁频次是多少",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-ns-spec",
+        "equipment-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "param-equipment-ns-4",
+      "query": "南山店备用设备配置要求的标准怎么规定的",
+      "callerId": "all_staff_employee",
+      "type": "chinese_synonym",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-ns-spec",
+        "equipment-ns-checklist"
+      ],
+      "expectedSections": []
+    },
+    {
+      "id": "compare-cold-chain-bl-th",
+      "query": "保利店和天河店的冷藏库温度区间有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-bl-spec",
+        "cold-chain-th-spec"
+      ]
+    },
+    {
+      "id": "compare-cold-chain-sz-jb",
+      "query": "苏州店和江北店冷藏库温度区间哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-sz-spec",
+        "cold-chain-jb-spec"
+      ]
+    },
+    {
+      "id": "compare-cold-chain-wj-xh",
+      "query": "对比一下望京店与西湖店的冷藏库温度区间",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-wj-spec",
+        "cold-chain-xh-spec"
+      ]
+    },
+    {
+      "id": "compare-cold-chain-th-jj",
+      "query": "天河店和锦江店的冷藏库温度区间有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-th-spec",
+        "cold-chain-jj-spec"
+      ]
+    },
+    {
+      "id": "compare-cold-chain-jb-ns",
+      "query": "江北店和南山店冷藏库温度区间哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "cold-chain-jb-spec",
+        "cold-chain-ns-spec"
+      ]
+    },
+    {
+      "id": "compare-hygiene-bl-th",
+      "query": "保利店和天河店的冷藏设备内部擦拭频次有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-bl-spec",
+        "hygiene-th-spec"
+      ]
+    },
+    {
+      "id": "compare-hygiene-sz-jb",
+      "query": "苏州店和江北店冷藏设备内部擦拭频次哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-sz-spec",
+        "hygiene-jb-spec"
+      ]
+    },
+    {
+      "id": "compare-hygiene-wj-xh",
+      "query": "对比一下望京店与西湖店的冷藏设备内部擦拭频次",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-wj-spec",
+        "hygiene-xh-spec"
+      ]
+    },
+    {
+      "id": "compare-hygiene-th-jj",
+      "query": "天河店和锦江店的冷藏设备内部擦拭频次有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-th-spec",
+        "hygiene-jj-spec"
+      ]
+    },
+    {
+      "id": "compare-hygiene-jb-ns",
+      "query": "江北店和南山店冷藏设备内部擦拭频次哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "hygiene-jb-spec",
+        "hygiene-ns-spec"
+      ]
+    },
+    {
+      "id": "compare-fry-bl-th",
+      "query": "保利店和天河店的下锅油温有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-bl-spec",
+        "fry-th-spec"
+      ]
+    },
+    {
+      "id": "compare-fry-sz-jb",
+      "query": "苏州店和江北店下锅油温哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-sz-spec",
+        "fry-jb-spec"
+      ]
+    },
+    {
+      "id": "compare-fry-wj-xh",
+      "query": "对比一下望京店与西湖店的下锅油温",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-wj-spec",
+        "fry-xh-spec"
+      ]
+    },
+    {
+      "id": "compare-fry-th-jj",
+      "query": "天河店和锦江店的下锅油温有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-th-spec",
+        "fry-jj-spec"
+      ]
+    },
+    {
+      "id": "compare-fry-jb-ns",
+      "query": "江北店和南山店下锅油温哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "fry-jb-spec",
+        "fry-ns-spec"
+      ]
+    },
+    {
+      "id": "compare-staff-bl-th",
+      "query": "保利店和天河店的健康证明复检提醒提前量有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-bl-spec",
+        "staff-th-spec"
+      ]
+    },
+    {
+      "id": "compare-staff-sz-jb",
+      "query": "苏州店和江北店健康证明复检提醒提前量哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-sz-spec",
+        "staff-jb-spec"
+      ]
+    },
+    {
+      "id": "compare-staff-wj-xh",
+      "query": "对比一下望京店与西湖店的健康证明复检提醒提前量",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-wj-spec",
+        "staff-xh-spec"
+      ]
+    },
+    {
+      "id": "compare-staff-th-jj",
+      "query": "天河店和锦江店的健康证明复检提醒提前量有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-th-spec",
+        "staff-jj-spec"
+      ]
+    },
+    {
+      "id": "compare-staff-jb-ns",
+      "query": "江北店和南山店健康证明复检提醒提前量哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "staff-jb-spec",
+        "staff-ns-spec"
+      ]
+    },
+    {
+      "id": "compare-receiving-bl-th",
+      "query": "保利店和天河店的冷链到货验收时限有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-bl-spec",
+        "receiving-th-spec"
+      ]
+    },
+    {
+      "id": "compare-receiving-sz-jb",
+      "query": "苏州店和江北店冷链到货验收时限哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-sz-spec",
+        "receiving-jb-spec"
+      ]
+    },
+    {
+      "id": "compare-receiving-wj-xh",
+      "query": "对比一下望京店与西湖店的冷链到货验收时限",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-wj-spec",
+        "receiving-xh-spec"
+      ]
+    },
+    {
+      "id": "compare-receiving-th-jj",
+      "query": "天河店和锦江店的冷链到货验收时限有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-th-spec",
+        "receiving-jj-spec"
+      ]
+    },
+    {
+      "id": "compare-receiving-jb-ns",
+      "query": "江北店和南山店冷链到货验收时限哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "receiving-jb-spec",
+        "receiving-ns-spec"
+      ]
+    },
+    {
+      "id": "compare-equipment-bl-th",
+      "query": "保利店和天河店的冷藏设备除霜周期有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-bl-spec",
+        "equipment-th-spec"
+      ]
+    },
+    {
+      "id": "compare-equipment-sz-jb",
+      "query": "苏州店和江北店冷藏设备除霜周期哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-sz-spec",
+        "equipment-jb-spec"
+      ]
+    },
+    {
+      "id": "compare-equipment-wj-xh",
+      "query": "对比一下望京店与西湖店的冷藏设备除霜周期",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-wj-spec",
+        "equipment-xh-spec"
+      ]
+    },
+    {
+      "id": "compare-equipment-th-jj",
+      "query": "天河店和锦江店的冷藏设备除霜周期有什么不同",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-th-spec",
+        "equipment-jj-spec"
+      ]
+    },
+    {
+      "id": "compare-equipment-jb-ns",
+      "query": "江北店和南山店冷藏设备除霜周期哪个要求更严",
+      "callerId": "admin",
+      "type": "multi_hop",
+      "expectation": "answered",
+      "expectedDocuments": [
+        "equipment-jb-spec",
+        "equipment-ns-spec"
+      ]
+    },
+    {
+      "id": "no-answer-0",
+      "query": "门店会员积分规则是什么",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-1",
+      "query": "员工年假有多少天",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-2",
+      "query": "供应商付款周期是多久",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-3",
+      "query": "外卖平台的抽成比例是多少",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-4",
+      "query": "门店店长的月度奖金怎么算",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-5",
+      "query": "连锁加盟的保证金是多少",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-6",
+      "query": "菜品毛利率的目标值是多少",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-7",
+      "query": "门店装修标准是多少钱一平米",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-8",
+      "query": "员工工服采购预算是多少",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "no-answer-9",
+      "query": "门店月度电费预算是多少",
+      "callerId": "all_staff_employee",
+      "type": "no_answer",
+      "expectation": "no_answer"
+    },
+    {
+      "id": "archived-marker-generated",
+      "query": "停用条款-异味覆盖法",
+      "callerId": "all_staff_employee",
+      "type": "archived_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": [
+        "archived-hygiene"
+      ]
+    },
+    {
+      "id": "stale-marker-generated",
+      "query": "过期条款-两百摄氏度油温",
+      "callerId": "all_staff_employee",
+      "type": "stale_hidden",
+      "expectation": "no_answer",
+      "forbiddenDocuments": [
+        "stale-fry"
+      ]
+    }
+  ]
+}

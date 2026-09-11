@@ -6,7 +6,10 @@
 - Do not turn 企业资料中枢 into a direct employee-facing AI agent, report generator, dashboard service, or skill execution platform.
 - Follow `docs/implementation/implementation-plan.md` phase boundaries. Do not implement future-day scope early.
 - Backend authorization is mandatory for every non-health endpoint. Client-side filtering is never trusted.
-- Do not commit secrets, `.env` files, real customer exports, private tokens, service account keys, or downloaded third-party data.
+- Do not commit secrets, `.env` files, real customer exports, private tokens, or service account keys.
+- Publicly available third-party material may be used as test and fixture data. Record the source and
+  license for any material kept verbatim, and keep derived or synthetic variants reproducible from a
+  generator when one exists.
 
 ## Branch And PR Rules
 

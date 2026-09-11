@@ -2149,6 +2149,41 @@ Chinese text (4% hit rate, because a whole Chinese clause collapsed into one tok
 usable. Hybrid hit@5 was already 1.0 on this corpus, so the fused result had no headroom to improve;
 the change buys robustness rather than a higher top-line score on an easy set.
 
+### Large-corpus measurement (2026-09-12)
+
+The first measurement used a 49-chunk corpus, where hybrid hitRate@5 was already 1.0 and the dense
+top-200 candidate window covered the entire index. That corpus could not show any difference, so it
+was replaced with a generated chain-style corpus: 105 documents / 737 chunks / 49 multi-chunk
+sections, built by `scripts/generate-retrieval-quality-corpus.ts` from
+`scripts/retrieval-corpus-spec.ts`. Every topic is emitted once per store in two shapes (a 规范 and a
+检查表 carrying the same numbers), which is what makes the documents mutually confusable.
+
+Same harness, same corpus, real DashScope provider (`text-embedding-v4` + `qwen3.7-text-rerank`),
+246 answerable queries:
+
+| Metric                              | Baseline (`main`) | Phase A    |
+| ----------------------------------- | ----------------- | ---------- |
+| hybrid hitRate@5                    | 0.6260            | 0.6179     |
+| hybrid MRR@10                       | 0.4883            | 0.4824     |
+| dense-only hitRate@5                | 0.6260            | 0.6220     |
+| dense-only MRR@10                   | 0.5635            | 0.5591     |
+| **lexical-only hitRate@5**          | **0.0041**        | **0.5000** |
+| **lexical-only MRR@10**             | **0.0041**        | **0.3510** |
+| permission / archived / stale leaks | 0 / 0 / 0         | 0 / 0 / 0  |
+| indexed chunks                      | 737               | 737        |
+| search latency p95                  | 1097.7 ms         | 1355.6 ms  |
+
+**Result: the branch-level fix is real, but it does not improve end-to-end retrieval in this
+configuration.** The lexical branch went from 1/246 to 123/246 answerable queries, yet the fused
+result is unchanged — 0.6260 vs 0.6179 is a two-query difference, inside noise. The fused pipeline
+also does not beat raw dense top-5 in either run, so on this corpus the rerank stage adds nothing
+measurable either. Section expansion costs roughly 260 ms of p95 latency.
+
+Interpretation to carry into the next decision: a broken lexical branch was not what limited answer
+retrieval. Dense recall plus the reranker already covers these queries, so the tokenizer fix is
+correctness and headroom rather than a measurable quality win, and the section-expansion latency
+needs to be justified by an answer-level metric that this harness does not measure.
+
 ### Phase B gate
 
 Phase B (sparse IDF modifier plus a new Qdrant collection) is gated on the Phase A real-provider

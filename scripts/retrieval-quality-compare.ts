@@ -171,9 +171,13 @@ const label = optionValue("--label") ?? `run-${new Date().toISOString().replace(
 const baselinePath = optionValue("--baseline");
 const keepData = args.includes("--keep-data");
 
-const manifest = JSON.parse(
+const coreManifest = JSON.parse(
   await readFile(path.join(corpusDir, "corpus.json"), "utf8")
 ) as CorpusManifest;
+const generatedManifest = JSON.parse(
+  await readFile(path.join(corpusDir, "generated-corpus.json"), "utf8")
+) as CorpusManifest;
+const manifest = mergeManifests(coreManifest, generatedManifest);
 const tokenizeForHarness = await loadTokenizeForHarness();
 const apiProcess = { current: null as ReturnType<typeof spawn> | null };
 const sessionCleanup: Array<() => Promise<void>> = [];
@@ -212,9 +216,12 @@ try {
     const documentIdByCorpusId = new Map<string, string>();
 
     for (const document of manifest.documents) {
-      const documentId = await ingestDocument(document, tokenByCallerId.get("admin")!);
+      const documentId = await uploadDocument(document, tokenByCallerId.get("admin")!);
       documentIdByCorpusId.set(document.id, documentId);
     }
+
+    await drainWorkerQueue();
+    await waitForAllDocumentsReady(documentIdByCorpusId, tokenByCallerId.get("admin")!);
 
     await applyArchivedStatus(prisma, documentIdByCorpusId, manifest);
     await applyStaleContentVersion(prisma, documentIdByCorpusId, manifest);
@@ -281,7 +288,7 @@ try {
   }
 }
 
-async function ingestDocument(document: CorpusDocument, accessToken: string): Promise<string> {
+async function uploadDocument(document: CorpusDocument, accessToken: string): Promise<string> {
   const content = await readFile(path.join(corpusDir, document.file));
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array(content)]), document.file);
@@ -301,16 +308,56 @@ async function ingestDocument(document: CorpusDocument, accessToken: string): Pr
     }
   );
 
-  const worker = await run("npm", ["--silent", "run", "worker:once"], harnessEnv);
-  const workerResult = parseWorkerResult(worker.stdout);
+  return upload.document.documentId;
+}
 
-  if (workerResult && workerResult.status !== undefined && workerResult.status !== "active") {
-    throw new Error(`Worker did not activate ${document.id}: ${JSON.stringify(workerResult)}`);
+async function drainWorkerQueue(): Promise<void> {
+  for (let pass = 1; pass <= 400; pass += 1) {
+    const worker = await run("npm", ["--silent", "run", "worker:once"], harnessEnv);
+    const result = parseWorkerResult(worker.stdout);
+
+    if (!result?.processed) {
+      return;
+    }
+
+    if (result.status !== undefined && result.status !== "active") {
+      const errorCode = (result as { errorCode?: string }).errorCode ?? "unknown";
+
+      throw new Error(`Worker did not activate a document: ${JSON.stringify({ errorCode })}`);
+    }
   }
 
-  await waitForDocumentIndexReady(upload.document.documentId, accessToken);
+  throw new Error("Worker queue did not drain in time.");
+}
 
-  return upload.document.documentId;
+async function waitForAllDocumentsReady(
+  documentIdByCorpusId: Map<string, string>,
+  accessToken: string
+): Promise<void> {
+  for (const [corpusId, documentId] of documentIdByCorpusId) {
+    await waitForDocumentIndexReady(documentId, accessToken).catch(() => {
+      throw new Error(`Document ${corpusId} did not become searchable in time.`);
+    });
+  }
+}
+
+function mergeManifests(core: CorpusManifest, generated: CorpusManifest): CorpusManifest {
+  const seenDocumentIds = new Set(core.documents.map((document) => document.id));
+  const seenQueryIds = new Set(core.queries.map((query) => query.id));
+  const seenCallerIds = new Set(core.callers.map((caller) => caller.id));
+
+  return {
+    version: `${core.version}+${generated.version}`,
+    documents: [
+      ...core.documents,
+      ...generated.documents.filter((document) => !seenDocumentIds.has(document.id))
+    ],
+    callers: [
+      ...core.callers,
+      ...generated.callers.filter((caller) => !seenCallerIds.has(caller.id))
+    ],
+    queries: [...core.queries, ...generated.queries.filter((query) => !seenQueryIds.has(query.id))]
+  };
 }
 
 function parseWorkerResult(stdout: string): {
