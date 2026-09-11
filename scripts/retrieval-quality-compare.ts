@@ -695,10 +695,14 @@ function deterministicVector(text: string, dimension: number): number[] {
 /**
  * Uses the repository's shared tokenizer when it exists and falls back to the pre-change
  * whitespace tokenizer otherwise, so this script can be run unchanged on both revisions.
+ *
+ * The specifier is built at runtime on purpose: the shared package does not exist on every
+ * revision, and a literal specifier would make `tsc` resolve it and fail the type check.
  */
 async function loadTokenizeForHarness(): Promise<(text: string) => string[]> {
   try {
-    const module = (await import("@enterprise-hub/lexical")) as {
+    const specifier = "@enterprise-hub/lexical";
+    const module = (await import(specifier)) as {
       tokenizeForSparseVector: (text: string) => string[];
     };
 
