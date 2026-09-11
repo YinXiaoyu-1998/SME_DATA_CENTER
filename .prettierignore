@@ -9,3 +9,6 @@ deploy/staging/nginx-enterprise-hub.conf
 docs/adr/
 docs/context/
 docs/implementation/implementation-plan.md
+# Generated retrieval corpus; regenerate with scripts/generate-retrieval-quality-corpus.ts
+fixtures/retrieval-quality/generated/
+fixtures/retrieval-quality/generated-corpus.json
