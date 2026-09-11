@@ -10,6 +10,7 @@ import {
   PrismaEvidenceRevalidator,
   createApiRerankProvider,
   createEvidenceSearchService,
+  limitRerankDocuments,
   type EvidenceRevalidator,
   type QdrantEvidenceCandidate,
   type QdrantEvidenceSearcher
@@ -702,5 +703,38 @@ describe("evidence MySQL revalidation", () => {
     });
 
     expect(result.map((candidate) => candidate.qdrantPointId)).toEqual(["point_active"]);
+  });
+});
+
+describe("rerank request budgeting", () => {
+  it("keeps every candidate when the request fits the provider budget", () => {
+    const documents = Array.from({ length: 50 }, (_, index) => ({
+      text: "文".repeat(200) + index
+    }));
+
+    expect(limitRerankDocuments(documents)).toHaveLength(50);
+  });
+
+  it("trims the candidate list once the estimated request tokens exceed the budget", () => {
+    const documents = Array.from({ length: 400 }, (_, index) => ({
+      text: "文".repeat(1_600) + index
+    }));
+    const limited = limitRerankDocuments(documents);
+
+    expect(limited.length).toBeGreaterThan(0);
+    expect(limited.length).toBeLessThan(documents.length);
+    expect(limited[0]).toEqual(documents[0]);
+  });
+
+  it("always scores at least one candidate even when a single document is oversized", () => {
+    const documents = [{ text: "文".repeat(200_000) }, { text: "短文" }];
+
+    expect(limitRerankDocuments(documents)).toEqual([documents[0]]);
+  });
+
+  it("caps the candidate count at the provider document limit", () => {
+    const documents = Array.from({ length: 600 }, (_, index) => ({ text: `短文 ${index}` }));
+
+    expect(limitRerankDocuments(documents)).toHaveLength(500);
   });
 });

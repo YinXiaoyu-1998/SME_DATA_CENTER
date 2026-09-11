@@ -720,6 +720,33 @@ function createApiEmbeddingProvider(input: {
   };
 }
 
+const RERANK_REQUEST_TOKEN_BUDGET = 100_000;
+const RERANK_MAX_DOCUMENTS = 500;
+const RERANK_ESTIMATED_TOKENS_PER_CHAR = 0.7;
+
+/**
+ * Keeps a rerank request inside the provider's document-count and request-token limits while
+ * preserving the caller's ordering. Candidates beyond the budget stay unscored, so they keep their
+ * fused score when the service orders results.
+ */
+export function limitRerankDocuments<T extends { text: string }>(documents: readonly T[]): T[] {
+  const selected: T[] = [];
+  let estimatedTokens = 0;
+
+  for (const document of documents.slice(0, RERANK_MAX_DOCUMENTS)) {
+    const estimated = Math.ceil(document.text.length * RERANK_ESTIMATED_TOKENS_PER_CHAR);
+
+    if (selected.length > 0 && estimatedTokens + estimated > RERANK_REQUEST_TOKEN_BUDGET) {
+      break;
+    }
+
+    selected.push(document);
+    estimatedTokens += estimated;
+  }
+
+  return selected;
+}
+
 export function createApiRerankProvider(input: {
   retrievalConfig: RetrievalModelConfig;
   openAiCompatibleApiKey: string;
@@ -771,6 +798,11 @@ export function createApiRerankProvider(input: {
           };
         }
 
+        // DashScope rerank models cap both the document count and the total request tokens, and the
+        // candidate window can exceed the token budget once chunks are large. The list is trimmed
+        // deterministically; unscored candidates keep their fused score for ordering.
+        const rerankRequestDocuments = limitRerankDocuments(rerankDocuments);
+
         const response = await fetch(
           `${normalizeBaseUrl(input.dashscopeApiBaseUrl)}/services/rerank/text-rerank/text-rerank`,
           {
@@ -783,10 +815,10 @@ export function createApiRerankProvider(input: {
               model: input.retrievalConfig.rerank.enabled ? input.retrievalConfig.rerank.model : "",
               input: {
                 query,
-                documents: rerankDocuments.map((document) => document.text)
+                documents: rerankRequestDocuments.map((document) => document.text)
               },
               parameters: {
-                top_n: rerankDocuments.length,
+                top_n: rerankRequestDocuments.length,
                 return_documents: false
               }
             })
@@ -807,7 +839,7 @@ export function createApiRerankProvider(input: {
         return {
           scores: (payload.output?.results ?? payload.results ?? []).flatMap((result) => {
             const originalIndex =
-              result.index === undefined ? undefined : rerankDocuments[result.index]?.index;
+              result.index === undefined ? undefined : rerankRequestDocuments[result.index]?.index;
 
             return originalIndex === undefined
               ? []
