@@ -6,9 +6,72 @@ covers the language for employee authentication, supported agent forms, and sess
 ## Language
 
 **Employee Account**:
-The backend authorization subject (员工账号) that owns organization, role, labels, disabled state,
-and audit attribution.
+The backend authorization subject (员工账号) that owns organization scope, functional role,
+confidentiality clearance, disabled state, and audit attribution.
 _Avoid_: account meaning a token, device, or agent installation.
+
+**Functional Role**:
+An Employee Account's developer-provisioned `admin` or `employee` identity that gates
+administrative functions when such functions exist but does not grant access to a higher document
+confidentiality level.
+_Avoid_: a default role, `manager`, document-access role, confidentiality clearance.
+
+**Confidentiality Clearance**:
+The maximum level from 0 through 3 that an Employee Account may read.
+_Avoid_: employee label, store scope, job title.
+
+**Clearance Provisioning**:
+The developer-operated, mandatory creation-time assignment of an Employee Account's
+Confidentiality Clearance from 0 through 3; no in-product clearance-change function exists.
+_Avoid_: a default clearance, admin self-service, employee self-service, automatic role-based
+clearance.
+
+**Document Confidentiality Level**:
+The mandatory ordinal classification from 0 through 3 attached to every document that determines
+the minimum Confidentiality Clearance required to read the document and its derived data.
+_Avoid_: store tag, personal tag, business category.
+
+**Document Classification**:
+The uploader's explicit selection of a Document Confidentiality Level, defaulting to 0 when no
+level is explicitly supplied by the employee.
+_Avoid_: AI inference from a filename, document content, uploader, or business context.
+
+**Immutable Document Classification**:
+The rule that a document's Confidentiality Level is fixed after upload; no in-product
+reclassification function exists.
+_Avoid_: uploader edits, admin correction, automatic retrospective classification.
+
+**Privileged Administrative Operation**:
+An explicitly admin-gated service function that every admin may use at any Confidentiality Level,
+including any information access the function itself defines.
+_Avoid_: a secondary clearance check, a non-privileged admin-only function, a blanket bypass for
+unrelated ordinary reads.
+
+**Organization Boundary**:
+The mandatory condition that an Employee Account and a document belong to the same organization
+before Document Confidentiality Level is evaluated.
+_Avoid_: a confidentiality level as cross-organization access authority.
+
+**Disabled Employee Account**:
+An Employee Account retained for history and possible future re-enablement but granted no
+employee-facing capability while disabled.
+_Avoid_: a partially active account, a deleted audit identity.
+
+**Ordinary Document Read**:
+Any employee-facing retrieval, search, download, status, metadata, row, aggregate, or error result
+whose entire result set is constrained by Organization Boundary and Confidentiality Clearance.
+_Avoid_: content-only access control, a metadata or aggregate bypass.
+
+**Derived Document Data**:
+Any index, chunk, structured row, aggregate, metadata view, or download capability produced from a
+source document that inherits the source document's Document Confidentiality Level.
+_Avoid_: an independently classified row, chunk, vector payload, or derived-data downgrade.
+
+**New Upload**:
+A file supplied to the service as a new document, even if an employee or agent created it outside
+the service using other material; it receives only its explicitly supplied or default Document
+Confidentiality Level.
+_Avoid_: automatic source-lineage inference, cross-document information-flow enforcement.
 
 **Login Identity**:
 The verifier-owned credential identity bound to exactly one Employee Account.
@@ -90,8 +153,36 @@ Fully unattended agent with no interactive login; out of scope for login flows.
   query rows. Do not add `receiptNumber`, `receipt_number`, or `RECEIPT_NUMBER_*` compatibility.
 - A receipt ID may have zero, one, or many quarantine certificates. Each certificate links to at
   most one receipt ID and may be uploaded before the corresponding delivery ledger exists.
-- Quarantine certificates require independent labels and are authorized by their own source
-  document labels; they do not inherit access from a delivery ledger with the same receipt ID.
+- Quarantine certificates have their own Document Confidentiality Level and do not inherit one from
+  a delivery ledger with the same receipt ID.
+- An Employee Account has exactly one Functional Role and one Confidentiality Clearance.
+- A developer must explicitly provide both Functional Role and Confidentiality Clearance when
+  creating an Employee Account; neither has a default value.
+- A Disabled Employee Account cannot read, upload, or perform a Privileged Administrative
+  Operation, regardless of its Functional Role, Confidentiality Clearance, or existing session.
+- Any active Employee Account may perform Document Classification while uploading; an
+  employee-owned agent must use level 0 unless the employee explicitly supplies a different level.
+- Document Classification is independent of the uploader's Confidentiality Clearance.
+- Every document kind uses the same mandatory Document Confidentiality Level; there are no
+  kind-specific classification exceptions.
+- An active Employee Account can read a same-organization document only when its Confidentiality
+  Clearance is at least the document's Document Confidentiality Level; Functional Role does not
+  alter this rule.
+- Employee labels, document labels, label catalogs, and label-based access rules do not exist;
+  legacy label data has no compatibility semantics and may be discarded during implementation.
+- Ordinary Document Read does not expose a document or its derived data when the Employee Account
+  lacks the required Confidentiality Clearance, including through metadata or aggregation.
+- Every employee-facing function that checks for the admin Functional Role is a Privileged
+  Administrative Operation; within that function's declared scope, admin access is independent of
+  Document Confidentiality Level.
+- A Privileged Administrative Operation does not change Confidentiality Clearance checks for
+  unrelated Ordinary Document Reads.
+- Organization Boundary is evaluated before Confidentiality Clearance; no Employee Account can use
+  its clearance to read a document in another organization.
+- Every Derived Document Data item inherits its source document's Document Confidentiality Level;
+  there is no independent row-level, chunk-level, or index-level classification.
+- A New Upload is a separately classified document. The service does not infer, record, or enforce
+  its relationship to material that an employee or agent previously read outside the service.
 - Every structured detail row can expose selectable-only `source_document_id`. Downloading still
   requires a fresh authorization check through the generic source-document download-link endpoint.
 
