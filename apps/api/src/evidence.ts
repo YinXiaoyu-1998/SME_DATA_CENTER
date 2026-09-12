@@ -722,29 +722,53 @@ function createApiEmbeddingProvider(input: {
 
 const RERANK_REQUEST_TOKEN_BUDGET = 100_000;
 const RERANK_MAX_DOCUMENTS = 500;
-const RERANK_ESTIMATED_TOKENS_PER_CHAR = 0.7;
+const RERANK_MAX_TOKENS_PER_INPUT = 30_000;
+const RERANK_ESTIMATED_TOKENS_PER_CHAR = 1;
 
 /**
  * Keeps a rerank request inside the provider's document-count and request-token limits while
- * preserving the caller's ordering. Candidates beyond the budget stay unscored, so they keep their
- * fused score when the service orders results.
+ * preserving the caller's ordering. DashScope counts the query once for every document, so the
+ * request budget includes both query and document tokens. Candidates beyond the budget stay
+ * unscored, so they keep their fused score when the service orders results.
  */
-export function limitRerankDocuments<T extends { text: string }>(documents: readonly T[]): T[] {
+export function limitRerankDocuments<T extends { text: string }>(
+  documents: readonly T[],
+  query = ""
+): T[] {
   const selected: T[] = [];
-  let estimatedTokens = 0;
+  const queryTokens = estimateRerankTokens(query);
+  let documentTokens = 0;
+
+  if (queryTokens > RERANK_MAX_TOKENS_PER_INPUT) {
+    return selected;
+  }
 
   for (const document of documents.slice(0, RERANK_MAX_DOCUMENTS)) {
-    const estimated = Math.ceil(document.text.length * RERANK_ESTIMATED_TOKENS_PER_CHAR);
+    const estimatedDocumentTokens = estimateRerankTokens(document.text);
 
-    if (selected.length > 0 && estimatedTokens + estimated > RERANK_REQUEST_TOKEN_BUDGET) {
+    if (estimatedDocumentTokens > RERANK_MAX_TOKENS_PER_INPUT) {
+      continue;
+    }
+
+    const nextDocumentCount = selected.length + 1;
+    const projectedRequestTokens =
+      documentTokens + estimatedDocumentTokens + queryTokens * nextDocumentCount;
+
+    if (projectedRequestTokens > RERANK_REQUEST_TOKEN_BUDGET) {
       break;
     }
 
     selected.push(document);
-    estimatedTokens += estimated;
+    documentTokens += estimatedDocumentTokens;
   }
 
   return selected;
+}
+
+function estimateRerankTokens(text: string): number {
+  // This is intentionally conservative for Chinese evidence text, where one character can be one
+  // model token. The 100k budget leaves room below DashScope's 120k request limit.
+  return Math.ceil(text.length * RERANK_ESTIMATED_TOKENS_PER_CHAR);
 }
 
 export function createApiRerankProvider(input: {
@@ -801,7 +825,11 @@ export function createApiRerankProvider(input: {
         // DashScope rerank models cap both the document count and the total request tokens, and the
         // candidate window can exceed the token budget once chunks are large. The list is trimmed
         // deterministically; unscored candidates keep their fused score for ordering.
-        const rerankRequestDocuments = limitRerankDocuments(rerankDocuments);
+        const rerankRequestDocuments = limitRerankDocuments(rerankDocuments, query);
+
+        if (rerankRequestDocuments.length === 0) {
+          return { scores: [] };
+        }
 
         const response = await fetch(
           `${normalizeBaseUrl(input.dashscopeApiBaseUrl)}/services/rerank/text-rerank/text-rerank`,

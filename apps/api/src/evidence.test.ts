@@ -508,6 +508,102 @@ describe("API evidence rerank provider", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("accounts for the query once per document when trimming a DashScope request", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ body: unknown }> = [];
+    globalThis.fetch = (async (_url, init) => {
+      requests.push({ body: JSON.parse(String(init?.body)) });
+
+      return new Response(JSON.stringify({ output: { results: [] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }) as typeof fetch;
+
+    try {
+      const retrievalConfig = loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          qdrantCollection: "enterprise_hub_evidence_test",
+          llmProvider: "openai-compatible",
+          embeddingModel: "text-embedding-v4",
+          embeddingDimension: 1024,
+          rerankProvider: "dashscope",
+          rerankModel: "qwen3.7-text-rerank"
+        }),
+        "phase3.retrieval.v1"
+      );
+      const provider = createApiRerankProvider({
+        retrievalConfig,
+        openAiCompatibleApiKey: "sk-openai-compatible",
+        openAiCompatibleBaseUrl: "https://provider.example/v1",
+        dashscopeApiKey: "sk-dashscope",
+        dashscopeApiBaseUrl: "https://dashscope.example/api/v1",
+        externalModelEgressAcknowledged: true
+      });
+
+      await provider?.rerank({
+        query: "文".repeat(4_000),
+        documents: Array.from({ length: 200 }, (_, index) => ({
+          id: `chunk_${index}`,
+          text: "文".repeat(1_600)
+        }))
+      });
+
+      expect(requests).toHaveLength(1);
+      const request = requests[0]?.body as {
+        parameters: { top_n: number };
+        input: { documents: string[] };
+      };
+      expect(request.parameters.top_n).toBe(17);
+      expect(request.input.documents).toHaveLength(17);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps fused-order fallback when no DashScope document fits the input limit", async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      throw new Error("DashScope must not receive an empty rerank request");
+    }) as typeof fetch;
+
+    try {
+      const retrievalConfig = loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({
+          retrievalConfigVersion: "phase3.retrieval.v1",
+          qdrantCollection: "enterprise_hub_evidence_test",
+          llmProvider: "openai-compatible",
+          embeddingModel: "text-embedding-v4",
+          embeddingDimension: 1024,
+          rerankProvider: "dashscope",
+          rerankModel: "qwen3.7-text-rerank"
+        }),
+        "phase3.retrieval.v1"
+      );
+      const provider = createApiRerankProvider({
+        retrievalConfig,
+        openAiCompatibleApiKey: "sk-openai-compatible",
+        openAiCompatibleBaseUrl: "https://provider.example/v1",
+        dashscopeApiKey: "sk-dashscope",
+        dashscopeApiBaseUrl: "https://dashscope.example/api/v1",
+        externalModelEgressAcknowledged: true
+      });
+
+      await expect(
+        provider?.rerank({
+          query: "synthetic query",
+          documents: [{ id: "chunk_oversized", text: "文".repeat(50_000) }]
+        })
+      ).resolves.toEqual({ scores: [] });
+      expect(fetchCalls).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("evidence MySQL revalidation", () => {
@@ -726,10 +822,10 @@ describe("rerank request budgeting", () => {
     expect(limited[0]).toEqual(documents[0]);
   });
 
-  it("always scores at least one candidate even when a single document is oversized", () => {
-    const documents = [{ text: "文".repeat(200_000) }, { text: "短文" }];
+  it("skips a single document that exceeds the provider input limit", () => {
+    const documents = [{ text: "文".repeat(50_000) }];
 
-    expect(limitRerankDocuments(documents)).toEqual([documents[0]]);
+    expect(limitRerankDocuments(documents)).toHaveLength(0);
   });
 
   it("caps the candidate count at the provider document limit", () => {
