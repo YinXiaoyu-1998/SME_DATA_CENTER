@@ -86,7 +86,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-This runner uses the installed `enterprise-hub-mcp-launcher@0.2.8`, the user's operating-system
+This runner uses the installed `enterprise-hub-mcp-launcher@0.3.0`, the user's operating-system
 secure-store session, and the public staging service. It covers authenticated label discovery,
 evidence upload/status/search, structured CSV import/query, invalid atomic import rejection, and
 run-scoped cleanup of evidence, Qdrant points, OSS objects, structured rows, import batches, and

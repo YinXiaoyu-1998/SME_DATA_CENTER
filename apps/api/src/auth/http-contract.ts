@@ -35,7 +35,7 @@ export interface OAuthAuthorizationServerMetadata {
   token_endpoint_auth_methods_supported: ["none"];
   enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher";
   enterprise_hub_launcher_minimum_version: "0.1.0";
-  enterprise_hub_launcher_recommended_version: "0.2.8";
+  enterprise_hub_launcher_recommended_version: "0.3.0";
 }
 
 export function authorizationRequest(query: AuthorizationQuery): ValidAuthorizationRequest {
@@ -139,7 +139,7 @@ export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMet
     token_endpoint_auth_methods_supported: ["none"],
     enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher",
     enterprise_hub_launcher_minimum_version: "0.1.0",
-    enterprise_hub_launcher_recommended_version: "0.2.8"
+    enterprise_hub_launcher_recommended_version: "0.3.0"
   };
 }
 

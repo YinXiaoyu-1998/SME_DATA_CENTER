@@ -10,7 +10,7 @@
 
 **Spec:** [ADR 0025](../adr/0025-document-confidentiality-and-admin-operations.md), [project context](../../CONTEXT.md), [API contract](api-contract.md), and the decisions recorded in this plan. The database cutover maps `manager` to `admin`, all existing accounts to clearance 3, and all existing documents to confidentiality level 0; it deletes old label catalog and association data without a compatibility layer.
 
-**Implementation status (2026-09-13):** Tasks 1–6 and the applicable guidance/fixture work in Task 7 are implemented and locally verified in PR #157. Task 8 remains deliberately pending: `enterprise-hub-mcp-launcher@0.3.0` must first be published and independently verified, then recommendation/skill pins, staging migration, and official staging acceptance can proceed. The unchecked release items below remain the source of truth for that follow-up.
+**Implementation status (2026-09-13):** Tasks 1–6 and the applicable guidance/fixture work in Task 7 are implemented and locally verified in merged PR #157. `enterprise-hub-mcp-launcher@0.3.0` is now publicly published and independently verified; the follow-up recommendation/skill-pin synchronization is in progress. Task 8 staging migration and official staging acceptance remain pending. The unchecked release items below remain the source of truth for those remaining steps.
 
 ## Global Constraints
 
@@ -138,8 +138,8 @@
 - [ ] Remove `enterprise_hub_list_labels` from shared tool names, read-tool routing, schemas, tests, launcher package contract, and user-visible descriptions.
 - [ ] Remove `labelIds` evidence-search filtering and every required `labelKeys` upload input. Add optional integer `confidentialityLevel` (0–3) to evidence, structured-dataset, and quarantine-certificate MCP upload schemas and multipart mapping. Its description must say omission is level 0 and it is an explicit user-provided classification, never an inferred one.
 - [ ] Update current-user MCP result shape to include `clearance`, update archive wording to call it an admin-only PAO, and make no MCP ordinary-read tool claim an admin clearance bypass.
-- [ ] Bump `enterprise-hub-mcp-launcher` from its current `0.2.8` to the next semver minor version because tool names and input schemas are removed/changed. Update launcher alignment and `npm pack` tests in the same implementation PR.
-- [ ] After the service PR merges, publish the exact bumped launcher, independently install/check the public tarball, then update server recommended-version metadata and both the repo-local and standalone `enterprise-hub-mcp` skill pins immediately. Do not advertise an unpublished version.
+- [x] Bumped `enterprise-hub-mcp-launcher` from `0.2.8` to 0.3.0 because tool names and input schemas are removed/changed. Launcher alignment and `npm pack` tests changed in PR #157.
+- [x] After PR #157 merged, published the exact 0.3.0 launcher, independently installed/checked the public tarball, then updated server recommended-version metadata and both the repo-local and standalone `enterprise-hub-mcp` skill pins. No component advertises an unpublished version.
 
 **Verification:** Run shared contract tests, API MCP delegation/HTTP tests, launcher build, launcher package tests, and `npm --workspace enterprise-hub-mcp-launcher run pack:check`; verify the published package separately before pin changes.
 

@@ -1,19 +1,17 @@
 # Enterprise Hub MCP User Flow
 
-> **Release note:** The deployed package remains
-> `enterprise-hub-mcp-launcher@0.2.8`. This branch introduces the confidentiality-level contract
-> that requires publication and independent verification of 0.3.0 before the pinned package and
-> staging documentation are advanced.
+> **Release note:** `enterprise-hub-mcp-launcher@0.3.0` is publicly published and independently
+> verified. It is the pinned distribution for the confidentiality-level contract.
 > Native macOS/Windows package acceptance and the headless Linux loop pass; user-visible OpenClaw
 > and support-class-C phone/browser acceptance remain release evidence. There is no
 > development-login or JWT compatibility path.
 
-Last updated: 2026-08-10
+Last updated: 2026-09-13
 
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `enterprise-hub-mcp` skill. The official remote origin
 is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`enterprise-hub-mcp-launcher@0.2.8`.
+`enterprise-hub-mcp-launcher@0.3.0`.
 
 ## Participants And Credential Boundary
 
