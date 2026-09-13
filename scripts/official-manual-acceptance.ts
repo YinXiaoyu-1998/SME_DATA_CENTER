@@ -14,9 +14,11 @@ import {
   assertStagingRuntimeDatabaseTarget,
   createStructuredWindow,
   deleteStorageObjects,
+  isLowClearanceAcceptanceEmployee,
   pollStructuredImportStatus,
   rewriteKnownValuesFixture,
   type CleanupCounts,
+  type CurrentEnterpriseHubUserResult,
   type StructuredWindow
 } from "./official-manual-acceptance-support.js";
 import {
@@ -27,7 +29,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.2.8";
+const LAUNCHER_VERSION = "0.3.0";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
 interface ParsedArgs {
@@ -38,12 +40,6 @@ interface ParsedArgs {
 
 interface ToolTextResult {
   [key: string]: unknown;
-}
-
-interface CurrentUserResult extends ToolTextResult {
-  displayName: string;
-  email: string;
-  role: string;
 }
 
 interface EvidenceUploadResult extends ToolTextResult {
@@ -182,38 +178,32 @@ async function runAcceptance(
       throw new Error("Official launcher is not authenticated. Run enterprise_hub_login first.");
     }
 
-    const currentUser = await callJson<CurrentUserResult>(
+    const currentUser = await callJson<CurrentEnterpriseHubUserResult>(
       client,
       "enterprise_hub_get_current_user",
       {}
     );
-    const expectedEmails = new Set([
-      `manual-full-flow-${run.runId}@example.invalid`,
-      `manual-acceptance-${run.runId}@example.invalid`
-    ]);
-    if (
-      !expectedEmails.has(currentUser.email) ||
-      !currentUser.displayName.trim() ||
-      currentUser.role !== "employee"
-    ) {
+    const expectedEmails = new Set(acceptanceAccountEmails(run));
+    if (!isLowClearanceAcceptanceEmployee(currentUser, expectedEmails)) {
       throw new Error("Current-user MCP result did not match the synthetic acceptance account.");
     }
 
-    const evidenceUploads = await uploadEvidenceFixtures(client, run);
-    for (const upload of evidenceUploads) {
-      await waitForEvidenceReady(client, upload.document.documentId);
-    }
+    const [defaultEvidenceUpload, explicitLevelEvidenceUpload] = await uploadEvidenceFixtures(
+      client,
+      run
+    );
+    await waitForEvidenceReady(client, defaultEvidenceUpload.document.documentId);
 
     const evidenceSearch = await callJson<EvidenceSearchResult>(
       client,
       "search_document_evidence",
       {
         query: "肉夹馍 默认 青椒",
-        filters: { documentIds: evidenceUploads.map((upload) => upload.document.documentId) },
+        filters: { documentIds: [defaultEvidenceUpload.document.documentId] },
         limit: 5
       }
     );
-    const evidenceIds = new Set(evidenceUploads.map((upload) => upload.document.documentId));
+    const evidenceIds = new Set([defaultEvidenceUpload.document.documentId]);
     if (!evidenceSearch.results.some((result) => evidenceIds.has(result.documentId))) {
       throw new Error(
         "Evidence search did not return the just-uploaded manual acceptance document."
@@ -235,8 +225,7 @@ async function runAcceptance(
         enterpriseName: run.enterpriseName,
         startDate: structuredWindow.startCompact,
         endDate: structuredWindow.endCompact,
-        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-known-values`,
-        confidentialityLevel: 0
+        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-known-values`
       }
     );
     if (structuredUpload.importBatch.status !== "pending") {
@@ -269,7 +258,7 @@ async function runAcceptance(
         },
         aggregates: [
           { op: "count", as: "row_count" },
-          { op: "sum", field: "dishes_024_dish_sales_amount", as: "gross_sales" }
+          { op: "sum", field: "dish_sales_amount", as: "gross_sales" }
         ]
       }
     );
@@ -282,13 +271,13 @@ async function runAcceptance(
 
     const topDishes = await callJson<StructuredQueryResult>(client, "query_structured_dataset", {
       dataset: "dishes",
-      select: ["product_name", "dishes_024_dish_sales_amount"],
+      select: ["product_name", "dish_sales_amount"],
       filter: {
         field: "business_date",
         op: "between",
         value: [structuredWindow.startDate, structuredWindow.endDate]
       },
-      sort: [{ field: "dishes_024_dish_sales_amount", direction: "desc" }],
+      sort: [{ field: "dish_sales_amount", direction: "desc" }],
       page: { limit: 2 }
     });
     const topNames = topDishes.rows.map((row) => row["product_name"]);
@@ -311,8 +300,7 @@ async function runAcceptance(
         enterpriseName: run.enterpriseName,
         startDate: structuredWindow.invalidCompact,
         endDate: structuredWindow.invalidCompact,
-        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`,
-        confidentialityLevel: 0
+        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`
       }
     );
     if (invalidImport.importBatch.status !== "pending") {
@@ -342,8 +330,12 @@ async function runAcceptance(
       serviceOrigin: SERVICE_ORIGIN,
       launcherVersion: LAUNCHER_VERSION,
       currentUserVerified: true,
-      confidentialityLevel: 0,
-      evidenceDocuments: evidenceUploads.map((upload) => upload.document.documentId),
+      defaultConfidentialityLevel: 0,
+      explicitConfidentialityLevel: 2,
+      evidenceDocuments: [
+        defaultEvidenceUpload.document.documentId,
+        explicitLevelEvidenceUpload.document.documentId
+      ],
       structuredDocument: structuredUpload.document.documentId,
       importBatch: structuredUpload.importBatch.importBatchId,
       structuredWindow: {
@@ -361,8 +353,8 @@ async function runAcceptance(
 async function uploadEvidenceFixtures(
   client: Client,
   run: ReturnType<typeof runConfig>
-): Promise<EvidenceUploadResult[]> {
-  return Promise.all([
+): Promise<[EvidenceUploadResult, EvidenceUploadResult]> {
+  const [defaultLevelUpload, explicitLevelUpload] = await Promise.all([
     callJson<EvidenceUploadResult>(client, "upload_evidence_document", {
       file: {
         name: "baoli-roujiamo-sop.md",
@@ -371,8 +363,7 @@ async function uploadEvidenceFixtures(
         contentBase64: await fileBase64("fixtures/manual-acceptance/evidence/baoli-roujiamo-sop.md")
       },
       title: `${run.titlePrefix} Baoli Roujiamo SOP`,
-      sourceSystem: run.evidenceSourceSystem,
-      confidentialityLevel: 0
+      sourceSystem: run.evidenceSourceSystem
     }),
     callJson<EvidenceUploadResult>(client, "upload_evidence_document", {
       file: {
@@ -385,9 +376,11 @@ async function uploadEvidenceFixtures(
       },
       title: `${run.titlePrefix} Prompt Injection Fixture`,
       sourceSystem: run.evidenceSourceSystem,
-      confidentialityLevel: 0
+      confidentialityLevel: 2
     })
   ]);
+
+  return [defaultLevelUpload, explicitLevelUpload];
 }
 
 async function waitForEvidenceReady(client: Client, documentId: string): Promise<void> {
@@ -428,10 +421,7 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   const identities = await prisma.loginIdentity.findMany({
     where: {
       normalizedEmail: {
-        in: [
-          `manual-full-flow-${run.runId}@example.invalid`,
-          `manual-acceptance-${run.runId}@example.invalid`
-        ]
+        in: [...acceptanceAccountEmails(run)]
       }
     },
     select: { employeeId: true }
@@ -495,6 +485,18 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     storageObjectKeys,
     uploaderEmployeeIds
   });
+}
+
+function acceptanceAccountEmails(run: ReturnType<typeof runConfig>): string[] {
+  return [
+    `manual-full-flow-low-${run.runId}@example.invalid`,
+    `manual-full-flow-high-${run.runId}@example.invalid`,
+    `manual-acceptance-admin-${run.runId}@example.invalid`,
+    // The former single-account names remain only so cleanup can remove a run
+    // that was started before the multi-account confidentiality procedure.
+    `manual-full-flow-${run.runId}@example.invalid`,
+    `manual-acceptance-${run.runId}@example.invalid`
+  ];
 }
 
 function officialManualDocumentFilters(
