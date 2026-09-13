@@ -9,7 +9,7 @@ const employee: AuthenticatedEmployee = {
   email: "employee@example.com",
   role: "admin",
   disabled: false,
-  labels: ["all_staff"]
+  clearance: 3
 };
 
 describe("API server context", () => {

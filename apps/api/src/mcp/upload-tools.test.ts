@@ -11,9 +11,9 @@ const employee: AuthenticatedEmployee = {
   orgId: "default-org",
   displayName: "MCP Upload Manager",
   email: "mcp-upload@example.com",
-  role: "manager",
+  role: "employee",
   disabled: false,
-  labels: ["all_staff", "store:baoli"]
+  clearance: 3
 };
 
 const delegationProof = Buffer.alloc(32, 0x5a).toString("base64url");
@@ -72,7 +72,7 @@ function validEvidenceInput(overrides: Record<string, unknown> = {}) {
     file: inlineFile("customer-feedback-sop.md", "text/markdown", "# SOP\nhandle feedback\n"),
     title: "Customer feedback SOP",
     sourceSystem: "manual",
-    labelKeys: ["all_staff", "store:baoli"],
+    confidentialityLevel: 0,
     ...overrides
   };
 }
@@ -85,7 +85,7 @@ function validStructuredInput(overrides: Record<string, unknown> = {}) {
     startDate: "20260701",
     endDate: "20260731",
     idempotencyKey: "structured-upload-key",
-    labelKeys: ["store:baoli"],
+    confidentialityLevel: 0,
     ...overrides
   };
 }
@@ -99,7 +99,7 @@ function validQuarantineInput(overrides: Record<string, unknown> = {}) {
     ),
     receiptId: "SH2608250117",
     idempotencyKey: "quarantine-upload-key",
-    labelKeys: ["store:baoli"],
+    confidentialityLevel: 0,
     ...overrides
   };
 }
@@ -218,10 +218,7 @@ describe("upload MCP tool handlers", () => {
     expect(file?.body.toString("utf8")).toBe("# SOP\nhandle feedback\n");
     expect(textField(fields, "title")).toBe("Customer feedback SOP");
     expect(textField(fields, "sourceSystem")).toBe("manual");
-    expect(fields.get("labelKeys[]")?.map((value) => value.toString("utf8"))).toEqual([
-      "all_staff",
-      "store:baoli"
-    ]);
+    expect(textField(fields, "confidentialityLevel")).toBe("0");
   });
 
   it("maps valid structured uploads to the existing multipart structured import route", async () => {
@@ -259,9 +256,7 @@ describe("upload MCP tool handlers", () => {
     expect(textField(fields, "startDate")).toBe("20260701");
     expect(textField(fields, "endDate")).toBe("20260731");
     expect(textField(fields, "idempotencyKey")).toBe("structured-upload-key");
-    expect(fields.get("labelKeys[]")?.map((value) => value.toString("utf8"))).toEqual([
-      "store:baoli"
-    ]);
+    expect(textField(fields, "confidentialityLevel")).toBe("0");
   });
 
   it("maps quarantine certificate uploads to the dedicated multipart route", async () => {
@@ -291,9 +286,7 @@ describe("upload MCP tool handlers", () => {
     });
     expect(textField(fields, "receiptId")).toBe("SH2608250117");
     expect(textField(fields, "idempotencyKey")).toBe("quarantine-upload-key");
-    expect(fields.get("labelKeys[]")?.map((value) => value.toString("utf8"))).toEqual([
-      "store:baoli"
-    ]);
+    expect(textField(fields, "confidentialityLevel")).toBe("0");
   });
 
   it("maps a catalog snapshot to multipart snapshotDate without window fields", async () => {
@@ -340,7 +333,7 @@ describe("upload MCP tool handlers", () => {
           snapshotDate: undefined,
           enterpriseName: "Supplier and Delivery Smoke",
           idempotencyKey: `${dataset}-upload-key`,
-          labelKeys: ["store:baoli"]
+          confidentialityLevel: 0
         }),
         mcpContext
       );
@@ -359,9 +352,7 @@ describe("upload MCP tool handlers", () => {
       expect(textField(fields, "dataset")).toBe(dataset);
       expect(textField(fields, "enterpriseName")).toBe("Supplier and Delivery Smoke");
       expect(textField(fields, "idempotencyKey")).toBe(`${dataset}-upload-key`);
-      expect(fields.get("labelKeys[]")?.map((value) => value.toString("utf8"))).toEqual([
-        "store:baoli"
-      ]);
+      expect(textField(fields, "confidentialityLevel")).toBe("0");
       expect(textField(fields, "startDate")).toBeUndefined();
       expect(textField(fields, "endDate")).toBeUndefined();
       expect(textField(fields, "snapshotDate")).toBeUndefined();
@@ -445,7 +436,7 @@ describe("upload MCP tool handlers", () => {
           },
           title: "Oversized evidence",
           sourceSystem: "manual",
-          labelKeys: ["all_staff"]
+          confidentialityLevel: 0
         },
         mcpContext
       );
@@ -490,7 +481,7 @@ describe("upload MCP tool handlers", () => {
           },
           title: "Customer feedback SOP",
           sourceSystem: "manual",
-          labelKeys: ["all_staff", "store:baoli"]
+          confidentialityLevel: 0
         },
         {
           ...mcpContext,

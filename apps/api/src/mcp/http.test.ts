@@ -29,9 +29,9 @@ const employee: AuthenticatedEmployee = {
   orgId: "default-org",
   displayName: "MCP Manager",
   email: "mcp.employee@example.com",
-  role: "manager",
+  role: "employee",
   disabled: false,
-  labels: ["all_staff", "person:mcp.employee", "store:baoli"]
+  clearance: 3
 };
 
 const adminEmployee: AuthenticatedEmployee = {
@@ -41,7 +41,7 @@ const adminEmployee: AuthenticatedEmployee = {
   email: "mcp.admin@example.com",
   role: "admin",
   disabled: false,
-  labels: ["all_staff", "person:mcp.admin", "store:baoli"]
+  clearance: 3
 };
 
 function deferred<T>() {
@@ -142,11 +142,6 @@ function parseToolPayload(responsePayload: string) {
 }
 
 function fakeDocumentRepository(): DocumentCatalogRepository {
-  const labels = [
-    { id: "lbl_all_staff", key: "all_staff", name: "All staff", type: "system" },
-    { id: "lbl_store_baoli", key: "store:baoli", name: "Baoli store", type: "store" },
-    { id: "lbl_person_mcp", key: "person:mcp.employee", name: "MCP employee", type: "personal" }
-  ];
   const evidenceStatus: DocumentStatusRecord = {
     id: "doc_evidence_status",
     orgId: "default-org",
@@ -163,21 +158,12 @@ function fakeDocumentRepository(): DocumentCatalogRepository {
     checksumSha256: "hash",
     sourceSystem: "manual",
     sourceTime: null,
-    labels: ["all_staff"],
+    confidentialityLevel: 0,
     processingRunStatus: "succeeded",
     documentIndexStatus: "indexed"
   };
 
   return {
-    async listLabels() {
-      return labels;
-    },
-    async findLabelsByKeys(_orgId, keys) {
-      return labels.filter((label) => keys.includes(label.key));
-    },
-    async findPersonalLabelForEmployee() {
-      return labels.find((label) => label.key === "person:mcp.employee") ?? null;
-    },
     async createUploadedDocument() {
       throw new Error("createUploadedDocument should not be called by this test.");
     },
@@ -187,9 +173,6 @@ function fakeDocumentRepository(): DocumentCatalogRepository {
     async appendAuditLog() {},
     async archiveDocument() {
       return null;
-    },
-    async listAuditLogs() {
-      return { auditLogs: [], nextCursor: null };
     }
   };
 }
@@ -219,7 +202,7 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     id: "imp_status",
     orgId: "default-org",
     sourceDocumentId: "doc_structured",
-    sourceDocumentLabelKeys: ["store:baoli"],
+    sourceDocumentConfidentialityLevel: 0,
     dataset: "dishes",
     status: "pending",
     startDate: "20260701",
@@ -548,7 +531,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       id: 10,
       method: "tools/call",
       params: {
-        name: "enterprise_hub_list_labels",
+        name: "enterprise_hub_get_current_user",
         arguments: {
           oversized: "x".repeat(70_000)
         }
@@ -644,7 +627,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
   it("propagates the SDK abort signal into MCP tool context", async () => {
     const capturedContext = vi.fn<(context: McpRequestContext) => void>();
     app = buildCustomMcpTestServer({
-      enterprise_hub_list_labels: async (_input, context) => {
+      enterprise_hub_list_skills: async (_input, context) => {
         capturedContext(context);
         return {
           content: [
@@ -665,7 +648,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         id: 30,
         method: "tools/call",
         params: {
-          name: "enterprise_hub_list_labels",
+          name: "enterprise_hub_list_skills",
           arguments: {}
         }
       },
@@ -741,29 +724,31 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       user: {
         displayName: "MCP Manager",
         email: "mcp.employee@example.com",
-        role: "manager"
+        role: "employee",
+        clearance: 3
       }
     });
     expect(parseToolPayload(adminResponse.payload).payload).toEqual({
       user: {
         displayName: "MCP Administrator",
         email: "mcp.admin@example.com",
-        role: "admin"
+        role: "admin",
+        clearance: 3
       }
     });
   });
 
-  it("serves live labels, structured coverage, structured query, evidence search, and status tools through MCP framing", async () => {
+  it("serves live skills, structured coverage, structured query, evidence search, and status tools through MCP framing", async () => {
     app = buildLiveMcpApiTestServer();
 
-    const labels = await postMcp(
+    const skills = await postMcp(
       app,
       {
         jsonrpc: "2.0",
         id: 3,
         method: "tools/call",
         params: {
-          name: "enterprise_hub_list_labels",
+          name: "enterprise_hub_list_skills",
           arguments: {}
         }
       },
@@ -875,7 +860,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     );
 
     for (const response of [
-      labels,
+      skills,
       structuredDatasets,
       structuredQuery,
       structuredCoverage,
@@ -888,8 +873,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       expect(parseToolPayload(response.payload).result).toMatchObject({ isError: false });
     }
 
-    expect(parseToolPayload(labels.payload).payload).toMatchObject({
-      labels: expect.arrayContaining([expect.objectContaining({ key: "all_staff" })])
+    expect(parseToolPayload(skills.payload).payload).toMatchObject({
+      skills: expect.arrayContaining([expect.objectContaining({ id: "skill_menu" })])
     });
     expect(parseToolPayload(structuredDatasets.payload).payload).toMatchObject({
       datasets: expect.arrayContaining([expect.objectContaining({ dataset: "dishes" })])
@@ -930,13 +915,13 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
           name: "upload_evidence_document",
           arguments: {
             file: {
-              name: "unknown-label.md",
+              name: "level-four.md",
               mediaType: "text/markdown",
               encoding: "base64",
               contentBase64: Buffer.from("# Evidence\n", "utf8").toString("base64")
             },
-            title: "Unknown label evidence",
-            labelKeys: ["missing_label"]
+            title: "Out-of-range confidentiality evidence",
+            confidentialityLevel: 4
           }
         }
       },
@@ -944,19 +929,16 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         "mcp-protocol-version": "2025-11-25"
       }
     );
-    const tool = parseToolPayload(response.payload);
+    const result = parseJsonRpc(response.payload).result as {
+      content?: Array<{ text?: string }>;
+      isError?: boolean;
+    };
 
     expect(response.statusCode).toBe(200);
-    expect(JSON.stringify(tool.result)).not.toContain("MCP_TOOL_NOT_IMPLEMENTED");
-    expect(JSON.stringify(tool.result)).not.toContain("filePath");
-    expect(tool.result).toMatchObject({ isError: true });
-    expect(tool.payload).toMatchObject({
-      error: {
-        code: "UNKNOWN_LABEL",
-        message: "One or more labels do not exist.",
-        retryable: false
-      }
-    });
+    expect(result).toMatchObject({ isError: true });
+    expect(JSON.stringify(result)).not.toContain("MCP_TOOL_NOT_IMPLEMENTED");
+    expect(JSON.stringify(result)).not.toContain("filePath");
+    expect(result.content?.[0]?.text).toContain("MCP error -32602");
   });
 
   it("builds live handler state per request so delegated auth never reuses a prior bearer token", async () => {

@@ -12,14 +12,6 @@ import type {
 } from "../quarantine-certificates.js";
 import type { SourceDocumentRepository } from "../source-documents.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
-import {
-  adminEmployee,
-  baoliManagerEmployee,
-  lijieEmployee,
-  orgAAdminEmployee,
-  orgBAdminEmployee,
-  suzhouManagerEmployee
-} from "./auth-fixtures.js";
 
 export interface RecordedDocument {
   id: string;
@@ -37,7 +29,7 @@ export interface RecordedDocument {
   contentType: string | null;
   byteSize: number;
   checksumSha256: string;
-  labels: string[];
+  confidentialityLevel: number;
   processingRunStatus: string | null;
   documentIndexStatus: string | null;
   createdAt?: Date;
@@ -67,56 +59,6 @@ export interface RecordedAuditLog {
 }
 
 export function createDocumentRepository() {
-  const labelCatalog = new Map([
-    [
-      "all_staff",
-      { id: "label_all_staff", key: "all_staff", name: "All Staff", type: "all_staff" }
-    ],
-    [
-      "store:baoli",
-      { id: "label_store_baoli", key: "store:baoli", name: "Baoli Store", type: "store" }
-    ],
-    [
-      "store:suzhou",
-      { id: "label_store_suzhou", key: "store:suzhou", name: "Suzhou Store", type: "store" }
-    ],
-    [
-      "person:baoli.manager",
-      {
-        id: "label_person_baoli_manager",
-        key: "person:baoli.manager",
-        name: "Baoli Manager Personal",
-        type: "personal"
-      }
-    ],
-    [
-      "person:suzhou.manager",
-      {
-        id: "label_person_suzhou_manager",
-        key: "person:suzhou.manager",
-        name: "Suzhou Manager Personal",
-        type: "personal"
-      }
-    ],
-    [
-      "person:lijie",
-      {
-        id: "label_person_lijie",
-        key: "person:lijie",
-        name: "Li Jie Personal",
-        type: "personal"
-      }
-    ],
-    [
-      "person:admin",
-      {
-        id: "label_person_admin",
-        key: "person:admin",
-        name: "Admin Personal",
-        type: "personal"
-      }
-    ]
-  ]);
   const documents: RecordedDocument[] = [];
   const processingRuns: RecordedProcessingRun[] = [];
   const auditLogs: RecordedAuditLog[] = [];
@@ -127,38 +69,6 @@ export function createDocumentRepository() {
     processingRuns,
     auditLogs,
     uploadInputs,
-    async listLabels() {
-      return [...labelCatalog.values()].sort(
-        (first, second) =>
-          first.type.localeCompare(second.type) || first.key.localeCompare(second.key)
-      );
-    },
-    async findLabelsByKeys(_orgId: string, keys: string[]) {
-      return keys
-        .map((key) => labelCatalog.get(key))
-        .filter((label): label is { id: string; key: string; name: string; type: string } =>
-          Boolean(label)
-        );
-    },
-    async findPersonalLabelForEmployee(_orgId: string, employeeId: string) {
-      if (employeeId === baoliManagerEmployee.id) {
-        return labelCatalog.get("person:baoli.manager") ?? null;
-      }
-
-      if (employeeId === suzhouManagerEmployee.id) {
-        return labelCatalog.get("person:suzhou.manager") ?? null;
-      }
-
-      if (employeeId === lijieEmployee.id) {
-        return labelCatalog.get("person:lijie") ?? null;
-      }
-
-      if (employeeId === adminEmployee.id) {
-        return labelCatalog.get("person:admin") ?? null;
-      }
-
-      return null;
-    },
     async createUploadedDocument(
       input: Omit<
         RecordedDocument,
@@ -254,40 +164,6 @@ export function createDocumentRepository() {
       });
 
       return document;
-    },
-    async listAuditLogs(input: { limit: number; cursor: string | null }) {
-      const offset = input.cursor ? Number.parseInt(input.cursor, 10) : 0;
-      const orderedAuditLogs = auditLogs
-        .map((auditLog, index) => ({
-          id: auditLog.id ?? `audit_${index + 1}`,
-          actorEmployeeId: auditLog.actorEmployeeId,
-          action: auditLog.action,
-          targetType: auditLog.targetType ?? "document",
-          targetId: auditLog.targetId,
-          result: auditLog.result ?? "succeeded",
-          metadata: auditLog.metadata ?? null,
-          requestId: auditLog.requestId ?? null,
-          clientIp: auditLog.clientIp ?? null,
-          clientSource: auditLog.clientSource ?? null,
-          launcherVersion: auditLog.launcherVersion ?? null,
-          createdAt: auditLog.createdAt ?? new Date(index)
-        }))
-        .sort((first, second) => {
-          const timeDifference = second.createdAt.getTime() - first.createdAt.getTime();
-
-          if (timeDifference !== 0) {
-            return timeDifference;
-          }
-
-          return second.id.localeCompare(first.id);
-        });
-      const page = orderedAuditLogs.slice(offset, offset + input.limit);
-
-      return {
-        auditLogs: page,
-        nextCursor:
-          orderedAuditLogs.length > offset + input.limit ? String(offset + input.limit) : null
-      };
     }
   };
 }
@@ -326,7 +202,7 @@ export function createInMemoryQuarantineCertificateRepository(
       byteSize: document.byteSize,
       uploadedAt: certificate.createdAt,
       uploaderId: document.uploaderId,
-      labelKeys: [...document.labels].sort(),
+      confidentialityLevel: document.confidentialityLevel,
       storageObjectKey: document.storageObjectKey,
       requestFingerprint: certificate.requestFingerprint
     };
@@ -358,7 +234,7 @@ export function createInMemoryQuarantineCertificateRepository(
         contentType: input.contentType,
         byteSize: input.byteSize,
         checksumSha256: input.checksumSha256,
-        labels: [...input.labelKeys].sort(),
+        confidentialityLevel: input.confidentialityLevel,
         processingRunStatus: null,
         documentIndexStatus: null,
         createdAt: now
@@ -378,7 +254,7 @@ export function createInMemoryQuarantineCertificateRepository(
         targetType: "quarantine_certificate",
         targetId: input.sourceDocumentId,
         result: "succeeded",
-        metadata: { receiptId: input.receiptId, labelKeys: input.labelKeys },
+        metadata: { receiptId: input.receiptId, confidentialityLevel: input.confidentialityLevel },
         requestId: input.audit.requestId,
         clientIp: input.audit.sourceIp,
         clientSource: input.audit.clientSource,
@@ -400,11 +276,7 @@ export function createInMemoryQuarantineCertificateRepository(
           );
           return document?.status !== "archived";
         })
-        .filter((certificate) => {
-          if (input.employee.role === "admin") return true;
-          if (certificate.labelKeys.includes("all_staff")) return true;
-          return certificate.labelKeys.some((labelKey) => input.employee.labels.includes(labelKey));
-        })
+        .filter((certificate) => input.employee.clearance >= certificate.confidentialityLevel)
         .sort((first, second) => {
           const timeDifference = second.uploadedAt.getTime() - first.uploadedAt.getTime();
           return timeDifference || second.sourceDocumentId.localeCompare(first.sourceDocumentId);
@@ -489,12 +361,7 @@ export function createInMemorySourceDocumentRepository(
       ) {
         return null;
       }
-      if (input.employee.role !== "admin") {
-        const visible =
-          document.labels.includes("all_staff") ||
-          document.labels.some((labelKey) => input.employee.labels.includes(labelKey));
-        if (!visible) return null;
-      }
+      if (input.employee.clearance < document.confidentialityLevel) return null;
       return {
         sourceDocumentId: document.id,
         orgId: document.orgId,
@@ -503,7 +370,7 @@ export function createInMemorySourceDocumentRepository(
         originalFileName: document.originalFileName,
         contentType: document.contentType ?? "application/octet-stream",
         byteSize: document.byteSize,
-        labelKeys: document.labels
+        confidentialityLevel: document.confidentialityLevel
       };
     },
     async recordDownloadIssued(input) {
@@ -525,113 +392,21 @@ export function createInMemorySourceDocumentRepository(
 }
 
 export function createOrganizationContextDocumentRepository(): DocumentCatalogRepository & {
-  labelListOrgIds: string[];
-  labelLookupOrgIds: string[];
-  personalLabelLookupOrgIds: string[];
   catalogWriteOrgIds: string[];
   auditWriteOrgIds: string[];
-  auditListOrgIds: string[];
 } {
   const base = createDocumentRepository() as DocumentCatalogRepository;
-  const labelsByOrg = new Map([
-    [
-      "default-org",
-      [
-        { id: "label_default_shared", key: "same-named", name: "Shared Label", type: "store" },
-        {
-          id: "label_default_personal",
-          key: "person:admin",
-          name: "Default Personal",
-          type: "personal"
-        }
-      ]
-    ],
-    [
-      "org-a",
-      [
-        { id: "label_org_a_shared", key: "same-named", name: "Shared Label", type: "store" },
-        {
-          id: "label_org_a_personal",
-          key: "person:org-a.admin",
-          name: "Org A Personal",
-          type: "personal"
-        }
-      ]
-    ],
-    [
-      "org-b",
-      [
-        { id: "label_org_b_shared", key: "same-named", name: "Shared Label", type: "store" },
-        {
-          id: "label_org_b_personal",
-          key: "person:org-b.admin",
-          name: "Org B Personal",
-          type: "personal"
-        }
-      ]
-    ]
-  ]);
-  const labelLookupOrgIds: string[] = [];
-  const labelListOrgIds: string[] = [];
-  const personalLabelLookupOrgIds: string[] = [];
   const catalogWriteOrgIds: string[] = [];
   const auditWriteOrgIds: string[] = [];
-  const auditListOrgIds: string[] = [];
 
   return {
     ...base,
-    labelListOrgIds,
-    labelLookupOrgIds,
-    personalLabelLookupOrgIds,
     catalogWriteOrgIds,
     auditWriteOrgIds,
-    auditListOrgIds,
-    async listLabels(orgId) {
-      labelListOrgIds.push(orgId);
-      return labelsByOrg.get(orgId) ?? [];
-    },
-    async findLabelsByKeys(orgId, keys) {
-      labelLookupOrgIds.push(orgId);
-      return (labelsByOrg.get(orgId) ?? []).filter((label) => keys.includes(label.key));
-    },
-    async findPersonalLabelForEmployee(orgId, employeeId) {
-      personalLabelLookupOrgIds.push(orgId);
-      return (
-        (labelsByOrg.get(orgId) ?? []).find((label) =>
-          employeeId === orgBAdminEmployee.id
-            ? label.key === "person:org-b.admin"
-            : employeeId === orgAAdminEmployee.id
-              ? label.key === "person:org-a.admin"
-              : employeeId === adminEmployee.id && label.key === "person:admin"
-        ) ?? null
-      );
-    },
     async createUploadedDocument(input) {
       catalogWriteOrgIds.push(input.orgId);
       auditWriteOrgIds.push(input.orgId);
       return base.createUploadedDocument(input);
-    },
-    async listAuditLogs(input) {
-      auditListOrgIds.push(input.orgId);
-      return {
-        auditLogs: [
-          {
-            id: `audit_${input.orgId}`,
-            actorEmployeeId: `employee_${input.orgId}`,
-            action: "document.uploaded",
-            targetType: "document",
-            targetId: `document_${input.orgId}`,
-            result: "succeeded",
-            metadata: null,
-            requestId: "request",
-            clientIp: "127.0.0.1",
-            clientSource: input.orgId === "org-b" ? null : "http_api",
-            launcherVersion: null,
-            createdAt: new Date("2026-07-18T00:00:00.000Z")
-          }
-        ],
-        nextCursor: null
-      };
     }
   };
 }

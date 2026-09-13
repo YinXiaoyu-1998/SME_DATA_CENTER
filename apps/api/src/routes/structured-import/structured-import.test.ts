@@ -11,12 +11,12 @@ import { structuredImportFingerprint } from "./workflow.js";
 import { buildApiServer } from "../../server.js";
 import {
   adminEmployee,
-  baoliManagerEmployee,
+  baoliEmployee,
   disabledEmployee,
-  labelLessEmployee,
+  clearanceZeroEmployee,
   orgBAdminEmployee,
-  suzhouManagerEmployee,
-  unlabeledAdminEmployee,
+  suzhouEmployee,
+  clearanceZeroAdminEmployee,
   accessTokenFor,
   authenticateTestAccessToken,
   createDocumentRepository,
@@ -44,7 +44,7 @@ describe("structured imports", () => {
   });
 
   async function buildStructuredImportTestServer(
-    employees: AuthenticatedEmployee[] = [adminEmployee, baoliManagerEmployee],
+    employees: AuthenticatedEmployee[] = [adminEmployee, baoliEmployee],
     options: {
       runtimeEnv?: NodeJS.ProcessEnv;
       storageAdapter?: StorageAdapter;
@@ -103,7 +103,7 @@ describe("structured imports", () => {
   async function postStructuredImport(
     server: FastifyInstance,
     input: Parameters<typeof createStructuredImportMultipart>[0] = {},
-    employee: AuthenticatedEmployee = baoliManagerEmployee
+    employee: AuthenticatedEmployee = baoliEmployee
   ) {
     const multipartBody = createStructuredImportMultipart(input);
 
@@ -210,7 +210,7 @@ describe("structured imports", () => {
     expect(documentRepository.auditLogs).toEqual([
       expect.objectContaining({
         action: "structured_import.started",
-        actorEmployeeId: baoliManagerEmployee.id,
+        actorEmployeeId: baoliEmployee.id,
         targetType: "import_batch",
         result: "succeeded",
         requestId: "req_http_1",
@@ -312,7 +312,7 @@ describe("structured imports", () => {
         startDate: "20260826",
         endDate: "20260826",
         naturalKey: "SH2608250117",
-        labelKeys: ["store:baoli"],
+        confidentialityLevel: 0,
         fileHash: createHash("sha256").update(body).digest("hex")
       })
     );
@@ -510,17 +510,6 @@ describe("structured imports", () => {
     {
       name: "filename",
       input: { fileName: `${"f".repeat(252)}.csv`, idempotencyKey: "filename-too-long" }
-    },
-    {
-      name: "label key",
-      input: { labelKeys: ["l".repeat(129)], idempotencyKey: "label-too-long" }
-    },
-    {
-      name: "label count",
-      input: {
-        labelKeys: Array.from({ length: 51 }, (_, index) => `label_${index}`),
-        idempotencyKey: "labels-too-many"
-      }
     }
   ])("rejects structured upload $name above the public boundary", async ({ input }) => {
     const { app, documentRepository, storagePutCalls } = await buildStructuredImportTestServer();
@@ -849,7 +838,7 @@ describe("structured imports", () => {
     const archivedDocument = await documentRepository.archiveDocument({
       orgId: "default-org",
       documentId,
-      actorEmployeeId: baoliManagerEmployee.id,
+      actorEmployeeId: baoliEmployee.id,
       audit: {
         requestId: "test-request",
         sourceIp: "127.0.0.1",
@@ -861,7 +850,7 @@ describe("structured imports", () => {
       method: "GET",
       url: `/v1/structured/imports/${importResponse.json().importBatch.importBatchId}`,
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       }
     });
     const replayResponse = await postStructuredImport(app, { idempotencyKey: "archive-rows" });
@@ -904,7 +893,7 @@ describe("structured imports", () => {
 
     await structuredImportRepository.applyReservedStructuredImport({
       orgId: "default-org",
-      actorEmployeeId: baoliManagerEmployee.id,
+      actorEmployeeId: baoliEmployee.id,
       importBatchId: originalBatchId,
       rows: [],
       audit: {
@@ -917,7 +906,7 @@ describe("structured imports", () => {
     await documentRepository.archiveDocument({
       orgId: "default-org",
       documentId: originalDocumentId,
-      actorEmployeeId: baoliManagerEmployee.id,
+      actorEmployeeId: baoliEmployee.id,
       audit: {
         requestId: "test-archive",
         sourceIp: "127.0.0.1",
@@ -946,20 +935,20 @@ describe("structured imports", () => {
     expect(storagePutCalls()).toBe(2);
   });
 
-  it("returns import status only to same-org callers authorized by source document labels", async () => {
+  it("returns import status only to same-org callers within source-document clearance", async () => {
     const { app } = await buildStructuredImportTestServer([
       adminEmployee,
-      baoliManagerEmployee,
-      suzhouManagerEmployee,
-      labelLessEmployee,
-      unlabeledAdminEmployee,
+      baoliEmployee,
+      suzhouEmployee,
+      clearanceZeroEmployee,
+      clearanceZeroAdminEmployee,
       disabledEmployee,
       orgBAdminEmployee
     ]);
 
     const matchingImport = await postStructuredImport(app, {
       idempotencyKey: "status-matching",
-      labelKeys: ["store:baoli"]
+      confidentialityLevel: 0
     });
     const allStaffImport = await postStructuredImport(
       app,
@@ -967,7 +956,7 @@ describe("structured imports", () => {
         idempotencyKey: "status-all-staff",
         dataset: "business",
         body: Buffer.from(validStructuredCsv("business"), "utf8"),
-        labelKeys: ["all_staff"]
+        confidentialityLevel: 0
       },
       adminEmployee
     );
@@ -977,22 +966,22 @@ describe("structured imports", () => {
     const matching = await app.inject({
       method: "GET",
       url: `/v1/structured/imports/${matchingBatchId}`,
-      headers: { authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}` }
+      headers: { authorization: `Bearer ${await accessTokenFor(baoliEmployee)}` }
     });
     const allStaff = await app.inject({
       method: "GET",
       url: `/v1/structured/imports/${allStaffBatchId}`,
-      headers: { authorization: `Bearer ${await accessTokenFor(labelLessEmployee)}` }
+      headers: { authorization: `Bearer ${await accessTokenFor(clearanceZeroEmployee)}` }
     });
     const admin = await app.inject({
       method: "GET",
       url: `/v1/structured/imports/${matchingBatchId}`,
-      headers: { authorization: `Bearer ${await accessTokenFor(unlabeledAdminEmployee)}` }
+      headers: { authorization: `Bearer ${await accessTokenFor(clearanceZeroAdminEmployee)}` }
     });
     const noMatch = await app.inject({
       method: "GET",
       url: `/v1/structured/imports/${matchingBatchId}`,
-      headers: { authorization: `Bearer ${await accessTokenFor(suzhouManagerEmployee)}` }
+      headers: { authorization: `Bearer ${await accessTokenFor(suzhouEmployee)}` }
     });
     const disabled = await app.inject({
       method: "GET",
@@ -1009,7 +998,8 @@ describe("structured imports", () => {
       expect(response.statusCode).toBe(200);
       expect(JSON.stringify(response.json())).not.toContain("sourceDocumentLabelKeys");
     }
-    for (const response of [noMatch, crossOrg]) {
+    expect(noMatch.statusCode).toBe(200);
+    for (const response of [crossOrg]) {
       expect(response.statusCode).toBe(404);
       expect(response.json()).toMatchObject({
         error: { code: "IMPORT_BATCH_NOT_FOUND", message: "Import batch not found." }

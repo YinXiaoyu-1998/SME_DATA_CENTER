@@ -17,7 +17,6 @@ export interface StagingUploadDomainCleanupAdapter {
   deleteQdrantPoints(targets: QdrantPointTarget[]): Promise<void>;
   deleteOssObjects(objectKeys: string[]): Promise<void>;
   deleteUploadAuditLogs(ids: string[]): Promise<void>;
-  deleteDocumentLabels(documentIds: string[]): Promise<void>;
   deleteProcessingRuns(ids: string[]): Promise<void>;
   deleteDocumentChunks(ids: string[]): Promise<void>;
   deleteDocumentIndexes(ids: string[]): Promise<void>;
@@ -66,7 +65,6 @@ export async function runStagingUploadDomainCleanup(
   await input.adapter.deleteQdrantPoints(plan.qdrantPoints);
   await input.adapter.deleteOssObjects(plan.storageObjectKeys);
   await input.adapter.deleteUploadAuditLogs(plan.uploadAuditLogIds);
-  await input.adapter.deleteDocumentLabels(plan.documentIds);
   await input.adapter.deleteProcessingRuns(plan.processingRunIds);
   await input.adapter.deleteDocumentChunks(plan.documentChunkIds);
   await input.adapter.deleteDocumentIndexes(plan.documentIndexIds);

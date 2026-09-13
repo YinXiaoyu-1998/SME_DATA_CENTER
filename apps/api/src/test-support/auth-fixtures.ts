@@ -15,8 +15,18 @@ export const adminEmployee: AuthenticatedEmployee = {
   displayName: "Admin User",
   email: "admin@example.com",
   role: "admin",
-  disabled: false,
-  labels: ["all_staff", "person:admin", "store:baoli", "store:suzhou"]
+  clearance: 3,
+  disabled: false
+};
+
+export const lowClearanceAdminEmployee: AuthenticatedEmployee = {
+  id: "emp_admin_clearance_0",
+  orgId: "default-org",
+  displayName: "Low Clearance Admin",
+  email: "admin.clearance-0@example.com",
+  role: "admin",
+  clearance: 0,
+  disabled: false
 };
 
 export const disabledEmployee: AuthenticatedEmployee = {
@@ -25,28 +35,28 @@ export const disabledEmployee: AuthenticatedEmployee = {
   displayName: "Disabled User",
   email: "disabled@example.com",
   role: "employee",
-  disabled: true,
-  labels: ["all_staff", "person:disabled"]
+  clearance: 0,
+  disabled: true
 };
 
-export const baoliManagerEmployee: AuthenticatedEmployee = {
-  id: "emp_baoli_manager",
+export const baoliEmployee: AuthenticatedEmployee = {
+  id: "emp_baoli_employee",
   orgId: "default-org",
-  displayName: "Baoli Manager",
-  email: "baoli.manager@example.com",
-  role: "manager",
-  disabled: false,
-  labels: ["all_staff", "person:baoli.manager", "store:baoli"]
+  displayName: "Baoli Employee",
+  email: "baoli.employee@example.com",
+  role: "employee",
+  clearance: 1,
+  disabled: false
 };
 
-export const suzhouManagerEmployee: AuthenticatedEmployee = {
-  id: "emp_suzhou_manager",
+export const suzhouEmployee: AuthenticatedEmployee = {
+  id: "emp_suzhou_employee",
   orgId: "default-org",
-  displayName: "Suzhou Manager",
-  email: "suzhou.manager@example.com",
-  role: "manager",
-  disabled: false,
-  labels: ["all_staff", "person:suzhou.manager", "store:suzhou"]
+  displayName: "Suzhou Employee",
+  email: "suzhou.employee@example.com",
+  role: "employee",
+  clearance: 2,
+  disabled: false
 };
 
 export const lijieEmployee: AuthenticatedEmployee = {
@@ -55,8 +65,8 @@ export const lijieEmployee: AuthenticatedEmployee = {
   displayName: "Li Jie",
   email: "lijie@example.com",
   role: "employee",
-  disabled: false,
-  labels: ["all_staff", "person:lijie"]
+  clearance: 0,
+  disabled: false
 };
 
 export const orgAAdminEmployee: AuthenticatedEmployee = {
@@ -65,8 +75,8 @@ export const orgAAdminEmployee: AuthenticatedEmployee = {
   displayName: "Organization A Admin",
   email: "org-a.admin@example.com",
   role: "admin",
-  disabled: false,
-  labels: ["all_staff", "person:org-a.admin"]
+  clearance: 3,
+  disabled: false
 };
 
 export const orgBAdminEmployee: AuthenticatedEmployee = {
@@ -75,28 +85,28 @@ export const orgBAdminEmployee: AuthenticatedEmployee = {
   displayName: "Organization B Admin",
   email: "org-b.admin@example.com",
   role: "admin",
-  disabled: false,
-  labels: ["all_staff", "person:org-b.admin"]
+  clearance: 3,
+  disabled: false
 };
 
-export const labelLessEmployee: AuthenticatedEmployee = {
-  id: "emp_label_less",
+export const clearanceZeroEmployee: AuthenticatedEmployee = {
+  id: "emp_clearance_zero",
   orgId: "default-org",
-  displayName: "Label-less Employee",
-  email: "label.less@example.com",
+  displayName: "Clearance-zero Employee",
+  email: "clearance.zero@example.com",
   role: "employee",
-  disabled: false,
-  labels: []
+  clearance: 0,
+  disabled: false
 };
 
-export const unlabeledAdminEmployee: AuthenticatedEmployee = {
-  id: "emp_unlabeled_admin",
+export const clearanceZeroAdminEmployee: AuthenticatedEmployee = {
+  id: "emp_clearance_zero_admin",
   orgId: "default-org",
-  displayName: "Unlabeled Admin",
-  email: "unlabeled.admin@example.com",
+  displayName: "Clearance-zero Admin",
+  email: "clearance.zero.admin@example.com",
   role: "admin",
-  disabled: false,
-  labels: []
+  clearance: 0,
+  disabled: false
 };
 
 export function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {

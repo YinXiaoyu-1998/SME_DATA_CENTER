@@ -25,15 +25,12 @@ export interface ParsedStructuredImportUpload {
   endDate?: string | null;
   snapshotDate?: string;
   idempotencyKey?: string;
-  labelKeys: string[];
+  confidentialityLevel?: string;
+  confidentialityLevelFieldCount: number;
 }
 
 export function createStructuredImportDocumentId(): string {
   return `doc_${randomBytes(12).toString("hex")}`;
-}
-
-export function uniqueSorted(values: string[]): string[] {
-  return [...new Set(values.filter((value) => value.length > 0))].sort();
 }
 
 export function validateStructuredImportMetadata(upload: ParsedStructuredImportUpload):
@@ -162,25 +159,6 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
     endDate = null;
   }
 
-  if (upload.labelKeys.length === 0) {
-    return {
-      ok: false,
-      code: "UNLABELED_DOCUMENT",
-      message: "Structured import must have labels."
-    };
-  }
-
-  if (
-    upload.labelKeys.length > PUBLIC_INPUT_LIMITS.labelsPerRequest ||
-    upload.labelKeys.some((labelKey) => labelKey.length > PUBLIC_INPUT_LIMITS.labelKeyChars)
-  ) {
-    return {
-      ok: false,
-      code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
-      message: "Labels exceed the allowed limit."
-    };
-  }
-
   const fileType = fileTypeFromName(upload.file.fileName);
 
   if (fileType !== "xlsx" && fileType !== "csv") {
@@ -293,7 +271,7 @@ export function structuredImportFingerprint(input: {
   endDate?: string | null;
   snapshotDate?: string;
   naturalKey?: string;
-  labelKeys: string[];
+  confidentialityLevel: number;
   fileHash: string;
 }): string {
   const registry = getStructuredRegistry(input.dataset);
@@ -307,7 +285,7 @@ export function structuredImportFingerprint(input: {
         : registry.metadataPolicy === "window"
           ? { startDate: input.startDate, endDate: input.endDate }
           : {}),
-    labelKeys: input.labelKeys,
+    confidentialityLevel: input.confidentialityLevel,
     fileHash: input.fileHash
   };
 

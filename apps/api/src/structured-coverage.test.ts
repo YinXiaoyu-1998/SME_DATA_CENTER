@@ -41,7 +41,7 @@ describe("Prisma structured coverage repository", () => {
     const repository = createPrismaStructuredCoverageRepository("mysql://test");
     const compiled = compileStructuredCoverageQuery({
       orgId: "org_1",
-      employee: { role: "admin", labels: [] },
+      employee: { clearance: 3 },
       dataset: "dishes"
     });
 
@@ -81,7 +81,7 @@ describe("Prisma structured coverage repository", () => {
       repository.list(
         compileStructuredCoverageQuery({
           orgId: "org_1",
-          employee: { role: "employee", labels: [] },
+          employee: { clearance: 3 },
           dataset: "dish_catalog"
         })
       )
@@ -104,7 +104,7 @@ describe("Prisma structured coverage repository", () => {
       repository.list(
         compileStructuredCoverageQuery({
           orgId: "org_1",
-          employee: { role: "employee", labels: ["store:baoli"] },
+          employee: { clearance: 3 },
           dataset: "supplier_catalog"
         })
       )

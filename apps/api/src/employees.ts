@@ -14,12 +14,8 @@ interface PrismaEmployeeRow {
   displayName: string;
   email: string;
   role: EmployeeRoleName;
+  clearance: number;
   disabled: boolean;
-  employeeLabels: Array<{
-    label: {
-      key: string;
-    };
-  }>;
 }
 
 function toAuthenticatedEmployee(employee: PrismaEmployeeRow): AuthenticatedEmployee {
@@ -29,8 +25,8 @@ function toAuthenticatedEmployee(employee: PrismaEmployeeRow): AuthenticatedEmpl
     displayName: employee.displayName,
     email: employee.email,
     role: employee.role,
-    disabled: employee.disabled,
-    labels: employee.employeeLabels.map((employeeLabel) => employeeLabel.label.key).sort()
+    clearance: employee.clearance,
+    disabled: employee.disabled
   };
 }
 
@@ -52,31 +48,17 @@ export function createPrismaEmployeeRepository(
   const adapter = createDatabaseAdapter(databaseUrl);
   const prisma = new PrismaClient({ adapter });
 
-  const includeLabels = {
-    employeeLabels: {
-      include: {
-        label: {
-          select: {
-            key: true
-          }
-        }
-      }
-    }
-  } as const;
-
   return {
     async findByEmail(email: string) {
       const employee = await prisma.employee.findUnique({
-        where: { email },
-        include: includeLabels
+        where: { email }
       });
 
       return employee ? toAuthenticatedEmployee(employee) : null;
     },
     async findById(id: string) {
       const employee = await prisma.employee.findUnique({
-        where: { id },
-        include: includeLabels
+        where: { id }
       });
 
       return employee ? toAuthenticatedEmployee(employee) : null;

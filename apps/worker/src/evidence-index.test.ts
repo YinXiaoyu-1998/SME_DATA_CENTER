@@ -30,6 +30,7 @@ function evidenceRun(
       documentKind: "evidence",
       fileType: "md",
       contentVersion: 1,
+      confidentialityLevel: 0,
       ...overrides
     }
   };

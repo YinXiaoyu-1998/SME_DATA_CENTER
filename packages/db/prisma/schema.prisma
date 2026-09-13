@@ -8,14 +8,7 @@ datasource db {
 
 enum EmployeeRole {
   admin
-  manager
   employee
-}
-
-enum LabelType {
-  all_staff
-  store
-  personal
 }
 
 enum DocumentStatus {
@@ -150,7 +143,6 @@ model Organization {
   createdAt       DateTime                 @default(now()) @map("created_at")
   updatedAt       DateTime                 @updatedAt @map("updated_at")
   employees       Employee[]
-  labels          Label[]
   documents       Document[]
   processingRuns  ProcessingRun[]
   documentIndexes DocumentIndex[]
@@ -180,12 +172,12 @@ model Employee {
   orgId           String                   @map("org_id") @db.VarChar(64)
   email           String                   @unique @db.VarChar(320)
   displayName     String                   @map("display_name") @db.VarChar(255)
-  role            EmployeeRole             @default(employee)
+  role            EmployeeRole
+  clearance       Int                      @db.UnsignedTinyInt
   disabled        Boolean                  @default(false)
   createdAt       DateTime                 @default(now()) @map("created_at")
   updatedAt       DateTime                 @updatedAt @map("updated_at")
   organization    Organization             @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  employeeLabels  EmployeeLabel[]
   uploadedDocs    Document[]               @relation("DocumentUploader")
   auditLogs       AuditLog[]               @relation("AuditActor")
   loginIdentities LoginIdentity[]
@@ -199,35 +191,6 @@ model Employee {
   @@map("employees")
 }
 
-model Label {
-  id             String          @id @default(cuid()) @db.VarChar(32)
-  orgId          String          @map("org_id") @db.VarChar(64)
-  key            String          @db.VarChar(128)
-  name           String          @db.VarChar(255)
-  type           LabelType
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  organization   Organization    @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  employeeLabels EmployeeLabel[]
-  documentLabels DocumentLabel[]
-
-  @@unique([orgId, key])
-  @@index([orgId, type])
-  @@map("labels")
-}
-
-model EmployeeLabel {
-  employeeId String   @map("employee_id") @db.VarChar(32)
-  labelId    String   @map("label_id") @db.VarChar(32)
-  createdAt  DateTime @default(now()) @map("created_at")
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  label      Label    @relation(fields: [labelId], references: [id], onDelete: Cascade)
-
-  @@id([employeeId, labelId])
-  @@index([labelId])
-  @@map("employee_labels")
-}
-
 model Document {
   id               String          @id @default(cuid()) @db.VarChar(32)
   orgId            String          @map("org_id") @db.VarChar(64)
@@ -236,6 +199,7 @@ model Document {
   documentKind     DocumentKind?   @map("document_kind")
   fileType         FileType?       @map("file_type")
   status           DocumentStatus  @default(uploading)
+  confidentialityLevel Int         @default(0) @map("confidentiality_level") @db.UnsignedTinyInt
   contentVersion   Int             @default(1) @map("content_version")
   storageObjectKey String          @map("storage_object_key") @db.VarChar(1024)
   originalFileName String?         @map("original_file_name") @db.VarChar(512)
@@ -251,7 +215,6 @@ model Document {
   archivedAt       DateTime?       @map("archived_at")
   organization     Organization    @relation(fields: [orgId], references: [id], onDelete: Restrict)
   uploader         Employee        @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
-  documentLabels   DocumentLabel[]
   processingRuns   ProcessingRun[]
   chunks           DocumentChunk[]
   indexes          DocumentIndex[]
@@ -265,23 +228,12 @@ model Document {
   quarantineCertificate QuarantineCertificate?
 
   @@index([orgId, status])
+  @@index([orgId, status, confidentialityLevel])
   @@index([orgId, documentType])
   @@index([orgId, documentKind, status])
   @@index([uploaderId])
   @@index([sourceTime])
   @@map("documents")
-}
-
-model DocumentLabel {
-  documentId String   @map("document_id") @db.VarChar(32)
-  labelId    String   @map("label_id") @db.VarChar(32)
-  createdAt  DateTime @default(now()) @map("created_at")
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  label      Label    @relation(fields: [labelId], references: [id], onDelete: Restrict)
-
-  @@id([documentId, labelId])
-  @@index([labelId])
-  @@map("document_labels")
 }
 
 model ProcessingRun {

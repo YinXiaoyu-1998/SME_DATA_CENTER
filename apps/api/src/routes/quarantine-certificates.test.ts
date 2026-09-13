@@ -10,13 +10,14 @@ import {
   accessTokenFor,
   authenticateTestAccessToken,
   adminEmployee,
-  baoliManagerEmployee,
+  baoliEmployee,
   createDocumentRepository,
   createInMemoryQuarantineCertificateRepository,
   createMultipartPayload,
   createRepository,
   jwtSecret,
-  suzhouManagerEmployee
+  lowClearanceAdminEmployee,
+  suzhouEmployee
 } from "../test-support/api-server-fixtures.js";
 
 const pngBytes = Buffer.from([
@@ -38,11 +39,7 @@ describe("quarantine certificate routes", () => {
   });
 
   async function buildQuarantineTestServer(
-    employees: AuthenticatedEmployee[] = [
-      adminEmployee,
-      baoliManagerEmployee,
-      suzhouManagerEmployee
-    ]
+    employees: AuthenticatedEmployee[] = [adminEmployee, baoliEmployee, suzhouEmployee]
   ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-quarantine-"));
     const documentRepository = createDocumentRepository();
@@ -70,12 +67,12 @@ describe("quarantine certificate routes", () => {
     input: {
       receiptId?: string;
       idempotencyKey?: string;
-      labelKey?: string;
+      confidentialityLevel?: number;
       fileName?: string;
       contentType?: string;
       body?: Buffer;
     } = {},
-    employee: AuthenticatedEmployee = baoliManagerEmployee
+    employee: AuthenticatedEmployee = baoliEmployee
   ) {
     const multipart = createMultipartPayload([
       {
@@ -85,7 +82,7 @@ describe("quarantine certificate routes", () => {
         value: input.body ?? pngBytes
       },
       { name: "receiptId", value: input.receiptId ?? " sh2608250117 " },
-      { name: "labelKeys[]", value: input.labelKey ?? "store:baoli" },
+      { name: "confidentialityLevel", value: String(input.confidentialityLevel ?? 0) },
       { name: "idempotencyKey", value: input.idempotencyKey ?? "idem-quarantine-1" }
     ]);
 
@@ -107,7 +104,7 @@ describe("quarantine certificate routes", () => {
       method: "POST",
       url: "/v1/quarantine-certificates/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: { receiptIds }
     });
@@ -116,7 +113,7 @@ describe("quarantine certificate routes", () => {
   async function archiveCertificates(
     server: FastifyInstance,
     body: Record<string, string>,
-    employee: AuthenticatedEmployee = baoliManagerEmployee
+    employee: AuthenticatedEmployee = baoliEmployee
   ) {
     return server.inject({
       method: "POST",
@@ -150,7 +147,7 @@ describe("quarantine certificate routes", () => {
       documentKind: "quarantine_certificate",
       fileType: "png",
       status: "active",
-      labels: ["store:baoli"]
+      confidentialityLevel: 0
     });
   });
 
@@ -162,9 +159,9 @@ describe("quarantine certificate routes", () => {
       {
         receiptId: "SH2608260003",
         idempotencyKey: "idem-hidden",
-        labelKey: "store:suzhou"
+        confidentialityLevel: 3
       },
-      suzhouManagerEmployee
+      suzhouEmployee
     );
 
     const response = await queryCertificates(app, [
@@ -228,17 +225,17 @@ describe("quarantine certificate routes", () => {
     expect(documentRepository.documents).toHaveLength(0);
   });
 
-  it("rejects labels the uploader cannot assign", async () => {
+  it("allows an uploader to declare any confidentiality level", async () => {
     const { app, documentRepository } = await buildQuarantineTestServer();
 
     const response = await uploadCertificate(app, {
-      idempotencyKey: "idem-forbidden-label",
-      labelKey: "store:suzhou"
+      idempotencyKey: "idem-level-3",
+      confidentialityLevel: 3
     });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({ error: { code: "FORBIDDEN_LABEL" } });
-    expect(documentRepository.documents).toHaveLength(0);
+    expect(response.statusCode).toBe(201);
+    expect(documentRepository.documents).toHaveLength(1);
+    expect(documentRepository.documents[0]?.confidentialityLevel).toBe(3);
   });
 
   it("archives by source document for the uploader and by receipt ID for admins only", async () => {
@@ -266,5 +263,59 @@ describe("quarantine certificate routes", () => {
     expect((await queryCertificates(app, ["SH2608250117"])).json()).toEqual({
       results: [{ receiptId: "SH2608250117", certificates: [] }]
     });
+  });
+
+  it("lets an admin PAO archive above clearance without granting ordinary read access", async () => {
+    const { app } = await buildQuarantineTestServer([
+      lowClearanceAdminEmployee,
+      baoliEmployee,
+      suzhouEmployee
+    ]);
+    const sourceLevelThree = await uploadCertificate(
+      app,
+      {
+        receiptId: "SH2608250999",
+        idempotencyKey: "idem-admin-pao-level-3",
+        confidentialityLevel: 3
+      },
+      baoliEmployee
+    );
+    await uploadCertificate(
+      app,
+      {
+        receiptId: "SH2608251000",
+        idempotencyKey: "idem-admin-pao-level-3-receipt",
+        confidentialityLevel: 3
+      },
+      baoliEmployee
+    );
+
+    const ordinaryQuery = await app.inject({
+      method: "POST",
+      url: "/v1/quarantine-certificates/query",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(lowClearanceAdminEmployee)}`
+      },
+      payload: { receiptIds: ["SH2608250999"] }
+    });
+    const paoArchive = await archiveCertificates(
+      app,
+      { receiptId: "SH2608251000" },
+      lowClearanceAdminEmployee
+    );
+    const paoArchiveBySource = await archiveCertificates(
+      app,
+      { sourceDocumentId: sourceLevelThree.json().sourceDocumentId },
+      lowClearanceAdminEmployee
+    );
+
+    expect(ordinaryQuery.statusCode).toBe(200);
+    expect(ordinaryQuery.json()).toEqual({
+      results: [{ receiptId: "SH2608250999", certificates: [] }]
+    });
+    expect(paoArchive.statusCode).toBe(200);
+    expect(paoArchive.json()).toEqual({ archivedCount: 1 });
+    expect(paoArchiveBySource.statusCode).toBe(200);
+    expect(paoArchiveBySource.json()).toEqual({ archivedCount: 1 });
   });
 });

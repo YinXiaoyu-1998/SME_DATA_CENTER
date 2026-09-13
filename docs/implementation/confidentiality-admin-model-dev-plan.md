@@ -10,6 +10,8 @@
 
 **Spec:** [ADR 0025](../adr/0025-document-confidentiality-and-admin-operations.md), [project context](../../CONTEXT.md), [API contract](api-contract.md), and the decisions recorded in this plan. The database cutover maps `manager` to `admin`, all existing accounts to clearance 3, and all existing documents to confidentiality level 0; it deletes old label catalog and association data without a compatibility layer.
 
+**Implementation status (2026-09-13):** Tasks 1–6 and the applicable guidance/fixture work in Task 7 are implemented and locally verified in PR #157. Task 8 remains deliberately pending: `enterprise-hub-mcp-launcher@0.3.0` must first be published and independently verified, then recommendation/skill pins, staging migration, and official staging acceptance can proceed. The unchecked release items below remain the source of truth for that follow-up.
+
 ## Global Constraints
 
 - [ ] Preserve the organization boundary before every ordinary document read. A clearance-3 employee in another organization must not read a level-0 document.

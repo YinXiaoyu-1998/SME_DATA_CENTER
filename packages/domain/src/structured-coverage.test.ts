@@ -14,8 +14,7 @@ describe("structured coverage compiler", () => {
       orgId: "org_1",
       employee: {
         id: "emp_1",
-        role: "manager",
-        labels: ["all_staff", "store:baoli", "store:baoli"]
+        clearance: 3
       },
       dataset: "dishes"
     });
@@ -27,8 +26,7 @@ describe("structured coverage compiler", () => {
         orgId: "org_1",
         employee: {
           id: "emp_1",
-          role: "manager",
-          labels: ["all_staff", "store:baoli", "store:baoli"]
+          clearance: 3
         }
       }
     } satisfies Partial<StructuredCompiledCoverageQuery>);
@@ -38,9 +36,7 @@ describe("structured coverage compiler", () => {
     expect(compact(compiled.sql)).toContain(
       "WHERE ib.org_id = ? AND d.org_id = ? AND ib.dataset = ? AND ib.status = ? AND ib.applied_at IS NOT NULL AND ib.archived_at IS NULL AND d.document_kind = ? AND d.status = ? AND d.archived_at IS NULL"
     );
-    expect(compact(compiled.sql)).toContain(
-      "EXISTS (SELECT 1 FROM document_labels dl JOIN labels l ON l.id = dl.label_id WHERE dl.document_id = d.id AND (l.key = ? OR l.key IN (?)))"
-    );
+    expect(compact(compiled.sql)).toContain("d.confidentiality_level <= ?");
     expect(compact(compiled.sql)).toContain(
       "ORDER BY ib.start_date ASC, ib.end_date ASC, ib.applied_at ASC, ib.id ASC"
     );
@@ -51,15 +47,14 @@ describe("structured coverage compiler", () => {
       "applied",
       "structured",
       "active",
-      "all_staff",
-      "store:baoli"
+      3
     ]);
   });
 
-  it("omits label predicates for admins", () => {
+  it("applies the same clearance predicate to admins", () => {
     const compiled = compileStructuredCoverageQuery({
       orgId: "org_1",
-      employee: { id: "emp_admin", role: "admin", labels: [] },
+      employee: { id: "emp_admin", clearance: 3 },
       dataset: "business"
     });
 
@@ -70,14 +65,15 @@ describe("structured coverage compiler", () => {
       "business",
       "applied",
       "structured",
-      "active"
+      "active",
+      3
     ]);
   });
 
   it("compiles snapshot coverage and projects the registry metadata policy", () => {
     const compiled = compileStructuredCoverageQuery({
       orgId: "org_1",
-      employee: { role: "employee", labels: [] },
+      employee: { clearance: 3 },
       dataset: "dish_catalog"
     });
 
@@ -92,7 +88,7 @@ describe("structured coverage compiler", () => {
       "applied",
       "structured",
       "active",
-      "all_staff"
+      3
     ]);
   });
 
@@ -102,7 +98,7 @@ describe("structured coverage compiler", () => {
   ] as const)("returns no source query for %s coverage", (dataset, metadataPolicy) => {
     const compiled = compileStructuredCoverageQuery({
       orgId: "org_1",
-      employee: { role: "employee", labels: ["store:baoli"] },
+      employee: { clearance: 3 },
       dataset
     });
 

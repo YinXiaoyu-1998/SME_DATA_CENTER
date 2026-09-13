@@ -38,24 +38,24 @@ async function authenticateTestAccessToken(token: string) {
   return officialTestTokens.get(token) ?? null;
 }
 
-const baoliManagerEmployee: AuthenticatedEmployee = {
+const baoliEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_manager",
   orgId: "default-org",
   displayName: "Baoli Manager",
   email: "baoli.manager@example.com",
-  role: "manager",
-  disabled: false,
-  labels: ["all_staff", "person:baoli.manager", "store:baoli"]
+  role: "employee",
+  clearance: 1,
+  disabled: false
 };
 
-const labelLessEmployee: AuthenticatedEmployee = {
+const clearanceZeroEmployee: AuthenticatedEmployee = {
   id: "emp_label_less",
   orgId: "default-org",
   displayName: "Label-less Employee",
   email: "label.less@example.com",
   role: "employee",
-  disabled: false,
-  labels: []
+  clearance: 0,
+  disabled: false
 };
 
 function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepository {
@@ -85,7 +85,7 @@ describe("structured dataset discovery", () => {
 
   it("lists registry-backed datasets and effective query limits for authenticated callers", async () => {
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
       logger: false
@@ -95,7 +95,7 @@ describe("structured dataset discovery", () => {
       method: "GET",
       url: "/v1/structured/datasets",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       }
     });
 
@@ -176,7 +176,7 @@ describe("structured query API", () => {
       hasMore: true
     });
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -187,7 +187,7 @@ describe("structured query API", () => {
       method: "POST",
       url: "/v1/structured/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
         dataset: "dishes",
@@ -220,9 +220,8 @@ describe("structured query API", () => {
       authorizationScope: {
         orgId: "default-org",
         employee: {
-          id: baoliManagerEmployee.id,
-          role: baoliManagerEmployee.role,
-          labels: baoliManagerEmployee.labels
+          id: baoliEmployee.id,
+          clearance: baoliEmployee.clearance
         }
       }
     });
@@ -231,7 +230,7 @@ describe("structured query API", () => {
   it("rejects invalid controlled-query input before repository execution", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -242,7 +241,7 @@ describe("structured query API", () => {
       method: "POST",
       url: "/v1/structured/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
         dataset: "dishes",
@@ -264,7 +263,7 @@ describe("structured query API", () => {
   it("rejects structured string scalars larger than an imported cell", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -275,7 +274,7 @@ describe("structured query API", () => {
       method: "POST",
       url: "/v1/structured/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
         dataset: "dishes",
@@ -300,7 +299,7 @@ describe("structured query API", () => {
   it("executes the all_staff scope for an employee with no labels", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
-      employeeRepository: createRepository([labelLessEmployee]),
+      employeeRepository: createRepository([clearanceZeroEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -311,7 +310,7 @@ describe("structured query API", () => {
       method: "POST",
       url: "/v1/structured/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(labelLessEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(clearanceZeroEmployee)}`
       },
       payload: {
         dataset: "dishes",
@@ -327,7 +326,7 @@ describe("structured query API", () => {
   it("returns an empty 200 response when no authorized rows are visible", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -338,7 +337,7 @@ describe("structured query API", () => {
       method: "POST",
       url: "/v1/structured/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
         dataset: "dishes",
@@ -365,7 +364,7 @@ describe("structured query API", () => {
       hasMore: false
     });
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -376,7 +375,7 @@ describe("structured query API", () => {
       method: "POST",
       url: "/v1/structured/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
         dataset: "business",
@@ -420,7 +419,7 @@ describe("structured query API", () => {
       hasMore: false
     });
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -431,7 +430,7 @@ describe("structured query API", () => {
       method: "POST",
       url: "/v1/structured/query",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
         dataset: "business",
@@ -494,13 +493,13 @@ describe("structured query API", () => {
       hasMore: true
     });
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
       logger: false
     });
-    const accessToken = await accessTokenFor(baoliManagerEmployee);
+    const accessToken = await accessTokenFor(baoliEmployee);
 
     const firstPage = await app.inject({
       method: "POST",
@@ -552,8 +551,7 @@ describe("structured query supplier enrichment", () => {
       orgId: "default-org",
       employee: {
         id: "emp_admin",
-        role: "admin",
-        labels: []
+        clearance: 3
       },
       query: { dataset: "delivery_ledger", select },
       cursorSecret: jwtSecret

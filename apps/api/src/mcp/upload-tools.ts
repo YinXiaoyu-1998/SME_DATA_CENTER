@@ -27,21 +27,21 @@ interface UploadStructuredDatasetInput {
   endDate?: string;
   snapshotDate?: string;
   idempotencyKey: string;
-  labelKeys: string[];
+  confidentialityLevel?: number;
 }
 
 interface UploadEvidenceDocumentInput {
   file: InlineUploadFile;
   title: string;
   sourceSystem?: string;
-  labelKeys: string[];
+  confidentialityLevel?: number;
 }
 
 interface UploadQuarantineCertificateInput {
   file: InlineUploadFile;
   receiptId: string;
   idempotencyKey: string;
-  labelKeys: string[];
+  confidentialityLevel?: number;
 }
 
 export interface UploadApiDelegationContext {
@@ -145,14 +145,10 @@ async function uploadStructuredDataset(
     },
     { type: "field", name: "dataset", value: uploadInput.dataset },
     { type: "field", name: "enterpriseName", value: uploadInput.enterpriseName },
-    { type: "field", name: "idempotencyKey", value: uploadInput.idempotencyKey },
-    ...uploadInput.labelKeys.map((labelKey) => ({
-      type: "field" as const,
-      name: "labelKeys[]",
-      value: labelKey
-    }))
+    { type: "field", name: "idempotencyKey", value: uploadInput.idempotencyKey }
   ];
   appendStructuredMetadataParts(parts, uploadInput);
+  appendConfidentialityLevelPart(parts, uploadInput.confidentialityLevel);
   const multipart = createMultipartBody(parts);
 
   return delegateMultipartRequest(options.delegate, delegation, {
@@ -218,17 +214,13 @@ async function uploadEvidenceDocument(
       contentType: uploadInput.file.mediaType,
       body: decodedFile.body
     },
-    { type: "field", name: "title", value: uploadInput.title },
-    ...uploadInput.labelKeys.map((labelKey) => ({
-      type: "field" as const,
-      name: "labelKeys[]",
-      value: labelKey
-    }))
+    { type: "field", name: "title", value: uploadInput.title }
   ];
 
   if (uploadInput.sourceSystem) {
     parts.push({ type: "field", name: "sourceSystem", value: uploadInput.sourceSystem });
   }
+  appendConfidentialityLevelPart(parts, uploadInput.confidentialityLevel);
 
   return delegateMultipartRequest(options.delegate, delegation, {
     url: "/v1/documents/evidence",
@@ -274,18 +266,20 @@ async function uploadQuarantineCertificate(
       body: decodedFile.body
     },
     { type: "field", name: "receiptId", value: uploadInput.receiptId },
-    { type: "field", name: "idempotencyKey", value: uploadInput.idempotencyKey },
-    ...uploadInput.labelKeys.map((labelKey) => ({
-      type: "field" as const,
-      name: "labelKeys[]",
-      value: labelKey
-    }))
+    { type: "field", name: "idempotencyKey", value: uploadInput.idempotencyKey }
   ];
+  appendConfidentialityLevelPart(parts, uploadInput.confidentialityLevel);
 
   return delegateMultipartRequest(options.delegate, delegation, {
     url: "/v1/documents/quarantine-certificates",
     multipart: createMultipartBody(parts)
   });
+}
+
+function appendConfidentialityLevelPart(parts: MultipartPart[], level: number | undefined): void {
+  if (level !== undefined) {
+    parts.push({ type: "field", name: "confidentialityLevel", value: String(level) });
+  }
 }
 
 function decodeUploadFile(

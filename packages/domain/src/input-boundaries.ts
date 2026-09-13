@@ -5,8 +5,6 @@ export const PUBLIC_INPUT_LIMITS = Object.freeze({
   sourceSystemChars: 255,
   enterpriseNameChars: 255,
   idempotencyKeyChars: 255,
-  labelKeyChars: 128,
-  labelsPerRequest: 50,
   evidenceQueryChars: 4_000,
   evidenceFilterIdChars: 64,
   evidenceFilterIdsPerGroup: 100,

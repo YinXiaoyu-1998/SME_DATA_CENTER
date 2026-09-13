@@ -7,7 +7,7 @@ export const AUTH_ERROR_CODES = {
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CODES];
 
-export type EmployeeRoleName = "admin" | "manager" | "employee";
+export type EmployeeRoleName = "admin" | "employee";
 
 export interface AuthenticatedEmployee {
   id: string;
@@ -15,6 +15,6 @@ export interface AuthenticatedEmployee {
   displayName: string;
   email: string;
   role: EmployeeRoleName;
+  clearance: number;
   disabled: boolean;
-  labels: string[];
 }

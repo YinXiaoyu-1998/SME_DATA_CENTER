@@ -174,7 +174,7 @@ try {
     form.append("startDate", "20260701");
     form.append("endDate", "20260705");
     form.append("idempotencyKey", idempotencyKey);
-    form.append("labelKeys[]", "store:baoli");
+    form.append("confidentialityLevel", "0");
     return form;
   };
   const structuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
@@ -331,7 +331,7 @@ try {
     startDate: "20260706",
     endDate: "20260706",
     idempotencyKey: launcherPathIdempotencyKey,
-    labelKeys: ["store:baoli"]
+    confidentialityLevel: 0
   });
   assert(
     !launcherPathResult.isError,
@@ -389,7 +389,7 @@ try {
   allStaffStructuredForm.append("startDate", "20260706");
   allStaffStructuredForm.append("endDate", "20260712");
   allStaffStructuredForm.append("idempotencyKey", `integration-all-staff-${Date.now()}`);
-  allStaffStructuredForm.append("labelKeys[]", "all_staff");
+  allStaffStructuredForm.append("confidentialityLevel", "0");
   const allStaffStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
     "/v1/structured/imports",
     {
@@ -446,7 +446,7 @@ try {
   invalidStructuredForm.append("startDate", "20260820");
   invalidStructuredForm.append("endDate", "20260820");
   invalidStructuredForm.append("idempotencyKey", `integration-invalid-${Date.now()}`);
-  invalidStructuredForm.append("labelKeys[]", "store:baoli");
+  invalidStructuredForm.append("confidentialityLevel", "0");
   const invalidStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
     "/v1/structured/imports",
     { method: "POST", headers: auth, body: invalidStructuredForm }
@@ -505,7 +505,7 @@ try {
   evidenceForm.append("file", new Blob([await readFile(evidencePath)]), "phase3-evidence.md");
   evidenceForm.append("title", "Integration Phase 3 差评处理 SOP");
   evidenceForm.append("sourceSystem", "integration_smoke");
-  evidenceForm.append("labelKeys[]", "store:baoli");
+  evidenceForm.append("confidentialityLevel", "0");
   const evidenceUpload = await apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
     method: "POST",
     headers: auth,
@@ -1437,7 +1437,7 @@ async function uploadAuditEvidence(
   );
   form.append("title", input.title);
   form.append("sourceSystem", input.sourceSystem);
-  form.append("labelKeys[]", "store:baoli");
+  form.append("confidentialityLevel", "0");
   return apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
     method: "POST",
     headers: {
@@ -1487,7 +1487,7 @@ async function uploadAuditEvidenceThroughMcp(
           },
           title: input.title,
           sourceSystem: input.sourceSystem,
-          labelKeys: ["store:baoli"]
+          confidentialityLevel: 0
         }
       }
     })

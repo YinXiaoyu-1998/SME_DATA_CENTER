@@ -7,7 +7,6 @@ import {
 
 const inventory = {
   documentIds: ["doc-2", "doc-1"],
-  documentLabelCount: 2,
   processingRunIds: ["run-1"],
   documentChunkIds: ["chunk-1"],
   documentIndexIds: ["index-1"],
@@ -100,7 +99,7 @@ describe("staging upload-domain cleanup support", () => {
     ).not.toThrow();
   });
 
-  it("preserves identity, authorization, label, skill, retrieval, and auth audit records", () => {
+  it("preserves identity, authorization, skill, retrieval, and auth audit records", () => {
     const plan = buildStagingUploadDomainCleanupPlan({
       options: { dryRun: false, target: "staging", confirmation: CLEANUP_CONFIRMATION },
       inventory
@@ -111,7 +110,6 @@ describe("staging upload-domain cleanup support", () => {
       "Qdrant points by exact collection/point identifier",
       "OSS objects by exact database-recorded key",
       "related upload audit events",
-      "DocumentLabel",
       "ProcessingRun",
       "DocumentChunk",
       "DocumentIndex",
@@ -127,7 +125,6 @@ describe("staging upload-domain cleanup support", () => {
       "Organization",
       "Employee",
       "login identity and authorization records",
-      "Label",
       "SkillEntry",
       "RetrievalConfig",
       "auth audit"

@@ -25,14 +25,12 @@ const contractsByName = new Map(
 
 const validInputs = {
   enterprise_hub_get_current_user: {},
-  enterprise_hub_list_labels: {},
   enterprise_hub_list_skills: { q: "menu", category: "menu-analysis" },
   search_document_evidence: {
     query: "refund SOP",
     filters: {
       fileTypes: ["md", "txt", "docx"],
-      documentIds: ["doc_1"],
-      labelIds: ["lbl_1"]
+      documentIds: ["doc_1"]
     },
     limit: 10,
     cursor: "cursor_1"
@@ -66,7 +64,7 @@ const validInputs = {
     startDate: "20260701",
     endDate: "20260731",
     idempotencyKey: "structured-retry-key",
-    labelKeys: ["store:baoli"]
+    confidentialityLevel: 0
   },
   upload_evidence_document: {
     file: {
@@ -77,7 +75,7 @@ const validInputs = {
     },
     title: "SOP",
     sourceSystem: "manual",
-    labelKeys: ["all_staff"]
+    confidentialityLevel: 0
   },
   upload_quarantine_certificate: {
     file: {
@@ -88,7 +86,7 @@ const validInputs = {
     },
     receiptId: "SH2608250117",
     idempotencyKey: "quarantine-retry-key",
-    labelKeys: ["store:baoli"]
+    confidentialityLevel: 0
   },
   query_quarantine_certificates: {
     receiptIds: ["SH2608250117", "SH2608260003"]
@@ -105,10 +103,6 @@ const invalidInputCases = [
   {
     tool: "enterprise_hub_get_current_user",
     cases: [{ label: "cross-employee selector", input: { employeeId: "someone-else" } }]
-  },
-  {
-    tool: "enterprise_hub_list_labels",
-    cases: [{ label: "non-empty input", input: { unknown: true } }]
   },
   {
     tool: "enterprise_hub_list_skills",
@@ -130,7 +124,7 @@ const invalidInputCases = [
       { label: "limit above range", input: { query: "refund", limit: 51 } },
       {
         label: "extra filter field",
-        input: { query: "refund", filters: { labelIds: ["lbl_1"], extra: true } }
+        input: { query: "refund", filters: { extra: true } }
       }
     ]
   },
@@ -307,8 +301,8 @@ const invalidInputCases = [
         input: { ...validInputs.upload_structured_dataset, idempotencyKey: "" }
       },
       {
-        label: "empty label keys",
-        input: { ...validInputs.upload_structured_dataset, labelKeys: [] }
+        label: "out-of-range confidentiality level",
+        input: { ...validInputs.upload_structured_dataset, confidentialityLevel: 4 }
       },
       {
         label: "extra inline file field",
@@ -322,11 +316,11 @@ const invalidInputCases = [
   {
     tool: "upload_evidence_document",
     cases: [
-      { label: "missing inline file", input: { title: "SOP", labelKeys: ["all_staff"] } },
+      { label: "missing inline file", input: { title: "SOP", confidentialityLevel: 0 } },
       { label: "empty title", input: { ...validInputs.upload_evidence_document, title: "" } },
       {
-        label: "empty label keys",
-        input: { ...validInputs.upload_evidence_document, labelKeys: [] }
+        label: "out-of-range confidentiality level",
+        input: { ...validInputs.upload_evidence_document, confidentialityLevel: 4 }
       },
       {
         label: "non-string source system",
@@ -344,14 +338,14 @@ const invalidInputCases = [
   {
     tool: "upload_quarantine_certificate",
     cases: [
-      { label: "missing inline file", input: { receiptId: "SH1", labelKeys: ["store:baoli"] } },
+      { label: "missing inline file", input: { receiptId: "SH1", confidentialityLevel: 0 } },
       {
         label: "empty receipt id",
         input: { ...validInputs.upload_quarantine_certificate, receiptId: "" }
       },
       {
-        label: "empty label keys",
-        input: { ...validInputs.upload_quarantine_certificate, labelKeys: [] }
+        label: "out-of-range confidentiality level",
+        input: { ...validInputs.upload_quarantine_certificate, confidentialityLevel: 4 }
       }
     ]
   },
@@ -399,7 +393,6 @@ describe("Enterprise Hub MCP contract", () => {
   it("exports the stable business tool names without local-session tools", () => {
     expect(ENTERPRISE_HUB_MCP_TOOL_NAMES).toEqual([
       "enterprise_hub_get_current_user",
-      "enterprise_hub_list_labels",
       "enterprise_hub_list_skills",
       "search_document_evidence",
       "list_structured_datasets",
@@ -430,7 +423,7 @@ describe("Enterprise Hub MCP contract", () => {
 
     expect(currentUser?.inputSchema.safeParse({}).success).toBe(true);
     expect(currentUser?.inputSchema.safeParse({ employeeId: "someone-else" }).success).toBe(false);
-    expect(currentUser?.resultShape).toEqual(["user: { displayName, email, role }"]);
+    expect(currentUser?.resultShape).toEqual(["user: { displayName, email, role, clearance }"]);
   });
 
   it("describes structured uploads as queued work and status as the async completion view", () => {
@@ -719,14 +712,11 @@ describe("Enterprise Hub MCP contract", () => {
   });
 
   it("enforces shared metadata, search, cursor, and collection boundaries", () => {
-    const acceptedLabels = Array.from({ length: 50 }, (_, index) => `label_${index}`);
-
     expect(
       safeParseTool("upload_evidence_document", {
         ...validInputs.upload_evidence_document,
         title: "t".repeat(512),
-        sourceSystem: "s".repeat(255),
-        labelKeys: acceptedLabels
+        sourceSystem: "s".repeat(255)
       }).success
     ).toBe(true);
     expect(
@@ -744,13 +734,7 @@ describe("Enterprise Hub MCP contract", () => {
     expect(
       safeParseTool("upload_evidence_document", {
         ...validInputs.upload_evidence_document,
-        labelKeys: ["l".repeat(129)]
-      }).success
-    ).toBe(false);
-    expect(
-      safeParseTool("upload_evidence_document", {
-        ...validInputs.upload_evidence_document,
-        labelKeys: [...acceptedLabels, "label_50"]
+        confidentialityLevel: 4
       }).success
     ).toBe(false);
 
@@ -780,8 +764,7 @@ describe("Enterprise Hub MCP contract", () => {
         query: "q".repeat(4_000),
         cursor: "c".repeat(4_096),
         filters: {
-          documentIds: acceptedFilterIds,
-          labelIds: ["l".repeat(64)]
+          documentIds: acceptedFilterIds
         }
       }).success
     ).toBe(true);

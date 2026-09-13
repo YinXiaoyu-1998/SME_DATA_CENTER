@@ -121,6 +121,7 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
           payload: {
             orgId: run.orgId,
             documentId: run.documentId,
+            confidentialityLevel: run.document.confidentialityLevel,
             chunkId: chunk.chunkId,
             documentIndexId: null,
             contentVersion: chunk.contentVersion,

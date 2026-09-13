@@ -9,7 +9,7 @@ import { buildApiServer } from "../server.js";
 import {
   accessTokenFor,
   authenticateTestAccessToken,
-  baoliManagerEmployee,
+  baoliEmployee,
   createDocumentRepository,
   createInMemoryQuarantineCertificateRepository,
   createInMemorySourceDocumentRepository,
@@ -60,7 +60,7 @@ describe("source document download routes", () => {
     };
 
     app = buildApiServer({
-      employeeRepository: createRepository([baoliManagerEmployee]),
+      employeeRepository: createRepository([baoliEmployee]),
       documentRepository,
       quarantineCertificateRepository,
       sourceDocumentRepository,
@@ -82,7 +82,7 @@ describe("source document download routes", () => {
         value: pngBytes
       },
       { name: "receiptId", value: "SH2608250117" },
-      { name: "labelKeys[]", value: "store:baoli" },
+      { name: "confidentialityLevel", value: "0" },
       { name: "idempotencyKey", value: "idem-download" }
     ]);
 
@@ -90,7 +90,7 @@ describe("source document download routes", () => {
       method: "POST",
       url: "/v1/documents/quarantine-certificates",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`,
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`,
         "content-type": multipart.contentType
       },
       payload: multipart.body
@@ -105,7 +105,7 @@ describe("source document download routes", () => {
       method: "POST",
       url: `/v1/source-documents/${upload.json().sourceDocumentId}/download-url`,
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       }
     });
 

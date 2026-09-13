@@ -6,7 +6,6 @@ export const AUDIT_ACTIONS = {
   documentQueried: "document.queried",
   documentDownloaded: "document.downloaded",
   documentArchived: "document.archived",
-  documentLabelsAdded: "document.labels_added",
   structuredImportStarted: "structured_import.started",
   structuredImportApplied: "structured_import.applied"
 } as const;

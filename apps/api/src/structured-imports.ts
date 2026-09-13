@@ -50,7 +50,7 @@ export interface StructuredImportBatchRecord {
   id: string;
   orgId: string;
   sourceDocumentId: string;
-  sourceDocumentLabelKeys: string[];
+  sourceDocumentConfidentialityLevel: number;
   dataset: StructuredDatasetName;
   status: ImportBatchStatusName;
   startDate: string | null;
@@ -90,8 +90,7 @@ export interface ReserveStructuredImportInput {
     contentType?: string;
     byteSize: number;
     checksumSha256: string;
-    labelIds: string[];
-    labels: string[];
+    confidentialityLevel: number;
   };
   sourceSheetSummary: unknown[];
   totalRowCount: number;
@@ -157,15 +156,7 @@ const importBatchInclude = {
       fileType: true,
       storageObjectKey: true,
       originalFileName: true,
-      documentLabels: {
-        select: {
-          label: {
-            select: {
-              key: true
-            }
-          }
-        }
-      },
+      confidentialityLevel: true,
       processingRuns: {
         where: { jobType: ProcessingJobType.structured_import },
         orderBy: { createdAt: "desc" },
@@ -422,11 +413,7 @@ export function createPrismaStructuredImportRepository(options: {
                       ? { naturalKey: input.naturalKey }
                       : {})
                   },
-                  documentLabels: {
-                    create: input.document.labelIds.map((labelId) => ({
-                      labelId
-                    }))
-                  }
+                  confidentialityLevel: input.document.confidentialityLevel
                 }
               });
 
@@ -838,9 +825,7 @@ function toImportBatchRecord(
     id: batch.id,
     orgId: batch.orgId,
     sourceDocumentId: batch.sourceDocumentId,
-    sourceDocumentLabelKeys: batch.sourceDocument.documentLabels.map(
-      (documentLabel) => documentLabel.label.key
-    ),
+    sourceDocumentConfidentialityLevel: batch.sourceDocument.confidentialityLevel,
     dataset: batch.dataset,
     status: archived ? "archived" : batch.status,
     startDate: formatDateWindowDate(batch.startDate),

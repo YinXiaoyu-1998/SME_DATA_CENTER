@@ -28,8 +28,7 @@ export type StructuredQueryMode = "detail" | "aggregate";
 
 export interface StructuredQueryEmployeeScope {
   id?: string;
-  role: "admin" | "manager" | "employee";
-  labels: string[];
+  clearance: number;
 }
 
 export interface StructuredQueryAuthorizationScope {
@@ -170,8 +169,7 @@ export function compileStructuredQuery(
   const shapeHash = hashQueryShape({
     orgId: input.orgId,
     employeeId: input.employee.id ?? null,
-    role: input.employee.role,
-    labels: [...input.employee.labels].sort(),
+    clearance: input.employee.clearance,
     query: { ...query, page: { limit: query.page.limit, cursor: null } }
   });
   const offset = query.page.cursor
@@ -225,7 +223,7 @@ export function compileStructuredQuery(
       shapeHash,
       authorizationScope: {
         orgId: input.orgId,
-        employee: { ...input.employee, labels: [...input.employee.labels] }
+        employee: { ...input.employee }
       }
     };
   }
@@ -243,7 +241,7 @@ export function compileStructuredQuery(
     shapeHash,
     authorizationScope: {
       orgId: input.orgId,
-      employee: { ...input.employee, labels: [...input.employee.labels] }
+      employee: { ...input.employee }
     }
   };
 }
@@ -1077,20 +1075,8 @@ function baseFromAndWhere(input: {
     "AND d.archived_at IS NULL"
   ];
 
-  if (input.employee.role !== "admin") {
-    const visibleLabels = [
-      ...new Set(input.employee.labels.filter((label) => label !== "all_staff"))
-    ].sort();
-    const labelPredicate =
-      visibleLabels.length === 0
-        ? "l.key = ?"
-        : `l.key = ? OR l.key IN (${visibleLabels.map(() => "?").join(", ")})`;
-
-    clauses.push(
-      `AND EXISTS (SELECT 1 FROM document_labels dl JOIN labels l ON l.id = dl.label_id WHERE dl.document_id = d.id AND (${labelPredicate}))`
-    );
-    params.push("all_staff", ...visibleLabels);
-  }
+  clauses.push("AND d.confidentiality_level <= ?");
+  params.push(input.employee.clearance);
 
   return {
     sql: clauses.join(" "),

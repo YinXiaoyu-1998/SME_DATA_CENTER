@@ -107,7 +107,7 @@ export function createStructuredImportMultipart(input: {
   endDate?: string | null;
   snapshotDate?: string;
   idempotencyKey?: string;
-  labelKeys?: string[];
+  confidentialityLevel?: number;
   fileName?: string;
   contentType?: string;
   body?: Buffer;
@@ -121,10 +121,9 @@ export function createStructuredImportMultipart(input: {
     ...(input.endDate === null ? [] : [{ name: "endDate", value: input.endDate ?? "20260705" }]),
     ...(input.snapshotDate ? [{ name: "snapshotDate", value: input.snapshotDate }] : []),
     { name: "idempotencyKey", value: input.idempotencyKey ?? "import-key-1" },
-    ...(input.labelKeys ?? ["store:baoli"]).map((labelKey) => ({
-      name: "labelKeys[]",
-      value: labelKey
-    })),
+    ...(input.confidentialityLevel === undefined
+      ? []
+      : [{ name: "confidentialityLevel", value: String(input.confidentialityLevel) }]),
     {
       name: "file",
       fileName: input.fileName ?? "original-dishes.csv",
@@ -217,7 +216,7 @@ export function createInMemoryStructuredImportRepository(
 
       return {
         ...batch,
-        sourceDocumentLabelKeys: sourceDocument?.labels ?? [],
+        sourceDocumentConfidentialityLevel: sourceDocument?.confidentialityLevel ?? 0,
         status: sourceDocument?.status === "archived" ? "archived" : batch.status,
         queryableRowCount,
         sourceDocumentStatus: sourceDocument?.status ?? "processing_failed",
@@ -247,8 +246,7 @@ export function createInMemoryStructuredImportRepository(
         contentType?: string;
         byteSize: number;
         checksumSha256: string;
-        labelIds: string[];
-        labels: string[];
+        confidentialityLevel: number;
       };
       sourceSheetSummary: unknown[];
       totalRowCount: number;
@@ -368,7 +366,7 @@ export function createInMemoryStructuredImportRepository(
         contentType: input.document.contentType ?? null,
         byteSize: input.document.byteSize,
         checksumSha256: input.document.checksumSha256,
-        labels: input.document.labels,
+        confidentialityLevel: input.document.confidentialityLevel,
         processingRunStatus: null,
         documentIndexStatus: null,
         createdAt: new Date(),

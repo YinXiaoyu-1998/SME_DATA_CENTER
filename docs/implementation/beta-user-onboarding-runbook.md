@@ -28,8 +28,8 @@ Before creating an account, collect:
 | beta email       |      yes | user-facing login identifier                                                            |
 | display name     |      yes | visible only for operator clarity and audit readability                                 |
 | organization     |      yes | existing organization id; current seeded staging default is `default-org`               |
-| role             |      yes | enum; default `employee`; see role table below                                          |
-| labels           |      yes | label keys; label type is enum; start narrow; see label table below                     |
+| role             |      yes | explicit `employee` or `admin`; no default                                              |
+| clearance        |      yes | explicit integer `0` through `3`; no default                                            |
 | first-run data   |      yes | policy choice; fixture or approved non-sensitive document only; see data table below    |
 | support owner    |      yes | person who can reset password, revoke access, and coordinate cleanup                    |
 | success criteria |      yes | normally: install, login, upload, search, logout/reset; see success-criteria note below |
@@ -39,35 +39,27 @@ Before creating an account, collect:
 `organization` is not a closed enum in the schema; it is an existing `Organization.id`.
 
 For the current staging beta pilot, use `default-org` unless the pilot intentionally creates and
-validates a new organization and its labels. Do not invent an organization id in the onboarding
+validates a new organization. Do not invent an organization id in the onboarding
 command: the operator CLI fails if the organization does not already exist.
 
 ### Role Values
 
 `role` is the `EmployeeRole` enum. Current values:
 
-| Value      | Difference                                                                                                                  | First beta default |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `employee` | Normal beta user. Can access documents/rows with `all_staff` or labels assigned to that employee.                           | yes                |
-| `manager`  | Same label-based document access as `employee` in current permission rules; kept for business role semantics and future UI. | no                 |
-| `admin`    | Broad same-organization access in current backend permission checks; use only for trusted operator/admin accounts.          | no                 |
+| Value      | Difference                                                                                     | First beta default |
+| ---------- | ---------------------------------------------------------------------------------------------- | ------------------ |
+| `employee` | Normal beta user. Role alone does not grant ordinary document reads.                           | yes                |
+| `admin`    | May use explicitly declared privileged administrative operations. It does not raise clearance. | no                 |
 
-For the first real beta user, use `employee` unless there is a concrete reason to test admin-like
-visibility.
+For the first real beta user, use `employee` and select clearance separately.
 
-### Label Values
+### Confidentiality Clearance
 
-`labels` are label keys, not a closed enum. Examples include `all_staff`, `store:baoli`, and
-`person:<employeeId>`. The label's `type` is the fixed `LabelType` enum:
-
-| Type        | Meaning                                                                                   | Beta guidance                                                               |
-| ----------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `all_staff` | Documents with this label are visible to every non-disabled employee in the organization. | Avoid for first beta uploads unless the file is intentionally company-wide. |
-| `store`     | Store/team/business-scope label, for example `store:baoli`.                               | Preferred for store-scoped pilot files.                                     |
-| `personal`  | Individual employee label, for example `person:<employeeId>`.                             | Use for private beta-user test files or one-person visibility.              |
-
-Start narrow. Give the beta user one personal label and only the explicitly approved store/team
-labels needed for the pilot.
+Every document and employee belongs to exactly one organization. Ordinary reads require that same
+organization and `employee.clearance >= document.confidentialityLevel`; both are integers from `0`
+through `3`. Role is independent. Existing accounts migrate to clearance `3`; new accounts must
+receive an explicit clearance from the onboarding operator. The service has no labels, store scope,
+or personal-document tags.
 
 ### First-Run Data Values
 
@@ -86,7 +78,7 @@ is fixed unless the pilot owner explicitly narrows it:
 
 - install or repair the skill/launcher;
 - browser login;
-- list labels;
+- confirm the current account's role and clearance;
 - upload one approved evidence file;
 - wait for indexing;
 - search from a fresh task;
@@ -134,7 +126,7 @@ docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
   --email <beta-email> \
   --display-name "<display-name>" \
   --role employee \
-  --label <allowed-label>
+  --clearance 0
 ```
 
 Rules:
@@ -180,13 +172,13 @@ Login timing:
 Verification from a new Codex task:
 
 ```text
-帮我看看 Enterprise Hub 现在登录了吗，可以看到哪些标签？
+帮我看看 Enterprise Hub 现在登录了吗，账号的身份和保密等级是什么？
 ```
 
 Expected:
 
 - authenticated status;
-- intended label(s), normally one narrow label such as a store/team/personal label.
+- the intended role and clearance.
 
 ## First Evidence Upload/Search
 
@@ -199,10 +191,11 @@ Use a fixture or approved non-sensitive file. The employee prompt should remain 
 Acceptance checks:
 
 - agent reads exact file bytes and uploads through MCP;
-- labels come from `enterprise_hub_list_labels`;
+- an omitted upload confidentiality level is stored as `0`, and an explicit level is an integer
+  from `0` through `3`;
 - evidence document status eventually becomes ready/active;
 - a new task can search for the uploaded content through MCP;
-- no cross-label or forbidden data is exposed.
+- no cross-organization or above-clearance data is exposed.
 
 ## Structured Data Pilot Rules
 
@@ -214,7 +207,7 @@ After uploading a table, the agent must retain or rediscover:
 - dataset id;
 - declared business-date window;
 - enterprise/store name if present;
-- labels used for the upload.
+- confidentiality level used for the upload.
 
 The agent should call dataset discovery before structured queries and use only `canonicalName`
 fields. When the employee asks what data is available, the agent may use
@@ -266,7 +259,7 @@ Rules:
 ## Cleanup
 
 For synthetic test users, remove uploaded documents, structured rows/import batches, Qdrant points,
-OSS objects, sessions, identities, labels, and the employee account. The official manual acceptance
+OSS objects, sessions, identities, and the employee account. The official manual acceptance
 runner and `delete-test-account` command cover the narrow `manual-* @example.invalid` cleanup path:
 
 ```sh
@@ -295,7 +288,7 @@ Stop the pilot and diagnose before proceeding if:
   header into chat/config/env;
 - public `/readyz` becomes reachable;
 - unauthenticated MCP calls succeed;
-- a user can see data outside their labels;
+- a user can see data outside their organization or above their clearance;
 - uploaded fixture/test data cannot be cleaned up;
 - structured queries answer from a local file when the request is about Enterprise Hub data.
 

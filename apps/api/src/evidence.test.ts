@@ -23,17 +23,17 @@ const employee: AuthenticatedEmployee = {
   email: "admin@example.com",
   role: "admin",
   disabled: false,
-  labels: ["all_staff"]
+  clearance: 3
 };
 
 const baoliEmployee: AuthenticatedEmployee = {
-  id: "emp_baoli_manager",
+  id: "emp_baoli_employee",
   orgId: "default-org",
-  displayName: "Baoli Manager",
-  email: "baoli.manager@example.com",
-  role: "manager",
+  displayName: "Baoli Employee",
+  email: "baoli.employee@example.com",
+  role: "employee",
   disabled: false,
-  labels: ["all_staff", "person:baoli.manager", "store:baoli"]
+  clearance: 3
 };
 
 describe("evidence search service", () => {
@@ -44,6 +44,8 @@ describe("evidence search service", () => {
         prefetch: Array<{
           filter: {
             must: unknown[];
+            should?: unknown[];
+            minimum_should?: unknown;
           };
         }>;
       };
@@ -64,6 +66,8 @@ describe("evidence search service", () => {
             prefetch: Array<{
               filter: {
                 must: unknown[];
+                should?: unknown[];
+                minimum_should?: unknown;
               };
             }>;
           }
@@ -105,8 +109,7 @@ describe("evidence search service", () => {
       query: "差评处理 SOP",
       filters: {
         fileTypes: [],
-        documentIds: ["doc_active"],
-        labelIds: []
+        documentIds: ["doc_active"]
       },
       limit: 5,
       cursor: null,
@@ -147,6 +150,13 @@ describe("evidence search service", () => {
         { key: "documentId", match: { any: ["doc_active"] } }
       ])
     );
+    expect(request.body.prefetch[0]?.filter).toMatchObject({
+      should: [
+        { key: "confidentialityLevel", range: { lte: 3 } },
+        { is_empty: { key: "confidentialityLevel" } }
+      ],
+      minimum_should: { min_count: 1 }
+    });
     expect(candidates).toEqual([
       {
         chunkId: "chk_active",
@@ -240,8 +250,7 @@ describe("evidence search service", () => {
       query: "差评处理 SOP",
       filters: {
         fileTypes: [],
-        documentIds: [],
-        labelIds: []
+        documentIds: []
       },
       limit: 10,
       cursor: null,
@@ -324,8 +333,7 @@ describe("evidence search service", () => {
       query: "差评处理 SOP",
       filters: {
         fileTypes: [],
-        documentIds: [],
-        labelIds: []
+        documentIds: []
       },
       limit: 2,
       cursor: null,
@@ -639,14 +647,7 @@ describe("evidence MySQL revalidation", () => {
       document: {
         title: "客户反馈处理 SOP.md",
         fileType: "md",
-        documentLabels: [
-          {
-            labelId: "label_store_baoli",
-            label: {
-              key: "store:baoli"
-            }
-          }
-        ]
+        confidentialityLevel: 0
       },
       documentIndex: {
         contentVersion: 2
@@ -683,8 +684,7 @@ describe("evidence MySQL revalidation", () => {
       candidates: [evidenceCandidate()],
       filters: {
         fileTypes: [],
-        documentIds: [],
-        labelIds: []
+        documentIds: []
       }
     });
 
@@ -717,31 +717,23 @@ describe("evidence MySQL revalidation", () => {
     expect(result[0]?.text).not.toBe("stale qdrant text must not be trusted");
   });
 
-  it("applies current source document labels during revalidation", async () => {
+  it("applies the current source document confidentiality level during revalidation", async () => {
     const suzhouOnlyChunk = evidenceChunk({
       document: {
         title: "客户反馈处理 SOP.md",
         fileType: "md",
-        documentLabels: [
-          {
-            labelId: "label_store_suzhou",
-            label: {
-              key: "store:suzhou"
-            }
-          }
-        ]
+        confidentialityLevel: 3
       }
     });
     const { revalidator } = createRevalidator([suzhouOnlyChunk]);
 
     const result = await revalidator.revalidate({
       orgId: "default-org",
-      employee: baoliEmployee,
+      employee: { ...baoliEmployee, clearance: 2 },
       candidates: [evidenceCandidate()],
       filters: {
         fileTypes: [],
-        documentIds: [],
-        labelIds: []
+        documentIds: []
       }
     });
 
@@ -760,8 +752,7 @@ describe("evidence MySQL revalidation", () => {
         candidates: [evidenceCandidate()],
         filters: {
           fileTypes: [],
-          documentIds: [],
-          labelIds: []
+          documentIds: []
         }
       })
     ).resolves.toEqual([]);
@@ -793,8 +784,7 @@ describe("evidence MySQL revalidation", () => {
       ],
       filters: {
         fileTypes: [],
-        documentIds: [],
-        labelIds: []
+        documentIds: []
       }
     });
 

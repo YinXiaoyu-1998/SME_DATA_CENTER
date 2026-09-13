@@ -14,6 +14,7 @@ import {
   type AuthenticatedEmployee
 } from "@enterprise-hub/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
+import { canPerformPrivilegedAdministrativeOperation } from "./privileged-admin-operations.js";
 
 export const QUARANTINE_CERTIFICATE_LIMITS = {
   maxReceiptIdChars: 255,
@@ -29,7 +30,7 @@ export interface QuarantineCertificateRecord {
   byteSize: number;
   uploadedAt: Date;
   uploaderId: string;
-  labelKeys: string[];
+  confidentialityLevel: number;
   storageObjectKey: string;
 }
 
@@ -47,8 +48,7 @@ export interface CreateQuarantineCertificateInput {
   contentType: string;
   byteSize: number;
   checksumSha256: string;
-  labelIds: string[];
-  labelKeys: string[];
+  confidentialityLevel: number;
   audit: RequestAuditContext;
 }
 
@@ -98,19 +98,7 @@ export class QuarantineCertificateError extends Error {
   }
 }
 
-const certificateInclude = {
-  sourceDocument: {
-    include: {
-      documentLabels: {
-        include: {
-          label: {
-            select: { key: true }
-          }
-        }
-      }
-    }
-  }
-} satisfies Prisma.QuarantineCertificateInclude;
+const certificateInclude = { sourceDocument: true } satisfies Prisma.QuarantineCertificateInclude;
 
 export function normalizeReceiptId(value: string): string {
   return value.trim().toUpperCase();
@@ -118,14 +106,14 @@ export function normalizeReceiptId(value: string): string {
 
 export function quarantineCertificateFingerprint(input: {
   receiptId: string;
-  labelKeys: string[];
+  confidentialityLevel: number;
   fileHash: string;
 }): string {
   return createHash("sha256")
     .update(
       JSON.stringify({
         receiptId: input.receiptId,
-        labelKeys: [...input.labelKeys].sort(),
+        confidentialityLevel: input.confidentialityLevel,
         fileHash: input.fileHash
       })
     )
@@ -163,6 +151,7 @@ export function createPrismaQuarantineCertificateRepository(
               documentKind: DocumentKind.quarantine_certificate,
               fileType: input.fileType as FileType,
               status: DocumentStatus.active,
+              confidentialityLevel: input.confidentialityLevel,
               storageObjectKey: input.storageObjectKey,
               originalFileName: input.originalFileName,
               contentType: input.contentType,
@@ -170,10 +159,7 @@ export function createPrismaQuarantineCertificateRepository(
               checksumSha256: input.checksumSha256,
               uploaderId: input.actorEmployeeId,
               sourceSystem: null,
-              sourceTime: null,
-              documentLabels: {
-                create: input.labelIds.map((labelId) => ({ labelId }))
-              }
+              sourceTime: null
             }
           });
 
@@ -198,7 +184,7 @@ export function createPrismaQuarantineCertificateRepository(
               result: "succeeded",
               metadata: {
                 receiptId: input.receiptId,
-                labelKeys: input.labelKeys
+                confidentialityLevel: input.confidentialityLevel
               } satisfies Prisma.InputJsonObject,
               requestId: input.audit.requestId,
               clientIp: input.audit.sourceIp,
@@ -260,7 +246,15 @@ export function createPrismaQuarantineCertificateRepository(
       });
       if (!certificate || certificate.orgId !== input.orgId) return null;
       const record = toCertificateRecord(certificate);
-      if (record.uploaderId !== input.employee.id && input.employee.role !== "admin") return null;
+      if (
+        record.uploaderId !== input.employee.id &&
+        !canPerformPrivilegedAdministrativeOperation(
+          input.employee,
+          "archiveQuarantineCertificates"
+        )
+      ) {
+        return null;
+      }
       if (
         certificate.sourceDocument.status === DocumentStatus.archived ||
         certificate.sourceDocument.archivedAt
@@ -284,7 +278,14 @@ export function createPrismaQuarantineCertificateRepository(
       return 1;
     },
     async archiveByReceiptId(input) {
-      if (input.employee.role !== "admin") return 0;
+      if (
+        !canPerformPrivilegedAdministrativeOperation(
+          input.employee,
+          "archiveQuarantineCertificates"
+        )
+      ) {
+        return 0;
+      }
       const certificates = await prisma.quarantineCertificate.findMany({
         where: {
           orgId: input.orgId,
@@ -346,15 +347,14 @@ function archiveAuditData(input: {
 
 function canSeeCertificate(
   employee: AuthenticatedEmployee,
-  certificate: Pick<QuarantineCertificateRecord, "labelKeys">
+  certificate: Pick<QuarantineCertificateRecord, "confidentialityLevel">
 ): boolean {
   return canEmployeeAccessDocument({
     employee: {
       disabled: employee.disabled,
-      role: employee.role,
-      labelKeys: employee.labels
+      clearance: employee.clearance
     },
-    document: { labelKeys: certificate.labelKeys }
+    document: { confidentialityLevel: certificate.confidentialityLevel }
   });
 }
 
@@ -369,9 +369,7 @@ function toCertificateRecord(
     byteSize: certificate.sourceDocument.byteSize ? Number(certificate.sourceDocument.byteSize) : 0,
     uploadedAt: certificate.createdAt,
     uploaderId: certificate.sourceDocument.uploaderId,
-    labelKeys: certificate.sourceDocument.documentLabels
-      .map((documentLabel) => documentLabel.label.key)
-      .sort(),
+    confidentialityLevel: certificate.sourceDocument.confidentialityLevel,
     storageObjectKey: certificate.sourceDocument.storageObjectKey,
     requestFingerprint: certificate.requestFingerprint
   };

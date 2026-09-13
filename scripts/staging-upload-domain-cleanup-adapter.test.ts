@@ -146,7 +146,6 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       options: { dryRun: false, target: "staging", confirmation: "delete-upload-domain" },
       inventory: {
         documentIds: [],
-        documentLabelCount: 0,
         processingRunIds: [],
         documentChunkIds: [],
         documentIndexIds: [],

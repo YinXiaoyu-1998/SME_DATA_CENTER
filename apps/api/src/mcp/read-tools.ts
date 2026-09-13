@@ -14,7 +14,6 @@ import type { McpRequestContext } from "./tool-handlers.js";
 
 export const READ_ONLY_MCP_TOOL_NAMES = [
   "enterprise_hub_get_current_user",
-  "enterprise_hub_list_labels",
   "enterprise_hub_list_skills",
   "search_document_evidence",
   "list_structured_datasets",
@@ -69,11 +68,6 @@ function routeForReadOnlyTool(
         method: "GET",
         path: "/me",
         mapSuccess: currentUserFromMe
-      };
-    case "enterprise_hub_list_labels":
-      return {
-        method: "GET",
-        path: "/labels"
       };
     case "enterprise_hub_list_skills":
       return {
@@ -159,7 +153,9 @@ function currentUserFromMe(value: unknown): unknown {
     !("email" in employee) ||
     typeof employee.email !== "string" ||
     !("role" in employee) ||
-    !["admin", "manager", "employee"].includes(String(employee.role))
+    !["admin", "employee"].includes(String(employee.role)) ||
+    !("clearance" in employee) ||
+    typeof employee.clearance !== "number"
   ) {
     throw new Error("Invalid current-user response.");
   }
@@ -168,7 +164,8 @@ function currentUserFromMe(value: unknown): unknown {
     user: {
       displayName: employee.displayName,
       email: employee.email,
-      role: employee.role
+      role: employee.role,
+      clearance: employee.clearance
     }
   };
 }

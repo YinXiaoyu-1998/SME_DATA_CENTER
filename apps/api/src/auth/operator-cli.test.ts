@@ -29,28 +29,10 @@ class MemoryOperatorRepository implements AuthOperatorRepository {
       personalLabelDeleted: true
     };
   }
-
-  async audit() {
-    return [
-      {
-        createdAt: new Date("2026-07-24T00:00:00.000Z"),
-        eventType: "logout",
-        outcome: "succeeded",
-        reason: null,
-        requestId: null,
-        sourceIp: null,
-        launcherVersion: null,
-        orgId: "org-1",
-        identityId: "identity-new",
-        employeeId: "employee-new",
-        sessionId: "session-1"
-      }
-    ];
-  }
 }
 
 describe("auth operator CLI", () => {
-  it("parses onboarding including repeated labels and never defines password/token arguments", () => {
+  it("requires explicit role and clearance while never defining password/token arguments", () => {
     expect(
       parseOperatorCommand([
         "onboard",
@@ -61,19 +43,17 @@ describe("auth operator CLI", () => {
         "--display-name",
         "Person",
         "--role",
-        "manager",
-        "--label",
-        "store:a",
-        "--label",
-        "all_staff"
+        "employee",
+        "--clearance",
+        "2"
       ])
     ).toEqual({
       kind: "onboard",
       orgId: "org-1",
       email: " Person@Example.COM ",
       displayName: "Person",
-      role: "manager",
-      labelKeys: ["store:a", "all_staff"]
+      role: "employee",
+      clearance: 2
     });
 
     expect(() =>
@@ -106,7 +86,7 @@ describe("auth operator CLI", () => {
         email: " Person@Example.COM ",
         displayName: "Person",
         role: "employee",
-        labelKeys: []
+        clearance: 1
       },
       {
         repository,
@@ -185,8 +165,7 @@ describe("auth operator CLI", () => {
       ok: true,
       deleted: true,
       employeeId: "employee-new",
-      identityCount: 1,
-      personalLabelDeleted: true
+      identityCount: 1
     });
 
     expect(() =>
@@ -207,24 +186,5 @@ describe("auth operator CLI", () => {
         "manual-full-flow-2@example.invalid"
       ])
     ).toThrow("confirm-email");
-  });
-
-  it("prints bounded credential-free audit rows", async () => {
-    const repository = new MemoryOperatorRepository();
-    const stdout: string[] = [];
-
-    await runOperatorCommand(
-      { kind: "audit", days: 7, limit: 25 },
-      {
-        repository,
-        publicOrigin: "https://api.example.com",
-        stdout: (line) => stdout.push(line),
-        now: () => new Date("2026-07-24T00:00:00.000Z")
-      }
-    );
-
-    expect(stdout).toHaveLength(1);
-    expect(stdout[0]).toContain('"eventType":"logout"');
-    expect(stdout[0]).not.toMatch(/password|token|credential|codeHash/i);
   });
 });

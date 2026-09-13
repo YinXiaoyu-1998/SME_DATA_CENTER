@@ -62,7 +62,7 @@ instanceHostname, openedBrowser}` 并在后台轮询；业务 MCP 调用有界�
    `AsyncEntry` 构造即抛 `PermissionDenied` 的问题（改为惰性构造，首次使用失败即落入内存态）。
    完整闭环已跑通（2026-08-07）：给 seed 员工设置真实密码后，无头容器内 launcher 生成 URL →
    脚本模拟员工在验证页输入真实密码完成 → launcher 后台轮询成功换到 token → 通过 launcher
-   调用 `enterprise_hub_list_labels` 业务工具成功（`device_full_loop`）。
+   调用 `enterprise_hub_get_current_user` 业务工具成功（`device_full_loop`）。
 5. 人工验收（发布阶段，不在本 PR）：扩展 `npm run test:official-manual`，staging + 合成账号
    C 形态真机手机浏览器完成 device 登录。
 

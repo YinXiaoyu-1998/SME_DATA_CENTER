@@ -106,7 +106,6 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   registerStructuredImportRoutes(app, {
     auth: requestAuth,
-    documents,
     storage,
     structuredImports,
     runtimeLimits,
@@ -115,7 +114,6 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   registerQuarantineCertificateRoutes(app, {
     auth: requestAuth,
-    documents,
     storage,
     quarantineCertificates,
     createBusinessRequestAudit
@@ -135,7 +133,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     cursorSigningSecret
   });
 
-  registerCatalogRoutes(app, { auth: requestAuth, documents, skills });
+  registerCatalogRoutes(app, { auth: requestAuth, skills });
 
   return app;
 }

@@ -8,7 +8,6 @@ import {
 
 const inventory: StagingUploadDomainCleanupInventory = {
   documentIds: ["doc-1"],
-  documentLabelCount: 1,
   processingRunIds: ["run-1"],
   documentChunkIds: ["chunk-1"],
   documentIndexIds: ["index-1"],
@@ -30,7 +29,6 @@ function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
     deleteQdrantPoints: vi.fn(async () => undefined),
     deleteOssObjects: vi.fn(async () => undefined),
     deleteUploadAuditLogs: vi.fn(async () => undefined),
-    deleteDocumentLabels: vi.fn(async () => undefined),
     deleteProcessingRuns: vi.fn(async () => undefined),
     deleteDocumentChunks: vi.fn(async () => undefined),
     deleteDocumentIndexes: vi.fn(async () => undefined),
@@ -165,7 +163,6 @@ describe("staging upload-domain cleanup CLI", () => {
     expect(adapter.deleteQdrantPoints).toHaveBeenCalledWith(inventory.qdrantPoints);
     expect(adapter.deleteOssObjects).toHaveBeenCalledWith(inventory.storageObjectKeys);
     expect(adapter.deleteUploadAuditLogs).toHaveBeenCalledWith(inventory.uploadAuditLogIds);
-    expect(adapter.deleteDocumentLabels).toHaveBeenCalledWith(inventory.documentIds);
     expect(adapter.deleteProcessingRuns).toHaveBeenCalledWith(inventory.processingRunIds);
     expect(adapter.deleteDocumentChunks).toHaveBeenCalledWith(inventory.documentChunkIds);
     expect(adapter.deleteDocumentIndexes).toHaveBeenCalledWith(inventory.documentIndexIds);

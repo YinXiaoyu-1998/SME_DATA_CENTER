@@ -28,7 +28,6 @@ loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
 const LAUNCHER_VERSION = "0.2.8";
-const DEFAULT_LABEL_KEY = "store:baoli";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
 interface ParsedArgs {
@@ -200,9 +199,6 @@ async function runAcceptance(
       throw new Error("Current-user MCP result did not match the synthetic acceptance account.");
     }
 
-    const labels = await callJson<ToolTextResult>(client, "enterprise_hub_list_labels", {});
-    assertHasLabel(labels, DEFAULT_LABEL_KEY);
-
     const evidenceUploads = await uploadEvidenceFixtures(client, run);
     for (const upload of evidenceUploads) {
       await waitForEvidenceReady(client, upload.document.documentId);
@@ -240,7 +236,7 @@ async function runAcceptance(
         startDate: structuredWindow.startCompact,
         endDate: structuredWindow.endCompact,
         idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-known-values`,
-        labelKeys: [DEFAULT_LABEL_KEY]
+        confidentialityLevel: 0
       }
     );
     if (structuredUpload.importBatch.status !== "pending") {
@@ -316,7 +312,7 @@ async function runAcceptance(
         startDate: structuredWindow.invalidCompact,
         endDate: structuredWindow.invalidCompact,
         idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`,
-        labelKeys: [DEFAULT_LABEL_KEY]
+        confidentialityLevel: 0
       }
     );
     if (invalidImport.importBatch.status !== "pending") {
@@ -346,7 +342,7 @@ async function runAcceptance(
       serviceOrigin: SERVICE_ORIGIN,
       launcherVersion: LAUNCHER_VERSION,
       currentUserVerified: true,
-      labelKey: DEFAULT_LABEL_KEY,
+      confidentialityLevel: 0,
       evidenceDocuments: evidenceUploads.map((upload) => upload.document.documentId),
       structuredDocument: structuredUpload.document.documentId,
       importBatch: structuredUpload.importBatch.importBatchId,
@@ -376,7 +372,7 @@ async function uploadEvidenceFixtures(
       },
       title: `${run.titlePrefix} Baoli Roujiamo SOP`,
       sourceSystem: run.evidenceSourceSystem,
-      labelKeys: [DEFAULT_LABEL_KEY]
+      confidentialityLevel: 0
     }),
     callJson<EvidenceUploadResult>(client, "upload_evidence_document", {
       file: {
@@ -389,7 +385,7 @@ async function uploadEvidenceFixtures(
       },
       title: `${run.titlePrefix} Prompt Injection Fixture`,
       sourceSystem: run.evidenceSourceSystem,
-      labelKeys: [DEFAULT_LABEL_KEY]
+      confidentialityLevel: 0
     })
   ]);
 }
@@ -809,21 +805,6 @@ async function removeStaleReport(run: ReturnType<typeof runConfig>): Promise<voi
     if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
       throw error;
     }
-  }
-}
-
-function assertHasLabel(labels: ToolTextResult, key: string): void {
-  const labelKeys = Array.isArray(labels["labels"])
-    ? labels["labels"]
-        .map((label) =>
-          typeof label === "object" && label !== null && "key" in label
-            ? String((label as { key: unknown }).key)
-            : null
-        )
-        .filter(Boolean)
-    : [];
-  if (!labelKeys.includes(key)) {
-    throw new Error(`Authenticated employee cannot see required label ${key}.`);
   }
 }
 

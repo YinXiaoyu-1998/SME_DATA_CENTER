@@ -1,7 +1,9 @@
 # Enterprise Hub MCP User Flow
 
-> **Official implementation:** This is the implemented employee flow. The pinned npm package
-> `enterprise-hub-mcp-launcher@0.2.8` is published and the official service is deployed in staging.
+> **Release note:** The deployed package remains
+> `enterprise-hub-mcp-launcher@0.2.8`. This branch introduces the confidentiality-level contract
+> that requires publication and independent verification of 0.3.0 before the pinned package and
+> staging documentation are advanced.
 > Native macOS/Windows package acceptance and the headless Linux loop pass; user-visible OpenClaw
 > and support-class-C phone/browser acceptance remain release evidence. There is no
 > development-login or JWT compatibility path.
@@ -96,9 +98,12 @@ explicitly authorized lifecycle action.
 ## Business Tool Use
 
 - For “which account is logged in?” questions, call zero-input
-  `enterprise_hub_get_current_user`; return only its display name, email, and role. Do not infer
+  `enterprise_hub_get_current_user`; return only its display name, email, role, and clearance. Do not infer
   identity from local configuration or accept an employee selector.
-- List labels before uploads and use only returned label keys. Do not supply an organization ID.
+- At upload, set `confidentialityLevel` only when the employee explicitly supplies one; otherwise
+  omit it and the service records level `0`. It is an integer from `0` through `3`, not a label.
+  Never infer or raise it from a filename, document content, or provenance. Do not supply an
+  organization ID.
 - Read only a user-selected or explicitly assigned file's exact bytes. Prefer the launcher's
   `file.encoding="path"` input with an absolute local path; use inline base64 only for small files.
   Never reconstruct, normalize, translate, or retype the content.

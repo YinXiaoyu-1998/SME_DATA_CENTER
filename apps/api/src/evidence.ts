@@ -19,7 +19,6 @@ import type { RequestAuditContext } from "./request-audit-context.js";
 export interface EvidenceSearchFilters {
   fileTypes: string[];
   documentIds: string[];
-  labelIds: string[];
 }
 
 export interface EvidenceSearchInput {
@@ -258,8 +257,7 @@ export class EvidenceSearchCursorError extends Error {
 interface EvidenceCursorScopePayload {
   orgId: string;
   employeeId: string;
-  role: string;
-  labels: string[];
+  clearance: number;
   query: string;
   filters: EvidenceSearchFilters;
   limit: number;
@@ -270,13 +268,11 @@ function evidenceCursorScope(input: EvidenceSearchInput, retrievalConfigVersion:
   const payload: EvidenceCursorScopePayload = {
     orgId: input.orgId,
     employeeId: input.employee.id,
-    role: input.employee.role,
-    labels: [...input.employee.labels].sort(),
+    clearance: input.employee.clearance,
     query: input.query,
     filters: {
       fileTypes: [...input.filters.fileTypes].sort(),
-      documentIds: [...input.filters.documentIds].sort(),
-      labelIds: [...input.filters.labelIds].sort()
+      documentIds: [...input.filters.documentIds].sort()
     },
     limit: input.limit,
     retrievalConfigVersion
@@ -300,8 +296,7 @@ function createEvidenceCursor(input: {
     domain: EVIDENCE_CURSOR_DOMAIN,
     orgId: input.scope.orgId,
     employeeId: input.scope.employeeId,
-    role: input.scope.role,
-    labelsHash: sha256(stableJson(input.scope.labels)),
+    clearance: input.scope.clearance,
     query: input.scope.query,
     filters: input.scope.filters,
     limit: input.scope.limit,
@@ -559,15 +554,7 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
         }
       },
       include: {
-        document: {
-          include: {
-            documentLabels: {
-              include: {
-                label: true
-              }
-            }
-          }
-        },
+        document: true,
         documentIndex: true
       }
     });
@@ -591,19 +578,14 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
         continue;
       }
 
-      const labelKeys = chunk.document.documentLabels.map(
-        (documentLabel) => documentLabel.label.key
-      );
-
       if (
         !canEmployeeAccessDocument({
           employee: {
             disabled: input.employee.disabled,
-            role: input.employee.role,
-            labelKeys: input.employee.labels
+            clearance: input.employee.clearance
           },
           document: {
-            labelKeys
+            confidentialityLevel: chunk.document.confidentialityLevel
           }
         })
       ) {
@@ -620,15 +602,6 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
       if (
         input.filters.fileTypes.length > 0 &&
         (!chunk.document.fileType || !input.filters.fileTypes.includes(chunk.document.fileType))
-      ) {
-        continue;
-      }
-
-      if (
-        input.filters.labelIds.length > 0 &&
-        !chunk.document.documentLabels.some((documentLabel) =>
-          input.filters.labelIds.includes(documentLabel.labelId)
-        )
       ) {
         continue;
       }
@@ -962,7 +935,21 @@ function qdrantPayloadFilter(
     });
   }
 
-  return { must };
+  return {
+    must,
+    // Existing vectors predate the immutable payload field and correspond to
+    // database documents migrated to level 0. They are admitted only as
+    // candidates; PrismaEvidenceRevalidator remains the authority before
+    // reranking and response construction.
+    should: [
+      {
+        key: "confidentialityLevel",
+        range: { lte: input.employee.clearance }
+      },
+      { is_empty: { key: "confidentialityLevel" } }
+    ],
+    minimum_should: { min_count: 1 }
+  };
 }
 
 function qdrantPointToCandidate(

@@ -12,38 +12,15 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
         if (!organization) {
           throw new Error("Organization not found.");
         }
-        const requestedLabelKeys = [...new Set(input.labelKeys)];
-        const requestedLabels = await tx.label.findMany({
-          where: { orgId: input.orgId, key: { in: requestedLabelKeys } },
-          select: { id: true, key: true }
-        });
-        if (requestedLabels.length !== requestedLabelKeys.length) {
-          throw new Error("One or more requested labels do not exist in the organization.");
-        }
         const employee = await tx.employee.create({
           data: {
             orgId: input.orgId,
             email: input.normalizedEmail,
             displayName: input.displayName,
-            role: input.role
+            role: input.role,
+            clearance: input.clearance
           },
           select: { id: true }
-        });
-        const personalLabel = await tx.label.create({
-          data: {
-            orgId: input.orgId,
-            key: `person:${employee.id}`,
-            name: `${input.displayName} Personal`,
-            type: "personal"
-          },
-          select: { id: true }
-        });
-        await tx.employeeLabel.createMany({
-          data: [personalLabel, ...requestedLabels].map((label) => ({
-            employeeId: employee.id,
-            labelId: label.id
-          })),
-          skipDuplicates: true
         });
         const identity = await tx.loginIdentity.create({
           data: {
@@ -216,48 +193,12 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
         await tx.loginIdentity.deleteMany({
           where: { id: { in: identityIds } }
         });
-        await tx.employeeLabel.deleteMany({
-          where: { employeeId: identity.employeeId }
-        });
-        const personalLabel = await tx.label.findFirst({
-          where: {
-            orgId: identity.orgId,
-            key: `person:${identity.employeeId}`,
-            documentLabels: { none: {} }
-          },
-          select: { id: true }
-        });
-        if (personalLabel) {
-          await tx.label.delete({ where: { id: personalLabel.id } });
-        }
         await tx.employee.delete({ where: { id: identity.employeeId } });
 
         return {
           employeeId: identity.employeeId,
-          identityIds,
-          personalLabelDeleted: Boolean(personalLabel)
+          identityIds
         };
-      });
-    },
-
-    async audit(input) {
-      return prisma.authSecurityEvent.findMany({
-        where: { createdAt: { gte: input.since } },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: input.limit,
-        select: {
-          createdAt: true,
-          eventType: true,
-          outcome: true,
-          reason: true,
-          requestId: true,
-          sourceIp: true,
-          launcherVersion: true,
-          orgId: true,
-          identityId: true,
-          employeeId: true,
-          sessionId: true
-        }
       });
     },
 

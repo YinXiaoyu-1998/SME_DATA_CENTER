@@ -56,6 +56,7 @@ export interface ClaimedProcessingRun {
     documentKind?: string | null;
     fileType?: string | null;
     contentVersion?: number;
+    confidentialityLevel: number;
   };
 }
 
@@ -1198,7 +1199,8 @@ function toClaimedProcessingRun(
       originalFileName: document.originalFileName,
       documentKind: document.documentKind,
       fileType: document.fileType,
-      contentVersion: document.contentVersion
+      contentVersion: document.contentVersion,
+      confidentialityLevel: document.confidentialityLevel
     }
   };
 }

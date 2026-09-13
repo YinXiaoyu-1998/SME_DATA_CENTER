@@ -10,12 +10,6 @@ const prisma = vi.hoisted(() => ({
     findFirst: vi.fn(),
     update: vi.fn()
   },
-  label: {
-    findMany: vi.fn()
-  },
-  employeeLabel: {
-    findFirst: vi.fn()
-  },
   $transaction: vi.fn(),
   $disconnect: vi.fn()
 }));
@@ -63,7 +57,7 @@ function documentRecord() {
     checksumSha256: "hash",
     sourceSystem: "manual",
     sourceTime: null,
-    documentLabels: [{ label: { key: "all_staff" } }],
+    confidentialityLevel: 0,
     processingRuns: [{ status: "queued" }],
     indexes: []
   };
@@ -81,7 +75,7 @@ describe("Prisma document catalog audit provenance", () => {
     prisma.document.update.mockResolvedValue({ ...documentRecord(), status: "archived" });
   });
 
-  it("persists the complete audit context for upload, archive, and label audit writes", async () => {
+  it("persists the complete audit context for upload and archive writes", async () => {
     const repository = createPrismaDocumentCatalogRepository("mysql://test");
 
     await repository.createUploadedDocument({
@@ -100,8 +94,7 @@ describe("Prisma document catalog audit provenance", () => {
       uploaderId: "emp_1",
       sourceSystem: "manual",
       sourceTime: null,
-      labelIds: ["label_1"],
-      labels: ["all_staff"],
+      confidentialityLevel: 0,
       processingJobType: "evidence_document_index",
       audit
     });
@@ -114,7 +107,7 @@ describe("Prisma document catalog audit provenance", () => {
     await repository.appendAuditLog({
       orgId: "org_1",
       actorEmployeeId: "emp_1",
-      action: "document.labels_added",
+      action: "document.metadata_recorded",
       targetType: "document",
       targetId: "doc_1",
       result: "succeeded",
@@ -132,56 +125,5 @@ describe("Prisma document catalog audit provenance", () => {
         }
       });
     }
-  });
-
-  it("serializes both populated provenance and nullable historical provenance", async () => {
-    prisma.auditLog.findMany.mockResolvedValue([
-      {
-        id: "audit_2",
-        actorEmployeeId: "emp_1",
-        action: "document.uploaded",
-        targetType: "document",
-        targetId: "doc_1",
-        result: "succeeded",
-        metadata: null,
-        requestId: "req_http_1",
-        clientIp: "198.51.100.8",
-        clientSource: "http_api",
-        launcherVersion: null,
-        createdAt: new Date("2026-07-31T12:00:00.000Z")
-      },
-      {
-        id: "audit_1",
-        actorEmployeeId: null,
-        action: "historical.event",
-        targetType: "document",
-        targetId: null,
-        result: "succeeded",
-        metadata: null,
-        requestId: null,
-        clientIp: null,
-        clientSource: null,
-        launcherVersion: null,
-        createdAt: new Date("2026-07-30T12:00:00.000Z")
-      }
-    ]);
-    const repository = createPrismaDocumentCatalogRepository("mysql://test");
-
-    const result = await repository.listAuditLogs({ orgId: "org_1", limit: 10, cursor: null });
-
-    expect(result.auditLogs).toEqual([
-      expect.objectContaining({
-        requestId: "req_http_1",
-        clientIp: "198.51.100.8",
-        clientSource: "http_api",
-        launcherVersion: null
-      }),
-      expect.objectContaining({
-        requestId: null,
-        clientIp: null,
-        clientSource: null,
-        launcherVersion: null
-      })
-    ]);
   });
 });

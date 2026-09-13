@@ -7,7 +7,7 @@
 - 非结构化证据：上传 MD/TXT/DOCX → 解析/切块/embedding/Qdrant indexing → 检索 evidence chunks。
 - 结构化数据：上传 CSV/XLSX → 严格校验 dishes/business 数据 → MySQL 原子导入 → 受控 JSON 查询。
 
-旧的 legacy ordinary document 入口已经移除。底层 documents catalog/storage/labels/audit 仍作为源文件记录、权限标签、状态和审计基础设施使用。
+旧的 legacy ordinary document 入口已经移除。底层 documents catalog/storage/audit 仍作为源文件记录、密级、状态和审计基础设施使用。
 
 ## 本地环境
 
@@ -171,7 +171,6 @@ sheet）会被忽略并在状态中留下安全摘要。隐藏且匹配的 sheet
 | `enterprise_hub_login`         | 打开浏览器完成正式登录                      |
 | `enterprise_hub_logout`        | 撤销并清除本机共享 session                  |
 | `enterprise_hub_auth_status`   | 返回不含凭证的认证状态                      |
-| `enterprise_hub_list_labels`   | 读取可用标签目录                            |
 | `enterprise_hub_list_skills`   | 读取已批准 Skill Directory 元数据           |
 | `upload_evidence_document`     | 上传 MD/TXT/DOCX evidence 文档              |
 | `get_evidence_document_status` | 查询 evidence 文档和索引状态                |
@@ -196,10 +195,10 @@ Codex 会使用 repo-local `enterprise-hub-manual-test` skill 重置专用本地
 手工执行的核心路径：
 
 1. 调用 `enterprise_hub_login`，只在浏览器中完成登录。
-2. 用 `enterprise_hub_list_labels` 选择 `store:baoli`。
+2. 未明确指定时，以默认密级 `0` 上传。
 3. 用 `upload_evidence_document` 上传 MD/TXT/DOCX，随后用 `get_evidence_document_status` 等待 index ready，再用 `search_document_evidence` 检索。
 4. 用 `upload_structured_dataset` 上传 `dishes` 或 `business` CSV/XLSX，随后用 `get_import_status` 和 `query_structured_dataset` 验证。
-5. 用 `suzhou.manager@example.com` 搜同一内容，确认没有跨店数据、文件名、行数或存在性泄漏。
+5. 用密级不足或不同组织的账户搜索同一内容，确认没有数据、文件名、行数或存在性泄漏。
 
 ## npm scripts
 

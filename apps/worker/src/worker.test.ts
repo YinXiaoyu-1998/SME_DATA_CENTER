@@ -23,6 +23,7 @@ interface RecordedDocument {
   documentKind?: string | null;
   fileType?: string | null;
   contentVersion?: number;
+  confidentialityLevel: number;
 }
 
 interface RecordedRun {
@@ -212,6 +213,7 @@ describe("processing worker", () => {
         originalFileName: "loop.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       }
     });
@@ -276,6 +278,7 @@ describe("processing worker", () => {
         originalFileName: "receipt.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       },
       run: {
@@ -325,6 +328,7 @@ describe("processing worker", () => {
         originalFileName: "transient.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       }
     });
@@ -390,6 +394,7 @@ describe("processing worker", () => {
         originalFileName: "customer-feedback-sop.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       },
       run: {
@@ -467,6 +472,7 @@ describe("processing worker", () => {
         originalFileName: "broken.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       },
       run: {

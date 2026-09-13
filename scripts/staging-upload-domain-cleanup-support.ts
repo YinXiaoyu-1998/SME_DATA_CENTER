@@ -13,7 +13,6 @@ export interface QdrantPointTarget {
 
 export interface StagingUploadDomainCleanupInventory {
   documentIds: string[];
-  documentLabelCount: number;
   processingRunIds: string[];
   documentChunkIds: string[];
   documentIndexIds: string[];
@@ -56,7 +55,6 @@ export interface StagingUploadDomainCleanupSafeLog {
   qdrantPointIds: string[];
   counts: {
     documents: number;
-    documentLabels: number;
     processingRuns: number;
     documentChunks: number;
     documentIndexes: number;
@@ -76,7 +74,6 @@ export const PRESERVED_UPLOAD_DOMAIN_RECORDS = [
   "Organization",
   "Employee",
   "login identity and authorization records",
-  "Label",
   "SkillEntry",
   "RetrievalConfig",
   "auth audit"
@@ -86,7 +83,6 @@ export const UPLOAD_DOMAIN_DELETION_TARGETS = [
   "Qdrant points by exact collection/point identifier",
   "OSS objects by exact database-recorded key",
   "related upload audit events",
-  "DocumentLabel",
   "ProcessingRun",
   "DocumentChunk",
   "DocumentIndex",
@@ -183,7 +179,6 @@ export function buildStagingUploadDomainCleanupPlan(input: {
       qdrantPointIds: qdrantPoints.map((point) => point.pointId),
       counts: {
         documents: documentIds.length,
-        documentLabels: input.inventory.documentLabelCount,
         processingRuns: processingRunIds.length,
         documentChunks: documentChunkIds.length,
         documentIndexes: documentIndexIds.length,
@@ -217,7 +212,6 @@ export function validateStagingUploadDomainCleanupOptions(
 
 function validateInventory(inventory: StagingUploadDomainCleanupInventory): void {
   validateUniqueNonEmpty(inventory.documentIds, "document ID");
-  validateCount(inventory.documentLabelCount, "document label count");
   validateUniqueNonEmpty(inventory.processingRunIds, "processing run ID");
   validateUniqueNonEmpty(inventory.documentChunkIds, "document chunk ID");
   validateUniqueNonEmpty(inventory.documentIndexIds, "document index ID");
@@ -242,12 +236,6 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
     (point) => `${point.collection}:${point.pointId}`
   );
   validateUniqueNonEmpty(pointTargets, "Qdrant point target");
-}
-
-function validateCount(value: number, label: string): void {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`Staging upload-domain cleanup requires a non-negative ${label}.`);
-  }
 }
 
 function validateUniqueNonEmpty(values: string[], label: string): void {

@@ -118,7 +118,7 @@ export function createStagingUploadDomainCleanupAdapter(
         },
         select: { id: true }
       });
-      const [processingRuns, documentIndexes, documentLabelCount] = await Promise.all([
+      const [processingRuns, documentIndexes] = await Promise.all([
         runtime.prisma.processingRun.findMany({
           where: { documentId: { in: documentIds } },
           select: { id: true }
@@ -126,12 +126,10 @@ export function createStagingUploadDomainCleanupAdapter(
         runtime.prisma.documentIndex.findMany({
           where: { documentId: { in: documentIds } },
           select: { id: true }
-        }),
-        runtime.prisma.documentLabel.count({ where: { documentId: { in: documentIds } } })
+        })
       ]);
       return {
         documentIds,
-        documentLabelCount,
         processingRunIds: processingRuns.map((row) => row.id),
         documentChunkIds: chunks.map((row) => row.id),
         documentIndexIds: documentIndexes.map((row) => row.id),
@@ -154,10 +152,6 @@ export function createStagingUploadDomainCleanupAdapter(
     },
     deleteUploadAuditLogs: async (values) =>
       void (await runtime.prisma.auditLog.deleteMany(ids(values))),
-    deleteDocumentLabels: async (documentIds) =>
-      void (await runtime.prisma.documentLabel.deleteMany({
-        where: { documentId: { in: documentIds } }
-      })),
     deleteProcessingRuns: async (values) =>
       void (await runtime.prisma.processingRun.deleteMany(ids(values))),
     deleteDocumentChunks: async (values) =>
@@ -178,7 +172,6 @@ export function createStagingUploadDomainCleanupAdapter(
     async verifyPostCleanup(plan: StagingUploadDomainCleanupPlan) {
       const [
         documents,
-        documentLabels,
         processingRuns,
         documentChunks,
         documentIndexes,
@@ -192,7 +185,6 @@ export function createStagingUploadDomainCleanupAdapter(
         qdrantPoints
       ] = await Promise.all([
         runtime.prisma.document.count(ids(plan.documentIds)),
-        runtime.prisma.documentLabel.count({ where: { documentId: { in: plan.documentIds } } }),
         runtime.prisma.processingRun.count(ids(plan.processingRunIds)),
         runtime.prisma.documentChunk.count(ids(plan.documentChunkIds)),
         runtime.prisma.documentIndex.count(ids(plan.documentIndexIds)),
@@ -220,7 +212,6 @@ export function createStagingUploadDomainCleanupAdapter(
       ).reduce<number>((total, count) => total + count, 0);
       return {
         documents,
-        documentLabels,
         processingRuns,
         documentChunks,
         documentIndexes,

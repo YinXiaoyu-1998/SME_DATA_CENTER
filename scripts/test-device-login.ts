@@ -35,7 +35,7 @@ try {
     selfCheck.secureStore.available === expectedSecureStore,
     `Secure-store availability must match the environment expectation (${expectedSecureStore}).`
   );
-  assert(selfCheck.launcherVersion === "0.2.8", "Launcher self-check must report 0.2.8.");
+  assert(selfCheck.launcherVersion === "0.3.0", "Launcher self-check must report 0.3.0.");
 
   const loginResult = await createLauncherToolHandler("enterprise_hub_login", dependencies)({});
   assert(!loginResult.isError, "Device login must not fail on a headless host.");
@@ -63,15 +63,21 @@ try {
       password: employeePassword
     });
     await waitForAuthenticated(dependencies.auth);
-    const labelsResult = await createLauncherToolHandler(
-      "enterprise_hub_list_labels",
+    const currentUserResult = await createLauncherToolHandler(
+      "enterprise_hub_get_current_user",
       dependencies
     )({});
-    assert(!labelsResult.isError, "Authenticated business tool must succeed after device login.");
-    const labelsBody = JSON.parse(labelsResult.content[0]?.text ?? "null") as {
-      labels?: unknown[];
+    assert(
+      !currentUserResult.isError,
+      "Authenticated business tool must succeed after device login."
+    );
+    const currentUser = JSON.parse(currentUserResult.content[0]?.text ?? "null") as {
+      employee?: { clearance?: unknown };
     };
-    assert(Array.isArray(labelsBody.labels), "Label tool must return the employee label list.");
+    assert(
+      typeof currentUser.employee?.clearance === "number",
+      "Current-user tool must return clearance."
+    );
     proved.push("device_full_loop");
   }
 
@@ -79,7 +85,7 @@ try {
     JSON.stringify(
       {
         ok: true,
-        launcherVersion: "0.2.8",
+        launcherVersion: "0.3.0",
         secureStoreAvailable: selfCheck.secureStore.available,
         flow: body.flow,
         openedBrowser: body.openedBrowser,

@@ -162,7 +162,7 @@ async function uploadFixture(
   form.append("file", new Blob([body]), basename(fixturePath));
   form.append("title", title);
   form.append("sourceSystem", STAGING_FIXTURE_SOURCE_SYSTEM);
-  form.append("labelKeys[]", "store:baoli");
+  form.append("confidentialityLevel", "0");
 
   const upload = await apiJson<EvidenceUploadResponse>(apiUrl, "/v1/documents/evidence", {
     method: "POST",
