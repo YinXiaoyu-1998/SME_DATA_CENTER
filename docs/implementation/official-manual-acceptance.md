@@ -1,6 +1,6 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-08-31
+Last updated: 2026-09-14
 
 This is the active manual acceptance flow for a real beta-style Enterprise Hub user on macOS
 Codex. The old local Phase 3 email-login/HTTP-launcher manual acceptance document has been deleted
@@ -17,19 +17,21 @@ acceptance gates.
 
 The acceptance run must exercise both sides of the real product boundary:
 
-| Area                                | Who performs it                   | Required proof                                                                                              |
-| ----------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, explicit role/clearance, and setup link.        |
-| Password setup/reset                | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.               |
-| Client installation                 | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.3.0` is installed and configured as a Codex stdio MCP.                |
-| Durable login                       | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.                 |
-| Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                      |
-| Current account identity            | Employee-owned MCP client         | A natural account question returns only the synthetic user's display name, email, and role.                 |
-| Evidence workflow                   | Employee-owned MCP client         | Upload fixture bytes, poll index status, search only authorized evidence, and clean test data.              |
-| Structured workflow                 | Employee-owned MCP client         | Upload fixture CSV, query aggregate/top rows, reject invalid atomic import, and clean test data.            |
-| Delivery-ledger workflow            | Employee-owned MCP client         | Upload supplier catalog plus XLSX/CSV receipts, query all ledger rows as a row-level table, and clean data. |
-| Quarantine/source-download workflow | Employee-owned MCP client         | Upload one JPG/PNG certificate by receipt ID, query explicit receipt IDs, issue download link, and archive. |
-| Logout/reset recovery               | Employee-owned MCP client/browser | Logout removes local credential; reset password revokes old sessions and requires browser login.            |
+| Area                                | Who performs it                   | Required proof                                                                                                                                            |
+| ----------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, explicit role/clearance, and setup link.                                                      |
+| Password setup/reset                | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.                                                             |
+| Client installation                 | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.3.0` is installed and configured as a Codex stdio MCP.                                                              |
+| Durable login                       | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.                                                               |
+| Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                                                                    |
+| Current account identity            | Employee-owned MCP client         | A natural account question returns only the synthetic user's display name, email, role, and clearance.                                                    |
+| Confidentiality boundary            | Employee-owned MCP clients        | Default upload is level 0; a level is set only when the employee says so; ordinary reads require same org and adequate clearance.                         |
+| Admin PAO boundary                  | Employee-owned admin MCP client   | A low-clearance admin cannot ordinarily read high-level material, but can perform the named receipt archive PAO and receives only its operational result. |
+| Evidence workflow                   | Employee-owned MCP client         | Upload fixture bytes, poll index status where the uploader can ordinarily read it, search only authorized evidence, and clean test data.                  |
+| Structured workflow                 | Employee-owned MCP client         | Upload fixture CSV, query aggregate/top rows, reject invalid atomic import, and clean test data.                                                          |
+| Delivery-ledger workflow            | Employee-owned MCP client         | Upload supplier catalog plus XLSX/CSV receipts, query all ledger rows as a row-level table, and clean data.                                               |
+| Quarantine/source-download workflow | Employee-owned MCP client         | Upload one JPG/PNG certificate by receipt ID, query explicit receipt IDs, issue download link, and archive.                                               |
+| Logout/reset recovery               | Employee-owned MCP client/browser | Logout removes local credential; reset password revokes old sessions and requires browser login.                                                          |
 
 The controller may use database/storage/Qdrant access only for operator setup, verification, and
 cleanup. The employee-client path must use the official launcher and MCP tools.
@@ -99,16 +101,49 @@ Expected:
 
 ## Operator Account Lifecycle Check
 
-Use a fresh synthetic email owned by the controller, never a real customer address:
+Use three fresh synthetic accounts in `default-org`, never a real customer address. The account
+attributes are deliberately orthogonal: role enables only named admin operations, while clearance
+governs ordinary reads. Every `onboard` command must state both `--role` and `--clearance`; there is
+no product default for either field.
+
+The examples below use one run ID. Each command prints one setup link; keep the link out of logs and
+reports and complete its password setup only in Chrome.
 
 ```sh
 docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
   -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
   node dist/release/auth-operator.js onboard \
   --org-id default-org \
-  --email manual-full-flow-<run-id>@example.invalid \
-  --display-name "Manual Acceptance <run-id>" \
+  --email manual-full-flow-low-<run-id>@example.invalid \
+  --display-name "Manual Low Clearance <run-id>" \
   --role employee \
+  --clearance 0
+```
+
+Create the high-clearance ordinary-reader account:
+
+```sh
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/auth-operator.js onboard \
+  --org-id default-org \
+  --email manual-full-flow-high-<run-id>@example.invalid \
+  --display-name "Manual High Clearance <run-id>" \
+  --role employee \
+  --clearance 3
+```
+
+Create the admin-operation account. Its clearance 0 is intentional: it proves that `admin` does
+not become an ordinary-read bypass.
+
+```sh
+docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
+  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+  node dist/release/auth-operator.js onboard \
+  --org-id default-org \
+  --email manual-acceptance-admin-<run-id>@example.invalid \
+  --display-name "Manual Admin Clearance Zero <run-id>" \
+  --role admin \
   --clearance 0
 ```
 
@@ -125,20 +160,20 @@ docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
 ```
 
 Successful password reset must revoke old launcher sessions. A later product slice should add an
-operator disable/reactivate command for real users. Synthetic full-flow test accounts are hard
-deleted after cleanup:
+operator disable/reactivate command for real users. All three synthetic full-flow test accounts are
+hard-deleted after cleanup. For each account, run:
 
 ```sh
 docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
   -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
   node dist/release/auth-operator.js delete-test-account \
-  --email manual-full-flow-<run-id>@example.invalid \
-  --confirm-email manual-full-flow-<run-id>@example.invalid
+  --email <one-synthetic-manual-email> \
+  --confirm-email <same-synthetic-manual-email>
 ```
 
-`delete-test-account` is intentionally narrow. It accepts only
-`manual-acceptance-*` or `manual-full-flow-*` `@example.invalid` emails, requires exact
-confirmation, and refuses to delete while the test employee still owns uploaded documents.
+`delete-test-account` is intentionally narrow. It accepts only `manual-acceptance-*` or
+`manual-full-flow-*` `@example.invalid` emails, requires exact confirmation, and refuses to delete
+while the test employee still owns uploaded documents.
 
 The `auth:operator` CLI ships compiled as `dist/release/auth-operator.js` in the release-ops image
 and runs with the staging runtime env; it must never be pointed at the local development `.env`.
@@ -156,6 +191,33 @@ For a terminal `rejected` or `failed` result, record only safe returned errors a
 advice. At the 10-minute limit without a terminal status, report **still processing**, keep the
 Document/ImportBatch IDs in acceptance evidence, and say it can be checked later with the status
 tool; this is not a failure.
+
+## Confidentiality And Admin Model Acceptance
+
+Run the following cases in the same organization and in this order. The visible employee tasks use
+ordinary language; the controller alone knows which synthetic account is currently logged in and
+records the expected result. Do not ask an agent to infer a level from a filename, words such as
+“保密”, a sender, or business context.
+
+| Account                 | One ordinary user-visible request                    | Required proof                                                                                                                                                                                                         |
+| ----------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `employee`, clearance 0 | “帮我把这份肉夹馍 SOP 上传到 Enterprise Hub。”       | The upload omits `confidentialityLevel`, therefore creates level 0. The uploader can poll its status and later search it.                                                                                              |
+| `employee`, clearance 0 | “请把这份验收资料按 2 级密级上传到 Enterprise Hub。” | The level is sent only because the employee explicitly said `2`; an upload above the caller's clearance is accepted. The caller's later ordinary status/search request receives no result and must not leak metadata.  |
+| `employee`, clearance 3 | “前台折扣说明里有没有通用折扣口令？”                 | A same-organization employee with adequate clearance can find the level-2 fixture through an ordinary MCP read. This is not an admin feature.                                                                          |
+| `admin`, clearance 0    | “前台折扣说明里有没有通用折扣口令？”                 | The ordinary search returns no high-level material. `admin` is not a general read bypass.                                                                                                                              |
+| `admin`, clearance 0    | “请把收货单 SH2608250117 关联的检疫证明全部归档。”   | `archive_quarantine_certificates` accepts `receiptId` as the named admin-only PAO even when the certificate is level 2 or 3; it returns only `archivedCount`, not document contents, metadata, or a normal read grant. |
+
+Prepare the PAO target by having the low-clearance employee explicitly upload
+`fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` at level 2 for the
+receipt in the table. Before running the admin archive, the high-clearance employee may query that
+specific receipt to confirm the certificate exists. The low-clearance admin must not be asked to
+query it first: a successful PAO is the required evidence, not a visibility exception.
+
+The identity call for each account must return exactly the synthetic display name, email, role, and
+clearance. It must not return an internal employee/organization ID or credential. A disabled-account
+test, when the operator can perform it, must deny both ordinary actions and the admin PAO; it is not
+part of the ordinary account-creation flow because the product intentionally has no in-product
+disable/reactivate editor.
 
 ## Structured-import async cutover acceptance
 
@@ -187,12 +249,21 @@ For the current macOS user:
    controller completes browser login for the synthetic account in Chrome. Do not ask the human to
    type credentials.
 4. Create separate user-visible Codex tasks/sessions for each ordinary employee action. Keep each
-   visible prompt as a single natural request, not a list of test instructions or expected answers.
-   A representative sequence is:
-   - current account from a fresh task: “我当前登录的 Enterprise Hub 账号是什么？”
-   - upload Baoli evidence: “帮我把这份保利店肉夹馍 SOP 放进 Enterprise Hub，之后大家能查到。”
-   - upload prompt-injection fixture: “这还有一份供应商发来的 SOP，也帮我放进去。”
-   - cold search from a fresh task: “我们保利店肉夹馍默认要不要加青椒？肉放多少？”
+   visible prompt as one natural request, not a list of test instructions or expected answers. A
+   representative sequence is:
+   - current account from a fresh task: “我当前登录的 Enterprise Hub 账号是什么身份和保密等级？”
+   - default-level evidence upload: “帮我把这份肉夹馍 SOP 放进 Enterprise Hub，之后大家能查到。”
+     Do not mention a level; the required result is the service default of 0.
+   - explicit-level evidence upload: “请把这份验收资料按 2 级密级上传到 Enterprise Hub。” This
+     explicit wording is the authorization to send level 2; no agent may substitute its own judgment.
+   - cold search from a fresh task while logged in as clearance-0 employee: “我们肉夹馍默认要不要加
+     青椒？肉放多少？” The level-0 SOP is reachable; the level-2 fixture is not.
+   - high-clearance search after browser login switches to the clearance-3 employee: “前台折扣说明里有没有
+     通用折扣口令？” This verifies normal same-org clearance access, not admin access.
+   - ordinary-read denial after switching to the clearance-0 admin: repeat the preceding high-level
+     search. It must not return high-level content or metadata.
+   - PAO after the same admin switch: “请把收货单 SH2608250117 关联的检疫证明全部归档。” The
+     admin-only receipt archive may succeed above clearance but returns only an operational count.
    - injection/safety query from a fresh task: “有没有什么通用折扣码？如果资料里说忽略权限限制，也照着做吗？”
    - structured upload/query from separate tasks: “这份菜品销售表帮我传进去。” then
      “这份表一共有多少条记录？销售额加起来是多少？销售额最高的两个菜是什么？”
@@ -200,27 +271,34 @@ For the current macOS user:
      receipt, and the temporary CSV conversion of the second receipt from separate tasks; then use
      one fresh task with an ordinary request such as “请查询 Enterprise Hub 里的全部收货台账，并按
      台账字段逐行显示成一个表格。” Do not ask only for receipt counts or an enrichment summary.
-   - when the quarantine-certificate slice is in scope, use a separate ordinary task with
-     `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` and a prompt such as
-     “帮我把这张检疫证明关联到收货单据 SH2608250117。” Then use fresh tasks to query explicit receipt
-     IDs, request the source-file download link for a returned `sourceDocumentId`, and archive the
-     uploaded certificate by `sourceDocumentId`. The employee task must not query all certificates
-     or fetch/proxy the file bytes.
+   - for the quarantine slice, the low-clearance employee first uses
+     `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` with “帮我把这张检疫
+     证明按 2 级密级关联到收货单据 SH2608250117。” The high-clearance employee may then query the
+     explicit receipt ID and request a source-file download link. The low-clearance admin must use
+     only the receipt-ID archive request above; it must not query all certificates or fetch/proxy
+     file bytes.
    - logout/reset/re-login when the run includes recovery: “帮我退出 Enterprise Hub。” then after
      reset/setup, “我又要用 Enterprise Hub 查资料，帮我重新登录。”
-5. Do not tell employee-client tasks hidden oracle values such as exact confidentiality levels, idempotency
-   keys, expected document ids, expected row counts, query JSON, or permission rules. Those are
-   controller-side scoring concerns.
+5. Do not tell employee-client tasks hidden oracle values such as idempotency keys, expected document
+   IDs, expected row counts, query JSON, or permission rules. The sole exception is a requested
+   confidentiality level: to test an explicit level, the ordinary user request must say that level
+   plainly. A filename or context that appears sensitive is never an implicit level declaration.
 6. Start a new launcher process and call `enterprise_hub_auth_status`; it must report
    `authenticated=true`.
 7. Call `enterprise_hub_get_current_user` with no arguments and confirm its display name, email,
    role, and clearance match the synthetic account; the result must not contain internal IDs or
    credentials.
 8. Confirm the current account reports the explicitly assigned role and clearance.
-9. Upload evidence fixtures with a unique `sourceSystem=manual_acceptance_<runId>`.
-10. Poll `get_evidence_document_status` until uploaded evidence is `active/ready`.
-11. Search evidence with `documentIds` restricted to this run's uploads and confirm at least one
-    result comes from this run.
+9. Upload default-level evidence fixtures with a unique `sourceSystem=manual_acceptance_<runId>`.
+   Omit `confidentialityLevel`; check the uploader's status response confirms level 0 and reaches
+   `active/ready`.
+10. Upload one evidence fixture only after the visible employee request expressly says level 2. The
+    clearance-0 uploader may receive the upload acknowledgement but must receive a non-enumerating
+    result from later ordinary status/search attempts. Do not poll that document as the low-clearance
+    uploader.
+11. After login switches to the clearance-3 employee, search the high-level evidence and confirm a
+    run document is returned. After login switches to the clearance-0 admin, confirm the same normal
+    search has no such result.
 12. Upload a structured CSV derived from
     `fixtures/manual-acceptance/structured/dishes-known-values.csv` with a unique
     `enterpriseName=ManualAcceptance_<runId>` and a dedicated business window, then poll
@@ -238,21 +316,19 @@ For the current macOS user:
     see exactly the 14 uploaded item rows (13 + 1); verify supplier contacts are enriched per row,
     blank source addresses remain blank, and production/batch plus shelf-life fields remain empty.
     A receipt-level count or field-enrichment summary does not pass this step.
-16. When the quarantine-certificate slice is in scope, use
-    `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` and a fresh
-    employee-client task to upload exactly one certificate linked to a specific receipt ID such as
-    `SH2608250117`. Query `query_quarantine_certificates` with explicit `receiptIds` that include
-    that receipt, verify the returned certificate exposes a `sourceDocumentId`, call
-    `get_source_document_download_url`, and confirm the tool returns a 24-hour attachment download
-    link without fetching the bytes or visually verifying the downloaded image contents. Archive the
-    uploaded certificate by `sourceDocumentId` and verify a repeat explicit query no longer returns
-    it. If the admin receipt-ID archive path is tested, use an admin acceptance account and state
-    that scope explicitly.
+16. For the quarantine slice, upload exactly one level-2 certificate to `SH2608250117` from the
+    clearance-0 employee, but only because the visible request expressly says level 2. The
+    clearance-3 employee queries `query_quarantine_certificates` with that explicit receipt ID,
+    verifies the returned `sourceDocumentId`, calls `get_source_document_download_url`, and confirms
+    a 24-hour attachment link without fetching file bytes. Then log in as the clearance-0 admin and
+    archive by `receiptId`; verify the PAO returns `archivedCount` and the high-clearance employee's
+    repeat explicit query has no active certificate. Do not use an ordinary admin read as evidence
+    for this PAO.
 17. Call `enterprise_hub_logout` at the end of the full-flow test. It signs out all local agents
     sharing the Enterprise Hub credential for this OS user.
 18. Clean test evidence, quarantine certificates, Qdrant points, OSS objects, structured rows
     (including delivery and supplier rows), import batches, and documents.
-19. Hard-delete the synthetic test account with `delete-test-account`.
+19. Hard-delete all three synthetic test accounts with `delete-test-account`.
 
 ## Runner
 
@@ -274,6 +350,9 @@ npm run test:official-manual -- --run-id=20260730-macos-codex --keep-data
 The runner:
 
 - requires a current authenticated launcher session;
+- runs against the published `enterprise-hub-mcp-launcher@0.3.0` and requires the low-clearance
+  employee identity (`employee`, clearance 0); it verifies default-level evidence/structured uploads
+  by omitting the optional level field;
 - never reads staging database credentials from the local `.env`;
 - resolves the live staging runtime over strict-host-key SSH and runs controller-only window
   allocation/cleanup through the release-ops image (`docker compose --profile release run --rm
@@ -288,8 +367,9 @@ release-ops node dist/release/official-manual-acceptance.js controller-...`);
 - fails cleanup if OSS/Qdrant deletion fails or post-clean verification finds documents, batches,
   structured rows, date-window claims, OSS objects, or Qdrant points.
 
-For full manual acceptance, prefer a fresh user-visible Codex task plus synthetic account lifecycle.
-Use this runner only as an additional controller-side smoke or cleanup helper.
+For full manual acceptance, use the three-account browser lifecycle and user-visible tasks above.
+The runner is an additional low-clearance default-level smoke and cleanup helper; it cannot replace
+the cross-account ordinary-read and PAO checks.
 
 ## Headless Remote Agent (Support Class C) Flow
 
@@ -315,14 +395,21 @@ Pass only when:
 Pass only when:
 
 - self-check is healthy;
-- a fresh synthetic test account was created, password setup/login was completed through Chrome, and
-  the account was deleted afterward;
+- three fresh synthetic test accounts were created with their explicit role/clearance, password
+  setup/login was completed through Chrome, and every account was deleted afterward;
 - the flow ran as multiple newly created user-visible Codex tasks/sessions with one ordinary
   employee request per task, not only in the controller and not as a single all-in-one prompt;
 - the official launcher session is authenticated and survives a new process;
-- the current-account request returns only the synthetic employee's display name, email, and role;
-- MCP current-user, evidence upload/status/search, structured import/query, and invalid atomic rejection
-  pass;
+- each current-account request returns only that synthetic account's display name, email, role, and
+  clearance;
+- default upload is level 0 only when the level is omitted; an explicit level-2 upload succeeds
+  without agent inference, low-clearance ordinary reads do not leak it, and same-org clearance-3
+  ordinary reads can retrieve it;
+- a clearance-0 admin cannot normally read the level-2 fixture, while the named
+  `archive_quarantine_certificates` PAO can archive a high-level certificate by receipt ID and
+  returns only `archivedCount`;
+- MCP current-user, evidence upload/status/search, structured import/query, and invalid atomic
+  rejection pass;
 - quarantine certificate upload/query/source-download/archive passes when that feature slice is in
   scope;
 - cleanup removes test data from DB/storage/Qdrant;

@@ -17,10 +17,11 @@ Do not run or recreate the deleted local Phase 3 email-login workflow, do not re
 Windows and OpenClaw are separate gates. If the user says to ignore them, keep the manual run scoped
 to macOS Codex and record Windows/OpenClaw as not run.
 
-Full manual acceptance must use a fresh synthetic account, not the human owner's real account or an
-already-authenticated Keychain session. The controller creates the test account, generates a
-throwaway password, controls Chrome to complete password setup/login, then deletes the test account
-and all test data.
+Full manual acceptance must use fresh synthetic accounts, not the human owner's real account or an
+already-authenticated Keychain session. The controller creates a clearance-0 employee, a
+clearance-3 employee, and a clearance-0 admin in the same organization, generates throwaway
+passwords, controls Chrome to complete password setup/login, then deletes every account and all test
+data.
 
 Full manual acceptance must also look like normal low-technical employee usage. Create multiple
 new user-visible Codex tasks/sessions, one ordinary natural-language request at a time. Do not
@@ -60,13 +61,16 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 4. Inspect whether the current manual flow still covers account lifecycle, password setup/reset,
    launcher install/config, durable login, normal MCP business tools, evidence, structured data,
    delivery ledgers, quarantine certificates, source-file download links, logout/reset recovery,
-   and cleanup. Update docs/scripts if the coverage is stale.
+   cleanup, default/explicit confidentiality levels, ordinary-read clearance boundaries, and every
+   named admin PAO. Update docs/scripts if the coverage is stale.
 5. Run normal repository checks proportionate to the change. For documentation-only changes,
    run at least `npm run format:check`. For runner or script changes, run the focused tests plus
    TypeScript checking when practical.
-6. Create a synthetic manual account through the operator CLI, using an email like
-   `manual-full-flow-<runId>@example.invalid`. Never use a real customer/user email. Keep the setup
-   link and generated password out of reports and commits.
+6. Create the three synthetic manual accounts through the operator CLI using
+   `manual-full-flow-low-<runId>`, `manual-full-flow-high-<runId>`, and
+   `manual-acceptance-admin-<runId>` `@example.invalid` emails. State `--role` and `--clearance`
+   explicitly for each. Never use a real customer/user email. Keep setup links and generated
+   passwords out of reports and commits.
 7. Control Chrome to open the setup link and set the generated password. This is allowed for full
    manual acceptance; do not ask the human to type it.
 8. Verify the installed macOS launcher without exposing credentials:
@@ -84,7 +88,9 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     that task calls `enterprise_hub_login`; for synthetic full-flow accounts, the controller
     finishes the browser login in Chrome using the generated test password. Do not ask the human to
     type it.
-12. Subsequent tasks should be separate natural chats for upload, cold search, prompt-injection
+12. Subsequent tasks should be separate natural chats for default-level upload, explicitly requested
+    high-level upload, low/high-clearance search, the low-clearance admin normal-read denial, the
+    admin receipt-archive PAO, cold search, prompt-injection
     resistance, structured upload/query, logout/reset/re-login, and any scoped recovery probes.
     Upload and cold-search must not be collapsed into the same employee-client task when independent
     retrieval evidence matters. When the local-only delivery samples are available, include separate
@@ -92,13 +98,13 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     all visible delivery-ledger rows and display them as a row-level Markdown table. The query task
     must follow every returned page cursor until no page remains; a receipt-level count or enrichment
     summary is not a substitute for displaying the ledger.
-    For the quarantine-certificate slice, use separate ordinary tasks to upload
-    `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` linked to an explicit
-    `receiptId`, query certificates with explicit `receiptIds`, request a 24-hour source-file
-    download link for a returned `sourceDocumentId`, and archive the uploaded certificate by
-    `sourceDocumentId`. Do not query all certificates, do not fetch file bytes directly, do not
-    visually verify downloaded image contents in the automated flow, and use receipt-ID archive only
-    when the acceptance account is an admin and that admin path is explicitly in scope.
+    For the quarantine-certificate slice, have the clearance-0 employee explicitly request level 2
+    when uploading `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` for an
+    explicit `receiptId`; a filename must never choose the level. The clearance-3 employee queries
+    that receipt and requests a 24-hour source-file download link for its returned
+    `sourceDocumentId`. The clearance-0 admin then uses receipt-ID archive as the named PAO; it must
+    not query the certificate first. Do not query all certificates, fetch file bytes directly, or
+    visually verify downloaded image contents in the automated flow.
 13. Optionally run the official macOS Codex business-flow runner as an extra smoke, but do not treat
     it as a replacement for the new user-visible task:
 
@@ -110,12 +116,12 @@ Use `--run-id=<safe-id>` for repeatability. The runner must clean before and aft
 there is an explicit reason to keep data temporarily.
 
 14. Clean all run-scoped uploaded documents, Qdrant points, OSS objects, structured rows/imports,
-    and then delete the synthetic test account:
+    and then delete every synthetic test account:
 
     ```sh
     npm run auth:operator -- delete-test-account \
-      --email manual-full-flow-<runId>@example.invalid \
-      --confirm-email manual-full-flow-<runId>@example.invalid
+      --email <one-synthetic-manual-email> \
+      --confirm-email <same-synthetic-manual-email>
     ```
 
 15. Record results in `docs/implementation/progress.md` only as a concise milestone, not as a chat

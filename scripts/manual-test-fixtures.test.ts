@@ -19,15 +19,21 @@ describe("manual acceptance scenario manifest", () => {
       }>;
     };
 
-    expect(manifest.version).toBe("2026-09-13.v3");
+    expect(manifest.version).toBe("2026-09-14.v4");
     expect(manifest.tasks.map((task) => task.id)).toEqual([
-      "upload-baoli",
-      "upload-suzhou",
-      "search-baoli",
-      "structured-baoli"
+      "current-account-low",
+      "upload-default-level",
+      "upload-explicit-level",
+      "search-low-clearance",
+      "search-high-clearance",
+      "search-admin-denied",
+      "archive-admin-pao",
+      "structured-default-level",
+      "structured-query",
+      "structured-invalid-atomic"
     ]);
     expect(manifest.tasks.every((task) => task.freshContext)).toBe(true);
-    expect(manifest.tasks.flatMap((task) => task.turns.map((turn) => turn.id))).toHaveLength(10);
+    expect(manifest.tasks.every((task) => task.turns.length === 1)).toBe(true);
   });
 
   it("contains only ordinary employee language, never controller or protocol instructions", async () => {
@@ -61,15 +67,23 @@ describe("manual acceptance scenario manifest", () => {
       }
     }
 
-    const coldSearch = manifest.tasks
-      .find((task) => task.id === "search-baoli")
-      ?.turns.find((turn) => turn.id === "roujiamo-query");
-    expect(coldSearch?.prompt).toBe(
-      "用 baoli.employee@example.com 登录一下。我们的肉夹馍怎么做？要不要放青椒？"
-    );
+    const explicitUpload = manifest.tasks
+      .find((task) => task.id === "upload-explicit-level")
+      ?.turns.find((turn) => turn.id === "high-evidence-upload");
+    expect(explicitUpload?.prompt).toContain("按 2 级密级上传");
+
+    const adminRead = manifest.tasks
+      .find((task) => task.id === "search-admin-denied")
+      ?.turns.find((turn) => turn.id === "admin-high-evidence-search");
+    expect(adminRead?.prompt).toBe("前台折扣说明里有没有通用折扣口令？");
+
+    const adminArchive = manifest.tasks
+      .find((task) => task.id === "archive-admin-pao")
+      ?.turns.find((turn) => turn.id === "admin-receipt-archive");
+    expect(adminArchive?.prompt).toBe("请把收货单 SH2608250117 关联的检疫证明全部归档。");
 
     const structuredQuery = manifest.tasks
-      .find((task) => task.id === "structured-baoli")
+      .find((task) => task.id === "structured-query")
       ?.turns.find((turn) => turn.id === "structured-query");
     expect(structuredQuery?.prompt).toBe(
       "这份表一共有多少条记录？销售额加起来是多少？销售额最高的两个菜是什么？"
@@ -104,6 +118,9 @@ describe("manual acceptance scenario manifest", () => {
     expect(guide).toContain("The local ignored `.env` remains a local-development configuration");
     expect(guide).toContain("executes controller-only");
     expect(guide).toContain("run-specific available three-day window");
+    expect(guide).toContain("Confidentiality And Admin Model Acceptance");
+    expect(guide).toContain("manual-acceptance-admin-<run-id>@example.invalid");
+    expect(guide).toContain("archive_quarantine_certificates");
     expect(guide).not.toContain("--org-id org_demo");
     expect(guide).not.toContain("staging:access-tunnel");
     expect(guide).not.toContain("dates changed to `2030-01-01`");
@@ -139,6 +156,9 @@ describe("manual acceptance scenario manifest", () => {
     expect(runner).toContain('"get_import_status"');
     expect(runner).toContain("Expected structured import to apply after polling");
     expect(runner).toContain("Expected invalid structured import to be rejected after polling");
+    expect(runner).toContain('const LAUNCHER_VERSION = "0.3.0"');
+    expect(runner).toContain("currentUser.clearance !== 0");
+    expect(runner).toContain("defaultConfidentialityLevel: 0");
     expect(runner).not.toContain("Expected structured import applied; got");
     expect(runner).not.toContain(
       "Invalid structured import did not return a validation-style failure."

@@ -27,7 +27,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.2.8";
+const LAUNCHER_VERSION = "0.3.0";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
 interface ParsedArgs {
@@ -44,6 +44,7 @@ interface CurrentUserResult extends ToolTextResult {
   displayName: string;
   email: string;
   role: string;
+  clearance: number;
 }
 
 interface EvidenceUploadResult extends ToolTextResult {
@@ -187,14 +188,12 @@ async function runAcceptance(
       "enterprise_hub_get_current_user",
       {}
     );
-    const expectedEmails = new Set([
-      `manual-full-flow-${run.runId}@example.invalid`,
-      `manual-acceptance-${run.runId}@example.invalid`
-    ]);
+    const expectedEmails = new Set(acceptanceAccountEmails(run));
     if (
       !expectedEmails.has(currentUser.email) ||
       !currentUser.displayName.trim() ||
-      currentUser.role !== "employee"
+      currentUser.role !== "employee" ||
+      currentUser.clearance !== 0
     ) {
       throw new Error("Current-user MCP result did not match the synthetic acceptance account.");
     }
@@ -235,8 +234,7 @@ async function runAcceptance(
         enterpriseName: run.enterpriseName,
         startDate: structuredWindow.startCompact,
         endDate: structuredWindow.endCompact,
-        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-known-values`,
-        confidentialityLevel: 0
+        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-known-values`
       }
     );
     if (structuredUpload.importBatch.status !== "pending") {
@@ -311,8 +309,7 @@ async function runAcceptance(
         enterpriseName: run.enterpriseName,
         startDate: structuredWindow.invalidCompact,
         endDate: structuredWindow.invalidCompact,
-        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`,
-        confidentialityLevel: 0
+        idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`
       }
     );
     if (invalidImport.importBatch.status !== "pending") {
@@ -342,7 +339,7 @@ async function runAcceptance(
       serviceOrigin: SERVICE_ORIGIN,
       launcherVersion: LAUNCHER_VERSION,
       currentUserVerified: true,
-      confidentialityLevel: 0,
+      defaultConfidentialityLevel: 0,
       evidenceDocuments: evidenceUploads.map((upload) => upload.document.documentId),
       structuredDocument: structuredUpload.document.documentId,
       importBatch: structuredUpload.importBatch.importBatchId,
@@ -371,8 +368,7 @@ async function uploadEvidenceFixtures(
         contentBase64: await fileBase64("fixtures/manual-acceptance/evidence/baoli-roujiamo-sop.md")
       },
       title: `${run.titlePrefix} Baoli Roujiamo SOP`,
-      sourceSystem: run.evidenceSourceSystem,
-      confidentialityLevel: 0
+      sourceSystem: run.evidenceSourceSystem
     }),
     callJson<EvidenceUploadResult>(client, "upload_evidence_document", {
       file: {
@@ -384,8 +380,7 @@ async function uploadEvidenceFixtures(
         )
       },
       title: `${run.titlePrefix} Prompt Injection Fixture`,
-      sourceSystem: run.evidenceSourceSystem,
-      confidentialityLevel: 0
+      sourceSystem: run.evidenceSourceSystem
     })
   ]);
 }
@@ -428,10 +423,7 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   const identities = await prisma.loginIdentity.findMany({
     where: {
       normalizedEmail: {
-        in: [
-          `manual-full-flow-${run.runId}@example.invalid`,
-          `manual-acceptance-${run.runId}@example.invalid`
-        ]
+        in: [...acceptanceAccountEmails(run)]
       }
     },
     select: { employeeId: true }
@@ -495,6 +487,18 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     storageObjectKeys,
     uploaderEmployeeIds
   });
+}
+
+function acceptanceAccountEmails(run: ReturnType<typeof runConfig>): string[] {
+  return [
+    `manual-full-flow-low-${run.runId}@example.invalid`,
+    `manual-full-flow-high-${run.runId}@example.invalid`,
+    `manual-acceptance-admin-${run.runId}@example.invalid`,
+    // The former single-account names remain only so cleanup can remove a run
+    // that was started before the multi-account confidentiality procedure.
+    `manual-full-flow-${run.runId}@example.invalid`,
+    `manual-acceptance-${run.runId}@example.invalid`
+  ];
 }
 
 function officialManualDocumentFilters(
