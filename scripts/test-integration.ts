@@ -158,7 +158,7 @@ try {
   apiProcess = startApi();
   await waitForApiHealth(apiProcess);
 
-  const employeeAccessToken = await createOfficialIntegrationAccessToken("emp_baoli_manager");
+  const employeeAccessToken = await createOfficialIntegrationAccessToken("emp_baoli_employee");
   const auth = authorizationHeader(employeeAccessToken);
   const adminAuth = authorizationHeader(await createOfficialIntegrationAccessToken("emp_admin"));
 
@@ -478,7 +478,7 @@ try {
     "Rejected structured imports should expose safe errors without raw cell values."
   );
 
-  const suzhouAccessToken = await createOfficialIntegrationAccessToken("emp_suzhou_manager");
+  const suzhouAccessToken = await createOfficialIntegrationAccessToken("emp_suzhou_employee");
   const inaccessibleImportStatus = await fetch(
     `${apiUrl}/v1/structured/imports/${encodeURIComponent(structuredUpload.importBatch.importBatchId)}`,
     { headers: authorizationHeader(suzhouAccessToken) }
@@ -1086,7 +1086,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
 
   try {
     const identity = await prisma.loginIdentity.findFirst({
-      where: { employeeId: "emp_baoli_manager", disabled: false },
+      where: { employeeId: "emp_baoli_employee", disabled: false },
       select: { id: true, employeeId: true, orgId: true }
     });
     assert(Boolean(identity), "Audit provenance integration requires the seeded Baoli identity.");
@@ -1739,9 +1739,9 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
   );
   try {
     const employee = await prisma.employee.findFirst({
-      where: { orgId: "default-org", email: "baoli.manager@example.com" }
+      where: { orgId: "default-org", email: "baoli.employee@example.com" }
     });
-    assert(Boolean(employee), "Worker lease integration requires the seeded Baoli manager.");
+    assert(Boolean(employee), "Worker lease integration requires the seeded Baoli employee.");
     const stored = await storage.putObject({
       orgId: "default-org",
       documentId,

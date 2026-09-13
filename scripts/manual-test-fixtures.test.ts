@@ -7,7 +7,7 @@ const root = process.cwd();
 const fixtureRoot = path.join(root, "fixtures", "manual-acceptance");
 
 describe("manual acceptance scenario manifest", () => {
-  it("keeps independent upload, conflicting-store, cold-search, and structured tasks in order", async () => {
+  it("keeps independent upload, cold-search, and structured tasks in order", async () => {
     const manifest = JSON.parse(
       await readFile(path.join(fixtureRoot, "scenarios.json"), "utf8")
     ) as {
@@ -19,10 +19,10 @@ describe("manual acceptance scenario manifest", () => {
       }>;
     };
 
-    expect(manifest.version).toBe("2026-07-18.v2");
+    expect(manifest.version).toBe("2026-09-13.v3");
     expect(manifest.tasks.map((task) => task.id)).toEqual([
       "upload-baoli",
-      "isolation-suzhou",
+      "upload-suzhou",
       "search-baoli",
       "structured-baoli"
     ]);
@@ -65,7 +65,7 @@ describe("manual acceptance scenario manifest", () => {
       .find((task) => task.id === "search-baoli")
       ?.turns.find((turn) => turn.id === "roujiamo-query");
     expect(coldSearch?.prompt).toBe(
-      "用 baoli.manager@example.com 登录一下。我们的肉夹馍怎么做？要不要放青椒？"
+      "用 baoli.employee@example.com 登录一下。我们的肉夹馍怎么做？要不要放青椒？"
     );
 
     const structuredQuery = manifest.tasks

@@ -39,20 +39,20 @@ async function authenticateTestAccessToken(token: string) {
 }
 
 const baoliEmployee: AuthenticatedEmployee = {
-  id: "emp_baoli_manager",
+  id: "emp_baoli_employee",
   orgId: "default-org",
-  displayName: "Baoli Manager",
-  email: "baoli.manager@example.com",
+  displayName: "Baoli Employee",
+  email: "baoli.employee@example.com",
   role: "employee",
   clearance: 1,
   disabled: false
 };
 
 const clearanceZeroEmployee: AuthenticatedEmployee = {
-  id: "emp_label_less",
+  id: "emp_clearance_zero",
   orgId: "default-org",
-  displayName: "Label-less Employee",
-  email: "label.less@example.com",
+  displayName: "Clearance Zero Employee",
+  email: "clearance.zero@example.com",
   role: "employee",
   clearance: 0,
   disabled: false
