@@ -44,8 +44,7 @@ describe("evidence search service", () => {
         prefetch: Array<{
           filter: {
             must: unknown[];
-            should?: unknown[];
-            minimum_should?: unknown;
+            min_should?: unknown;
           };
         }>;
       };
@@ -66,8 +65,7 @@ describe("evidence search service", () => {
             prefetch: Array<{
               filter: {
                 must: unknown[];
-                should?: unknown[];
-                minimum_should?: unknown;
+                min_should?: unknown;
               };
             }>;
           }
@@ -151,11 +149,13 @@ describe("evidence search service", () => {
       ])
     );
     expect(request.body.prefetch[0]?.filter).toMatchObject({
-      should: [
-        { key: "confidentialityLevel", range: { lte: 3 } },
-        { is_empty: { key: "confidentialityLevel" } }
-      ],
-      minimum_should: { min_count: 1 }
+      min_should: {
+        conditions: [
+          { key: "confidentialityLevel", range: { lte: 3 } },
+          { is_empty: { key: "confidentialityLevel" } }
+        ],
+        min_count: 1
+      }
     });
     expect(candidates).toEqual([
       {

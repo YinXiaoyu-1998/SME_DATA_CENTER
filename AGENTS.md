@@ -95,6 +95,16 @@ After every local test run (unit, integration, benchmark, manual acceptance, or 
 
 This cleanup is local-only and never applies to staging/production hosts or real customer data.
 
+## Local Development Database Reset Authorization
+
+The user has authorized agents to reset or clear this repository's local Prisma/MySQL development
+and test databases whenever a local development or verification workflow requires it. This includes
+`prisma migrate reset --force` when its configured database host is local (for example,
+`localhost`/`127.0.0.1`) and the database is the repository's development/test database. It also
+includes the repository-owned Docker volumes created for that workflow. This standing authorization
+never applies to staging, production, remote hosts, externally managed databases, real customer
+data, or any database whose local-development/test identity cannot be verified first.
+
 ## Environments
 
 Copy `.env.example` to `.env` for local development. Use development-only values locally and never commit `.env`.

@@ -941,14 +941,16 @@ function qdrantPayloadFilter(
     // database documents migrated to level 0. They are admitted only as
     // candidates; PrismaEvidenceRevalidator remains the authority before
     // reranking and response construction.
-    should: [
-      {
-        key: "confidentialityLevel",
-        range: { lte: input.employee.clearance }
-      },
-      { is_empty: { key: "confidentialityLevel" } }
-    ],
-    minimum_should: { min_count: 1 }
+    min_should: {
+      conditions: [
+        {
+          key: "confidentialityLevel",
+          range: { lte: input.employee.clearance }
+        },
+        { is_empty: { key: "confidentialityLevel" } }
+      ],
+      min_count: 1
+    }
   };
 }
 
