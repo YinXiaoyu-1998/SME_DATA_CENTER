@@ -997,7 +997,7 @@ describe("Enterprise Hub MCP contract", () => {
     for (const code of [
       "VALIDATION_FAILED",
       "UNAUTHENTICATED",
-      "FORBIDDEN_LABEL",
+      "AUTHORIZATION_FAILED",
       "DOCUMENT_NOT_FOUND",
       "IDEMPOTENCY_KEY_CONFLICT"
     ]) {
@@ -1021,7 +1021,6 @@ describe("Enterprise Hub MCP contract", () => {
       "BAD_REQUEST",
       "UNAUTHENTICATED",
       "AUTHORIZATION_FAILED",
-      "FORBIDDEN_LABEL",
       "DOCUMENT_NOT_FOUND",
       "DOCUMENT_NOTFOUND",
       "IDEMPOTENCY_KEY_CONFLICT",

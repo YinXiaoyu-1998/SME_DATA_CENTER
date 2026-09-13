@@ -41,7 +41,6 @@ function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
     deleteDocuments: vi.fn(async () => undefined),
     verifyPostCleanup: vi.fn(async () => ({
       documents: 0,
-      documentLabels: 0,
       processingRuns: 0,
       documentChunks: 0,
       documentIndexes: 0,

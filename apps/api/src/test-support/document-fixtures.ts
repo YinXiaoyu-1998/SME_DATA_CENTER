@@ -12,6 +12,7 @@ import type {
 } from "../quarantine-certificates.js";
 import type { SourceDocumentRepository } from "../source-documents.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
+import { canPerformPrivilegedAdministrativeOperation } from "../privileged-admin-operations.js";
 
 export interface RecordedDocument {
   id: string;
@@ -290,7 +291,15 @@ export function createInMemoryQuarantineCertificateRepository(
       if (!certificate) return null;
       const document = documents.find((candidate) => candidate.id === certificate.sourceDocumentId);
       if (!document) return null;
-      if (document.uploaderId !== input.employee.id && input.employee.role !== "admin") return null;
+      if (
+        document.uploaderId !== input.employee.id &&
+        !canPerformPrivilegedAdministrativeOperation(
+          input.employee,
+          "archiveQuarantineCertificates"
+        )
+      ) {
+        return null;
+      }
       if (document.status === "archived") return 0;
       document.status = "archived";
       auditLogs.push({
@@ -309,7 +318,14 @@ export function createInMemoryQuarantineCertificateRepository(
       return 1;
     },
     async archiveByReceiptId(input) {
-      if (input.employee.role !== "admin") return 0;
+      if (
+        !canPerformPrivilegedAdministrativeOperation(
+          input.employee,
+          "archiveQuarantineCertificates"
+        )
+      ) {
+        return 0;
+      }
       const matching = certificates.filter(
         (certificate) =>
           certificate.orgId === input.orgId && certificate.receiptId === input.receiptId

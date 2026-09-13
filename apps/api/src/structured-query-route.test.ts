@@ -296,7 +296,7 @@ describe("structured query API", () => {
     expect(structuredQueryRepository.calls).toHaveLength(0);
   });
 
-  it("executes the all_staff scope for an employee with no labels", async () => {
+  it("executes the level-zero scope for a clearance-zero employee", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
       employeeRepository: createRepository([clearanceZeroEmployee]),

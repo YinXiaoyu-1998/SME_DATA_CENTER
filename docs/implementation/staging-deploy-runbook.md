@@ -273,17 +273,17 @@ database hosts.
 
 Delete only the enumerated upload domain, never a key prefix or a whole collection:
 
-- each `Document` and its `DocumentLabel, ProcessingRun, DocumentChunk, DocumentIndex` dependents;
+- each `Document` and its `ProcessingRun, DocumentChunk, DocumentIndex` dependents;
 - each related `ImportBatch, ImportWindowClaim, DishRow, and BusinessRow` record;
 - upload audit events whose target/action belongs to the exact document/import identifiers;
 - the exact OSS object keys recorded by those `Document` rows; and
 - the exact Qdrant collection/point identifiers recorded by those `DocumentChunk` rows.
 
-Post-clean verification must report zero remaining upload-domain documents, document labels,
-processing runs, chunks, indexes, import batches, import-window claims, dish rows, business rows,
+Post-clean verification must report zero remaining upload-domain documents, processing runs,
+chunks, indexes, import batches, import-window claims, dish rows, business rows,
 related upload audit events, enumerated OSS objects, and enumerated Qdrant points. It must preserve
-Organization, Employee, login identity and authorization records, Label, SkillEntry,
-RetrievalConfig, and auth audit records.
+Organization, Employee, login identity and authorization records, SkillEntry, RetrievalConfig,
+and auth audit records.
 
 Complete `npm run test:official-manual` only after services are restored. The official acceptance
 must use a fresh synthetic account and show a valid table reaching `applied`, an invalid table

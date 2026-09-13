@@ -319,7 +319,7 @@ describe("evidence routes", () => {
         authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
       }
     });
-    const otherManagerResponse = await app.inject({
+    const otherEmployeeResponse = await app.inject({
       method: "GET",
       url: "/v1/documents/evidence/doc_evidence_status/status",
       headers: {
@@ -344,7 +344,7 @@ describe("evidence routes", () => {
       }
     });
     expect(adminResponse.statusCode).toBe(404);
-    expect(otherManagerResponse.statusCode).toBe(404);
+    expect(otherEmployeeResponse.statusCode).toBe(404);
   });
 
   it("searches evidence chunks without returning natural-language answers", async () => {
@@ -370,8 +370,7 @@ describe("evidence routes", () => {
         query: "差评处理 SOP",
         filters: {
           fileTypes: ["docx"],
-          documentIds: [],
-          labelIds: []
+          documentIds: []
         },
         limit: 10,
         cursor: null
@@ -528,7 +527,7 @@ describe("evidence routes", () => {
     expect(response.payload).not.toContain("private-host.internal:6333");
   });
 
-  it("uses the reloaded org-B employee for evidence labels, storage, catalog, and audit context", async () => {
+  it("uses the reloaded org-B employee for evidence storage, catalog, and audit context", async () => {
     const documentRepository = createOrganizationContextDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({

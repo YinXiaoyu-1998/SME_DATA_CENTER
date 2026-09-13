@@ -142,7 +142,7 @@ describe("MCP API delegation", () => {
 
     const result = await delegateJsonApiRequest(context, {
       method: "GET",
-      path: "/labels"
+      path: "/unavailable"
     });
     const serialized = JSON.stringify(result);
 
@@ -180,7 +180,7 @@ describe("MCP API delegation", () => {
 
     const result = await delegateJsonApiRequest(context, {
       method: "GET",
-      path: "/labels"
+      path: "/unavailable"
     });
     const serialized = JSON.stringify(result);
 

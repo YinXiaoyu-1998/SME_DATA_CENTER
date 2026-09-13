@@ -9,7 +9,7 @@ import {
 const employee: AuthenticatedEmployee = {
   id: "emp_mcp_upload",
   orgId: "default-org",
-  displayName: "MCP Upload Manager",
+  displayName: "MCP Upload Employee",
   email: "mcp-upload@example.com",
   role: "employee",
   disabled: false,
@@ -541,8 +541,8 @@ describe("upload MCP tool handlers", () => {
         statusCode: 400,
         payload: {
           error: {
-            code: "UNKNOWN_LABEL",
-            message: "One or more labels do not exist.",
+            code: "VALIDATION_FAILED",
+            message: "The request is invalid.",
             requestId: "api_validation_req"
           }
         }

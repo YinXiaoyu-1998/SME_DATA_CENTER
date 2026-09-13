@@ -16,7 +16,7 @@ function parseToolResult(result: { content: Array<{ text: string }> }): unknown 
 }
 
 function createCapturingDelegate(
-  token = "manager-token",
+  token = "employee-token",
   auditContext: ApiDelegationContext["audit"] = audit
 ) {
   const calls: ApiDelegationInjectRequest[] = [];
@@ -197,7 +197,9 @@ describe("read-only MCP tool handlers", () => {
         clearance: 1
       }
     });
-    expect(calls.every((call) => call.headers.authorization === "Bearer manager-token")).toBe(true);
+    expect(calls.every((call) => call.headers.authorization === "Bearer employee-token")).toBe(
+      true
+    );
     expect(JSON.stringify(calls)).not.toContain("undefined");
   });
 
@@ -314,7 +316,7 @@ describe("read-only MCP tool handlers", () => {
   });
 
   it("delegates structured coverage with request and launcher audit headers", async () => {
-    const { calls, handlers } = createCapturingDelegate("manager-token", {
+    const { calls, handlers } = createCapturingDelegate("employee-token", {
       ...audit,
       requestId: "req_coverage_mcp",
       launcherVersion: "0.2.6"
@@ -332,7 +334,7 @@ describe("read-only MCP tool handlers", () => {
       method: "GET",
       url: "/v1/structured/datasets/delivery_ledger/coverage",
       headers: {
-        authorization: "Bearer manager-token",
+        authorization: "Bearer employee-token",
         "x-request-id": "req_coverage_mcp",
         "x-enterprise-hub-internal-delegation": delegationProof,
         "x-enterprise-hub-launcher-version": "0.2.6"
@@ -358,7 +360,7 @@ describe("read-only MCP tool handlers", () => {
       ]
     };
     const handlers = createReadOnlyMcpToolHandlers({
-      bearerToken: "manager-token",
+      bearerToken: "employee-token",
       audit,
       delegationProof,
       async inject() {
@@ -387,7 +389,7 @@ describe("read-only MCP tool handlers", () => {
 
   it("returns delegated structured coverage API error envelopes through the existing adapter", async () => {
     const context: ApiDelegationContext = {
-      bearerToken: "manager-token",
+      bearerToken: "employee-token",
       audit,
       delegationProof,
       async inject() {
@@ -430,10 +432,10 @@ describe("read-only MCP tool handlers", () => {
   });
 
   it("lets the delegated API enforce role and permission semantics from the forwarded bearer", async () => {
-    const manager = createCapturingDelegate("manager-token");
+    const employee = createCapturingDelegate("employee-token");
     const admin = createCapturingDelegate("admin-token");
 
-    const managerResult = await manager.handlers.query_structured_dataset?.(
+    const employeeResult = await employee.handlers.query_structured_dataset?.(
       { dataset: "business", page: { limit: 1 } },
       {} as never
     );
@@ -442,7 +444,7 @@ describe("read-only MCP tool handlers", () => {
       {} as never
     );
 
-    expect(parseToolResult(managerResult!)).toMatchObject({ role: "employee" });
+    expect(parseToolResult(employeeResult!)).toMatchObject({ role: "employee" });
     expect(parseToolResult(adminResult!)).toMatchObject({ role: "admin" });
   });
 

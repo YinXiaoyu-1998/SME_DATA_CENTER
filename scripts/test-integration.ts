@@ -478,8 +478,12 @@ try {
     "Rejected structured imports should expose safe errors without raw cell values."
   );
 
+  const protectedStructuredFixture = Buffer.from(
+    structuredFixture.toString("utf8").replace("2026-07-01,", "2026-07-20,"),
+    "utf8"
+  );
   const protectedStructuredForm = structuredFormFor(
-    structuredFixture,
+    protectedStructuredFixture,
     `integration-clearance-${Date.now()}`
   );
   protectedStructuredForm.set("startDate", "20260720");

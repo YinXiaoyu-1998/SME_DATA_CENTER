@@ -25,8 +25,7 @@ class MemoryOperatorRepository implements AuthOperatorRepository {
     this.deleteInput = input;
     return {
       employeeId: "employee-new",
-      identityIds: ["identity-new"],
-      personalLabelDeleted: true
+      identityIds: ["identity-new"]
     };
   }
 }

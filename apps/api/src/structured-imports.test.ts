@@ -100,7 +100,7 @@ function importBatchRecord(
       fileType: "csv",
       storageObjectKey: "org/org_1/documents/doc_1/original/data.csv",
       originalFileName: "data.csv",
-      documentLabels: [{ label: { key: "all_staff" } }],
+      confidentialityLevel: 0,
       processingRuns
     }
   };

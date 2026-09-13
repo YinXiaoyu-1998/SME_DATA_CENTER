@@ -12,7 +12,7 @@ const audit = Object.freeze({
 function createCapturingDelegate() {
   const calls: ApiDelegationInjectRequest[] = [];
   const context: ApiDelegationContext = {
-    bearerToken: "manager-token",
+    bearerToken: "employee-token",
     audit,
     delegationProof: "delegation-proof",
     async inject(request) {

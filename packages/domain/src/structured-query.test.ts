@@ -926,7 +926,7 @@ describe("structured query compiler", () => {
     );
   });
 
-  it("scopes cursor shape to org, employee, role, labels, and query", () => {
+  it("scopes cursor shape to org, employee, clearance, and query", () => {
     const query = {
       dataset: "dishes",
       select: ["business_date"],

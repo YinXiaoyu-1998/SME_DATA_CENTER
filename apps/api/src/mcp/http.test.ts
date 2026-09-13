@@ -27,7 +27,7 @@ async function authenticateTestAccessToken(token: string) {
 const employee: AuthenticatedEmployee = {
   id: "emp_mcp",
   orgId: "default-org",
-  displayName: "MCP Manager",
+  displayName: "MCP Employee",
   email: "mcp.employee@example.com",
   role: "employee",
   disabled: false,
@@ -707,7 +707,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       }
     });
 
-    const managerResponse = await postMcp(
+    const employeeResponse = await postMcp(
       app,
       request(20),
       { "mcp-protocol-version": "2025-11-25" },
@@ -720,9 +720,9 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       { employee: adminEmployee }
     );
 
-    expect(parseToolPayload(managerResponse.payload).payload).toEqual({
+    expect(parseToolPayload(employeeResponse.payload).payload).toEqual({
       user: {
-        displayName: "MCP Manager",
+        displayName: "MCP Employee",
         email: "mcp.employee@example.com",
         role: "employee",
         clearance: 3
@@ -958,10 +958,10 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       }
     });
 
-    const managerResponse = await postMcp(
+    const employeeResponse = await postMcp(
       app,
       searchPayload(10),
-      { "mcp-protocol-version": "2025-11-25", "x-request-id": "mcp-manager-req" },
+      { "mcp-protocol-version": "2025-11-25", "x-request-id": "mcp-employee-req" },
       { employee }
     );
     const adminResponse = await postMcp(
@@ -971,14 +971,14 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       { employee: adminEmployee }
     );
 
-    expect(managerResponse.statusCode).toBe(200);
+    expect(employeeResponse.statusCode).toBe(200);
     expect(adminResponse.statusCode).toBe(200);
     expect(evidenceCalls.map((call) => call.employee.email)).toEqual([
       employee.email,
       adminEmployee.email
     ]);
     expect(evidenceCalls.map((call) => call.audit.requestId)).toEqual([
-      "mcp-manager-req",
+      "mcp-employee-req",
       "mcp-admin-req"
     ]);
     expect(JSON.stringify(parseToolPayload(adminResponse.payload).payload)).toContain(
