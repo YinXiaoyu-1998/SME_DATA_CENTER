@@ -55,7 +55,6 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         deleteMany: vi.fn(async () => ({})),
         count: vi.fn(async () => 0)
       },
-      documentLabel: { count: vi.fn(async () => 1), deleteMany: vi.fn(async () => ({})) },
       importWindowClaim: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
       dishRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
       businessRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
@@ -146,7 +145,6 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       options: { dryRun: false, target: "staging", confirmation: "delete-upload-domain" },
       inventory: {
         documentIds: [],
-        documentLabelCount: 0,
         processingRunIds: [],
         documentChunkIds: [],
         documentIndexIds: [],

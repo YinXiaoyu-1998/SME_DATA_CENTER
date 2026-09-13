@@ -39,19 +39,8 @@ describeIntegration("Prisma auth core repository", () => {
         orgId: "auth-test-org",
         email: "person@example.com",
         displayName: "Test Person",
-        role: "employee"
-      }
-    });
-    await prisma.label.create({
-      data: {
-        id: "auth_test_label",
-        orgId: "auth-test-org",
-        key: "person:auth_test_employee",
-        name: "Test Person",
-        type: "personal",
-        employeeLabels: {
-          create: { employeeId: "auth_test_employee" }
-        }
+        role: "employee",
+        clearance: 0
       }
     });
     await prisma.loginIdentity.create({
@@ -94,10 +83,6 @@ describeIntegration("Prisma auth core repository", () => {
       where: { identity: { orgId: "auth-test-org" } }
     });
     await prisma.loginIdentity.deleteMany({ where: { orgId: "auth-test-org" } });
-    await prisma.employeeLabel.deleteMany({
-      where: { employee: { orgId: "auth-test-org" } }
-    });
-    await prisma.label.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.employee.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.organization.deleteMany({ where: { id: "auth-test-org" } });
     await prisma.$disconnect();
@@ -537,7 +522,7 @@ describeIntegration("Prisma auth core repository", () => {
         displayName: "Test Person",
         identityDisabled: false,
         employeeDisabled: false,
-        labels: ["person:auth_test_employee"]
+        clearance: 0
       }
     );
     await prisma.employee.update({
@@ -577,29 +562,25 @@ describeIntegration("Prisma auth core repository", () => {
     });
   });
 
-  it("atomically onboards employee, personal label, identity, link grant, and optional labels", async () => {
+  it("atomically onboards employee, identity, and link grant with explicit clearance", async () => {
     const now = new Date("2026-07-24T16:00:00.000Z");
     const onboarded = await operatorRepository.onboard({
       orgId: "auth-test-org",
       normalizedEmail: "onboarded@example.com",
       displayName: "Onboarded Person",
-      role: "manager",
-      labelKeys: ["person:auth_test_employee"],
+      role: "employee",
+      clearance: 2,
       grantTokenHash: "e".repeat(64),
       grantExpiresAt: new Date(now.getTime() + 86_400_000),
       now
     });
 
-    expect(
-      await prisma.label.findUnique({
-        where: {
-          orgId_key: {
-            orgId: "auth-test-org",
-            key: `person:${onboarded.employeeId}`
-          }
-        }
-      })
-    ).toBeTruthy();
+    expect(await prisma.employee.findUnique({ where: { id: onboarded.employeeId } })).toMatchObject(
+      {
+        clearance: 2,
+        role: "employee"
+      }
+    );
     expect(
       await prisma.loginIdentity.findUnique({
         where: { normalizedEmail: "onboarded@example.com" }
@@ -678,7 +659,7 @@ describeIntegration("Prisma auth core repository", () => {
         normalizedEmail: "rolled-back@example.com",
         displayName: "Rolled Back",
         role: "employee",
-        labelKeys: ["missing-label"],
+        clearance: 1,
         grantTokenHash: "f".repeat(64),
         grantExpiresAt: new Date(now.getTime() + 86_400_000),
         now
@@ -785,14 +766,16 @@ describeIntegration("Prisma auth core repository", () => {
           orgId: "auth-test-org",
           email: "auth-email-ascii@example.com",
           displayName: "ASCII Email",
-          role: "employee"
+          role: "employee",
+          clearance: 0
         },
         {
           id: "auth_email_accent",
           orgId: "auth-test-org",
           email: "auth-email-accent@example.com",
           displayName: "Accent Email",
-          role: "employee"
+          role: "employee",
+          clearance: 0
         }
       ]
     });

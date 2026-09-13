@@ -19,8 +19,8 @@ function employeeResponse(employee: AuthenticatedEmployee) {
     displayName: employee.displayName,
     email: employee.email,
     role: employee.role,
-    disabled: employee.disabled,
-    labels: employee.labels
+    clearance: employee.clearance,
+    disabled: employee.disabled
   };
 }
 

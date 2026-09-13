@@ -808,17 +808,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
         include: {
           session: true,
           identity: true,
-          employee: {
-            include: {
-              employeeLabels: {
-                include: {
-                  label: {
-                    select: { key: true }
-                  }
-                }
-              }
-            }
-          }
+          employee: true
         }
       });
       if (
@@ -859,7 +849,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
         displayName: token.employee.displayName,
         email: token.employee.email,
         role: token.employee.role,
-        labels: token.employee.employeeLabels.map(({ label }) => label.key).sort(),
+        clearance: token.employee.clearance,
         identityDisabled: token.identity.disabled,
         employeeDisabled: token.employee.disabled
       };

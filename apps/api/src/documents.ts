@@ -4,7 +4,6 @@ import {
   DocumentStatus,
   DocumentType,
   FileType,
-  LabelType,
   Prisma,
   PrismaClient,
   ProcessingJobType,
@@ -19,13 +18,6 @@ import type {
 } from "@enterprise-hub/domain";
 import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
-
-export interface CatalogLabel {
-  id: string;
-  key: string;
-  name: string;
-  type: string;
-}
 
 export interface CreateUploadedDocumentInput {
   id: string;
@@ -43,8 +35,7 @@ export interface CreateUploadedDocumentInput {
   uploaderId: string;
   sourceSystem: string | null;
   sourceTime: Date | null;
-  labelIds: string[];
-  labels: string[];
+  confidentialityLevel: number;
   processingJobType: ProcessingJobTypeName;
   audit: RequestAuditContext;
 }
@@ -65,7 +56,7 @@ export interface DocumentStatusRecord {
   checksumSha256: string | null;
   sourceSystem: string | null;
   sourceTime: Date | null;
-  labels: string[];
+  confidentialityLevel: number;
   processingRunStatus: string | null;
   documentIndexStatus: string | null;
 }
@@ -75,36 +66,6 @@ export interface ArchiveDocumentInput {
   documentId: string;
   actorEmployeeId: string;
   audit: RequestAuditContext;
-}
-
-export interface AddDocumentLabelsInput {
-  orgId: string;
-  documentId: string;
-  actorEmployeeId: string;
-  labelIds: string[];
-  labelKeys: string[];
-  audit: RequestAuditContext;
-}
-
-export interface AuditLogRecord {
-  id: string;
-  actorEmployeeId: string | null;
-  action: string;
-  targetType: string;
-  targetId: string | null;
-  result: string;
-  metadata: Record<string, unknown> | null;
-  requestId: string | null;
-  clientIp: string | null;
-  clientSource: string | null;
-  launcherVersion: string | null;
-  createdAt: Date;
-}
-
-export interface ListAuditLogsInput {
-  orgId: string;
-  limit: number;
-  cursor: string | null;
 }
 
 export interface AppendAuditLogInput {
@@ -118,15 +79,7 @@ export interface AppendAuditLogInput {
   audit: RequestAuditContext;
 }
 
-export interface ListAuditLogsResult {
-  auditLogs: AuditLogRecord[];
-  nextCursor: string | null;
-}
-
 export interface DocumentCatalogRepository {
-  listLabels(orgId: string): Promise<CatalogLabel[]>;
-  findLabelsByKeys(orgId: string, keys: string[]): Promise<CatalogLabel[]>;
-  findPersonalLabelForEmployee(orgId: string, employeeId: string): Promise<CatalogLabel | null>;
   createUploadedDocument(input: CreateUploadedDocumentInput): Promise<DocumentStatusRecord>;
   findEvidenceDocumentStatus(
     orgId: string,
@@ -134,20 +87,10 @@ export interface DocumentCatalogRepository {
   ): Promise<DocumentStatusRecord | null>;
   appendAuditLog(input: AppendAuditLogInput): Promise<void>;
   archiveDocument(input: ArchiveDocumentInput): Promise<DocumentStatusRecord | null>;
-  listAuditLogs(input: ListAuditLogsInput): Promise<ListAuditLogsResult>;
   disconnect?(): Promise<void>;
 }
 
 const documentStatusInclude = {
-  documentLabels: {
-    include: {
-      label: {
-        select: {
-          key: true
-        }
-      }
-    }
-  },
   processingRuns: {
     orderBy: {
       createdAt: "asc"
@@ -187,61 +130,6 @@ export function createPrismaDocumentCatalogRepository(
   const prisma = new PrismaClient({ adapter });
 
   return {
-    async listLabels(orgId) {
-      return prisma.label.findMany({
-        where: {
-          orgId
-        },
-        orderBy: [{ type: "asc" }, { key: "asc" }],
-        select: {
-          id: true,
-          key: true,
-          name: true,
-          type: true
-        }
-      });
-    },
-    async findLabelsByKeys(orgId, keys) {
-      if (keys.length === 0) {
-        return [];
-      }
-
-      return prisma.label.findMany({
-        where: {
-          orgId,
-          key: { in: keys }
-        },
-        select: {
-          id: true,
-          key: true,
-          name: true,
-          type: true
-        }
-      });
-    },
-    async findPersonalLabelForEmployee(orgId, employeeId) {
-      const employeeLabel = await prisma.employeeLabel.findFirst({
-        where: {
-          employeeId,
-          label: {
-            orgId,
-            type: LabelType.personal
-          }
-        },
-        include: {
-          label: {
-            select: {
-              id: true,
-              key: true,
-              name: true,
-              type: true
-            }
-          }
-        }
-      });
-
-      return employeeLabel?.label ?? null;
-    },
     async createUploadedDocument(input) {
       const document = await prisma.$transaction(async (tx) => {
         const createdDocument = await tx.document.create({
@@ -253,6 +141,7 @@ export function createPrismaDocumentCatalogRepository(
             documentKind: input.documentKind ? (input.documentKind as DocumentKind) : undefined,
             fileType: input.fileType ? (input.fileType as FileType) : undefined,
             status: input.status as DocumentStatus,
+            confidentialityLevel: input.confidentialityLevel,
             storageObjectKey: input.storageObjectKey,
             originalFileName: input.originalFileName,
             contentType: input.contentType,
@@ -261,11 +150,6 @@ export function createPrismaDocumentCatalogRepository(
             uploaderId: input.uploaderId,
             sourceSystem: input.sourceSystem,
             sourceTime: input.sourceTime,
-            documentLabels: {
-              create: input.labelIds.map((labelId) => ({
-                labelId
-              }))
-            },
             processingRuns: {
               create: {
                 orgId: input.orgId,
@@ -290,7 +174,7 @@ export function createPrismaDocumentCatalogRepository(
             targetId: input.id,
             result: "succeeded",
             metadata: {
-              labelKeys: input.labels,
+              confidentialityLevel: input.confidentialityLevel,
               storageObjectKey: input.storageObjectKey
             },
             requestId: input.audit.requestId,
@@ -381,61 +265,10 @@ export function createPrismaDocumentCatalogRepository(
 
       return document ? toDocumentStatusRecord(document) : null;
     },
-    async listAuditLogs(input) {
-      const offset = parseCursorOffset(input.cursor);
-      const auditLogs = await prisma.auditLog.findMany({
-        where: {
-          orgId: input.orgId
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip: offset,
-        take: input.limit + 1
-      });
-      const page = auditLogs.slice(0, input.limit);
-
-      return {
-        auditLogs: page.map(toAuditLogRecord),
-        nextCursor: auditLogs.length > input.limit ? String(offset + input.limit) : null
-      };
-    },
     async disconnect() {
       await prisma.$disconnect();
     }
   };
-}
-
-function toMetadataRecord(value: Prisma.JsonValue | null): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  return null;
-}
-
-function toAuditLogRecord(auditLog: Prisma.AuditLogGetPayload<object>): AuditLogRecord {
-  return {
-    id: auditLog.id,
-    actorEmployeeId: auditLog.actorEmployeeId,
-    action: auditLog.action,
-    targetType: auditLog.targetType,
-    targetId: auditLog.targetId,
-    result: auditLog.result,
-    metadata: toMetadataRecord(auditLog.metadata),
-    requestId: auditLog.requestId,
-    clientIp: auditLog.clientIp,
-    clientSource: auditLog.clientSource,
-    launcherVersion: auditLog.launcherVersion,
-    createdAt: auditLog.createdAt
-  };
-}
-
-function parseCursorOffset(cursor: string | null): number {
-  if (!cursor) {
-    return 0;
-  }
-
-  const offset = Number.parseInt(cursor, 10);
-  return Number.isFinite(offset) && offset > 0 ? offset : 0;
 }
 
 function toDocumentStatusRecord(
@@ -457,7 +290,7 @@ function toDocumentStatusRecord(
     checksumSha256: document.checksumSha256,
     sourceSystem: document.sourceSystem,
     sourceTime: document.sourceTime,
-    labels: document.documentLabels.map((documentLabel) => documentLabel.label.key).sort(),
+    confidentialityLevel: document.confidentialityLevel,
     processingRunStatus: document.processingRuns[0]?.status ?? null,
     documentIndexStatus: document.indexes[0]?.status ?? null
   };

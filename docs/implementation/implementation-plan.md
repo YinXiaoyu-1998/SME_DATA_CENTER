@@ -1,6 +1,6 @@
 # 企业资料中枢 Implementation Plan
 
-Last updated: 2026-08-29
+Last updated: 2026-09-13
 
 ## Product Boundary
 
@@ -19,14 +19,14 @@ The active public product surface is Phase 3-only:
 1. Evidence documents: `upload_evidence_document` → evidence indexing → `get_evidence_document_status` / `search_document_evidence`.
 2. Structured datasets: `upload_structured_dataset` → strict MySQL import → `get_import_status` / `list_structured_datasets` / `query_structured_dataset`.
 
-The old ordinary document upload/search/detail/download/archive public surface has been removed. The internal documents catalog remains as source-file, label, status, storage, processing, and audit infrastructure.
+The old ordinary document upload/search/detail/download/archive public surface has been removed. The internal documents catalog remains as source-file, confidentiality, status, storage, processing, and audit infrastructure.
 
 ## Phase Summary
 
 | Phase | Status | Scope |
 | ----- | ------ | ----- |
-| Phase 1 | Complete / internalized | Core API, auth, labels, source document catalog, storage, audit, local seed data |
-| Phase 2 | Complete / current MCP adapter retained | Local MCP login/session, labels, skills, Phase 3 tool adapter surface |
+| Phase 1 | Complete / internalized | Core API, auth, source document catalog, storage, audit, local seed data |
+| Phase 2 | Complete / current MCP adapter retained | Local MCP login/session, skills, Phase 3 tool adapter surface |
 | Phase 3 | Implemented, final cleanup in progress | Production-grade retrieval/data foundation before online launch |
 | Phase 4 | In progress | Go-online/staging deployment readiness; runtime/ACR/TLS/fixture-smoke slice is deployed |
 | Phase 5 | Not started | Post-launch operations, beta feedback, hardening |
@@ -64,9 +64,9 @@ Active MCP tools:
 
 Done criteria:
 
-- upload stores source file and labels;
+- upload stores the source file and its immutable confidentiality level;
 - worker indexes into Qdrant with versioned retrieval config;
-- status exposes document/index readiness to uploader/admin only;
+- status exposes document/index readiness to its uploader; ordinary visibility otherwise follows organization and clearance;
 - search returns evidence chunks and metadata for visible active ready documents only;
 - inaccessible documents do not leak title, filename, chunk text, row count, or existence.
 
@@ -91,7 +91,7 @@ Required behavior:
 - metadata is policy-specific: window datasets use `startDate`/`endDate`, `dish_catalog` uses
   `snapshotDate`, `delivery_ledger` derives the receipt ID/date and rejects user-supplied dates,
   and `supplier_catalog` uses no dates; all uploads also carry enterprise identity/name, an
-  idempotency key, and labels;
+  idempotency key, and optional confidentiality level;
 - file name is not trusted for business logic;
 - XLSX sheet selection is dataset-specific: `delivery_ledger` selects exactly one recognized visible
   receipt sheet and ignores instructions/hidden sheets; `supplier_catalog` imports exactly one
@@ -151,7 +151,7 @@ Done criteria:
 ### Phase 3 Hardening Baselines
 
 - Organization scope is derived only from the authenticated employee record.
-- Document visibility uses one shared policy: disabled denied, same-org admins allowed on supported management paths, active same-org non-admins allowed by `all_staff` or current label intersection.
+- Ordinary document visibility uses one shared policy: disabled accounts are denied; active same-organization employees, including admins, need clearance at least equal to the document confidentiality level. Admin-only PAOs are separately declared and may operate across confidentiality levels without granting ordinary read access.
 - Structured imports use reservation-first idempotency and deterministic storage keys.
 - Evidence search uses signed opaque cursor pagination; each page reruns retrieval and authorization.
 - Worker processing uses database leases, heartbeat, retry classification, and bounded worker concurrency.
@@ -195,7 +195,7 @@ Branch: `codex/remove-legacy-upload-search`
 Scope:
 
 - remove old public API routes;
-- keep internal document catalog/storage/labels/audit helpers needed by evidence and structured flows;
+- keep internal document catalog/storage/confidentiality/audit helpers needed by evidence and structured flows;
 - add evidence status endpoint;
 - remove worker legacy text extraction fallback;
 - require explicit processing job type;
@@ -223,7 +223,7 @@ Done criteria:
 - MCP tool list contains only current tools;
 - old tool names are covered by negative tests only;
 - no active `hub documents` command remains;
-- local MCP smoke covers login, labels, structured import/status/query, evidence upload/status/search.
+- local MCP smoke covers login, clearance-bound structured import/status/query, and evidence upload/status/search.
 
 ### Task C: Docs / Skills Cleanup
 

@@ -12,9 +12,9 @@ const employee: AuthenticatedEmployee = {
   orgId: "default-org",
   displayName: "Employee One",
   email: "employee@example.com",
-  role: "manager",
+  role: "employee",
   disabled: false,
-  labels: ["all_staff", "store:baoli"]
+  clearance: 3
 };
 
 function context(
@@ -236,8 +236,7 @@ describe("structured query routes", () => {
         orgId: "default-org",
         employee: {
           id: employee.id,
-          role: "manager",
-          labels: employee.labels
+          clearance: employee.clearance
         }
       }
     });

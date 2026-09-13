@@ -10,9 +10,9 @@ const employee: AuthenticatedEmployee = {
   orgId: "default-org",
   displayName: "Employee One",
   email: "employee@example.com",
-  role: "manager",
+  role: "employee",
   disabled: false,
-  labels: ["all_staff"]
+  clearance: 3
 };
 
 function context(): ApiServerContext {
@@ -130,7 +130,7 @@ describe("system routes", () => {
         email: employee.email,
         role: employee.role,
         disabled: employee.disabled,
-        labels: employee.labels
+        clearance: employee.clearance
       }
     });
   });

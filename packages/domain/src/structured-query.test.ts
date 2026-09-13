@@ -22,7 +22,7 @@ function expectStructuredError(run: () => unknown, code: string) {
 describe("structured query compiler", () => {
   it("uses the single current schema and rejects unknown top-level input", () => {
     const compiled = compileStructuredQuery({
-      employee: { role: "admin", labels: [] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       query: { dataset: "dishes", select: ["business_date"] },
       cursorSecret: "cursor-secret"
@@ -32,7 +32,7 @@ describe("structured query compiler", () => {
     expectStructuredError(
       () =>
         compileStructuredQuery({
-          employee: { role: "admin", labels: [] },
+          employee: { clearance: 3 },
           orgId: "default-org",
           query: {
             dataset: "dishes",
@@ -47,7 +47,7 @@ describe("structured query compiler", () => {
 
   it("partitions delivery dynamic fields from the stored SQL projection", () => {
     const compiled = compileStructuredQuery({
-      employee: { id: "emp_admin", role: "admin", labels: [] },
+      employee: { id: "emp_admin", clearance: 3 },
       orgId: "default-org",
       query: {
         dataset: "delivery_ledger",
@@ -82,7 +82,7 @@ describe("structured query compiler", () => {
     expect(compiled.params).not.toContain("$.supplier_unit_address");
     expect(compiled.authorizationScope).toEqual({
       orgId: "default-org",
-      employee: { id: "emp_admin", role: "admin", labels: [] }
+      employee: { id: "emp_admin", clearance: 3 }
     });
   });
 
@@ -101,7 +101,7 @@ describe("structured query compiler", () => {
     expectStructuredError(
       () =>
         compileStructuredQuery({
-          employee: { role: "admin", labels: [] },
+          employee: { clearance: 3 },
           orgId: "default-org",
           query: { dataset: "delivery_ledger", ...query },
           cursorSecret: "cursor-secret"
@@ -119,7 +119,7 @@ describe("structured query compiler", () => {
     expectStructuredError(
       () =>
         compileStructuredQuery({
-          employee: { role: "admin", labels: [] },
+          employee: { clearance: 3 },
           orgId: "default-org",
           query: { dataset: "delivery_ledger", ...query },
           cursorSecret: "cursor-secret"
@@ -132,7 +132,7 @@ describe("structured query compiler", () => {
     expectStructuredError(
       () =>
         compileStructuredQuery({
-          employee: { role: "admin", labels: [] },
+          employee: { clearance: 3 },
           orgId: "default-org",
           query: {
             dataset: "delivery_ledger",
@@ -155,7 +155,7 @@ describe("structured query compiler", () => {
     expectStructuredError(
       () =>
         compileStructuredQuery({
-          employee: { role: "admin", labels: [] },
+          employee: { clearance: 3 },
           orgId: "default-org",
           query: {
             dataset: "delivery_ledger",
@@ -174,7 +174,7 @@ describe("structured query compiler", () => {
     expectStructuredError(
       () =>
         compileStructuredQuery({
-          employee: { role: "admin", labels: [] },
+          employee: { clearance: 3 },
           orgId: "default-org",
           query: {
             dataset: "delivery_ledger",
@@ -189,7 +189,7 @@ describe("structured query compiler", () => {
 
   it("compiles catalog snapshot price filters against the catalog row table", () => {
     const compiled = compileStructuredQuery({
-      employee: { role: "admin", labels: [] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       query: {
         dataset: "dish_catalog",
@@ -213,8 +213,7 @@ describe("structured query compiler", () => {
   it("compiles a controlled detail query to parameterized SQL with permission scope before filters", () => {
     const compiled = compileStructuredQuery({
       employee: {
-        role: "manager",
-        labels: ["all_staff", "store:baoli"]
+        clearance: 3
       },
       orgId: "default-org",
       query: {
@@ -256,8 +255,7 @@ describe("structured query compiler", () => {
       "applied",
       "structured",
       "active",
-      "all_staff",
-      "store:baoli",
+      3,
       "$.business_date",
       "2026-07-01",
       "2026-07-05",
@@ -269,9 +267,9 @@ describe("structured query compiler", () => {
     ]);
   });
 
-  it("omits label predicates for an admin", () => {
+  it("applies a clearance predicate to an admin query", () => {
     const compiled = compileStructuredQuery({
-      employee: { role: "admin", labels: [] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       query: { dataset: "dishes", select: ["business_date"] },
       cursorSecret: "cursor-secret"
@@ -287,68 +285,60 @@ describe("structured query compiler", () => {
       "applied",
       "structured",
       "active",
+      3,
       50,
       0
     ]);
   });
 
-  it("permits a non-admin without labels to query all_staff documents", () => {
+  it("uses clearance rather than role for ordinary structured queries", () => {
     const compiled = compileStructuredQuery({
-      employee: { role: "employee", labels: [] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       query: { dataset: "dishes", select: ["business_date"] },
       cursorSecret: "cursor-secret"
     });
 
-    expect(compiled.sql).toContain("l.key = ?");
-    expect(compiled.params).toContain("all_staff");
-    expect(compiled.params).not.toContain("store:baoli");
+    expect(compiled.sql).toContain("d.confidentiality_level <= ?");
+    expect(compiled.params).toContain(3);
   });
 
-  it("treats an all_staff-only employee label as the all_staff document scope", () => {
+  it("does not include legacy document-label joins", () => {
     const compiled = compileStructuredQuery({
-      employee: { role: "employee", labels: ["all_staff"] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       query: { dataset: "dishes", select: ["business_date"] },
       cursorSecret: "cursor-secret"
     });
 
-    expect(compiled.sql).toContain("l.key = ?");
-    expect(compiled.params).toContain("all_staff");
-    expect(compiled.params).not.toContain("store:baoli");
+    expect(compiled.sql).not.toContain("document_labels");
   });
 
-  it("limits a non-admin query to all_staff or matching employee labels", () => {
+  it("keeps a lower-clearance employee within its declared level", () => {
     const compiled = compileStructuredQuery({
-      employee: { role: "employee", labels: ["store:baoli"] },
+      employee: { clearance: 1 },
       orgId: "default-org",
       query: { dataset: "dishes", select: ["business_date"] },
       cursorSecret: "cursor-secret"
     });
 
-    expect(compiled.sql).toContain("l.key = ? OR l.key IN (?)");
-    expect(compiled.params).toContain("all_staff");
-    expect(compiled.params).toContain("store:baoli");
-    expect(compiled.params).not.toContain("store:suzhou");
+    expect(compiled.params).toContain(1);
   });
 
-  it("keeps non-matching labels parameterized without widening the document scope", () => {
+  it("keeps clearance parameterized without widening the document scope", () => {
     const compiled = compileStructuredQuery({
-      employee: { role: "employee", labels: ["store:suzhou"] },
+      employee: { clearance: 2 },
       orgId: "default-org",
       query: { dataset: "dishes", select: ["business_date"] },
       cursorSecret: "cursor-secret"
     });
 
-    expect(compiled.sql).toContain("l.key = ? OR l.key IN (?)");
-    expect(compiled.params).toContain("all_staff");
-    expect(compiled.params).toContain("store:suzhou");
-    expect(compiled.params).not.toContain("store:baoli");
+    expect(compiled.params).toContain(2);
   });
 
   it("rejects invalid field, operator, type, capability, raw SQL, and excessive limits before SQL", () => {
     const base = {
-      employee: { role: "manager" as const, labels: ["store:baoli"] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       cursorSecret: "cursor-secret"
     };
@@ -411,7 +401,7 @@ describe("structured query compiler", () => {
 
   it("enforces the hard structural query limits before SQL execution", () => {
     const base = {
-      employee: { role: "manager" as const, labels: ["store:baoli"] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       cursorSecret: "cursor-secret"
     };
@@ -512,7 +502,7 @@ describe("structured query compiler", () => {
 
   it("accepts imported-size string scalars and rejects larger query values", () => {
     const base = {
-      employee: { role: "manager" as const, labels: ["store:baoli"] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       cursorSecret: "cursor-secret"
     };
@@ -550,8 +540,7 @@ describe("structured query compiler", () => {
   it("compiles explicit aggregations without leaking hidden rows outside the permission scope", () => {
     const compiled = compileStructuredQuery({
       employee: {
-        role: "manager",
-        labels: ["store:baoli"]
+        clearance: 3
       },
       orgId: "default-org",
       query: {
@@ -582,8 +571,7 @@ describe("structured query compiler", () => {
   it("compiles bounded weighted aggregate queries with alias-aware sorting", () => {
     const baseInput = {
       employee: {
-        role: "manager" as const,
-        labels: ["store:baoli"]
+        clearance: 3
       },
       orgId: "default-org",
       cursorSecret: "cursor-secret"
@@ -638,8 +626,7 @@ describe("structured query compiler", () => {
       "applied",
       "structured",
       "active",
-      "all_staff",
-      "store:baoli",
+      3,
       200,
       0
     ]);
@@ -779,8 +766,7 @@ describe("structured query compiler", () => {
   it("compiles vip member dataset queries against vip_rows", () => {
     const compiled = compileStructuredQuery({
       employee: {
-        role: "manager",
-        labels: ["all_staff"]
+        clearance: 3
       },
       orgId: "default-org",
       query: {
@@ -804,8 +790,7 @@ describe("structured query compiler", () => {
   it("uses typed SQL expressions for numeric and date-time sort, comparison, and min/max", () => {
     const compiled = compileStructuredQuery({
       employee: {
-        role: "manager",
-        labels: ["store:baoli"]
+        clearance: 3
       },
       orgId: "default-org",
       query: {
@@ -831,8 +816,7 @@ describe("structured query compiler", () => {
 
     const dateTime = compileStructuredQuery({
       employee: {
-        role: "manager",
-        labels: ["store:baoli"]
+        clearance: 3
       },
       orgId: "default-org",
       query: {
@@ -857,8 +841,7 @@ describe("structured query compiler", () => {
 
     const aggregate = compileStructuredQuery({
       employee: {
-        role: "manager",
-        labels: ["store:baoli"]
+        clearance: 3
       },
       orgId: "default-org",
       query: {
@@ -886,7 +869,7 @@ describe("structured query compiler", () => {
       page: { limit: 1 }
     };
     const compiled = compileStructuredQuery({
-      employee: { role: "manager", labels: ["store:baoli"] },
+      employee: { clearance: 3 },
       orgId: "default-org",
       query,
       cursorSecret: "cursor-secret"
@@ -943,14 +926,14 @@ describe("structured query compiler", () => {
     );
   });
 
-  it("scopes cursor shape to org, employee, role, labels, and query", () => {
+  it("scopes cursor shape to org, employee, clearance, and query", () => {
     const query = {
       dataset: "dishes",
       select: ["business_date"],
       page: { limit: 1 }
     };
     const base = compileStructuredQuery({
-      employee: { id: "emp_1", role: "manager", labels: ["store:baoli"] },
+      employee: { id: "emp_1", clearance: 3 },
       orgId: "default-org",
       query,
       cursorSecret: "cursor-secret"
@@ -958,25 +941,19 @@ describe("structured query compiler", () => {
 
     const variants = [
       compileStructuredQuery({
-        employee: { id: "emp_2", role: "manager", labels: ["store:baoli"] },
+        employee: { id: "emp_2", clearance: 3 },
         orgId: "default-org",
         query,
         cursorSecret: "cursor-secret"
       }),
       compileStructuredQuery({
-        employee: { id: "emp_1", role: "admin", labels: ["store:baoli"] },
+        employee: { id: "emp_1", clearance: 2 },
         orgId: "default-org",
         query,
         cursorSecret: "cursor-secret"
       }),
       compileStructuredQuery({
-        employee: { id: "emp_1", role: "manager", labels: ["store:suzhou"] },
-        orgId: "default-org",
-        query,
-        cursorSecret: "cursor-secret"
-      }),
-      compileStructuredQuery({
-        employee: { id: "emp_1", role: "manager", labels: ["store:baoli"] },
+        employee: { id: "emp_1", clearance: 3 },
         orgId: "org-b",
         query,
         cursorSecret: "cursor-secret"

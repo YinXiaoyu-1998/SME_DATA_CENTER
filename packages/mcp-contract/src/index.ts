@@ -22,7 +22,15 @@ const scalarStructuredValue = z.union([
   z.boolean(),
   z.null()
 ]);
-const labelKey = z.string().min(1).max(PUBLIC_INPUT_LIMITS.labelKeyChars);
+const confidentialityLevel = z
+  .number()
+  .int()
+  .min(0)
+  .max(3)
+  .optional()
+  .describe(
+    "Optional explicit document confidentiality level from 0 through 3; omission is level 0."
+  );
 const evidenceFilterId = z.string().min(1).max(PUBLIC_INPUT_LIMITS.evidenceFilterIdChars);
 const structuredFilter: z.ZodType<unknown> = z.lazy(() =>
   z.union([
@@ -113,7 +121,6 @@ export const launcherUploadFileInputShape: z.ZodRawShape = {
 };
 
 const currentUserInputSchema = z.object({}).strict();
-const listLabelsInputSchema = z.object({}).strict();
 
 const listSkillsInputSchema = z
   .object({
@@ -136,12 +143,7 @@ const searchDocumentEvidenceInputSchema = z
           .array(evidenceFilterId)
           .max(PUBLIC_INPUT_LIMITS.evidenceFilterIdsPerGroup)
           .optional()
-          .describe("Optional document ids."),
-        labelIds: z
-          .array(evidenceFilterId)
-          .max(PUBLIC_INPUT_LIMITS.evidenceFilterIdsPerGroup)
-          .optional()
-          .describe("Optional API label id filters when known.")
+          .describe("Optional document ids.")
       })
       .strict()
       .optional()
@@ -264,11 +266,7 @@ const uploadStructuredDatasetInputSchema = z
       .min(1)
       .max(PUBLIC_INPUT_LIMITS.idempotencyKeyChars)
       .describe("Client-generated retry/idempotency key."),
-    labelKeys: z
-      .array(labelKey)
-      .min(1)
-      .max(PUBLIC_INPUT_LIMITS.labelsPerRequest)
-      .describe("Explicit existing label keys/visibility for rows and source document.")
+    confidentialityLevel
   })
   .strict()
   .superRefine((input, context) => {
@@ -340,11 +338,7 @@ const uploadEvidenceDocumentInputSchema = z
       .max(PUBLIC_INPUT_LIMITS.sourceSystemChars)
       .optional()
       .describe("Optional source system."),
-    labelKeys: z
-      .array(labelKey)
-      .min(1)
-      .max(PUBLIC_INPUT_LIMITS.labelsPerRequest)
-      .describe("Explicit existing label keys/visibility for the evidence document.")
+    confidentialityLevel
   })
   .strict();
 
@@ -371,11 +365,7 @@ const uploadQuarantineCertificateInputSchema = z
       .min(1)
       .max(PUBLIC_INPUT_LIMITS.idempotencyKeyChars)
       .describe("Client-generated retry/idempotency key."),
-    labelKeys: z
-      .array(labelKey)
-      .min(1)
-      .max(PUBLIC_INPUT_LIMITS.labelsPerRequest)
-      .describe("Explicit existing label keys/visibility for the certificate.")
+    confidentialityLevel
   })
   .strict();
 
@@ -403,7 +393,6 @@ const sourceDocumentDownloadUrlInputSchema = z
 
 export const ENTERPRISE_HUB_MCP_TOOL_NAMES = [
   "enterprise_hub_get_current_user",
-  "enterprise_hub_list_labels",
   "enterprise_hub_list_skills",
   "search_document_evidence",
   "list_structured_datasets",
@@ -476,18 +465,10 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     name: "enterprise_hub_get_current_user",
     title: "Get current Enterprise Hub user",
     description:
-      "Return the display name, email, and role of the employee authenticated for this Enterprise Hub MCP request.",
+      "Return the display name, email, role, and clearance of the employee authenticated for this Enterprise Hub MCP request.",
     inputSchema: currentUserInputSchema,
     inputFields: [],
-    resultShape: ["user: { displayName, email, role }"]
-  }),
-  defineToolContract({
-    name: "enterprise_hub_list_labels",
-    title: "List Enterprise Hub labels",
-    description: "List label catalog entries by calling authenticated GET /labels on the API.",
-    inputSchema: listLabelsInputSchema,
-    inputFields: [],
-    resultShape: ["labels[]: { key, name, type }"]
+    resultShape: ["user: { displayName, email, role, clearance }"]
   }),
   defineToolContract({
     name: "enterprise_hub_list_skills",
@@ -616,7 +597,11 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       { name: "endDate", required: false, description: "YYYYMMDD business window end." },
       { name: "snapshotDate", required: false, description: "YYYYMMDD catalog snapshot date." },
       { name: "idempotencyKey", required: true, description: "Retry/idempotency key." },
-      { name: "labelKeys", required: true, description: "Explicit existing label keys." }
+      {
+        name: "confidentialityLevel",
+        required: false,
+        description: "Explicit 0-3 level; omission is 0."
+      }
     ],
     resultShape: ["document", "processing", "importBatch"]
   }),
@@ -630,7 +615,11 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       { name: "file", required: true, description: "Base64 upload file payload." },
       { name: "title", required: true, description: "Evidence source title." },
       { name: "sourceSystem", required: false, description: "Optional source system." },
-      { name: "labelKeys", required: true, description: "Explicit existing label keys." }
+      {
+        name: "confidentialityLevel",
+        required: false,
+        description: "Explicit 0-3 level; omission is 0."
+      }
     ],
     resultShape: ["document", "processing", "documentIndex"]
   }),
@@ -644,7 +633,11 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
       { name: "file", required: true, description: "Base64 upload image payload." },
       { name: "receiptId", required: true, description: "Receipt ID linked to this image." },
       { name: "idempotencyKey", required: true, description: "Retry/idempotency key." },
-      { name: "labelKeys", required: true, description: "Explicit existing label keys." }
+      {
+        name: "confidentialityLevel",
+        required: false,
+        description: "Explicit 0-3 level; omission is 0."
+      }
     ],
     resultShape: [
       "sourceDocumentId",
@@ -668,7 +661,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     name: "archive_quarantine_certificates",
     title: "Archive Enterprise Hub quarantine certificates",
     description:
-      "Archive one quarantine certificate by source document ID, or admin-archive all certificates under one receipt ID.",
+      "Privileged Administrative Operation: an admin archives one quarantine certificate by source document ID, or all certificates under one receipt ID, regardless of target confidentiality level.",
     inputSchema: archiveQuarantineCertificatesInputSchema,
     inputFields: [
       { name: "sourceDocumentId", required: false, description: "Single source document ID." },

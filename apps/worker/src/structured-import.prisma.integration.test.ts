@@ -31,7 +31,8 @@ describeIntegration("Prisma structured import worker repository", () => {
         orgId,
         email: "worker-prisma-test@example.invalid",
         displayName: "Worker Prisma Test",
-        role: "employee"
+        role: "employee",
+        clearance: 0
       }
     });
   });

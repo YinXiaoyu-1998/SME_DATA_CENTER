@@ -158,7 +158,7 @@ try {
   apiProcess = startApi();
   await waitForApiHealth(apiProcess);
 
-  const employeeAccessToken = await createOfficialIntegrationAccessToken("emp_baoli_manager");
+  const employeeAccessToken = await createOfficialIntegrationAccessToken("emp_baoli_employee");
   const auth = authorizationHeader(employeeAccessToken);
   const adminAuth = authorizationHeader(await createOfficialIntegrationAccessToken("emp_admin"));
 
@@ -174,7 +174,7 @@ try {
     form.append("startDate", "20260701");
     form.append("endDate", "20260705");
     form.append("idempotencyKey", idempotencyKey);
-    form.append("labelKeys[]", "store:baoli");
+    form.append("confidentialityLevel", "0");
     return form;
   };
   const structuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
@@ -331,7 +331,7 @@ try {
     startDate: "20260706",
     endDate: "20260706",
     idempotencyKey: launcherPathIdempotencyKey,
-    labelKeys: ["store:baoli"]
+    confidentialityLevel: 0
   });
   assert(
     !launcherPathResult.isError,
@@ -369,8 +369,8 @@ try {
     "Stored bytes must match the launcher path-mode upload."
   );
 
-  const allStaffStructuredForm = new FormData();
-  allStaffStructuredForm.append(
+  const levelZeroStructuredForm = new FormData();
+  levelZeroStructuredForm.append(
     "file",
     new Blob([
       await readFile(
@@ -384,52 +384,52 @@ try {
     ]),
     "maijia_business_20260706_20260712_first1000.xlsx"
   );
-  allStaffStructuredForm.append("dataset", "business");
-  allStaffStructuredForm.append("enterprise_name", "Integration All Staff");
-  allStaffStructuredForm.append("startDate", "20260706");
-  allStaffStructuredForm.append("endDate", "20260712");
-  allStaffStructuredForm.append("idempotencyKey", `integration-all-staff-${Date.now()}`);
-  allStaffStructuredForm.append("labelKeys[]", "all_staff");
-  const allStaffStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
+  levelZeroStructuredForm.append("dataset", "business");
+  levelZeroStructuredForm.append("enterprise_name", "Integration Level Zero");
+  levelZeroStructuredForm.append("startDate", "20260706");
+  levelZeroStructuredForm.append("endDate", "20260712");
+  levelZeroStructuredForm.append("idempotencyKey", `integration-level-zero-${Date.now()}`);
+  levelZeroStructuredForm.append("confidentialityLevel", "0");
+  const levelZeroStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
     "/v1/structured/imports",
     {
       method: "POST",
       headers: adminAuth,
-      body: allStaffStructuredForm
+      body: levelZeroStructuredForm
     }
   );
-  const allStaffStructuredUpload = allStaffStructuredUploadResult.body;
+  const levelZeroStructuredUpload = levelZeroStructuredUploadResult.body;
   assert(
-    allStaffStructuredUploadResult.status === 202 &&
-      allStaffStructuredUpload.importBatch.status === "pending",
+    levelZeroStructuredUploadResult.status === 202 &&
+      levelZeroStructuredUpload.importBatch.status === "pending",
     "Admin structured upload should be accepted as pending."
   );
-  const allStaffStructuredWorker = parseJson<WorkerResponse>(
+  const levelZeroStructuredWorker = parseJson<WorkerResponse>(
     (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
   );
   assert(
-    allStaffStructuredWorker.documentId === allStaffStructuredUpload.document.documentId &&
-      allStaffStructuredWorker.status === "active",
-    "Worker should apply the all_staff structured import."
+    levelZeroStructuredWorker.documentId === levelZeroStructuredUpload.document.documentId &&
+      levelZeroStructuredWorker.status === "active",
+    "Worker should apply the level-zero structured import."
   );
-  const allStaffStructuredCompletion = await waitForStructuredImportStatus(
-    allStaffStructuredUpload.importBatch.importBatchId,
+  const levelZeroStructuredCompletion = await waitForStructuredImportStatus(
+    levelZeroStructuredUpload.importBatch.importBatchId,
     adminAuth,
     "applied"
   );
   assert(
-    allStaffStructuredCompletion.importBatch.appliedRowCount > 0,
-    "Admin all_staff structured fixture should apply after polling."
+    levelZeroStructuredCompletion.importBatch.appliedRowCount > 0,
+    "Admin level-zero structured fixture should apply after polling."
   );
 
-  const allStaffStructuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
+  const levelZeroStructuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
     method: "POST",
     headers: { ...auth, "content-type": "application/json" },
     body: JSON.stringify({ dataset: "business", aggregates: [{ op: "count", as: "row_count" }] })
   });
   assert(
-    Number(allStaffStructuredQuery.rows[0]?.["row_count"]) > 0,
-    "A non-admin should query the imported all_staff row."
+    Number(levelZeroStructuredQuery.rows[0]?.["row_count"]) > 0,
+    "An employee should query the imported level-zero row."
   );
 
   const invalidStructuredFixture = await readFile(
@@ -446,7 +446,7 @@ try {
   invalidStructuredForm.append("startDate", "20260820");
   invalidStructuredForm.append("endDate", "20260820");
   invalidStructuredForm.append("idempotencyKey", `integration-invalid-${Date.now()}`);
-  invalidStructuredForm.append("labelKeys[]", "store:baoli");
+  invalidStructuredForm.append("confidentialityLevel", "0");
   const invalidStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
     "/v1/structured/imports",
     { method: "POST", headers: auth, body: invalidStructuredForm }
@@ -478,10 +478,40 @@ try {
     "Rejected structured imports should expose safe errors without raw cell values."
   );
 
-  const suzhouAccessToken = await createOfficialIntegrationAccessToken("emp_suzhou_manager");
+  const protectedStructuredFixture = Buffer.from(
+    structuredFixture.toString("utf8").replace("2026-07-01,", "2026-07-20,"),
+    "utf8"
+  );
+  const protectedStructuredForm = structuredFormFor(
+    protectedStructuredFixture,
+    `integration-clearance-${Date.now()}`
+  );
+  protectedStructuredForm.set("startDate", "20260720");
+  protectedStructuredForm.set("endDate", "20260720");
+  protectedStructuredForm.set("confidentialityLevel", "2");
+  const protectedStructuredUpload = await apiJsonWithStatus<StructuredUploadResponse>(
+    "/v1/structured/imports",
+    { method: "POST", headers: auth, body: protectedStructuredForm }
+  );
+  assert(
+    protectedStructuredUpload.status === 202,
+    "An uploader may declare a document above their own clearance."
+  );
+  const protectedStructuredWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+  );
+  assert(
+    protectedStructuredWorker.documentId === protectedStructuredUpload.body.document.documentId &&
+      protectedStructuredWorker.status === "active",
+    "Worker should apply a structured import above the uploader's clearance."
+  );
+
+  const zeroClearanceAccessToken = await createOfficialIntegrationAccessToken("emp_lijie");
   const inaccessibleImportStatus = await fetch(
-    `${apiUrl}/v1/structured/imports/${encodeURIComponent(structuredUpload.importBatch.importBatchId)}`,
-    { headers: authorizationHeader(suzhouAccessToken) }
+    `${apiUrl}/v1/structured/imports/${encodeURIComponent(
+      protectedStructuredUpload.body.importBatch.importBatchId
+    )}`,
+    { headers: authorizationHeader(zeroClearanceAccessToken) }
   );
   const inaccessibleImportBody = (await inaccessibleImportStatus.json()) as {
     error?: { code?: string; message?: string };
@@ -490,7 +520,7 @@ try {
     inaccessibleImportStatus.status === 404 &&
       inaccessibleImportBody.error?.code === "IMPORT_BATCH_NOT_FOUND" &&
       inaccessibleImportBody.error.message === "Import batch not found.",
-    "An inaccessible same-org import status must be non-enumerating."
+    "A same-org employee below document clearance must receive a non-enumerating import status."
   );
 
   const evidencePath = path.join(integrationRoot, "phase3-evidence.md");
@@ -505,7 +535,7 @@ try {
   evidenceForm.append("file", new Blob([await readFile(evidencePath)]), "phase3-evidence.md");
   evidenceForm.append("title", "Integration Phase 3 差评处理 SOP");
   evidenceForm.append("sourceSystem", "integration_smoke");
-  evidenceForm.append("labelKeys[]", "store:baoli");
+  evidenceForm.append("confidentialityLevel", "0");
   const evidenceUpload = await apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
     method: "POST",
     headers: auth,
@@ -583,8 +613,8 @@ try {
           "launcher_local_path_upload",
           "phase3_structured_typed_query",
           "phase3_structured_query",
-          "phase3_structured_all_staff_import",
-          "phase3_structured_all_staff_query",
+          "phase3_structured_level_zero_import",
+          "phase3_structured_level_zero_query",
           "phase3_structured_import_status_non_enumeration",
           "phase3_evidence_upload_worker_status_search",
           "phase3_evidence_signed_pagination",
@@ -1086,7 +1116,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
 
   try {
     const identity = await prisma.loginIdentity.findFirst({
-      where: { employeeId: "emp_baoli_manager", disabled: false },
+      where: { employeeId: "emp_baoli_employee", disabled: false },
       select: { id: true, employeeId: true, orgId: true }
     });
     assert(Boolean(identity), "Audit provenance integration requires the seeded Baoli identity.");
@@ -1437,7 +1467,7 @@ async function uploadAuditEvidence(
   );
   form.append("title", input.title);
   form.append("sourceSystem", input.sourceSystem);
-  form.append("labelKeys[]", "store:baoli");
+  form.append("confidentialityLevel", "0");
   return apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
     method: "POST",
     headers: {
@@ -1487,7 +1517,7 @@ async function uploadAuditEvidenceThroughMcp(
           },
           title: input.title,
           sourceSystem: input.sourceSystem,
-          labelKeys: ["store:baoli"]
+          confidentialityLevel: 0
         }
       }
     })
@@ -1739,9 +1769,9 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
   );
   try {
     const employee = await prisma.employee.findFirst({
-      where: { orgId: "default-org", email: "baoli.manager@example.com" }
+      where: { orgId: "default-org", email: "baoli.employee@example.com" }
     });
-    assert(Boolean(employee), "Worker lease integration requires the seeded Baoli manager.");
+    assert(Boolean(employee), "Worker lease integration requires the seeded Baoli employee.");
     const stored = await storage.putObject({
       orgId: "default-org",
       documentId,

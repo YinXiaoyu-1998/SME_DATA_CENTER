@@ -9,9 +9,9 @@ const enabledEmployee: AuthenticatedEmployee = {
   orgId: "default-org",
   displayName: "Employee One",
   email: "employee@example.com",
-  role: "manager",
+  role: "employee",
   disabled: false,
-  labels: ["all_staff"]
+  clearance: 3
 };
 
 const disabledEmployee: AuthenticatedEmployee = {

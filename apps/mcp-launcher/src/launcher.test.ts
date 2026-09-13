@@ -185,7 +185,7 @@ describe("launcher local path upload proxy", () => {
     startDate: "20260701",
     endDate: "20260731",
     idempotencyKey: "path-upload-key",
-    labelKeys: ["store:baoli"]
+    confidentialityLevel: 0
   });
   const base64Input = {
     file: {
@@ -199,7 +199,7 @@ describe("launcher local path upload proxy", () => {
     startDate: "20260701",
     endDate: "20260731",
     idempotencyKey: "base64-upload-key",
-    labelKeys: ["store:baoli"]
+    confidentialityLevel: 0
   };
   const base64QuarantineFile = {
     name: "quarantine.png",
@@ -216,7 +216,7 @@ describe("launcher local path upload proxy", () => {
     },
     title: "Baoli Roujiamo SOP",
     sourceSystem: "manual_acceptance_probe",
-    labelKeys: ["store:baoli"]
+    confidentialityLevel: 0
   });
   const quarantineInput = (filePath: string) => ({
     file: {
@@ -227,7 +227,7 @@ describe("launcher local path upload proxy", () => {
     },
     receiptId: "SH2608250117",
     idempotencyKey: "quarantine-upload-key",
-    labelKeys: ["store:baoli"]
+    confidentialityLevel: 0
   });
 
   it("registers path-capable schemas for upload tools", () => {
@@ -286,16 +286,16 @@ describe("launcher local path upload proxy", () => {
             "startDate",
             "endDate",
             "idempotencyKey",
-            "labelKeys"
+            "confidentialityLevel"
           ])
         );
       } else if (name === "upload_evidence_document") {
         expect(Object.keys(shape ?? {})).toEqual(
-          expect.arrayContaining(["file", "title", "sourceSystem", "labelKeys"])
+          expect.arrayContaining(["file", "title", "sourceSystem", "confidentialityLevel"])
         );
       } else {
         expect(Object.keys(shape ?? {})).toEqual(
-          expect.arrayContaining(["file", "receiptId", "idempotencyKey", "labelKeys"])
+          expect.arrayContaining(["file", "receiptId", "idempotencyKey", "confidentialityLevel"])
         );
       }
     }

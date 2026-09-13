@@ -16,7 +16,7 @@ function parseToolResult(result: { content: Array<{ text: string }> }): unknown 
 }
 
 function createCapturingDelegate(
-  token = "manager-token",
+  token = "employee-token",
   auditContext: ApiDelegationContext["audit"] = audit
 ) {
   const calls: ApiDelegationInjectRequest[] = [];
@@ -37,14 +37,14 @@ function createCapturingDelegate(
                   orgId: "default-org",
                   displayName: "Current Employee",
                   email: "current@example.com",
-                  role: "manager",
+                  role: "employee",
                   disabled: false,
-                  labels: ["all_staff"]
+                  clearance: 1
                 }
               }
             : {
                 ok: true,
-                role: request.headers.authorization === "Bearer admin-token" ? "admin" : "manager"
+                role: request.headers.authorization === "Bearer admin-token" ? "admin" : "employee"
               }
         )
       };
@@ -58,7 +58,6 @@ describe("read-only MCP tool handlers", () => {
   it("exports exactly the read-only core business tools", () => {
     expect(READ_ONLY_MCP_TOOL_NAMES).toEqual([
       "enterprise_hub_get_current_user",
-      "enterprise_hub_list_labels",
       "enterprise_hub_list_skills",
       "search_document_evidence",
       "list_structured_datasets",
@@ -78,7 +77,6 @@ describe("read-only MCP tool handlers", () => {
     const { calls, handlers } = createCapturingDelegate();
 
     const currentUser = await handlers.enterprise_hub_get_current_user?.({}, {} as never);
-    await handlers.enterprise_hub_list_labels?.({}, {} as never);
     await handlers.enterprise_hub_list_skills?.(
       { q: "菜单", category: "menu-analysis" },
       {} as never
@@ -86,7 +84,7 @@ describe("read-only MCP tool handlers", () => {
     await handlers.search_document_evidence?.(
       {
         query: "菜单 毛利",
-        filters: { fileTypes: ["md"], documentIds: ["doc_1"], labelIds: ["lbl_1"] },
+        filters: { fileTypes: ["md"], documentIds: ["doc_1"] },
         limit: 5,
         cursor: "cursor_1"
       },
@@ -123,7 +121,6 @@ describe("read-only MCP tool handlers", () => {
       calls.map(({ method, url, query, payload }) => ({ method, url, query, payload }))
     ).toEqual([
       { method: "GET", url: "/me", query: undefined, payload: undefined },
-      { method: "GET", url: "/labels", query: undefined, payload: undefined },
       {
         method: "GET",
         url: "/skills",
@@ -136,7 +133,7 @@ describe("read-only MCP tool handlers", () => {
         query: undefined,
         payload: {
           query: "菜单 毛利",
-          filters: { fileTypes: ["md"], documentIds: ["doc_1"], labelIds: ["lbl_1"] },
+          filters: { fileTypes: ["md"], documentIds: ["doc_1"] },
           limit: 5,
           cursor: "cursor_1"
         }
@@ -196,10 +193,13 @@ describe("read-only MCP tool handlers", () => {
       user: {
         displayName: "Current Employee",
         email: "current@example.com",
-        role: "manager"
+        role: "employee",
+        clearance: 1
       }
     });
-    expect(calls.every((call) => call.headers.authorization === "Bearer manager-token")).toBe(true);
+    expect(calls.every((call) => call.headers.authorization === "Bearer employee-token")).toBe(
+      true
+    );
     expect(JSON.stringify(calls)).not.toContain("undefined");
   });
 
@@ -214,7 +214,7 @@ describe("read-only MCP tool handlers", () => {
           payload: JSON.stringify({
             employee: {
               email: "current@example.com",
-              role: "manager",
+              role: "employee",
               credential: "must-not-escape"
             }
           })
@@ -264,7 +264,7 @@ describe("read-only MCP tool handlers", () => {
   it("validates inputs with shared strict schemas before API injection", async () => {
     const { calls, handlers } = createCapturingDelegate("secret-token");
 
-    const labelsResult = await handlers.enterprise_hub_list_labels?.(
+    const currentUserResult = await handlers.enterprise_hub_get_current_user?.(
       { unexpected: true },
       {} as never
     );
@@ -274,11 +274,11 @@ describe("read-only MCP tool handlers", () => {
     );
 
     expect(calls).toEqual([]);
-    expect(labelsResult?.isError).toBe(true);
+    expect(currentUserResult?.isError).toBe(true);
     expect(queryResult?.isError).toBe(true);
-    expect(JSON.stringify(labelsResult)).not.toContain("secret-token");
+    expect(JSON.stringify(currentUserResult)).not.toContain("secret-token");
     expect(JSON.stringify(queryResult)).not.toContain("/tmp/not-allowed.csv");
-    expect(parseToolResult(labelsResult!)).toMatchObject({
+    expect(parseToolResult(currentUserResult!)).toMatchObject({
       error: { code: "MCP_INPUT_VALIDATION_ERROR" }
     });
     expect(parseToolResult(queryResult!)).toMatchObject({
@@ -316,7 +316,7 @@ describe("read-only MCP tool handlers", () => {
   });
 
   it("delegates structured coverage with request and launcher audit headers", async () => {
-    const { calls, handlers } = createCapturingDelegate("manager-token", {
+    const { calls, handlers } = createCapturingDelegate("employee-token", {
       ...audit,
       requestId: "req_coverage_mcp",
       launcherVersion: "0.2.6"
@@ -334,7 +334,7 @@ describe("read-only MCP tool handlers", () => {
       method: "GET",
       url: "/v1/structured/datasets/delivery_ledger/coverage",
       headers: {
-        authorization: "Bearer manager-token",
+        authorization: "Bearer employee-token",
         "x-request-id": "req_coverage_mcp",
         "x-enterprise-hub-internal-delegation": delegationProof,
         "x-enterprise-hub-launcher-version": "0.2.6"
@@ -360,7 +360,7 @@ describe("read-only MCP tool handlers", () => {
       ]
     };
     const handlers = createReadOnlyMcpToolHandlers({
-      bearerToken: "manager-token",
+      bearerToken: "employee-token",
       audit,
       delegationProof,
       async inject() {
@@ -389,7 +389,7 @@ describe("read-only MCP tool handlers", () => {
 
   it("returns delegated structured coverage API error envelopes through the existing adapter", async () => {
     const context: ApiDelegationContext = {
-      bearerToken: "manager-token",
+      bearerToken: "employee-token",
       audit,
       delegationProof,
       async inject() {
@@ -432,10 +432,10 @@ describe("read-only MCP tool handlers", () => {
   });
 
   it("lets the delegated API enforce role and permission semantics from the forwarded bearer", async () => {
-    const manager = createCapturingDelegate("manager-token");
+    const employee = createCapturingDelegate("employee-token");
     const admin = createCapturingDelegate("admin-token");
 
-    const managerResult = await manager.handlers.query_structured_dataset?.(
+    const employeeResult = await employee.handlers.query_structured_dataset?.(
       { dataset: "business", page: { limit: 1 } },
       {} as never
     );
@@ -444,7 +444,7 @@ describe("read-only MCP tool handlers", () => {
       {} as never
     );
 
-    expect(parseToolResult(managerResult!)).toMatchObject({ role: "manager" });
+    expect(parseToolResult(employeeResult!)).toMatchObject({ role: "employee" });
     expect(parseToolResult(adminResult!)).toMatchObject({ role: "admin" });
   });
 

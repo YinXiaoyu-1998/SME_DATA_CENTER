@@ -17,25 +17,10 @@ export type OperatorCommand =
       email: string;
       displayName: string;
       role: EmployeeRoleName;
-      labelKeys: string[];
+      clearance: number;
     }
   | { kind: "reset-password"; employeeId: string }
-  | { kind: "delete-test-account"; email: string; confirmEmail: string }
-  | { kind: "audit"; days: number; limit: number };
-
-export interface AuthOperatorAuditRow {
-  createdAt: Date;
-  eventType: string;
-  outcome: string;
-  reason: string | null;
-  requestId: string | null;
-  sourceIp: string | null;
-  launcherVersion: string | null;
-  orgId: string | null;
-  identityId: string | null;
-  employeeId: string | null;
-  sessionId: string | null;
-}
+  | { kind: "delete-test-account"; email: string; confirmEmail: string };
 
 export interface AuthOperatorRepository {
   onboard(input: {
@@ -43,7 +28,7 @@ export interface AuthOperatorRepository {
     normalizedEmail: string;
     displayName: string;
     role: EmployeeRoleName;
-    labelKeys: string[];
+    clearance: number;
     grantTokenHash: string;
     grantExpiresAt: Date;
     now: Date;
@@ -57,9 +42,7 @@ export interface AuthOperatorRepository {
   deleteTestAccount(input: { normalizedEmail: string; now: Date }): Promise<{
     employeeId: string;
     identityIds: string[];
-    personalLabelDeleted: boolean;
   } | null>;
-  audit(input: { since: Date; limit: number }): Promise<AuthOperatorAuditRow[]>;
   disconnect?(): Promise<void>;
 }
 
@@ -115,12 +98,11 @@ export function parseOperatorCommand(args: string[]): OperatorCommand {
   if (subcommand === "onboard") {
     const options = parseOptions(
       rest,
-      new Set(["--org-id", "--email", "--display-name", "--role", "--label"]),
-      new Set(["--label"])
+      new Set(["--org-id", "--email", "--display-name", "--role", "--clearance"])
     );
     const role = required(options, "--role");
-    if (!["admin", "manager", "employee"].includes(role)) {
-      throw new Error("Role must be admin, manager, or employee.");
+    if (!["admin", "employee"].includes(role)) {
+      throw new Error("Role must be admin or employee.");
     }
     return {
       kind: "onboard",
@@ -128,7 +110,7 @@ export function parseOperatorCommand(args: string[]): OperatorCommand {
       email: required(options, "--email"),
       displayName: required(options, "--display-name"),
       role: role as EmployeeRoleName,
-      labelKeys: options.get("--label") ?? []
+      clearance: boundedInteger(required(options, "--clearance"), 0, 0, 3)
     };
   }
   if (subcommand === "reset-password") {
@@ -156,15 +138,7 @@ export function parseOperatorCommand(args: string[]): OperatorCommand {
       confirmEmail
     };
   }
-  if (subcommand === "audit") {
-    const options = parseOptions(rest, new Set(["--days", "--limit"]));
-    return {
-      kind: "audit",
-      days: boundedInteger(options.get("--days")?.[0], 30, 1, 90),
-      limit: boundedInteger(options.get("--limit")?.[0], 100, 1, 1_000)
-    };
-  }
-  throw new Error("Expected onboard, reset-password, delete-test-account, or audit.");
+  throw new Error("Expected onboard, reset-password, or delete-test-account.");
 }
 
 export async function runOperatorCommand(
@@ -177,14 +151,6 @@ export async function runOperatorCommand(
   }
 ): Promise<void> {
   const now = dependencies.now?.() ?? new Date();
-  if (command.kind === "audit") {
-    const rows = await dependencies.repository.audit({
-      since: new Date(now.getTime() - command.days * 24 * 60 * 60_000),
-      limit: command.limit
-    });
-    dependencies.stdout(JSON.stringify(rows));
-    return;
-  }
   if (command.kind === "delete-test-account") {
     const result = await dependencies.repository.deleteTestAccount({
       normalizedEmail: normalizeLoginEmail(command.email),
@@ -195,8 +161,7 @@ export async function runOperatorCommand(
         ok: true,
         deleted: result !== null,
         employeeId: result?.employeeId ?? null,
-        identityCount: result?.identityIds.length ?? 0,
-        personalLabelDeleted: result?.personalLabelDeleted ?? false
+        identityCount: result?.identityIds.length ?? 0
       })
     );
     return;
@@ -220,7 +185,7 @@ export async function runOperatorCommand(
           normalizedEmail: normalizeLoginEmail(command.email),
           displayName: command.displayName,
           role: command.role,
-          labelKeys: [...new Set(command.labelKeys)],
+          clearance: command.clearance,
           ...grantInput
         })
       : await dependencies.repository.resetPassword({

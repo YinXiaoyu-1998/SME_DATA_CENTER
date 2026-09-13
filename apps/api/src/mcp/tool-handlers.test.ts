@@ -16,11 +16,11 @@ const mcpContext: McpRequestContext = {
   employee: {
     id: "emp_factory",
     orgId: "default-org",
-    displayName: "Factory Manager",
+    displayName: "Factory Employee",
     email: "factory@example.com",
-    role: "manager",
+    role: "employee",
     disabled: false,
-    labels: ["all_staff"]
+    clearance: 3
   },
   audit
 };
@@ -67,7 +67,7 @@ function validEvidenceInput() {
       contentBase64: Buffer.from("# Evidence\n", "utf8").toString("base64")
     },
     title: "Evidence",
-    labelKeys: ["all_staff"]
+    confidentialityLevel: 0
   };
 }
 
@@ -82,15 +82,15 @@ describe("live Enterprise Hub MCP tool handler map", () => {
     const first = createHandlers("token-a");
     const second = createHandlers("token-b");
 
-    const firstLabels = await first.handlers.enterprise_hub_list_labels?.({}, mcpContext);
-    const secondLabels = await second.handlers.enterprise_hub_list_labels?.({}, mcpContext);
+    const firstSkills = await first.handlers.enterprise_hub_list_skills?.({}, mcpContext);
+    const secondSkills = await second.handlers.enterprise_hub_list_skills?.({}, mcpContext);
     const secondUpload = await second.handlers.upload_evidence_document?.(
       validEvidenceInput(),
       mcpContext
     );
 
-    expect(parseResult(firstLabels!)).toMatchObject({ token: "Bearer token-a" });
-    expect(parseResult(secondLabels!)).toMatchObject({ token: "Bearer token-b" });
+    expect(parseResult(firstSkills!)).toMatchObject({ token: "Bearer token-a" });
+    expect(parseResult(secondSkills!)).toMatchObject({ token: "Bearer token-b" });
     expect(parseResult(secondUpload!)).toMatchObject({ token: "Bearer token-b" });
     expect(first.jsonRequests[0]?.headers.authorization).toBe("Bearer token-a");
     expect(second.jsonRequests[0]?.headers.authorization).toBe("Bearer token-b");

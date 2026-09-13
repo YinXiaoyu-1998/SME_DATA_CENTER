@@ -181,8 +181,7 @@ async function compileStructuredQueries() {
       orgId: "default-org",
       employee: {
         id: "emp_perf",
-        role: "manager",
-        labels: ["store:baoli"]
+        clearance: 3
       },
       cursorSecret: "perf-cursor-secret",
       query: {

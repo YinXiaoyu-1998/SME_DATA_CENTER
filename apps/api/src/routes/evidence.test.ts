@@ -7,9 +7,9 @@ import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
 import { buildApiServer } from "../server.js";
 import {
   adminEmployee,
-  baoliManagerEmployee,
+  baoliEmployee,
   orgBAdminEmployee,
-  suzhouManagerEmployee,
+  suzhouEmployee,
   accessTokenFor,
   authenticateTestAccessToken,
   createDocumentRepository,
@@ -49,7 +49,7 @@ describe("evidence routes", () => {
         value: Buffer.from("# 差评处理\n\n先联系客户，再登记处置结果。", "utf8")
       },
       { name: "title", value: "客户反馈处理 SOP" },
-      { name: "labelKeys[]", value: "all_staff" }
+      { name: "confidentialityLevel", value: "0" }
     ]);
 
     try {
@@ -123,7 +123,7 @@ describe("evidence routes", () => {
       },
       { name: "title", value: "t".repeat(512) },
       { name: "sourceSystem", value: "s".repeat(255) },
-      { name: "labelKeys[]", value: "all_staff" }
+      { name: "confidentialityLevel", value: "0" }
     ]);
 
     const response = await app.inject({
@@ -156,25 +156,12 @@ describe("evidence routes", () => {
       logger: false
     });
     const cases = [
-      { fileName: "sop.md", title: "t".repeat(513), sourceSystem: "manual", labels: ["all_staff"] },
-      { fileName: "sop.md", title: "SOP", sourceSystem: "s".repeat(256), labels: ["all_staff"] },
+      { fileName: "sop.md", title: "t".repeat(513), sourceSystem: "manual" },
+      { fileName: "sop.md", title: "SOP", sourceSystem: "s".repeat(256) },
       {
         fileName: `${"f".repeat(253)}.md`,
         title: "SOP",
-        sourceSystem: "manual",
-        labels: ["all_staff"]
-      },
-      {
-        fileName: "sop.md",
-        title: "SOP",
-        sourceSystem: "manual",
-        labels: ["l".repeat(129)]
-      },
-      {
-        fileName: "sop.md",
-        title: "SOP",
-        sourceSystem: "manual",
-        labels: Array.from({ length: 51 }, (_, index) => `label_${index}`)
+        sourceSystem: "manual"
       }
     ];
 
@@ -187,8 +174,7 @@ describe("evidence routes", () => {
           value: Buffer.from("# SOP", "utf8")
         },
         { name: "title", value: testCase.title },
-        { name: "sourceSystem", value: testCase.sourceSystem },
-        ...testCase.labels.map((label) => ({ name: "labelKeys[]", value: label }))
+        { name: "sourceSystem", value: testCase.sourceSystem }
       ]);
       const response = await app.inject({
         method: "POST",
@@ -231,7 +217,7 @@ describe("evidence routes", () => {
           value: Buffer.from("123456789", "utf8")
         },
         { name: "title", value: "SOP" },
-        { name: "labelKeys[]", value: "all_staff" }
+        { name: "confidentialityLevel", value: "0" }
       ]),
       createMultipartPayload([
         {
@@ -247,7 +233,7 @@ describe("evidence routes", () => {
           value: Buffer.from("second", "utf8")
         },
         { name: "title", value: "SOP" },
-        { name: "labelKeys[]", value: "all_staff" }
+        { name: "confidentialityLevel", value: "0" }
       ]),
       createMultipartPayload([
         {
@@ -257,7 +243,7 @@ describe("evidence routes", () => {
           value: Buffer.from("content", "utf8")
         },
         { name: "title", value: "SOP" },
-        { name: "labelKeys[]", value: "all_staff" },
+        { name: "confidentialityLevel", value: "0" },
         ...Array.from({ length: 59 }, (_, index) => ({
           name: `compatibility_${index}`,
           value: "value"
@@ -289,17 +275,17 @@ describe("evidence routes", () => {
     expect(documentRepository.documents).toHaveLength(0);
   });
 
-  it("returns evidence indexing status only to the uploader or admin", async () => {
+  it("returns evidence indexing status only to the uploader", async () => {
     const documentRepository = createDocumentRepository();
     documentRepository.documents.push({
       id: "doc_evidence_status",
       orgId: "default-org",
-      uploaderId: baoliManagerEmployee.id,
+      uploaderId: baoliEmployee.id,
       title: "客户反馈处理 SOP",
       documentType: "management_knowledge",
       documentKind: "evidence",
       fileType: "md",
-      labels: ["store:baoli", "person:baoli.manager"],
+      confidentialityLevel: 0,
       processingRunStatus: "succeeded",
       documentIndexStatus: "ready",
       status: "active",
@@ -312,11 +298,7 @@ describe("evidence routes", () => {
       checksumSha256: "hash"
     });
     app = buildApiServer({
-      employeeRepository: createRepository([
-        adminEmployee,
-        baoliManagerEmployee,
-        suzhouManagerEmployee
-      ]),
+      employeeRepository: createRepository([adminEmployee, baoliEmployee, suzhouEmployee]),
       documentRepository,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -327,7 +309,7 @@ describe("evidence routes", () => {
       method: "GET",
       url: "/v1/documents/evidence/doc_evidence_status/status",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       }
     });
     const adminResponse = await app.inject({
@@ -337,11 +319,11 @@ describe("evidence routes", () => {
         authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
       }
     });
-    const otherManagerResponse = await app.inject({
+    const otherEmployeeResponse = await app.inject({
       method: "GET",
       url: "/v1/documents/evidence/doc_evidence_status/status",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(suzhouManagerEmployee)}`
+        authorization: `Bearer ${await accessTokenFor(suzhouEmployee)}`
       }
     });
 
@@ -361,8 +343,8 @@ describe("evidence routes", () => {
         retrievalConfigVersion: "phase3.retrieval.v1"
       }
     });
-    expect(adminResponse.statusCode).toBe(200);
-    expect(otherManagerResponse.statusCode).toBe(404);
+    expect(adminResponse.statusCode).toBe(404);
+    expect(otherEmployeeResponse.statusCode).toBe(404);
   });
 
   it("searches evidence chunks without returning natural-language answers", async () => {
@@ -388,8 +370,7 @@ describe("evidence routes", () => {
         query: "差评处理 SOP",
         filters: {
           fileTypes: ["docx"],
-          documentIds: [],
-          labelIds: []
+          documentIds: []
         },
         limit: 10,
         cursor: null
@@ -491,15 +472,6 @@ describe("evidence routes", () => {
         code: "LIMIT_EXCEEDED"
       },
       {
-        payload: {
-          query: "q",
-          filters: {
-            labelIds: Array.from({ length: 101 }, (_, index) => `label_${index}`)
-          }
-        },
-        code: "LIMIT_EXCEEDED"
-      },
-      {
         payload: { query: "q", filters: { documentIds: "doc_1" } },
         code: "INVALID_QUERY"
       }
@@ -555,7 +527,7 @@ describe("evidence routes", () => {
     expect(response.payload).not.toContain("private-host.internal:6333");
   });
 
-  it("uses the reloaded org-B employee for evidence labels, storage, catalog, and audit context", async () => {
+  it("uses the reloaded org-B employee for evidence storage, catalog, and audit context", async () => {
     const documentRepository = createOrganizationContextDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
@@ -575,7 +547,7 @@ describe("evidence routes", () => {
         value: Buffer.from("org B evidence", "utf8")
       },
       { name: "title", value: "Org B SOP" },
-      { name: "labelKeys[]", value: "same-named" }
+      { name: "confidentialityLevel", value: "0" }
     ]);
 
     const response = await app.inject({
@@ -589,8 +561,6 @@ describe("evidence routes", () => {
     });
 
     expect(response.statusCode).toBe(202);
-    expect(documentRepository.labelLookupOrgIds).toEqual(["org-b"]);
-    expect(documentRepository.personalLabelLookupOrgIds).toEqual(["org-b"]);
     expect(storageAdapter.putInputs).toEqual([
       expect.objectContaining({ orgId: "org-b", contentType: "text/markdown" })
     ]);
@@ -618,7 +588,7 @@ describe("evidence routes", () => {
         value: Buffer.from("%PDF-1.4 fake evidence", "utf8")
       },
       { name: "title", value: "PDF 不是支持的证据格式" },
-      { name: "labelKeys[]", value: "all_staff" }
+      { name: "confidentialityLevel", value: "0" }
     ]);
 
     const response = await app.inject({

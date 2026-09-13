@@ -23,6 +23,7 @@ interface RecordedDocument {
   documentKind?: string | null;
   fileType?: string | null;
   contentVersion?: number;
+  confidentialityLevel: number;
 }
 
 interface RecordedRun {
@@ -206,12 +207,13 @@ describe("processing worker", () => {
       document: {
         id: "doc_loop",
         orgId: "default-org",
-        uploaderId: "emp_baoli_manager",
+        uploaderId: "emp_baoli_employee",
         status: "pending_processing",
         storageObjectKey: stored.key,
         originalFileName: "loop.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       }
     });
@@ -270,12 +272,13 @@ describe("processing worker", () => {
       document: {
         id: "doc_unknown_job",
         orgId: "default-org",
-        uploaderId: "emp_baoli_manager",
+        uploaderId: "emp_baoli_employee",
         status: "pending_processing",
         storageObjectKey: stored.key,
         originalFileName: "receipt.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       },
       run: {
@@ -319,12 +322,13 @@ describe("processing worker", () => {
       document: {
         id: "doc_transient",
         orgId: "default-org",
-        uploaderId: "emp_baoli_manager",
+        uploaderId: "emp_baoli_employee",
         status: "pending_processing",
         storageObjectKey: stored.key,
         originalFileName: "transient.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       }
     });
@@ -384,12 +388,13 @@ describe("processing worker", () => {
       document: {
         id: "doc_evidence_md",
         orgId: "default-org",
-        uploaderId: "emp_baoli_manager",
+        uploaderId: "emp_baoli_employee",
         status: "pending_processing",
         storageObjectKey: stored.key,
         originalFileName: "customer-feedback-sop.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       },
       run: {
@@ -461,12 +466,13 @@ describe("processing worker", () => {
       document: {
         id: "doc_evidence_fail",
         orgId: "default-org",
-        uploaderId: "emp_baoli_manager",
+        uploaderId: "emp_baoli_employee",
         status: "pending_processing",
         storageObjectKey: stored.key,
         originalFileName: "broken.md",
         documentKind: "evidence",
         fileType: "md",
+        confidentialityLevel: 0,
         contentVersion: 1
       },
       run: {

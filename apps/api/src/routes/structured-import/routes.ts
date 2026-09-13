@@ -5,8 +5,7 @@ import { databaseErrorDetails, type DatabaseRetryEvent } from "@enterprise-hub/d
 import {
   PHASE3_ERROR_CODES,
   canEmployeeAccessDocument,
-  getStructuredRegistry,
-  type AuthenticatedEmployee
+  getStructuredRegistry
 } from "@enterprise-hub/domain";
 import {
   preflightStructuredFile,
@@ -14,7 +13,6 @@ import {
 } from "@enterprise-hub/structured-ingestion";
 import { createOriginalObjectKey, type StorageAdapter } from "@enterprise-hub/storage";
 import type { ApiRuntimeLimits } from "../../config/runtime-limits.js";
-import type { CatalogLabel, DocumentCatalogRepository } from "../../documents.js";
 import type { RequestAuditContext } from "../../request-audit-context.js";
 import type { RequestAuth } from "../../request-auth.js";
 import {
@@ -31,24 +29,9 @@ import {
   structuredImportConflictMessage,
   structuredImportFingerprint,
   timingDurationMs,
-  uniqueSorted,
   validateStructuredImportMetadata,
   type ParsedStructuredImportUpload
 } from "./workflow.js";
-
-function forbiddenRequestedLabels(
-  employee: AuthenticatedEmployee,
-  labels: CatalogLabel[]
-): string[] {
-  if (employee.role === "admin") {
-    return [];
-  }
-
-  return labels
-    .filter((label) => label.type === "all_staff" || !employee.labels.includes(label.key))
-    .map((label) => label.key)
-    .sort();
-}
 
 function importDocumentTitle(input: {
   enterpriseName: string;
@@ -75,9 +58,7 @@ function importDocumentTitle(input: {
 async function parseStructuredImportUpload(
   request: FastifyRequest
 ): Promise<ParsedStructuredImportUpload> {
-  const upload: ParsedStructuredImportUpload = {
-    labelKeys: []
-  };
+  const upload: ParsedStructuredImportUpload = { confidentialityLevelFieldCount: 0 };
 
   const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
 
@@ -97,10 +78,9 @@ async function parseStructuredImportUpload(
 
     const value = typeof part.value === "string" ? part.value.trim() : "";
 
-    if (["labelKeys[]", "labelKeys", "labelIds[]", "labelIds"].includes(part.fieldname)) {
-      if (value) {
-        upload.labelKeys.push(value);
-      }
+    if (part.fieldname === "confidentialityLevel") {
+      upload.confidentialityLevelFieldCount += 1;
+      upload.confidentialityLevel = value;
       continue;
     }
 
@@ -134,15 +114,24 @@ async function parseStructuredImportUpload(
     }
   }
 
-  upload.labelKeys = uniqueSorted(upload.labelKeys);
   return upload;
+}
+
+function parseConfidentialityLevel(upload: ParsedStructuredImportUpload): number | null {
+  if (upload.confidentialityLevelFieldCount === 0) return 0;
+  if (
+    upload.confidentialityLevelFieldCount !== 1 ||
+    !/^[0-3]$/.test(upload.confidentialityLevel ?? "")
+  ) {
+    return null;
+  }
+  return Number(upload.confidentialityLevel);
 }
 
 export function registerStructuredImportRoutes(
   app: FastifyInstance,
   dependencies: {
     auth: RequestAuth;
-    documents: () => DocumentCatalogRepository;
     storage: () => StorageAdapter;
     structuredImports: () => StructuredImportRepository;
     runtimeLimits: ApiRuntimeLimits;
@@ -236,6 +225,15 @@ export function registerStructuredImportRoutes(
       );
     }
 
+    const confidentialityLevel = parseConfidentialityLevel(upload);
+    if (confidentialityLevel === null) {
+      return validationError(
+        reply,
+        "INVALID_CONFIDENTIALITY_LEVEL",
+        "Confidentiality level must be an integer from 0 through 3."
+      );
+    }
+
     const employee = dependencies.auth.employee(request);
     const audit = dependencies.createBusinessRequestAudit(request);
     Object.assign(timingContext, {
@@ -243,31 +241,6 @@ export function registerStructuredImportRoutes(
       fileType,
       fileByteSize: uploadedFile.body.byteLength
     });
-    const requestedLabels = await measureTiming("upload.resolve_labels", () =>
-      dependencies.documents().findLabelsByKeys(employee.orgId, upload.labelKeys)
-    );
-    const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
-    const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
-
-    if (missingLabelKeys.length > 0) {
-      logTiming("upload.total", importRequestStarted, { outcome: "unknown_label" });
-      return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
-    }
-
-    const forbiddenLabelKeys = forbiddenRequestedLabels(employee, requestedLabels);
-
-    if (forbiddenLabelKeys.length > 0) {
-      logTiming("upload.total", importRequestStarted, { outcome: "forbidden_label" });
-      return reply
-        .code(403)
-        .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
-    }
-
-    if (requestedLabels.length === 0) {
-      logTiming("upload.total", importRequestStarted, { outcome: "unlabeled_document" });
-      return validationError(reply, "UNLABELED_DOCUMENT", "Structured import must have labels.");
-    }
-
     try {
       await measureTiming("upload.preflight_file", async () =>
         preflightStructuredFile({
@@ -343,7 +316,7 @@ export function registerStructuredImportRoutes(
           ? { startDate, endDate }
           : {}),
       ...(naturalKey ? { naturalKey } : {}),
-      labelKeys: requestedLabels.map((label) => label.key).sort(),
+      confidentialityLevel,
       fileHash
     });
     const candidateStorageObjectKey = createOriginalObjectKey({
@@ -385,8 +358,7 @@ export function registerStructuredImportRoutes(
               contentType: uploadedFile.contentType,
               byteSize: uploadedFile.body.byteLength,
               checksumSha256: fileHash,
-              labelIds: requestedLabels.map((label) => label.id),
-              labels: requestedLabels.map((label) => label.key).sort()
+              confidentialityLevel
             },
             sourceSheetSummary: [],
             totalRowCount: 0,
@@ -501,11 +473,10 @@ export function registerStructuredImportRoutes(
         !canEmployeeAccessDocument({
           employee: {
             disabled: employee.disabled,
-            role: employee.role,
-            labelKeys: employee.labels
+            clearance: employee.clearance
           },
           document: {
-            labelKeys: importBatch.sourceDocumentLabelKeys
+            confidentialityLevel: importBatch.sourceDocumentConfidentialityLevel
           }
         })
       ) {

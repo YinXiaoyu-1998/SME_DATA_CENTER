@@ -9,7 +9,7 @@ const employee: AuthenticatedEmployee = {
   email: "employee@example.com",
   role: "admin",
   disabled: false,
-  labels: ["all_staff"]
+  clearance: 3
 };
 
 describe("API server context", () => {
@@ -39,7 +39,7 @@ describe("API server context", () => {
     const request = {
       id: "req_api_1",
       ip: "198.51.100.10",
-      url: "/labels",
+      url: "/skills",
       headers: {
         authorization: "Bearer token",
         "x-request-id": "req_api_1"

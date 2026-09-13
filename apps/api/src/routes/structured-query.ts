@@ -89,8 +89,7 @@ export function registerStructuredQueryRoutes(
         orgId: employee.orgId,
         employee: {
           id: employee.id,
-          role: employee.role,
-          labels: employee.labels
+          clearance: employee.clearance
         },
         dataset: dataset as (typeof STRUCTURED_DATASETS)[number]
       });
@@ -121,8 +120,7 @@ export function registerStructuredQueryRoutes(
         orgId: employee.orgId,
         employee: {
           id: employee.id,
-          role: employee.role,
-          labels: employee.labels
+          clearance: employee.clearance
         },
         query: request.body,
         cursorSecret: dependencies.cursorSigningSecret

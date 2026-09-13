@@ -134,7 +134,7 @@ async function findReadableCurrentSupplierCatalog(
   prisma: PrismaClient,
   scope: StructuredQueryAuthorizationScope
 ): Promise<CurrentSupplierCatalog | null> {
-  const params: Array<string> = [
+  const params: Array<string | number> = [
     scope.orgId,
     "supplier_catalog",
     "applied",
@@ -149,19 +149,8 @@ async function findReadableCurrentSupplierCatalog(
     "d.archived_at IS NULL"
   ];
 
-  if (scope.employee.role !== "admin") {
-    const visibleLabels = [
-      ...new Set(scope.employee.labels.filter((label) => label !== "all_staff"))
-    ].sort();
-    const labelPredicate =
-      visibleLabels.length === 0
-        ? "l.key = ?"
-        : `l.key = ? OR l.key IN (${visibleLabels.map(() => "?").join(", ")})`;
-    clauses.push(
-      `EXISTS (SELECT 1 FROM document_labels dl JOIN labels l ON l.id = dl.label_id WHERE dl.document_id = d.id AND (${labelPredicate}))`
-    );
-    params.push("all_staff", ...visibleLabels);
-  }
+  clauses.push("d.confidentiality_level <= ?");
+  params.push(scope.employee.clearance);
 
   const rows = (await prisma.$queryRawUnsafe(
     `SELECT latest.id, latest.source_document_id

@@ -1,8 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { extname } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { PUBLIC_INPUT_LIMITS, type AuthenticatedEmployee } from "@enterprise-hub/domain";
-import type { CatalogLabel, DocumentCatalogRepository } from "../documents.js";
 import {
   QUARANTINE_CERTIFICATE_LIMITS,
   QuarantineCertificateError,
@@ -12,6 +10,10 @@ import {
   type QuarantineCertificateRepository
 } from "../quarantine-certificates.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
+import {
+  canPerformPrivilegedAdministrativeOperation,
+  PRIVILEGED_ADMIN_OPERATIONS
+} from "../privileged-admin-operations.js";
 import type { RequestAuth } from "../request-auth.js";
 import { errorResponse, isPayloadTooLargeError, validationError } from "../request-errors.js";
 import type { StorageAdapter } from "@enterprise-hub/storage";
@@ -25,7 +27,8 @@ interface ParsedQuarantineUpload {
   }>;
   receiptId?: string;
   idempotencyKey?: string;
-  labelKeys: string[];
+  confidentialityLevel?: string;
+  confidentialityLevelFieldCount: number;
 }
 
 interface QueryBody {
@@ -41,28 +44,10 @@ function createDocumentId(): string {
   return `doc_${randomBytes(12).toString("hex")}`;
 }
 
-function uniqueSorted(values: string[]): string[] {
-  return [...new Set(values.filter((value) => value.length > 0))].sort();
-}
-
-function forbiddenRequestedLabels(
-  employee: AuthenticatedEmployee,
-  labels: CatalogLabel[]
-): string[] {
-  if (employee.role === "admin") {
-    return [];
-  }
-
-  return labels
-    .filter((label) => label.type === "all_staff" || !employee.labels.includes(label.key))
-    .map((label) => label.key)
-    .sort();
-}
-
 async function parseUpload(request: FastifyRequest): Promise<ParsedQuarantineUpload> {
   const upload: ParsedQuarantineUpload = {
     files: [],
-    labelKeys: []
+    confidentialityLevelFieldCount: 0
   };
   const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
 
@@ -91,13 +76,24 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedQuarantineUpl
       continue;
     }
 
-    if (part.fieldname === "labelKeys[]" || part.fieldname === "labelKeys") {
-      upload.labelKeys.push(value);
+    if (part.fieldname === "confidentialityLevel") {
+      upload.confidentialityLevelFieldCount += 1;
+      upload.confidentialityLevel = value;
     }
   }
 
-  upload.labelKeys = uniqueSorted(upload.labelKeys);
   return upload;
+}
+
+function parseConfidentialityLevel(upload: ParsedQuarantineUpload): number | null {
+  if (upload.confidentialityLevelFieldCount === 0) return 0;
+  if (
+    upload.confidentialityLevelFieldCount !== 1 ||
+    !/^[0-3]$/.test(upload.confidentialityLevel ?? "")
+  ) {
+    return null;
+  }
+  return Number(upload.confidentialityLevel);
 }
 
 function imageFileType(input: {
@@ -158,7 +154,6 @@ export function registerQuarantineCertificateRoutes(
   app: FastifyInstance,
   dependencies: {
     auth: RequestAuth;
-    documents: () => DocumentCatalogRepository;
     storage: () => StorageAdapter;
     quarantineCertificates: () => QuarantineCertificateRepository;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
@@ -193,10 +188,7 @@ export function registerQuarantineCertificateRoutes(
       !normalizedReceiptId ||
       normalizedReceiptId.length > QUARANTINE_CERTIFICATE_LIMITS.maxReceiptIdChars ||
       !upload.idempotencyKey ||
-      upload.idempotencyKey.length > QUARANTINE_CERTIFICATE_LIMITS.maxIdempotencyKeyChars ||
-      upload.labelKeys.length === 0 ||
-      upload.labelKeys.length > PUBLIC_INPUT_LIMITS.labelsPerRequest ||
-      upload.labelKeys.some((labelKey) => labelKey.length > PUBLIC_INPUT_LIMITS.labelKeyChars)
+      upload.idempotencyKey.length > QUARANTINE_CERTIFICATE_LIMITS.maxIdempotencyKeyChars
     ) {
       return validationError(
         reply,
@@ -221,26 +213,21 @@ export function registerQuarantineCertificateRoutes(
       );
     }
 
-    const employee = dependencies.auth.employee(request);
-    const requestedLabels = await dependencies
-      .documents()
-      .findLabelsByKeys(employee.orgId, upload.labelKeys);
-    const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
-    if (upload.labelKeys.some((labelKey) => !foundLabelKeys.has(labelKey))) {
-      return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
+    const confidentialityLevel = parseConfidentialityLevel(upload);
+    if (confidentialityLevel === null) {
+      return validationError(
+        reply,
+        "INVALID_CONFIDENTIALITY_LEVEL",
+        "Confidentiality level must be an integer from 0 through 3."
+      );
     }
 
-    const forbiddenLabels = forbiddenRequestedLabels(employee, requestedLabels);
-    if (forbiddenLabels.length > 0) {
-      return reply
-        .code(403)
-        .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
-    }
+    const employee = dependencies.auth.employee(request);
 
     const fileHash = createHash("sha256").update(file.body).digest("hex");
     const requestFingerprint = quarantineCertificateFingerprint({
       receiptId: normalizedReceiptId,
-      labelKeys: upload.labelKeys,
+      confidentialityLevel,
       fileHash
     });
     const existing = await dependencies
@@ -285,8 +272,7 @@ export function registerQuarantineCertificateRoutes(
         contentType: file.contentType ?? (fileType === "png" ? "image/png" : "image/jpeg"),
         byteSize: storedObject.size,
         checksumSha256: storedObject.hash,
-        labelIds: requestedLabels.map((label) => label.id),
-        labelKeys: requestedLabels.map((label) => label.key).sort(),
+        confidentialityLevel,
         audit: dependencies.createBusinessRequestAudit(request)
       });
 
@@ -361,10 +347,15 @@ export function registerQuarantineCertificateRoutes(
     const audit = dependencies.createBusinessRequestAudit(request);
 
     if (receiptId) {
-      if (employee.role !== "admin") {
+      if (!canPerformPrivilegedAdministrativeOperation(employee, "archiveQuarantineCertificates")) {
         return reply
           .code(403)
-          .send(errorResponse("FORBIDDEN", "Only admins can archive by receipt ID."));
+          .send(
+            errorResponse(
+              "FORBIDDEN",
+              `${PRIVILEGED_ADMIN_OPERATIONS.archiveQuarantineCertificates.description} is admin-only.`
+            )
+          );
       }
       const archivedCount = await dependencies.quarantineCertificates().archiveByReceiptId({
         orgId: employee.orgId,

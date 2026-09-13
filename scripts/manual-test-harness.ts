@@ -356,7 +356,6 @@ interface ManualTestSnapshot {
   snapshotPath: string;
   counts: {
     employees: number;
-    labels: number;
     skills: number;
     documents: number;
     processingRuns: number;
@@ -394,7 +393,6 @@ async function captureManualTestSnapshot(
   try {
     const [
       employees,
-      labels,
       skills,
       documents,
       processingRuns,
@@ -411,7 +409,6 @@ async function captureManualTestSnapshot(
       storageFiles
     ] = await Promise.all([
       prisma.employee.count(),
-      prisma.label.count(),
       prisma.skillEntry.count(),
       prisma.document.count(),
       prisma.processingRun.count(),
@@ -448,7 +445,6 @@ async function captureManualTestSnapshot(
       snapshotPath,
       counts: {
         employees,
-        labels,
         skills,
         documents,
         processingRuns,
@@ -525,8 +521,8 @@ function assertCleanBusinessState(snapshot: ManualTestSnapshot): void {
   if (dirty.length > 0) {
     throw new Error(`Manual test business state is not empty: ${JSON.stringify(dirty)}`);
   }
-  if (snapshot.counts.employees < 4 || snapshot.counts.labels < 7 || snapshot.counts.skills < 2) {
-    throw new Error("Manual test seed identities, labels, or skills are incomplete.");
+  if (snapshot.counts.employees < 4 || snapshot.counts.skills < 2) {
+    throw new Error("Manual test seed identities or skills are incomplete.");
   }
 }
 

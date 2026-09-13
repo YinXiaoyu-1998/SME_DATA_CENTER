@@ -31,7 +31,7 @@ export interface AccessAuthenticationRecord {
   displayName: string;
   email: string;
   role: EmployeeRoleName;
-  labels: string[];
+  clearance: number;
   identityDisabled: boolean;
   employeeDisabled: boolean;
 }
@@ -619,8 +619,8 @@ export class AuthCore {
       displayName: record.displayName,
       email: record.email,
       role: record.role,
-      disabled: false,
-      labels: [...record.labels].sort()
+      clearance: record.clearance,
+      disabled: false
     };
   }
 

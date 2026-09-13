@@ -13,7 +13,7 @@ describe("structured import workflow metadata", () => {
       dataset: "dish_catalog" as const,
       enterpriseName: "Maijia",
       snapshotDate: "20260819",
-      labelKeys: ["all_staff"],
+      confidentialityLevel: 0,
       fileHash: "file-hash"
     };
     const expectedFingerprint = createHash("sha256")
@@ -22,7 +22,7 @@ describe("structured import workflow metadata", () => {
           dataset: "dish_catalog",
           enterpriseName: "Maijia",
           snapshotDate: "20260819",
-          labelKeys: ["all_staff"],
+          confidentialityLevel: 0,
           fileHash: "file-hash"
         })
       )
@@ -47,7 +47,8 @@ describe("structured import workflow metadata", () => {
           dataset,
           enterpriseName: "Maijia",
           idempotencyKey: "stable-key",
-          labelKeys: ["all_staff"],
+          confidentialityLevel: "0",
+          confidentialityLevelFieldCount: 1,
           file: { fileName: `${dataset}.csv`, body: Buffer.from("synthetic") }
         })
       ).toMatchObject({
@@ -67,7 +68,8 @@ describe("structured import workflow metadata", () => {
           dataset,
           enterpriseName: "Maijia",
           idempotencyKey: `${dataset}-${dateField}`,
-          labelKeys: ["all_staff"],
+          confidentialityLevel: "0",
+          confidentialityLevelFieldCount: 1,
           file: { fileName: `${dataset}.csv`, body: Buffer.from("synthetic") },
           [dateField]: "20260826"
         };
@@ -109,7 +111,7 @@ describe("structured import workflow metadata", () => {
       startDate: "20260826",
       endDate: "20260826",
       naturalKey: "SH2608250117",
-      labelKeys: ["all_staff"],
+      confidentialityLevel: 0,
       fileHash: "file-hash"
     };
 
@@ -121,7 +123,7 @@ describe("structured import workflow metadata", () => {
           startDate: "20260826",
           endDate: "20260826",
           naturalKey: "SH2608250117",
-          labelKeys: ["all_staff"],
+          confidentialityLevel: 0,
           fileHash: "file-hash"
         })
       )
@@ -136,7 +138,7 @@ describe("structured import workflow metadata", () => {
       enterpriseName: "Maijia",
       startDate: null,
       endDate: null,
-      labelKeys: ["all_staff"],
+      confidentialityLevel: 0,
       fileHash: "file-hash"
     };
     const expectedSupplierFingerprint = createHash("sha256")
@@ -144,7 +146,7 @@ describe("structured import workflow metadata", () => {
         JSON.stringify({
           dataset: "supplier_catalog",
           enterpriseName: "Maijia",
-          labelKeys: ["all_staff"],
+          confidentialityLevel: 0,
           fileHash: "file-hash"
         })
       )

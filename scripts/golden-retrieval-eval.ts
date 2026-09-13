@@ -4,7 +4,7 @@ import { performance } from "node:perf_hooks";
 
 type GoldenFileType = "md" | "txt" | "docx";
 type GoldenStatus = "active" | "archived";
-type GoldenCallerId = "admin" | "baoli_manager" | "suzhou_manager" | "disabled_employee";
+type GoldenCallerId = "admin" | "baoli_employee" | "suzhou_employee" | "disabled_employee";
 type RetrievalMode = "dense-only" | "lexical-only" | "hybrid" | "hybrid+rerank";
 
 interface GoldenSection {
@@ -18,7 +18,7 @@ interface GoldenDocument {
   id: string;
   title: string;
   fileType: GoldenFileType;
-  labels: string[];
+  confidentialityLevel: number;
   status: GoldenStatus;
   currentContentVersion: number;
   indexedContentVersion: number;
@@ -49,7 +49,7 @@ interface GoldenQuerySeed {
 interface GoldenChunk {
   chunkId: string;
   documentId: string;
-  labels: string[];
+  confidentialityLevel: number;
   status: GoldenStatus;
   currentContentVersion: number;
   indexedContentVersion: number;
@@ -64,8 +64,7 @@ interface RankedChunk extends GoldenChunk {
 interface Caller {
   id: GoldenCallerId;
   disabled: boolean;
-  role: "admin" | "manager" | "employee";
-  labels: string[];
+  clearance: number;
 }
 
 interface ModeMetrics {
@@ -112,26 +111,22 @@ const CALLERS: Record<GoldenCallerId, Caller> = {
   admin: {
     id: "admin",
     disabled: false,
-    role: "admin",
-    labels: ["all_staff", "store:baoli", "store:suzhou", "person:admin"]
+    clearance: 3
   },
-  baoli_manager: {
-    id: "baoli_manager",
+  baoli_employee: {
+    id: "baoli_employee",
     disabled: false,
-    role: "manager",
-    labels: ["all_staff", "store:baoli", "person:baoli.manager"]
+    clearance: 1
   },
-  suzhou_manager: {
-    id: "suzhou_manager",
+  suzhou_employee: {
+    id: "suzhou_employee",
     disabled: false,
-    role: "manager",
-    labels: ["all_staff", "store:suzhou", "person:suzhou.manager"]
+    clearance: 2
   },
   disabled_employee: {
     id: "disabled_employee",
     disabled: true,
-    role: "employee",
-    labels: ["all_staff", "store:baoli"]
+    clearance: 0
   }
 };
 
@@ -154,7 +149,7 @@ const SYNONYM_GROUPS = [
 ];
 
 const GOLDEN_DOCUMENTS: GoldenDocument[] = [
-  doc("doc_feedback_sop", "保利店差评处理SOP.md", "md", ["all_staff", "store:baoli"], "active", [
+  doc("doc_feedback_sop", "保利店差评处理SOP.md", "md", 0, "active", [
     section(
       "response",
       "差评响应流程",
@@ -168,49 +163,35 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       ["登记表", "退款", "复盘", "手机号"]
     )
   ]),
-  doc(
-    "doc_member_manual",
-    "会员储值与积分手册.docx",
-    "docx",
-    ["all_staff", "store:baoli"],
-    "active",
-    [
-      section(
-        "points",
-        "会员积分规则",
-        "会员每消费1元获得1积分，储值赠送金额不再重复计分。积分过期提醒需要提前7天发送。",
-        ["会员", "积分", "储值", "过期提醒"]
-      ),
-      section(
-        "refund",
-        "会员退款条款",
-        "会员退款时先冲减赠送余额，再冲减本金；异常退款必须由店长复核。",
-        ["会员退款", "赠送余额", "店长复核"]
-      )
-    ]
-  ),
-  doc(
-    "doc_delivery_playbook",
-    "外卖高峰运营记录.txt",
-    "txt",
-    ["all_staff", "store:baoli"],
-    "active",
-    [
-      section(
-        "peak",
-        "外卖高峰",
-        "午高峰配送拥堵时，前台每10分钟查看骑手等待单，超过8分钟的订单优先打包。",
-        ["外卖", "骑手", "8分钟", "打包"]
-      ),
-      section(
-        "platform",
-        "平台备注",
-        "美团外卖异常需要在平台备注写明缺货、改菜或退款原因，不得写内部绩效评价。",
-        ["美团", "外卖", "缺货", "退款"]
-      )
-    ]
-  ),
-  doc("doc_margin_review", "菜品毛利复盘.md", "md", ["all_staff", "store:baoli"], "active", [
+  doc("doc_member_manual", "会员储值与积分手册.docx", "docx", 0, "active", [
+    section(
+      "points",
+      "会员积分规则",
+      "会员每消费1元获得1积分，储值赠送金额不再重复计分。积分过期提醒需要提前7天发送。",
+      ["会员", "积分", "储值", "过期提醒"]
+    ),
+    section(
+      "refund",
+      "会员退款条款",
+      "会员退款时先冲减赠送余额，再冲减本金；异常退款必须由店长复核。",
+      ["会员退款", "赠送余额", "店长复核"]
+    )
+  ]),
+  doc("doc_delivery_playbook", "外卖高峰运营记录.txt", "txt", 0, "active", [
+    section(
+      "peak",
+      "外卖高峰",
+      "午高峰配送拥堵时，前台每10分钟查看骑手等待单，超过8分钟的订单优先打包。",
+      ["外卖", "骑手", "8分钟", "打包"]
+    ),
+    section(
+      "platform",
+      "平台备注",
+      "美团外卖异常需要在平台备注写明缺货、改菜或退款原因，不得写内部绩效评价。",
+      ["美团", "外卖", "缺货", "退款"]
+    )
+  ]),
+  doc("doc_margin_review", "菜品毛利复盘.md", "md", 0, "active", [
     section(
       "gross_margin",
       "毛利分析",
@@ -224,7 +205,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       ["备货量", "涨价", "套餐结构"]
     )
   ]),
-  doc("doc_inventory_check", "库存盘点规则.docx", "docx", ["all_staff", "store:baoli"], "active", [
+  doc("doc_inventory_check", "库存盘点规则.docx", "docx", 0, "active", [
     section(
       "daily",
       "每日盘点",
@@ -238,7 +219,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       ["报损", "过期", "盘亏"]
     )
   ]),
-  doc("doc_shift_handover", "班次交接清单.txt", "txt", ["all_staff", "store:baoli"], "active", [
+  doc("doc_shift_handover", "班次交接清单.txt", "txt", 0, "active", [
     section(
       "handover",
       "交接",
@@ -252,7 +233,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       ["迟到", "考勤", "微信群"]
     )
   ]),
-  doc("doc_food_safety", "食品安全留样制度.md", "md", ["all_staff", "store:baoli"], "active", [
+  doc("doc_food_safety", "食品安全留样制度.md", "md", 0, "active", [
     section(
       "sample",
       "留样要求",
@@ -265,7 +246,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "暂停出品"
     ])
   ]),
-  doc("doc_invoice_policy", "发票与报销说明.docx", "docx", ["all_staff", "store:baoli"], "active", [
+  doc("doc_invoice_policy", "发票与报销说明.docx", "docx", 0, "active", [
     section(
       "invoice",
       "发票",
@@ -278,27 +259,20 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "验收照片"
     ])
   ]),
-  doc(
-    "doc_supplier_receiving",
-    "供应商验收SOP.txt",
-    "txt",
-    ["all_staff", "store:baoli"],
-    "active",
-    [
-      section(
-        "receive",
-        "验收",
-        "供应商送货时核对品名、规格、批次和温度；缺少检疫票的肉类不得入库。",
-        ["供应商", "验收", "批次", "检疫票"]
-      ),
-      section("reject", "拒收", "拒收记录必须写明数量、原因、照片编号和采购负责人。", [
-        "拒收",
-        "采购",
-        "照片编号"
-      ])
-    ]
-  ),
-  doc("doc_coupon_rules", "优惠券使用规则.md", "md", ["all_staff", "store:baoli"], "active", [
+  doc("doc_supplier_receiving", "供应商验收SOP.txt", "txt", 0, "active", [
+    section(
+      "receive",
+      "验收",
+      "供应商送货时核对品名、规格、批次和温度；缺少检疫票的肉类不得入库。",
+      ["供应商", "验收", "批次", "检疫票"]
+    ),
+    section("reject", "拒收", "拒收记录必须写明数量、原因、照片编号和采购负责人。", [
+      "拒收",
+      "采购",
+      "照片编号"
+    ])
+  ]),
+  doc("doc_coupon_rules", "优惠券使用规则.md", "md", 0, "active", [
     section(
       "stack",
       "叠加规则",
@@ -311,7 +285,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "异常"
     ])
   ]),
-  doc("doc_store_area", "商圈门店对比.docx", "docx", ["all_staff", "store:baoli"], "active", [
+  doc("doc_store_area", "商圈门店对比.docx", "docx", 0, "active", [
     section("area", "商圈", "保利店工作日午餐以写字楼客群为主，晚餐受社区客流影响更大。", [
       "门店",
       "商圈",
@@ -324,7 +298,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "排班"
     ])
   ]),
-  doc("doc_menu_launch", "新品上新检查表.txt", "txt", ["all_staff", "store:baoli"], "active", [
+  doc("doc_menu_launch", "新品上新检查表.txt", "txt", 0, "active", [
     section("trial", "试吃", "新品上新前需要完成员工试吃、过敏原标注、出餐时长测试和毛利复核。", [
       "新品",
       "试吃",
@@ -337,7 +311,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "厨房看板"
     ])
   ]),
-  doc("doc_refund_aftercare", "退款售后流程.md", "md", ["all_staff", "store:baoli"], "active", [
+  doc("doc_refund_aftercare", "退款售后流程.md", "md", 0, "active", [
     section(
       "refund",
       "退款",
@@ -350,7 +324,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "区域经理"
     ])
   ]),
-  doc("doc_table_turnover", "桌台翻台率说明.docx", "docx", ["all_staff", "store:baoli"], "active", [
+  doc("doc_table_turnover", "桌台翻台率说明.docx", "docx", 0, "active", [
     section(
       "metric",
       "翻台率",
@@ -363,7 +337,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "拼桌"
     ])
   ]),
-  doc("doc_schema_dictionary", "结构化字段口径.md", "md", ["all_staff", "store:baoli"], "active", [
+  doc("doc_schema_dictionary", "结构化字段口径.md", "md", 0, "active", [
     section(
       "business",
       "营业字段",
@@ -377,7 +351,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       ["dishes", "菜品销售数量", "菜品总收入", "受控字段"]
     )
   ]),
-  doc("doc_suzhou_private", "苏州店私有促销方案.md", "md", ["store:suzhou"], "active", [
+  doc("doc_suzhou_private", "苏州店私有促销方案.md", "md", 2, "active", [
     section(
       "campaign",
       "游客套餐",
@@ -390,7 +364,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "审批"
     ])
   ]),
-  doc("doc_suzhou_staffing", "苏州店排班备忘.txt", "txt", ["store:suzhou"], "active", [
+  doc("doc_suzhou_staffing", "苏州店排班备忘.txt", "txt", 2, "active", [
     section("staffing", "排班", "苏州店节假日增加迎宾和打包岗，游客高峰在14点后仍可能持续。", [
       "苏州店",
       "排班",
@@ -403,7 +377,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "工时"
     ])
   ]),
-  doc("doc_private_salary", "个人薪酬备注.docx", "docx", ["person:admin"], "active", [
+  doc("doc_private_salary", "个人薪酬备注.docx", "docx", 3, "active", [
     section("salary", "薪酬", "个人薪酬、绩效扣款和银行账号不得进入门店共享检索。", [
       "薪酬",
       "绩效扣款",
@@ -416,7 +390,7 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
       "证据检索"
     ])
   ]),
-  doc("doc_archived_old_menu", "已归档旧菜单.md", "md", ["all_staff", "store:baoli"], "archived", [
+  doc("doc_archived_old_menu", "已归档旧菜单.md", "md", 0, "archived", [
     section("old", "旧菜单", "2025年旧菜单中的番茄牛腩套餐已下架，归档后不能出现在普通检索。", [
       "旧菜单",
       "下架",
@@ -429,27 +403,20 @@ const GOLDEN_DOCUMENTS: GoldenDocument[] = [
     ])
   ]),
   {
-    ...doc(
-      "doc_stale_recipe",
-      "已更新配方旧索引.txt",
-      "txt",
-      ["all_staff", "store:baoli"],
-      "active",
-      [
-        section("recipe", "旧配方", "旧索引仍包含辣油配方比例1:3，但当前内容版本已经改为1:4。", [
-          "旧索引",
-          "辣油配方",
-          "1:3",
-          "版本"
-        ]),
-        section("stale", "版本检查", "内容版本不一致的Qdrant payload必须由MySQL复核丢弃。", [
-          "stale",
-          "Qdrant",
-          "MySQL复核",
-          "丢弃"
-        ])
-      ]
-    ),
+    ...doc("doc_stale_recipe", "已更新配方旧索引.txt", "txt", 0, "active", [
+      section("recipe", "旧配方", "旧索引仍包含辣油配方比例1:3，但当前内容版本已经改为1:4。", [
+        "旧索引",
+        "辣油配方",
+        "1:3",
+        "版本"
+      ]),
+      section("stale", "版本检查", "内容版本不一致的Qdrant payload必须由MySQL复核丢弃。", [
+        "stale",
+        "Qdrant",
+        "MySQL复核",
+        "丢弃"
+      ])
+    ]),
     currentContentVersion: 2,
     indexedContentVersion: 1
   }
@@ -461,9 +428,9 @@ export function buildGoldenJudgedQueries(): GoldenQuerySeed[] {
     const secondary = document.sections[1] as GoldenSection;
     const primaryChunkId = chunkId(document, primary);
     const secondaryChunkId = chunkId(document, secondary);
-    const visibleToBaoli = isVisibleTo(CALLERS.baoli_manager, document);
+    const visibleToBaoli = isVisibleTo(CALLERS.baoli_employee, document);
     const hiddenType = hiddenQueryType(document);
-    const callerId: GoldenCallerId = visibleToBaoli ? "baoli_manager" : "baoli_manager";
+    const callerId: GoldenCallerId = visibleToBaoli ? "baoli_employee" : "baoli_employee";
     const expectedVisibleDocumentIds = visibleToBaoli ? [document.id] : [];
     const relevantChunkIds = visibleToBaoli ? [primaryChunkId] : [];
     const secondaryRelevantChunkIds = visibleToBaoli ? [secondaryChunkId] : [];
@@ -520,7 +487,7 @@ export function buildGoldenJudgedQueries(): GoldenQuerySeed[] {
       judged({
         query: `查询不存在的火星早餐机器人 ${document.id}`,
         type: "no_answer",
-        callerId: documentIndex % 5 === 0 ? "disabled_employee" : "baoli_manager",
+        callerId: documentIndex % 5 === 0 ? "disabled_employee" : "baoli_employee",
         relevantChunkIds: [],
         unacceptableChunkIds: [primaryChunkId, secondaryChunkId],
         expectedVisibleDocumentIds: [],
@@ -631,7 +598,7 @@ function evaluateMode(
 
     for (const chunk of ranked) {
       const caller = CALLERS[query.callerId];
-      if (!isPermittedByLabel(caller, chunk)) {
+      if (caller.clearance < chunk.confidentialityLevel) {
         permissionLeakCount += 1;
       }
       if (chunk.status === "archived") {
@@ -780,23 +747,15 @@ function isEligibleForReturn(caller: Caller, chunk: GoldenChunk): boolean {
   return (
     chunk.status === "active" &&
     chunk.currentContentVersion === chunk.indexedContentVersion &&
-    isPermittedByLabel(caller, chunk)
+    caller.clearance >= chunk.confidentialityLevel
   );
-}
-
-function isPermittedByLabel(caller: Caller, chunk: Pick<GoldenChunk, "labels">): boolean {
-  if (caller.role === "admin") {
-    return true;
-  }
-
-  return chunk.labels.some((label) => label === "all_staff" || caller.labels.includes(label));
 }
 
 function isVisibleTo(caller: Caller, document: GoldenDocument): boolean {
   return (
     document.status === "active" &&
     document.currentContentVersion === document.indexedContentVersion &&
-    isPermittedByLabel(caller, document)
+    caller.clearance >= document.confidentialityLevel
   );
 }
 
@@ -815,7 +774,7 @@ function documentToChunks(document: GoldenDocument): GoldenChunk[] {
   return document.sections.map((section) => ({
     chunkId: chunkId(document, section),
     documentId: document.id,
-    labels: document.labels,
+    confidentialityLevel: document.confidentialityLevel,
     status: document.status,
     currentContentVersion: document.currentContentVersion,
     indexedContentVersion: document.indexedContentVersion,
@@ -828,7 +787,7 @@ function doc(
   id: string,
   title: string,
   fileType: GoldenFileType,
-  labels: string[],
+  confidentialityLevel: number,
   status: GoldenStatus,
   sections: GoldenSection[]
 ): GoldenDocument {
@@ -836,7 +795,7 @@ function doc(
     id,
     title,
     fileType,
-    labels,
+    confidentialityLevel,
     status,
     currentContentVersion: 1,
     indexedContentVersion: 1,

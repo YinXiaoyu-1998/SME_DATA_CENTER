@@ -19,7 +19,7 @@ The acceptance run must exercise both sides of the real product boundary:
 
 | Area                                | Who performs it                   | Required proof                                                                                              |
 | ----------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, personal label, and setup link.                 |
+| Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, explicit role/clearance, and setup link.        |
 | Password setup/reset                | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.               |
 | Client installation                 | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.2.8` is installed and configured as a Codex stdio MCP.                |
 | Durable login                       | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.                 |
@@ -109,7 +109,7 @@ docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
   --email manual-full-flow-<run-id>@example.invalid \
   --display-name "Manual Acceptance <run-id>" \
   --role employee \
-  --label store:baoli
+  --clearance 0
 ```
 
 The command prints exactly one password setup link. Do not store that full link in git or reports.
@@ -208,15 +208,15 @@ For the current macOS user:
      or fetch/proxy the file bytes.
    - logout/reset/re-login when the run includes recovery: “帮我退出 Enterprise Hub。” then after
      reset/setup, “我又要用 Enterprise Hub 查资料，帮我重新登录。”
-5. Do not tell employee-client tasks hidden oracle values such as exact label keys, idempotency
+5. Do not tell employee-client tasks hidden oracle values such as exact confidentiality levels, idempotency
    keys, expected document ids, expected row counts, query JSON, or permission rules. Those are
    controller-side scoring concerns.
 6. Start a new launcher process and call `enterprise_hub_auth_status`; it must report
    `authenticated=true`.
 7. Call `enterprise_hub_get_current_user` with no arguments and confirm its display name, email,
-   and role match the synthetic account; the result must not contain internal IDs, labels, or
+   role, and clearance match the synthetic account; the result must not contain internal IDs or
    credentials.
-8. List labels and confirm the user can see the intended label, normally `store:baoli`.
+8. Confirm the current account reports the explicitly assigned role and clearance.
 9. Upload evidence fixtures with a unique `sourceSystem=manual_acceptance_<runId>`.
 10. Poll `get_evidence_document_status` until uploaded evidence is `active/ready`.
 11. Search evidence with `documentIds` restricted to this run's uploads and confirm at least one
@@ -305,7 +305,7 @@ Pass only when:
 - the employee opens the link on a phone or any other device, confirms the agent instance name,
   and completes email/password login on the verification page;
 - the launcher's background polling completes and an authenticated business MCP tool call succeeds
-  (for example `enterprise_hub_list_labels`);
+  (for example `enterprise_hub_get_current_user`);
 - after the launcher process is restarted, `enterprise_hub_auth_status` reports unauthenticated and
   a fresh tap-link login is required (memory-only session);
 - cleanup removes the synthetic account and all run-scoped data from DB/storage/Qdrant.
@@ -321,7 +321,7 @@ Pass only when:
   employee request per task, not only in the controller and not as a single all-in-one prompt;
 - the official launcher session is authenticated and survives a new process;
 - the current-account request returns only the synthetic employee's display name, email, and role;
-- MCP labels, evidence upload/status/search, structured import/query, and invalid atomic rejection
+- MCP current-user, evidence upload/status/search, structured import/query, and invalid atomic rejection
   pass;
 - quarantine certificate upload/query/source-download/archive passes when that feature slice is in
   scope;
@@ -334,6 +334,6 @@ Fail immediately for:
 - any request to paste passwords/tokens into chat/config/env;
 - direct employee-client HTTP/DB/Qdrant/storage use instead of MCP;
 - public `/readyz` exposure;
-- cross-label data leakage;
+- cross-organization or above-clearance data leakage;
 - fixture data left in staging after cleanup;
 - fabricated success without actual launcher/MCP tool calls.

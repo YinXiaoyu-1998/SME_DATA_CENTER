@@ -1,5 +1,5 @@
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { EmployeeRole, LabelType, PrismaClient, SkillEntryStatus } from "@prisma/client";
+import { EmployeeRole, PrismaClient, SkillEntryStatus } from "@prisma/client";
 
 const adapter = new PrismaMariaDb(process.env["DATABASE_URL"] ?? "");
 const prisma = new PrismaClient({ adapter });
@@ -15,62 +15,30 @@ const employees = [
     email: "admin@example.com",
     displayName: "Admin",
     role: EmployeeRole.admin,
-    personalLabelKey: "person:admin",
-    labelKeys: ["all_staff", "store:baoli", "store:suzhou", "person:admin"]
+    clearance: 3
   },
   {
-    id: "emp_baoli_manager",
-    email: "baoli.manager@example.com",
-    displayName: "Baoli Manager",
-    role: EmployeeRole.manager,
-    personalLabelKey: "person:baoli.manager",
-    labelKeys: ["all_staff", "store:baoli", "person:baoli.manager"]
+    id: "emp_baoli_employee",
+    email: "baoli.employee@example.com",
+    displayName: "Baoli Employee",
+    role: EmployeeRole.employee,
+    clearance: 1
   },
   {
-    id: "emp_suzhou_manager",
-    email: "suzhou.manager@example.com",
-    displayName: "Suzhou Manager",
-    role: EmployeeRole.manager,
-    personalLabelKey: "person:suzhou.manager",
-    labelKeys: ["all_staff", "store:suzhou", "person:suzhou.manager"]
+    id: "emp_suzhou_employee",
+    email: "suzhou.employee@example.com",
+    displayName: "Suzhou Employee",
+    role: EmployeeRole.employee,
+    clearance: 2
   },
   {
     id: "emp_lijie",
     email: "lijie@example.com",
     displayName: "Li Jie",
     role: EmployeeRole.employee,
-    personalLabelKey: "person:lijie",
-    labelKeys: ["all_staff", "person:lijie"]
+    clearance: 0
   }
 ] as const;
-
-const sharedLabels = [
-  {
-    id: "label_all_staff",
-    key: "all_staff",
-    name: "All Staff",
-    type: LabelType.all_staff
-  },
-  {
-    id: "label_store_baoli",
-    key: "store:baoli",
-    name: "Baoli Store",
-    type: LabelType.store
-  },
-  {
-    id: "label_store_suzhou",
-    key: "store:suzhou",
-    name: "Suzhou Store",
-    type: LabelType.store
-  }
-] as const;
-
-const personalLabels = employees.map((employee) => ({
-  id: `label_${employee.id.replace("emp_", "person_")}`,
-  key: employee.personalLabelKey,
-  name: `${employee.displayName} Personal`,
-  type: LabelType.personal
-}));
 
 const skillEntries = [
   {
@@ -79,7 +47,7 @@ const skillEntries = [
     description: "门店周报 skill，帮助员工智能体基于已授权资料生成周报草稿。",
     version: "1.0.0",
     category: "reporting",
-    inputRequirements: ["已授权的 active 经营数据", "门店标签", "目标周"],
+    inputRequirements: ["已授权的 active 经营数据", "目标周"],
     installInstructions: "Install the approved weekly-store-report skill in the employee agent.",
     examplePrompts: ["用保利店上周经营数据生成周报草稿"],
     status: SkillEntryStatus.approved
@@ -105,28 +73,6 @@ async function main() {
     update: { name: org.name }
   });
 
-  for (const label of [...sharedLabels, ...personalLabels]) {
-    await prisma.label.upsert({
-      where: {
-        orgId_key: {
-          orgId: org.id,
-          key: label.key
-        }
-      },
-      create: {
-        id: label.id,
-        orgId: org.id,
-        key: label.key,
-        name: label.name,
-        type: label.type
-      },
-      update: {
-        name: label.name,
-        type: label.type
-      }
-    });
-  }
-
   for (const employee of employees) {
     await prisma.employee.upsert({
       where: { email: employee.email },
@@ -136,38 +82,16 @@ async function main() {
         email: employee.email,
         displayName: employee.displayName,
         role: employee.role,
+        clearance: employee.clearance,
         disabled: false
       },
       update: {
         displayName: employee.displayName,
         role: employee.role,
+        clearance: employee.clearance,
         disabled: false
       }
     });
-
-    const assignedLabels = await prisma.label.findMany({
-      where: {
-        orgId: org.id,
-        key: { in: [...employee.labelKeys] }
-      },
-      select: { id: true }
-    });
-
-    for (const label of assignedLabels) {
-      await prisma.employeeLabel.upsert({
-        where: {
-          employeeId_labelId: {
-            employeeId: employee.id,
-            labelId: label.id
-          }
-        },
-        create: {
-          employeeId: employee.id,
-          labelId: label.id
-        },
-        update: {}
-      });
-    }
 
     await prisma.loginIdentity.upsert({
       where: { normalizedEmail: employee.email },
@@ -218,17 +142,14 @@ async function main() {
     });
   }
 
-  const [organizationCount, employeeCount, labelCount, employeeLabelCount, skillEntryCount] =
-    await Promise.all([
-      prisma.organization.count(),
-      prisma.employee.count({ where: { orgId: org.id } }),
-      prisma.label.count({ where: { orgId: org.id } }),
-      prisma.employeeLabel.count(),
-      prisma.skillEntry.count({ where: { orgId: org.id } })
-    ]);
+  const [organizationCount, employeeCount, skillEntryCount] = await Promise.all([
+    prisma.organization.count(),
+    prisma.employee.count({ where: { orgId: org.id } }),
+    prisma.skillEntry.count({ where: { orgId: org.id } })
+  ]);
 
   console.log(
-    `Seed complete: organizations=${organizationCount}, employees=${employeeCount}, labels=${labelCount}, employee_labels=${employeeLabelCount}, skill_entries=${skillEntryCount}`
+    `Seed complete: organizations=${organizationCount}, employees=${employeeCount}, skill_entries=${skillEntryCount}`
   );
 }
 

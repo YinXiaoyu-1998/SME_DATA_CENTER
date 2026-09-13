@@ -17,7 +17,7 @@ export interface SourceDocumentRecord {
   originalFileName: string;
   contentType: string;
   byteSize: number;
-  labelKeys: string[];
+  confidentialityLevel: number;
 }
 
 export interface SourceDocumentRepository {
@@ -42,15 +42,7 @@ const downloadableStatuses = new Set([
   "processing_failed"
 ]);
 
-const documentInclude = {
-  documentLabels: {
-    include: {
-      label: {
-        select: { key: true }
-      }
-    }
-  }
-} satisfies Prisma.DocumentInclude;
+const documentInclude = {} satisfies Prisma.DocumentInclude;
 
 export function createPrismaSourceDocumentRepository(
   databaseUrl = requireDatabaseUrl()
@@ -74,10 +66,9 @@ export function createPrismaSourceDocumentRepository(
       const canAccess = canEmployeeAccessDocument({
         employee: {
           disabled: input.employee.disabled,
-          role: input.employee.role,
-          labelKeys: input.employee.labels
+          clearance: input.employee.clearance
         },
-        document: { labelKeys: record.labelKeys }
+        document: { confidentialityLevel: record.confidentialityLevel }
       });
       return canAccess ? record : null;
     },
@@ -115,7 +106,7 @@ function toSourceDocumentRecord(
     originalFileName: document.originalFileName ?? "source-document",
     contentType: document.contentType ?? "application/octet-stream",
     byteSize: document.byteSize ? Number(document.byteSize) : 0,
-    labelKeys: document.documentLabels.map((documentLabel) => documentLabel.label.key).sort()
+    confidentialityLevel: document.confidentialityLevel
   };
 }
 

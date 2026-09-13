@@ -54,8 +54,8 @@ newly verified exact pin. Never derive a new approved pin from server metadata a
   Docker, worker, cloud resources, or deployment.
 - Do not create reports, dashboards, or final business conclusions. Return only tool-visible
   records, statuses, and evidence within the employee's backend-authorized scope.
-- Do not provide an organization ID. The service derives organization and label visibility from
-  the authenticated Employee Account; never infer hidden data from a forbidden/not-found result.
+- Do not provide an organization ID. The service derives organization and confidentiality access
+  from the authenticated Employee Account; never infer hidden data from a forbidden/not-found result.
 - The launcher stores its durable credential only in the operating-system secure store. Never
   put credentials in configuration, environment variables, arguments, ordinary files, logs, or
   chat.
@@ -108,7 +108,8 @@ Keep tool input within the public service contract:
 - an evidence title is at most 512 characters and `sourceSystem` is at most 255 characters;
 - structured `enterpriseName` and `idempotencyKey` are each at most 255 characters;
 - receipt IDs and quarantine-certificate `idempotencyKey` values are each at most 255 characters;
-- each label key is at most 128 characters, with at most 50 labels per upload;
+- `confidentialityLevel`, when supplied, is an integer from `0` through `3`; omit it to use the
+  service default of `0`;
 - an evidence question is at most 4,000 characters; each evidence filter ID is at most 64
   characters, with at most 100 IDs in each filter group;
 - an opaque cursor is at most 4,096 characters, and each structured-query string filter value is
@@ -118,7 +119,7 @@ Keep tool input within the public service contract:
   values, and boolean nesting depth 3.
 
 If a tool rejects an input at one of these boundaries, report the validation error and ask the
-employee to shorten the text, reduce filters/labels, or split the source file only when that is
+employee to shorten the text, reduce filters, or split the source file only when that is
 semantically allowed for a business-window dataset. Never split `dish_catalog`: keep one complete
 snapshot and ask the employee to remove unrelated sheets/columns outside the catalog schema, use a
 service-supported larger limit, or seek operator help. Never silently truncate a title, key,
@@ -200,8 +201,8 @@ Use this path only when `list_structured_datasets` reports `dish_catalog` as ava
 complete, append-only menu snapshot rather than a sales/business date-window dataset.
 
 - Call `upload_structured_dataset` with `dataset: "dish_catalog"`, `snapshotDate: "YYYYMMDD"`,
-  `enterpriseName`, an existing `labelKeys` value, a stable `idempotencyKey`, and the CSV/XLSX
-  file. Do not include `startDate` or `endDate`.
+  `enterpriseName`, a stable `idempotencyKey`, and the CSV/XLSX file. Optionally include an
+  explicit `confidentialityLevel`; otherwise it is `0`. Do not include `startDate` or `endDate`.
 - Treat the uploaded file as the full directory for that date. Do not split it into CSV parts,
   upload only changed rows, use the service to merge it with another file, or describe a partial
   file as a complete catalog.
@@ -220,7 +221,8 @@ complete, append-only menu snapshot rather than a sales/business date-window dat
 ## Delivery Ledgers And Supplier Catalogs
 
 For `delivery_ledger` and `supplier_catalog`, call `upload_structured_dataset` with `file`,
-`enterpriseName`, `idempotencyKey`, and existing `labelKeys`. Do not send `startDate`, `endDate`,
+`enterpriseName` and `idempotencyKey`. Optionally include an explicit `confidentialityLevel`.
+Do not send `startDate`, `endDate`,
 or `snapshotDate`.
 
 - `delivery_ledger` accepts one complete CSV/XLSX delivery receipt per file. The receipt ID
@@ -255,10 +257,10 @@ Use quarantine-certificate tools only for animal quarantine certificate images t
 linked to delivery-ledger receipt IDs. The service does not inspect whether the photo actually
 looks like a certificate.
 
-- Upload with `upload_quarantine_certificate`: provide one JPG/JPEG/PNG file, one `receiptId`, one
-  stable `idempotencyKey`, and one or more existing `labelKeys`. Use `file.encoding:"path"` when
-  possible. If the employee gives several photos for the same receipt, call the tool once per
-  photo.
+- Upload with `upload_quarantine_certificate`: provide one JPG/JPEG/PNG file, one `receiptId`, and
+  one stable `idempotencyKey`. Optionally include an explicit `confidentialityLevel`; otherwise it
+  is `0`. Use `file.encoding:"path"` when possible. If the employee gives several photos for the
+  same receipt, call the tool once per photo.
 - `receiptId` is the public business key for both delivery ledgers and certificates. The service
   trims and uppercases it. Do not call it `receiptNumber`, do not treat it as a count, and do not
   require the corresponding delivery ledger to already exist.
@@ -507,10 +509,10 @@ session for Enterprise Hub under the current OS user, so all locally configured 
 OS user are signed out.
 
 When the employee asks which Enterprise Hub account is currently active, call the zero-input
-`enterprise_hub_get_current_user` tool. Return its `displayName`, `email`, and `role`; do not infer
+`enterprise_hub_get_current_user` tool. Return its `displayName`, `email`, `role`, and `clearance`; do not infer
 identity from launcher configuration or `enterprise_hub_auth_status`, and do not ask for an account
 selector. The tool is self-scoped to the bearer-authenticated employee and never returns internal
-IDs, labels, or credentials. Follow the normal authentication recovery above if login is required.
+IDs or credentials. Follow the normal authentication recovery above if login is required.
 
 ## Enterprise Hub Data Questions
 
@@ -520,9 +522,10 @@ reading a local attachment, local CSV/XLSX, previous chat text, cache, or filesy
 the employee explicitly asks you to inspect a local file outside Enterprise Hub.
 
 Local files are upload inputs only. After uploading a file, keep the returned service metadata
-needed for follow-up questions: document id, import batch id, dataset id, labels, declared business
+needed for follow-up questions: document id, import batch id, dataset id, declared confidentiality
+level, declared business
 date window or `snapshotDate`, enterprise/store name, and status. In a later task, rediscover
-available labels and datasets through MCP; if the intended uploaded table/document cannot be
+available datasets through MCP; if the intended uploaded table/document cannot be
 identified safely, ask one short natural clarification instead of querying all visible history.
 
 For structured-table questions:
@@ -565,7 +568,9 @@ For structured-table questions:
 
 For authorized service tools:
 
-- List labels before uploading; use only returned label keys.
+- Default an upload to confidentiality level `0` when the employee does not explicitly provide a
+  level. Never infer or elevate the level from filenames, content, source context, or apparent
+  document lineage. If the employee explicitly supplies `0`–`3`, pass it unchanged.
 - Prefer `file.encoding:"path"` uploads with the file's absolute local path; the launcher reads
   exact bytes mechanically. Use `file.encoding:"base64"` only for small inline payloads. Do not
   alter business content, schema, headers, or row meaning unless the employee explicitly asks for a
@@ -573,12 +578,12 @@ For authorized service tools:
 - Follow Upload Completion And Status Polling after every `202` upload; never start a worker.
 - Quarantine-certificate uploads are synchronous `201` operations, not background imports. Call
   `upload_quarantine_certificate` once per JPG/PNG image with exactly one `receiptId`, one
-  idempotency key, and existing label keys. A receipt ID may have zero, one, or multiple
+  idempotency key, and declared confidentiality level. A receipt ID may have zero, one, or multiple
   certificates; one certificate upload request contains only one image.
 - Reuse a structured-import idempotency key only for the exact same file and metadata. Treat an
   import-status 404 as "not visible or missing" and do not infer hidden metadata.
 - Reuse a quarantine-certificate idempotency key only for the exact same image bytes, receipt ID,
-  and label keys. Use `query_quarantine_certificates` with explicit `receiptIds`; never try to
+  and declared confidentiality level. Use `query_quarantine_certificates` with explicit `receiptIds`; never try to
   query all quarantine certificates. Use `get_source_document_download_url` with a returned
   `sourceDocumentId` when the employee asks to download or view the original source file.
 - Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged

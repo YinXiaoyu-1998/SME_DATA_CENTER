@@ -395,7 +395,8 @@ function createStructuredImportRepository(options: {
     storageObjectKey: options.storageObjectKey,
     originalFileName: options.originalFileName,
     documentKind: "structured",
-    fileType: options.fileType
+    fileType: options.fileType,
+    confidentialityLevel: 0
   };
   const run = {
     id: "run_structured_csv",

@@ -66,7 +66,7 @@ class MemoryAuthRepository implements AuthCoreRepository {
     displayName: "Test Person",
     email: "person@example.com",
     role: "employee",
-    labels: ["person:employee-1"],
+    clearance: 3,
     identityDisabled: false,
     employeeDisabled: false
   };
@@ -521,7 +521,7 @@ describe("AuthCore", () => {
       email: "person@example.com",
       role: "employee",
       disabled: false,
-      labels: ["person:employee-1"]
+      clearance: 3
     });
   });
 

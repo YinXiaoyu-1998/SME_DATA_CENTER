@@ -100,7 +100,7 @@ function importBatchRecord(
       fileType: "csv",
       storageObjectKey: "org/org_1/documents/doc_1/original/data.csv",
       originalFileName: "data.csv",
-      documentLabels: [{ label: { key: "all_staff" } }],
+      confidentialityLevel: 0,
       processingRuns
     }
   };
@@ -132,8 +132,7 @@ function reservationInput(
       contentType: "text/csv",
       byteSize: 10,
       checksumSha256: "hash",
-      labelIds: ["label_1"],
-      labels: ["all_staff"]
+      confidentialityLevel: 0
     },
     sourceSheetSummary: [],
     totalRowCount: 1,
@@ -327,8 +326,7 @@ describe("Prisma structured import audit provenance", () => {
         contentType: "text/csv",
         byteSize: 10,
         checksumSha256: "hash",
-        labelIds: ["label_1"],
-        labels: ["all_staff"]
+        confidentialityLevel: 0
       },
       sourceSheetSummary: [],
       totalRowCount: 1,
@@ -603,8 +601,7 @@ describe("Prisma structured import audit provenance", () => {
           contentType: "text/csv",
           byteSize: 10,
           checksumSha256: "hash",
-          labelIds: ["label_1"],
-          labels: ["all_staff"]
+          confidentialityLevel: 0
         },
         sourceSheetSummary: [],
         totalRowCount: 0,
@@ -667,8 +664,7 @@ describe("Prisma structured import audit provenance", () => {
         contentType: "text/csv",
         byteSize: 10,
         checksumSha256: "hash",
-        labelIds: ["label_1"],
-        labels: ["all_staff"]
+        confidentialityLevel: 0
       },
       sourceSheetSummary: [],
       totalRowCount: 0,

@@ -6,14 +6,9 @@ import {
   PHASE3_ERROR_CODES,
   PUBLIC_INPUT_LIMITS,
   isAllowedFileTypeForDocumentKind,
-  type AuthenticatedEmployee,
   type Phase3FileType
 } from "@enterprise-hub/domain";
-import type {
-  CatalogLabel,
-  DocumentCatalogRepository,
-  DocumentStatusRecord
-} from "../documents.js";
+import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documents.js";
 import { EvidenceSearchCursorError, type EvidenceSearchRepository } from "../evidence.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import type { RequestAuth } from "../request-auth.js";
@@ -34,7 +29,8 @@ interface ParsedUpload {
   };
   title?: string;
   sourceSystem?: string;
-  labelKeys: string[];
+  confidentialityLevel?: string;
+  confidentialityLevelFieldCount: number;
 }
 
 interface EvidenceSearchBody {
@@ -42,7 +38,6 @@ interface EvidenceSearchBody {
   filters?: {
     fileTypes?: unknown;
     documentIds?: unknown;
-    labelIds?: unknown;
   };
   limit?: unknown;
   cursor?: unknown;
@@ -58,7 +53,6 @@ type EvidenceSearchValidation =
       filters: {
         fileTypes: string[];
         documentIds: string[];
-        labelIds: string[];
       };
       limit: number;
       cursor: string | null;
@@ -87,9 +81,7 @@ function fileTypeFromFilename(fileName: string): Phase3FileType | null {
 }
 
 async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
-  const upload: ParsedUpload = {
-    labelKeys: []
-  };
+  const upload: ParsedUpload = { confidentialityLevelFieldCount: 0 };
 
   const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
 
@@ -109,10 +101,9 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
 
     const value = typeof part.value === "string" ? part.value.trim() : "";
 
-    if (part.fieldname === "labelKeys[]" || part.fieldname === "labelKeys") {
-      if (value) {
-        upload.labelKeys.push(value);
-      }
+    if (part.fieldname === "confidentialityLevel") {
+      upload.confidentialityLevelFieldCount += 1;
+      upload.confidentialityLevel = value;
       continue;
     }
 
@@ -126,7 +117,6 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
     }
   }
 
-  upload.labelKeys = uniqueSorted(upload.labelKeys);
   return upload;
 }
 
@@ -233,13 +223,9 @@ function validateEvidenceSearchBody(value: unknown): EvidenceSearchValidation {
   const filters = filtersValue as Record<string, unknown> | undefined;
   const fileTypes = evidenceFilterGroup(filters?.fileTypes, new Set(["md", "txt", "docx"]));
   const documentIds = evidenceFilterGroup(filters?.documentIds);
-  const labelIds = evidenceFilterGroup(filters?.labelIds);
-
-  if (!fileTypes.ok || !documentIds.ok || !labelIds.ok) {
+  if (!fileTypes.ok || !documentIds.ok) {
     const limitExceeded =
-      (!fileTypes.ok && fileTypes.limitExceeded) ||
-      (!documentIds.ok && documentIds.limitExceeded) ||
-      (!labelIds.ok && labelIds.limitExceeded);
+      (!fileTypes.ok && fileTypes.limitExceeded) || (!documentIds.ok && documentIds.limitExceeded);
     return {
       ok: false,
       code: limitExceeded ? PHASE3_ERROR_CODES.limitExceeded : PHASE3_ERROR_CODES.invalidQuery,
@@ -254,36 +240,22 @@ function validateEvidenceSearchBody(value: unknown): EvidenceSearchValidation {
     query: value.query.trim(),
     filters: {
       fileTypes: fileTypes.values,
-      documentIds: documentIds.values,
-      labelIds: labelIds.values
+      documentIds: documentIds.values
     },
     limit,
     cursor
   };
 }
 
-function mergeLabels(requestedLabels: CatalogLabel[], personalLabel: CatalogLabel | null) {
-  const labelsByKey = new Map(requestedLabels.map((label) => [label.key, label]));
-
-  if (personalLabel) {
-    labelsByKey.set(personalLabel.key, personalLabel);
+function parseConfidentialityLevel(upload: ParsedUpload): number | null {
+  if (upload.confidentialityLevelFieldCount === 0) return 0;
+  if (
+    upload.confidentialityLevelFieldCount !== 1 ||
+    !/^[0-3]$/.test(upload.confidentialityLevel ?? "")
+  ) {
+    return null;
   }
-
-  return [...labelsByKey.values()].sort((first, second) => first.key.localeCompare(second.key));
-}
-
-function forbiddenRequestedLabels(
-  employee: AuthenticatedEmployee,
-  labels: CatalogLabel[]
-): string[] {
-  if (employee.role === "admin") {
-    return [];
-  }
-
-  return labels
-    .filter((label) => label.type === "all_staff" || !employee.labels.includes(label.key))
-    .map((label) => label.key)
-    .sort();
+  return Number(upload.confidentialityLevel);
 }
 
 function evidenceUploadResponse(document: DocumentStatusRecord) {
@@ -313,7 +285,7 @@ function evidenceStatusResponse(document: DocumentStatusRecord) {
       fileType: document.fileType,
       title: document.title,
       status: document.status,
-      labels: document.labels,
+      confidentialityLevel: document.confidentialityLevel,
       originalFileName: document.originalFileName,
       sourceSystem: document.sourceSystem
     },
@@ -369,9 +341,7 @@ export function registerEvidenceRoutes(
     if (
       upload.file.fileName.length > PUBLIC_INPUT_LIMITS.uploadFilenameChars ||
       upload.title.length > PUBLIC_INPUT_LIMITS.evidenceTitleChars ||
-      (upload.sourceSystem?.length ?? 0) > PUBLIC_INPUT_LIMITS.sourceSystemChars ||
-      upload.labelKeys.length > PUBLIC_INPUT_LIMITS.labelsPerRequest ||
-      upload.labelKeys.some((labelKey) => labelKey.length > PUBLIC_INPUT_LIMITS.labelKeyChars)
+      (upload.sourceSystem?.length ?? 0) > PUBLIC_INPUT_LIMITS.sourceSystemChars
     ) {
       return validationError(
         reply,
@@ -390,36 +360,18 @@ export function registerEvidenceRoutes(
       );
     }
 
+    const confidentialityLevel = parseConfidentialityLevel(upload);
+    if (confidentialityLevel === null) {
+      return validationError(
+        reply,
+        "INVALID_CONFIDENTIALITY_LEVEL",
+        "Confidentiality level must be an integer from 0 through 3."
+      );
+    }
+
     const employee = dependencies.auth.employee(request);
     const audit = dependencies.createBusinessRequestAudit(request);
     const orgId = employee.orgId;
-    const requestedLabels = await dependencies
-      .documents()
-      .findLabelsByKeys(orgId, upload.labelKeys);
-    const foundLabelKeys = new Set(requestedLabels.map((label) => label.key));
-    const missingLabelKeys = upload.labelKeys.filter((labelKey) => !foundLabelKeys.has(labelKey));
-
-    if (missingLabelKeys.length > 0) {
-      return validationError(reply, "UNKNOWN_LABEL", "One or more labels do not exist.");
-    }
-
-    const forbiddenLabelKeys = forbiddenRequestedLabels(employee, requestedLabels);
-
-    if (forbiddenLabelKeys.length > 0) {
-      return reply
-        .code(403)
-        .send(errorResponse("FORBIDDEN_LABEL", "One or more labels cannot be assigned."));
-    }
-
-    const personalLabel = await dependencies
-      .documents()
-      .findPersonalLabelForEmployee(orgId, employee.id);
-    const finalLabels = mergeLabels(requestedLabels, personalLabel);
-
-    if (finalLabels.length === 0) {
-      return validationError(reply, "UNLABELED_DOCUMENT", "Document must have at least one label.");
-    }
-
     const documentId = createDocumentId();
     const storedObject = await dependencies.storage().putObject({
       orgId,
@@ -446,8 +398,7 @@ export function registerEvidenceRoutes(
         uploaderId: employee.id,
         sourceSystem: upload.sourceSystem || null,
         sourceTime: null,
-        labelIds: finalLabels.map((label) => label.id),
-        labels: finalLabels.map((label) => label.key),
+        confidentialityLevel,
         processingJobType: "evidence_document_index",
         audit
       });
@@ -480,7 +431,10 @@ export function registerEvidenceRoutes(
         return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
       }
 
-      if (document.uploaderId !== employee.id && employee.role !== "admin") {
+      if (
+        document.uploaderId !== employee.id ||
+        employee.clearance < document.confidentialityLevel
+      ) {
         return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
       }
 

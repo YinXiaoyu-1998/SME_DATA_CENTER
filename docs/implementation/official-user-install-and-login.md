@@ -39,8 +39,7 @@ Out of scope for this design:
 
 - how an administrator initially creates or invites an Employee Account;
 - registration as a growth or self-service acquisition flow;
-- employee labels and business-data authorization rules beyond preserving the existing backend
-  authority;
+- document confidentiality rules beyond preserving the backend authority;
 - service deployment, RDS, Qdrant, OSS, ACR, or worker operations.
 
 ## Withdrawn Development Code Reality
@@ -48,15 +47,15 @@ Out of scope for this design:
 The official flow has replaced the temporary implementation described below. This table is retained
 only as historical rationale and is not a compatibility constraint or current runtime description.
 
-| Boundary             | Withdrawn historical implementation                                                                                                             | Design consequence                                                                    |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Employee Account     | Prisma `Employee` contains email, display name, role, disabled state, organization, and labels; it has no password or external-identity field   | The future password-verification owner and identity mapping must be designed          |
-| Development login    | `POST /auth/dev-login` accepts only a seeded employee email and issues a one-hour HS256 JWT                                                     | Delete the route, JWT issuance, verification, configuration, tests, and documentation |
-| API authentication   | Every protected API and MCP request requires a bearer token; the API reloads the Employee Account and rejects disabled employees                | Preserve this request-level authentication and backend authorization boundary         |
-| MCP service          | Stateless Streamable HTTP at `POST /mcp`; every initialize, discovery, and tool call is authenticated                                           | The launcher must attach a valid access token to every remote MCP request             |
-| Launcher             | A local stdio adapter configured with the service base URL; it exposes development login/logout tools and stores the JWT only in process memory | Replace rather than preserve this temporary authentication behavior                   |
-| Existing token table | Prisma `AccessToken` can store a token hash, employee, expiry, revocation, and last use, but no runtime code uses it                            | It is not evidence that the official session model has been chosen                    |
-| Public staging       | Production dev login is closed and public MCP is still blocked by the Phase 3 loopback guard                                                    | No real employee can currently sign in and use remote MCP                             |
+| Boundary             | Withdrawn historical implementation                                                                                                              | Design consequence                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Employee Account     | Prisma `Employee` contains email, display name, role, clearance, disabled state, and organization; it has no password or external-identity field | The future password-verification owner and identity mapping must be designed          |
+| Development login    | `POST /auth/dev-login` accepts only a seeded employee email and issues a one-hour HS256 JWT                                                      | Delete the route, JWT issuance, verification, configuration, tests, and documentation |
+| API authentication   | Every protected API and MCP request requires a bearer token; the API reloads the Employee Account and rejects disabled employees                 | Preserve this request-level authentication and backend authorization boundary         |
+| MCP service          | Stateless Streamable HTTP at `POST /mcp`; every initialize, discovery, and tool call is authenticated                                            | The launcher must attach a valid access token to every remote MCP request             |
+| Launcher             | A local stdio adapter configured with the service base URL; it exposes development login/logout tools and stores the JWT only in process memory  | Replace rather than preserve this temporary authentication behavior                   |
+| Existing token table | Prisma `AccessToken` can store a token hash, employee, expiry, revocation, and last use, but no runtime code uses it                             | It is not evidence that the official session model has been chosen                    |
+| Public staging       | Production dev login is closed and public MCP is still blocked by the Phase 3 loopback guard                                                     | No real employee can currently sign in and use remote MCP                             |
 
 ## Confirmed Product Decisions
 
@@ -117,8 +116,9 @@ only as historical rationale and is not a compatibility constraint or current ru
 - For the controlled beta, the Identity Verifier will be an internal module in the existing modular
   monolith rather than a paid managed identity service or a new microservice.
 - Enterprise Hub maps the verifier's stable login subject to exactly one Employee Account.
-- The Employee Account remains the sole business authorization subject and continues to own
-  organization, role, labels, disabled state, and audit attribution.
+- The Employee Account remains the sole business authorization subject and owns organization,
+  role, clearance, disabled state, and audit attribution. Role does not grant ordinary document
+  reads; same-organization clearance does.
 - Disabling an Employee Account must immediately block business access even if an identity
   token has not naturally expired. Normal offboarding also disables the Login Identity and revokes
   its sessions.
@@ -184,8 +184,8 @@ The pinned launcher 0.2.8 uses OAuth Device Authorization:
 
 An authenticated employee can ask which account is active. The zero-input
 `enterprise_hub_get_current_user` tool returns only that bearer-authenticated account's
-`displayName`, `email`, and `role`; it accepts no employee selector and exposes no internal IDs,
-labels, or credentials.
+`displayName`, `email`, `role`, and `clearance`; it accepts no employee selector and exposes no
+internal IDs or credentials.
 
 The server still accepts the older Authorization Code + PKCE contract for minimum-compatible 0.1.x
 launchers. That compatibility path is not the pinned or recommended employee flow. Future external
@@ -224,7 +224,7 @@ OIDC migration remains a mandatory design constraint.
 | 2026-07-23 | Confirmed                 | Password-setup links expire after 24 hours, are single use, are superseded by a replacement, and revoke existing durable sessions when successfully consumed                                                                                                                                   |
 | 2026-07-23 | Confirmed                 | Login Identity has an explicit stable `employeeId` binding; email is only a mutable normalized login identifier and never causes automatic Employee Account creation or binding                                                                                                                |
 | 2026-07-23 | Confirmed                 | The schema permits multiple Login Identities to bind to one Employee Account, but beta implements only one active local-password identity per employee and no general add/link/switch identity entry point                                                                                     |
-| 2026-07-23 | Confirmed                 | One developer CLI onboarding operation atomically creates the Employee Account, personal authorization label, and sole active local-password Login Identity, then issues its password-setup link                                                                                               |
+| 2026-07-23 | Superseded                | One developer CLI onboarding operation creates a personal authorization label. The confidentiality model instead requires explicit role and clearance, with no labels.                                                                                                                         |
 | 2026-07-23 | Confirmed                 | The normalized login email is globally unique, trimmed and compared case-insensitively, without provider-specific dot or plus-address rewriting; public failures never disclose identity existence                                                                                             |
 | 2026-07-23 | Confirmed                 | Password login allows five consecutive failures, then applies per-identity cooldowns of 5, 10, 20, 40, and at most 60 minutes; cooldown requests neither increment nor extend it                                                                                                               |
 | 2026-07-23 | Deferred                  | Beta has no employee-facing or admin-UI account disable/reactivate/delete lifecycle; an emergency developer CLI operation may be added, while hard-delete semantics are explicitly outside this design                                                                                         |
