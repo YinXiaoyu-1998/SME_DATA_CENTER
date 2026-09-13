@@ -15,7 +15,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
     await prisma.employee.createMany({
       data: [
         {
-          id: "confidentiality-query-clearance-0",
+          id: "cq-clearance-0",
           orgId,
           email: "clearance-0@example.invalid",
           displayName: "Clearance zero",
@@ -23,7 +23,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
           clearance: 0
         },
         {
-          id: "confidentiality-query-clearance-3",
+          id: "cq-clearance-3",
           orgId,
           email: "clearance-3@example.invalid",
           displayName: "Clearance three",
@@ -47,7 +47,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
         {
           id: "confidentiality-query-doc-0",
           orgId,
-          uploaderId: "confidentiality-query-clearance-0",
+          uploaderId: "cq-clearance-0",
           title: "Level zero",
           documentType: DocumentType.management_knowledge,
           status: DocumentStatus.active,
@@ -60,7 +60,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
         {
           id: "confidentiality-query-doc-3",
           orgId,
-          uploaderId: "confidentiality-query-clearance-3",
+          uploaderId: "cq-clearance-3",
           title: "Level three",
           documentType: DocumentType.management_knowledge,
           status: DocumentStatus.active,
