@@ -157,7 +157,9 @@ describe("manual acceptance scenario manifest", () => {
     expect(runner).toContain("Expected structured import to apply after polling");
     expect(runner).toContain("Expected invalid structured import to be rejected after polling");
     expect(runner).toContain('const LAUNCHER_VERSION = "0.3.0"');
-    expect(runner).toContain("currentUser.clearance !== 0");
+    expect(runner).toContain("isLowClearanceAcceptanceEmployee(currentUser, expectedEmails)");
+    expect(runner).toContain('field: "dish_sales_amount"');
+    expect(runner).not.toContain("dishes_024_dish_sales_amount");
     expect(runner).toContain("defaultConfidentialityLevel: 0");
     expect(runner).not.toContain("Expected structured import applied; got");
     expect(runner).not.toContain(

@@ -4,6 +4,7 @@ import {
   assertStagingRuntimeDatabaseTarget,
   createStructuredWindow,
   deleteStorageObjects,
+  isLowClearanceAcceptanceEmployee,
   pollStructuredImportStatus,
   rewriteKnownValuesFixture
 } from "./official-manual-acceptance-support.js";
@@ -25,6 +26,55 @@ describe("official manual acceptance staging database target", () => {
         "mysql://enterprise_hub_app:secret@127.0.0.1:3307/enterprise_hub"
       )
     ).toThrow("must run inside staging");
+  });
+});
+
+describe("official manual acceptance current account", () => {
+  const expectedEmails = new Set(["manual-full-flow-low-run@example.invalid"]);
+
+  it("accepts the nested current-user result for the low-clearance employee", () => {
+    expect(
+      isLowClearanceAcceptanceEmployee(
+        {
+          user: {
+            email: "manual-full-flow-low-run@example.invalid",
+            displayName: "Manual low employee",
+            role: "employee",
+            clearance: 0
+          }
+        },
+        expectedEmails
+      )
+    ).toBe(true);
+  });
+
+  it("rejects an admin or an employee with the wrong clearance", () => {
+    expect(
+      isLowClearanceAcceptanceEmployee(
+        {
+          user: {
+            email: "manual-full-flow-low-run@example.invalid",
+            displayName: "Manual low employee",
+            role: "admin",
+            clearance: 0
+          }
+        },
+        expectedEmails
+      )
+    ).toBe(false);
+    expect(
+      isLowClearanceAcceptanceEmployee(
+        {
+          user: {
+            email: "manual-full-flow-low-run@example.invalid",
+            displayName: "Manual low employee",
+            role: "employee",
+            clearance: 1
+          }
+        },
+        expectedEmails
+      )
+    ).toBe(false);
   });
 });
 

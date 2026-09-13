@@ -14,9 +14,11 @@ import {
   assertStagingRuntimeDatabaseTarget,
   createStructuredWindow,
   deleteStorageObjects,
+  isLowClearanceAcceptanceEmployee,
   pollStructuredImportStatus,
   rewriteKnownValuesFixture,
   type CleanupCounts,
+  type CurrentEnterpriseHubUserResult,
   type StructuredWindow
 } from "./official-manual-acceptance-support.js";
 import {
@@ -38,13 +40,6 @@ interface ParsedArgs {
 
 interface ToolTextResult {
   [key: string]: unknown;
-}
-
-interface CurrentUserResult extends ToolTextResult {
-  displayName: string;
-  email: string;
-  role: string;
-  clearance: number;
 }
 
 interface EvidenceUploadResult extends ToolTextResult {
@@ -183,18 +178,13 @@ async function runAcceptance(
       throw new Error("Official launcher is not authenticated. Run enterprise_hub_login first.");
     }
 
-    const currentUser = await callJson<CurrentUserResult>(
+    const currentUser = await callJson<CurrentEnterpriseHubUserResult>(
       client,
       "enterprise_hub_get_current_user",
       {}
     );
     const expectedEmails = new Set(acceptanceAccountEmails(run));
-    if (
-      !expectedEmails.has(currentUser.email) ||
-      !currentUser.displayName.trim() ||
-      currentUser.role !== "employee" ||
-      currentUser.clearance !== 0
-    ) {
+    if (!isLowClearanceAcceptanceEmployee(currentUser, expectedEmails)) {
       throw new Error("Current-user MCP result did not match the synthetic acceptance account.");
     }
 
@@ -267,7 +257,7 @@ async function runAcceptance(
         },
         aggregates: [
           { op: "count", as: "row_count" },
-          { op: "sum", field: "dishes_024_dish_sales_amount", as: "gross_sales" }
+          { op: "sum", field: "dish_sales_amount", as: "gross_sales" }
         ]
       }
     );
@@ -280,13 +270,13 @@ async function runAcceptance(
 
     const topDishes = await callJson<StructuredQueryResult>(client, "query_structured_dataset", {
       dataset: "dishes",
-      select: ["product_name", "dishes_024_dish_sales_amount"],
+      select: ["product_name", "dish_sales_amount"],
       filter: {
         field: "business_date",
         op: "between",
         value: [structuredWindow.startDate, structuredWindow.endDate]
       },
-      sort: [{ field: "dishes_024_dish_sales_amount", direction: "desc" }],
+      sort: [{ field: "dish_sales_amount", direction: "desc" }],
       page: { limit: 2 }
     });
     const topNames = topDishes.rows.map((row) => row["product_name"]);

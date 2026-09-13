@@ -42,6 +42,15 @@ export interface StructuredImportPollResult {
   };
 }
 
+export interface CurrentEnterpriseHubUserResult {
+  user: {
+    displayName: string;
+    email: string;
+    role: string;
+    clearance: number;
+  };
+}
+
 const STRUCTURED_IMPORT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 
 export async function pollStructuredImportStatus<T extends StructuredImportPollResult>(input: {
@@ -80,6 +89,19 @@ export function assertStagingRuntimeDatabaseTarget(databaseUrl: string): void {
       "Official manual controller cleanup must run inside staging against the private RDS endpoint."
     );
   }
+}
+
+export function isLowClearanceAcceptanceEmployee(
+  result: CurrentEnterpriseHubUserResult,
+  expectedEmails: ReadonlySet<string>
+): boolean {
+  const user = result.user;
+  return (
+    expectedEmails.has(user.email) &&
+    user.displayName.trim().length > 0 &&
+    user.role === "employee" &&
+    user.clearance === 0
+  );
 }
 
 export function createStructuredWindow(runId: string, attempt: number): StructuredWindow {
