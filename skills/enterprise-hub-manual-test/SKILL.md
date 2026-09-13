@@ -71,8 +71,12 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
    `manual-acceptance-admin-<runId>` `@example.invalid` emails. State `--role` and `--clearance`
    explicitly for each. Never use a real customer/user email. Keep setup links and generated
    passwords out of reports and commits.
-7. Control Chrome to open the setup link and set the generated password. This is allowed for full
-   manual acceptance; do not ask the human to type it.
+7. Batch browser password setup: after every required synthetic account has been created, generate
+   a distinct throwaway password per account, open all setup links in separate Chrome tabs, and fill
+   both password fields in every tab. State the exact number of ready tabs, then make one
+   consolidated handoff for the human to click **Set password** in each tab. Do not pause once per
+   account. Verify that every tab reports `Password saved` before beginning launcher login. This is
+   allowed for full manual acceptance; do not ask the human to type or disclose any password.
 8. Verify the installed macOS launcher without exposing credentials:
 
    ```sh

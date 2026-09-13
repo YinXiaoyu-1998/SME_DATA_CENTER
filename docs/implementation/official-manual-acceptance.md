@@ -148,8 +148,20 @@ docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
 ```
 
 The command prints exactly one password setup link. Do not store that full link in git or reports.
-For a full browser lifecycle proof, the controller opens the link in Chrome and sets an
-agent-generated throwaway password in the browser page. Do not ask the human to type it.
+
+### Batch Password Setup
+
+Create every synthetic account required for the run before opening any password page. For the
+standard confidentiality run this means three accounts; if an added acceptance slice needs more,
+create all of those accounts first as well. Generate a distinct throwaway password for each account,
+open every setup link in its own Chrome tab, and fill both password fields in every tab before asking
+the human to intervene.
+
+Then tell the human the exact number of ready tabs and make one consolidated handoff: they click
+**Set password** once in each tab. Do not pause separately after each account. After the human
+confirms completion, verify that every tab shows `Password saved` before starting any launcher login.
+The controller enters generated passwords only into the first-party browser pages; the human never
+needs to type or disclose them.
 
 Password reset uses the same browser-only setup flow:
 

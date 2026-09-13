@@ -106,6 +106,8 @@ describe("manual acceptance scenario manifest", () => {
     expect(skill).not.toContain("Act only as an employee-owned");
     expect(skill).not.toContain("test:manual:prepare");
     expect(skill).not.toContain("test:manual:serve");
+    expect(skill).toContain("Batch browser password setup");
+    expect(skill).toContain("Do not pause once per");
   });
 
   it("keeps the official staging guide aligned with the live organization and remote controller", async () => {
@@ -121,6 +123,8 @@ describe("manual acceptance scenario manifest", () => {
     expect(guide).toContain("Confidentiality And Admin Model Acceptance");
     expect(guide).toContain("manual-acceptance-admin-<run-id>@example.invalid");
     expect(guide).toContain("archive_quarantine_certificates");
+    expect(guide).toContain("Batch Password Setup");
+    expect(guide).toContain("one consolidated handoff");
     expect(guide).not.toContain("--org-id org_demo");
     expect(guide).not.toContain("staging:access-tunnel");
     expect(guide).not.toContain("dates changed to `2030-01-01`");
@@ -161,6 +165,8 @@ describe("manual acceptance scenario manifest", () => {
     expect(runner).toContain('field: "dish_sales_amount"');
     expect(runner).not.toContain("dishes_024_dish_sales_amount");
     expect(runner).toContain("defaultConfidentialityLevel: 0");
+    expect(runner).toContain("explicitConfidentialityLevel: 2");
+    expect(runner).toContain("confidentialityLevel: 2");
     expect(runner).not.toContain("Expected structured import applied; got");
     expect(runner).not.toContain(
       "Invalid structured import did not return a validation-style failure."

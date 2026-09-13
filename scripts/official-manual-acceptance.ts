@@ -188,21 +188,22 @@ async function runAcceptance(
       throw new Error("Current-user MCP result did not match the synthetic acceptance account.");
     }
 
-    const evidenceUploads = await uploadEvidenceFixtures(client, run);
-    for (const upload of evidenceUploads) {
-      await waitForEvidenceReady(client, upload.document.documentId);
-    }
+    const [defaultEvidenceUpload, explicitLevelEvidenceUpload] = await uploadEvidenceFixtures(
+      client,
+      run
+    );
+    await waitForEvidenceReady(client, defaultEvidenceUpload.document.documentId);
 
     const evidenceSearch = await callJson<EvidenceSearchResult>(
       client,
       "search_document_evidence",
       {
         query: "肉夹馍 默认 青椒",
-        filters: { documentIds: evidenceUploads.map((upload) => upload.document.documentId) },
+        filters: { documentIds: [defaultEvidenceUpload.document.documentId] },
         limit: 5
       }
     );
-    const evidenceIds = new Set(evidenceUploads.map((upload) => upload.document.documentId));
+    const evidenceIds = new Set([defaultEvidenceUpload.document.documentId]);
     if (!evidenceSearch.results.some((result) => evidenceIds.has(result.documentId))) {
       throw new Error(
         "Evidence search did not return the just-uploaded manual acceptance document."
@@ -330,7 +331,11 @@ async function runAcceptance(
       launcherVersion: LAUNCHER_VERSION,
       currentUserVerified: true,
       defaultConfidentialityLevel: 0,
-      evidenceDocuments: evidenceUploads.map((upload) => upload.document.documentId),
+      explicitConfidentialityLevel: 2,
+      evidenceDocuments: [
+        defaultEvidenceUpload.document.documentId,
+        explicitLevelEvidenceUpload.document.documentId
+      ],
       structuredDocument: structuredUpload.document.documentId,
       importBatch: structuredUpload.importBatch.importBatchId,
       structuredWindow: {
@@ -348,8 +353,8 @@ async function runAcceptance(
 async function uploadEvidenceFixtures(
   client: Client,
   run: ReturnType<typeof runConfig>
-): Promise<EvidenceUploadResult[]> {
-  return Promise.all([
+): Promise<[EvidenceUploadResult, EvidenceUploadResult]> {
+  const [defaultLevelUpload, explicitLevelUpload] = await Promise.all([
     callJson<EvidenceUploadResult>(client, "upload_evidence_document", {
       file: {
         name: "baoli-roujiamo-sop.md",
@@ -370,9 +375,12 @@ async function uploadEvidenceFixtures(
         )
       },
       title: `${run.titlePrefix} Prompt Injection Fixture`,
-      sourceSystem: run.evidenceSourceSystem
+      sourceSystem: run.evidenceSourceSystem,
+      confidentialityLevel: 2
     })
   ]);
+
+  return [defaultLevelUpload, explicitLevelUpload];
 }
 
 async function waitForEvidenceReady(client: Client, documentId: string): Promise<void> {
