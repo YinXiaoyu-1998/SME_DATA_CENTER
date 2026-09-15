@@ -32,6 +32,13 @@ from job reservation at multipart start through atomic publication.
 The four source files total 381.49 MiB. Multipart transfer took 67.33 seconds in aggregate, a
 weighted 5.67 MiB/s. Publication produced 6,283 current partition objects totaling 530.22 MiB.
 
+The four uploads required only four upload calls, but the employee tasks issued 99 status calls
+while waiting: 63 for the three business jobs and 36 for the dishes job, including one continuation
+task for each group after the initial wait window. Individual status requests generally returned in
+about 0.2 seconds, so this was not meaningful service compute load. It is meaningful Codex usage:
+the current 15-second agent-driven polling loop repeatedly wakes the model to observe an unchanged
+asynchronous job.
+
 The 191.21 MiB dishes source is the clearest large-file result: the client transferred it in 33.38
 seconds, while validation, million-row XLSX parsing, canonical CSV generation, sequential object
 upload/verification, and atomic publication took another 817.92 seconds. It published after 851.22
@@ -84,7 +91,10 @@ manifest rather than by raw row count.
 4. **Partition-object amplification is material:** three business workbooks became 5,473 objects.
    The worker currently performs one awaited PUT and one awaited HEAD per partition. Long date
    windows therefore add thousands of serialized OSS round trips even when row parsing is modest.
-5. **Memory and disk remained bounded in spot checks:** the largest observed worker RSS was about
+5. **Model-driven polling amplifies Codex usage:** 99 cheap service reads caused many agent/tool
+   cycles and status messages. Slow jobs need a launcher/server wait primitive, a background
+   completion notification, or materially less frequent polling after the first minute.
+6. **Memory and disk remained bounded in spot checks:** the largest observed worker RSS was about
    285 MiB during the 112.59 MiB business job; the dishes parse sample was about 191 MiB RSS. The
    largest observed scratch directory was about 244 MiB, with 29 GiB free on the host. These are
    samples, not instrumented peaks.
@@ -98,8 +108,9 @@ queue time during bursts.
 
 Before increasing worker concurrency on this 2 vCPU host, fix claim contention and benchmark it.
 Then add bounded per-job concurrency for partition PUT + verification (with atomic failure cleanup),
-and record parser/export/upload/publish phase timings in service metrics. Those two changes target
-the measured bottlenecks; raising model/tool-call limits would not.
+replace dense agent polling with an asynchronous wait/notification path, and record
+parser/export/upload/publish phase timings in service metrics. Those changes target the measured
+bottlenecks; raising model/tool-call limits would not.
 
 ## Cleanup Evidence
 
