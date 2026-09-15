@@ -75,6 +75,7 @@ fi
 test -f "$runtime_file"
 test -f "$compose_next"
 umask 077
+install -d -o 1000 -g 1000 -m 0750 /opt/enterprise-hub/partition-work
 
 compose() {
   docker compose --env-file "$runtime_file" -f "$compose_file" "$@"

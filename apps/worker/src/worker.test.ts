@@ -309,6 +309,65 @@ describe("processing worker", () => {
     ]);
   });
 
+  it("classifies generic partition worker failures as partition import failures", async () => {
+    const storage = await createStorage();
+    let errorCode: string | undefined;
+    const run: ClaimedProcessingRun = {
+      id: "run_partition_failure",
+      orgId: "default-org",
+      documentId: "pjob_1",
+      retryCount: 0,
+      attemptNumber: 1,
+      jobType: "structured_partition_import",
+      lockedBy: "worker-a",
+      lockedUntil: new Date("2026-07-20T00:01:00.000Z"),
+      document: null,
+      partitionImport: {
+        jobId: "pjob_1",
+        dataset: "business",
+        enterpriseKey: "maijia",
+        enterpriseName: "Maijia",
+        confidentialityLevel: 0,
+        originalFileName: "business.xlsx",
+        sourceByteSize: 1n,
+        sourceChecksumSha256: "a".repeat(64),
+        sourceStartDate: "2026-07-20",
+        sourceEndDate: "2026-07-20",
+        temporaryObjectKey: "temporary/business.xlsx"
+      }
+    };
+    const repository: ProcessingWorkerRepository = {
+      async claimNextProcessingRun() {
+        return run;
+      },
+      async completePartitionProcessing() {
+        throw new Error("unexpected completion");
+      },
+      async failProcessingRun(input) {
+        errorCode = input.errorCode;
+      }
+    };
+
+    const result = await runWorkerOnce({
+      repository,
+      storage,
+      partitionImporter: {
+        async process() {
+          throw new Error("EACCES: permission denied");
+        }
+      },
+      workerId: "worker-a",
+      now: () => new Date("2026-07-20T00:00:00.000Z")
+    });
+
+    expect(result).toEqual({
+      processed: true,
+      documentId: "pjob_1",
+      status: "retry_scheduled"
+    });
+    expect(errorCode).toBe("PARTITION_IMPORT_FAILED");
+  });
+
   it("schedules transient failures with exponential backoff and max attempts", async () => {
     const storage = await createStorage();
     const stored = await storage.putObject({
