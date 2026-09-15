@@ -20,7 +20,7 @@ export async function main(): Promise<void> {
   const partitionImporter = createPartitionImporter({
     limits: partitionImportLimitsFromRuntime(runtimeLimits),
     onTimingEvent(event) {
-      console.log(JSON.stringify(event));
+      console.error(JSON.stringify(event));
     }
   });
 
