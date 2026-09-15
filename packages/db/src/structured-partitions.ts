@@ -143,6 +143,7 @@ export interface StructuredPartitionRepository {
     errorSummary?: string;
     validationErrors?: unknown[];
   }): Promise<void>;
+  listExpiredUploads(now: Date, limit: number): Promise<ExpiredPartitionUpload[]>;
   publishSourceAtomically(input: {
     orgId: string;
     jobId: string;
@@ -170,6 +171,13 @@ export interface StructuredPartitionRepository {
   postponeGarbage(id: string, errorCode: string, availableAt: Date): Promise<void>;
   deleteTerminalJobs(before: Date, limit: number): Promise<number>;
   disconnect?(): Promise<void>;
+}
+
+export interface ExpiredPartitionUpload {
+  id: string;
+  orgId: string;
+  temporaryObjectKey: string;
+  multipartUploadId: string;
 }
 
 export interface PartitionDatasetCoverage {
@@ -340,6 +348,25 @@ export function createPrismaStructuredPartitionRepository(
           finishedAt: new Date()
         }
       });
+    },
+
+    async listExpiredUploads(now, limit) {
+      return prisma.partitionImportJob.findMany({
+        where: {
+          status: PartitionImportJobStatus.uploading,
+          expiresAt: { lte: now },
+          temporaryObjectKey: { not: null },
+          multipartUploadId: { not: null }
+        },
+        orderBy: { expiresAt: "asc" },
+        take: limit,
+        select: {
+          id: true,
+          orgId: true,
+          temporaryObjectKey: true,
+          multipartUploadId: true
+        }
+      }) as Promise<ExpiredPartitionUpload[]>;
     },
 
     async publishSourceAtomically(input) {

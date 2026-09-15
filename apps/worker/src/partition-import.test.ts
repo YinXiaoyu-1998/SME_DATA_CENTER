@@ -164,6 +164,44 @@ describe("partition importer", () => {
     });
     await expect(storage.statObject(sourceKey)).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("aborts expired multipart sessions before marking their jobs expired", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });
+    const sourceKey = "structured-import-staging/org_1/pjob_expired/source";
+    const multipart = await storage.createMultipartUpload({ key: sourceKey });
+    const abort = vi.spyOn(storage, "abortMultipartUpload");
+    const finish = vi.fn(async () => undefined);
+    const now = new Date("2026-09-15T00:00:00.000Z");
+    const importer = createPartitionImporter({
+      repository: repositoryStub({
+        listExpiredUploads: async () => [
+          {
+            id: "pjob_expired",
+            orgId: "org_1",
+            temporaryObjectKey: sourceKey,
+            multipartUploadId: multipart.uploadId
+          }
+        ],
+        finishJob: finish,
+        listDueGarbage: async () => [],
+        deleteTerminalJobs: async () => 0
+      }),
+      limits: limits(path.join(root, "work"))
+    });
+
+    await importer.maintain({ storage, now });
+
+    expect(abort).toHaveBeenCalledWith({ key: sourceKey, uploadId: multipart.uploadId });
+    expect(finish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: "org_1",
+        jobId: "pjob_expired",
+        status: "expired",
+        errorCode: "PARTITION_UPLOAD_EXPIRED"
+      })
+    );
+  });
 });
 
 function businessCsv(dates: string[]): Buffer {
@@ -245,6 +283,7 @@ function repositoryStub(
     findJobForStatus: unused,
     markJobProcessing: unused,
     finishJob: unused,
+    listExpiredUploads: unused,
     publishSourceAtomically: unused,
     listReadableManifestRows: unused,
     enqueueGarbage: async () => undefined,

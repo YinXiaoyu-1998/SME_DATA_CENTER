@@ -244,6 +244,7 @@ export function createPartitionImporter(input: {
     },
     async maintain({ storage, now = new Date() }: { storage: StorageAdapter; now?: Date }) {
       await cleanupStaleWorkDirectories(input.limits.workDirectory, now);
+      await cleanupExpiredUploads(storage, repository, now);
       const garbage = await repository.listDueGarbage(now, 100);
       for (const item of garbage) {
         try {
@@ -266,6 +267,68 @@ export function createPartitionImporter(input: {
       await repository.disconnect?.();
     }
   };
+}
+
+async function cleanupExpiredUploads(
+  storage: StorageAdapter,
+  repository: StructuredPartitionRepository,
+  now: Date
+): Promise<void> {
+  const uploads = await repository.listExpiredUploads(now, 100);
+  for (const upload of uploads) {
+    if (!storage.abortMultipartUpload) continue;
+    let cleaned = false;
+    try {
+      await storage.abortMultipartUpload({
+        key: upload.temporaryObjectKey,
+        uploadId: upload.multipartUploadId
+      });
+      cleaned = true;
+    } catch (abortError) {
+      try {
+        await storage.statObject(upload.temporaryObjectKey);
+        await storage.deleteObject(upload.temporaryObjectKey);
+        cleaned = true;
+      } catch (objectError) {
+        cleaned = isMissingMultipartUpload(abortError) && isMissingStorageObject(objectError);
+      }
+    }
+    if (cleaned) {
+      await repository.finishJob({
+        orgId: upload.orgId,
+        jobId: upload.id,
+        status: "expired",
+        errorCode: PARTITION_ERROR_CODES.uploadExpired,
+        errorSummary: "Upload session expired before completion."
+      });
+    }
+  }
+}
+
+function isMissingStorageObject(error: unknown): boolean {
+  return errorProperty(error, "code") === "ENOENT" || errorHttpStatus(error) === 404;
+}
+
+function isMissingMultipartUpload(error: unknown): boolean {
+  return (
+    ["ENOENT", "NoSuchUpload"].includes(errorProperty(error, "code")) ||
+    ["NoSuchUpload", "NotFound"].includes(errorProperty(error, "name")) ||
+    errorHttpStatus(error) === 404
+  );
+}
+
+function errorProperty(error: unknown, property: "code" | "name"): string {
+  return error && typeof error === "object" && property in error
+    ? String((error as Record<string, unknown>)[property])
+    : "";
+}
+
+function errorHttpStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object" || !("$metadata" in error)) return undefined;
+  const metadata = (error as { $metadata?: unknown }).$metadata;
+  return metadata && typeof metadata === "object" && "httpStatusCode" in metadata
+    ? Number((metadata as { httpStatusCode?: unknown }).httpStatusCode)
+    : undefined;
 }
 
 async function cleanupStaleWorkDirectories(root: string, now: Date): Promise<void> {
