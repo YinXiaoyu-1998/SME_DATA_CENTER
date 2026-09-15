@@ -2,7 +2,7 @@
 -- workbook is retained or copied into the partition catalog.
 CREATE TEMPORARY TABLE `_partition_cutover_documents` (
     `id` VARCHAR(32) NOT NULL PRIMARY KEY
-) ENGINE=MEMORY DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 INSERT INTO `_partition_cutover_documents` (`id`)
 SELECT `source_document_id`
