@@ -1,7 +1,7 @@
 # Enterprise Hub (企业资料中枢)
 
-> ADR 0026 defines the accepted target model for `business` / `dishes`; the active runtime remains
-> row-based until the linked hard-migration plan is implemented and deployed.
+> ADR 0026 defines the merged implementation for `business` / `dishes`; staging remains row-based
+> until the linked hard migration is deployed and accepted.
 
 A remote business-document service that employees use through their own AI agents. This context
 covers the language for employee authentication, supported agent forms, and session ownership.

@@ -30,7 +30,7 @@ separate acceptance gates before claiming broad desktop-agent support.
 | Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                     | deployed to staging; 0.1.x Authorization Code + PKCE remains server-compatible only                    |
 | Development auth      | old dev email/JWT login and staging JWT secret                                                             | removed from staging runtime/GitHub/local Keychain                                                     |
 | Public MCP            | unauthenticated public `/mcp`                                                                              | rejects unauthenticated requests; authenticated launcher calls succeed                                 |
-| Launcher package      | public npm package `enterprise-hub-mcp-launcher@0.3.0`                                                     | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass. |
+| Launcher package      | public npm package `enterprise-hub-mcp-launcher@0.4.0`                                                     | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass. |
 | macOS Codex client    | 0.1.x user-visible flow plus 0.3.0 native package acceptance                                               | passed at those scopes; full user-visible 0.3.0 rerun is not yet recorded                              |
 | Full macOS Codex flow | fresh synthetic account, 11 natural user-visible Codex sessions, upload/search/query/logout/reset/re-login | passed core auth/evidence lifecycle; structured-query usability observations remain                    |
 | Cleanup               | manual acceptance cleanup                                                                                  | removed run documents, import batch, Qdrant points, dish rows, identity, employee, session             |
@@ -48,7 +48,7 @@ The recommended first pilot is:
 
 - one real beta user;
 - macOS + Codex only;
-- official skill installation and `enterprise-hub-mcp-launcher@0.3.0`;
+- official skill installation and `enterprise-hub-mcp-launcher@0.4.0`;
 - browser password setup and Device Authorization login only;
 - fixture or explicitly approved non-sensitive documents;
 - one or a few simple visibility labels;

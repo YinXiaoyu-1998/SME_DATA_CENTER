@@ -20,7 +20,7 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `enterprise-hub-mcp-launcher@0.3.0`. Do not substitute another
+the exact npm package `enterprise-hub-mcp-launcher@0.4.0`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself. This pin governs launcher installation, not fetching a newer official
 copy of this skill; after a skill refresh, read the newly verified copy for its current pin.
@@ -68,10 +68,10 @@ discover them by hand.
 
 - Never hand-craft JSON-RPC (`initialize`, `ping`, `tools/list`, `tools/call`) against the
   launcher process. Use the host's MCP integration and its tool list.
-- The launcher registers a small stable set of `enterprise_hub_*` tools locally and proxies the
-  service's business tools (upload, query, import status, evidence, and more) dynamically. The
-  proxied set can change with the service; discover exact tool names from the connected host
-  instead of assuming a fixed inventory.
+- The launcher registers the complete MCP tool contracts bundled into its published package.
+  It does not safely invent contracts for service tools added later. Discover the available tools
+  from the connected host; if the server requires a tool absent from that list, update to the exact
+  launcher version approved by this skill before retrying.
 - Call `list_structured_datasets` before using any structured dataset; use `dish_catalog`,
   `delivery_ledger`, or `supplier_catalog` only when discovery advertises it and its fields.
 - In structured dataset discovery, `canonicalName` is the queryable field name. `sourceColumn` and
@@ -103,8 +103,10 @@ discover them by hand.
 
 Keep tool input within the public service contract:
 
-- upload content is at most 50 MiB after Base64 decoding; a basename-only filename is at most 255
-  characters;
+- ordinary upload content is at most 50 MiB after Base64 decoding. `business` and `dishes` are the
+  exception: path-mode multipart upload streams one original CSV/XLSX up to the current 2 GiB
+  service limit without placing file bytes in the MCP argument. A basename-only filename is at
+  most 255 characters;
 - an evidence title is at most 512 characters and `sourceSystem` is at most 255 characters;
 - structured `enterpriseName` and `idempotencyKey` are each at most 255 characters;
 - receipt IDs and quarantine-certificate `idempotencyKey` values are each at most 255 characters;
@@ -119,23 +121,24 @@ Keep tool input within the public service contract:
   values, and boolean nesting depth 3.
 
 If a tool rejects an input at one of these boundaries, report the validation error and ask the
-employee to shorten the text, reduce filters, or split the source file only when that is
-semantically allowed for a business-window dataset. Never split `dish_catalog`: keep one complete
-snapshot and ask the employee to remove unrelated sheets/columns outside the catalog schema, use a
-service-supported larger limit, or seek operator help. Never silently truncate a title, key,
+employee to shorten the text, reduce filters, or provide a corrected source. Never manually split
+`business` or `dishes`; the service validates and partitions the original file atomically. Never
+split `dish_catalog`: keep one complete snapshot and ask the employee to remove unrelated
+sheets/columns outside the catalog schema, use a service-supported larger limit, or seek operator
+help. Never silently truncate a title, key,
 query, cursor, filter value, or file.
 
-The 50 MiB contract is the service-side ceiling. Prefer `file.encoding:"path"` uploads with the
-file's absolute local path so the launcher reads the file locally and the model never emits
-payload bytes; inline `file.encoding:"base64"` uploads remain subject to host tool-argument caps
-(OpenAI Codex in practice caps a single model-emitted argument at about 1 MiB) — see Large
-Structured Uploads.
+Prefer `file.encoding:"path"` uploads with the file's absolute local path so the launcher reads the
+file locally and the model never emits payload bytes. Inline `file.encoding:"base64"` remains
+subject to the ordinary 50 MiB service ceiling and much smaller host tool-argument caps. For
+`business` and `dishes`, path mode is required for the multipart flow described below.
 
 ## Upload Completion And Status Polling
 
-Treat every text/evidence or structured-table upload response with HTTP `202` as accepted for
-background processing, not as a completed upload. Keep the returned `documentId`; for a structured
-upload also keep `importBatchId`. Poll `get_evidence_document_status` or `get_import_status` after
+Treat every text/evidence or row-query structured-table upload response with HTTP `202` as accepted
+for background processing, not as a completed upload. Keep the returned `documentId`; for a
+row-query structured upload also keep `importBatchId`. Poll `get_evidence_document_status` or
+`get_import_status` after
 **2 seconds, then 5 seconds, then 10 seconds, then every 15 seconds**, for at most **10 minutes**.
 
 - Tell the employee an upload succeeded only after its terminal success state: evidence is
@@ -152,48 +155,38 @@ upload also keep `importBatchId`. Poll `get_evidence_document_status` or `get_im
   structured idempotency key only for the exact same file bytes and metadata; use a new key only
   after the employee intentionally corrects or changes the upload.
 
-## Large Structured Uploads
+For `business` and `dishes`, keep `partitionImportJobId` and poll
+`get_partition_import_status` on the same schedule. `published` is the only success state;
+`rejected`, `failed`, `cancelled`, and `expired` are terminal non-success states. A `queued` or
+`processing` response is not complete. Exact-repeat uploads may return the existing published job;
+same-key requests with different bytes or metadata are conflicts, not retries.
 
-When an employee asks to upload a large XLSX/CSV structured table, prefer small business-safe
-chunks over one very large upload. This chunking guidance applies to business-window datasets;
-never split one `dish_catalog` snapshot into multiple uploads, because every catalog upload must
-be complete. Two limits apply, and the stricter one wins:
+## Business And Dishes Partition Uploads
 
-- **Service contract:** upload content is at most 50 MiB after decoding; keep structured files
-  below this even when the tool schema would permit more.
-- **Service performance:** treat structured files above about **5 MiB** as large even when the
-  service contract permits more; for XLSX, treat anything above about **2–3 MiB** or
-  **5,000 data rows** as large.
+`business` and `dishes` use an atomic source-to-partitions workflow. Upload the employee's original
+CSV/XLSX exactly once with `upload_structured_dataset`; do not inspect row count to decide whether
+to split, rewrite, convert, or Base64-encode it.
 
-Prefer `file.encoding:"path"` uploads with the file's absolute local path: the launcher reads the
-file directly, so the model never emits payload bytes and host tool-argument caps do not constrain
-chunk size. Use `file.encoding:"base64"` only for small inline payloads; inline base64 remains
-subject to host caps (OpenAI Codex roughly **700–750 KiB** of raw bytes per call).
-
-- Split by a real business boundary first: date window, month/week, store, or another explicit
-  non-overlapping partition that preserves row meaning. For sales/business tables, date-window
-  chunks are preferred.
-- Chunking is only for upload size and transport safety. Preserve business meaning and source
-  headers; do not use chunking as an excuse to redesign a file into a dataset-specific template.
-- Never split an XLSX by raw bytes. XLSX is a ZIP workbook; byte chunks are corrupt files. Read the
-  workbook locally and write each chunk as **CSV (UTF-8, headers preserved)** whenever the target
-  dataset accepts CSV: the service parses CSV chunks cheaply, while XLSX chunks go through a
-  heavier workbook parse.
-- If a chunk must remain XLSX, keep it small — no more than about 2–3 MiB or 5,000 data rows per
-  file — and upload serially.
-- Keep chunk windows non-overlapping and complete. Do not create overlapping `startDate`/`endDate`
-  ranges, because structured queries aggregate all `applied` rows in visible matching windows.
-- Upload chunks serially, not in parallel. After each structured upload, follow Upload Completion
-  And Status Polling before starting the next chunk.
-- Give every chunk its own stable idempotency key that names the original file and chunk window,
-  for example `maijia-business-20240701-20240715-part01-v1`. Reuse that key only for the exact
-  same chunk bytes and metadata.
-- If one chunk fails or returns `service_unavailable`, stop the sequence, report the failed
-  `importBatchId`/window if available, and ask whether to retry that chunk later. Do not continue
-  uploading later chunks after a partial failure.
-- In the final handoff, summarize the original file, each chunk filename/window, each
-  `importBatchId`, and the final status so later tasks can query the intended uploaded data
-  without guessing.
+- Use `file.encoding:"path"` with an absolute path, `dataset`, `enterpriseName`, inclusive
+  `startDate` and `endDate` in `YYYYMMDD`, and a stable `idempotencyKey`. Optionally supply
+  `confidentialityLevel`; otherwise the service uses `0`.
+- The launcher streams the file through bounded multipart upload. The source may be up to the
+  service's current 2 GiB limit; the model and MCP request never contain the file bytes or storage
+  upload URLs.
+- The service validates the complete source and publishes all daily store partitions atomically.
+  If any row or partition fails, nothing from that source replaces live data. On success, matching
+  organization + enterprise + dataset + store + date partitions replace prior content, including
+  its confidentiality level.
+- Keep `partitionImportJobId` and follow the partition status polling rules above. Do not query or
+  download from a job until its status is `published`.
+- `query_structured_dataset` is not available for these datasets and returns
+  `DATASET_REQUIRES_PARTITION_EXTRACT`. Use `describe_structured_dataset_coverage`, then call
+  `download_structured_partitions` with `dataset`, the exact coverage `enterpriseName`, inclusive
+  `startDate`/`endDate` in `YYYYMMDD`, and optional merchant IDs in `storeIds`.
+- The launcher consumes presigned links internally, verifies each CSV, and returns
+  `localDirectory`, dataset/window metadata, counts, and local file names. Never expose or request
+  presigned links. The calling analysis workflow owns the returned scratch directory and must
+  delete that exact directory in `finally`; it must not delete broader temp or report directories.
 
 ## Dish Catalog Snapshot Uploads
 
@@ -289,14 +282,14 @@ current OS user and only on the invoking agent's configuration.
 
    | Platform | Launcher directory                                                      |
    | -------- | ----------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.3.0/` |
-   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.3.0\\`           |
+   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/` |
+   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.4.0\\`           |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.3.0
+   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.4.0
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -308,12 +301,12 @@ current OS user and only on the invoking agent's configuration.
 
    ```sh
    ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.3.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.3.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.4.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
    ```
 
    The stable self-check contract is safe machine-readable JSON with this shape:
@@ -321,7 +314,7 @@ current OS user and only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.3.0",
+     "launcherVersion": "0.4.0",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -350,8 +343,8 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                                              | Arguments | Environment                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.3.0/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.3.0\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.4.0\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -376,7 +369,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `enterprise_hub_login` to obtain a new link.
 
-This flow is available in launcher 0.2.2 and later; this document pins launcher 0.3.0.
+This flow is available in launcher 0.2.2 and later; this document pins launcher 0.4.0.
 
 ## Configure The Invoking Agent
 
@@ -424,7 +417,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
   enterprise-hub -- \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.3.0/node_modules/.bin/enterprise-hub-mcp-launcher" serve
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" serve
 "$CODEX_BIN" mcp get enterprise-hub --json
 ```
 
@@ -436,7 +429,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.3.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.4.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get enterprise-hub --json
 ```
@@ -472,7 +465,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for Enterprise Hub.
 
    ```sh
    openclaw mcp add enterprise-hub \
-     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.3.0/node_modules/.bin/enterprise-hub-mcp-launcher" \
+     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" \
      --arg serve \
      --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -601,7 +594,8 @@ content, do not paste file contents into chat, and do not silently retry with an
 - `MCP_LOCAL_FILE_PERMISSION_DENIED`: the launcher cannot read the file (file permissions, macOS
   privacy protection, sandbox, or another OS access boundary).
 - `MCP_LOCAL_FILE_INVALID`: the path is relative, a directory, or not a regular file.
-- `MCP_LOCAL_FILE_TOO_LARGE`: the file exceeds the 50 MiB upload contract.
+- `MCP_LOCAL_FILE_TOO_LARGE`: the file exceeds the applicable contract (2 GiB for path-mode
+  `business`/`dishes`; 50 MiB for ordinary uploads).
 - `MCP_LOCAL_FILE_READ_FAILED`: another read error.
 
 Example employee-facing reply (Chinese):
@@ -610,10 +604,9 @@ Example employee-facing reply (Chinese):
 > 或重新拖入文件。
 
 For `MCP_LOCAL_FILE_NOT_FOUND` / `MCP_LOCAL_FILE_INVALID`, ask the employee to re-check the file
-location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, split a business-window dataset by
-a business boundary and upload chunks serially. For `dish_catalog`, never split the snapshot; ask
-the employee to remove unrelated sheets/columns outside the catalog schema, use a
-service-supported larger limit, or seek operator help.
+location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, do not split `business`, `dishes`,
+or `dish_catalog`; ask the employee for a smaller complete export, a service-supported larger
+limit, or operator help.
 
 ## Typed Recovery
 
@@ -637,12 +630,12 @@ the pinned launcher directly:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.3.0/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" logout
 ```
 
 ```powershell
 $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.3.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.4.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
 ```
 
 The stable logout contract returns only

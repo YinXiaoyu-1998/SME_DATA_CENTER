@@ -4,7 +4,7 @@
 
 本文档可以使用麦家小馆作为贴近业务的示例企业，但产品定义不应绑定到麦家小馆，也不应假设只有餐饮企业才能使用。
 
-> 资料访问模型以 [ADR 0025](../adr/0025-document-confidentiality-and-admin-operations.md) 为准。`business` / `dishes` 的目标存储与读取模型以 [ADR 0026](../adr/0026-business-dishes-current-oss-partitions.md) 为准；它已获批准但尚待实施部署，并取代本文和 ADR 0008/0009/0019 中只适用于这两个数据集的旧行表设计。本文中任何遗留的标签权限说明仅代表已废止的历史设计，不具有当前语义。
+> 资料访问模型以 [ADR 0025](../adr/0025-document-confidentiality-and-admin-operations.md) 为准。`business` / `dishes` 的存储与读取模型以 [ADR 0026](../adr/0026-business-dishes-current-oss-partitions.md) 为准；实现已合并，待 staging 硬切换验收，并取代本文和 ADR 0008/0009/0019 中只适用于这两个数据集的旧行表设计。本文中任何遗留的标签权限说明仅代表已废止的历史设计，不具有当前语义。
 
 ## Language
 
@@ -391,7 +391,7 @@ _Avoid_: 多租户 SaaS
 - 用户上传的文件名只作为原始元数据保存，不参与表格类型识别、企业归属、日期范围或任何业务逻辑判断
 - 系统内部导入批次名必须使用规范化名称：菜品数据采用 `{enterprise_name}_dishes_{start_date}_{end_date}`，营业数据采用 `{enterprise_name}_business_{start_date}_{end_date}`；`start_date` 和 `end_date` 使用 `YYYYMMDD`
 - `business` / `dishes` 来源文件只在临时 OSS upload object 中存在；校验后按规范化企业、门店和营业日产生 canonical CSV 当前分区，终态删除来源 object。其他结构化数据集继续按其现有源文件保留规则处理
-- 表格中的每一行写入对应 dataset 的 MySQL 查询表；按天检索和筛选通过 MySQL 的 `business_date` 等字段完成
+- 只有 row-query 数据集的表格行写入对应 MySQL 查询表；`business` / `dishes` 行只存在于 OSS canonical CSV 分区，本地按 `business_date` 分析
 - 其他 row-query 数据集继续用 `ImportBatch` 表达一次结构化导入尝试/结果，用 `Document` 作为源文件和权限/OSS 锚点；`business` / `dishes` 改用有限期 `PartitionImportJob` 和当前经营分区目录
 - `DishRow` / `BusinessRow` 和对应通用行查询被删除。当前经营分区直接保存当前上传声明的密级；manifest 必须先按组织和 clearance 限定可见分区，再计算 count、日期、门店元数据或预签名链接
 - 结构化导入的企业级主键必须沿用现有组织上下文 `orgId` / `Organization.id`，由 authenticated employee 的服务端权限上下文决定；调用方不能通过 metadata 任意指定或覆盖业务主键
@@ -449,7 +449,7 @@ _Avoid_: 多租户 SaaS
 - launcher 在桌面只把长期凭证存入 macOS Keychain 或 Windows Credential Manager；预期存在的安全存储被锁定、拒绝或写入失败时停止认证，真正没有安全存储的无头主机只使用内存态会话，绝不写入普通文件、配置、日志或剪贴板
 - 同一操作系统用户在同一个 Enterprise Hub 服务地址下只有一个当前账号，Codex 和其他本地 Agent 共享同一安全存储记录；beta 不提供账号列表、切换或多账号并存，凭证续取通过跨进程 single-flight 锁串行化
 - official launcher 使用固定、非秘密的 public client ID，通过 Device Authorization 端点、token 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience，Authorization Code + PKCE 仅保留为 minimum-compatible 0.1.x 服务端路径
-- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；当前 skill 固定 `enterprise-hub-mcp-launcher@0.2.4`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
+- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；当前 skill 固定 `enterprise-hub-mcp-launcher@0.4.0`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
 - Enterprise Hub skill 是安装编排说明的唯一入口：用户只需向已有该 skill 的 agent 提出自然语言安装请求，agent 按说明为当前用户安装依赖和 launcher、备份并更新自己的 MCP 配置、执行自检，再由 launcher 打开或投递第一方验证链接
 - Codex 和 OpenClaw 的 macOS/Windows 安装与使用链路是首批明确支持并验收的客户端矩阵；对 Qoder 等未命名 agent，skill 仍应提供受约束的自适应说明，允许 agent 判断自己的 MCP 配置位置和方式，在备份、最小修改、不影响其他 MCP 服务并验证成功的前提下完成安装
 - launcher 不自行升级；服务端只公布最低支持版本和推荐版本，由主仓库与独立仓库中保持同步的 Enterprise Hub skills 决定何时升级、选择哪个已批准的精确 npm 包版本，并指导 agent 完成安装和自检

@@ -21,7 +21,7 @@ The acceptance run must exercise both sides of the real product boundary:
 | ----------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, explicit role/clearance, and setup link.                                                      |
 | Password setup/reset                | Controller-controlled browser     | Agent-generated test password is entered only into Enterprise Hub HTTPS pages, never reports.                                                             |
-| Client installation                 | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.3.0` is installed and configured as a Codex stdio MCP.                                                              |
+| Client installation                 | Employee-owned agent via skill    | Pinned `enterprise-hub-mcp-launcher@0.4.0` is installed and configured as a Codex stdio MCP.                                                              |
 | Durable login                       | Launcher + system browser         | `enterprise_hub_login` completes Device Authorization and stores durable credential safely.                                                               |
 | Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                                                                    |
 | Current account identity            | Employee-owned MCP client         | A natural account question returns only the synthetic user's display name, email, role, and clearance.                                                    |
@@ -73,7 +73,7 @@ The macOS user must have:
 
 - Node.js 22+ and npm;
 - the published launcher installed at
-  `~/Library/Application Support/Enterprise Hub/launcher/versions/0.3.0/`;
+  `~/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/`;
 - Codex configured with the exact `enterprise-hub` stdio MCP entry from
   `skills/enterprise-hub-mcp/SKILL.md`;
 - SSH access to the staging host through the committed strict `known_hosts` identity.
@@ -89,7 +89,7 @@ Credential-free preflight:
 
 ```sh
 ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.3.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
 ```
 
 Expected:
@@ -314,11 +314,13 @@ For the current macOS user:
 12. Upload a structured CSV derived from
     `fixtures/manual-acceptance/structured/dishes-known-values.csv` with a unique
     `enterpriseName=ManualAcceptance_<runId>` and a dedicated business window, then poll
-    `get_import_status` to terminal `applied` before querying it.
-13. Query the structured rows: expected count `3`, gross sales sum `91`, top two dishes
-    `合成凉皮`, `合成肉夹馍`.
+    `get_partition_import_status` to terminal `published` before downloading it.
+13. Call `download_structured_partitions` for that enterprise/window, verify one authorized local
+    partition with 3 rows and the known fixture totals/product names, then delete the returned
+    launcher scratch directory. Do not use `query_structured_dataset` for `dishes`.
 14. Upload `fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv`; it must fail
-    worker validation, reach a `rejected` terminal state, and not change the successful row count.
+    worker validation, reach a `rejected` terminal state, and not change the previously published
+    partition when it is downloaded again.
 15. When the local-only delivery fixtures are available, verify the supplier catalog applies 134
     rows, the XLSX receipt applies 13 ledger rows, and its CSV peer applies 1 row. In a fresh
     employee-client task, query `delivery_ledger` without a receipt filter, follow every opaque page
@@ -362,7 +364,7 @@ npm run test:official-manual -- --run-id=20260730-macos-codex --keep-data
 The runner:
 
 - requires a current authenticated launcher session;
-- runs against the published `enterprise-hub-mcp-launcher@0.3.0` and requires the low-clearance
+- runs against the published `enterprise-hub-mcp-launcher@0.4.0` and requires the low-clearance
   employee identity (`employee`, clearance 0); it verifies default-level evidence/structured uploads
   by omitting the optional level field;
 - never reads staging database credentials from the local `.env`;
