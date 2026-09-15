@@ -107,13 +107,18 @@ export function createStagingUploadDomainCleanupAdapter(
         }
       });
       const importBatchIds = batches.map((batch) => batch.id);
-      const [partitionJobs, structuredPartitions, storageGarbage] = await Promise.all([
-        runtime.prisma.partitionImportJob.findMany({
-          select: { id: true, temporaryObjectKey: true }
-        }),
-        runtime.prisma.structuredPartition.findMany({ select: { id: true, objectKey: true } }),
-        runtime.prisma.storageGarbage.findMany({ select: { id: true, objectKey: true } })
-      ]);
+      const [partitionJobs, structuredPartitions, storageGarbage, quarantineCertificates] =
+        await Promise.all([
+          runtime.prisma.partitionImportJob.findMany({
+            select: { id: true, temporaryObjectKey: true }
+          }),
+          runtime.prisma.structuredPartition.findMany({ select: { id: true, objectKey: true } }),
+          runtime.prisma.storageGarbage.findMany({ select: { id: true, objectKey: true } }),
+          runtime.prisma.quarantineCertificate.findMany({
+            where: { sourceDocumentId: { in: documentIds } },
+            select: { id: true }
+          })
+        ]);
       const audits = await runtime.prisma.auditLog.findMany({
         where: {
           OR: [
@@ -150,6 +155,7 @@ export function createStagingUploadDomainCleanupAdapter(
         partitionImportJobIds: partitionJobs.map((row) => row.id),
         structuredPartitionIds: structuredPartitions.map((row) => row.id),
         storageGarbageIds: storageGarbage.map((row) => row.id),
+        quarantineCertificateIds: quarantineCertificates.map((row) => row.id),
         vipRowIds: batches.flatMap((batch) => batch.vipRows.map((row) => row.id)),
         dishCatalogRowIds: batches.flatMap((batch) => batch.dishCatalogRows.map((row) => row.id)),
         uploadAuditLogIds: audits.map((row) => row.id),
@@ -186,6 +192,8 @@ export function createStagingUploadDomainCleanupAdapter(
       void (await runtime.prisma.structuredPartition.deleteMany(ids(values))),
     deleteStorageGarbage: async (values) =>
       void (await runtime.prisma.storageGarbage.deleteMany(ids(values))),
+    deleteQuarantineCertificates: async (values) =>
+      void (await runtime.prisma.quarantineCertificate.deleteMany(ids(values))),
     deleteVipRows: async (values) => void (await runtime.prisma.vipRow.deleteMany(ids(values))),
     deleteDishCatalogRows: async (values) =>
       void (await runtime.prisma.dishCatalogRow.deleteMany(ids(values))),
@@ -203,6 +211,7 @@ export function createStagingUploadDomainCleanupAdapter(
         partitionImportJobs,
         structuredPartitions,
         storageGarbage,
+        quarantineCertificates,
         vipRows,
         dishCatalogRows,
         uploadAuditLogs,
@@ -217,6 +226,7 @@ export function createStagingUploadDomainCleanupAdapter(
         runtime.prisma.partitionImportJob.count(ids(plan.partitionImportJobIds)),
         runtime.prisma.structuredPartition.count(ids(plan.structuredPartitionIds)),
         runtime.prisma.storageGarbage.count(ids(plan.storageGarbageIds)),
+        runtime.prisma.quarantineCertificate.count(ids(plan.quarantineCertificateIds)),
         runtime.prisma.vipRow.count(ids(plan.vipRowIds)),
         runtime.prisma.dishCatalogRow.count(ids(plan.dishCatalogRowIds)),
         runtime.prisma.auditLog.count(ids(plan.uploadAuditLogIds)),
@@ -245,6 +255,7 @@ export function createStagingUploadDomainCleanupAdapter(
         partitionImportJobs,
         structuredPartitions,
         storageGarbage,
+        quarantineCertificates,
         vipRows,
         dishCatalogRows,
         uploadAuditLogs,

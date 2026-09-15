@@ -16,6 +16,7 @@ const inventory: StagingUploadDomainCleanupInventory = {
   structuredPartitionIds: ["dish-1"],
   partitionImportJobIds: ["business-1"],
   storageGarbageIds: ["garbage-1"],
+  quarantineCertificateIds: ["certificate-1"],
   vipRowIds: ["vip-1"],
   dishCatalogRowIds: ["catalog-1"],
   uploadAuditLogIds: ["audit-1"],
@@ -37,6 +38,7 @@ function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
     deleteStructuredPartitions: vi.fn(async () => undefined),
     deletePartitionImportJobs: vi.fn(async () => undefined),
     deleteStorageGarbage: vi.fn(async () => undefined),
+    deleteQuarantineCertificates: vi.fn(async () => undefined),
     deleteVipRows: vi.fn(async () => undefined),
     deleteDishCatalogRows: vi.fn(async () => undefined),
     deleteImportBatches: vi.fn(async () => undefined),
@@ -51,6 +53,7 @@ function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
       structuredPartitions: 0,
       partitionImportJobs: 0,
       storageGarbage: 0,
+      quarantineCertificates: 0,
       vipRows: 0,
       dishCatalogRows: 0,
       uploadAuditLogs: 0,
@@ -174,6 +177,9 @@ describe("staging upload-domain cleanup CLI", () => {
     );
     expect(adapter.deletePartitionImportJobs).toHaveBeenCalledWith(inventory.partitionImportJobIds);
     expect(adapter.deleteStorageGarbage).toHaveBeenCalledWith(inventory.storageGarbageIds);
+    expect(adapter.deleteQuarantineCertificates).toHaveBeenCalledWith(
+      inventory.quarantineCertificateIds
+    );
     expect(adapter.deleteVipRows).toHaveBeenCalledWith(inventory.vipRowIds);
     expect(adapter.deleteDishCatalogRows).toHaveBeenCalledWith(inventory.dishCatalogRowIds);
     expect(adapter.deleteImportBatches).toHaveBeenCalledWith(inventory.importBatchIds);
