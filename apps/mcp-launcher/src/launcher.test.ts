@@ -34,10 +34,9 @@ describe("official launcher bootstrap tools", () => {
       "enterprise_hub_logout",
       "enterprise_hub_auth_status"
     ]);
-    expect(registered.map(({ name }) => name)).toEqual([
-      ...LAUNCHER_BOOTSTRAP_TOOL_NAMES,
-      ...ENTERPRISE_HUB_MCP_TOOL_NAMES
-    ]);
+    expect(registered.map(({ name }) => name).sort()).toEqual(
+      [...LAUNCHER_BOOTSTRAP_TOOL_NAMES, ...ENTERPRISE_HUB_MCP_TOOL_NAMES].sort()
+    );
     for (const bootstrap of registered.slice(0, 3))
       expect(Object.keys(bootstrap.shape)).toEqual([]);
   });
@@ -175,12 +174,12 @@ describe("launcher local path upload proxy", () => {
 
   const pathInput = (filePath: string) => ({
     file: {
-      name: "dishes.csv",
+      name: "vip.csv",
       mediaType: "text/csv",
       encoding: "path",
       filePath
     },
-    dataset: "dishes",
+    dataset: "vip",
     enterpriseName: "Maijia",
     startDate: "20260701",
     endDate: "20260731",
@@ -357,7 +356,7 @@ describe("launcher local path upload proxy", () => {
     expect(forwarded?.file?.encoding).toBe("base64");
     expect(forwarded?.file?.contentBase64).toBe(bytes.toString("base64"));
     expect("filePath" in (forwarded?.file ?? {})).toBe(false);
-    expect(forwarded?.dataset).toBe("dishes");
+    expect(forwarded?.dataset).toBe("vip");
   });
 
   it("forwards base64-mode input unchanged", async () => {

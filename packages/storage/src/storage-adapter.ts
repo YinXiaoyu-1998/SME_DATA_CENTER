@@ -6,6 +6,19 @@ export interface PutObjectInput {
   contentType?: string;
 }
 
+export interface PutObjectAtKeyInput {
+  key: string;
+  body: Readable;
+  contentLength: number;
+  checksumSha256: string;
+  contentType?: string;
+}
+
+export interface MultipartUploadPart {
+  partNumber: number;
+  etag: string;
+}
+
 export interface StorageObject {
   key: string;
   size: number;
@@ -23,5 +36,25 @@ export interface StorageAdapter {
   getObjectStream(key: string): Promise<NodeJS.ReadableStream>;
   statObject(key: string): Promise<StorageObject>;
   createDownloadUrl(key: string, options?: CreateDownloadUrlOptions): Promise<string>;
+  createMultipartUpload?(input: {
+    key: string;
+    contentType?: string;
+    checksumSha256: string;
+  }): Promise<{ uploadId: string }>;
+  createUploadPartUrl?(input: {
+    key: string;
+    uploadId: string;
+    partNumber: number;
+    expiresInSeconds?: number;
+  }): Promise<string>;
+  completeMultipartUpload?(input: {
+    key: string;
+    uploadId: string;
+    parts: MultipartUploadPart[];
+  }): Promise<void>;
+  abortMultipartUpload?(input: { key: string; uploadId: string }): Promise<void>;
+  putObjectAtKey?(input: PutObjectAtKeyInput): Promise<StorageObject>;
+  downloadObjectToFile?(key: string, filePath: string): Promise<StorageObject>;
   deleteObject(key: string): Promise<void>;
 }
+import type { Readable } from "node:stream";

@@ -1,5 +1,7 @@
 # 将结构化导入建模为 ImportBatch
 
+> **部分被取代**：ADR 0026 删除 `business` / `dishes` 的 `Document` / `ImportBatch` / row-table 生命周期，改用有限期 partition import job 和 OSS 当前分区。本 ADR 继续约束其他 row-query 数据集。
+
 Phase 3 支持 CSV/XLSX 菜品数据和营业数据导入。一次上传既是源文件资料，也是对结构化查询表的一次原子数据导入。现有 `Document` 记录适合作为源文件、权限、状态和 OSS 锚点，但不足以单独表达导入窗口、行级血缘、校验结果、幂等、并发控制、重复导入策略和结构化审计边界。
 
 **Decision**: 引入 `ImportBatch` 或等价 MySQL 模型，表达一次结构化导入尝试/结果。`Document` 继续表达上传源文件；`ImportBatch` 关联 `Document`、`ProcessingRun`、结构化行表和审计日志。`DishRow` / `BusinessRow` 行必须属于唯一 `ImportBatch`，并保留 `documentId` 以便追溯。

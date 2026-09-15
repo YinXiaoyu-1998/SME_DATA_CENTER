@@ -1,16 +1,18 @@
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
 import { assertSafeObjectKey, createOriginalObjectKey } from "./object-key.js";
 import type {
   CreateDownloadUrlOptions,
   PutObjectInput,
   StorageAdapter,
-  StorageObject
+  StorageObject,
+  PutObjectAtKeyInput
 } from "./storage-adapter.js";
 
 interface LocalFileSystemStorageAdapterOptions {
@@ -92,6 +94,78 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
     return pathToFileURL(this.resolveObjectPath(key)).href;
   }
 
+  async createMultipartUpload(input: { key: string }): Promise<{ uploadId: string }> {
+    assertSafeObjectKey(input.key);
+    const uploadId = randomUUID();
+    await mkdir(this.multipartDirectory(uploadId), { recursive: true });
+    await writeFile(path.join(this.multipartDirectory(uploadId), "key"), input.key, "utf8");
+    return { uploadId };
+  }
+
+  async createUploadPartUrl(input: {
+    key: string;
+    uploadId: string;
+    partNumber: number;
+  }): Promise<string> {
+    await this.assertMultipartKey(input.uploadId, input.key);
+    return pathToFileURL(
+      path.join(this.multipartDirectory(input.uploadId), `${input.partNumber}.part`)
+    ).href;
+  }
+
+  async completeMultipartUpload(input: {
+    key: string;
+    uploadId: string;
+    parts: Array<{ partNumber: number; etag: string }>;
+  }): Promise<void> {
+    await this.assertMultipartKey(input.uploadId, input.key);
+    const target = this.resolveObjectPath(input.key);
+    await mkdir(path.dirname(target), { recursive: true });
+    const output = createWriteStream(target);
+    for (const part of [...input.parts].sort((a, b) => a.partNumber - b.partNumber)) {
+      await pipeline(
+        createReadStream(
+          path.join(this.multipartDirectory(input.uploadId), `${part.partNumber}.part`)
+        ),
+        output,
+        { end: false }
+      );
+    }
+    output.end();
+    await new Promise<void>((resolve, reject) => {
+      output.once("finish", resolve);
+      output.once("error", reject);
+    });
+    await rm(this.multipartDirectory(input.uploadId), { recursive: true, force: true });
+  }
+
+  async abortMultipartUpload(input: { key: string; uploadId: string }): Promise<void> {
+    await this.assertMultipartKey(input.uploadId, input.key);
+    await rm(this.multipartDirectory(input.uploadId), { recursive: true, force: true });
+  }
+
+  async putObjectAtKey(input: PutObjectAtKeyInput): Promise<StorageObject> {
+    assertSafeObjectKey(input.key);
+    const target = this.resolveObjectPath(input.key);
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    await mkdir(path.dirname(target), { recursive: true });
+    await pipeline(input.body, createWriteStream(temporary));
+    const actual = await stat(temporary);
+    const hash = await hashFile(temporary);
+    if (actual.size !== input.contentLength || hash !== input.checksumSha256) {
+      await rm(temporary, { force: true });
+      throw new Error("Storage object size or checksum did not match the declared value.");
+    }
+    await rename(temporary, target);
+    return { key: input.key, size: actual.size, hash, contentType: input.contentType };
+  }
+
+  async downloadObjectToFile(key: string, filePath: string): Promise<StorageObject> {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await pipeline(createReadStream(this.resolveObjectPath(key)), createWriteStream(filePath));
+    return this.statObject(key);
+  }
+
   async deleteObject(key: string): Promise<void> {
     const objectPath = this.resolveObjectPath(key);
     await Promise.all([
@@ -110,6 +184,16 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
     }
 
     return objectPath;
+  }
+
+  private multipartDirectory(uploadId: string): string {
+    if (!/^[A-Za-z0-9-]+$/.test(uploadId)) throw new Error("Invalid multipart upload ID.");
+    return path.join(this.root, ".multipart", uploadId);
+  }
+
+  private async assertMultipartKey(uploadId: string, key: string): Promise<void> {
+    const expected = await readFile(path.join(this.multipartDirectory(uploadId), "key"), "utf8");
+    if (expected !== key) throw new Error("Multipart upload key mismatch.");
   }
 }
 

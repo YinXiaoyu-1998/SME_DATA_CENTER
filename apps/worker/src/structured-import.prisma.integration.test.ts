@@ -66,7 +66,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       workerId: "worker-rollback",
       now
     });
-    await prisma.dishRow.create({
+    await prisma.vipRow.create({
       data: {
         orgId,
         sourceDocumentId: fixture.documentId,
@@ -92,7 +92,7 @@ describeIntegration("Prisma structured import worker repository", () => {
     ).rejects.toThrow();
 
     expect(
-      await prisma.dishRow.findMany({ where: { importBatchId: fixture.importBatchId } })
+      await prisma.vipRow.findMany({ where: { importBatchId: fixture.importBatchId } })
     ).toEqual([expect.objectContaining({ sourceRowNumber: 99 })]);
     await expectRepositoryState(prisma, fixture, {
       batch: ImportBatchStatus.applying,
@@ -146,7 +146,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       nextAvailableAt: now
     });
 
-    expect(await prisma.dishRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(0);
+    expect(await prisma.vipRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(0);
     await expectRepositoryState(prisma, fixture, {
       batch: ImportBatchStatus.pending,
       document: DocumentStatus.pending_processing,
@@ -464,7 +464,7 @@ describeIntegration("Prisma structured import worker repository", () => {
         nextAvailableAt: recoveredNow
       })
     ).rejects.toBeInstanceOf(ProcessingLeaseLostError);
-    expect(await prisma.dishRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(0);
+    expect(await prisma.vipRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(0);
     await expectRepositoryState(prisma, fixture, {
       batch: ImportBatchStatus.validating,
       document: DocumentStatus.processing,
@@ -482,7 +482,7 @@ describeIntegration("Prisma structured import worker repository", () => {
       batchInsertSize: 500,
       result: structuredResult()
     });
-    expect(await prisma.dishRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(1);
+    expect(await prisma.vipRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(1);
     await expectRepositoryState(prisma, fixture, {
       batch: ImportBatchStatus.applied,
       document: DocumentStatus.active,
@@ -496,7 +496,7 @@ describeIntegration("Prisma structured import worker repository", () => {
 async function createStructuredRun(
   prisma: PrismaClient,
   suffix: string,
-  dataset: ImportDataset = ImportDataset.dishes
+  dataset: ImportDataset = ImportDataset.vip
 ) {
   const documentId = `worker_prisma_doc_${suffix}`;
   const importBatchId = `worker_prisma_batch_${suffix}`;
@@ -607,8 +607,6 @@ async function expectRepositoryState(
 
 async function clearTestRecords(prisma: PrismaClient) {
   await prisma.auditLog.deleteMany({ where: { orgId } });
-  await prisma.dishRow.deleteMany({ where: { orgId } });
-  await prisma.businessRow.deleteMany({ where: { orgId } });
   await prisma.vipRow.deleteMany({ where: { orgId } });
   await prisma.dishCatalogRow.deleteMany({ where: { orgId } });
   await prisma.deliveryLedgerRow.deleteMany({ where: { orgId } });

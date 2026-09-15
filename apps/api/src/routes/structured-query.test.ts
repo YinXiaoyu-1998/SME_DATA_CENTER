@@ -21,7 +21,7 @@ function context(
   repository: StructuredQueryRepository,
   coverageRepository: StructuredCoverageRepository = {
     list: async () => ({
-      dataset: "dishes",
+      dataset: "vip",
       metadataPolicy: "window",
       sources: []
     })
@@ -46,6 +46,9 @@ function context(
       throw new Error("not used");
     },
     structuredImports: () => {
+      throw new Error("not used");
+    },
+    structuredPartitions: () => {
       throw new Error("not used");
     },
     structuredQueries: () => repository,
@@ -81,6 +84,7 @@ describe("structured query routes", () => {
       auth: createRequestAuth(dependencies),
       structuredQueries: dependencies.structuredQueries,
       structuredCoverage: dependencies.structuredCoverage,
+      structuredPartitions: dependencies.structuredPartitions,
       cursorSigningSecret: dependencies.cursorSigningSecret
     });
 
@@ -95,7 +99,7 @@ describe("structured query routes", () => {
     expect(present.statusCode).toBe(200);
     expect(present.json()).toMatchObject({
       limits: expect.any(Object),
-      datasets: expect.arrayContaining([expect.objectContaining({ dataset: "dishes" })])
+      datasets: expect.arrayContaining([expect.objectContaining({ dataset: "vip" })])
     });
     expect(present.json().datasets.every((dataset: object) => "fields" in dataset)).toBe(true);
   });
@@ -107,8 +111,8 @@ describe("structured query routes", () => {
           rows: [
             {
               business_date: "2026-07-01",
-              matched_product_name: "肉夹馍",
-              dish_sales_quantity: "12"
+              member_id: "肉夹馍",
+              member_phone: "12"
             }
           ],
           hasMore: false
@@ -121,6 +125,7 @@ describe("structured query routes", () => {
       auth: createRequestAuth(dependencies),
       structuredQueries: dependencies.structuredQueries,
       structuredCoverage: dependencies.structuredCoverage,
+      structuredPartitions: dependencies.structuredPartitions,
       cursorSigningSecret: dependencies.cursorSigningSecret
     });
 
@@ -129,9 +134,9 @@ describe("structured query routes", () => {
       url: "/v1/structured/query",
       headers: { authorization: "Bearer valid" },
       payload: {
-        dataset: "dishes",
-        select: ["business_date", "matched_product_name", "dish_sales_quantity"],
-        filter: { field: "matched_product_name", op: "contains", value: "肉夹馍" },
+        dataset: "vip",
+        select: ["business_date", "member_id", "member_phone"],
+        filter: { field: "member_id", op: "contains", value: "肉夹馍" },
         page: { limit: 1 }
       }
     });
@@ -144,12 +149,12 @@ describe("structured query routes", () => {
 
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({
-      dataset: "dishes",
+      dataset: "vip",
       rows: [
         {
           business_date: "2026-07-01",
-          matched_product_name: "肉夹馍",
-          dish_sales_quantity: "12"
+          member_id: "肉夹馍",
+          member_phone: "12"
         }
       ],
       nextCursor: null
@@ -195,16 +200,17 @@ describe("structured query routes", () => {
       auth: createRequestAuth(dependencies),
       structuredQueries: dependencies.structuredQueries,
       structuredCoverage: dependencies.structuredCoverage,
+      structuredPartitions: dependencies.structuredPartitions,
       cursorSigningSecret: dependencies.cursorSigningSecret
     });
 
     const missing = await app.inject({
       method: "GET",
-      url: "/v1/structured/datasets/dishes/coverage"
+      url: "/v1/structured/datasets/vip/coverage"
     });
     const ok = await app.inject({
       method: "GET",
-      url: "/v1/structured/datasets/dishes/coverage",
+      url: "/v1/structured/datasets/vip/coverage",
       headers: { authorization: "Bearer valid" }
     });
     const invalid = await app.inject({
@@ -216,7 +222,7 @@ describe("structured query routes", () => {
     expect(missing.statusCode).toBe(401);
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toEqual({
-      dataset: "dishes",
+      dataset: "vip",
       metadataPolicy: "window",
       sources: [
         {
@@ -246,6 +252,57 @@ describe("structured query routes", () => {
         code: PHASE3_ERROR_CODES.invalidQuery,
         requestId: expect.any(String)
       }
+    });
+  });
+
+  it("serves business/dishes coverage from authorized partition metadata", async () => {
+    const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
+    dependencies.structuredPartitions = () =>
+      ({
+        listCoverage: async (input: { orgId: string; clearance: number }) => {
+          expect(input).toMatchObject({ orgId: "default-org", clearance: 3 });
+          return {
+            dataset: "dishes" as const,
+            enterprises: [
+              {
+                enterpriseKey: "maijia",
+                enterpriseName: "Maijia",
+                startDate: new Date("2026-09-07T00:00:00.000Z"),
+                endDate: new Date("2026-09-13T00:00:00.000Z"),
+                partitionCount: 14,
+                totalRowCount: 1234n,
+                stores: [{ storeId: "001", storeName: "Store A" }]
+              }
+            ]
+          };
+        }
+      }) as never;
+    app = Fastify({ logger: false });
+    registerStructuredQueryRoutes(app, {
+      auth: createRequestAuth(dependencies),
+      structuredQueries: dependencies.structuredQueries,
+      structuredCoverage: dependencies.structuredCoverage,
+      structuredPartitions: dependencies.structuredPartitions,
+      cursorSigningSecret: dependencies.cursorSigningSecret
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/structured/datasets/dishes/coverage",
+      headers: { authorization: "Bearer valid" }
+    });
+    expect(response.json()).toEqual({
+      dataset: "dishes",
+      accessMode: "partition_extract",
+      enterprises: [
+        {
+          enterpriseName: "Maijia",
+          startDate: "2026-09-07",
+          endDate: "2026-09-13",
+          partitionCount: 14,
+          totalRowCount: 1234,
+          stores: [{ storeId: "001", storeName: "Store A" }]
+        }
+      ]
     });
   });
 });

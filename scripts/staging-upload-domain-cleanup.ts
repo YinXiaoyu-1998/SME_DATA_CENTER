@@ -21,8 +21,9 @@ export interface StagingUploadDomainCleanupAdapter {
   deleteDocumentChunks(ids: string[]): Promise<void>;
   deleteDocumentIndexes(ids: string[]): Promise<void>;
   deleteImportWindowClaims(ids: string[]): Promise<void>;
-  deleteDishRows(ids: string[]): Promise<void>;
-  deleteBusinessRows(ids: string[]): Promise<void>;
+  deletePartitionImportJobs(ids: string[]): Promise<void>;
+  deleteStructuredPartitions(ids: string[]): Promise<void>;
+  deleteStorageGarbage(ids: string[]): Promise<void>;
   deleteVipRows(ids: string[]): Promise<void>;
   deleteDishCatalogRows(ids: string[]): Promise<void>;
   deleteImportBatches(ids: string[]): Promise<void>;
@@ -69,8 +70,9 @@ export async function runStagingUploadDomainCleanup(
   await input.adapter.deleteDocumentChunks(plan.documentChunkIds);
   await input.adapter.deleteDocumentIndexes(plan.documentIndexIds);
   await input.adapter.deleteImportWindowClaims(plan.importWindowClaimIds);
-  await input.adapter.deleteDishRows(plan.dishRowIds);
-  await input.adapter.deleteBusinessRows(plan.businessRowIds);
+  await input.adapter.deleteStructuredPartitions(plan.structuredPartitionIds);
+  await input.adapter.deleteStorageGarbage(plan.storageGarbageIds);
+  await input.adapter.deletePartitionImportJobs(plan.partitionImportJobIds);
   await input.adapter.deleteVipRows(plan.vipRowIds);
   await input.adapter.deleteDishCatalogRows(plan.dishCatalogRowIds);
   await input.adapter.deleteImportBatches(plan.importBatchIds);

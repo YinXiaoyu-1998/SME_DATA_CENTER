@@ -1,5 +1,6 @@
 import {
   ENTERPRISE_HUB_MCP_TOOL_CONTRACTS,
+  errorToolResult,
   validationErrorToolResult,
   type EnterpriseHubMcpToolContract,
   type EnterpriseHubMcpToolName
@@ -11,6 +12,9 @@ import {
   type DelegateJsonApiRequest
 } from "./api-delegation.js";
 import type { McpRequestContext } from "./tool-handlers.js";
+import { launcherVersionAtLeast } from "../request-audit-context.js";
+
+const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.4.0";
 
 export const READ_ONLY_MCP_TOOL_NAMES = [
   "enterprise_hub_get_current_user",
@@ -22,7 +26,9 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "query_quarantine_certificates",
   "get_source_document_download_url",
   "get_evidence_document_status",
-  "get_import_status"
+  "get_import_status",
+  "get_partition_import_status",
+  "download_structured_partitions"
 ] as const satisfies readonly EnterpriseHubMcpToolName[];
 
 type ReadOnlyMcpToolName = (typeof READ_ONLY_MCP_TOOL_NAMES)[number];
@@ -40,6 +46,20 @@ export function createReadOnlyMcpToolHandlers(
     READ_ONLY_MCP_TOOL_NAMES.map((toolName) => [
       toolName,
       async (input: unknown, mcpContext: McpRequestContext) => {
+        if (
+          ["get_partition_import_status", "download_structured_partitions"].includes(toolName) &&
+          !launcherVersionAtLeast(
+            mcpContext.audit.launcherVersion,
+            PARTITION_TRANSFER_LAUNCHER_VERSION
+          )
+        ) {
+          return errorToolResult(
+            "LAUNCHER_UPGRADE_REQUIRED",
+            "Update the Enterprise Hub launcher before using partition datasets.",
+            undefined,
+            { requestId: mcpContext.audit.requestId }
+          );
+        }
         const parsed = READ_ONLY_TOOL_CONTRACTS[toolName].inputSchema.safeParse(input);
 
         if (!parsed.success) {
@@ -136,7 +156,28 @@ function routeForReadOnlyTool(
         method: "GET",
         path: `/v1/structured/imports/${encodeURIComponent(String(input["importBatchId"]))}`
       };
+    case "get_partition_import_status":
+      return {
+        method: "GET",
+        path: `/v1/structured/partition-imports/${encodeURIComponent(String(input["partitionImportJobId"]))}`
+      };
+    case "download_structured_partitions":
+      return {
+        method: "POST",
+        path: "/v1/structured/partition-manifests",
+        body: {
+          dataset: input["dataset"],
+          enterpriseName: input["enterpriseName"],
+          startDate: compactDateToIso(String(input["startDate"])),
+          endDate: compactDateToIso(String(input["endDate"])),
+          storeIds: input["storeIds"]
+        }
+      };
   }
+}
+
+function compactDateToIso(value: string): string {
+  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
 }
 
 function currentUserFromMe(value: unknown): unknown {

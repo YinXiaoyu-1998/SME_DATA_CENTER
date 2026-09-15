@@ -19,12 +19,6 @@ const prisma = vi.hoisted(() => ({
     create: vi.fn(),
     update: vi.fn()
   },
-  dishRow: {
-    deleteMany: vi.fn()
-  },
-  businessRow: {
-    deleteMany: vi.fn()
-  },
   vipRow: {
     deleteMany: vi.fn()
   },
@@ -78,7 +72,7 @@ const audit = {
 function importBatchRecord(
   status = "pending",
   processingRuns: Array<{ id: string; status: string }> = [],
-  dataset = "dishes"
+  dataset = "vip"
 ) {
   return {
     id: "imp_1",
@@ -113,7 +107,7 @@ function reservationInput(
     >[0]
   > = {}
 ) {
-  const dataset = overrides.dataset ?? "dishes";
+  const dataset = overrides.dataset ?? "vip";
 
   return {
     orgId: "org_1",
@@ -292,8 +286,6 @@ describe("Prisma structured import audit provenance", () => {
     prisma.importBatch.updateMany.mockResolvedValue({ count: 1 });
     prisma.importBatch.update.mockResolvedValue(importBatchRecord("applied"));
     prisma.document.update.mockResolvedValue({});
-    prisma.dishRow.deleteMany.mockResolvedValue({ count: 0 });
-    prisma.businessRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.vipRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.dishCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.deliveryLedgerRow.deleteMany.mockResolvedValue({ count: 0 });
@@ -313,7 +305,7 @@ describe("Prisma structured import audit provenance", () => {
       orgId: "org_1",
       actorEmployeeId: "emp_1",
       documentId: "doc_1",
-      dataset: "dishes",
+      dataset: "vip",
       fileType: "csv",
       startDate: "20260701",
       endDate: "20260705",
@@ -344,7 +336,7 @@ describe("Prisma structured import audit provenance", () => {
       })
     );
     expect(prisma.auditLog.create.mock.calls[0]?.[0].data.metadata).toEqual({
-      dataset: "dishes",
+      dataset: "vip",
       startDate: "20260701",
       endDate: "20260705",
       rowCount: 1,
@@ -385,7 +377,7 @@ describe("Prisma structured import audit provenance", () => {
       })
     );
     expect(prisma.auditLog.create.mock.calls[0]?.[0].data.metadata).toEqual({
-      dataset: "dishes",
+      dataset: "vip",
       startDate: "20260701",
       endDate: "20260705",
       appliedRowCount: 1,
@@ -588,7 +580,7 @@ describe("Prisma structured import audit provenance", () => {
         orgId: "org_1",
         actorEmployeeId: "emp_2",
         documentId: "doc_2",
-        dataset: "dishes",
+        dataset: "vip",
         fileType: "csv",
         startDate: "20260701",
         endDate: "20260705",

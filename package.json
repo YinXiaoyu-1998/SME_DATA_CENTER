@@ -23,6 +23,7 @@
     "generate:xlsx-fixtures": "tsx scripts/generate-structured-xlsx-fixtures.ts",
     "generate:rejected-fixtures": "tsx scripts/generate-structured-rejected-upload-fixtures.ts",
     "benchmark:xlsx-parse": "tsx scripts/benchmark-xlsx-parse.ts",
+    "profile:partitions": "tsx scripts/profile-partition-source.ts",
     "test:manual:prepare": "tsx scripts/manual-test-harness.ts prepare",
     "test:manual:serve": "tsx scripts/manual-test-harness.ts serve",
     "test:manual:snapshot": "tsx scripts/manual-test-harness.ts snapshot",
@@ -69,6 +70,7 @@
     "dotenv": "^17.4.2"
   },
   "overrides": {
+    "hono": "4.13.5",
     "prisma": {
       "mysql2": "3.23.1"
     },

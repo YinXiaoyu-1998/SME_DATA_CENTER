@@ -168,13 +168,30 @@ describe("structured imports", () => {
     expect(structuredImportRepository.rows).toHaveLength(0);
   });
 
+  it.each(["business", "dishes"] as const)(
+    "requires the partition upload protocol for %s",
+    async (dataset) => {
+      const { app, documentRepository, storagePutCalls } = await buildStructuredImportTestServer();
+      const response = await postStructuredImport(app, {
+        dataset,
+        body: Buffer.from(validStructuredCsv(dataset), "utf8")
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        error: { code: "PARTITION_UPLOAD_SESSION_REQUIRED" }
+      });
+      expect(storagePutCalls()).toBe(0);
+      expect(documentRepository.documents).toHaveLength(0);
+    }
+  );
+
   it("queues valid CSV imports with canonical storage names", async () => {
     const { app, documentRepository, structuredImportRepository } =
       await buildStructuredImportTestServer();
 
     const response = await postStructuredImport(app, {
       enterpriseName: "保利店",
-      dataset: "dishes",
+      dataset: "vip",
       idempotencyKey: "csv-success"
     });
 
@@ -184,10 +201,10 @@ describe("structured imports", () => {
         documentKind: "structured",
         fileType: "csv",
         status: "pending_processing",
-        originalFileName: "original-dishes.csv"
+        originalFileName: "original-vip.csv"
       },
       importBatch: {
-        dataset: "dishes",
+        dataset: "vip",
         status: "pending",
         startDate: "20260701",
         endDate: "20260705",
@@ -196,17 +213,17 @@ describe("structured imports", () => {
       }
     });
     expect(response.json().document.storageObjectKey).toContain(
-      "u4fdd_u5229_u5e97_dishes_20260701_20260705.csv"
+      "u4fdd_u5229_u5e97_vip_20260701_20260705.csv"
     );
     expect(documentRepository.documents[0]).toMatchObject({
       status: "pending_processing",
       documentType: "structured_dataset",
-      originalFileName: "original-dishes.csv",
+      originalFileName: "original-vip.csv",
       sourceMetadata: expect.objectContaining({
-        dataset: "dishes"
+        dataset: "vip"
       })
     });
-    expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
+    expect(structuredImportRepository.queryableRowCount("vip")).toBe(0);
     expect(documentRepository.auditLogs).toEqual([
       expect.objectContaining({
         action: "structured_import.started",
@@ -218,7 +235,7 @@ describe("structured imports", () => {
         clientSource: "http_api",
         launcherVersion: null,
         metadata: {
-          dataset: "dishes",
+          dataset: "vip",
           startDate: "20260701",
           endDate: "20260705",
           rowCount: 0,
@@ -431,7 +448,7 @@ describe("structured imports", () => {
     },
     {
       name: "window dataset with snapshotDate",
-      input: { dataset: "dishes" as const, snapshotDate: "20260819" }
+      input: { dataset: "vip" as const, snapshotDate: "20260819" }
     },
     {
       name: "delivery dataset with startDate",
@@ -528,12 +545,12 @@ describe("structured imports", () => {
 
     const response = await postStructuredImport(app, {
       enterpriseName: "麦家",
-      dataset: "dishes",
+      dataset: "vip",
       idempotencyKey: "xlsx-preface-success",
       fileName: "麦家菜品记录.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       body: await structuredWorkbook({
-        dataset: "dishes",
+        dataset: "vip",
         prefaceRows: [["菜品主题数据"], ["统计时间：2026-07-01 至 2026-07-05"]]
       })
     });
@@ -541,7 +558,7 @@ describe("structured imports", () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toMatchObject({
       importBatch: {
-        dataset: "dishes",
+        dataset: "vip",
         status: "pending",
         appliedRowCount: 0,
         sourceSheetSummary: []
@@ -551,28 +568,28 @@ describe("structured imports", () => {
 
   it("defers structured summary parsing until worker processing", async () => {
     const { app, structuredImportRepository } = await buildStructuredImportTestServer();
-    const registry = getStructuredRegistry("business");
+    const registry = getStructuredRegistry("vip");
     const footer = ["合计", ...registry.fields.slice(1).map(() => "--")].join(",");
 
     const response = await postStructuredImport(app, {
       enterpriseName: "麦家",
-      dataset: "business",
+      dataset: "vip",
       idempotencyKey: "csv-summary-footer-success",
       fileName: "business.csv",
       contentType: "text/csv",
-      body: Buffer.from(`${validStructuredCsv("business")}${footer}\n`, "utf8")
+      body: Buffer.from(`${validStructuredCsv("vip")}${footer}\n`, "utf8")
     });
 
     expect(response.statusCode).toBe(202);
     expect(response.json()).toMatchObject({
       importBatch: {
-        dataset: "business",
+        dataset: "vip",
         status: "pending",
         appliedRowCount: 0,
         totalRowCount: 0
       }
     });
-    expect(structuredImportRepository.queryableRowCount("business")).toBe(0);
+    expect(structuredImportRepository.queryableRowCount("vip")).toBe(0);
   });
 
   it("handles import idempotency and active/in-progress window conflicts", async () => {
@@ -587,21 +604,21 @@ describe("structured imports", () => {
     });
     const conflictResponse = await postStructuredImport(app, {
       idempotencyKey: "stable-key",
-      body: Buffer.from(validStructuredCsv("dishes", { business_date: "2026-07-03" }), "utf8")
+      body: Buffer.from(validStructuredCsv("vip", { business_date: "2026-07-03" }), "utf8")
     });
     const activeWindowResponse = await postStructuredImport(app, {
       idempotencyKey: "new-key-same-window"
     });
 
     structuredImportRepository.markWindowInProgress({
-      dataset: "business",
+      dataset: "vip",
       startDate: "20260701",
       endDate: "20260705"
     });
     const inProgressWindowResponse = await postStructuredImport(app, {
-      dataset: "business",
+      dataset: "vip",
       idempotencyKey: "business-window",
-      body: Buffer.from(validStructuredCsv("business"), "utf8")
+      body: Buffer.from(validStructuredCsv("vip"), "utf8")
     });
 
     expect(firstResponse.statusCode).toBe(202);
@@ -730,7 +747,7 @@ describe("structured imports", () => {
       endDate: "20260710",
       fileName: "hidden.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: await structuredWorkbook({ dataset: "dishes", includeHiddenSheet: true })
+      body: await structuredWorkbook({ dataset: "vip", includeHiddenSheet: true })
     });
     const explanationSheetResponse = await postStructuredImport(app, {
       idempotencyKey: "explanation-sheet",
@@ -738,7 +755,7 @@ describe("structured imports", () => {
       endDate: "20260715",
       fileName: "explanation.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      body: await structuredWorkbook({ dataset: "dishes", includeExplanationSheet: true })
+      body: await structuredWorkbook({ dataset: "vip", includeExplanationSheet: true })
     });
 
     for (const response of [invalidCsvResponse, hiddenSheetResponse, explanationSheetResponse]) {
@@ -748,7 +765,7 @@ describe("structured imports", () => {
         importBatch: { status: "pending", validationErrors: [], totalRowCount: 0 }
       });
     }
-    expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
+    expect(structuredImportRepository.queryableRowCount("vip")).toBe(0);
   });
 
   it("keeps costly row and workbook limits out of the API acceptance path", async () => {
@@ -759,7 +776,7 @@ describe("structured imports", () => {
           MAX_STRUCTURED_CELL_CHARS: "100"
         } as NodeJS.ProcessEnv
       });
-    const validCsvLines = validStructuredCsv("dishes").trim().split("\n");
+    const validCsvLines = validStructuredCsv("vip").trim().split("\n");
     const overLimitCsv = Buffer.from(
       `${validCsvLines[0]}\n${validCsvLines[1]}\n${validCsvLines[1]}\n`,
       "utf8"
@@ -780,7 +797,7 @@ describe("structured imports", () => {
         idempotencyKey: "atomic-long-cell-csv",
         startDate: "20260711",
         endDate: "20260715",
-        body: Buffer.from(validStructuredCsv("dishes", { product_name: "x".repeat(101) }), "utf8")
+        body: Buffer.from(validStructuredCsv("vip", { product_name: "x".repeat(101) }), "utf8")
       }),
       postStructuredImport(app, {
         idempotencyKey: "atomic-malformed-xlsx",
@@ -796,7 +813,7 @@ describe("structured imports", () => {
         endDate: "20260725",
         fileName: "over-limit.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        body: await structuredWorkbook({ dataset: "dishes", rowCount: 2 })
+        body: await structuredWorkbook({ dataset: "vip", rowCount: 2 })
       }),
       postStructuredImport(app, {
         idempotencyKey: "atomic-unevaluated-formula-xlsx",
@@ -805,7 +822,7 @@ describe("structured imports", () => {
         fileName: "unevaluated-formula.xlsx",
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         body: await structuredWorkbook({
-          dataset: "dishes",
+          dataset: "vip",
           cellOverrides: { product_name: { formula: "1+1" } }
         })
       })
@@ -856,8 +873,8 @@ describe("structured imports", () => {
     const replayResponse = await postStructuredImport(app, { idempotencyKey: "archive-rows" });
 
     expect(archivedDocument?.status).toBe("archived");
-    expect(structuredImportRepository.storedRowCount("dishes")).toBe(0);
-    expect(structuredImportRepository.queryableRowCount("dishes")).toBe(0);
+    expect(structuredImportRepository.storedRowCount("vip")).toBe(0);
+    expect(structuredImportRepository.queryableRowCount("vip")).toBe(0);
     expect(statusResponse.json()).toMatchObject({
       document: { documentId, status: "archived" },
       processing: { processingRunId: expect.any(String), status: "queued" },
@@ -954,8 +971,10 @@ describe("structured imports", () => {
       app,
       {
         idempotencyKey: "status-all-staff",
-        dataset: "business",
-        body: Buffer.from(validStructuredCsv("business"), "utf8"),
+        dataset: "vip",
+        startDate: "20260706",
+        endDate: "20260710",
+        body: Buffer.from(validStructuredCsv("vip"), "utf8"),
         confidentialityLevel: 0
       },
       adminEmployee

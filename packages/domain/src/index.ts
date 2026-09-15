@@ -107,6 +107,19 @@ export {
   type StructuredFieldType
 } from "./structured-registry.js";
 export {
+  PARTITION_DATASETS,
+  PARTITION_ERROR_CODES,
+  PartitionContractError,
+  isPartitionDataset,
+  normalizeEnterpriseIdentity,
+  partitionStoreIdentity,
+  type PartitionDatasetName,
+  type PartitionErrorCode,
+  type PartitionManifest,
+  type PartitionManifestEntry,
+  type PartitionManifestRequest
+} from "./structured-partitions.js";
+export {
   STRUCTURED_QUERY_LIMITS,
   StructuredQueryValidationError,
   compileStructuredQuery,

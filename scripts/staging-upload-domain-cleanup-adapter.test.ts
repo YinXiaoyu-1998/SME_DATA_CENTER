@@ -31,8 +31,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
           {
             id: "batch-1",
             windowClaim: { id: "claim-1" },
-            dishRows: [{ id: "dish-1" }],
-            businessRows: [{ id: "business-1" }],
+            structuredPartitions: [{ id: "dish-1" }],
+            partitionImportJobs: [{ id: "business-1" }],
             vipRows: [{ id: "vip-1" }],
             dishCatalogRows: [{ id: "catalog-1" }]
           }
@@ -56,8 +56,21 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         count: vi.fn(async () => 0)
       },
       importWindowClaim: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
-      dishRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
-      businessRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
+      partitionImportJob: {
+        findMany: vi.fn(async () => []),
+        deleteMany: vi.fn(async () => ({})),
+        count: vi.fn(async () => 0)
+      },
+      structuredPartition: {
+        findMany: vi.fn(async () => []),
+        deleteMany: vi.fn(async () => ({})),
+        count: vi.fn(async () => 0)
+      },
+      storageGarbage: {
+        findMany: vi.fn(async () => []),
+        deleteMany: vi.fn(async () => ({})),
+        count: vi.fn(async () => 0)
+      },
       vipRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
       dishCatalogRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) }
     } as unknown as PrismaClient;
@@ -124,8 +137,9 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       documentIndex: emptyCount,
       importBatch: emptyCount,
       importWindowClaim: emptyCount,
-      dishRow: emptyCount,
-      businessRow: emptyCount,
+      partitionImportJob: emptyCount,
+      structuredPartition: emptyCount,
+      storageGarbage: emptyCount,
       vipRow: emptyCount,
       dishCatalogRow: emptyCount,
       auditLog: emptyCount
@@ -150,8 +164,9 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         documentIndexIds: [],
         importBatchIds: [],
         importWindowClaimIds: [],
-        dishRowIds: [],
-        businessRowIds: [],
+        structuredPartitionIds: [],
+        partitionImportJobIds: [],
+        storageGarbageIds: [],
         vipRowIds: [],
         dishCatalogRowIds: [],
         uploadAuditLogIds: [],

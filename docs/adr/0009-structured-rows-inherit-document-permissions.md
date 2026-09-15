@@ -1,5 +1,7 @@
 # 结构化行继承源资料权限
 
+> **部分被取代**：ADR 0026 删除 `business` / `dishes` 结构化行；这两个数据集的当前 OSS 分区直接携带最近成功上传声明的密级，并在 manifest 生成前按组织和 clearance 授权。本 ADR 继续约束其他 row-query 数据集。
+
 Phase 3 会把 CSV/XLSX 菜品数据和营业数据写入 MySQL 结构化行表。虽然这些行可以通过结构化 API 查询，但它们来自某个上传源文件，不能因为被规范化入表就绕过原资料的可见性规则。
 
 **Decision**: 结构化行查询继承源 `Document` 的权限。调用方只有在有权访问产生该 `ImportBatch` 的源 `Document` 时，才能查询该批次的结构化行。`orgId` 和 dataset 只是组织和数据集范围，不是充分授权条件。后端必须先把查询限制到调用方可见的 source document/import batch，再执行过滤、排序、分页、分组和聚合。

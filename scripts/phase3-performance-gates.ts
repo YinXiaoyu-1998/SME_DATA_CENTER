@@ -185,16 +185,13 @@ async function compileStructuredQueries() {
       },
       cursorSecret: "perf-cursor-secret",
       query: {
-        dataset: index % 2 === 0 ? "dishes" : "business",
-        select:
-          index % 2 === 0
-            ? ["business_date", "matched_product_name", "dish_sales_quantity"]
-            : ["business_date", "store_name", "gross_sales_amount"],
+        dataset: "vip",
+        select: ["business_date", "member_id", "recharge_consumption_amount_total"],
         filter: {
           and: [
             { field: "business_date", op: "between", value: ["2026-07-01", "2026-07-31"] },
             {
-              field: index % 2 === 0 ? "dish_sales_quantity" : "gross_sales_amount",
+              field: "recharge_consumption_amount_total",
               op: "gte",
               value: 1
             }
@@ -203,7 +200,7 @@ async function compileStructuredQueries() {
         sort: [
           { field: "business_date", direction: "asc" },
           {
-            field: index % 2 === 0 ? "dish_sales_quantity" : "gross_sales_amount",
+            field: "recharge_consumption_amount_total",
             direction: "desc"
           }
         ],

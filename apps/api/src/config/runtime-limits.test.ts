@@ -13,7 +13,12 @@ describe("API runtime limits", () => {
       maxXlsxZipEntries: 10_000,
       maxXlsxCompressionRatio: 100,
       structuredImportBatchInsertSize: 500,
-      structuredImportTransactionTimeoutMs: 120_000
+      structuredImportTransactionTimeoutMs: 120_000,
+      partitionImportMaxSourceBytes: 2_147_483_648,
+      partitionUploadPartBytes: 16_777_216,
+      partitionUploadSessionTtlSeconds: 86_400,
+      partitionManifestMaxPartitions: 10_000,
+      partitionManifestUrlTtlSeconds: 900
     });
   });
 
@@ -29,7 +34,12 @@ describe("API runtime limits", () => {
         MAX_XLSX_ZIP_ENTRIES: "6",
         MAX_XLSX_COMPRESSION_RATIO: "7",
         STRUCTURED_IMPORT_BATCH_INSERT_SIZE: "8",
-        STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS: "9"
+        STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS: "9",
+        PARTITION_IMPORT_MAX_SOURCE_BYTES: "10",
+        PARTITION_UPLOAD_PART_BYTES: "5242880",
+        PARTITION_UPLOAD_SESSION_TTL_SECONDS: "11",
+        PARTITION_MANIFEST_MAX_PARTITIONS: "12",
+        PARTITION_MANIFEST_URL_TTL_SECONDS: "13"
       })
     ).toEqual({
       maxUploadBytes: 1,
@@ -41,7 +51,12 @@ describe("API runtime limits", () => {
       maxXlsxZipEntries: 6,
       maxXlsxCompressionRatio: 7,
       structuredImportBatchInsertSize: 8,
-      structuredImportTransactionTimeoutMs: 9
+      structuredImportTransactionTimeoutMs: 9,
+      partitionImportMaxSourceBytes: 10,
+      partitionUploadPartBytes: 5_242_880,
+      partitionUploadSessionTtlSeconds: 11,
+      partitionManifestMaxPartitions: 12,
+      partitionManifestUrlTtlSeconds: 13
     });
   });
 

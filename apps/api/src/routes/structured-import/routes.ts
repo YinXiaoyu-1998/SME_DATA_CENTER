@@ -209,6 +209,16 @@ export function registerStructuredImportRoutes(
 
     const { dataset, fileType } = metadataValidation;
     const registry = getStructuredRegistry(dataset);
+    if (registry.accessMode === "partition_extract") {
+      return reply
+        .code(409)
+        .send(
+          errorResponse(
+            "PARTITION_UPLOAD_SESSION_REQUIRED",
+            "business and dishes must use the partition upload session."
+          )
+        );
+    }
     let { startDate, endDate } = metadataValidation;
     const snapshotDate =
       registry.metadataPolicy === "snapshot" ? metadataValidation.snapshotDate : undefined;

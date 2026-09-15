@@ -11,6 +11,14 @@ export interface WorkerRuntimeLimits {
   workerMaxAttempts: number;
   workerRetryBaseMs: number;
   workerRetryMaxMs: number;
+  partitionImportMaxSourceBytes: number;
+  partitionImportMaxRows: number;
+  partitionImportMaxPartitions: number;
+  partitionImportMaxCanonicalBytes: number;
+  partitionImportWorkDirectory: string;
+  partitionImportMinFreeBytes: number;
+  partitionImportMaxOpenFiles: number;
+  partitionImportJobRetentionDays: number;
 }
 
 export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLimits {
@@ -49,7 +57,34 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
     }),
     workerRetryMaxMs: parsePositiveSafeInteger(env, "WORKER_RETRY_MAX_MS", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.workerRetryMaxMs
-    })
+    }),
+    partitionImportMaxSourceBytes: parsePositiveSafeInteger(
+      env,
+      "PARTITION_IMPORT_MAX_SOURCE_BYTES",
+      { defaultValue: 2_147_483_648 }
+    ),
+    partitionImportMaxRows: parsePositiveSafeInteger(env, "PARTITION_IMPORT_MAX_ROWS", {
+      defaultValue: 5_000_000
+    }),
+    partitionImportMaxPartitions: parsePositiveSafeInteger(env, "PARTITION_IMPORT_MAX_PARTITIONS", {
+      defaultValue: 10_000
+    }),
+    partitionImportMaxCanonicalBytes: parsePositiveSafeInteger(
+      env,
+      "PARTITION_IMPORT_MAX_CANONICAL_BYTES",
+      { defaultValue: 8_589_934_592 }
+    ),
+    partitionImportWorkDirectory:
+      env["PARTITION_IMPORT_WORK_DIR"]?.trim() || "/var/lib/enterprise-hub/partition-work",
+    partitionImportMinFreeBytes: parsePositiveSafeInteger(env, "PARTITION_IMPORT_MIN_FREE_BYTES", {
+      defaultValue: 12_884_901_888
+    }),
+    partitionImportMaxOpenFiles: 32,
+    partitionImportJobRetentionDays: parsePositiveSafeInteger(
+      env,
+      "PARTITION_IMPORT_JOB_RETENTION_DAYS",
+      { defaultValue: 30 }
+    )
   };
 
   if (limits.workerRetryBaseMs > limits.workerRetryMaxMs) {

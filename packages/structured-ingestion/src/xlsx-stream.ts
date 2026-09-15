@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- yauzl has no bundled types. */
 import sax from "sax";
 import { createRequire } from "node:module";
+import { PassThrough } from "node:stream";
 
 const require = createRequire(import.meta.url);
 const yauzl: any = require("yauzl");
@@ -127,7 +128,7 @@ function zipErrorFor(error: Error): Error {
  * for every streamed entry.
  */
 function readWantedZipEntries(
-  content: Buffer,
+  source: Buffer | string,
   limits: XlsxReadLimits,
   wanted: Set<string>,
   streamHandlers?: Map<string, (stream: any) => Promise<void>>
@@ -176,6 +177,7 @@ function readWantedZipEntries(
             return;
           }
           const chunks: Buffer[] = [];
+          const handlerStream = handler ? new PassThrough() : undefined;
           let entryActual = 0;
           let entrySettled = false;
           const failEntry = (cause: unknown) => {
@@ -216,78 +218,87 @@ function readWantedZipEntries(
             if (!handler) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
           });
           stream.once("error", (streamFailure: Error) => failEntry(zipErrorFor(streamFailure)));
+          handlerStream?.once("error", (streamFailure: Error) =>
+            failEntry(zipErrorFor(streamFailure))
+          );
           stream.once("end", () => {
             if (entrySettled) return;
-            entrySettled = true;
             if (entryActual !== entry.uncompressedSize) {
-              rejectStream(validation("XLSX ZIP entry size mismatch."));
+              failEntry(validation("XLSX ZIP entry size mismatch."));
               return;
             }
-            if (!handler) collected.set(name, Buffer.concat(chunks));
-            if (!handler) resolveStream();
+            if (!handler) {
+              entrySettled = true;
+              collected.set(name, Buffer.concat(chunks));
+              resolveStream();
+            }
           });
           if (handler) {
-            handler(stream).then(
-              () => resolveStream(),
+            handler(handlerStream!).then(
+              () => {
+                if (entrySettled) return;
+                entrySettled = true;
+                resolveStream();
+              },
               (cause: unknown) => failEntry(cause)
             );
+            stream.pipe(handlerStream!);
           }
         });
       });
     };
 
-    yauzl.fromBuffer(
-      content,
-      { lazyEntries: true, validateEntrySizes: false },
-      (error: Error | null, archive: any) => {
-        if (error || !archive) {
-          fail(error ? zipErrorFor(error) : validation("Malformed XLSX ZIP archive."));
-          return;
-        }
-        zip = archive;
-        zip.on("error", (zipError: Error) => fail(zipErrorFor(zipError)));
-        zip.on("entry", (entry: any) => {
-          void (async () => {
-            try {
-              count++;
-              declaredTotal += entry.uncompressedSize;
-              const name = String(entry.fileName);
-              if (
-                count > limits.maxXlsxZipEntries ||
-                declaredTotal > limits.maxXlsxUncompressedBytes ||
-                entry.uncompressedSize > limits.maxXlsxUncompressedBytes
-              )
-                throw validation("XLSX ZIP resource limit exceeded.");
-              if (isUnsafeZipPath(name)) throw validation("Unsafe XLSX ZIP entry path.");
-              if (names.has(name) && isCriticalXlsxEntry(name))
-                throw validation("Duplicate critical XLSX ZIP entry.");
-              names.add(name);
-              if (isCriticalXlsxEntry(name)) critical.add(name);
-              if (
-                entry.uncompressedSize > 0 &&
-                (entry.compressedSize === 0 ||
-                  entry.uncompressedSize / entry.compressedSize > limits.maxXlsxCompressionRatio)
-              )
-                throw validation("XLSX compression ratio limit exceeded.");
-              if (wanted.has(name)) await streamEntry(name, entry);
-              readNext();
-            } catch (caught) {
-              fail(caught);
-            }
-          })();
-        });
-        zip.on("end", () => {
-          if (
-            critical.has("[Content_Types].xml") &&
-            critical.has("xl/workbook.xml") &&
-            [...critical].some(isWorksheetXmlEntry)
-          )
-            succeed();
-          else fail(validation("XLSX required OOXML entries are missing."));
-        });
-        zip.readEntry();
+    const onOpen = (error: Error | null, archive: any) => {
+      if (error || !archive) {
+        fail(error ? zipErrorFor(error) : validation("Malformed XLSX ZIP archive."));
+        return;
       }
-    );
+      zip = archive;
+      zip.on("error", (zipError: Error) => fail(zipErrorFor(zipError)));
+      zip.on("entry", (entry: any) => {
+        void (async () => {
+          try {
+            count++;
+            declaredTotal += entry.uncompressedSize;
+            const name = String(entry.fileName);
+            if (
+              count > limits.maxXlsxZipEntries ||
+              declaredTotal > limits.maxXlsxUncompressedBytes ||
+              entry.uncompressedSize > limits.maxXlsxUncompressedBytes
+            )
+              throw validation("XLSX ZIP resource limit exceeded.");
+            if (isUnsafeZipPath(name)) throw validation("Unsafe XLSX ZIP entry path.");
+            if (names.has(name) && isCriticalXlsxEntry(name))
+              throw validation("Duplicate critical XLSX ZIP entry.");
+            names.add(name);
+            if (isCriticalXlsxEntry(name)) critical.add(name);
+            if (
+              entry.uncompressedSize > 0 &&
+              (entry.compressedSize === 0 ||
+                entry.uncompressedSize / entry.compressedSize > limits.maxXlsxCompressionRatio)
+            )
+              throw validation("XLSX compression ratio limit exceeded.");
+            if (wanted.has(name)) await streamEntry(name, entry);
+            readNext();
+          } catch (caught) {
+            fail(caught);
+          }
+        })();
+      });
+      zip.on("end", () => {
+        if (
+          critical.has("[Content_Types].xml") &&
+          critical.has("xl/workbook.xml") &&
+          [...critical].some(isWorksheetXmlEntry)
+        )
+          succeed();
+        else fail(validation("XLSX required OOXML entries are missing."));
+      });
+      zip.readEntry();
+    };
+    const options = { lazyEntries: true, validateEntrySizes: false };
+    if (typeof source === "string") yauzl.open(source, options, onOpen);
+    else yauzl.fromBuffer(source, options, onOpen);
   });
 }
 
@@ -459,25 +470,34 @@ interface SheetParseState {
   rowWidth: number;
   nextColumn: number;
   cell?: CellContext;
+  onRow?: (rowNumber: number, cells: string[]) => void;
+  mergeMasters: Map<MergeRange, string>;
+  collectMergeRanges: boolean;
 }
 
 function createSheetState(
   shared: string[],
   styles: StyleTable,
-  limits: XlsxReadLimits
+  limits: XlsxReadLimits,
+  onRow?: (rowNumber: number, cells: string[]) => void,
+  mergeRanges: MergeRange[] = [],
+  collectMergeRanges = true
 ): SheetParseState {
   return {
     shared,
     styles,
     limits,
     rowMap: new Map(),
-    mergeRanges: [],
+    mergeRanges,
     maxRow: 0,
     sequentialRow: 0,
     currentRowNumber: 1,
     rowCells: new Map(),
     rowWidth: 0,
-    nextColumn: 0
+    nextColumn: 0,
+    onRow,
+    mergeMasters: new Map(),
+    collectMergeRanges
   };
 }
 
@@ -543,7 +563,7 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       };
     } else if (name === "mergeCell") {
       const range = parseMergeRange(String((tag.attributes as Record<string, string>).ref ?? ""));
-      if (range) state.mergeRanges.push(range);
+      if (range && state.collectMergeRanges) state.mergeRanges.push(range);
     } else if (state.cell) {
       if (name === "f") {
         state.cell.formula = true;
@@ -584,9 +604,27 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       const rendered: string[] = [];
       for (let index = 0; index < state.rowWidth; index++)
         rendered.push(state.rowCells.get(index) ?? "");
-      state.rowMap.set(state.currentRowNumber, rendered);
+      applyKnownMerges(state, rendered);
+      if (state.onRow) state.onRow(state.currentRowNumber, rendered);
+      else state.rowMap.set(state.currentRowNumber, rendered);
     }
   };
+}
+
+function applyKnownMerges(state: SheetParseState, row: string[]): void {
+  if (state.collectMergeRanges) return;
+  for (const range of state.mergeRanges) {
+    if (state.currentRowNumber < range.startRow || state.currentRowNumber > range.endRow) continue;
+    if (state.currentRowNumber === range.startRow) {
+      state.mergeMasters.set(range, row[range.startColumn - 1] ?? "");
+    }
+    const master = state.mergeMasters.get(range) ?? "";
+    for (let column = range.startColumn; column <= range.endColumn; column += 1) {
+      if (state.currentRowNumber === range.startRow && column === range.startColumn) continue;
+      while (row.length < column) row.push("");
+      row[column - 1] = master;
+    }
+  }
 }
 
 function finalizeSheetRows(state: SheetParseState): string[][] {
@@ -667,6 +705,91 @@ function parseSheetStream(
   });
 }
 
+async function parseSheetStreamRows(
+  stream: any,
+  shared: string[],
+  styles: StyleTable,
+  limits: XlsxReadLimits,
+  mergeRanges: MergeRange[],
+  onRow: (rowNumber: number, cells: string[]) => Promise<void>
+): Promise<void> {
+  const pendingRows: Array<{ rowNumber: number; cells: string[] }> = [];
+  const state = createSheetState(
+    shared,
+    styles,
+    limits,
+    (rowNumber, cells) => {
+      pendingRows.push({ rowNumber, cells });
+    },
+    mergeRanges,
+    false
+  );
+  const parser = sax.parser(true, {
+    trim: false,
+    normalize: false,
+    xmlns: false,
+    position: false
+  });
+  configureSheetParser(parser, state);
+  let failure: unknown;
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  parser.onerror = (error) => {
+    failure = error;
+  };
+
+  try {
+    for await (const chunk of stream as AsyncIterable<Buffer | Uint8Array | string>) {
+      const text = decoder.decode(Buffer.from(chunk), { stream: true });
+      if (text) parser.write(text);
+      if (failure) throw failure;
+      for (const row of pendingRows.splice(0)) await onRow(row.rowNumber, row.cells);
+    }
+    const tail = decoder.decode();
+    if (tail) parser.write(tail);
+    parser.close();
+    if (failure) throw failure;
+    for (const row of pendingRows.splice(0)) await onRow(row.rowNumber, row.cells);
+  } catch (error) {
+    try {
+      stream.destroy();
+    } catch {
+      // The entry may already be closed.
+    }
+    throw error instanceof Error ? error : validation("Malformed XLSX workbook XML.");
+  }
+}
+
+async function parseMergeRangesStream(stream: any): Promise<MergeRange[]> {
+  const ranges: MergeRange[] = [];
+  const parser = sax.parser(true, {
+    trim: false,
+    normalize: false,
+    xmlns: false,
+    position: false
+  });
+  let failure: unknown;
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  parser.onerror = (error) => {
+    failure = error;
+  };
+  parser.onopentag = (tag) => {
+    if (tag.name !== "mergeCell") return;
+    const range = parseMergeRange(String((tag.attributes as Record<string, string>).ref ?? ""));
+    if (range) ranges.push(range);
+  };
+  for await (const chunk of stream as AsyncIterable<Buffer | Uint8Array | string>) {
+    const text = decoder.decode(Buffer.from(chunk), { stream: true });
+    if (text) parser.write(text);
+    if (failure) throw failure;
+  }
+  const tail = decoder.decode();
+  if (tail) parser.write(tail);
+  parser.close();
+  if (failure)
+    throw failure instanceof Error ? failure : validation("Malformed XLSX workbook XML.");
+  return ranges;
+}
+
 function worksheetEntryPath(target: string): string {
   const normalized = target.replace(/^\/+/, "");
   if (isUnsafeZipPath(normalized)) throw validation("Unsafe XLSX ZIP entry path.");
@@ -727,4 +850,90 @@ export async function readXlsxRows(
     if (!rows) throw validation("Malformed XLSX workbook XML.");
     return { name: sheet.name, hidden: sheet.state !== "visible", rows };
   });
+}
+
+export interface XlsxStreamSheet {
+  sheetIndex: number;
+  name: string;
+  hidden: boolean;
+}
+
+export interface XlsxStreamConsumer {
+  startSheet(sheet: XlsxStreamSheet): Promise<void> | void;
+  row(sheet: XlsxStreamSheet, rowNumber: number, cells: string[]): Promise<void> | void;
+  endSheet(sheet: XlsxStreamSheet): Promise<void> | void;
+}
+
+export async function streamXlsxFileRows(
+  filePath: string,
+  limits: XlsxReadLimits,
+  consumer: XlsxStreamConsumer
+): Promise<void> {
+  const structuralEntries = await readWantedZipEntries(
+    filePath,
+    limits,
+    new Set([
+      "xl/workbook.xml",
+      "xl/_rels/workbook.xml.rels",
+      "xl/sharedStrings.xml",
+      "xl/styles.xml"
+    ])
+  );
+  const workbookXml = structuralEntries.get("xl/workbook.xml");
+  const relsXml = structuralEntries.get("xl/_rels/workbook.xml.rels");
+  if (!workbookXml || !relsXml) throw validation("XLSX required OOXML entries are missing.");
+  const workbook = workbookSheets(workbookXml);
+  if (workbook.length > limits.maxXlsxSheets) throw validation("XLSX sheet limit exceeded.");
+  const rels = workbookRels(relsXml);
+  const sheetEntries = workbook.map((sheet) => {
+    const target = rels.get(sheet.rid);
+    if (!target) throw validation("Malformed XLSX workbook XML.");
+    return worksheetEntryPath(target);
+  });
+  const shared = structuralEntries.has("xl/sharedStrings.xml")
+    ? sharedStrings(structuralEntries.get("xl/sharedStrings.xml")!)
+    : [];
+  const styles = structuralEntries.has("xl/styles.xml")
+    ? stylesTable(structuralEntries.get("xl/styles.xml")!)
+    : { cellXfNumFmtIds: [], numFmtCodes: new Map<number, string>() };
+
+  const mergeRanges = new Map<string, MergeRange[]>();
+  const mergeHandlers = new Map<string, (stream: any) => Promise<void>>();
+  for (const entry of sheetEntries) {
+    mergeHandlers.set(entry, async (stream) => {
+      mergeRanges.set(entry, await parseMergeRangesStream(stream));
+    });
+  }
+  await readWantedZipEntries(filePath, limits, new Set(sheetEntries), mergeHandlers);
+
+  let nextSheetIndex = 0;
+  const handlers = new Map<string, (stream: any) => Promise<void>>();
+  sheetEntries.forEach((entry, sheetIndex) => {
+    handlers.set(entry, async (stream) => {
+      if (sheetIndex !== nextSheetIndex)
+        throw validation("XLSX worksheet entries are not in workbook order.");
+      const workbookSheet = workbook[sheetIndex]!;
+      const sheet = {
+        sheetIndex,
+        name: workbookSheet.name,
+        hidden: workbookSheet.state !== "visible"
+      };
+      await consumer.startSheet(sheet);
+      await parseSheetStreamRows(
+        stream,
+        shared,
+        styles,
+        limits,
+        mergeRanges.get(entry) ?? [],
+        async (rowNumber, cells) => {
+          await consumer.row(sheet, rowNumber, cells);
+        }
+      );
+      await consumer.endSheet(sheet);
+      nextSheetIndex += 1;
+    });
+  });
+  await readWantedZipEntries(filePath, limits, new Set(sheetEntries), handlers);
+  if (nextSheetIndex !== workbook.length)
+    throw validation("XLSX required worksheet entries are missing.");
 }

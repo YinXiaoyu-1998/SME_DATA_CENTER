@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -43,25 +43,6 @@ interface WorkerResponse {
   processed: boolean;
   documentId?: string;
   status?: string;
-}
-
-interface StructuredUploadResponse {
-  document: {
-    documentId: string;
-    storageObjectKey: string;
-    status: string;
-  };
-  importBatch: {
-    importBatchId: string;
-    status: string;
-    appliedRowCount: number;
-    validationErrorCount: number;
-    validationErrors: Array<{ code?: string; message?: string }>;
-  };
-}
-
-interface StructuredQueryResponse {
-  rows: Array<Record<string, unknown>>;
 }
 
 interface EvidenceUploadResponse {
@@ -134,6 +115,8 @@ const integrationEnv: NodeJS.ProcessEnv = {
     optionalEnv("DASHSCOPE_API_KEY") ?? process.env["OPENAI_COMPATIBLE_API_KEY"] ?? "",
   DASHSCOPE_API_BASE_URL: process.env["DASHSCOPE_API_BASE_URL"] ?? "",
   EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: process.env["EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED"] ?? "false",
+  PARTITION_IMPORT_WORK_DIR: path.join(integrationRoot, "partition-work"),
+  PARTITION_IMPORT_MIN_FREE_BYTES: "1",
   NODE_ENV: "development",
   HOST: "127.0.0.1",
   PORT: integrationPort
@@ -160,368 +143,172 @@ try {
 
   const employeeAccessToken = await createOfficialIntegrationAccessToken("emp_baoli_employee");
   const auth = authorizationHeader(employeeAccessToken);
-  const adminAuth = authorizationHeader(await createOfficialIntegrationAccessToken("emp_admin"));
 
-  const structuredFixture = await readFile(
-    path.join(rootDir, "fixtures", "structured", "dishes-valid.csv")
+  const partitionFixturePath = path.join(
+    rootDir,
+    "fixtures",
+    "manual-acceptance",
+    "structured",
+    "dishes-known-values.csv"
   );
-  const structuredIdempotencyKey = `integration-${Date.now()}`;
-  const structuredFormFor = (content: Buffer, idempotencyKey: string) => {
-    const form = new FormData();
-    form.append("file", new Blob([new Uint8Array(content)]), "dishes-valid.csv");
-    form.append("dataset", "dishes");
-    form.append("enterprise_name", "Integration Smoke");
-    form.append("startDate", "20260701");
-    form.append("endDate", "20260705");
-    form.append("idempotencyKey", idempotencyKey);
-    form.append("confidentialityLevel", "0");
-    return form;
+  const partitionFixture = await readFile(partitionFixturePath);
+  const legacyPartitionForm = new FormData();
+  legacyPartitionForm.append(
+    "file",
+    new Blob([new Uint8Array(partitionFixture)]),
+    "dishes-known-values.csv"
+  );
+  legacyPartitionForm.append("dataset", "dishes");
+  legacyPartitionForm.append("enterprise_name", "Integration Partitions");
+  legacyPartitionForm.append("startDate", "20260701");
+  legacyPartitionForm.append("endDate", "20260703");
+  legacyPartitionForm.append("idempotencyKey", `legacy-rejected-${Date.now()}`);
+  const legacyPartitionUpload = await fetch(`${apiUrl}/v1/structured/imports`, {
+    method: "POST",
+    headers: auth,
+    body: legacyPartitionForm
+  });
+  const legacyPartitionBody = (await legacyPartitionUpload.json()) as {
+    error?: { code?: string };
   };
-  const structuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
-    "/v1/structured/imports",
-    {
-      method: "POST",
-      headers: auth,
-      body: structuredFormFor(structuredFixture, structuredIdempotencyKey)
+  assert(
+    legacyPartitionUpload.status === 409 &&
+      legacyPartitionBody.error?.code === "PARTITION_UPLOAD_SESSION_REQUIRED",
+    "business and dishes must be rejected by the removed row-import endpoint."
+  );
+
+  const launcherDependencies = createLauncherToolDependencies({
+    config: { serviceUrl: apiUrl, transport: "stdio" },
+    auth: {
+      login: async () => ({
+        authenticated: false,
+        flow: "device",
+        verificationUri: `${apiUrl}/oauth/device/verify`,
+        verificationUriComplete: `${apiUrl}/oauth/device/verify?user_code=INTEGR8`,
+        userCode: "INTEGR8",
+        instanceName: "integration-agent",
+        instanceHostname: "integration-host",
+        openedBrowser: false
+      }),
+      logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
+      status: async () => ({ authenticated: true }),
+      accessToken: async () => employeeAccessToken,
+      invalidate: async () => undefined,
+      selfCheck: async () => {
+        throw new Error("not used");
+      }
     }
-  );
-  const structuredUpload = structuredUploadResult.body;
+  });
+  const partitionIdempotencyKey = `partition-integration-${Date.now()}`;
+  const partitionUploadInput = {
+    file: {
+      name: "dishes-known-values.csv",
+      mediaType: "text/csv",
+      encoding: "path" as const,
+      filePath: partitionFixturePath
+    },
+    dataset: "dishes" as const,
+    enterpriseName: "Integration Partitions",
+    startDate: "20260701",
+    endDate: "20260703",
+    idempotencyKey: partitionIdempotencyKey,
+    confidentialityLevel: 0
+  };
+  const partitionUploadResult = await createLauncherToolHandler(
+    "upload_structured_dataset",
+    launcherDependencies
+  )(partitionUploadInput);
   assert(
-    structuredUploadResult.status === 202,
-    "Structured upload should return HTTP 202 quickly."
+    !partitionUploadResult.isError,
+    `Partition launcher upload failed: ${JSON.stringify(partitionUploadResult)}`
+  );
+  const partitionUpload = JSON.parse(partitionUploadResult.content[0]?.text ?? "null") as {
+    partitionImportJobId: string;
+    status: string;
+  };
+  assert(
+    partitionUpload.status === "queued" && Boolean(partitionUpload.partitionImportJobId),
+    "Partition launcher upload should complete multipart transport and queue one job."
+  );
+
+  const partitionWorker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
   );
   assert(
-    structuredUpload.importBatch.status === "pending" &&
-      structuredUpload.document.status === "pending_processing",
-    "Structured upload should be queued before any parsing or business-row writes."
+    partitionWorker.documentId === partitionUpload.partitionImportJobId &&
+      partitionWorker.status === "active",
+    "Worker should atomically publish the uploaded partition dataset."
   );
-  const structuredReplays = await Promise.all(
-    Array.from({ length: 9 }, async () => {
-      return apiJson<StructuredUploadResponse>("/v1/structured/imports", {
-        method: "POST",
-        headers: auth,
-        body: structuredFormFor(structuredFixture, structuredIdempotencyKey)
-      });
-    })
+  const publishedPartitionJob = await waitForPartitionImportStatus(
+    partitionUpload.partitionImportJobId,
+    auth,
+    "published"
   );
-  for (const replay of structuredReplays) {
+  assert(
+    publishedPartitionJob.partitionCount === 3 && publishedPartitionJob.totalRowCount === 3,
+    "Three complete source days for one store should publish as three partitions."
+  );
+
+  const exactReplay = await createLauncherToolHandler(
+    "upload_structured_dataset",
+    launcherDependencies
+  )(partitionUploadInput);
+  const exactReplayBody = JSON.parse(exactReplay.content[0]?.text ?? "null") as {
+    partitionImportJobId: string;
+    status: string;
+  };
+  assert(
+    !exactReplay.isError &&
+      exactReplayBody.partitionImportJobId === partitionUpload.partitionImportJobId &&
+      exactReplayBody.status === "published",
+    "An exact source replay should reuse the published job without re-uploading."
+  );
+
+  const partitionDownloadResult = await createLauncherToolHandler(
+    "download_structured_partitions",
+    launcherDependencies
+  )({
+    dataset: "dishes",
+    enterpriseName: "Integration Partitions",
+    startDate: "20260701",
+    endDate: "20260703"
+  });
+  assert(
+    !partitionDownloadResult.isError,
+    `Partition launcher download failed: ${JSON.stringify(partitionDownloadResult)}`
+  );
+  const partitionDownload = JSON.parse(partitionDownloadResult.content[0]?.text ?? "null") as {
+    localDirectory: string;
+    partitionCount: number;
+    totalRowCount: number;
+    files: string[];
+  };
+  assert(
+    partitionDownload.partitionCount === 3 &&
+      partitionDownload.totalRowCount === 3 &&
+      partitionDownload.files.length === 3,
+    "Launcher should materialize the complete authorized manifest locally."
+  );
+  const localManifest = await readFile(
+    path.join(partitionDownload.localDirectory, "manifest.json"),
+    "utf8"
+  );
+  assert(
+    !localManifest.includes("presignedDownloadUrl") &&
+      !localManifest.includes("structured-partitions/"),
+    "The local manifest must not persist signed URLs or OSS object keys."
+  );
+  for (const fileName of partitionDownload.files) {
+    const partitionCsv = await readFile(
+      path.join(partitionDownload.localDirectory, fileName),
+      "utf8"
+    );
     assert(
-      replay.document.documentId === structuredUpload.document.documentId &&
-        replay.document.storageObjectKey === structuredUpload.document.storageObjectKey &&
-        replay.document.status === structuredUpload.document.status &&
-        replay.importBatch.importBatchId === structuredUpload.importBatch.importBatchId &&
-        replay.importBatch.status === structuredUpload.importBatch.status,
-      "Concurrent exact replays must return the authoritative persisted identifiers and status."
+      partitionCsv.startsWith("下单时间,门店,") && partitionCsv.trim().split("\n").length === 2,
+      "Each downloaded partition must contain one canonical header and one source row."
     );
   }
-  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload, "pending");
-  const fingerprintConflict = await fetch(`${apiUrl}/v1/structured/imports`, {
-    method: "POST",
-    headers: auth,
-    body: structuredFormFor(
-      Buffer.from(structuredFixture.toString("utf8").replace("合成菜品", "冲突菜品"), "utf8"),
-      structuredIdempotencyKey
-    )
-  });
-  const windowConflict = await fetch(`${apiUrl}/v1/structured/imports`, {
-    method: "POST",
-    headers: auth,
-    body: structuredFormFor(structuredFixture, `${structuredIdempotencyKey}-window-conflict`)
-  });
-  const conflictBodies = (await Promise.all([
-    fingerprintConflict.json(),
-    windowConflict.json()
-  ])) as Array<{ error?: { code?: string } }>;
-  const fingerprintConflictBody = conflictBodies[0]!;
-  const windowConflictBody = conflictBodies[1]!;
-  assert(
-    fingerprintConflict.status === 409 &&
-      fingerprintConflictBody.error?.code === "IDEMPOTENCY_KEY_CONFLICT",
-    "A changed exact-replay fingerprint must conflict before publication."
-  );
-  assert(
-    windowConflict.status === 409 && windowConflictBody.error?.code === "IMPORT_IN_PROGRESS",
-    "A second idempotency key must not bypass a queued import for the same date window."
-  );
-  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload, "pending");
-  const pendingStructuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
-    method: "POST",
-    headers: { ...auth, "content-type": "application/json" },
-    body: JSON.stringify({ dataset: "dishes", aggregates: [{ op: "count", as: "row_count" }] })
-  });
-  assert(
-    pendingStructuredQuery.rows[0]?.["row_count"] === 0,
-    "Pending structured import data must not be queryable."
-  );
-  const structuredWorker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
-  );
-  assert(
-    structuredWorker.documentId === structuredUpload.document.documentId &&
-      structuredWorker.status === "active",
-    "Worker should apply the queued structured import."
-  );
-  const appliedStructuredUpload = await waitForStructuredImportStatus(
-    structuredUpload.importBatch.importBatchId,
-    auth,
-    "applied"
-  );
-  assert(
-    appliedStructuredUpload.importBatch.appliedRowCount === 1,
-    "Structured import should load one fixture row."
-  );
-  await assertStructuredReplayCardinality(structuredIdempotencyKey, structuredUpload, "applied");
-
-  const structuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
-    method: "POST",
-    headers: { ...auth, "content-type": "application/json" },
-    body: JSON.stringify({ dataset: "dishes", aggregates: [{ op: "count", as: "row_count" }] })
-  });
-  assert(
-    structuredQuery.rows[0]?.["row_count"] === 1,
-    "Structured query should return imported row count."
-  );
-  await assertTypedStructuredQuerySemantics(
-    auth,
-    structuredUpload.importBatch.importBatchId,
-    structuredUpload.document.documentId
-  );
-  await assertStructuredApplyRollback();
-
-  const launcherPathCsv = Buffer.from(
-    structuredFixture.toString("utf8").replace("2026-07-01,", "2026-07-06,"),
-    "utf8"
-  );
-  const launcherPathFile = path.join(integrationRoot, "launcher-path-dishes.csv");
-  await writeFile(launcherPathFile, launcherPathCsv);
-  const launcherPathIdempotencyKey = `integration-launcher-path-${Date.now()}`;
-  const launcherPathResult = await createLauncherToolHandler(
-    "upload_structured_dataset",
-    createLauncherToolDependencies({
-      config: { serviceUrl: apiUrl, transport: "stdio" },
-      auth: {
-        login: async () => ({
-          authenticated: false,
-          flow: "device",
-          verificationUri: `${apiUrl}/oauth/device/verify`,
-          verificationUriComplete: `${apiUrl}/oauth/device/verify?user_code=INTEGR8`,
-          userCode: "INTEGR8",
-          instanceName: "integration-agent",
-          instanceHostname: "integration-host",
-          openedBrowser: false
-        }),
-        logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
-        status: async () => ({ authenticated: true }),
-        accessToken: async () => employeeAccessToken,
-        invalidate: async () => undefined,
-        selfCheck: async () => {
-          throw new Error("not used");
-        }
-      }
-    })
-  )({
-    file: {
-      name: "launcher-path-dishes.csv",
-      mediaType: "text/csv",
-      encoding: "path",
-      filePath: launcherPathFile
-    },
-    dataset: "dishes",
-    enterpriseName: "Integration Smoke",
-    startDate: "20260706",
-    endDate: "20260706",
-    idempotencyKey: launcherPathIdempotencyKey,
-    confidentialityLevel: 0
-  });
-  assert(
-    !launcherPathResult.isError,
-    `Launcher path-mode upload should not error: ${JSON.stringify(launcherPathResult)}`
-  );
-  const launcherPathBody = JSON.parse(
-    launcherPathResult.content[0]?.text ?? "null"
-  ) as StructuredUploadResponse;
-  assert(
-    launcherPathBody.importBatch.status === "pending",
-    "Launcher path-mode import should report its queued state."
-  );
-  const launcherStructuredWorker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
-  );
-  assert(
-    launcherStructuredWorker.documentId === launcherPathBody.document.documentId &&
-      launcherStructuredWorker.status === "active",
-    "Worker should apply the launcher path-mode structured import."
-  );
-  const launcherPathCompletion = await waitForStructuredImportStatus(
-    launcherPathBody.importBatch.importBatchId,
-    auth,
-    "applied"
-  );
-  assert(
-    launcherPathCompletion.importBatch.appliedRowCount === 1,
-    "Launcher path-mode import should load one row."
-  );
-  const storedObject = await new LocalFileSystemStorageAdapter({
-    root: storageRoot
-  }).getObjectStream(launcherPathBody.document.storageObjectKey);
-  assert(
-    Buffer.from(await collectStreamBytes(storedObject)).equals(launcherPathCsv),
-    "Stored bytes must match the launcher path-mode upload."
-  );
-
-  const levelZeroStructuredForm = new FormData();
-  levelZeroStructuredForm.append(
-    "file",
-    new Blob([
-      await readFile(
-        path.join(
-          rootDir,
-          "fixtures",
-          "structured",
-          "maijia_business_20260706_20260712_first1000.xlsx"
-        )
-      )
-    ]),
-    "maijia_business_20260706_20260712_first1000.xlsx"
-  );
-  levelZeroStructuredForm.append("dataset", "business");
-  levelZeroStructuredForm.append("enterprise_name", "Integration Level Zero");
-  levelZeroStructuredForm.append("startDate", "20260706");
-  levelZeroStructuredForm.append("endDate", "20260712");
-  levelZeroStructuredForm.append("idempotencyKey", `integration-level-zero-${Date.now()}`);
-  levelZeroStructuredForm.append("confidentialityLevel", "0");
-  const levelZeroStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
-    "/v1/structured/imports",
-    {
-      method: "POST",
-      headers: adminAuth,
-      body: levelZeroStructuredForm
-    }
-  );
-  const levelZeroStructuredUpload = levelZeroStructuredUploadResult.body;
-  assert(
-    levelZeroStructuredUploadResult.status === 202 &&
-      levelZeroStructuredUpload.importBatch.status === "pending",
-    "Admin structured upload should be accepted as pending."
-  );
-  const levelZeroStructuredWorker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
-  );
-  assert(
-    levelZeroStructuredWorker.documentId === levelZeroStructuredUpload.document.documentId &&
-      levelZeroStructuredWorker.status === "active",
-    "Worker should apply the level-zero structured import."
-  );
-  const levelZeroStructuredCompletion = await waitForStructuredImportStatus(
-    levelZeroStructuredUpload.importBatch.importBatchId,
-    adminAuth,
-    "applied"
-  );
-  assert(
-    levelZeroStructuredCompletion.importBatch.appliedRowCount > 0,
-    "Admin level-zero structured fixture should apply after polling."
-  );
-
-  const levelZeroStructuredQuery = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
-    method: "POST",
-    headers: { ...auth, "content-type": "application/json" },
-    body: JSON.stringify({ dataset: "business", aggregates: [{ op: "count", as: "row_count" }] })
-  });
-  assert(
-    Number(levelZeroStructuredQuery.rows[0]?.["row_count"]) > 0,
-    "An employee should query the imported level-zero row."
-  );
-
-  const invalidStructuredFixture = await readFile(
-    path.join(rootDir, "fixtures", "manual-acceptance", "structured", "dishes-invalid-atomic.csv")
-  );
-  const invalidStructuredForm = new FormData();
-  invalidStructuredForm.append(
-    "file",
-    new Blob([new Uint8Array(invalidStructuredFixture)]),
-    "dishes-invalid-atomic.csv"
-  );
-  invalidStructuredForm.append("dataset", "dishes");
-  invalidStructuredForm.append("enterprise_name", "Integration Invalid");
-  invalidStructuredForm.append("startDate", "20260820");
-  invalidStructuredForm.append("endDate", "20260820");
-  invalidStructuredForm.append("idempotencyKey", `integration-invalid-${Date.now()}`);
-  invalidStructuredForm.append("confidentialityLevel", "0");
-  const invalidStructuredUploadResult = await apiJsonWithStatus<StructuredUploadResponse>(
-    "/v1/structured/imports",
-    { method: "POST", headers: auth, body: invalidStructuredForm }
-  );
-  const invalidStructuredUpload = invalidStructuredUploadResult.body;
-  assert(
-    invalidStructuredUploadResult.status === 202 &&
-      invalidStructuredUpload.importBatch.status === "pending",
-    "Invalid structured headers must be accepted first and validated by the worker."
-  );
-  const invalidStructuredWorker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
-  );
-  assert(
-    invalidStructuredWorker.documentId === invalidStructuredUpload.document.documentId &&
-      invalidStructuredWorker.status === "rejected",
-    "Worker should reject the invalid structured header."
-  );
-  const rejectedStructuredUpload = await waitForStructuredImportStatus(
-    invalidStructuredUpload.importBatch.importBatchId,
-    auth,
-    "rejected"
-  );
-  const rejectedPayload = JSON.stringify(rejectedStructuredUpload);
-  assert(
-    rejectedStructuredUpload.importBatch.validationErrorCount > 0 &&
-      !rejectedPayload.includes("不应写入的菜品") &&
-      !rejectedPayload.includes("should-fail"),
-    "Rejected structured imports should expose safe errors without raw cell values."
-  );
-
-  const protectedStructuredFixture = Buffer.from(
-    structuredFixture.toString("utf8").replace("2026-07-01,", "2026-07-20,"),
-    "utf8"
-  );
-  const protectedStructuredForm = structuredFormFor(
-    protectedStructuredFixture,
-    `integration-clearance-${Date.now()}`
-  );
-  protectedStructuredForm.set("startDate", "20260720");
-  protectedStructuredForm.set("endDate", "20260720");
-  protectedStructuredForm.set("confidentialityLevel", "2");
-  const protectedStructuredUpload = await apiJsonWithStatus<StructuredUploadResponse>(
-    "/v1/structured/imports",
-    { method: "POST", headers: auth, body: protectedStructuredForm }
-  );
-  assert(
-    protectedStructuredUpload.status === 202,
-    "An uploader may declare a document above their own clearance."
-  );
-  const protectedStructuredWorker = parseJson<WorkerResponse>(
-    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
-  );
-  assert(
-    protectedStructuredWorker.documentId === protectedStructuredUpload.body.document.documentId &&
-      protectedStructuredWorker.status === "active",
-    "Worker should apply a structured import above the uploader's clearance."
-  );
-
-  const zeroClearanceAccessToken = await createOfficialIntegrationAccessToken("emp_lijie");
-  const inaccessibleImportStatus = await fetch(
-    `${apiUrl}/v1/structured/imports/${encodeURIComponent(
-      protectedStructuredUpload.body.importBatch.importBatchId
-    )}`,
-    { headers: authorizationHeader(zeroClearanceAccessToken) }
-  );
-  const inaccessibleImportBody = (await inaccessibleImportStatus.json()) as {
-    error?: { code?: string; message?: string };
-  };
-  assert(
-    inaccessibleImportStatus.status === 404 &&
-      inaccessibleImportBody.error?.code === "IMPORT_BATCH_NOT_FOUND" &&
-      inaccessibleImportBody.error.message === "Import batch not found.",
-    "A same-org employee below document clearance must receive a non-enumerating import status."
-  );
+  await rm(partitionDownload.localDirectory, { recursive: true, force: true });
 
   const evidencePath = path.join(integrationRoot, "phase3-evidence.md");
   const longEvidenceParagraph =
@@ -599,23 +386,19 @@ try {
     JSON.stringify(
       {
         ok: true,
-        structuredImportBatchId: structuredUpload.importBatch.importBatchId,
+        partitionImportJobId: partitionUpload.partitionImportJobId,
         evidenceDocumentId: evidenceUpload.document.documentId,
         apiUrl,
         mysqlPort,
         proved: [
           "seed",
           "official_session_authentication",
-          "phase3_structured_import",
-          "phase3_structured_concurrent_exact_replay",
-          "phase3_structured_apply_transaction_rollback",
+          "partition_upload_session",
+          "partition_worker_atomic_publish",
+          "partition_exact_replay",
+          "partition_manifest_local_download",
+          "legacy_business_dishes_row_import_rejected",
           "delivery_supplier_query_authorization",
-          "launcher_local_path_upload",
-          "phase3_structured_typed_query",
-          "phase3_structured_query",
-          "phase3_structured_level_zero_import",
-          "phase3_structured_level_zero_query",
-          "phase3_structured_import_status_non_enumeration",
           "phase3_evidence_upload_worker_status_search",
           "phase3_evidence_signed_pagination",
           "phase3_worker_lease_crash_recovery",
@@ -842,245 +625,24 @@ async function apiJsonWithStatus<T>(
   return { status: response.status, body };
 }
 
-async function waitForStructuredImportStatus(
-  importBatchId: string,
+async function waitForPartitionImportStatus(
+  jobId: string,
   headers: HeadersInit,
-  expectedStatus: "applied" | "rejected"
-): Promise<StructuredUploadResponse> {
-  let latest: StructuredUploadResponse | null = null;
-  await waitForCondition(`Structured import ${expectedStatus}`, async () => {
-    latest = await apiJson<StructuredUploadResponse>(
-      `/v1/structured/imports/${encodeURIComponent(importBatchId)}`,
+  expectedStatus: string
+): Promise<{ status: string; partitionCount: number; totalRowCount: number }> {
+  let latest: { status: string; partitionCount: number; totalRowCount: number } | null = null;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const status = await apiJson<{ status: string; partitionCount: number; totalRowCount: number }>(
+      `/v1/structured/partition-imports/${encodeURIComponent(jobId)}`,
       { headers }
     );
-    return latest.importBatch.status === expectedStatus;
-  });
-  return latest!;
-}
-
-async function assertStructuredReplayCardinality(
-  idempotencyKey: string,
-  response: StructuredUploadResponse,
-  expectedStatus: "pending" | "applied"
-): Promise<void> {
-  const adapter = new PrismaMariaDb(integrationEnv["DATABASE_URL"]!);
-  const prisma = new PrismaClient({ adapter });
-  try {
-    const batch = await prisma.importBatch.findUnique({
-      where: {
-        orgId_idempotencyKey: {
-          orgId: "default-org",
-          idempotencyKey
-        }
-      }
-    });
-    assert(
-      batch?.id === response.importBatch.importBatchId && batch.status === expectedStatus,
-      "One authoritative batch must exist in the expected lifecycle state."
-    );
-    const [documents, batches, claims, rows, startedAudits, appliedAudits, processingRuns] =
-      await Promise.all([
-        prisma.document.count({ where: { id: response.document.documentId } }),
-        prisma.importBatch.count({ where: { orgId: "default-org", idempotencyKey } }),
-        prisma.importWindowClaim.count({
-          where: { importBatchId: response.importBatch.importBatchId }
-        }),
-        prisma.dishRow.count({ where: { importBatchId: response.importBatch.importBatchId } }),
-        prisma.auditLog.count({
-          where: {
-            targetId: response.importBatch.importBatchId,
-            action: "structured_import.started"
-          }
-        }),
-        prisma.auditLog.count({
-          where: {
-            targetId: response.importBatch.importBatchId,
-            action: "structured_import.applied"
-          }
-        }),
-        prisma.processingRun.count({ where: { documentId: response.document.documentId } })
-      ]);
-    assert(documents === 1, "Concurrent replay must create one Document.");
-    assert(batches === 1, "Concurrent replay must create one ImportBatch.");
-    assert(claims === 1, "Concurrent replay must create one ImportWindowClaim.");
-    assert(
-      rows === (expectedStatus === "applied" ? 1 : 0),
-      "Concurrent replay must not publish rows before worker application."
-    );
-    assert(startedAudits === 1, "Concurrent replay must create one started audit.");
-    assert(
-      appliedAudits === (expectedStatus === "applied" ? 1 : 0),
-      "Concurrent replay must create one applied audit only after worker application."
-    );
-    assert(processingRuns === 1, "Concurrent replay must create one ProcessingRun.");
-
-    const storageEntries = await readdir(storageRoot, { recursive: true, withFileTypes: true });
-    const storedObjects = storageEntries.filter(
-      (entry) => entry.isFile() && !entry.name.endsWith(".metadata.json")
-    );
-    assert(storedObjects.length === 1, "Concurrent replay must publish one storage object key.");
-  } finally {
-    await prisma.$disconnect();
+    latest = status;
+    if (status.status === expectedStatus) return status;
+    await delay(100);
   }
-}
-
-async function assertTypedStructuredQuerySemantics(
-  auth: HeadersInit,
-  importBatchId: string,
-  sourceDocumentId: string
-): Promise<void> {
-  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
-  try {
-    await prisma.dishRow.createMany({
-      data: [
-        typedDishRow(importBatchId, sourceDocumentId, 1001, "typed-2", "2", "2026-07-03T10:00:00"),
-        typedDishRow(
-          importBatchId,
-          sourceDocumentId,
-          1002,
-          "typed-10",
-          "10",
-          "2026-07-03T11:00:00"
-        ),
-        typedDishRow(
-          importBatchId,
-          sourceDocumentId,
-          1003,
-          "typed-100",
-          "100",
-          "2026-07-03T12:00:00"
-        ),
-        typedDishRow(
-          importBatchId,
-          sourceDocumentId,
-          1004,
-          "typed--1",
-          "-1",
-          "2026-07-03T09:00:00"
-        ),
-        typedDishRow(
-          importBatchId,
-          sourceDocumentId,
-          1005,
-          "typed-0.5",
-          "0.5",
-          "2026-07-03T10:30:00"
-        )
-      ]
-    });
-
-    const sorted = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
-      method: "POST",
-      headers: { ...auth, "content-type": "application/json" },
-      body: JSON.stringify({
-        dataset: "dishes",
-        select: ["matched_product_name", "dish_sales_quantity"],
-        filter: {
-          field: "matched_product_name",
-          op: "starts_with",
-          value: "typed-"
-        },
-        sort: [{ field: "dish_sales_quantity", direction: "asc" }],
-        page: { limit: 10 }
-      })
-    });
-    assert(
-      sorted.rows.map((row) => row["matched_product_name"]).join(",") ===
-        "typed--1,typed-0.5,typed-2,typed-10,typed-100",
-      "Numeric sort must use mathematical order, not string order."
-    );
-
-    const dateTimeSorted = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
-      method: "POST",
-      headers: { ...auth, "content-type": "application/json" },
-      body: JSON.stringify({
-        dataset: "dishes",
-        select: ["matched_product_name", "order_time"],
-        filter: {
-          field: "order_time",
-          op: "between",
-          value: ["2026-07-03T10:00:00", "2026-07-03T12:00:00"]
-        },
-        sort: [{ field: "order_time", direction: "asc" }],
-        page: { limit: 10 }
-      })
-    });
-    assert(
-      dateTimeSorted.rows.map((row) => row["matched_product_name"]).join(",") ===
-        "typed-2,typed-0.5,typed-10,typed-100",
-      "Date-time filtering and sorting must use the persisted ISO-like value format."
-    );
-
-    const aggregate = await apiJson<StructuredQueryResponse>("/v1/structured/query", {
-      method: "POST",
-      headers: { ...auth, "content-type": "application/json" },
-      body: JSON.stringify({
-        dataset: "dishes",
-        filter: {
-          field: "matched_product_name",
-          op: "starts_with",
-          value: "typed-"
-        },
-        aggregates: [
-          { op: "min", field: "dish_sales_quantity", as: "min_quantity" },
-          { op: "max", field: "dish_sales_quantity", as: "max_quantity" },
-          { op: "sum", field: "dish_sales_quantity", as: "sum_quantity" },
-          { op: "avg", field: "dish_sales_quantity", as: "avg_quantity" }
-        ]
-      })
-    });
-    const row = aggregate.rows[0] ?? {};
-    assert(Number(row["min_quantity"]) === -1, "Numeric min must be mathematical.");
-    assert(Number(row["max_quantity"]) === 100, "Numeric max must be mathematical.");
-    assert(Number(row["sum_quantity"]) === 111.5, "Numeric sum must be mathematical.");
-    assert(
-      Math.abs(Number(row["avg_quantity"]) - 22.3) < 0.000001,
-      "Numeric avg must be mathematical."
-    );
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-function typedDishRow(
-  importBatchId: string,
-  sourceDocumentId: string,
-  sourceRowNumber: number,
-  matchedProductName: string,
-  dishSalesQuantity: string,
-  orderTime: string
-) {
-  return {
-    orgId: "default-org",
-    sourceDocumentId,
-    importBatchId,
-    sourceRowNumber,
-    payload: {
-      business_date: "2026-07-03",
-      matched_product_name: matchedProductName,
-      dish_sales_quantity: dishSalesQuantity,
-      order_time: orderTime
-    }
-  };
-}
-
-async function assertStructuredApplyRollback(): Promise<void> {
-  await run(
-    "npx",
-    ["vitest", "run", "apps/worker/src/structured-import.prisma.integration.test.ts"],
-    {
-      env: {
-        ...integrationEnv,
-        RUN_WORKER_PRISMA_INTEGRATION: "1"
-      }
-    }
+  throw new Error(
+    `Partition import ${jobId} did not reach ${expectedStatus}; latest=${JSON.stringify(latest)}`
   );
-  await run("npx", ["vitest", "run", "apps/api/src/structured-query.prisma.integration.test.ts"], {
-    env: {
-      ...integrationEnv,
-      RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION: "1"
-    }
-  });
 }
 
 async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
@@ -1952,12 +1514,4 @@ async function findAvailablePort(): Promise<number> {
       });
     });
   });
-}
-
-async function collectStreamBytes(stream: NodeJS.ReadableStream): Promise<Uint8Array> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
 }

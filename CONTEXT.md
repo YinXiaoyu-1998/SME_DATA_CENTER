@@ -1,5 +1,8 @@
 # Enterprise Hub (企业资料中枢)
 
+> ADR 0026 defines the accepted target model for `business` / `dishes`; the active runtime remains
+> row-based until the linked hard-migration plan is implemented and deployed.
+
 A remote business-document service that employees use through their own AI agents. This context
 covers the language for employee authentication, supported agent forms, and session ownership.
 
@@ -66,6 +69,19 @@ _Avoid_: content-only access control, a metadata or aggregate bypass.
 Any index, chunk, structured row, aggregate, metadata view, or download capability produced from a
 source document that inherits the source document's Document Confidentiality Level.
 _Avoid_: an independently classified row, chunk, vector payload, or derived-data downgrade.
+
+**Current Structured Partition**:
+The authoritative canonical CSV for one organization, normalized enterprise, `business` or
+`dishes` dataset, store identity, and complete business date. It has its own current
+Confidentiality Level from the upload that published it and is not derived from a retained source
+document.
+_Avoid_: a MySQL detail-row batch, an immutable source document, a historical partition version.
+
+**Partition Manifest**:
+An authorization-filtered, short-lived inventory of readable Current Structured Partitions and
+their presigned download links. The launcher consumes the links and returns verified local files;
+the employee-owned agent does not receive the links.
+_Avoid_: a row-query response, a permanent download URL, an OSS directory listing.
 
 **New Upload**:
 A file supplied to the service as a new document, even if an employee or agent created it outside
@@ -181,10 +197,22 @@ Fully unattended agent with no interactive login; out of scope for login flows.
   its clearance to read a document in another organization.
 - Every Derived Document Data item inherits its source document's Document Confidentiality Level;
   there is no independent row-level, chunk-level, or index-level classification.
+- `business` and `dishes` are the explicit exception to source-document-derived storage: their
+  temporary source upload is deleted after terminal processing, and each Current Structured
+  Partition carries the classification declared by the upload that most recently published it.
+- A newer successful upload may replace a Current Structured Partition's bytes and Confidentiality
+  Level, including with a lower level. Only the current partition exists; no previous partition
+  version or rollback pointer is retained.
+- Current Structured Partition identity is scoped by organization, normalized enterprise, dataset,
+  store identity, and business date. Merchant ID is preferred; normalized store name is the
+  fallback when the source has no merchant ID.
+- Partition Manifest authorization is applied before counts, metadata, or links are produced.
+  Hidden partitions are indistinguishable from absent partitions.
 - A New Upload is a separately classified document. The service does not infer, record, or enforce
   its relationship to material that an employee or agent previously read outside the service.
-- Every structured detail row can expose selectable-only `source_document_id`. Downloading still
-  requires a fresh authorization check through the generic source-document download-link endpoint.
+- Every row-query structured detail row can expose selectable-only `source_document_id`.
+  `business` and `dishes` expose no detail rows or retained source-document download; they are read
+  through Partition Manifests and launcher-local verified extracts.
 
 ## Example dialogue
 

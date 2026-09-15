@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { LocalFileSystemStorageAdapter } from "./local-storage.js";
@@ -108,5 +109,53 @@ describe("LocalFileSystemStorageAdapter", () => {
     await expect(adapter.statObject(storedObject.key)).resolves.toEqual(storedObject);
     await adapter.deleteObject(storedObject.key);
     await expect(adapter.statObject(storedObject.key)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("completes multipart sources and streams immutable partition objects", async () => {
+    storageRoot = await mkdtemp(path.join(tmpdir(), "enterprise-hub-storage-"));
+    const adapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
+    const sourceKey = "structured-import-staging/org_1/pjob_1/source";
+    const multipart = await adapter.createMultipartUpload({ key: sourceKey });
+    const firstUrl = await adapter.createUploadPartUrl({
+      key: sourceKey,
+      uploadId: multipart.uploadId,
+      partNumber: 1
+    });
+    const secondUrl = await adapter.createUploadPartUrl({
+      key: sourceKey,
+      uploadId: multipart.uploadId,
+      partNumber: 2
+    });
+    await writeFile(fileURLToPath(firstUrl), "first");
+    await writeFile(fileURLToPath(secondUrl), "second");
+    await adapter.completeMultipartUpload({
+      key: sourceKey,
+      uploadId: multipart.uploadId,
+      parts: [
+        { partNumber: 1, etag: "one" },
+        { partNumber: 2, etag: "two" }
+      ]
+    });
+    await expect(readStream(await adapter.getObjectStream(sourceKey))).resolves.toEqual(
+      Buffer.from("firstsecond")
+    );
+
+    const bytes = Buffer.from("canonical\n");
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    const key = "structured-partitions/org_1/pjob_1/part_1.csv";
+    await adapter.putObjectAtKey({
+      key,
+      body: Readable.from([bytes]),
+      contentLength: bytes.length,
+      checksumSha256: hash,
+      contentType: "text/csv"
+    });
+    const download = path.join(storageRoot, "download.csv");
+    await expect(adapter.downloadObjectToFile(key, download)).resolves.toMatchObject({
+      key,
+      size: bytes.length,
+      hash
+    });
+    await expect(readFile(download)).resolves.toEqual(bytes);
   });
 });

@@ -1,0 +1,461 @@
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { mkdir, open, rm, stat, type FileHandle } from "node:fs/promises";
+import path from "node:path";
+import {
+  PARTITION_ERROR_CODES,
+  getStructuredRegistry,
+  partitionStoreIdentity,
+  resolveStructuredHeaders,
+  type StructuredFieldRegistryEntry
+} from "@enterprise-hub/domain";
+import { parse as createCsvParser } from "csv-parse";
+import { streamXlsxFileRows } from "./xlsx-stream.js";
+
+const HEADER_SCAN_ROWS = 10;
+
+export interface StructuredPartitionLimits {
+  maxSourceBytes: number;
+  maxRows: number;
+  maxPartitions: number;
+  maxCanonicalBytes: number;
+  maxOpenFiles: number;
+  maxStructuredCellChars: number;
+  maxXlsxSheets: number;
+  maxXlsxUncompressedBytes: number;
+  maxXlsxZipEntries: number;
+  maxXlsxCompressionRatio: number;
+}
+
+export interface StructuredPartitionExportEntry {
+  storeKey: string;
+  merchantId: string | null;
+  storeName: string;
+  businessDate: string;
+  rowCount: bigint;
+  filePath: string;
+  byteSize: bigint;
+  checksumSha256: string;
+}
+
+export interface StructuredPartitionExport {
+  totalRowCount: bigint;
+  partitions: StructuredPartitionExportEntry[];
+}
+
+interface SourceRow {
+  rowNumber: number;
+  cells: string[];
+}
+
+interface PartitionState {
+  storeKey: string;
+  merchantId: string | null;
+  storeName: string;
+  businessDate: string;
+  rowCount: bigint;
+  filePath: string;
+  byteSize: bigint;
+  hash: ReturnType<typeof createHash>;
+  initialized: boolean;
+}
+
+export class StructuredPartitionExportError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "StructuredPartitionExportError";
+    this.code = code;
+  }
+}
+
+export async function exportStructuredPartitions(input: {
+  dataset: "business" | "dishes";
+  sourcePath: string;
+  outputDirectory: string;
+  limits: StructuredPartitionLimits;
+  signal?: AbortSignal;
+}): Promise<StructuredPartitionExport> {
+  validateLimits(input.limits);
+  throwIfAborted(input.signal);
+  const source = await stat(input.sourcePath);
+  if (!source.isFile()) throw invalidSource("Partition source must be a regular file.");
+  if (source.size > input.limits.maxSourceBytes) throw limitExceeded("source bytes");
+
+  const candidateDirectory = path.join(input.outputDirectory, "candidates");
+  await rm(candidateDirectory, { force: true, recursive: true });
+  await mkdir(candidateDirectory, { recursive: true });
+
+  const registry = getStructuredRegistry(input.dataset);
+  const fields = registry.fields.filter((field) => field.inputSource === "file");
+  const fieldByName = new Map(fields.map((field) => [field.canonicalName, field]));
+  const headerBytes = `${fields.map((field) => csvCell(field.sourceColumn)).join(",")}\n`;
+  const partitions = new Map<string, PartitionState>();
+  const writers = new BoundedFileWriterPool(input.limits.maxOpenFiles);
+  let totalRowCount = 0n;
+  let totalCanonicalBytes = 0n;
+
+  const processDataRow = async (
+    row: SourceRow,
+    header: {
+      width: number;
+      mappings: Array<{ canonicalName: string; sourceColumnIndex: number }>;
+    }
+  ): Promise<void> => {
+    if (!row.cells.some((cell) => cell.trim()) || isSummary(row.cells)) return;
+    if (
+      row.cells.length > header.width &&
+      row.cells.slice(header.width).some((cell) => cell.trim())
+    )
+      throw invalidSource(`Row ${row.rowNumber} has data outside the resolved header width.`);
+
+    const canonical = new Map<string, string>();
+    for (const mapping of header.mappings) {
+      const field = fieldByName.get(mapping.canonicalName);
+      if (!field) throw invalidSource("Resolved partition field is not registered.");
+      canonical.set(
+        mapping.canonicalName,
+        canonicalCell(field, row.cells[mapping.sourceColumnIndex] ?? "", row.rowNumber)
+      );
+    }
+
+    const identity = partitionStoreIdentity({
+      merchantId: canonical.get("merchant_id"),
+      storeName: canonical.get("store_name")
+    });
+    const businessDate = canonical.get("business_date");
+    if (!businessDate) throw invalidSource(`Row ${row.rowNumber} business date is required.`);
+    const identityKey = `${identity.storeKey}\u0000${businessDate}`;
+    let partition = partitions.get(identityKey);
+
+    if (!partition) {
+      if (partitions.size >= input.limits.maxPartitions) throw limitExceeded("partition count");
+      partition = {
+        ...identity,
+        businessDate,
+        rowCount: 0n,
+        filePath: path.join(
+          candidateDirectory,
+          `${createHash("sha256").update(identityKey).digest("hex")}.csv`
+        ),
+        byteSize: 0n,
+        hash: createHash("sha256"),
+        initialized: false
+      };
+      partitions.set(identityKey, partition);
+    } else if (
+      partition.storeName &&
+      identity.storeName &&
+      partition.storeName !== identity.storeName
+    ) {
+      throw new StructuredPartitionExportError(
+        PARTITION_ERROR_CODES.storeIdentityConflict,
+        `Rows for merchant ${identity.merchantId ?? "fallback"} disagree on store name.`
+      );
+    } else if (!partition.storeName && identity.storeName) {
+      partition.storeName = identity.storeName;
+    }
+
+    totalRowCount += 1n;
+    if (totalRowCount > BigInt(input.limits.maxRows)) throw limitExceeded("row count");
+
+    if (!partition.initialized) {
+      await writers.write(partition.filePath, headerBytes);
+      partition.hash.update(headerBytes);
+      partition.byteSize += BigInt(Buffer.byteLength(headerBytes));
+      totalCanonicalBytes += BigInt(Buffer.byteLength(headerBytes));
+      partition.initialized = true;
+    }
+
+    const line = `${fields.map((field) => csvCell(canonical.get(field.canonicalName) ?? "")).join(",")}\n`;
+    await writers.write(partition.filePath, line);
+    partition.hash.update(line);
+    const lineBytes = BigInt(Buffer.byteLength(line));
+    partition.byteSize += lineBytes;
+    partition.rowCount += 1n;
+    totalCanonicalBytes += lineBytes;
+    if (totalCanonicalBytes > BigInt(input.limits.maxCanonicalBytes))
+      throw limitExceeded("canonical bytes");
+  };
+
+  const createSheetProcessor = (sheetName: string, hidden: boolean) => {
+    let header:
+      | {
+          rowNumber: number;
+          width: number;
+          mappings: Array<{ canonicalName: string; sourceColumnIndex: number }>;
+        }
+      | undefined;
+    const buffered: SourceRow[] = [];
+    let sawContent = false;
+
+    return {
+      async row(row: SourceRow): Promise<void> {
+        throwIfAborted(input.signal);
+        if (row.cells.some((cell) => cell.trim())) sawContent = true;
+
+        if (!header && row.rowNumber <= HEADER_SCAN_ROWS) {
+          buffered.push(row);
+          const headers = trimTail(row.cells);
+          const resolved = resolveStructuredHeaders(input.dataset, headers);
+          if (resolved.ok) {
+            header = { rowNumber: row.rowNumber, width: headers.length, mappings: resolved.fields };
+            if (hidden) throw invalidSource(`Hidden non-empty sheet ${sheetName} is not allowed.`);
+            for (const pending of buffered) {
+              if (pending.rowNumber > header.rowNumber) await processDataRow(pending, header);
+            }
+            buffered.length = 0;
+          }
+          return;
+        }
+
+        if (!header) {
+          if (sawContent)
+            throw invalidSource(`Sheet ${sheetName} has no recognized ${input.dataset} header.`);
+          return;
+        }
+        await processDataRow(row, header);
+      },
+      finish(): void {
+        if (!sawContent) return;
+        if (hidden) throw invalidSource(`Hidden non-empty sheet ${sheetName} is not allowed.`);
+        if (!header)
+          throw invalidSource(`Sheet ${sheetName} has no recognized ${input.dataset} header.`);
+      }
+    };
+  };
+
+  const processSheet = async (
+    rows: AsyncIterable<SourceRow>,
+    sheetName: string,
+    hidden: boolean
+  ): Promise<void> => {
+    const processor = createSheetProcessor(sheetName, hidden);
+    for await (const row of rows) await processor.row(row);
+    processor.finish();
+  };
+
+  try {
+    const extension = path.extname(input.sourcePath).toLowerCase();
+    if (extension === ".csv") {
+      await processSheet(
+        csvRows(input.sourcePath, input.limits.maxStructuredCellChars),
+        "Sheet1",
+        false
+      );
+    } else if (extension === ".xlsx") {
+      let processor: ReturnType<typeof createSheetProcessor> | undefined;
+      await streamXlsxFileRows(input.sourcePath, input.limits, {
+        startSheet(sheet) {
+          processor = createSheetProcessor(sheet.name, sheet.hidden);
+        },
+        async row(_sheet, rowNumber, cells) {
+          await processor!.row({ rowNumber, cells });
+        },
+        endSheet() {
+          processor!.finish();
+          processor = undefined;
+        }
+      });
+    } else {
+      throw invalidSource("Partition source must be CSV or XLSX.");
+    }
+
+    if (totalRowCount === 0n) throw invalidSource("Partition source contains no data rows.");
+    await writers.closeAll();
+    return {
+      totalRowCount,
+      partitions: [...partitions.values()]
+        .sort(
+          (left, right) =>
+            left.businessDate.localeCompare(right.businessDate) ||
+            left.storeKey.localeCompare(right.storeKey)
+        )
+        .map((partition) => ({
+          storeKey: partition.storeKey,
+          merchantId: partition.merchantId,
+          storeName: partition.storeName,
+          businessDate: partition.businessDate,
+          rowCount: partition.rowCount,
+          filePath: partition.filePath,
+          byteSize: partition.byteSize,
+          checksumSha256: partition.hash.digest("hex")
+        }))
+    };
+  } catch (error) {
+    await writers.closeAll().catch(() => undefined);
+    await rm(candidateDirectory, { force: true, recursive: true });
+    await mkdir(candidateDirectory, { recursive: true });
+    throw error;
+  }
+}
+
+async function* csvRows(filePath: string, maxCellChars: number): AsyncGenerator<SourceRow> {
+  const parser = createReadStream(filePath).pipe(
+    createCsvParser({ bom: true, relax_column_count: true, skip_empty_lines: false })
+  );
+  let rowNumber = 0;
+  for await (const record of parser as AsyncIterable<unknown[]>) {
+    rowNumber += 1;
+    yield { rowNumber, cells: record.map((value) => checkedText(String(value), maxCellChars)) };
+  }
+}
+
+function canonicalCell(
+  field: StructuredFieldRegistryEntry,
+  value: string,
+  rowNumber: number
+): string {
+  const text = value.trim();
+  if (!text) {
+    if (!field.nullable)
+      throw invalidSource(`Row ${rowNumber} ${field.canonicalName} is required.`);
+    return "";
+  }
+  if (field.type === "integer") {
+    if (!/^[+-]?\d+$/.test(text))
+      throw invalidSource(`Row ${rowNumber} ${field.canonicalName} must be an integer.`);
+    const number = Number(text);
+    if (!Number.isSafeInteger(number))
+      throw invalidSource(`Row ${rowNumber} ${field.canonicalName} must be a safe integer.`);
+    return String(number);
+  }
+  if (field.type === "decimal" || field.type === "percent") {
+    const numeric = field.type === "percent" && text.endsWith("%") ? text.slice(0, -1) : text;
+    if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(numeric))
+      throw invalidSource(`Row ${rowNumber} ${field.canonicalName} must be numeric.`);
+    return canonicalDecimal(numeric);
+  }
+  if (field.type === "date" || field.type === "date_time") {
+    const parsed = parseDateText(text, field.type === "date_time");
+    if (!parsed) throw invalidSource(`Row ${rowNumber} ${field.canonicalName} must be a date.`);
+    return parsed;
+  }
+  return text;
+}
+
+function parseDateText(text: string, requireTime: boolean): string | null {
+  const match =
+    /^(\d{4})(?:(\d{2})(\d{2})|-(\d{2})-(\d{2})|\/(\d{2})\/(\d{2}))(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(
+      text
+    );
+  if (!match || (requireTime && match[8] === undefined)) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2] ?? match[4] ?? match[6]);
+  const day = Number(match[3] ?? match[5] ?? match[7]);
+  const hour = Number(match[8] ?? 0);
+  const minute = Number(match[9] ?? 0);
+  const second = Number(match[10] ?? 0);
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second
+  )
+    return null;
+  const result = formatDate(date);
+  return requireTime ? `${result} ${two(hour)}:${two(minute)}:${two(second)}` : result;
+}
+
+function canonicalDecimal(value: string): string {
+  const negative = value.startsWith("-");
+  const unsigned = value.replace(/^[+-]/, "");
+  const [integerRaw = "0", fractionRaw = ""] = unsigned.split(".");
+  const integer = integerRaw.replace(/^0+(?=\d)/, "") || "0";
+  const fraction = fractionRaw.replace(/0+$/, "");
+  const normalized = fraction ? `${integer}.${fraction}` : integer;
+  return negative && normalized !== "0" ? `-${normalized}` : normalized;
+}
+
+function csvCell(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+}
+
+function checkedText(value: string, maximum: number): string {
+  if (value.length > maximum) throw invalidSource("Structured cell length limit exceeded.");
+  return value.trim();
+}
+
+function trimTail(row: string[]): string[] {
+  const trimmed = [...row];
+  while (trimmed.length > 0 && !trimmed.at(-1)?.trim()) trimmed.pop();
+  return trimmed;
+}
+
+function isSummary(row: string[]): boolean {
+  return ["合计", "总计"].includes(row[0]?.trim() ?? "");
+}
+
+function formatDate(date: Date): string {
+  return `${String(date.getUTCFullYear()).padStart(4, "0")}-${two(date.getUTCMonth() + 1)}-${two(date.getUTCDate())}`;
+}
+
+function two(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  const error = new Error("Partition export was aborted.");
+  error.name = "AbortError";
+  throw error;
+}
+
+function invalidSource(message: string): StructuredPartitionExportError {
+  return new StructuredPartitionExportError("PARTITION_SOURCE_INVALID", message);
+}
+
+function limitExceeded(limit: string): StructuredPartitionExportError {
+  return new StructuredPartitionExportError(
+    PARTITION_ERROR_CODES.limitExceeded,
+    `Partition ${limit} limit exceeded.`
+  );
+}
+
+function validateLimits(limits: StructuredPartitionLimits): void {
+  for (const [name, value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value <= 0)
+      throw new Error(`${name} must be a positive safe integer.`);
+  }
+}
+
+class BoundedFileWriterPool {
+  private readonly handles = new Map<string, FileHandle>();
+
+  constructor(private readonly maximum: number) {}
+
+  async write(filePath: string, bytes: string): Promise<void> {
+    const handle = await this.handleFor(filePath);
+    await handle.write(bytes);
+  }
+
+  async closeAll(): Promise<void> {
+    const handles = [...this.handles.values()];
+    this.handles.clear();
+    await Promise.all(handles.map((handle) => handle.close()));
+  }
+
+  private async handleFor(filePath: string): Promise<FileHandle> {
+    const existing = this.handles.get(filePath);
+    if (existing) {
+      this.handles.delete(filePath);
+      this.handles.set(filePath, existing);
+      return existing;
+    }
+    if (this.handles.size >= this.maximum) {
+      const oldestPath = this.handles.keys().next().value as string | undefined;
+      if (oldestPath) {
+        const oldest = this.handles.get(oldestPath)!;
+        this.handles.delete(oldestPath);
+        await oldest.close();
+      }
+    }
+    const handle = await open(filePath, "a");
+    this.handles.set(filePath, handle);
+    return handle;
+  }
+}

@@ -11,6 +11,11 @@ export interface ApiRuntimeLimits {
   maxXlsxCompressionRatio: number;
   structuredImportBatchInsertSize: number;
   structuredImportTransactionTimeoutMs: number;
+  partitionImportMaxSourceBytes: number;
+  partitionUploadPartBytes: number;
+  partitionUploadSessionTtlSeconds: number;
+  partitionManifestMaxPartitions: number;
+  partitionManifestUrlTtlSeconds: number;
 }
 
 export function loadApiRuntimeLimits(env: NodeJS.ProcessEnv): ApiRuntimeLimits {
@@ -48,6 +53,38 @@ export function loadApiRuntimeLimits(env: NodeJS.ProcessEnv): ApiRuntimeLimits {
       env,
       "STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS",
       { defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportTransactionTimeoutMs }
+    ),
+    partitionImportMaxSourceBytes: parsePositiveSafeInteger(
+      env,
+      "PARTITION_IMPORT_MAX_SOURCE_BYTES",
+      {
+        defaultValue: 2_147_483_648
+      }
+    ),
+    partitionUploadPartBytes: parsePositiveSafeInteger(env, "PARTITION_UPLOAD_PART_BYTES", {
+      defaultValue: 16_777_216,
+      minimum: 5_242_880
+    }),
+    partitionUploadSessionTtlSeconds: parsePositiveSafeInteger(
+      env,
+      "PARTITION_UPLOAD_SESSION_TTL_SECONDS",
+      {
+        defaultValue: 86_400
+      }
+    ),
+    partitionManifestMaxPartitions: parsePositiveSafeInteger(
+      env,
+      "PARTITION_MANIFEST_MAX_PARTITIONS",
+      {
+        defaultValue: 10_000
+      }
+    ),
+    partitionManifestUrlTtlSeconds: parsePositiveSafeInteger(
+      env,
+      "PARTITION_MANIFEST_URL_TTL_SECONDS",
+      {
+        defaultValue: 900
+      }
     )
   };
 }

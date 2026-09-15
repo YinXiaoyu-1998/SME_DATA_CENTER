@@ -5,3 +5,4 @@ export {
   retryIdempotentDatabaseOperation,
   type DatabaseRetryEvent
 } from "./retry.js";
+export * from "./structured-partitions.js";

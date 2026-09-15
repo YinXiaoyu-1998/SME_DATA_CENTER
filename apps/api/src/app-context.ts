@@ -16,6 +16,10 @@ import {
   type StructuredImportRepository
 } from "./structured-imports.js";
 import {
+  createPrismaStructuredPartitionRepository,
+  type StructuredPartitionRepository
+} from "./structured-partitions.js";
+import {
   createPrismaStructuredQueryRepository,
   type StructuredQueryRepository
 } from "./structured-query.js";
@@ -49,6 +53,7 @@ export interface ApiServerOptions {
   employeeRepository?: EmployeeRepository;
   documentRepository?: DocumentCatalogRepository;
   structuredImportRepository?: StructuredImportRepository;
+  structuredPartitionRepository?: StructuredPartitionRepository;
   skillRepository?: SkillDirectoryRepository;
   structuredQueryRepository?: StructuredQueryRepository;
   structuredCoverageRepository?: StructuredCoverageRepository;
@@ -85,6 +90,7 @@ export interface ApiServerContext {
   documents: () => DocumentCatalogRepository;
   storage: () => StorageAdapter;
   structuredImports: () => StructuredImportRepository;
+  structuredPartitions: () => StructuredPartitionRepository;
   structuredQueries: () => StructuredQueryRepository;
   structuredCoverage: () => StructuredCoverageRepository;
   quarantineCertificates: () => QuarantineCertificateRepository;
@@ -108,6 +114,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   const legacyEmployeeRepository = options.employeeRepository;
   let documentRepository = options.documentRepository;
   let structuredImportRepository = options.structuredImportRepository;
+  let structuredPartitionRepository = options.structuredPartitionRepository;
   let skillRepository = options.skillRepository;
   let structuredQueryRepository = options.structuredQueryRepository;
   let structuredCoverageRepository = options.structuredCoverageRepository;
@@ -180,6 +187,13 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return structuredImportRepository;
   }
 
+  function structuredPartitions(): StructuredPartitionRepository {
+    structuredPartitionRepository ??= createPrismaStructuredPartitionRepository({
+      transactionTimeoutMs: runtimeLimits.structuredImportTransactionTimeoutMs
+    });
+    return structuredPartitionRepository;
+  }
+
   function structuredQueries(): StructuredQueryRepository {
     structuredQueryRepository ??= createPrismaStructuredQueryRepository();
     return structuredQueryRepository;
@@ -219,6 +233,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     await authPrisma?.$disconnect();
     await documentRepository?.disconnect?.();
     await structuredImportRepository?.disconnect?.();
+    await structuredPartitionRepository?.disconnect?.();
     await skillRepository?.disconnect?.();
     await structuredQueryRepository?.disconnect?.();
     await structuredCoverageRepository?.disconnect?.();
@@ -242,6 +257,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     documents,
     storage,
     structuredImports,
+    structuredPartitions,
     structuredQueries,
     structuredCoverage,
     quarantineCertificates,

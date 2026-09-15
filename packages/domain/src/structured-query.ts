@@ -7,6 +7,7 @@ import {
   type StructuredDatasetName,
   type StructuredDatasetRegistry,
   type StructuredFieldRegistryEntry,
+  type StructuredFieldStorageMapping,
   type StructuredFieldType
 } from "./structured-registry.js";
 
@@ -157,6 +158,13 @@ export function compileStructuredQuery(
 ): StructuredCompiledQuery {
   const query = normalizeQuery(input.query);
   const registry = getStructuredRegistry(query.dataset);
+  if (!registry.rowTable) {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.datasetRequiresPartitionExtract,
+      "Dataset is available through partition extracts, not row queries.",
+      { dataset: query.dataset }
+    );
+  }
 
   const fields = new Map(registry.fields.map((field) => [field.canonicalName, field]));
   const mode: StructuredQueryMode =
@@ -349,6 +357,13 @@ function normalizeQuery(input: unknown): NormalizedQuery {
   }
 
   const registry = getStructuredRegistry(dataset as StructuredDatasetName);
+  if (registry.accessMode === "partition_extract") {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.datasetRequiresPartitionExtract,
+      "business and dishes are available through partition extracts, not row queries.",
+      { dataset }
+    );
+  }
   const select = normalizeStringArray(
     object["select"],
     "select",
@@ -819,8 +834,9 @@ function validateSort(
 }
 
 function validateWeightedAggregateField(field: StructuredFieldRegistryEntry, fieldName: string) {
+  const storage = requireStorage(field);
   if (
-    field.storage.column !== "payload" ||
+    storage.column !== "payload" ||
     !field.capabilities.aggregate ||
     !["integer", "decimal", "percent"].includes(field.type)
   ) {
@@ -1022,14 +1038,14 @@ function buildProjection(
   );
   const parts = storedFields.map((fieldName) => {
     const field = requireField(fields, fieldName);
-    if (field.storage.column === "source_document_id") {
+    if (requireStorage(field).column === "source_document_id") {
       return `r.source_document_id AS ${quoteIdentifier(field.canonicalName)}`;
     }
     return `${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`;
   });
   const params = storedFields
     .map((fieldName) => requireField(fields, fieldName))
-    .filter((field) => field.storage.column === "payload")
+    .filter((field) => requireStorage(field).column === "payload")
     .map((field) => requireJsonPath(field));
 
   if (
@@ -1279,7 +1295,8 @@ function requireField(
 }
 
 function requireJsonPath(field: StructuredFieldRegistryEntry): string {
-  if (!field.storage.jsonPath) {
+  const storage = requireStorage(field);
+  if (!storage.jsonPath) {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.unsupportedCapability,
       "Field does not use JSON payload storage.",
@@ -1287,7 +1304,14 @@ function requireJsonPath(field: StructuredFieldRegistryEntry): string {
     );
   }
 
-  return field.storage.jsonPath;
+  return storage.jsonPath;
+}
+
+function requireStorage(field: StructuredFieldRegistryEntry): StructuredFieldStorageMapping {
+  if (!field.storage) {
+    throw new Error(`Field ${field.canonicalName} does not have row storage.`);
+  }
+  return field.storage;
 }
 
 function hashQueryShape(query: unknown): string {

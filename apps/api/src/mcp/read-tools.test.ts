@@ -66,11 +66,32 @@ describe("read-only MCP tool handlers", () => {
       "query_quarantine_certificates",
       "get_source_document_download_url",
       "get_evidence_document_status",
-      "get_import_status"
+      "get_import_status",
+      "get_partition_import_status",
+      "download_structured_partitions"
     ]);
     expect(Object.keys(createCapturingDelegate().handlers).sort()).toEqual(
       [...READ_ONLY_MCP_TOOL_NAMES].sort()
     );
+  });
+
+  it("does not expose partition manifest URLs through launchers older than 0.4.0", async () => {
+    const { calls, handlers } = createCapturingDelegate();
+    const result = await handlers.download_structured_partitions?.(
+      {
+        dataset: "business",
+        enterpriseName: "Maijia",
+        startDate: "20260907",
+        endDate: "20260913"
+      },
+      { employee: {} as never, audit } as never
+    );
+
+    expect(calls).toEqual([]);
+    expect(result?.isError).toBe(true);
+    expect(parseToolResult(result!)).toMatchObject({
+      error: { code: "LAUNCHER_UPGRADE_REQUIRED", requestId: "req_mcp_123" }
+    });
   });
 
   it("maps read-only tool inputs to the authenticated API routes", async () => {

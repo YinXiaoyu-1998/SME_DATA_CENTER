@@ -79,8 +79,8 @@ function validEvidenceInput(overrides: Record<string, unknown> = {}) {
 
 function validStructuredInput(overrides: Record<string, unknown> = {}) {
   return {
-    file: inlineFile("maijia-dishes.csv", "text/csv", "col_a,col_b\none,two\n"),
-    dataset: "dishes",
+    file: inlineFile("maijia-vip.csv", "text/csv", "col_a,col_b\none,two\n"),
+    dataset: "vip",
     enterpriseName: "Maijia",
     startDate: "20260701",
     endDate: "20260731",
@@ -226,7 +226,7 @@ describe("upload MCP tool handlers", () => {
     const { handlers, requests } = createHandlers({});
     const result = await handlers.upload_structured_dataset?.(
       validStructuredInput({
-        file: inlineFile("maijia-dishes.csv", "text/csv", csvBytes)
+        file: inlineFile("maijia-vip.csv", "text/csv", csvBytes)
       }),
       mcpContext
     );
@@ -246,17 +246,32 @@ describe("upload MCP tool handlers", () => {
     const fields = multipartFields(requests[0]!);
 
     expect(file).toMatchObject({
-      filename: "maijia-dishes.csv",
+      filename: "maijia-vip.csv",
       contentType: "text/csv"
     });
     expect(file?.body).toEqual(csvBytes);
-    expect(textField(fields, "dataset")).toBe("dishes");
+    expect(textField(fields, "dataset")).toBe("vip");
     expect(textField(fields, "enterpriseName")).toBe("Maijia");
     expect(textField(fields, "enterprise_name")).toBeUndefined();
     expect(textField(fields, "startDate")).toBe("20260701");
     expect(textField(fields, "endDate")).toBe("20260731");
     expect(textField(fields, "idempotencyKey")).toBe("structured-upload-key");
     expect(textField(fields, "confidentialityLevel")).toBe("0");
+  });
+
+  it("requires launcher 0.4.0 before a business or dishes upload can reach the legacy proxy", async () => {
+    const { handlers, requests } = createHandlers({});
+
+    const result = await handlers.upload_structured_dataset?.(
+      validStructuredInput({ dataset: "dishes" }),
+      mcpContext
+    );
+
+    expect(requests).toEqual([]);
+    expect(result?.isError).toBe(true);
+    expect(parseResult(result!)).toMatchObject({
+      error: { code: "LAUNCHER_UPGRADE_REQUIRED", requestId: "mcp_req_1" }
+    });
   });
 
   it("maps quarantine certificate uploads to the dedicated multipart route", async () => {

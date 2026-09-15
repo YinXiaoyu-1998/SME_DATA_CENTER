@@ -9,6 +9,15 @@ import {
 } from "./structured-registry.js";
 
 describe("structured field registries", () => {
+  test("routes only business and dishes through partition extracts", () => {
+    expect(getStructuredRegistry("business").accessMode).toBe("partition_extract");
+    expect(getStructuredRegistry("dishes").accessMode).toBe("partition_extract");
+
+    for (const dataset of ["vip", "dish_catalog", "delivery_ledger", "supplier_catalog"] as const) {
+      expect(getStructuredRegistry(dataset).accessMode).toBe("row_query");
+    }
+  });
+
   test("registers delivery-ledger and supplier-catalog dataset contracts", () => {
     expect(STRUCTURED_DATASETS).toEqual([
       "dishes",
@@ -189,25 +198,34 @@ describe("structured field registries", () => {
     }
   });
 
-  test("publishes source document ID as a detail-only system field for every dataset", () => {
-    for (const dataset of STRUCTURED_DATASETS) {
-      expect(getStructuredRegistry(dataset).fields[0]).toMatchObject({
+  test("publishes source document ID only for datasets backed by row storage", () => {
+    for (const dataset of ["vip", "dish_catalog", "delivery_ledger", "supplier_catalog"] as const) {
+      const registry = getStructuredRegistry(dataset);
+      expect(registry.fields[0]).toMatchObject({
         canonicalName: "source_document_id",
         sourceColumn: "source_document_id",
         inputSource: "derived",
         defaultReturn: false,
         capabilities: { filter: false, sort: false, group: false, aggregate: false },
         storage: {
-          table: getStructuredRegistry(dataset).rowTable,
+          table: registry.rowTable,
           column: "source_document_id"
         }
       });
     }
+    for (const dataset of ["dishes", "business"] as const) {
+      const registry = getStructuredRegistry(dataset);
+      expect(registry.rowTable).toBeUndefined();
+      expect(registry.fields.some((field) => field.canonicalName === "source_document_id")).toBe(
+        false
+      );
+      expect(registry.fields.every((field) => field.storage === undefined)).toBe(true);
+    }
   });
 
   test("cover every reviewed dishes and business export column", () => {
-    expect(getStructuredRegistry("dishes").fields).toHaveLength(52);
-    expect(getStructuredRegistry("business").fields).toHaveLength(153);
+    expect(getStructuredRegistry("dishes").fields).toHaveLength(51);
+    expect(getStructuredRegistry("business").fields).toHaveLength(152);
     expect(getStructuredRegistry("vip").fields).toHaveLength(67);
   });
 
@@ -556,7 +574,7 @@ describe("structured field registries", () => {
     ]);
   });
 
-  test("define public names, exact aliases, value semantics, and MySQL payload mappings", () => {
+  test("defines partition field semantics without obsolete MySQL payload mappings", () => {
     const dishes = getStructuredRegistry("dishes");
     const quantity = dishes.fields.find((field) => field.canonicalName === "dish_sales_quantity");
     const product = dishes.fields.find((field) => field.canonicalName === "matched_product_name");
@@ -565,25 +583,19 @@ describe("structured field registries", () => {
       sourceColumn: "菜品销售数量",
       type: "decimal",
       nullable: true,
-      capabilities: expect.objectContaining({ aggregate: true, sort: true }),
-      storage: {
-        table: "dish_rows",
-        column: "payload",
-        jsonPath: "$.dish_sales_quantity"
-      }
+      capabilities: expect.objectContaining({ aggregate: true, sort: true })
     });
+    expect(quantity?.storage).toBeUndefined();
     expect(product?.aliases).toContain("关联菜品名称");
 
     const business = getStructuredRegistry("business");
     expect(business.fields.find((field) => field.canonicalName === "business_date")).toMatchObject({
       sourceColumn: "营业日期",
-      type: "date",
-      storage: {
-        table: "business_rows",
-        column: "payload",
-        jsonPath: "$.business_date"
-      }
+      type: "date"
     });
+    expect(
+      business.fields.find((field) => field.canonicalName === "business_date")?.storage
+    ).toBeUndefined();
     expect(business.fields.some((field) => field.type === "percent")).toBe(true);
 
     const vip = getStructuredRegistry("vip");

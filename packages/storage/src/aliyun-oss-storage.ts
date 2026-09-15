@@ -1,18 +1,27 @@
 import { createHash } from "node:crypto";
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
-  S3Client
+  S3Client,
+  UploadPartCommand
 } from "@aws-sdk/client-s3";
+import { createWriteStream } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { assertSafeObjectKey, createOriginalObjectKey } from "./object-key.js";
 import type {
   CreateDownloadUrlOptions,
   PutObjectInput,
   StorageAdapter,
-  StorageObject
+  StorageObject,
+  PutObjectAtKeyInput
 } from "./storage-adapter.js";
 
 const DEFAULT_KEY_PREFIX = "enterprise-hub";
@@ -160,6 +169,98 @@ export class AliyunOssStorageAdapter implements StorageAdapter {
       }),
       { expiresIn: options.expiresInSeconds ?? this.presignExpiresInSeconds }
     );
+  }
+
+  async createMultipartUpload(input: {
+    key: string;
+    contentType?: string;
+    checksumSha256: string;
+  }): Promise<{ uploadId: string }> {
+    const result = await this.client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: this.physicalKey(input.key),
+        ContentType: input.contentType,
+        Metadata: { [HASH_METADATA_KEY]: input.checksumSha256 }
+      })
+    );
+    if (!result.UploadId) throw new Error("OSS did not return a multipart upload ID.");
+    return { uploadId: result.UploadId };
+  }
+
+  async createUploadPartUrl(input: {
+    key: string;
+    uploadId: string;
+    partNumber: number;
+    expiresInSeconds?: number;
+  }): Promise<string> {
+    return this.presign(
+      this.client,
+      new UploadPartCommand({
+        Bucket: this.bucket,
+        Key: this.physicalKey(input.key),
+        UploadId: input.uploadId,
+        PartNumber: input.partNumber
+      }),
+      { expiresIn: input.expiresInSeconds ?? this.presignExpiresInSeconds }
+    );
+  }
+
+  async completeMultipartUpload(input: {
+    key: string;
+    uploadId: string;
+    parts: Array<{ partNumber: number; etag: string }>;
+  }): Promise<void> {
+    await this.client.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: this.physicalKey(input.key),
+        UploadId: input.uploadId,
+        MultipartUpload: {
+          Parts: [...input.parts]
+            .sort((a, b) => a.partNumber - b.partNumber)
+            .map((part) => ({
+              PartNumber: part.partNumber,
+              ETag: part.etag
+            }))
+        }
+      })
+    );
+  }
+
+  async abortMultipartUpload(input: { key: string; uploadId: string }): Promise<void> {
+    await this.client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: this.physicalKey(input.key),
+        UploadId: input.uploadId
+      })
+    );
+  }
+
+  async putObjectAtKey(input: PutObjectAtKeyInput): Promise<StorageObject> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: this.physicalKey(input.key),
+        Body: input.body,
+        ContentLength: input.contentLength,
+        ContentType: input.contentType,
+        Metadata: { [HASH_METADATA_KEY]: input.checksumSha256 }
+      })
+    );
+    return {
+      key: input.key,
+      size: input.contentLength,
+      hash: input.checksumSha256,
+      contentType: input.contentType
+    };
+  }
+
+  async downloadObjectToFile(key: string, filePath: string): Promise<StorageObject> {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await pipeline(await this.getObjectStream(key), createWriteStream(filePath));
+    return this.statObject(key);
   }
 
   async deleteObject(key: string): Promise<void> {

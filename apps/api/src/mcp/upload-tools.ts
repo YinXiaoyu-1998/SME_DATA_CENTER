@@ -9,8 +9,14 @@ import {
   type McpJsonToolResult
 } from "@enterprise-hub/mcp-contract";
 import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
-import type { RequestAuditContext } from "../request-audit-context.js";
-import { getStructuredRegistry, type StructuredDatasetName } from "@enterprise-hub/domain";
+import { launcherVersionAtLeast, type RequestAuditContext } from "../request-audit-context.js";
+import {
+  getStructuredRegistry,
+  isPartitionDataset,
+  type StructuredDatasetName
+} from "@enterprise-hub/domain";
+
+const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.4.0";
 
 interface InlineUploadFile {
   name: string;
@@ -113,6 +119,23 @@ async function uploadStructuredDataset(
 ): Promise<McpJsonToolResult> {
   if (context.abortSignal?.aborted) {
     return requestCancelledUploadError(context.audit.requestId);
+  }
+
+  const requestedDataset =
+    input && typeof input === "object" && "dataset" in input
+      ? (input as { dataset?: unknown }).dataset
+      : undefined;
+  if (
+    typeof requestedDataset === "string" &&
+    isPartitionDataset(requestedDataset) &&
+    !launcherVersionAtLeast(context.audit.launcherVersion, PARTITION_TRANSFER_LAUNCHER_VERSION)
+  ) {
+    return errorToolResult(
+      "LAUNCHER_UPGRADE_REQUIRED",
+      "Update the Enterprise Hub launcher before uploading partition datasets.",
+      undefined,
+      { requestId: context.audit.requestId }
+    );
   }
 
   const delegation = options.getDelegationContext(context);
