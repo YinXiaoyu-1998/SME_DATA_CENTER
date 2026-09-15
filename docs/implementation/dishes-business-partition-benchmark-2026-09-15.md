@@ -100,3 +100,17 @@ Before increasing worker concurrency on this 2 vCPU host, fix claim contention a
 Then add bounded per-job concurrency for partition PUT + verification (with atomic failure cleanup),
 and record parser/export/upload/publish phase timings in service metrics. Those two changes target
 the measured bottlenecks; raising model/tool-call limits would not.
+
+## Cleanup Evidence
+
+The pre-delete inventory matched the benchmark exactly: four partition jobs, four processing runs,
+6,283 partition rows, and 6,283 OSS objects, with every other upload-domain category at zero. Exact
+object deletion plus database cleanup completed in about 24 seconds. The storage client reported a
+50-socket pool with 2,868 deletion requests temporarily queued; post-cleanup verification returned
+zero for every database, OSS, and Qdrant category.
+
+API and worker containers remained healthy, the server partition work directory was empty, and no
+release-ops container remained. Launcher logout confirmed both remote session-family revocation and
+local credential removal, after which the synthetic employee account and its one login identity
+were hard-deleted. The durable HTML report and aggregate provenance remain local for human review;
+raw launcher CSV extracts were deleted by the runner.
