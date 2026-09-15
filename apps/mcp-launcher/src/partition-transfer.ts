@@ -277,6 +277,7 @@ async function uploadPart(
   }
   const response = await fetchImplementation(url, {
     method: "PUT",
+    headers: { "content-length": String(end - start + 1) },
     body: createReadStream(filePath, { start, end }) as unknown as BodyInit,
     duplex: "half"
   } as RequestInit & { duplex: "half" });
