@@ -728,7 +728,7 @@ worker duration/peak RSS/temp disk, DB rows written, manifest latency,
 download duration/throughput, outward MCP call count, cleanup duration/residue
 ```
 
-Required report acceptance uploads the real `maijia_dishes_20250701_20250928.xlsx` (about 200 MB) and `maijia_business_20250626_20260625.xlsx` (about 118 MB), then requests `2025-09-07` through `2025-09-13`; both files cover that period. Also run the parser/partition memory gate from Task 2 against the 231 MB dishes workbook. The flow must show one outward upload call per source, one status polling sequence per job, one download call per dataset, zero `dish_rows`/`business_rows`, and zero residue after cleanup.
+Required report acceptance uploads the real `maijia_dishes_20250701_20250928.xlsx` (about 200 MB) and `maijia_business_20250626_20260625.xlsx` (about 118 MB), then requests `2025-09-07` through `2025-09-13`; both files cover that period. Also run the parser/partition memory gate from Task 2 against the 231 MB dishes workbook. The flow must show one outward upload call per source, one status polling sequence per job, one download call per contiguous required dataset window (overlapping/adjacent windows coalesce; separated current/prior-year ranges do not bridge unused months), zero `dish_rows`/`business_rows`, and zero residue after cleanup.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -746,19 +746,19 @@ git commit -m "test: cover partition lifecycle at realistic scale"
 
 - Modify only if release verification finds a defect: launcher files from Task 8
 
-- [ ] **Step 1: Finish human review of the launcher diff**
+- [x] **Step 1: Finish human review of the launcher diff**
 
 Do not publish from an unreviewed moving tree. Ensure the implementation PR identifies the exact commit intended for the release tag.
 
-- [ ] **Step 2: Stage and publish using the repository launcher release workflow**
+- [x] **Step 2: Stage and publish using the repository launcher release workflow**
 
 Create the `mcp-launcher-v0.4.0` tag from the reviewed commit, run the required macOS and Windows native acceptance, approve staged publish, and wait at least three minutes between checks of an unchanged workflow.
 
-- [ ] **Step 3: Independently verify npm**
+- [x] **Step 3: Independently verify npm**
 
 In a new temporary directory, install exact `enterprise-hub-mcp-launcher@0.4.0`, verify CLI version, package integrity, tool schemas, no unexpected files and zero production audit findings. Delete the temp directory.
 
-- [ ] **Step 4: Only now update recommendation metadata**
+- [x] **Step 4: Only now update recommendation metadata**
 
 Proceed to Task 11 only after the public package is fetchable and verified. A failed publication blocks cutover; it does not justify documenting an unavailable version.
 
@@ -802,25 +802,25 @@ Proceed to Task 11 only after the public package is fetchable and verified. A fa
 - Create: `tests/test_partition_extract.py`
 - Create: `tests/test_extract_cleanup.py`
 
-- [ ] **Step 1: Update server recommendation to 0.4.0**
+- [x] **Step 1: Update server recommendation to 0.4.0**
 
 Keep minimum version unchanged only if the old launcher can still authenticate and use unaffected tools; the new partition tools themselves must return a clear update-required error to older launchers. This is capability gating, not a row-query compatibility path.
 
-- [ ] **Step 2: Sync the dual-homed Enterprise Hub skill**
+- [x] **Step 2: Sync the dual-homed Enterprise Hub skill**
 
 Start from the newest copy; the currently checked-out standalone repository may not be on `main`, so fetch, compare timestamps/commits, branch independently, and make repo-local and standalone skill content byte-identical. Teach one natural upload call and one local partition download call; do not teach manual chunking, Base64 emission, direct HTTP, OSS URLs, or dataset-specific file rewriting.
 
-- [ ] **Step 3: Rewrite the Maijia report skill data path**
+- [x] **Step 3: Rewrite the Maijia report skill data path**
 
 Use `get_partition_import_status` while uploads process, use `download_structured_partitions` for `business` / `dishes`, retain controlled query only for `dish_catalog`, merge local CSV rows into the existing internal fact model, and delete extract directories in `finally`. Durable report/facts/provenance stay; launcher scratch does not.
 
 The skill test must inspect a forced report exception and prove the extract directory was deleted while the pre-existing run directory and unrelated files remained.
 
-- [ ] **Step 4: Open independent skill PRs**
+- [x] **Step 4: Open independent skill PRs**
 
 Open one PR for `enterprise-hub-mcp-skill` and one for `maijia-business-analyses-smedc`. Each describes its dependency on Enterprise Hub 0.4.0/cutover. Do not copy either repository into this PR.
 
-- [ ] **Step 5: Verify docs/skills and commit the main-repo sync**
+- [x] **Step 5: Verify docs/skills and commit the main-repo sync**
 
 ```bash
 npx vitest run apps/api/src/auth/http-contract.test.ts

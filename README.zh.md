@@ -5,7 +5,7 @@
 当前产品面是 Phase 3-only：
 
 - 非结构化证据：上传 MD/TXT/DOCX → 解析/切块/embedding/Qdrant indexing → 检索 evidence chunks。
-- 结构化数据：上传 CSV/XLSX → 严格校验 dishes/business 数据 → MySQL 原子导入 → 受控 JSON 查询。
+- 结构化数据：`business`/`dishes` 原始 CSV/XLSX 经流式上传与严格校验后，原子发布为 OSS 门店日分区；其他数据集继续进入 MySQL 受控 JSON 查询。
 
 旧的 legacy ordinary document 入口已经移除。底层 documents catalog/storage/audit 仍作为源文件记录、密级、状态和审计基础设施使用。
 
@@ -102,7 +102,7 @@ npm run worker:once
 ## 正式员工 MCP
 
 正式员工路径是通过固定版本的本机 stdio launcher
-`enterprise-hub-mcp-launcher@0.3.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
+`enterprise-hub-mcp-launcher@0.4.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
 `skills/enterprise-hub-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载
 权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `enterprise_hub_login`、
 `enterprise_hub_logout`、`enterprise_hub_auth_status` 和仅查询当前身份的
@@ -145,6 +145,12 @@ ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher
 
 MCP 配置、环境和文件中不得保存 bearer token。
 
+`business` 和 `dishes` 不再写入 MySQL 明细行，也不提供通用行查询。官方 launcher 通过 multipart
+流式上传单个原始 CSV/XLSX（默认上限 2 GiB），worker 在全部校验成功后原子发布 OSS 门店日 canonical
+CSV，MySQL 仅保存当前分区目录。客户端用 `get_partition_import_status` 等待 `published`，查看 coverage
+后通过 `download_structured_partitions` 下载授权分区到本地分析；预签名 URL 不进入模型上下文，调用方须
+清理返回的 scratch 目录。
+
 MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登录员工推导。Evidence search 的 cursor 是不透明、短期有效的翻页 token：下一页必须沿用相同 query/filter/limit 原样传回 `page.nextCursor`。遇到 `INVALID_CURSOR` 可不带 cursor 重新开始；遇到 `CURSOR_EXPIRED`，先说明 cursor 已过期，只有用户仍希望继续时才重新搜索。结构化导入只有在同一个文件和同一组 metadata 精确重试时才复用 `idempotencyKey`；精确重放会返回第一次持久化的 ID/storage key，不可见的 import status 与不存在批次一样返回非枚举 404。
 
 ## 菜品目录快照
@@ -166,19 +172,21 @@ sheet）会被忽略并在状态中留下安全摘要。隐藏且匹配的 sheet
 
 ## 当前 MCP Tools
 
-| Tool                           | 用途                                        |
-| ------------------------------ | ------------------------------------------- |
-| `enterprise_hub_login`         | 打开浏览器完成正式登录                      |
-| `enterprise_hub_logout`        | 撤销并清除本机共享 session                  |
-| `enterprise_hub_auth_status`   | 返回不含凭证的认证状态                      |
-| `enterprise_hub_list_skills`   | 读取已批准 Skill Directory 元数据           |
-| `upload_evidence_document`     | 上传 MD/TXT/DOCX evidence 文档              |
-| `get_evidence_document_status` | 查询 evidence 文档和索引状态                |
-| `search_document_evidence`     | 检索可见 evidence chunks                    |
-| `upload_structured_dataset`    | 上传 dishes/business CSV/XLSX 数据集        |
-| `get_import_status`            | 查询结构化导入状态                          |
-| `list_structured_datasets`     | 查询可用结构化 dataset/字段/operator schema |
-| `query_structured_dataset`     | 执行受控只读结构化 JSON 查询                |
+| Tool                             | 用途                                            |
+| -------------------------------- | ----------------------------------------------- |
+| `enterprise_hub_login`           | 打开浏览器完成正式登录                          |
+| `enterprise_hub_logout`          | 撤销并清除本机共享 session                      |
+| `enterprise_hub_auth_status`     | 返回不含凭证的认证状态                          |
+| `enterprise_hub_list_skills`     | 读取已批准 Skill Directory 元数据               |
+| `upload_evidence_document`       | 上传 MD/TXT/DOCX evidence 文档                  |
+| `get_evidence_document_status`   | 查询 evidence 文档和索引状态                    |
+| `search_document_evidence`       | 检索可见 evidence chunks                        |
+| `upload_structured_dataset`      | 上传结构化 CSV/XLSX；business/dishes 走分区导入 |
+| `get_import_status`              | 查询结构化导入状态                              |
+| `list_structured_datasets`       | 查询可用结构化 dataset/字段/operator schema     |
+| `get_partition_import_status`    | 查询 business/dishes 分区导入状态               |
+| `download_structured_partitions` | 下载授权 business/dishes 分区到本地目录         |
+| `query_structured_dataset`       | 查询 row-query 数据集；拒绝 business/dishes     |
 
 ## 本地 MCP 人工验证
 
@@ -197,7 +205,7 @@ Codex 会使用 repo-local `enterprise-hub-manual-test` skill 重置专用本地
 1. 调用 `enterprise_hub_login`，只在浏览器中完成登录。
 2. 未明确指定时，以默认密级 `0` 上传。
 3. 用 `upload_evidence_document` 上传 MD/TXT/DOCX，随后用 `get_evidence_document_status` 等待 index ready，再用 `search_document_evidence` 检索。
-4. 用 `upload_structured_dataset` 上传 `dishes` 或 `business` CSV/XLSX，随后用 `get_import_status` 和 `query_structured_dataset` 验证。
+4. 用 `upload_structured_dataset` 原样上传 `dishes` 或 `business` CSV/XLSX，随后用 `get_partition_import_status` 等待发布，并用 `download_structured_partitions` 验证授权分区下载；不得手工切块或直查 MySQL 明细。
 5. 用密级不足或不同组织的账户搜索同一内容，确认没有数据、文件名、行数或存在性泄漏。
 
 ## npm scripts

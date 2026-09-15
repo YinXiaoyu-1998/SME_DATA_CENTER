@@ -354,9 +354,9 @@ data. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be imp
 accepted official employee installation, browser login, and durable session contract is defined in
 `official-user-install-and-login.md`; the implementation and migration are deployed in staging,
 and real macOS Codex acceptance has passed on the retained 0.1.x compatibility path. The pinned and
-recommended launcher `enterprise-hub-mcp-launcher@0.3.0` is published and independently verified by
+recommended launcher `enterprise-hub-mcp-launcher@0.4.0` is published and independently verified by
 native macOS/Windows package acceptance; the earlier full headless Linux
-login-to-business-tool loop remains compatibility evidence, and the full user-visible 0.3.0
+login-to-business-tool loop remains compatibility evidence, and the full user-visible 0.4.0
 acceptance matrix remains open.
 
 ### Remaining Phase 4 Tracks
