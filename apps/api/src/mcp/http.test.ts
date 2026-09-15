@@ -692,7 +692,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     const toolNames = (
       parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
     ).map((tool) => tool.name);
-    expect(toolNames).toEqual([...ENTERPRISE_HUB_MCP_TOOL_NAMES]);
+    expect(toolNames.sort()).toEqual([...ENTERPRISE_HUB_MCP_TOOL_NAMES].sort());
   });
 
   it("returns only the current authenticated employee's self-profile", async () => {
@@ -780,7 +780,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         params: {
           name: "query_structured_dataset",
           arguments: {
-            dataset: "dishes",
+            dataset: "vip",
             page: { limit: 1 }
           }
         }
@@ -798,7 +798,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         params: {
           name: "describe_structured_dataset_coverage",
           arguments: {
-            dataset: "dishes"
+            dataset: "vip"
           }
         }
       },
@@ -880,11 +880,11 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       datasets: expect.arrayContaining([expect.objectContaining({ dataset: "dishes" })])
     });
     expect(parseToolPayload(structuredQuery.payload).payload).toMatchObject({
-      dataset: "dishes",
+      dataset: "vip",
       rows: [{ dish_name: "Noodles", sales_amount: 128 }]
     });
     expect(parseToolPayload(structuredCoverage.payload).payload).toMatchObject({
-      dataset: "dishes",
+      dataset: "vip",
       metadataPolicy: "window",
       sources: [expect.objectContaining({ importBatchId: "imp_coverage" })]
     });

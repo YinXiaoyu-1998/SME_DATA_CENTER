@@ -223,7 +223,14 @@ async function insertStructuredRows(
     onTiming?: (event: StructuredImportTimingEvent) => void;
   }
 ): Promise<void> {
-  const tableName = getStructuredRegistry(input.dataset).rowTable;
+  const registry = getStructuredRegistry(input.dataset);
+  if (registry.accessMode !== "row_query") {
+    throw new StructuredImportError("DATASET_REQUIRES_PARTITION_EXTRACT");
+  }
+  if (!registry.rowTable) {
+    throw new Error(`Row-query dataset ${input.dataset} has no row table.`);
+  }
+  const tableName = registry.rowTable;
   const batchSize = input.batchInsertSize;
 
   for (
@@ -382,6 +389,9 @@ export function createPrismaStructuredImportRepository(options: {
       return batch ? toImportBatchRecord(batch) : null;
     },
     async reserveStructuredImport(input) {
+      if (getStructuredRegistry(input.dataset).accessMode !== "row_query") {
+        throw new StructuredImportError("DATASET_REQUIRES_PARTITION_EXTRACT");
+      }
       return retryIdempotentDatabaseOperation(async () => {
         const existing = await resolveExistingReservation(input);
         if (existing) return existing;
@@ -542,14 +552,6 @@ export function createPrismaStructuredImportRepository(options: {
               input,
               "apply.delete_existing_rows",
               () => {
-                if (existing.dataset === ImportDataset.dishes) {
-                  return tx.dishRow.deleteMany({ where: { importBatchId: input.importBatchId } });
-                }
-                if (existing.dataset === ImportDataset.business) {
-                  return tx.businessRow.deleteMany({
-                    where: { importBatchId: input.importBatchId }
-                  });
-                }
                 if (existing.dataset === ImportDataset.vip) {
                   return tx.vipRow.deleteMany({ where: { importBatchId: input.importBatchId } });
                 }

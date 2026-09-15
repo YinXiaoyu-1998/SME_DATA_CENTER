@@ -6,7 +6,7 @@
   "main": "src/index.ts",
   "dependencies": {
     "@enterprise-hub/domain": "0.0.0",
-    "csv-parse": "6.2.1",
+    "csv-parse": "7.0.2",
     "sax": "1.6.1",
     "yauzl": "3.4.0"
   },

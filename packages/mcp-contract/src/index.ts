@@ -165,6 +165,22 @@ const describeStructuredDatasetCoverageInputSchema = z
   })
   .strict();
 
+const partitionImportStatusInputSchema = z
+  .object({
+    partitionImportJobId: z.string().min(1).max(64)
+  })
+  .strict();
+
+const downloadStructuredPartitionsInputSchema = z
+  .object({
+    dataset: z.enum(["business", "dishes"]),
+    enterpriseName: z.string().min(1).max(PUBLIC_INPUT_LIMITS.enterpriseNameChars),
+    startDate: z.string().regex(/^\d{8}$/),
+    endDate: z.string().regex(/^\d{8}$/),
+    storeIds: z.array(z.string().min(1).max(255)).max(10_000).optional()
+  })
+  .strict();
+
 const aggregateAlias = z.string().min(1);
 const countAggregateInputSchema = z
   .object({
@@ -405,7 +421,9 @@ export const ENTERPRISE_HUB_MCP_TOOL_NAMES = [
   "archive_quarantine_certificates",
   "get_source_document_download_url",
   "get_evidence_document_status",
-  "get_import_status"
+  "get_import_status",
+  "get_partition_import_status",
+  "download_structured_partitions"
 ] as const;
 
 export type EnterpriseHubMcpToolName = (typeof ENTERPRISE_HUB_MCP_TOOL_NAMES)[number];
@@ -577,7 +595,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload Enterprise Hub structured dataset",
     description:
-      "Queue the user's XLSX/CSV structured file with authenticated multipart POST /v1/structured/imports; a 202 queued response requires status polling before success is reported.",
+      "Upload the user's original XLSX/CSV. Launcher 0.4.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: [
       {
@@ -603,7 +621,35 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
         description: "Explicit 0-3 level; omission is 0."
       }
     ],
-    resultShape: ["document", "processing", "importBatch"]
+    resultShape: [
+      "business/dishes: partitionImportJobId, status, partitionCount, totalRowCount, error",
+      "other datasets: document, processing, importBatch"
+    ]
+  }),
+  defineToolContract({
+    name: "get_partition_import_status",
+    title: "Get partition import status",
+    description: "Return the current status of one business/dishes partition import job.",
+    inputSchema: partitionImportStatusInputSchema,
+    inputFields: [
+      { name: "partitionImportJobId", required: true, description: "Partition import job ID." }
+    ],
+    resultShape: ["partitionImportJobId", "status", "partitionCount", "totalRowCount", "error"]
+  }),
+  defineToolContract({
+    name: "download_structured_partitions",
+    title: "Download structured partitions",
+    description:
+      "Download authorized business/dishes daily store partitions into a launcher-managed local directory.",
+    inputSchema: downloadStructuredPartitionsInputSchema,
+    inputFields: [
+      { name: "dataset", required: true, description: "business or dishes." },
+      { name: "enterpriseName", required: true, description: "Enterprise/source name." },
+      { name: "startDate", required: true, description: "Inclusive YYYYMMDD start." },
+      { name: "endDate", required: true, description: "Inclusive YYYYMMDD end." },
+      { name: "storeIds", required: false, description: "Optional merchant IDs." }
+    ],
+    resultShape: ["localDirectory", "dataset", "partitionCount", "totalRowCount", "files[]"]
   }),
   defineToolContract({
     name: "upload_evidence_document",

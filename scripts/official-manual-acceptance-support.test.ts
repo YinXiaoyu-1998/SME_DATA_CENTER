@@ -199,8 +199,9 @@ describe("official manual acceptance cleanup", () => {
       assertCleanupCountsAreZero({
         documents: 0,
         importBatches: 0,
-        dishRows: 0,
-        businessRows: 0,
+        structuredPartitions: 0,
+        partitionImportJobs: 0,
+        storageGarbage: 0,
         vipRows: 0,
         dishCatalogRows: 0,
         deliveryLedgerRows: 3,

@@ -18,8 +18,9 @@ export interface StagingUploadDomainCleanupInventory {
   documentIndexIds: string[];
   importBatchIds: string[];
   importWindowClaimIds: string[];
-  dishRowIds: string[];
-  businessRowIds: string[];
+  partitionImportJobIds: string[];
+  structuredPartitionIds: string[];
+  storageGarbageIds: string[];
   vipRowIds: string[];
   dishCatalogRowIds: string[];
   uploadAuditLogIds: string[];
@@ -36,8 +37,9 @@ export interface StagingUploadDomainCleanupPlan {
   documentIndexIds: string[];
   importBatchIds: string[];
   importWindowClaimIds: string[];
-  dishRowIds: string[];
-  businessRowIds: string[];
+  partitionImportJobIds: string[];
+  structuredPartitionIds: string[];
+  storageGarbageIds: string[];
   vipRowIds: string[];
   dishCatalogRowIds: string[];
   uploadAuditLogIds: string[];
@@ -60,8 +62,9 @@ export interface StagingUploadDomainCleanupSafeLog {
     documentIndexes: number;
     importBatches: number;
     importWindowClaims: number;
-    dishRows: number;
-    businessRows: number;
+    partitionImportJobs: number;
+    structuredPartitions: number;
+    storageGarbage: number;
     vipRows: number;
     dishCatalogRows: number;
     uploadAuditLogs: number;
@@ -87,8 +90,9 @@ export const UPLOAD_DOMAIN_DELETION_TARGETS = [
   "DocumentChunk",
   "DocumentIndex",
   "ImportWindowClaim",
-  "DishRow",
-  "BusinessRow",
+  "PartitionImportJob",
+  "StructuredPartition",
+  "StorageGarbage",
   "VipRow",
   "DishCatalogRow",
   "ImportBatch",
@@ -147,8 +151,9 @@ export function buildStagingUploadDomainCleanupPlan(input: {
   const documentIndexIds = sortIds(input.inventory.documentIndexIds);
   const importBatchIds = sortIds(input.inventory.importBatchIds);
   const importWindowClaimIds = sortIds(input.inventory.importWindowClaimIds);
-  const dishRowIds = sortIds(input.inventory.dishRowIds);
-  const businessRowIds = sortIds(input.inventory.businessRowIds);
+  const partitionImportJobIds = sortIds(input.inventory.partitionImportJobIds);
+  const structuredPartitionIds = sortIds(input.inventory.structuredPartitionIds);
+  const storageGarbageIds = sortIds(input.inventory.storageGarbageIds);
   const vipRowIds = sortIds(input.inventory.vipRowIds);
   const dishCatalogRowIds = sortIds(input.inventory.dishCatalogRowIds);
   const uploadAuditLogIds = sortIds(input.inventory.uploadAuditLogIds);
@@ -164,8 +169,9 @@ export function buildStagingUploadDomainCleanupPlan(input: {
     documentIndexIds,
     importBatchIds,
     importWindowClaimIds,
-    dishRowIds,
-    businessRowIds,
+    partitionImportJobIds,
+    structuredPartitionIds,
+    storageGarbageIds,
     vipRowIds,
     dishCatalogRowIds,
     uploadAuditLogIds,
@@ -184,8 +190,9 @@ export function buildStagingUploadDomainCleanupPlan(input: {
         documentIndexes: documentIndexIds.length,
         importBatches: importBatchIds.length,
         importWindowClaims: importWindowClaimIds.length,
-        dishRows: dishRowIds.length,
-        businessRows: businessRowIds.length,
+        partitionImportJobs: partitionImportJobIds.length,
+        structuredPartitions: structuredPartitionIds.length,
+        storageGarbage: storageGarbageIds.length,
         vipRows: vipRowIds.length,
         dishCatalogRows: dishCatalogRowIds.length,
         uploadAuditLogs: uploadAuditLogIds.length,
@@ -217,8 +224,9 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
   validateUniqueNonEmpty(inventory.documentIndexIds, "document index ID");
   validateUniqueNonEmpty(inventory.importBatchIds, "import batch ID");
   validateUniqueNonEmpty(inventory.importWindowClaimIds, "import-window claim ID");
-  validateUniqueNonEmpty(inventory.dishRowIds, "dish row ID");
-  validateUniqueNonEmpty(inventory.businessRowIds, "business row ID");
+  validateUniqueNonEmpty(inventory.partitionImportJobIds, "partition import job ID");
+  validateUniqueNonEmpty(inventory.structuredPartitionIds, "structured partition ID");
+  validateUniqueNonEmpty(inventory.storageGarbageIds, "storage garbage ID");
   validateUniqueNonEmpty(inventory.vipRowIds, "VIP row ID");
   validateUniqueNonEmpty(inventory.dishCatalogRowIds, "dish catalog row ID");
   validateUniqueNonEmpty(inventory.uploadAuditLogIds, "upload audit log ID");

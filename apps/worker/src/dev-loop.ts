@@ -4,6 +4,7 @@ import { createStorageAdapter } from "@enterprise-hub/storage";
 import { createEvidenceIndexerFromEnv } from "./evidence-index.js";
 import { loadWorkerRuntimeLimits } from "./config/runtime-limits.js";
 import { createPrismaProcessingWorkerRepository, runWorkerLoop } from "./worker.js";
+import { createPartitionImporter, partitionImportLimitsFromRuntime } from "./partition-import.js";
 
 export async function main(): Promise<void> {
   loadDotenv({ quiet: true, override: false });
@@ -15,6 +16,9 @@ export async function main(): Promise<void> {
   });
   const storage = createStorageAdapter(process.env);
   const evidenceIndexer = createEvidenceIndexerFromEnv();
+  const partitionImporter = createPartitionImporter({
+    limits: partitionImportLimitsFromRuntime(runtimeLimits)
+  });
 
   const stop = () => {
     abortController.abort();
@@ -22,12 +26,17 @@ export async function main(): Promise<void> {
 
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+  const maintenanceTimer = setInterval(() => {
+    void partitionImporter.maintain({ storage }).catch(console.error);
+  }, 60_000);
 
   try {
+    await partitionImporter.maintain({ storage });
     await runWorkerLoop({
       repository,
       storage,
       evidenceIndexer,
+      partitionImporter,
       structuredImportBatchInsertSize: runtimeLimits.structuredImportBatchInsertSize,
       workerConcurrency: runtimeLimits.workerConcurrency,
       leaseSeconds: runtimeLimits.workerLeaseSeconds,
@@ -46,9 +55,11 @@ export async function main(): Promise<void> {
       }
     });
   } finally {
+    clearInterval(maintenanceTimer);
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
     await repository.disconnect?.();
+    await partitionImporter.disconnect();
   }
 }
 

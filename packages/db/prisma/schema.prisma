@@ -56,6 +56,7 @@ enum ProcessingRunStatus {
 enum ProcessingJobType {
   evidence_document_index
   structured_import
+  structured_partition_import
 }
 
 enum RetrievalConfigStatus {
@@ -89,6 +90,22 @@ enum ImportBatchStatus {
   failed
   rejected
   archived
+}
+
+enum PartitionDataset {
+  dishes
+  business
+}
+
+enum PartitionImportJobStatus {
+  uploading
+  queued
+  processing
+  published
+  rejected
+  failed
+  cancelled
+  expired
 }
 
 enum SkillEntryStatus {
@@ -138,93 +155,92 @@ enum AuthSecurityOutcome {
 }
 
 model Organization {
-  id              String                   @id @db.VarChar(64)
-  name            String                   @db.VarChar(255)
-  createdAt       DateTime                 @default(now()) @map("created_at")
-  updatedAt       DateTime                 @updatedAt @map("updated_at")
-  employees       Employee[]
-  documents       Document[]
-  processingRuns  ProcessingRun[]
-  documentIndexes DocumentIndex[]
-  importBatches   ImportBatch[]
-  importClaims    ImportWindowClaim[]
-  dishRows        DishRow[]
-  businessRows    BusinessRow[]
-  vipRows         VipRow[]
-  dishCatalogRows DishCatalogRow[]
-  deliveryLedgerRows DeliveryLedgerRow[]
-  supplierCatalogRows SupplierCatalogRow[]
+  id                     String                   @id @db.VarChar(64)
+  name                   String                   @db.VarChar(255)
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  employees              Employee[]
+  documents              Document[]
+  processingRuns         ProcessingRun[]
+  documentIndexes        DocumentIndex[]
+  importBatches          ImportBatch[]
+  importClaims           ImportWindowClaim[]
+  partitionImportJobs    PartitionImportJob[]
+  structuredPartitions   StructuredPartition[]
+  vipRows                VipRow[]
+  dishCatalogRows        DishCatalogRow[]
+  deliveryLedgerRows     DeliveryLedgerRow[]
+  supplierCatalogRows    SupplierCatalogRow[]
   quarantineCertificates QuarantineCertificate[]
-  auditLogs       AuditLog[]
-  skillEntries    SkillEntry[]
-  loginIdentities LoginIdentity[]
-  authSessions    AuthSession[]
-  oauthCodes      OAuthAuthorizationCode[]
-  deviceAuthorizations DeviceAuthorization[]
-  oauthTokens     OAuthAccessToken[]
-  authEvents      AuthSecurityEvent[]
+  auditLogs              AuditLog[]
+  skillEntries           SkillEntry[]
+  loginIdentities        LoginIdentity[]
+  authSessions           AuthSession[]
+  oauthCodes             OAuthAuthorizationCode[]
+  deviceAuthorizations   DeviceAuthorization[]
+  oauthTokens            OAuthAccessToken[]
+  authEvents             AuthSecurityEvent[]
 
   @@map("organizations")
 }
 
 model Employee {
-  id              String                   @id @default(cuid()) @db.VarChar(32)
-  orgId           String                   @map("org_id") @db.VarChar(64)
-  email           String                   @unique @db.VarChar(320)
-  displayName     String                   @map("display_name") @db.VarChar(255)
-  role            EmployeeRole
-  clearance       Int                      @db.UnsignedTinyInt
-  disabled        Boolean                  @default(false)
-  createdAt       DateTime                 @default(now()) @map("created_at")
-  updatedAt       DateTime                 @updatedAt @map("updated_at")
-  organization    Organization             @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  uploadedDocs    Document[]               @relation("DocumentUploader")
-  auditLogs       AuditLog[]               @relation("AuditActor")
-  loginIdentities LoginIdentity[]
-  authSessions    AuthSession[]
-  oauthCodes      OAuthAuthorizationCode[]
+  id                   String                   @id @default(cuid()) @db.VarChar(32)
+  orgId                String                   @map("org_id") @db.VarChar(64)
+  email                String                   @unique @db.VarChar(320)
+  displayName          String                   @map("display_name") @db.VarChar(255)
+  role                 EmployeeRole
+  clearance            Int                      @db.UnsignedTinyInt
+  disabled             Boolean                  @default(false)
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  organization         Organization             @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  uploadedDocs         Document[]               @relation("DocumentUploader")
+  auditLogs            AuditLog[]               @relation("AuditActor")
+  loginIdentities      LoginIdentity[]
+  authSessions         AuthSession[]
+  oauthCodes           OAuthAuthorizationCode[]
   deviceAuthorizations DeviceAuthorization[]
-  oauthTokens     OAuthAccessToken[]
-  authEvents      AuthSecurityEvent[]
+  oauthTokens          OAuthAccessToken[]
+  authEvents           AuthSecurityEvent[]
+  partitionImports     PartitionImportJob[]
 
   @@index([orgId])
   @@map("employees")
 }
 
 model Document {
-  id               String          @id @default(cuid()) @db.VarChar(32)
-  orgId            String          @map("org_id") @db.VarChar(64)
-  title            String          @db.VarChar(512)
-  documentType     DocumentType    @map("document_type")
-  documentKind     DocumentKind?   @map("document_kind")
-  fileType         FileType?       @map("file_type")
-  status           DocumentStatus  @default(uploading)
-  confidentialityLevel Int         @default(0) @map("confidentiality_level") @db.UnsignedTinyInt
-  contentVersion   Int             @default(1) @map("content_version")
-  storageObjectKey String          @map("storage_object_key") @db.VarChar(1024)
-  originalFileName String?         @map("original_file_name") @db.VarChar(512)
-  contentType      String?         @map("content_type") @db.VarChar(255)
-  byteSize         BigInt?         @map("byte_size")
-  checksumSha256   String?         @map("checksum_sha256") @db.VarChar(64)
-  uploaderId       String          @map("uploader_employee_id") @db.VarChar(32)
-  sourceSystem     String?         @map("source_system") @db.VarChar(255)
-  sourceTime       DateTime?       @map("source_time")
-  sourceMetadata   Json?           @map("source_metadata")
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
-  archivedAt       DateTime?       @map("archived_at")
-  organization     Organization    @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  uploader         Employee        @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
-  processingRuns   ProcessingRun[]
-  chunks           DocumentChunk[]
-  indexes          DocumentIndex[]
-  importBatch      ImportBatch?
-  dishRows         DishRow[]
-  businessRows     BusinessRow[]
-  vipRows          VipRow[]
-  dishCatalogRows  DishCatalogRow[]
-  deliveryLedgerRows DeliveryLedgerRow[]
-  supplierCatalogRows SupplierCatalogRow[]
+  id                    String                 @id @default(cuid()) @db.VarChar(32)
+  orgId                 String                 @map("org_id") @db.VarChar(64)
+  title                 String                 @db.VarChar(512)
+  documentType          DocumentType           @map("document_type")
+  documentKind          DocumentKind?          @map("document_kind")
+  fileType              FileType?              @map("file_type")
+  status                DocumentStatus         @default(uploading)
+  confidentialityLevel  Int                    @default(0) @map("confidentiality_level") @db.UnsignedTinyInt
+  contentVersion        Int                    @default(1) @map("content_version")
+  storageObjectKey      String                 @map("storage_object_key") @db.VarChar(1024)
+  originalFileName      String?                @map("original_file_name") @db.VarChar(512)
+  contentType           String?                @map("content_type") @db.VarChar(255)
+  byteSize              BigInt?                @map("byte_size")
+  checksumSha256        String?                @map("checksum_sha256") @db.VarChar(64)
+  uploaderId            String                 @map("uploader_employee_id") @db.VarChar(32)
+  sourceSystem          String?                @map("source_system") @db.VarChar(255)
+  sourceTime            DateTime?              @map("source_time")
+  sourceMetadata        Json?                  @map("source_metadata")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  archivedAt            DateTime?              @map("archived_at")
+  organization          Organization           @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  uploader              Employee               @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  processingRuns        ProcessingRun[]
+  chunks                DocumentChunk[]
+  indexes               DocumentIndex[]
+  importBatch           ImportBatch?
+  vipRows               VipRow[]
+  dishCatalogRows       DishCatalogRow[]
+  deliveryLedgerRows    DeliveryLedgerRow[]
+  supplierCatalogRows   SupplierCatalogRow[]
   quarantineCertificate QuarantineCertificate?
 
   @@index([orgId, status])
@@ -237,26 +253,28 @@ model Document {
 }
 
 model ProcessingRun {
-  id              String              @id @default(cuid()) @db.VarChar(32)
-  orgId           String              @map("org_id") @db.VarChar(64)
-  documentId      String              @map("document_id") @db.VarChar(32)
-  jobKey          String              @unique @map("job_key") @db.VarChar(255)
-  status          ProcessingRunStatus @default(queued)
-  jobType         ProcessingJobType   @map("job_type")
-  attemptNumber   Int                 @default(0) @map("attempt_number")
-  retryCount      Int                 @default(0) @map("retry_count")
-  availableAt     DateTime            @default(now()) @map("available_at")
-  lockedBy        String?             @map("locked_by") @db.VarChar(128)
-  lockedUntil     DateTime?           @map("locked_until")
-  lastHeartbeatAt DateTime?           @map("last_heartbeat_at")
-  errorCode       String?             @map("error_code") @db.VarChar(128)
-  errorSummary    String?             @map("error_summary") @db.Text
-  startedAt       DateTime?           @map("started_at")
-  finishedAt      DateTime?           @map("finished_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
-  organization    Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  document        Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id                   String              @id @default(cuid()) @db.VarChar(32)
+  orgId                String              @map("org_id") @db.VarChar(64)
+  documentId           String?             @map("document_id") @db.VarChar(32)
+  partitionImportJobId String?             @unique @map("partition_import_job_id") @db.VarChar(32)
+  jobKey               String              @unique @map("job_key") @db.VarChar(255)
+  status               ProcessingRunStatus @default(queued)
+  jobType              ProcessingJobType   @map("job_type")
+  attemptNumber        Int                 @default(0) @map("attempt_number")
+  retryCount           Int                 @default(0) @map("retry_count")
+  availableAt          DateTime            @default(now()) @map("available_at")
+  lockedBy             String?             @map("locked_by") @db.VarChar(128)
+  lockedUntil          DateTime?           @map("locked_until")
+  lastHeartbeatAt      DateTime?           @map("last_heartbeat_at")
+  errorCode            String?             @map("error_code") @db.VarChar(128)
+  errorSummary         String?             @map("error_summary") @db.Text
+  startedAt            DateTime?           @map("started_at")
+  finishedAt           DateTime?           @map("finished_at")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+  organization         Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  document             Document?           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  partitionImportJob   PartitionImportJob? @relation(fields: [partitionImportJobId], references: [id], onDelete: Cascade)
 
   @@index([orgId, status])
   @@index([status, availableAt, lockedUntil])
@@ -338,36 +356,34 @@ model DocumentIndex {
 }
 
 model ImportBatch {
-  id                 String             @id @default(cuid()) @db.VarChar(32)
-  orgId              String             @map("org_id") @db.VarChar(64)
-  sourceDocumentId   String             @unique @map("source_document_id") @db.VarChar(32)
-  dataset            ImportDataset
-  startDate          DateTime?          @map("start_date") @db.Date
-  endDate            DateTime?          @map("end_date") @db.Date
-  idempotencyKey     String             @map("idempotency_key") @db.VarChar(255)
-  requestFingerprint String             @map("request_fingerprint") @db.VarChar(64)
-  naturalKey         String?            @map("natural_key") @db.VarChar(255)
-  appliedAt          DateTime?          @map("applied_at")
-  status             ImportBatchStatus  @default(pending)
-  sourceSheetSummary Json?              @map("source_sheet_summary")
-  validationErrors   Json?              @map("validation_errors")
-  validationErrorCount Int               @default(0) @map("validation_error_count")
-  totalRowCount      Int                @default(0) @map("total_row_count")
-  appliedRowCount    Int                @default(0) @map("applied_row_count")
-  errorCode          String?            @map("error_code") @db.VarChar(128)
-  errorSummary       String?            @map("error_summary") @db.Text
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
-  archivedAt         DateTime?          @map("archived_at")
-  organization       Organization       @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  sourceDocument     Document           @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
-  windowClaim        ImportWindowClaim?
-  dishRows           DishRow[]
-  businessRows       BusinessRow[]
-  vipRows            VipRow[]
-  dishCatalogRows    DishCatalogRow[]
-  deliveryLedgerRows DeliveryLedgerRow[]
-  supplierCatalogRows SupplierCatalogRow[]
+  id                   String               @id @default(cuid()) @db.VarChar(32)
+  orgId                String               @map("org_id") @db.VarChar(64)
+  sourceDocumentId     String               @unique @map("source_document_id") @db.VarChar(32)
+  dataset              ImportDataset
+  startDate            DateTime?            @map("start_date") @db.Date
+  endDate              DateTime?            @map("end_date") @db.Date
+  idempotencyKey       String               @map("idempotency_key") @db.VarChar(255)
+  requestFingerprint   String               @map("request_fingerprint") @db.VarChar(64)
+  naturalKey           String?              @map("natural_key") @db.VarChar(255)
+  appliedAt            DateTime?            @map("applied_at")
+  status               ImportBatchStatus    @default(pending)
+  sourceSheetSummary   Json?                @map("source_sheet_summary")
+  validationErrors     Json?                @map("validation_errors")
+  validationErrorCount Int                  @default(0) @map("validation_error_count")
+  totalRowCount        Int                  @default(0) @map("total_row_count")
+  appliedRowCount      Int                  @default(0) @map("applied_row_count")
+  errorCode            String?              @map("error_code") @db.VarChar(128)
+  errorSummary         String?              @map("error_summary") @db.Text
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+  archivedAt           DateTime?            @map("archived_at")
+  organization         Organization         @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sourceDocument       Document             @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  windowClaim          ImportWindowClaim?
+  vipRows              VipRow[]
+  dishCatalogRows      DishCatalogRow[]
+  deliveryLedgerRows   DeliveryLedgerRow[]
+  supplierCatalogRows  SupplierCatalogRow[]
 
   @@unique([orgId, idempotencyKey])
   @@unique([orgId, dataset, naturalKey], map: "import_batches_org_dataset_natural_key_uq")
@@ -407,42 +423,83 @@ model QuarantineCertificate {
   @@map("quarantine_certificates")
 }
 
-model DishRow {
-  id               String       @id @default(cuid()) @db.VarChar(32)
-  orgId            String       @map("org_id") @db.VarChar(64)
-  sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
-  importBatchId    String       @map("import_batch_id") @db.VarChar(32)
-  sourceSheetIndex Int          @default(0) @map("source_sheet_index")
-  sourceSheetName  String       @default("Sheet1") @map("source_sheet_name") @db.VarChar(255)
-  sourceRowNumber  Int          @map("source_row_number")
-  payload          Json
-  createdAt        DateTime     @default(now()) @map("created_at")
-  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
-  importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+model PartitionImportJob {
+  id                   String                   @id @db.VarChar(32)
+  orgId                String                   @map("org_id") @db.VarChar(64)
+  uploaderId           String                   @map("uploader_employee_id") @db.VarChar(32)
+  dataset              PartitionDataset
+  enterpriseKey        String                   @map("enterprise_key") @db.VarChar(191)
+  enterpriseName       String                   @map("enterprise_name") @db.VarChar(255)
+  confidentialityLevel Int                      @map("confidentiality_level") @db.UnsignedTinyInt
+  idempotencyKey       String                   @map("idempotency_key") @db.VarChar(255)
+  requestFingerprint   String                   @map("request_fingerprint") @db.VarChar(64)
+  originalFileName     String                   @map("original_file_name") @db.VarChar(512)
+  mediaType            String                   @map("media_type") @db.VarChar(255)
+  sourceByteSize       BigInt                   @map("source_byte_size")
+  sourceChecksumSha256 String                   @map("source_checksum_sha256") @db.VarChar(64)
+  sourceStartDate      DateTime                 @map("source_start_date") @db.Date
+  sourceEndDate        DateTime                 @map("source_end_date") @db.Date
+  temporaryObjectKey   String?                  @map("temporary_object_key") @db.VarChar(512)
+  multipartUploadId    String?                  @map("multipart_upload_id") @db.VarChar(512)
+  status               PartitionImportJobStatus @default(uploading)
+  totalRowCount        BigInt                   @default(0) @map("total_row_count")
+  partitionCount       Int                      @default(0) @map("partition_count")
+  errorCode            String?                  @map("error_code") @db.VarChar(128)
+  errorSummary         String?                  @map("error_summary") @db.Text
+  validationErrors     Json?                    @map("validation_errors")
+  expiresAt            DateTime                 @map("expires_at")
+  publishedAt          DateTime?                @map("published_at")
+  finishedAt           DateTime?                @map("finished_at")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  organization         Organization             @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  uploader             Employee                 @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  processingRun        ProcessingRun?
 
-  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "dish_rows_batch_sheet_row_uq")
-  @@index([orgId, importBatchId])
-  @@map("dish_rows")
+  @@unique([orgId, idempotencyKey])
+  @@index([status, expiresAt])
+  @@index([orgId, uploaderId, createdAt])
+  @@map("partition_import_jobs")
 }
 
-model BusinessRow {
-  id               String       @id @default(cuid()) @db.VarChar(32)
-  orgId            String       @map("org_id") @db.VarChar(64)
-  sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
-  importBatchId    String       @map("import_batch_id") @db.VarChar(32)
-  sourceSheetIndex Int          @default(0) @map("source_sheet_index")
-  sourceSheetName  String       @default("Sheet1") @map("source_sheet_name") @db.VarChar(255)
-  sourceRowNumber  Int          @map("source_row_number")
-  payload          Json
-  createdAt        DateTime     @default(now()) @map("created_at")
-  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
-  importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+model StructuredPartition {
+  id                   String           @id @db.VarChar(32)
+  orgId                String           @map("org_id") @db.VarChar(64)
+  enterpriseKey        String           @map("enterprise_key") @db.VarChar(191)
+  enterpriseName       String           @map("enterprise_name") @db.VarChar(255)
+  dataset              PartitionDataset
+  storeKey             String           @map("store_key") @db.VarChar(255)
+  merchantId           String?          @map("merchant_id") @db.VarChar(255)
+  storeName            String           @map("store_name") @db.VarChar(255)
+  businessDate         DateTime         @map("business_date") @db.Date
+  objectKey            String           @unique @map("object_key") @db.VarChar(512)
+  rowCount             BigInt           @map("row_count")
+  byteSize             BigInt           @map("byte_size")
+  checksumSha256       String           @map("checksum_sha256") @db.VarChar(64)
+  confidentialityLevel Int              @map("confidentiality_level") @db.UnsignedTinyInt
+  publishedByJobId     String           @map("published_by_job_id") @db.VarChar(32)
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+  organization         Organization     @relation(fields: [orgId], references: [id], onDelete: Restrict)
 
-  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "business_rows_batch_sheet_row_uq")
-  @@index([orgId, importBatchId])
-  @@map("business_rows")
+  @@unique([orgId, enterpriseKey, dataset, storeKey, businessDate], map: "structured_partitions_identity_uq")
+  @@index([orgId, dataset, enterpriseKey, businessDate], map: "structured_partitions_manifest_idx")
+  @@index([orgId, confidentialityLevel, dataset, businessDate], map: "structured_partitions_auth_idx")
+  @@map("structured_partitions")
+}
+
+model StorageGarbage {
+  id            String   @id @db.VarChar(32)
+  objectKey     String   @unique @map("object_key") @db.VarChar(512)
+  reason        String   @db.VarChar(64)
+  attemptCount  Int      @default(0) @map("attempt_count")
+  availableAt   DateTime @default(now()) @map("available_at")
+  lastErrorCode String?  @map("last_error_code") @db.VarChar(128)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([availableAt])
+  @@map("storage_garbage")
 }
 
 model VipRow {
@@ -565,29 +622,29 @@ model SkillEntry {
 }
 
 model LoginIdentity {
-  id                 String                          @id @default(cuid()) @db.VarChar(32)
-  orgId              String                          @map("org_id") @db.VarChar(64)
-  employeeId         String                          @map("employee_id") @db.VarChar(32)
-  provider           LoginIdentityProvider           @default(local_password)
+  id                   String                          @id @default(cuid()) @db.VarChar(32)
+  orgId                String                          @map("org_id") @db.VarChar(64)
+  employeeId           String                          @map("employee_id") @db.VarChar(32)
+  provider             LoginIdentityProvider           @default(local_password)
   /// Login email is application-normalized and stored with the exact utf8mb4_bin migration collation.
-  normalizedEmail    String                          @unique @map("normalized_email") @db.VarChar(320)
-  passwordHash       String?                         @map("password_hash") @db.Text
-  disabled           Boolean                         @default(false)
-  failedAttemptCount Int                             @default(0) @map("failed_attempt_count")
-  cooldownLevel      Int                             @default(0) @map("cooldown_level")
-  cooldownUntil      DateTime?                       @map("cooldown_until")
-  createdAt          DateTime                        @default(now()) @map("created_at")
-  updatedAt          DateTime                        @updatedAt @map("updated_at")
-  organization       Organization                    @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  employee           Employee                        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  setupGrants        PasswordSetupGrant[]
-  setupSessions      PasswordSetupSession[]
-  authorizationTxns  OAuthAuthorizationTransaction[]
-  authorizationCodes OAuthAuthorizationCode[]
-  authSessions       AuthSession[]
-  accessTokens       OAuthAccessToken[]
+  normalizedEmail      String                          @unique @map("normalized_email") @db.VarChar(320)
+  passwordHash         String?                         @map("password_hash") @db.Text
+  disabled             Boolean                         @default(false)
+  failedAttemptCount   Int                             @default(0) @map("failed_attempt_count")
+  cooldownLevel        Int                             @default(0) @map("cooldown_level")
+  cooldownUntil        DateTime?                       @map("cooldown_until")
+  createdAt            DateTime                        @default(now()) @map("created_at")
+  updatedAt            DateTime                        @updatedAt @map("updated_at")
+  organization         Organization                    @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  employee             Employee                        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  setupGrants          PasswordSetupGrant[]
+  setupSessions        PasswordSetupSession[]
+  authorizationTxns    OAuthAuthorizationTransaction[]
+  authorizationCodes   OAuthAuthorizationCode[]
+  authSessions         AuthSession[]
+  accessTokens         OAuthAccessToken[]
   deviceAuthorizations DeviceAuthorization[]
-  securityEvents     AuthSecurityEvent[]
+  securityEvents       AuthSecurityEvent[]
 
   @@index([orgId, employeeId])
   @@index([employeeId, provider, disabled])

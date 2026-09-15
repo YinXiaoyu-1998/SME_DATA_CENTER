@@ -1,5 +1,15 @@
 export { AliyunOssStorageAdapter } from "./aliyun-oss-storage.js";
 export { LocalFileSystemStorageAdapter } from "./local-storage.js";
-export { createOriginalObjectKey } from "./object-key.js";
+export {
+  createOriginalObjectKey,
+  createPartitionObjectKey,
+  createPartitionStagingObjectKey
+} from "./object-key.js";
 export { createStorageAdapter } from "./storage-factory.js";
-export type { PutObjectInput, StorageAdapter, StorageObject } from "./storage-adapter.js";
+export type {
+  MultipartUploadPart,
+  PutObjectAtKeyInput,
+  PutObjectInput,
+  StorageAdapter,
+  StorageObject
+} from "./storage-adapter.js";

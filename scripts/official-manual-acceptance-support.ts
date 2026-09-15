@@ -23,8 +23,9 @@ export interface StructuredWindow {
 export interface CleanupCounts {
   documents: number;
   importBatches: number;
-  dishRows: number;
-  businessRows: number;
+  partitionImportJobs: number;
+  structuredPartitions: number;
+  storageGarbage: number;
   vipRows: number;
   dishCatalogRows: number;
   deliveryLedgerRows: number;

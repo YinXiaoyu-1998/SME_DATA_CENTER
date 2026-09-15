@@ -51,10 +51,11 @@ export interface CreateEvidenceIndexerInput {
 export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): EvidenceIndexer {
   return {
     async indexDocument({ run, content }) {
+      const document = requireEvidenceDocument(run);
       const fileType = evidenceFileType(run);
       const parsed = await parseEvidenceDocument({
         fileType,
-        originalFilename: run.document.originalFileName ?? undefined,
+        originalFilename: document.originalFileName ?? undefined,
         content
       });
       const documentChars = parsed.blocks.reduce((sum, block) => sum + block.text.length, 0);
@@ -66,7 +67,7 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
       }
       const chunking = createEvidenceChunks({
         documentId: run.documentId,
-        contentVersion: run.document.contentVersion ?? 1,
+        contentVersion: document.contentVersion ?? 1,
         retrievalConfigVersion: input.retrievalConfig.version,
         blocks: parsed.blocks
       });
@@ -98,7 +99,7 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
           indexType: "evidence",
           chunkId: chunk.chunkId,
           qdrantPointId,
-          contentVersion: run.document.contentVersion ?? 1,
+          contentVersion: document.contentVersion ?? 1,
           retrievalConfigVersion: input.retrievalConfig.version,
           modelName: embeddingResult.metadata.model,
           modelVersion: embeddingResult.metadata.version,
@@ -121,7 +122,7 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
           payload: {
             orgId: run.orgId,
             documentId: run.documentId,
-            confidentialityLevel: run.document.confidentialityLevel,
+            confidentialityLevel: document.confidentialityLevel,
             chunkId: chunk.chunkId,
             documentIndexId: null,
             contentVersion: chunk.contentVersion,
@@ -266,13 +267,21 @@ export class EvidenceIndexingLimitError extends Error {
 function evidenceFileType(
   run: ClaimedProcessingRun
 ): Extract<Phase3FileType, "md" | "txt" | "docx"> {
-  const fileType = run.document.fileType ?? extname(run.document.originalFileName ?? "").slice(1);
+  const document = requireEvidenceDocument(run);
+  const fileType = document.fileType ?? extname(document.originalFileName ?? "").slice(1);
 
   if (fileType === "md" || fileType === "txt" || fileType === "docx") {
     return fileType;
   }
 
   throw new Error(`Unsupported evidence file type: ${fileType || "unknown"}`);
+}
+
+function requireEvidenceDocument(
+  run: ClaimedProcessingRun
+): NonNullable<ClaimedProcessingRun["document"]> {
+  if (!run.document) throw new Error("Evidence processing document is missing.");
+  return run.document;
 }
 
 function toSparseVector(text: string): SparseVector {

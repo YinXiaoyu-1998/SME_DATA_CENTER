@@ -15,6 +15,7 @@ import {
 import type { LauncherRuntimeConfig } from "./config.js";
 import { EnterpriseHubOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
+import { downloadPartitionDataset, uploadPartitionDataset } from "./partition-transfer.js";
 import { createCrossProcessLock, createKeychainCredentialStore } from "./runtime.js";
 import { LauncherSession, LauncherTypedError } from "./session.js";
 
@@ -38,7 +39,9 @@ export type LauncherBusinessToolName =
   | "archive_quarantine_certificates"
   | "get_source_document_download_url"
   | "get_evidence_document_status"
-  | "get_import_status";
+  | "get_import_status"
+  | "get_partition_import_status"
+  | "download_structured_partitions";
 export type LauncherToolName = LauncherBootstrapToolName | LauncherBusinessToolName;
 
 const LOCAL_PATH_UPLOAD_TOOL_NAMES = new Set<LauncherBusinessToolName>([
@@ -179,6 +182,8 @@ export function createLauncherToolHandler(
   if (toolName === "enterprise_hub_login") return (input) => login(input, dependencies);
   if (toolName === "enterprise_hub_logout") return (input) => logout(input, dependencies);
   if (toolName === "enterprise_hub_auth_status") return (input) => status(input, dependencies);
+  if (toolName === "download_structured_partitions")
+    return (input) => proxyPartitionDownload(input, dependencies);
   if (LOCAL_PATH_UPLOAD_TOOL_NAMES.has(toolName as LauncherBusinessToolName))
     return (input) =>
       proxyLocalPathUpload(toolName as LauncherBusinessToolName, input, dependencies);
@@ -210,6 +215,19 @@ async function proxyLocalPathUpload(
     encoding: "path";
     filePath: string;
   };
+  const structuredInput = input as Record<string, unknown>;
+  if (
+    toolName === "upload_structured_dataset" &&
+    (structuredInput["dataset"] === "business" || structuredInput["dataset"] === "dishes")
+  ) {
+    return proxyPartitionUpload(
+      {
+        ...structuredInput,
+        file: pathFile
+      },
+      dependencies
+    );
+  }
   const read = await readLocalUploadFile(pathFile);
 
   if (!read.ok) {
@@ -227,6 +245,98 @@ async function proxyLocalPathUpload(
   };
 
   return proxy(toolName, convertedInput, dependencies);
+}
+
+async function proxyPartitionUpload(
+  input: Record<string, unknown>,
+  dependencies: LauncherToolDependencies
+): Promise<LauncherToolResult> {
+  const contract = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+    (candidate) => candidate.name === "upload_structured_dataset"
+  )!;
+  const parsed = z.object(launcherUploadToolInputShape(contract)).strict().safeParse(input);
+  if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
+  const value = parsed.data as {
+    file: { name: string; mediaType: string; encoding: "path"; filePath: string };
+    dataset: "business" | "dishes";
+    enterpriseName: string;
+    startDate: string;
+    endDate: string;
+    idempotencyKey: string;
+    confidentialityLevel?: number;
+  };
+  if (!value.startDate || !value.endDate) {
+    return errorToolResult(
+      "MCP_INPUT_VALIDATION_ERROR",
+      "business and dishes require startDate and endDate."
+    );
+  }
+  try {
+    const accessToken = await dependencies.auth.accessToken();
+    return jsonToolResult(
+      (await uploadPartitionDataset({
+        context: partitionTransferContext(dependencies, accessToken),
+        filePath: value.file.filePath,
+        name: value.file.name,
+        mediaType: value.file.mediaType,
+        dataset: value.dataset,
+        enterpriseName: value.enterpriseName,
+        startDate: value.startDate,
+        endDate: value.endDate,
+        idempotencyKey: value.idempotencyKey,
+        confidentialityLevel: value.confidentialityLevel
+      })) as Record<string, unknown>
+    );
+  } catch (error) {
+    return partitionTransferError(error);
+  }
+}
+
+async function proxyPartitionDownload(
+  input: unknown,
+  dependencies: LauncherToolDependencies
+): Promise<LauncherToolResult> {
+  const contract = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+    (candidate) => candidate.name === "download_structured_partitions"
+  )!;
+  const parsed = contract.inputSchema.safeParse(input);
+  if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
+  try {
+    const accessToken = await dependencies.auth.accessToken();
+    return jsonToolResult(
+      (await downloadPartitionDataset({
+        context: partitionTransferContext(dependencies, accessToken),
+        ...(parsed.data as {
+          dataset: "business" | "dishes";
+          enterpriseName: string;
+          startDate: string;
+          endDate: string;
+          storeIds?: string[];
+        })
+      })) as Record<string, unknown>
+    );
+  } catch (error) {
+    return partitionTransferError(error);
+  }
+}
+
+function partitionTransferContext(dependencies: LauncherToolDependencies, accessToken: string) {
+  return {
+    serviceUrl: dependencies.config.serviceUrl,
+    accessToken,
+    launcherVersion: LAUNCHER_VERSION,
+    fetchImplementation: dependencies.fetchImplementation
+  };
+}
+
+function partitionTransferError(error: unknown): LauncherToolResult {
+  if (typeof error === "object" && error !== null && "body" in error) {
+    const body = (error as { body?: { error?: { code?: string; message?: string } } }).body;
+    if (body?.error?.code) {
+      return errorToolResult(body.error.code, body.error.message ?? "Partition transfer failed.");
+    }
+  }
+  return typedToolError(mapMcpError(error));
 }
 
 function uploadFileFromInput(

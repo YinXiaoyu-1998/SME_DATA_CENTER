@@ -151,8 +151,10 @@ async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeR
       }
     });
     const documents = await prisma.$transaction(async (tx) => {
-      await tx.dishRow.deleteMany({});
-      await tx.businessRow.deleteMany({});
+      await tx.processingRun.deleteMany({ where: { partitionImportJobId: { not: null } } });
+      await tx.structuredPartition.deleteMany({});
+      await tx.storageGarbage.deleteMany({});
+      await tx.partitionImportJob.deleteMany({});
       await tx.vipRow.deleteMany({});
       await tx.dishCatalogRow.deleteMany({});
       await tx.importWindowClaim.deleteMany({});

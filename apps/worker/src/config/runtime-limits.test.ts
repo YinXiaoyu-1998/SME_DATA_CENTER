@@ -13,7 +13,15 @@ describe("worker runtime limits", () => {
       workerPollIntervalMs: 1_000,
       workerMaxAttempts: 3,
       workerRetryBaseMs: 1_000,
-      workerRetryMaxMs: 60_000
+      workerRetryMaxMs: 60_000,
+      partitionImportMaxSourceBytes: 2_147_483_648,
+      partitionImportMaxRows: 5_000_000,
+      partitionImportMaxPartitions: 10_000,
+      partitionImportMaxCanonicalBytes: 8_589_934_592,
+      partitionImportWorkDirectory: "/var/lib/enterprise-hub/partition-work",
+      partitionImportMinFreeBytes: 12_884_901_888,
+      partitionImportMaxOpenFiles: 32,
+      partitionImportJobRetentionDays: 30
     });
   });
 
@@ -29,7 +37,14 @@ describe("worker runtime limits", () => {
         WORKER_POLL_INTERVAL_MS: "100",
         WORKER_MAX_ATTEMPTS: "5",
         WORKER_RETRY_BASE_MS: "6",
-        WORKER_RETRY_MAX_MS: "7"
+        WORKER_RETRY_MAX_MS: "7",
+        PARTITION_IMPORT_MAX_SOURCE_BYTES: "10",
+        PARTITION_IMPORT_MAX_ROWS: "11",
+        PARTITION_IMPORT_MAX_PARTITIONS: "12",
+        PARTITION_IMPORT_MAX_CANONICAL_BYTES: "13",
+        PARTITION_IMPORT_WORK_DIR: "/tmp/partition-work",
+        PARTITION_IMPORT_MIN_FREE_BYTES: "14",
+        PARTITION_IMPORT_JOB_RETENTION_DAYS: "15"
       })
     ).toEqual({
       maxDocumentChars: 1,
@@ -41,7 +56,15 @@ describe("worker runtime limits", () => {
       workerPollIntervalMs: 100,
       workerMaxAttempts: 5,
       workerRetryBaseMs: 6,
-      workerRetryMaxMs: 7
+      workerRetryMaxMs: 7,
+      partitionImportMaxSourceBytes: 10,
+      partitionImportMaxRows: 11,
+      partitionImportMaxPartitions: 12,
+      partitionImportMaxCanonicalBytes: 13,
+      partitionImportWorkDirectory: "/tmp/partition-work",
+      partitionImportMinFreeBytes: 14,
+      partitionImportMaxOpenFiles: 32,
+      partitionImportJobRetentionDays: 15
     });
   });
 

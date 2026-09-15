@@ -57,4 +57,10 @@ describe("runtime image contracts", () => {
       "ENTERPRISE_HUB_PUBLIC_ORIGIN: ${ENTERPRISE_HUB_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}"
     );
   });
+
+  it("mounts a dedicated worker partition scratch directory", () => {
+    expect(composeService("worker")).toContain(
+      "/opt/enterprise-hub/partition-work:/var/lib/enterprise-hub/partition-work"
+    );
+  });
 });

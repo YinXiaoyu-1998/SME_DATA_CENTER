@@ -10,6 +10,7 @@ import {
 import { readXlsxRows } from "./xlsx-stream.js";
 export {
   exportStructuredPartitions,
+  StructuredPartitionExportError,
   type StructuredPartitionExport,
   type StructuredPartitionExportEntry,
   type StructuredPartitionLimits

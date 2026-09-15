@@ -2,9 +2,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { LauncherRuntimeConfig } from "./config.js";
 import { createLauncherToolDependencies, registerLauncherTools } from "./launcher.js";
+import { cleanupDefaultStaleExtractDirectories } from "./partition-transfer.js";
 
 export const MCP_LAUNCHER_SERVER_NAME = "enterprise-hub-mcp-launcher";
-export const MCP_LAUNCHER_SERVER_VERSION = "0.3.0";
+export const MCP_LAUNCHER_SERVER_VERSION = "0.4.0";
 
 export function createEnterpriseHubMcpLauncherServer(config: LauncherRuntimeConfig): McpServer {
   const server = new McpServer({
@@ -18,6 +19,7 @@ export function createEnterpriseHubMcpLauncherServer(config: LauncherRuntimeConf
 }
 
 export async function runMcpLauncherStdioServer(config: LauncherRuntimeConfig): Promise<void> {
+  await cleanupDefaultStaleExtractDirectories();
   const server = createEnterpriseHubMcpLauncherServer(config);
   await server.connect(new StdioServerTransport());
 }

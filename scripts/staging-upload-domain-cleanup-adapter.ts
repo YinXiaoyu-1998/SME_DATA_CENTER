@@ -102,13 +102,18 @@ export function createStagingUploadDomainCleanupAdapter(
         select: {
           id: true,
           windowClaim: { select: { id: true } },
-          dishRows: { select: { id: true } },
-          businessRows: { select: { id: true } },
           vipRows: { select: { id: true } },
           dishCatalogRows: { select: { id: true } }
         }
       });
       const importBatchIds = batches.map((batch) => batch.id);
+      const [partitionJobs, structuredPartitions, storageGarbage] = await Promise.all([
+        runtime.prisma.partitionImportJob.findMany({
+          select: { id: true, temporaryObjectKey: true }
+        }),
+        runtime.prisma.structuredPartition.findMany({ select: { id: true, objectKey: true } }),
+        runtime.prisma.storageGarbage.findMany({ select: { id: true, objectKey: true } })
+      ]);
       const audits = await runtime.prisma.auditLog.findMany({
         where: {
           OR: [
@@ -120,7 +125,12 @@ export function createStagingUploadDomainCleanupAdapter(
       });
       const [processingRuns, documentIndexes] = await Promise.all([
         runtime.prisma.processingRun.findMany({
-          where: { documentId: { in: documentIds } },
+          where: {
+            OR: [
+              { documentId: { in: documentIds } },
+              { partitionImportJobId: { in: partitionJobs.map((job) => job.id) } }
+            ]
+          },
           select: { id: true }
         }),
         runtime.prisma.documentIndex.findMany({
@@ -137,12 +147,22 @@ export function createStagingUploadDomainCleanupAdapter(
         importWindowClaimIds: batches.flatMap((batch) =>
           batch.windowClaim ? [batch.windowClaim.id] : []
         ),
-        dishRowIds: batches.flatMap((batch) => batch.dishRows.map((row) => row.id)),
-        businessRowIds: batches.flatMap((batch) => batch.businessRows.map((row) => row.id)),
+        partitionImportJobIds: partitionJobs.map((row) => row.id),
+        structuredPartitionIds: structuredPartitions.map((row) => row.id),
+        storageGarbageIds: storageGarbage.map((row) => row.id),
         vipRowIds: batches.flatMap((batch) => batch.vipRows.map((row) => row.id)),
         dishCatalogRowIds: batches.flatMap((batch) => batch.dishCatalogRows.map((row) => row.id)),
         uploadAuditLogIds: audits.map((row) => row.id),
-        storageObjectKeys: documents.map((document) => document.storageObjectKey),
+        storageObjectKeys: [
+          ...new Set([
+            ...documents.map((document) => document.storageObjectKey),
+            ...partitionJobs.flatMap((job) =>
+              job.temporaryObjectKey ? [job.temporaryObjectKey] : []
+            ),
+            ...structuredPartitions.map((partition) => partition.objectKey),
+            ...storageGarbage.map((entry) => entry.objectKey)
+          ])
+        ],
         qdrantPoints
       };
     },
@@ -160,9 +180,12 @@ export function createStagingUploadDomainCleanupAdapter(
       void (await runtime.prisma.documentIndex.deleteMany(ids(values))),
     deleteImportWindowClaims: async (values) =>
       void (await runtime.prisma.importWindowClaim.deleteMany(ids(values))),
-    deleteDishRows: async (values) => void (await runtime.prisma.dishRow.deleteMany(ids(values))),
-    deleteBusinessRows: async (values) =>
-      void (await runtime.prisma.businessRow.deleteMany(ids(values))),
+    deletePartitionImportJobs: async (values) =>
+      void (await runtime.prisma.partitionImportJob.deleteMany(ids(values))),
+    deleteStructuredPartitions: async (values) =>
+      void (await runtime.prisma.structuredPartition.deleteMany(ids(values))),
+    deleteStorageGarbage: async (values) =>
+      void (await runtime.prisma.storageGarbage.deleteMany(ids(values))),
     deleteVipRows: async (values) => void (await runtime.prisma.vipRow.deleteMany(ids(values))),
     deleteDishCatalogRows: async (values) =>
       void (await runtime.prisma.dishCatalogRow.deleteMany(ids(values))),
@@ -177,8 +200,9 @@ export function createStagingUploadDomainCleanupAdapter(
         documentIndexes,
         importBatches,
         importWindowClaims,
-        dishRows,
-        businessRows,
+        partitionImportJobs,
+        structuredPartitions,
+        storageGarbage,
         vipRows,
         dishCatalogRows,
         uploadAuditLogs,
@@ -190,8 +214,9 @@ export function createStagingUploadDomainCleanupAdapter(
         runtime.prisma.documentIndex.count(ids(plan.documentIndexIds)),
         runtime.prisma.importBatch.count(ids(plan.importBatchIds)),
         runtime.prisma.importWindowClaim.count(ids(plan.importWindowClaimIds)),
-        runtime.prisma.dishRow.count(ids(plan.dishRowIds)),
-        runtime.prisma.businessRow.count(ids(plan.businessRowIds)),
+        runtime.prisma.partitionImportJob.count(ids(plan.partitionImportJobIds)),
+        runtime.prisma.structuredPartition.count(ids(plan.structuredPartitionIds)),
+        runtime.prisma.storageGarbage.count(ids(plan.storageGarbageIds)),
         runtime.prisma.vipRow.count(ids(plan.vipRowIds)),
         runtime.prisma.dishCatalogRow.count(ids(plan.dishCatalogRowIds)),
         runtime.prisma.auditLog.count(ids(plan.uploadAuditLogIds)),
@@ -217,8 +242,9 @@ export function createStagingUploadDomainCleanupAdapter(
         documentIndexes,
         importBatches,
         importWindowClaims,
-        dishRows,
-        businessRows,
+        partitionImportJobs,
+        structuredPartitions,
+        storageGarbage,
         vipRows,
         dishCatalogRows,
         uploadAuditLogs,

@@ -150,27 +150,24 @@ describe("manual acceptance scenario manifest", () => {
     expect(guide).toContain("`rejected` terminal state");
   });
 
-  it("makes the official acceptance runner poll accepted structured imports to terminal status", async () => {
+  it("makes the official acceptance runner verify the partition upload and local analysis flow", async () => {
     const runner = await readFile(
       path.join(root, "scripts", "official-manual-acceptance.ts"),
       "utf8"
     );
 
-    expect(runner).toContain("pollStructuredImportStatus");
-    expect(runner).toContain('"get_import_status"');
-    expect(runner).toContain("Expected structured import to apply after polling");
-    expect(runner).toContain("Expected invalid structured import to be rejected after polling");
-    expect(runner).toContain('const LAUNCHER_VERSION = "0.3.0"');
+    expect(runner).toContain("pollPartitionImportStatus");
+    expect(runner).toContain('"get_partition_import_status"');
+    expect(runner).toContain('"download_structured_partitions"');
+    expect(runner).toContain("Expected three published partitions");
+    expect(runner).toContain("Expected invalid partition source to be rejected atomically");
+    expect(runner).toContain('const LAUNCHER_VERSION = "0.4.0"');
     expect(runner).toContain("isLowClearanceAcceptanceEmployee(currentUser, expectedEmails)");
-    expect(runner).toContain('field: "dish_sales_amount"');
-    expect(runner).not.toContain("dishes_024_dish_sales_amount");
+    expect(runner).toContain("gross_sales");
+    expect(runner).not.toContain('field: "dish_sales_amount"');
     expect(runner).toContain("defaultConfidentialityLevel: 0");
     expect(runner).toContain("explicitConfidentialityLevel: 2");
     expect(runner).toContain("confidentialityLevel: 2");
-    expect(runner).not.toContain("Expected structured import applied; got");
-    expect(runner).not.toContain(
-      "Invalid structured import did not return a validation-style failure."
-    );
   });
 });
 

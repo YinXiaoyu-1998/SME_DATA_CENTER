@@ -113,7 +113,7 @@ export function createStructuredImportMultipart(input: {
   body?: Buffer;
 }) {
   return createMultipartPayload([
-    { name: "dataset", value: input.dataset ?? "dishes" },
+    { name: "dataset", value: input.dataset ?? "vip" },
     { name: "enterprise_name", value: input.enterpriseName ?? "保利店" },
     ...(input.startDate === null
       ? []
@@ -126,9 +126,9 @@ export function createStructuredImportMultipart(input: {
       : [{ name: "confidentialityLevel", value: String(input.confidentialityLevel) }]),
     {
       name: "file",
-      fileName: input.fileName ?? "original-dishes.csv",
+      fileName: input.fileName ?? "original-vip.csv",
       contentType: input.contentType ?? "text/csv",
-      value: input.body ?? Buffer.from(validStructuredCsv(input.dataset ?? "dishes"), "utf8")
+      value: input.body ?? Buffer.from(validStructuredCsv(input.dataset ?? "vip"), "utf8")
     }
   ]);
 }

@@ -114,31 +114,15 @@ describe("structured dataset discovery", () => {
         maxSelectedFields: 50
       },
       datasets: expect.arrayContaining([
-        expect.objectContaining({
-          dataset: "dishes",
-          rowTable: "dish_rows",
-          fields: expect.arrayContaining([
-            expect.objectContaining({
-              canonicalName: "business_date",
-              sourceColumn: "营业日",
-              type: "date",
-              operators: ["eq", "between", "gte", "lte", "in"],
-              capabilities: {
-                filter: true,
-                sort: true,
-                group: true,
-                aggregate: false
-              },
-              storage: {
-                table: "dish_rows",
-                column: "payload",
-                jsonPath: "$.business_date"
-              }
-            })
-          ])
-        })
+        expect.objectContaining({ dataset: "dishes", accessMode: "partition_extract" }),
+        expect.objectContaining({ dataset: "business", accessMode: "partition_extract" }),
+        expect.objectContaining({ dataset: "vip", accessMode: "row_query", rowTable: "vip_rows" })
       ])
     });
+    const dishes = response
+      .json()
+      .datasets.find((dataset: { dataset: string }) => dataset.dataset === "dishes");
+    expect(dishes).not.toHaveProperty("rowTable");
   });
 });
 
@@ -169,8 +153,8 @@ describe("structured query API", () => {
       rows: [
         {
           business_date: "2026-07-01",
-          matched_product_name: "肉夹馍",
-          dish_sales_quantity: "12"
+          member_id: "肉夹馍",
+          member_phone: "12"
         }
       ],
       hasMore: true
@@ -190,10 +174,10 @@ describe("structured query API", () => {
         authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
-        dataset: "dishes",
-        select: ["business_date", "matched_product_name", "dish_sales_quantity"],
+        dataset: "vip",
+        select: ["business_date", "member_id", "member_phone"],
         filter: {
-          field: "matched_product_name",
+          field: "member_id",
           op: "contains",
           value: "肉夹馍"
         },
@@ -204,13 +188,13 @@ describe("structured query API", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      dataset: "dishes",
+      dataset: "vip",
       mode: "detail",
       rows: [
         {
           business_date: "2026-07-01",
-          matched_product_name: "肉夹馍",
-          dish_sales_quantity: "12"
+          member_id: "肉夹馍",
+          member_phone: "12"
         }
       ],
       nextCursor: expect.any(String)
@@ -244,7 +228,7 @@ describe("structured query API", () => {
         authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
-        dataset: "dishes",
+        dataset: "vip",
         rawSql: "select * from dish_rows"
       }
     });
@@ -277,9 +261,9 @@ describe("structured query API", () => {
         authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
-        dataset: "dishes",
+        dataset: "vip",
         filter: {
-          field: "matched_product_name",
+          field: "member_id",
           op: "contains",
           value: "v".repeat(32_768)
         }
@@ -313,7 +297,7 @@ describe("structured query API", () => {
         authorization: `Bearer ${await accessTokenFor(clearanceZeroEmployee)}`
       },
       payload: {
-        dataset: "dishes",
+        dataset: "vip",
         select: ["business_date"]
       }
     });
@@ -340,7 +324,7 @@ describe("structured query API", () => {
         authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
-        dataset: "dishes",
+        dataset: "vip",
         select: ["business_date"]
       }
     });
@@ -378,11 +362,11 @@ describe("structured query API", () => {
         authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
-        dataset: "business",
+        dataset: "vip",
         groupBy: ["business_date"],
         aggregates: [
           { op: "count", as: "row_count" },
-          { op: "sum", field: "gross_sales_amount", as: "gross_sales" }
+          { op: "sum", field: "recharge_consumption_amount_total", as: "gross_sales" }
         ],
         page: { limit: 100 }
       }
@@ -390,7 +374,7 @@ describe("structured query API", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      dataset: "business",
+      dataset: "vip",
       mode: "aggregate",
       rows: [
         {
@@ -409,8 +393,8 @@ describe("structured query API", () => {
       rows: [
         {
           store_name: "Baoli",
-          order_source: "dine-in",
-          meal_period: "lunch",
+          payment_method: "dine-in",
+          member_card_level_name: "lunch",
           business_date: "2026-07-01",
           revenue: "256.00",
           weighted_discount: "0.125"
@@ -433,14 +417,14 @@ describe("structured query API", () => {
         authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
       },
       payload: {
-        dataset: "business",
-        groupBy: ["store_name", "order_source", "meal_period", "business_date"],
+        dataset: "vip",
+        groupBy: ["store_name", "payment_method", "member_card_level_name", "business_date"],
         aggregates: [
-          { op: "sum", field: "order_revenue", as: "revenue" },
+          { op: "sum", field: "recharge_consumption_amount_total", as: "revenue" },
           {
             op: "weightedAvg",
-            field: "discount_rate",
-            weightField: "gross_sales_amount",
+            field: "net_recharge_consumption_amount_total",
+            weightField: "recharge_consumption_amount_total",
             as: "weighted_discount"
           }
         ],
@@ -451,13 +435,13 @@ describe("structured query API", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      dataset: "business",
+      dataset: "vip",
       mode: "aggregate",
       rows: [
         {
           store_name: "Baoli",
-          order_source: "dine-in",
-          meal_period: "lunch",
+          payment_method: "dine-in",
+          member_card_level_name: "lunch",
           business_date: "2026-07-01",
           revenue: "256.00",
           weighted_discount: "0.125"
@@ -467,13 +451,13 @@ describe("structured query API", () => {
     });
     expect(structuredQueryRepository.calls).toHaveLength(1);
     expect(structuredQueryRepository.calls[0]).toMatchObject({
-      dataset: "business",
+      dataset: "vip",
       mode: "aggregate",
       limit: 200,
       selectedFields: [
         "store_name",
-        "order_source",
-        "meal_period",
+        "payment_method",
+        "member_card_level_name",
         "business_date",
         "revenue",
         "weighted_discount"
@@ -508,7 +492,7 @@ describe("structured query API", () => {
         authorization: `Bearer ${accessToken}`
       },
       payload: {
-        dataset: "dishes",
+        dataset: "vip",
         select: ["business_date"],
         page: { limit: 1 }
       }
@@ -523,8 +507,8 @@ describe("structured query API", () => {
         authorization: `Bearer ${accessToken}`
       },
       payload: {
-        dataset: "dishes",
-        select: ["matched_product_name"],
+        dataset: "vip",
+        select: ["member_id"],
         page: { limit: 1, cursor }
       }
     });

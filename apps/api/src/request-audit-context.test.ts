@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createRequestAuditContext,
   isTrustedLoopbackProxy,
+  launcherVersionAtLeast,
   normalizeLauncherVersion,
   normalizeRequestId,
   verifyInternalDelegationProof
@@ -42,6 +43,14 @@ describe("request audit context", () => {
     expect(normalizeLauncherVersion("0.1.0\nforged")).toBeNull();
     expect(normalizeLauncherVersion("1".repeat(65))).toBeNull();
     expect(normalizeLauncherVersion("01.1.0")).toBeNull();
+  });
+
+  it("compares launcher capabilities without accepting prereleases as a stable release", () => {
+    expect(launcherVersionAtLeast("0.4.0", "0.4.0")).toBe(true);
+    expect(launcherVersionAtLeast("0.5.0", "0.4.0")).toBe(true);
+    expect(launcherVersionAtLeast("0.4.0-rc.1", "0.4.0")).toBe(false);
+    expect(launcherVersionAtLeast("0.3.9", "0.4.0")).toBe(false);
+    expect(launcherVersionAtLeast(null, "0.4.0")).toBe(false);
   });
 
   it("trusts only loopback reverse-proxy peers", () => {

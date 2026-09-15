@@ -70,6 +70,7 @@
     "dotenv": "^17.4.2"
   },
   "overrides": {
+    "hono": "4.13.5",
     "prisma": {
       "mysql2": "3.23.1"
     },

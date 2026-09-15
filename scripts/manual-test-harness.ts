@@ -362,8 +362,9 @@ interface ManualTestSnapshot {
     documentChunks: number;
     documentIndexes: number;
     importBatches: number;
-    dishRows: number;
-    businessRows: number;
+    partitionImportJobs: number;
+    structuredPartitions: number;
+    storageGarbage: number;
     vipRows: number;
     dishCatalogRows: number;
     auditLogs: number;
@@ -399,8 +400,9 @@ async function captureManualTestSnapshot(
       documentChunks,
       documentIndexes,
       importBatches,
-      dishRows,
-      businessRows,
+      partitionImportJobs,
+      structuredPartitions,
+      storageGarbage,
       vipRows,
       dishCatalogRows,
       auditLogs,
@@ -415,8 +417,9 @@ async function captureManualTestSnapshot(
       prisma.documentChunk.count(),
       prisma.documentIndex.count(),
       prisma.importBatch.count(),
-      prisma.dishRow.count(),
-      prisma.businessRow.count(),
+      prisma.partitionImportJob.count(),
+      prisma.structuredPartition.count(),
+      prisma.storageGarbage.count(),
       prisma.vipRow.count(),
       prisma.dishCatalogRow.count(),
       prisma.auditLog.count(),
@@ -451,8 +454,9 @@ async function captureManualTestSnapshot(
         documentChunks,
         documentIndexes,
         importBatches,
-        dishRows,
-        businessRows,
+        partitionImportJobs,
+        structuredPartitions,
+        storageGarbage,
         vipRows,
         dishCatalogRows,
         auditLogs,
@@ -509,8 +513,9 @@ function assertCleanBusinessState(snapshot: ManualTestSnapshot): void {
     documentChunks: snapshot.counts.documentChunks,
     documentIndexes: snapshot.counts.documentIndexes,
     importBatches: snapshot.counts.importBatches,
-    dishRows: snapshot.counts.dishRows,
-    businessRows: snapshot.counts.businessRows,
+    partitionImportJobs: snapshot.counts.partitionImportJobs,
+    structuredPartitions: snapshot.counts.structuredPartitions,
+    storageGarbage: snapshot.counts.storageGarbage,
     vipRows: snapshot.counts.vipRows,
     dishCatalogRows: snapshot.counts.dishCatalogRows,
     auditLogs: snapshot.counts.auditLogs,

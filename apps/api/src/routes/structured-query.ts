@@ -12,10 +12,12 @@ import {
 import type { RequestAuth } from "../request-auth.js";
 import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
+import type { StructuredPartitionRepository } from "../structured-partitions.js";
 import { phase3ErrorResponse } from "../request-errors.js";
 
 function structuredFieldResponse(
-  field: (typeof STRUCTURED_DATASET_REGISTRIES)[keyof typeof STRUCTURED_DATASET_REGISTRIES]["fields"][number]
+  field: (typeof STRUCTURED_DATASET_REGISTRIES)[keyof typeof STRUCTURED_DATASET_REGISTRIES]["fields"][number],
+  includeRowStorage: boolean
 ) {
   return {
     canonicalName: field.canonicalName,
@@ -31,7 +33,7 @@ function structuredFieldResponse(
     capabilities: field.capabilities,
     indexStatus: field.indexStatus,
     valueLimits: field.valueLimits,
-    storage: field.storage
+    ...(includeRowStorage && field.storage ? { storage: field.storage } : {})
   };
 }
 
@@ -40,8 +42,11 @@ function structuredDatasetRegistryResponse() {
     limits: STRUCTURED_QUERY_LIMITS,
     datasets: Object.values(STRUCTURED_DATASET_REGISTRIES).map((registry) => ({
       dataset: registry.dataset,
-      rowTable: registry.rowTable,
-      fields: registry.fields.map(structuredFieldResponse)
+      accessMode: registry.accessMode,
+      ...(registry.accessMode === "row_query" ? { rowTable: registry.rowTable } : {}),
+      fields: registry.fields.map((field) =>
+        structuredFieldResponse(field, registry.accessMode === "row_query")
+      )
     }))
   };
 }
@@ -52,6 +57,7 @@ export function registerStructuredQueryRoutes(
     auth: RequestAuth;
     structuredQueries: () => StructuredQueryRepository;
     structuredCoverage: () => StructuredCoverageRepository;
+    structuredPartitions: () => StructuredPartitionRepository;
     cursorSigningSecret: string;
   }
 ): void {
@@ -85,6 +91,28 @@ export function registerStructuredQueryRoutes(
       }
 
       const employee = dependencies.auth.employee(request);
+      const registry =
+        STRUCTURED_DATASET_REGISTRIES[dataset as keyof typeof STRUCTURED_DATASET_REGISTRIES];
+      if (registry.accessMode === "partition_extract") {
+        const coverage = await dependencies.structuredPartitions().listCoverage?.({
+          orgId: employee.orgId,
+          clearance: employee.clearance,
+          dataset: dataset as "business" | "dishes"
+        });
+        if (!coverage) throw new Error("Partition coverage repository is not configured.");
+        return {
+          dataset: coverage.dataset,
+          accessMode: "partition_extract",
+          enterprises: coverage.enterprises.map((enterprise) => ({
+            enterpriseName: enterprise.enterpriseName,
+            startDate: enterprise.startDate.toISOString().slice(0, 10),
+            endDate: enterprise.endDate.toISOString().slice(0, 10),
+            partitionCount: enterprise.partitionCount,
+            totalRowCount: safeJsonInteger(enterprise.totalRowCount),
+            stores: enterprise.stores
+          }))
+        };
+      }
       const compiled = compileStructuredCoverageQuery({
         orgId: employee.orgId,
         employee: {
@@ -158,4 +186,8 @@ export function registerStructuredQueryRoutes(
       throw error;
     }
   });
+}
+
+function safeJsonInteger(value: bigint): number | string {
+  return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString();
 }

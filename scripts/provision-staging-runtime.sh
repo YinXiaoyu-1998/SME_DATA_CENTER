@@ -52,6 +52,10 @@ apt-get install -y \
   docker-compose-plugin \
   nodejs
 
+# The worker image runs as the Node base image's uid/gid 1000. Keep large
+# partition work files off the container overlay and writable without root.
+install -d -o 1000 -g 1000 -m 0750 /opt/enterprise-hub/partition-work
+
 install -m 0755 -d /etc/docker
 if [[ ! -e /etc/docker/daemon.json ]]; then
   cat >/etc/docker/daemon.json <<'EOF'

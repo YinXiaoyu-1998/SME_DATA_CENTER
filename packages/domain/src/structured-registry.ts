@@ -20,12 +20,7 @@ export interface StructuredFieldCapabilities {
 }
 
 type StructuredRowTableName =
-  | "dish_rows"
-  | "business_rows"
-  | "vip_rows"
-  | "dish_catalog_rows"
-  | "delivery_ledger_rows"
-  | "supplier_catalog_rows";
+  "vip_rows" | "dish_catalog_rows" | "delivery_ledger_rows" | "supplier_catalog_rows";
 
 export interface StructuredFieldStorageMapping {
   table: StructuredRowTableName;
@@ -51,13 +46,13 @@ export interface StructuredFieldRegistryEntry {
     maxLength?: number;
     decimalScale?: number;
   };
-  storage: StructuredFieldStorageMapping;
+  storage?: StructuredFieldStorageMapping;
 }
 
 export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
   accessMode: "partition_extract" | "row_query";
-  rowTable: StructuredRowTableName;
+  rowTable?: StructuredRowTableName;
   sheetPolicy: "strict_all_nonempty" | "import_matching_visible";
   metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
   datePolicy?: "row_business_date" | "snapshot_metadata";
@@ -810,7 +805,6 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   dishes: createRegistry({
     dataset: "dishes",
     accessMode: "partition_extract",
-    rowTable: "dish_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
     datePolicy: "row_business_date",
@@ -821,7 +815,6 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   business: createRegistry({
     dataset: "business",
     accessMode: "partition_extract",
-    rowTable: "business_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
     datePolicy: "row_business_date",
@@ -1016,7 +1009,7 @@ export function resolveStructuredHeaders(
 function createRegistry(input: {
   dataset: StructuredDatasetName;
   accessMode: StructuredDatasetRegistry["accessMode"];
-  rowTable: StructuredRowTableName;
+  rowTable?: StructuredRowTableName;
   sheetPolicy: StructuredDatasetRegistry["sheetPolicy"];
   metadataPolicy: StructuredDatasetRegistry["metadataPolicy"];
   datePolicy?: StructuredDatasetRegistry["datePolicy"];
@@ -1031,12 +1024,12 @@ function createRegistry(input: {
   return {
     dataset: input.dataset,
     accessMode: input.accessMode,
-    rowTable: input.rowTable,
+    ...(input.rowTable ? { rowTable: input.rowTable } : {}),
     sheetPolicy: input.sheetPolicy,
     metadataPolicy: input.metadataPolicy,
     datePolicy: input.datePolicy,
     fields: [
-      createSourceDocumentIdField(input.rowTable),
+      ...(input.rowTable ? [createSourceDocumentIdField(input.rowTable)] : []),
       ...(input.metadataFields ?? []).map((field) => ({
         ...field,
         aliases: [field.sourceColumn],
@@ -1054,11 +1047,15 @@ function createRegistry(input: {
         },
         indexStatus: "planned" as const,
         valueLimits: valueLimitsForType(field.type),
-        storage: {
-          table: input.rowTable,
-          column: "payload" as const,
-          jsonPath: `$.${field.canonicalName}`
-        }
+        ...(input.rowTable
+          ? {
+              storage: {
+                table: input.rowTable,
+                column: "payload" as const,
+                jsonPath: `$.${field.canonicalName}`
+              }
+            }
+          : {})
       })),
       ...input.sourceColumns.map((sourceColumn, index) => {
         const canonicalName =
@@ -1092,11 +1089,15 @@ function createRegistry(input: {
           },
           indexStatus: "planned" as const,
           valueLimits: valueLimitsForType(type),
-          storage: {
-            table: input.rowTable,
-            column: "payload" as const,
-            jsonPath: `$.${canonicalName}`
-          }
+          ...(input.rowTable
+            ? {
+                storage: {
+                  table: input.rowTable,
+                  column: "payload" as const,
+                  jsonPath: `$.${canonicalName}`
+                }
+              }
+            : {})
         };
       })
     ]

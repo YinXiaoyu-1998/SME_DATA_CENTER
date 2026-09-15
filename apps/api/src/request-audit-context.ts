@@ -20,6 +20,17 @@ export type RequestAuditContext = Readonly<{
   launcherVersion: string | null;
 }>;
 
+export function launcherVersionAtLeast(version: string | null, minimum: string): boolean {
+  const current = semanticVersion(version);
+  const required = semanticVersion(minimum);
+  if (!current || !required) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (current.numbers[index]! !== required.numbers[index]!)
+      return current.numbers[index]! > required.numbers[index]!;
+  }
+  return !current.prerelease || Boolean(required.prerelease);
+}
+
 export function normalizeRequestId(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -108,6 +119,17 @@ function normalizePeerAddress(address: string): string {
   }
 
   return normalized;
+}
+
+function semanticVersion(value: string | null) {
+  if (!value) return null;
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/.exec(value);
+  return match
+    ? {
+        numbers: [Number(match[1]), Number(match[2]), Number(match[3])] as const,
+        prerelease: match[4] ?? null
+      }
+    : null;
 }
 
 function internalDelegationProofBuffer(value: unknown): Buffer | null {

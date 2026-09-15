@@ -96,7 +96,14 @@ const validInputs = {
   },
   get_source_document_download_url: { sourceDocumentId: "doc_1" },
   get_evidence_document_status: { documentId: "doc_1" },
-  get_import_status: { importBatchId: "imp_1" }
+  get_import_status: { importBatchId: "imp_1" },
+  get_partition_import_status: { partitionImportJobId: "pjob_1" },
+  download_structured_partitions: {
+    dataset: "business",
+    enterpriseName: "Maijia",
+    startDate: "20260701",
+    endDate: "20260731"
+  }
 } satisfies Record<EnterpriseHubMcpToolName, Record<string, unknown>>;
 
 const invalidInputCases = [
@@ -383,6 +390,23 @@ const invalidInputCases = [
       { label: "missing import batch id", input: {} },
       { label: "empty import batch id", input: { importBatchId: "" } }
     ]
+  },
+  {
+    tool: "get_partition_import_status",
+    cases: [
+      { label: "missing partition job id", input: {} },
+      { label: "empty partition job id", input: { partitionImportJobId: "" } }
+    ]
+  },
+  {
+    tool: "download_structured_partitions",
+    cases: [
+      { label: "missing range", input: { dataset: "business", enterpriseName: "Maijia" } },
+      {
+        label: "invalid dataset",
+        input: { ...validInputs.download_structured_partitions, dataset: "vip" }
+      }
+    ]
   }
 ] satisfies Array<{
   tool: EnterpriseHubMcpToolName;
@@ -405,7 +429,9 @@ describe("Enterprise Hub MCP contract", () => {
       "archive_quarantine_certificates",
       "get_source_document_download_url",
       "get_evidence_document_status",
-      "get_import_status"
+      "get_import_status",
+      "get_partition_import_status",
+      "download_structured_partitions"
     ]);
     expect(
       ENTERPRISE_HUB_MCP_TOOL_NAMES.filter(

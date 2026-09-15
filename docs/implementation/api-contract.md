@@ -50,27 +50,33 @@ logging remains an implementation concern.
 
 ## Public HTTP surface
 
-| Method         | Path                                            | Purpose                                              |
-| -------------- | ----------------------------------------------- | ---------------------------------------------------- |
-| `GET`          | `/healthz`                                      | Liveness                                             |
-| `GET`          | `/.well-known/oauth-authorization-server`       | OAuth discovery and launcher compatibility metadata  |
-| `GET` / `POST` | `/oauth/*`                                      | Browser authorization, token, and revoke flows       |
-| `GET` / `POST` | `/auth/password/setup/*`                        | Password setup/reset bootstrap and form              |
-| `POST`         | `/mcp`                                          | Authenticated Streamable HTTP MCP                    |
-| `GET`          | `/me`                                           | Current user: display name, email, role, clearance   |
-| `GET`          | `/skills`                                       | Approved skill-directory metadata                    |
-| `POST`         | `/v1/documents/evidence`                        | Upload MD/TXT/DOCX evidence                          |
-| `GET`          | `/v1/documents/evidence/:documentId/status`     | Uploader-visible evidence processing status          |
-| `POST`         | `/v1/evidence/search`                           | Search readable evidence chunks                      |
-| `POST`         | `/v1/documents/quarantine-certificates`         | Upload one JPG/JPEG/PNG certificate                  |
-| `POST`         | `/v1/quarantine-certificates/query`             | Query readable certificates by receipt IDs           |
-| `POST`         | `/v1/quarantine-certificates/archive`           | Owner archive by source ID or admin-only PAO archive |
-| `POST`         | `/v1/source-documents/:documentId/download-url` | Issue a readable source-file download URL            |
-| `POST`         | `/v1/structured/imports`                        | Upload supported CSV/XLSX structured data            |
-| `GET`          | `/v1/structured/imports/:importBatchId`         | Readable structured-import status                    |
-| `GET`          | `/v1/structured/datasets`                       | Dataset schema discovery                             |
-| `POST`         | `/v1/structured/query`                          | Controlled, readable structured query                |
-| `GET`          | `/v1/structured/datasets/:dataset/coverage`     | Readable source coverage                             |
+| Method         | Path                                               | Purpose                                                                           |
+| -------------- | -------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `GET`          | `/healthz`                                         | Liveness                                                                          |
+| `GET`          | `/.well-known/oauth-authorization-server`          | OAuth discovery and launcher compatibility metadata                               |
+| `GET` / `POST` | `/oauth/*`                                         | Browser authorization, token, and revoke flows                                    |
+| `GET` / `POST` | `/auth/password/setup/*`                           | Password setup/reset bootstrap and form                                           |
+| `POST`         | `/mcp`                                             | Authenticated Streamable HTTP MCP                                                 |
+| `GET`          | `/me`                                              | Current user: display name, email, role, clearance                                |
+| `GET`          | `/skills`                                          | Approved skill-directory metadata                                                 |
+| `POST`         | `/v1/documents/evidence`                           | Upload MD/TXT/DOCX evidence                                                       |
+| `GET`          | `/v1/documents/evidence/:documentId/status`        | Uploader-visible evidence processing status                                       |
+| `POST`         | `/v1/evidence/search`                              | Search readable evidence chunks                                                   |
+| `POST`         | `/v1/documents/quarantine-certificates`            | Upload one JPG/JPEG/PNG certificate                                               |
+| `POST`         | `/v1/quarantine-certificates/query`                | Query readable certificates by receipt IDs                                        |
+| `POST`         | `/v1/quarantine-certificates/archive`              | Owner archive by source ID or admin-only PAO archive                              |
+| `POST`         | `/v1/source-documents/:documentId/download-url`    | Issue a readable source-file download URL                                         |
+| `POST`         | `/v1/structured/imports`                           | Upload row-query datasets (`vip`, catalogs, ledgers); rejects `business`/`dishes` |
+| `GET`          | `/v1/structured/imports/:importBatchId`            | Readable structured-import status                                                 |
+| `POST`         | `/v1/structured/partition-uploads`                 | Create a multipart `business`/`dishes` upload session                             |
+| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`    | Get a bounded page of multipart part URLs                                         |
+| `POST`         | `/v1/structured/partition-uploads/:jobId/complete` | Verify and queue a completed source upload                                        |
+| `DELETE`       | `/v1/structured/partition-uploads/:jobId`          | Abort an unfinished source upload                                                 |
+| `GET`          | `/v1/structured/partition-imports/:jobId`          | Read partition import status                                                      |
+| `POST`         | `/v1/structured/partition-manifests`               | Resolve an authorized date/store manifest                                         |
+| `GET`          | `/v1/structured/datasets`                          | Dataset schema discovery                                                          |
+| `POST`         | `/v1/structured/query`                             | Controlled, readable structured query                                             |
+| `GET`          | `/v1/structured/datasets/:dataset/coverage`        | Readable source coverage                                                          |
 
 `GET /labels` and `GET /audit` are not registered. `GET /readyz` accepts loopback only.
 
@@ -78,13 +84,15 @@ logging remains an implementation concern.
 
 All uploads retain existing file/type/size validation. The common request fields are:
 
-| Route                  | Required business fields                                                   | Confidentiality field                            |
-| ---------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
-| Evidence               | `file`, `title`; optional `sourceSystem`                                   | optional `confidentialityLevel`, defaults to `0` |
-| Quarantine certificate | `file`, `receiptId`, `idempotencyKey`                                      | optional `confidentialityLevel`, defaults to `0` |
-| Structured import      | `file`, `dataset`, `enterpriseName`, `idempotencyKey` and dataset metadata | optional `confidentialityLevel`, defaults to `0` |
+| Route                            | Required business fields                                                   | Confidentiality field                            |
+| -------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
+| Evidence                         | `file`, `title`; optional `sourceSystem`                                   | optional `confidentialityLevel`, defaults to `0` |
+| Quarantine certificate           | `file`, `receiptId`, `idempotencyKey`                                      | optional `confidentialityLevel`, defaults to `0` |
+| Row-query structured import      | `file`, `dataset`, `enterpriseName`, `idempotencyKey` and dataset metadata | optional `confidentialityLevel`, defaults to `0` |
+| Business/dishes partition source | multipart session metadata, then ordered upload-part ETags                 | optional `confidentialityLevel`, defaults to `0` |
 
-The decoded file limit is 50 MiB. Filenames, titles, idempotency keys, receipt IDs, structured
+The decoded inline file limit is 50 MiB. The official launcher streams local `business`/`dishes`
+paths through multipart storage, with a 2 GiB default source limit. Filenames, titles, idempotency keys, receipt IDs, structured
 metadata, evidence filters, cursors, and structured-query limits retain their existing public
 limits. Label keys and label arrays are not accepted.
 
@@ -94,6 +102,11 @@ MCP contracts mirror the HTTP boundary. `enterprise_hub_get_current_user` return
 clearance. The former `enterprise_hub_list_labels` tool is absent. The three upload tools accept
 optional numeric `confidentialityLevel`; callers must not fabricate it based on content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
+
+`business`/`dishes` upload, partition-import status, and local partition download require official
+launcher `0.4.0` or newer. Older or missing launcher versions receive
+`LAUNCHER_UPGRADE_REQUIRED`; in particular, the service never returns partition presigned URLs
+through an older launcher's generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, organization IDs, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,

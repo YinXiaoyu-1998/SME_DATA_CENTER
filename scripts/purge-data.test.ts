@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
   auditLog: { deleteMany: vi.fn(async () => ({ count: 0 })) },
-  dishRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
-  businessRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  processingRun: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  structuredPartition: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  storageGarbage: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  partitionImportJob: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   vipRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   dishCatalogRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   importWindowClaim: { deleteMany: vi.fn(async () => ({ count: 0 })) },
@@ -128,7 +130,7 @@ describe("purge-data database target resolution", () => {
     ).toThrow("database other than enterprise_hub");
   });
 
-  it("deletes all four structured row tables before import batches and documents", async () => {
+  it("deletes partition metadata and remaining row tables before documents", async () => {
     vi.clearAllMocks();
     prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
       callback(prisma)
@@ -142,7 +144,7 @@ describe("purge-data database target resolution", () => {
       env: { DATABASE_URL: "mysql://user:password@localhost:3307/enterprise_hub" }
     });
 
-    for (const rows of [prisma.dishRow, prisma.businessRow, prisma.vipRow, prisma.dishCatalogRow]) {
+    for (const rows of [prisma.vipRow, prisma.dishCatalogRow]) {
       expect(rows.deleteMany).toHaveBeenCalledWith({});
       expect(rows.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.importBatch.deleteMany.mock.invocationCallOrder[0]!
@@ -150,6 +152,8 @@ describe("purge-data database target resolution", () => {
     }
     expect(prisma.importWindowClaim.deleteMany).toHaveBeenCalledWith({});
     expect(prisma.importBatch.deleteMany).toHaveBeenCalledWith({});
+    expect(prisma.structuredPartition.deleteMany).toHaveBeenCalledWith({});
+    expect(prisma.partitionImportJob.deleteMany).toHaveBeenCalledWith({});
     expect(prisma.document.deleteMany).toHaveBeenCalledWith({});
   });
 });

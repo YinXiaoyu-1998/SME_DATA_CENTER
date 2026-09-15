@@ -1,4 +1,4 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -6,6 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
+import { parse as parseCsv } from "csv-parse/sync";
 import { config as loadDotenv } from "dotenv";
 import { createStorageAdapter } from "@enterprise-hub/storage";
 import { parseApiRetrievalRuntimeConfig } from "../apps/api/src/config/retrieval-runtime.js";
@@ -15,7 +16,6 @@ import {
   createStructuredWindow,
   deleteStorageObjects,
   isLowClearanceAcceptanceEmployee,
-  pollStructuredImportStatus,
   rewriteKnownValuesFixture,
   type CleanupCounts,
   type CurrentEnterpriseHubUserResult,
@@ -29,7 +29,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.3.0";
+const LAUNCHER_VERSION = "0.4.0";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
 interface ParsedArgs {
@@ -55,18 +55,19 @@ interface EvidenceSearchResult extends ToolTextResult {
   results: Array<{ documentId: string; text: string }>;
 }
 
-interface StructuredUploadResult extends ToolTextResult {
-  importBatch: {
-    importBatchId: string;
-    status: string;
-    appliedRowCount?: number;
-    validationErrorCount?: number;
-  };
-  document: { documentId: string };
+interface PartitionUploadResult extends ToolTextResult {
+  partitionImportJobId: string;
+  status: string;
+  partitionCount: number;
+  totalRowCount: number;
+  error?: { code?: string; message?: string } | null;
 }
 
-interface StructuredQueryResult extends ToolTextResult {
-  rows: Array<Record<string, unknown>>;
+interface PartitionDownloadResult extends ToolTextResult {
+  localDirectory: string;
+  partitionCount: number;
+  totalRowCount: number;
+  files: string[];
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -171,6 +172,7 @@ async function runAcceptance(
     }
   });
   await client.connect(transport, { timeout: 30_000 });
+  const localExtracts: string[] = [];
 
   try {
     const status = await callJson<ToolTextResult>(client, "enterprise_hub_auth_status", {});
@@ -211,15 +213,15 @@ async function runAcceptance(
     }
 
     const structuredFile = await writeRunStructuredFixture(run, structuredWindow);
-    const structuredUpload = await callJson<StructuredUploadResult>(
+    const structuredUpload = await callJson<PartitionUploadResult>(
       client,
       "upload_structured_dataset",
       {
         file: {
           name: path.basename(structuredFile),
           mediaType: "text/csv",
-          encoding: "base64",
-          contentBase64: await fileBase64(structuredFile)
+          encoding: "path",
+          filePath: structuredFile
         },
         dataset: "dishes",
         enterpriseName: run.enterpriseName,
@@ -228,73 +230,79 @@ async function runAcceptance(
         idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-known-values`
       }
     );
-    if (structuredUpload.importBatch.status !== "pending") {
-      throw new Error(
-        `Expected structured import to be accepted as pending; got ${structuredUpload.importBatch.status}.`
-      );
+    if (structuredUpload.status !== "queued" && structuredUpload.status !== "published") {
+      throw new Error(`Expected partition import to queue; got ${structuredUpload.status}.`);
     }
-    const structuredCompletion = await pollStructuredImportStatus({
-      importBatchId: structuredUpload.importBatch.importBatchId,
-      getStatus: () =>
-        callJson<StructuredUploadResult>(client, "get_import_status", {
-          importBatchId: structuredUpload.importBatch.importBatchId
-        })
-    });
-    if (structuredCompletion.importBatch.status !== "applied") {
+    const structuredCompletion = await pollPartitionImportStatus(
+      client,
+      structuredUpload.partitionImportJobId
+    );
+    if (
+      structuredCompletion.status !== "published" ||
+      structuredCompletion.partitionCount !== 3 ||
+      structuredCompletion.totalRowCount !== 3
+    ) {
       throw new Error(
-        `Expected structured import to apply after polling; got ${structuredCompletion.importBatch.status}.`
+        `Expected three published partitions; got ${JSON.stringify(redactObject(structuredCompletion))}.`
       );
     }
 
-    const aggregateQuery = await callJson<StructuredQueryResult>(
+    const downloaded = await callJson<PartitionDownloadResult>(
       client,
-      "query_structured_dataset",
+      "download_structured_partitions",
       {
         dataset: "dishes",
-        filter: {
-          field: "business_date",
-          op: "between",
-          value: [structuredWindow.startDate, structuredWindow.endDate]
-        },
-        aggregates: [
-          { op: "count", as: "row_count" },
-          { op: "sum", field: "dish_sales_amount", as: "gross_sales" }
-        ]
+        enterpriseName: run.enterpriseName,
+        startDate: structuredWindow.startCompact,
+        endDate: structuredWindow.endCompact
       }
     );
-    const aggregate = aggregateQuery.rows[0] ?? {};
-    if (String(aggregate["row_count"]) !== "3" || Number(aggregate["gross_sales"]) !== 91) {
-      throw new Error(
-        `Unexpected structured aggregate result: ${JSON.stringify(redactObject(aggregate))}`
+    localExtracts.push(downloaded.localDirectory);
+    if (
+      downloaded.partitionCount !== 3 ||
+      downloaded.totalRowCount !== 3 ||
+      downloaded.files.length !== 3
+    ) {
+      throw new Error(`Unexpected partition download: ${JSON.stringify(redactObject(downloaded))}`);
+    }
+    const rows: Array<Record<string, string>> = [];
+    for (const fileName of downloaded.files) {
+      const csv = await readFile(path.join(downloaded.localDirectory, fileName), "utf8");
+      rows.push(
+        ...(parseCsv(csv, {
+          bom: true,
+          columns: true,
+          skip_empty_lines: true
+        }) as Array<Record<string, string>>)
       );
     }
-
-    const topDishes = await callJson<StructuredQueryResult>(client, "query_structured_dataset", {
-      dataset: "dishes",
-      select: ["product_name", "dish_sales_amount"],
-      filter: {
-        field: "business_date",
-        op: "between",
-        value: [structuredWindow.startDate, structuredWindow.endDate]
-      },
-      sort: [{ field: "dish_sales_amount", direction: "desc" }],
-      page: { limit: 2 }
-    });
-    const topNames = topDishes.rows.map((row) => row["product_name"]);
+    const aggregate = {
+      row_count: rows.length,
+      gross_sales: rows.reduce((sum, row) => sum + Number(row["菜品销售额"] ?? 0), 0)
+    };
+    if (aggregate.row_count !== 3 || aggregate.gross_sales !== 91) {
+      throw new Error(
+        `Unexpected local partition aggregate: ${JSON.stringify(redactObject(aggregate))}`
+      );
+    }
+    const topNames = [...rows]
+      .sort((left, right) => Number(right["菜品销售额"]) - Number(left["菜品销售额"]))
+      .slice(0, 2)
+      .map((row) => row["菜品名称"]);
     if (topNames[0] !== "合成凉皮" || topNames[1] !== "合成肉夹馍") {
-      throw new Error(`Unexpected top dishes: ${JSON.stringify(topNames)}`);
+      throw new Error(`Unexpected local top dishes: ${JSON.stringify(topNames)}`);
     }
 
     const invalidFile = await writeRunInvalidStructuredFixture(run, structuredWindow);
-    const invalidImport = await callJson<StructuredUploadResult>(
+    const invalidImport = await callJson<PartitionUploadResult>(
       client,
       "upload_structured_dataset",
       {
         file: {
           name: path.basename(invalidFile),
           mediaType: "text/csv",
-          encoding: "base64",
-          contentBase64: await fileBase64(invalidFile)
+          encoding: "path",
+          filePath: invalidFile
         },
         dataset: "dishes",
         enterpriseName: run.enterpriseName,
@@ -303,24 +311,13 @@ async function runAcceptance(
         idempotencyKey: `official-manual-acceptance:${run.runId}:dishes-invalid-atomic`
       }
     );
-    if (invalidImport.importBatch.status !== "pending") {
+    const invalidCompletion = await pollPartitionImportStatus(
+      client,
+      invalidImport.partitionImportJobId
+    );
+    if (invalidCompletion.status !== "rejected" || !invalidCompletion.error?.code) {
       throw new Error(
-        `Expected invalid structured import to be accepted as pending; got ${invalidImport.importBatch.status}.`
-      );
-    }
-    const invalidCompletion = await pollStructuredImportStatus({
-      importBatchId: invalidImport.importBatch.importBatchId,
-      getStatus: () =>
-        callJson<StructuredUploadResult>(client, "get_import_status", {
-          importBatchId: invalidImport.importBatch.importBatchId
-        })
-    });
-    if (
-      invalidCompletion.importBatch.status !== "rejected" ||
-      (invalidCompletion.importBatch.validationErrorCount ?? 0) === 0
-    ) {
-      throw new Error(
-        "Expected invalid structured import to be rejected after polling with safe validation errors."
+        "Expected invalid partition source to be rejected atomically with a safe error."
       );
     }
 
@@ -336,8 +333,7 @@ async function runAcceptance(
         defaultEvidenceUpload.document.documentId,
         explicitLevelEvidenceUpload.document.documentId
       ],
-      structuredDocument: structuredUpload.document.documentId,
-      importBatch: structuredUpload.importBatch.importBatchId,
+      partitionImportJob: structuredUpload.partitionImportJobId,
       structuredWindow: {
         startDate: structuredWindow.startDate,
         endDate: structuredWindow.endDate
@@ -346,6 +342,9 @@ async function runAcceptance(
       topDishes: topNames
     };
   } finally {
+    await Promise.all(
+      localExtracts.map((directory) => rm(directory, { recursive: true, force: true }))
+    );
     await client.close().catch(() => undefined);
   }
 }
@@ -399,19 +398,41 @@ async function waitForEvidenceReady(client: Client, documentId: string): Promise
   throw new Error(`Evidence document ${documentId} did not become ready; last=${lastStatus}.`);
 }
 
+async function pollPartitionImportStatus(
+  client: Client,
+  partitionImportJobId: string
+): Promise<PartitionUploadResult> {
+  const deadline = Date.now() + 10 * 60_000;
+  let latest: PartitionUploadResult | null = null;
+  while (Date.now() < deadline) {
+    latest = await callJson<PartitionUploadResult>(client, "get_partition_import_status", {
+      partitionImportJobId
+    });
+    if (["published", "rejected", "failed", "cancelled", "expired"].includes(latest.status)) {
+      return latest;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  }
+  throw new Error(
+    `Partition import ${partitionImportJobId} did not finish; latest=${JSON.stringify(redactObject(latest ?? {}))}.`
+  );
+}
+
 async function callJson<T>(
   client: Client,
   name: string,
   args: Record<string, unknown>
 ): Promise<T> {
-  const result = await client.callTool({ name, arguments: args }, undefined, { timeout: 60_000 });
+  const result = await client.callTool({ name, arguments: args }, undefined, {
+    timeout: name === "upload_structured_dataset" ? 30 * 60_000 : 60_000
+  });
   const content = result.content as Array<{ type: string; text?: string }> | undefined;
   const text = content?.[0]?.type === "text" ? (content[0].text ?? "") : "";
   if (!text) {
     throw new Error(`${name} returned no text content.`);
   }
   const parsed = JSON.parse(text) as T & { isError?: boolean; error?: unknown };
-  if (result.isError && name !== "upload_structured_dataset") {
+  if (result.isError) {
     throw new Error(`${name} failed: ${JSON.stringify(redactObject(parsed))}`);
   }
   return { ...parsed, isError: Boolean(result.isError) } as T;
@@ -427,6 +448,15 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     select: { employeeId: true }
   });
   const uploaderEmployeeIds = identities.map((identity) => identity.employeeId);
+  const partitionJobs = await prisma.partitionImportJob.findMany({
+    where: { uploaderId: { in: uploaderEmployeeIds } },
+    select: { id: true, temporaryObjectKey: true }
+  });
+  const partitionJobIds = partitionJobs.map((job) => job.id);
+  const partitions = await prisma.structuredPartition.findMany({
+    where: { publishedByJobId: { in: partitionJobIds } },
+    select: { objectKey: true }
+  });
   const documentFilters = officialManualDocumentFilters(run, uploaderEmployeeIds);
   const documents = await prisma.document.findMany({
     where: { OR: documentFilters },
@@ -449,7 +479,13 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   await deleteQdrantPoints(qdrantPointIds);
 
   const storage = createStorageAdapter(process.env);
-  const storageObjectKeys = documents.map((document) => document.storageObjectKey);
+  const storageObjectKeys = [
+    ...documents.map((document) => document.storageObjectKey),
+    ...partitionJobs
+      .map((job) => job.temporaryObjectKey)
+      .filter((key): key is string => Boolean(key)),
+    ...partitions.map((partition) => partition.objectKey)
+  ];
   await deleteStorageObjects(storage, storageObjectKeys);
 
   const documentIds = documents.map((document) => document.id);
@@ -458,9 +494,19 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     .filter((id): id is string => Boolean(id));
 
   await prisma.$transaction(async (tx) => {
+    if (partitionJobIds.length > 0) {
+      await tx.processingRun.deleteMany({
+        where: { partitionImportJobId: { in: partitionJobIds } }
+      });
+      await tx.structuredPartition.deleteMany({
+        where: { publishedByJobId: { in: partitionJobIds } }
+      });
+      await tx.storageGarbage.deleteMany({
+        where: { objectKey: { in: storageObjectKeys } }
+      });
+      await tx.partitionImportJob.deleteMany({ where: { id: { in: partitionJobIds } } });
+    }
     if (importBatchIds.length > 0) {
-      await tx.dishRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
-      await tx.businessRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.vipRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.dishCatalogRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.deliveryLedgerRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
@@ -481,6 +527,7 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   await verifyCleanup(prisma, run, {
     documentIds,
     importBatchIds,
+    partitionJobIds,
     qdrantPointIds,
     storageObjectKeys,
     uploaderEmployeeIds
@@ -564,6 +611,7 @@ async function verifyCleanup(
   deleted: {
     documentIds: string[];
     importBatchIds: string[];
+    partitionJobIds: string[];
     qdrantPointIds: string[];
     storageObjectKeys: string[];
     uploaderEmployeeIds: string[];
@@ -583,8 +631,9 @@ async function verifyCleanup(
   const [
     documents,
     importBatches,
-    dishRows,
-    businessRows,
+    partitionImportJobs,
+    structuredPartitions,
+    storageGarbage,
     vipRows,
     dishCatalogRows,
     deliveryLedgerRows,
@@ -599,11 +648,14 @@ async function verifyCleanup(
     countByIds(deleted.importBatchIds, (ids) =>
       prisma.importBatch.count({ where: { id: { in: ids } } })
     ),
-    countByIds(deleted.importBatchIds, (ids) =>
-      prisma.dishRow.count({ where: { importBatchId: { in: ids } } })
+    countByIds(deleted.partitionJobIds, (ids) =>
+      prisma.partitionImportJob.count({ where: { id: { in: ids } } })
     ),
-    countByIds(deleted.importBatchIds, (ids) =>
-      prisma.businessRow.count({ where: { importBatchId: { in: ids } } })
+    countByIds(deleted.partitionJobIds, (ids) =>
+      prisma.structuredPartition.count({ where: { publishedByJobId: { in: ids } } })
+    ),
+    countByIds(deleted.storageObjectKeys, (keys) =>
+      prisma.storageGarbage.count({ where: { objectKey: { in: keys } } })
     ),
     countByIds(deleted.importBatchIds, (ids) =>
       prisma.vipRow.count({ where: { importBatchId: { in: ids } } })
@@ -629,8 +681,9 @@ async function verifyCleanup(
   const counts: CleanupCounts = {
     documents,
     importBatches,
-    dishRows,
-    businessRows,
+    partitionImportJobs,
+    structuredPartitions,
+    storageGarbage,
     vipRows,
     dishCatalogRows,
     deliveryLedgerRows,

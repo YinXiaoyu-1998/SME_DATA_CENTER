@@ -13,8 +13,9 @@ const inventory: StagingUploadDomainCleanupInventory = {
   documentIndexIds: ["index-1"],
   importBatchIds: ["batch-1"],
   importWindowClaimIds: ["claim-1"],
-  dishRowIds: ["dish-1"],
-  businessRowIds: ["business-1"],
+  structuredPartitionIds: ["dish-1"],
+  partitionImportJobIds: ["business-1"],
+  storageGarbageIds: ["garbage-1"],
   vipRowIds: ["vip-1"],
   dishCatalogRowIds: ["catalog-1"],
   uploadAuditLogIds: ["audit-1"],
@@ -33,8 +34,9 @@ function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
     deleteDocumentChunks: vi.fn(async () => undefined),
     deleteDocumentIndexes: vi.fn(async () => undefined),
     deleteImportWindowClaims: vi.fn(async () => undefined),
-    deleteDishRows: vi.fn(async () => undefined),
-    deleteBusinessRows: vi.fn(async () => undefined),
+    deleteStructuredPartitions: vi.fn(async () => undefined),
+    deletePartitionImportJobs: vi.fn(async () => undefined),
+    deleteStorageGarbage: vi.fn(async () => undefined),
     deleteVipRows: vi.fn(async () => undefined),
     deleteDishCatalogRows: vi.fn(async () => undefined),
     deleteImportBatches: vi.fn(async () => undefined),
@@ -46,8 +48,9 @@ function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
       documentIndexes: 0,
       importBatches: 0,
       importWindowClaims: 0,
-      dishRows: 0,
-      businessRows: 0,
+      structuredPartitions: 0,
+      partitionImportJobs: 0,
+      storageGarbage: 0,
       vipRows: 0,
       dishCatalogRows: 0,
       uploadAuditLogs: 0,
@@ -166,8 +169,11 @@ describe("staging upload-domain cleanup CLI", () => {
     expect(adapter.deleteDocumentChunks).toHaveBeenCalledWith(inventory.documentChunkIds);
     expect(adapter.deleteDocumentIndexes).toHaveBeenCalledWith(inventory.documentIndexIds);
     expect(adapter.deleteImportWindowClaims).toHaveBeenCalledWith(inventory.importWindowClaimIds);
-    expect(adapter.deleteDishRows).toHaveBeenCalledWith(inventory.dishRowIds);
-    expect(adapter.deleteBusinessRows).toHaveBeenCalledWith(inventory.businessRowIds);
+    expect(adapter.deleteStructuredPartitions).toHaveBeenCalledWith(
+      inventory.structuredPartitionIds
+    );
+    expect(adapter.deletePartitionImportJobs).toHaveBeenCalledWith(inventory.partitionImportJobIds);
+    expect(adapter.deleteStorageGarbage).toHaveBeenCalledWith(inventory.storageGarbageIds);
     expect(adapter.deleteVipRows).toHaveBeenCalledWith(inventory.vipRowIds);
     expect(adapter.deleteDishCatalogRows).toHaveBeenCalledWith(inventory.dishCatalogRowIds);
     expect(adapter.deleteImportBatches).toHaveBeenCalledWith(inventory.importBatchIds);

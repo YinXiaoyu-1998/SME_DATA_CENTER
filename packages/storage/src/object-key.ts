@@ -11,6 +11,18 @@ export function createOriginalObjectKey(
   return `org/${orgId}/documents/${documentId}/original/${safeFileName}`;
 }
 
+export function createPartitionStagingObjectKey(input: { orgId: string; jobId: string }): string {
+  return `structured-import-staging/${sanitizeStorageSegment(input.orgId, "orgId")}/${sanitizeStorageSegment(input.jobId, "jobId")}/source`;
+}
+
+export function createPartitionObjectKey(input: {
+  orgId: string;
+  jobId: string;
+  partitionId: string;
+}): string {
+  return `structured-partitions/${sanitizeStorageSegment(input.orgId, "orgId")}/${sanitizeStorageSegment(input.jobId, "jobId")}/${sanitizeStorageSegment(input.partitionId, "partitionId")}.csv`;
+}
+
 export function assertSafeObjectKey(key: string): void {
   if (key.includes("\\") || path.isAbsolute(key)) {
     throw new Error("Storage object key must be relative.");

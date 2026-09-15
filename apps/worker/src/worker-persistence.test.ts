@@ -10,8 +10,6 @@ const prisma = vi.hoisted(() => ({
     update: vi.fn(),
     updateMany: vi.fn()
   },
-  dishRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  businessRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   vipRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   dishCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   deliveryLedgerRow: { deleteMany: vi.fn(), createMany: vi.fn() },
@@ -272,10 +270,10 @@ describe("Prisma structured worker persistence", () => {
       id: "imp_1",
       orgId: "org_1",
       sourceDocumentId: "doc_1",
-      dataset: "dishes"
+      dataset: "vip"
     });
-    prisma.dishRow.deleteMany.mockResolvedValueOnce({ count: 0 });
-    prisma.dishRow.createMany.mockResolvedValueOnce({ count: 1 });
+    prisma.vipRow.deleteMany.mockResolvedValueOnce({ count: 0 });
+    prisma.vipRow.createMany.mockResolvedValueOnce({ count: 1 });
     const repository = createPrismaProcessingWorkerRepository("mysql://test");
     const sheetSummary = [
       { sheetIndex: 0, name: "Sheet1", hidden: false, headerRowNumber: 1, dataRowCount: 1 }
@@ -285,7 +283,7 @@ describe("Prisma structured worker persistence", () => {
       runId: "run_1",
       documentId: "doc_1",
       importBatchId: "imp_1",
-      dataset: "dishes",
+      dataset: "vip",
       workerId: "worker_1",
       now: new Date("2026-08-19T00:00:00.000Z"),
       batchInsertSize: 500,
@@ -318,7 +316,7 @@ describe("Prisma structured worker persistence", () => {
       id: "imp_1",
       orgId: "org_1",
       sourceDocumentId: "doc_1",
-      dataset: "business"
+      dataset: "vip"
     });
     const repository = createPrismaProcessingWorkerRepository("mysql://test");
     const sheetSummary = [
@@ -329,7 +327,7 @@ describe("Prisma structured worker persistence", () => {
       runId: "run_1",
       documentId: "doc_1",
       importBatchId: "imp_1",
-      dataset: "business",
+      dataset: "vip",
       workerId: "worker_1",
       now: new Date("2026-08-19T00:00:00.000Z"),
       result: {

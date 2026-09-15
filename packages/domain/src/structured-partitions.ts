@@ -7,6 +7,7 @@ export const PARTITION_ERROR_CODES = {
   uploadExpired: "PARTITION_UPLOAD_EXPIRED",
   uploadIncomplete: "PARTITION_UPLOAD_INCOMPLETE",
   sourceChecksumMismatch: "PARTITION_SOURCE_CHECKSUM_MISMATCH",
+  sourceDateOutOfRange: "PARTITION_SOURCE_DATE_OUT_OF_RANGE",
   storeIdentityMissing: "PARTITION_STORE_IDENTITY_MISSING",
   storeIdentityConflict: "PARTITION_STORE_IDENTITY_CONFLICT",
   limitExceeded: "PARTITION_LIMIT_EXCEEDED",

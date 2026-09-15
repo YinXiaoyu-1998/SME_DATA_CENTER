@@ -46,6 +46,19 @@ export interface ClaimedProcessingRun {
     startDate?: string;
     endDate?: string;
   };
+  partitionImport?: {
+    jobId: string;
+    dataset: "business" | "dishes";
+    enterpriseKey: string;
+    enterpriseName: string;
+    confidentialityLevel: number;
+    originalFileName: string;
+    sourceByteSize: bigint;
+    sourceChecksumSha256: string;
+    sourceStartDate: string;
+    sourceEndDate: string;
+    temporaryObjectKey: string;
+  };
   document: {
     id: string;
     orgId: string;
@@ -57,7 +70,7 @@ export interface ClaimedProcessingRun {
     fileType?: string | null;
     contentVersion?: number;
     confidentialityLevel: number;
-  };
+  } | null;
 }
 
 export interface DocumentChunkWrite {
@@ -154,6 +167,11 @@ export interface ProcessingWorkerRepository {
   beginStructuredImportApply?(input: BeginStructuredImportApplyInput): Promise<void>;
   completeStructuredImport?(input: CompleteStructuredImportInput): Promise<void>;
   rejectStructuredImport?(input: RejectStructuredImportInput): Promise<void>;
+  completePartitionProcessing?(input: {
+    runId: string;
+    workerId: string;
+    now: Date;
+  }): Promise<void>;
   failProcessingRun(input: FailProcessingRunInput): Promise<void>;
   disconnect?(): Promise<void>;
 }
@@ -172,6 +190,13 @@ export interface RunWorkerLoopInput {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
   evidenceIndexer?: EvidenceIndexer;
+  partitionImporter?: {
+    process(input: {
+      run: ClaimedProcessingRun;
+      storage: StorageAdapter;
+    }): Promise<"published" | "rejected">;
+    cleanupTerminal?(input: { run: ClaimedProcessingRun; storage: StorageAdapter }): Promise<void>;
+  };
   structuredIngestionLimits?: StructuredIngestionLimits;
   structuredImportBatchInsertSize?: number;
   workerId?: string;
@@ -191,6 +216,7 @@ export async function runWorkerOnce(input: {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
   evidenceIndexer?: EvidenceIndexer;
+  partitionImporter?: RunWorkerLoopInput["partitionImporter"];
   structuredIngestionLimits?: StructuredIngestionLimits;
   structuredImportBatchInsertSize?: number;
   workerId?: string;
@@ -234,6 +260,12 @@ export async function runWorkerOnce(input: {
         );
       }
 
+      if (!run.document)
+        throw new ProcessingError(
+          PROCESSING_ERROR_CODES.unsupportedFileType,
+          "Processing document is missing.",
+          false
+        );
       const content = await readDocumentContent(run.document, input.storage);
       const result = await input.evidenceIndexer.indexDocument({ run, content });
       await input.repository.completeEvidenceIndexing({
@@ -255,6 +287,7 @@ export async function runWorkerOnce(input: {
     if (run.jobType === "structured_import") {
       if (
         !run.structuredImport ||
+        !run.document ||
         !input.repository.beginStructuredImportApply ||
         !input.repository.completeStructuredImport ||
         !input.repository.rejectStructuredImport
@@ -324,6 +357,27 @@ export async function runWorkerOnce(input: {
       };
     }
 
+    if (run.jobType === "structured_partition_import") {
+      if (
+        !run.partitionImport ||
+        !input.partitionImporter ||
+        !input.repository.completePartitionProcessing
+      ) {
+        throw new ProcessingError(
+          PROCESSING_ERROR_CODES.unsupportedFileType,
+          "Partition import processing is not configured.",
+          false
+        );
+      }
+      const outcome = await input.partitionImporter.process({ run, storage: input.storage });
+      await input.repository.completePartitionProcessing({ runId: run.id, workerId, now: now() });
+      return {
+        processed: true,
+        documentId: run.partitionImport.jobId,
+        status: outcome === "published" ? "active" : "rejected"
+      };
+    }
+
     {
       throw new ProcessingError(
         PROCESSING_ERROR_CODES.unsupportedProcessingJobType,
@@ -356,6 +410,11 @@ export async function runWorkerOnce(input: {
           ? new Date(failedAt.getTime() + retryDelayMs(run.attemptNumber, retryBaseMs, retryMaxMs))
           : failedAt
       });
+      if (!willRetry && run.jobType === "structured_partition_import") {
+        await input.partitionImporter
+          ?.cleanupTerminal?.({ run, storage: input.storage })
+          .catch(() => undefined);
+      }
     } catch (failureError) {
       if (toProcessingError(failureError, run.jobType).code === PROCESSING_ERROR_CODES.leaseLost) {
         return {
@@ -394,6 +453,7 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
             repository: input.repository,
             storage: input.storage,
             evidenceIndexer: input.evidenceIndexer,
+            partitionImporter: input.partitionImporter,
             structuredIngestionLimits: input.structuredIngestionLimits,
             structuredImportBatchInsertSize: input.structuredImportBatchInsertSize,
             workerId,
@@ -441,6 +501,24 @@ export function createPrismaProcessingWorkerRepository(
       return prisma.$transaction(async (tx) => {
         const run = await tx.processingRun.findFirst({
           where: {
+            AND: [
+              {
+                OR: [
+                  {
+                    jobType: "structured_partition_import",
+                    partitionImportJob: { status: { in: ["queued", "processing"] } }
+                  },
+                  {
+                    jobType: { not: "structured_partition_import" },
+                    document: {
+                      status: {
+                        in: [DocumentStatus.pending_processing, DocumentStatus.processing]
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
             OR: [
               {
                 status: ProcessingRunStatus.queued,
@@ -454,16 +532,12 @@ export function createPrismaProcessingWorkerRepository(
                 status: ProcessingRunStatus.running,
                 lockedUntil: { lt: input.now }
               }
-            ],
-            document: {
-              status: {
-                in: [DocumentStatus.pending_processing, DocumentStatus.processing]
-              }
-            }
+            ]
           },
           orderBy: [{ availableAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
           include: {
-            document: true
+            document: true,
+            partitionImportJob: true
           }
         });
 
@@ -504,17 +578,28 @@ export function createPrismaProcessingWorkerRepository(
           return null;
         }
 
-        const document = await tx.document.update({
-          where: {
-            id: run.documentId
-          },
-          data: {
-            status: DocumentStatus.processing
+        const document = run.documentId
+          ? await tx.document.update({
+              where: { id: run.documentId },
+              data: { status: DocumentStatus.processing }
+            })
+          : null;
+
+        if (run.jobType === "structured_partition_import") {
+          if (!run.partitionImportJobId || !run.partitionImportJob?.temporaryObjectKey) {
+            throw new Error(`Partition import job is not claimable for processing run ${run.id}.`);
           }
-        });
+          await tx.partitionImportJob.update({
+            where: { id: run.partitionImportJobId },
+            data: { status: "processing", errorCode: null, errorSummary: null }
+          });
+        }
 
         let structuredImport: ClaimedProcessingRun["structuredImport"];
         if (run.jobType === "structured_import") {
+          if (!run.documentId) {
+            throw new Error(`Structured import document is missing for processing run ${run.id}.`);
+          }
           const batch = await tx.importBatch.findFirst({
             where: {
               sourceDocumentId: run.documentId,
@@ -566,25 +651,27 @@ export function createPrismaProcessingWorkerRepository(
           });
         }
 
-        await tx.auditLog.create({
-          data: {
-            orgId: run.orgId,
-            actorEmployeeId: null,
-            action: AUDIT_ACTIONS.documentProcessingStarted,
-            targetType: "document",
-            targetId: run.documentId,
-            result: "succeeded",
-            metadata: {
-              processingRunId: run.id,
-              workerId: input.workerId,
-              lockedUntil: lockedUntil.toISOString()
+        if (run.documentId) {
+          await tx.auditLog.create({
+            data: {
+              orgId: run.orgId,
+              actorEmployeeId: null,
+              action: AUDIT_ACTIONS.documentProcessingStarted,
+              targetType: "document",
+              targetId: run.documentId,
+              result: "succeeded",
+              metadata: {
+                processingRunId: run.id,
+                workerId: input.workerId,
+                lockedUntil: lockedUntil.toISOString()
+              }
             }
-          }
-        });
+          });
+        }
 
         const claimedRun = await tx.processingRun.findUniqueOrThrow({
           where: { id: run.id },
-          include: { document: true }
+          include: { document: true, partitionImportJob: true }
         });
 
         return toClaimedProcessingRun(claimedRun, document, structuredImport);
@@ -599,6 +686,20 @@ export function createPrismaProcessingWorkerRepository(
         }
       });
       return result.count === 1;
+    },
+    async completePartitionProcessing(input) {
+      const result = await prisma.processingRun.updateMany({
+        where: activeLeaseWhere(input),
+        data: {
+          status: ProcessingRunStatus.succeeded,
+          lockedBy: null,
+          lockedUntil: null,
+          errorCode: null,
+          errorSummary: null,
+          finishedAt: input.now
+        }
+      });
+      if (result.count !== 1) throw new ProcessingLeaseLostError(input.runId);
     },
     async completeEvidenceIndexing(input) {
       await prisma.$transaction(async (tx) => {
@@ -800,19 +901,7 @@ export function createPrismaProcessingWorkerRepository(
         if (!batch)
           throw new Error(`Structured import batch ${input.importBatchId} cannot complete.`);
 
-        if (batch.dataset === ImportDataset.dishes) {
-          await tx.dishRow.deleteMany({ where: { importBatchId: batch.id } });
-          await insertStructuredRows(tx, "dishes", batch, input.result.rows, input.batchInsertSize);
-        } else if (batch.dataset === ImportDataset.business) {
-          await tx.businessRow.deleteMany({ where: { importBatchId: batch.id } });
-          await insertStructuredRows(
-            tx,
-            "business",
-            batch,
-            input.result.rows,
-            input.batchInsertSize
-          );
-        } else if (batch.dataset === ImportDataset.vip) {
+        if (batch.dataset === ImportDataset.vip) {
           await tx.vipRow.deleteMany({ where: { importBatchId: batch.id } });
           await insertStructuredRows(tx, "vip", batch, input.result.rows, input.batchInsertSize);
         } else if (batch.dataset === ImportDataset.dish_catalog) {
@@ -1059,18 +1148,30 @@ export function createPrismaProcessingWorkerRepository(
           });
         }
 
-        await tx.document.update({
-          where: {
-            id: input.documentId
-          },
-          data: {
-            status: input.willRetry
-              ? DocumentStatus.pending_processing
-              : DocumentStatus.processing_failed
-          }
-        });
+        if (run.jobType === "structured_partition_import" && run.partitionImportJobId) {
+          await tx.partitionImportJob.update({
+            where: { id: run.partitionImportJobId },
+            data: {
+              status: input.willRetry ? "queued" : "failed",
+              errorCode: input.errorCode,
+              errorSummary: input.errorSummary,
+              ...(input.willRetry ? {} : { finishedAt: input.now })
+            }
+          });
+        }
 
-        if (!input.willRetry) {
+        if (run.documentId) {
+          await tx.document.update({
+            where: { id: run.documentId },
+            data: {
+              status: input.willRetry
+                ? DocumentStatus.pending_processing
+                : DocumentStatus.processing_failed
+            }
+          });
+        }
+
+        if (!input.willRetry && run.documentId) {
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
@@ -1097,7 +1198,7 @@ export function createPrismaProcessingWorkerRepository(
 }
 
 async function readDocumentContent(
-  document: ClaimedProcessingRun["document"],
+  document: NonNullable<ClaimedProcessingRun["document"]>,
   storage: StorageAdapter
 ): Promise<Buffer> {
   try {
@@ -1154,6 +1255,21 @@ function toProcessingError(error: unknown, jobType?: string): ProcessingError {
     return new ProcessingError(error.code, error.message, false);
   }
 
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    "retryable" in error &&
+    typeof error.code === "string" &&
+    typeof error.retryable === "boolean"
+  ) {
+    return new ProcessingError(
+      error.code,
+      error instanceof Error ? error.message : "Partition import failed.",
+      error.retryable
+    );
+  }
+
   if (isDeterministicEvidenceError(error)) {
     const code =
       typeof error === "object" && error !== null && "code" in error
@@ -1176,32 +1292,53 @@ function toProcessingError(error: unknown, jobType?: string): ProcessingError {
 }
 
 function toClaimedProcessingRun(
-  run: Prisma.ProcessingRunGetPayload<{ include: { document: true } }>,
-  document: Prisma.DocumentGetPayload<Record<string, never>>,
+  run: Prisma.ProcessingRunGetPayload<{
+    include: { document: true; partitionImportJob: true };
+  }>,
+  document: Prisma.DocumentGetPayload<Record<string, never>> | null,
   structuredImport?: ClaimedProcessingRun["structuredImport"]
 ): ClaimedProcessingRun {
   return {
     id: run.id,
     orgId: run.orgId,
-    documentId: run.documentId,
+    documentId: run.documentId ?? run.partitionImportJobId ?? run.id,
     retryCount: run.retryCount,
     attemptNumber: run.attemptNumber,
     jobType: run.jobType,
     lockedBy: run.lockedBy,
     lockedUntil: run.lockedUntil,
     structuredImport,
-    document: {
-      id: document.id,
-      orgId: document.orgId,
-      uploaderId: document.uploaderId,
-      status: document.status,
-      storageObjectKey: document.storageObjectKey,
-      originalFileName: document.originalFileName,
-      documentKind: document.documentKind,
-      fileType: document.fileType,
-      contentVersion: document.contentVersion,
-      confidentialityLevel: document.confidentialityLevel
-    }
+    ...(run.partitionImportJob?.temporaryObjectKey
+      ? {
+          partitionImport: {
+            jobId: run.partitionImportJob.id,
+            dataset: run.partitionImportJob.dataset,
+            enterpriseKey: run.partitionImportJob.enterpriseKey,
+            enterpriseName: run.partitionImportJob.enterpriseName,
+            confidentialityLevel: run.partitionImportJob.confidentialityLevel,
+            originalFileName: run.partitionImportJob.originalFileName,
+            sourceByteSize: run.partitionImportJob.sourceByteSize,
+            sourceChecksumSha256: run.partitionImportJob.sourceChecksumSha256,
+            sourceStartDate: run.partitionImportJob.sourceStartDate.toISOString().slice(0, 10),
+            sourceEndDate: run.partitionImportJob.sourceEndDate.toISOString().slice(0, 10),
+            temporaryObjectKey: run.partitionImportJob.temporaryObjectKey
+          }
+        }
+      : {}),
+    document: document
+      ? {
+          id: document.id,
+          orgId: document.orgId,
+          uploaderId: document.uploaderId,
+          status: document.status,
+          storageObjectKey: document.storageObjectKey,
+          originalFileName: document.originalFileName,
+          documentKind: document.documentKind,
+          fileType: document.fileType,
+          contentVersion: document.contentVersion,
+          confidentialityLevel: document.confidentialityLevel
+        }
+      : null
   };
 }
 
@@ -1232,11 +1369,7 @@ async function insertStructuredRows(
       sourceRowNumber: row.sourceRowNumber,
       payload: row.payload as Prisma.InputJsonValue
     }));
-    if (dataset === "dishes") {
-      await tx.dishRow.createMany({ data });
-    } else if (dataset === "business") {
-      await tx.businessRow.createMany({ data });
-    } else if (dataset === "vip") {
+    if (dataset === "vip") {
       await tx.vipRow.createMany({ data });
     } else if (dataset === "dish_catalog") {
       await tx.dishCatalogRow.createMany({ data });

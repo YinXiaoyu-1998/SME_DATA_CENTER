@@ -1,5 +1,7 @@
 # Business / Dishes OSS Partition Hard Migration Implementation Plan
 
+**Implementation status (2026-09-15):** Tasks 1–8 and Task 9's cleanup/local-integration work are implemented and locally verified on PR #160. The opt-in two-file real-scale service acceptance remains to run after human review. Tasks 10–12 (launcher publication, recommendation/skill synchronization, staging hard cutover and official acceptance) remain intentionally gated; current server recommendation metadata and user skills do not advertise unpublished launcher 0.4.0.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 `business` / `dishes` 从“源文件保留 + MySQL 每行一条 + MCP 分页查询”硬迁移为“launcher 直传临时 OSS + worker 按企业/门店/营业日生成 canonical CSV + MySQL 当前分区目录 + launcher 本地批量下载”，使几十万至上百万行来源文件的上传和周报/月报读取不再与 LLM token 或 MySQL 明细行数线性绑定。
@@ -311,6 +313,7 @@ PARTITION_UPLOAD_SESSION_REQUIRED
 PARTITION_UPLOAD_EXPIRED
 PARTITION_UPLOAD_INCOMPLETE
 PARTITION_SOURCE_CHECKSUM_MISMATCH
+PARTITION_SOURCE_DATE_OUT_OF_RANGE
 PARTITION_STORE_IDENTITY_MISSING
 PARTITION_STORE_IDENTITY_CONFLICT
 PARTITION_LIMIT_EXCEEDED

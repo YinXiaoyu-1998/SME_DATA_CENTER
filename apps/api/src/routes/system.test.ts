@@ -42,6 +42,9 @@ function context(): ApiServerContext {
     structuredImports: () => {
       throw new Error("not used");
     },
+    structuredPartitions: () => {
+      throw new Error("not used");
+    },
     structuredQueries: () => {
       throw new Error("not used");
     },
