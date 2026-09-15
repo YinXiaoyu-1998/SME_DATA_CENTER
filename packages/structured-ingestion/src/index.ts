@@ -8,6 +8,12 @@ import {
   type StructuredFieldRegistryEntry
 } from "@enterprise-hub/domain";
 import { readXlsxRows } from "./xlsx-stream.js";
+export {
+  exportStructuredPartitions,
+  type StructuredPartitionExport,
+  type StructuredPartitionExportEntry,
+  type StructuredPartitionLimits
+} from "./partition-export.js";
 const MAX_HEADER_SCAN_ROWS = 10;
 const MAX_SPECIAL_HEADER_SCAN_ROWS = 20;
 const DELIVERY_METADATA_COLUMNS = ["单据号", "订货机构", "送货机构", "收货日期"] as const;
