@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm, stat, statfs } from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { PARTITION_ERROR_CODES, type PartitionDatasetName } from "@enterprise-hub/domain";
 import {
   createPrismaStructuredPartitionRepository,
@@ -21,6 +22,30 @@ export interface PartitionImportRuntimeLimits extends StructuredPartitionLimits 
   workDirectory: string;
   minFreeBytes: number;
   jobRetentionDays: number;
+}
+
+export type PartitionImportTimingPhase =
+  | "source_download"
+  | "source_export"
+  | "partition_upload_verify"
+  | "atomic_publish"
+  | "source_cleanup"
+  | "work_directory_cleanup"
+  | "total";
+
+export interface PartitionImportTimingEvent {
+  event: "partition_import_timing";
+  jobId: string;
+  dataset: PartitionDatasetName;
+  phase: PartitionImportTimingPhase;
+  outcome: "completed" | "failed" | "published" | "rejected";
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  sourceByteSize?: number;
+  totalRowCount?: number;
+  partitionCount?: number;
+  canonicalByteSize?: number;
 }
 
 export function partitionImportLimitsFromRuntime(
@@ -46,12 +71,20 @@ export function partitionImportLimitsFromRuntime(
 export function createPartitionImporter(input: {
   limits: PartitionImportRuntimeLimits;
   repository?: StructuredPartitionRepository;
+  onTimingEvent?: (event: PartitionImportTimingEvent) => void;
 }) {
   const repository = input.repository ?? createPrismaStructuredPartitionRepository();
   return {
     async process({ run, storage }: { run: ClaimedProcessingRun; storage: StorageAdapter }) {
       const job = run.partitionImport;
       if (!job) throw new Error("Partition import job is missing from the claimed run.");
+      const timingContext = {
+        jobId: job.jobId,
+        dataset: job.dataset as PartitionDatasetName,
+        onTimingEvent: input.onTimingEvent
+      };
+      const totalTiming = startTiming();
+      let totalOutcome: PartitionImportTimingEvent["outcome"] = "failed";
       const transfer = requirePartitionStorage(storage);
       await mkdir(input.limits.workDirectory, { recursive: true });
       const free = await statfs(input.limits.workDirectory);
@@ -70,7 +103,14 @@ export function createPartitionImporter(input: {
       let published = false;
       let candidateCleanupIsSafe = true;
       try {
-        const source = await transfer.downloadObjectToFile(job.temporaryObjectKey, sourcePath);
+        const source = await measurePartitionImportPhase(
+          {
+            ...timingContext,
+            phase: "source_download",
+            measurements: (result) => ({ sourceByteSize: result.size })
+          },
+          () => transfer.downloadObjectToFile(job.temporaryObjectKey, sourcePath)
+        );
         if (
           source.size !== Number(job.sourceByteSize) ||
           source.hash !== job.sourceChecksumSha256
@@ -82,23 +122,31 @@ export function createPartitionImporter(input: {
         }
         let exported;
         try {
-          exported = await exportStructuredPartitions({
-            dataset: job.dataset,
-            sourcePath,
-            outputDirectory: workDirectory,
-            limits: {
-              maxSourceBytes: input.limits.maxSourceBytes,
-              maxRows: input.limits.maxRows,
-              maxPartitions: input.limits.maxPartitions,
-              maxCanonicalBytes: input.limits.maxCanonicalBytes,
-              maxOpenFiles: input.limits.maxOpenFiles,
-              maxStructuredCellChars: input.limits.maxStructuredCellChars,
-              maxXlsxSheets: input.limits.maxXlsxSheets,
-              maxXlsxUncompressedBytes: input.limits.maxXlsxUncompressedBytes,
-              maxXlsxZipEntries: input.limits.maxXlsxZipEntries,
-              maxXlsxCompressionRatio: input.limits.maxXlsxCompressionRatio
-            }
-          });
+          exported = await measurePartitionImportPhase(
+            {
+              ...timingContext,
+              phase: "source_export",
+              measurements: (result) => partitionMeasurements(result)
+            },
+            () =>
+              exportStructuredPartitions({
+                dataset: job.dataset,
+                sourcePath,
+                outputDirectory: workDirectory,
+                limits: {
+                  maxSourceBytes: input.limits.maxSourceBytes,
+                  maxRows: input.limits.maxRows,
+                  maxPartitions: input.limits.maxPartitions,
+                  maxCanonicalBytes: input.limits.maxCanonicalBytes,
+                  maxOpenFiles: input.limits.maxOpenFiles,
+                  maxStructuredCellChars: input.limits.maxStructuredCellChars,
+                  maxXlsxSheets: input.limits.maxXlsxSheets,
+                  maxXlsxUncompressedBytes: input.limits.maxXlsxUncompressedBytes,
+                  maxXlsxZipEntries: input.limits.maxXlsxZipEntries,
+                  maxXlsxCompressionRatio: input.limits.maxXlsxCompressionRatio
+                }
+              })
+          );
         } catch (error) {
           if (!(error instanceof StructuredPartitionExportError)) throw error;
           await repository.finishJob({
@@ -108,12 +156,8 @@ export function createPartitionImporter(input: {
             errorCode: error.code,
             errorSummary: error.message
           });
-          await deleteOrEnqueue(
-            storage,
-            repository,
-            job.temporaryObjectKey,
-            "partition_source_terminal"
-          );
+          await cleanupPartitionSource(storage, repository, job.temporaryObjectKey, timingContext);
+          totalOutcome = "rejected";
           return "rejected" as const;
         }
 
@@ -134,84 +178,94 @@ export function createPartitionImporter(input: {
             errorCode: error.code,
             errorSummary: error.message
           });
-          await deleteOrEnqueue(
-            storage,
-            repository,
-            job.temporaryObjectKey,
-            "partition_source_terminal"
-          );
+          await cleanupPartitionSource(storage, repository, job.temporaryObjectKey, timingContext);
+          totalOutcome = "rejected";
           return "rejected" as const;
         }
 
         const candidates: PartitionCandidate[] = [];
-        for (const partition of exported.partitions) {
-          const id = `part_${randomBytes(12).toString("hex")}`;
-          const objectKey = createPartitionObjectKey({
-            orgId: run.orgId,
-            jobId: job.jobId,
-            partitionId: id
-          });
-          await transfer.putObjectAtKey({
-            key: objectKey,
-            body: createReadStream(partition.filePath),
-            contentLength: Number(partition.byteSize),
-            checksumSha256: partition.checksumSha256,
-            contentType: "text/csv; charset=utf-8"
-          });
-          const verified = await storage.statObject(objectKey);
-          if (
-            verified.size !== Number(partition.byteSize) ||
-            verified.hash !== partition.checksumSha256
-          )
-            throw new Error("Uploaded canonical partition could not be verified.");
-          uploadedKeys.push(objectKey);
-          candidates.push({
-            id,
-            orgId: run.orgId,
-            enterpriseKey: job.enterpriseKey,
-            enterpriseName: job.enterpriseName,
-            dataset: job.dataset as PartitionDatasetName,
-            storeKey: partition.storeKey,
-            merchantId: partition.merchantId,
-            storeName: partition.storeName,
-            businessDate: partition.businessDate,
-            objectKey,
-            rowCount: partition.rowCount,
-            byteSize: partition.byteSize,
-            checksumSha256: partition.checksumSha256,
-            confidentialityLevel: job.confidentialityLevel
-          });
-        }
+        await measurePartitionImportPhase(
+          {
+            ...timingContext,
+            phase: "partition_upload_verify",
+            measurements: () => partitionMeasurements(exported)
+          },
+          async () => {
+            for (const partition of exported.partitions) {
+              const id = `part_${randomBytes(12).toString("hex")}`;
+              const objectKey = createPartitionObjectKey({
+                orgId: run.orgId,
+                jobId: job.jobId,
+                partitionId: id
+              });
+              await transfer.putObjectAtKey({
+                key: objectKey,
+                body: createReadStream(partition.filePath),
+                contentLength: Number(partition.byteSize),
+                checksumSha256: partition.checksumSha256,
+                contentType: "text/csv; charset=utf-8"
+              });
+              const verified = await storage.statObject(objectKey);
+              if (
+                verified.size !== Number(partition.byteSize) ||
+                verified.hash !== partition.checksumSha256
+              )
+                throw new Error("Uploaded canonical partition could not be verified.");
+              uploadedKeys.push(objectKey);
+              candidates.push({
+                id,
+                orgId: run.orgId,
+                enterpriseKey: job.enterpriseKey,
+                enterpriseName: job.enterpriseName,
+                dataset: job.dataset as PartitionDatasetName,
+                storeKey: partition.storeKey,
+                merchantId: partition.merchantId,
+                storeName: partition.storeName,
+                businessDate: partition.businessDate,
+                objectKey,
+                rowCount: partition.rowCount,
+                byteSize: partition.byteSize,
+                checksumSha256: partition.checksumSha256,
+                confidentialityLevel: job.confidentialityLevel
+              });
+            }
+          }
+        );
         candidateCleanupIsSafe = false;
         try {
-          await repository.publishSourceAtomically({
-            orgId: run.orgId,
-            jobId: job.jobId,
-            totalRowCount: exported.totalRowCount,
-            candidates
-          });
+          await measurePartitionImportPhase(
+            {
+              ...timingContext,
+              phase: "atomic_publish",
+              measurements: () => partitionMeasurements(exported)
+            },
+            () =>
+              repository.publishSourceAtomically({
+                orgId: run.orgId,
+                jobId: job.jobId,
+                totalRowCount: exported.totalRowCount,
+                candidates
+              })
+          );
         } catch (error) {
           const authoritative = await repository.findJobForStatus(run.orgId, job.jobId);
           if (authoritative?.status === "published") {
             published = true;
-            await deleteOrEnqueue(
+            await cleanupPartitionSource(
               storage,
               repository,
               job.temporaryObjectKey,
-              "partition_source_terminal"
+              timingContext
             );
+            totalOutcome = "published";
             return "published" as const;
           }
           candidateCleanupIsSafe = authoritative?.status === "processing";
           throw error;
         }
         published = true;
-        await deleteOrEnqueue(
-          storage,
-          repository,
-          job.temporaryObjectKey,
-          "partition_source_terminal"
-        );
+        await cleanupPartitionSource(storage, repository, job.temporaryObjectKey, timingContext);
+        totalOutcome = "published";
         return "published" as const;
       } catch (error) {
         if (!published && candidateCleanupIsSafe) {
@@ -228,7 +282,14 @@ export function createPartitionImporter(input: {
           true
         );
       } finally {
-        await rm(workDirectory, { recursive: true, force: true });
+        try {
+          await measurePartitionImportPhase(
+            { ...timingContext, phase: "work_directory_cleanup" },
+            () => rm(workDirectory, { recursive: true, force: true })
+          );
+        } finally {
+          emitPartitionImportTiming(timingContext, "total", totalOutcome, totalTiming);
+        }
       }
     },
     async cleanupTerminal({
@@ -267,6 +328,96 @@ export function createPartitionImporter(input: {
       await repository.disconnect?.();
     }
   };
+}
+
+interface TimingContext {
+  jobId: string;
+  dataset: PartitionDatasetName;
+  onTimingEvent?: (event: PartitionImportTimingEvent) => void;
+}
+
+interface TimingMeasurement {
+  sourceByteSize?: number;
+  totalRowCount?: number;
+  partitionCount?: number;
+  canonicalByteSize?: number;
+}
+
+function startTiming(): { startedAt: Date; monotonicMs: number } {
+  return { startedAt: new Date(), monotonicMs: performance.now() };
+}
+
+async function measurePartitionImportPhase<T>(
+  input: TimingContext & {
+    phase: Exclude<PartitionImportTimingPhase, "total">;
+    measurements?: (result: T) => TimingMeasurement;
+  },
+  action: () => Promise<T>
+): Promise<T> {
+  const timing = startTiming();
+  try {
+    const result = await action();
+    emitPartitionImportTiming(
+      input,
+      input.phase,
+      "completed",
+      timing,
+      input.measurements?.(result)
+    );
+    return result;
+  } catch (error) {
+    emitPartitionImportTiming(input, input.phase, "failed", timing);
+    throw error;
+  }
+}
+
+function emitPartitionImportTiming(
+  input: TimingContext,
+  phase: PartitionImportTimingPhase,
+  outcome: PartitionImportTimingEvent["outcome"],
+  timing: ReturnType<typeof startTiming>,
+  measurements: TimingMeasurement = {}
+): void {
+  const finishedAt = new Date();
+  try {
+    input.onTimingEvent?.({
+      event: "partition_import_timing",
+      jobId: input.jobId,
+      dataset: input.dataset,
+      phase,
+      outcome,
+      startedAt: timing.startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: Number((performance.now() - timing.monotonicMs).toFixed(1)),
+      ...measurements
+    });
+  } catch {
+    // Telemetry must never change the import outcome.
+  }
+}
+
+function partitionMeasurements(exported: {
+  totalRowCount: bigint;
+  partitions: Array<{ byteSize: bigint }>;
+}): TimingMeasurement {
+  return {
+    totalRowCount: Number(exported.totalRowCount),
+    partitionCount: exported.partitions.length,
+    canonicalByteSize: Number(
+      exported.partitions.reduce((total, partition) => total + partition.byteSize, 0n)
+    )
+  };
+}
+
+async function cleanupPartitionSource(
+  storage: StorageAdapter,
+  repository: StructuredPartitionRepository,
+  objectKey: string,
+  timingContext: TimingContext
+): Promise<void> {
+  await measurePartitionImportPhase({ ...timingContext, phase: "source_cleanup" }, () =>
+    deleteOrEnqueue(storage, repository, objectKey, "partition_source_terminal")
+  );
 }
 
 async function cleanupExpiredUploads(

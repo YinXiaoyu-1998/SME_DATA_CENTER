@@ -156,7 +156,12 @@ row-query structured upload also keep `importBatchId`. Poll `get_evidence_docume
   after the employee intentionally corrects or changes the upload.
 
 For `business` and `dishes`, keep `partitionImportJobId` and poll
-`get_partition_import_status` on the same schedule. `published` is the only success state;
+`get_partition_import_status`. For a source file larger than 50 MiB, check first after 2 minutes,
+then every 2 minutes, for at most 20 minutes; this replaces the ordinary polling schedule above.
+Tell the employee once that large-file processing may take 10–20 minutes, then use a passive wait
+when the host provides one. Do not narrate unchanged `queued` or `processing` states between
+checks. For a source file at or below 50 MiB, use the ordinary polling schedule above.
+`published` is the only success state;
 `rejected`, `failed`, `cancelled`, and `expired` are terminal non-success states. A `queued` or
 `processing` response is not complete. Exact-repeat uploads may return the existing published job;
 same-key requests with different bytes or metadata are conflicts, not retries.

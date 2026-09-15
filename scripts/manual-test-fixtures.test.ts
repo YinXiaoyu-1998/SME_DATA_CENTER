@@ -147,6 +147,8 @@ describe("manual acceptance scenario manifest", () => {
     expect(skill).toContain("terminal success state");
     expect(skill).toContain("rejected");
     expect(skill).toContain("failed");
+    expect(skill).toMatch(/larger than 50 MiB[\s\S]*every 2 minutes[\s\S]*20 minutes/);
+    expect(skill).toContain("Do not narrate unchanged `queued` or `processing` states");
     expect(guide).toContain("`rejected` terminal state");
   });
 

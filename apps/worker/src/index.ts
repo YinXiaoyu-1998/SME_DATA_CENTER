@@ -18,7 +18,10 @@ export async function main(): Promise<void> {
   const storage = createStorageAdapter(process.env);
   const evidenceIndexer = createEvidenceIndexerFromEnv();
   const partitionImporter = createPartitionImporter({
-    limits: partitionImportLimitsFromRuntime(runtimeLimits)
+    limits: partitionImportLimitsFromRuntime(runtimeLimits),
+    onTimingEvent(event) {
+      console.error(JSON.stringify(event));
+    }
   });
 
   try {
