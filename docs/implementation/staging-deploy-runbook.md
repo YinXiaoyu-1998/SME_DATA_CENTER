@@ -275,6 +275,7 @@ Delete only the enumerated upload domain, never a key prefix or a whole collecti
 
 - each `Document` and its `ProcessingRun, DocumentChunk, DocumentIndex` dependents;
 - each related `ImportBatch, ImportWindowClaim, DishRow, and BusinessRow` record;
+- each `QuarantineCertificate` that directly references a deleted source document;
 - upload audit events whose target/action belongs to the exact document/import identifiers;
 - the exact OSS object keys recorded by those `Document` rows; and
 - the exact Qdrant collection/point identifiers recorded by those `DocumentChunk` rows.

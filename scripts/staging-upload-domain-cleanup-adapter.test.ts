@@ -71,6 +71,11 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         deleteMany: vi.fn(async () => ({})),
         count: vi.fn(async () => 0)
       },
+      quarantineCertificate: {
+        findMany: vi.fn(async () => [{ id: "certificate-1" }]),
+        deleteMany: vi.fn(async () => ({})),
+        count: vi.fn(async () => 0)
+      },
       vipRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
       dishCatalogRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) }
     } as unknown as PrismaClient;
@@ -98,6 +103,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     expect(inventory).toMatchObject({
       documentIds: ["doc-1"],
       importBatchIds: ["batch-1"],
+      quarantineCertificateIds: ["certificate-1"],
       vipRowIds: ["vip-1"],
       dishCatalogRowIds: ["catalog-1"],
       storageObjectKeys: ["uploads/doc-1"],
@@ -105,9 +111,13 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     });
     await adapter.deleteQdrantPoints(inventory.qdrantPoints);
     await adapter.deleteOssObjects(inventory.storageObjectKeys);
+    await adapter.deleteQuarantineCertificates(inventory.quarantineCertificateIds);
     await adapter.deleteDocuments(inventory.documentIds);
     expect(qdrant.deletePoints).toHaveBeenCalledWith(inventory.qdrantPoints);
     expect(storage.deleteObject).toHaveBeenCalledWith("uploads/doc-1");
+    expect(prisma.quarantineCertificate.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["certificate-1"] } }
+    });
     expect(prisma.document.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["doc-1"] } } });
     await expect(
       adapter.verifyPostCleanup(
@@ -140,6 +150,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       partitionImportJob: emptyCount,
       structuredPartition: emptyCount,
       storageGarbage: emptyCount,
+      quarantineCertificate: emptyCount,
       vipRow: emptyCount,
       dishCatalogRow: emptyCount,
       auditLog: emptyCount
@@ -167,6 +178,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         structuredPartitionIds: [],
         partitionImportJobIds: [],
         storageGarbageIds: [],
+        quarantineCertificateIds: [],
         vipRowIds: [],
         dishCatalogRowIds: [],
         uploadAuditLogIds: [],

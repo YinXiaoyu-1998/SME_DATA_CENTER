@@ -21,6 +21,7 @@ export interface StagingUploadDomainCleanupInventory {
   partitionImportJobIds: string[];
   structuredPartitionIds: string[];
   storageGarbageIds: string[];
+  quarantineCertificateIds: string[];
   vipRowIds: string[];
   dishCatalogRowIds: string[];
   uploadAuditLogIds: string[];
@@ -40,6 +41,7 @@ export interface StagingUploadDomainCleanupPlan {
   partitionImportJobIds: string[];
   structuredPartitionIds: string[];
   storageGarbageIds: string[];
+  quarantineCertificateIds: string[];
   vipRowIds: string[];
   dishCatalogRowIds: string[];
   uploadAuditLogIds: string[];
@@ -65,6 +67,7 @@ export interface StagingUploadDomainCleanupSafeLog {
     partitionImportJobs: number;
     structuredPartitions: number;
     storageGarbage: number;
+    quarantineCertificates: number;
     vipRows: number;
     dishCatalogRows: number;
     uploadAuditLogs: number;
@@ -93,6 +96,7 @@ export const UPLOAD_DOMAIN_DELETION_TARGETS = [
   "PartitionImportJob",
   "StructuredPartition",
   "StorageGarbage",
+  "QuarantineCertificate",
   "VipRow",
   "DishCatalogRow",
   "ImportBatch",
@@ -154,6 +158,7 @@ export function buildStagingUploadDomainCleanupPlan(input: {
   const partitionImportJobIds = sortIds(input.inventory.partitionImportJobIds);
   const structuredPartitionIds = sortIds(input.inventory.structuredPartitionIds);
   const storageGarbageIds = sortIds(input.inventory.storageGarbageIds);
+  const quarantineCertificateIds = sortIds(input.inventory.quarantineCertificateIds);
   const vipRowIds = sortIds(input.inventory.vipRowIds);
   const dishCatalogRowIds = sortIds(input.inventory.dishCatalogRowIds);
   const uploadAuditLogIds = sortIds(input.inventory.uploadAuditLogIds);
@@ -172,6 +177,7 @@ export function buildStagingUploadDomainCleanupPlan(input: {
     partitionImportJobIds,
     structuredPartitionIds,
     storageGarbageIds,
+    quarantineCertificateIds,
     vipRowIds,
     dishCatalogRowIds,
     uploadAuditLogIds,
@@ -193,6 +199,7 @@ export function buildStagingUploadDomainCleanupPlan(input: {
         partitionImportJobs: partitionImportJobIds.length,
         structuredPartitions: structuredPartitionIds.length,
         storageGarbage: storageGarbageIds.length,
+        quarantineCertificates: quarantineCertificateIds.length,
         vipRows: vipRowIds.length,
         dishCatalogRows: dishCatalogRowIds.length,
         uploadAuditLogs: uploadAuditLogIds.length,
@@ -227,6 +234,7 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
   validateUniqueNonEmpty(inventory.partitionImportJobIds, "partition import job ID");
   validateUniqueNonEmpty(inventory.structuredPartitionIds, "structured partition ID");
   validateUniqueNonEmpty(inventory.storageGarbageIds, "storage garbage ID");
+  validateUniqueNonEmpty(inventory.quarantineCertificateIds, "quarantine certificate ID");
   validateUniqueNonEmpty(inventory.vipRowIds, "VIP row ID");
   validateUniqueNonEmpty(inventory.dishCatalogRowIds, "dish catalog row ID");
   validateUniqueNonEmpty(inventory.uploadAuditLogIds, "upload audit log ID");
