@@ -56,6 +56,7 @@ export interface StructuredFieldRegistryEntry {
 
 export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
+  accessMode: "partition_extract" | "row_query";
   rowTable: StructuredRowTableName;
   sheetPolicy: "strict_all_nonempty" | "import_matching_visible";
   metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
@@ -808,6 +809,7 @@ const DELIVERY_LEDGER_FIELDS: StructuredFieldRegistryEntry[] =
 export const STRUCTURED_DATASET_REGISTRIES = {
   dishes: createRegistry({
     dataset: "dishes",
+    accessMode: "partition_extract",
     rowTable: "dish_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
@@ -818,6 +820,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   }),
   business: createRegistry({
     dataset: "business",
+    accessMode: "partition_extract",
     rowTable: "business_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
@@ -828,6 +831,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   }),
   vip: createRegistry({
     dataset: "vip",
+    accessMode: "row_query",
     rowTable: "vip_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
@@ -837,6 +841,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   }),
   dish_catalog: createRegistry({
     dataset: "dish_catalog",
+    accessMode: "row_query",
     rowTable: "dish_catalog_rows",
     sheetPolicy: "import_matching_visible",
     metadataPolicy: "snapshot",
@@ -855,6 +860,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   }),
   delivery_ledger: {
     dataset: "delivery_ledger",
+    accessMode: "row_query",
     rowTable: "delivery_ledger_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "derived_receipt",
@@ -862,6 +868,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
   },
   supplier_catalog: createRegistry({
     dataset: "supplier_catalog",
+    accessMode: "row_query",
     rowTable: "supplier_catalog_rows",
     sheetPolicy: "import_matching_visible",
     metadataPolicy: "none",
@@ -1008,6 +1015,7 @@ export function resolveStructuredHeaders(
 
 function createRegistry(input: {
   dataset: StructuredDatasetName;
+  accessMode: StructuredDatasetRegistry["accessMode"];
   rowTable: StructuredRowTableName;
   sheetPolicy: StructuredDatasetRegistry["sheetPolicy"];
   metadataPolicy: StructuredDatasetRegistry["metadataPolicy"];
@@ -1022,6 +1030,7 @@ function createRegistry(input: {
 }): StructuredDatasetRegistry {
   return {
     dataset: input.dataset,
+    accessMode: input.accessMode,
     rowTable: input.rowTable,
     sheetPolicy: input.sheetPolicy,
     metadataPolicy: input.metadataPolicy,

@@ -9,6 +9,15 @@ import {
 } from "./structured-registry.js";
 
 describe("structured field registries", () => {
+  test("routes only business and dishes through partition extracts", () => {
+    expect(getStructuredRegistry("business").accessMode).toBe("partition_extract");
+    expect(getStructuredRegistry("dishes").accessMode).toBe("partition_extract");
+
+    for (const dataset of ["vip", "dish_catalog", "delivery_ledger", "supplier_catalog"] as const) {
+      expect(getStructuredRegistry(dataset).accessMode).toBe("row_query");
+    }
+  });
+
   test("registers delivery-ledger and supplier-catalog dataset contracts", () => {
     expect(STRUCTURED_DATASETS).toEqual([
       "dishes",
