@@ -31,6 +31,21 @@ The old ordinary document upload/search/detail/download/archive public surface h
 | Phase 4 | In progress | Go-online/staging deployment readiness; runtime/ACR/TLS/fixture-smoke slice is deployed |
 | Phase 5 | Not started | Post-launch operations, beta feedback, hardening |
 
+## Approved Business / Dishes Hard Migration (Not Yet Implemented)
+
+The product owner has approved replacing `business` / `dishes` MySQL detail rows and generic row
+queries with organization/enterprise/store/day canonical CSV partitions in OSS plus a MySQL current
+partition catalog. Uploads will use launcher-owned multipart transport without model-carried bytes;
+reports will use authorization-filtered manifests and launcher-local verified extracts. Existing QA
+data may be deleted directly, and no compatibility, dual-write, backfill, old partition versions, or
+retained source workbook path will be built.
+
+The normative decision is [ADR 0026](../adr/0026-business-dishes-current-oss-partitions.md). The
+task-by-task implementation and cutover sequence is
+[Business / Dishes OSS Partition Hard Migration Implementation Plan](dishes_business_data_design_migration.md).
+Until that checklist is implemented and deployed, the active runtime remains the Phase 3 row-table
+contract documented below; this design-only update does not change the current API.
+
 ## Phase 3 Scope
 
 ### Evidence Retrieval

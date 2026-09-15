@@ -1,5 +1,7 @@
 # Phase 3 结构化导入采用归档不可查、窗口唯一、无自动替换的生命周期
 
+> **部分被取代**：ADR 0026 对 `business` / `dishes` 采用分区唯一键、当前状态覆盖、无历史版本和无来源文件保留；本 ADR 的窗口冲突、归档和无自动替换规则继续适用于其他 row-query window 数据集。
+
 CSV/XLSX 导入会把源文件中的菜品/营业数据写入 MySQL 查询表。若 baseline 支持自动覆盖、追加、替换或 hard delete，会引入权限、审计、分页一致性、聚合解释、恢复路径和备份保留上的复杂性。Phase 3 的目标是上线前具备可靠数据基座，而不是提供完整数据治理平台。
 
 **Decision**: Phase 3 baseline 将结构化导入建模为可审计的 `ImportBatch`。同一 `{orgId, dataset, startDate, endDate}` 同一时间只能有一个 active/applied 导入窗口；新上传命中已有 active/applied 窗口返回 `ACTIVE_IMPORT_EXISTS`，命中 in-progress 窗口返回 `IMPORT_IN_PROGRESS`。同一 idempotency key + 同一 request fingerprint 返回已有状态；同 key 不同 fingerprint 返回 `IDEMPOTENCY_KEY_CONFLICT`。

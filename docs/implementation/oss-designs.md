@@ -2,6 +2,11 @@
 
 Status: implemented locally on 2026-07-21.
 
+> The adapter behavior below describes the active runtime. ADR 0026 has approved a pending,
+> dataset-specific multipart and canonical-partition extension for `business` / `dishes`; see
+> [the hard-migration plan](dishes_business_data_design_migration.md). It does not apply until that
+> plan is implemented and deployed.
+
 ## Decision
 
 Enterprise Hub keeps the existing `StorageAdapter` boundary and selects one implementation at API/worker startup:
@@ -39,6 +44,13 @@ The prefix is deliberately not returned to API callers or persisted as business 
 - `deleteObject` removes the physical object.
 
 Uploads are already bounded and materialized by the API/MCP upload paths. The OSS adapter collects a generic input stream into a buffer before `PutObject` so it can publish an exact `Content-Length` and SHA-256 metadata compatible with Alibaba OSS. The current default maximum upload is 50 MiB.
+
+The approved `business` / `dishes` target path will not raise this generic 50 MiB buffer. It adds a
+separate launcher-owned multipart upload session for temporary source objects and a worker-owned
+streaming path for immutable canonical partition objects. Logical keys remain provider-neutral and
+opaque; enterprise and store names stay in authorized MySQL metadata rather than OSS paths. A short
+transaction publishes new current pointers before old object keys enter a retryable deletion
+outbox, so no old object is a readable version.
 
 The SDK disables optional request/response checksum calculation unless required because the service records its own SHA-256 and the Alibaba endpoint is S3-compatible rather than AWS S3 itself.
 
