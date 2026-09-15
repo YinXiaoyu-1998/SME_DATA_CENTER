@@ -50,6 +50,60 @@ describe("partition importer", () => {
     expect(await readdir(workRoot)).toEqual([]);
   });
 
+  it("reports timings for every phase of a published partition import", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });
+    const source = businessCsv(["2026-09-07", "2026-09-08"]);
+    const sourceKey = "structured-import-staging/org_1/pjob_1/source";
+    await storage.putObjectAtKey({
+      key: sourceKey,
+      body: Readable.from([source]),
+      contentLength: source.length,
+      checksumSha256: sha(source)
+    });
+    const timings: Array<{
+      event: string;
+      phase: string;
+      outcome: string;
+      durationMs: number;
+      startedAt: string;
+      finishedAt: string;
+      jobId: string;
+      dataset: string;
+    }> = [];
+    const importer = createPartitionImporter({
+      repository: repositoryStub({
+        publishSourceAtomically: async () => ({ garbageObjectKeys: [] })
+      }),
+      limits: limits(path.join(root, "work")),
+      onTimingEvent: (event) => timings.push(event)
+    });
+
+    await expect(importer.process({ run: claimed(sourceKey, source), storage })).resolves.toBe(
+      "published"
+    );
+
+    expect(timings.map(({ phase, outcome }) => ({ phase, outcome }))).toEqual([
+      { phase: "source_download", outcome: "completed" },
+      { phase: "source_export", outcome: "completed" },
+      { phase: "partition_upload_verify", outcome: "completed" },
+      { phase: "atomic_publish", outcome: "completed" },
+      { phase: "source_cleanup", outcome: "completed" },
+      { phase: "work_directory_cleanup", outcome: "completed" },
+      { phase: "total", outcome: "published" }
+    ]);
+    for (const timing of timings) {
+      expect(timing).toMatchObject({
+        event: "partition_import_timing",
+        jobId: "pjob_1",
+        dataset: "business"
+      });
+      expect(timing.durationMs).toBeGreaterThanOrEqual(0);
+      expect(Number.isNaN(Date.parse(timing.startedAt))).toBe(false);
+      expect(Number.isNaN(Date.parse(timing.finishedAt))).toBe(false);
+    }
+  });
+
   it("rejects the whole source and publishes nothing when one row is invalid", async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });

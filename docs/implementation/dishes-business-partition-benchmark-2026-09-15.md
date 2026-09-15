@@ -112,6 +112,22 @@ replace dense agent polling with an asynchronous wait/notification path, and rec
 parser/export/upload/publish phase timings in service metrics. Those changes target the measured
 bottlenecks; raising model/tool-call limits would not.
 
+## Follow-up Instrumentation
+
+The 2026-09-16 follow-up adds one structured `partition_import_timing` log event per worker phase:
+source download, XLSX/CSV export, partition upload plus verification, atomic database publication,
+source cleanup, local work-directory cleanup, and total processing. Each event records start/end
+timestamps, elapsed milliseconds, outcome, job and dataset identifiers, plus row/partition/canonical
+byte counts where applicable. It deliberately excludes organization, enterprise, store, object-key,
+and row data. A fresh large-file upload after deployment can therefore confirm how much of the
+817.92-second dishes run belonged to parsing versus serialized OSS round trips.
+
+Employee guidance now treats a `business`/`dishes` source larger than 50 MiB as a long-running
+partition job: the first status check is after two minutes, subsequent checks are two minutes apart,
+unchanged states are not narrated, and the wait window is twenty minutes. This would reduce the
+191.21 MiB benchmark from roughly 36 status checks to about eight while still observing its
+14-minute publication in the original task.
+
 ## Cleanup Evidence
 
 The pre-delete inventory matched the benchmark exactly: four partition jobs, four processing runs,
