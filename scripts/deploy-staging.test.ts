@@ -173,6 +173,69 @@ describe("deploy-staging remote scripts", () => {
     expect(smokeCommand).toContain("node dist/release/staging-smoke.js");
   });
 
+  it("prepares the worker partition scratch directory before Docker is invoked", async () => {
+    const root = await mkdtemp(join(tmpdir(), "enterprise-hub-partition-workdir-"));
+    const fakeBin = join(root, "bin");
+    const runtimeFile = join(root, "runtime.env");
+    const composeNext = join(root, "docker-compose.yml.next");
+    const installLog = join(root, "install.log");
+
+    try {
+      await mkdir(fakeBin);
+      await writeFile(
+        runtimeFile,
+        "ENTERPRISE_HUB_API_IMAGE=old-api\nENTERPRISE_HUB_WORKER_IMAGE=old-worker\n"
+      );
+      await writeFile(composeNext, "services: {}\n");
+      await writeFile(
+        join(fakeBin, "install"),
+        `#!/usr/bin/env bash
+set -euo pipefail
+if [ "\${1:-}" = "-d" ]; then
+  printf '%s\\n' "$*" >> "$FAKE_INSTALL_LOG"
+  mkdir -p "\${@: -1}"
+  exit 0
+fi
+files=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o|-g|-m) shift 2 ;;
+    *) files+=("$1"); shift ;;
+  esac
+done
+cp "\${files[0]}" "\${files[1]}"
+`
+      );
+      await writeFile(join(fakeBin, "flock"), "#!/usr/bin/env bash\nexit 0\n");
+      await writeFile(join(fakeBin, "docker"), "#!/usr/bin/env bash\nexit 42\n");
+      await Promise.all(
+        ["docker", "flock", "install"].map((command) => chmod(join(fakeBin, command), 0o755))
+      );
+
+      const rollout = remoteScriptsForValidation()[0]!.replaceAll("/opt/enterprise-hub", root);
+      const result = spawnSync(
+        "bash",
+        ["-s", "--", "registry/api:next", "registry/worker:next", "registry/api:ops-next", "0"],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            FAKE_INSTALL_LOG: installLog,
+            PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`
+          },
+          input: rollout
+        }
+      );
+
+      expect(result.status).toBe(42);
+      expect(await readFile(installLog, "utf8")).toBe(
+        `-d -o 1000 -g 1000 -m 0750 ${join(root, "partition-work")}\n`
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("restores an existing two-image release when its first three-image rollout fails", async () => {
     const root = await mkdtemp(join(tmpdir(), "enterprise-hub-rollout-"));
     const fakeBin = join(root, "bin");
@@ -209,6 +272,10 @@ if [ "$count" -eq 2 ]; then exit 42; fi
         join(fakeBin, "install"),
         `#!/usr/bin/env bash
 set -euo pipefail
+if [ "\${1:-}" = "-d" ]; then
+  mkdir -p "\${@: -1}"
+  exit 0
+fi
 files=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -252,7 +319,7 @@ cp "\${files[0]}" "\${files[1]}"
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 10_000);
 
   it("removes stopped stale references while preserving images used by running containers", async () => {
     const root = await mkdtemp(join(tmpdir(), "enterprise-hub-image-cleanup-"));

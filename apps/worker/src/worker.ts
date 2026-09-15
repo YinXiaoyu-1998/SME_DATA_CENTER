@@ -26,6 +26,7 @@ export const PROCESSING_ERROR_CODES = {
   storageReadFailed: "STORAGE_READ_FAILED",
   evidenceIndexingFailed: "EVIDENCE_INDEXING_FAILED",
   structuredImportFailed: "STRUCTURED_IMPORT_FAILED",
+  partitionImportFailed: "PARTITION_IMPORT_FAILED",
   structuredImportRejected: "STRUCTURED_IMPORT_REJECTED",
   unsupportedProcessingJobType: "UNSUPPORTED_PROCESSING_JOB_TYPE",
   leaseLost: "PROCESSING_LEASE_LOST"
@@ -1282,10 +1283,14 @@ function toProcessingError(error: unknown, jobType?: string): ProcessingError {
     );
   }
 
+  const code =
+    jobType === "structured_partition_import"
+      ? PROCESSING_ERROR_CODES.partitionImportFailed
+      : jobType === "structured_import"
+        ? PROCESSING_ERROR_CODES.structuredImportFailed
+        : PROCESSING_ERROR_CODES.evidenceIndexingFailed;
   return new ProcessingError(
-    jobType === "structured_import"
-      ? PROCESSING_ERROR_CODES.structuredImportFailed
-      : PROCESSING_ERROR_CODES.evidenceIndexingFailed,
+    code,
     error instanceof Error ? error.message : "Processing failed.",
     true
   );
