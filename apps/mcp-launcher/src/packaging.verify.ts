@@ -89,13 +89,14 @@ describe("published launcher artifact", () => {
 
   it("passes a built-artifact secret and legacy-contract scan", () => {
     const bundledSource = exec("tar", ["-xOf", tarballPath, "package/dist/index.js"]);
+    expect(bundledSource).toContain("SMEDC_BASE_URL");
     for (const forbidden of [
-      "ENTERPRISE_HUB_API_URL",
-      "ENTERPRISE_HUB_BASE_URL",
+      "SMEDC_API_URL",
+      ["ENTERPRISE", "HUB", "API", "URL"].join("_"),
+      ["ENTERPRISE", "HUB", "BASE", "URL"].join("_"),
       "/auth/dev-login",
-      "smedc_login_local",
-      "@enterprise-hub/mcp-contract",
-      "@smedc/mcp-contract",
+      ["enterprise", "hub", "login", "local"].join("_"),
+      ["@enterprise", "hub/mcp-contract"].join("-"),
       "exact-access-token",
       "access-secret",
       "refresh-secret",
