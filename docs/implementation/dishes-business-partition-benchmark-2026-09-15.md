@@ -142,6 +142,48 @@ shares identify the optimization target: the two XLSX passes consume about 87% o
 The worker emits these values as one aggregate `partition_export_profile` event after a successful
 export, avoiding per-row log volume and excluding business data.
 
+## Post-Optimization Staging Re-Benchmark — 2026-09-16
+
+After PR #166 deployed as release `350357dc5559`, the same employee account re-uploaded the exact
+191.21 MiB dishes workbook through launcher 0.4.0 with a new idempotency key. The job published
+944,940 rows as the same 810 current partitions; post-publish coverage was unchanged.
+
+| Phase                      |   Before |    After | Change                    |
+| -------------------------- | -------: | -------: | ------------------------- |
+| Client multipart upload    |  33.38 s |  43.15 s | +29.3%; network variance  |
+| Source download            |   7.10 s |   7.07 s | -0.5%                     |
+| `source_export`            | 763.56 s | 757.71 s | -0.8%                     |
+| Partition PUT + HEAD       |  34.26 s |  12.13 s | **-64.6%; 2.82x faster**  |
+| Atomic publish             |   6.38 s |   7.62 s | +19.4%; 1.24 s difference |
+| Worker total               | 811.44 s | 784.67 s | -3.3%                     |
+| Reservation to publication | 851.22 s | 827.92 s | -2.7%                     |
+
+The bounded six-pipeline object transfer therefore removed 22.13 seconds from the measured
+PUT/verification phase. End-to-end improvement was smaller because `source_export` still consumed
+96.6% of worker time and this upload crossed the client/network boundary more slowly than the
+earlier run.
+
+The staging `source_export` profile was:
+
+| Subphase                               |     Duration |    Share |
+| -------------------------------------- | -----------: | -------: |
+| Row decoding                           |     328.30 s |    43.3% |
+| Merged-cell scan                       |     265.45 s |    35.0% |
+| Partition-file writes                  |     117.82 s |    15.6% |
+| Canonicalization                       |      31.56 s |     4.2% |
+| Row routing                            |      14.50 s |     1.9% |
+| Structure / preparation / finalization |       0.09 s |    <0.1% |
+| **Total**                              | **757.71 s** | **100%** |
+
+The bottleneck is now localized: row decoding plus the separate merged-cell pass consume 78.4% of
+export time, while per-row partition writes are another 15.6%. The next implementation should
+preserve streaming and bounded memory, first remove unnecessary per-row write syscalls with bounded
+writer buffers, then evaluate skipping the merged-cell pre-scan only for the fixed Maijia partition
+schemas with explicit regression evidence. This real workbook is not merge-free: its worksheet has
+two structural merged ranges, `A1:AY1` and `A2:AY2`, above the canonical table header. Any bypass
+must prove those metadata bands can be ignored without changing header resolution or row output;
+it must not assume that the input contains no merged cells.
+
 Employee guidance now treats a `business`/`dishes` source larger than 50 MiB as a long-running
 partition job: the first status check is after two minutes, subsequent checks are two minutes apart,
 unchanged states are not narrated, and the wait window is twenty minutes. This would reduce the
