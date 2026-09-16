@@ -12,11 +12,18 @@ and preserved, then execute only within that confirmed scope.
 
 ## Scope
 
-Business data includes uploaded source documents, source object keys, evidence chunks and Qdrant
-points, document indexes, processing runs, import batches, import-window claims, structured rows
-(`dish_rows`, `business_rows`, `vip_rows`, `dish_catalog_rows`, `delivery_ledger_rows`,
-`supplier_catalog_rows`), quarantine certificates, document-label links, and business audit logs
-for document/import/quarantine actions.
+Business data includes uploaded source documents, evidence chunks and Qdrant points, document
+indexes, processing runs, import batches, import-window claims, partition import jobs
+(`partition_import_jobs`), published structured partitions (`structured_partitions`), deferred
+object cleanup records (`storage_garbage`), row-backed datasets (`vip_rows`, `dish_catalog_rows`,
+`delivery_ledger_rows`, `supplier_catalog_rows`), quarantine certificates, document-label links,
+and business audit logs for document/import/quarantine actions. Business and dishes datasets live
+in structured partitions, not legacy row tables.
+
+The object inventory must include every exact database-recorded key: source document
+`storageObjectKey`, partition-job `temporaryObjectKey` temporary source objects, structured-partition
+`objectKey` derived partition objects, and storage-garbage `objectKey` cleanup targets. Never infer
+keys from filenames or delete a broad prefix in place of this inventory.
 
 Preserve identity and configuration data unless the user separately asks to remove it:
 organizations, employees, login identities, password setup records, OAuth/device/session/token
@@ -30,19 +37,25 @@ secrets.
 2. Resolve the target (`orgId`, employee email, or employee id) through read-only queries. Never
    infer `default-org` unless the user named it or the surrounding task clearly identifies it.
 3. Run a dry-run inventory that counts every business table above, enumerates exact document IDs,
-   import batch IDs, storage object keys, and Qdrant collection/point IDs, and separately counts
-   preserved identity/config tables.
+   import batch IDs, partition job IDs, structured partition IDs, storage-garbage IDs, all four
+   object-key sources, and Qdrant collection/point IDs, and separately counts preserved
+   identity/config tables.
 4. For staging, execute from the staging server's `release-ops` runtime or an equivalent
    fail-closed operator runtime that proves it is connected to the approved staging RDS/Qdrant/OSS
    environment. Do not use local `.env` values to mutate staging.
 5. Delete external artifacts by exact DB-recorded target first: Qdrant points by collection/id,
-   then OSS objects by storage key. If there are no document records, it is acceptable to verify
-   Qdrant by `orgId` payload, but do not blindly delete OSS prefixes without an object inventory.
-6. Delete database rows in dependency order: business audit logs, document labels, processing
-   runs, chunks, indexes, import-window claims, all structured row tables, quarantine
-   certificates, import batches, then documents.
-7. Verify every business count is zero for the target, Qdrant target count is zero, known OSS
-   keys are gone, preserved identity/config counts remain present, and staging health still passes.
+   then source, temporary, derived-partition, and storage-garbage OSS objects by their inventoried
+   keys. If there are no document records, it is acceptable to verify Qdrant by `orgId` payload,
+   but do not blindly delete OSS prefixes without an object inventory.
+6. Delete database rows in current dependency order: business audit logs, document-label links,
+   processing runs, chunks, indexes, import-window claims, structured partitions, storage-garbage
+   rows, quarantine certificates, partition import jobs, row-backed dataset rows, import batches,
+   then documents. Use the repository cleanup implementation as the authority if the schema or
+   dependency order has changed.
+7. Verify every business count is zero for the target, including `structured_partitions`,
+   `partition_import_jobs`, and `storage_garbage`; verify Qdrant target count is zero and every
+   inventoried source/temporary/derived/garbage OSS key is gone; confirm preserved identity/config
+   counts remain present and staging health still passes.
 
 Record only safe facts in the handoff: counts, table categories, non-secret resource names, and
 whether the deletion was hard-delete. Never print passwords, DSNs, tokens, signed URLs, raw

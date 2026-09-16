@@ -65,7 +65,9 @@ describe("published launcher artifact", () => {
       publishConfig: { access: "public" }
     });
     const declarations = exec("tar", ["-xOf", tarballPath, "package/dist/index.d.ts"]);
-    expect(declarations).not.toMatch(/@smedc\/(?:mcp-contract|domain)/);
+    expect(declarations).not.toMatch(
+      new RegExp(["@enterprise", "hub/(?:mcp-contract|domain)"].join("-"))
+    );
     expect(declarations).not.toMatch(/@smedc\/(?:mcp-contract|domain)/);
   });
 
@@ -88,6 +90,7 @@ describe("published launcher artifact", () => {
   it("passes a built-artifact secret and legacy-contract scan", () => {
     const bundledSource = exec("tar", ["-xOf", tarballPath, "package/dist/index.js"]);
     expect(bundledSource).toContain("SMEDC_BASE_URL");
+    expect(bundledSource).toContain("Launcher 0.5.0+");
     for (const forbidden of [
       "SMEDC_API_URL",
       ["ENTERPRISE", "HUB", "API", "URL"].join("_"),
@@ -95,6 +98,7 @@ describe("published launcher artifact", () => {
       "/auth/dev-login",
       ["enterprise", "hub", "login", "local"].join("_"),
       ["@enterprise", "hub/mcp-contract"].join("-"),
+      ["enterprise", "hub", "partition", "extracts"].join("-"),
       "exact-access-token",
       "access-secret",
       "refresh-secret",

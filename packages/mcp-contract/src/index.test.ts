@@ -437,13 +437,14 @@ describe("SMEDC MCP contract", () => {
       SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
     ).toHaveLength(1);
 
+    const legacyPrefix = ["enterprise", "hub"].join("_");
     expect(SMEDC_MCP_TOOL_NAMES).not.toEqual(
       expect.arrayContaining([
-        "smedc_get_current_user",
-        "smedc_list_skills",
-        "smedc_login",
-        "smedc_logout",
-        "smedc_auth_status"
+        `${legacyPrefix}_get_current_user`,
+        `${legacyPrefix}_list_skills`,
+        `${legacyPrefix}_login`,
+        `${legacyPrefix}_logout`,
+        `${legacyPrefix}_auth_status`
       ])
     );
     expect(SMEDC_MCP_TOOL_NAMES).not.toContain("smedc_login_dev");
