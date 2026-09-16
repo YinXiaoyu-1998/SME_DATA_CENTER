@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface CommandResult {
   stdout: string;
@@ -8,39 +9,42 @@ interface CommandResult {
 }
 
 const rootDir = process.cwd();
+export const EXPECTED_MCP_LAUNCHER_VERSION = "0.5.0";
 
-try {
-  await assertRootLauncherScript();
-  await run("npx", [
-    "vitest",
-    "run",
-    "apps/api/src/mcp/http.test.ts",
-    "apps/mcp-launcher/src/launcher.test.ts",
-    "packages/mcp-contract/src/index.test.ts",
-    "apps/api/src/mcp/upload-tools.test.ts",
-    "apps/api/src/mcp/read-tools.test.ts"
-  ]);
+async function main(): Promise<void> {
+  try {
+    await assertRootLauncherScript();
+    await run("npx", [
+      "vitest",
+      "run",
+      "apps/api/src/mcp/http.test.ts",
+      "apps/mcp-launcher/src/launcher.test.ts",
+      "packages/mcp-contract/src/index.test.ts",
+      "apps/api/src/mcp/upload-tools.test.ts",
+      "apps/api/src/mcp/read-tools.test.ts"
+    ]);
 
-  console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        proved: [
-          "root_mcp_launcher_script",
-          "api_http_post_mcp_endpoint",
-          "launcher_stdio_to_http_proxy",
-          "mcp_current_authenticated_user",
-          "mcp_partition_import_and_download_contracts",
-          "mcp_delivery_supplier_contract_and_delegation"
-        ]
-      },
-      null,
-      2
-    )
-  );
-} catch (error: unknown) {
-  console.error(errorToMessage(error));
-  process.exitCode = 1;
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          proved: [
+            "root_mcp_launcher_script",
+            "api_http_post_mcp_endpoint",
+            "launcher_stdio_to_http_proxy",
+            "mcp_current_authenticated_user",
+            "mcp_partition_import_and_download_contracts",
+            "mcp_delivery_supplier_contract_and_delegation"
+          ]
+        },
+        null,
+        2
+      )
+    );
+  } catch (error: unknown) {
+    console.error(errorToMessage(error));
+    process.exitCode = 1;
+  }
 }
 
 async function run(
@@ -89,22 +93,19 @@ async function assertRootLauncherScript(): Promise<void> {
   const scripts = packageJson.scripts ?? {};
 
   assert(
-    scripts["mcp:launcher"] === "npm --workspace smedc-mcp-launcher run --silent start",
+    scripts["mcp:launcher"] === "npm --workspace smedc-mcp-launcher run --silent start --",
     "Root package.json must expose mcp:launcher through the launcher workspace."
   );
 
-  const launcherVersion = await run("npm", [
-    "run",
-    "--silent",
-    "mcp:launcher",
-    "--",
-    "--",
-    "--version"
-  ]);
+  const launcherVersion = await run("npm", ["run", "--silent", "mcp:launcher", "--", "--version"]);
 
+  assertLauncherVersionOutput(launcherVersion.stdout);
+}
+
+export function assertLauncherVersionOutput(stdout: string): void {
   assert(
-    launcherVersion.stdout.trim() === "0.4.0",
-    "mcp:launcher should invoke the official launcher CLI at the expected pinned version."
+    stdout.trim() === EXPECTED_MCP_LAUNCHER_VERSION,
+    `mcp:launcher should invoke the official launcher CLI at ${EXPECTED_MCP_LAUNCHER_VERSION}.`
   );
 }
 
@@ -131,4 +132,9 @@ function assert(condition: boolean, message: string): asserts condition {
 
 function errorToMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  await main();
 }

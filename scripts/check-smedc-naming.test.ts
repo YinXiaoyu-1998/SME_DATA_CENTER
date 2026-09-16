@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -67,14 +67,41 @@ describe("SMEDC naming checker", () => {
 
   it("preserves the narrow transitional launcher recommendation exception", async () => {
     const root = await tempRoot();
+    await mkdir(path.join(root, "apps/api/src/auth"), { recursive: true });
     await writeFile(
-      path.join(root, "contract.ts"),
+      path.join(root, "apps/api/src/auth/http-contract.ts"),
       [
         'smedc_launcher_package: "enterprise-hub-mcp-launcher",',
-        "Use enterprise-hub-mcp-launcher@0.4.0 until Task 12."
+        '  smedc_launcher_package: "enterprise-hub-mcp-launcher";'
       ].join("\n")
     );
 
-    expect(findNamingViolations(root, ["contract.ts"])).toEqual([]);
+    expect(findNamingViolations(root, ["apps/api/src/auth/http-contract.ts"])).toEqual([]);
   });
+
+  it.each([
+    ["generic doc", "docs/current-runbook.md"],
+    ["Skill", "skills/smedc-mcp/SKILL.md"],
+    ["script", "scripts/current-check.ts"]
+  ])(
+    "rejects the old launcher package outside the narrow exception in a %s",
+    async (_label, file) => {
+      const root = await tempRoot();
+      await mkdir(path.join(root, path.dirname(file)), { recursive: true });
+      await writeFile(
+        path.join(root, file),
+        [
+          'smedc_launcher_package: "enterprise-hub-mcp-launcher",',
+          "Use enterprise-hub-mcp-launcher@0.4.0 until Task 12."
+        ].join("\n")
+      );
+
+      const violations = findNamingViolations(root, [file]);
+      expect(
+        violations.filter(
+          (violation) => violation.file === file && violation.token === "enterprise-hub"
+        )
+      ).toHaveLength(2);
+    }
+  );
 });

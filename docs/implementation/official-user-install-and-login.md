@@ -1,7 +1,8 @@
 # Official User Installation, Login, and Session Design
 
-Status: implemented and released; launcher 0.5.0 uses OAuth Device Authorization for desktop,
-remote/headless, and secondary-device login
+Status: implemented in the SMEDC hard-cut branch; launcher 0.5.0 is the code and Skill target, while
+npm publication, repository rename, and server recommendation synchronization remain gated release
+tasks.
 
 Last updated: 2026-09-15
 
@@ -165,7 +166,7 @@ use a reviewed password-authentication library and, at minimum:
 
 ## Current End-To-End Browser And Launcher Flow
 
-The pinned launcher 0.5.0 uses OAuth Device Authorization:
+The pinned launcher uses OAuth Device Authorization:
 
 1. the MCP client starts the launcher;
 2. the launcher requests a short-lived `device_code` / `user_code` pair and first-party verification
@@ -304,7 +305,7 @@ Resolve these branches in dependency order:
 13. **Acceptance**: partially complete — automated server/launcher tests, macOS and Windows native
     launcher release acceptance, and a full headless Linux container loop pass. Full user-visible
     OpenClaw and support-class-C phone/browser acceptance remain external release evidence.
-14. **Remote/headless login**: implemented — OAuth Device Authorization is the pinned 0.4.0 flow;
+14. **Remote/headless login**: implemented — OAuth Device Authorization is the pinned launcher flow;
     split secrets, pairing confirmation, headless credential custody, and the per-instance session
     model are implemented. See ADR 0022 and `device-code-login-plan.md` for design and delivery
     history.
@@ -566,17 +567,14 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Release status as of 2026-09-15: `smedc-mcp-launcher@0.5.0` is public and independently
-verified, and is pinned by both skill copies and recommended by server metadata; the server minimum
-remains 0.1.0 for compatibility. Its
-extracted registry contents match the reviewed package contents; exact-version clean installation,
-CLI execution, native macOS/Windows package acceptance, structured-query coverage tool packaging,
-and the installed production dependency audit passed. The earlier headless Linux container loop
-remains compatibility evidence. The
-npm Trusted Publisher is bound to
-`YinXiaoyu-1998/SME_DATA_CENTER` and `launcher-release.yml` with stage-publish-only permission, and
-the 0.2.0 release verified the live OIDC staged-publish path. Npm provenance remains unavailable
-because the source repository is private and is not an approval gate.
+Release status during the SMEDC hard-cut branch: code and repo-local Skill guidance target
+`smedc-mcp-launcher@0.5.0`, the `smedc` MCP entry, and the canonical main-repository target
+`YinXiaoyu-1998/smedc`. Public npm publication of 0.5.0, the GitHub repository rename, Trusted
+Publisher retargeting, and server recommendation synchronization are still pending the explicit
+external-gate tasks. Until those gates complete, server metadata deliberately continues to recommend
+the currently published launcher package/version. The earlier independently verified public
+launcher release and headless Linux container loop remain compatibility evidence. Npm provenance
+remains unavailable because the source repository is private and is not an approval gate.
 
 The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
 only `SMEDC_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
@@ -850,7 +848,8 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 The official beta installation, Device Authorization login, token/session, secure-store and
 memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
-implemented. Launcher 0.5.0 is the pinned and recommended release. Automated server/launcher tests,
-native macOS/Windows package acceptance, and a full headless Linux container login-to-business-tool
-loop pass. Full user-visible OpenClaw and support-class-C phone/browser acceptance remain external
-release evidence.
+implemented. Launcher 0.5.0 is the current code and Skill target, but publication and server
+recommendation remain pending the release-gate tasks. Automated server/launcher tests, native
+macOS/Windows package acceptance, and a full headless Linux container login-to-business-tool loop
+are required release evidence. Full user-visible OpenClaw and support-class-C phone/browser
+acceptance remain external release evidence.
