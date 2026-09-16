@@ -36,7 +36,7 @@ describe("structured import workflow metadata", () => {
         snapshotDate: "20260819",
         fileType: "xlsx"
       })
-    ).toBe("m_a_i_j_i_a_dish_catalog_20260819.xlsx");
+    ).toBe("s_y_n_t_h_e_t_i_c_dish_catalog_20260819.xlsx");
   });
 
   it.each(["delivery_ledger", "supplier_catalog"] as const)(
@@ -92,7 +92,7 @@ describe("structured import workflow metadata", () => {
         endDate: "20260826",
         fileType: "csv"
       })
-    ).toBe("m_a_i_j_i_a_delivery_ledger_SH2608250117_20260826.csv");
+    ).toBe("s_y_n_t_h_e_t_i_c_delivery_ledger_SH2608250117_20260826.csv");
 
     expect(
       canonicalStructuredImportFileName({
@@ -101,7 +101,7 @@ describe("structured import workflow metadata", () => {
         contentDigest: "a".repeat(64),
         fileType: "csv"
       })
-    ).toBe(`m_a_i_j_i_a_supplier_catalog_${"a".repeat(64)}.csv`);
+    ).toBe(`s_y_n_t_h_e_t_i_c_supplier_catalog_${"a".repeat(64)}.csv`);
   });
 
   it("includes receipt identity in delivery fingerprints but not supplier row values", () => {

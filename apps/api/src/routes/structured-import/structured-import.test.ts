@@ -275,7 +275,7 @@ describe("structured imports", () => {
     expect(response.json().importBatch).not.toHaveProperty("startDate");
     expect(response.json().importBatch).not.toHaveProperty("endDate");
     expect(response.json().document.storageObjectKey).toContain(
-      "u9ea6_u5bb6_dish_catalog_20260819.csv"
+      "u793a_u4f8b_dish_catalog_20260819.csv"
     );
     expect(structuredImportRepository.batches[0]).toMatchObject({
       dataset: "dish_catalog",

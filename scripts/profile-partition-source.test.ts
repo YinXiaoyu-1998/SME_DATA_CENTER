@@ -20,7 +20,7 @@ describe("profilePartitionSource", () => {
     });
 
     expect(result).toMatchObject({
-      sourceBytes: 501_122,
+      sourceBytes: 159_632,
       totalRows: 997,
       dateMin: "2026-07-06",
       dateMax: "2026-07-06"

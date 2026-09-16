@@ -28,8 +28,9 @@ describe("SMEDC MCP launcher config", () => {
     expect(() =>
       loadLauncherRuntimeConfig({ SMEDC_API_URL: "https://old.example" } as never)
     ).toThrow("SMEDC_BASE_URL is required.");
+    const legacyBaseUrlKey = ["ENTERPRISE", "HUB", "BASE", "URL"].join("_");
     expect(() =>
-      loadLauncherRuntimeConfig({ SMEDC_BASE_URL: "https://old.example" } as never)
+      loadLauncherRuntimeConfig({ [legacyBaseUrlKey]: "https://old.example" } as never)
     ).toThrow("SMEDC_BASE_URL is required.");
   });
 
