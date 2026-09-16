@@ -104,7 +104,8 @@ export {
   type StructuredDatasetName,
   type StructuredDatasetRegistry,
   type StructuredFieldRegistryEntry,
-  type StructuredFieldType
+  type StructuredFieldType,
+  type StructuredPresentationProfile
 } from "./structured-registry.js";
 export {
   PARTITION_DATASETS,

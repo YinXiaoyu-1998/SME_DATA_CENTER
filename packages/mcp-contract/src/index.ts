@@ -569,7 +569,13 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
           "Explicit mechanical aggregations. Aggregate field references must use canonicalName values from discovery."
       }
     ],
-    resultShape: ["dataset", "mode", "rows[]", "nextCursor"]
+    resultShape: [
+      "dataset",
+      "mode",
+      "rows[]",
+      "nextCursor",
+      "presentation?: optional profile for delivery_ledger detail responses with id, title, and ordered columns[]"
+    ]
   }),
   defineToolContract({
     name: "describe_structured_dataset_coverage",

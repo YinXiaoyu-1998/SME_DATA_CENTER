@@ -595,6 +595,9 @@ describe("Enterprise Hub MCP contract", () => {
 
     expect(query?.inputFields.map((field) => field.name)).toContain("dataset");
     expect(query?.resultShape).toContain("dataset");
+    expect(query?.resultShape).toContain(
+      "presentation?: optional profile for delivery_ledger detail responses with id, title, and ordered columns[]"
+    );
     expect(
       safeParseTool("query_structured_dataset", {
         dataset: "business",

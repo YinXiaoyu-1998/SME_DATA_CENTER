@@ -1094,3 +1094,11 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
 - Implemented `AuthenticatedEmployee.organizationName` from Prisma `Employee.organization.name` through access-token authentication, `/me.employee.organizationName`, and MCP `user.organizationName`; MCP current-user projection now fails closed for missing, non-string, or blank organization names and returns the database value verbatim when nonblank.
 - Updated neutral authenticated-employee fixtures for the new required field and kept authorization/query scopes unchanged.
 - Verified: focused auth/system/MCP/API fixture tests passed (187 passed, 15 env-gated skips), `npm run typecheck`, and `npm run format:check`.
+
+## 2026-09-16 - Task 3 delivery-ledger presentation profile
+
+- Branch/worktree: `codex/smedc-task-03-ledger-profile` in `.worktrees/smedc-task-03-ledger-profile`, based on `28ad3c34b7e1aa02ec4a655266c2b4b483cacc6e`.
+- Implemented the frozen `food-purchase-ledger-cn-v1` presentation profile for `delivery_ledger` with the exact ten Chinese display columns required for 食品经营单位进货台帐; `entry_id` / 序号 remain absent from the display profile.
+- API discovery now includes the profile on `delivery_ledger`; `/v1/structured/query` includes it only for `delivery_ledger` detail responses and omits it for aggregate/grouped responses. MCP `query_structured_dataset` result documentation now names the optional `presentation` block without changing the input schema.
+- TDD red evidence: focused registry/API route tests first failed because `presentation` was undefined; the MCP contract test first failed because the result shape lacked the optional presentation entry.
+- Verified: `npm test -- packages/domain/src/structured-registry.test.ts apps/api/src/routes/structured-query.test.ts apps/api/src/structured-query-route.test.ts packages/mcp-contract/src/index.test.ts` (74 passed), `npm run typecheck`, `npm run format:check`, and `git diff --check`. Docker cleanup verification could not connect to the local Docker daemon socket; this task ran unit/type/format checks only and did not start repo containers.
