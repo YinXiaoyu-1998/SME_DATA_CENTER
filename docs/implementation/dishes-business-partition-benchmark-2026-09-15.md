@@ -188,8 +188,33 @@ The fixed-source contract was subsequently clarified: Maijia `business` and `dis
 not merge canonical header or data cells; only presentation rows above the header may be merged, and
 those rows are intentionally absent from canonical partition CSVs. The partition exporter now skips
 the separate merged-cell pass for these two datasets while the generic XLSX reader retains expansion
-support. Performance comparison is intentionally deferred to the same staging worker and the same
-191.21 MiB source after deployment; developer-workstation timings are not accepted as the benchmark.
+support.
+
+Release `0f18063c200b` was then measured on the same staging worker with the exact same 191.21 MiB
+source (`e9199ff3…5039`), 944,940 rows, 810 partitions, and 336,088,756 canonical bytes. Job
+`pjob_157c6056b67a75fdb70499b3` published successfully; readable coverage remained nine stores,
+810 partitions, and 944,940 rows.
+
+| Phase                      | With merge scan |  Scan bypass | Change                     |
+| -------------------------- | --------------: | -----------: | -------------------------- |
+| Client multipart upload    |         43.15 s |      41.07 s | -4.8%; network variance    |
+| Source download            |          7.07 s |       7.10 s | +0.4%                      |
+| `source_export`            |        757.71 s |     485.93 s | **-35.9%; 271.79 s saved** |
+| Merged-cell scan           |        265.45 s |       0.00 s | **removed**                |
+| Row decoding               |        328.30 s |     320.31 s | -2.4%                      |
+| Partition-file writes      |        117.82 s |     119.08 s | +1.1%                      |
+| Canonicalization           |         31.56 s |      31.96 s | +1.3%                      |
+| Row routing                |         14.50 s |      14.49 s | unchanged                  |
+| Partition PUT + HEAD       |         12.13 s |      12.20 s | +0.6%                      |
+| Atomic publish             |          7.62 s |       7.84 s | +2.9%; 0.22 s difference   |
+| **Worker total**           |    **784.67 s** | **513.20 s** | **-34.6%; 271.46 s saved** |
+| Reservation to publication |        827.92 s |     553.82 s | **-33.1%; 274.10 s saved** |
+
+The measured export improvement is 6.34 seconds greater than the removed 265.45-second pass,
+which is explained by ordinary row-decode variance; every other phase remained close to its
+baseline. The next material export targets are now row decoding (320.31 seconds, 65.9% of export)
+and partition-file writes (119.08 seconds, 24.5%). Developer-workstation timings are intentionally
+excluded from this comparison.
 
 Employee guidance now treats a `business`/`dishes` source larger than 50 MiB as a long-running
 partition job: the first status check is after two minutes, subsequent checks are two minutes apart,

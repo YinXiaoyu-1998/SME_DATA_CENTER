@@ -36,6 +36,7 @@
 
 - Keep tests proportional to feature risk. Cover the critical public path, authorization/data-boundary behavior, and regressions that could realistically recur; do not build exhaustive case matrices or new harnesses for simple changes.
 - During development, run the smallest focused test set that proves the current change. Run required repository-wide gates once on the final tree before PR handoff; do not repeatedly rerun unchanged long suites after every small edit unless a failure or high-risk change justifies it.
+- For runtime/performance optimizations, skip large developer-workstation benchmarks unless the user explicitly requests them. Prove correctness locally, then compare the same fixture/workload and phase timings on staging after the quality-gated deployment; record the release SHA with the results.
 - Keep manual acceptance focused on the changed workflow unless the user explicitly requests the full official acceptance suite or the touched release boundary requires it.
 
 ## Skill Content Boundaries
