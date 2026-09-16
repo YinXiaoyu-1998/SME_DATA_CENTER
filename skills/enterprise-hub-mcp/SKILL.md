@@ -4,6 +4,8 @@ description: >-
   上传和查询企业数据中枢（Enterprise Hub）中的文件与资料：当员工要求把文件/文档/表格上传到
   企业数据中枢、企业资料中枢、企业知识库或企业数据库，或想基于已上传的企业资料提问业务问题时使用。
   用户要求更新 enterprise-hub-mcp 或 enterprise-hub-mcp-skill 这个 skill 时也使用本技能。
+  用户询问 Enterprise Hub 的配套分析、报表或扩展 skill 时也使用本技能。
+  Also use when users ask about optional Enterprise Hub analysis, reporting, or extension skills.
   Also covers updating this skill from its official GitHub source and installing, configuring,
   and authenticating the official Enterprise Hub remote MCP
   launcher (api.smedatacenter.xyz); accesses Enterprise Hub through the launcher only and never exposes employee
@@ -43,6 +45,27 @@ complete-directory replacement, verification, and host reload. A skill-only upda
 authorize a launcher upgrade. For an authorized launcher update, first refresh this skill if its
 pin is older than the server recommendation, then follow Official Install Or Update using the
 newly verified exact pin. Never derive a new approved pin from server metadata alone.
+
+## Optional Companion Skills
+
+Companion skills are independently maintained workflows that use Enterprise Hub MCP data. They
+are not bundled with this core skill and are not required for ordinary Enterprise Hub work. This
+skill continues to own launcher installation, authentication, uploads, and authorization-safe data
+access; a companion owns its business-specific analysis and deliverables.
+
+- [`maijia-business-analyses-smedc`](https://github.com/YinXiaoyu-1998/maijia-business-analyses-smedc)
+  generates Maijia operating diagnoses, weekly reports, and monthly reports. When the employee
+  asks for one of those deliverables and the companion is installed, use it together with this
+  skill instead of creating the report here.
+- If the matching companion is not installed, explain that it is optional, identify its official
+  source, and offer to install it. Install it only when the employee explicitly authorizes its
+  installation or has already requested that named companion or all recommended companions.
+  Never install it silently during a core-skill install, update, login, upload, or query request.
+- Updating this skill does not update a companion, and updating a companion does not change this
+  skill or the launcher pin. Follow each repository's own update guidance.
+
+Do not copy companion-specific report logic, dataset transformations, or business conclusions into
+this base skill. Keep the core boundary below and route only the matching employee request.
 
 ## Hard Boundaries
 
