@@ -1,6 +1,6 @@
 # Business / Dishes OSS Partition Hard Migration Implementation Plan
 
-**Implementation status (2026-09-15):** Tasks 1–8 and Task 9's cleanup/local-integration work are implemented and locally verified on PR #160. The opt-in two-file real-scale service acceptance remains to run after human review. Tasks 10–12 (launcher publication, recommendation/skill synchronization, staging hard cutover and official acceptance) remain intentionally gated; current server recommendation metadata and user skills do not advertise unpublished launcher 0.4.0.
+**Implementation status (2026-09-15):** Tasks 1–8 and Task 9's cleanup/local-integration work are implemented and locally verified on PR #160. The opt-in two-file real-scale service acceptance remains to run after human review. Tasks 10–12 (launcher publication, recommendation/skill synchronization, staging hard cutover and official acceptance) remain intentionally gated; current server recommendation metadata and user skills do not advertise unpublished launcher 0.5.0.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -22,7 +22,7 @@
 - The original XLSX/CSV is temporary transport data. It is absent after `published`, `rejected`, terminal `failed`, cancellation or expiry, except while a retryable worker attempt still needs it.
 - A partition is current state, not a version. Replacement may change content and confidentiality level. No user-facing or internal history pointer remains.
 - Ordinary reads enforce organization first and then `partition.confidentialityLevel <= employee.clearance`. `admin` does not bypass this rule.
-- The launcher contract change ships as `enterprise-hub-mcp-launcher@0.4.0`. Per the repository release rule, publish and independently verify 0.4.0 before changing server recommended-version metadata or either `enterprise-hub-mcp` skill copy.
+- The launcher contract change ships as `smedc-mcp-launcher@0.5.0`. Per the repository release rule, publish and independently verify 0.4.0 before changing server recommended-version metadata or either `smedc-mcp` skill copy.
 - Real exports under `/Users/xiaoyuyin/Desktop/MAIJIA_MANAGEMENT_SKILLS/documents/raw_exports` are authorized test inputs but must never be committed, copied into fixtures, printed into logs, or retained under `.data/` after a run.
 - Use focused tests while implementing. Run the full static/unit/integration/MCP/release gates once on the final tree, then remove run-created files, containers, volumes, networks and inactive worktrees.
 
@@ -92,7 +92,7 @@ Upload authorization does not compare the employee's clearance with the partitio
 The official user experience remains one natural-language action and one outward MCP tool call:
 
 ```text
-employee -> agent: “把这两个大文件上传到 Enterprise Hub”
+employee -> agent: “把这两个大文件上传到 SMEDC”
 agent -> launcher: upload_structured_dataset(file.encoding="path", ...)
 launcher -> API: create upload session
 launcher -> OSS: multipart PUT original bytes (bounded concurrency)
@@ -128,7 +128,7 @@ The canonical HTTP response is:
 ```json
 {
   "dataset": "dishes",
-  "enterpriseName": "麦家小馆",
+  "enterpriseName": "示例小馆",
   "startDate": "2026-09-07",
   "endDate": "2026-09-13",
   "expiresAt": "2026-09-15T10:15:00.000Z",
@@ -161,7 +161,7 @@ The launcher downloads into a newly created OS application-data temp directory, 
 
 ### 1.6 Report workflow
 
-`maijia-business-analyses-smedc` changes from many `query_structured_dataset` pages to:
+`smedc-companion-skills` changes from many `query_structured_dataset` pages to:
 
 1. discover `business`, `dishes`, `dish_catalog`;
 2. request local extracts for all required current/previous/year-over-year periods for `business` and `dishes`; coalesce only overlapping or directly adjacent windows, and never bridge unused months between a current window and year-over-year window;
@@ -330,8 +330,8 @@ DATASET_REQUIRES_PARTITION_EXTRACT
 Run the profiler against at least:
 
 ```text
-/Users/xiaoyuyin/Desktop/MAIJIA_MANAGEMENT_SKILLS/documents/raw_exports/maijia_dishes_20260328_20260625.xlsx
-/Users/xiaoyuyin/Desktop/MAIJIA_MANAGEMENT_SKILLS/documents/raw_exports/maijia_business_20250626_20260625.xlsx
+/Users/xiaoyuyin/Desktop/MAIJIA_MANAGEMENT_SKILLS/documents/raw_exports/synthetic_dishes_20260328_20260625.xlsx
+/Users/xiaoyuyin/Desktop/MAIJIA_MANAGEMENT_SKILLS/documents/raw_exports/synthetic_business_20250626_20260625.xlsx
 ```
 
 Write metrics under ignored `.data/partition-migration/baseline/`, then delete them after transcribing aggregate timing/size evidence into the PR description. Do not commit the exports or profiler output.
@@ -377,7 +377,7 @@ source row.
 
 The worker image builds and installs the native reader automatically. For local source-based worker
 or profiler runs, build it with `npm run build:calamine-reader` and set
-`ENTERPRISE_HUB_CALAMINE_READER_PATH` to the resulting absolute executable path when it is not on
+`SMEDC_CALAMINE_READER_PATH` to the resulting absolute executable path when it is not on
 `PATH`.
 
 Target interface:
@@ -453,7 +453,7 @@ There is no data copy or down migration.
 
 ```bash
 docker compose up -d mysql
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npx prisma migrate reset --force --config packages/db/prisma.config.ts
+DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npx prisma migrate reset --force --config packages/db/prisma.config.ts
 npx vitest run apps/api/src/structured-imports.test.ts apps/api/src/structured-partitions.test.ts apps/worker/src/worker-persistence.test.ts
 ```
 
@@ -558,7 +558,7 @@ PARTITION_IMPORT_MAX_SOURCE_BYTES=2147483648
 PARTITION_IMPORT_MAX_ROWS=5000000
 PARTITION_IMPORT_MAX_PARTITIONS=10000
 PARTITION_IMPORT_MAX_CANONICAL_BYTES=8589934592
-PARTITION_IMPORT_WORK_DIR=/var/lib/enterprise-hub/partition-work
+PARTITION_IMPORT_WORK_DIR=/var/lib/smedc/partition-work
 PARTITION_IMPORT_MIN_FREE_BYTES=12884901888
 PARTITION_IMPORT_OBJECT_CONCURRENCY=6
 PARTITION_UPLOAD_PART_BYTES=16777216
@@ -702,8 +702,8 @@ Set package, `LAUNCHER_VERSION`, MCP server version, packaging verification and 
 
 ```bash
 npx vitest run apps/mcp-launcher/src/partition-transfer.test.ts apps/mcp-launcher/src/local-file.test.ts apps/mcp-launcher/src/launcher.test.ts apps/mcp-launcher/src/index.test.ts
-npm --workspace enterprise-hub-mcp-launcher run build
-npm --workspace enterprise-hub-mcp-launcher run test:packaging
+npm --workspace smedc-mcp-launcher run build
+npm --workspace smedc-mcp-launcher run test:packaging
 npm run audit:production
 git add apps/mcp-launcher package-lock.json
 git commit -m "feat(launcher): stream partition datasets without model bytes"
@@ -742,7 +742,7 @@ worker duration/peak RSS/temp disk, DB rows written, manifest latency,
 download duration/throughput, outward MCP call count, cleanup duration/residue
 ```
 
-Required report acceptance uploads the real `maijia_dishes_20250701_20250928.xlsx` (about 200 MB) and `maijia_business_20250626_20260625.xlsx` (about 118 MB), then requests `2025-09-07` through `2025-09-13`; both files cover that period. Also run the parser/partition memory gate from Task 2 against the 231 MB dishes workbook. The flow must show one outward upload call per source, one status polling sequence per job, one download call per contiguous required dataset window (overlapping/adjacent windows coalesce; separated current/prior-year ranges do not bridge unused months), zero `dish_rows`/`business_rows`, and zero residue after cleanup.
+Required report acceptance uploads the real `synthetic_dishes_20250701_20250928.xlsx` (about 200 MB) and `synthetic_business_20250626_20260625.xlsx` (about 118 MB), then requests `2025-09-07` through `2025-09-13`; both files cover that period. Also run the parser/partition memory gate from Task 2 against the 231 MB dishes workbook. The flow must show one outward upload call per source, one status polling sequence per job, one download call per contiguous required dataset window (overlapping/adjacent windows coalesce; separated current/prior-year ranges do not bridge unused months), zero `dish_rows`/`business_rows`, and zero residue after cleanup.
 
 - [ ] **Step 4: Verify and commit**
 
@@ -754,7 +754,7 @@ git add scripts
 git commit -m "test: cover partition lifecycle at realistic scale"
 ```
 
-### Task 10: Publish launcher 0.4.0 before advertising it
+### Task 10: Publish launcher 0.5.0 before advertising it
 
 **Files:**
 
@@ -770,7 +770,7 @@ Create the `mcp-launcher-v0.4.0` tag from the reviewed commit, run the required 
 
 - [x] **Step 3: Independently verify npm**
 
-In a new temporary directory, install exact `enterprise-hub-mcp-launcher@0.4.0`, verify CLI version, package integrity, tool schemas, no unexpected files and zero production audit findings. Delete the temp directory.
+In a new temporary directory, install exact `smedc-mcp-launcher@0.5.0`, verify CLI version, package integrity, tool schemas, no unexpected files and zero production audit findings. Delete the temp directory.
 
 - [x] **Step 4: Only now update recommendation metadata**
 
@@ -782,7 +782,7 @@ Proceed to Task 11 only after the public package is fetchable and verified. A fa
 
 - Modify: `apps/api/src/auth/http-contract.ts`
 - Modify: `apps/api/src/auth/http-contract.test.ts`
-- Modify: `skills/enterprise-hub-mcp/SKILL.md`
+- Modify: `skills/smedc-mcp/SKILL.md`
 - Modify: `docs/implementation/api-contract.md`
 - Modify: `docs/implementation/implementation-plan.md`
 - Modify: `docs/implementation/env-inventory.md`
@@ -792,13 +792,13 @@ Proceed to Task 11 only after the public package is fetchable and verified. A fa
 - Modify: `docs/context/use-cases.md`
 - Modify: `CONTEXT.md`
 
-**Files in standalone `enterprise-hub-mcp-skill`:**
+**Files in standalone `smedc-mcp-skill`:**
 
 - Modify: `SKILL.md`
 - Modify: `README.md`
 - Modify: `README.zh.md`
 
-**Files in `YinXiaoyu-1998/maijia-business-analyses-smedc`:**
+**Files in `YinXiaoyu-1998/smedc-companion-skills`:**
 
 - Modify: `SKILL.md`
 - Modify: `README.md`
@@ -820,11 +820,11 @@ Proceed to Task 11 only after the public package is fetchable and verified. A fa
 
 Keep minimum version unchanged only if the old launcher can still authenticate and use unaffected tools; the new partition tools themselves must return a clear update-required error to older launchers. This is capability gating, not a row-query compatibility path.
 
-- [x] **Step 2: Sync the dual-homed Enterprise Hub skill**
+- [x] **Step 2: Sync the dual-homed SMEDC skill**
 
 Start from the newest copy; the currently checked-out standalone repository may not be on `main`, so fetch, compare timestamps/commits, branch independently, and make repo-local and standalone skill content byte-identical. Teach one natural upload call and one local partition download call; do not teach manual chunking, Base64 emission, direct HTTP, OSS URLs, or dataset-specific file rewriting.
 
-- [x] **Step 3: Rewrite the Maijia report skill data path**
+- [x] **Step 3: Rewrite the Synthetic report skill data path**
 
 Use `get_partition_import_status` while uploads process, use `download_structured_partitions` for `business` / `dishes`, retain controlled query only for `dish_catalog`, merge local CSV rows into the existing internal fact model, and delete extract directories in `finally`. Durable report/facts/provenance stay; launcher scratch does not.
 
@@ -832,15 +832,15 @@ The skill test must inspect a forced report exception and prove the extract dire
 
 - [x] **Step 4: Open independent skill PRs**
 
-Open one PR for `enterprise-hub-mcp-skill` and one for `maijia-business-analyses-smedc`. Each describes its dependency on Enterprise Hub 0.4.0/cutover. Do not copy either repository into this PR.
+Open one PR for `smedc-mcp-skill` and one for `smedc-companion-skills`. Each describes its dependency on SMEDC 0.4.0/cutover. Do not copy either repository into this PR.
 
 - [x] **Step 5: Verify docs/skills and commit the main-repo sync**
 
 ```bash
 npx vitest run apps/api/src/auth/http-contract.test.ts
-npx prettier --check CONTEXT.md docs skills/enterprise-hub-mcp/SKILL.md
-diff -u skills/enterprise-hub-mcp/SKILL.md /Users/xiaoyuyin/Desktop/YXY_DEV/enterprise-hub-mcp-skill/SKILL.md
-git add apps/api/src/auth docs CONTEXT.md skills/enterprise-hub-mcp/SKILL.md
+npx prettier --check CONTEXT.md docs skills/smedc-mcp/SKILL.md
+diff -u skills/smedc-mcp/SKILL.md /Users/xiaoyuyin/Desktop/YXY_DEV/smedc-mcp-skill/SKILL.md
+git add apps/api/src/auth docs CONTEXT.md skills/smedc-mcp/SKILL.md
 git commit -m "docs: switch business dishes clients to partition extracts"
 ```
 
@@ -885,11 +885,11 @@ Do not attempt database rollback after the destructive migration. Recovery is fo
 
 - [ ] **Step 4: Run normal-user real-scale acceptance**
 
-Create a fresh synthetic account, use new visible Codex tasks with ordinary natural-language prompts, upload `maijia_dishes_20250701_20250928.xlsx` and `maijia_business_20250626_20260625.xlsx` through launcher 0.4.0, create the `2025-09-07` through `2025-09-13` weekly report with `maijia-business-analyses-smedc`, and collect safe metrics. Controller access is verification/cleanup only.
+Create a fresh synthetic account, use new visible Codex tasks with ordinary natural-language prompts, upload `synthetic_dishes_20250701_20250928.xlsx` and `synthetic_business_20250626_20260625.xlsx` through launcher 0.5.0, create the `2025-09-07` through `2025-09-13` weekly report with `smedc-companion-skills`, and collect safe metrics. Controller access is verification/cleanup only.
 
 - [ ] **Step 5: Prove zero residue and merge synchronized skill PRs**
 
-Delete all synthetic accounts, job/catalog rows, staging/canonical objects and local extract directories created by acceptance. Confirm zero run-scoped residue. Merge the standalone Enterprise Hub skill and Maijia report skill PRs only after staging accepts the new flow, then update `/Users/xiaoyuyin/.agents/skills` from their merged `main` branches.
+Delete all synthetic accounts, job/catalog rows, staging/canonical objects and local extract directories created by acceptance. Confirm zero run-scoped residue. Merge the standalone SMEDC skill and Synthetic report skill PRs only after staging accepts the new flow, then update `/Users/xiaoyuyin/.agents/skills` from their merged `main` branches.
 
 - [ ] **Step 6: Record final evidence**
 
@@ -907,8 +907,8 @@ Update progress/readiness with deployed commit/tag, launcher version, aggregate 
 - Same bytes deduplicate; newer metadata may replace confidentiality; different bytes replace current state with no readable gap and no retained old version.
 - Original source and every local/server temp artifact is deleted at terminal completion; stale artifacts have bounded cleanup.
 - Manifest queries scan only indexed partition metadata, enforce authorization before counts/links, and launcher downloads/verifies all files atomically.
-- `maijia-business-analyses-smedc` generates diagnosis/weekly/monthly reports from local extracts and always deletes launcher scratch.
+- `smedc-companion-skills` generates diagnosis/weekly/monthly reports from local extracts and always deletes launcher scratch.
 - The 200 MB dishes and 118 MB business report sources pass the normal launcher/MCP flow; the 231 MB dishes source also passes the bounded-memory parser/partition gate, with latency, DB-row and cleanup evidence recorded.
 - Other structured datasets retain their existing import/query behavior.
-- Launcher 0.4.0 is published and verified before server metadata and skills advertise it.
+- Launcher 0.5.0 is published and verified before server metadata and skills advertise it.
 - Main repository and both external skill PRs pass their gates, staging acceptance passes, and all synthetic/test residue is gone.

@@ -39,18 +39,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
-      group: enterprise-hub-staging
+      group: smedc-staging
       cancel-in-progress: false
     environment:
       name: staging
       url: https://api.smedatacenter.xyz/healthz
     env:
-      ENTERPRISE_HUB_ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
-      ENTERPRISE_HUB_ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
-      ENTERPRISE_HUB_ACR_USERNAME: ${{ vars.ACR_USERNAME }}
-      ENTERPRISE_HUB_STAGING_HOST: ${{ vars.STAGING_HOST }}
-      ENTERPRISE_HUB_STAGING_SSH_USER: ${{ vars.STAGING_SSH_USER }}
-      ENTERPRISE_HUB_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL }}
+      SMEDC_ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
+      SMEDC_ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+      SMEDC_ACR_USERNAME: ${{ vars.ACR_USERNAME }}
+      SMEDC_STAGING_HOST: ${{ vars.STAGING_HOST }}
+      SMEDC_STAGING_SSH_USER: ${{ vars.STAGING_SSH_USER }}
+      SMEDC_STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL }}
     steps:
       - name: Check out the trusted release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -73,12 +73,12 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$STAGING_SSH_PRIVATE_KEY"
-          key_path="$RUNNER_TEMP/enterprise-hub-staging/id_ed25519"
+          key_path="$RUNNER_TEMP/smedc-staging/id_ed25519"
           umask 077
           install -d -m 700 "$(dirname "$key_path")"
           printf '%s\n' "$STAGING_SSH_PRIVATE_KEY" > "$key_path"
           ssh-keygen -y -f "$key_path" >/dev/null
-          printf 'ENTERPRISE_HUB_STAGING_SSH_KEY=%s\n' "$key_path" >> "$GITHUB_ENV"
+          printf 'SMEDC_STAGING_SSH_KEY=%s\n' "$key_path" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         if: ${{ github.event_name == 'workflow_run' || inputs.operation == 'deploy' }}
@@ -94,30 +94,30 @@ jobs:
       - name: Deploy immutable staging release
         if: ${{ github.event_name == 'workflow_run' || inputs.operation == 'deploy' }}
         env:
-          ENTERPRISE_HUB_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET: ${{ secrets.STAGING_CURSOR_SIGNING_SECRET }}
+          SMEDC_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          SMEDC_STAGING_CURSOR_SIGNING_SECRET: ${{ secrets.STAGING_CURSOR_SIGNING_SECRET }}
         run: |
           set -euo pipefail
-          test -n "$ENTERPRISE_HUB_ACR_PASSWORD"
-          test -n "$ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET"
+          test -n "$SMEDC_ACR_PASSWORD"
+          test -n "$SMEDC_STAGING_CURSOR_SIGNING_SECRET"
           npm run deploy:staging
 
       - name: Restore previous staging release
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'rollback' }}
         env:
-          ENTERPRISE_HUB_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET: ${{ secrets.STAGING_CURSOR_SIGNING_SECRET }}
+          SMEDC_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          SMEDC_STAGING_CURSOR_SIGNING_SECRET: ${{ secrets.STAGING_CURSOR_SIGNING_SECRET }}
         run: |
           set -euo pipefail
-          test -n "$ENTERPRISE_HUB_ACR_PASSWORD"
-          test -n "$ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET"
+          test -n "$SMEDC_ACR_PASSWORD"
+          test -n "$SMEDC_STAGING_CURSOR_SIGNING_SECRET"
           npm run deploy:staging:rollback
 
       - name: Publish deployment summary
         if: ${{ success() }}
         run: |
           {
-            echo "### Enterprise Hub staging"
+            echo "### SMEDC staging"
             echo
             echo "- Operation: \`${{ github.event_name == 'workflow_dispatch' && inputs.operation || 'deploy' }}\`"
             echo "- Commit: \`$(git rev-parse --short=12 HEAD)\`"
@@ -128,6 +128,6 @@ jobs:
       - name: Remove staging SSH credential
         if: ${{ always() }}
         run: |
-          if [ -f "$ENTERPRISE_HUB_STAGING_SSH_KEY" ]; then
-            shred --remove "$ENTERPRISE_HUB_STAGING_SSH_KEY"
+          if [ -f "$SMEDC_STAGING_SSH_KEY" ]; then
+            shred --remove "$SMEDC_STAGING_SSH_KEY"
           fi

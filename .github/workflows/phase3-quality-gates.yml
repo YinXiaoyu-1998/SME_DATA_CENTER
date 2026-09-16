@@ -52,15 +52,15 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
       - name: Build all runtime targets
         run: |
-          docker buildx build --pull --platform linux/amd64 --target api --tag enterprise-hub-api:ci --load .
-          docker buildx build --pull --platform linux/amd64 --target worker --tag enterprise-hub-worker:ci --load .
-          docker buildx build --pull --platform linux/amd64 --target release-ops --tag enterprise-hub-release-ops:ci --load .
+          docker buildx build --pull --platform linux/amd64 --target api --tag smedc-api:ci --load .
+          docker buildx build --pull --platform linux/amd64 --target worker --tag smedc-worker:ci --load .
+          docker buildx build --pull --platform linux/amd64 --target release-ops --tag smedc-release-ops:ci --load .
       - name: Verify the packaged Calamine reader against the real fixture
         run: |
-          reader_container="$(docker create enterprise-hub-worker:ci)"
+          reader_container="$(docker create smedc-worker:ci)"
           trap 'docker rm -f "$reader_container" >/dev/null' EXIT
-          docker cp "$reader_container:/usr/local/bin/enterprise-hub-calamine-reader" "$RUNNER_TEMP/enterprise-hub-calamine-reader"
-          chmod +x "$RUNNER_TEMP/enterprise-hub-calamine-reader"
+          docker cp "$reader_container:/usr/local/bin/smedc-calamine-reader" "$RUNNER_TEMP/smedc-calamine-reader"
+          chmod +x "$RUNNER_TEMP/smedc-calamine-reader"
           PATH="$RUNNER_TEMP:$PATH" RUN_CALAMINE_INTEGRATION=1 npm test -- packages/structured-ingestion/src/partition-export.test.ts
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
@@ -77,7 +77,7 @@ jobs:
 
           audit_status=0
           for component in api worker release-ops; do
-            if trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/$component.json" --platform linux/amd64 "enterprise-hub-$component:ci" &&
+            if trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/$component.json" --platform linux/amd64 "smedc-$component:ci" &&
               npm run audit:report -- --kind trivy --component "$component-image" --input "$report_dir/$component.json"; then
               continue
             fi
@@ -97,14 +97,14 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: sme_data_center_ci
       MYSQL_PORT: "3307"
-      DATABASE_URL: mysql://enterprise_hub:enterprise_hub_local_password@127.0.0.1:3307/enterprise_hub
+      DATABASE_URL: mysql://smedc:smedc_local_password@127.0.0.1:3307/smedc
       CURSOR_SIGNING_SECRET: replace-with-ci-cursor-signing-secret
       STORAGE_DRIVER: local
       LOCAL_STORAGE_ROOT: ./.data/ci/storage
       LLM_PROVIDER: fake
       EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "false"
       QDRANT_URL: http://127.0.0.1:6333
-      QDRANT_COLLECTION_EVIDENCE: enterprise_hub_evidence_ci
+      QDRANT_COLLECTION_EVIDENCE: smedc_evidence_ci
       PHASE3_PERF_THRESHOLD_MULTIPLIER: "1.25"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -117,14 +117,14 @@ jobs:
       - name: Wait for MySQL
         run: |
           for attempt in {1..60}; do
-            status="$(docker inspect --format='{{.State.Health.Status}}' enterprise-hub-mysql 2>/dev/null || true)"
+            status="$(docker inspect --format='{{.State.Health.Status}}' smedc-mysql 2>/dev/null || true)"
             if [ "$status" = "healthy" ]; then
               exit 0
             fi
             echo "Waiting for MySQL healthcheck (${attempt}/60), current status: ${status:-unknown}"
             sleep 2
           done
-          docker logs enterprise-hub-mysql
+          docker logs smedc-mysql
           exit 1
       - run: npm run db:generate
       - run: npx prisma migrate reset --force --config packages/db/prisma.config.ts

@@ -4,8 +4,8 @@
  * when the paired DATABASE_URL provably points at this exact private RDS.
  */
 export const STAGING_RDS_HOST = "rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com";
-export const STAGING_RDS_DATABASE = "enterprise_hub";
-export const STAGING_RDS_USER = "enterprise_hub_app";
+export const STAGING_RDS_DATABASE = "smedc";
+export const STAGING_RDS_USER = "smedc_app";
 
 export function isStagingRuntimeDatabaseUrl(databaseUrl: string): boolean {
   const parsed = new URL(databaseUrl);

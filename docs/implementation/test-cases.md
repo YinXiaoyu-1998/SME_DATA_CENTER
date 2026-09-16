@@ -15,7 +15,7 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 | Local integration  | `MYSQL_PORT=3307 npm run test:integration`                                                                                             | Phase 3 API + worker path passes                                                                                                        |
 | MCP smoke          | `npm run test:mcp`                                                                                                                     | HTTP `/mcp` and official launcher stdio-to-HTTP path pass                                                                               |
 | Auth MySQL         | `RUN_AUTH_INTEGRATION=1 npm test -- apps/api/src/auth/prisma-auth-repository.integration.test.ts`                                      | Official credential lifecycle passes against MySQL                                                                                      |
-| Launcher package   | `npm run build --workspace enterprise-hub-mcp-launcher && npm run test:package --workspace enterprise-hub-mcp-launcher`                | Publishable tarball is isolated, allowlisted, and protocol-probed                                                                       |
+| Launcher package   | `npm run build --workspace smedc-mcp-launcher && npm run test:package --workspace smedc-mcp-launcher`                                  | Publishable tarball is isolated, allowlisted, and protocol-probed                                                                       |
 | Desktop acceptance | Follow `official-manual-acceptance.md` plus `official-user-install-and-login.md` on clean desktop users                                | Published launcher, browser login, Codex/OpenClaw upload/query, restart, logout, reset, repair, and uninstall pass                      |
 | Golden retrieval   | `npm run test:phase3:golden`                                                                                                           | Deterministic synthetic retrieval thresholds pass                                                                                       |
 | Perf smoke         | `npm run test:phase3:perf`                                                                                                             | Real local workloads pass and report workload size, elapsed time, Node version, and threshold                                           |
@@ -86,7 +86,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-This runner uses the installed `enterprise-hub-mcp-launcher@0.4.0`, a clearance-0 employee's
+This runner uses the installed `smedc-mcp-launcher@0.5.0`, a clearance-0 employee's
 operating-system secure-store session, and the public staging service. It checks that upload inputs
 which omit `confidentialityLevel` remain level 0, then covers evidence upload/status/search,
 structured CSV import/query, invalid atomic import rejection, and run-scoped cleanup of evidence,
@@ -177,7 +177,7 @@ Current hardening proof labels emitted by the integration smoke:
 `npm run test:phase3:perf` must not use hard-coded measurement values. It currently executes and reports:
 
 - 5,000 structured query compiler runs;
-- one 70,000-row RFC 4180 CSV parse/validation through `@enterprise-hub/structured-ingestion`;
+- one 70,000-row RFC 4180 CSV parse/validation through `@smedc/structured-ingestion`;
 - 5,000 Qdrant payload builds from deterministic evidence-like chunks;
 - the deterministic golden retrieval evaluation.
 
@@ -192,7 +192,7 @@ above `2` fail configuration validation.
 ## Data And Secret Safety
 
 - Tests use synthetic fixtures and fake model providers by default.
-- `fixtures/structured/maijia_*_first1000.xlsx` are user-approved non-sensitive
+- `fixtures/structured/synthetic_*_first1000.xlsx` are user-approved non-sensitive
   real-business sample workbooks truncated to the first 1000 worksheet rows for
   structured schema and parser coverage.
 - Real customer exports, `.env`, API keys, bearer tokens, and service account keys must not be committed.

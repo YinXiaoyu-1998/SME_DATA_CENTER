@@ -8,7 +8,7 @@ describe("model provider readiness", () => {
       ...loadActiveRetrievalConfig(
         buildRetrievalConfigSeed({
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test",
+          qdrantCollection: "smedc_evidence_test",
           llmProvider: "openai-compatible",
           embeddingModel: "embedding-model",
           rerankModel: ""
@@ -47,7 +47,7 @@ describe("model provider readiness", () => {
     const config = loadActiveRetrievalConfig(
       buildRetrievalConfigSeed({
         retrievalConfigVersion: "phase3.retrieval.v1",
-        qdrantCollection: "enterprise_hub_evidence_test",
+        qdrantCollection: "smedc_evidence_test",
         llmProvider: "openai-compatible",
         embeddingModel: "embedding-model",
         rerankModel: "rerank-model"
@@ -78,7 +78,7 @@ describe("model provider readiness", () => {
     const config = loadActiveRetrievalConfig(
       buildRetrievalConfigSeed({
         retrievalConfigVersion: "phase3.retrieval.v1",
-        qdrantCollection: "enterprise_hub_evidence_test",
+        qdrantCollection: "smedc_evidence_test",
         llmProvider: "openai-compatible",
         embeddingModel: "text-embedding-v4",
         embeddingDimension: 1024,
@@ -114,7 +114,7 @@ describe("model provider readiness", () => {
     const config = loadActiveRetrievalConfig(
       buildRetrievalConfigSeed({
         retrievalConfigVersion: "phase3.retrieval.v1",
-        qdrantCollection: "enterprise_hub_evidence_test",
+        qdrantCollection: "smedc_evidence_test",
         llmProvider: "fake",
         embeddingModel: "fake-embedding-v1",
         rerankProvider: "dashscope",

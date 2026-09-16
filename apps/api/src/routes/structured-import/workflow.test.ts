@@ -11,7 +11,7 @@ describe("structured import workflow metadata", () => {
   it("uses one normalized snapshotDate in the catalog fingerprint and canonical filename", () => {
     const input = {
       dataset: "dish_catalog" as const,
-      enterpriseName: "Maijia",
+      enterpriseName: "Synthetic",
       snapshotDate: "20260819",
       confidentialityLevel: 0,
       fileHash: "file-hash"
@@ -20,7 +20,7 @@ describe("structured import workflow metadata", () => {
       .update(
         JSON.stringify({
           dataset: "dish_catalog",
-          enterpriseName: "Maijia",
+          enterpriseName: "Synthetic",
           snapshotDate: "20260819",
           confidentialityLevel: 0,
           fileHash: "file-hash"
@@ -32,7 +32,7 @@ describe("structured import workflow metadata", () => {
     expect(
       canonicalStructuredImportFileName({
         dataset: "dish_catalog",
-        enterpriseName: "Maijia",
+        enterpriseName: "Synthetic",
         snapshotDate: "20260819",
         fileType: "xlsx"
       })
@@ -45,7 +45,7 @@ describe("structured import workflow metadata", () => {
       expect(
         validateStructuredImportMetadata({
           dataset,
-          enterpriseName: "Maijia",
+          enterpriseName: "Synthetic",
           idempotencyKey: "stable-key",
           confidentialityLevel: "0",
           confidentialityLevelFieldCount: 1,
@@ -66,7 +66,7 @@ describe("structured import workflow metadata", () => {
       for (const dataset of ["delivery_ledger", "supplier_catalog"] as const) {
         const upload = {
           dataset,
-          enterpriseName: "Maijia",
+          enterpriseName: "Synthetic",
           idempotencyKey: `${dataset}-${dateField}`,
           confidentialityLevel: "0",
           confidentialityLevelFieldCount: 1,
@@ -86,7 +86,7 @@ describe("structured import workflow metadata", () => {
     expect(
       canonicalStructuredImportFileName({
         dataset: "delivery_ledger",
-        enterpriseName: "Maijia",
+        enterpriseName: "Synthetic",
         receiptId: "SH2608250117",
         startDate: "20260826",
         endDate: "20260826",
@@ -97,7 +97,7 @@ describe("structured import workflow metadata", () => {
     expect(
       canonicalStructuredImportFileName({
         dataset: "supplier_catalog",
-        enterpriseName: "Maijia",
+        enterpriseName: "Synthetic",
         contentDigest: "a".repeat(64),
         fileType: "csv"
       })
@@ -107,7 +107,7 @@ describe("structured import workflow metadata", () => {
   it("includes receipt identity in delivery fingerprints but not supplier row values", () => {
     const deliveryInput = {
       dataset: "delivery_ledger" as const,
-      enterpriseName: "Maijia",
+      enterpriseName: "Synthetic",
       startDate: "20260826",
       endDate: "20260826",
       naturalKey: "SH2608250117",
@@ -119,7 +119,7 @@ describe("structured import workflow metadata", () => {
       .update(
         JSON.stringify({
           dataset: "delivery_ledger",
-          enterpriseName: "Maijia",
+          enterpriseName: "Synthetic",
           startDate: "20260826",
           endDate: "20260826",
           naturalKey: "SH2608250117",
@@ -135,7 +135,7 @@ describe("structured import workflow metadata", () => {
 
     const supplierInput = {
       dataset: "supplier_catalog" as const,
-      enterpriseName: "Maijia",
+      enterpriseName: "Synthetic",
       startDate: null,
       endDate: null,
       confidentialityLevel: 0,
@@ -145,7 +145,7 @@ describe("structured import workflow metadata", () => {
       .update(
         JSON.stringify({
           dataset: "supplier_catalog",
-          enterpriseName: "Maijia",
+          enterpriseName: "Synthetic",
           confidentialityLevel: 0,
           fileHash: "file-hash"
         })
@@ -159,7 +159,7 @@ describe("structured import workflow metadata", () => {
     const receiptB = `${"收".repeat(254)}乙`;
     const input = {
       dataset: "delivery_ledger" as const,
-      enterpriseName: "Maijia",
+      enterpriseName: "Synthetic",
       startDate: "20260826",
       endDate: "20260826",
       fileType: "xlsx" as const

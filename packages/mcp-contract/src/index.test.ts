@@ -54,13 +54,13 @@ const validInputs = {
   },
   upload_structured_dataset: {
     file: {
-      name: "maijia-dishes.csv",
+      name: "synthetic-dishes.csv",
       mediaType: "text/csv",
       encoding: "base64",
       contentBase64: "Y29sMSxjb2wyCg=="
     },
     dataset: "business",
-    enterpriseName: "Maijia",
+    enterpriseName: "Synthetic",
     startDate: "20260701",
     endDate: "20260731",
     idempotencyKey: "structured-retry-key",
@@ -100,7 +100,7 @@ const validInputs = {
   get_partition_import_status: { partitionImportJobId: "pjob_1" },
   download_structured_partitions: {
     dataset: "business",
-    enterpriseName: "Maijia",
+    enterpriseName: "Synthetic",
     startDate: "20260701",
     endDate: "20260731"
   }
@@ -401,7 +401,7 @@ const invalidInputCases = [
   {
     tool: "download_structured_partitions",
     cases: [
-      { label: "missing range", input: { dataset: "business", enterpriseName: "Maijia" } },
+      { label: "missing range", input: { dataset: "business", enterpriseName: "Synthetic" } },
       {
         label: "invalid dataset",
         input: { ...validInputs.download_structured_partitions, dataset: "vip" }
@@ -434,18 +434,16 @@ describe("SMEDC MCP contract", () => {
       "download_structured_partitions"
     ]);
     expect(
-      SMEDC_MCP_TOOL_NAMES.filter(
-        (toolName) => toolName === "describe_structured_dataset_coverage"
-      )
+      SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
     ).toHaveLength(1);
 
     expect(SMEDC_MCP_TOOL_NAMES).not.toEqual(
       expect.arrayContaining([
-        "enterprise_hub_get_current_user",
-        "enterprise_hub_list_skills",
-        "enterprise_hub_login",
-        "enterprise_hub_logout",
-        "enterprise_hub_auth_status"
+        "smedc_get_current_user",
+        "smedc_list_skills",
+        "smedc_login",
+        "smedc_logout",
+        "smedc_auth_status"
       ])
     );
     expect(SMEDC_MCP_TOOL_NAMES).not.toContain("smedc_login_dev");

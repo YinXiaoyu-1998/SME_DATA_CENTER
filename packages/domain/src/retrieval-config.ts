@@ -75,7 +75,7 @@ export interface EvidenceSearchRetrievalMetadata {
 }
 
 const DEFAULT_RETRIEVAL_CONFIG_VERSION = "phase3.retrieval.v1";
-const DEFAULT_QDRANT_COLLECTION = "enterprise_hub_evidence_local";
+const DEFAULT_QDRANT_COLLECTION = "smedc_evidence_local";
 const DEFAULT_FAKE_EMBEDDING_MODEL = "fake-embedding-v1";
 const DEFAULT_FAKE_RERANK_MODEL = "fake-rerank-v1";
 const FAKE_EMBEDDING_DIMENSION = 8;

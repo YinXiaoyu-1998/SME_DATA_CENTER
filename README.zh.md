@@ -19,15 +19,15 @@ cp .env.example .env
 常用本地变量：
 
 ```dotenv
-DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub"
+DATABASE_URL="mysql://smedc:smedc_local_password@localhost:3307/smedc"
 STORAGE_DRIVER="local"
 LOCAL_STORAGE_ROOT="./.data/storage"
 CURSOR_SIGNING_SECRET="replace-with-local-development-cursor-secret"
-ENTERPRISE_HUB_PUBLIC_ORIGIN="https://api.smedatacenter.xyz"
+SMEDC_PUBLIC_ORIGIN="https://api.smedatacenter.xyz"
 MAX_UPLOAD_BYTES="52428800"
 
 QDRANT_URL="http://127.0.0.1:6333"
-QDRANT_COLLECTION_EVIDENCE="enterprise_hub_evidence_local"
+QDRANT_COLLECTION_EVIDENCE="smedc_evidence_local"
 RETRIEVAL_CONFIG_VERSION="phase3.retrieval.v1"
 
 LLM_PROVIDER="fake"
@@ -48,7 +48,7 @@ API 和 worker 启动时通过 `STORAGE_DRIVER` 选择同一套存储实现：
 - `local`：继续使用原有本地文件适配器，必须配置 `LOCAL_STORAGE_ROOT`。
 - `oss`：通过 S3 兼容接口使用阿里云 OSS，必须配置 `AWS_REGION`、`AWS_ENDPOINT`、`AWS_S3_BUCKET`、`AWS_ACCESS_KEY_ID` 和 `AWS_SECRET_ACCESS_KEY`。
 
-OSS 模式下，数据库仍保存与供应商无关的 `org/...` 逻辑 key；实际对象放在 `AWS_S3_PREFIX` 下，默认前缀为 `enterprise-hub`。`AWS_SESSION_TOKEN`、`AWS_S3_FORCE_PATH_STYLE` 和 `AWS_S3_PRESIGN_EXPIRES_SECONDS` 是可选项。切换 driver 不会自动迁移原有本地文件；旧文件仍需切回 `local` 读取，或先执行显式迁移。
+OSS 模式下，数据库仍保存与供应商无关的 `org/...` 逻辑 key；实际对象放在 `AWS_S3_PREFIX` 下，默认前缀为 `smedc`。`AWS_SESSION_TOKEN`、`AWS_S3_FORCE_PATH_STYLE` 和 `AWS_S3_PRESIGN_EXPIRES_SECONDS` 是可选项。切换 driver 不会自动迁移原有本地文件；旧文件仍需切回 `local` 读取，或先执行显式迁移。
 
 配置好 ignored `.env` 后，可以运行真实 OSS 生命周期测试：
 
@@ -70,9 +70,9 @@ MYSQL_PORT=3307 npm run runtime:compose:up
 生成 Prisma client、迁移并 seed：
 
 ```sh
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed
+DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:generate
+DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:migrate
+DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:seed
 ```
 
 初始化 Qdrant evidence collection：
@@ -102,11 +102,11 @@ npm run worker:once
 ## 正式员工 MCP
 
 正式员工路径是通过固定版本的本机 stdio launcher
-`enterprise-hub-mcp-launcher@0.4.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
-`skills/enterprise-hub-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载
-权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `enterprise_hub_login`、
-`enterprise_hub_logout`、`enterprise_hub_auth_status` 和仅查询当前身份的
-`enterprise_hub_get_current_user`，且绝不操作服务基础设施。
+`smedc-mcp-launcher@0.5.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
+`skills/smedc-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载
+权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `smedc_login`、
+`smedc_logout`、`smedc_auth_status` 和仅查询当前身份的
+`smedc_get_current_user`，且绝不操作服务基础设施。
 
 正式 identity、公开远程 MCP 和固定 launcher 已部署；launcher npm 包已发布。macOS Codex
 浏览器登录、系统安全存储、tool discovery 和已认证调用验收已通过；Windows Codex 以及
@@ -123,12 +123,12 @@ Codex / MCP client 通过用户机 launcher 连接：
 ```json
 {
   "mcpServers": {
-    "enterprise-hub": {
+    "smedc": {
       "command": "npm",
       "args": ["run", "--silent", "mcp:launcher"],
       "cwd": "/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER",
       "env": {
-        "ENTERPRISE_HUB_BASE_URL": "https://api.smedatacenter.xyz"
+        "SMEDC_BASE_URL": "https://api.smedatacenter.xyz"
       }
     }
   }
@@ -140,7 +140,7 @@ Launcher 使用正式浏览器登录；轮换 durable credential 只进入操作
 fixture/session 自动化测试覆盖，不会放宽 launcher 的 HTTPS 要求。手动启动：
 
 ```sh
-ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher
+SMEDC_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher
 ```
 
 MCP 配置、环境和文件中不得保存 bearer token。
@@ -174,10 +174,10 @@ sheet）会被忽略并在状态中留下安全摘要。隐藏且匹配的 sheet
 
 | Tool                             | 用途                                            |
 | -------------------------------- | ----------------------------------------------- |
-| `enterprise_hub_login`           | 打开浏览器完成正式登录                          |
-| `enterprise_hub_logout`          | 撤销并清除本机共享 session                      |
-| `enterprise_hub_auth_status`     | 返回不含凭证的认证状态                          |
-| `enterprise_hub_list_skills`     | 读取已批准 Skill Directory 元数据               |
+| `smedc_login`                    | 打开浏览器完成正式登录                          |
+| `smedc_logout`                   | 撤销并清除本机共享 session                      |
+| `smedc_auth_status`              | 返回不含凭证的认证状态                          |
+| `smedc_list_skills`              | 读取已批准 Skill Directory 元数据               |
 | `upload_evidence_document`       | 上传 MD/TXT/DOCX evidence 文档                  |
 | `get_evidence_document_status`   | 查询 evidence 文档和索引状态                    |
 | `search_document_evidence`       | 检索可见 evidence chunks                        |
@@ -196,13 +196,13 @@ sheet）会被忽略并在状态中留下安全摘要。隐藏且匹配的 sheet
 你来替我执行一遍 SME_DATA_CENTER 的手动测试。
 ```
 
-Codex 会使用 repo-local `enterprise-hub-manual-test` skill 重置专用本地测试数据、启动 API/worker，并创建独立的用户可见 Codex tasks 保存上传、冷启动检索、权限隔离和结构化查询记录。报告和脱敏日志保存在 ignored `.data/manual-tests/<runId>/`。
+Codex 会使用 repo-local `smedc-manual-test` skill 重置专用本地测试数据、启动 API/worker，并创建独立的用户可见 Codex tasks 保存上传、冷启动检索、权限隔离和结构化查询记录。报告和脱敏日志保存在 ignored `.data/manual-tests/<runId>/`。
 
 员工侧 task 只会收到场景清单里的自然语言原文。英文测试边界、MCP 专业术语、标签/幂等细节、查询形态和预期答案都留在控制器侧，不会混进可见用户话术。
 
 手工执行的核心路径：
 
-1. 调用 `enterprise_hub_login`，只在浏览器中完成登录。
+1. 调用 `smedc_login`，只在浏览器中完成登录。
 2. 未明确指定时，以默认密级 `0` 上传。
 3. 用 `upload_evidence_document` 上传 MD/TXT/DOCX，随后用 `get_evidence_document_status` 等待 index ready，再用 `search_document_evidence` 检索。
 4. 用 `upload_structured_dataset` 原样上传 `dishes` 或 `business` CSV/XLSX，随后用 `get_partition_import_status` 等待发布，并用 `download_structured_partitions` 验证授权分区下载；不得手工切块或直查 MySQL 明细。
@@ -261,7 +261,7 @@ npm run purge-data -- --files-only
 npm run purge-data -- --all
 ```
 
-`purge-data` 只允许清理 local `localhost` / `127.0.0.1` 且数据库名为 `enterprise_hub` 的开发库。它会清理文档源文件记录、处理/索引/标签/审计派生数据和本地测试 storage；不会提交或暴露 secrets。
+`purge-data` 只允许清理 local `localhost` / `127.0.0.1` 且数据库名为 `smedc` 的开发库。它会清理文档源文件记录、处理/索引/标签/审计派生数据和本地测试 storage；不会提交或暴露 secrets。
 
 ## 常见问题
 
@@ -298,4 +298,4 @@ MYSQL_PORT=3307 npm run runtime:compose:up
 - `docs/implementation/env-inventory.md`
 - `docs/implementation/local-agent-test.md`
 - `docs/implementation/test-cases.md`
-- `skills/enterprise-hub-mcp/SKILL.md`
+- `skills/smedc-mcp/SKILL.md`

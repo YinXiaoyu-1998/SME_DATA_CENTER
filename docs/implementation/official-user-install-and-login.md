@@ -1,13 +1,13 @@
 # Official User Installation, Login, and Session Design
 
-Status: implemented and released; launcher 0.4.0 uses OAuth Device Authorization for desktop,
+Status: implemented and released; launcher 0.5.0 uses OAuth Device Authorization for desktop,
 remote/headless, and secondary-device login
 
 Last updated: 2026-09-15
 
 ## Purpose
 
-This document is the working source of truth for how an employee installs the Enterprise Hub client
+This document is the working source of truth for how an employee installs the SMEDC client
 components, signs in to the remote MCP service, remains authenticated across later agent sessions,
 signs out, and recovers from authentication failures.
 
@@ -18,13 +18,13 @@ mean an MCP client, agent installation, launcher process, token, or device.
 
 This document records product and security decisions. Current implementation details are included
 only where they constrain the design. Detailed instructions for agents belong in the dual-homed
-Enterprise Hub MCP skill after the design is implemented.
+SMEDC MCP skill after the design is implemented.
 
 ## Scope
 
 In scope:
 
-- installing the Enterprise Hub MCP skill and local launcher;
+- installing the SMEDC MCP skill and local launcher;
 - initial interactive browser login;
 - first-party browser verification and launcher token polling;
 - access-token and refresh-token lifecycle;
@@ -61,7 +61,7 @@ only as historical rationale and is not a compatibility constraint or current ru
 
 ### Employee experience
 
-- The Enterprise Hub MCP service runs remotely; the employee uses it through a general-purpose
+- The SMEDC MCP service runs remotely; the employee uses it through a general-purpose
   agent and its MCP client.
 - Target employees are low- or no-technical-skill users on an ordinary interactive macOS or Windows
   personal computer with a functioning system browser.
@@ -79,7 +79,7 @@ only as historical rationale and is not a compatibility constraint or current ru
 ### Installation
 
 - An npm-distributed launcher is a valid official distribution mechanism.
-- After the employee authorizes installation, the agent may follow the Enterprise Hub MCP skill to
+- After the employee authorizes installation, the agent may follow the SMEDC MCP skill to
   install Node.js or other prerequisites, install a pinned launcher package, run scripts, write the
   MCP client configuration, and verify connectivity.
 - “No-command-line user experience” constrains what the employee must do, not which implementation
@@ -110,12 +110,12 @@ only as historical rationale and is not a compatibility constraint or current ru
 ## Accepted Identity Boundary
 
 - Login Identity and Employee Account are separate concepts even when both are implemented in the
-  Enterprise Hub codebase. Login success alone grants no document permission.
+  SMEDC codebase. Login success alone grants no document permission.
 - A replaceable Identity Verifier owns login credentials, password verification, browser login
   sessions, throttling/lockout, and session revocation.
 - For the controlled beta, the Identity Verifier will be an internal module in the existing modular
   monolith rather than a paid managed identity service or a new microservice.
-- Enterprise Hub maps the verifier's stable login subject to exactly one Employee Account.
+- SMEDC maps the verifier's stable login subject to exactly one Employee Account.
 - The Employee Account remains the sole business authorization subject and owns organization,
   role, clearance, disabled state, and audit attribution. Role does not grant ordinary document
   reads; same-organization clearance does.
@@ -131,7 +131,7 @@ only as historical rationale and is not a compatibility constraint or current ru
 
 - Beta is limited to a small, controlled population expected to be approximately four or five
   users.
-- Enterprise Hub will not purchase or depend on a managed identity service for this beta slice.
+- SMEDC will not purchase or depend on a managed identity service for this beta slice.
 - There is no public self-registration, self-service forgotten-password email, SMS recovery,
   identity federation, or MFA in the initial beta.
 - A developer/operator CLI owns beta login-identity onboarding and password-reset initiation.
@@ -165,7 +165,7 @@ use a reviewed password-authentication library and, at minimum:
 
 ## Current End-To-End Browser And Launcher Flow
 
-The pinned launcher 0.4.0 uses OAuth Device Authorization:
+The pinned launcher 0.5.0 uses OAuth Device Authorization:
 
 1. the MCP client starts the launcher;
 2. the launcher requests a short-lived `device_code` / `user_code` pair and first-party verification
@@ -173,7 +173,7 @@ The pinned launcher 0.4.0 uses OAuth Device Authorization:
 3. an interactive desktop launcher opens the link automatically; a remote/headless launcher returns
    it for the employee-owned agent to surface through the employee channel;
 4. the employee confirms the displayed agent instance and enters the login identifier and password
-   only on the Enterprise Hub HTTPS page;
+   only on the SMEDC HTTPS page;
 5. the launcher polls the token endpoint and, after authorization, receives a short-lived access
    token plus a rotating durable credential over the back channel;
 6. the launcher keeps the access token in memory and stores the durable credential only in the
@@ -183,7 +183,7 @@ The pinned launcher 0.4.0 uses OAuth Device Authorization:
    only when employee authentication is required.
 
 An authenticated employee can ask which account is active. The zero-input
-`enterprise_hub_get_current_user` tool returns only that bearer-authenticated account's
+`smedc_get_current_user` tool returns only that bearer-authenticated account's
 `displayName`, `email`, `role`, and `clearance`; it accepts no employee selector and exposes no
 internal IDs or credentials.
 
@@ -197,11 +197,11 @@ OIDC migration remains a mandatory design constraint.
   to a local credential helper. It was withdrawn on 2026-07-23 and must not be implemented.
 - Historical documents may describe the removed development email login, the withdrawn opaque-token
   proposal, or the superseded loopback-first launcher. They are implementation history only and do
-  not override this document, the current README, or the dual-homed Enterprise Hub MCP skill.
+  not override this document, the current README, or the dual-homed SMEDC MCP skill.
 - Old implementation and design documents never take precedence over this accepted decision log.
   Retain old material only when it accurately describes current code or useful history, and mark it
   accordingly; delete or supersede conflicting recommendations.
-- The repo-local and standalone skills pin launcher 0.4.0 and its Device Authorization behavior.
+- The repo-local and standalone skills pin launcher 0.5.0 and its Device Authorization behavior.
 
 ## Decision Log
 
@@ -231,12 +231,12 @@ OIDC migration remains a mandatory design constraint.
 | 2026-07-23 | Superseded                | The 0.1.x launcher used Authorization Code + PKCE with a system browser and exact IPv4 loopback callback; the server retains it only for minimum-version compatibility                                                                                                                         |
 | 2026-07-23 | Confirmed                 | Login, password setup, and safe error pages are server-rendered by the existing Fastify API on its current HTTPS origin; beta adds no frontend framework, container, domain, or admin-web implementation                                                                                       |
 | 2026-07-23 | Confirmed                 | The browser keeps no durable login session; clearing or closing it after code handoff has no effect, while incomplete flows simply restart and durable MCP access belongs only to the launcher                                                                                                 |
-| 2026-07-24 | Confirmed                 | Enterprise Hub's token endpoint issues a 10-minute bearer access token kept only in launcher memory; the launcher renews it automatically from the durable session, including after a launcher restart                                                                                         |
+| 2026-07-24 | Confirmed                 | SMEDC's token endpoint issues a 10-minute bearer access token kept only in launcher memory; the launcher renews it automatically from the durable session, including after a launcher restart                                                                                                  |
 | 2026-07-24 | Confirmed                 | Access tokens are opaque 256-bit-or-stronger random bearer strings; MySQL stores only their hashes and authoritative expiry, revocation, session, and Employee Account association                                                                                                             |
 | 2026-07-24 | Confirmed                 | A launcher durable session has one absolute 30-day lifetime from browser password login, no separate inactivity timeout, and cannot be extended by token renewal                                                                                                                               |
 | 2026-07-24 | Confirmed                 | The opaque durable credential rotates after every access-token renewal; reuse of any consumed generation revokes the whole session family and requires browser login                                                                                                                           |
 | 2026-07-24 | Confirmed                 | Durable credentials are stored only in macOS Keychain or Windows Credential Manager; unavailable or failed secure storage stops authentication and never falls back to plaintext                                                                                                               |
-| 2026-07-24 | Confirmed                 | One operating-system user has one active Enterprise Hub account per service origin; every local agent client shares it, account switching is absent, and refresh is cross-process single-flight                                                                                                |
+| 2026-07-24 | Confirmed                 | One operating-system user has one active SMEDC account per service origin; every local agent client shares it, account switching is absent, and refresh is cross-process single-flight                                                                                                         |
 | 2026-07-24 | Superseded                | All official launchers use one fixed public client ID and server metadata. Device Authorization is now official; Authorization Code + PKCE remains only for 0.1.x compatibility                                                                                                                |
 | 2026-07-24 | Confirmed                 | Authoritative launcher source remains in `apps/mcp-launcher` in the product monorepo and is released as a public, versioned npm package; skills pin and install the package but do not duplicate its source                                                                                    |
 | 2026-07-24 | Confirmed                 | The skill is the installation runbook and the employee-owned agent performs its steps; the employee requests installation in natural language and only directly interacts with the browser login                                                                                               |
@@ -252,7 +252,7 @@ OIDC migration remains a mandatory design constraint.
 | 2026-07-24 | Confirmed                 | The temporary development email/JWT authentication system is deleted completely; every environment and test moves to the official identity/session model with no compatibility period                                                                                                          |
 | 2026-08-07 | Implemented               | Device-code/headless/secondary-device login was reopened and implemented using the OAuth Device Authorization Grant (RFC 8628) with a first-party mobile-friendly tap-link verification page and headless-agent token polling; PR #107 fully completed it and launcher 0.2.0 made it official. |
 | 2026-08-08 | Implemented               | PR #107 implemented the server Device Authorization state machine and routes, first-party verification page, launcher polling, desktop auto-open, and memory-only headless session mode; Authorization Code remains only as a minimum-compatible 0.1.x server path                             |
-| 2026-08-09 | Released                  | PR #108 published and verified `enterprise-hub-mcp-launcher@0.2.0`; PR #109 synchronized server metadata and the repo-local skill to the released recommended version                                                                                                                          |
+| 2026-08-09 | Released                  | PR #108 published and verified `smedc-mcp-launcher@0.2.0`; PR #109 synchronized server metadata and the repo-local skill to the released recommended version                                                                                                                                   |
 
 ## Design Tree
 
@@ -273,13 +273,13 @@ Resolve these branches in dependency order:
    reset use the 24-hour setup-link flow; failed passwords use the accepted finite progressive
    cooldown. Disable/reactivate/delete lifecycle design is deferred.
 6. **OAuth/OIDC client shape**: implemented — one fixed public client uses OAuth Device
-   Authorization, a first-party verification link, token polling, the fixed Enterprise Hub resource,
+   Authorization, a first-party verification link, token polling, the fixed SMEDC resource,
    and authorization-server metadata. Dynamic client registration, password grant, and embedded
    client secrets do not exist. The older Authorization Code + PKCE path remains server-compatible
    for minimum-supported 0.1.x launchers only.
 7. **Session model**: resolved — opaque access tokens last 10 minutes and remain in launcher memory;
    opaque durable credentials rotate on every renewal within a fixed 30-day family, and replay
-   revokes the family. Both token types are restricted to the Enterprise Hub API/MCP resource.
+   revokes the family. Both token types are restricted to the SMEDC API/MCP resource.
 8. **Credential storage**: resolved — use one versioned Keychain/Credential Manager record per
    operating-system user and canonical service origin, shared by local agent clients. Store only
    the durable credential and minimal schema metadata; rotation-write failure fails closed and
@@ -331,12 +331,12 @@ window, the developer issues a replacement link.
 ## Historical Superseded Loopback Authorization Flow
 
 The following Authorization Code + PKCE flow shipped in launcher 0.1.x and remains accepted by the
-server while 0.1.x is minimum-compatible. Launcher 0.4.0 and the current employee skill do not use
+server while 0.1.x is minimum-compatible. Launcher 0.5.0 and the current employee skill do not use
 it; the Device Authorization section below is the pinned and recommended flow.
 
 1. The launcher binds an ephemeral HTTP listener on `127.0.0.1`, generates a random `state` and PKCE
    verifier/challenge, and opens the system browser.
-2. The employee enters email and password only on the Enterprise Hub HTTPS page.
+2. The employee enters email and password only on the SMEDC HTTPS page.
 3. After successful authentication, the server redirects the browser with a short-lived,
    single-use authorization code to the exact loopback callback.
 4. The launcher validates `state` and exchanges the code plus PKCE verifier directly with the HTTPS
@@ -456,7 +456,7 @@ launcher and operating-system credential store.
 
 ## Accepted Access-Token Lifetime
 
-After Device Authorization redemption, Enterprise Hub's token endpoint issues the launcher a bearer
+After Device Authorization redemption, SMEDC's token endpoint issues the launcher a bearer
 access token valid for 10 minutes. The launcher keeps it only in process memory and automatically
 uses its durable session credential to obtain a replacement shortly before expiry. A launcher
 restart discards any access token and obtains a new one without opening the browser.
@@ -473,7 +473,7 @@ session, Employee Account, expiry, and revocation metadata.
 Every authenticated MCP/API request hashes the presented token and performs an indexed lookup.
 Missing, expired, revoked, or database-unavailable validation fails closed. The token contains no
 decodable employee, organization, or permission claims. A future managed OIDC provider may replace
-password authentication while Enterprise Hub continues issuing the same internal access-token
+password authentication while SMEDC continues issuing the same internal access-token
 contract.
 
 ## Accepted Durable-Session Lifetime
@@ -514,7 +514,7 @@ no secure store; it is not a fallback for a denied or broken desktop store.
 
 ## Accepted Local Account And Concurrency Scope
 
-Each operating-system user has one active Enterprise Hub account per service origin. Every Codex or
+Each operating-system user has one active SMEDC account per service origin. Every Codex or
 other supported agent client running as that OS user shares the same secure-store record. Beta has
 no account list, account switching, or concurrent multi-account behavior.
 
@@ -530,7 +530,7 @@ affecting other computers.
 ## Accepted OAuth Public-Client Contract
 
 All official launcher instances use the fixed, non-secret client ID
-`enterprise-hub-desktop-launcher`. Enterprise Hub exposes:
+`smedc-desktop-launcher`. SMEDC exposes:
 
 - `POST /oauth/device_authorization` for a device code, user code, verification URI, complete
   verification URI, polling interval, and bounded expiry;
@@ -544,10 +544,10 @@ Device and user codes are short-lived, single-use, stored only as hashes where s
 the client ID, requesting agent metadata, Login Identity, and authorization transaction. Polling is
 rate-limited and returns the standard pending, slow-down, expiry, denial, and success states. The
 token endpoint has no password grant, client secret, arbitrary audience, or arbitrary scope. Issued
-tokens are restricted to the Enterprise Hub API/MCP resource. Dynamic client registration does not
+tokens are restricted to the SMEDC API/MCP resource. Dynamic client registration does not
 exist.
 
-For the server's minimum-compatible 0.1.x launcher range only, Enterprise Hub also retains
+For the server's minimum-compatible 0.1.x launcher range only, SMEDC also retains
 `GET /oauth/authorize` plus authorization-code exchange with exact IPv4 loopback redirect, random
 `state`, and PKCE `S256`. This is not the pinned, recommended, or documented employee login path.
 
@@ -561,12 +561,12 @@ The official distribution artifact is a public, versioned npm package with a CLI
 embedded secrets. The private main GitHub repository publishes through npm Trusted Publisher/OIDC;
 Trusted Publisher supports a private source repository, but npm provenance is unavailable for
 private source repositories. The workflow therefore must not request, claim, or gate approval on
-npm provenance. The standalone Enterprise Hub skill repository contains installation and usage
+npm provenance. The standalone SMEDC skill repository contains installation and usage
 guidance plus the exact approved launcher version. It may direct an authorized employee-owned agent
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Release status as of 2026-09-15: `enterprise-hub-mcp-launcher@0.4.0` is public and independently
+Release status as of 2026-09-15: `smedc-mcp-launcher@0.5.0` is public and independently
 verified, and is pinned by both skill copies and recommended by server metadata; the server minimum
 remains 0.1.0 for compatibility. Its
 extracted registry contents match the reviewed package contents; exact-version clean installation,
@@ -579,7 +579,7 @@ the 0.2.0 release verified the live OIDC staged-publish path. Npm provenance rem
 because the source repository is private and is not an approval gate.
 
 The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
-only `ENTERPRISE_HUB_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
+only `SMEDC_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
 `self-check` emits only the safe fields `ok`, `launcherVersion`, `serviceOrigin`, `platform`,
 `secureStore.{available,durableCredentialPresent}`,
 `server.{reachable,metadataCompatible,minimumLauncherVersion,recommendedLauncherVersion,recommendedUpdateAvailable}`,
@@ -593,8 +593,8 @@ release cadence. The employee is not expected to run npm commands personally.
 
 ## Accepted Agent-Driven Installation Contract
 
-After the Enterprise Hub skill is available, the employee asks the agent in natural language to
-install and log in to Enterprise Hub. The skill is the authoritative installation runbook; the
+After the SMEDC skill is available, the employee asks the agent in natural language to
+install and log in to SMEDC. The skill is the authoritative installation runbook; the
 employee-owned agent, not the employee and not an autonomous launcher self-installer, performs the
 machine changes described by that runbook.
 
@@ -613,7 +613,7 @@ The normal path must not require `sudo` or administrator rights and must not alt
 servers or agent configuration. If a safe automatic step is unavailable, the runbook stops and
 gives the agent a narrow, plain-language recovery instruction instead of making broad machine
 changes. The employee's only routine visible actions are the natural-language request and entering
-credentials in the Enterprise Hub browser page.
+credentials in the SMEDC browser page.
 
 ## Accepted Agent Compatibility Boundary
 
@@ -646,7 +646,7 @@ Supported versions continue normal use; a recommended-version difference may pro
 machine-readable, non-blocking notice. A version below the minimum returns the stable
 `launcher_upgrade_required` condition without entering a login loop.
 
-The repo-local and standalone Enterprise Hub skills are the joint distribution runbooks and must
+The repo-local and standalone SMEDC skills are the joint distribution runbooks and must
 remain synchronized. They determine whether an update is needed, select the exact approved package
 version, instruct the employee-owned agent to install it for the current user, and rerun the
 launcher self-check. The launcher and server do not independently choose or install a version.
@@ -669,12 +669,12 @@ with narrow, idempotent changes:
   delete the shared Keychain/Credential Manager record, and discard any in-memory access token.
   Because the secure-store session is shared, every local agent under that operating-system user is
   signed out.
-- **Remove from one agent**: delete only Enterprise Hub's entry from that agent's MCP
+- **Remove from one agent**: delete only SMEDC's entry from that agent's MCP
   configuration. The shared launcher package, secure-store session, and integrations in other
   agents remain usable.
-- **Completely uninstall Enterprise Hub**: revoke the session; remove Enterprise Hub MCP entries
+- **Completely uninstall SMEDC**: revoke the session; remove SMEDC MCP entries
   from every safely discoverable local agent; remove the current-user launcher package and
-  Enterprise Hub non-secret local state; and delete the secure-store record.
+  SMEDC non-secret local state; and delete the secure-store record.
 
 These operations never delete the server-side Employee Account or business data. Uninstall never
 removes Node.js/npm because unrelated software may depend on them. If the API is unreachable, local
@@ -684,7 +684,7 @@ the server session then ends through its fixed absolute expiry or a developer re
 ## Accepted Secure-Store Record And Failure Policy
 
 Each operating-system user has one versioned Keychain/Credential Manager record per canonical
-Enterprise Hub HTTPS origin. A platform-specific key is deterministically derived from that origin.
+SMEDC HTTPS origin. A platform-specific key is deterministically derived from that origin.
 The protected value contains only the opaque durable credential and the minimum schema/version
 metadata required to read it. It never contains the employee password or a short-lived access
 token.
@@ -837,7 +837,7 @@ authentication endpoint or alternate token format exists.
 
 Repair is the accepted agent-driven installation flow run idempotently: the skill detects the host
 agent and operating system, verifies the exact approved launcher version, backs up and minimally
-repairs only Enterprise Hub's MCP entry, and reruns self-check. It preserves the secure-store
+repairs only SMEDC's MCP entry, and reruns self-check. It preserves the secure-store
 session whenever that record is valid.
 
 The launcher provides a machine-readable self-check containing only non-secret facts needed by the
@@ -850,7 +850,7 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 The official beta installation, Device Authorization login, token/session, secure-store and
 memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
-implemented. Launcher 0.4.0 is the pinned and recommended release. Automated server/launcher tests,
+implemented. Launcher 0.5.0 is the pinned and recommended release. Automated server/launcher tests,
 native macOS/Windows package acceptance, and a full headless Linux container login-to-business-tool
 loop pass. Full user-visible OpenClaw and support-class-C phone/browser acceptance remain external
 release evidence.

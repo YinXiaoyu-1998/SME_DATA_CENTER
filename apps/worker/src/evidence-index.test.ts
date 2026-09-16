@@ -66,7 +66,7 @@ describe("evidence indexer", () => {
           version: "fake-rerank-v1@phase3.retrieval.v1"
         },
         qdrant: {
-          collection: "enterprise_hub_evidence_test"
+          collection: "smedc_evidence_test"
         }
       },
       embeddingProvider: createFakeEmbeddingProvider({
@@ -88,7 +88,7 @@ describe("evidence indexer", () => {
 
     expect(result).toMatchObject({
       retrievalConfigVersion: "phase3.retrieval.v1",
-      qdrantCollection: "enterprise_hub_evidence_test",
+      qdrantCollection: "smedc_evidence_test",
       embeddingProvider: "fake",
       embeddingModel: "fake-embedding-v1",
       embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",

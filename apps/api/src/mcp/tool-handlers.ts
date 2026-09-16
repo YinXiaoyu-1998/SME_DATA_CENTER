@@ -25,9 +25,7 @@ export type SmedcMcpToolHandler = (
   context: McpRequestContext
 ) => Promise<McpJsonToolResult>;
 
-export type SmedcMcpToolHandlers = Partial<
-  Record<SmedcMcpToolName, SmedcMcpToolHandler>
->;
+export type SmedcMcpToolHandlers = Partial<Record<SmedcMcpToolName, SmedcMcpToolHandler>>;
 
 export interface CreateSmedcMcpToolHandlersOptions {
   bearerToken: string;
@@ -70,16 +68,10 @@ export function createSmedcMcpToolHandlers(
   };
 }
 
-export function createNoopToolHandler(
-  toolName: SmedcMcpToolName
-): SmedcMcpToolHandler {
+export function createNoopToolHandler(toolName: SmedcMcpToolName): SmedcMcpToolHandler {
   return async (_input, context) =>
-    errorToolResult(
-      "MCP_TOOL_NOT_IMPLEMENTED",
-      "SMEDC MCP tool handler is not implemented yet.",
-      {
-        toolName,
-        requestId: context.audit.requestId
-      }
-    );
+    errorToolResult("MCP_TOOL_NOT_IMPLEMENTED", "SMEDC MCP tool handler is not implemented yet.", {
+      toolName,
+      requestId: context.audit.requestId
+    });
 }

@@ -1,0 +1,3 @@
+interface:
+  display_name: "业务数据清理"
+  short_description: "清理 SMEDC 组织/用户业务数据"

@@ -23,9 +23,7 @@ const ACTION_TOOL_CONTRACTS = Object.fromEntries(
   ).map((contract) => [contract.name, contract])
 ) as Record<ActionMcpToolName, SmedcMcpToolContract>;
 
-export function createActionMcpToolHandlers(
-  context: ApiDelegationContext
-): SmedcMcpToolHandlers {
+export function createActionMcpToolHandlers(context: ApiDelegationContext): SmedcMcpToolHandlers {
   return Object.fromEntries(
     ACTION_MCP_TOOL_NAMES.map((toolName) => [
       toolName,

@@ -114,15 +114,10 @@ function parseJsonResponse(
 }
 
 function genericApiError(requestId: string): McpJsonToolResult {
-  return errorToolResult(
-    "SMEDC_API_ERROR",
-    "SMEDC API request failed.",
-    undefined,
-    {
-      retryable: true,
-      requestId
-    }
-  );
+  return errorToolResult("SMEDC_API_ERROR", "SMEDC API request failed.", undefined, {
+    retryable: true,
+    requestId
+  });
 }
 
 function requestCancelledApiError(requestId: string): McpJsonToolResult {

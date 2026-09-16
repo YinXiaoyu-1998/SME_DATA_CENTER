@@ -83,7 +83,7 @@ describe("structured partition routes", () => {
       url: "/v1/structured/partition-uploads",
       payload: {
         dataset: "business",
-        enterpriseName: " Maijia ",
+        enterpriseName: " Synthetic ",
         startDate: "2026-09-07",
         endDate: "2026-09-13",
         originalFileName: "business.xlsx",
@@ -111,8 +111,8 @@ describe("structured partition routes", () => {
       {
         id: "part_1",
         orgId: "org_1",
-        enterpriseKey: "maijia",
-        enterpriseName: "Maijia",
+        enterpriseKey: "synthetic",
+        enterpriseName: "Synthetic",
         dataset: "business" as const,
         storeKey: "merchant:001",
         merchantId: "001",
@@ -139,14 +139,14 @@ describe("structured partition routes", () => {
       url: "/v1/structured/partition-manifests",
       payload: {
         dataset: "business",
-        enterpriseName: "Maijia",
+        enterpriseName: "Synthetic",
         startDate: "2026-09-07",
         endDate: "2026-09-13"
       }
     });
     expect(response.statusCode).toBe(200);
     expect(list).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: "org_1", clearance: 1, enterpriseKey: "maijia" })
+      expect.objectContaining({ orgId: "org_1", clearance: 1, enterpriseKey: "synthetic" })
     );
     expect(response.json()).toMatchObject({
       partitionCount: 1,
@@ -175,8 +175,8 @@ describe("structured partition routes", () => {
       orgId: "org_1",
       uploaderId: employee.id,
       dataset: "business",
-      enterpriseKey: "maijia",
-      enterpriseName: "Maijia",
+      enterpriseKey: "synthetic",
+      enterpriseName: "Synthetic",
       confidentialityLevel: 0,
       originalFileName: "business.csv",
       mediaType: "text/csv",

@@ -180,7 +180,7 @@ describe("launcher local path upload proxy", () => {
       filePath
     },
     dataset: "vip",
-    enterpriseName: "Maijia",
+    enterpriseName: "Synthetic",
     startDate: "20260701",
     endDate: "20260731",
     idempotencyKey: "path-upload-key",
@@ -194,7 +194,7 @@ describe("launcher local path upload proxy", () => {
       contentBase64: "YSwNCg=="
     },
     dataset: "dishes",
-    enterpriseName: "Maijia",
+    enterpriseName: "Synthetic",
     startDate: "20260701",
     endDate: "20260731",
     idempotencyKey: "base64-upload-key",
@@ -453,7 +453,7 @@ function fakeMcpFetch(calls: Array<{ method?: string; params?: unknown }>): type
           result: {
             protocolVersion: "2025-11-25",
             capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: "fake-enterprise-hub", version: "0.0.0" }
+            serverInfo: { name: "fake-smedc", version: "0.0.0" }
           }
         }),
         { status: 200, headers: { "content-type": "application/json" } }

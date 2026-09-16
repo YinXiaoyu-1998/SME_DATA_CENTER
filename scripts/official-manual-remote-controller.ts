@@ -7,14 +7,14 @@ import type { StructuredWindow } from "./official-manual-acceptance-support.js";
 const execFileAsync = promisify(execFile);
 const DEFAULT_STAGING_HOST = "39.96.66.185";
 const DEFAULT_STAGING_USER = "root";
-const STAGING_COMPOSE_FILE = "/opt/enterprise-hub/docker-compose.yml";
-const STAGING_RUNTIME_ENV_FILE = "/opt/enterprise-hub/runtime.env";
+const STAGING_COMPOSE_FILE = "/opt/smedc/docker-compose.yml";
+const STAGING_RUNTIME_ENV_FILE = "/opt/smedc/runtime.env";
 
 export type RemoteControllerCommand = "cleanup" | "window";
 
 export function buildStagingSshArgs(): string[] {
   const sshKeyPath =
-    process.env["ENTERPRISE_HUB_STAGING_SSH_KEY"] ?? path.join(os.homedir(), ".ssh", "id_ed25519");
+    process.env["SMEDC_STAGING_SSH_KEY"] ?? path.join(os.homedir(), ".ssh", "id_ed25519");
   const knownHostsPath = path.join(process.cwd(), "deploy", "staging", "known_hosts");
 
   return [
@@ -58,8 +58,8 @@ export async function runStagingController<T>(
   runId: string
 ): Promise<T> {
   const target = `${
-    process.env["ENTERPRISE_HUB_STAGING_SSH_USER"] ?? DEFAULT_STAGING_USER
-  }@${process.env["ENTERPRISE_HUB_STAGING_HOST"] ?? DEFAULT_STAGING_HOST}`;
+    process.env["SMEDC_STAGING_SSH_USER"] ?? DEFAULT_STAGING_USER
+  }@${process.env["SMEDC_STAGING_HOST"] ?? DEFAULT_STAGING_HOST}`;
   const sshArgs = buildStagingSshArgs();
   const { stdout: containerOutput } = await execFileAsync("ssh", [
     ...sshArgs,
@@ -67,7 +67,7 @@ export async function runStagingController<T>(
     "docker",
     "ps",
     "--filter",
-    "label=com.docker.compose.project=enterprise-hub-staging",
+    "label=com.docker.compose.project=smedc-staging",
     "--filter",
     "label=com.docker.compose.service=api",
     "--filter",

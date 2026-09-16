@@ -41,7 +41,7 @@ describe("quarantine certificate routes", () => {
   async function buildQuarantineTestServer(
     employees: AuthenticatedEmployee[] = [adminEmployee, baoliEmployee, suzhouEmployee]
   ) {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-quarantine-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-quarantine-"));
     const documentRepository = createDocumentRepository();
     const quarantineCertificateRepository = createInMemoryQuarantineCertificateRepository(
       documentRepository.documents,

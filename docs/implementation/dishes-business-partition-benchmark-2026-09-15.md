@@ -11,7 +11,7 @@ and cleanup evidence.
 Environment:
 
 - Staging release: `c6633d3505c3`
-- Launcher: `enterprise-hub-mcp-launcher@0.4.0`
+- Launcher: `smedc-mcp-launcher@0.5.0`
 - Staging worker: 2 vCPU / 1 GiB container limit, `WORKER_CONCURRENCY=2`
 - Synthetic employee: clearance 0 in `default-org`
 
@@ -48,7 +48,7 @@ before publication, and one subsequent natural-language status request confirmed
 ## Weekly Report Result
 
 An independent Codex task received only this request: generate the `2025-09-07` through
-`2025-09-13` report from Enterprise Hub data.
+`2025-09-13` report from SMEDC data.
 
 | Stage                                    | Result                                       |
 | ---------------------------------------- | -------------------------------------------- |
@@ -77,7 +77,7 @@ manifest rather than by raw row count.
 ## Bottlenecks And Blockers
 
 1. **Deployment correctness blocker:** the first real uploads failed because the bind-mounted
-   `/opt/enterprise-hub/partition-work` directory was root-owned. Provisioning had the correct
+   `/opt/smedc/partition-work` directory was root-owned. Provisioning had the correct
    owner, but ordinary deploys did not reassert it. The staging directory was repaired to
    `1000:1000` mode `0750`; the accompanying code change now does this on every rollout. Generic
    pre-parser partition failures also receive `PARTITION_IMPORT_FAILED` instead of the unrelated
@@ -145,7 +145,7 @@ export, avoiding per-row log volume and excluding business data.
 ## Post-Optimization Staging Re-Benchmark — 2026-09-16
 
 After PR #166 deployed as release `350357dc5559`, the same employee account re-uploaded the exact
-191.21 MiB dishes workbook through launcher 0.4.0 with a new idempotency key. The job published
+191.21 MiB dishes workbook through launcher 0.5.0 with a new idempotency key. The job published
 944,940 rows as the same 810 current partitions; post-publish coverage was unchanged.
 
 | Phase                      |   Before |    After | Change                    |
@@ -178,13 +178,13 @@ The staging `source_export` profile was:
 The bottleneck is now localized: row decoding plus the separate merged-cell pass consume 78.4% of
 export time, while per-row partition writes are another 15.6%. The next implementation should
 preserve streaming and bounded memory, first remove unnecessary per-row write syscalls with bounded
-writer buffers, then evaluate skipping the merged-cell pre-scan only for the fixed Maijia partition
+writer buffers, then evaluate skipping the merged-cell pre-scan only for the fixed Synthetic partition
 schemas with explicit regression evidence. This real workbook is not merge-free: its worksheet has
 two structural merged ranges, `A1:AY1` and `A2:AY2`, above the canonical table header. Any bypass
 must prove those metadata bands can be ignored without changing header resolution or row output;
 it must not assume that the input contains no merged cells.
 
-The fixed-source contract was subsequently clarified: Maijia `business` and `dishes` generators do
+The fixed-source contract was subsequently clarified: Synthetic `business` and `dishes` generators do
 not merge canonical header or data cells; only presentation rows above the header may be merged, and
 those rows are intentionally absent from canonical partition CSVs. The partition exporter now skips
 the separate merged-cell pass for these two datasets while the generic XLSX reader retains expansion
@@ -230,7 +230,7 @@ post-merge quality gate built the final linux/amd64 worker image and exercised i
 against a real XLSX fixture before the automatic staging deployment succeeded.
 
 The same logged-in employee then uploaded the exact same source through the official launcher:
-`maijia_dishes_20250701_20250928.xlsx`, 200,497,207 bytes, checksum
+`synthetic_dishes_20250701_20250928.xlsx`, 200,497,207 bytes, checksum
 `e9199ff3…5039`. Job `pjob_b5921ff14a797812f4d80e13` atomically replaced the existing partitions
 with the same 944,940 rows, 810 partitions, and 336,088,756 canonical bytes. The first status check,
 two minutes after upload, already found the job published.

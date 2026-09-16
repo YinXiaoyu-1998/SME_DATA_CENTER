@@ -24,12 +24,12 @@ describe("SMEDC MCP launcher config", () => {
     });
   });
 
-  it("rejects the removed legacy Enterprise Hub base URL aliases", () => {
+  it("rejects the removed legacy SMEDC base URL aliases", () => {
     expect(() =>
-      loadLauncherRuntimeConfig({ ENTERPRISE_HUB_API_URL: "https://old.example" } as never)
+      loadLauncherRuntimeConfig({ SMEDC_API_URL: "https://old.example" } as never)
     ).toThrow("SMEDC_BASE_URL is required.");
     expect(() =>
-      loadLauncherRuntimeConfig({ ENTERPRISE_HUB_BASE_URL: "https://old.example" } as never)
+      loadLauncherRuntimeConfig({ SMEDC_BASE_URL: "https://old.example" } as never)
     ).toThrow("SMEDC_BASE_URL is required.");
   });
 

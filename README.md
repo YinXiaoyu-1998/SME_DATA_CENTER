@@ -1,8 +1,8 @@
-# Enterprise Hub
+# SMEDC
 
-Enterprise Hub is a company knowledge service for employee-owned agents, MCP clients, APIs, and a minimal admin surface. It stores source document catalog metadata, original files, local processing state, confidentiality-level permissions, audit logs, structured datasets, and evidence retrieval metadata.
+SMEDC is a company knowledge service for employee-owned agents, MCP clients, APIs, and a minimal admin surface. It stores source document catalog metadata, original files, local processing state, confidentiality-level permissions, audit logs, structured datasets, and evidence retrieval metadata.
 
-Enterprise Hub is not an employee-facing AI agent, report generator, dashboard service, or skill execution platform. Authorization and permission filtering belong on the backend for every non-health endpoint. The public product surface is Phase 3-only: evidence upload/search and structured import/query.
+SMEDC is not an employee-facing AI agent, report generator, dashboard service, or skill execution platform. Authorization and permission filtering belong on the backend for every non-health endpoint. The public product surface is Phase 3-only: evidence upload/search and structured import/query.
 
 For the full Chinese local development guide, see [README.zh.md](./README.zh.md).
 
@@ -29,11 +29,11 @@ cp .env.example .env
 At minimum, local development uses:
 
 ```dotenv
-DATABASE_URL="mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub"
+DATABASE_URL="mysql://smedc:smedc_local_password@localhost:3306/smedc"
 STORAGE_DRIVER="local"
 LOCAL_STORAGE_ROOT="./.data/storage"
 CURSOR_SIGNING_SECRET="replace-with-local-development-cursor-secret"
-ENTERPRISE_HUB_PUBLIC_ORIGIN="https://api.smedatacenter.xyz"
+SMEDC_PUBLIC_ORIGIN="https://api.smedatacenter.xyz"
 MAX_UPLOAD_BYTES="52428800"
 ```
 
@@ -41,7 +41,7 @@ Phase 3 retrieval and structured-data work also uses local Qdrant and fake model
 
 ```dotenv
 QDRANT_URL="http://127.0.0.1:6333"
-QDRANT_COLLECTION_EVIDENCE="enterprise_hub_evidence_local"
+QDRANT_COLLECTION_EVIDENCE="smedc_evidence_local"
 RETRIEVAL_CONFIG_VERSION="phase3.retrieval.v1"
 LLM_PROVIDER="fake"
 LLM_MODEL="fake-rerank"
@@ -62,7 +62,7 @@ development email-login or JWT compatibility endpoint.
 - `local` keeps the existing filesystem adapter and requires `LOCAL_STORAGE_ROOT`.
 - `oss` uses Alibaba Cloud OSS through the S3-compatible API and requires `AWS_REGION`, `AWS_ENDPOINT`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`.
 
-The OSS adapter keeps database keys provider-neutral (`org/...`) and maps them to the physical `AWS_S3_PREFIX` namespace, which defaults to `enterprise-hub`. `AWS_SESSION_TOKEN`, `AWS_S3_FORCE_PATH_STYLE`, and `AWS_S3_PRESIGN_EXPIRES_SECONDS` are optional. Existing local files are not migrated automatically when the driver changes; switch back to `local` to read them or migrate them explicitly before relying on OSS-only reads.
+The OSS adapter keeps database keys provider-neutral (`org/...`) and maps them to the physical `AWS_S3_PREFIX` namespace, which defaults to `smedc`. `AWS_SESSION_TOKEN`, `AWS_S3_FORCE_PATH_STYLE`, and `AWS_S3_PRESIGN_EXPIRES_SECONDS` are optional. Existing local files are not migrated automatically when the driver changes; switch back to `local` to read them or migrate them explicitly before relying on OSS-only reads.
 
 With the local driver, uploaded files are stored under `LOCAL_STORAGE_ROOT`. The default local path is:
 
@@ -79,7 +79,7 @@ set -a; source .env; set +a
 npm run test:storage:oss
 ```
 
-The test writes one random object under the configured Enterprise Hub prefix, verifies metadata/read/presigned download, deletes it, and confirms absence. It never prints credentials or the signed URL.
+The test writes one random object under the configured SMEDC prefix, verifies metadata/read/presigned download, deletes it, and confirms absence. It never prints credentials or the signed URL.
 
 To remove local uploaded files, test storage, and local MySQL document records:
 
@@ -93,7 +93,7 @@ To preview the cleanup:
 npm run purge-data -- --dry-run
 ```
 
-The default command also deletes MySQL document data from the local `enterprise_hub`
+The default command also deletes MySQL document data from the local `smedc`
 database, including document rows and derived processing/chunk rows through
 database cascades, plus document audit logs. It preserves seeded organizations,
 employees, Skill Directory rows, and local login sessions.
@@ -113,7 +113,7 @@ npm run purge-data -- --files-only
 ```
 
 For safety, MySQL cleanup only runs when `DATABASE_URL` points at local
-`localhost`/`127.0.0.1` MySQL and the database name is `enterprise_hub`.
+`localhost`/`127.0.0.1` MySQL and the database name is `smedc`.
 
 ## Start Locally
 
@@ -126,9 +126,9 @@ MYSQL_PORT=3307 npm run runtime:compose:up
 Generate the Prisma client, apply migrations, and seed local data:
 
 ```sh
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed
+DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:generate
+DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:migrate
+DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:seed
 ```
 
 Start the API:
@@ -141,7 +141,7 @@ Initialize the local evidence collection and run readiness checks:
 
 ```sh
 npm run qdrant:init
-DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' \
+DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' \
   STORAGE_DRIVER=local \
   LOCAL_STORAGE_ROOT=./.data/storage \
   npm run readyz:local
@@ -152,15 +152,15 @@ The API entrypoint automatically loads `.env` from the current working directory
 ## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
-`enterprise-hub-mcp-launcher@0.4.0` local stdio launcher. The dual-homed
-`skills/enterprise-hub-mcp/` skill is the authoritative current-user install, configuration,
+`smedc-mcp-launcher@0.5.0` local stdio launcher. The dual-homed
+`skills/smedc-mcp/` skill is the authoritative current-user install, configuration,
 browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
-email/password/token/code input, uses `enterprise_hub_login`, `enterprise_hub_logout`,
-`enterprise_hub_auth_status`, and the self-scoped `enterprise_hub_get_current_user`, and never
+email/password/token/code input, uses `smedc_login`, `smedc_logout`,
+`smedc_auth_status`, and the self-scoped `smedc_get_current_user`, and never
 operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
-`enterprise-hub-mcp-launcher@0.4.0` is published on npm and its registry integrity, clean install,
+`smedc-mcp-launcher@0.5.0` is published on npm and its registry integrity, clean install,
 CLI, packaging, and production dependency audit have been verified. The official auth cutover is
 deployed in staging. Native macOS/Windows package acceptance and the headless Linux
 login-to-business-tool loop have passed; user-visible OpenClaw and support-class-C
@@ -176,7 +176,7 @@ adapter. The launcher accepts only a canonical HTTPS origin:
   "command": "npm",
   "args": ["run", "--silent", "mcp:launcher"],
   "cwd": "/Users/xiaoyuyin/Desktop/YXY_DEV/SME_DATA_CENTER",
-  "env": { "ENTERPRISE_HUB_BASE_URL": "https://api.smedatacenter.xyz" }
+  "env": { "SMEDC_BASE_URL": "https://api.smedatacenter.xyz" }
 }
 ```
 
@@ -221,7 +221,7 @@ added, removed, discontinued, or other cross-snapshot state.
 To run the launcher manually when the API is already running:
 
 ```sh
-ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher
+SMEDC_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher
 ```
 
 Run the worker directly only when testing or troubleshooting:
@@ -261,18 +261,18 @@ browser login, and staging service on real macOS/Windows desktops; see
 | `test:watch`           | Runs Vitest in watch mode.                                                | `npm run test:watch`                                                                                                        | Useful while editing tests.                                       |
 | `typecheck`            | Runs TypeScript without emitting compiled files.                          | `npm run typecheck`                                                                                                         | Verifies TS types across the repo.                                |
 | `api:dev`              | Starts the Fastify API service.                                           | `npm run api:dev`                                                                                                           | Auto-loads `.env` when present.                                   |
-| `mcp:launcher`         | Starts the user-side stdio launcher for the official HTTPS MCP endpoint.  | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher`                                                | Requires an already-running service; never starts it.             |
+| `mcp:launcher`         | Starts the user-side stdio launcher for the official HTTPS MCP endpoint.  | `SMEDC_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher`                                                         | Requires an already-running service; never starts it.             |
 | `purge-data`           | Removes local MySQL document data plus ignored upload/test storage files. | `npm run purge-data`; preview with `npm run purge-data -- --dry-run`; remove all `.data` with `npm run purge-data -- --all` | Use `--files-only` to leave MySQL untouched.                      |
 | `worker:dev`           | Starts a local worker loop that continuously processes queued documents.  | `npm run worker:dev`                                                                                                        | Auto-loads `.env` when present.                                   |
 | `worker:once`          | Runs one deterministic worker pass.                                       | `npm run worker:once`                                                                                                       | Auto-loads `.env` when present.                                   |
 | `db:compose:up`        | Starts the local MySQL Docker Compose service.                            | `MYSQL_PORT=3307 npm run db:compose:up`                                                                                     | Uses `docker compose up -d mysql`.                                |
 | `runtime:compose:up`   | Starts local MySQL and Qdrant Docker Compose services.                    | `MYSQL_PORT=3307 npm run runtime:compose:up`                                                                                | Uses `docker compose up -d mysql qdrant`.                         |
 | `qdrant:init`          | Creates/updates the local Phase 3 evidence collection.                    | `npm run qdrant:init`                                                                                                       | Requires Qdrant to be running.                                    |
-| `readyz:local`         | Runs local runtime readiness checks.                                      | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run readyz:local`    | Checks MySQL, storage, model config, and Qdrant.                  |
+| `readyz:local`         | Runs local runtime readiness checks.                                      | `DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run readyz:local`                               | Checks MySQL, storage, model config, and Qdrant.                  |
 | `db:compose:down`      | Stops local Docker Compose services.                                      | `npm run db:compose:down`                                                                                                   | Uses `docker compose down`.                                       |
-| `db:generate`          | Generates the Prisma client.                                              | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:generate`     | Run after dependency/schema changes when needed.                  |
-| `db:migrate`           | Applies Prisma migrations in development.                                 | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:migrate`      | Updates the local development database.                           |
-| `db:seed`              | Seeds local development data.                                             | `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run db:seed`         | Creates local demo employees, confidentiality levels, and skills. |
+| `db:generate`          | Generates the Prisma client.                                              | `DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:generate`                                | Run after dependency/schema changes when needed.                  |
+| `db:migrate`           | Applies Prisma migrations in development.                                 | `DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:migrate`                                 | Updates the local development database.                           |
+| `db:seed`              | Seeds local development data.                                             | `DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run db:seed`                                    | Creates local demo employees, confidentiality levels, and skills. |
 
 ## Useful Checks
 
@@ -290,4 +290,4 @@ npm run format:check
 - `docs/implementation/server-runtime-prerequisites.md`: Phase 4 staging host provisioning, verification, ACR boundary, and rollback.
 - `docs/implementation/api-contract.md`: API and MCP tool contracts.
 - `docs/implementation/local-agent-test.md`: Codex/MCP human-test flow.
-- `skills/enterprise-hub-mcp/SKILL.md`: repository-local MCP skill.
+- `skills/smedc-mcp/SKILL.md`: repository-local MCP skill.

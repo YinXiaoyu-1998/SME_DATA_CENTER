@@ -11,7 +11,7 @@ export const COMMON_PASSWORDS = new Set([
   "password123",
   "qwerty123",
   "welcome1",
-  "enterprisehub",
-  "enterprise hub",
+  "smedc",
+  "SMEDC",
   "smedatacenter"
 ]);

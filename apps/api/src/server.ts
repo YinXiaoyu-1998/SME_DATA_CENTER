@@ -62,7 +62,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     maxUploadBytes: runtimeLimits.maxUploadBytes,
     delegationProof,
     mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
-    publicOrigin: (options.runtimeEnv ?? process.env)["ENTERPRISE_HUB_PUBLIC_ORIGIN"],
+    publicOrigin: (options.runtimeEnv ?? process.env)["SMEDC_PUBLIC_ORIGIN"],
     authenticate: async (request, reply) => {
       const authenticated = await requestAuth.authenticate(request, reply);
 
@@ -75,9 +75,9 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   if (context.authCore) {
-    const publicOrigin = environment["ENTERPRISE_HUB_PUBLIC_ORIGIN"];
+    const publicOrigin = environment["SMEDC_PUBLIC_ORIGIN"];
     if (!publicOrigin) {
-      throw new Error("ENTERPRISE_HUB_PUBLIC_ORIGIN is required for official authentication.");
+      throw new Error("SMEDC_PUBLIC_ORIGIN is required for official authentication.");
     }
     registerOfficialAuthRoutes(app, { auth: context.authCore, publicOrigin });
     void context.authCore.pruneSecurityEvents().catch((error: unknown) => {

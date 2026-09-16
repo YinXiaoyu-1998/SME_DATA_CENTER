@@ -81,7 +81,7 @@ suite("structured partition repository", () => {
         orgId,
         clearance: 0,
         dataset: "business",
-        enterpriseKey: "maijia",
+        enterpriseKey: "synthetic",
         startDate: "2026-09-07",
         endDate: "2026-09-07"
       })
@@ -118,8 +118,8 @@ suite("structured partition repository", () => {
       orgId,
       uploaderId: employeeId,
       dataset: "business",
-      enterpriseKey: "maijia",
-      enterpriseName: "Maijia",
+      enterpriseKey: "synthetic",
+      enterpriseName: "Synthetic",
       confidentialityLevel: 0,
       idempotencyKey: `idem_${suffix}`,
       requestFingerprint: `fingerprint_${suffix}`.padEnd(64, "0"),
@@ -146,8 +146,8 @@ function candidate(overrides: Partial<PartitionCandidate>): PartitionCandidate {
   return {
     id: "part_default",
     orgId,
-    enterpriseKey: "maijia",
-    enterpriseName: "Maijia",
+    enterpriseKey: "synthetic",
+    enterpriseName: "Synthetic",
     dataset: "business",
     storeKey: "merchant:001",
     merchantId: "001",

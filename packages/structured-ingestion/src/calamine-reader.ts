@@ -7,7 +7,7 @@ import {
   type XlsxStreamProfile
 } from "./xlsx-stream.js";
 
-const DEFAULT_READER_COMMAND = "enterprise-hub-calamine-reader";
+const DEFAULT_READER_COMMAND = "smedc-calamine-reader";
 const MAX_PROTOCOL_LINE_BYTES = 8 * 1024 * 1024;
 const MAX_PARTITION_COLUMNS = 1_024;
 
@@ -28,7 +28,7 @@ export async function streamCalamineXlsxFileRows(input: {
   throwIfAborted(input.signal);
   const inspection = await inspectXlsxFile(input.filePath, input.limits);
   const command = input.command ?? [
-    process.env.ENTERPRISE_HUB_CALAMINE_READER_PATH || DEFAULT_READER_COMMAND
+    process.env.SMEDC_CALAMINE_READER_PATH || DEFAULT_READER_COMMAND
   ];
   const [executable, ...prefixArguments] = command;
   if (!executable) throw new Error("Calamine reader command must not be empty.");

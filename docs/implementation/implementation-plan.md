@@ -188,12 +188,12 @@ Removed endpoints:
 
 Removed MCP tools:
 
-- `enterprise_hub_upload_document`
-- `enterprise_hub_get_document_status`
-- `enterprise_hub_search_documents`
-- `enterprise_hub_get_document`
-- `enterprise_hub_get_document_download_url`
-- `enterprise_hub_archive_document`
+- `smedc_upload_document`
+- `smedc_get_document_status`
+- `smedc_search_documents`
+- `smedc_get_document`
+- `smedc_get_document_download_url`
+- `smedc_archive_document`
 
 Removed local CLI surface:
 
@@ -244,8 +244,8 @@ Done criteria:
 
 Scope:
 
-- update repo-local `skills/enterprise-hub-mcp/SKILL.md`;
-- sync standalone `enterprise-hub-mcp-skill` repository;
+- update repo-local `skills/smedc-mcp/SKILL.md`;
+- sync standalone `smedc-mcp-skill` repository;
 - update README, API contract, test cases, local agent test, env inventory, progress, and handoffs.
 
 Done criteria:
@@ -272,7 +272,7 @@ npm run test:phase3:perf
 Additional cleanup gate:
 
 ```sh
-rg -n "enterprise_hub_(upload_document|get_document_status|search_documents|get_document|get_document_download_url|archive_document)|hub documents|POST /documents|GET /documents|/documents/:id" .
+rg -n "smedc_(upload_document|get_document_status|search_documents|get_document|get_document_download_url|archive_document)|hub documents|POST /documents|GET /documents|/documents/:id" .
 ```
 
 Allowed matches:
@@ -344,17 +344,17 @@ The current staging deployment uses:
 - `https://api.smedatacenter.xyz` for public API liveness through nginx/TLS;
 - private `/readyz` on the server loopback only;
 - Alibaba Cloud ACR Personal Edition registry `crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com`;
-- namespace `enterprise-hub` with private repositories `api`, `worker`, and `qdrant`;
+- namespace `smedc` with private repositories `api`, `worker`, and `qdrant`;
 - immutable API/worker image tags recorded in dated staging readiness and deployment evidence;
 - mirrored Qdrant image tag `v1.15.4`;
-- root-only server runtime env at `/opt/enterprise-hub/runtime.env`.
+- root-only server runtime env at `/opt/smedc/runtime.env`.
 
 The deployed slice is intentionally staging-only and uses fixture documents plus synthetic seed
 data. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be implemented. The
 accepted official employee installation, browser login, and durable session contract is defined in
 `official-user-install-and-login.md`; the implementation and migration are deployed in staging,
 and real macOS Codex acceptance has passed on the retained 0.1.x compatibility path. The pinned and
-recommended launcher `enterprise-hub-mcp-launcher@0.4.0` is published and independently verified by
+recommended launcher `smedc-mcp-launcher@0.5.0` is published and independently verified by
 native macOS/Windows package acceptance; the earlier full headless Linux
 login-to-business-tool loop remains compatibility evidence, and the full user-visible 0.4.0
 acceptance matrix remains open.

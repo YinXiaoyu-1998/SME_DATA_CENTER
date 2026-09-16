@@ -69,7 +69,7 @@ export interface SpawnLoggedChildInput {
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const defaultDatabaseUrl = (mysqlPort: string) =>
-  `mysql://enterprise_hub:enterprise_hub_local_password@127.0.0.1:${mysqlPort}/enterprise_hub`;
+  `mysql://smedc:smedc_local_password@127.0.0.1:${mysqlPort}/smedc`;
 
 export function buildManualTestRuntime(input: BuildManualTestRuntimeInput): ManualTestRuntime {
   const runSegment = input.runId.replace(/[^A-Za-z0-9_]/g, "_");
@@ -86,7 +86,7 @@ export function buildManualTestRuntime(input: BuildManualTestRuntimeInput): Manu
     databaseUrl: input.env["MANUAL_TEST_DATABASE_URL"] ?? defaultDatabaseUrl(mysqlPort),
     apiUrl: input.env["MANUAL_TEST_API_URL"] ?? "http://127.0.0.1:3000",
     qdrantUrl: input.env["MANUAL_TEST_QDRANT_URL"] ?? "http://127.0.0.1:6333",
-    qdrantCollection: `enterprise_hub_evidence_manual_${runSegment}`,
+    qdrantCollection: `smedc_evidence_manual_${runSegment}`,
     llmProvider: providerEnv["LLM_PROVIDER"] ?? "fake",
     rerankProvider: providerEnv["RERANK_PROVIDER"] ?? "fake",
     rerankModel: providerEnv["LLM_MODEL"] ?? "fake-rerank",
@@ -110,8 +110,8 @@ export function assertSafeManualTestTarget(runtime: ManualTestRuntime): void {
   if (databaseUrl.protocol !== "mysql:" || !LOCAL_HOSTS.has(databaseUrl.hostname)) {
     throw new Error("Manual tests refuse to target a non-local MySQL database.");
   }
-  if (databaseUrl.pathname.replace(/^\/+/, "") !== "enterprise_hub") {
-    throw new Error("Manual tests refuse to target a database other than enterprise_hub.");
+  if (databaseUrl.pathname.replace(/^\/+/, "") !== "smedc") {
+    throw new Error("Manual tests refuse to target a database other than smedc.");
   }
   if (!LOCAL_HOSTS.has(qdrantUrl.hostname)) {
     throw new Error("Manual tests refuse to target a non-local Qdrant service.");
@@ -119,7 +119,7 @@ export function assertSafeManualTestTarget(runtime: ManualTestRuntime): void {
   if (!LOCAL_HOSTS.has(apiUrl.hostname)) {
     throw new Error("Manual tests refuse to target a non-local API service.");
   }
-  if (!runtime.qdrantCollection.startsWith("enterprise_hub_evidence_manual_")) {
+  if (!runtime.qdrantCollection.startsWith("smedc_evidence_manual_")) {
     throw new Error("Manual tests require a dedicated manual-test Qdrant collection.");
   }
   if (
@@ -143,8 +143,8 @@ export function manualTestProcessEnv(
     ...runtime.providerEnv,
     MYSQL_PORT: runtime.mysqlPort,
     DATABASE_URL: runtime.databaseUrl,
-    CURSOR_SIGNING_SECRET: "enterprise-hub-manual-test-local-cursor-secret",
-    ENTERPRISE_HUB_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz",
+    CURSOR_SIGNING_SECRET: "smedc-manual-test-local-cursor-secret",
+    SMEDC_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz",
     STORAGE_DRIVER: "local",
     LOCAL_STORAGE_ROOT: runtime.storageRoot,
     HOST: apiUrl.hostname,
@@ -582,7 +582,7 @@ async function waitForMysqlHealth(env: NodeJS.ProcessEnv): Promise<void> {
   await waitForCondition("MySQL health", 90_000, async () => {
     const result = await runCommand(
       "docker",
-      ["inspect", "-f", "{{.State.Health.Status}}", "enterprise-hub-mysql"],
+      ["inspect", "-f", "{{.State.Health.Status}}", "smedc-mysql"],
       env,
       false
     );

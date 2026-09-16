@@ -7,9 +7,9 @@ import {
 
 describe("structured partition identity", () => {
   test("normalizes enterprise display text without changing non-ASCII case", () => {
-    expect(normalizeEnterpriseIdentity("  麦家  小馆  A  ")).toEqual({
-      enterpriseKey: "麦家 小馆 a",
-      enterpriseName: "麦家 小馆 A"
+    expect(normalizeEnterpriseIdentity("  示例  小馆  A  ")).toEqual({
+      enterpriseKey: "示例 小馆 a",
+      enterpriseName: "示例 小馆 A"
     });
   });
 

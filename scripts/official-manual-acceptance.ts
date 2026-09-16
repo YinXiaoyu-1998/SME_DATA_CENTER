@@ -29,7 +29,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.4.0";
+const LAUNCHER_VERSION = "0.5.0";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
 interface ParsedArgs {
@@ -160,14 +160,14 @@ async function runAcceptance(
 ): Promise<Record<string, unknown>> {
   const launcher = launcherPath();
   const client = new Client({
-    name: "enterprise-hub-official-manual-acceptance",
+    name: "smedc-official-manual-acceptance",
     version: "0.1.0"
   });
   const transport = new StdioClientTransport({
     command: launcher,
     args: ["serve"],
     env: {
-      ENTERPRISE_HUB_BASE_URL: SERVICE_ORIGIN,
+      SMEDC_BASE_URL: SERVICE_ORIGIN,
       PATH: process.env["PATH"] ?? ""
     }
   });

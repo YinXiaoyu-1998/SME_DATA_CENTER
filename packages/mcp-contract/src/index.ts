@@ -601,7 +601,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload SMEDC structured dataset",
     description:
-      "Upload the user's original XLSX/CSV. Launcher 0.4.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. A 202 queued response requires polling the matching status tool.",
+      "Upload the user's original XLSX/CSV. Launcher 0.5.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: [
       {
@@ -855,14 +855,9 @@ export function apiErrorToolResult(body: unknown): McpJsonToolResult {
     });
   }
 
-  return errorToolResult(
-    "SMEDC_API_ERROR",
-    "SMEDC API request failed.",
-    undefined,
-    {
-      retryable: true
-    }
-  );
+  return errorToolResult("SMEDC_API_ERROR", "SMEDC API request failed.", undefined, {
+    retryable: true
+  });
 }
 
 export function validationErrorToolResult(details: unknown): McpJsonToolResult {

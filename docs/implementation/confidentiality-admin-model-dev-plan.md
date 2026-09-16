@@ -10,7 +10,7 @@
 
 **Spec:** [ADR 0025](../adr/0025-document-confidentiality-and-admin-operations.md), [project context](../../CONTEXT.md), [API contract](api-contract.md), and the decisions recorded in this plan. The database cutover maps `manager` to `admin`, all existing accounts to clearance 3, and all existing documents to confidentiality level 0; it deletes old label catalog and association data without a compatibility layer.
 
-**Implementation status (2026-09-13):** Tasks 1–6 and the applicable guidance/fixture work in Task 7 are implemented and locally verified in merged PR #157. `enterprise-hub-mcp-launcher@0.3.0` is now publicly published and independently verified; the follow-up recommendation/skill-pin synchronization is in progress. Task 8 staging migration and official staging acceptance remain pending. The unchecked release items below remain the source of truth for those remaining steps.
+**Implementation status (2026-09-13):** Tasks 1–6 and the applicable guidance/fixture work in Task 7 are implemented and locally verified in merged PR #157. `smedc-mcp-launcher@0.3.0` is now publicly published and independently verified; the follow-up recommendation/skill-pin synchronization is in progress. Task 8 staging migration and official staging acceptance remain pending. The unchecked release items below remain the source of truth for those remaining steps.
 
 ## Global Constraints
 
@@ -18,7 +18,7 @@
 - [ ] Permit only `admin` and `employee` roles. Role is functional authorization; it must never silently grant ordinary document-read clearance.
 - [ ] Require an explicit `--role` and `--clearance` when a developer onboards an account. Do not introduce an in-product role or clearance editor. Level values are integers 0 through 3 only.
 - [ ] Make document level immutable after successful upload. Each evidence, structured import, and quarantine-certificate upload accepts optional `confidentialityLevel`; omission means exactly 0. The API, MCP descriptions, and employee skill must say agents may not infer a higher level from a filename, content, sender, or business context.
-- [ ] Remove labels completely: no `LabelType`, label catalog, employee/document label associations, `all_staff`, `store`, `personal`, `person:*`, `labelKeys`, label filters, `/labels`, or `enterprise_hub_list_labels`. Store/person business fields may remain only when they are business data, not authorization inputs.
+- [ ] Remove labels completely: no `LabelType`, label catalog, employee/document label associations, `all_staff`, `store`, `personal`, `person:*`, `labelKeys`, label filters, `/labels`, or `smedc_list_labels`. Store/person business fields may remain only when they are business data, not authorization inputs.
 - [ ] Treat every existing employee-facing `role === "admin"` guard as a named PAO. Do not leave an admin guard that is not declared as a PAO; do not create an implicit global admin bypass.
 - [ ] Keep internal audit persistence and operator/security diagnostics, but remove the employee-facing `GET /audit` API and all client exposure of it.
 - [ ] Do not create reclassification or clearance-edit APIs. DevOps/database remediation is outside this product workflow.
@@ -79,7 +79,7 @@
 - [ ] Remove employee-label joins and personal-label creation from authentication and operator repositories. Load role, disabled state, and clearance with the employee record and preserve session-disabled enforcement.
 - [ ] Change `npm run auth:operator -- onboard` parsing to require exactly `--org-id`, `--email`, `--display-name`, `--role`, and `--clearance`. Accept only `admin|employee` and integer 0–3; reject omitted, duplicated, malformed, and out-of-range values. Remove repeated `--label` entirely.
 - [ ] Persist explicit role and clearance in the onboarding transaction, while retaining identity, password-setup grant, and internal auth-security-event creation. Remove `personalLabelDeleted` from test-account-delete results and cleanup code.
-- [ ] Return `role`, `clearance`, and `disabled` (but no labels) from authenticated HTTP `GET /me`. Extend the self-scoped MCP `enterprise_hub_get_current_user` mapping to return the employee's role and clearance; it remains selector-free and must not expose internal IDs or credentials.
+- [ ] Return `role`, `clearance`, and `disabled` (but no labels) from authenticated HTTP `GET /me`. Extend the self-scoped MCP `smedc_get_current_user` mapping to return the employee's role and clearance; it remains selector-free and must not expose internal IDs or credentials.
 - [ ] Add test coverage for explicit onboarding requirements, legacy `manager` rejection, disabled-account rejection across authenticated routes, and self-only `/me`/MCP current-user output with clearance.
 
 **Verification:** Focused auth, request-auth, system-route, and MCP read-tool tests; manually invoke the parser with one valid and one omitted-clearance command.
@@ -135,13 +135,13 @@
 - Modify: `apps/mcp-launcher/package.json`, launcher contract-alignment tests, packaging tests, and generated package contents as required by the existing build
 - Modify after publication: server recommended-version metadata and both maintained skill pins
 
-- [ ] Remove `enterprise_hub_list_labels` from shared tool names, read-tool routing, schemas, tests, launcher package contract, and user-visible descriptions.
+- [ ] Remove `smedc_list_labels` from shared tool names, read-tool routing, schemas, tests, launcher package contract, and user-visible descriptions.
 - [ ] Remove `labelIds` evidence-search filtering and every required `labelKeys` upload input. Add optional integer `confidentialityLevel` (0–3) to evidence, structured-dataset, and quarantine-certificate MCP upload schemas and multipart mapping. Its description must say omission is level 0 and it is an explicit user-provided classification, never an inferred one.
 - [ ] Update current-user MCP result shape to include `clearance`, update archive wording to call it an admin-only PAO, and make no MCP ordinary-read tool claim an admin clearance bypass.
-- [x] Bumped `enterprise-hub-mcp-launcher` from `0.2.8` to 0.3.0 because tool names and input schemas are removed/changed. Launcher alignment and `npm pack` tests changed in PR #157.
-- [x] After PR #157 merged, published the exact 0.3.0 launcher, independently installed/checked the public tarball, then updated server recommended-version metadata and both the repo-local and standalone `enterprise-hub-mcp` skill pins. No component advertises an unpublished version.
+- [x] Bumped `smedc-mcp-launcher` from `0.2.8` to 0.3.0 because tool names and input schemas are removed/changed. Launcher alignment and `npm pack` tests changed in PR #157.
+- [x] After PR #157 merged, published the exact 0.3.0 launcher, independently installed/checked the public tarball, then updated server recommended-version metadata and both the repo-local and standalone `smedc-mcp` skill pins. No component advertises an unpublished version.
 
-**Verification:** Run shared contract tests, API MCP delegation/HTTP tests, launcher build, launcher package tests, and `npm --workspace enterprise-hub-mcp-launcher run pack:check`; verify the published package separately before pin changes.
+**Verification:** Run shared contract tests, API MCP delegation/HTTP tests, launcher build, launcher package tests, and `npm --workspace smedc-mcp-launcher run pack:check`; verify the published package separately before pin changes.
 
 **Commit:** `feat(mcp): replace label inputs with confidentiality levels`
 
@@ -149,7 +149,7 @@
 
 **Files:**
 
-- Modify: `skills/enterprise-hub-mcp/SKILL.md` and the matching standalone `YinXiaoyu-1998/enterprise-hub-mcp-skill` checkout on its own branch
+- Modify: `skills/smedc-mcp/SKILL.md` and the matching standalone `YinXiaoyu-1998/smedc-mcp-skill` checkout on its own branch
 - Modify: `README.md`, `README.zh.md`, `docs/implementation/api-contract.md`, `docs/implementation/implementation-plan.md`, `docs/implementation/official-user-install-and-login.md`, `docs/implementation/beta-user-onboarding-runbook.md`, `docs/implementation/phase-3-retrieval-docs.md`, `docs/implementation/staging-deploy-runbook.md`, `docs/implementation/staging-readiness.md`
 - Modify: `scripts/test-integration.ts`, `scripts/golden-retrieval-eval.ts`, `scripts/phase3-performance-gates.ts`, `scripts/official-manual-acceptance.ts`, `scripts/manual-test-fixtures.test.ts`, and related staging smoke/cleanup tests that construct label-bearing requests
 - Modify: `apps/api/src/app-context.test.ts`, `apps/api/src/server.test.ts`, and any fixtures found by the final label/manager scan

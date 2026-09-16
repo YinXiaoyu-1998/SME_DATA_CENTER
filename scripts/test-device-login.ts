@@ -45,10 +45,7 @@ try {
   assert(body.openedBrowser === canOpenBrowser(), "Link delivery must match browser availability.");
   assert(body.serviceUrl === baseUrl, "Login result must carry the service URL.");
 
-  const statusResult = await createLauncherToolHandler(
-    "smedc_auth_status",
-    dependencies
-  )({});
+  const statusResult = await createLauncherToolHandler("smedc_auth_status", dependencies)({});
   const status = JSON.parse(statusResult.content[0]?.text ?? "null") as {
     authenticated: boolean;
   };

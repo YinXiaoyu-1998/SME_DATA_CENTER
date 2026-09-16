@@ -1,42 +1,42 @@
 ---
-name: enterprise-hub-mcp
+name: smedc-mcp
 description: >-
-  上传和查询企业数据中枢（Enterprise Hub）中的文件与资料：当员工要求把文件/文档/表格上传到
+  上传和查询企业数据中枢（SMEDC）中的文件与资料：当员工要求把文件/文档/表格上传到
   企业数据中枢、企业资料中枢、企业知识库或企业数据库，或想基于已上传的企业资料提问业务问题时使用。
-  用户要求更新 enterprise-hub-mcp 或 enterprise-hub-mcp-skill 这个 skill 时也使用本技能。
-  用户询问 Enterprise Hub 的配套分析、报表或扩展 skill 时也使用本技能。
-  Also use when users ask about optional Enterprise Hub analysis, reporting, or extension skills.
+  用户要求更新 smedc-mcp 或 smedc-mcp-skill 这个 skill 时也使用本技能。
+  用户询问 SMEDC 的配套分析、报表或扩展 skill 时也使用本技能。
+  Also use when users ask about optional SMEDC analysis, reporting, or extension skills.
   Also covers updating this skill from its official GitHub source and installing, configuring,
-  and authenticating the official Enterprise Hub remote MCP
-  launcher (api.smedatacenter.xyz); accesses Enterprise Hub through the launcher only and never exposes employee
+  and authenticating the official SMEDC remote MCP
+  launcher (api.smedatacenter.xyz); accesses SMEDC through the launcher only and never exposes employee
   credentials or service infrastructure.
 metadata:
-  source-repository: https://github.com/YinXiaoyu-1998/enterprise-hub-mcp-skill
-  source-path: skills/enterprise-hub-mcp
+  source-repository: https://github.com/YinXiaoyu-1998/smedc-mcp-skill
+  source-path: skills/smedc-mcp
 ---
 
-# Enterprise Hub MCP
+# SMEDC MCP
 
-Use Enterprise Hub only through its official remote MCP launcher. This skill is the
+Use SMEDC only through its official remote MCP launcher. This skill is the
 current-user installation and recovery runbook for an employee-owned agent; it is not a
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `enterprise-hub-mcp-launcher@0.4.0`. Do not substitute another
+the exact npm package `smedc-mcp-launcher@0.5.0`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself. This pin governs launcher installation, not fetching a newer official
 copy of this skill; after a skill refresh, read the newly verified copy for its current pin.
 
 ## Update This Skill
 
-The canonical skill name is `enterprise-hub-mcp`; `enterprise-hub-mcp-skill` is its repository
-name and a recognized user-facing alias. “帮我更新 enterprise-hub-mcp-skill 这个 skill” means
+The canonical skill name is `smedc-mcp`; `smedc-mcp-skill` is its repository
+name and a recognized user-facing alias. “帮我更新 smedc-mcp-skill 这个 skill” means
 refresh this skill's files from its official source. The request authorizes that local update;
 do not ask which kind of update the employee means when they explicitly name the skill.
 
-Official source: [YinXiaoyu-1998/enterprise-hub-mcp-skill](https://github.com/YinXiaoyu-1998/enterprise-hub-mcp-skill),
-directory `skills/enterprise-hub-mcp/`, latest commit on the repository's default branch
-(currently `main`). A marketplace listing, Enterprise Hub login, MCP connection, and an approved
+Official source: [YinXiaoyu-1998/smedc-mcp-skill](https://github.com/YinXiaoyu-1998/smedc-mcp-skill),
+directory `skills/smedc-mcp/`, latest commit on the repository's default branch
+(currently `main`). A marketplace listing, SMEDC login, MCP connection, and an approved
 new launcher pin in the old installed skill are not prerequisites for refreshing the skill.
 Use ordinary Git/HTTPS and local file tools for this maintenance task.
 
@@ -48,15 +48,20 @@ newly verified exact pin. Never derive a new approved pin from server metadata a
 
 ## Optional Companion Skills
 
-Companion skills are independently maintained workflows that use Enterprise Hub MCP data. They
-are not bundled with this core skill and are not required for ordinary Enterprise Hub work. This
+Companion skills are independently maintained workflows that use SMEDC MCP data. They
+are not bundled with this core skill and are not required for ordinary SMEDC work. This
 skill continues to own launcher installation, authentication, uploads, and authorization-safe data
 access; a companion owns its business-specific analysis and deliverables.
 
-- [`maijia-business-analyses-smedc`](https://github.com/YinXiaoyu-1998/maijia-business-analyses-smedc)
-  generates Maijia operating diagnoses, weekly reports, and monthly reports. When the employee
-  asks for one of those deliverables and the companion is installed, use it together with this
-  skill instead of creating the report here.
+- [`smedc-business-analysis`](https://github.com/YinXiaoyu-1998/smedc-companion-skills)
+  generates organization-backed operating diagnoses, weekly reports, and monthly reports. When the
+  employee asks for one of those deliverables and the companion is installed, use it together with
+  this skill instead of creating the report here.
+- [`smedc-delivery-ledger`](https://github.com/YinXiaoyu-1998/smedc-companion-skills)
+  renders the standard delivery-ledger table, exports the approved CSV, and guides receipt-linked
+  quarantine-certificate photo operations. When the employee asks for those ledger deliverables and
+  the companion is installed, use it together with this skill instead of recreating ledger-specific
+  presentation logic here.
 - If the matching companion is not installed, explain that it is optional, identify its official
   source, and offer to install it. Install it only when the employee explicitly authorizes its
   installation or has already requested that named companion or all recommended companions.
@@ -69,11 +74,11 @@ this base skill. Keep the core boundary below and route only the matching employ
 
 ## Hard Boundaries
 
-- The employee enters an account password only in the Enterprise Hub browser page. Never ask
+- The employee enters an account password only in the SMEDC browser page. Never ask
   for, accept, read, store, paste, or transmit an email/password, access token, durable
   credential, authorization code, raw `Authorization` header, or credential-store record.
-- For Enterprise Hub service access, use only launcher configuration and tools. Do not call
-  Enterprise Hub API endpoints directly and do not operate its API, database, Qdrant, storage,
+- For SMEDC service access, use only launcher configuration and tools. Do not call
+  SMEDC API endpoints directly and do not operate its API, database, Qdrant, storage,
   Docker, worker, cloud resources, or deployment.
 - Do not create reports, dashboards, or final business conclusions. Return only tool-visible
   records, statuses, and evidence within the employee's backend-authorized scope.
@@ -86,7 +91,7 @@ this base skill. Keep the core boundary below and route only the matching employ
 ## Tool Discovery
 
 The launcher is a standard stdio MCP server. When the invoking host is configured correctly,
-its Enterprise Hub tools appear in the host's native MCP tool list; the agent does not need to
+its SMEDC tools appear in the host's native MCP tool list; the agent does not need to
 discover them by hand.
 
 - Never hand-craft JSON-RPC (`initialize`, `ping`, `tools/list`, `tools/call`) against the
@@ -111,9 +116,9 @@ discover them by hand.
   headers, duplicate receipt metadata into item rows, or generate a replacement CSV/XLSX to make a
   file match registry fields unless the employee explicitly asks for a separate local conversion
   task.
-- If Enterprise Hub tools are not visible: run the pinned launcher's credential-free self-check
+- If SMEDC tools are not visible: run the pinned launcher's credential-free self-check
   (see Official Install Or Update), verify the invoking agent's MCP entry (`codex mcp list` /
-  `codex mcp get enterprise-hub` or the host equivalent), reload or restart the host, then
+  `codex mcp get smedc` or the host equivalent), reload or restart the host, then
   recheck its tool list. Only if the entry is missing or the self-check fails, follow the focused
   recovery below. Do not debug the launcher protocol or service internals.
 - If a self-check reports `recommendedUpdateAvailable: true` (the server recommends a launcher
@@ -297,7 +302,7 @@ looks like a certificate.
 
 ## Official Install Or Update
 
-An employee may ask in natural language to install, update, or repair Enterprise Hub. The
+An employee may ask in natural language to install, update, or repair SMEDC. The
 employee does not need to run these commands personally. Agents should also offer an update when
 a self-check reports `recommendedUpdateAvailable: true` (see Tool Discovery). Work only for the
 current OS user and only on the invoking agent's configuration.
@@ -308,16 +313,16 @@ current OS user and only on the invoking agent's configuration.
    current user before continuing; do not use administrator privileges or alter unrelated tools.
 2. Use the fixed platform directory:
 
-   | Platform | Launcher directory                                                      |
-   | -------- | ----------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/` |
-   | Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.4.0\\`           |
+   | Platform | Launcher directory                                             |
+   | -------- | -------------------------------------------------------------- |
+   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.0/` |
+   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.0\\`           |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact enterprise-hub-mcp-launcher@0.4.0
+   npm install --prefix "<launcher-directory>" --save-exact smedc-mcp-launcher@0.5.0
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -328,13 +333,13 @@ current OS user and only on the invoking agent's configuration.
    configuration healthy:
 
    ```sh
-   ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+   SMEDC_BASE_URL=https://api.smedatacenter.xyz \
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
    ```powershell
-   $env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.4.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" self-check
+   $env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
+   & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.0\node_modules\.bin\smedc-mcp-launcher.cmd" self-check
    ```
 
    The stable self-check contract is safe machine-readable JSON with this shape:
@@ -342,7 +347,7 @@ current OS user and only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.4.0",
+     "launcherVersion": "0.5.0",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -366,13 +371,13 @@ current OS user and only on the invoking agent's configuration.
    browser login and never returns credential contents. If it reports a typed failure, follow the
    focused recovery below; do not inspect secure storage or repair the remote service.
 
-Use this exact stdio launch tuple after installation. `ENTERPRISE_HUB_BASE_URL` is the only
+Use this exact stdio launch tuple after installation. `SMEDC_BASE_URL` is the only
 launcher environment variable; do not add another environment value or any credential.
 
-| Platform | Command                                                                                                              | Arguments | Environment                                             |
-| -------- | -------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher` | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\Enterprise Hub\\launcher\\versions\\0.4.0\\node_modules\\.bin\\enterprise-hub-mcp-launcher.cmd`     | `serve`   | `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz` |
+| Platform | Command                                                                                            | Arguments | Environment                                    |
+| -------- | -------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------- |
+| macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher` | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.0\\node_modules\\.bin\\smedc-mcp-launcher.cmd`     | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -381,12 +386,12 @@ setting.
 ## Device-Code Login Flow
 
 Starting with launcher 0.2.2, every login uses the OAuth Device Authorization Grant: the launcher
-obtains a first-party Enterprise Hub verification link, opens it automatically when a system
+obtains a first-party SMEDC verification link, opens it automatically when a system
 browser is available (desktop agents), or returns it for the agent to surface through the employee
 channel (phone-remote-controlled and headless agents). The employee confirms the agent instance
 name shown on the page, enters email/password, and the launcher completes sign-in by polling.
 
-- The employee's only credential input remains email/password on the Enterprise Hub page; never
+- The employee's only credential input remains email/password on the SMEDC page; never
   ask for, read, or relay verification codes or tokens.
 - On macOS/Windows the launcher keeps the durable session in Keychain/Credential Manager exactly as
   before.
@@ -395,15 +400,15 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link.
 - If a business tool reports `authentication_pending`, tell the employee to complete the sign-in
   link and retry the original request once; if it reports `authentication_required`, run
-  `enterprise_hub_login` to obtain a new link.
+  `smedc_login` to obtain a new link.
 
-This flow is available in launcher 0.2.2 and later; this document pins launcher 0.4.0.
+This flow is available in launcher 0.2.2 and later; this document pins launcher 0.5.0.
 
 ## Configure The Invoking Agent
 
 Always inspect the existing configuration first, create a timestamped backup before modifying it,
-then make the smallest idempotent change: one `enterprise-hub` stdio MCP entry. Preserve every
-unrelated server and setting. Do not configure a direct HTTP/OAuth Enterprise Hub server because
+then make the smallest idempotent change: one `smedc` stdio MCP entry. Preserve every
+unrelated server and setting. Do not configure a direct HTTP/OAuth SMEDC server because
 the local launcher owns browser login and credential storage.
 
 ### Codex
@@ -413,7 +418,7 @@ use the bundled `/Applications/ChatGPT.app/Contents/Resources/codex` fallback. O
 `codex.exe` from `PATH`. Stop if neither verified binary exists.
 
 Before the first mutation, inspect with `codex mcp list --json` and
-`codex mcp get enterprise-hub --json`. Back up `~/.codex/config.toml` (Windows:
+`codex mcp get smedc --json`. Back up `~/.codex/config.toml` (Windows:
 `%USERPROFILE%\.codex\config.toml`) to a timestamped sibling file when it exists. If the existing
 entry already matches the exact command, `serve` argument, and sole BASE_URL environment value, do
 nothing.
@@ -428,10 +433,10 @@ fi
 test -n "$CODEX_BIN"
 CODEX_CONFIG="$HOME/.codex/config.toml"
 if [ -f "$CODEX_CONFIG" ]; then
-  cp -p "$CODEX_CONFIG" "$CODEX_CONFIG.enterprise-hub.bak.$(date +%Y%m%d%H%M%S)"
+  cp -p "$CODEX_CONFIG" "$CODEX_CONFIG.smedc.bak.$(date +%Y%m%d%H%M%S)"
 fi
 "$CODEX_BIN" mcp list --json
-"$CODEX_BIN" mcp get enterprise-hub --json
+"$CODEX_BIN" mcp get smedc --json
 ```
 
 If `get` reports the entry absent, add it. If it is present and exact, stop without mutation. Only
@@ -440,13 +445,13 @@ command:
 
 ```sh
 # Mismatched entry only:
-"$CODEX_BIN" mcp remove enterprise-hub
+"$CODEX_BIN" mcp remove smedc
 # Missing or just-removed entry:
 "$CODEX_BIN" mcp add \
-  --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  enterprise-hub -- \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" serve
-"$CODEX_BIN" mcp get enterprise-hub --json
+  --env SMEDC_BASE_URL=https://api.smedatacenter.xyz \
+  smedc -- \
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" serve
+"$CODEX_BIN" mcp get smedc --json
 ```
 
 For Windows PowerShell, use the same `list`/`get`/`remove`/`add` sequence:
@@ -455,11 +460,11 @@ For Windows PowerShell, use the same `list`/`get`/`remove`/`add` sequence:
 $CodexBin = (Get-Command codex.exe -ErrorAction Stop).Source
 $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
-  Copy-Item $CodexConfig "$CodexConfig.enterprise-hub.bak.$(Get-Date -Format yyyyMMddHHmmss)"
+  Copy-Item $CodexConfig "$CodexConfig.smedc.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.4.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.0\node_modules\.bin\smedc-mcp-launcher.cmd"
 & $CodexBin mcp list --json
-& $CodexBin mcp get enterprise-hub --json
+& $CodexBin mcp get smedc --json
 ```
 
 If `get` reports the entry absent, add it. If it is present and exact, stop without mutation. Only
@@ -467,80 +472,80 @@ for a present mismatched entry, run:
 
 ```powershell
 # Mismatched entry only:
-& $CodexBin mcp remove enterprise-hub
+& $CodexBin mcp remove smedc
 # Missing or just-removed entry:
-& $CodexBin mcp add --env "ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz" enterprise-hub -- $LauncherBin serve
-& $CodexBin mcp get enterprise-hub --json
+& $CodexBin mcp add --env "SMEDC_BASE_URL=https://api.smedatacenter.xyz" smedc -- $LauncherBin serve
+& $CodexBin mcp get smedc --json
 ```
 
 After add/repair, run the platform self-check above, restart/reload Codex, run
-`codex mcp list --json` and `codex mcp get enterprise-hub --json`, and confirm the discovered tools.
+`codex mcp list --json` and `codex mcp get smedc --json`, and confirm the discovered tools.
 If add fails after removal, restore the timestamped backup and report the focused failure. For
-per-agent removal, back up first, run `codex mcp remove enterprise-hub`, then verify
-`codex mcp list --json` no longer contains it and `codex mcp get enterprise-hub --json` reports it
+per-agent removal, back up first, run `codex mcp remove smedc`, then verify
+`codex mcp list --json` no longer contains it and `codex mcp get smedc --json` reports it
 absent.
 
 ### OpenClaw
 
 Use OpenClaw's MCP CLI registry for a **stdio** launcher; do not use OpenClaw's direct remote
-OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for Enterprise Hub.
+OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
 
 1. Inspect first: `openclaw mcp status --verbose` and, when present,
-   `openclaw mcp show enterprise-hub --json`.
+   `openclaw mcp show smedc --json`.
 2. Back up the OpenClaw configuration using its supported current-user mechanism.
 3. Add the entry with the platform-specific launcher path from the table, its single `serve`
    argument, and the sole URL-only environment value. On macOS, the verified OpenClaw CLI form is:
 
    ```sh
-   openclaw mcp add enterprise-hub \
-     --command "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" \
+   openclaw mcp add smedc \
+     --command "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" \
      --arg serve \
-     --env ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz
+     --env SMEDC_BASE_URL=https://api.smedatacenter.xyz
    ```
 
-   If the entry already exists, use `openclaw mcp set enterprise-hub '<one stdio JSON object>'`
-   with exactly `command`, `args: ["serve"]`, and the one `ENTERPRISE_HUB_BASE_URL` environment
+   If the entry already exists, use `openclaw mcp set smedc '<one stdio JSON object>'`
+   with exactly `command`, `args: ["serve"]`, and the one `SMEDC_BASE_URL` environment
    value. Do not add an HTTP URL or `auth: oauth` configuration.
 
-4. Verify with `openclaw mcp doctor enterprise-hub --probe`. Reload or restart the owning
+4. Verify with `openclaw mcp doctor smedc --probe`. Reload or restart the owning
    OpenClaw runtime when required by its current setup.
 
 `openclaw mcp add/set/doctor --probe` are the supported configuration/proof path. The launcher,
-not OpenClaw's OAuth store, opens the browser and manages the Enterprise Hub secure session.
+not OpenClaw's OAuth store, opens the browser and manages the SMEDC secure session.
 
 ### Other Agents
 
 Use guarded adaptive discovery. Inspect the installed client's help, current configuration, and
 MCP capabilities to confirm that it can start a local stdio server. Back up its configuration,
-add only the pinned Enterprise Hub launcher entry, validate its handshake, and preserve every
+add only the pinned SMEDC launcher entry, validate its handshake, and preserve every
 unrelated server. If its supported configuration mechanism is not clear, report the narrow blocker
 instead of editing guessed files or configuring direct remote OAuth.
 
 ## Browser Login And Normal Use
 
-Call `enterprise_hub_auth_status` before beginning work when the authentication state is unknown.
-If it reports `authentication_required`, call `enterprise_hub_login`. The launcher opens the
+Call `smedc_auth_status` before beginning work when the authentication state is unknown.
+If it reports `authentication_required`, call `smedc_login`. The launcher opens the
 system browser; ask the employee to finish login there and never request any credential in chat.
 The launcher returns only a safe outcome.
 
 After successful login, retry the employee's original business tool call exactly once. Do not
 retry repeatedly after browser cancellation or an unsuccessful login. Use
-`enterprise_hub_logout` only when the employee asks to sign out. It clears the shared local
-session for Enterprise Hub under the current OS user, so all locally configured agents on that
+`smedc_logout` only when the employee asks to sign out. It clears the shared local
+session for SMEDC under the current OS user, so all locally configured agents on that
 OS user are signed out.
 
-When the employee asks which Enterprise Hub account is currently active, call the zero-input
-`enterprise_hub_get_current_user` tool. Return its `displayName`, `email`, `role`, and `clearance`; do not infer
-identity from launcher configuration or `enterprise_hub_auth_status`, and do not ask for an account
+When the employee asks which SMEDC account is currently active, call the zero-input
+`smedc_get_current_user` tool. Return its `displayName`, `email`, `role`, and `clearance`; do not infer
+identity from launcher configuration or `smedc_auth_status`, and do not ask for an account
 selector. The tool is self-scoped to the bearer-authenticated employee and never returns internal
 IDs or credentials. Follow the normal authentication recovery above if login is required.
 
-## Enterprise Hub Data Questions
+## SMEDC Data Questions
 
-When the employee asks about资料、SOP、上传过的文件、公司数据、Enterprise Hub 里的表格, or what was
-“刚上传/刚传进去/这份表”, answer through Enterprise Hub MCP tools. Do not answer those questions by
+When the employee asks about资料、SOP、上传过的文件、公司数据、SMEDC 里的表格, or what was
+“刚上传/刚传进去/这份表”, answer through SMEDC MCP tools. Do not answer those questions by
 reading a local attachment, local CSV/XLSX, previous chat text, cache, or filesystem copy unless
-the employee explicitly asks you to inspect a local file outside Enterprise Hub.
+the employee explicitly asks you to inspect a local file outside SMEDC.
 
 Local files are upload inputs only. After uploading a file, keep the returned service metadata
 needed for follow-up questions: document id, import batch id, dataset id, declared confidentiality
@@ -572,7 +577,7 @@ For structured-table questions:
 - Select `source_document_id` on detail-row queries when the employee needs the original uploaded
   file behind a structured row, then pass it to `get_source_document_download_url`. This field is
   not returned by default and is not for filters, sorting, grouping, or aggregates.
-- Call `describe_structured_dataset_coverage` before answering whether Enterprise Hub has enough
+- Call `describe_structured_dataset_coverage` before answering whether SMEDC has enough
   readable applied data for a dataset, time window, snapshot, or source-file scope. Coverage shares
   structured-query authorization and returns readable source windows or snapshots; decide and state
   any sufficiency assumptions yourself.
@@ -582,7 +587,7 @@ For structured-table questions:
 - For `dish_catalog`, scope queries with the discovery-reported `snapshot_date` field. Do not
   infer latest/current catalog state, diffs, or row status across snapshots.
 - If the employee asks about a local spreadsheet before it has been uploaded, offer to upload it
-  first. Do not compute final Enterprise Hub answers directly from the local spreadsheet unless the
+  first. Do not compute final SMEDC answers directly from the local spreadsheet unless the
   employee explicitly says they want a local-file-only inspection.
 - If a query result contains historical rows outside the intended upload/window, narrow the query
   or ask for clarification before presenting totals as “这份表”的 totals.
@@ -610,7 +615,7 @@ For authorized service tools:
 - Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged
   with the same query, filters, and limit. Restart without it on `INVALID_CURSOR`; on
   `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more results.
-- `enterprise_hub_list_skills` exposes approved directory metadata only; do not execute an entry.
+- `smedc_list_skills` exposes approved directory metadata only; do not execute an entry.
 
 ## Local File Read Errors
 
@@ -640,7 +645,7 @@ limit, or operator help.
 
 | Condition                                     | Required response                                                                                                                            |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `authentication_required`                     | Call `enterprise_hub_login`, wait for browser completion, then retry the original business operation once.                                   |
+| `authentication_required`                     | Call `smedc_login`, wait for browser completion, then retry the original business operation once.                                            |
 | Browser cancelled, timed out, or login failed | Report the safe outcome. Do not reopen the browser automatically or retry the business operation.                                            |
 | `service_unavailable`                         | Report that the official service cannot be reached. Do not start, repair, or diagnose service infrastructure.                                |
 | `forbidden` or not-found                      | Treat the resource as unavailable to this employee; do not infer hidden data.                                                                |
@@ -650,20 +655,20 @@ limit, or operator help.
 ## Removal And Complete Uninstall
 
 For **per-agent removal**, back up that agent's configuration and delete only its
-`enterprise-hub` MCP entry. Leave the launcher package, secure-store session, and other agent
+`smedc` MCP entry. Leave the launcher package, secure-store session, and other agent
 configurations intact.
 
-For **shared logout**, use `enterprise_hub_logout` while the MCP connection is available, or invoke
+For **shared logout**, use `smedc_logout` while the MCP connection is available, or invoke
 the pinned launcher directly:
 
 ```sh
-ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" logout
+SMEDC_BASE_URL=https://api.smedatacenter.xyz \
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" logout
 ```
 
 ```powershell
-$env:ENTERPRISE_HUB_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\Enterprise Hub\launcher\versions\0.4.0\node_modules\.bin\enterprise-hub-mcp-launcher.cmd" logout
+$env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
+& "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.0\node_modules\.bin\smedc-mcp-launcher.cmd" logout
 ```
 
 The stable logout contract returns only
@@ -674,8 +679,8 @@ credential contents. If the service is unreachable, report that remote revocatio
 confirmed.
 
 For **complete uninstall**, with explicit employee authorization: perform shared logout; remove
-Enterprise Hub entries only from safely discoverable local agents; remove the current-user pinned
-launcher directory and its non-secret Enterprise Hub state; retain backups until the employee
+SMEDC entries only from safely discoverable local agents; remove the current-user pinned
+launcher directory and its non-secret SMEDC state; retain backups until the employee
 confirms success. Never remove Node.js/npm, the Employee Account, server-side business data, or
 unrelated MCP entries.
 

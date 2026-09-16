@@ -31,7 +31,7 @@ describe("exportStructuredPartitions", () => {
     const result = await exportStructuredPartitions({
       dataset: "dishes",
       sourcePath: path.resolve(
-        "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+        "fixtures/structured/synthetic_dishes_20260706_20260712_first1000.xlsx"
       ),
       outputDirectory: path.join(root, "output"),
       limits: { ...limits, maxRows: 2_000 },
@@ -66,7 +66,7 @@ describe("exportStructuredPartitions", () => {
       const result = await exportStructuredPartitions({
         dataset: "dishes",
         sourcePath: path.resolve(
-          "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+          "fixtures/structured/synthetic_dishes_20260706_20260712_first1000.xlsx"
         ),
         outputDirectory: path.join(root, "output"),
         limits: { ...limits, maxRows: 2_000, maxPartitions: 100 }
@@ -86,7 +86,7 @@ describe("exportStructuredPartitions", () => {
       const root = await temporaryRoot();
       const sourcePath = path.join(root, "forged-size.xlsx");
       const fixture = await readFile(
-        path.resolve("fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx")
+        path.resolve("fixtures/structured/synthetic_dishes_20260706_20260712_first1000.xlsx")
       );
       await writeFile(
         sourcePath,
@@ -123,7 +123,7 @@ describe("exportStructuredPartitions", () => {
     const result = await exportStructuredPartitions({
       dataset: "dishes",
       sourcePath: path.resolve(
-        "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+        "fixtures/structured/synthetic_dishes_20260706_20260712_first1000.xlsx"
       ),
       outputDirectory: path.join(root, "output"),
       limits,
@@ -147,7 +147,7 @@ describe("exportStructuredPartitions", () => {
       exportStructuredPartitions({
         dataset: "dishes",
         sourcePath: path.resolve(
-          "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+          "fixtures/structured/synthetic_dishes_20260706_20260712_first1000.xlsx"
         ),
         outputDirectory,
         limits,
@@ -166,7 +166,7 @@ describe("exportStructuredPartitions", () => {
       exportStructuredPartitions({
         dataset: "dishes",
         sourcePath: path.resolve(
-          "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+          "fixtures/structured/synthetic_dishes_20260706_20260712_first1000.xlsx"
         ),
         outputDirectory: path.join(root, "output"),
         limits,
@@ -323,7 +323,7 @@ describe("exportStructuredPartitions", () => {
 });
 
 async function temporaryRoot(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), "enterprise-hub-partitions-"));
+  const root = await mkdtemp(path.join(tmpdir(), "smedc-partitions-"));
   roots.push(root);
   return root;
 }

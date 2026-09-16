@@ -14,7 +14,7 @@ describe("profilePartitionSource", () => {
     const result = await profilePartitionSource({
       dataset: "dishes",
       sourcePath: path.resolve(
-        "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+        "fixtures/structured/synthetic_dishes_20260706_20260712_first1000.xlsx"
       ),
       xlsxReaderCommand: fixtureReaderCommand
     });

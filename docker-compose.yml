@@ -1,12 +1,12 @@
 services:
   mysql:
     image: mysql:8.4
-    container_name: enterprise-hub-mysql
+    container_name: smedc-mysql
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-enterprise_hub}
-      MYSQL_USER: ${MYSQL_USER:-enterprise_hub}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-enterprise_hub_local_password}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-enterprise_hub_local_root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-smedc}
+      MYSQL_USER: ${MYSQL_USER:-smedc}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-smedc_local_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-smedc_local_root_password}
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
@@ -21,7 +21,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.15.4
-    container_name: enterprise-hub-qdrant
+    container_name: smedc-qdrant
     ports:
       - "${QDRANT_HTTP_PORT:-6333}:6333"
       - "${QDRANT_GRPC_PORT:-6334}:6334"

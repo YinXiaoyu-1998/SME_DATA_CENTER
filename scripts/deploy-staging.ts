@@ -7,13 +7,13 @@ import { fileURLToPath } from "node:url";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
 const DEFAULT_REGISTRY = "crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com";
-const DEFAULT_NAMESPACE = "enterprise-hub";
+const DEFAULT_NAMESPACE = "smedc";
 const DEFAULT_ACR_USERNAME = "nick2373262573";
 const DEFAULT_STAGING_HOST = "39.96.66.185";
 const DEFAULT_PUBLIC_URL = "https://api.smedatacenter.xyz";
-const DEFAULT_ACR_KEYCHAIN_SERVICE = "com.sme_data_center.acr.personal.enterprise-hub";
+const DEFAULT_ACR_KEYCHAIN_SERVICE = "com.sme_data_center.acr.personal.smedc";
 const DEFAULT_CURSOR_KEYCHAIN_SERVICE = "com.sme_data_center.cursor.staging";
-const DEFAULT_CURSOR_KEYCHAIN_ACCOUNT = "enterprise-hub-staging";
+const DEFAULT_CURSOR_KEYCHAIN_ACCOUNT = "smedc-staging";
 const BASH_DOLLAR = "$";
 
 export interface DeployOptions {
@@ -56,17 +56,17 @@ interface RunOptions {
 const REMOTE_ROLLOUT_SCRIPT = String.raw`
 set -Eeuo pipefail
 
-runtime_file=/opt/enterprise-hub/runtime.env
-compose_file=/opt/enterprise-hub/docker-compose.yml
-compose_next=/opt/enterprise-hub/docker-compose.yml.next
-previous_file=/opt/enterprise-hub/previous-release.env
-previous_compose=/opt/enterprise-hub/previous-docker-compose.yml
+runtime_file=/opt/smedc/runtime.env
+compose_file=/opt/smedc/docker-compose.yml
+compose_next=/opt/smedc/docker-compose.yml.next
+previous_file=/opt/smedc/previous-release.env
+previous_compose=/opt/smedc/previous-docker-compose.yml
 api_image="$1"
 worker_image="$2"
 release_ops_image="$3"
 run_migrate="$4"
 
-exec 9>/opt/enterprise-hub/deploy.lock
+exec 9>/opt/smedc/deploy.lock
 if ! flock -n 9; then
   echo "Another staging deployment is already running." >&2
   exit 75
@@ -75,7 +75,7 @@ fi
 test -f "$runtime_file"
 test -f "$compose_next"
 umask 077
-install -d -o 1000 -g 1000 -m 0750 /opt/enterprise-hub/partition-work
+install -d -o 1000 -g 1000 -m 0750 /opt/smedc/partition-work
 
 compose() {
   docker compose --env-file "$runtime_file" -f "$compose_file" "$@"
@@ -88,13 +88,13 @@ update_images() {
   local temp_file
   temp_file="$(mktemp "${BASH_DOLLAR}{runtime_file}.XXXXXX")"
   awk '
-    !/^ENTERPRISE_HUB_API_IMAGE=/ &&
-    !/^ENTERPRISE_HUB_WORKER_IMAGE=/ &&
-    !/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=/
+    !/^SMEDC_API_IMAGE=/ &&
+    !/^SMEDC_WORKER_IMAGE=/ &&
+    !/^SMEDC_RELEASE_OPS_IMAGE=/
   ' "$runtime_file" > "$temp_file"
-  printf 'ENTERPRISE_HUB_API_IMAGE=%s\n' "$next_api" >> "$temp_file"
-  printf 'ENTERPRISE_HUB_WORKER_IMAGE=%s\n' "$next_worker" >> "$temp_file"
-  printf 'ENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\n' "$next_release_ops" >> "$temp_file"
+  printf 'SMEDC_API_IMAGE=%s\n' "$next_api" >> "$temp_file"
+  printf 'SMEDC_WORKER_IMAGE=%s\n' "$next_worker" >> "$temp_file"
+  printf 'SMEDC_RELEASE_OPS_IMAGE=%s\n' "$next_release_ops" >> "$temp_file"
   install -o root -g root -m 0600 "$temp_file" "$runtime_file"
   rm -f "$temp_file"
 }
@@ -119,9 +119,9 @@ rollback_on_error() {
   trap - EXIT
   if [ "$status" -ne 0 ] && [ "$rollback_armed" -eq 1 ] && [ -f "$previous_file" ]; then
     set +e
-    previous_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$previous_file" | tail -n 1)"
-    previous_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
-    previous_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
+    previous_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$previous_file" | tail -n 1)"
+    previous_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
+    previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
     if [ -n "$previous_api" ] && [ -n "$previous_worker" ] && [ -n "$previous_release_ops" ]; then
       echo "Rollout failed; restoring the previous API and worker images." >&2
       if [ -f "$previous_compose" ]; then
@@ -138,21 +138,21 @@ rollback_on_error() {
 }
 trap rollback_on_error EXIT
 
-ENTERPRISE_HUB_API_IMAGE="$api_image" \
-ENTERPRISE_HUB_WORKER_IMAGE="$worker_image" \
-ENTERPRISE_HUB_RELEASE_OPS_IMAGE="$release_ops_image" \
+SMEDC_API_IMAGE="$api_image" \
+SMEDC_WORKER_IMAGE="$worker_image" \
+SMEDC_RELEASE_OPS_IMAGE="$release_ops_image" \
   docker compose --env-file "$runtime_file" -f "$compose_next" config --quiet
 
-current_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$runtime_file" | tail -n 1)"
-current_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$runtime_file" | tail -n 1)"
-current_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$runtime_file" | tail -n 1)"
+current_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$runtime_file" | tail -n 1)"
+current_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$runtime_file" | tail -n 1)"
+current_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$runtime_file" | tail -n 1)"
 test -n "$current_api"
 test -n "$current_worker"
 if [ -z "$current_release_ops" ]; then
   current_release_ops="$release_ops_image"
 fi
 test -n "$current_release_ops"
-printf 'ENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\n' \
+printf 'SMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\n' \
   "$current_api" "$current_worker" "$current_release_ops" > "$previous_file"
 chown root:root "$previous_file"
 chmod 0600 "$previous_file"
@@ -181,13 +181,13 @@ trap - EXIT
 const REMOTE_ROLLBACK_SCRIPT = String.raw`
 set -Eeuo pipefail
 
-runtime_file=/opt/enterprise-hub/runtime.env
-compose_file=/opt/enterprise-hub/docker-compose.yml
-previous_file=/opt/enterprise-hub/previous-release.env
-previous_compose=/opt/enterprise-hub/previous-docker-compose.yml
-current_file=/opt/enterprise-hub/current-release.env
+runtime_file=/opt/smedc/runtime.env
+compose_file=/opt/smedc/docker-compose.yml
+previous_file=/opt/smedc/previous-release.env
+previous_compose=/opt/smedc/previous-docker-compose.yml
+current_file=/opt/smedc/current-release.env
 
-exec 9>/opt/enterprise-hub/deploy.lock
+exec 9>/opt/smedc/deploy.lock
 if ! flock -n 9; then
   echo "Another staging deployment is already running." >&2
   exit 75
@@ -197,9 +197,9 @@ test -f "$runtime_file"
 test -f "$compose_file"
 test -f "$previous_file"
 umask 077
-previous_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$previous_file" | tail -n 1)"
-previous_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
-previous_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
 test -n "$previous_api"
 test -n "$previous_worker"
 test -n "$previous_release_ops"
@@ -210,13 +210,13 @@ fi
 
 temp_file="$(mktemp "${BASH_DOLLAR}{runtime_file}.XXXXXX")"
 awk '
-  !/^ENTERPRISE_HUB_API_IMAGE=/ &&
-  !/^ENTERPRISE_HUB_WORKER_IMAGE=/ &&
-  !/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=/
+  !/^SMEDC_API_IMAGE=/ &&
+  !/^SMEDC_WORKER_IMAGE=/ &&
+  !/^SMEDC_RELEASE_OPS_IMAGE=/
 ' "$runtime_file" > "$temp_file"
-printf 'ENTERPRISE_HUB_API_IMAGE=%s\n' "$previous_api" >> "$temp_file"
-printf 'ENTERPRISE_HUB_WORKER_IMAGE=%s\n' "$previous_worker" >> "$temp_file"
-printf 'ENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\n' "$previous_release_ops" >> "$temp_file"
+printf 'SMEDC_API_IMAGE=%s\n' "$previous_api" >> "$temp_file"
+printf 'SMEDC_WORKER_IMAGE=%s\n' "$previous_worker" >> "$temp_file"
+printf 'SMEDC_RELEASE_OPS_IMAGE=%s\n' "$previous_release_ops" >> "$temp_file"
 install -o root -g root -m 0600 "$temp_file" "$runtime_file"
 rm -f "$temp_file"
 
@@ -242,7 +242,7 @@ done
 
 rollback_tag="${BASH_DOLLAR}{previous_api##*:}"
 temp_current="$(mktemp "${BASH_DOLLAR}{current_file}.XXXXXX")"
-printf 'GIT_SHA=%s\nENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\nDEPLOYED_AT=%s\n' \
+printf 'GIT_SHA=%s\nSMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\nDEPLOYED_AT=%s\n' \
   "$rollback_tag" "$previous_api" "$previous_worker" "$previous_release_ops" \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temp_current"
 install -o root -g root -m 0644 "$temp_current" "$current_file"
@@ -252,18 +252,18 @@ compose ps
 
 const REMOTE_FINALIZE_SCRIPT = String.raw`
 set -Eeuo pipefail
-current_file=/opt/enterprise-hub/current-release.env
+current_file=/opt/smedc/current-release.env
 git_sha="$1"
 api_image="$2"
 worker_image="$3"
 release_ops_image="$4"
-exec 9>/opt/enterprise-hub/deploy.lock
+exec 9>/opt/smedc/deploy.lock
 if ! flock -n 9; then
   echo "Another staging deployment is already running." >&2
   exit 75
 fi
 temp_file="$(mktemp "${BASH_DOLLAR}{current_file}.XXXXXX")"
-printf 'GIT_SHA=%s\nENTERPRISE_HUB_API_IMAGE=%s\nENTERPRISE_HUB_WORKER_IMAGE=%s\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=%s\nDEPLOYED_AT=%s\n' \
+printf 'GIT_SHA=%s\nSMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\nDEPLOYED_AT=%s\n' \
   "$git_sha" "$api_image" "$worker_image" "$release_ops_image" \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temp_file"
 install -o root -g root -m 0644 "$temp_file" "$current_file"
@@ -272,21 +272,21 @@ rm -f "$temp_file"
 
 const REMOTE_IMAGE_CLEANUP_SCRIPT = String.raw`
 set -Eeuo pipefail
-previous_file=/opt/enterprise-hub/previous-release.env
+previous_file=/opt/smedc/previous-release.env
 api_image="$1"
 worker_image="$2"
 release_ops_image="$3"
 
-exec 9>/opt/enterprise-hub/deploy.lock
+exec 9>/opt/smedc/deploy.lock
 if ! flock -n 9; then
   echo "Another staging deployment is already running." >&2
   exit 75
 fi
 
 test -f "$previous_file"
-previous_api="$(sed -n 's/^ENTERPRISE_HUB_API_IMAGE=//p' "$previous_file" | tail -n 1)"
-previous_worker="$(sed -n 's/^ENTERPRISE_HUB_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
-previous_release_ops="$(sed -n 's/^ENTERPRISE_HUB_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
 test -n "$api_image"
 test -n "$worker_image"
 test -n "$release_ops_image"
@@ -325,8 +325,8 @@ docker image prune --force
 
 const REMOTE_SMOKE_SCRIPT = String.raw`
 set -Eeuo pipefail
-docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
-  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+docker compose --profile release --env-file /opt/smedc/runtime.env \
+  -f /opt/smedc/docker-compose.yml run -T --rm release-ops \
   node dist/release/staging-smoke.js </dev/null
 `;
 
@@ -463,27 +463,27 @@ export function remoteScriptsForValidation(): string[] {
 }
 
 function loadDeployConfig(env: NodeJS.ProcessEnv = process.env): DeployConfig {
-  const stagingHost = env["ENTERPRISE_HUB_STAGING_HOST"] ?? DEFAULT_STAGING_HOST;
-  const stagingUser = env["ENTERPRISE_HUB_STAGING_SSH_USER"] ?? "root";
+  const stagingHost = env["SMEDC_STAGING_HOST"] ?? DEFAULT_STAGING_HOST;
+  const stagingUser = env["SMEDC_STAGING_SSH_USER"] ?? "root";
   const config: DeployConfig = {
-    acrKeychainService: env["ENTERPRISE_HUB_ACR_KEYCHAIN_SERVICE"] ?? DEFAULT_ACR_KEYCHAIN_SERVICE,
-    acrUsername: env["ENTERPRISE_HUB_ACR_USERNAME"] ?? DEFAULT_ACR_USERNAME,
-    apiRepository: env["ENTERPRISE_HUB_ACR_API_REPOSITORY"] ?? "api",
+    acrKeychainService: env["SMEDC_ACR_KEYCHAIN_SERVICE"] ?? DEFAULT_ACR_KEYCHAIN_SERVICE,
+    acrUsername: env["SMEDC_ACR_USERNAME"] ?? DEFAULT_ACR_USERNAME,
+    apiRepository: env["SMEDC_ACR_API_REPOSITORY"] ?? "api",
     composeFile: join(REPO_ROOT, "deploy/staging/docker-compose.yml"),
     cursorKeychainAccount:
-      env["ENTERPRISE_HUB_STAGING_CURSOR_KEYCHAIN_ACCOUNT"] ?? DEFAULT_CURSOR_KEYCHAIN_ACCOUNT,
+      env["SMEDC_STAGING_CURSOR_KEYCHAIN_ACCOUNT"] ?? DEFAULT_CURSOR_KEYCHAIN_ACCOUNT,
     cursorKeychainService:
-      env["ENTERPRISE_HUB_STAGING_CURSOR_KEYCHAIN_SERVICE"] ?? DEFAULT_CURSOR_KEYCHAIN_SERVICE,
+      env["SMEDC_STAGING_CURSOR_KEYCHAIN_SERVICE"] ?? DEFAULT_CURSOR_KEYCHAIN_SERVICE,
     knownHostsFile: join(REPO_ROOT, "deploy/staging/known_hosts"),
-    namespace: env["ENTERPRISE_HUB_ACR_NAMESPACE"] ?? DEFAULT_NAMESPACE,
-    publicUrl: env["ENTERPRISE_HUB_STAGING_PUBLIC_URL"] ?? DEFAULT_PUBLIC_URL,
-    registry: env["ENTERPRISE_HUB_ACR_REGISTRY"] ?? DEFAULT_REGISTRY,
+    namespace: env["SMEDC_ACR_NAMESPACE"] ?? DEFAULT_NAMESPACE,
+    publicUrl: env["SMEDC_STAGING_PUBLIC_URL"] ?? DEFAULT_PUBLIC_URL,
+    registry: env["SMEDC_ACR_REGISTRY"] ?? DEFAULT_REGISTRY,
     repoRoot: REPO_ROOT,
-    sshKeyFile: env["ENTERPRISE_HUB_STAGING_SSH_KEY"] ?? join(homedir(), ".ssh/id_ed25519"),
+    sshKeyFile: env["SMEDC_STAGING_SSH_KEY"] ?? join(homedir(), ".ssh/id_ed25519"),
     sshTarget: `${stagingUser}@${stagingHost}`,
     stagingHost,
     stagingUser,
-    workerRepository: env["ENTERPRISE_HUB_ACR_WORKER_REPOSITORY"] ?? "worker"
+    workerRepository: env["SMEDC_ACR_WORKER_REPOSITORY"] ?? "worker"
   };
 
   assertSafeValue("ACR registry", config.registry, /^[a-z0-9.-]+$/);
@@ -494,7 +494,7 @@ function loadDeployConfig(env: NodeJS.ProcessEnv = process.env): DeployConfig {
   assertSafeValue("staging host", config.stagingHost, /^[A-Za-z0-9.:-]+$/);
   assertSafeValue("staging SSH user", config.stagingUser, /^[A-Za-z0-9._-]+$/);
   if (!config.publicUrl.startsWith("https://")) {
-    throw new Error("ENTERPRISE_HUB_STAGING_PUBLIC_URL must use HTTPS.");
+    throw new Error("SMEDC_STAGING_PUBLIC_URL must use HTTPS.");
   }
 
   return config;
@@ -589,12 +589,12 @@ async function readSecretFromKeychain(account: string, service: string): Promise
 }
 
 async function acrPassword(config: DeployConfig): Promise<string> {
-  const injected = process.env["ENTERPRISE_HUB_ACR_PASSWORD"];
+  const injected = process.env["SMEDC_ACR_PASSWORD"];
   return injected ?? readSecretFromKeychain(config.acrUsername, config.acrKeychainService);
 }
 
 async function cursorSigningSecret(config: DeployConfig): Promise<string> {
-  const injected = process.env["ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET"];
+  const injected = process.env["SMEDC_STAGING_CURSOR_SIGNING_SECRET"];
   return (
     injected ?? readSecretFromKeychain(config.cursorKeychainAccount, config.cursorKeychainService)
   );
@@ -604,7 +604,7 @@ async function installRemoteCursorSigningSecret(config: DeployConfig): Promise<v
   const secret = await cursorSigningSecret(config);
   const command = [
     "set -Eeuo pipefail",
-    "runtime_file=/opt/enterprise-hub/runtime.env",
+    "runtime_file=/opt/smedc/runtime.env",
     'test -f "$runtime_file"',
     "umask 077",
     'temp_file="$(mktemp "${runtime_file}.XXXXXX")"',
@@ -694,7 +694,7 @@ async function scanImages(
   workerImage: string,
   releaseOpsImage: string
 ): Promise<void> {
-  const reportDirectory = await mkdtemp(join(tmpdir(), "enterprise-hub-trivy-"));
+  const reportDirectory = await mkdtemp(join(tmpdir(), "smedc-trivy-"));
   try {
     for (const [service, component, image] of [
       ["API", "api-image", apiImage],
@@ -726,13 +726,13 @@ async function uploadCompose(config: DeployConfig): Promise<void> {
   await runRemoteScript(
     config,
     "Prepare staging runtime directory",
-    "set -Eeuo pipefail\ninstall -d -o root -g root -m 0755 /opt/enterprise-hub\n"
+    "set -Eeuo pipefail\ninstall -d -o root -g root -m 0755 /opt/smedc\n"
   );
   console.log("\n==> Upload versioned staging Compose definition");
   await run("scp", [
     ...sshOptions(config),
     config.composeFile,
-    `${config.sshTarget}:/opt/enterprise-hub/docker-compose.yml.next`
+    `${config.sshTarget}:/opt/smedc/docker-compose.yml.next`
   ]);
 }
 
@@ -832,11 +832,11 @@ Options:
   --skip-build     Reuse images already present in ACR
   --skip-migrate   Do not run prisma migrate deploy
   --skip-smoke     Do not run the fixture-only upload/index/search smoke
-  --rollback       Restore /opt/enterprise-hub/previous-release.env
+  --rollback       Restore /opt/smedc/previous-release.env
   -h, --help       Show this help
 
 Secrets default to macOS Keychain. Non-interactive runners may inject
-ENTERPRISE_HUB_ACR_PASSWORD and ENTERPRISE_HUB_STAGING_CURSOR_SIGNING_SECRET from an
+SMEDC_ACR_PASSWORD and SMEDC_STAGING_CURSOR_SIGNING_SECRET from an
 approved secret manager. The script never prints either value.`;
 }
 

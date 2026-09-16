@@ -556,7 +556,7 @@ Existing model-related env variables must remain supported as the Phase 3 baseli
 Interpretation for Phase 3:
 
 - these variables configure embedding/rerank provider access for retrieval infrastructure
-- they do not enable Enterprise Hub to generate final natural-language answers
+- they do not enable SMEDC to generate final natural-language answers
 - `LLM_EMBEDDING_MODEL` identifies the embedding model
 - `LLM_MODEL` may identify rerank or other provider-side model only if the configured rerank adapter uses it
 - secrets must never be logged, included in docs as real values, committed, or returned through API/MCP
@@ -2018,14 +2018,14 @@ Use the repository priority language:
 - semantic table understanding beyond serialized table text
 - cross-dataset joins between `dishes` and `business`
 - arbitrary formulas, window functions, percentiles, median, custom metrics, or HAVING-style analytical queries
-- natural-language-to-structured-query generation inside Enterprise Hub
+- natural-language-to-structured-query generation inside SMEDC
 - server-generated analysis, summaries, recommendations, dashboards, or reports
 - dedicated OpenSearch/Meilisearch deployment unless Qdrant sparse/hybrid fails evaluation
 - multi-provider automatic fallback that silently sends data to a different external model provider
 - per-row independent permissions separate from source `Document` labels
 - automatic overwrite, append, replacement, or reuse of active structured imports
 - JSON structured ingestion
-- user-facing AI agent behavior inside Enterprise Hub
+- user-facing AI agent behavior inside SMEDC
 - static SDK generation from schema discovery
 - org-specific custom schema authoring beyond the two current datasets
 - advanced tenant-specific model routing unless beta customers require it
@@ -2048,13 +2048,13 @@ Current code baseline:
 
 Sample workbook facts:
 
-- `maijia_dishes_20260701_20260705.xlsx`
+- `synthetic_dishes_20260701_20260705.xlsx`
   - sheet name: `菜品主题数据`
   - title row: row 1
   - filter description row: row 2
   - header row in sample: row 3
   - 51 columns
-- `maijia_business_20260701_20260705.xlsx`
+- `synthetic_business_20260701_20260705.xlsx`
   - sheet name: `营业分组表`
   - title row: row 1
   - filter description row: row 2

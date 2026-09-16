@@ -22,7 +22,7 @@ describe("loadApiEnv", () => {
     await writeFile(
       path.join(tempDir, ".env"),
       [
-        "DATABASE_URL=mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub",
+        "DATABASE_URL=mysql://smedc:smedc_local_password@localhost:3307/smedc",
         "CURSOR_SIGNING_SECRET=from-dotenv"
       ].join("\n")
     );
@@ -33,7 +33,7 @@ describe("loadApiEnv", () => {
     loadApiEnv(tempDir);
 
     expect(process.env["DATABASE_URL"]).toBe(
-      "mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub"
+      "mysql://smedc:smedc_local_password@localhost:3307/smedc"
     );
     expect(process.env["CURSOR_SIGNING_SECRET"]).toBe("from-shell");
   });

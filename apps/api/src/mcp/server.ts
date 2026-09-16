@@ -1,8 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  SMEDC_MCP_TOOL_CONTRACTS,
-  type SmedcMcpToolName
-} from "@smedc/mcp-contract";
+import { SMEDC_MCP_TOOL_CONTRACTS, type SmedcMcpToolName } from "@smedc/mcp-contract";
 import type { McpRequestContext, SmedcMcpToolHandlers } from "./tool-handlers.js";
 import { createNoopToolHandler } from "./tool-handlers.js";
 

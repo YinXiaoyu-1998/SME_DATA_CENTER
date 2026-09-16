@@ -54,7 +54,7 @@ describe("launcher partition transfer", () => {
       name: "source.csv",
       mediaType: "text/csv",
       dataset: "business",
-      enterpriseName: "Maijia",
+      enterpriseName: "Synthetic",
       startDate: "20260907",
       endDate: "20260913",
       idempotencyKey: "idem"
@@ -98,7 +98,7 @@ describe("launcher partition transfer", () => {
         name: "source.csv",
         mediaType: "text/csv",
         dataset: "business",
-        enterpriseName: "Maijia",
+        enterpriseName: "Synthetic",
         startDate: "20260907",
         endDate: "20260913",
         idempotencyKey: "abort"
@@ -118,7 +118,7 @@ describe("launcher partition transfer", () => {
     const fetchImplementation = vi.fn(async () =>
       Response.json({
         dataset: "dishes",
-        enterpriseName: "Maijia",
+        enterpriseName: "Synthetic",
         startDate: "2026-09-07",
         endDate: "2026-09-13",
         partitionCount: 1,
@@ -140,7 +140,7 @@ describe("launcher partition transfer", () => {
     const result = (await downloadPartitionDataset({
       context: context(fetchImplementation),
       dataset: "dishes",
-      enterpriseName: "Maijia",
+      enterpriseName: "Synthetic",
       startDate: "20260907",
       endDate: "20260913"
     })) as { localDirectory: string; files: string[] };
@@ -161,7 +161,7 @@ describe("launcher partition transfer", () => {
         manifestRequests += 1;
         return Response.json({
           dataset: "business",
-          enterpriseName: "Maijia",
+          enterpriseName: "Synthetic",
           startDate: "2026-09-07",
           endDate: "2026-09-07",
           partitionCount: 1,
@@ -190,7 +190,7 @@ describe("launcher partition transfer", () => {
     const result = (await downloadPartitionDataset({
       context: context(fetchImplementation),
       dataset: "business",
-      enterpriseName: "Maijia",
+      enterpriseName: "Synthetic",
       startDate: "20260907",
       endDate: "20260907"
     })) as { localDirectory: string; files: string[] };

@@ -1,0 +1,4 @@
+interface:
+  display_name: "SMEDC Manual Test"
+  short_description: "Run repeatable local Codex acceptance tests"
+  default_prompt: "Use $smedc-manual-test to run the SME_DATA_CENTER natural cold-start acceptance suite in visible Codex tasks."

@@ -31,7 +31,7 @@ describe("Phase 3 runtime readiness", () => {
 
     expect(config.modelProvider.provider).toBe("fake");
     expect(config.modelProvider.egressAcknowledged).toBe(false);
-    expect(config.qdrant.collectionName).toBe("enterprise_hub_evidence_local");
+    expect(config.qdrant.collectionName).toBe("smedc_evidence_local");
     expect(config.qdrant.url).toBe("http://127.0.0.1:6333");
   });
 

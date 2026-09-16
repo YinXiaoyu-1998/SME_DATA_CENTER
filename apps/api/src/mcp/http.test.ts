@@ -392,7 +392,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     app = buildMcpTestServer();
 
     const response = await postMcp(app, initializeRequest(), {
-      host: "enterprise-hub.example.com"
+      host: "smedc.example.com"
     });
 
     expect(response.statusCode).toBe(403);
@@ -402,7 +402,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
   it("accepts the exact configured public Host only from a loopback reverse-proxy peer", async () => {
     app = buildMcpTestServer({
       runtimeEnv: {
-        ENTERPRISE_HUB_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz"
+        SMEDC_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz"
       }
     });
 
@@ -445,7 +445,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       url: "/healthz",
       remoteAddress: "198.51.100.10",
       headers: {
-        host: "enterprise-hub.example.com"
+        host: "smedc.example.com"
       }
     });
 

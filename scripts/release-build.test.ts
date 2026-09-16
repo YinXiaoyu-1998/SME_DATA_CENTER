@@ -41,7 +41,7 @@ describe("release build", () => {
       stdio: "inherit"
     });
 
-    const cleanRoot = mkdtempSync(join(tmpdir(), "enterprise-hub-release-"));
+    const cleanRoot = mkdtempSync(join(tmpdir(), "smedc-release-"));
     try {
       const cleanReleaseDir = join(cleanRoot, "dist", "release");
       mkdirSync(cleanReleaseDir, { recursive: true });
@@ -84,9 +84,8 @@ async function expectCompiledApiStarts(cleanRoot: string): Promise<void> {
     env: {
       ...process.env,
       CURSOR_SIGNING_SECRET: "release-artifact-smoke-cursor-secret",
-      DATABASE_URL:
-        "mysql://enterprise_hub:enterprise_hub_local_password@127.0.0.1:3307/enterprise_hub",
-      ENTERPRISE_HUB_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz",
+      DATABASE_URL: "mysql://smedc:smedc_local_password@127.0.0.1:3307/smedc",
+      SMEDC_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz",
       HOST: "127.0.0.1",
       LOCAL_STORAGE_ROOT: join(cleanRoot, "storage"),
       NODE_ENV: "production",

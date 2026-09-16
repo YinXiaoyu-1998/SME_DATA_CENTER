@@ -24,9 +24,9 @@ import type {
   PutObjectAtKeyInput
 } from "./storage-adapter.js";
 
-const DEFAULT_KEY_PREFIX = "enterprise-hub";
+const DEFAULT_KEY_PREFIX = "smedc";
 const DEFAULT_PRESIGN_EXPIRES_SECONDS = 900;
-const HASH_METADATA_KEY = "enterprise-hub-sha256";
+const HASH_METADATA_KEY = "smedc-sha256";
 
 type RuntimeEnv = Readonly<Record<string, string | undefined>>;
 

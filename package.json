@@ -12,6 +12,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run",
+    "check:naming": "tsx scripts/check-smedc-naming.ts",
     "audit:production": "tsx scripts/check-vulnerability-policy.ts npm-audit",
     "audit:report": "tsx scripts/check-vulnerability-policy.ts report",
     "test:integration": "tsx scripts/test-integration.ts",

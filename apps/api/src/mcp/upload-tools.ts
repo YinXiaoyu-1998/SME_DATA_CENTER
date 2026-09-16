@@ -16,7 +16,7 @@ import {
   type StructuredDatasetName
 } from "@smedc/domain";
 
-const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.4.0";
+const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.5.0";
 
 interface InlineUploadFile {
   name: string;
@@ -99,9 +99,7 @@ const uploadStructuredDatasetContract = requireToolContract("upload_structured_d
 const uploadEvidenceDocumentContract = requireToolContract("upload_evidence_document");
 const uploadQuarantineCertificateContract = requireToolContract("upload_quarantine_certificate");
 
-export function createUploadToolHandlers(
-  options: UploadToolHandlerOptions
-): SmedcMcpToolHandlers {
+export function createUploadToolHandlers(options: UploadToolHandlerOptions): SmedcMcpToolHandlers {
   return {
     upload_structured_dataset: async (input, context) =>
       uploadStructuredDataset(input, context, options),
@@ -451,15 +449,10 @@ async function delegateMultipartRequest(
       remoteAddress: context.audit.sourceIp
     });
   } catch {
-    return errorToolResult(
-      "SMEDC_API_ERROR",
-      "SMEDC API request failed.",
-      undefined,
-      {
-        requestId: context.audit.requestId,
-        retryable: true
-      }
-    );
+    return errorToolResult("SMEDC_API_ERROR", "SMEDC API request failed.", undefined, {
+      requestId: context.audit.requestId,
+      retryable: true
+    });
   }
 
   const responseBody = parseResponseBody(response);
@@ -469,15 +462,10 @@ async function delegateMultipartRequest(
       return jsonToolResult(responseBody.body);
     }
 
-    return errorToolResult(
-      "SMEDC_API_ERROR",
-      "SMEDC API returned invalid JSON.",
-      undefined,
-      {
-        requestId: context.audit.requestId,
-        retryable: true
-      }
-    );
+    return errorToolResult("SMEDC_API_ERROR", "SMEDC API returned invalid JSON.", undefined, {
+      requestId: context.audit.requestId,
+      retryable: true
+    });
   }
 
   return apiErrorToolResult(
@@ -486,7 +474,7 @@ async function delegateMultipartRequest(
 }
 
 function createMultipartBody(parts: MultipartPart[]): { body: Buffer; contentType: string } {
-  const boundary = `enterprise-hub-mcp-${randomBytes(12).toString("hex")}`;
+  const boundary = `smedc-mcp-${randomBytes(12).toString("hex")}`;
   const chunks: Buffer[] = [];
 
   for (const part of parts) {

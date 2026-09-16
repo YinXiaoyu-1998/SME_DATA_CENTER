@@ -14,7 +14,7 @@ import {
 import type { McpRequestContext } from "./tool-handlers.js";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 
-const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.4.0";
+const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.5.0";
 
 export const READ_ONLY_MCP_TOOL_NAMES = [
   "smedc_get_current_user",
@@ -39,9 +39,7 @@ const READ_ONLY_TOOL_CONTRACTS = Object.fromEntries(
   ).map((contract) => [contract.name, contract])
 ) as Record<ReadOnlyMcpToolName, SmedcMcpToolContract>;
 
-export function createReadOnlyMcpToolHandlers(
-  context: ApiDelegationContext
-): SmedcMcpToolHandlers {
+export function createReadOnlyMcpToolHandlers(context: ApiDelegationContext): SmedcMcpToolHandlers {
   return Object.fromEntries(
     READ_ONLY_MCP_TOOL_NAMES.map((toolName) => [
       toolName,

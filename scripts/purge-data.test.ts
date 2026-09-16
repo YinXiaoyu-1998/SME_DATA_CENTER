@@ -28,7 +28,7 @@ vi.mock("@prisma/client", () => ({
 import { purgeLocalData, resolveLocalDatabaseTarget, resolvePurgeTargets } from "./purge-data.js";
 
 describe("purge-data target resolution", () => {
-  const cwd = "/workspace/enterprise-hub";
+  const cwd = "/workspace/smedc";
 
   it("targets local upload and test storage directories by default", () => {
     expect(
@@ -74,7 +74,7 @@ describe("purge-data target resolution", () => {
         filesOnly: false,
         cwd,
         env: {
-          LOCAL_STORAGE_ROOT: "/tmp/enterprise-hub-storage"
+          LOCAL_STORAGE_ROOT: "/tmp/smedc-storage"
         }
       })
     ).toEqual([
@@ -99,14 +99,12 @@ describe("purge-data database target resolution", () => {
   it("accepts the local development MySQL database", () => {
     expect(
       resolveLocalDatabaseTarget({
-        DATABASE_URL:
-          "mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub"
+        DATABASE_URL: "mysql://smedc:smedc_local_password@localhost:3307/smedc"
       })
     ).toEqual({
-      databaseUrl:
-        "mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub",
+      databaseUrl: "mysql://smedc:smedc_local_password@localhost:3307/smedc",
       host: "localhost:3307",
-      databaseName: "enterprise_hub"
+      databaseName: "smedc"
     });
   });
 
@@ -117,7 +115,7 @@ describe("purge-data database target resolution", () => {
   it("refuses to target a remote database host", () => {
     expect(() =>
       resolveLocalDatabaseTarget({
-        DATABASE_URL: "mysql://enterprise_hub:password@example.com:3306/enterprise_hub"
+        DATABASE_URL: "mysql://smedc:password@example.com:3306/smedc"
       })
     ).toThrow("non-local DATABASE_URL host");
   });
@@ -125,9 +123,9 @@ describe("purge-data database target resolution", () => {
   it("refuses to target a database with an unexpected name", () => {
     expect(() =>
       resolveLocalDatabaseTarget({
-        DATABASE_URL: "mysql://enterprise_hub:password@localhost:3306/production_hub"
+        DATABASE_URL: "mysql://smedc:password@localhost:3306/production_hub"
       })
-    ).toThrow("database other than enterprise_hub");
+    ).toThrow("database other than smedc");
   });
 
   it("deletes partition metadata and remaining row tables before documents", async () => {
@@ -140,8 +138,8 @@ describe("purge-data database target resolution", () => {
       all: false,
       dryRun: false,
       filesOnly: false,
-      cwd: "/workspace/enterprise-hub",
-      env: { DATABASE_URL: "mysql://user:password@localhost:3307/enterprise_hub" }
+      cwd: "/workspace/smedc",
+      env: { DATABASE_URL: "mysql://user:password@localhost:3307/smedc" }
     });
 
     for (const rows of [prisma.vipRow, prisma.dishCatalogRow]) {

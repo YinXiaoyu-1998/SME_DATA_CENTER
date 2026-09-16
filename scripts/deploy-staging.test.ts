@@ -66,20 +66,20 @@ describe("deploy-staging argument parsing", () => {
 
 describe("deploy-staging image references", () => {
   it("uses the approved registry namespace and immutable tag", () => {
-    expect(imageReference("registry.example.com", "enterprise-hub", "api", "0123456789ab")).toBe(
-      "registry.example.com/enterprise-hub/api:0123456789ab"
+    expect(imageReference("registry.example.com", "smedc", "api", "0123456789ab")).toBe(
+      "registry.example.com/smedc/api:0123456789ab"
     );
   });
 
   it("uses an immutable sibling tag for the release operations image", () => {
-    expect(
-      releaseOpsImageReference("registry.example.com", "enterprise-hub", "api", "0123456789ab")
-    ).toBe("registry.example.com/enterprise-hub/api:ops-0123456789ab");
+    expect(releaseOpsImageReference("registry.example.com", "smedc", "api", "0123456789ab")).toBe(
+      "registry.example.com/smedc/api:ops-0123456789ab"
+    );
   });
 
   it("requires the release operations sibling tag to use a 12-character SHA", () => {
     expect(() =>
-      releaseOpsImageReference("registry.example.com", "enterprise-hub", "api", "0123456")
+      releaseOpsImageReference("registry.example.com", "smedc", "api", "0123456")
     ).toThrow(/12-character/);
   });
 });
@@ -111,11 +111,7 @@ describe("deploy-staging runtime image scans", () => {
 describe("deploy-staging image build", () => {
   it("disables BuildKit attestations for the ACR Personal Edition registry", () => {
     expect(
-      stagingBuildxBuildArgs(
-        "api",
-        "registry.example.com/enterprise-hub/api:0123456789ab",
-        "0123456789ab"
-      )
+      stagingBuildxBuildArgs("api", "registry.example.com/smedc/api:0123456789ab", "0123456789ab")
     ).toEqual([
       "buildx",
       "build",
@@ -129,7 +125,7 @@ describe("deploy-staging image build", () => {
       "--provenance=false",
       "--sbom=false",
       "--tag",
-      "registry.example.com/enterprise-hub/api:0123456789ab",
+      "registry.example.com/smedc/api:0123456789ab",
       "--push",
       "."
     ]);
@@ -174,7 +170,7 @@ describe("deploy-staging remote scripts", () => {
   });
 
   it("prepares the worker partition scratch directory before Docker is invoked", async () => {
-    const root = await mkdtemp(join(tmpdir(), "enterprise-hub-partition-workdir-"));
+    const root = await mkdtemp(join(tmpdir(), "smedc-partition-workdir-"));
     const fakeBin = join(root, "bin");
     const runtimeFile = join(root, "runtime.env");
     const composeNext = join(root, "docker-compose.yml.next");
@@ -182,10 +178,7 @@ describe("deploy-staging remote scripts", () => {
 
     try {
       await mkdir(fakeBin);
-      await writeFile(
-        runtimeFile,
-        "ENTERPRISE_HUB_API_IMAGE=old-api\nENTERPRISE_HUB_WORKER_IMAGE=old-worker\n"
-      );
+      await writeFile(runtimeFile, "SMEDC_API_IMAGE=old-api\nSMEDC_WORKER_IMAGE=old-worker\n");
       await writeFile(composeNext, "services: {}\n");
       await writeFile(
         join(fakeBin, "install"),
@@ -212,7 +205,7 @@ cp "\${files[0]}" "\${files[1]}"
         ["docker", "flock", "install"].map((command) => chmod(join(fakeBin, command), 0o755))
       );
 
-      const rollout = remoteScriptsForValidation()[0]!.replaceAll("/opt/enterprise-hub", root);
+      const rollout = remoteScriptsForValidation()[0]!.replaceAll("/opt/smedc", root);
       const result = spawnSync(
         "bash",
         ["-s", "--", "registry/api:next", "registry/worker:next", "registry/api:ops-next", "0"],
@@ -237,24 +230,21 @@ cp "\${files[0]}" "\${files[1]}"
   });
 
   it("restores an existing two-image release when its first three-image rollout fails", async () => {
-    const root = await mkdtemp(join(tmpdir(), "enterprise-hub-rollout-"));
+    const root = await mkdtemp(join(tmpdir(), "smedc-rollout-"));
     const fakeBin = join(root, "bin");
     const runtimeFile = join(root, "runtime.env");
     const composeFile = join(root, "docker-compose.yml");
     const composeNext = join(root, "docker-compose.yml.next");
     const dockerState = join(root, "docker-count");
-    const oldApi = "registry.example.com/enterprise-hub/api:aaaaaaaaaaaa";
-    const oldWorker = "registry.example.com/enterprise-hub/worker:aaaaaaaaaaaa";
-    const nextApi = "registry.example.com/enterprise-hub/api:bbbbbbbbbbbb";
-    const nextWorker = "registry.example.com/enterprise-hub/worker:bbbbbbbbbbbb";
-    const nextOps = "registry.example.com/enterprise-hub/api:ops-bbbbbbbbbbbb";
+    const oldApi = "registry.example.com/smedc/api:aaaaaaaaaaaa";
+    const oldWorker = "registry.example.com/smedc/worker:aaaaaaaaaaaa";
+    const nextApi = "registry.example.com/smedc/api:bbbbbbbbbbbb";
+    const nextWorker = "registry.example.com/smedc/worker:bbbbbbbbbbbb";
+    const nextOps = "registry.example.com/smedc/api:ops-bbbbbbbbbbbb";
 
     try {
       await mkdir(fakeBin);
-      await writeFile(
-        runtimeFile,
-        `ENTERPRISE_HUB_API_IMAGE=${oldApi}\nENTERPRISE_HUB_WORKER_IMAGE=${oldWorker}\n`
-      );
+      await writeFile(runtimeFile, `SMEDC_API_IMAGE=${oldApi}\nSMEDC_WORKER_IMAGE=${oldWorker}\n`);
       await writeFile(composeFile, "legacy-compose\n");
       await writeFile(composeNext, "three-image-compose\n");
       await writeFile(
@@ -296,7 +286,7 @@ cp "\${files[0]}" "\${files[1]}"
         )
       );
 
-      const rollout = remoteScriptsForValidation()[0]!.replaceAll("/opt/enterprise-hub", root);
+      const rollout = remoteScriptsForValidation()[0]!.replaceAll("/opt/smedc", root);
       const result = spawnSync("bash", ["-s", "--", nextApi, nextWorker, nextOps, "0"], {
         encoding: "utf8",
         env: {
@@ -309,36 +299,32 @@ cp "\${files[0]}" "\${files[1]}"
 
       expect(result.status, result.stderr).toBe(42);
       expect(await readFile(composeFile, "utf8")).toBe("legacy-compose\n");
-      expect(await readFile(runtimeFile, "utf8")).toContain(`ENTERPRISE_HUB_API_IMAGE=${oldApi}\n`);
-      expect(await readFile(runtimeFile, "utf8")).toContain(
-        `ENTERPRISE_HUB_WORKER_IMAGE=${oldWorker}\n`
-      );
-      expect(await readFile(runtimeFile, "utf8")).toContain(
-        `ENTERPRISE_HUB_RELEASE_OPS_IMAGE=${nextOps}\n`
-      );
+      expect(await readFile(runtimeFile, "utf8")).toContain(`SMEDC_API_IMAGE=${oldApi}\n`);
+      expect(await readFile(runtimeFile, "utf8")).toContain(`SMEDC_WORKER_IMAGE=${oldWorker}\n`);
+      expect(await readFile(runtimeFile, "utf8")).toContain(`SMEDC_RELEASE_OPS_IMAGE=${nextOps}\n`);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   }, 10_000);
 
   it("removes stopped stale references while preserving images used by running containers", async () => {
-    const root = await mkdtemp(join(tmpdir(), "enterprise-hub-image-cleanup-"));
+    const root = await mkdtemp(join(tmpdir(), "smedc-image-cleanup-"));
     const fakeBin = join(root, "bin");
     const removedImages = join(root, "removed-images");
     const removedContainers = join(root, "removed-containers");
-    const currentApi = "registry.example.com/enterprise-hub/api:bbbbbbbbbbbb";
-    const currentWorker = "registry.example.com/enterprise-hub/worker:bbbbbbbbbbbb";
-    const currentOps = "registry.example.com/enterprise-hub/api:ops-bbbbbbbbbbbb";
-    const previousApi = "registry.example.com/enterprise-hub/api:aaaaaaaaaaaa";
-    const previousWorker = "registry.example.com/enterprise-hub/worker:aaaaaaaaaaaa";
-    const previousOps = "registry.example.com/enterprise-hub/api:ops-aaaaaaaaaaaa";
+    const currentApi = "registry.example.com/smedc/api:bbbbbbbbbbbb";
+    const currentWorker = "registry.example.com/smedc/worker:bbbbbbbbbbbb";
+    const currentOps = "registry.example.com/smedc/api:ops-bbbbbbbbbbbb";
+    const previousApi = "registry.example.com/smedc/api:aaaaaaaaaaaa";
+    const previousWorker = "registry.example.com/smedc/worker:aaaaaaaaaaaa";
+    const previousOps = "registry.example.com/smedc/api:ops-aaaaaaaaaaaa";
     const staleImages = [
-      "registry.example.com/enterprise-hub/api:999999999999",
-      "registry.example.com/enterprise-hub/api:ops-999999999999",
-      "registry.example.com/enterprise-hub/worker:999999999999"
+      "registry.example.com/smedc/api:999999999999",
+      "registry.example.com/smedc/api:ops-999999999999",
+      "registry.example.com/smedc/worker:999999999999"
     ];
     const staleStoppedContainer = "stale-release-ops-container";
-    const staleRunningImage = "registry.example.com/enterprise-hub/worker:888888888888";
+    const staleRunningImage = "registry.example.com/smedc/worker:888888888888";
     const staleRunningContainer = "running-stale-worker-container";
 
     try {
@@ -347,7 +333,7 @@ cp "\${files[0]}" "\${files[1]}"
       await writeFile(removedContainers, "");
       await writeFile(
         join(root, "previous-release.env"),
-        `ENTERPRISE_HUB_API_IMAGE=${previousApi}\nENTERPRISE_HUB_WORKER_IMAGE=${previousWorker}\nENTERPRISE_HUB_RELEASE_OPS_IMAGE=${previousOps}\n`
+        `SMEDC_API_IMAGE=${previousApi}\nSMEDC_WORKER_IMAGE=${previousWorker}\nSMEDC_RELEASE_OPS_IMAGE=${previousOps}\n`
       );
       await writeFile(
         join(fakeBin, "docker"),
@@ -387,10 +373,7 @@ esac
       await writeFile(join(fakeBin, "flock"), "#!/usr/bin/env bash\nexit 0\n");
       await Promise.all(["docker", "flock"].map((command) => chmod(join(fakeBin, command), 0o755)));
 
-      const cleanup = (remoteScriptsForValidation()[4] ?? "").replaceAll(
-        "/opt/enterprise-hub",
-        root
-      );
+      const cleanup = (remoteScriptsForValidation()[4] ?? "").replaceAll("/opt/smedc", root);
       const result = spawnSync("bash", ["-s", "--", currentApi, currentWorker, currentOps], {
         encoding: "utf8",
         env: {
@@ -404,7 +387,7 @@ esac
             previousOps,
             ...staleImages,
             staleRunningImage,
-            "registry.example.com/enterprise-hub/qdrant:v1.15.4"
+            "registry.example.com/smedc/qdrant:v1.15.4"
           ].join("\n"),
           FAKE_REMOVED_IMAGES: removedImages,
           FAKE_REMOVED_CONTAINERS: removedContainers,

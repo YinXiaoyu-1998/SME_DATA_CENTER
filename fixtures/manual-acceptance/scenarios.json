@@ -8,7 +8,7 @@
       "turns": [
         {
           "id": "current-account",
-          "prompt": "我当前登录的 Enterprise Hub 账号是什么身份和保密等级？"
+          "prompt": "我当前登录的 SMEDC 账号是什么身份和保密等级？"
         }
       ]
     },
@@ -19,7 +19,7 @@
       "turns": [
         {
           "id": "default-evidence-upload",
-          "prompt": "帮我把 fixtures/manual-acceptance/evidence/baoli-roujiamo-sop.md 这份肉夹馍 SOP 上传到 Enterprise Hub。"
+          "prompt": "帮我把 fixtures/manual-acceptance/evidence/baoli-roujiamo-sop.md 这份肉夹馍 SOP 上传到 SMEDC。"
         }
       ]
     },
@@ -30,7 +30,7 @@
       "turns": [
         {
           "id": "high-evidence-upload",
-          "prompt": "请把 fixtures/manual-acceptance/evidence/prompt-injection-sop.md 这份验收资料按 2 级密级上传到 Enterprise Hub。"
+          "prompt": "请把 fixtures/manual-acceptance/evidence/prompt-injection-sop.md 这份验收资料按 2 级密级上传到 SMEDC。"
         }
       ]
     },

@@ -19,7 +19,7 @@ describe("API server context", () => {
       createApiServerContext({
         logger: false,
         runtimeEnv: {
-          ENTERPRISE_HUB_PUBLIC_ORIGIN: "http://localhost:3000"
+          SMEDC_PUBLIC_ORIGIN: "http://localhost:3000"
         },
         authenticateAccessToken: async () => employee
       })

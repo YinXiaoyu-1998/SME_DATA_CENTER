@@ -10,7 +10,7 @@ describe("retrieval config seed and loader", () => {
   it("seeds active, candidate, and deprecated retrieval config versions", () => {
     const configs = buildRetrievalConfigSeed({
       retrievalConfigVersion: "phase3.retrieval.v1",
-      qdrantCollection: "enterprise_hub_evidence_test",
+      qdrantCollection: "smedc_evidence_test",
       llmProvider: "fake",
       embeddingModel: "fake-embedding-v1",
       rerankModel: "fake-rerank-v1"
@@ -30,7 +30,7 @@ describe("retrieval config seed and loader", () => {
         model: "fake-rerank-v1"
       },
       qdrant: {
-        collection: "enterprise_hub_evidence_test"
+        collection: "smedc_evidence_test"
       }
     });
   });
@@ -38,7 +38,7 @@ describe("retrieval config seed and loader", () => {
   it("loads the expected active config and rejects ambiguous active versions", () => {
     const configs = buildRetrievalConfigSeed({
       retrievalConfigVersion: "phase3.retrieval.v1",
-      qdrantCollection: "enterprise_hub_evidence_test",
+      qdrantCollection: "smedc_evidence_test",
       llmProvider: "fake",
       embeddingModel: "fake-embedding-v1",
       rerankModel: "fake-rerank-v1"
@@ -65,7 +65,7 @@ describe("retrieval config seed and loader", () => {
     const active = loadActiveRetrievalConfig(
       buildRetrievalConfigSeed({
         retrievalConfigVersion: "phase3.retrieval.v1",
-        qdrantCollection: "enterprise_hub_evidence_test",
+        qdrantCollection: "smedc_evidence_test",
         llmProvider: "openai-compatible",
         embeddingModel: "embedding-model",
         rerankModel: "rerank-model"
@@ -95,7 +95,7 @@ describe("retrieval config seed and loader", () => {
     const active = loadActiveRetrievalConfig(
       buildRetrievalConfigSeed({
         retrievalConfigVersion: "phase3.retrieval.v1",
-        qdrantCollection: "enterprise_hub_evidence_test",
+        qdrantCollection: "smedc_evidence_test",
         llmProvider: "openai-compatible",
         embeddingModel: "text-embedding-v4",
         embeddingDimension: 1024,

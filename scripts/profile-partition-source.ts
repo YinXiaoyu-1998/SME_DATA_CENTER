@@ -29,7 +29,7 @@ export async function profilePartitionSource(input: {
 }): Promise<PartitionSourceProfile> {
   if (!path.isAbsolute(input.sourcePath)) throw new Error("sourcePath must be absolute.");
   const source = await stat(input.sourcePath);
-  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "enterprise-hub-partition-profile-"));
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "smedc-partition-profile-"));
   let peakRssBytes = process.memoryUsage().rss;
   const started = performance.now();
   const sampler = setInterval(() => {

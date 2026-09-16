@@ -9,7 +9,7 @@ describe("model provider factory", () => {
         LLM_EMBEDDING_MODEL: "fake-embedding-v1",
         LLM_MODEL: "fake-rerank-v1",
         RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v1",
-        QDRANT_COLLECTION_EVIDENCE: "enterprise_hub_evidence_test"
+        QDRANT_COLLECTION_EVIDENCE: "smedc_evidence_test"
       }
     });
 
@@ -37,7 +37,7 @@ describe("model provider factory", () => {
         OPENAI_COMPATIBLE_BASE_URL: "https://provider.example/v1",
         EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "true",
         RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v1",
-        QDRANT_COLLECTION_EVIDENCE: "enterprise_hub_evidence_test"
+        QDRANT_COLLECTION_EVIDENCE: "smedc_evidence_test"
       },
       fetch: async () => new Response(JSON.stringify({ data: [] }))
     });
@@ -68,7 +68,7 @@ describe("model provider factory", () => {
         DASHSCOPE_API_BASE_URL: "https://dashscope.aliyuncs.com/api/v1",
         EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "true",
         RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v1",
-        QDRANT_COLLECTION_EVIDENCE: "enterprise_hub_evidence_test"
+        QDRANT_COLLECTION_EVIDENCE: "smedc_evidence_test"
       },
       fetch: async () => new Response(JSON.stringify({ data: [] }))
     });
@@ -101,7 +101,7 @@ describe("model provider factory", () => {
         OPENAI_COMPATIBLE_API_KEY: "sk-test-secret",
         EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED: "true",
         RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v1",
-        QDRANT_COLLECTION_EVIDENCE: "enterprise_hub_evidence_test"
+        QDRANT_COLLECTION_EVIDENCE: "smedc_evidence_test"
       },
       fetch: async () =>
         new Response(JSON.stringify({ output: { results: [{ index: 0, relevance_score: 0.5 }] } }))

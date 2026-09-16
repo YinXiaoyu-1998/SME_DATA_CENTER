@@ -81,7 +81,7 @@ describe("read-only MCP tool handlers", () => {
     const result = await handlers.download_structured_partitions?.(
       {
         dataset: "business",
-        enterpriseName: "Maijia",
+        enterpriseName: "Synthetic",
         startDate: "20260907",
         endDate: "20260913"
       },
@@ -99,10 +99,7 @@ describe("read-only MCP tool handlers", () => {
     const { calls, handlers } = createCapturingDelegate();
 
     const currentUser = await handlers.smedc_get_current_user?.({}, {} as never);
-    await handlers.smedc_list_skills?.(
-      { q: "菜单", category: "menu-analysis" },
-      {} as never
-    );
+    await handlers.smedc_list_skills?.({ q: "菜单", category: "menu-analysis" }, {} as never);
     await handlers.search_document_evidence?.(
       {
         query: "菜单 毛利",

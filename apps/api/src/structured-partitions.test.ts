@@ -11,7 +11,7 @@ const current: CurrentPartitionState = {
   objectKey: "structured-partitions/org/job/current.csv",
   checksumSha256: "a".repeat(64),
   confidentialityLevel: 2,
-  enterpriseName: "麦家小馆",
+  enterpriseName: "示例小馆",
   merchantId: "000123",
   storeName: "门店 A",
   rowCount: 10n,
@@ -21,8 +21,8 @@ const current: CurrentPartitionState = {
 const candidate: PartitionCandidate = {
   id: "part_candidate",
   orgId: "org_1",
-  enterpriseKey: "麦家小馆",
-  enterpriseName: "麦家小馆",
+  enterpriseKey: "示例小馆",
+  enterpriseName: "示例小馆",
   dataset: "dishes",
   storeKey: "merchant:000123",
   merchantId: "000123",
@@ -49,7 +49,7 @@ describe("partition publication decisions", () => {
       decidePartitionReplacement(current, {
         ...candidate,
         confidentialityLevel: 0,
-        enterpriseName: "麦家 小馆",
+        enterpriseName: "示例 小馆",
         storeName: "门店 A 新名"
       })
     ).toEqual({
@@ -76,7 +76,7 @@ describe("partition publication decisions", () => {
   test("builds the complete organization and enterprise scoped identity", () => {
     expect(partitionIdentityWhere(candidate)).toEqual({
       orgId: "org_1",
-      enterpriseKey: "麦家小馆",
+      enterpriseKey: "示例小馆",
       dataset: "dishes",
       storeKey: "merchant:000123",
       businessDate: new Date("2026-09-07T00:00:00.000Z")

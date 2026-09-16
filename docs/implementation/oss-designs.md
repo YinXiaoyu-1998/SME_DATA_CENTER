@@ -9,7 +9,7 @@ Status: implemented locally on 2026-07-21.
 
 ## Decision
 
-Enterprise Hub keeps the existing `StorageAdapter` boundary and selects one implementation at API/worker startup:
+SMEDC keeps the existing `StorageAdapter` boundary and selects one implementation at API/worker startup:
 
 - `STORAGE_DRIVER=local` creates `LocalFileSystemStorageAdapter` and requires `LOCAL_STORAGE_ROOT`.
 - `STORAGE_DRIVER=oss` creates `AliyunOssStorageAdapter` and requires the S3-compatible Alibaba Cloud OSS runtime variables documented in `env-inventory.md`.
@@ -28,10 +28,10 @@ org/<org_id>/documents/<document_id>/original/<safe_filename>
 The OSS adapter maps that key to a physical object below `AWS_S3_PREFIX`, which defaults to:
 
 ```text
-enterprise-hub/org/<org_id>/documents/<document_id>/original/<safe_filename>
+smedc/org/<org_id>/documents/<document_id>/original/<safe_filename>
 ```
 
-The prefix is deliberately not returned to API callers or persisted as business metadata. It isolates Enterprise Hub objects inside a shared bucket without coupling stored document records to one deployment prefix. Prefixes and logical keys reject absolute paths, backslashes, empty segments, `.` segments, and `..` traversal.
+The prefix is deliberately not returned to API callers or persisted as business metadata. It isolates SMEDC objects inside a shared bucket without coupling stored document records to one deployment prefix. Prefixes and logical keys reject absolute paths, backslashes, empty segments, `.` segments, and `..` traversal.
 
 ## Adapter Semantics
 
@@ -68,4 +68,4 @@ Local mode remains supported and is still the committed `.env.example` default. 
 
 ## Skill Synchronization Decision
 
-The storage driver itself does not change MCP tool names, inputs, outputs, or authorization. However, the required post-implementation manual acceptance exposed a separate client-integrity gap: two clean employee tasks reconstructed a user-specified file into Base64 and changed two characters instead of reading the exact assigned bytes. The repo-local and standalone `enterprise-hub-mcp` skills were therefore updated together to require deterministic byte reads/encoding and to reject invented payloads. No server-visible file path or service API change was introduced.
+The storage driver itself does not change MCP tool names, inputs, outputs, or authorization. However, the required post-implementation manual acceptance exposed a separate client-integrity gap: two clean employee tasks reconstructed a user-specified file into Base64 and changed two characters instead of reading the exact assigned bytes. The repo-local and standalone `smedc-mcp` skills were therefore updated together to require deterministic byte reads/encoding and to reject invented payloads. No server-visible file path or service API change was introduced.

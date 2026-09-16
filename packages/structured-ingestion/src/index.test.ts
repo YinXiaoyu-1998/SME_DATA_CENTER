@@ -908,9 +908,9 @@ describe("structured ingestion", () => {
   });
 
   test.each([
-    ["dishes", "maijia_dishes_20260706_20260712_first1000.xlsx"],
-    ["business", "maijia_business_20260706_20260712_first1000.xlsx"]
-  ] as const)("profiles and imports the real Maijia %s fixture", async (dataset, fileName) => {
+    ["dishes", "synthetic_dishes_20260706_20260712_first1000.xlsx"],
+    ["business", "synthetic_business_20260706_20260712_first1000.xlsx"]
+  ] as const)("profiles and imports the real Synthetic %s fixture", async (dataset, fileName) => {
     const content = await readFile(path.join(process.cwd(), "fixtures", "structured", fileName));
     const profile = await profileStructuredFile({
       dataset,
@@ -1725,10 +1725,10 @@ describe("committed XLSX fixture pipeline", () => {
   test("imports the real catalog snapshot and safely reports its nonmatching sheet", async () => {
     const result = await parseStructuredFile({
       dataset: "dish_catalog",
-      fileName: "maijia_dish_catalog_20260819.xlsx",
+      fileName: "synthetic_dish_catalog_20260819.xlsx",
       fileType: "xlsx",
       content: await readFile(
-        path.join(process.cwd(), "fixtures", "structured", "maijia_dish_catalog_20260819.xlsx")
+        path.join(process.cwd(), "fixtures", "structured", "synthetic_dish_catalog_20260819.xlsx")
       ),
       startDate: "20260819",
       endDate: "20260819",

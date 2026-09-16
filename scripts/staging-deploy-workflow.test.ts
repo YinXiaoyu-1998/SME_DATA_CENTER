@@ -37,7 +37,7 @@ describe("staging GitHub Actions release boundary", () => {
     const actionReferences = [...source.matchAll(/^\s+uses:\s+\S+@(\S+)$/gm)];
 
     expect(source).toContain("permissions:\n  contents: read");
-    expect(source).toContain("group: enterprise-hub-staging");
+    expect(source).toContain("group: smedc-staging");
     expect(source).toContain("cancel-in-progress: false");
     expect(source).toContain("name: staging");
     expect(actionReferences.length).toBeGreaterThan(0);

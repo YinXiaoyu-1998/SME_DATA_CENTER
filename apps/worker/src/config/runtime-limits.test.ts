@@ -18,7 +18,7 @@ describe("worker runtime limits", () => {
       partitionImportMaxRows: 5_000_000,
       partitionImportMaxPartitions: 10_000,
       partitionImportMaxCanonicalBytes: 8_589_934_592,
-      partitionImportWorkDirectory: "/var/lib/enterprise/partition-work",
+      partitionImportWorkDirectory: "/var/lib/smedc/partition-work",
       partitionImportMinFreeBytes: 12_884_901_888,
       partitionImportMaxOpenFiles: 32,
       partitionImportObjectConcurrency: 6,
