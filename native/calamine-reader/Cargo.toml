@@ -1,0 +1,16 @@
+[package]
+name = "enterprise-hub-calamine-reader"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+calamine = "=0.36.1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = true

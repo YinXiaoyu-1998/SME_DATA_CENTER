@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { exportStructuredPartitions } from "./partition-export.js";
 
 const roots: string[] = [];
+const calamineIntegrationTest = process.env.RUN_CALAMINE_INTEGRATION === "1" ? test : test.skip;
 const limits = {
   maxSourceBytes: 10_000_000,
   maxRows: 100,
@@ -33,7 +34,8 @@ describe("exportStructuredPartitions", () => {
         "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
       ),
       outputDirectory: path.join(root, "output"),
-      limits: { ...limits, maxRows: 2_000 }
+      limits: { ...limits, maxRows: 2_000 },
+      xlsxReaderCommand: fixtureReaderCommand()
     });
 
     expect(result.totalRowCount).toBe(997n);
@@ -55,6 +57,122 @@ describe("exportStructuredPartitions", () => {
     }
     expect(result.profile.structureReadMs).toBeGreaterThan(0);
     expect(result.profile.mergeScanMs).toBe(0);
+  });
+
+  calamineIntegrationTest(
+    "exports the real fixture with the packaged Calamine binary",
+    async () => {
+      const root = await temporaryRoot();
+      const result = await exportStructuredPartitions({
+        dataset: "dishes",
+        sourcePath: path.resolve(
+          "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+        ),
+        outputDirectory: path.join(root, "output"),
+        limits: { ...limits, maxRows: 2_000, maxPartitions: 100 }
+      });
+
+      expect(result.totalRowCount).toBe(997n);
+      expect(result.partitions).toHaveLength(9);
+      expect(partitionManifestDigest(result.partitions)).toBe(
+        "f8d53494eb6a579254654dffed28dbb12bd79c44fb39eb5eb8dffe9e8d34b416"
+      );
+    }
+  );
+
+  calamineIntegrationTest(
+    "rejects forged worksheet sizes during native archive validation",
+    async () => {
+      const root = await temporaryRoot();
+      const sourcePath = path.join(root, "forged-size.xlsx");
+      const fixture = await readFile(
+        path.resolve("fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx")
+      );
+      await writeFile(
+        sourcePath,
+        forgeCentralDirectorySize(fixture, "xl/worksheets/sheet1.xml", 10)
+      );
+
+      await expect(
+        exportStructuredPartitions({
+          dataset: "dishes",
+          sourcePath,
+          outputDirectory: path.join(root, "output"),
+          limits: { ...limits, maxRows: 2_000, maxPartitions: 100 }
+        })
+      ).rejects.toMatchObject({ code: "PARTITION_SOURCE_INVALID" });
+    }
+  );
+
+  test("uses the configured Calamine command as the XLSX row source", async () => {
+    const root = await temporaryRoot();
+    const command = await fakeCalamineCommand(root, [
+      { type: "sheet", sheetIndex: 0, name: "菜品主题数据", hidden: false },
+      {
+        type: "rows",
+        sheetIndex: 0,
+        rows: [
+          [1, fileFields("dishes").map((field) => field.sourceColumn)],
+          [2, fileFields("dishes").map((field) => dishRow()[field.canonicalName] ?? "")]
+        ]
+      },
+      { type: "end_sheet", sheetIndex: 0 },
+      { type: "complete", sheetCount: 1 }
+    ]);
+
+    const result = await exportStructuredPartitions({
+      dataset: "dishes",
+      sourcePath: path.resolve(
+        "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+      ),
+      outputDirectory: path.join(root, "output"),
+      limits,
+      xlsxReaderCommand: command
+    });
+
+    expect(result.totalRowCount).toBe(1n);
+    expect(result.partitions).toHaveLength(1);
+  });
+
+  test("rejects the whole file when the Calamine reader exits unsuccessfully", async () => {
+    const root = await temporaryRoot();
+    const helperPath = path.join(root, "failed-reader.mjs");
+    await writeFile(
+      helperPath,
+      'process.stderr.write("synthetic reader failure\\n"); process.exit(23);\n'
+    );
+    const outputDirectory = path.join(root, "output");
+
+    await expect(
+      exportStructuredPartitions({
+        dataset: "dishes",
+        sourcePath: path.resolve(
+          "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+        ),
+        outputDirectory,
+        limits,
+        xlsxReaderCommand: [process.execPath, helperPath]
+      })
+    ).rejects.toMatchObject({ code: "PARTITION_SOURCE_INVALID" });
+    await expect(readdir(path.join(outputDirectory, "candidates"))).resolves.toEqual([]);
+  });
+
+  test("terminates a Calamine reader before an oversized protocol line is buffered", async () => {
+    const root = await temporaryRoot();
+    const helperPath = path.join(root, "oversized-reader.mjs");
+    await writeFile(helperPath, `process.stdout.write("x".repeat(${8 * 1024 * 1024 + 1}));\n`);
+
+    await expect(
+      exportStructuredPartitions({
+        dataset: "dishes",
+        sourcePath: path.resolve(
+          "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+        ),
+        outputDirectory: path.join(root, "output"),
+        limits,
+        xlsxReaderCommand: [process.execPath, helperPath]
+      })
+    ).rejects.toThrow("Calamine reader protocol line exceeded its limit.");
   });
 
   test("writes deterministic canonical bytes grouped by merchant and business date", async () => {
@@ -105,6 +223,30 @@ describe("exportStructuredPartitions", () => {
     expect(bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))).toBe(false);
     expect(first.byteSize).toBe(BigInt(bytes.byteLength));
     expect(first.checksumSha256).toBe(createHash("sha256").update(bytes).digest("hex"));
+  });
+
+  test("flushes many rows for one partition in bounded batches", async () => {
+    const root = await temporaryRoot();
+    const sourcePath = path.join(root, "dishes.csv");
+    await writeFile(
+      sourcePath,
+      csvFor(
+        "dishes",
+        Array.from({ length: 200 }, (_, index) =>
+          dishRow({ product_name: `批量菜品-${String(index).padStart(3, "0")}` })
+        )
+      )
+    );
+
+    const result = await exportStructuredPartitions({
+      dataset: "dishes",
+      sourcePath,
+      outputDirectory: path.join(root, "output"),
+      limits: { ...limits, maxRows: 500 }
+    });
+
+    expect(result.totalRowCount).toBe(200n);
+    expect(result.profile.partitionFlushCount).toBeLessThan(10);
   });
 
   test("uses the normalized store-name fallback when merchant ID is absent", async () => {
@@ -238,4 +380,67 @@ function valueFor(field: StructuredFieldRegistryEntry): string {
 
 function csvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+}
+
+async function fakeCalamineCommand(
+  root: string,
+  events: Array<Record<string, unknown>>
+): Promise<string[]> {
+  const helperPath = path.join(root, "fake-calamine-reader.mjs");
+  const output = `${events.map((event) => JSON.stringify(event)).join("\n")}\n`;
+  await writeFile(
+    helperPath,
+    `const required = ${JSON.stringify([
+      "--max-uncompressed-bytes",
+      "--max-zip-entries",
+      "--max-compression-ratio"
+    ])};
+if (required.some((flag) => !process.argv.includes(flag))) process.exit(24);
+process.stdout.write(${JSON.stringify(output)});
+`
+  );
+  return [process.execPath, helperPath];
+}
+
+function fixtureReaderCommand(): string[] {
+  return [
+    process.execPath,
+    "--import",
+    "tsx",
+    path.resolve("packages/structured-ingestion/src/calamine-reader-test-helper.ts")
+  ];
+}
+
+function partitionManifestDigest(
+  partitions: Array<{
+    storeKey: string;
+    businessDate: string;
+    rowCount: bigint;
+    byteSize: bigint;
+    checksumSha256: string;
+  }>
+): string {
+  const manifest = partitions.map((partition) => ({
+    storeKey: partition.storeKey,
+    businessDate: partition.businessDate,
+    rowCount: partition.rowCount.toString(),
+    byteSize: partition.byteSize.toString(),
+    checksumSha256: partition.checksumSha256
+  }));
+  return createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
+}
+
+function forgeCentralDirectorySize(content: Buffer, entryName: string, size: number): Buffer {
+  const forged = Buffer.from(content);
+  for (let offset = 0; offset <= forged.length - 46;) {
+    if (forged.readUInt32LE(offset) !== 0x02014b50) {
+      offset += 1;
+      continue;
+    }
+    const nameLength = forged.readUInt16LE(offset + 28);
+    const name = forged.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+    if (name === entryName) forged.writeUInt32LE(size, offset + 24);
+    offset += 46 + nameLength + forged.readUInt16LE(offset + 30) + forged.readUInt16LE(offset + 32);
+  }
+  return forged;
 }

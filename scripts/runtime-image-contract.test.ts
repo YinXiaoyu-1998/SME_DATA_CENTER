@@ -8,7 +8,7 @@ const compose = readFileSync(resolve(workspaceRoot, "deploy/staging/docker-compo
 
 function dockerStage(name: string) {
   const stage = dockerfile.match(
-    new RegExp(`^FROM[^\\n]+ AS ${name}\\n([\\s\\S]*?)(?=^FROM|$)`, "m")
+    new RegExp(`^FROM[^\\n]+ AS ${name}\\n([\\s\\S]*?)(?=^FROM|(?![\\s\\S]))`, "m")
   );
 
   return stage?.[0] ?? "";
@@ -32,6 +32,15 @@ describe("runtime image contracts", () => {
     expect(dockerfile).toContain('CMD ["node", "dist/release/worker.js"]');
     expect(apiSection).not.toContain("npm run api:dev");
     expect(workerSection).not.toContain("npm run worker:dev");
+  });
+
+  it("ships the Calamine partition reader only in the worker image", () => {
+    const apiSection = dockerStage("api");
+    const workerSection = dockerStage("worker");
+
+    expect(dockerfile).toContain("AS calamine-reader-build");
+    expect(workerSection).toContain("enterprise-hub-calamine-reader");
+    expect(apiSection).not.toContain("enterprise-hub-calamine-reader");
   });
 
   it("provides release operations as an explicit ephemeral Compose profile", () => {

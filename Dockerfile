@@ -30,6 +30,15 @@ COPY fixtures ./fixtures
 RUN npm run db:generate \
   && npm run build:release
 
+FROM rust:1.90-bookworm AS calamine-reader-build
+
+WORKDIR /src
+
+COPY native/calamine-reader/Cargo.toml native/calamine-reader/Cargo.lock ./
+COPY native/calamine-reader/src ./src
+
+RUN cargo build --locked --release
+
 FROM manifests AS api-deps
 
 RUN npm ci --omit=dev --legacy-peer-deps \
@@ -81,6 +90,7 @@ FROM runtime-base AS worker
 COPY --from=worker-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build --chown=node:node /app/dist/release/worker.js ./dist/release/worker.js
+COPY --from=calamine-reader-build --chown=root:root /src/target/release/enterprise-hub-calamine-reader /usr/local/bin/enterprise-hub-calamine-reader
 
 USER node
 

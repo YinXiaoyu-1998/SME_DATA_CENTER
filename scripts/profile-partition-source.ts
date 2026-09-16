@@ -25,6 +25,7 @@ export interface PartitionSourceProfile {
 export async function profilePartitionSource(input: {
   dataset: PartitionDatasetName;
   sourcePath: string;
+  xlsxReaderCommand?: readonly string[];
 }): Promise<PartitionSourceProfile> {
   if (!path.isAbsolute(input.sourcePath)) throw new Error("sourcePath must be absolute.");
   const source = await stat(input.sourcePath);
@@ -40,6 +41,7 @@ export async function profilePartitionSource(input: {
       dataset: input.dataset,
       sourcePath: input.sourcePath,
       outputDirectory: temporaryRoot,
+      xlsxReaderCommand: input.xlsxReaderCommand,
       limits: {
         maxSourceBytes: 2_147_483_648,
         maxRows: 5_000_000,

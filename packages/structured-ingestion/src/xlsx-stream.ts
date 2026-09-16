@@ -331,6 +331,17 @@ interface WorkbookSheet {
   rid: string;
 }
 
+export interface XlsxWorkbookSheet {
+  sheetIndex: number;
+  name: string;
+  hidden: boolean;
+}
+
+export interface XlsxWorkbookInspection {
+  sheets: XlsxWorkbookSheet[];
+  structureReadMs: number;
+}
+
 function workbookSheets(xml: Buffer): WorkbookSheet[] {
   const sheets: WorkbookSheet[] = [];
   runSax(xml.toString("utf8"), (parser) => {
@@ -357,6 +368,42 @@ function workbookRels(xml: Buffer): Map<string, string> {
     };
   });
   return rels;
+}
+
+/**
+ * Validates the complete ZIP central directory and reads only workbook metadata.
+ * Partition XLSX decoding is delegated to Calamine, while this pass preserves the
+ * service's existing archive limits, path checks, sheet order, and visibility contract.
+ */
+export async function inspectXlsxFile(
+  filePath: string,
+  limits: XlsxReadLimits
+): Promise<XlsxWorkbookInspection> {
+  const startedAt = performance.now();
+  const structuralEntries = await readWantedZipEntries(
+    filePath,
+    limits,
+    new Set(["xl/workbook.xml", "xl/_rels/workbook.xml.rels"])
+  );
+  const workbookXml = structuralEntries.get("xl/workbook.xml");
+  const relsXml = structuralEntries.get("xl/_rels/workbook.xml.rels");
+  if (!workbookXml || !relsXml) throw validation("XLSX required OOXML entries are missing.");
+  const workbook = workbookSheets(workbookXml);
+  if (workbook.length > limits.maxXlsxSheets) throw validation("XLSX sheet limit exceeded.");
+  const rels = workbookRels(relsXml);
+  for (const sheet of workbook) {
+    const target = rels.get(sheet.rid);
+    if (!target) throw validation("Malformed XLSX workbook XML.");
+    worksheetEntryPath(target);
+  }
+  return {
+    sheets: workbook.map((sheet, sheetIndex) => ({
+      sheetIndex,
+      name: sheet.name,
+      hidden: sheet.state !== "visible"
+    })),
+    structureReadMs: performance.now() - startedAt
+  };
 }
 
 function sharedStrings(xml: Buffer): string[] {
