@@ -90,7 +90,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
    explicitly for each. For a scoped QA acceptance, apply the reuse preconditions above instead and
    record the safe current-user identity plus the `default-org` verification. Never use a real
    customer/user email. Keep setup links and generated passwords out of reports and commits.
-7. For full acceptance, batch browser password setup: after every required synthetic account has
+7. Batch browser password setup remains required for full acceptance: after every required synthetic account has
    been created, generate a distinct throwaway password per account, open all setup links in
    separate Chrome tabs, and fill both password fields in every tab. State the exact number of
    ready tabs, then make one consolidated handoff for the human to click **Set password** in each
