@@ -1,1 +1,1 @@
-export const adminWebWorkspaceName = "@enterprise-hub/admin-web";
+export const adminWebWorkspaceName = "@smedc/admin-web";

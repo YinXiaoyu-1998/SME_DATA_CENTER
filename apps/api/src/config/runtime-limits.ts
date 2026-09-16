@@ -1,4 +1,4 @@
-import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@enterprise-hub/domain";
+import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@smedc/domain";
 
 export interface ApiRuntimeLimits {
   maxUploadBytes: number;

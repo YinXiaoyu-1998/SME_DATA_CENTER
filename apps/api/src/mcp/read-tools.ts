@@ -1,11 +1,11 @@
 import {
-  ENTERPRISE_HUB_MCP_TOOL_CONTRACTS,
+  SMEDC_MCP_TOOL_CONTRACTS,
   errorToolResult,
   validationErrorToolResult,
-  type EnterpriseHubMcpToolContract,
-  type EnterpriseHubMcpToolName
-} from "@enterprise-hub/mcp-contract";
-import type { EnterpriseHubMcpToolHandlers } from "./tool-handlers.js";
+  type SmedcMcpToolContract,
+  type SmedcMcpToolName
+} from "@smedc/mcp-contract";
+import type { SmedcMcpToolHandlers } from "./tool-handlers.js";
 import {
   delegateJsonApiRequest,
   type ApiDelegationContext,
@@ -17,8 +17,8 @@ import { launcherVersionAtLeast } from "../request-audit-context.js";
 const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.4.0";
 
 export const READ_ONLY_MCP_TOOL_NAMES = [
-  "enterprise_hub_get_current_user",
-  "enterprise_hub_list_skills",
+  "smedc_get_current_user",
+  "smedc_list_skills",
   "search_document_evidence",
   "list_structured_datasets",
   "query_structured_dataset",
@@ -29,19 +29,19 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "get_import_status",
   "get_partition_import_status",
   "download_structured_partitions"
-] as const satisfies readonly EnterpriseHubMcpToolName[];
+] as const satisfies readonly SmedcMcpToolName[];
 
 type ReadOnlyMcpToolName = (typeof READ_ONLY_MCP_TOOL_NAMES)[number];
 
 const READ_ONLY_TOOL_CONTRACTS = Object.fromEntries(
-  ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.filter((contract) =>
+  SMEDC_MCP_TOOL_CONTRACTS.filter((contract) =>
     READ_ONLY_MCP_TOOL_NAMES.includes(contract.name as ReadOnlyMcpToolName)
   ).map((contract) => [contract.name, contract])
-) as Record<ReadOnlyMcpToolName, EnterpriseHubMcpToolContract>;
+) as Record<ReadOnlyMcpToolName, SmedcMcpToolContract>;
 
 export function createReadOnlyMcpToolHandlers(
   context: ApiDelegationContext
-): EnterpriseHubMcpToolHandlers {
+): SmedcMcpToolHandlers {
   return Object.fromEntries(
     READ_ONLY_MCP_TOOL_NAMES.map((toolName) => [
       toolName,
@@ -55,7 +55,7 @@ export function createReadOnlyMcpToolHandlers(
         ) {
           return errorToolResult(
             "LAUNCHER_UPGRADE_REQUIRED",
-            "Update the Enterprise Hub launcher before using partition datasets.",
+            "Update the SMEDC launcher before using partition datasets.",
             undefined,
             { requestId: mcpContext.audit.requestId }
           );
@@ -75,7 +75,7 @@ export function createReadOnlyMcpToolHandlers(
         );
       }
     ])
-  ) as EnterpriseHubMcpToolHandlers;
+  ) as SmedcMcpToolHandlers;
 }
 
 function routeForReadOnlyTool(
@@ -83,13 +83,13 @@ function routeForReadOnlyTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
-    case "enterprise_hub_get_current_user":
+    case "smedc_get_current_user":
       return {
         method: "GET",
         path: "/me",
         mapSuccess: currentUserFromMe
       };
-    case "enterprise_hub_list_skills":
+    case "smedc_list_skills":
       return {
         method: "GET",
         path: "/skills",

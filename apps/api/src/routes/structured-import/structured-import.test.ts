@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
-import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
-import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
+import type { AuthenticatedEmployee } from "@smedc/domain";
+import { AUDIT_ACTIONS, getStructuredRegistry } from "@smedc/domain";
+import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@smedc/storage";
 import { structuredImportFingerprint } from "./workflow.js";
 import { buildApiServer } from "../../server.js";
 import {

@@ -1,31 +1,31 @@
 import {
-  ENTERPRISE_HUB_MCP_TOOL_CONTRACTS,
+  SMEDC_MCP_TOOL_CONTRACTS,
   validationErrorToolResult,
-  type EnterpriseHubMcpToolContract,
-  type EnterpriseHubMcpToolName
-} from "@enterprise-hub/mcp-contract";
+  type SmedcMcpToolContract,
+  type SmedcMcpToolName
+} from "@smedc/mcp-contract";
 import {
   delegateJsonApiRequest,
   type ApiDelegationContext,
   type DelegateJsonApiRequest
 } from "./api-delegation.js";
-import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
+import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 
 export const ACTION_MCP_TOOL_NAMES = [
   "archive_quarantine_certificates"
-] as const satisfies readonly EnterpriseHubMcpToolName[];
+] as const satisfies readonly SmedcMcpToolName[];
 
 type ActionMcpToolName = (typeof ACTION_MCP_TOOL_NAMES)[number];
 
 const ACTION_TOOL_CONTRACTS = Object.fromEntries(
-  ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.filter((contract) =>
+  SMEDC_MCP_TOOL_CONTRACTS.filter((contract) =>
     ACTION_MCP_TOOL_NAMES.includes(contract.name as ActionMcpToolName)
   ).map((contract) => [contract.name, contract])
-) as Record<ActionMcpToolName, EnterpriseHubMcpToolContract>;
+) as Record<ActionMcpToolName, SmedcMcpToolContract>;
 
 export function createActionMcpToolHandlers(
   context: ApiDelegationContext
-): EnterpriseHubMcpToolHandlers {
+): SmedcMcpToolHandlers {
   return Object.fromEntries(
     ACTION_MCP_TOOL_NAMES.map((toolName) => [
       toolName,
@@ -45,7 +45,7 @@ export function createActionMcpToolHandlers(
         );
       }
     ])
-  ) as EnterpriseHubMcpToolHandlers;
+  ) as SmedcMcpToolHandlers;
 }
 
 function routeForActionTool(

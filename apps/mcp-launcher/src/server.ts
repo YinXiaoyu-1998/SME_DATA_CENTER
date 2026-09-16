@@ -4,10 +4,10 @@ import type { LauncherRuntimeConfig } from "./config.js";
 import { createLauncherToolDependencies, registerLauncherTools } from "./launcher.js";
 import { cleanupDefaultStaleExtractDirectories } from "./partition-transfer.js";
 
-export const MCP_LAUNCHER_SERVER_NAME = "enterprise-hub-mcp-launcher";
-export const MCP_LAUNCHER_SERVER_VERSION = "0.4.0";
+export const MCP_LAUNCHER_SERVER_NAME = "smedc-mcp-launcher";
+export const MCP_LAUNCHER_SERVER_VERSION = "0.5.0";
 
-export function createEnterpriseHubMcpLauncherServer(config: LauncherRuntimeConfig): McpServer {
+export function createSmedcMcpLauncherServer(config: LauncherRuntimeConfig): McpServer {
   const server = new McpServer({
     name: MCP_LAUNCHER_SERVER_NAME,
     version: MCP_LAUNCHER_SERVER_VERSION
@@ -20,6 +20,6 @@ export function createEnterpriseHubMcpLauncherServer(config: LauncherRuntimeConf
 
 export async function runMcpLauncherStdioServer(config: LauncherRuntimeConfig): Promise<void> {
   await cleanupDefaultStaleExtractDirectories();
-  const server = createEnterpriseHubMcpLauncherServer(config);
+  const server = createSmedcMcpLauncherServer(config);
   await server.connect(new StdioServerTransport());
 }

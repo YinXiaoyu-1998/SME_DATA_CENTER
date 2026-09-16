@@ -2,7 +2,7 @@ import {
   parseRuntimeReadinessConfig,
   type RuntimeEnv,
   type RuntimeReadinessConfig
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 
 export function parseWorkerRetrievalRuntimeConfig(
   env: RuntimeEnv = process.env

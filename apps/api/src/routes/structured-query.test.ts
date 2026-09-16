@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { PHASE3_ERROR_CODES, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { PHASE3_ERROR_CODES, type AuthenticatedEmployee } from "@smedc/domain";
 import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
 import type { ApiServerContext } from "../app-context.js";

@@ -6,7 +6,7 @@ import {
   STRUCTURED_DATASETS,
   STRUCTURED_QUERY_LIMITS,
   getStructuredRegistry
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
 export const MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadMediaTypeChars;
@@ -407,9 +407,9 @@ const sourceDocumentDownloadUrlInputSchema = z
   })
   .strict();
 
-export const ENTERPRISE_HUB_MCP_TOOL_NAMES = [
-  "enterprise_hub_get_current_user",
-  "enterprise_hub_list_skills",
+export const SMEDC_MCP_TOOL_NAMES = [
+  "smedc_get_current_user",
+  "smedc_list_skills",
   "search_document_evidence",
   "list_structured_datasets",
   "query_structured_dataset",
@@ -426,7 +426,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_NAMES = [
   "download_structured_partitions"
 ] as const;
 
-export type EnterpriseHubMcpToolName = (typeof ENTERPRISE_HUB_MCP_TOOL_NAMES)[number];
+export type SmedcMcpToolName = (typeof SMEDC_MCP_TOOL_NAMES)[number];
 
 export interface McpToolInputField {
   name: string;
@@ -434,8 +434,8 @@ export interface McpToolInputField {
   description: string;
 }
 
-export interface EnterpriseHubMcpToolContract {
-  name: EnterpriseHubMcpToolName;
+export interface SmedcMcpToolContract {
+  name: SmedcMcpToolName;
   title: string;
   description: string;
   inputSchema: z.ZodObject<z.ZodRawShape>;
@@ -466,7 +466,7 @@ export interface McpErrorBody {
 }
 
 export const MCP_ERROR_CODES = [
-  "ENTERPRISE_HUB_API_ERROR",
+  "SMEDC_API_ERROR",
   "MCP_INPUT_VALIDATION_ERROR",
   "MCP_TOOL_NOT_FOUND",
   "MCP_UNAUTHORIZED",
@@ -478,19 +478,19 @@ export const MCP_ERROR_CODES = [
 
 export type McpErrorCode = (typeof MCP_ERROR_CODES)[number];
 
-export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
+export const SMEDC_MCP_TOOL_CONTRACTS = [
   defineToolContract({
-    name: "enterprise_hub_get_current_user",
-    title: "Get current Enterprise Hub user",
+    name: "smedc_get_current_user",
+    title: "Get current SMEDC user",
     description:
-      "Return the display name, email, role, clearance, and organization name of the employee authenticated for this Enterprise Hub MCP request.",
+      "Return the display name, email, role, clearance, and organization name of the employee authenticated for this SMEDC MCP request.",
     inputSchema: currentUserInputSchema,
     inputFields: [],
     resultShape: ["user: { displayName, email, role, clearance, organizationName }"]
   }),
   defineToolContract({
-    name: "enterprise_hub_list_skills",
-    title: "List Enterprise Hub skills",
+    name: "smedc_list_skills",
+    title: "List SMEDC skills",
     description: "List approved Skill Directory entries by calling authenticated GET /skills.",
     inputSchema: listSkillsInputSchema,
     inputFields: [
@@ -501,7 +501,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "search_document_evidence",
-    title: "Search Enterprise Hub evidence chunks",
+    title: "Search SMEDC evidence chunks",
     description:
       "Return authorized evidence chunks by calling authenticated POST /v1/evidence/search; never generates answers.",
     inputSchema: searchDocumentEvidenceInputSchema,
@@ -515,7 +515,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "list_structured_datasets",
-    title: "List Enterprise Hub structured datasets",
+    title: "List SMEDC structured datasets",
     description:
       "Discover registry-backed structured datasets by calling authenticated GET /v1/structured/datasets. Field canonicalName values are the structured-query field names; sourceColumn and aliases are for mapping user-facing/source labels to canonicalName and for result presentation.",
     inputSchema: listStructuredDatasetsInputSchema,
@@ -527,7 +527,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "query_structured_dataset",
-    title: "Query Enterprise Hub structured dataset",
+    title: "Query SMEDC structured dataset",
     description:
       "Execute a controlled read-only structured query by calling authenticated POST /v1/structured/query.",
     inputSchema: queryStructuredDatasetInputSchema,
@@ -579,7 +579,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "describe_structured_dataset_coverage",
-    title: "Describe Enterprise Hub structured dataset coverage",
+    title: "Describe SMEDC structured dataset coverage",
     description:
       "Return readable applied structured source coverage facts by calling authenticated GET /v1/structured/datasets/:dataset/coverage. This tool reports sources only; clients decide completeness and reporting sufficiency.",
     inputSchema: describeStructuredDatasetCoverageInputSchema,
@@ -599,7 +599,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "upload_structured_dataset",
-    title: "Upload Enterprise Hub structured dataset",
+    title: "Upload SMEDC structured dataset",
     description:
       "Upload the user's original XLSX/CSV. Launcher 0.4.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
@@ -659,7 +659,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "upload_evidence_document",
-    title: "Upload Enterprise Hub evidence document",
+    title: "Upload SMEDC evidence document",
     description:
       "Upload MD/TXT/DOCX evidence by calling authenticated multipart POST /v1/documents/evidence.",
     inputSchema: uploadEvidenceDocumentInputSchema,
@@ -677,7 +677,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "upload_quarantine_certificate",
-    title: "Upload Enterprise Hub quarantine certificate",
+    title: "Upload SMEDC quarantine certificate",
     description:
       "Upload one JPG/PNG quarantine certificate linked to a receipt ID by calling authenticated multipart POST /v1/documents/quarantine-certificates.",
     inputSchema: uploadQuarantineCertificateInputSchema,
@@ -702,7 +702,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "query_quarantine_certificates",
-    title: "Query Enterprise Hub quarantine certificates",
+    title: "Query SMEDC quarantine certificates",
     description:
       "Query visible quarantine certificates by receipt IDs using authenticated POST /v1/quarantine-certificates/query.",
     inputSchema: queryQuarantineCertificatesInputSchema,
@@ -711,7 +711,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "archive_quarantine_certificates",
-    title: "Archive Enterprise Hub quarantine certificates",
+    title: "Archive SMEDC quarantine certificates",
     description:
       "Privileged Administrative Operation: an admin archives one quarantine certificate by source document ID, or all certificates under one receipt ID, regardless of target confidentiality level.",
     inputSchema: archiveQuarantineCertificatesInputSchema,
@@ -727,7 +727,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "get_source_document_download_url",
-    title: "Get Enterprise Hub source document download URL",
+    title: "Get SMEDC source document download URL",
     description:
       "Issue an authorized temporary source-file download URL using authenticated POST /v1/source-documents/:sourceDocumentId/download-url.",
     inputSchema: sourceDocumentDownloadUrlInputSchema,
@@ -743,7 +743,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "get_evidence_document_status",
-    title: "Get Enterprise Hub evidence document status",
+    title: "Get SMEDC evidence document status",
     description:
       "Read evidence indexing status by calling authenticated GET /v1/documents/evidence/:documentId/status.",
     inputSchema: evidenceDocumentStatusInputSchema,
@@ -752,7 +752,7 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
   }),
   defineToolContract({
     name: "get_import_status",
-    title: "Get Enterprise Hub structured import status",
+    title: "Get SMEDC structured import status",
     description:
       "Read structured import status and its terminal outcome by calling authenticated GET /v1/structured/imports/:importBatchId.",
     inputSchema: importStatusInputSchema,
@@ -761,11 +761,11 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     ],
     resultShape: ["document", "processing", "importBatch"]
   })
-] as const satisfies readonly EnterpriseHubMcpToolContract[];
+] as const satisfies readonly SmedcMcpToolContract[];
 
 export const mcpToolContractSchema = z
   .object({
-    name: z.enum(ENTERPRISE_HUB_MCP_TOOL_NAMES),
+    name: z.enum(SMEDC_MCP_TOOL_NAMES),
     title: z.string().min(1),
     description: z.string().min(1),
     inputSchema: z.custom<z.ZodObject<z.ZodRawShape>>(isZodObject),
@@ -856,8 +856,8 @@ export function apiErrorToolResult(body: unknown): McpJsonToolResult {
   }
 
   return errorToolResult(
-    "ENTERPRISE_HUB_API_ERROR",
-    "Enterprise Hub API request failed.",
+    "SMEDC_API_ERROR",
+    "SMEDC API request failed.",
     undefined,
     {
       retryable: true
@@ -870,7 +870,7 @@ export function validationErrorToolResult(details: unknown): McpJsonToolResult {
 }
 
 export function toolNotFoundResult(toolName: string): McpJsonToolResult {
-  return errorToolResult("MCP_TOOL_NOT_FOUND", `Unknown Enterprise Hub MCP tool: ${toolName}`);
+  return errorToolResult("MCP_TOOL_NOT_FOUND", `Unknown SMEDC MCP tool: ${toolName}`);
 }
 
 export function isMcpErrorBody(body: unknown): body is McpErrorBody {
@@ -914,7 +914,7 @@ function isApiErrorBody(body: unknown): body is ApiErrorBody {
 }
 
 function defaultMcpErrorRetryable(code: McpErrorCode | string): boolean {
-  if (code === "ENTERPRISE_HUB_API_ERROR" || code === "MCP_INTERNAL_ERROR") {
+  if (code === "SMEDC_API_ERROR" || code === "MCP_INTERNAL_ERROR") {
     return true;
   }
 
@@ -1078,8 +1078,8 @@ function hasAsciiControlCharacter(value: string): boolean {
 }
 
 function defineToolContract(
-  contract: Omit<EnterpriseHubMcpToolContract, "inputShape">
-): EnterpriseHubMcpToolContract {
+  contract: Omit<SmedcMcpToolContract, "inputShape">
+): SmedcMcpToolContract {
   return {
     ...contract,
     inputShape: contract.inputSchema.shape

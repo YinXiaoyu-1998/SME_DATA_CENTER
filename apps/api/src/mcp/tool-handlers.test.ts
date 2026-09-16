@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ENTERPRISE_HUB_MCP_TOOL_NAMES } from "@enterprise-hub/mcp-contract";
-import { createEnterpriseHubMcpToolHandlers, type McpRequestContext } from "./tool-handlers.js";
+import { SMEDC_MCP_TOOL_NAMES } from "@smedc/mcp-contract";
+import { createSmedcMcpToolHandlers, type McpRequestContext } from "./tool-handlers.js";
 import type { ApiDelegationInjectRequest } from "./api-delegation.js";
 import type { UploadApiDelegationRequest } from "./upload-tools.js";
 
@@ -29,7 +29,7 @@ const mcpContext: McpRequestContext = {
 function createHandlers(bearerToken: string) {
   const jsonRequests: ApiDelegationInjectRequest[] = [];
   const uploadRequests: UploadApiDelegationRequest[] = [];
-  const handlers = createEnterpriseHubMcpToolHandlers({
+  const handlers = createSmedcMcpToolHandlers({
     bearerToken,
     audit,
     delegationProof,
@@ -72,19 +72,19 @@ function validEvidenceInput() {
   };
 }
 
-describe("live Enterprise Hub MCP tool handler map", () => {
+describe("live SMEDC MCP tool handler map", () => {
   it("contains concrete handlers for every core contract tool", () => {
     const { handlers } = createHandlers("token-a");
 
-    expect(Object.keys(handlers).sort()).toEqual([...ENTERPRISE_HUB_MCP_TOOL_NAMES].sort());
+    expect(Object.keys(handlers).sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
   });
 
   it("keeps bearer tokens in per-request factories instead of MCP context", async () => {
     const first = createHandlers("token-a");
     const second = createHandlers("token-b");
 
-    const firstSkills = await first.handlers.enterprise_hub_list_skills?.({}, mcpContext);
-    const secondSkills = await second.handlers.enterprise_hub_list_skills?.({}, mcpContext);
+    const firstSkills = await first.handlers.smedc_list_skills?.({}, mcpContext);
+    const secondSkills = await second.handlers.smedc_list_skills?.({}, mcpContext);
     const secondUpload = await second.handlers.upload_evidence_document?.(
       validEvidenceInput(),
       mcpContext

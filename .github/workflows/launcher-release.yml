@@ -11,7 +11,7 @@ on:
       - "package.json"
       - "package-lock.json"
     tags:
-      - "mcp-launcher-v*"
+      - "smedc-mcp-launcher-v*"
 
 permissions:
   contents: read
@@ -37,12 +37,12 @@ jobs:
           npm install --global npm@11.15.0
           test "$(npm --version)" = "11.15.0"
       - run: npm ci
-      - run: npm run build --workspace enterprise-hub-mcp-launcher
+      - run: npm run build --workspace smedc-mcp-launcher
       - name: Pack the reviewed artifact
         id: pack
         shell: bash
         run: |
-          pack_json="$(npm pack --workspace enterprise-hub-mcp-launcher --json)"
+          pack_json="$(npm pack --workspace smedc-mcp-launcher --json)"
           tarball="$(
             node -e 'const data=JSON.parse(process.argv[1]);process.stdout.write(data[0].filename)' "$pack_json"
           )"
@@ -72,8 +72,8 @@ jobs:
           npm install --global npm@11.15.0
           test "$(npm --version)" = "11.15.0"
       - run: npm ci
-      - run: npm run build --workspace enterprise-hub-mcp-launcher
-      - run: npm run test:package --workspace enterprise-hub-mcp-launcher
+      - run: npm run build --workspace smedc-mcp-launcher
+      - run: npm run test:package --workspace smedc-mcp-launcher
       - name: Require the release commit on main
         run: |
           git fetch --no-tags origin main
@@ -83,7 +83,7 @@ jobs:
           set -euo pipefail
           package_version="$(node -p "require('./apps/mcp-launcher/package.json').version")"
           if [[ "$GITHUB_REF_TYPE" = "tag" ]]; then
-            tag_version="${GITHUB_REF_NAME#mcp-launcher-v}"
+            tag_version="${GITHUB_REF_NAME#smedc-mcp-launcher-v}"
             test "$tag_version" = "$package_version"
           else
             test "$GITHUB_REF_NAME" = "main"
@@ -91,14 +91,14 @@ jobs:
       - name: Check existing release integrity or stage publish
         run: |
           set -euo pipefail
-          package_name=enterprise-hub-mcp-launcher
+          package_name=smedc-mcp-launcher
           package_version="$(node -p "require('./apps/mcp-launcher/package.json').version")"
           if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
             compare_dir="$(mktemp -d)"
             mkdir -p "$compare_dir/registry" "$compare_dir/local" "$compare_dir/extracted-registry" "$compare_dir/extracted-local"
             trap 'rm -rf "$compare_dir"' EXIT
             npm pack "$package_name@$package_version" --pack-destination "$compare_dir/registry" --json >/dev/null
-            npm pack --workspace enterprise-hub-mcp-launcher --pack-destination "$compare_dir/local" --json >/dev/null
+            npm pack --workspace smedc-mcp-launcher --pack-destination "$compare_dir/local" --json >/dev/null
             tar -xzf "$compare_dir/registry/$package_name-$package_version.tgz" -C "$compare_dir/extracted-registry"
             tar -xzf "$compare_dir/local/$package_name-$package_version.tgz" -C "$compare_dir/extracted-local"
             diff -qr "$compare_dir/extracted-registry/package" "$compare_dir/extracted-local/package"

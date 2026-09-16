@@ -5,7 +5,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { loadApiRuntimeLimits } from "../../config/runtime-limits.js";
 import type { RequestAuth } from "../../request-auth.js";
 import type {

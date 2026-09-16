@@ -1,16 +1,16 @@
 {
-  "name": "enterprise-hub-mcp-launcher",
-  "version": "0.4.0",
-  "description": "Official desktop stdio MCP launcher for Enterprise Hub",
+  "name": "smedc-mcp-launcher",
+  "version": "0.5.0",
+  "description": "Official desktop stdio MCP launcher for SMEDC",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YinXiaoyu-1998/SME_DATA_CENTER.git",
+    "url": "git+https://github.com/YinXiaoyu-1998/smedc.git",
     "directory": "apps/mcp-launcher"
   },
-  "homepage": "https://github.com/YinXiaoyu-1998/SME_DATA_CENTER#readme",
+  "homepage": "https://github.com/YinXiaoyu-1998/smedc#readme",
   "bugs": {
-    "url": "https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues"
+    "url": "https://github.com/YinXiaoyu-1998/smedc/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "enterprise-hub-mcp-launcher": "dist/index.js"
+    "smedc-mcp-launcher": "dist/index.js"
   },
   "files": [
     "dist",

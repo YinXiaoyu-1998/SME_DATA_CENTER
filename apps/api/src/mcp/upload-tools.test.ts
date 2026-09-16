@@ -1,4 +1,4 @@
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee } from "@smedc/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
   createUploadToolHandlers,
@@ -202,8 +202,8 @@ describe("upload MCP tool handlers", () => {
     expect(requests[0]?.headers).toMatchObject({
       authorization: "Bearer secret-upload-token",
       "x-request-id": "api_req_1",
-      "x-enterprise-hub-internal-delegation": delegationProof,
-      "x-enterprise-hub-launcher-version": "0.1.0"
+      "x-smedc-internal-delegation": delegationProof,
+      "x-smedc-launcher-version": "0.1.0"
     });
     expect(requests[0]?.headers).not.toHaveProperty("x-forwarded-for");
     expect(requests[0]?.headers).not.toHaveProperty("x-real-ip");
@@ -607,7 +607,7 @@ describe("upload MCP tool handlers", () => {
     );
     const serialized = JSON.stringify(parseResult(result!));
 
-    expect(serialized).toContain("ENTERPRISE_HUB_API_ERROR");
+    expect(serialized).toContain("SMEDC_API_ERROR");
     expect(serialized).not.toContain("secret-upload-token");
     expect(serialized).not.toContain(sensitiveBase64);
     expect(serialized).not.toContain("sensitive uploaded data");

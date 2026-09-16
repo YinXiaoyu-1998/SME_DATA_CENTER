@@ -1,6 +1,6 @@
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
-import type { AuthenticatedEmployee, EmployeeRoleName } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee, EmployeeRoleName } from "@smedc/domain";
 
 export interface EmployeeRepository {
   findByEmail(email: string): Promise<AuthenticatedEmployee | null>;

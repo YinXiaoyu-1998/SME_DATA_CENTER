@@ -1,4 +1,4 @@
-export const domainWorkspaceName = "@enterprise-hub/domain";
+export const domainWorkspaceName = "@smedc/domain";
 export { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 export {
   PHASE3_RUNTIME_LIMIT_DEFAULTS,

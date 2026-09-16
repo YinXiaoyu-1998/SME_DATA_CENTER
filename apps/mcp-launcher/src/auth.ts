@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import http from "node:http";
 
-export const OAUTH_CLIENT_ID = "enterprise-hub-desktop-launcher";
+export const OAUTH_CLIENT_ID = "smedc-desktop-launcher";
 export const CALLBACK_PATH = "/oauth/callback";
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -108,7 +108,7 @@ function listenForCallback(input: {
 
       complete = true;
       clearTimeout(timeout);
-      sendCallbackResponse(response, 200, "Sign-in completed. You can return to Enterprise Hub.");
+      sendCallbackResponse(response, 200, "Sign-in completed. You can return to SMEDC.");
       resolveUrl?.(
         new URL(requestUrl.pathname + requestUrl.search, `http://${request.headers.host}`)
       );
@@ -166,7 +166,7 @@ function sendCallbackResponse(
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store"
   });
-  response.end(`<!doctype html><title>Enterprise Hub</title><p>${message}</p>`);
+  response.end(`<!doctype html><title>SMEDC</title><p>${message}</p>`);
 }
 
 async function closeServer(server: http.Server): Promise<void> {

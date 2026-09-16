@@ -8,7 +8,7 @@ import {
   createStructuredCursor,
   compileStructuredQuery,
   PHASE3_ERROR_CODES
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import type { RequestAuth } from "../request-auth.js";
 import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";

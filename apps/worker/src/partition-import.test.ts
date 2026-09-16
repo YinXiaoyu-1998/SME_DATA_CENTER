@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getStructuredRegistry } from "@enterprise-hub/domain";
-import type { StructuredPartitionRepository } from "@enterprise-hub/db";
-import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { getStructuredRegistry } from "@smedc/domain";
+import type { StructuredPartitionRepository } from "@smedc/db";
+import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { createPartitionImporter } from "./partition-import.js";
 import type { ClaimedProcessingRun } from "./worker.js";
 

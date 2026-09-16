@@ -1,4 +1,4 @@
-export const dbWorkspaceName = "@enterprise-hub/db";
+export const dbWorkspaceName = "@smedc/db";
 export { createDatabaseAdapter } from "./adapter.js";
 export {
   databaseErrorDetails,

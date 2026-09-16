@@ -3,11 +3,11 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { isPartitionDataset, type PartitionDatasetName } from "@enterprise-hub/domain";
+import { isPartitionDataset, type PartitionDatasetName } from "@smedc/domain";
 import {
   exportStructuredPartitions,
   type StructuredPartitionExportProfile
-} from "@enterprise-hub/structured-ingestion";
+} from "@smedc/structured-ingestion";
 
 export interface PartitionSourceProfile {
   sourceBytes: number;

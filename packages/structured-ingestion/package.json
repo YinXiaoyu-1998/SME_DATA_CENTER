@@ -1,11 +1,11 @@
 {
-  "name": "@enterprise-hub/structured-ingestion",
+  "name": "@smedc/structured-ingestion",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "@enterprise-hub/domain": "0.0.0",
+    "@smedc/domain": "0.0.0",
     "csv-parse": "7.0.2",
     "sax": "1.6.1",
     "yauzl": "3.4.0"

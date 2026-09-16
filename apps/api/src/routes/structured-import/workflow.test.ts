@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createOriginalObjectKey } from "@enterprise-hub/storage";
+import { createOriginalObjectKey } from "@smedc/storage";
 import {
   canonicalStructuredImportFileName,
   structuredImportFingerprint,

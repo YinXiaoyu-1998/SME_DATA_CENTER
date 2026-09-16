@@ -16,7 +16,7 @@ import {
 } from "../privileged-admin-operations.js";
 import type { RequestAuth } from "../request-auth.js";
 import { errorResponse, isPayloadTooLargeError, validationError } from "../request-errors.js";
-import type { StorageAdapter } from "@enterprise-hub/storage";
+import type { StorageAdapter } from "@smedc/storage";
 import { readMultipartFile, type MultipartPart } from "../http/multipart.js";
 
 interface ParsedQuarantineUpload {

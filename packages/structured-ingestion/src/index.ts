@@ -6,7 +6,7 @@ import {
   type HeaderValidationError,
   type StructuredDatasetName,
   type StructuredFieldRegistryEntry
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import { readXlsxRows } from "./xlsx-stream.js";
 export {
   exportStructuredPartitions,

@@ -6,7 +6,7 @@ import path from "node:path";
 import type { SecureCredentialStore } from "./auth.js";
 import type { LauncherLock } from "./session.js";
 
-const SERVICE_NAME = "com.smedatacenter.enterprise-hub.launcher";
+const SERVICE_NAME = "com.smedatacenter.smedc.launcher";
 
 export function createKeychainCredentialStore(origin: string): SecureCredentialStore {
   let entry: AsyncEntry | null = null;
@@ -23,7 +23,7 @@ export function createKeychainCredentialStore(origin: string): SecureCredentialS
 export function createCrossProcessLock(origin: string): LauncherLock {
   const filename = `${encodeURIComponent(origin)}.lock`;
   return createFileLock(
-    path.join(appDataDirectory(), "Enterprise Hub", "launcher", "locks", filename)
+    path.join(appDataDirectory(), "SMEDC", "launcher", "locks", filename)
   );
 }
 
@@ -54,7 +54,7 @@ export function createFileLock(
           handle = await openOwnerFile(ownerPath, "wx", 0o600);
         } catch (error) {
           if (!isAlreadyExists(error)) {
-            throw new Error("Enterprise Hub launcher session lock failed.");
+            throw new Error("SMEDC launcher session lock failed.");
           }
           await waitForRetry(deadline, pollMs);
           continue;
@@ -85,13 +85,13 @@ export function createFileLock(
             await handle.close();
             await rm(ownerPath, { force: true });
             if (!isAlreadyExists(error)) {
-              throw new Error("Enterprise Hub launcher session lock failed.");
+              throw new Error("SMEDC launcher session lock failed.");
             }
           }
         } catch {
           await handle.close().catch(() => undefined);
           await rm(ownerPath, { force: true }).catch(() => undefined);
-          throw new Error("Enterprise Hub launcher session lock failed.");
+          throw new Error("SMEDC launcher session lock failed.");
         }
 
         const existing = await readOwner(lockPath);
@@ -108,9 +108,9 @@ export function createFileLock(
 
 async function waitForRetry(deadline: number, pollMs: number): Promise<void> {
   const remainingMs = deadline - Date.now();
-  if (remainingMs <= 0) throw new Error("Enterprise Hub launcher session is busy.");
+  if (remainingMs <= 0) throw new Error("SMEDC launcher session is busy.");
   await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remainingMs)));
-  if (Date.now() >= deadline) throw new Error("Enterprise Hub launcher session is busy.");
+  if (Date.now() >= deadline) throw new Error("SMEDC launcher session is busy.");
 }
 
 async function removeClaimedRecord(lockPath: string, expectedOwner: string | null): Promise<void> {

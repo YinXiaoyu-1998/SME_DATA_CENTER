@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import { DocumentIndexStatus, DocumentKind, DocumentStatus, PrismaClient } from "@prisma/client";
 import {
   QDRANT_DENSE_VECTOR_NAME,
@@ -12,7 +12,7 @@ import {
   type AuthenticatedEmployee,
   type EvidenceSearchRetrievalMetadata,
   type RetrievalModelConfig
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import { parseApiRetrievalRuntimeConfig } from "./config/retrieval-runtime.js";
 import type { RequestAuditContext } from "./request-audit-context.js";
 

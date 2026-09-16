@@ -35,7 +35,7 @@ function authFake() {
     completeAuthorizationTransaction: vi.fn(async () => ({
       codeId: "code_1",
       code: "eh_ac_abcdefghijklmnopqrstuvwxyz0123456789",
-      clientId: "enterprise-hub-desktop-launcher" as const,
+      clientId: "smedc-desktop-launcher" as const,
       redirectUri: "http://127.0.0.1:43121/oauth/callback",
       state: "abcdefghijklmnop",
       expiresAt: new Date(Date.now() + 60_000)
@@ -118,7 +118,7 @@ describe("official OAuth and password routes", () => {
     expect(response.json()).toMatchObject({
       issuer: "https://api.smedatacenter.xyz",
       authorization_endpoint: "https://api.smedatacenter.xyz/oauth/authorize",
-      enterprise_hub_launcher_minimum_version: "0.1.0"
+      smedc_launcher_minimum_version: "0.1.0"
     });
   });
 
@@ -126,7 +126,7 @@ describe("official OAuth and password routes", () => {
     const { app, auth } = await build();
     const response = await app.inject({
       url:
-        "/oauth/authorize?response_type=code&client_id=enterprise-hub-desktop-launcher" +
+        "/oauth/authorize?response_type=code&client_id=smedc-desktop-launcher" +
         "&redirect_uri=http%3A%2F%2F127.0.0.1%3A43121%2Foauth%2Fcallback" +
         "&state=abcdefghijklmnop&code_challenge=" +
         pkceChallengeForVerifier(verifier) +
@@ -217,13 +217,13 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/token",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-smedc-launcher-version": "0.1.0",
         "x-request-id": oauthAudit.requestId
       },
       remoteAddress: oauthAudit.sourceIp,
       payload: new URLSearchParams({
         grant_type: "authorization_code",
-        client_id: "enterprise-hub-desktop-launcher",
+        client_id: "smedc-desktop-launcher",
         code: "eh_ac_code",
         redirect_uri: "http://127.0.0.1:43121/oauth/callback",
         code_verifier: verifier
@@ -255,13 +255,13 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/token",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-smedc-launcher-version": "0.1.0",
         "x-request-id": oauthAudit.requestId
       },
       remoteAddress: oauthAudit.sourceIp,
       payload: new URLSearchParams({
         grant_type: "refresh_token",
-        client_id: "enterprise-hub-desktop-launcher",
+        client_id: "smedc-desktop-launcher",
         refresh_token: "eh_rt_old"
       }).toString()
     });
@@ -278,7 +278,7 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/revoke",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-smedc-launcher-version": "0.1.0",
         "x-request-id": oauthAudit.requestId
       },
       remoteAddress: oauthAudit.sourceIp,
@@ -297,7 +297,7 @@ describe("official OAuth and password routes", () => {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: new URLSearchParams({
         grant_type: "refresh_token",
-        client_id: "enterprise-hub-desktop-launcher",
+        client_id: "smedc-desktop-launcher",
         refresh_token: "eh_rt_old"
       }).toString()
     });
@@ -393,7 +393,7 @@ describe("official OAuth and password routes", () => {
 describe("device authorization endpoints", () => {
   const launcherHeaders = {
     "content-type": "application/x-www-form-urlencoded",
-    "x-enterprise-hub-launcher-version": "0.1.0",
+    "x-smedc-launcher-version": "0.1.0",
     "x-request-id": oauthAudit.requestId
   };
 
@@ -406,7 +406,7 @@ describe("device authorization endpoints", () => {
       headers: launcherHeaders,
       remoteAddress: oauthAudit.sourceIp,
       payload: new URLSearchParams({
-        client_id: "enterprise-hub-desktop-launcher",
+        client_id: "smedc-desktop-launcher",
         instanceName: "agent-a",
         instanceHostname: "vps-1"
       }).toString()
@@ -424,7 +424,7 @@ describe("device authorization endpoints", () => {
       interval: 5
     });
     expect(auth.issueDeviceAuthorization).toHaveBeenCalledWith({
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       instanceName: "agent-a",
       instanceHostname: "vps-1",
       audit: oauthAudit
@@ -438,7 +438,7 @@ describe("device authorization endpoints", () => {
       method: "POST",
       url: "/oauth/device_authorization",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      payload: new URLSearchParams({ client_id: "enterprise-hub-desktop-launcher" }).toString()
+      payload: new URLSearchParams({ client_id: "smedc-desktop-launcher" }).toString()
     });
 
     expect(response.statusCode).toBe(426);
@@ -563,7 +563,7 @@ describe("device authorization endpoints", () => {
       headers: launcherHeaders,
       payload: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        client_id: "enterprise-hub-desktop-launcher",
+        client_id: "smedc-desktop-launcher",
         device_code: "eh_dc_devicecode"
       }).toString()
     });
@@ -588,7 +588,7 @@ describe("device authorization endpoints", () => {
       headers: launcherHeaders,
       payload: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        client_id: "enterprise-hub-desktop-launcher",
+        client_id: "smedc-desktop-launcher",
         device_code: "eh_dc_devicecode"
       }).toString()
     });
@@ -607,7 +607,7 @@ describe("device authorization endpoints", () => {
       headers: launcherHeaders,
       payload: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        client_id: "enterprise-hub-desktop-launcher",
+        client_id: "smedc-desktop-launcher",
         device_code: "eh_dc_devicecode"
       }).toString()
     });

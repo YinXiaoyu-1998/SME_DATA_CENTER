@@ -1,4 +1,4 @@
-import type { RetrievalModelConfig } from "@enterprise-hub/domain";
+import type { RetrievalModelConfig } from "@smedc/domain";
 
 export type RuntimeProfile = "local" | "ci" | "development" | "staging" | "production";
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { compileStructuredQuery, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { compileStructuredQuery, type AuthenticatedEmployee } from "@smedc/domain";
 import { buildApiServer } from "./server.js";
 import type { EmployeeRepository } from "./employees.js";
 import type {

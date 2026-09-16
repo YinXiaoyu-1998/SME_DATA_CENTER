@@ -62,7 +62,7 @@ describeIntegration("Prisma auth core repository", () => {
     await prisma.authSession.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.oAuthAuthorizationCode.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.deviceAuthorization.deleteMany({
-      where: { clientId: "enterprise-hub-desktop-launcher" }
+      where: { clientId: "smedc-desktop-launcher" }
     });
     await prisma.oAuthAuthorizationTransaction.deleteMany({
       where: {
@@ -226,7 +226,7 @@ describeIntegration("Prisma auth core repository", () => {
   it("derives PKCE S256 from the raw verifier, rejects the wrong verifier, and redeems once", async () => {
     const verifier = "real-raw-verifier-used-only-at-the-auth-core-boundary";
     const transaction = await core.issueAuthorizationTransaction({
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       redirectUri: "http://127.0.0.1:32123/callback",
       state: "original-state",
       pkceChallenge: createHash("sha256").update(verifier).digest("base64url")
@@ -250,7 +250,7 @@ describeIntegration("Prisma auth core repository", () => {
       core.redeemAuthorizationCode(
         {
           secret: completed!.code,
-          clientId: "enterprise-hub-desktop-launcher",
+          clientId: "smedc-desktop-launcher",
           redirectUri: "http://127.0.0.1:32123/callback",
           verifier: "wrong-raw-verifier"
         },
@@ -262,7 +262,7 @@ describeIntegration("Prisma auth core repository", () => {
       core.redeemAuthorizationCode(
         {
           secret: completed!.code,
-          clientId: "enterprise-hub-desktop-launcher",
+          clientId: "smedc-desktop-launcher",
           redirectUri: "http://127.0.0.1:32123/callback",
           verifier
         },
@@ -271,7 +271,7 @@ describeIntegration("Prisma auth core repository", () => {
       core.redeemAuthorizationCode(
         {
           secret: completed!.code,
-          clientId: "enterprise-hub-desktop-launcher",
+          clientId: "smedc-desktop-launcher",
           redirectUri: "http://127.0.0.1:32123/callback",
           verifier
         },
@@ -283,7 +283,7 @@ describeIntegration("Prisma auth core repository", () => {
 
   it("issues, completes, and redeems a device authorization exactly once", async () => {
     const issued = await core.issueDeviceAuthorization({
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       instanceName: "agent-a",
       instanceHostname: "vps-1",
       audit: oauthAudit
@@ -299,7 +299,7 @@ describeIntegration("Prisma auth core repository", () => {
     await expect(
       core.redeemDeviceAuthorization(
         issued.deviceCode,
-        "enterprise-hub-desktop-launcher",
+        "smedc-desktop-launcher",
         oauthAudit
       )
     ).resolves.toEqual({ status: "authorization_pending" });
@@ -317,7 +317,7 @@ describeIntegration("Prisma auth core repository", () => {
 
     const redeemed = await core.redeemDeviceAuthorization(
       issued.deviceCode,
-      "enterprise-hub-desktop-launcher",
+      "smedc-desktop-launcher",
       oauthAudit
     );
     expect(redeemed).toEqual({
@@ -330,7 +330,7 @@ describeIntegration("Prisma auth core repository", () => {
     await expect(
       core.redeemDeviceAuthorization(
         issued.deviceCode,
-        "enterprise-hub-desktop-launcher",
+        "smedc-desktop-launcher",
         oauthAudit
       )
     ).resolves.toEqual({ status: "invalid" });
@@ -338,13 +338,13 @@ describeIntegration("Prisma auth core repository", () => {
 
   it("revokes a prior pending device authorization when the same instance re-issues", async () => {
     const first = await core.issueDeviceAuthorization({
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       instanceName: "agent-a",
       instanceHostname: "vps-1",
       audit: oauthAudit
     });
     await core.issueDeviceAuthorization({
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       instanceName: "agent-a",
       instanceHostname: "vps-1",
       audit: oauthAudit
@@ -538,7 +538,7 @@ describeIntegration("Prisma auth core repository", () => {
 
     await repository.createAuthorizationTransaction({
       transactionHash: "de".repeat(32),
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       redirectUri: "http://127.0.0.1:32124/callback",
       state: "disabled-state",
       pkceChallenge: "disabled-challenge",

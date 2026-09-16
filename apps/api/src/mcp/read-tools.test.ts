@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EnterpriseHubMcpToolName } from "@enterprise-hub/mcp-contract";
+import type { SmedcMcpToolName } from "@smedc/mcp-contract";
 import type { ApiDelegationContext, ApiDelegationInjectRequest } from "./api-delegation.js";
 import { READ_ONLY_MCP_TOOL_NAMES, createReadOnlyMcpToolHandlers } from "./read-tools.js";
 
@@ -58,8 +58,8 @@ function createCapturingDelegate(
 describe("read-only MCP tool handlers", () => {
   it("exports exactly the read-only core business tools", () => {
     expect(READ_ONLY_MCP_TOOL_NAMES).toEqual([
-      "enterprise_hub_get_current_user",
-      "enterprise_hub_list_skills",
+      "smedc_get_current_user",
+      "smedc_list_skills",
       "search_document_evidence",
       "list_structured_datasets",
       "query_structured_dataset",
@@ -98,8 +98,8 @@ describe("read-only MCP tool handlers", () => {
   it("maps read-only tool inputs to the authenticated API routes", async () => {
     const { calls, handlers } = createCapturingDelegate();
 
-    const currentUser = await handlers.enterprise_hub_get_current_user?.({}, {} as never);
-    await handlers.enterprise_hub_list_skills?.(
+    const currentUser = await handlers.smedc_get_current_user?.({}, {} as never);
+    await handlers.smedc_list_skills?.(
       { q: "菜单", category: "menu-analysis" },
       {} as never
     );
@@ -252,13 +252,13 @@ describe("read-only MCP tool handlers", () => {
       }
     });
 
-    const result = await handlers.enterprise_hub_get_current_user?.({}, {} as never);
+    const result = await handlers.smedc_get_current_user?.({}, {} as never);
 
     expect(result?.isError).toBe(true);
     expect(parseToolResult(result!)).toEqual({
       error: {
-        code: "ENTERPRISE_HUB_API_ERROR",
-        message: "Enterprise Hub API request failed.",
+        code: "SMEDC_API_ERROR",
+        message: "SMEDC API request failed.",
         retryable: true,
         requestId: "req_mcp_123"
       }
@@ -294,7 +294,7 @@ describe("read-only MCP tool handlers", () => {
   it("validates inputs with shared strict schemas before API injection", async () => {
     const { calls, handlers } = createCapturingDelegate("secret-token");
 
-    const currentUserResult = await handlers.enterprise_hub_get_current_user?.(
+    const currentUserResult = await handlers.smedc_get_current_user?.(
       { unexpected: true },
       {} as never
     );
@@ -366,8 +366,8 @@ describe("read-only MCP tool handlers", () => {
       headers: {
         authorization: "Bearer employee-token",
         "x-request-id": "req_coverage_mcp",
-        "x-enterprise-hub-internal-delegation": delegationProof,
-        "x-enterprise-hub-launcher-version": "0.2.6"
+        "x-smedc-internal-delegation": delegationProof,
+        "x-smedc-launcher-version": "0.2.6"
       },
       remoteAddress: audit.sourceIp
     });
@@ -480,7 +480,7 @@ describe("read-only MCP tool handlers", () => {
 
   it("does not create handlers for upload or mutation tools", () => {
     const handlers = createCapturingDelegate().handlers as Partial<
-      Record<EnterpriseHubMcpToolName, unknown>
+      Record<SmedcMcpToolName, unknown>
     >;
 
     expect(handlers.upload_evidence_document).toBeUndefined();

@@ -4,12 +4,12 @@ import {
   PARTITION_ERROR_CODES,
   isPartitionDataset,
   normalizeEnterpriseIdentity
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import {
   createPartitionStagingObjectKey,
   type MultipartUploadPart,
   type StorageAdapter
-} from "@enterprise-hub/storage";
+} from "@smedc/storage";
 import type { ApiRuntimeLimits } from "../../config/runtime-limits.js";
 import { errorResponse, validationError } from "../../request-errors.js";
 import type { RequestAuth } from "../../request-auth.js";

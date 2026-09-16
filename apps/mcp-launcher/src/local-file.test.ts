@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { launcherUploadFileInputSchema } from "@enterprise-hub/mcp-contract";
+import { launcherUploadFileInputSchema } from "@smedc/mcp-contract";
 import {
   LOCAL_UPLOAD_ERROR_CODES,
   readLocalUploadFile,

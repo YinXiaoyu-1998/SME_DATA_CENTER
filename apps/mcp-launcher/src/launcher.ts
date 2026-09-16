@@ -4,30 +4,30 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
 import {
-  ENTERPRISE_HUB_MCP_TOOL_CONTRACTS,
-  ENTERPRISE_HUB_MCP_TOOL_NAMES,
+  SMEDC_MCP_TOOL_CONTRACTS,
+  SMEDC_MCP_TOOL_NAMES,
   errorToolResult,
   jsonToolResult,
   launcherUploadFileInputSchema,
   toolNotFoundResult,
   validationErrorToolResult
-} from "@enterprise-hub/mcp-contract";
+} from "@smedc/mcp-contract";
 import type { LauncherRuntimeConfig } from "./config.js";
-import { EnterpriseHubOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
+import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
 import { downloadPartitionDataset, uploadPartitionDataset } from "./partition-transfer.js";
 import { createCrossProcessLock, createKeychainCredentialStore } from "./runtime.js";
 import { LauncherSession, LauncherTypedError } from "./session.js";
 
 export const LAUNCHER_BOOTSTRAP_TOOL_NAMES = [
-  "enterprise_hub_login",
-  "enterprise_hub_logout",
-  "enterprise_hub_auth_status"
+  "smedc_login",
+  "smedc_logout",
+  "smedc_auth_status"
 ] as const;
 export type LauncherBootstrapToolName = (typeof LAUNCHER_BOOTSTRAP_TOOL_NAMES)[number];
 export type LauncherBusinessToolName =
-  | "enterprise_hub_get_current_user"
-  | "enterprise_hub_list_skills"
+  | "smedc_get_current_user"
+  | "smedc_list_skills"
   | "search_document_evidence"
   | "list_structured_datasets"
   | "query_structured_dataset"
@@ -51,7 +51,7 @@ const LOCAL_PATH_UPLOAD_TOOL_NAMES = new Set<LauncherBusinessToolName>([
 ]);
 
 function launcherUploadToolInputShape(
-  contract: (typeof ENTERPRISE_HUB_MCP_TOOL_CONTRACTS)[number]
+  contract: (typeof SMEDC_MCP_TOOL_CONTRACTS)[number]
 ): z.ZodRawShape {
   return {
     ...contract.inputSchema.shape,
@@ -120,21 +120,21 @@ export interface LauncherToolRegistrar {
 const emptyInputSchema = z.object({}).strict();
 const bootstrapTools = [
   {
-    name: "enterprise_hub_login",
-    title: "Enterprise Hub sign in",
-    description: "Open the system browser for Enterprise Hub sign-in.",
+    name: "smedc_login",
+    title: "SMEDC sign in",
+    description: "Open the system browser for SMEDC sign-in.",
     inputShape: emptyInputSchema.shape
   },
   {
-    name: "enterprise_hub_logout",
-    title: "Enterprise Hub sign out",
-    description: "Revoke and remove the local Enterprise Hub session.",
+    name: "smedc_logout",
+    title: "SMEDC sign out",
+    description: "Revoke and remove the local SMEDC session.",
     inputShape: emptyInputSchema.shape
   },
   {
-    name: "enterprise_hub_auth_status",
-    title: "Enterprise Hub authentication status",
-    description: "Check whether a local Enterprise Hub session is available.",
+    name: "smedc_auth_status",
+    title: "SMEDC authentication status",
+    description: "Check whether a local SMEDC session is available.",
     inputShape: emptyInputSchema.shape
   }
 ] as const;
@@ -161,7 +161,7 @@ export function registerLauncherTools(
       { title: tool.title, description: tool.description, inputSchema: tool.inputShape },
       createLauncherToolHandler(tool.name, dependencies)
     );
-  for (const tool of ENTERPRISE_HUB_MCP_TOOL_CONTRACTS)
+  for (const tool of SMEDC_MCP_TOOL_CONTRACTS)
     registrar.registerTool(
       tool.name,
       {
@@ -179,15 +179,15 @@ export function createLauncherToolHandler(
   toolName: string,
   dependencies: LauncherToolDependencies
 ): (input: unknown) => Promise<LauncherToolResult> {
-  if (toolName === "enterprise_hub_login") return (input) => login(input, dependencies);
-  if (toolName === "enterprise_hub_logout") return (input) => logout(input, dependencies);
-  if (toolName === "enterprise_hub_auth_status") return (input) => status(input, dependencies);
+  if (toolName === "smedc_login") return (input) => login(input, dependencies);
+  if (toolName === "smedc_logout") return (input) => logout(input, dependencies);
+  if (toolName === "smedc_auth_status") return (input) => status(input, dependencies);
   if (toolName === "download_structured_partitions")
     return (input) => proxyPartitionDownload(input, dependencies);
   if (LOCAL_PATH_UPLOAD_TOOL_NAMES.has(toolName as LauncherBusinessToolName))
     return (input) =>
       proxyLocalPathUpload(toolName as LauncherBusinessToolName, input, dependencies);
-  if ((ENTERPRISE_HUB_MCP_TOOL_NAMES as readonly string[]).includes(toolName))
+  if ((SMEDC_MCP_TOOL_NAMES as readonly string[]).includes(toolName))
     return (input) => proxy(toolName as LauncherBusinessToolName, input, dependencies);
   return async () => toolNotFoundResult(toolName);
 }
@@ -251,7 +251,7 @@ async function proxyPartitionUpload(
   input: Record<string, unknown>,
   dependencies: LauncherToolDependencies
 ): Promise<LauncherToolResult> {
-  const contract = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+  const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
     (candidate) => candidate.name === "upload_structured_dataset"
   )!;
   const parsed = z.object(launcherUploadToolInputShape(contract)).strict().safeParse(input);
@@ -296,7 +296,7 @@ async function proxyPartitionDownload(
   input: unknown,
   dependencies: LauncherToolDependencies
 ): Promise<LauncherToolResult> {
-  const contract = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+  const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
     (candidate) => candidate.name === "download_structured_partitions"
   )!;
   const parsed = contract.inputSchema.safeParse(input);
@@ -359,7 +359,7 @@ export function createOfficialLauncherAuthentication(
   config: LauncherRuntimeConfig
 ): LauncherAuthentication {
   const origin = config.serviceUrl;
-  const oauth = new EnterpriseHubOAuthClient(new URL(origin));
+  const oauth = new SmedcOAuthClient(new URL(origin));
   const session = new LauncherSession({
     origin,
     secureStore: createKeychainCredentialStore(origin),
@@ -407,7 +407,7 @@ export function createOfficialLauncherAuthentication(
       } catch {
         // A failed probe reports an unavailable secure store in the self-check result.
       }
-      let metadata: Awaited<ReturnType<EnterpriseHubOAuthClient["metadata"]>> | null = null;
+      let metadata: Awaited<ReturnType<SmedcOAuthClient["metadata"]>> | null = null;
       try {
         metadata = await oauth.metadata(true, false);
       } catch {
@@ -486,7 +486,7 @@ async function openVerificationLink(device: {
 }
 
 async function pollUntilComplete(
-  oauth: EnterpriseHubOAuthClient,
+  oauth: SmedcOAuthClient,
   session: LauncherSession,
   device: {
     deviceCode: string;
@@ -555,7 +555,7 @@ async function proxy(
 ): Promise<LauncherToolResult> {
   try {
     const accessToken = await dependencies.auth.accessToken();
-    const client = new Client({ name: "enterprise-hub-mcp-launcher", version: LAUNCHER_VERSION });
+    const client = new Client({ name: "smedc-mcp-launcher", version: LAUNCHER_VERSION });
     const transport = new StreamableHTTPClientTransport(
       new URL("mcp", `${dependencies.config.serviceUrl}/`),
       {
@@ -563,7 +563,7 @@ async function proxy(
         requestInit: {
           headers: {
             authorization: `Bearer ${accessToken}`,
-            "x-enterprise-hub-launcher-version": LAUNCHER_VERSION
+            "x-smedc-launcher-version": LAUNCHER_VERSION
           }
         }
       }
@@ -593,7 +593,7 @@ const REMOTE_MCP_TIMEOUT_MS = 30_000;
 
 export function sanitizeRemoteToolResult(result: unknown, accessToken: string): LauncherToolResult {
   if (containsCredential(result, accessToken)) {
-    return errorToolResult("SERVICE_UNAVAILABLE", "Enterprise Hub returned an unsafe response.");
+    return errorToolResult("SERVICE_UNAVAILABLE", "SMEDC returned an unsafe response.");
   }
   return result as LauncherToolResult;
 }
@@ -659,7 +659,7 @@ async function verifyMcpHandshake(
   fetchImplementation: typeof fetch
 ): Promise<void> {
   const client = new Client({
-    name: "enterprise-hub-mcp-launcher-self-check",
+    name: "smedc-mcp-launcher-self-check",
     version: LAUNCHER_VERSION
   });
   const transport = new StreamableHTTPClientTransport(new URL("mcp", `${config.serviceUrl}/`), {
@@ -667,7 +667,7 @@ async function verifyMcpHandshake(
     requestInit: {
       headers: {
         authorization: `Bearer ${accessToken}`,
-        "x-enterprise-hub-launcher-version": LAUNCHER_VERSION
+        "x-smedc-launcher-version": LAUNCHER_VERSION
       }
     }
   });
@@ -682,13 +682,13 @@ async function verifyMcpHandshake(
 function typedToolError(error: unknown): LauncherToolResult {
   const code = error instanceof LauncherTypedError ? error.code : errorCode(error);
   if (code === "SERVICE_UNAVAILABLE")
-    return errorToolResult(code, "Enterprise Hub service is unavailable.", undefined, {
+    return errorToolResult(code, "SMEDC service is unavailable.", undefined, {
       retryable: true
     });
-  if (code === "FORBIDDEN") return errorToolResult(code, "Enterprise Hub denied this request.");
+  if (code === "FORBIDDEN") return errorToolResult(code, "SMEDC denied this request.");
   if (code === "LAUNCHER_UPGRADE_REQUIRED")
-    return errorToolResult(code, "This Enterprise Hub launcher must be upgraded.");
-  return errorToolResult("AUTHENTICATION_REQUIRED", "Enterprise Hub sign-in is required.");
+    return errorToolResult(code, "This SMEDC launcher must be upgraded.");
+  return errorToolResult("AUTHENTICATION_REQUIRED", "SMEDC sign-in is required.");
 }
 function errorCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error

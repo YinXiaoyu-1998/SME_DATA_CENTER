@@ -24,7 +24,7 @@ function requestForAuditContext(
     headers: {
       ...(input.launcherVersion === undefined
         ? {}
-        : { "x-enterprise-hub-launcher-version": input.launcherVersion })
+        : { "x-smedc-launcher-version": input.launcherVersion })
     }
   } as FastifyRequest;
 }

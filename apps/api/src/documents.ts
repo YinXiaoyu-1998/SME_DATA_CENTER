@@ -1,4 +1,4 @@
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import {
   DocumentKind,
   DocumentStatus,
@@ -15,8 +15,8 @@ import type {
   Phase3FileType,
   ProcessingJobTypeName,
   DocumentTypeName
-} from "@enterprise-hub/domain";
-import { AUDIT_ACTIONS } from "@enterprise-hub/domain";
+} from "@smedc/domain";
+import { AUDIT_ACTIONS } from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface CreateUploadedDocumentInput {

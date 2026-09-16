@@ -131,7 +131,7 @@ class MemoryAuthRepository implements AuthCoreRepository {
     this.codeInput = input;
     return {
       codeId: "code-1",
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       redirectUri: "http://127.0.0.1:43123/callback",
       state: "stored-launcher-state"
     };
@@ -371,7 +371,7 @@ describe("AuthCore", () => {
     const core = new AuthCore(repository);
 
     const transaction = await core.issueAuthorizationTransaction({
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       redirectUri: "http://127.0.0.1:43123/callback",
       state: "launcher-state",
       pkceChallenge: "challenge"
@@ -417,7 +417,7 @@ describe("AuthCore", () => {
     expect(completed).toEqual({
       codeId: "code-1",
       code: expect.stringMatching(/^eh_ac_/),
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       redirectUri: "http://127.0.0.1:43123/callback",
       state: "stored-launcher-state",
       expiresAt: expect.any(Date)
@@ -435,7 +435,7 @@ describe("AuthCore", () => {
     await core.redeemAuthorizationCode(
       {
         secret: "eh_ac_code",
-        clientId: "enterprise-hub-desktop-launcher",
+        clientId: "smedc-desktop-launcher",
         redirectUri: "http://127.0.0.1:43123/callback",
         verifier
       },
@@ -562,7 +562,7 @@ describe("device authorization flow", () => {
     const core = new AuthCore(repository, () => now);
 
     const issued = await core.issueDeviceAuthorization({
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       instanceName: "agent-a",
       instanceHostname: "vps-1",
       audit: oauthAudit
@@ -574,7 +574,7 @@ describe("device authorization flow", () => {
     expect(repository.deviceIssueInput?.deviceCodeHash).toBe(hashOpaqueSecret(issued.deviceCode));
     expect(repository.deviceIssueInput?.userCodeHash).toBe(hashOpaqueSecret(issued.userCode));
     expect(repository.deviceIssueInput).toMatchObject({
-      clientId: "enterprise-hub-desktop-launcher",
+      clientId: "smedc-desktop-launcher",
       instanceName: "agent-a",
       instanceHostname: "vps-1",
       audit: oauthAudit,
@@ -629,7 +629,7 @@ describe("device authorization flow", () => {
 
     const result = await core.redeemDeviceAuthorization(
       "eh_dc_secret",
-      "enterprise-hub-desktop-launcher",
+      "smedc-desktop-launcher",
       oauthAudit
     );
 
@@ -640,7 +640,7 @@ describe("device authorization flow", () => {
       orgId: "org-1"
     });
     expect(repository.deviceRedeemInput?.deviceCodeHash).toBe(hashOpaqueSecret("eh_dc_secret"));
-    expect(repository.deviceRedeemInput?.clientId).toBe("enterprise-hub-desktop-launcher");
+    expect(repository.deviceRedeemInput?.clientId).toBe("smedc-desktop-launcher");
     expect(repository.deviceRedeemInput?.audit).toEqual(oauthAudit);
   });
 
@@ -650,7 +650,7 @@ describe("device authorization flow", () => {
     repository.deviceRedeemResult = { status: "authorization_pending" };
 
     await expect(
-      core.redeemDeviceAuthorization("eh_dc_secret", "enterprise-hub-desktop-launcher", oauthAudit)
+      core.redeemDeviceAuthorization("eh_dc_secret", "smedc-desktop-launcher", oauthAudit)
     ).resolves.toEqual({ status: "authorization_pending" });
   });
 });

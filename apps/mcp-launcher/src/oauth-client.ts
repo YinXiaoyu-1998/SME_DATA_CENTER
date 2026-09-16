@@ -2,9 +2,9 @@ import * as oauth from "oauth4webapi";
 import semver from "semver";
 import { LauncherTypedError, type OAuthTokenClient } from "./session.js";
 
-export const LAUNCHER_VERSION = "0.4.0";
-const CLIENT: oauth.Client = { client_id: "enterprise-hub-desktop-launcher" };
-const VERSION_HEADER = { "x-enterprise-hub-launcher-version": LAUNCHER_VERSION };
+export const LAUNCHER_VERSION = "0.5.0";
+const CLIENT: oauth.Client = { client_id: "smedc-desktop-launcher" };
+const VERSION_HEADER = { "x-smedc-launcher-version": LAUNCHER_VERSION };
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export interface LauncherMetadata {
@@ -16,7 +16,7 @@ export interface LauncherMetadata {
   compatible: boolean;
 }
 
-export class EnterpriseHubOAuthClient implements OAuthTokenClient {
+export class SmedcOAuthClient implements OAuthTokenClient {
   #server: oauth.AuthorizationServer | null = null;
 
   constructor(
@@ -30,16 +30,8 @@ export class EnterpriseHubOAuthClient implements OAuthTokenClient {
       throw new LauncherTypedError("SERVICE_UNAVAILABLE");
     }
     const extensions = server as oauth.AuthorizationServer & Record<string, unknown>;
-    const minimumVersion = metadataVersion(extensions, [
-      "enterprise_hub_launcher_minimum_version",
-      "minimum_launcher_version",
-      "minimumLauncherVersion"
-    ]);
-    const recommendedVersion = metadataVersion(extensions, [
-      "enterprise_hub_launcher_recommended_version",
-      "recommended_launcher_version",
-      "recommendedLauncherVersion"
-    ]);
+    const minimumVersion = metadataVersion(extensions, ["smedc_launcher_minimum_version"]);
+    const recommendedVersion = metadataVersion(extensions, ["smedc_launcher_recommended_version"]);
     if (!minimumVersion || !recommendedVersion) throw new LauncherTypedError("SERVICE_UNAVAILABLE");
     const compatible = !semver.lt(LAUNCHER_VERSION, minimumVersion);
     if (enforce && !compatible) {

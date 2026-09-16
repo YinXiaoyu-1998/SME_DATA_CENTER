@@ -1,6 +1,6 @@
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
-import { createStorageAdapter, type StorageAdapter } from "@enterprise-hub/storage";
+import { createStorageAdapter, type StorageAdapter } from "@smedc/storage";
 import { isStagingRuntimeDatabaseUrl } from "./staging-runtime-targets.js";
 import type {
   QdrantPointTarget,

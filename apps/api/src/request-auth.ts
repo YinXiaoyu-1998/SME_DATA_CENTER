@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@smedc/domain";
 import type { ApiServerContext } from "./app-context.js";
 import { errorResponse } from "./request-errors.js";
 

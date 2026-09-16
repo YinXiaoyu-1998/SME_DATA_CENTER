@@ -8,7 +8,7 @@ import {
   getStructuredRegistry,
   type Phase3FileType,
   type StructuredDatasetName
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import type { StructuredImportBatchRecord } from "../../structured-imports.js";
 
 const MAX_CANONICAL_FILE_NAME_CHARS = 200;

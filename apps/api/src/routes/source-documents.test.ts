@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import type { StorageAdapter } from "@enterprise-hub/storage";
-import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import type { StorageAdapter } from "@smedc/storage";
+import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { buildApiServer } from "../server.js";
 import {
   accessTokenFor,

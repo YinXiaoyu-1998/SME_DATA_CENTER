@@ -51,7 +51,7 @@ describe("release build", () => {
         const artifactPath = resolve(process.cwd(), "dist/release", `${artifact}.js`);
 
         expect(existsSync(artifactPath)).toBe(true);
-        expect(readFileSync(artifactPath, "utf8")).not.toContain("@enterprise-hub/");
+        expect(readFileSync(artifactPath, "utf8")).not.toContain("@smedc/");
         copyFileSync(artifactPath, join(cleanReleaseDir, `${artifact}.js`));
       }
 

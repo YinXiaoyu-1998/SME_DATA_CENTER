@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { performance } from "node:perf_hooks";
 import ExcelJS from "exceljs";
-import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
+import { parseStructuredFile } from "@smedc/structured-ingestion";
 import { readXlsxRows } from "../packages/structured-ingestion/src/xlsx-stream.js";
 import { buildSyntheticDishesXlsx } from "./synthetic-xlsx.js";
 

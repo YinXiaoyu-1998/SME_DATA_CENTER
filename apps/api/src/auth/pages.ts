@@ -50,10 +50,10 @@ export function renderLoginPage(options: FormPageOptions): string {
   return pageShell(
     {
       nonce: options.nonce,
-      title: "Sign in to Enterprise Hub"
+      title: "Sign in to SMEDC"
     },
     `<main>
-      <h1>Sign in to Enterprise Hub</h1>
+      <h1>Sign in to SMEDC</h1>
       <p>Use the account provided by your organization.</p>
       ${error}
       <form method="post" action="/oauth/authorize/login">
@@ -82,10 +82,10 @@ export function renderDeviceVerificationPage(
   return pageShell(
     {
       nonce: options.nonce,
-      title: "Sign in to Enterprise Hub"
+      title: "Sign in to SMEDC"
     },
     `<main>
-      <h1>Sign in to Enterprise Hub</h1>
+      <h1>Sign in to SMEDC</h1>
       <p class="device">This sign-in authorizes <strong>${escapeHtml(
         options.instanceName
       )}</strong> on ${escapeHtml(options.instanceHostname)}.</p>
@@ -107,7 +107,7 @@ export function renderPasswordSetupBootstrapPage(options: PageOptions): string {
   return pageShell(
     {
       nonce: options.nonce,
-      title: "Set your Enterprise Hub password"
+      title: "Set your SMEDC password"
     },
     `<main>
       <h1>Preparing password setup…</h1>
@@ -146,10 +146,10 @@ export function renderPasswordSetupForm(options: FormPageOptions): string {
   return pageShell(
     {
       nonce: options.nonce,
-      title: "Set your Enterprise Hub password"
+      title: "Set your SMEDC password"
     },
     `<main>
-      <h1>Set your Enterprise Hub password</h1>
+      <h1>Set your SMEDC password</h1>
       <p>Choose a password with 8–128 characters.</p>
       ${error}
       <form method="post" action="/auth/password/setup/complete">

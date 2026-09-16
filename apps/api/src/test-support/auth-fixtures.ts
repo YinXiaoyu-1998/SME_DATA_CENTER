@@ -1,4 +1,4 @@
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee } from "@smedc/domain";
 import { buildApiServer } from "../server.js";
 import type { EmployeeRepository } from "../employees.js";
 

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
-import { getStructuredRegistry, PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@enterprise-hub/domain";
+import { getStructuredRegistry, PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@smedc/domain";
 import {
   parseStructuredFile,
   preflightStructuredFile,

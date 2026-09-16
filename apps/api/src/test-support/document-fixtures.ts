@@ -3,8 +3,8 @@ import type {
   DocumentStatusName,
   DocumentTypeName,
   Phase3FileType
-} from "@enterprise-hub/domain";
-import type { StorageAdapter } from "@enterprise-hub/storage";
+} from "@smedc/domain";
+import type { StorageAdapter } from "@smedc/storage";
 import type { DocumentCatalogRepository } from "../documents.js";
 import type {
   CreateQuarantineCertificateInput,

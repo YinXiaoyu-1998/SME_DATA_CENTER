@@ -1,4 +1,4 @@
-import type { AuthenticatedEmployee, EmployeeRoleName } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee, EmployeeRoleName } from "@smedc/domain";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import {
   AUTH_LIFETIMES_MS,

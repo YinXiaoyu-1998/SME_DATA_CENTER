@@ -8,8 +8,8 @@ import {
   type QdrantRuntimeConfig,
   type RuntimeEnv,
   type RuntimeReadinessConfig
-} from "@enterprise-hub/domain";
-import { createStorageAdapter } from "@enterprise-hub/storage";
+} from "@smedc/domain";
+import { createStorageAdapter } from "@smedc/storage";
 
 const DEFAULT_LOCAL_DATABASE_URL =
   "mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub";
@@ -20,7 +20,7 @@ export {
   parseRuntimeReadinessConfig,
   qdrantEvidenceCollectionSchema,
   type RuntimeReadinessConfig
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 
 export interface ReadinessCheckResult {
   name: "mysql" | "qdrant" | "storage" | "workerLease" | "modelProvider";

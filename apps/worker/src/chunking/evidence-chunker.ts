@@ -4,7 +4,7 @@ import type {
   EvidenceSourceLocation,
   EvidenceWarning,
   ParsedEvidenceBlock
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 
 export type EvidenceChunkerBlock = Pick<
   ParsedEvidenceBlock,

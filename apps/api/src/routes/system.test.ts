@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee } from "@smedc/domain";
 import { createRequestAuth } from "../request-auth.js";
 import { registerSystemRoutes } from "./system.js";
 import type { ApiServerContext } from "../app-context.js";
@@ -97,7 +97,7 @@ describe("system routes", () => {
     });
 
     expect(health.statusCode).toBe(200);
-    expect(health.json()).toEqual({ ok: true, service: "enterprise-hub-api" });
+    expect(health.json()).toEqual({ ok: true, service: "smedc-api" });
     expect(nonLoopbackReady.statusCode).toBe(404);
     expect(nonLoopbackReady.json()).toEqual({
       error: { code: "NOT_FOUND", message: "Not found." }
@@ -105,7 +105,7 @@ describe("system routes", () => {
     expect(loopbackReady.statusCode).toBe(503);
     expect(loopbackReady.json()).toMatchObject({
       ok: false,
-      service: "enterprise-hub-api"
+      service: "smedc-api"
     });
   });
 

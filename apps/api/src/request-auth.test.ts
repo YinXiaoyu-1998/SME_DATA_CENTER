@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@smedc/domain";
 import { createRequestAuth } from "./request-auth.js";
 import type { ApiServerContext } from "./app-context.js";
 

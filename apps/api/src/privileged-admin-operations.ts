@@ -1,4 +1,4 @@
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee } from "@smedc/domain";
 
 /**
  * Product-declared operations that require the admin role and intentionally

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRetrievalConfigSeed, loadActiveRetrievalConfig } from "@enterprise-hub/domain";
+import { buildRetrievalConfigSeed, loadActiveRetrievalConfig } from "@smedc/domain";
 import { validateModelProviderReadiness } from "./readiness.js";
 
 describe("model provider readiness", () => {

@@ -3,7 +3,7 @@ import {
   buildRetrievalConfigSeed,
   loadActiveRetrievalConfig,
   type AuthenticatedEmployee
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import {
   EvidenceSearchCursorError,
   HttpQdrantEvidenceSearcher,

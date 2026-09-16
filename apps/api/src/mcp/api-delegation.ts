@@ -3,7 +3,7 @@ import {
   errorToolResult,
   jsonToolResult,
   type McpJsonToolResult
-} from "@enterprise-hub/mcp-contract";
+} from "@smedc/mcp-contract";
 import type { RequestAuditContext } from "../request-audit-context.js";
 
 export type ApiDelegationMethod = "GET" | "POST";
@@ -52,9 +52,9 @@ export async function delegateJsonApiRequest(
     const headers: Record<string, string> = {
       authorization: `Bearer ${context.bearerToken}`,
       "x-request-id": context.audit.requestId,
-      "x-enterprise-hub-internal-delegation": context.delegationProof,
+      "x-smedc-internal-delegation": context.delegationProof,
       ...(context.audit.launcherVersion
-        ? { "x-enterprise-hub-launcher-version": context.audit.launcherVersion }
+        ? { "x-smedc-launcher-version": context.audit.launcherVersion }
         : {})
     };
     if (request.body !== undefined) {
@@ -115,8 +115,8 @@ function parseJsonResponse(
 
 function genericApiError(requestId: string): McpJsonToolResult {
   return errorToolResult(
-    "ENTERPRISE_HUB_API_ERROR",
-    "Enterprise Hub API request failed.",
+    "SMEDC_API_ERROR",
+    "SMEDC API request failed.",
     undefined,
     {
       retryable: true,

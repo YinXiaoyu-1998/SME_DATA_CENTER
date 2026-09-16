@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
-import { compileStructuredQuery, getStructuredRegistry } from "@enterprise-hub/domain";
-import { parseStructuredFile } from "@enterprise-hub/structured-ingestion";
+import { compileStructuredQuery, getStructuredRegistry } from "@smedc/domain";
+import { parseStructuredFile } from "@smedc/structured-ingestion";
 import { evaluateGoldenRetrieval } from "./golden-retrieval-eval.js";
 import { buildSyntheticDishesXlsx } from "./synthetic-xlsx.js";
 
@@ -135,7 +135,7 @@ export async function runPhase3PerformanceGates(
       name: "structured_large_import_validation_70000_rows",
       measuredMs: csvParseMs,
       workload:
-        "70,000-row RFC4180 CSV parsed and validated by @enterprise-hub/structured-ingestion",
+        "70,000-row RFC4180 CSV parsed and validated by @smedc/structured-ingestion",
       thresholds: options.thresholds,
       thresholdMultiplier
     }),
@@ -143,7 +143,7 @@ export async function runPhase3PerformanceGates(
       name: "structured_large_xlsx_import_validation_50000_rows",
       measuredMs: xlsxParseMs,
       workload:
-        "50,000-row synthetic XLSX parsed and validated by @enterprise-hub/structured-ingestion",
+        "50,000-row synthetic XLSX parsed and validated by @smedc/structured-ingestion",
       thresholds: options.thresholds,
       thresholdMultiplier
     }),

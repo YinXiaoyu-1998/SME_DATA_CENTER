@@ -27,7 +27,7 @@ import {
 } from "../apps/api/src/auth/http-contract.js";
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
-import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 
 const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
@@ -694,7 +694,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       requestId: requestIds.direct,
       sourceSystem,
       title: `${runId} direct`,
-      extraHeaders: { "x-enterprise-hub-launcher-version": "0.1.0" }
+      extraHeaders: { "x-smedc-launcher-version": "0.1.0" }
     });
     const trustedProxy = await uploadAuditEvidence(accessToken, {
       requestId: requestIds.trustedProxy,
@@ -707,8 +707,8 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       sourceSystem,
       title: `${runId} forged proof`,
       extraHeaders: {
-        "x-enterprise-hub-internal-delegation": "A".repeat(43),
-        "x-enterprise-hub-launcher-version": "0.1.0"
+        "x-smedc-internal-delegation": "A".repeat(43),
+        "x-smedc-launcher-version": "0.1.0"
       }
     });
     const mcp = await uploadAuditEvidenceThroughMcp(accessToken, {
@@ -733,7 +733,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       headers: {
         cookie: `${OAUTH_TRANSACTION_COOKIE}=${browserTransaction.secret}`,
         "content-type": "application/x-www-form-urlencoded",
-        "x-enterprise-hub-launcher-version": "0.1.0",
+        "x-smedc-launcher-version": "0.1.0",
         "x-forwarded-for": "198.51.100.31",
         "x-request-id": requestIds.browser
       },
@@ -866,7 +866,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     const deviceRunId = `${runId}_device`;
     const deviceHeaders = (requestId: string, forwardedIp: string) => ({
       ...oauthHeaders(requestId, forwardedIp),
-      "x-enterprise-hub-launcher-version": "0.2.0"
+      "x-smedc-launcher-version": "0.2.0"
     });
     const deviceRequest = await fetch(`${apiUrl}/oauth/device_authorization`, {
       method: "POST",
@@ -1057,7 +1057,7 @@ async function uploadAuditEvidenceThroughMcp(
       authorization: `Bearer ${accessToken}`,
       "content-type": "application/json",
       "mcp-protocol-version": "2025-11-25",
-      "x-enterprise-hub-launcher-version": "0.1.0",
+      "x-smedc-launcher-version": "0.1.0",
       "x-forwarded-for": input.forwardedIp,
       "x-request-id": input.requestId
     },
@@ -1095,7 +1095,7 @@ async function uploadAuditEvidenceThroughMcp(
 function oauthHeaders(requestId: string, forwardedIp: string): Record<string, string> {
   return {
     "content-type": "application/x-www-form-urlencoded",
-    "x-enterprise-hub-launcher-version": "0.1.0",
+    "x-smedc-launcher-version": "0.1.0",
     "x-forwarded-for": forwardedIp,
     "x-request-id": requestId
   };

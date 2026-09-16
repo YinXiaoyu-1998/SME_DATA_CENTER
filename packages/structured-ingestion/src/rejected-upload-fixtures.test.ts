@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { readFile } from "node:fs/promises";
-import { PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@enterprise-hub/domain";
+import { PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@smedc/domain";
 import {
   parseStructuredFile,
   preflightStructuredFile,

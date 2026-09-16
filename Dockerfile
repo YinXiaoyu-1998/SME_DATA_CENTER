@@ -42,19 +42,19 @@ RUN cargo build --locked --release
 FROM manifests AS api-deps
 
 RUN npm ci --omit=dev --legacy-peer-deps \
-  --workspace @enterprise-hub/api --include-workspace-root=false \
+  --workspace @smedc/api --include-workspace-root=false \
   && npm cache clean --force
 
 FROM manifests AS worker-deps
 
 RUN npm ci --omit=dev --legacy-peer-deps \
-  --workspace @enterprise-hub/worker --include-workspace-root=false \
+  --workspace @smedc/worker --include-workspace-root=false \
   && npm cache clean --force
 
 FROM manifests AS release-ops-deps
 
 RUN npm ci --omit=dev --legacy-peer-deps \
-  --workspace @enterprise-hub/release-ops --include-workspace-root=false \
+  --workspace @smedc/release-ops --include-workspace-root=false \
   && npm cache clean --force
 
 FROM node:22-bookworm-slim AS runtime-base
@@ -90,7 +90,7 @@ FROM runtime-base AS worker
 COPY --from=worker-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build --chown=node:node /app/dist/release/worker.js ./dist/release/worker.js
-COPY --from=calamine-reader-build --chown=root:root /src/target/release/enterprise-hub-calamine-reader /usr/local/bin/enterprise-hub-calamine-reader
+COPY --from=calamine-reader-build --chown=root:root /src/target/release/enterprise-calamine-reader /usr/local/bin/enterprise-calamine-reader
 
 USER node
 

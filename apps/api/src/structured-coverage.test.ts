@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { compileStructuredCoverageQuery } from "@enterprise-hub/domain";
+import { compileStructuredCoverageQuery } from "@smedc/domain";
 import { createPrismaStructuredCoverageRepository } from "./structured-coverage.js";
 
 const prisma = vi.hoisted(() => ({

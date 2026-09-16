@@ -49,8 +49,8 @@ describe("MCP API delegation", () => {
           authorization: "Bearer secret-token",
           "content-type": "application/json",
           "x-request-id": "req_mcp_123",
-          "x-enterprise-hub-internal-delegation": delegationProof,
-          "x-enterprise-hub-launcher-version": "0.1.0"
+          "x-smedc-internal-delegation": delegationProof,
+          "x-smedc-launcher-version": "0.1.0"
         },
         payload: { query: "菜单", limit: 5 },
         remoteAddress: "203.0.113.10"
@@ -149,8 +149,8 @@ describe("MCP API delegation", () => {
     expect(result.isError).toBe(true);
     expect(parseToolResult(result)).toEqual({
       error: {
-        code: "ENTERPRISE_HUB_API_ERROR",
-        message: "Enterprise Hub API request failed.",
+        code: "SMEDC_API_ERROR",
+        message: "SMEDC API request failed.",
         retryable: true,
         requestId: "req_mcp_123"
       }

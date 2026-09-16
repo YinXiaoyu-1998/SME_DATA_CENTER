@@ -2,7 +2,7 @@ import {
   buildRetrievalConfigSeed,
   loadActiveRetrievalConfig,
   type RetrievalModelConfig
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import {
   createFakeEmbeddingProvider,
   createOpenAICompatibleEmbeddingProvider,

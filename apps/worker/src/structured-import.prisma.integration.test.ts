@@ -11,7 +11,7 @@ import {
   ProcessingRunStatus
 } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { StructuredParseResult } from "@enterprise-hub/structured-ingestion";
+import type { StructuredParseResult } from "@smedc/structured-ingestion";
 import { createPrismaProcessingWorkerRepository, ProcessingLeaseLostError } from "./worker.js";
 
 const runIntegration = process.env["RUN_WORKER_PRISMA_INTEGRATION"] === "1";

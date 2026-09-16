@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee } from "@smedc/domain";
 import type { ReadinessReport } from "../../../../scripts/readiness.js";
 import type { RequestAuth } from "../request-auth.js";
 import { errorResponse } from "../request-errors.js";
 
-const SERVICE_NAME = "enterprise-hub-api";
+const SERVICE_NAME = "smedc-api";
 
 function isLoopbackRequest(ip: string): boolean {
   return (

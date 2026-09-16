@@ -262,7 +262,7 @@ if (isMainModule()) {
   }
 
   if (result.fileTargets.length === 0 && !result.database) {
-    console.log("No local Enterprise Hub data targets found.");
+    console.log("No local SMEDC data targets found.");
   }
 }
 

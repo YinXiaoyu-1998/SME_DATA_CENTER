@@ -1,4 +1,4 @@
-import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@enterprise-hub/domain";
+import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@smedc/domain";
 
 export interface WorkerRuntimeLimits {
   maxDocumentChars: number;
@@ -76,7 +76,7 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
       { defaultValue: 8_589_934_592 }
     ),
     partitionImportWorkDirectory:
-      env["PARTITION_IMPORT_WORK_DIR"]?.trim() || "/var/lib/enterprise-hub/partition-work",
+      env["PARTITION_IMPORT_WORK_DIR"]?.trim() || "/var/lib/enterprise/partition-work",
     partitionImportMinFreeBytes: parsePositiveSafeInteger(env, "PARTITION_IMPORT_MIN_FREE_BYTES", {
       defaultValue: 12_884_901_888
     }),

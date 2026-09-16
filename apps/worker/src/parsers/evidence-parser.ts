@@ -5,7 +5,7 @@ import {
   type EvidenceWarning,
   type ParsedEvidenceBlock,
   type ParsedEvidenceDocument
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 
 export interface ParseEvidenceDocumentInput {
   fileType: "md" | "txt" | "docx";

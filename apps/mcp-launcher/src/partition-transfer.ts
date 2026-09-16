@@ -243,7 +243,7 @@ async function apiJson(
     method: input.method,
     headers: {
       authorization: `Bearer ${context.accessToken}`,
-      "x-enterprise-hub-launcher-version": context.launcherVersion,
+      "x-smedc-launcher-version": context.launcherVersion,
       ...(input.body ? { "content-type": "application/json" } : {})
     },
     ...(input.body ? { body: JSON.stringify(input.body) } : {})
@@ -251,7 +251,7 @@ async function apiJson(
   const text = await response.text();
   const body = text ? (JSON.parse(text) as unknown) : {};
   if (!response.ok)
-    throw Object.assign(new Error(`Enterprise Hub request failed with ${response.status}.`), {
+    throw Object.assign(new Error(`SMEDC request failed with ${response.status}.`), {
       code: String(response.status),
       body
     });

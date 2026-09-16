@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import {
   PROCESSING_ERROR_CODES,
   ProcessingLeaseLostError,

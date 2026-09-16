@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ENTERPRISE_HUB_MCP_TOOL_NAMES } from "@enterprise-hub/mcp-contract";
+import { SMEDC_MCP_TOOL_NAMES } from "@smedc/mcp-contract";
 import { createLauncherRuntimeConfig } from "./config.js";
 import {
   LAUNCHER_BOOTSTRAP_TOOL_NAMES,
@@ -19,7 +19,7 @@ import {
   sanitizeRemoteToolResult
 } from "./launcher.js";
 
-const config = createLauncherRuntimeConfig({ enterpriseHubBaseUrl: "https://hub.example.test" });
+const config = createLauncherRuntimeConfig({ smedcBaseUrl: "https://hub.example.test" });
 
 describe("official launcher bootstrap tools", () => {
   it("registers empty strict login, logout, and auth-status tools", () => {
@@ -30,12 +30,12 @@ describe("official launcher bootstrap tools", () => {
     );
 
     expect(LAUNCHER_BOOTSTRAP_TOOL_NAMES).toEqual([
-      "enterprise_hub_login",
-      "enterprise_hub_logout",
-      "enterprise_hub_auth_status"
+      "smedc_login",
+      "smedc_logout",
+      "smedc_auth_status"
     ]);
     expect(registered.map(({ name }) => name).sort()).toEqual(
-      [...LAUNCHER_BOOTSTRAP_TOOL_NAMES, ...ENTERPRISE_HUB_MCP_TOOL_NAMES].sort()
+      [...LAUNCHER_BOOTSTRAP_TOOL_NAMES, ...SMEDC_MCP_TOOL_NAMES].sort()
     );
     for (const bootstrap of registered.slice(0, 3))
       expect(Object.keys(bootstrap.shape)).toEqual([]);
@@ -44,7 +44,7 @@ describe("official launcher bootstrap tools", () => {
   it("returns stable safe authentication state without credentials", async () => {
     const auth = fakeAuth({ authenticated: true });
     const dependencies = createLauncherToolDependencies({ config, auth });
-    const result = await createLauncherToolHandler("enterprise_hub_auth_status", dependencies)({});
+    const result = await createLauncherToolHandler("smedc_auth_status", dependencies)({});
 
     expect(body(result)).toEqual({ authenticated: true, serviceUrl: "https://hub.example.test" });
     expect(JSON.stringify(result)).not.toContain("secret");
@@ -55,9 +55,9 @@ describe("official launcher bootstrap tools", () => {
       config,
       auth: fakeAuth({ loginError: { code: "AUTHENTICATION_REQUIRED", message: "secret-token" } })
     });
-    const result = await createLauncherToolHandler("enterprise_hub_login", dependencies)({});
+    const result = await createLauncherToolHandler("smedc_login", dependencies)({});
     expect(body(result)).toMatchObject({
-      error: { code: "AUTHENTICATION_REQUIRED", message: "Enterprise Hub sign-in is required." }
+      error: { code: "AUTHENTICATION_REQUIRED", message: "SMEDC sign-in is required." }
     });
     expect(JSON.stringify(result)).not.toContain("secret-token");
   });

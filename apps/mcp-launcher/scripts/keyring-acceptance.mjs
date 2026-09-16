@@ -9,7 +9,7 @@ const requireFromInstall = createRequire(path.join(path.resolve(installPrefix), 
 const { AsyncEntry } = requireFromInstall("@napi-rs/keyring");
 const id = randomUUID();
 const entry = new AsyncEntry(
-  `com.smedatacenter.enterprise-hub.launcher.acceptance.${id}`,
+  `com.smedatacenter.smedc.launcher.acceptance.${id}`,
   `acceptance-${id}`
 );
 const credential = randomUUID() + randomUUID();

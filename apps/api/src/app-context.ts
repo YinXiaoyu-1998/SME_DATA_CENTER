@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee } from "@smedc/domain";
 import { loadApiRuntimeLimits, type ApiRuntimeLimits } from "./config/runtime-limits.js";
 import {
   createPrismaDocumentCatalogRepository,
@@ -39,7 +39,7 @@ import {
   createOriginalObjectKey,
   createStorageAdapter,
   type StorageAdapter
-} from "@enterprise-hub/storage";
+} from "@smedc/storage";
 import { AuthCore, type AuthRequestAudit } from "./auth/auth-core.js";
 import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
@@ -144,7 +144,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
       request.url === "/mcp" ||
       request.url.startsWith("/mcp?") ||
       verifyInternalDelegationProof(
-        request.headers["x-enterprise-hub-internal-delegation"],
+        request.headers["x-smedc-internal-delegation"],
         delegationProof
       )
     ) {

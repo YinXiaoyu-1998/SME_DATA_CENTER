@@ -1,9 +1,9 @@
 import {
   errorToolResult,
-  type EnterpriseHubMcpToolName,
+  type SmedcMcpToolName,
   type McpJsonToolResult
-} from "@enterprise-hub/mcp-contract";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+} from "@smedc/mcp-contract";
+import type { AuthenticatedEmployee } from "@smedc/domain";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import { createActionMcpToolHandlers } from "./action-tools.js";
 import { createReadOnlyMcpToolHandlers } from "./read-tools.js";
@@ -20,16 +20,16 @@ export interface McpRequestContext {
   abortSignal?: AbortSignal;
 }
 
-export type EnterpriseHubMcpToolHandler = (
+export type SmedcMcpToolHandler = (
   input: unknown,
   context: McpRequestContext
 ) => Promise<McpJsonToolResult>;
 
-export type EnterpriseHubMcpToolHandlers = Partial<
-  Record<EnterpriseHubMcpToolName, EnterpriseHubMcpToolHandler>
+export type SmedcMcpToolHandlers = Partial<
+  Record<SmedcMcpToolName, SmedcMcpToolHandler>
 >;
 
-export interface CreateEnterpriseHubMcpToolHandlersOptions {
+export interface CreateSmedcMcpToolHandlersOptions {
   bearerToken: string;
   audit: RequestAuditContext;
   delegationProof: string;
@@ -38,9 +38,9 @@ export interface CreateEnterpriseHubMcpToolHandlersOptions {
   uploadDelegate: UploadApiDelegate;
 }
 
-export function createEnterpriseHubMcpToolHandlers(
-  options: CreateEnterpriseHubMcpToolHandlersOptions
-): EnterpriseHubMcpToolHandlers {
+export function createSmedcMcpToolHandlers(
+  options: CreateSmedcMcpToolHandlersOptions
+): SmedcMcpToolHandlers {
   const readOnlyHandlers = createReadOnlyMcpToolHandlers({
     bearerToken: options.bearerToken,
     audit: options.audit,
@@ -71,12 +71,12 @@ export function createEnterpriseHubMcpToolHandlers(
 }
 
 export function createNoopToolHandler(
-  toolName: EnterpriseHubMcpToolName
-): EnterpriseHubMcpToolHandler {
+  toolName: SmedcMcpToolName
+): SmedcMcpToolHandler {
   return async (_input, context) =>
     errorToolResult(
       "MCP_TOOL_NOT_IMPLEMENTED",
-      "Enterprise Hub MCP tool handler is not implemented yet.",
+      "SMEDC MCP tool handler is not implemented yet.",
       {
         toolName,
         requestId: context.audit.requestId

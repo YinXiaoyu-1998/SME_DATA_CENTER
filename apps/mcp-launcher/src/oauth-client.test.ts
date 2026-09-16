@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { EnterpriseHubOAuthClient, mapOAuthError } from "./oauth-client.js";
+import { SmedcOAuthClient, mapOAuthError } from "./oauth-client.js";
 
 const servers: ReturnType<typeof createServer>[] = [];
 
@@ -39,8 +39,8 @@ describe("OAuth typed failures", () => {
             response_types_supported: ["code"],
             grant_types_supported: ["authorization_code", "refresh_token"],
             code_challenge_methods_supported: ["S256"],
-            enterprise_hub_launcher_minimum_version: "0.1.0",
-            enterprise_hub_launcher_recommended_version: "0.1.0"
+            smedc_launcher_minimum_version: "0.1.0",
+            smedc_launcher_recommended_version: "0.1.0"
           })
         );
         return;
@@ -54,7 +54,7 @@ describe("OAuth typed failures", () => {
         request.on("end", () => {
           tokenRequest = {
             body: new URLSearchParams(body),
-            launcherVersion: request.headers["x-enterprise-hub-launcher-version"] as
+            launcherVersion: request.headers["x-smedc-launcher-version"] as
               string | undefined
           };
           response.setHeader("content-type", "application/json");
@@ -76,7 +76,7 @@ describe("OAuth typed failures", () => {
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const origin = new URL(`https://127.0.0.1:${(server.address() as { port: number }).port}`);
-    const client = new EnterpriseHubOAuthClient(origin, async (input, init) => {
+    const client = new SmedcOAuthClient(origin, async (input, init) => {
       const rewritten = new URL(
         typeof input === "string" || input instanceof URL ? input.toString() : input.url
       );
@@ -102,10 +102,10 @@ describe("OAuth typed failures", () => {
 
     expect(metadata).toMatchObject({ compatible: true, recommendedUpdateAvailable: false });
     expect(token).toMatchObject({ accessToken: "eh_at_test", refreshToken: "eh_rt_test" });
-    expect(tokenRequest?.launcherVersion).toBe("0.4.0");
+    expect(tokenRequest?.launcherVersion).toBe("0.5.0");
     expect(Object.fromEntries(tokenRequest!.body)).toMatchObject({
       grant_type: "authorization_code",
-      client_id: "enterprise-hub-desktop-launcher",
+      client_id: "smedc-desktop-launcher",
       code: "eh_ac_test",
       redirect_uri: "http://127.0.0.1:43121/oauth/callback"
     });
@@ -130,8 +130,8 @@ describe("device authorization grant", () => {
             response_types_supported: ["code"],
             grant_types_supported: ["authorization_code", "refresh_token"],
             code_challenge_methods_supported: ["S256"],
-            enterprise_hub_launcher_minimum_version: "0.1.0",
-            enterprise_hub_launcher_recommended_version: "0.2.0"
+            smedc_launcher_minimum_version: "0.1.0",
+            smedc_launcher_recommended_version: "0.2.0"
           })
         );
         return;
@@ -145,7 +145,7 @@ describe("device authorization grant", () => {
         request.on("end", () => {
           deviceRequest = {
             body: new URLSearchParams(body),
-            launcherVersion: request.headers["x-enterprise-hub-launcher-version"] as
+            launcherVersion: request.headers["x-smedc-launcher-version"] as
               string | undefined
           };
           response.setHeader("content-type", "application/json");
@@ -169,7 +169,7 @@ describe("device authorization grant", () => {
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const origin = new URL(`https://127.0.0.1:${(server.address() as { port: number }).port}`);
-    const client = new EnterpriseHubOAuthClient(origin, async (input, init) => {
+    const client = new SmedcOAuthClient(origin, async (input, init) => {
       const rewritten = new URL(
         typeof input === "string" || input instanceof URL ? input.toString() : input.url
       );
@@ -189,8 +189,8 @@ describe("device authorization grant", () => {
       intervalSeconds: 5
     });
     expect(device.verificationUriComplete?.toString()).toContain("user_code=ABCDEFGH");
-    expect(deviceRequest?.launcherVersion).toBe("0.4.0");
-    expect(deviceRequest?.body.get("client_id")).toBe("enterprise-hub-desktop-launcher");
+    expect(deviceRequest?.launcherVersion).toBe("0.5.0");
+    expect(deviceRequest?.body.get("client_id")).toBe("smedc-desktop-launcher");
     expect(deviceRequest?.body.get("instanceName")).toBe("agent-a");
     expect(deviceRequest?.body.get("instanceHostname")).toBe("vps-1");
   });
@@ -211,8 +211,8 @@ describe("device authorization grant", () => {
             response_types_supported: ["code"],
             grant_types_supported: ["authorization_code", "refresh_token"],
             code_challenge_methods_supported: ["S256"],
-            enterprise_hub_launcher_minimum_version: "0.1.0",
-            enterprise_hub_launcher_recommended_version: "0.2.0"
+            smedc_launcher_minimum_version: "0.1.0",
+            smedc_launcher_recommended_version: "0.2.0"
           })
         );
         return;
@@ -254,7 +254,7 @@ describe("device authorization grant", () => {
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const origin = new URL(`https://127.0.0.1:${(server.address() as { port: number }).port}`);
-    const client = new EnterpriseHubOAuthClient(origin, async (input, init) => {
+    const client = new SmedcOAuthClient(origin, async (input, init) => {
       const rewritten = new URL(
         typeof input === "string" || input instanceof URL ? input.toString() : input.url
       );
