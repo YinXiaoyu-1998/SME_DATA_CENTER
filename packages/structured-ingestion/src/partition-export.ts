@@ -11,9 +11,10 @@ import {
   type StructuredFieldRegistryEntry
 } from "@enterprise-hub/domain";
 import { parse as createCsvParser } from "csv-parse";
-import { streamXlsxFileRows } from "./xlsx-stream.js";
+import { CalamineSourceError, streamCalamineXlsxFileRows } from "./calamine-reader.js";
 
 const HEADER_SCAN_ROWS = 10;
+const PARTITION_WRITE_BUFFER_BYTES = 256 * 1024;
 
 export interface StructuredPartitionLimits {
   maxSourceBytes: number;
@@ -55,6 +56,7 @@ export interface StructuredPartitionExportProfile {
   rowRoutingMs: number;
   canonicalizeMs: number;
   partitionWriteMs: number;
+  partitionFlushCount: number;
   finalizeMs: number;
 }
 
@@ -91,6 +93,7 @@ export async function exportStructuredPartitions(input: {
   outputDirectory: string;
   limits: StructuredPartitionLimits;
   signal?: AbortSignal;
+  xlsxReaderCommand?: readonly string[];
 }): Promise<StructuredPartitionExport> {
   const profileStarted = performance.now();
   validateLimits(input.limits);
@@ -108,11 +111,13 @@ export async function exportStructuredPartitions(input: {
   const fieldByName = new Map(fields.map((field) => [field.canonicalName, field]));
   const headerBytes = `${fields.map((field) => csvCell(field.sourceColumn)).join(",")}\n`;
   const partitions = new Map<string, PartitionState>();
-  const writers = new BoundedFileWriterPool(input.limits.maxOpenFiles);
+  const writers = new BoundedFileWriterPool(
+    input.limits.maxOpenFiles,
+    PARTITION_WRITE_BUFFER_BYTES
+  );
   let totalRowCount = 0n;
   let totalCanonicalBytes = 0n;
   let canonicalizeMs = 0;
-  let partitionWriteMs = 0;
 
   const processDataRow = async (
     row: SourceRow,
@@ -181,19 +186,15 @@ export async function exportStructuredPartitions(input: {
     if (totalRowCount > BigInt(input.limits.maxRows)) throw limitExceeded("row count");
 
     if (!partition.initialized) {
-      const writeStarted = performance.now();
       await writers.write(partition.filePath, headerBytes);
-      partitionWriteMs += performance.now() - writeStarted;
       partition.hash.update(headerBytes);
       partition.byteSize += BigInt(Buffer.byteLength(headerBytes));
       totalCanonicalBytes += BigInt(Buffer.byteLength(headerBytes));
       partition.initialized = true;
     }
 
-    const writeStarted = performance.now();
     const line = `${fields.map((field) => csvCell(canonical.get(field.canonicalName) ?? "")).join(",")}\n`;
     await writers.write(partition.filePath, line);
-    partitionWriteMs += performance.now() - writeStarted;
     partition.hash.update(line);
     const lineBytes = BigInt(Buffer.byteLength(line));
     partition.byteSize += lineBytes;
@@ -286,24 +287,30 @@ export async function exportStructuredPartitions(input: {
       rowDecodeMs = Math.max(0, performance.now() - rowScanStarted - rowConsumerMs);
     } else if (extension === ".xlsx") {
       let processor: ReturnType<typeof createSheetProcessor> | undefined;
-      const xlsxProfile = await streamXlsxFileRows(
-        input.sourcePath,
-        input.limits,
-        {
-          startSheet(sheet) {
-            processor = createSheetProcessor(sheet.name, sheet.hidden);
-          },
-          async row(_sheet, rowNumber, cells) {
-            await processor!.row({ rowNumber, cells });
-          },
-          endSheet() {
-            processor!.finish();
-            processor = undefined;
+      let xlsxProfile;
+      try {
+        xlsxProfile = await streamCalamineXlsxFileRows({
+          filePath: input.sourcePath,
+          limits: input.limits,
+          signal: input.signal,
+          command: input.xlsxReaderCommand,
+          consumer: {
+            startSheet(sheet) {
+              processor = createSheetProcessor(sheet.name, sheet.hidden);
+            },
+            async row(_sheet, rowNumber, cells) {
+              await processor!.row({ rowNumber, cells });
+            },
+            endSheet() {
+              processor!.finish();
+              processor = undefined;
+            }
           }
-        },
-        // Maijia business/dishes exports only merge presentation rows above the canonical header.
-        { expandMergedCells: false }
-      );
+        });
+      } catch (error) {
+        if (error instanceof CalamineSourceError) throw invalidSource(error.message);
+        throw error;
+      }
       structureReadMs = xlsxProfile.structureReadMs;
       mergeScanMs = xlsxProfile.mergeScanMs;
       rowDecodeMs = xlsxProfile.rowDecodeMs;
@@ -314,7 +321,10 @@ export async function exportStructuredPartitions(input: {
 
     if (totalRowCount === 0n) throw invalidSource("Partition source contains no data rows.");
     const finalizeStarted = performance.now();
+    const rowPartitionWriteMs = writers.elapsedMs;
+    const writeMsBeforeClose = writers.elapsedMs;
     await writers.closeAll();
+    const closeWriteMs = writers.elapsedMs - writeMsBeforeClose;
     const exportedPartitions = [...partitions.values()]
       .sort(
         (left, right) =>
@@ -331,7 +341,8 @@ export async function exportStructuredPartitions(input: {
         byteSize: partition.byteSize,
         checksumSha256: partition.hash.digest("hex")
       }));
-    const finalizeMs = performance.now() - finalizeStarted;
+    const finalizeMs = Math.max(0, performance.now() - finalizeStarted - closeWriteMs);
+    const partitionWriteMs = writers.elapsedMs;
     return {
       totalRowCount,
       partitions: exportedPartitions,
@@ -342,14 +353,15 @@ export async function exportStructuredPartitions(input: {
         structureReadMs: roundedMs(structureReadMs),
         mergeScanMs: roundedMs(mergeScanMs),
         rowDecodeMs: roundedMs(rowDecodeMs),
-        rowRoutingMs: roundedMs(Math.max(0, rowConsumerMs - canonicalizeMs - partitionWriteMs)),
+        rowRoutingMs: roundedMs(Math.max(0, rowConsumerMs - canonicalizeMs - rowPartitionWriteMs)),
         canonicalizeMs: roundedMs(canonicalizeMs),
         partitionWriteMs: roundedMs(partitionWriteMs),
+        partitionFlushCount: writers.flushCount,
         finalizeMs: roundedMs(finalizeMs)
       }
     };
   } catch (error) {
-    await writers.closeAll().catch(() => undefined);
+    await writers.abortAll().catch(() => undefined);
     await rm(candidateDirectory, { force: true, recursive: true });
     await mkdir(candidateDirectory, { recursive: true });
     throw error;
@@ -492,23 +504,64 @@ function validateLimits(limits: StructuredPartitionLimits): void {
   }
 }
 
-class BoundedFileWriterPool {
-  private readonly handles = new Map<string, FileHandle>();
+interface BufferedFileHandle {
+  handle: FileHandle;
+  chunks: string[];
+  byteLength: number;
+}
 
-  constructor(private readonly maximum: number) {}
+class BoundedFileWriterPool {
+  private readonly handles = new Map<string, BufferedFileHandle>();
+  elapsedMs = 0;
+  flushCount = 0;
+
+  constructor(
+    private readonly maximum: number,
+    private readonly flushThresholdBytes: number
+  ) {}
 
   async write(filePath: string, bytes: string): Promise<void> {
-    const handle = await this.handleFor(filePath);
-    await handle.write(bytes);
+    const startedAt = performance.now();
+    try {
+      const entry = await this.handleFor(filePath);
+      entry.chunks.push(bytes);
+      entry.byteLength += Buffer.byteLength(bytes);
+      if (entry.byteLength >= this.flushThresholdBytes) await this.flush(entry);
+    } finally {
+      this.elapsedMs += performance.now() - startedAt;
+    }
   }
 
   async closeAll(): Promise<void> {
-    const handles = [...this.handles.values()];
+    const startedAt = performance.now();
+    const entries = [...this.handles.values()];
     this.handles.clear();
-    await Promise.all(handles.map((handle) => handle.close()));
+    try {
+      await Promise.all(
+        entries.map(async (entry) => {
+          try {
+            await this.flush(entry);
+          } finally {
+            await entry.handle.close();
+          }
+        })
+      );
+    } finally {
+      this.elapsedMs += performance.now() - startedAt;
+    }
   }
 
-  private async handleFor(filePath: string): Promise<FileHandle> {
+  async abortAll(): Promise<void> {
+    const entries = [...this.handles.values()];
+    this.handles.clear();
+    for (const entry of entries) {
+      entry.chunks.length = 0;
+      entry.byteLength = 0;
+    }
+    await Promise.all(entries.map((entry) => entry.handle.close()));
+  }
+
+  private async handleFor(filePath: string): Promise<BufferedFileHandle> {
     const existing = this.handles.get(filePath);
     if (existing) {
       this.handles.delete(filePath);
@@ -520,11 +573,25 @@ class BoundedFileWriterPool {
       if (oldestPath) {
         const oldest = this.handles.get(oldestPath)!;
         this.handles.delete(oldestPath);
-        await oldest.close();
+        try {
+          await this.flush(oldest);
+        } finally {
+          await oldest.handle.close();
+        }
       }
     }
     const handle = await open(filePath, "a");
-    this.handles.set(filePath, handle);
-    return handle;
+    const entry = { handle, chunks: [], byteLength: 0 };
+    this.handles.set(filePath, entry);
+    return entry;
+  }
+
+  private async flush(entry: BufferedFileHandle): Promise<void> {
+    if (entry.byteLength === 0) return;
+    const bytes = entry.chunks.join("");
+    entry.chunks.length = 0;
+    entry.byteLength = 0;
+    await entry.handle.write(bytes);
+    this.flushCount += 1;
   }
 }

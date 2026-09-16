@@ -55,6 +55,13 @@ jobs:
           docker buildx build --pull --platform linux/amd64 --target api --tag enterprise-hub-api:ci --load .
           docker buildx build --pull --platform linux/amd64 --target worker --tag enterprise-hub-worker:ci --load .
           docker buildx build --pull --platform linux/amd64 --target release-ops --tag enterprise-hub-release-ops:ci --load .
+      - name: Verify the packaged Calamine reader against the real fixture
+        run: |
+          reader_container="$(docker create enterprise-hub-worker:ci)"
+          trap 'docker rm -f "$reader_container" >/dev/null' EXIT
+          docker cp "$reader_container:/usr/local/bin/enterprise-hub-calamine-reader" "$RUNNER_TEMP/enterprise-hub-calamine-reader"
+          chmod +x "$RUNNER_TEMP/enterprise-hub-calamine-reader"
+          PATH="$RUNNER_TEMP:$PATH" RUN_CALAMINE_INTEGRATION=1 npm test -- packages/structured-ingestion/src/partition-export.test.ts
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
         with:

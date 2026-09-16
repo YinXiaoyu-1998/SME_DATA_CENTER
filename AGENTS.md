@@ -69,6 +69,7 @@
 - Integration test: `npm run test:integration`
 - Format check: `npm run format:check`
 - Run local API: `npm run api:dev`
+- Build the local Calamine XLSX reader: `npm run build:calamine-reader`
 - Run local worker loop: `npm run worker:dev`
 - Run one deterministic worker pass: `npm run worker:once`
 - Run the official MCP launcher: `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher`

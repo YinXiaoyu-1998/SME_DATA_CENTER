@@ -2,11 +2,21 @@ import { describe, expect, test } from "vitest";
 import path from "node:path";
 import { profilePartitionSource } from "./profile-partition-source.js";
 
+const fixtureReaderCommand = [
+  process.execPath,
+  "--import",
+  "tsx",
+  path.resolve("packages/structured-ingestion/src/calamine-reader-test-helper.ts")
+];
+
 describe("profilePartitionSource", () => {
   test("returns only aggregate metrics for a real partition source", async () => {
     const result = await profilePartitionSource({
       dataset: "dishes",
-      sourcePath: path.resolve("fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx")
+      sourcePath: path.resolve(
+        "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+      ),
+      xlsxReaderCommand: fixtureReaderCommand
     });
 
     expect(result).toMatchObject({
@@ -26,6 +36,7 @@ describe("profilePartitionSource", () => {
       rowRoutingMs: expect.any(Number),
       canonicalizeMs: expect.any(Number),
       partitionWriteMs: expect.any(Number),
+      partitionFlushCount: expect.any(Number),
       finalizeMs: expect.any(Number)
     });
     expect(Object.keys(result).sort()).toEqual([

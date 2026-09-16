@@ -86,6 +86,7 @@ Task 3 implements the env-backed provider factory with `LLM_PROVIDER=fake` as th
 | `MAX_XLSX_UNCOMPRESSED_BYTES`              |       No | `209715200`                              |      No | API          | Enforced XLSX total uncompressed-size limit during ZIP preflight.                 |
 | `MAX_XLSX_ZIP_ENTRIES`                     |       No | `10000`                                  |      No | API          | Enforced XLSX ZIP central-directory entry-count limit.                            |
 | `MAX_XLSX_COMPRESSION_RATIO`               |       No | `100`                                    |      No | API          | Enforced XLSX per-entry compression-ratio limit.                                  |
+| `ENTERPRISE_HUB_CALAMINE_READER_PATH`      |       No | `enterprise-hub-calamine-reader`         |      No | Worker       | Optional local/developer override for the packaged business/dishes XLSX reader.   |
 | `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`      |       No | `500`                                    |      No | API + worker | Atomic structured row insert batch size.                                          |
 | `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` |       No | `120000`                                 |      No | API + worker | Prisma transaction timeout for atomic XLSX/CSV imports.                           |
 | `MCP_MAX_CONCURRENT_REQUESTS`              |       No | `8`                                      |      No | API `/mcp`   | Bounded concurrent Streamable HTTP MCP requests.                                  |

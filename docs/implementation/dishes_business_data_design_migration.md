@@ -367,6 +367,19 @@ Cover one invalid row after several valid partitions, store identity conflict, s
 
 Add an async row iterator for CSV and XLSX. Keep the existing buffered `parseStructuredFile` for the four row-query datasets. `exportStructuredPartitions` must spool to a caller-supplied temp directory, bound open file handles with an LRU of 32, and return only file paths plus metadata—not all row payloads.
 
+The worker packages a pinned Calamine streaming reader for `business` / `dishes` XLSX row decoding.
+Node retains the existing ZIP central-directory safety checks, worksheet metadata verification,
+fixed-schema validation, canonicalization, and whole-file atomicity; the generic XLSX reader remains
+available for datasets that need merged-cell expansion. The Calamine process emits bounded NDJSON
+row batches, and each open canonical partition file buffers at most 256 KiB before a physical write.
+This keeps both reader and writer memory bounded without paying one asynchronous filesystem write per
+source row.
+
+The worker image builds and installs the native reader automatically. For local source-based worker
+or profiler runs, build it with `npm run build:calamine-reader` and set
+`ENTERPRISE_HUB_CALAMINE_READER_PATH` to the resulting absolute executable path when it is not on
+`PATH`.
+
 Target interface:
 
 ```ts

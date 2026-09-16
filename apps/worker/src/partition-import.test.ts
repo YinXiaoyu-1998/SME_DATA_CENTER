@@ -199,6 +199,7 @@ describe("partition importer", () => {
       rowRoutingMs?: number;
       canonicalizeMs?: number;
       partitionWriteMs?: number;
+      partitionFlushCount?: number;
       finalizeMs?: number;
     }> = [];
     const importer = createPartitionImporter({
@@ -249,6 +250,7 @@ describe("partition importer", () => {
       rowRoutingMs: expect.any(Number),
       canonicalizeMs: expect.any(Number),
       partitionWriteMs: expect.any(Number),
+      partitionFlushCount: expect.any(Number),
       finalizeMs: expect.any(Number)
     });
   });
