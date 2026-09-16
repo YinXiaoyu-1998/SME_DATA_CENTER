@@ -105,6 +105,12 @@ multiple newly created user-visible Codex tasks/sessions with one normal low-tec
 task, and then removes uploaded test data plus hard-deletes every synthetic account with
 `auth:operator delete-test-account`.
 
+A user-requested scoped QA run may instead reuse an authenticated employee only after controller
+verification that its organization ID is `default-org`. It still requires new natural-language
+Codex tasks, official launcher/MCP calls, a run-unique exact cleanup scope, complete test-data
+cleanup, and preservation of the existing login. This narrower run does not satisfy the full
+account lifecycle, confidentiality, admin-PAO, logout/reset, or account-deletion gate.
+
 ## Confidentiality And Privileged Admin Operation Cases
 
 | Case                              | Test / command                                                                                                                                                                                                                             | Expected                                                                                                                                                                                |

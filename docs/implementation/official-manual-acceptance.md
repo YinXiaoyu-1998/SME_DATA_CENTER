@@ -99,6 +99,30 @@ Expected:
 - `server.metadataCompatible=true`;
 - `mcp.handshake` is `ok` when already logged in, otherwise `not_authenticated`.
 
+## Scoped QA Acceptance With An Existing Login
+
+Full acceptance still uses the fresh three-account lifecycle below. When the human explicitly asks
+for only selected business-flow acceptance, an already-authenticated account may be reused without
+creating or switching accounts if the controller verifies all of the following:
+
+1. launcher self-check is healthy, `enterprise_hub_auth_status` is authenticated, and
+   `enterprise_hub_get_current_user` returns the intended QA identity;
+2. a read-only operator-side lookup confirms that employee belongs to organization ID
+   `default-org`; this check stays outside the employee-client path because the MCP current-user
+   result deliberately omits internal organization identifiers;
+3. the selected flow does not claim to prove onboarding, password setup/reset, cross-clearance,
+   admin PAOs, logout, session revocation, or account deletion; and
+4. uploads use a run-unique `enterpriseName`, source marker, business window, or another exact
+   cleanup boundary that cannot select unrelated data already owned by the reused employee.
+
+Run the selected actions as new user-visible Codex tasks with one ordinary employee request per
+task and the official launcher/MCP tools. Preserve the shared existing login: do not call logout,
+reset or disable the account, and do not hard-delete it afterward. Controller access remains
+limited to safe identity/organization verification, result verification, and exact run-scoped
+cleanup. Cleanup must remove the run's database rows, current partition objects, temporary sources,
+and work directories while proving that unrelated QA data remains. Record this as **scoped QA
+acceptance**, never as the full manual acceptance gate.
+
 ## Operator Account Lifecycle Check
 
 Use three fresh synthetic accounts in `default-org`, never a real customer address. The account
