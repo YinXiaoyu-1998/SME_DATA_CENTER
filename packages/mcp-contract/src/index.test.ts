@@ -441,11 +441,11 @@ describe("SMEDC MCP contract", () => {
 
     expect(SMEDC_MCP_TOOL_NAMES).not.toEqual(
       expect.arrayContaining([
-        "smedc_get_current_user",
-        "smedc_list_skills",
-        "smedc_login",
-        "smedc_logout",
-        "smedc_auth_status"
+        "enterprise_hub_get_current_user",
+        "enterprise_hub_list_skills",
+        "enterprise_hub_login",
+        "enterprise_hub_logout",
+        "enterprise_hub_auth_status"
       ])
     );
     expect(SMEDC_MCP_TOOL_NAMES).not.toContain("smedc_login_dev");
