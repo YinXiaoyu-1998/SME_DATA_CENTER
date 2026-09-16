@@ -1,7 +1,7 @@
 # SMEDC Hard Cut And Companion Skills Design
 
 Date: 2026-09-16
-Status: approved in chat; written-spec review pending
+Status: approved by the product owner on 2026-09-16
 
 ## Problem
 
