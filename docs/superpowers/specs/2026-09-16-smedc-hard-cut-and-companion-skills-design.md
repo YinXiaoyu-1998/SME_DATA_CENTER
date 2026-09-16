@@ -122,16 +122,23 @@ input. The SMEDC MCP projection will return:
 }
 ```
 
-`smedc-business-analysis` calls `smedc_get_current_user` before generating a report and uses
-`user.organizationName` verbatim as the company name in report titles and narrative. It does not
-infer the company from uploaded filenames, enterprise partitions, store names, email domains, or
-the employee's display name. A missing or blank organization name is a contract error: the Skill
-stops and reports that the SMEDC account organization must be corrected instead of substituting a
-seed customer or generic company.
+`smedc-business-analysis` calls `smedc_get_current_user` before planning data access and uses
+`user.organizationName` verbatim as the default company name in report titles and narrative. It
+does not infer the company from uploaded filenames, enterprise partitions, store names, email
+domains, or the employee's display name. A missing or blank organization name is a contract error:
+the Skill stops and reports that the SMEDC account organization must be corrected instead of
+substituting a seed customer or generic company.
+
+The standalone weekly- and monthly-report renderers retain their explicit `--company` option for a
+caller who deliberately needs a different presentation title. A non-blank `--company` value
+overrides only that report's displayed company title; it does not alter authentication,
+organization scope, enterprise selection, or data access. The diagnosis renderer does not expose
+this override. Omitting `--company` uses the validated authenticated organization name.
 
 Enterprise names used to select structured business partitions remain data selectors and are not
-silently replaced with the organization name. The organization name controls report presentation;
-the user or available coverage still controls which enterprise dataset is analyzed.
+silently replaced with the organization name. The authenticated organization name controls report
+presentation by default, subject only to the explicit weekly/monthly title overrides above; the
+user or available coverage still controls which enterprise dataset is analyzed.
 
 ## Core SMEDC Skill
 
