@@ -865,6 +865,11 @@ export interface XlsxStreamConsumer {
   endSheet(sheet: XlsxStreamSheet): Promise<void> | void;
 }
 
+export interface XlsxStreamOptions {
+  /** Defaults to true. Disable only when the source schema declares merged cells non-semantic. */
+  expandMergedCells?: boolean;
+}
+
 export interface XlsxStreamProfile {
   structureReadMs: number;
   mergeScanMs: number;
@@ -875,7 +880,8 @@ export interface XlsxStreamProfile {
 export async function streamXlsxFileRows(
   filePath: string,
   limits: XlsxReadLimits,
-  consumer: XlsxStreamConsumer
+  consumer: XlsxStreamConsumer,
+  options: XlsxStreamOptions = {}
 ): Promise<XlsxStreamProfile> {
   const structureStarted = performance.now();
   const structuralEntries = await readWantedZipEntries(
@@ -907,16 +913,19 @@ export async function streamXlsxFileRows(
     : { cellXfNumFmtIds: [], numFmtCodes: new Map<number, string>() };
   const structureReadMs = performance.now() - structureStarted;
 
-  const mergeScanStarted = performance.now();
   const mergeRanges = new Map<string, MergeRange[]>();
-  const mergeHandlers = new Map<string, (stream: any) => Promise<void>>();
-  for (const entry of sheetEntries) {
-    mergeHandlers.set(entry, async (stream) => {
-      mergeRanges.set(entry, await parseMergeRangesStream(stream));
-    });
+  let mergeScanMs = 0;
+  if (options.expandMergedCells !== false) {
+    const mergeScanStarted = performance.now();
+    const mergeHandlers = new Map<string, (stream: any) => Promise<void>>();
+    for (const entry of sheetEntries) {
+      mergeHandlers.set(entry, async (stream) => {
+        mergeRanges.set(entry, await parseMergeRangesStream(stream));
+      });
+    }
+    await readWantedZipEntries(filePath, limits, new Set(sheetEntries), mergeHandlers);
+    mergeScanMs = performance.now() - mergeScanStarted;
   }
-  await readWantedZipEntries(filePath, limits, new Set(sheetEntries), mergeHandlers);
-  const mergeScanMs = performance.now() - mergeScanStarted;
 
   const rowScanStarted = performance.now();
   let consumerMs = 0;

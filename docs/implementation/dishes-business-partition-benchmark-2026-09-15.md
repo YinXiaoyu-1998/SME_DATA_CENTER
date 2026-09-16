@@ -184,6 +184,13 @@ two structural merged ranges, `A1:AY1` and `A2:AY2`, above the canonical table h
 must prove those metadata bands can be ignored without changing header resolution or row output;
 it must not assume that the input contains no merged cells.
 
+The fixed-source contract was subsequently clarified: Maijia `business` and `dishes` generators do
+not merge canonical header or data cells; only presentation rows above the header may be merged, and
+those rows are intentionally absent from canonical partition CSVs. The partition exporter now skips
+the separate merged-cell pass for these two datasets while the generic XLSX reader retains expansion
+support. Performance comparison is intentionally deferred to the same staging worker and the same
+191.21 MiB source after deployment; developer-workstation timings are not accepted as the benchmark.
+
 Employee guidance now treats a `business`/`dishes` source larger than 50 MiB as a long-running
 partition job: the first status check is after two minutes, subsequent checks are two minutes apart,
 unchanged states are not narrated, and the wait window is twenty minutes. This would reduce the

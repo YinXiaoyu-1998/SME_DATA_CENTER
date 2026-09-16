@@ -54,7 +54,7 @@ describe("exportStructuredPartitions", () => {
       expect(result.profile[phase]).toBeGreaterThanOrEqual(0);
     }
     expect(result.profile.structureReadMs).toBeGreaterThan(0);
-    expect(result.profile.mergeScanMs).toBeGreaterThan(0);
+    expect(result.profile.mergeScanMs).toBe(0);
   });
 
   test("writes deterministic canonical bytes grouped by merchant and business date", async () => {

@@ -286,18 +286,24 @@ export async function exportStructuredPartitions(input: {
       rowDecodeMs = Math.max(0, performance.now() - rowScanStarted - rowConsumerMs);
     } else if (extension === ".xlsx") {
       let processor: ReturnType<typeof createSheetProcessor> | undefined;
-      const xlsxProfile = await streamXlsxFileRows(input.sourcePath, input.limits, {
-        startSheet(sheet) {
-          processor = createSheetProcessor(sheet.name, sheet.hidden);
+      const xlsxProfile = await streamXlsxFileRows(
+        input.sourcePath,
+        input.limits,
+        {
+          startSheet(sheet) {
+            processor = createSheetProcessor(sheet.name, sheet.hidden);
+          },
+          async row(_sheet, rowNumber, cells) {
+            await processor!.row({ rowNumber, cells });
+          },
+          endSheet() {
+            processor!.finish();
+            processor = undefined;
+          }
         },
-        async row(_sheet, rowNumber, cells) {
-          await processor!.row({ rowNumber, cells });
-        },
-        endSheet() {
-          processor!.finish();
-          processor = undefined;
-        }
-      });
+        // Maijia business/dishes exports only merge presentation rows above the canonical header.
+        { expandMergedCells: false }
+      );
       structureReadMs = xlsxProfile.structureReadMs;
       mergeScanMs = xlsxProfile.mergeScanMs;
       rowDecodeMs = xlsxProfile.rowDecodeMs;
