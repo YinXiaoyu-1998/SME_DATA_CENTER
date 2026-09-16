@@ -1087,27 +1087,3 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
-
-## 2026-09-16 - Task 2 authenticated organization name
-
-- Branch/worktree: `codex/smedc-task-02-org-name` in `.worktrees/smedc-task-02-org-name`, based on `8855ba1`.
-- Implemented `AuthenticatedEmployee.organizationName` from Prisma `Employee.organization.name` through access-token authentication, `/me.employee.organizationName`, and MCP `user.organizationName`; MCP current-user projection now fails closed for missing, non-string, or blank organization names and returns the database value verbatim when nonblank.
-- Updated neutral authenticated-employee fixtures for the new required field and kept authorization/query scopes unchanged.
-- Verified: focused auth/system/MCP/API fixture tests passed (187 passed, 15 env-gated skips), `npm run typecheck`, and `npm run format:check`.
-
-## 2026-09-16 - Task 3 delivery-ledger presentation profile
-
-- Branch/worktree: `codex/smedc-task-03-ledger-profile` in `.worktrees/smedc-task-03-ledger-profile`, based on `28ad3c34b7e1aa02ec4a655266c2b4b483cacc6e`.
-- Implemented the frozen `food-purchase-ledger-cn-v1` presentation profile for `delivery_ledger` with the exact ten Chinese display columns required for 食品经营单位进货台帐; `entry_id` / 序号 remain absent from the display profile.
-- API discovery now includes the profile on `delivery_ledger`; `/v1/structured/query` includes it only for `delivery_ledger` detail responses and omits it for aggregate/grouped responses. MCP `query_structured_dataset` result documentation now names the optional `presentation` block without changing the input schema.
-- TDD red evidence: focused registry/API route tests first failed because `presentation` was undefined; the MCP contract test first failed because the result shape lacked the optional presentation entry.
-- Verified: `npm test -- packages/domain/src/structured-registry.test.ts apps/api/src/routes/structured-query.test.ts apps/api/src/structured-query-route.test.ts packages/mcp-contract/src/index.test.ts` (74 passed), `npm run typecheck`, `npm run format:check`, and `git diff --check`. Docker cleanup verification could not connect to the local Docker daemon socket; this task ran unit/type/format checks only and did not start repo containers.
-
-## 2026-09-16 - Task 4 runtime contract hard cut to SMEDC
-
-- Branch/worktree: `codex/smedc-task-04-runtime-contracts` in `.worktrees/smedc-task-04-runtime-contracts`, based on `bdd70532815cf93e1fe17019a39c6f1e20dd8b94`.
-- Implemented the release-boundary hard cut for TypeScript workspace packages/imports (`@smedc/*`), MCP public exports (`SMEDC_MCP_*`, `SmedcMcp*`), the five branded `smedc_*` tools, launcher/API delegation headers, OAuth client ID and SMEDC metadata extension keys, launcher service names, `SMEDC_BASE_URL`, and package/binary `smedc-mcp-launcher@0.5.0`.
-- Preserved Task 2 `organizationName` and Task 3 `delivery_ledger.presentation` behavior. Per the Task 4 exception, server OAuth metadata uses SMEDC extension keys but still recommends the currently published `enterprise-hub-mcp-launcher@0.4.0` until `smedc-mcp-launcher@0.5.0` is published and verified.
-- TDD red evidence: after changing the contract tests first, the required red command failed on unresolved `@smedc/*` packages plus old branded tool/header expectations.
-- Verified: `npm install --package-lock-only`, `npm run db:generate`, `npm test -- packages/mcp-contract/src/index.test.ts apps/api/src/mcp apps/mcp-launcher/src` (18 files / 165 tests), `npm run typecheck`, `npm run build:release`, and `npm run test:package --workspace smedc-mcp-launcher` (1 file / 5 tests). A normal local `npm install` was also run to refresh local workspace symlinks after the package rename.
-- External effects: no npm publish, tag push, staging deploy, Skill-directory rename, repository rename, or runtime resource rename was performed.
