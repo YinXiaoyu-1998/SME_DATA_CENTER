@@ -17,6 +17,17 @@ describe("profilePartitionSource", () => {
     });
     expect(result.distinctStores).toBeGreaterThan(1);
     expect(result.partitionCount).toBe(result.distinctStores);
+    expect(result.sourceExportProfile).toMatchObject({
+      sourceFormat: "xlsx",
+      totalMs: expect.any(Number),
+      structureReadMs: expect.any(Number),
+      mergeScanMs: expect.any(Number),
+      rowDecodeMs: expect.any(Number),
+      rowRoutingMs: expect.any(Number),
+      canonicalizeMs: expect.any(Number),
+      partitionWriteMs: expect.any(Number),
+      finalizeMs: expect.any(Number)
+    });
     expect(Object.keys(result).sort()).toEqual([
       "canonicalBytes",
       "dateMax",
@@ -26,6 +37,7 @@ describe("profilePartitionSource", () => {
       "partitionCount",
       "peakRssBytes",
       "sourceBytes",
+      "sourceExportProfile",
       "totalRows"
     ]);
   });

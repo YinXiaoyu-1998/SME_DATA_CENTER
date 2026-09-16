@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, open, rm, stat, type FileHandle } from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   PARTITION_ERROR_CODES,
   getStructuredRegistry,
@@ -41,6 +42,20 @@ export interface StructuredPartitionExportEntry {
 export interface StructuredPartitionExport {
   totalRowCount: bigint;
   partitions: StructuredPartitionExportEntry[];
+  profile: StructuredPartitionExportProfile;
+}
+
+export interface StructuredPartitionExportProfile {
+  sourceFormat: "csv" | "xlsx";
+  totalMs: number;
+  prepareMs: number;
+  structureReadMs: number;
+  mergeScanMs: number;
+  rowDecodeMs: number;
+  rowRoutingMs: number;
+  canonicalizeMs: number;
+  partitionWriteMs: number;
+  finalizeMs: number;
 }
 
 interface SourceRow {
@@ -77,6 +92,7 @@ export async function exportStructuredPartitions(input: {
   limits: StructuredPartitionLimits;
   signal?: AbortSignal;
 }): Promise<StructuredPartitionExport> {
+  const profileStarted = performance.now();
   validateLimits(input.limits);
   throwIfAborted(input.signal);
   const source = await stat(input.sourcePath);
@@ -95,6 +111,8 @@ export async function exportStructuredPartitions(input: {
   const writers = new BoundedFileWriterPool(input.limits.maxOpenFiles);
   let totalRowCount = 0n;
   let totalCanonicalBytes = 0n;
+  let canonicalizeMs = 0;
+  let partitionWriteMs = 0;
 
   const processDataRow = async (
     row: SourceRow,
@@ -110,6 +128,7 @@ export async function exportStructuredPartitions(input: {
     )
       throw invalidSource(`Row ${row.rowNumber} has data outside the resolved header width.`);
 
+    const canonicalStarted = performance.now();
     const canonical = new Map<string, string>();
     for (const mapping of header.mappings) {
       const field = fieldByName.get(mapping.canonicalName);
@@ -119,6 +138,7 @@ export async function exportStructuredPartitions(input: {
         canonicalCell(field, row.cells[mapping.sourceColumnIndex] ?? "", row.rowNumber)
       );
     }
+    canonicalizeMs += performance.now() - canonicalStarted;
 
     const identity = partitionStoreIdentity({
       merchantId: canonical.get("merchant_id"),
@@ -161,15 +181,19 @@ export async function exportStructuredPartitions(input: {
     if (totalRowCount > BigInt(input.limits.maxRows)) throw limitExceeded("row count");
 
     if (!partition.initialized) {
+      const writeStarted = performance.now();
       await writers.write(partition.filePath, headerBytes);
+      partitionWriteMs += performance.now() - writeStarted;
       partition.hash.update(headerBytes);
       partition.byteSize += BigInt(Buffer.byteLength(headerBytes));
       totalCanonicalBytes += BigInt(Buffer.byteLength(headerBytes));
       partition.initialized = true;
     }
 
+    const writeStarted = performance.now();
     const line = `${fields.map((field) => csvCell(canonical.get(field.canonicalName) ?? "")).join(",")}\n`;
     await writers.write(partition.filePath, line);
+    partitionWriteMs += performance.now() - writeStarted;
     partition.hash.update(line);
     const lineBytes = BigInt(Buffer.byteLength(line));
     partition.byteSize += lineBytes;
@@ -230,23 +254,39 @@ export async function exportStructuredPartitions(input: {
     rows: AsyncIterable<SourceRow>,
     sheetName: string,
     hidden: boolean
-  ): Promise<void> => {
+  ): Promise<number> => {
     const processor = createSheetProcessor(sheetName, hidden);
-    for await (const row of rows) await processor.row(row);
+    let consumerMs = 0;
+    for await (const row of rows) {
+      const consumerStarted = performance.now();
+      await processor.row(row);
+      consumerMs += performance.now() - consumerStarted;
+    }
+    const consumerStarted = performance.now();
     processor.finish();
+    consumerMs += performance.now() - consumerStarted;
+    return consumerMs;
   };
 
+  const prepareMs = performance.now() - profileStarted;
   try {
     const extension = path.extname(input.sourcePath).toLowerCase();
+    const sourceFormat = extension === ".csv" ? "csv" : "xlsx";
+    let structureReadMs = 0;
+    let mergeScanMs = 0;
+    let rowDecodeMs = 0;
+    let rowConsumerMs = 0;
     if (extension === ".csv") {
-      await processSheet(
+      const rowScanStarted = performance.now();
+      rowConsumerMs = await processSheet(
         csvRows(input.sourcePath, input.limits.maxStructuredCellChars),
         "Sheet1",
         false
       );
+      rowDecodeMs = Math.max(0, performance.now() - rowScanStarted - rowConsumerMs);
     } else if (extension === ".xlsx") {
       let processor: ReturnType<typeof createSheetProcessor> | undefined;
-      await streamXlsxFileRows(input.sourcePath, input.limits, {
+      const xlsxProfile = await streamXlsxFileRows(input.sourcePath, input.limits, {
         startSheet(sheet) {
           processor = createSheetProcessor(sheet.name, sheet.hidden);
         },
@@ -258,30 +298,49 @@ export async function exportStructuredPartitions(input: {
           processor = undefined;
         }
       });
+      structureReadMs = xlsxProfile.structureReadMs;
+      mergeScanMs = xlsxProfile.mergeScanMs;
+      rowDecodeMs = xlsxProfile.rowDecodeMs;
+      rowConsumerMs = xlsxProfile.consumerMs;
     } else {
       throw invalidSource("Partition source must be CSV or XLSX.");
     }
 
     if (totalRowCount === 0n) throw invalidSource("Partition source contains no data rows.");
+    const finalizeStarted = performance.now();
     await writers.closeAll();
+    const exportedPartitions = [...partitions.values()]
+      .sort(
+        (left, right) =>
+          left.businessDate.localeCompare(right.businessDate) ||
+          left.storeKey.localeCompare(right.storeKey)
+      )
+      .map((partition) => ({
+        storeKey: partition.storeKey,
+        merchantId: partition.merchantId,
+        storeName: partition.storeName,
+        businessDate: partition.businessDate,
+        rowCount: partition.rowCount,
+        filePath: partition.filePath,
+        byteSize: partition.byteSize,
+        checksumSha256: partition.hash.digest("hex")
+      }));
+    const finalizeMs = performance.now() - finalizeStarted;
     return {
       totalRowCount,
-      partitions: [...partitions.values()]
-        .sort(
-          (left, right) =>
-            left.businessDate.localeCompare(right.businessDate) ||
-            left.storeKey.localeCompare(right.storeKey)
-        )
-        .map((partition) => ({
-          storeKey: partition.storeKey,
-          merchantId: partition.merchantId,
-          storeName: partition.storeName,
-          businessDate: partition.businessDate,
-          rowCount: partition.rowCount,
-          filePath: partition.filePath,
-          byteSize: partition.byteSize,
-          checksumSha256: partition.hash.digest("hex")
-        }))
+      partitions: exportedPartitions,
+      profile: {
+        sourceFormat,
+        totalMs: roundedMs(performance.now() - profileStarted),
+        prepareMs: roundedMs(prepareMs),
+        structureReadMs: roundedMs(structureReadMs),
+        mergeScanMs: roundedMs(mergeScanMs),
+        rowDecodeMs: roundedMs(rowDecodeMs),
+        rowRoutingMs: roundedMs(Math.max(0, rowConsumerMs - canonicalizeMs - partitionWriteMs)),
+        canonicalizeMs: roundedMs(canonicalizeMs),
+        partitionWriteMs: roundedMs(partitionWriteMs),
+        finalizeMs: roundedMs(finalizeMs)
+      }
     };
   } catch (error) {
     await writers.closeAll().catch(() => undefined);
@@ -396,6 +455,10 @@ function formatDate(date: Date): string {
 
 function two(value: number): string {
   return String(value).padStart(2, "0");
+}
+
+function roundedMs(value: number): number {
+  return Number(value.toFixed(1));
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

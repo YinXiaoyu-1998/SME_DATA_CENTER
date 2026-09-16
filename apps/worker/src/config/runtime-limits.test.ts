@@ -21,6 +21,7 @@ describe("worker runtime limits", () => {
       partitionImportWorkDirectory: "/var/lib/enterprise-hub/partition-work",
       partitionImportMinFreeBytes: 12_884_901_888,
       partitionImportMaxOpenFiles: 32,
+      partitionImportObjectConcurrency: 6,
       partitionImportJobRetentionDays: 30
     });
   });
@@ -44,6 +45,7 @@ describe("worker runtime limits", () => {
         PARTITION_IMPORT_MAX_CANONICAL_BYTES: "13",
         PARTITION_IMPORT_WORK_DIR: "/tmp/partition-work",
         PARTITION_IMPORT_MIN_FREE_BYTES: "14",
+        PARTITION_IMPORT_OBJECT_CONCURRENCY: "8",
         PARTITION_IMPORT_JOB_RETENTION_DAYS: "15"
       })
     ).toEqual({
@@ -64,6 +66,7 @@ describe("worker runtime limits", () => {
       partitionImportWorkDirectory: "/tmp/partition-work",
       partitionImportMinFreeBytes: 14,
       partitionImportMaxOpenFiles: 32,
+      partitionImportObjectConcurrency: 8,
       partitionImportJobRetentionDays: 15
     });
   });
@@ -80,6 +83,12 @@ describe("worker runtime limits", () => {
   it("preserves the 100ms minimum worker poll interval", () => {
     expect(() => loadWorkerRuntimeLimits({ WORKER_POLL_INTERVAL_MS: "99" })).toThrow(
       "WORKER_POLL_INTERVAL_MS must be a safe integer greater than or equal to 100."
+    );
+  });
+
+  it("rejects partition object concurrency above the eight-request safety bound", () => {
+    expect(() => loadWorkerRuntimeLimits({ PARTITION_IMPORT_OBJECT_CONCURRENCY: "9" })).toThrow(
+      "PARTITION_IMPORT_OBJECT_CONCURRENCY must be less than or equal to 8."
     );
   });
 
