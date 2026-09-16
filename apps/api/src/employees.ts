@@ -11,6 +11,9 @@ export interface EmployeeRepository {
 interface PrismaEmployeeRow {
   id: string;
   orgId: string;
+  organization: {
+    name: string;
+  };
   displayName: string;
   email: string;
   role: EmployeeRoleName;
@@ -22,6 +25,7 @@ function toAuthenticatedEmployee(employee: PrismaEmployeeRow): AuthenticatedEmpl
   return {
     id: employee.id,
     orgId: employee.orgId,
+    organizationName: employee.organization.name,
     displayName: employee.displayName,
     email: employee.email,
     role: employee.role,
@@ -51,14 +55,24 @@ export function createPrismaEmployeeRepository(
   return {
     async findByEmail(email: string) {
       const employee = await prisma.employee.findUnique({
-        where: { email }
+        where: { email },
+        include: {
+          organization: {
+            select: { name: true }
+          }
+        }
       });
 
       return employee ? toAuthenticatedEmployee(employee) : null;
     },
     async findById(id: string) {
       const employee = await prisma.employee.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          organization: {
+            select: { name: true }
+          }
+        }
       });
 
       return employee ? toAuthenticatedEmployee(employee) : null;

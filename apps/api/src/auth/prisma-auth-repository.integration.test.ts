@@ -31,7 +31,7 @@ describeIntegration("Prisma auth core repository", () => {
 
   beforeAll(async () => {
     await prisma.organization.create({
-      data: { id: "auth-test-org", name: "Auth Test Organization" }
+      data: { id: "auth-test-org", name: "示例餐饮管理有限公司" }
     });
     await prisma.employee.create({
       data: {
@@ -519,6 +519,7 @@ describeIntegration("Prisma auth core repository", () => {
 
     expect(await repository.authenticateAccessToken("d".repeat(64), now, oauthAudit)).toMatchObject(
       {
+        organizationName: "示例餐饮管理有限公司",
         displayName: "Test Person",
         identityDisabled: false,
         employeeDisabled: false,

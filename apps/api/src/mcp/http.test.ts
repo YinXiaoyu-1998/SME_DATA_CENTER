@@ -27,6 +27,7 @@ async function authenticateTestAccessToken(token: string) {
 const employee: AuthenticatedEmployee = {
   id: "emp_mcp",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "MCP Employee",
   email: "mcp.employee@example.com",
   role: "employee",
@@ -37,6 +38,7 @@ const employee: AuthenticatedEmployee = {
 const adminEmployee: AuthenticatedEmployee = {
   id: "emp_mcp_admin",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "MCP Administrator",
   email: "mcp.admin@example.com",
   role: "admin",
@@ -725,7 +727,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         displayName: "MCP Employee",
         email: "mcp.employee@example.com",
         role: "employee",
-        clearance: 3
+        clearance: 3,
+        organizationName: "Default Organization"
       }
     });
     expect(parseToolPayload(adminResponse.payload).payload).toEqual({
@@ -733,7 +736,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         displayName: "MCP Administrator",
         email: "mcp.admin@example.com",
         role: "admin",
-        clearance: 3
+        clearance: 3,
+        organizationName: "Default Organization"
       }
     });
   });

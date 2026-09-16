@@ -35,7 +35,8 @@ function createCapturingDelegate(
                 employee: {
                   id: "employee-1",
                   orgId: "default-org",
-                  displayName: "Current Employee",
+                  organizationName: "示例餐饮管理有限公司",
+                  displayName: "Current User",
                   email: "current@example.com",
                   role: "employee",
                   disabled: false,
@@ -212,10 +213,11 @@ describe("read-only MCP tool handlers", () => {
     ]);
     expect(parseToolResult(currentUser!)).toEqual({
       user: {
-        displayName: "Current Employee",
+        displayName: "Current User",
         email: "current@example.com",
         role: "employee",
-        clearance: 1
+        clearance: 1,
+        organizationName: "示例餐饮管理有限公司"
       }
     });
     expect(calls.every((call) => call.headers.authorization === "Bearer employee-token")).toBe(
@@ -224,7 +226,11 @@ describe("read-only MCP tool handlers", () => {
     expect(JSON.stringify(calls)).not.toContain("undefined");
   });
 
-  it("fails closed when the internal current-user response is malformed", async () => {
+  it.each([
+    ["missing organization name", {}],
+    ["non-string organization name", { organizationName: 123 }],
+    ["blank organization name", { organizationName: "   " }]
+  ])("fails closed when the internal current-user response has a %s", async (_case, override) => {
     const handlers = createReadOnlyMcpToolHandlers({
       bearerToken: "secret-token",
       audit,
@@ -234,8 +240,11 @@ describe("read-only MCP tool handlers", () => {
           statusCode: 200,
           payload: JSON.stringify({
             employee: {
+              displayName: "Current User",
               email: "current@example.com",
               role: "employee",
+              clearance: 0,
+              ...override,
               credential: "must-not-escape"
             }
           })

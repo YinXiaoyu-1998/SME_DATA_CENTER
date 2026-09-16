@@ -16,6 +16,7 @@ function employeeResponse(employee: AuthenticatedEmployee) {
   return {
     id: employee.id,
     orgId: employee.orgId,
+    organizationName: employee.organizationName,
     displayName: employee.displayName,
     email: employee.email,
     role: employee.role,

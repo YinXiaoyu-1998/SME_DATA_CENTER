@@ -449,7 +449,9 @@ describe("Enterprise Hub MCP contract", () => {
 
     expect(currentUser?.inputSchema.safeParse({}).success).toBe(true);
     expect(currentUser?.inputSchema.safeParse({ employeeId: "someone-else" }).success).toBe(false);
-    expect(currentUser?.resultShape).toEqual(["user: { displayName, email, role, clearance }"]);
+    expect(currentUser?.resultShape).toEqual([
+      "user: { displayName, email, role, clearance, organizationName }"
+    ]);
   });
 
   it("describes structured uploads as queued work and status as the async completion view", () => {

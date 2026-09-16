@@ -41,6 +41,7 @@ async function authenticateTestAccessToken(token: string) {
 const baoliEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_employee",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Baoli Employee",
   email: "baoli.employee@example.com",
   role: "employee",
@@ -51,6 +52,7 @@ const baoliEmployee: AuthenticatedEmployee = {
 const clearanceZeroEmployee: AuthenticatedEmployee = {
   id: "emp_clearance_zero",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Clearance Zero Employee",
   email: "clearance.zero@example.com",
   role: "employee",

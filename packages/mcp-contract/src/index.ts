@@ -483,10 +483,10 @@ export const ENTERPRISE_HUB_MCP_TOOL_CONTRACTS = [
     name: "enterprise_hub_get_current_user",
     title: "Get current Enterprise Hub user",
     description:
-      "Return the display name, email, role, and clearance of the employee authenticated for this Enterprise Hub MCP request.",
+      "Return the display name, email, role, clearance, and organization name of the employee authenticated for this Enterprise Hub MCP request.",
     inputSchema: currentUserInputSchema,
     inputFields: [],
-    resultShape: ["user: { displayName, email, role, clearance }"]
+    resultShape: ["user: { displayName, email, role, clearance, organizationName }"]
   }),
   defineToolContract({
     name: "enterprise_hub_list_skills",

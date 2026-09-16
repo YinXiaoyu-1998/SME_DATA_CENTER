@@ -196,7 +196,10 @@ function currentUserFromMe(value: unknown): unknown {
     !("role" in employee) ||
     !["admin", "employee"].includes(String(employee.role)) ||
     !("clearance" in employee) ||
-    typeof employee.clearance !== "number"
+    typeof employee.clearance !== "number" ||
+    !("organizationName" in employee) ||
+    typeof employee.organizationName !== "string" ||
+    employee.organizationName.trim().length === 0
   ) {
     throw new Error("Invalid current-user response.");
   }
@@ -206,7 +209,8 @@ function currentUserFromMe(value: unknown): unknown {
       displayName: employee.displayName,
       email: employee.email,
       role: employee.role,
-      clearance: employee.clearance
+      clearance: employee.clearance,
+      organizationName: employee.organizationName
     }
   };
 }

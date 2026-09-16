@@ -16,6 +16,7 @@ const mcpContext: McpRequestContext = {
   employee: {
     id: "emp_factory",
     orgId: "default-org",
+    organizationName: "Default Organization",
     displayName: "Factory Employee",
     email: "factory@example.com",
     role: "employee",

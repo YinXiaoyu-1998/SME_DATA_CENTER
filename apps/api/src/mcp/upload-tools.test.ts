@@ -9,6 +9,7 @@ import {
 const employee: AuthenticatedEmployee = {
   id: "emp_mcp_upload",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "MCP Upload Employee",
   email: "mcp-upload@example.com",
   role: "employee",

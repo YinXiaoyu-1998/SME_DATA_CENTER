@@ -7,6 +7,7 @@ import type { ApiServerContext } from "./app-context.js";
 const enabledEmployee: AuthenticatedEmployee = {
   id: "emp_1",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Employee One",
   email: "employee@example.com",
   role: "employee",

@@ -12,6 +12,7 @@ export async function authenticateTestAccessToken(token: string) {
 export const adminEmployee: AuthenticatedEmployee = {
   id: "emp_admin",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Admin User",
   email: "admin@example.com",
   role: "admin",
@@ -22,6 +23,7 @@ export const adminEmployee: AuthenticatedEmployee = {
 export const lowClearanceAdminEmployee: AuthenticatedEmployee = {
   id: "emp_admin_clearance_0",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Low Clearance Admin",
   email: "admin.clearance-0@example.com",
   role: "admin",
@@ -32,6 +34,7 @@ export const lowClearanceAdminEmployee: AuthenticatedEmployee = {
 export const disabledEmployee: AuthenticatedEmployee = {
   id: "emp_disabled",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Disabled User",
   email: "disabled@example.com",
   role: "employee",
@@ -42,6 +45,7 @@ export const disabledEmployee: AuthenticatedEmployee = {
 export const baoliEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_employee",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Baoli Employee",
   email: "baoli.employee@example.com",
   role: "employee",
@@ -52,6 +56,7 @@ export const baoliEmployee: AuthenticatedEmployee = {
 export const suzhouEmployee: AuthenticatedEmployee = {
   id: "emp_suzhou_employee",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Suzhou Employee",
   email: "suzhou.employee@example.com",
   role: "employee",
@@ -62,6 +67,7 @@ export const suzhouEmployee: AuthenticatedEmployee = {
 export const lijieEmployee: AuthenticatedEmployee = {
   id: "emp_lijie",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Li Jie",
   email: "lijie@example.com",
   role: "employee",
@@ -72,6 +78,7 @@ export const lijieEmployee: AuthenticatedEmployee = {
 export const orgAAdminEmployee: AuthenticatedEmployee = {
   id: "emp_org_a_admin",
   orgId: "org-a",
+  organizationName: "Organization A",
   displayName: "Organization A Admin",
   email: "org-a.admin@example.com",
   role: "admin",
@@ -82,6 +89,7 @@ export const orgAAdminEmployee: AuthenticatedEmployee = {
 export const orgBAdminEmployee: AuthenticatedEmployee = {
   id: "emp_org_b_admin",
   orgId: "org-b",
+  organizationName: "Organization B",
   displayName: "Organization B Admin",
   email: "org-b.admin@example.com",
   role: "admin",
@@ -92,6 +100,7 @@ export const orgBAdminEmployee: AuthenticatedEmployee = {
 export const clearanceZeroEmployee: AuthenticatedEmployee = {
   id: "emp_clearance_zero",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Clearance-zero Employee",
   email: "clearance.zero@example.com",
   role: "employee",
@@ -102,6 +111,7 @@ export const clearanceZeroEmployee: AuthenticatedEmployee = {
 export const clearanceZeroAdminEmployee: AuthenticatedEmployee = {
   id: "emp_clearance_zero_admin",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Clearance-zero Admin",
   email: "clearance.zero.admin@example.com",
   role: "admin",

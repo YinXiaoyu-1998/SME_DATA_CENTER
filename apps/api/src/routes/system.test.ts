@@ -8,6 +8,7 @@ import type { ApiServerContext } from "../app-context.js";
 const employee: AuthenticatedEmployee = {
   id: "emp_1",
   orgId: "default-org",
+  organizationName: "示例餐饮管理有限公司",
   displayName: "Employee One",
   email: "employee@example.com",
   role: "employee",
@@ -129,6 +130,7 @@ describe("system routes", () => {
       employee: {
         id: employee.id,
         orgId: employee.orgId,
+        organizationName: "示例餐饮管理有限公司",
         displayName: employee.displayName,
         email: employee.email,
         role: employee.role,

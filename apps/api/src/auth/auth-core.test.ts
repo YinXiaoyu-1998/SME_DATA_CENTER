@@ -63,6 +63,7 @@ class MemoryAuthRepository implements AuthCoreRepository {
     identityId: "identity-1",
     employeeId: "employee-1",
     orgId: "org-1",
+    organizationName: "示例餐饮管理有限公司",
     displayName: "Test Person",
     email: "person@example.com",
     role: "employee",
@@ -517,6 +518,7 @@ describe("AuthCore", () => {
     await expect(core.authenticateAccessToken("eh_at_token", oauthAudit)).resolves.toEqual({
       id: "employee-1",
       orgId: "org-1",
+      organizationName: "示例餐饮管理有限公司",
       displayName: "Test Person",
       email: "person@example.com",
       role: "employee",

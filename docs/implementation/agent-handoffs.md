@@ -1087,3 +1087,10 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
+
+## 2026-09-16 - Task 2 authenticated organization name
+
+- Branch/worktree: `codex/smedc-task-02-org-name` in `.worktrees/smedc-task-02-org-name`, based on `8855ba1`.
+- Implemented `AuthenticatedEmployee.organizationName` from Prisma `Employee.organization.name` through access-token authentication, `/me.employee.organizationName`, and MCP `user.organizationName`; MCP current-user projection now fails closed for missing, non-string, or blank organization names and returns the database value verbatim when nonblank.
+- Updated neutral authenticated-employee fixtures for the new required field and kept authorization/query scopes unchanged.
+- Verified: focused auth/system/MCP/API fixture tests passed (187 passed, 15 env-gated skips), `npm run typecheck`, and `npm run format:check`.
