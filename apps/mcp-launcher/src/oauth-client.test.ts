@@ -54,8 +54,7 @@ describe("OAuth typed failures", () => {
         request.on("end", () => {
           tokenRequest = {
             body: new URLSearchParams(body),
-            launcherVersion: request.headers["x-smedc-launcher-version"] as
-              string | undefined
+            launcherVersion: request.headers["x-smedc-launcher-version"] as string | undefined
           };
           response.setHeader("content-type", "application/json");
           response.setHeader("cache-control", "no-store");
@@ -145,8 +144,7 @@ describe("device authorization grant", () => {
         request.on("end", () => {
           deviceRequest = {
             body: new URLSearchParams(body),
-            launcherVersion: request.headers["x-smedc-launcher-version"] as
-              string | undefined
+            launcherVersion: request.headers["x-smedc-launcher-version"] as string | undefined
           };
           response.setHeader("content-type", "application/json");
           response.setHeader("cache-control", "no-store");

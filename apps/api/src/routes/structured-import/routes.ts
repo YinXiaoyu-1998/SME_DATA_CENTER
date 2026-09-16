@@ -7,10 +7,7 @@ import {
   canEmployeeAccessDocument,
   getStructuredRegistry
 } from "@smedc/domain";
-import {
-  preflightStructuredFile,
-  profileStructuredFile
-} from "@smedc/structured-ingestion";
+import { preflightStructuredFile, profileStructuredFile } from "@smedc/structured-ingestion";
 import { createOriginalObjectKey, type StorageAdapter } from "@smedc/storage";
 import type { ApiRuntimeLimits } from "../../config/runtime-limits.js";
 import type { RequestAuditContext } from "../../request-audit-context.js";

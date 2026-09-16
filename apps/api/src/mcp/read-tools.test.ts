@@ -99,10 +99,7 @@ describe("read-only MCP tool handlers", () => {
     const { calls, handlers } = createCapturingDelegate();
 
     const currentUser = await handlers.smedc_get_current_user?.({}, {} as never);
-    await handlers.smedc_list_skills?.(
-      { q: "菜单", category: "menu-analysis" },
-      {} as never
-    );
+    await handlers.smedc_list_skills?.({ q: "菜单", category: "menu-analysis" }, {} as never);
     await handlers.search_document_evidence?.(
       {
         query: "菜单 毛利",

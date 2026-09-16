@@ -34,9 +34,7 @@ describe("published launcher artifact", () => {
       installDirectory,
       "node_modules",
       ".bin",
-      process.platform === "win32"
-        ? "smedc-mcp-launcher.cmd"
-        : "smedc-mcp-launcher"
+      process.platform === "win32" ? "smedc-mcp-launcher.cmd" : "smedc-mcp-launcher"
     );
   }, 60_000);
 
@@ -90,6 +88,7 @@ describe("published launcher artifact", () => {
   it("passes a built-artifact secret and legacy-contract scan", () => {
     const bundledSource = exec("tar", ["-xOf", tarballPath, "package/dist/index.js"]);
     expect(bundledSource).toContain("SMEDC_BASE_URL");
+    expect(bundledSource).toContain("Launcher 0.5.0+");
     for (const forbidden of [
       "SMEDC_API_URL",
       ["ENTERPRISE", "HUB", "API", "URL"].join("_"),
@@ -97,6 +96,7 @@ describe("published launcher artifact", () => {
       "/auth/dev-login",
       ["enterprise", "hub", "login", "local"].join("_"),
       ["@enterprise", "hub/mcp-contract"].join("-"),
+      ["enterprise", "hub", "partition", "extracts"].join("-"),
       "exact-access-token",
       "access-secret",
       "refresh-secret",
@@ -115,9 +115,9 @@ describe("published launcher artifact", () => {
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
     ) as { components?: Array<{ name?: string }> };
-    expect(
-      sbom.components?.some((component) => component.name === "smedc-mcp-launcher")
-    ).toBe(true);
+    expect(sbom.components?.some((component) => component.name === "smedc-mcp-launcher")).toBe(
+      true
+    );
     expect(await readFile(path.join(installDirectory, "package-lock.json"), "utf8")).toContain(
       "smedc-mcp-launcher"
     );

@@ -39,9 +39,7 @@ const READ_ONLY_TOOL_CONTRACTS = Object.fromEntries(
   ).map((contract) => [contract.name, contract])
 ) as Record<ReadOnlyMcpToolName, SmedcMcpToolContract>;
 
-export function createReadOnlyMcpToolHandlers(
-  context: ApiDelegationContext
-): SmedcMcpToolHandlers {
+export function createReadOnlyMcpToolHandlers(context: ApiDelegationContext): SmedcMcpToolHandlers {
   return Object.fromEntries(
     READ_ONLY_MCP_TOOL_NAMES.map((toolName) => [
       toolName,

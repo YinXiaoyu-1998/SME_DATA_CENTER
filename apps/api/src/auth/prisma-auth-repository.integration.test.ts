@@ -297,11 +297,7 @@ describeIntegration("Prisma auth core repository", () => {
     });
 
     await expect(
-      core.redeemDeviceAuthorization(
-        issued.deviceCode,
-        "smedc-desktop-launcher",
-        oauthAudit
-      )
+      core.redeemDeviceAuthorization(issued.deviceCode, "smedc-desktop-launcher", oauthAudit)
     ).resolves.toEqual({ status: "authorization_pending" });
 
     const completed = await core.completeDeviceAuthorization(
@@ -328,11 +324,7 @@ describeIntegration("Prisma auth core repository", () => {
     });
 
     await expect(
-      core.redeemDeviceAuthorization(
-        issued.deviceCode,
-        "smedc-desktop-launcher",
-        oauthAudit
-      )
+      core.redeemDeviceAuthorization(issued.deviceCode, "smedc-desktop-launcher", oauthAudit)
     ).resolves.toEqual({ status: "invalid" });
   });
 

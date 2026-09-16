@@ -100,7 +100,7 @@ export async function downloadPartitionDataset(input: {
   endDate: string;
   storeIds?: string[];
 }): Promise<unknown> {
-  const root = path.join(os.tmpdir(), "enterprise-hub-partition-extracts");
+  const root = path.join(os.tmpdir(), "smedc-partition-extracts");
   await cleanupStaleExtractDirectories(root);
   await mkdir(root, { recursive: true });
   const directory = await mkdtemp(path.join(root, "extract-"));
@@ -204,9 +204,7 @@ export async function cleanupStaleExtractDirectories(
 }
 
 export function cleanupDefaultStaleExtractDirectories(): Promise<void> {
-  return cleanupStaleExtractDirectories(
-    path.join(os.tmpdir(), "enterprise-hub-partition-extracts")
-  );
+  return cleanupStaleExtractDirectories(path.join(os.tmpdir(), "smedc-partition-extracts"));
 }
 
 interface UploadSession {

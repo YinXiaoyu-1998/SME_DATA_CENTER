@@ -434,9 +434,7 @@ describe("SMEDC MCP contract", () => {
       "download_structured_partitions"
     ]);
     expect(
-      SMEDC_MCP_TOOL_NAMES.filter(
-        (toolName) => toolName === "describe_structured_dataset_coverage"
-      )
+      SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
     ).toHaveLength(1);
 
     expect(SMEDC_MCP_TOOL_NAMES).not.toEqual(

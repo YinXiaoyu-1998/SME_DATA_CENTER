@@ -22,9 +22,7 @@ export function createKeychainCredentialStore(origin: string): SecureCredentialS
 
 export function createCrossProcessLock(origin: string): LauncherLock {
   const filename = `${encodeURIComponent(origin)}.lock`;
-  return createFileLock(
-    path.join(appDataDirectory(), "SMEDC", "launcher", "locks", filename)
-  );
+  return createFileLock(path.join(appDataDirectory(), "SMEDC", "launcher", "locks", filename));
 }
 
 export function createFileLock(

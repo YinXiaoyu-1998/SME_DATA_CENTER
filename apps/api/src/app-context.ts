@@ -35,11 +35,7 @@ import {
   createPrismaSourceDocumentRepository,
   type SourceDocumentRepository
 } from "./source-documents.js";
-import {
-  createOriginalObjectKey,
-  createStorageAdapter,
-  type StorageAdapter
-} from "@smedc/storage";
+import { createOriginalObjectKey, createStorageAdapter, type StorageAdapter } from "@smedc/storage";
 import { AuthCore, type AuthRequestAudit } from "./auth/auth-core.js";
 import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
 import { checkRuntimeReadiness, type ReadinessReport } from "../../../scripts/readiness.js";
@@ -143,10 +139,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     if (
       request.url === "/mcp" ||
       request.url.startsWith("/mcp?") ||
-      verifyInternalDelegationProof(
-        request.headers["x-smedc-internal-delegation"],
-        delegationProof
-      )
+      verifyInternalDelegationProof(request.headers["x-smedc-internal-delegation"], delegationProof)
     ) {
       return "mcp_launcher" as const;
     }
