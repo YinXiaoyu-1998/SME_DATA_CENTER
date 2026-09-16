@@ -222,6 +222,57 @@ unchanged states are not narrated, and the wait window is twenty minutes. This w
 191.21 MiB benchmark from roughly 36 status checks to about eight while still observing its
 14-minute publication in the original task.
 
+## Calamine And Buffered-Write Staging Re-Benchmark — 2026-09-16
+
+Release `c319b0fa783f` replaced the JavaScript XLSX row reader for partition imports with the
+worker-only native Calamine reader and added a 256 KiB buffer per open partition writer. The
+post-merge quality gate built the final linux/amd64 worker image and exercised its packaged reader
+against a real XLSX fixture before the automatic staging deployment succeeded.
+
+The same logged-in employee then uploaded the exact same source through the official launcher:
+`maijia_dishes_20250701_20250928.xlsx`, 200,497,207 bytes, checksum
+`e9199ff3…5039`. Job `pjob_b5921ff14a797812f4d80e13` atomically replaced the existing partitions
+with the same 944,940 rows, 810 partitions, and 336,088,756 canonical bytes. The first status check,
+two minutes after upload, already found the job published.
+
+| Phase                      | Scan bypass baseline | Calamine + buffer | Change                       |
+| -------------------------- | -------------------: | ----------------: | ---------------------------- |
+| Client multipart upload    |              41.07 s |           33.20 s | -19.2%; network variance     |
+| Source download            |               7.10 s |            7.10 s | unchanged                    |
+| `source_export`            |             485.93 s |           93.83 s | **-80.7%; 5.18x faster**     |
+| Row decoding               |             320.31 s |           28.75 s | **-91.0%; 11.14x faster**    |
+| Partition-file writes      |             119.08 s |            6.33 s | **-94.7%; 18.81x faster**    |
+| Canonicalization           |              31.96 s |           38.58 s | +20.7%; now largest subphase |
+| Row routing                |              14.49 s |           20.07 s | +38.5%                       |
+| Partition PUT + HEAD       |              12.20 s |           12.14 s | unchanged                    |
+| Atomic publish             |               7.84 s |            7.74 s | unchanged                    |
+| **Worker total**           |         **513.20 s** |      **120.95 s** | **-76.4%; 4.24x faster**     |
+| Reservation to publication |         **553.82 s** |      **153.58 s** | **-72.3%; 3.61x faster**     |
+
+The new export profile was:
+
+| `source_export` subphase               |    Duration |    Share |
+| -------------------------------------- | ----------: | -------: |
+| Canonicalization                       |     38.58 s |    41.1% |
+| Row decoding                           |     28.75 s |    30.6% |
+| Row routing                            |     20.07 s |    21.4% |
+| Partition-file writes                  |      6.33 s |     6.7% |
+| Structure / preparation / finalization |      0.09 s |    <0.1% |
+| **Total**                              | **93.83 s** | **100%** |
+
+The writer emitted 1,728 buffered flushes for 944,940 data rows and 810 headers, instead of the old
+row-at-a-time write shape. The unchanged 12.14-second object-transfer phase confirms that the export
+gain is local CPU/I/O work rather than OSS variance. Calamine removed row decoding as the dominant
+bottleneck; buffering separately removed nearly all per-row filesystem wait. Canonical validation
+and routing now account for 62.5% of export time, but the complete worker run is already about two
+minutes and the employee-visible end-to-end path is about two and a half minutes. Further parser
+micro-optimization is therefore lower priority than validating representative `business` sources
+and observing concurrent uploads under the fixed worker-claim behavior.
+
+Post-publication coverage remained nine stores, 810 partitions, and 944,940 rows. The temporary
+source was deleted, the worker scratch directory returned to empty, API and worker containers stayed
+healthy, and the employee login session was preserved.
+
 ## Cleanup Evidence
 
 The pre-delete inventory matched the benchmark exactly: four partition jobs, four processing runs,
