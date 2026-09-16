@@ -23,6 +23,24 @@ clearance-3 employee, and a clearance-0 admin in the same organization, generate
 passwords, controls Chrome to complete password setup/login, then deletes every account and all test
 data.
 
+A user-requested **scoped QA acceptance** may reuse the current authenticated launcher session
+instead of creating accounts when all of these conditions hold:
+
+- the user explicitly scopes the run to selected business flows rather than the full account,
+  browser-login, confidentiality, admin-PAO, logout, or password-reset gate;
+- `enterprise_hub_auth_status` is authenticated and `enterprise_hub_get_current_user` identifies
+  the expected QA employee;
+- the controller verifies through a read-only operator-side lookup that the employee belongs to
+  organization ID `default-org`; the employee-client task must not receive database access or an
+  organization ID input;
+- every upload uses a run-unique cleanup scope, such as a unique `enterpriseName`, so cleanup cannot
+  delete pre-existing QA partitions; and
+- the run preserves the shared login: do not log out, reset, disable, or delete the reused account.
+
+This shortcut proves only the selected business flows and durable reuse of an existing QA session.
+It is not full manual acceptance and must not be reported as proof of onboarding, cross-clearance,
+admin, password, logout, or account-deletion behavior.
+
 Full manual acceptance must also look like normal low-technical employee usage. Create multiple
 new user-visible Codex tasks/sessions, one ordinary natural-language request at a time. Do not
 collapse install, login, upload, search, structured query, reset/logout, and safety probes into one
@@ -66,17 +84,19 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 5. Run normal repository checks proportionate to the change. For documentation-only changes,
    run at least `npm run format:check`. For runner or script changes, run the focused tests plus
    TypeScript checking when practical.
-6. Create the three synthetic manual accounts through the operator CLI using
+6. For full acceptance, create the three synthetic manual accounts through the operator CLI using
    `manual-full-flow-low-<runId>`, `manual-full-flow-high-<runId>`, and
    `manual-acceptance-admin-<runId>` `@example.invalid` emails. State `--role` and `--clearance`
-   explicitly for each. Never use a real customer/user email. Keep setup links and generated
-   passwords out of reports and commits.
-7. Batch browser password setup: after every required synthetic account has been created, generate
-   a distinct throwaway password per account, open all setup links in separate Chrome tabs, and fill
-   both password fields in every tab. State the exact number of ready tabs, then make one
-   consolidated handoff for the human to click **Set password** in each tab. Do not pause once per
-   account. Verify that every tab reports `Password saved` before beginning launcher login. This is
-   allowed for full manual acceptance; do not ask the human to type or disclose any password.
+   explicitly for each. For a scoped QA acceptance, apply the reuse preconditions above instead and
+   record the safe current-user identity plus the `default-org` verification. Never use a real
+   customer/user email. Keep setup links and generated passwords out of reports and commits.
+7. Batch browser password setup remains required for full acceptance: after every required synthetic account has
+   been created, generate a distinct throwaway password per account, open all setup links in
+   separate Chrome tabs, and fill both password fields in every tab. State the exact number of
+   ready tabs, then make one consolidated handoff for the human to click **Set password** in each
+   tab. Do not pause once per account. Verify that every tab reports `Password saved` before
+   beginning launcher login. This is allowed for full manual acceptance; do not ask the human to
+   type or disclose any password.
 8. Verify the installed macOS launcher without exposing credentials:
 
    ```sh
@@ -84,10 +104,15 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
      "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
    ```
 
-9. Ensure the launcher starts logged out; call `enterprise_hub_logout` first when needed.
+9. For full acceptance, ensure the launcher starts logged out and switch among only the synthetic
+   accounts required by the procedure. For scoped QA acceptance, preserve the verified existing
+   session and never call `enterprise_hub_logout` merely to make the test start clean.
 10. Create a sequence of new user-visible Codex tasks/sessions for the employee-client
     interactions. Each task receives exactly one normal employee request in ordinary language and
-    must follow `skills/enterprise-hub-mcp/SKILL.md`; it must not inspect service internals.
+    must follow `skills/enterprise-hub-mcp/SKILL.md`; it must not inspect service internals. In full
+    acceptance, begin with the install/login task. In scoped QA acceptance, begin directly with the
+    selected business action after the existing session and `default-org` membership are verified;
+    do not create a synthetic login task merely for ceremony.
 11. The first task should be an install/login-style request. If the launcher is unauthenticated,
     that task calls `enterprise_hub_login`; for synthetic full-flow accounts, the controller
     finishes the browser login in Chrome using the generated test password. Do not ask the human to
@@ -120,7 +145,7 @@ Use `--run-id=<safe-id>` for repeatability. The runner must clean before and aft
 there is an explicit reason to keep data temporarily.
 
 14. Clean all run-scoped uploaded documents, Qdrant points, OSS objects, structured rows/imports,
-    and then delete every synthetic test account:
+    and, for full acceptance only, delete every synthetic test account:
 
     ```sh
     npm run auth:operator -- delete-test-account \
@@ -142,11 +167,13 @@ Manual staging uploads must not accumulate.
 - Runner-owned structured uploads must use unique `enterpriseName=ManualAcceptance_<runId>` and a
   dedicated date window. Natural employee tasks may use the real business/store name; cleanup must
   therefore also select every document uploaded by the run's synthetic employee.
+- Scoped QA acceptance must use a run-unique enterprise or equivalent exact cleanup selector. Never
+  rely on the reused employee ID alone, because that employee may own unrelated QA data.
 - Cleanup must remove test documents, quarantine certificates, all structured row types (including
   delivery and supplier rows), import batches/window claims, OSS objects, and Qdrant points
   associated with the run.
 - Synthetic test accounts must be deleted with `delete-test-account` after uploaded documents are
-  removed.
+  removed. A reused `default-org` QA account must not be deleted, logged out, reset, or disabled.
 - If cleanup fails, stop and report that as a release blocker before further beta testing.
 
 ## Integrity Rules
