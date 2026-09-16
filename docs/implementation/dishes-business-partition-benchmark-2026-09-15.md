@@ -122,6 +122,26 @@ byte counts where applicable. It deliberately excludes organization, enterprise,
 and row data. A fresh large-file upload after deployment can therefore confirm how much of the
 817.92-second dishes run belonged to parsing versus serialized OSS round trips.
 
+The next profiling change splits `source_export` into preparation, workbook structure loading,
+merged-cell scanning, row decoding, row routing, canonicalization, partition-file writes, and
+finalization. A local pre-deployment run used the same 191.21 MiB dishes workbook as the staging
+benchmark (944,940 rows, 810 partitions, 320.52 MiB canonical output):
+
+| `source_export` subphase               |     Duration |    Share |
+| -------------------------------------- | -----------: | -------: |
+| Row decoding                           |     105.85 s |    50.9% |
+| Merged-cell scan                       |      75.06 s |    36.1% |
+| Partition-file writes                  |      16.71 s |     8.0% |
+| Canonicalization                       |       7.96 s |     3.8% |
+| Row routing                            |       2.44 s |     1.2% |
+| Structure / preparation / finalization |       0.02 s |    <0.1% |
+| **Total**                              | **208.03 s** | **100%** |
+
+The local host is not latency-comparable with the 2 vCPU staging host, but the additive phase
+shares identify the optimization target: the two XLSX passes consume about 87% of export time.
+The worker emits these values as one aggregate `partition_export_profile` event after a successful
+export, avoiding per-row log volume and excluding business data.
+
 Employee guidance now treats a `business`/`dishes` source larger than 50 MiB as a long-running
 partition job: the first status check is after two minutes, subsequent checks are two minutes apart,
 unchanged states are not narrated, and the wait window is twenty minutes. This would reduce the

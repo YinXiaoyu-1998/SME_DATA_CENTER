@@ -13,6 +13,7 @@ export {
   StructuredPartitionExportError,
   type StructuredPartitionExport,
   type StructuredPartitionExportEntry,
+  type StructuredPartitionExportProfile,
   type StructuredPartitionLimits
 } from "./partition-export.js";
 const MAX_HEADER_SCAN_ROWS = 10;

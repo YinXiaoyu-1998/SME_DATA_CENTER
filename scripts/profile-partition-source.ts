@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isPartitionDataset, type PartitionDatasetName } from "@enterprise-hub/domain";
-import { exportStructuredPartitions } from "@enterprise-hub/structured-ingestion";
+import {
+  exportStructuredPartitions,
+  type StructuredPartitionExportProfile
+} from "@enterprise-hub/structured-ingestion";
 
 export interface PartitionSourceProfile {
   sourceBytes: number;
@@ -16,6 +19,7 @@ export interface PartitionSourceProfile {
   canonicalBytes: number;
   peakRssBytes: number;
   elapsedMs: number;
+  sourceExportProfile: StructuredPartitionExportProfile;
 }
 
 export async function profilePartitionSource(input: {
@@ -63,7 +67,8 @@ export async function profilePartitionSource(input: {
       partitionCount: result.partitions.length,
       canonicalBytes: Number(canonicalBytes),
       peakRssBytes,
-      elapsedMs: Number((performance.now() - started).toFixed(1))
+      elapsedMs: Number((performance.now() - started).toFixed(1)),
+      sourceExportProfile: result.profile
     };
   } finally {
     clearInterval(sampler);

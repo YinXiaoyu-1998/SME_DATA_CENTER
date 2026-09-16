@@ -18,6 +18,7 @@ export interface WorkerRuntimeLimits {
   partitionImportWorkDirectory: string;
   partitionImportMinFreeBytes: number;
   partitionImportMaxOpenFiles: number;
+  partitionImportObjectConcurrency: number;
   partitionImportJobRetentionDays: number;
 }
 
@@ -80,6 +81,11 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
       defaultValue: 12_884_901_888
     }),
     partitionImportMaxOpenFiles: 32,
+    partitionImportObjectConcurrency: parsePositiveSafeInteger(
+      env,
+      "PARTITION_IMPORT_OBJECT_CONCURRENCY",
+      { defaultValue: 6 }
+    ),
     partitionImportJobRetentionDays: parsePositiveSafeInteger(
       env,
       "PARTITION_IMPORT_JOB_RETENTION_DAYS",
@@ -89,6 +95,9 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
 
   if (limits.workerRetryBaseMs > limits.workerRetryMaxMs) {
     throw new Error("WORKER_RETRY_BASE_MS must be less than or equal to WORKER_RETRY_MAX_MS.");
+  }
+  if (limits.partitionImportObjectConcurrency > 8) {
+    throw new Error("PARTITION_IMPORT_OBJECT_CONCURRENCY must be less than or equal to 8.");
   }
 
   return limits;

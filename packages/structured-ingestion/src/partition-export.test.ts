@@ -39,6 +39,22 @@ describe("exportStructuredPartitions", () => {
     expect(result.totalRowCount).toBe(997n);
     expect(result.partitions.length).toBeGreaterThan(0);
     expect(result.partitions.every((partition) => partition.rowCount > 0n)).toBe(true);
+    expect(result.profile.sourceFormat).toBe("xlsx");
+    expect(result.profile.totalMs).toBeGreaterThan(0);
+    for (const phase of [
+      "prepareMs",
+      "structureReadMs",
+      "mergeScanMs",
+      "rowDecodeMs",
+      "rowRoutingMs",
+      "canonicalizeMs",
+      "partitionWriteMs",
+      "finalizeMs"
+    ] as const) {
+      expect(result.profile[phase]).toBeGreaterThanOrEqual(0);
+    }
+    expect(result.profile.structureReadMs).toBeGreaterThan(0);
+    expect(result.profile.mergeScanMs).toBeGreaterThan(0);
   });
 
   test("writes deterministic canonical bytes grouped by merchant and business date", async () => {

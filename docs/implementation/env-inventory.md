@@ -103,6 +103,7 @@ Task 3 implements the env-backed provider factory with `LLM_PROVIDER=fake` as th
 | `PARTITION_IMPORT_MAX_CANONICAL_BYTES`     |       No | `8589934592`                             |      No | worker       | Maximum total canonical CSV bytes produced by one source.                         |
 | `PARTITION_IMPORT_WORK_DIR`                |       No | `/var/lib/enterprise-hub/partition-work` |      No | worker       | Worker-local temporary extraction directory; contents are removed after each job. |
 | `PARTITION_IMPORT_MIN_FREE_BYTES`          |       No | `12884901888`                            |      No | worker       | Minimum free disk required before partition processing starts.                    |
+| `PARTITION_IMPORT_OBJECT_CONCURRENCY`      |       No | `6`                                      |      No | worker       | Concurrent canonical partition PUT + HEAD pipelines; accepted range `1`–`8`.      |
 | `PARTITION_IMPORT_JOB_RETENTION_DAYS`      |       No | `30`                                     |      No | worker       | Retention for terminal job/status records.                                        |
 | `PARTITION_UPLOAD_PART_BYTES`              |       No | `16777216`                               |      No | API          | Multipart upload part size (16 MiB; never below 5 MiB).                           |
 | `PARTITION_UPLOAD_SESSION_TTL_SECONDS`     |       No | `86400`                                  |      No | API          | Lifetime of an unfinished multipart upload session.                               |

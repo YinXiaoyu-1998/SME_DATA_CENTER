@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- yauzl has no bundled types. */
 import sax from "sax";
 import { createRequire } from "node:module";
+import { performance } from "node:perf_hooks";
 import { PassThrough } from "node:stream";
 
 const require = createRequire(import.meta.url);
@@ -864,11 +865,19 @@ export interface XlsxStreamConsumer {
   endSheet(sheet: XlsxStreamSheet): Promise<void> | void;
 }
 
+export interface XlsxStreamProfile {
+  structureReadMs: number;
+  mergeScanMs: number;
+  rowDecodeMs: number;
+  consumerMs: number;
+}
+
 export async function streamXlsxFileRows(
   filePath: string,
   limits: XlsxReadLimits,
   consumer: XlsxStreamConsumer
-): Promise<void> {
+): Promise<XlsxStreamProfile> {
+  const structureStarted = performance.now();
   const structuralEntries = await readWantedZipEntries(
     filePath,
     limits,
@@ -896,7 +905,9 @@ export async function streamXlsxFileRows(
   const styles = structuralEntries.has("xl/styles.xml")
     ? stylesTable(structuralEntries.get("xl/styles.xml")!)
     : { cellXfNumFmtIds: [], numFmtCodes: new Map<number, string>() };
+  const structureReadMs = performance.now() - structureStarted;
 
+  const mergeScanStarted = performance.now();
   const mergeRanges = new Map<string, MergeRange[]>();
   const mergeHandlers = new Map<string, (stream: any) => Promise<void>>();
   for (const entry of sheetEntries) {
@@ -905,7 +916,10 @@ export async function streamXlsxFileRows(
     });
   }
   await readWantedZipEntries(filePath, limits, new Set(sheetEntries), mergeHandlers);
+  const mergeScanMs = performance.now() - mergeScanStarted;
 
+  const rowScanStarted = performance.now();
+  let consumerMs = 0;
   let nextSheetIndex = 0;
   const handlers = new Map<string, (stream: any) => Promise<void>>();
   sheetEntries.forEach((entry, sheetIndex) => {
@@ -918,7 +932,9 @@ export async function streamXlsxFileRows(
         name: workbookSheet.name,
         hidden: workbookSheet.state !== "visible"
       };
+      let consumerStarted = performance.now();
       await consumer.startSheet(sheet);
+      consumerMs += performance.now() - consumerStarted;
       await parseSheetStreamRows(
         stream,
         shared,
@@ -926,14 +942,25 @@ export async function streamXlsxFileRows(
         limits,
         mergeRanges.get(entry) ?? [],
         async (rowNumber, cells) => {
+          consumerStarted = performance.now();
           await consumer.row(sheet, rowNumber, cells);
+          consumerMs += performance.now() - consumerStarted;
         }
       );
+      consumerStarted = performance.now();
       await consumer.endSheet(sheet);
+      consumerMs += performance.now() - consumerStarted;
       nextSheetIndex += 1;
     });
   });
   await readWantedZipEntries(filePath, limits, new Set(sheetEntries), handlers);
   if (nextSheetIndex !== workbook.length)
     throw validation("XLSX required worksheet entries are missing.");
+  const rowScanMs = performance.now() - rowScanStarted;
+  return {
+    structureReadMs,
+    mergeScanMs,
+    rowDecodeMs: Math.max(0, rowScanMs - consumerMs),
+    consumerMs
+  };
 }

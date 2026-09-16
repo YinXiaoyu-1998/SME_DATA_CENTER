@@ -13,6 +13,8 @@ import { createPartitionObjectKey, type StorageAdapter } from "@enterprise-hub/s
 import {
   exportStructuredPartitions,
   StructuredPartitionExportError,
+  type StructuredPartitionExport,
+  type StructuredPartitionExportProfile,
   type StructuredPartitionLimits
 } from "@enterprise-hub/structured-ingestion";
 import type { ClaimedProcessingRun } from "./worker.js";
@@ -21,6 +23,7 @@ import type { WorkerRuntimeLimits } from "./config/runtime-limits.js";
 export interface PartitionImportRuntimeLimits extends StructuredPartitionLimits {
   workDirectory: string;
   minFreeBytes: number;
+  objectUploadConcurrency: number;
   jobRetentionDays: number;
 }
 
@@ -48,6 +51,18 @@ export interface PartitionImportTimingEvent {
   canonicalByteSize?: number;
 }
 
+export interface PartitionExportProfileEvent extends StructuredPartitionExportProfile {
+  event: "partition_export_profile";
+  jobId: string;
+  dataset: PartitionDatasetName;
+  totalRowCount: number;
+  partitionCount: number;
+  canonicalByteSize: number;
+}
+
+export type PartitionImportTelemetryEvent =
+  PartitionImportTimingEvent | PartitionExportProfileEvent;
+
 export function partitionImportLimitsFromRuntime(
   runtime: WorkerRuntimeLimits
 ): PartitionImportRuntimeLimits {
@@ -60,6 +75,7 @@ export function partitionImportLimitsFromRuntime(
     maxPartitions: runtime.partitionImportMaxPartitions,
     maxCanonicalBytes: runtime.partitionImportMaxCanonicalBytes,
     maxOpenFiles: runtime.partitionImportMaxOpenFiles,
+    objectUploadConcurrency: runtime.partitionImportObjectConcurrency,
     maxStructuredCellChars: 32_000,
     maxXlsxSheets: 100,
     maxXlsxUncompressedBytes: 12_884_901_888,
@@ -71,8 +87,15 @@ export function partitionImportLimitsFromRuntime(
 export function createPartitionImporter(input: {
   limits: PartitionImportRuntimeLimits;
   repository?: StructuredPartitionRepository;
-  onTimingEvent?: (event: PartitionImportTimingEvent) => void;
+  onTimingEvent?: (event: PartitionImportTelemetryEvent) => void;
 }) {
+  if (
+    !Number.isSafeInteger(input.limits.objectUploadConcurrency) ||
+    input.limits.objectUploadConcurrency < 1 ||
+    input.limits.objectUploadConcurrency > 8
+  ) {
+    throw new Error("objectUploadConcurrency must be an integer between 1 and 8.");
+  }
   const repository = input.repository ?? createPrismaStructuredPartitionRepository();
   return {
     async process({ run, storage }: { run: ClaimedProcessingRun; storage: StorageAdapter }) {
@@ -147,6 +170,7 @@ export function createPartitionImporter(input: {
                 }
               })
           );
+          emitPartitionExportProfile(timingContext, exported);
         } catch (error) {
           if (!(error instanceof StructuredPartitionExportError)) throw error;
           await repository.finishJob({
@@ -183,53 +207,55 @@ export function createPartitionImporter(input: {
           return "rejected" as const;
         }
 
-        const candidates: PartitionCandidate[] = [];
-        await measurePartitionImportPhase(
+        const candidates = await measurePartitionImportPhase(
           {
             ...timingContext,
             phase: "partition_upload_verify",
             measurements: () => partitionMeasurements(exported)
           },
-          async () => {
-            for (const partition of exported.partitions) {
-              const id = `part_${randomBytes(12).toString("hex")}`;
-              const objectKey = createPartitionObjectKey({
-                orgId: run.orgId,
-                jobId: job.jobId,
-                partitionId: id
-              });
-              await transfer.putObjectAtKey({
-                key: objectKey,
-                body: createReadStream(partition.filePath),
-                contentLength: Number(partition.byteSize),
-                checksumSha256: partition.checksumSha256,
-                contentType: "text/csv; charset=utf-8"
-              });
-              const verified = await storage.statObject(objectKey);
-              if (
-                verified.size !== Number(partition.byteSize) ||
-                verified.hash !== partition.checksumSha256
-              )
-                throw new Error("Uploaded canonical partition could not be verified.");
-              uploadedKeys.push(objectKey);
-              candidates.push({
-                id,
-                orgId: run.orgId,
-                enterpriseKey: job.enterpriseKey,
-                enterpriseName: job.enterpriseName,
-                dataset: job.dataset as PartitionDatasetName,
-                storeKey: partition.storeKey,
-                merchantId: partition.merchantId,
-                storeName: partition.storeName,
-                businessDate: partition.businessDate,
-                objectKey,
-                rowCount: partition.rowCount,
-                byteSize: partition.byteSize,
-                checksumSha256: partition.checksumSha256,
-                confidentialityLevel: job.confidentialityLevel
-              });
-            }
-          }
+          () =>
+            mapConcurrent(
+              exported.partitions,
+              input.limits.objectUploadConcurrency,
+              async (partition) => {
+                const id = `part_${randomBytes(12).toString("hex")}`;
+                const objectKey = createPartitionObjectKey({
+                  orgId: run.orgId,
+                  jobId: job.jobId,
+                  partitionId: id
+                });
+                await transfer.putObjectAtKey({
+                  key: objectKey,
+                  body: createReadStream(partition.filePath),
+                  contentLength: Number(partition.byteSize),
+                  checksumSha256: partition.checksumSha256,
+                  contentType: "text/csv; charset=utf-8"
+                });
+                uploadedKeys.push(objectKey);
+                const verified = await storage.statObject(objectKey);
+                if (
+                  verified.size !== Number(partition.byteSize) ||
+                  verified.hash !== partition.checksumSha256
+                )
+                  throw new Error("Uploaded canonical partition could not be verified.");
+                return {
+                  id,
+                  orgId: run.orgId,
+                  enterpriseKey: job.enterpriseKey,
+                  enterpriseName: job.enterpriseName,
+                  dataset: job.dataset as PartitionDatasetName,
+                  storeKey: partition.storeKey,
+                  merchantId: partition.merchantId,
+                  storeName: partition.storeName,
+                  businessDate: partition.businessDate,
+                  objectKey,
+                  rowCount: partition.rowCount,
+                  byteSize: partition.byteSize,
+                  checksumSha256: partition.checksumSha256,
+                  confidentialityLevel: job.confidentialityLevel
+                } satisfies PartitionCandidate;
+              }
+            )
         );
         candidateCleanupIsSafe = false;
         try {
@@ -330,10 +356,35 @@ export function createPartitionImporter(input: {
   };
 }
 
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  map: (value: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  let firstError: unknown;
+  const workers = Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (firstError === undefined) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= values.length) return;
+      try {
+        results[index] = await map(values[index]!);
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+  });
+  await Promise.all(workers);
+  if (firstError !== undefined) throw firstError;
+  return results;
+}
+
 interface TimingContext {
   jobId: string;
   dataset: PartitionDatasetName;
-  onTimingEvent?: (event: PartitionImportTimingEvent) => void;
+  onTimingEvent?: (event: PartitionImportTelemetryEvent) => void;
 }
 
 interface TimingMeasurement {
@@ -407,6 +458,26 @@ function partitionMeasurements(exported: {
       exported.partitions.reduce((total, partition) => total + partition.byteSize, 0n)
     )
   };
+}
+
+function emitPartitionExportProfile(
+  input: TimingContext,
+  exported: StructuredPartitionExport
+): void {
+  const measurements = partitionMeasurements(exported);
+  try {
+    input.onTimingEvent?.({
+      event: "partition_export_profile",
+      jobId: input.jobId,
+      dataset: input.dataset,
+      totalRowCount: measurements.totalRowCount!,
+      partitionCount: measurements.partitionCount!,
+      canonicalByteSize: measurements.canonicalByteSize!,
+      ...exported.profile
+    });
+  } catch {
+    // Telemetry must never change the import outcome.
+  }
 }
 
 async function cleanupPartitionSource(
