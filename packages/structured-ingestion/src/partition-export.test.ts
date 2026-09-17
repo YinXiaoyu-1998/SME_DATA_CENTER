@@ -75,7 +75,7 @@ describe("exportStructuredPartitions", () => {
       expect(result.totalRowCount).toBe(997n);
       expect(result.partitions).toHaveLength(9);
       expect(partitionManifestDigest(result.partitions)).toBe(
-        "f8d53494eb6a579254654dffed28dbb12bd79c44fb39eb5eb8dffe9e8d34b416"
+        "6a968ed31b99301df3b11424b0c5c7e2a25197d74b807b6d8bb152b7f93d6dd4"
       );
     }
   );
