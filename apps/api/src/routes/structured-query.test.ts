@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { PHASE3_ERROR_CODES, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { PHASE3_ERROR_CODES, type AuthenticatedEmployee } from "@smedc/domain";
 import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
 import type { ApiServerContext } from "../app-context.js";
@@ -10,6 +10,7 @@ import { registerStructuredQueryRoutes } from "./structured-query.js";
 const employee: AuthenticatedEmployee = {
   id: "emp_1",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Employee One",
   email: "employee@example.com",
   role: "employee",
@@ -102,6 +103,25 @@ describe("structured query routes", () => {
       datasets: expect.arrayContaining([expect.objectContaining({ dataset: "vip" })])
     });
     expect(present.json().datasets.every((dataset: object) => "fields" in dataset)).toBe(true);
+    const ledger = present
+      .json()
+      .datasets.find((dataset: { dataset: string }) => dataset.dataset === "delivery_ledger");
+    expect(ledger?.presentation).toEqual({
+      id: "food-purchase-ledger-cn-v1",
+      title: "食品经营单位进货台帐",
+      columns: [
+        { canonicalName: "item_name", displayName: "食品名称" },
+        { canonicalName: "specification", displayName: "规格" },
+        { canonicalName: "purchase_quantity", displayName: "进货数量" },
+        { canonicalName: "purchase_amount", displayName: "进货金额" },
+        { canonicalName: "production_date_or_batch", displayName: "生产日期或生产批号" },
+        { canonicalName: "shelf_life", displayName: "保质期" },
+        { canonicalName: "supplier_name", displayName: "供货单位名称" },
+        { canonicalName: "supplier_unit_address", displayName: "供货单位地址" },
+        { canonicalName: "supplier_contact_phone", displayName: "供货单位联系方式" },
+        { canonicalName: "purchase_date", displayName: "进货日期" }
+      ]
+    });
   });
 
   it("executes compiled structured queries and preserves Phase 3 error envelopes", async () => {
@@ -167,6 +187,52 @@ describe("structured query routes", () => {
         retryable: false
       }
     });
+  });
+
+  it("returns the ledger presentation profile for delivery-ledger detail queries only", async () => {
+    const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
+    app = Fastify({ logger: false });
+    registerStructuredQueryRoutes(app, {
+      auth: createRequestAuth(dependencies),
+      structuredQueries: dependencies.structuredQueries,
+      structuredCoverage: dependencies.structuredCoverage,
+      structuredPartitions: dependencies.structuredPartitions,
+      cursorSigningSecret: dependencies.cursorSigningSecret
+    });
+
+    const detail = await app.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers: { authorization: "Bearer valid" },
+      payload: {
+        dataset: "delivery_ledger",
+        select: ["item_name", "purchase_date"],
+        page: { limit: 1 }
+      }
+    });
+    const aggregate = await app.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers: { authorization: "Bearer valid" },
+      payload: {
+        dataset: "delivery_ledger",
+        groupBy: ["supplier_name"],
+        aggregates: [{ op: "count", as: "rows" }],
+        page: { limit: 1 }
+      }
+    });
+
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      dataset: "delivery_ledger",
+      mode: "detail",
+      presentation: {
+        id: "food-purchase-ledger-cn-v1",
+        title: "食品经营单位进货台帐"
+      }
+    });
+    expect(aggregate.statusCode).toBe(200);
+    expect(aggregate.json()).not.toHaveProperty("presentation");
   });
 
   it("serves dataset coverage through the same authenticated structured route shell", async () => {

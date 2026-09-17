@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee } from "@smedc/domain";
 import { createApiServerContext } from "./app-context.js";
 
 const employee: AuthenticatedEmployee = {
   id: "emp_1",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Employee One",
   email: "employee@example.com",
   role: "admin",

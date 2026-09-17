@@ -1,8 +1,8 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { InjectOptions, InjectPayload, Response as InjectResponse } from "light-my-request";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AuthenticatedEmployee } from "@enterprise-hub/domain";
-import { ENTERPRISE_HUB_MCP_TOOL_NAMES, type McpErrorBody } from "@enterprise-hub/mcp-contract";
+import type { AuthenticatedEmployee } from "@smedc/domain";
+import { SMEDC_MCP_TOOL_NAMES, type McpErrorBody } from "@smedc/mcp-contract";
 import { buildApiServer } from "../server.js";
 import type { EmployeeRepository } from "../employees.js";
 import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documents.js";
@@ -15,7 +15,7 @@ import type {
 import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
 import { registerMcpHttpRoute } from "./http.js";
-import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
+import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 
 const jwtSecret = "test-local-jwt-secret";
 const officialTestTokens = new Map<string, AuthenticatedEmployee>();
@@ -27,6 +27,7 @@ async function authenticateTestAccessToken(token: string) {
 const employee: AuthenticatedEmployee = {
   id: "emp_mcp",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "MCP Employee",
   email: "mcp.employee@example.com",
   role: "employee",
@@ -37,6 +38,7 @@ const employee: AuthenticatedEmployee = {
 const adminEmployee: AuthenticatedEmployee = {
   id: "emp_mcp_admin",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "MCP Administrator",
   email: "mcp.admin@example.com",
   role: "admin",
@@ -89,7 +91,7 @@ function initializeRequest(id = 1) {
       protocolVersion: "2025-11-25",
       capabilities: {},
       clientInfo: {
-        name: "enterprise-hub-api-test",
+        name: "smedc-api-test",
         version: "0.0.0"
       }
     }
@@ -340,7 +342,7 @@ function expectErrorCode(body: McpErrorBody, code: string) {
   });
 }
 
-function buildCustomMcpTestServer(toolHandlers: EnterpriseHubMcpToolHandlers) {
+function buildCustomMcpTestServer(toolHandlers: SmedcMcpToolHandlers) {
   const customApp = Fastify({
     logger: false,
     requestIdHeader: "x-request-id"
@@ -531,7 +533,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       id: 10,
       method: "tools/call",
       params: {
-        name: "enterprise_hub_get_current_user",
+        name: "smedc_get_current_user",
         arguments: {
           oversized: "x".repeat(70_000)
         }
@@ -627,7 +629,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
   it("propagates the SDK abort signal into MCP tool context", async () => {
     const capturedContext = vi.fn<(context: McpRequestContext) => void>();
     app = buildCustomMcpTestServer({
-      enterprise_hub_list_skills: async (_input, context) => {
+      smedc_list_skills: async (_input, context) => {
         capturedContext(context);
         return {
           content: [
@@ -648,7 +650,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         id: 30,
         method: "tools/call",
         params: {
-          name: "enterprise_hub_list_skills",
+          name: "smedc_list_skills",
           arguments: {}
         }
       },
@@ -683,7 +685,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(initialize.headers["mcp-session-id"]).toBeUndefined();
     expect(parseJsonRpc(initialize.payload).result).toMatchObject({
       serverInfo: {
-        name: "enterprise-hub-api-mcp"
+        name: "smedc-api-mcp"
       }
     });
 
@@ -692,7 +694,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     const toolNames = (
       parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
     ).map((tool) => tool.name);
-    expect(toolNames.sort()).toEqual([...ENTERPRISE_HUB_MCP_TOOL_NAMES].sort());
+    expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
   });
 
   it("returns only the current authenticated employee's self-profile", async () => {
@@ -702,7 +704,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       id,
       method: "tools/call",
       params: {
-        name: "enterprise_hub_get_current_user",
+        name: "smedc_get_current_user",
         arguments: {}
       }
     });
@@ -725,7 +727,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         displayName: "MCP Employee",
         email: "mcp.employee@example.com",
         role: "employee",
-        clearance: 3
+        clearance: 3,
+        organizationName: "Default Organization"
       }
     });
     expect(parseToolPayload(adminResponse.payload).payload).toEqual({
@@ -733,7 +736,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         displayName: "MCP Administrator",
         email: "mcp.admin@example.com",
         role: "admin",
-        clearance: 3
+        clearance: 3,
+        organizationName: "Default Organization"
       }
     });
   });
@@ -748,7 +752,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         id: 3,
         method: "tools/call",
         params: {
-          name: "enterprise_hub_list_skills",
+          name: "smedc_list_skills",
           arguments: {}
         }
       },
@@ -1013,7 +1017,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         "mcp-protocol-version": "2025-11-25",
         "x-forwarded-for": "203.0.113.9",
         "x-request-id": "mcp_request_1",
-        "x-enterprise-hub-launcher-version": "0.1.0"
+        "x-smedc-launcher-version": "0.1.0"
       },
       { remoteAddress: "127.0.0.1" }
     );

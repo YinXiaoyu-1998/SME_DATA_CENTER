@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
-import { createStorageAdapter } from "@enterprise-hub/storage";
+import { createStorageAdapter } from "@smedc/storage";
 import { createEvidenceIndexerFromEnv } from "./evidence-index.js";
 import { loadWorkerRuntimeLimits } from "./config/runtime-limits.js";
 import { createPrismaProcessingWorkerRepository, runWorkerLoop } from "./worker.js";

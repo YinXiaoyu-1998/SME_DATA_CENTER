@@ -89,7 +89,7 @@ async function assertRootLauncherScript(): Promise<void> {
   const scripts = packageJson.scripts ?? {};
 
   assert(
-    scripts["mcp:launcher"] === "npm --workspace enterprise-hub-mcp-launcher run --silent start",
+    scripts["mcp:launcher"] === "npm --workspace smedc-mcp-launcher run --silent start",
     "Root package.json must expose mcp:launcher through the launcher workspace."
   );
 

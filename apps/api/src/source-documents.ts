@@ -1,10 +1,10 @@
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import { DocumentStatus, Prisma, PrismaClient } from "@prisma/client";
 import {
   AUDIT_ACTIONS,
   canEmployeeAccessDocument,
   type AuthenticatedEmployee
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export const SOURCE_DOCUMENT_DOWNLOAD_EXPIRES_SECONDS = 24 * 60 * 60;

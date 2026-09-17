@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { STRUCTURED_QUERY_LIMITS } from "@enterprise-hub/domain";
+import { STRUCTURED_QUERY_LIMITS } from "@smedc/domain";
 import {
-  ENTERPRISE_HUB_MCP_TOOL_CONTRACTS,
-  ENTERPRISE_HUB_MCP_TOOL_NAMES,
+  SMEDC_MCP_TOOL_CONTRACTS,
+  SMEDC_MCP_TOOL_NAMES,
   MCP_LOCAL_FILE_PATH_MAX_LENGTH,
   MCP_STRUCTURED_QUERY_LIMITS,
   MCP_UPLOAD_FILENAME_MAX_LENGTH,
@@ -13,19 +13,19 @@ import {
   errorToolResult,
   launcherUploadFileInputSchema,
   launcherUploadFileInputShape,
-  type EnterpriseHubMcpToolName,
+  type SmedcMcpToolName,
   isMcpErrorBody,
   jsonToolResult,
   mcpToolContractSchema
 } from "./index.js";
 
 const contractsByName = new Map(
-  ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.map((contract) => [contract.name, contract])
+  SMEDC_MCP_TOOL_CONTRACTS.map((contract) => [contract.name, contract])
 );
 
 const validInputs = {
-  enterprise_hub_get_current_user: {},
-  enterprise_hub_list_skills: { q: "menu", category: "menu-analysis" },
+  smedc_get_current_user: {},
+  smedc_list_skills: { q: "menu", category: "menu-analysis" },
   search_document_evidence: {
     query: "refund SOP",
     filters: {
@@ -104,15 +104,15 @@ const validInputs = {
     startDate: "20260701",
     endDate: "20260731"
   }
-} satisfies Record<EnterpriseHubMcpToolName, Record<string, unknown>>;
+} satisfies Record<SmedcMcpToolName, Record<string, unknown>>;
 
 const invalidInputCases = [
   {
-    tool: "enterprise_hub_get_current_user",
+    tool: "smedc_get_current_user",
     cases: [{ label: "cross-employee selector", input: { employeeId: "someone-else" } }]
   },
   {
-    tool: "enterprise_hub_list_skills",
+    tool: "smedc_list_skills",
     cases: [
       { label: "numeric query", input: { q: 42 } },
       { label: "empty category", input: { category: "" } }
@@ -284,7 +284,7 @@ const invalidInputCases = [
     ]
   },
   {
-    tool: "describe_structured_dataset_coverage" as EnterpriseHubMcpToolName,
+    tool: "describe_structured_dataset_coverage" as SmedcMcpToolName,
     cases: [
       { label: "invalid dataset", input: { dataset: "orders" } },
       { label: "missing dataset", input: {} },
@@ -409,15 +409,15 @@ const invalidInputCases = [
     ]
   }
 ] satisfies Array<{
-  tool: EnterpriseHubMcpToolName;
+  tool: SmedcMcpToolName;
   cases: Array<{ label: string; input: unknown }>;
 }>;
 
-describe("Enterprise Hub MCP contract", () => {
+describe("SMEDC MCP contract", () => {
   it("exports the stable business tool names without local-session tools", () => {
-    expect(ENTERPRISE_HUB_MCP_TOOL_NAMES).toEqual([
-      "enterprise_hub_get_current_user",
-      "enterprise_hub_list_skills",
+    expect(SMEDC_MCP_TOOL_NAMES).toEqual([
+      "smedc_get_current_user",
+      "smedc_list_skills",
       "search_document_evidence",
       "list_structured_datasets",
       "query_structured_dataset",
@@ -434,29 +434,38 @@ describe("Enterprise Hub MCP contract", () => {
       "download_structured_partitions"
     ]);
     expect(
-      ENTERPRISE_HUB_MCP_TOOL_NAMES.filter(
-        (toolName) => toolName === "describe_structured_dataset_coverage"
-      )
+      SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
     ).toHaveLength(1);
 
-    expect(ENTERPRISE_HUB_MCP_TOOL_NAMES).not.toContain("enterprise_hub_login_dev");
+    expect(SMEDC_MCP_TOOL_NAMES).not.toEqual(
+      expect.arrayContaining([
+        "enterprise_hub_get_current_user",
+        "enterprise_hub_list_skills",
+        "enterprise_hub_login",
+        "enterprise_hub_logout",
+        "enterprise_hub_auth_status"
+      ])
+    );
+    expect(SMEDC_MCP_TOOL_NAMES).not.toContain("smedc_login_dev");
   });
 
   it("defines a zero-input current-user tool with a minimal self-profile result", () => {
-    const currentUser = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
-      (contract) => String(contract.name) === "enterprise_hub_get_current_user"
+    const currentUser = SMEDC_MCP_TOOL_CONTRACTS.find(
+      (contract) => String(contract.name) === "smedc_get_current_user"
     );
 
     expect(currentUser?.inputSchema.safeParse({}).success).toBe(true);
     expect(currentUser?.inputSchema.safeParse({ employeeId: "someone-else" }).success).toBe(false);
-    expect(currentUser?.resultShape).toEqual(["user: { displayName, email, role, clearance }"]);
+    expect(currentUser?.resultShape).toEqual([
+      "user: { displayName, email, role, clearance, organizationName }"
+    ]);
   });
 
   it("describes structured uploads as queued work and status as the async completion view", () => {
-    const structuredUpload = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+    const structuredUpload = SMEDC_MCP_TOOL_CONTRACTS.find(
       (contract) => contract.name === "upload_structured_dataset"
     );
-    const importStatus = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find(
+    const importStatus = SMEDC_MCP_TOOL_CONTRACTS.find(
       (contract) => contract.name === "get_import_status"
     );
 
@@ -467,7 +476,7 @@ describe("Enterprise Hub MCP contract", () => {
   });
 
   it("keeps every tool metadata object valid and registration-ready", () => {
-    for (const contract of ENTERPRISE_HUB_MCP_TOOL_CONTRACTS) {
+    for (const contract of SMEDC_MCP_TOOL_CONTRACTS) {
       expect(() => mcpToolContractSchema.parse(contract)).not.toThrow();
       expect(contract.resultShape.length).toBeGreaterThan(0);
       expect(Object.keys(contract.inputShape)).toEqual(
@@ -477,7 +486,7 @@ describe("Enterprise Hub MCP contract", () => {
   });
 
   it("accepts valid business inputs for all business tools", () => {
-    for (const toolName of ENTERPRISE_HUB_MCP_TOOL_NAMES) {
+    for (const toolName of SMEDC_MCP_TOOL_NAMES) {
       expect(parseTool(toolName, validInputs[toolName])).toEqual(validInputs[toolName]);
     }
   });
@@ -565,7 +574,7 @@ describe("Enterprise Hub MCP contract", () => {
 
   it("defines a strict dataset-only coverage input contract", () => {
     const coverage = contractsByName.get(
-      "describe_structured_dataset_coverage" as EnterpriseHubMcpToolName
+      "describe_structured_dataset_coverage" as SmedcMcpToolName
     );
 
     expect(coverage?.inputSchema.parse({ dataset: "business" })).toEqual({
@@ -593,6 +602,9 @@ describe("Enterprise Hub MCP contract", () => {
 
     expect(query?.inputFields.map((field) => field.name)).toContain("dataset");
     expect(query?.resultShape).toContain("dataset");
+    expect(query?.resultShape).toContain(
+      "presentation?: optional profile for delivery_ledger detail responses with id, title, and ordered columns[]"
+    );
     expect(
       safeParseTool("query_structured_dataset", {
         dataset: "business",
@@ -646,7 +658,7 @@ describe("Enterprise Hub MCP contract", () => {
   });
 
   it("rejects table-driven invalid schema cases for every business tool", () => {
-    expect(invalidInputCases.map((entry) => entry.tool)).toEqual(ENTERPRISE_HUB_MCP_TOOL_NAMES);
+    expect(invalidInputCases.map((entry) => entry.tool)).toEqual(SMEDC_MCP_TOOL_NAMES);
 
     for (const { tool, cases } of invalidInputCases) {
       for (const testCase of cases) {
@@ -658,7 +670,7 @@ describe("Enterprise Hub MCP contract", () => {
   });
 
   it("rejects strict extra fields added to otherwise-valid inputs for every tool", () => {
-    for (const toolName of ENTERPRISE_HUB_MCP_TOOL_NAMES) {
+    for (const toolName of SMEDC_MCP_TOOL_NAMES) {
       expect(safeParseTool(toolName, withTopLevelField(toolName, "extra", true)).success).toBe(
         false
       );
@@ -666,7 +678,7 @@ describe("Enterprise Hub MCP contract", () => {
   });
 
   it("rejects sessionName and filePath on otherwise-valid business tool payloads", () => {
-    for (const toolName of ENTERPRISE_HUB_MCP_TOOL_NAMES) {
+    for (const toolName of SMEDC_MCP_TOOL_NAMES) {
       expect(
         safeParseTool(toolName, withTopLevelField(toolName, "sessionName", "local")).success
       ).toBe(false);
@@ -1012,8 +1024,8 @@ describe("Enterprise Hub MCP contract", () => {
 
     expect(parseErrorResult(apiErrorToolResult({ nope: true }))).toEqual({
       error: {
-        code: "ENTERPRISE_HUB_API_ERROR",
-        message: "Enterprise Hub API request failed.",
+        code: "SMEDC_API_ERROR",
+        message: "SMEDC API request failed.",
         retryable: true
       }
     });
@@ -1064,7 +1076,7 @@ describe("Enterprise Hub MCP contract", () => {
   });
 });
 
-function parseTool(name: EnterpriseHubMcpToolName, input: unknown): unknown {
+function parseTool(name: SmedcMcpToolName, input: unknown): unknown {
   const contract = contractsByName.get(name);
 
   if (!contract) {
@@ -1074,7 +1086,7 @@ function parseTool(name: EnterpriseHubMcpToolName, input: unknown): unknown {
   return contract.inputSchema.parse(input);
 }
 
-function safeParseTool(name: EnterpriseHubMcpToolName, input: unknown): { success: boolean } {
+function safeParseTool(name: SmedcMcpToolName, input: unknown): { success: boolean } {
   const contract = contractsByName.get(name);
 
   if (!contract) {
@@ -1085,7 +1097,7 @@ function safeParseTool(name: EnterpriseHubMcpToolName, input: unknown): { succes
 }
 
 function withTopLevelField(
-  name: EnterpriseHubMcpToolName,
+  name: SmedcMcpToolName,
   fieldName: string,
   value: unknown
 ): Record<string, unknown> {

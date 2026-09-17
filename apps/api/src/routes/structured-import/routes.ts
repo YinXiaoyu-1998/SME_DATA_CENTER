@@ -1,17 +1,14 @@
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { databaseErrorDetails, type DatabaseRetryEvent } from "@enterprise-hub/db";
+import { databaseErrorDetails, type DatabaseRetryEvent } from "@smedc/db";
 import {
   PHASE3_ERROR_CODES,
   canEmployeeAccessDocument,
   getStructuredRegistry
-} from "@enterprise-hub/domain";
-import {
-  preflightStructuredFile,
-  profileStructuredFile
-} from "@enterprise-hub/structured-ingestion";
-import { createOriginalObjectKey, type StorageAdapter } from "@enterprise-hub/storage";
+} from "@smedc/domain";
+import { preflightStructuredFile, profileStructuredFile } from "@smedc/structured-ingestion";
+import { createOriginalObjectKey, type StorageAdapter } from "@smedc/storage";
 import type { ApiRuntimeLimits } from "../../config/runtime-limits.js";
 import type { RequestAuditContext } from "../../request-audit-context.js";
 import type { RequestAuth } from "../../request-auth.js";

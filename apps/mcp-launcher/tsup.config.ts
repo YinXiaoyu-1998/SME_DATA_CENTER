@@ -4,9 +4,9 @@ export default defineConfig({
   entry: ["src/index.ts"],
   format: ["esm"],
   dts: {
-    resolve: ["@enterprise-hub/mcp-contract", "@enterprise-hub/domain"]
+    resolve: ["@smedc/mcp-contract", "@smedc/domain"]
   },
   clean: true,
-  noExternal: ["@enterprise-hub/mcp-contract", "@enterprise-hub/domain"],
+  noExternal: ["@smedc/mcp-contract", "@smedc/domain"],
   external: ["@modelcontextprotocol/sdk", "@napi-rs/keyring", "oauth4webapi", "open", "zod"]
 });

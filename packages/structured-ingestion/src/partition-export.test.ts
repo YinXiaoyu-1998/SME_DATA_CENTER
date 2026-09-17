@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { getStructuredRegistry, type StructuredFieldRegistryEntry } from "@enterprise-hub/domain";
+import { getStructuredRegistry, type StructuredFieldRegistryEntry } from "@smedc/domain";
 import { afterEach, describe, expect, test } from "vitest";
 import { exportStructuredPartitions } from "./partition-export.js";
 

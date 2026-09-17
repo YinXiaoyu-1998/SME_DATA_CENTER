@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import ExcelJS from "exceljs";
-import type { StructuredDatasetName } from "@enterprise-hub/domain";
-import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
+import type { StructuredDatasetName } from "@smedc/domain";
+import { AUDIT_ACTIONS, getStructuredRegistry } from "@smedc/domain";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import { createMultipartPayload } from "./multipart-fixtures.js";
 import type { RecordedAuditLog, RecordedDocument } from "./document-fixtures.js";

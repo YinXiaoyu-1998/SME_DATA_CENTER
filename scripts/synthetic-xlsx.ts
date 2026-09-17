@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { getStructuredRegistry } from "@enterprise-hub/domain";
+import { getStructuredRegistry } from "@smedc/domain";
 
 const NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 const NS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";

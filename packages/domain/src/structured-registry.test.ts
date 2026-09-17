@@ -135,6 +135,31 @@ describe("structured field registries", () => {
     });
   });
 
+  test("publishes the exact food-purchase ledger presentation profile", () => {
+    const ledger = getStructuredRegistry("delivery_ledger");
+
+    expect(ledger.presentation).toEqual({
+      id: "food-purchase-ledger-cn-v1",
+      title: "食品经营单位进货台帐",
+      columns: [
+        { canonicalName: "item_name", displayName: "食品名称" },
+        { canonicalName: "specification", displayName: "规格" },
+        { canonicalName: "purchase_quantity", displayName: "进货数量" },
+        { canonicalName: "purchase_amount", displayName: "进货金额" },
+        { canonicalName: "production_date_or_batch", displayName: "生产日期或生产批号" },
+        { canonicalName: "shelf_life", displayName: "保质期" },
+        { canonicalName: "supplier_name", displayName: "供货单位名称" },
+        { canonicalName: "supplier_unit_address", displayName: "供货单位地址" },
+        { canonicalName: "supplier_contact_phone", displayName: "供货单位联系方式" },
+        { canonicalName: "purchase_date", displayName: "进货日期" }
+      ]
+    });
+    expect(ledger.presentation?.columns.map((column) => column.canonicalName)).not.toContain(
+      "entry_id"
+    );
+    expect(ledger.presentation?.columns.map((column) => column.displayName)).not.toContain("序号");
+  });
+
   test("preserves every controlled supplier source column with stable lookup fields", () => {
     const supplier = getStructuredRegistry("supplier_catalog");
 

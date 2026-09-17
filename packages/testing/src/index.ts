@@ -1,1 +1,1 @@
-export const testingWorkspaceName = "@enterprise-hub/testing";
+export const testingWorkspaceName = "@smedc/testing";

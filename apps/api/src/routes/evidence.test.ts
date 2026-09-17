@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { LocalFileSystemStorageAdapter } from "@enterprise-hub/storage";
+import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { buildApiServer } from "../server.js";
 import {
   adminEmployee,
@@ -431,8 +431,8 @@ describe("evidence routes", () => {
         authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
         "x-request-id": "forged_request_1",
         "x-forwarded-for": "203.0.113.9",
-        "x-enterprise-hub-launcher-version": "0.1.0",
-        "x-enterprise-hub-internal-delegation": Buffer.alloc(32, 0xa5).toString("base64url")
+        "x-smedc-launcher-version": "0.1.0",
+        "x-smedc-internal-delegation": Buffer.alloc(32, 0xa5).toString("base64url")
       },
       remoteAddress: "198.51.100.8",
       payload: {

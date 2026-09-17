@@ -8,4 +8,4 @@ export {
   type PartitionImportJobRecord,
   type StructuredPartitionRecord,
   type StructuredPartitionRepository
-} from "@enterprise-hub/db";
+} from "@smedc/db";

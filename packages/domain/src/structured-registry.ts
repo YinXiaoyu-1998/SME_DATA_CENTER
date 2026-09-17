@@ -57,6 +57,13 @@ export interface StructuredDatasetRegistry {
   metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
   datePolicy?: "row_business_date" | "snapshot_metadata";
   fields: StructuredFieldRegistryEntry[];
+  presentation?: StructuredPresentationProfile;
+}
+
+export interface StructuredPresentationProfile {
+  id: string;
+  title: string;
+  columns: Array<{ canonicalName: string; displayName: string }>;
 }
 
 export interface HeaderValidationError {
@@ -801,6 +808,25 @@ const DELIVERY_LEDGER_FIELDS: StructuredFieldRegistryEntry[] =
       })
   );
 
+const FOOD_PURCHASE_LEDGER_PRESENTATION_COLUMNS = Object.freeze([
+  { canonicalName: "item_name", displayName: "食品名称" },
+  { canonicalName: "specification", displayName: "规格" },
+  { canonicalName: "purchase_quantity", displayName: "进货数量" },
+  { canonicalName: "purchase_amount", displayName: "进货金额" },
+  { canonicalName: "production_date_or_batch", displayName: "生产日期或生产批号" },
+  { canonicalName: "shelf_life", displayName: "保质期" },
+  { canonicalName: "supplier_name", displayName: "供货单位名称" },
+  { canonicalName: "supplier_unit_address", displayName: "供货单位地址" },
+  { canonicalName: "supplier_contact_phone", displayName: "供货单位联系方式" },
+  { canonicalName: "purchase_date", displayName: "进货日期" }
+]) as StructuredPresentationProfile["columns"];
+
+const FOOD_PURCHASE_LEDGER_PRESENTATION = Object.freeze({
+  id: "food-purchase-ledger-cn-v1",
+  title: "食品经营单位进货台帐",
+  columns: FOOD_PURCHASE_LEDGER_PRESENTATION_COLUMNS
+} satisfies StructuredPresentationProfile);
+
 export const STRUCTURED_DATASET_REGISTRIES = {
   dishes: createRegistry({
     dataset: "dishes",
@@ -857,6 +883,7 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     rowTable: "delivery_ledger_rows",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "derived_receipt",
+    presentation: FOOD_PURCHASE_LEDGER_PRESENTATION,
     fields: DELIVERY_LEDGER_FIELDS
   },
   supplier_catalog: createRegistry({

@@ -1,12 +1,12 @@
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
-import { createStorageAdapter } from "@enterprise-hub/storage";
+import { createStorageAdapter } from "@smedc/storage";
 import { createEvidenceIndexerFromEnv } from "./evidence-index.js";
 import { loadWorkerRuntimeLimits } from "./config/runtime-limits.js";
 import { createPrismaProcessingWorkerRepository, runWorkerOnce } from "./worker.js";
 import { createPartitionImporter, partitionImportLimitsFromRuntime } from "./partition-import.js";
 
-export const workerWorkspaceName = "@enterprise-hub/worker";
+export const workerWorkspaceName = "@smedc/worker";
 
 export async function main(): Promise<void> {
   loadDotenv({ quiet: true, override: false });

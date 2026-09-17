@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import {
   DocumentKind,
   DocumentStatus,
@@ -12,7 +12,7 @@ import {
   AUDIT_ACTIONS,
   canEmployeeAccessDocument,
   type AuthenticatedEmployee
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 import { canPerformPrivilegedAdministrativeOperation } from "./privileged-admin-operations.js";
 

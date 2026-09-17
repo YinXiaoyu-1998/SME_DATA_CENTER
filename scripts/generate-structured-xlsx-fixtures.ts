@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import JSZip from "jszip";
-import { getStructuredRegistry } from "@enterprise-hub/domain";
+import { getStructuredRegistry } from "@smedc/domain";
 
 /**
  * Deterministically generate the committed XLSX fixture matrix used by the

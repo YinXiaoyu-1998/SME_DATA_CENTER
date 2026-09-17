@@ -3,7 +3,7 @@ import {
   buildRetrievalConfigSeed,
   loadActiveRetrievalConfig,
   type AuthenticatedEmployee
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import {
   EvidenceSearchCursorError,
   HttpQdrantEvidenceSearcher,
@@ -19,6 +19,7 @@ import {
 const employee: AuthenticatedEmployee = {
   id: "emp_admin",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Admin User",
   email: "admin@example.com",
   role: "admin",
@@ -29,6 +30,7 @@ const employee: AuthenticatedEmployee = {
 const baoliEmployee: AuthenticatedEmployee = {
   id: "emp_baoli_employee",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Baoli Employee",
   email: "baoli.employee@example.com",
   role: "employee",

@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { StorageAdapter } from "@enterprise-hub/storage";
+import type { StorageAdapter } from "@smedc/storage";
 import {
   SOURCE_DOCUMENT_DOWNLOAD_EXPIRES_SECONDS,
   type SourceDocumentRepository

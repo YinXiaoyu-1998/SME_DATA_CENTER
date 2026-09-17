@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import {
   DocumentStatus,
   ImportBatchStatus,
@@ -8,18 +8,14 @@ import {
   PrismaClient,
   ProcessingRunStatus
 } from "@prisma/client";
-import {
-  AUDIT_ACTIONS,
-  EvidenceParseError,
-  PHASE3_RUNTIME_LIMIT_DEFAULTS
-} from "@enterprise-hub/domain";
-import type { StructuredDatasetName } from "@enterprise-hub/domain";
-import type { StorageAdapter } from "@enterprise-hub/storage";
+import { AUDIT_ACTIONS, EvidenceParseError, PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@smedc/domain";
+import type { StructuredDatasetName } from "@smedc/domain";
+import type { StorageAdapter } from "@smedc/storage";
 import {
   parseStructuredFile,
   type StructuredIngestionLimits,
   type StructuredParseResult
-} from "@enterprise-hub/structured-ingestion";
+} from "@smedc/structured-ingestion";
 
 export const PROCESSING_ERROR_CODES = {
   unsupportedFileType: "UNSUPPORTED_FILE_TYPE",

@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { profileStructuredFile } from "@enterprise-hub/structured-ingestion";
-import { PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@enterprise-hub/domain";
-import { STRUCTURED_DATASETS, type StructuredDatasetName } from "@enterprise-hub/domain";
+import { profileStructuredFile } from "@smedc/structured-ingestion";
+import { PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@smedc/domain";
+import { STRUCTURED_DATASETS, type StructuredDatasetName } from "@smedc/domain";
 
 const [, , datasetArg, filePath] = process.argv;
 

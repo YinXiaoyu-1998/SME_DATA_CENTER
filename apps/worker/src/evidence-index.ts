@@ -5,7 +5,7 @@ import {
   QDRANT_SPARSE_VECTOR_NAME,
   type Phase3FileType,
   type RetrievalModelConfig
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import { createEvidenceChunks } from "./chunking/evidence-chunker.js";
 import { type EmbeddingProvider } from "./model-providers/embedding.js";
 import { type RerankProvider } from "./model-providers/rerank.js";

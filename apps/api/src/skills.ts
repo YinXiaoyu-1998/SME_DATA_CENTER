@@ -1,6 +1,6 @@
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import { Prisma, PrismaClient, SkillEntryStatus } from "@prisma/client";
-import type { SkillEntryStatusName } from "@enterprise-hub/domain";
+import type { SkillEntryStatusName } from "@smedc/domain";
 
 export interface SkillDirectoryEntry {
   id: string;

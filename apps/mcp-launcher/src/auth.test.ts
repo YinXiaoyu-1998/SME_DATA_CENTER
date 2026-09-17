@@ -14,7 +14,7 @@ describe("official launcher OAuth bootstrap", () => {
       redirectUri: new URL("http://127.0.0.1:43123/oauth/callback")
     });
 
-    expect(request.url.searchParams.get("client_id")).toBe("enterprise-hub-desktop-launcher");
+    expect(request.url.searchParams.get("client_id")).toBe("smedc-desktop-launcher");
     expect(request.url.searchParams.get("response_type")).toBe("code");
     expect(request.url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(request.state).toHaveLength(43);

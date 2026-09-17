@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { MCP_UPLOAD_MAX_BYTES, errorToolResult, localFilePath } from "@enterprise-hub/mcp-contract";
+import { MCP_UPLOAD_MAX_BYTES, errorToolResult, localFilePath } from "@smedc/mcp-contract";
 import type { LauncherToolResult } from "./launcher.js";
 
 export const LOCAL_UPLOAD_ERROR_CODES = {

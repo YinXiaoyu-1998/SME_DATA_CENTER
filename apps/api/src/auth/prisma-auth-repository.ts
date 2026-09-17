@@ -808,7 +808,13 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
         include: {
           session: true,
           identity: true,
-          employee: true
+          employee: {
+            include: {
+              organization: {
+                select: { name: true }
+              }
+            }
+          }
         }
       });
       if (
@@ -846,6 +852,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
         identityId: token.identityId,
         employeeId: token.employeeId,
         orgId: token.orgId,
+        organizationName: token.employee.organization.name,
         displayName: token.employee.displayName,
         email: token.employee.email,
         role: token.employee.role,

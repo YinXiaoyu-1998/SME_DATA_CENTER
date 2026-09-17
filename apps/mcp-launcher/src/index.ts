@@ -15,7 +15,7 @@ export {
 export {
   MCP_LAUNCHER_SERVER_NAME,
   MCP_LAUNCHER_SERVER_VERSION,
-  createEnterpriseHubMcpLauncherServer,
+  createSmedcMcpLauncherServer,
   runMcpLauncherStdioServer
 } from "./server.js";
 export {
@@ -71,6 +71,6 @@ function isMainModule(): boolean {
   return (
     process.argv[1] !== undefined &&
     (fileURLToPath(import.meta.url) === process.argv[1] ||
-      process.argv[1].endsWith("enterprise-hub-mcp-launcher"))
+      process.argv[1].endsWith("smedc-mcp-launcher"))
   );
 }

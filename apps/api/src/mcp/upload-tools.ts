@@ -1,20 +1,20 @@
 import { randomBytes } from "node:crypto";
 import {
-  ENTERPRISE_HUB_MCP_TOOL_CONTRACTS,
+  SMEDC_MCP_TOOL_CONTRACTS,
   apiErrorToolResult,
   errorToolResult,
   jsonToolResult,
   validationErrorToolResult,
-  type EnterpriseHubMcpToolName,
+  type SmedcMcpToolName,
   type McpJsonToolResult
-} from "@enterprise-hub/mcp-contract";
-import type { EnterpriseHubMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
+} from "@smedc/mcp-contract";
+import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 import { launcherVersionAtLeast, type RequestAuditContext } from "../request-audit-context.js";
 import {
   getStructuredRegistry,
   isPartitionDataset,
   type StructuredDatasetName
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 
 const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.4.0";
 
@@ -99,9 +99,7 @@ const uploadStructuredDatasetContract = requireToolContract("upload_structured_d
 const uploadEvidenceDocumentContract = requireToolContract("upload_evidence_document");
 const uploadQuarantineCertificateContract = requireToolContract("upload_quarantine_certificate");
 
-export function createUploadToolHandlers(
-  options: UploadToolHandlerOptions
-): EnterpriseHubMcpToolHandlers {
+export function createUploadToolHandlers(options: UploadToolHandlerOptions): SmedcMcpToolHandlers {
   return {
     upload_structured_dataset: async (input, context) =>
       uploadStructuredDataset(input, context, options),
@@ -132,7 +130,7 @@ async function uploadStructuredDataset(
   ) {
     return errorToolResult(
       "LAUNCHER_UPGRADE_REQUIRED",
-      "Update the Enterprise Hub launcher before uploading partition datasets.",
+      "Update the SMEDC launcher before uploading partition datasets.",
       undefined,
       { requestId: context.audit.requestId }
     );
@@ -442,24 +440,19 @@ async function delegateMultipartRequest(
         accept: "application/json",
         "content-type": input.multipart.contentType,
         "x-request-id": context.audit.requestId,
-        "x-enterprise-hub-internal-delegation": context.delegationProof,
+        "x-smedc-internal-delegation": context.delegationProof,
         ...(context.audit.launcherVersion
-          ? { "x-enterprise-hub-launcher-version": context.audit.launcherVersion }
+          ? { "x-smedc-launcher-version": context.audit.launcherVersion }
           : {})
       },
       payload: input.multipart.body,
       remoteAddress: context.audit.sourceIp
     });
   } catch {
-    return errorToolResult(
-      "ENTERPRISE_HUB_API_ERROR",
-      "Enterprise Hub API request failed.",
-      undefined,
-      {
-        requestId: context.audit.requestId,
-        retryable: true
-      }
-    );
+    return errorToolResult("SMEDC_API_ERROR", "SMEDC API request failed.", undefined, {
+      requestId: context.audit.requestId,
+      retryable: true
+    });
   }
 
   const responseBody = parseResponseBody(response);
@@ -469,15 +462,10 @@ async function delegateMultipartRequest(
       return jsonToolResult(responseBody.body);
     }
 
-    return errorToolResult(
-      "ENTERPRISE_HUB_API_ERROR",
-      "Enterprise Hub API returned invalid JSON.",
-      undefined,
-      {
-        requestId: context.audit.requestId,
-        retryable: true
-      }
-    );
+    return errorToolResult("SMEDC_API_ERROR", "SMEDC API returned invalid JSON.", undefined, {
+      requestId: context.audit.requestId,
+      retryable: true
+    });
   }
 
   return apiErrorToolResult(
@@ -601,11 +589,11 @@ function isApiErrorBody(body: unknown): body is {
   );
 }
 
-function requireToolContract(name: EnterpriseHubMcpToolName) {
-  const contract = ENTERPRISE_HUB_MCP_TOOL_CONTRACTS.find((candidate) => candidate.name === name);
+function requireToolContract(name: SmedcMcpToolName) {
+  const contract = SMEDC_MCP_TOOL_CONTRACTS.find((candidate) => candidate.name === name);
 
   if (!contract) {
-    throw new Error(`Missing Enterprise Hub MCP tool contract: ${name}`);
+    throw new Error(`Missing SMEDC MCP tool contract: ${name}`);
   }
 
   return contract;

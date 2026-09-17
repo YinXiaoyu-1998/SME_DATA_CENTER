@@ -100,7 +100,7 @@ export async function downloadPartitionDataset(input: {
   endDate: string;
   storeIds?: string[];
 }): Promise<unknown> {
-  const root = path.join(os.tmpdir(), "enterprise-hub-partition-extracts");
+  const root = path.join(os.tmpdir(), "smedc-partition-extracts");
   await cleanupStaleExtractDirectories(root);
   await mkdir(root, { recursive: true });
   const directory = await mkdtemp(path.join(root, "extract-"));
@@ -204,9 +204,7 @@ export async function cleanupStaleExtractDirectories(
 }
 
 export function cleanupDefaultStaleExtractDirectories(): Promise<void> {
-  return cleanupStaleExtractDirectories(
-    path.join(os.tmpdir(), "enterprise-hub-partition-extracts")
-  );
+  return cleanupStaleExtractDirectories(path.join(os.tmpdir(), "smedc-partition-extracts"));
 }
 
 interface UploadSession {
@@ -243,7 +241,7 @@ async function apiJson(
     method: input.method,
     headers: {
       authorization: `Bearer ${context.accessToken}`,
-      "x-enterprise-hub-launcher-version": context.launcherVersion,
+      "x-smedc-launcher-version": context.launcherVersion,
       ...(input.body ? { "content-type": "application/json" } : {})
     },
     ...(input.body ? { body: JSON.stringify(input.body) } : {})
@@ -251,7 +249,7 @@ async function apiJson(
   const text = await response.text();
   const body = text ? (JSON.parse(text) as unknown) : {};
   if (!response.ok)
-    throw Object.assign(new Error(`Enterprise Hub request failed with ${response.status}.`), {
+    throw Object.assign(new Error(`SMEDC request failed with ${response.status}.`), {
       code: String(response.status),
       body
     });

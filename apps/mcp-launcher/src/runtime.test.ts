@@ -19,7 +19,7 @@ describe("owned cross-process launcher lock", () => {
     };
 
     await expect(createFileLock(lockPath, options).acquire()).rejects.toThrow(
-      "Enterprise Hub launcher session lock failed."
+      "SMEDC launcher session lock failed."
     );
     expect(attempts).toBe(1);
   });
@@ -39,7 +39,7 @@ describe("owned cross-process launcher lock", () => {
     };
 
     await expect(createFileLock(lockPath, options).acquire()).rejects.toThrow(
-      "Enterprise Hub launcher session is busy."
+      "SMEDC launcher session is busy."
     );
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20);
     expect(attempts).toBeGreaterThan(1);

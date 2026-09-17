@@ -7,7 +7,7 @@ import {
   PUBLIC_INPUT_LIMITS,
   isAllowedFileTypeForDocumentKind,
   type Phase3FileType
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documents.js";
 import { EvidenceSearchCursorError, type EvidenceSearchRepository } from "../evidence.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
@@ -18,7 +18,7 @@ import {
   phase3ErrorResponse,
   validationError
 } from "../request-errors.js";
-import type { StorageAdapter } from "@enterprise-hub/storage";
+import type { StorageAdapter } from "@smedc/storage";
 import { readMultipartFile, type MultipartPart } from "../http/multipart.js";
 
 interface ParsedUpload {

@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-export const OAUTH_CLIENT_ID = "enterprise-hub-desktop-launcher";
+export const OAUTH_CLIENT_ID = "smedc-desktop-launcher";
 export const OAUTH_TRANSACTION_COOKIE = "__Host-eh_oauth_transaction";
 export const PASSWORD_SETUP_COOKIE = "__Host-eh_password_setup";
 export const DEVICE_VERIFY_COOKIE = "__Host-eh_device_verify";
@@ -33,9 +33,9 @@ export interface OAuthAuthorizationServerMetadata {
   grant_types_supported: ["authorization_code", "refresh_token", typeof DEVICE_CODE_GRANT_TYPE];
   code_challenge_methods_supported: ["S256"];
   token_endpoint_auth_methods_supported: ["none"];
-  enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher";
-  enterprise_hub_launcher_minimum_version: "0.1.0";
-  enterprise_hub_launcher_recommended_version: "0.4.0";
+  smedc_launcher_package: "enterprise-hub-mcp-launcher";
+  smedc_launcher_minimum_version: "0.1.0";
+  smedc_launcher_recommended_version: "0.4.0";
 }
 
 export function authorizationRequest(query: AuthorizationQuery): ValidAuthorizationRequest {
@@ -104,7 +104,7 @@ export function cookieValue(cookieHeader: string | undefined, name: string): str
 
 export function csrfTokenForSecret(transactionSecret: string): string {
   return createHash("sha256")
-    .update("enterprise-hub-browser-csrf\0")
+    .update("smedc-browser-csrf\0")
     .update(transactionSecret)
     .digest("base64url");
 }
@@ -137,9 +137,9 @@ export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMet
     grant_types_supported: ["authorization_code", "refresh_token", DEVICE_CODE_GRANT_TYPE],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    enterprise_hub_launcher_package: "enterprise-hub-mcp-launcher",
-    enterprise_hub_launcher_minimum_version: "0.1.0",
-    enterprise_hub_launcher_recommended_version: "0.4.0"
+    smedc_launcher_package: "enterprise-hub-mcp-launcher",
+    smedc_launcher_minimum_version: "0.1.0",
+    smedc_launcher_recommended_version: "0.4.0"
   };
 }
 

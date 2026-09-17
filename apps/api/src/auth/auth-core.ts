@@ -1,4 +1,4 @@
-import type { AuthenticatedEmployee, EmployeeRoleName } from "@enterprise-hub/domain";
+import type { AuthenticatedEmployee, EmployeeRoleName } from "@smedc/domain";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import {
   AUTH_LIFETIMES_MS,
@@ -28,6 +28,7 @@ export interface AccessAuthenticationRecord {
   identityId: string;
   employeeId: string;
   orgId: string;
+  organizationName: string;
   displayName: string;
   email: string;
   role: EmployeeRoleName;
@@ -616,6 +617,7 @@ export class AuthCore {
     return {
       id: record.employeeId,
       orgId: record.orgId,
+      organizationName: record.organizationName,
       displayName: record.displayName,
       email: record.email,
       role: record.role,

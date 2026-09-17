@@ -1,7 +1,7 @@
 {
-  "name": "enterprise-hub-mcp-launcher",
-  "version": "0.4.0",
-  "description": "Official desktop stdio MCP launcher for Enterprise Hub",
+  "name": "smedc-mcp-launcher",
+  "version": "0.5.0",
+  "description": "Official desktop stdio MCP launcher for SMEDC",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -22,7 +22,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "enterprise-hub-mcp-launcher": "dist/index.js"
+    "smedc-mcp-launcher": "dist/index.js"
   },
   "files": [
     "dist",

@@ -3,17 +3,17 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const expectedWorkspaceNames = [
-  "@enterprise-hub/admin-web",
-  "@enterprise-hub/api",
-  "@enterprise-hub/db",
-  "@enterprise-hub/domain",
-  "@enterprise-hub/mcp-contract",
-  "@enterprise-hub/release-ops",
-  "@enterprise-hub/storage",
-  "@enterprise-hub/structured-ingestion",
-  "@enterprise-hub/testing",
-  "@enterprise-hub/worker",
-  "enterprise-hub-mcp-launcher"
+  "@smedc/admin-web",
+  "@smedc/api",
+  "@smedc/db",
+  "@smedc/domain",
+  "@smedc/mcp-contract",
+  "@smedc/release-ops",
+  "@smedc/storage",
+  "@smedc/structured-ingestion",
+  "@smedc/testing",
+  "@smedc/worker",
+  "smedc-mcp-launcher"
 ];
 
 describe("workspace skeleton", () => {

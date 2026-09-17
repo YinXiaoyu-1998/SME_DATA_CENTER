@@ -3,20 +3,20 @@ import { createReadStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm, stat, statfs } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { PARTITION_ERROR_CODES, type PartitionDatasetName } from "@enterprise-hub/domain";
+import { PARTITION_ERROR_CODES, type PartitionDatasetName } from "@smedc/domain";
 import {
   createPrismaStructuredPartitionRepository,
   type PartitionCandidate,
   type StructuredPartitionRepository
-} from "@enterprise-hub/db";
-import { createPartitionObjectKey, type StorageAdapter } from "@enterprise-hub/storage";
+} from "@smedc/db";
+import { createPartitionObjectKey, type StorageAdapter } from "@smedc/storage";
 import {
   exportStructuredPartitions,
   StructuredPartitionExportError,
   type StructuredPartitionExport,
   type StructuredPartitionExportProfile,
   type StructuredPartitionLimits
-} from "@enterprise-hub/structured-ingestion";
+} from "@smedc/structured-ingestion";
 import type { ClaimedProcessingRun } from "./worker.js";
 import type { WorkerRuntimeLimits } from "./config/runtime-limits.js";
 

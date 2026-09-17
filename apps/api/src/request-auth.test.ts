@@ -1,12 +1,13 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@smedc/domain";
 import { createRequestAuth } from "./request-auth.js";
 import type { ApiServerContext } from "./app-context.js";
 
 const enabledEmployee: AuthenticatedEmployee = {
   id: "emp_1",
   orgId: "default-org",
+  organizationName: "Default Organization",
   displayName: "Employee One",
   email: "employee@example.com",
   role: "employee",

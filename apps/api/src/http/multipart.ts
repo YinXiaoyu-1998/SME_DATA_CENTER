@@ -1,6 +1,6 @@
 import multipart from "@fastify/multipart";
 import type { FastifyInstance } from "fastify";
-import { PUBLIC_INPUT_LIMITS } from "@enterprise-hub/domain";
+import { PUBLIC_INPUT_LIMITS } from "@smedc/domain";
 
 export interface MultipartFieldPart {
   type: "field";

@@ -100,7 +100,7 @@ export function createRequestAuditContext(
 ): RequestAuditContext {
   const launcherVersion =
     clientSource === "oauth_launcher" || clientSource === "mcp_launcher"
-      ? normalizeLauncherVersion(request.headers["x-enterprise-hub-launcher-version"])
+      ? normalizeLauncherVersion(request.headers["x-smedc-launcher-version"])
       : null;
 
   return Object.freeze({

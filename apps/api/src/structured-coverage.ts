@@ -1,10 +1,10 @@
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
 import type {
   StructuredCompiledCoverageQuery,
   StructuredCoverageSourceBase,
   StructuredDatasetCoverage
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 
 export interface StructuredCoverageRepository {
   list(compiled: StructuredCompiledCoverageQuery): Promise<StructuredDatasetCoverage>;

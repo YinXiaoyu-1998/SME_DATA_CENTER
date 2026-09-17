@@ -251,14 +251,14 @@ function credentialRecord(origin: string, durableCredential: string): string {
 function messageFor(code: LauncherErrorCode): string {
   switch (code) {
     case "AUTHENTICATION_REQUIRED":
-      return "Enterprise Hub sign-in is required.";
+      return "SMEDC sign-in is required.";
     case "AUTHENTICATION_PENDING":
-      return "Enterprise Hub sign-in is still pending.";
+      return "SMEDC sign-in is still pending.";
     case "SERVICE_UNAVAILABLE":
-      return "Enterprise Hub service is unavailable.";
+      return "SMEDC service is unavailable.";
     case "FORBIDDEN":
-      return "Enterprise Hub denied this request.";
+      return "SMEDC denied this request.";
     case "LAUNCHER_UPGRADE_REQUIRED":
-      return "This Enterprise Hub launcher must be upgraded.";
+      return "This SMEDC launcher must be upgraded.";
   }
 }

@@ -10,7 +10,7 @@ export const releaseEntries = {
   "staging-upload-domain-cleanup": "scripts/staging-upload-domain-cleanup.ts"
 } as const;
 
-const thirdPartyPackageImport = /^(?!@enterprise-hub(?:\/|$))[^./]/;
+const thirdPartyPackageImport = /^(?!@smedc(?:\/|$))[^./]/;
 
 export default defineConfig({
   entry: releaseEntries,
@@ -20,5 +20,5 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   splitting: false,
-  noExternal: [/^@enterprise-hub\//]
+  noExternal: [/^@smedc\//]
 });

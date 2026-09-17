@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import JSZip from "jszip";
-import { getStructuredRegistry } from "@enterprise-hub/domain";
+import { getStructuredRegistry } from "@smedc/domain";
 
 /**
  * Deterministically generate the "rejected upload" fixture set used by the

@@ -1,4 +1,4 @@
-export const domainWorkspaceName = "@enterprise-hub/domain";
+export const domainWorkspaceName = "@smedc/domain";
 export { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 export {
   PHASE3_RUNTIME_LIMIT_DEFAULTS,
@@ -104,7 +104,8 @@ export {
   type StructuredDatasetName,
   type StructuredDatasetRegistry,
   type StructuredFieldRegistryEntry,
-  type StructuredFieldType
+  type StructuredFieldType,
+  type StructuredPresentationProfile
 } from "./structured-registry.js";
 export {
   PARTITION_DATASETS,

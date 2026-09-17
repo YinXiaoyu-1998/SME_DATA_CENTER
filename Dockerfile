@@ -42,19 +42,19 @@ RUN cargo build --locked --release
 FROM manifests AS api-deps
 
 RUN npm ci --omit=dev --legacy-peer-deps \
-  --workspace @enterprise-hub/api --include-workspace-root=false \
+  --workspace @smedc/api --include-workspace-root=false \
   && npm cache clean --force
 
 FROM manifests AS worker-deps
 
 RUN npm ci --omit=dev --legacy-peer-deps \
-  --workspace @enterprise-hub/worker --include-workspace-root=false \
+  --workspace @smedc/worker --include-workspace-root=false \
   && npm cache clean --force
 
 FROM manifests AS release-ops-deps
 
 RUN npm ci --omit=dev --legacy-peer-deps \
-  --workspace @enterprise-hub/release-ops --include-workspace-root=false \
+  --workspace @smedc/release-ops --include-workspace-root=false \
   && npm cache clean --force
 
 FROM node:22-bookworm-slim AS runtime-base

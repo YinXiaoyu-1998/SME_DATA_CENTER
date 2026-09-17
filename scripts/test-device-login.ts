@@ -19,10 +19,10 @@ interface LoginResultBody {
   serviceUrl?: string;
 }
 
-const baseUrl = process.env["ENTERPRISE_HUB_BASE_URL"];
+const baseUrl = process.env["SMEDC_BASE_URL"];
 
 try {
-  assert(baseUrl, "ENTERPRISE_HUB_BASE_URL must point at a running local Enterprise Hub API.");
+  assert(baseUrl, "SMEDC_BASE_URL must point at a running local SMEDC API.");
   const expectedSecureStore = process.env["LAUNCHER_EXPECT_SECURE_STORE"] === "1";
   const employeeEmail = process.env["LAUNCHER_EMPLOYEE_EMAIL"];
   const employeePassword = process.env["LAUNCHER_EMPLOYEE_PASSWORD"];
@@ -35,9 +35,9 @@ try {
     selfCheck.secureStore.available === expectedSecureStore,
     `Secure-store availability must match the environment expectation (${expectedSecureStore}).`
   );
-  assert(selfCheck.launcherVersion === "0.4.0", "Launcher self-check must report 0.4.0.");
+  assert(selfCheck.launcherVersion === "0.5.0", "Launcher self-check must report 0.5.0.");
 
-  const loginResult = await createLauncherToolHandler("enterprise_hub_login", dependencies)({});
+  const loginResult = await createLauncherToolHandler("smedc_login", dependencies)({});
   assert(!loginResult.isError, "Device login must not fail on a headless host.");
   const body = JSON.parse(loginResult.content[0]?.text ?? "null") as LoginResultBody;
   assert(body.flow === "device", "Login must use the device flow.");
@@ -45,10 +45,7 @@ try {
   assert(body.openedBrowser === canOpenBrowser(), "Link delivery must match browser availability.");
   assert(body.serviceUrl === baseUrl, "Login result must carry the service URL.");
 
-  const statusResult = await createLauncherToolHandler(
-    "enterprise_hub_auth_status",
-    dependencies
-  )({});
+  const statusResult = await createLauncherToolHandler("smedc_auth_status", dependencies)({});
   const status = JSON.parse(statusResult.content[0]?.text ?? "null") as {
     authenticated: boolean;
   };
@@ -64,7 +61,7 @@ try {
     });
     await waitForAuthenticated(dependencies.auth);
     const currentUserResult = await createLauncherToolHandler(
-      "enterprise_hub_get_current_user",
+      "smedc_get_current_user",
       dependencies
     )({});
     assert(
@@ -85,7 +82,7 @@ try {
     JSON.stringify(
       {
         ok: true,
-        launcherVersion: "0.4.0",
+        launcherVersion: "0.5.0",
         secureStoreAvailable: selfCheck.secureStore.available,
         flow: body.flow,
         openedBrowser: body.openedBrowser,

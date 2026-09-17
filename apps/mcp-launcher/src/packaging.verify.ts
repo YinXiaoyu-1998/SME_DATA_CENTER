@@ -14,14 +14,14 @@ let binaryPath: string;
 
 describe("published launcher artifact", () => {
   beforeAll(async () => {
-    packageDirectory = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-pack-"));
-    installDirectory = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-install-"));
-    exec("npm", ["run", "build", "--workspace", "enterprise-hub-mcp-launcher"]);
+    packageDirectory = await mkdtemp(path.join(os.tmpdir(), "smedc-pack-"));
+    installDirectory = await mkdtemp(path.join(os.tmpdir(), "smedc-install-"));
+    exec("npm", ["run", "build", "--workspace", "smedc-mcp-launcher"]);
     const pack = JSON.parse(
       exec("npm", [
         "pack",
         "--workspace",
-        "enterprise-hub-mcp-launcher",
+        "smedc-mcp-launcher",
         "--pack-destination",
         packageDirectory,
         "--json"
@@ -34,9 +34,7 @@ describe("published launcher artifact", () => {
       installDirectory,
       "node_modules",
       ".bin",
-      process.platform === "win32"
-        ? "enterprise-hub-mcp-launcher.cmd"
-        : "enterprise-hub-mcp-launcher"
+      process.platform === "win32" ? "smedc-mcp-launcher.cmd" : "smedc-mcp-launcher"
     );
   }, 60_000);
 
@@ -56,10 +54,10 @@ describe("published launcher artifact", () => {
       repository?: { url?: string; directory?: string };
       publishConfig?: { access?: string };
     };
-    expect(manifest.dependencies).not.toHaveProperty("@enterprise-hub/mcp-contract");
+    expect(manifest.dependencies).not.toHaveProperty("@smedc/mcp-contract");
     expect(manifest).toMatchObject({
       license: "MIT",
-      bin: { "enterprise-hub-mcp-launcher": "dist/index.js" },
+      bin: { "smedc-mcp-launcher": "dist/index.js" },
       repository: {
         url: "git+https://github.com/YinXiaoyu-1998/SME_DATA_CENTER.git",
         directory: "apps/mcp-launcher"
@@ -68,6 +66,7 @@ describe("published launcher artifact", () => {
     });
     const declarations = exec("tar", ["-xOf", tarballPath, "package/dist/index.d.ts"]);
     expect(declarations).not.toMatch(/@enterprise-hub\/(?:mcp-contract|domain)/);
+    expect(declarations).not.toMatch(/@smedc\/(?:mcp-contract|domain)/);
   });
 
   it("derives the platform-acceptance tarball name from npm pack output", async () => {
@@ -75,24 +74,31 @@ describe("published launcher artifact", () => {
       path.join(workspaceRoot, ".github", "workflows", "launcher-release.yml"),
       "utf8"
     );
-    expect(workflow).not.toMatch(/enterprise-hub-mcp-launcher-\d+\.\d+\.\d+\.tgz/);
+    expect(workflow).not.toMatch(/smedc-mcp-launcher-\d+\.\d+\.\d+\.tgz/);
     expect(workflow).toMatch(/branches:\s*\n\s*- main/);
-    expect(workflow).toMatch(/npm pack --workspace enterprise-hub-mcp-launcher --json/);
+    expect(workflow).toMatch(/npm pack --workspace smedc-mcp-launcher --json/);
     expect(workflow).toContain("${{ steps.pack.outputs.tarball }}");
     expect(workflow).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
     expect(workflow).toContain('if [[ "$GITHUB_REF_TYPE" = "tag" ]]');
     expect(workflow).toContain('diff -qr "$compare_dir/extracted-registry/package"');
+    expect(workflow).toContain('npm view "$package_name" name');
+    expect(workflow).toContain("Initial npm package bootstrap required");
     expect(workflow).toContain("npm stage publish");
     expect(workflow).not.toContain("npm publish --workspace");
   });
 
   it("passes a built-artifact secret and legacy-contract scan", () => {
     const bundledSource = exec("tar", ["-xOf", tarballPath, "package/dist/index.js"]);
+    expect(bundledSource).toContain("SMEDC_BASE_URL");
+    expect(bundledSource).toContain("Launcher 0.5.0+");
     for (const forbidden of [
-      "ENTERPRISE_HUB_API_URL",
+      "SMEDC_API_URL",
+      ["ENTERPRISE", "HUB", "API", "URL"].join("_"),
+      ["ENTERPRISE", "HUB", "BASE", "URL"].join("_"),
       "/auth/dev-login",
-      "enterprise_hub_login_local",
-      "@enterprise-hub/mcp-contract",
+      ["enterprise", "hub", "login", "local"].join("_"),
+      ["@enterprise", "hub/mcp-contract"].join("-"),
+      ["enterprise", "hub", "partition", "extracts"].join("-"),
       "exact-access-token",
       "access-secret",
       "refresh-secret",
@@ -106,16 +112,16 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.4.0");
+    expect(manifest.version).toBe("0.5.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
     ) as { components?: Array<{ name?: string }> };
-    expect(
-      sbom.components?.some((component) => component.name === "enterprise-hub-mcp-launcher")
-    ).toBe(true);
+    expect(sbom.components?.some((component) => component.name === "smedc-mcp-launcher")).toBe(
+      true
+    );
     expect(await readFile(path.join(installDirectory, "package-lock.json"), "utf8")).toContain(
-      "enterprise-hub-mcp-launcher"
+      "smedc-mcp-launcher"
     );
   });
 
@@ -125,7 +131,7 @@ describe("published launcher artifact", () => {
       args: ["serve"],
       env: {
         ...process.env,
-        ENTERPRISE_HUB_BASE_URL: "https://hub.example.test"
+        SMEDC_BASE_URL: "https://hub.example.test"
       } as Record<string, string>
     });
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
@@ -134,10 +140,10 @@ describe("published launcher artifact", () => {
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
-          "enterprise_hub_login",
-          "enterprise_hub_logout",
-          "enterprise_hub_auth_status",
-          "enterprise_hub_get_current_user",
+          "smedc_login",
+          "smedc_logout",
+          "smedc_auth_status",
+          "smedc_get_current_user",
           "describe_structured_dataset_coverage"
         ])
       );

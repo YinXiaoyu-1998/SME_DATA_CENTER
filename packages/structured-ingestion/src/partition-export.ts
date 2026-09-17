@@ -9,7 +9,7 @@ import {
   partitionStoreIdentity,
   resolveStructuredHeaders,
   type StructuredFieldRegistryEntry
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import { parse as createCsvParser } from "csv-parse";
 import { CalamineSourceError, streamCalamineXlsxFileRows } from "./calamine-reader.js";
 

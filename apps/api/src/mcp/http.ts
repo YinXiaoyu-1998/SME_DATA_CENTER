@@ -3,7 +3,7 @@ import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { InjectOptions, InjectPayload, Response as InjectResponse } from "light-my-request";
-import { PHASE3_RUNTIME_LIMIT_DEFAULTS, type AuthenticatedEmployee } from "@enterprise-hub/domain";
+import { PHASE3_RUNTIME_LIMIT_DEFAULTS, type AuthenticatedEmployee } from "@smedc/domain";
 import {
   assertValidMcpPublicOrigin,
   createMcpConcurrencyLimiter,
@@ -12,10 +12,10 @@ import {
   isSafeMcpRequestId,
   mcpBodyLimitBytes
 } from "./guards.js";
-import { createEnterpriseHubHttpMcpServer } from "./server.js";
+import { createSmedcHttpMcpServer } from "./server.js";
 import {
-  createEnterpriseHubMcpToolHandlers,
-  type EnterpriseHubMcpToolHandlers,
+  createSmedcMcpToolHandlers,
+  type SmedcMcpToolHandlers,
   type McpRequestContext
 } from "./tool-handlers.js";
 import { createRequestAuditContext } from "../request-audit-context.js";
@@ -29,7 +29,7 @@ export interface McpHttpRouteOptions {
     request: FastifyRequest,
     reply: FastifyReply
   ) => Promise<AuthenticatedEmployee | null>;
-  toolHandlers?: EnterpriseHubMcpToolHandlers;
+  toolHandlers?: SmedcMcpToolHandlers;
 }
 
 interface McpErrorBody {
@@ -253,7 +253,7 @@ export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRoute
 
           const handlers =
             options.toolHandlers ??
-            createEnterpriseHubMcpToolHandlers({
+            createSmedcMcpToolHandlers({
               bearerToken,
               audit: context.audit,
               delegationProof: options.delegationProof,
@@ -289,7 +289,7 @@ export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRoute
                 };
               }
             });
-          const mcpServer = createEnterpriseHubHttpMcpServer({
+          const mcpServer = createSmedcHttpMcpServer({
             context,
             handlers
           });

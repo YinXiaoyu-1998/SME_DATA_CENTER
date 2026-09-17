@@ -1,6 +1,6 @@
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
-import type { StructuredCompiledQuery } from "@enterprise-hub/domain";
+import type { StructuredCompiledQuery } from "@smedc/domain";
 
 export interface ExecuteStructuredQueryResult {
   rows: Array<Record<string, unknown>>;

@@ -33,7 +33,7 @@ describe("api auth shell", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       ok: true,
-      service: "enterprise-hub-api"
+      service: "smedc-api"
     });
     expect(response.headers["x-request-id"]).toBeTruthy();
   });
@@ -122,7 +122,7 @@ describe("api auth shell", () => {
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({
       ok: false,
-      service: "enterprise-hub-api",
+      service: "smedc-api",
       retrievalConfigVersion: "test-retrieval",
       checks: [
         {
@@ -250,7 +250,7 @@ describe("api auth shell", () => {
       headers: {
         authorization: "Bearer eh_at_api",
         "x-request-id": "api_request_1",
-        "x-enterprise-hub-launcher-version": "9.9.9"
+        "x-smedc-launcher-version": "9.9.9"
       },
       remoteAddress: "198.51.100.8"
     });
@@ -263,7 +263,7 @@ describe("api auth shell", () => {
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
         "x-request-id": "mcp_request_1",
-        "x-enterprise-hub-launcher-version": "0.1.0"
+        "x-smedc-launcher-version": "0.1.0"
       },
       remoteAddress: "127.0.0.1",
       payload: {

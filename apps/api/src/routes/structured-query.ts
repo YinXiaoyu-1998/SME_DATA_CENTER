@@ -8,7 +8,7 @@ import {
   createStructuredCursor,
   compileStructuredQuery,
   PHASE3_ERROR_CODES
-} from "@enterprise-hub/domain";
+} from "@smedc/domain";
 import type { RequestAuth } from "../request-auth.js";
 import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
@@ -44,6 +44,7 @@ function structuredDatasetRegistryResponse() {
       dataset: registry.dataset,
       accessMode: registry.accessMode,
       ...(registry.accessMode === "row_query" ? { rowTable: registry.rowTable } : {}),
+      ...(registry.presentation ? { presentation: registry.presentation } : {}),
       fields: registry.fields.map((field) =>
         structuredFieldResponse(field, registry.accessMode === "row_query")
       )
@@ -165,6 +166,9 @@ export function registerStructuredQueryRoutes(
       return {
         dataset: compiled.dataset,
         mode: compiled.mode,
+        ...(compiled.dataset === "delivery_ledger" && compiled.mode === "detail"
+          ? { presentation: STRUCTURED_DATASET_REGISTRIES.delivery_ledger.presentation }
+          : {}),
         rows: result.rows,
         nextCursor
       };

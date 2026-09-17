@@ -8,7 +8,7 @@ import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 import { parse as parseCsv } from "csv-parse/sync";
 import { config as loadDotenv } from "dotenv";
-import { createStorageAdapter } from "@enterprise-hub/storage";
+import { createStorageAdapter } from "@smedc/storage";
 import { parseApiRetrievalRuntimeConfig } from "../apps/api/src/config/retrieval-runtime.js";
 import {
   assertCleanupCountsAreZero,
@@ -175,14 +175,14 @@ async function runAcceptance(
   const localExtracts: string[] = [];
 
   try {
-    const status = await callJson<ToolTextResult>(client, "enterprise_hub_auth_status", {});
+    const status = await callJson<ToolTextResult>(client, "smedc_auth_status", {});
     if (status["authenticated"] !== true) {
-      throw new Error("Official launcher is not authenticated. Run enterprise_hub_login first.");
+      throw new Error("Official launcher is not authenticated. Run smedc_login first.");
     }
 
     const currentUser = await callJson<CurrentEnterpriseHubUserResult>(
       client,
-      "enterprise_hub_get_current_user",
+      "smedc_get_current_user",
       {}
     );
     const expectedEmails = new Set(acceptanceAccountEmails(run));
@@ -843,9 +843,9 @@ function launcherPath(): string {
   }
   return path.join(
     os.homedir(),
-    "Library/Application Support/Enterprise Hub/launcher/versions",
+    "Library/Application Support/SMEDC/launcher/versions",
     LAUNCHER_VERSION,
-    "node_modules/.bin/enterprise-hub-mcp-launcher"
+    "node_modules/.bin/smedc-mcp-launcher"
   );
 }
 

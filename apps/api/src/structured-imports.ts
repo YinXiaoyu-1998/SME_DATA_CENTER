@@ -4,7 +4,7 @@ import {
   createDatabaseAdapter,
   retryIdempotentDatabaseOperation,
   type DatabaseRetryEvent
-} from "@enterprise-hub/db";
+} from "@smedc/db";
 import {
   DocumentKind,
   DocumentStatus,
@@ -22,8 +22,8 @@ import type {
   ImportBatchStatusName,
   Phase3FileType,
   StructuredDatasetName
-} from "@enterprise-hub/domain";
-import { AUDIT_ACTIONS, getStructuredRegistry } from "@enterprise-hub/domain";
+} from "@smedc/domain";
+import { AUDIT_ACTIONS, getStructuredRegistry } from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface StructuredImportRowInput {

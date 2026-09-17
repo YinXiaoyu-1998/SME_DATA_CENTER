@@ -12,6 +12,7 @@ export type EmployeeRoleName = "admin" | "employee";
 export interface AuthenticatedEmployee {
   id: string;
   orgId: string;
+  organizationName: string;
   displayName: string;
   email: string;
   role: EmployeeRoleName;

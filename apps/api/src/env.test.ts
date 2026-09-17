@@ -17,7 +17,7 @@ afterEach(async () => {
 
 describe("loadApiEnv", () => {
   it("loads API environment variables from a local .env file without overriding existing values", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-api-env-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "smedc-api-env-"));
     tempDirs.push(tempDir);
     await writeFile(
       path.join(tempDir, ".env"),

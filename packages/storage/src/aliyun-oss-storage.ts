@@ -46,7 +46,7 @@ export interface AliyunOssStorageAdapterOptions {
 }
 
 /**
- * Stores Enterprise Hub source objects in Alibaba Cloud OSS through its
+ * Stores SMEDC source objects in Alibaba Cloud OSS through its
  * S3-compatible API while keeping database object keys provider-neutral.
  */
 export class AliyunOssStorageAdapter implements StorageAdapter {

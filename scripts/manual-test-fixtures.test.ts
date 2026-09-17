@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { validateStructuredHeaders } from "@enterprise-hub/domain";
+import { validateStructuredHeaders } from "@smedc/domain";
 
 const root = process.cwd();
 const fixtureRoot = path.join(root, "fixtures", "manual-acceptance");

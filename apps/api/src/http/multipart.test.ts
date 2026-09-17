@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import { PUBLIC_INPUT_LIMITS } from "@enterprise-hub/domain";
+import { PUBLIC_INPUT_LIMITS } from "@smedc/domain";
 import { readMultipartFile, registerApiMultipart } from "./multipart.js";
 
 describe("API multipart utilities", () => {

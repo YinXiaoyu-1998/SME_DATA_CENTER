@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
-import { createDatabaseAdapter } from "@enterprise-hub/db";
+import { createDatabaseAdapter } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
-import type { EmployeeRoleName } from "@enterprise-hub/domain";
+import type { EmployeeRoleName } from "@smedc/domain";
 import {
   AUTH_LIFETIMES_MS,
   generateOpaqueSecret,

@@ -1,5 +1,5 @@
 {
-  "name": "@enterprise-hub/testing",
+  "name": "@smedc/testing",
   "version": "0.0.0",
   "private": true,
   "type": "module",
