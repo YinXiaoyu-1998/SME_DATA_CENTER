@@ -1,10 +1,10 @@
 # Official User Installation, Login, and Session Design
 
-Status: implemented in the SMEDC hard-cut branch; launcher 0.5.0 is the code and Skill target, while
-npm publication, repository rename, and server recommendation synchronization remain gated release
-tasks.
+Status: `smedc-mcp-launcher@0.5.0` is published and independently verified, both Skill repositories
+use their final SMEDC names, and npm Trusted Publisher is configured. Server recommendation
+synchronization and the staging hard-cut deployment remain gated release tasks.
 
-Last updated: 2026-09-15
+Last updated: 2026-09-17
 
 ## Purpose
 
@@ -567,14 +567,13 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Release status during the SMEDC hard-cut branch: code and repo-local Skill guidance target
-`smedc-mcp-launcher@0.5.0`, the `smedc` MCP entry, and the canonical main-repository target
-`YinXiaoyu-1998/SME_DATA_CENTER`. Public npm publication of 0.5.0, the Skill repository renames, Trusted
-Publisher configuration, and server recommendation synchronization are still pending the explicit
-external-gate tasks. Until those gates complete, server metadata deliberately continues to recommend
-the currently published launcher package/version. The earlier independently verified public
-launcher release and headless Linux container loop remain compatibility evidence. Npm provenance
-remains unavailable because the source repository is private and is not an approval gate.
+Release status during the SMEDC hard cut: `smedc-mcp-launcher@0.5.0` is public and independently
+verified, the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and
+npm Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
+stage-publish-only permission. This synchronization branch changes server metadata to require and
+recommend 0.5.0; staging remains frozen on the last known-good pre-cutover release until that branch
+is merged and explicitly deployed. Npm provenance remains unavailable because the source repository
+is private and is not an approval gate.
 
 The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
 only `SMEDC_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
@@ -848,8 +847,8 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 The official beta installation, Device Authorization login, token/session, secure-store and
 memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
-implemented. Launcher 0.5.0 is the current code and Skill target, but publication and server
-recommendation remain pending the release-gate tasks. Automated server/launcher tests, native
-macOS/Windows package acceptance, and a full headless Linux container login-to-business-tool loop
-are required release evidence. Full user-visible OpenClaw and support-class-C phone/browser
-acceptance remain external release evidence.
+implemented. Launcher 0.5.0 is public, independently verified, and accepted on native macOS and
+Windows. This synchronization branch changes the server package/minimum/recommended metadata to
+0.5.0; the staging deployment and focused hard-cut QA acceptance remain gated. The earlier headless
+Linux login-to-business-tool loop remains compatibility evidence. Full user-visible OpenClaw and
+support-class-C phone/browser acceptance remain external release evidence.

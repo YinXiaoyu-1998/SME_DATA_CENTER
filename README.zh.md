@@ -108,9 +108,9 @@ npm run worker:once
 `smedc_logout`、`smedc_auth_status` 和仅查询当前身份的
 `smedc_get_current_user`，且绝不操作服务基础设施。
 
-正式 identity、公开远程 MCP 和固定 launcher 已部署；launcher npm 包已发布。macOS Codex
-浏览器登录、系统安全存储、tool discovery 和已认证调用验收已通过；Windows Codex 以及
-macOS/Windows OpenClaw 验收仍是发布门槛。
+`smedc-mcp-launcher@0.5.0` 已公开发布并通过独立验证，原生 macOS/Windows launcher
+验收已通过。staging 仍冻结在硬切前最后一个已知良好版本，待最终同步分支合并并明确部署后，
+再执行聚焦的硬切 QA 验收。
 
 ## MCP 服务与本地开发边界
 

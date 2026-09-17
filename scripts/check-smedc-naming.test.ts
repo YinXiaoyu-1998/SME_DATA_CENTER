@@ -65,18 +65,19 @@ describe("SMEDC naming checker", () => {
     ]);
   });
 
-  it("preserves the narrow transitional launcher recommendation exception", async () => {
+  it("rejects the old launcher package in the service discovery contract", async () => {
     const root = await tempRoot();
     await mkdir(path.join(root, "apps/api/src/auth"), { recursive: true });
+    const oldPackage = ["enterprise", "hub", "mcp", "launcher"].join("-");
     await writeFile(
       path.join(root, "apps/api/src/auth/http-contract.ts"),
       [
-        'smedc_launcher_package: "enterprise-hub-mcp-launcher",',
-        '  smedc_launcher_package: "enterprise-hub-mcp-launcher";'
+        `smedc_launcher_package: "${oldPackage}",`,
+        `  smedc_launcher_package: "${oldPackage}";`
       ].join("\n")
     );
 
-    expect(findNamingViolations(root, ["apps/api/src/auth/http-contract.ts"])).toEqual([]);
+    expect(findNamingViolations(root, ["apps/api/src/auth/http-contract.ts"])).toHaveLength(2);
   });
 
   it.each([
@@ -88,12 +89,12 @@ describe("SMEDC naming checker", () => {
     async (_label, file) => {
       const root = await tempRoot();
       await mkdir(path.join(root, path.dirname(file)), { recursive: true });
+      const oldPackage = ["enterprise", "hub", "mcp", "launcher"].join("-");
       await writeFile(
         path.join(root, file),
-        [
-          'smedc_launcher_package: "enterprise-hub-mcp-launcher",',
-          "Use enterprise-hub-mcp-launcher@0.4.0 until Task 12."
-        ].join("\n")
+        [`smedc_launcher_package: "${oldPackage}",`, `Use ${oldPackage}@0.4.0 until Task 12.`].join(
+          "\n"
+        )
       );
 
       const violations = findNamingViolations(root, [file]);

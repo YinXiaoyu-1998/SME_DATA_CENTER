@@ -35,27 +35,9 @@ const excludedPathPatterns = [
   /^scripts\/check-smedc-naming\.test\.ts$/
 ];
 
-const allowedTransitionalLauncherLines: Array<{ file: string; pattern: RegExp }> = [
-  {
-    file: "apps/api/src/auth/http-contract.ts",
-    pattern: /^\s*smedc_launcher_package:\s*"enterprise-hub-mcp-launcher"[,;]\s*$/
-  },
-  {
-    file: "apps/api/src/auth/http-contract.test.ts",
-    pattern: /^\s*smedc_launcher_package:\s*"enterprise-hub-mcp-launcher",\s*$/
-  }
-];
-
 function isExcluded(file: string): boolean {
   const normalized = file.split(path.sep).join("/");
   return excludedPathPatterns.some((pattern) => pattern.test(normalized));
-}
-
-function isAllowedLine(file: string, line: string): boolean {
-  const normalized = file.split(path.sep).join("/");
-  return allowedTransitionalLauncherLines.some(
-    (allowed) => allowed.file === normalized && allowed.pattern.test(line)
-  );
 }
 
 function trackedFiles(root: string): string[] {
@@ -98,10 +80,6 @@ export function findNamingViolations(root = process.cwd(), files = trackedFiles(
 
     const lines = content.split(/\r?\n/);
     lines.forEach((line, index) => {
-      if (isAllowedLine(file, line)) {
-        return;
-      }
-
       for (const { token, pattern } of forbiddenPatterns) {
         if (pattern.test(line)) {
           violations.push({

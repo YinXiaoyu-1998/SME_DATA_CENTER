@@ -118,7 +118,9 @@ describe("official OAuth and password routes", () => {
     expect(response.json()).toMatchObject({
       issuer: "https://api.smedatacenter.xyz",
       authorization_endpoint: "https://api.smedatacenter.xyz/oauth/authorize",
-      smedc_launcher_minimum_version: "0.1.0"
+      smedc_launcher_package: "smedc-mcp-launcher",
+      smedc_launcher_minimum_version: "0.5.0",
+      smedc_launcher_recommended_version: "0.5.0"
     });
   });
 

@@ -161,10 +161,10 @@ operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
 `smedc-mcp-launcher@0.5.0` is published on npm and its registry integrity, clean install,
-CLI, packaging, and production dependency audit have been verified. The official auth cutover is
-deployed in staging. Native macOS/Windows package acceptance and the headless Linux
-login-to-business-tool loop have passed; user-visible OpenClaw and support-class-C
-phone/browser acceptance remain release evidence.
+CLI, packaging, and production dependency audit have been verified. Native macOS/Windows package
+acceptance and the earlier headless Linux login-to-business-tool loop have passed. Staging remains
+frozen on the last known-good pre-cutover release until the final synchronization branch is merged
+and explicitly deployed; focused hard-cut QA acceptance then follows.
 
 ## Official MCP Launcher
 
