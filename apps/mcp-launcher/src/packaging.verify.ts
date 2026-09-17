@@ -81,6 +81,8 @@ describe("published launcher artifact", () => {
     expect(workflow).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
     expect(workflow).toContain('if [[ "$GITHUB_REF_TYPE" = "tag" ]]');
     expect(workflow).toContain('diff -qr "$compare_dir/extracted-registry/package"');
+    expect(workflow).toContain('npm view "$package_name" name');
+    expect(workflow).toContain("Initial npm package bootstrap required");
     expect(workflow).toContain("npm stage publish");
     expect(workflow).not.toContain("npm publish --workspace");
   });

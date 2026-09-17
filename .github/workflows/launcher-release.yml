@@ -88,7 +88,7 @@ jobs:
           else
             test "$GITHUB_REF_NAME" = "main"
           fi
-      - name: Check existing release integrity or stage publish
+      - name: Check release integrity, stage publish, or require first-publish bootstrap
         run: |
           set -euo pipefail
           package_name=smedc-mcp-launcher
@@ -103,6 +103,10 @@ jobs:
             tar -xzf "$compare_dir/local/$package_name-$package_version.tgz" -C "$compare_dir/extracted-local"
             diff -qr "$compare_dir/extracted-registry/package" "$compare_dir/extracted-local/package"
             exit 0
+          fi
+          if ! npm view "$package_name" name >/dev/null 2>&1; then
+            echo "::error title=Initial npm package bootstrap required::$package_name does not exist yet. Publish this reviewed main-branch artifact once with interactive 2FA, configure its Trusted Publisher, then rerun this workflow."
+            exit 1
           fi
           cd apps/mcp-launcher
           npm stage publish

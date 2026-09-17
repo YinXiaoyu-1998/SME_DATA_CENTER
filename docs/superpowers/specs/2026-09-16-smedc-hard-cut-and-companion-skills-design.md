@@ -87,15 +87,17 @@ The release is ordered as follows:
 
 1. Prepare and review the main-repository implementation branch while staging continues to run the
    old release.
-2. Rename the main GitHub repository to `smedc`, update its remote-dependent configuration, and
-   configure npm Trusted Publisher for the renamed repository and new package.
-3. Publish `smedc-mcp-launcher@0.5.0` from the reviewed release commit before merging the server
-   recommendation and Skill pins. Independently verify its package contents, executable,
-   self-check, production dependency audit, and clean installation.
-4. Immediately update SMEDC server recommendation metadata and both copies of the core Skill to the
+2. Freeze staging, retain the main GitHub repository name `SME_DATA_CENTER`, and rename the two
+   Skill repositories to their SMEDC names.
+3. Merge the reviewed release commit and complete native launcher acceptance. Because npm requires
+   a package to exist before Trusted Publisher or staged publishing can be configured, perform the
+   one-time first publish of `smedc-mcp-launcher@0.5.0` from that exact reviewed `main` artifact
+   with interactive 2FA and explicit human confirmation.
+4. Immediately configure npm Trusted Publisher for `YinXiaoyu-1998/SME_DATA_CENTER` and verify the
+   public package contents, executable, self-check, production dependency audit, and clean
+   installation.
+5. Immediately update SMEDC server recommendation metadata and both copies of the core Skill to the
    verified package, merge the coordinated hard-cut changes, and deploy the staging release.
-5. Rename the core-Skill and companion GitHub repositories and update repository metadata, links,
-   branch protections, and workflows to their SMEDC names before merging their final PRs.
 6. Delete old QA MCP entries, installed Skills, launcher credentials, and local application-support
    data; install only the new names and authenticate again.
 
