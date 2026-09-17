@@ -19,9 +19,10 @@ to macOS Codex and record Windows/OpenClaw as not run.
 
 Full manual acceptance must use fresh synthetic accounts, not the human owner's real account or an
 already-authenticated Keychain session. The controller creates a clearance-0 employee, a
-clearance-3 employee, and a clearance-0 admin in the same organization, generates throwaway
-passwords, controls Chrome to complete password setup/login, then deletes every account and all test
-data.
+clearance-3 employee, and a clearance-0 admin in the same organization and sends their one-time
+setup links to the human. The controller must not open setup links or type test credentials. The
+human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
+The controller then deletes every account and all test data after the run.
 
 A user-requested **scoped QA acceptance** may reuse the current authenticated launcher session
 instead of creating accounts when all of these conditions hold:
@@ -64,11 +65,11 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 
 ## Roles
 
-| Role                    | Allowed                                                                                                    | Forbidden                                                                                           |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Controller/release task | Sync main, run checks, execute operator CLI, verify safe state, run the official manual runner, clean data | Use employee credentials, paste setup links/tokens into reports, or weaken staging auth boundaries  |
-| Employee-client path    | Use only the official launcher and MCP tools through the configured agent                                  | Direct HTTP, DB, Qdrant, storage, Docker, cloud, logs, code inspection, or service lifecycle access |
-| Browser controller      | Type the generated synthetic test password only into first-party SMEDC browser pages                       | Put passwords/tokens in chat, env vars, files, MCP config, CLI args, docs, PRs, or logs             |
+| Role                    | Allowed                                                                                                          | Forbidden                                                                                           |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Controller/release task | Sync main, run checks, execute operator CLI, send setup links privately, verify safe state, and clean test data  | Open setup links, type test credentials, put credentials in durable artifacts, or weaken auth       |
+| Employee-client path    | Use only the official launcher and MCP tools through the configured agent                                        | Direct HTTP, DB, Qdrant, storage, Docker, cloud, logs, code inspection, or service lifecycle access |
+| Human test operator     | Open first-party SMEDC setup/login pages, choose and type synthetic passwords, and disclose them in private chat | Reuse a real/user-owned password or place setup links/passwords in files, reports, PRs, or logs     |
 
 ## Workflow
 
@@ -89,14 +90,14 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
    `manual-acceptance-admin-<runId>` `@example.invalid` emails. State `--role` and `--clearance`
    explicitly for each. For a scoped QA acceptance, apply the reuse preconditions above instead and
    record the safe current-user identity plus the `default-org` verification. Never use a real
-   customer/user email. Keep setup links and generated passwords out of reports and commits.
-7. Batch browser password setup remains required for full acceptance: after every required synthetic account has
-   been created, generate a distinct throwaway password per account, open all setup links in
-   separate Chrome tabs, and fill both password fields in every tab. State the exact number of
-   ready tabs, then make one consolidated handoff for the human to click **Set password** in each
-   tab. Do not pause once per account. Verify that every tab reports `Password saved` before
-   beginning launcher login. This is allowed for full manual acceptance; do not ask the human to
-   type or disclose any password.
+   customer/user email. Keep setup links and synthetic passwords out of reports and commits.
+7. Human-controlled password setup is required for full acceptance. Generate all required setup
+   links, send them directly to the human in the current private chat, and do not open or prefill
+   them. The human may use and disclose one shared throwaway password for all synthetic accounts.
+   Although links may be generated together, the human must open and finish them one at a time:
+   setup pages share a host-only cookie, so opening several before finishing the first can replace
+   the active setup session. After each confirmation, verify operator-side `passwordSet=true`
+   before proceeding. Never persist the links or password outside the private conversation.
 8. Verify the installed macOS launcher without exposing credentials:
 
    ```sh
@@ -114,9 +115,9 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     selected business action after the existing session and `default-org` membership are verified;
     do not create a synthetic login task merely for ceremony.
 11. The first task should be an install/login-style request. If the launcher is unauthenticated,
-    that task calls `smedc_login`; for synthetic full-flow accounts, the controller
-    finishes the browser login in Chrome using the generated test password. Do not ask the human to
-    type it.
+    that task calls `smedc_login` and surfaces the first-party device verification link. The human
+    completes browser login with the synthetic password; the controller must not control the
+    browser or type the credential.
 12. Subsequent tasks should be separate natural chats for default-level upload, explicitly requested
     high-level upload, low/high-clearance search, the low-clearance admin normal-read denial, the
     admin receipt-archive PAO, cold search, prompt-injection
@@ -181,8 +182,10 @@ Manual staging uploads must not accumulate.
 - The employee-client path must use the official launcher and MCP tools; controller DB/storage
   access is only for setup, verification, and cleanup.
 - Do not inspect, print, copy, or store Keychain/credential values.
-- Do not ask the user to expose passwords, setup links, access tokens, refresh tokens, authorization
-  codes, full DSNs, provider keys, or raw headers.
+- Real/user-owned passwords and every access token, refresh token, authorization code, full DSN,
+  provider key, and raw header must never be requested or exposed. Synthetic manual-test setup links
+  and passwords may appear only in the current private human-agent conversation and never in durable
+  artifacts or command output.
 - Do not report "beta-ready" unless the browser login, launcher persistence, business tools,
   quarantine/source-download coverage when in scope, and cleanup have actually run.
 - When Windows/OpenClaw are skipped by scope, say so explicitly.

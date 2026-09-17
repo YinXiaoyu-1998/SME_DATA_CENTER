@@ -106,8 +106,9 @@ describe("manual acceptance scenario manifest", () => {
     expect(skill).not.toContain("Act only as an employee-owned");
     expect(skill).not.toContain("test:manual:prepare");
     expect(skill).not.toContain("test:manual:serve");
-    expect(skill).toContain("Batch browser password setup");
-    expect(skill).toContain("Do not pause once per");
+    expect(skill).toContain("Human-controlled password setup");
+    expect(skill).toContain("one at a time");
+    expect(skill).toContain("must not open setup links");
   });
 
   it("keeps the official staging guide aligned with the live organization and remote controller", async () => {
@@ -123,11 +124,29 @@ describe("manual acceptance scenario manifest", () => {
     expect(guide).toContain("Confidentiality And Admin Model Acceptance");
     expect(guide).toContain("manual-acceptance-admin-<run-id>@example.invalid");
     expect(guide).toContain("archive_quarantine_certificates");
-    expect(guide).toContain("Batch Password Setup");
-    expect(guide).toContain("one consolidated handoff");
+    expect(guide).toContain("Human-Controlled Password Setup");
+    expect(guide).toContain("one at a time");
+    expect(guide).toMatch(/shared\s+host-only cookie/);
+    expect(guide).not.toContain("open every setup link");
     expect(guide).not.toContain("--org-id org_demo");
     expect(guide).not.toContain("staging:access-tunnel");
     expect(guide).not.toContain("dates changed to `2030-01-01`");
+  });
+
+  it("keeps the repository agent rules aligned with human-controlled synthetic credentials", async () => {
+    const agents = await readFile(path.join(root, "AGENTS.md"), "utf8");
+
+    expect(agents).toContain("must not open setup links or type test credentials");
+    expect(agents).toContain("may disclose that synthetic password in the current private chat");
+    expect(agents).toContain("one at a time");
+    expect(agents).toContain("Real or user-owned account passwords remain out of scope");
+  });
+
+  it("seeds the official QA organization name used by report and account acceptance", async () => {
+    const seed = await readFile(path.join(root, "packages", "db", "src", "seed.ts"), "utf8");
+
+    expect(seed).toContain('name: "SMEDC QA 示例餐饮管理有限公司"');
+    expect(seed).not.toContain('name: "Default Organization"');
   });
 
   it("requires async structured-upload polling in the employee skill and official acceptance guide", async () => {

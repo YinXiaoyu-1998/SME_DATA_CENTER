@@ -55,7 +55,7 @@
 - A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 SMEDC 人工验收”, or an equivalent request explicitly authorizes the official manual acceptance workflow.
 - Before running that workflow, read `skills/smedc-manual-test/SKILL.md` and `docs/implementation/official-manual-acceptance.md`. The old local email-login/HTTP-launcher manual acceptance document has been deleted; do not look for or recreate it.
 - The active default is official staging + macOS Codex + browser auth + `smedc-mcp-launcher@0.5.0`. Do not revive the deleted development email-login or HTTP-launcher assumptions.
-- Full manual acceptance must create a fresh synthetic account such as `manual-full-flow-<runId>@example.invalid`, generate its own throwaway password, control Chrome to complete password setup/login, then hard-delete that account after all test data is cleaned. Do not use the human owner's real account or require the human to type test credentials.
+- Full manual acceptance must create fresh synthetic accounts such as `manual-full-flow-<runId>@example.invalid`. The agent generates their one-time setup links and sends the links to the human in the current private chat, but must not open setup links or type test credentials. The human sets the password and may disclose that synthetic password in the current private chat. Several links may be generated together, but the human must complete them one at a time because the setup pages share a host-only cookie. Never write setup links or synthetic passwords to files, reports, PRs, environment variables, command arguments, or logs, and hard-delete every synthetic account after test-data cleanup.
 - Full manual acceptance must mimic normal low-technical employee usage with multiple new user-visible Codex tasks/sessions. Each employee-client task should receive exactly one ordinary natural-language request, such as install/login, upload a file, ask a business question, or query a structured file. Do not collapse the flow into one controller-style prompt that lists internal expected steps; the resulting task transcripts are part of the acceptance evidence and may be archived by the human afterward.
 - The employee-client path must use the official launcher and MCP tools. Controller DB/storage/Qdrant access is allowed only for operator setup, verification, and run-scoped cleanup.
 - Manual staging uploads must clean up after themselves; use `npm run test:official-manual` and confirm run-scoped DB/storage/Qdrant residue is gone before reporting success.
@@ -115,7 +115,7 @@ Required local variables are tracked in `docs/implementation/env-inventory.md`.
 
 ## Employee Client Design
 
-- Follow `docs/implementation/official-user-install-and-login.md` for official client installation, login, and session decisions. Keep the evolving design in that document rather than duplicating it here; never ask a user to expose an account password or authentication token to the agent/model.
+- Follow `docs/implementation/official-user-install-and-login.md` for official client installation, login, and session decisions. Keep the evolving design in that document rather than duplicating it here. Real or user-owned account passwords remain out of scope and must never be requested; the only password-sharing exception is the synthetic manual-test flow defined above.
 
 ## Alibaba Cloud CLI
 

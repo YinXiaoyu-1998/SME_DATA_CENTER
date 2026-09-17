@@ -6,7 +6,7 @@ const prisma = new PrismaClient({ adapter });
 
 const org = {
   id: "default-org",
-  name: "Default Organization"
+  name: "SMEDC QA 示例餐饮管理有限公司"
 };
 
 const employees = [
