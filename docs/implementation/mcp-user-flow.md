@@ -1,6 +1,6 @@
-# Enterprise Hub MCP User Flow
+# SMEDC MCP User Flow
 
-> **Release note:** `enterprise-hub-mcp-launcher@0.4.0` is publicly published and independently
+> **Release note:** `smedc-mcp-launcher@0.5.0` is publicly published and independently
 > verified. It is the pinned distribution for the confidentiality-level contract.
 > Native macOS/Windows package acceptance and the headless Linux loop pass; user-visible OpenClaw
 > and support-class-C phone/browser acceptance remain release evidence. There is no
@@ -9,42 +9,42 @@
 Last updated: 2026-09-13
 
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
-authoritative agent runbook is the dual-homed `enterprise-hub-mcp` skill. The official remote origin
+authoritative agent runbook is the dual-homed `smedc-mcp` skill. The official remote origin
 is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`enterprise-hub-mcp-launcher@0.4.0`.
+`smedc-mcp-launcher@0.5.0`.
 
 ## Participants And Credential Boundary
 
 ```mermaid
 flowchart LR
   Employee["Employee"] -->|"Natural-language request"| Agent["Employee-owned agent / MCP client"]
-  Agent -->|"Reads installation and recovery guidance"| Skill["enterprise-hub-mcp skill"]
+  Agent -->|"Reads installation and recovery guidance"| Skill["smedc-mcp skill"]
   Agent <-->|"Local stdio; no credential in configuration"| Launcher["Pinned local launcher"]
-  Launcher -->|"Opens or surfaces verification link"| Browser["Enterprise Hub HTTPS verification page"]
-  Browser -->|"Password + pairing confirmation"| Auth["Enterprise Hub identity endpoints"]
+  Launcher -->|"Opens or surfaces verification link"| Browser["SMEDC HTTPS verification page"]
+  Browser -->|"Password + pairing confirmation"| Auth["SMEDC identity endpoints"]
   Launcher <-->|"Device Authorization polling"| Auth
   Launcher -->|"Streamable HTTP POST /mcp\nopaque bearer access token"| Api["https://api.smedatacenter.xyz"]
   Api --> Data["Backend-authorized service\nAPI, storage, worker, MySQL, Qdrant"]
 ```
 
-| Boundary             | Credential rule                                                                                                                                                                         |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Employee -> agent    | The employee requests an action, but never gives a password, token, authorization code, or credential-store record to the agent.                                                        |
-| Agent -> launcher    | The configured local stdio entry contains no secret. The agent may invoke only `enterprise_hub_login`, `enterprise_hub_logout`, and `enterprise_hub_auth_status` for session lifecycle. |
-| Launcher -> browser  | The employee enters a password and confirms the agent instance only in the Enterprise Hub HTTPS page; the browser never returns credentials through the agent/model.                    |
-| Launcher -> API/MCP  | The launcher polls the token endpoint, protects and attaches opaque access tokens, and uses Keychain/Credential Manager or memory-only custody on genuinely headless hosts.             |
-| MCP -> business data | Every request is authenticated and backend-authorized. The skill/launcher never directly operate API infrastructure, database, Qdrant, storage, Docker, worker, or cloud resources.     |
+| Boundary             | Credential rule                                                                                                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Employee -> agent    | The employee requests an action, but never gives a password, token, authorization code, or credential-store record to the agent.                                                    |
+| Agent -> launcher    | The configured local stdio entry contains no secret. The agent may invoke only `smedc_login`, `smedc_logout`, and `smedc_auth_status` for session lifecycle.                        |
+| Launcher -> browser  | The employee enters a password and confirms the agent instance only in the SMEDC HTTPS page; the browser never returns credentials through the agent/model.                         |
+| Launcher -> API/MCP  | The launcher polls the token endpoint, protects and attaches opaque access tokens, and uses Keychain/Credential Manager or memory-only custody on genuinely headless hosts.         |
+| MCP -> business data | Every request is authenticated and backend-authorized. The skill/launcher never directly operate API infrastructure, database, Qdrant, storage, Docker, worker, or cloud resources. |
 
 ## Installation Or Update
 
-1. The employee asks their agent to install, update, or repair Enterprise Hub.
+1. The employee asks their agent to install, update, or repair SMEDC.
 2. The agent confirms macOS or Windows, checks current-user Node.js/npm availability, and uses the
    skill-approved exact launcher package in the platform versioned directory.
 3. Before modifying the invoking agent's MCP configuration, it inspects and creates a backup.
-   It then adds only an `enterprise-hub` **stdio** entry for the pinned launcher and leaves all
+   It then adds only an `smedc` **stdio** entry for the pinned launcher and leaves all
    unrelated entries unchanged.
 4. Codex uses its supported current configuration mechanism. OpenClaw uses
-   `openclaw mcp add`/`set`, then `openclaw mcp doctor enterprise-hub --probe`; it does not use
+   `openclaw mcp add`/`set`, then `openclaw mcp doctor smedc --probe`; it does not use
    direct remote OAuth storage. Other agents use guarded adaptive discovery and stop if their
    safe stdio configuration mechanism cannot be established.
 5. The agent runs the launcher's credential-free self-check and reloads/restarts the MCP client as
@@ -59,12 +59,12 @@ sequenceDiagram
   participant A as "Agent / MCP client"
   participant L as "Pinned launcher"
   participant B as "System browser"
-  participant S as "Enterprise Hub service"
+  participant S as "SMEDC service"
 
-  E->>A: "Upload/search/query Enterprise Hub"
-  A->>L: "enterprise_hub_auth_status or business tool"
+  E->>A: "Upload/search/query SMEDC"
+  A->>L: "smedc_auth_status or business tool"
   alt authentication_required
-    A->>L: "enterprise_hub_login"
+    A->>L: "smedc_login"
     L->>S: "Request Device Authorization"
     S-->>L: "Verification link and user code"
     L->>B: "Open or surface HTTPS verification link"
@@ -82,21 +82,21 @@ sequenceDiagram
   A-->>E: "Visible status or records"
 ```
 
-`authentication_required` means the agent calls `enterprise_hub_login`, waits for browser
+`authentication_required` means the agent calls `smedc_login`, waits for browser
 completion, and retries the original operation once. Browser cancellation, timeout, or failed login
 ends that attempt without an automatic browser loop or business-operation retry. `service_unavailable`
 means the agent reports the connection failure and does not open a browser or repair service
 infrastructure. `forbidden` and not-found results do not prove hidden data exists.
 
-`enterprise_hub_logout` is explicit. It removes the shared current-OS-user local session and asks
-the service to revoke it when reachable, which signs out all Enterprise Hub agents sharing that
+`smedc_logout` is explicit. It removes the shared current-OS-user local session and asks
+the service to revoke it when reachable, which signs out all SMEDC agents sharing that
 secure-store record. Removing one agent's MCP entry is not logout; complete uninstall is a separate,
 explicitly authorized lifecycle action.
 
 ## Business Tool Use
 
 - For “which account is logged in?” questions, call zero-input
-  `enterprise_hub_get_current_user`; return only its display name, email, role, and clearance. Do not infer
+  `smedc_get_current_user`; return only its display name, email, role, and clearance. Do not infer
   identity from local configuration or accept an employee selector.
 - At upload, set `confidentialityLevel` only when the employee explicitly supplies one; otherwise
   omit it and the service records level `0`. It is an integer from `0` through `3`, not a label.
@@ -106,7 +106,7 @@ explicitly authorized lifecycle action.
   `file.encoding="path"` input with an absolute local path; use inline base64 only for small files.
   Never reconstruct, normalize, translate, or retype the content.
 - Status polling is allowed only to observe service state. Do not start workers or operate any
-  Enterprise Hub service component.
+  SMEDC service component.
 - After a text/evidence or structured-table upload returns `202`, keep its Document ID and, for a
   structured upload, ImportBatch ID. Poll the matching status tool after 2 seconds, then 5 seconds,
   then 10 seconds, then every 15 seconds, up to 10 minutes. Report success only at a terminal
@@ -123,8 +123,8 @@ explicitly authorized lifecycle action.
   answer-quality verdict; the agent decides whether to query, narrow, or ask a clarification.
 - Treat evidence cursors as opaque same-query continuations. On `INVALID_CURSOR`, restart without
   it. On `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more.
-- `enterprise_hub_list_skills` returns directory metadata only. Do not execute an entry, generate a
-  report, or turn Enterprise Hub into a direct employee-facing AI service.
+- `smedc_list_skills` returns directory metadata only. Do not execute an entry, generate a
+  report, or turn SMEDC into a direct employee-facing AI service.
 
 ## Current Release Boundary
 

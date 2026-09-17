@@ -98,8 +98,8 @@ limits. Label keys and label arrays are not accepted.
 
 ## MCP surface
 
-MCP contracts mirror the HTTP boundary. `enterprise_hub_get_current_user` returns role and
-clearance. The former `enterprise_hub_list_labels` tool is absent. The three upload tools accept
+MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns role and
+clearance. The former `smedc_list_labels` tool is absent. The three upload tools accept
 optional numeric `confidentialityLevel`; callers must not fabricate it based on content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 

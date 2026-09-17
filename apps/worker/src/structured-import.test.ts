@@ -22,7 +22,7 @@ describe("structured import processing worker", () => {
   });
 
   it("applies a valid CSV import through the leased worker", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const stored = await storage.putObject({
       orgId: "default-org",
@@ -69,7 +69,7 @@ describe("structured import processing worker", () => {
   });
 
   it("preserves sheet lineage for single-sheet and multi-sheet XLSX imports", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
 
     const single = await storage.putObject({
@@ -122,7 +122,7 @@ describe("structured import processing worker", () => {
   });
 
   it("rejects invalid headers without publishing rows", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const stored = await storage.putObject({
       orgId: "default-org",
@@ -152,7 +152,7 @@ describe("structured import processing worker", () => {
   });
 
   it("rejects an unsupported structured file format without retrying", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const stored = await storage.putObject({
       orgId: "default-org",
@@ -183,7 +183,7 @@ describe("structured import processing worker", () => {
   });
 
   it("retries transient storage failures and marks the batch failed after max attempts", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const repository = createStructuredImportRepository({
       storageObjectKey: "missing-object",
@@ -207,7 +207,7 @@ describe("structured import processing worker", () => {
   });
 
   it("does not publish rows or terminal state after losing its lease", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const stored = await storage.putObject({
       orgId: "default-org",
@@ -237,7 +237,7 @@ describe("structured import processing worker", () => {
   });
 
   it("checks the lease against a fresh timestamp after structured parsing", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const stored = await storage.putObject({
       orgId: "default-org",
@@ -268,7 +268,7 @@ describe("structured import processing worker", () => {
   });
 
   it("does not reject or fail a batch after its lease is lost", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const invalid = await storage.putObject({
       orgId: "default-org",
@@ -304,7 +304,7 @@ describe("structured import processing worker", () => {
   });
 
   it("allows only one worker to claim and apply a contended structured import", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const stored = await storage.putObject({
       orgId: "default-org",
@@ -335,7 +335,7 @@ describe("structured import processing worker", () => {
   });
 
   it("keeps existing rows intact when atomic apply fails", async () => {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const stored = await storage.putObject({
       orgId: "default-org",

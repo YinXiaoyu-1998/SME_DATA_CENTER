@@ -1,4 +1,0 @@
-interface:
-  display_name: "Enterprise Hub Manual Test"
-  short_description: "Run repeatable local Codex acceptance tests"
-  default_prompt: "Use $enterprise-hub-manual-test to run the SME_DATA_CENTER natural cold-start acceptance suite in visible Codex tasks."

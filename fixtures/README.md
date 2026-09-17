@@ -1,6 +1,6 @@
 # Fixtures
 
-Test fixtures for the Enterprise Hub upload and processing paths. Files under
+Test fixtures for the SMEDC upload and processing paths. Files under
 `structured/` exercise the structured import pipeline (`csv`/`xlsx`); files
 under `evidence/` exercise the evidence document pipeline (`md`/`txt`/`docx`).
 Files under `manual-acceptance/` are used by the official staging manual acceptance
@@ -8,14 +8,14 @@ flow.
 
 ## Typical (accepted) files
 
-- `structured/maijia_dishes_20260706_20260712_first1000.xlsx` — first 1,000
-  rows of a real Maijia 菜品 export (title rows + header + data).
-- `structured/maijia_business_20260706_20260712_first1000.xlsx` — first 1,000
-  rows of a real Maijia 营业 export.
-- `structured/maijia_vip_20260809_20260809_first1000.xlsx` — first 1,000 rows
-  of a real Maijia 会员主题 export (rows 1–2 title/config, row 3 header, 997
+- `structured/synthetic_dishes_20260706_20260712_first1000.xlsx` — first 1,000
+  rows of a real Synthetic 菜品 export (title rows + header + data).
+- `structured/synthetic_business_20260706_20260712_first1000.xlsx` — first 1,000
+  rows of a real Synthetic 营业 export.
+- `structured/synthetic_vip_20260809_20260809_first1000.xlsx` — first 1,000 rows
+  of a real Synthetic 会员主题 export (rows 1–2 title/config, row 3 header, 997
   data rows). Parses as dataset `vip` with 0 validation errors.
-- `structured/maijia_dish_catalog_20260819.xlsx` — real Maijia 菜品目录 snapshot
+- `structured/synthetic_dish_catalog_20260819.xlsx` — real Synthetic 菜品目录 snapshot
   fixture. Import as `dish_catalog` with `snapshotDate=20260819`: the visible
   `总部菜品` sheet imports 1,123 rows, while the nonmatching `总部套餐` sheet is
   ignored with the safe `SCHEMA_NOT_MATCHED` summary. This fixture verifies that

@@ -31,7 +31,7 @@ describe("evidence routes", () => {
 
   it("uploads evidence documents and queues evidence indexing", async () => {
     const documentRepository = createDocumentRepository();
-    const storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-evidence-upload-"));
+    const storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-evidence-upload-"));
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
@@ -573,7 +573,7 @@ describe("evidence routes", () => {
       employeeRepository: createRepository([adminEmployee]),
       documentRepository: createDocumentRepository(),
       storageAdapter: new LocalFileSystemStorageAdapter({
-        root: await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-evidence-format-"))
+        root: await mkdtemp(path.join(os.tmpdir(), "smedc-evidence-format-"))
       }),
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,

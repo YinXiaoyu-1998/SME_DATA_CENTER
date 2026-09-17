@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildApiServer } from "./server.js";
 
 const nginxConfigPath = fileURLToPath(
-  new URL("../../../deploy/staging/nginx-enterprise-hub.conf", import.meta.url)
+  new URL("../../../deploy/staging/nginx-smedc.conf", import.meta.url)
 );
 
 function buildReadinessServer(): FastifyInstance {

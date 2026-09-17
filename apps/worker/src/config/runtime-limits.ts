@@ -76,7 +76,7 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
       { defaultValue: 8_589_934_592 }
     ),
     partitionImportWorkDirectory:
-      env["PARTITION_IMPORT_WORK_DIR"]?.trim() || "/var/lib/enterprise/partition-work",
+      env["PARTITION_IMPORT_WORK_DIR"]?.trim() || "/var/lib/smedc/partition-work",
     partitionImportMinFreeBytes: parsePositiveSafeInteger(env, "PARTITION_IMPORT_MIN_FREE_BYTES", {
       defaultValue: 12_884_901_888
     }),

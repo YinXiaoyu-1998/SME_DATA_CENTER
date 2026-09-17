@@ -11,8 +11,7 @@ import {
 } from "@smedc/domain";
 import { createStorageAdapter } from "@smedc/storage";
 
-const DEFAULT_LOCAL_DATABASE_URL =
-  "mysql://enterprise_hub:enterprise_hub_local_password@localhost:3306/enterprise_hub";
+const DEFAULT_LOCAL_DATABASE_URL = "mysql://smedc:smedc_local_password@localhost:3306/smedc";
 const DEFAULT_LOCAL_STORAGE_ROOT = "./.data/storage";
 const DEFAULT_READINESS_CHECK_TIMEOUT_MS = 5_000;
 
@@ -281,7 +280,7 @@ async function checkStorage(env: RuntimeEnv | undefined): Promise<void> {
       env?.["LOCAL_STORAGE_ROOT"] ?? process.env["LOCAL_STORAGE_ROOT"] ?? DEFAULT_LOCAL_STORAGE_ROOT
   };
   const storage = createStorageAdapter(effectiveEnv);
-  const body = Buffer.from("enterprise-hub-storage-readiness", "utf8");
+  const body = Buffer.from("smedc-storage-readiness", "utf8");
   const documentId = `readiness_${process.pid}_${Date.now()}`;
   let key: string | undefined;
 

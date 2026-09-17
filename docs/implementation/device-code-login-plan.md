@@ -30,7 +30,7 @@ macOS/Windows 保持 Keychain/Credential Manager 持久会话不变。实现以�
 - `LAUNCHER_VERSION` 升到 0.2.0；`oauth-client` 增加设备授权请求与轮询，处理
   `authorization_pending`、`slow_down`、`expired_token`。
 - 登录统一走 device 流程：可开浏览器时自动打开链接，否则返回链接给 agent。
-  `enterprise_hub_login` 立即返回 `{flow, verificationUriComplete, userCode, instanceName,
+  `smedc_login` 立即返回 `{flow, verificationUriComplete, userCode, instanceName,
 instanceHostname, openedBrowser}` 并在后台轮询；业务 MCP 调用有界等待会话就绪，超时返回
   `AUTHENTICATION_PENDING`。
 - `session` 增加存储抽象：有 secure store 用 Keychain/Credential Manager（现状不变），
@@ -40,7 +40,7 @@ instanceHostname, openedBrowser}` 并在后台轮询；业务 MCP 调用有界�
 ## 文档与技能
 
 - 提交本计划文档（PR 描述标注为 requested artifact）。
-- repo-local `skills/enterprise-hub-mcp/SKILL.md` 已更新 device 流程登录说明、B/C 投递方式与
+- repo-local `skills/smedc-mcp/SKILL.md` 已更新 device 流程登录说明、B/C 投递方式与
   内存态重登提示；PR #109 已把技能 pin 和 server recommended launcher 版本同步到 0.2.0。
 
 ## 测试计划
@@ -62,7 +62,7 @@ instanceHostname, openedBrowser}` 并在后台轮询；业务 MCP 调用有界�
    `AsyncEntry` 构造即抛 `PermissionDenied` 的问题（改为惰性构造，首次使用失败即落入内存态）。
    完整闭环已跑通（2026-08-07）：给 seed 员工设置真实密码后，无头容器内 launcher 生成 URL →
    脚本模拟员工在验证页输入真实密码完成 → launcher 后台轮询成功换到 token → 通过 launcher
-   调用 `enterprise_hub_get_current_user` 业务工具成功（`device_full_loop`）。
+   调用 `smedc_get_current_user` 业务工具成功（`device_full_loop`）。
 5. 人工验收（发布阶段，不在本 PR）：扩展 `npm run test:official-manual`，staging + 合成账号
    C 形态真机手机浏览器完成 device 登录。
 

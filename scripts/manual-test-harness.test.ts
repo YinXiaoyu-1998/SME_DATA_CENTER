@@ -36,10 +36,9 @@ describe("manual test runtime", () => {
       profile: "fake",
       mysqlPort: "3307",
       apiUrl: "http://127.0.0.1:3000",
-      databaseUrl:
-        "mysql://enterprise_hub:enterprise_hub_local_password@127.0.0.1:3307/enterprise_hub",
+      databaseUrl: "mysql://smedc:smedc_local_password@127.0.0.1:3307/smedc",
       qdrantUrl: "http://127.0.0.1:6333",
-      qdrantCollection: "enterprise_hub_evidence_manual_20260718_060000",
+      qdrantCollection: "smedc_evidence_manual_20260718_060000",
       llmProvider: "fake",
       rerankProvider: "fake"
     });
@@ -56,7 +55,7 @@ describe("manual test runtime", () => {
     });
 
     expect(runtime.mysqlPort).toBe("3317");
-    expect(runtime.databaseUrl).toContain("@127.0.0.1:3317/enterprise_hub");
+    expect(runtime.databaseUrl).toContain("@127.0.0.1:3317/smedc");
   });
 
   it("preserves explicit real-provider settings only for the real profile", () => {
@@ -150,10 +149,10 @@ describe("manual test target safety", () => {
   });
 
   it.each([
-    ["remote MySQL", { databaseUrl: "mysql://user:pass@db.example.com/enterprise_hub" }],
+    ["remote MySQL", { databaseUrl: "mysql://user:pass@db.example.com/smedc" }],
     ["unexpected database", { databaseUrl: "mysql://user:pass@127.0.0.1:3307/customer_data" }],
     ["remote Qdrant", { qdrantUrl: "https://qdrant.example.com" }],
-    ["shared collection", { qdrantCollection: "enterprise_hub_evidence_local" }],
+    ["shared collection", { qdrantCollection: "smedc_evidence_local" }],
     ["external storage", { storageRoot: "/tmp/manual-test-storage" }]
   ])("rejects %s", (_label, override) => {
     expect(() => assertSafeManualTestTarget({ ...safeRuntime(), ...override })).toThrow();
@@ -187,7 +186,7 @@ describe("manual test command parsing", () => {
 
 describe("manual test child logging", () => {
   it("captures stdout and stderr without requiring a pre-opened stdio file descriptor", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-manual-child-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "smedc-manual-child-"));
     temporaryDirectories.push(directory);
     const logPath = path.join(directory, "child.log");
     const logged = spawnLoggedChild({

@@ -93,7 +93,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     };
     const adapter = createStagingUploadDomainCleanupAdapter(
       {
-        DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+        DATABASE_URL: "mysql://operator:secret@staging.example/smedc",
         QDRANT_URL: "https://qdrant.example"
       },
       { prisma, storage, qdrant }
@@ -157,7 +157,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     } as unknown as PrismaClient;
     const adapter = createStagingUploadDomainCleanupAdapter(
       {
-        DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+        DATABASE_URL: "mysql://operator:secret@staging.example/smedc",
         QDRANT_URL: "https://qdrant.example"
       },
       {
@@ -192,20 +192,20 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
   it("rejects malformed or local Qdrant URLs before creating runtime providers", () => {
     expect(() =>
       createStagingUploadDomainCleanupAdapter({
-        DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+        DATABASE_URL: "mysql://operator:secret@staging.example/smedc",
         QDRANT_URL: "not-a-url"
       })
     ).toThrow("QDRANT_URL");
     expect(() =>
       createStagingUploadDomainCleanupAdapter({
-        DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+        DATABASE_URL: "mysql://operator:secret@staging.example/smedc",
         QDRANT_URL: "http://localhost:6333"
       })
     ).toThrow("QDRANT_URL");
     for (const qdrantUrl of ["http://[::1]:6333", "http://[0:0:0:0:0:0:0:1]:6333"]) {
       expect(() =>
         createStagingUploadDomainCleanupAdapter({
-          DATABASE_URL: "mysql://operator:secret@staging.example/enterprise_hub",
+          DATABASE_URL: "mysql://operator:secret@staging.example/smedc",
           QDRANT_URL: qdrantUrl
         })
       ).toThrow("QDRANT_URL");
@@ -214,7 +214,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
 
   it("allows the staging loopback Qdrant only when the database provably targets the staging RDS", () => {
     const stagingDatabaseUrl =
-      "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/enterprise_hub";
+      "mysql://smedc_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/smedc";
 
     for (const qdrantUrl of [
       "http://127.0.0.1:6333",
@@ -233,9 +233,9 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
 
   it("still refuses loopback Qdrant for any non-staging database target", () => {
     for (const databaseUrl of [
-      "mysql://operator:secret@staging.example/enterprise_hub",
-      "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/other_db",
-      "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3307/enterprise_hub"
+      "mysql://operator:secret@staging.example/smedc",
+      "mysql://smedc_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/other_db",
+      "mysql://smedc_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3307/smedc"
     ]) {
       expect(() =>
         assertStagingCleanupRuntimeTargets({
@@ -246,7 +246,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     }
     expect(() =>
       assertStagingCleanupRuntimeTargets({
-        DATABASE_URL: "mysql://enterprise_hub_app:secret@127.0.0.1:3307/enterprise_hub",
+        DATABASE_URL: "mysql://smedc_app:secret@127.0.0.1:3307/smedc",
         QDRANT_URL: "http://127.0.0.1:6333"
       })
     ).toThrow("DATABASE_URL");
@@ -254,7 +254,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
 
   it("requires both runtime URLs before any cleanup planning", () => {
     const stagingDatabaseUrl =
-      "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/enterprise_hub";
+      "mysql://smedc_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/smedc";
 
     expect(() => assertStagingCleanupRuntimeTargets({ DATABASE_URL: stagingDatabaseUrl })).toThrow(
       "DATABASE_URL and QDRANT_URL"

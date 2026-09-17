@@ -9,7 +9,7 @@ import { getStructuredRegistry } from "@smedc/domain";
  * service for a distinct reason (file format, encoding, header structure,
  * worksheet structure, or cell typing). Keep them small and independent of
  * any real customer export; the valid VIP slice lives separately at
- * fixtures/structured/maijia_vip_20260809_20260809_first1000.xlsx.
+ * fixtures/structured/synthetic_vip_20260809_20260809_first1000.xlsx.
  */
 
 const STRUCTURED_DIR = path.resolve("fixtures/structured");

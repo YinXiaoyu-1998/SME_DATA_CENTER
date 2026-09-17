@@ -14,13 +14,13 @@ describe("profilePartitionSource", () => {
     const result = await profilePartitionSource({
       dataset: "dishes",
       sourcePath: path.resolve(
-        "fixtures/structured/maijia_dishes_20260706_20260712_first1000.xlsx"
+        "fixtures/structured/synthetic_dishes_20260706_20260712_first1000.xlsx"
       ),
       xlsxReaderCommand: fixtureReaderCommand
     });
 
     expect(result).toMatchObject({
-      sourceBytes: 501_122,
+      sourceBytes: 159_632,
       totalRows: 997,
       dateMin: "2026-07-06",
       dateMax: "2026-07-06"

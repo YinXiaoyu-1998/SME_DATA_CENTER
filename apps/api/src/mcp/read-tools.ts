@@ -14,7 +14,7 @@ import {
 import type { McpRequestContext } from "./tool-handlers.js";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 
-const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.4.0";
+const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.5.0";
 
 export const READ_ONLY_MCP_TOOL_NAMES = [
   "smedc_get_current_user",

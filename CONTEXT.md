@@ -1,4 +1,4 @@
-# Enterprise Hub (企业资料中枢)
+# SMEDC (企业资料中枢)
 
 > ADR 0026 defines the merged implementation for `business` / `dishes`; staging remains row-based
 > until the linked hard migration is deployed and accepted.
@@ -95,7 +95,7 @@ _Avoid_: account, employee.
 
 **Employee-owned agent**:
 The general-purpose AI agent the employee talks to; it drives installation and use through the
-Enterprise Hub MCP skill and must never see credentials.
+SMEDC MCP skill and must never see credentials.
 _Avoid_: just "agent" when the speaker means the MCP host or the launcher.
 
 **MCP client / host**:
@@ -115,7 +115,7 @@ The launcher-bound, employee-visible identity of a login requester, shown on the
 and mirrored in the employee channel so the employee can confirm who receives the session.
 
 **Verification page**:
-The first-party Enterprise Hub page where the employee enters email/password and confirms the
+The first-party SMEDC page where the employee enters email/password and confirms the
 Agent instance before the login completes.
 
 **Secure store**:

@@ -16,7 +16,7 @@ import {
   type StructuredDatasetName
 } from "@smedc/domain";
 
-const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.4.0";
+const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.5.0";
 
 interface InlineUploadFile {
   name: string;
@@ -474,7 +474,7 @@ async function delegateMultipartRequest(
 }
 
 function createMultipartBody(parts: MultipartPart[]): { body: Buffer; contentType: string } {
-  const boundary = `enterprise-hub-mcp-${randomBytes(12).toString("hex")}`;
+  const boundary = `smedc-mcp-${randomBytes(12).toString("hex")}`;
   const chunks: Buffer[] = [];
 
   for (const part of parts) {

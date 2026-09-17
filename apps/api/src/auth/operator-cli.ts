@@ -169,7 +169,7 @@ export async function runOperatorCommand(
 
   const origin = new URL(dependencies.publicOrigin);
   if (origin.protocol !== "https:") {
-    throw new Error("ENTERPRISE_HUB_PUBLIC_ORIGIN must use HTTPS.");
+    throw new Error("SMEDC_PUBLIC_ORIGIN must use HTTPS.");
   }
   const secret = generateOpaqueSecret("eh_ps_");
   const grantInput = {
@@ -211,12 +211,12 @@ function isSyntheticManualTestEmail(email: string): boolean {
 
 async function main(): Promise<void> {
   const databaseUrl = process.env["DATABASE_URL"];
-  const publicOrigin = process.env["ENTERPRISE_HUB_PUBLIC_ORIGIN"];
+  const publicOrigin = process.env["SMEDC_PUBLIC_ORIGIN"];
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required.");
   }
   if (!publicOrigin) {
-    throw new Error("ENTERPRISE_HUB_PUBLIC_ORIGIN is required.");
+    throw new Error("SMEDC_PUBLIC_ORIGIN is required.");
   }
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
   const repository = createPrismaAuthOperatorRepository(prisma);

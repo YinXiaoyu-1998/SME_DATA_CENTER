@@ -54,7 +54,7 @@ apt-get install -y \
 
 # The worker image runs as the Node base image's uid/gid 1000. Keep large
 # partition work files off the container overlay and writable without root.
-install -d -o 1000 -g 1000 -m 0750 /opt/enterprise-hub/partition-work
+install -d -o 1000 -g 1000 -m 0750 /opt/smedc/partition-work
 
 install -m 0755 -d /etc/docker
 if [[ ! -e /etc/docker/daemon.json ]]; then
@@ -70,7 +70,7 @@ if [[ ! -e /etc/docker/daemon.json ]]; then
 EOF
 fi
 
-cat >/etc/nginx/sites-available/enterprise-hub-default <<'EOF'
+cat >/etc/nginx/sites-available/smedc-default <<'EOF'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -85,8 +85,8 @@ EOF
 
 rm -f /etc/nginx/sites-enabled/default
 ln -sfn \
-  /etc/nginx/sites-available/enterprise-hub-default \
-  /etc/nginx/sites-enabled/enterprise-hub-default
+  /etc/nginx/sites-available/smedc-default \
+  /etc/nginx/sites-enabled/smedc-default
 
 # 2 GiB swapfile backstop so transient memory spikes (for example XLSX ingestion)
 # degrade instead of freezing the kernel on this small instance. Idempotent.

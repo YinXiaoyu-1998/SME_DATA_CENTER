@@ -91,8 +91,8 @@ const GENERATED_FIXTURES = [
   "date-serials.xlsx"
 ];
 const REAL_FIXTURES = [
-  "maijia_dishes_20260706_20260712_first1000.xlsx",
-  "maijia_business_20260706_20260712_first1000.xlsx"
+  "synthetic_dishes_20260706_20260712_first1000.xlsx",
+  "synthetic_business_20260706_20260712_first1000.xlsx"
 ];
 
 describe("xlsx streaming reader", () => {

@@ -21,7 +21,7 @@ describe.runIf(process.env["RUN_OSS_INTEGRATION"] === "1")(
       expect(adapter).toBeInstanceOf(AliyunOssStorageAdapter);
 
       const documentId = `live_${randomUUID().replaceAll("-", "_")}`;
-      const originalBytes = Buffer.from(`enterprise-hub-live-oss-${randomUUID()}`, "utf8");
+      const originalBytes = Buffer.from(`smedc-live-oss-${randomUUID()}`, "utf8");
       let objectKey: string | undefined;
 
       try {

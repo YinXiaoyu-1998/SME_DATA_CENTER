@@ -90,7 +90,7 @@ FROM runtime-base AS worker
 COPY --from=worker-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build --chown=node:node /app/dist/release/worker.js ./dist/release/worker.js
-COPY --from=calamine-reader-build --chown=root:root /src/target/release/enterprise-hub-calamine-reader /usr/local/bin/enterprise-hub-calamine-reader
+COPY --from=calamine-reader-build --chown=root:root /src/target/release/smedc-calamine-reader /usr/local/bin/smedc-calamine-reader
 
 USER node
 

@@ -11,8 +11,8 @@ DSNs, or cloud secrets into chat, git, PRs, logs, screenshots, or support notes.
 Use this runbook only for:
 
 - macOS + Codex;
-- the official Enterprise Hub skill;
-- `enterprise-hub-mcp-launcher@0.4.0`;
+- the official SMEDC skill;
+- `smedc-mcp-launcher@0.5.0`;
 - browser password setup and Device Authorization login;
 - fixture or explicitly approved non-sensitive data.
 
@@ -119,8 +119,8 @@ Use the documented `.env`/Keychain/runtime secret locations. Never echo or copy 
 Create the employee and one-time password setup link:
 
 ```sh
-docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
-  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+docker compose --profile release --env-file /opt/smedc/runtime.env \
+  -f /opt/smedc/docker-compose.yml run -T --rm release-ops \
   node dist/release/auth-operator.js onboard \
   --org-id <org-id> \
   --email <beta-email> \
@@ -145,25 +145,25 @@ test-only identity that can later be hard-deleted.
 
 The employee should ask their agent naturally, for example:
 
-> 帮我安装并登录 Enterprise Hub，我要用它查公司的资料。
+> 帮我安装并登录 SMEDC，我要用它查公司的资料。
 
-The agent must follow `skills/enterprise-hub-mcp/SKILL.md`:
+The agent must follow `skills/smedc-mcp/SKILL.md`:
 
-- install `enterprise-hub-mcp-launcher@0.4.0` into the current-user versioned directory;
-- configure a local stdio MCP entry named `enterprise-hub`;
-- set only `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz`;
-- call `enterprise_hub_login` if authentication is required;
-- let the browser collect the employee email/password on the Enterprise Hub sign-in page;
+- install `smedc-mcp-launcher@0.5.0` into the current-user versioned directory;
+- configure a local stdio MCP entry named `smedc`;
+- set only `SMEDC_BASE_URL=https://api.smedatacenter.xyz`;
+- call `smedc_login` if authentication is required;
+- let the browser collect the employee email/password on the SMEDC sign-in page;
 - never request or receive the password in chat.
 
 Login timing:
 
-- `enterprise_hub_login` starts Device Authorization and opens its first-party verification link in
+- `smedc_login` starts Device Authorization and opens its first-party verification link in
   the system browser;
 - the employee enters their email and password there, not in the agent chat;
 - that browser login transaction is valid for 10 minutes;
 - if the employee waits longer than 10 minutes, the page expires and the agent should call
-  `enterprise_hub_login` again instead of reusing the old page;
+  `smedc_login` again instead of reusing the old page;
 - the launcher polls the token endpoint over its back channel and never asks the employee or agent
   to relay an authorization code or token;
 - normal access tokens last 10 minutes, and the launcher refreshes them using its operating-system
@@ -172,7 +172,7 @@ Login timing:
 Verification from a new Codex task:
 
 ```text
-帮我看看 Enterprise Hub 现在登录了吗，账号的身份和保密等级是什么？
+帮我看看 SMEDC 现在登录了吗，账号的身份和保密等级是什么？
 ```
 
 Expected:
@@ -185,7 +185,7 @@ Expected:
 Use a fixture or approved non-sensitive file. The employee prompt should remain natural:
 
 ```text
-帮我把这份资料放进 Enterprise Hub，之后大家能查到。
+帮我把这份资料放进 SMEDC，之后大家能查到。
 ```
 
 Acceptance checks:
@@ -214,7 +214,7 @@ fields. When the employee asks what data is available, the agent may use
 `describe_structured_dataset_coverage` to show readable applied source windows or snapshots, but it
 must not treat coverage as a completeness guarantee or infer hidden sources from missing entries.
 
-For follow-up questions such as “这份表一共有多少条记录？” the agent must query Enterprise Hub MCP
+For follow-up questions such as “这份表一共有多少条记录？” the agent must query SMEDC MCP
 with that context. It must not answer by reading the local CSV unless the employee explicitly asks
 for local-file inspection.
 
@@ -230,7 +230,7 @@ Recommended first structured prompt sequence:
 then, in a fresh task if testing persistence:
 
 ```text
-查一下我刚传到 Enterprise Hub 的那份菜品销售表，一共有多少条记录，销售额加起来是多少，销售额最高的两个菜是什么？
+查一下我刚传到 SMEDC 的那份菜品销售表，一共有多少条记录，销售额加起来是多少，销售额最高的两个菜是什么？
 ```
 
 ## Reset, Logout, And Re-Login
@@ -238,14 +238,14 @@ then, in a fresh task if testing persistence:
 Employee-initiated logout:
 
 ```text
-帮我退出 Enterprise Hub。
+帮我退出 SMEDC。
 ```
 
 Operator password reset:
 
 ```sh
-docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
-  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+docker compose --profile release --env-file /opt/smedc/runtime.env \
+  -f /opt/smedc/docker-compose.yml run -T --rm release-ops \
   node dist/release/auth-operator.js reset-password --employee-id <employee-id>
 ```
 
@@ -264,8 +264,8 @@ runner and `delete-test-account` command cover the narrow `manual-* @example.inv
 
 ```sh
 npm run test:official-manual -- cleanup --run-id=<run-id>
-docker compose --profile release --env-file /opt/enterprise-hub/runtime.env \
-  -f /opt/enterprise-hub/docker-compose.yml run -T --rm release-ops \
+docker compose --profile release --env-file /opt/smedc/runtime.env \
+  -f /opt/smedc/docker-compose.yml run -T --rm release-ops \
   node dist/release/auth-operator.js delete-test-account \
   --email manual-full-flow-<run-id>@example.invalid \
   --confirm-email manual-full-flow-<run-id>@example.invalid
@@ -290,7 +290,7 @@ Stop the pilot and diagnose before proceeding if:
 - unauthenticated MCP calls succeed;
 - a user can see data outside their organization or above their clearance;
 - uploaded fixture/test data cannot be cleaned up;
-- structured queries answer from a local file when the request is about Enterprise Hub data.
+- structured queries answer from a local file when the request is about SMEDC data.
 
 ## Before Real Customer Data
 

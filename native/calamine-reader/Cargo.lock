@@ -93,7 +93,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "enterprise-hub-calamine-reader"
+name = "smedc-calamine-reader"
 version = "0.1.0"
 dependencies = [
  "calamine",

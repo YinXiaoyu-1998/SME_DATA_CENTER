@@ -1,15 +1,15 @@
-# Enterprise Hub MCP Skill Scope And Review Checklist
+# SMEDC MCP Skill Scope And Review Checklist
 
-This document records the companion skill scope and review checklist for `skills/enterprise-hub-mcp/SKILL.md`.
+This document records the companion skill scope and review checklist for `skills/smedc-mcp/SKILL.md`.
 
 ## Skill Location
 
-- Skill name: `enterprise-hub-mcp`
-- Skill file: `skills/enterprise-hub-mcp/SKILL.md`
-- UI metadata: `skills/enterprise-hub-mcp/agents/openai.yaml`
+- Skill name: `smedc-mcp`
+- Skill file: `skills/smedc-mcp/SKILL.md`
+- UI metadata: `skills/smedc-mcp/agents/openai.yaml`
 
 The skill is repo-local and dual-homed with the standalone
-`YinXiaoyu-1998/enterprise-hub-mcp-skill` repository. The two `SKILL.md` copies must remain
+`YinXiaoyu-1998/smedc-mcp-skill` repository. The two `SKILL.md` copies must remain
 byte-identical. The standalone repository is the distributable copy; this repository's copy is the
 product-side source of synchronized guidance.
 
@@ -22,13 +22,13 @@ report generator, dashboard service, or skill execution platform.
 The official target profile must be actionable enough for an agent to:
 
 1. Verify Node.js 22 or newer plus npm, then install only
-   `enterprise-hub-mcp-launcher@0.4.0` with `npm install --prefix ... --save-exact` in the approved
+   `smedc-mcp-launcher@0.5.0` with `npm install --prefix ... --save-exact` in the approved
    macOS/Windows versioned directory; never install `latest` or self-update.
 2. Back up and idempotently configure only the invoking agent's local **stdio** entry. Codex uses
    its verified `mcp list`/`get`/`add`/`remove` CLI and bundled macOS binary fallback; OpenClaw uses
    `mcp add`/`set` and `mcp doctor --probe`, not direct remote OAuth storage.
-3. Use `enterprise_hub_auth_status`, `enterprise_hub_login`, `enterprise_hub_logout`, and the
-   zero-input `enterprise_hub_get_current_user`; account lookup returns only the authenticated
+3. Use `smedc_auth_status`, `smedc_login`, `smedc_logout`, and the
+   zero-input `smedc_get_current_user`; account lookup returns only the authenticated
    employee's display name, email, and role, while login never exposes passwords, tokens, device
    codes, headers, or secure-store records to the agent/model.
 4. Treat browser cancellation, `authentication_required`, `service_unavailable`, `forbidden`, and
@@ -41,7 +41,7 @@ The official target profile must be actionable enough for an agent to:
    only as opaque same-query continuations.
 7. Support per-agent removal, shared logout, and complete uninstall without deleting Node.js/npm,
    Employee Accounts, service data, or unrelated MCP configuration.
-8. Invoke the exact platform launcher path with only `ENTERPRISE_HUB_BASE_URL`: `serve` for stdio,
+8. Invoke the exact platform launcher path with only `SMEDC_BASE_URL`: `serve` for stdio,
    `self-check` for safe machine-readable version/origin/store/compatibility/connectivity status,
    and `logout` for safe local-deletion/remote-revocation status.
 
@@ -54,9 +54,9 @@ The official target profile must be actionable enough for an agent to:
 
 ## Safety Review Checklist
 
-- [x] Skill name is exactly `enterprise-hub-mcp`.
+- [x] Skill name is exactly `smedc-mcp`.
 - [x] Skill includes only the official remote employee profile.
-- [x] Skill pins `enterprise-hub-mcp-launcher@0.4.0`, rejects `latest`, and never directs launcher self-update.
+- [x] Skill pins `smedc-mcp-launcher@0.5.0`, rejects `latest`, and never directs launcher self-update.
 - [x] Skill contains no real tokens, passwords, customer data, endpoint secrets, or service-account material.
 - [x] Skill says MCP tools must use the HTTP API and inherit API authorization.
 - [x] Skill forbids direct DB/storage reads for data access.
@@ -78,7 +78,7 @@ The official target profile must be actionable enough for an agent to:
 Required checks:
 
 ```sh
-python3 /Users/xiaoyuyin/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/enterprise-hub-mcp
+python3 /Users/xiaoyuyin/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/smedc-mcp
 npm run format:check
 git diff --check
 ```

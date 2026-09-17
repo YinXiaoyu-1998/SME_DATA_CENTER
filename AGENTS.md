@@ -1,4 +1,4 @@
-# Enterprise Hub Agent Instructions
+# SMEDC Agent Instructions
 
 ## Scope Guardrails
 
@@ -24,9 +24,9 @@
   - documentation, plans, and reports;
   - `package-lock.json`.
     Call out any process-only artifacts such as execution plans, SDD reports, scratch ledgers, or handoff logs, and remove them from the PR unless the human explicitly wants them committed.
-- Enterprise Hub MCP skill is dual-homed:
-  - repo-local skill: `skills/enterprise-hub-mcp/`
-  - standalone skill repo: `YinXiaoyu-1998/enterprise-hub-mcp-skill`
+- SMEDC MCP skill is dual-homed:
+  - repo-local skill: `skills/smedc-mcp/`
+  - standalone skill repo: `YinXiaoyu-1998/smedc-mcp-skill`
 - When MCP tool behavior, API contracts, or usage guidance changes, update both the repo-local skill and the standalone skill repo. If the standalone repo is not already available locally, clone/fetch it from GitHub, create an independent branch there, make the matching skill/documentation change, and open/update a standalone skill PR. Do not assume a machine-specific checkout path.
 - Treat `apps/mcp-launcher/` and the MCP contracts bundled into its published artifact as one release boundary. Any change to launcher runtime behavior or bundled tool names/input schemas must bump the launcher version and its alignment/package tests in the same PR; never merge such a contract change while leaving the published launcher version unchanged.
 - Publish and independently verify the bumped launcher before updating server recommended-version metadata and both skill pins; complete that synchronization immediately after publication so staging never advertises or documents an unavailable launcher.
@@ -41,7 +41,7 @@
 
 ## Skill Content Boundaries
 
-- Keep the base `enterprise-hub-mcp` skill focused on MCP usage, login/install, tool parameters, status handling, authorization-safe error handling, general upload transport constraints, and structured-query field semantics.
+- Keep the base `smedc-mcp` skill focused on MCP usage, login/install, tool parameters, status handling, authorization-safe error handling, general upload transport constraints, and structured-query field semantics.
 - Do not put dataset-specific file transformation recipes in the base skill, such as exact table-header lists, instructions to rename/reorder headers, duplicate header metadata into detail rows, rewrite workbooks, or generate normalized replacement CSV/XLSX files for a particular business document type.
 - If a workflow needs dataset-specific repair or conversion behavior, implement it in the service or in a separate explicit skill for that workflow. The base skill may tell agents to upload original files and report service-returned validation errors.
 
@@ -52,9 +52,9 @@
 
 ## Local Manual Acceptance Trigger
 
-- A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 Enterprise Hub 人工验收”, or an equivalent request explicitly authorizes the official manual acceptance workflow.
-- Before running that workflow, read `skills/enterprise-hub-manual-test/SKILL.md` and `docs/implementation/official-manual-acceptance.md`. The old local email-login/HTTP-launcher manual acceptance document has been deleted; do not look for or recreate it.
-- The active default is official staging + macOS Codex + browser auth + `enterprise-hub-mcp-launcher@0.2.5`. Do not revive the deleted development email-login or HTTP-launcher assumptions.
+- A request such as “执行 SME_DATA_CENTER 手动测试”, “跑一遍 SMEDC 人工验收”, or an equivalent request explicitly authorizes the official manual acceptance workflow.
+- Before running that workflow, read `skills/smedc-manual-test/SKILL.md` and `docs/implementation/official-manual-acceptance.md`. The old local email-login/HTTP-launcher manual acceptance document has been deleted; do not look for or recreate it.
+- The active default is official staging + macOS Codex + browser auth + `smedc-mcp-launcher@0.5.0`. Do not revive the deleted development email-login or HTTP-launcher assumptions.
 - Full manual acceptance must create a fresh synthetic account such as `manual-full-flow-<runId>@example.invalid`, generate its own throwaway password, control Chrome to complete password setup/login, then hard-delete that account after all test data is cleaned. Do not use the human owner's real account or require the human to type test credentials.
 - Full manual acceptance must mimic normal low-technical employee usage with multiple new user-visible Codex tasks/sessions. Each employee-client task should receive exactly one ordinary natural-language request, such as install/login, upload a file, ask a business question, or query a structured file. Do not collapse the flow into one controller-style prompt that lists internal expected steps; the resulting task transcripts are part of the acceptance evidence and may be archived by the human afterward.
 - The employee-client path must use the official launcher and MCP tools. Controller DB/storage/Qdrant access is allowed only for operator setup, verification, and run-scoped cleanup.
@@ -72,7 +72,7 @@
 - Build the local Calamine XLSX reader: `npm run build:calamine-reader`
 - Run local worker loop: `npm run worker:dev`
 - Run one deterministic worker pass: `npm run worker:once`
-- Run the official MCP launcher: `ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher`
+- Run the official MCP launcher: `SMEDC_BASE_URL=https://api.smedatacenter.xyz npm run mcp:launcher`
 - Run local MCP smoke: `MYSQL_PORT=3307 npm run test:mcp`
 - Run official macOS Codex/staging manual acceptance: `npm run test:official-manual`
 - Run Phase 3 golden retrieval evaluation: `npm run test:phase3:golden`
@@ -81,7 +81,7 @@
 - Start local MySQL: `docker compose up -d mysql`
 - Start local MySQL + Qdrant: `docker compose up -d mysql qdrant`
 - Initialize local Qdrant evidence collection: `npm run qdrant:init`
-- Run local readiness checks: `DATABASE_URL='mysql://enterprise_hub:enterprise_hub_local_password@localhost:3307/enterprise_hub' npm run readyz:local`
+- Run local readiness checks: `DATABASE_URL='mysql://smedc:smedc_local_password@localhost:3307/smedc' npm run readyz:local`
 - Stop local services: `docker compose down`
 - Run local MVP demo loop: `MYSQL_PORT=3307 npm run test:integration`
 - During local testing and debugging, agents may freely remove or recreate local Docker containers and volumes created by this repository or stale local worktrees, including MySQL and Qdrant test data. This permission is local-only and never applies to staging/production hosts or real customer data.
@@ -137,4 +137,4 @@ When an agent performs local end-to-end, go-online, staging-readiness, or extern
 - Keep SSH keys and ACR credentials outside the repo; do not deploy the app until its MySQL, registry, secret, domain, and TLS readiness gates pass.
 - The canonical staging release boundary is `npm run deploy:staging`. After `.github/workflows/staging-deploy.yml` is present on `main`, successful `main` quality gates invoke that same command through the GitHub `staging` Environment. Prefer the workflow over an ad-hoc local release; use the local command only for an explicitly approved recovery or workflow diagnosis.
 - GitHub staging credentials are environment secrets named `ACR_PASSWORD`, `STAGING_CURSOR_SIGNING_SECRET`, and `STAGING_SSH_PRIVATE_KEY`. Non-secret target metadata is stored as environment variables. Agents may list names and update approved values through `gh`, but must never print secret values, copy them into repository files, or expose them in logs/PR text.
-- Staging workflows are serialized by the `enterprise-hub-staging` concurrency group. PR branches never deploy. Manual deploy/rollback must be dispatched from `main`; rollback restores the immediately previous image release and never reverses a Prisma migration.
+- Staging workflows are serialized by the `smedc-staging` concurrency group. PR branches never deploy. Manual deploy/rollback must be dispatched from `main`; rollback restores the immediately previous image release and never reverses a Prisma migration.

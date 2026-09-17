@@ -107,8 +107,8 @@ export function resolveLocalDatabaseTarget(env: NodeJS.ProcessEnv): LocalDatabas
     throw new Error("purge-data refuses to purge a non-local DATABASE_URL host.");
   }
 
-  if (databaseName !== "enterprise_hub") {
-    throw new Error("purge-data refuses to purge a database other than enterprise_hub.");
+  if (databaseName !== "smedc") {
+    throw new Error("purge-data refuses to purge a database other than smedc.");
   }
 
   return {

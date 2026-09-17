@@ -2,7 +2,7 @@
 
 Last verified: 2026-08-23
 
-This document tracks whether Enterprise Hub is ready for a first controlled beta user. It replaces
+This document tracks whether SMEDC is ready for a first controlled beta user. It replaces
 the withdrawn 2026-07-23 beta-token bridge snapshot; do not use any design that asks a user or
 agent to handle passwords, JWTs, opaque tokens, refresh credentials, or raw HTTP headers.
 
@@ -12,7 +12,7 @@ the project is ready to ingest customer-confidential or authoritative production
 
 ## Current Answer
 
-Enterprise Hub is ready for a **controlled macOS + Codex beta pilot with non-sensitive data**.
+SMEDC is ready for a **controlled macOS + Codex beta pilot with non-sensitive data**.
 
 It is **not yet ready for real customer data**. Recovery, alerts, retention/deletion policy, and
 selected operational drills still need owner approval and evidence before customer-confidential
@@ -30,7 +30,7 @@ separate acceptance gates before claiming broad desktop-agent support.
 | Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                     | deployed to staging; 0.1.x Authorization Code + PKCE remains server-compatible only                    |
 | Development auth      | old dev email/JWT login and staging JWT secret                                                             | removed from staging runtime/GitHub/local Keychain                                                     |
 | Public MCP            | unauthenticated public `/mcp`                                                                              | rejects unauthenticated requests; authenticated launcher calls succeed                                 |
-| Launcher package      | public npm package `enterprise-hub-mcp-launcher@0.4.0`                                                     | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass. |
+| Launcher package      | public npm package `smedc-mcp-launcher@0.5.0`                                                              | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass. |
 | macOS Codex client    | 0.1.x user-visible flow plus 0.3.0 native package acceptance                                               | passed at those scopes; full user-visible 0.3.0 rerun is not yet recorded                              |
 | Full macOS Codex flow | fresh synthetic account, 11 natural user-visible Codex sessions, upload/search/query/logout/reset/re-login | passed core auth/evidence lifecycle; structured-query usability observations remain                    |
 | Cleanup               | manual acceptance cleanup                                                                                  | removed run documents, import batch, Qdrant points, dish rows, identity, employee, session             |
@@ -48,7 +48,7 @@ The recommended first pilot is:
 
 - one real beta user;
 - macOS + Codex only;
-- official skill installation and `enterprise-hub-mcp-launcher@0.4.0`;
+- official skill installation and `smedc-mcp-launcher@0.5.0`;
 - browser password setup and Device Authorization login only;
 - fixture or explicitly approved non-sensitive documents;
 - one or a few simple visibility labels;
@@ -75,8 +75,8 @@ JWT secret is required for the first macOS + Codex pilot.
 ## Known Product/UX Observations From Manual Acceptance
 
 1. A vague structured prompt such as “this table” may lead an agent to inspect a locally attached
-   CSV instead of calling Enterprise Hub. The skill must instruct employee-owned agents to use
-   Enterprise Hub MCP for Enterprise Hub questions, and to treat local files only as upload inputs
+   CSV instead of calling SMEDC. The skill must instruct employee-owned agents to use
+   SMEDC MCP for SMEDC questions, and to treat local files only as upload inputs
    unless the employee explicitly asks for local-file inspection.
 2. An unbounded structured query can return older authorized rows from the same dataset. For
    recently uploaded tables, the agent should bind follow-up questions to the import result,
@@ -123,11 +123,11 @@ A first macOS + Codex beta pilot passes only when:
 
 - the beta user installs or repairs the skill/launcher without seeing command-line internals as a
   required manual step;
-- account password setup and login occur only in the Enterprise Hub browser page;
+- account password setup and login occur only in the SMEDC browser page;
 - no password, setup link, token, credential, header, or full DSN appears in chat, config, git,
   logs, or reports;
 - the launcher stores durable authentication in the operating-system secure store;
-- a new Codex task can list authenticated labels and call Enterprise Hub MCP tools;
+- a new Codex task can list authenticated labels and call SMEDC MCP tools;
 - fixture or approved non-sensitive evidence upload, indexing, and search succeed;
 - any structured follow-up query is scoped to the intended upload/window or asks for clarification;
 - logout and operator password reset revoke old access;

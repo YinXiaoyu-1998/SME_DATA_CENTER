@@ -28,7 +28,7 @@ describe("LocalFileSystemStorageAdapter", () => {
   });
 
   it("stores, stats, reads, and creates a local download URL for original file bytes", async () => {
-    storageRoot = await mkdtemp(path.join(tmpdir(), "enterprise-hub-storage-"));
+    storageRoot = await mkdtemp(path.join(tmpdir(), "smedc-storage-"));
     const adapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const originalBytes = Buffer.from("document bytes\nwith exact content", "utf8");
 
@@ -65,7 +65,7 @@ describe("LocalFileSystemStorageAdapter", () => {
   });
 
   it("does not keep stale content type metadata when an object is overwritten without content type", async () => {
-    storageRoot = await mkdtemp(path.join(tmpdir(), "enterprise-hub-storage-"));
+    storageRoot = await mkdtemp(path.join(tmpdir(), "smedc-storage-"));
     const adapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
 
     const firstWrite = await adapter.putObject({
@@ -93,7 +93,7 @@ describe("LocalFileSystemStorageAdapter", () => {
   });
 
   it("stores content type metadata for a 255-character public filename", async () => {
-    storageRoot = await mkdtemp(path.join(tmpdir(), "enterprise-hub-storage-"));
+    storageRoot = await mkdtemp(path.join(tmpdir(), "smedc-storage-"));
     const adapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const fileName = `${"f".repeat(251)}.csv`;
 
@@ -112,7 +112,7 @@ describe("LocalFileSystemStorageAdapter", () => {
   });
 
   it("completes multipart sources and streams immutable partition objects", async () => {
-    storageRoot = await mkdtemp(path.join(tmpdir(), "enterprise-hub-storage-"));
+    storageRoot = await mkdtemp(path.join(tmpdir(), "smedc-storage-"));
     const adapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
     const sourceKey = "structured-import-staging/org_1/pjob_1/source";
     const multipart = await adapter.createMultipartUpload({ key: sourceKey });

@@ -41,7 +41,7 @@ async function parseFixture(file: string): Promise<StructuredParseResult> {
 
 describe("rejected-upload fixtures", () => {
   test("the vip first-1000 slice is a valid typical case", async () => {
-    const file = `${FIXTURES_DIR}/maijia_vip_20260809_20260809_first1000.xlsx`;
+    const file = `${FIXTURES_DIR}/synthetic_vip_20260809_20260809_first1000.xlsx`;
     const { fileName, fileType } = fileNameAndType(file);
     const content = await readFile(file);
     expect(() => preflightStructuredFile({ fileName, fileType, content })).not.toThrow();
@@ -54,7 +54,7 @@ describe("rejected-upload fixtures", () => {
     expect(result.rows).toHaveLength(997);
     expect(result.rows[0]?.payload).toMatchObject({
       business_date: "2026-08-09",
-      store_name: "麦家小馆（上海沙龙店）",
+      store_name: "示例小馆（上海沙龙店）",
       member_card_type_name: "尊享友情卡-"
     });
   });

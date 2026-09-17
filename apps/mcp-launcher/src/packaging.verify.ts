@@ -65,7 +65,9 @@ describe("published launcher artifact", () => {
       publishConfig: { access: "public" }
     });
     const declarations = exec("tar", ["-xOf", tarballPath, "package/dist/index.d.ts"]);
-    expect(declarations).not.toMatch(/@enterprise-hub\/(?:mcp-contract|domain)/);
+    expect(declarations).not.toMatch(
+      new RegExp(["@enterprise", "hub/(?:mcp-contract|domain)"].join("-"))
+    );
     expect(declarations).not.toMatch(/@smedc\/(?:mcp-contract|domain)/);
   });
 

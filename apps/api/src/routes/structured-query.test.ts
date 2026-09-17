@@ -331,8 +331,8 @@ describe("structured query routes", () => {
             dataset: "dishes" as const,
             enterprises: [
               {
-                enterpriseKey: "maijia",
-                enterpriseName: "Maijia",
+                enterpriseKey: "synthetic",
+                enterpriseName: "Synthetic",
                 startDate: new Date("2026-09-07T00:00:00.000Z"),
                 endDate: new Date("2026-09-13T00:00:00.000Z"),
                 partitionCount: 14,
@@ -361,7 +361,7 @@ describe("structured query routes", () => {
       accessMode: "partition_extract",
       enterprises: [
         {
-          enterpriseName: "Maijia",
+          enterpriseName: "Synthetic",
           startDate: "2026-09-07",
           endDate: "2026-09-13",
           partitionCount: 14,

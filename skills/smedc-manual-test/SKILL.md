@@ -1,12 +1,12 @@
 ---
-name: enterprise-hub-manual-test
-description: Run or update the official SME_DATA_CENTER Enterprise Hub manual acceptance flow for staging, macOS Codex, official browser auth, pinned MCP launcher, business tool use, and cleanup.
+name: smedc-manual-test
+description: Run or update the official SME_DATA_CENTER SMEDC manual acceptance flow for staging, macOS Codex, official browser auth, pinned MCP launcher, business tool use, and cleanup.
 ---
 
-# Enterprise Hub Manual Test
+# SMEDC Manual Test
 
 Use this skill when the user asks to execute, rerun, validate, diagnose, or improve the
-SME_DATA_CENTER / Enterprise Hub manual acceptance flow.
+SME_DATA_CENTER / SMEDC manual acceptance flow.
 
 ## Current Acceptance Boundary
 
@@ -28,7 +28,7 @@ instead of creating accounts when all of these conditions hold:
 
 - the user explicitly scopes the run to selected business flows rather than the full account,
   browser-login, confidentiality, admin-PAO, logout, or password-reset gate;
-- `enterprise_hub_auth_status` is authenticated and `enterprise_hub_get_current_user` identifies
+- `smedc_auth_status` is authenticated and `smedc_get_current_user` identifies
   the expected QA employee;
 - the controller verifies through a read-only operator-side lookup that the employee belongs to
   organization ID `default-org`; the employee-client task must not receive database access or an
@@ -55,12 +55,12 @@ Read these files completely before acting:
 
 - `docs/implementation/official-manual-acceptance.md`
 - `docs/implementation/test-cases.md`
-- `skills/enterprise-hub-mcp/SKILL.md` for employee-client behavior
+- `skills/smedc-mcp/SKILL.md` for employee-client behavior
 
 If MCP tool behavior, API contracts, or usage guidance changes, update both:
 
-- repo-local skill `skills/enterprise-hub-mcp/`
-- standalone skill repo `YinXiaoyu-1998/enterprise-hub-mcp-skill`
+- repo-local skill `skills/smedc-mcp/`
+- standalone skill repo `YinXiaoyu-1998/smedc-mcp-skill`
 
 ## Roles
 
@@ -68,7 +68,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Controller/release task | Sync main, run checks, execute operator CLI, verify safe state, run the official manual runner, clean data | Use employee credentials, paste setup links/tokens into reports, or weaken staging auth boundaries  |
 | Employee-client path    | Use only the official launcher and MCP tools through the configured agent                                  | Direct HTTP, DB, Qdrant, storage, Docker, cloud, logs, code inspection, or service lifecycle access |
-| Browser controller      | Type the generated synthetic test password only into first-party Enterprise Hub browser pages              | Put passwords/tokens in chat, env vars, files, MCP config, CLI args, docs, PRs, or logs             |
+| Browser controller      | Type the generated synthetic test password only into first-party SMEDC browser pages                       | Put passwords/tokens in chat, env vars, files, MCP config, CLI args, docs, PRs, or logs             |
 
 ## Workflow
 
@@ -100,21 +100,21 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 8. Verify the installed macOS launcher without exposing credentials:
 
    ```sh
-   ENTERPRISE_HUB_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/Enterprise Hub/launcher/versions/0.4.0/node_modules/.bin/enterprise-hub-mcp-launcher" self-check
+   SMEDC_BASE_URL=https://api.smedatacenter.xyz \
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
 9. For full acceptance, ensure the launcher starts logged out and switch among only the synthetic
    accounts required by the procedure. For scoped QA acceptance, preserve the verified existing
-   session and never call `enterprise_hub_logout` merely to make the test start clean.
+   session and never call `smedc_logout` merely to make the test start clean.
 10. Create a sequence of new user-visible Codex tasks/sessions for the employee-client
     interactions. Each task receives exactly one normal employee request in ordinary language and
-    must follow `skills/enterprise-hub-mcp/SKILL.md`; it must not inspect service internals. In full
+    must follow `skills/smedc-mcp/SKILL.md`; it must not inspect service internals. In full
     acceptance, begin with the install/login task. In scoped QA acceptance, begin directly with the
     selected business action after the existing session and `default-org` membership are verified;
     do not create a synthetic login task merely for ceremony.
 11. The first task should be an install/login-style request. If the launcher is unauthenticated,
-    that task calls `enterprise_hub_login`; for synthetic full-flow accounts, the controller
+    that task calls `smedc_login`; for synthetic full-flow accounts, the controller
     finishes the browser login in Chrome using the generated test password. Do not ask the human to
     type it.
 12. Subsequent tasks should be separate natural chats for default-level upload, explicitly requested

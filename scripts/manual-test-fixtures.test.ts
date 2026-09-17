@@ -45,8 +45,8 @@ describe("manual acceptance scenario manifest", () => {
     const turns = manifest.tasks.flatMap((task) => task.turns);
     const forbiddenFragments = [
       "Act only as",
-      "$enterprise-hub-mcp",
-      "enterprise hub mcp",
+      "$smedc-mcp",
+      "SMEDC mcp",
       "MCP",
       "Base64",
       "原始字节",
@@ -92,7 +92,7 @@ describe("manual acceptance scenario manifest", () => {
 
   it("points the active skill at the official staging flow instead of the deleted local flow", async () => {
     const skill = await readFile(
-      path.join(root, "skills", "enterprise-hub-manual-test", "SKILL.md"),
+      path.join(root, "skills", "smedc-manual-test", "SKILL.md"),
       "utf8"
     );
 
@@ -132,7 +132,7 @@ describe("manual acceptance scenario manifest", () => {
 
   it("requires async structured-upload polling in the employee skill and official acceptance guide", async () => {
     const [skill, guide] = await Promise.all([
-      readFile(path.join(root, "skills", "enterprise-hub-mcp", "SKILL.md"), "utf8"),
+      readFile(path.join(root, "skills", "smedc-mcp", "SKILL.md"), "utf8"),
       readFile(path.join(root, "docs", "implementation", "official-manual-acceptance.md"), "utf8")
     ]);
 
@@ -163,7 +163,7 @@ describe("manual acceptance scenario manifest", () => {
     expect(runner).toContain('"download_structured_partitions"');
     expect(runner).toContain("Expected three published partitions");
     expect(runner).toContain("Expected invalid partition source to be rejected atomically");
-    expect(runner).toContain('const LAUNCHER_VERSION = "0.4.0"');
+    expect(runner).toContain('const LAUNCHER_VERSION = "0.5.0"');
     expect(runner).toContain("isLowClearanceAcceptanceEmployee(currentUser, expectedEmails)");
     expect(runner).toContain("gross_sales");
     expect(runner).not.toContain('field: "dish_sales_amount"');

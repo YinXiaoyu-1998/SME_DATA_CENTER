@@ -17,7 +17,7 @@ describe("MCP endpoint guards", () => {
     expect(isLoopbackHost("127.0.0.1:3000")).toBe(true);
     expect(isLoopbackHost("[::1]:3000")).toBe(true);
 
-    expect(isLoopbackHost("enterprise-hub.example.com")).toBe(false);
+    expect(isLoopbackHost("smedc.example.com")).toBe(false);
     expect(isLoopbackHost("127.0.0.2")).toBe(false);
     expect(isLoopbackHost("[::ffff:127.0.0.1]")).toBe(false);
     expect(isLoopbackHost("localhost.evil.example")).toBe(false);
@@ -93,7 +93,7 @@ describe("MCP endpoint guards", () => {
     expect(() => resolvePhase3ServiceListenHost({ HOST: "::" })).toThrow(
       "HOST must be loopback for the Phase 3 service listener."
     );
-    expect(() => resolvePhase3ServiceListenHost({ HOST: "enterprise-hub.example.com" })).toThrow(
+    expect(() => resolvePhase3ServiceListenHost({ HOST: "smedc.example.com" })).toThrow(
       "HOST must be loopback for the Phase 3 service listener."
     );
   });

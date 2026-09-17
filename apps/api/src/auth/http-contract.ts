@@ -33,9 +33,9 @@ export interface OAuthAuthorizationServerMetadata {
   grant_types_supported: ["authorization_code", "refresh_token", typeof DEVICE_CODE_GRANT_TYPE];
   code_challenge_methods_supported: ["S256"];
   token_endpoint_auth_methods_supported: ["none"];
-  smedc_launcher_package: "enterprise-hub-mcp-launcher";
-  smedc_launcher_minimum_version: "0.1.0";
-  smedc_launcher_recommended_version: "0.4.0";
+  smedc_launcher_package: "smedc-mcp-launcher";
+  smedc_launcher_minimum_version: "0.5.0";
+  smedc_launcher_recommended_version: "0.5.0";
 }
 
 export function authorizationRequest(query: AuthorizationQuery): ValidAuthorizationRequest {
@@ -137,9 +137,9 @@ export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMet
     grant_types_supported: ["authorization_code", "refresh_token", DEVICE_CODE_GRANT_TYPE],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    smedc_launcher_package: "enterprise-hub-mcp-launcher",
-    smedc_launcher_minimum_version: "0.1.0",
-    smedc_launcher_recommended_version: "0.4.0"
+    smedc_launcher_package: "smedc-mcp-launcher",
+    smedc_launcher_minimum_version: "0.5.0",
+    smedc_launcher_recommended_version: "0.5.0"
   };
 }
 

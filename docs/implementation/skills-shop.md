@@ -54,7 +54,7 @@ SHA-256、50 MiB 上限）一致。
 或无法得到唯一技能包根目录，则整个上传失败。
 
 **标准化示例**：`SKILL.md` + `scripts/run.py`，以及
-`maijia-business-analyse/SKILL.md` + `maijia-business-analyse/scripts/run.py`，标准化后表达同一种包结构。
+`smedc-business-analysis/SKILL.md` + `smedc-business-analysis/scripts/run.py`，标准化后表达同一种包结构。
 `archive/repo/skill/SKILL.md` 不会被递归识别为入口。
 
 **技术可行性**：现有代码已经使用 `yauzl` 流式读取 XLSX ZIP 中央目录，并实现了不安全路径、
@@ -96,7 +96,7 @@ SHA-256、50 MiB 上限）一致。
 并发上传者可能计算出相同结果。自动分配必须与版本记录创建处于同一个数据库并发控制边界，最终
 采用服务端返回的已分配版本。
 
-**Agent 指导要求**：技能包上传能力上线时，repo-local 与 standalone `enterprise-hub-mcp` skill
+**Agent 指导要求**：技能包上传能力上线时，repo-local 与 standalone `smedc-mcp` skill
 必须同步加入简短指导：用户明确给出版本时原样提交；用户未给出时省略版本字段、让服务端自动分配
 下一个 patch 版本，并向用户报告服务端实际返回的版本。功能实现前不得把尚不可用的上传指导写入
 现行 employee skill。

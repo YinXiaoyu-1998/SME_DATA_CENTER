@@ -37,7 +37,7 @@ describe("source document download routes", () => {
   });
 
   async function buildDownloadTestServer() {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-source-download-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-source-download-"));
     const documentRepository = createDocumentRepository();
     const quarantineCertificateRepository = createInMemoryQuarantineCertificateRepository(
       documentRepository.documents,

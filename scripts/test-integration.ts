@@ -31,7 +31,7 @@ import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 
 const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
-  `mysql://enterprise_hub:enterprise_hub_local_password@localhost:${mysqlPort}/enterprise_hub`;
+  `mysql://smedc:smedc_local_password@localhost:${mysqlPort}/smedc`;
 const DEFAULT_CURSOR_SIGNING_SECRET = "replace-with-local-development-cursor-secret";
 
 interface CommandResult {
@@ -98,13 +98,12 @@ const integrationEnv: NodeJS.ProcessEnv = {
   MYSQL_PORT: mysqlPort,
   DATABASE_URL: process.env["DATABASE_URL"] ?? DEFAULT_DATABASE_URL(mysqlPort),
   CURSOR_SIGNING_SECRET: process.env["CURSOR_SIGNING_SECRET"] ?? DEFAULT_CURSOR_SIGNING_SECRET,
-  ENTERPRISE_HUB_PUBLIC_ORIGIN:
-    process.env["ENTERPRISE_HUB_PUBLIC_ORIGIN"] ?? "https://api.smedatacenter.xyz",
+  SMEDC_PUBLIC_ORIGIN: process.env["SMEDC_PUBLIC_ORIGIN"] ?? "https://api.smedatacenter.xyz",
   STORAGE_DRIVER: "local",
   LOCAL_STORAGE_ROOT: storageRoot,
   QDRANT_URL: process.env["QDRANT_URL"] ?? "http://127.0.0.1:6333",
   QDRANT_COLLECTION_EVIDENCE:
-    process.env["QDRANT_COLLECTION_EVIDENCE"] ?? "enterprise_hub_evidence_integration",
+    process.env["QDRANT_COLLECTION_EVIDENCE"] ?? "smedc_evidence_integration",
   RETRIEVAL_CONFIG_VERSION: process.env["RETRIEVAL_CONFIG_VERSION"] ?? "phase3.retrieval.v1",
   LLM_PROVIDER: process.env["LLM_PROVIDER"] ?? "fake",
   LLM_MODEL: process.env["LLM_MODEL"] ?? "fake-rerank",
@@ -486,7 +485,7 @@ async function waitForMysqlHealth(): Promise<void> {
   await waitForCondition("MySQL health", async () => {
     const result = await run(
       "docker",
-      ["inspect", "-f", "{{.State.Health.Status}}", "enterprise-hub-mysql"],
+      ["inspect", "-f", "{{.State.Health.Status}}", "smedc-mysql"],
       {
         env: integrationEnv,
         rejectOnFailure: false
@@ -1474,7 +1473,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
 function workerLeaseIndexingResult() {
   return {
     retrievalConfigVersion: "phase3.worker-lease.integration",
-    qdrantCollection: "enterprise_hub_evidence_test",
+    qdrantCollection: "smedc_evidence_test",
     embeddingProvider: "fake",
     embeddingModel: "fake-embedding-v1",
     embeddingVersion: "fake-embedding-v1@phase3.worker-lease.integration",

@@ -17,14 +17,12 @@ describe("official manual acceptance staging database target", () => {
   it("accepts only the private staging RDS target inside the remote runtime", () => {
     expect(() =>
       assertStagingRuntimeDatabaseTarget(
-        "mysql://enterprise_hub_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/enterprise_hub"
+        "mysql://smedc_app:secret@rm-2ze2m5q387ydb9724.rwlb.cn-beijing.rds.aliyuncs.com:3306/smedc"
       )
     ).not.toThrow();
 
     expect(() =>
-      assertStagingRuntimeDatabaseTarget(
-        "mysql://enterprise_hub_app:secret@127.0.0.1:3307/enterprise_hub"
-      )
+      assertStagingRuntimeDatabaseTarget("mysql://smedc_app:secret@127.0.0.1:3307/smedc")
     ).toThrow("must run inside staging");
   });
 });
@@ -91,9 +89,9 @@ describe("official manual acceptance remote controller", () => {
       "--profile",
       "release",
       "--env-file",
-      "/opt/enterprise-hub/runtime.env",
+      "/opt/smedc/runtime.env",
       "-f",
-      "/opt/enterprise-hub/docker-compose.yml",
+      "/opt/smedc/docker-compose.yml",
       "run",
       "-T",
       "--rm",

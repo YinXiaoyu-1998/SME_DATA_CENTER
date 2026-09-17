@@ -4,7 +4,7 @@ dist/
 package-lock.json
 .env*
 .dockerignore
-deploy/staging/nginx-enterprise-hub.conf
+deploy/staging/nginx-smedc.conf
 .prettierignore
 docs/adr/
 docs/context/

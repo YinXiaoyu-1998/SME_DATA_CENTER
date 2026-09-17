@@ -98,7 +98,7 @@ describe("evidence search service", () => {
     const retrievalConfig = loadActiveRetrievalConfig(
       buildRetrievalConfigSeed({
         retrievalConfigVersion: "phase3.retrieval.v1",
-        qdrantCollection: "enterprise_hub_evidence_test"
+        qdrantCollection: "smedc_evidence_test"
       }),
       "phase3.retrieval.v1"
     );
@@ -130,9 +130,7 @@ describe("evidence search service", () => {
       throw new Error("Expected Qdrant request.");
     }
 
-    expect(request.url).toBe(
-      "http://127.0.0.1:6333/collections/enterprise_hub_evidence_test/points/query"
-    );
+    expect(request.url).toBe("http://127.0.0.1:6333/collections/smedc_evidence_test/points/query");
     expect(request.body.prefetch).toEqual([
       expect.objectContaining({ using: "dense", query: [0.1, 0.2, 0.3, 0.4] }),
       expect.objectContaining({
@@ -221,7 +219,7 @@ describe("evidence search service", () => {
       retrievalConfig: loadActiveRetrievalConfig(
         buildRetrievalConfigSeed({
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test"
+          qdrantCollection: "smedc_evidence_test"
         }),
         "phase3.retrieval.v1"
       ),
@@ -321,7 +319,7 @@ describe("evidence search service", () => {
       retrievalConfig: loadActiveRetrievalConfig(
         buildRetrievalConfigSeed({
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test"
+          qdrantCollection: "smedc_evidence_test"
         }),
         "phase3.retrieval.v1"
       ),
@@ -422,7 +420,7 @@ describe("API evidence rerank provider", () => {
       const retrievalConfig = loadActiveRetrievalConfig(
         buildRetrievalConfigSeed({
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test",
+          qdrantCollection: "smedc_evidence_test",
           llmProvider: "openai-compatible",
           embeddingModel: "text-embedding-v4",
           embeddingDimension: 1024,
@@ -488,7 +486,7 @@ describe("API evidence rerank provider", () => {
       const retrievalConfig = loadActiveRetrievalConfig(
         buildRetrievalConfigSeed({
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test",
+          qdrantCollection: "smedc_evidence_test",
           llmProvider: "openai-compatible",
           embeddingModel: "text-embedding-v4",
           embeddingDimension: 1024,
@@ -535,7 +533,7 @@ describe("API evidence rerank provider", () => {
       const retrievalConfig = loadActiveRetrievalConfig(
         buildRetrievalConfigSeed({
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test",
+          qdrantCollection: "smedc_evidence_test",
           llmProvider: "openai-compatible",
           embeddingModel: "text-embedding-v4",
           embeddingDimension: 1024,
@@ -585,7 +583,7 @@ describe("API evidence rerank provider", () => {
       const retrievalConfig = loadActiveRetrievalConfig(
         buildRetrievalConfigSeed({
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test",
+          qdrantCollection: "smedc_evidence_test",
           llmProvider: "openai-compatible",
           embeddingModel: "text-embedding-v4",
           embeddingDimension: 1024,

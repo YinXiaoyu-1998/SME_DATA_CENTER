@@ -5,14 +5,14 @@ part of an already authorized launcher update. Do not run it during unrelated bu
 
 ## Identify The Source And Target
 
-- Official repository: `https://github.com/YinXiaoyu-1998/enterprise-hub-mcp-skill`.
-- Installable directory: `skills/enterprise-hub-mcp/`; frontmatter name: `enterprise-hub-mcp`.
+- Official repository: `https://github.com/YinXiaoyu-1998/smedc-mcp-skill`.
+- Installable directory: `skills/smedc-mcp/`; frontmatter name: `smedc-mcp`.
 - Resolve the repository's default branch (currently `main`) and its current commit SHA. That
-  SHA identifies the skill revision; `enterprise-hub-mcp-launcher@...` identifies a separate npm
+  SHA identifies the skill revision; `smedc-mcp-launcher@...` identifies a separate npm
   package and cannot tell you whether the skill files are current.
 - Locate the copy loaded by the invoking agent. Respect an explicitly selected installation
-  path. The canonical current-user target is `~/.agents/skills/enterprise-hub-mcp` on
-  macOS/Linux-like systems and `%USERPROFILE%\.agents\skills\enterprise-hub-mcp` on Windows.
+  path. The canonical current-user target is `~/.agents/skills/smedc-mcp` on
+  macOS/Linux-like systems and `%USERPROFILE%\.agents\skills\smedc-mcp` on Windows.
   Do not create a second copy under `~/.codex/skills` by default. If the host loads a legacy or
   managed location, use its supported update path and verify which copy it will actually load;
   do not claim success after updating a different, inactive copy.
@@ -20,12 +20,12 @@ part of an already authorized launcher update. Do not run it during unrelated bu
 ## Retrieve And Replace
 
 1. Fetch a fresh copy into a temporary directory, using available Git or HTTPS tools. For
-   example, `git clone --depth 1 https://github.com/YinXiaoyu-1998/enterprise-hub-mcp-skill.git <temporary-checkout>`
+   example, `git clone --depth 1 https://github.com/YinXiaoyu-1998/smedc-mcp-skill.git <temporary-checkout>`
    followed by `git -C <temporary-checkout> rev-parse HEAD` retrieves the default branch and
    records its SHA. Without Git, resolve the default branch and SHA through the GitHub API,
    then download the repository archive for that exact SHA. Do not require a marketplace
-   entry, GitHub credentials for this public repository, or Enterprise Hub authentication.
-2. Read the fetched `skills/enterprise-hub-mcp/SKILL.md` and its update guidance before replacing
+   entry, GitHub credentials for this public repository, or SMEDC authentication.
+2. Read the fetched `skills/smedc-mcp/SKILL.md` and its update guidance before replacing
    anything. Verify the expected repository, directory, frontmatter name, and referenced files.
    Use files from one commit, not a mix of moving-branch downloads. Do not replace the skill with
    the repository README, a launcher npm package, or a fork discovered by a name search.
@@ -61,5 +61,5 @@ defer that unsupported launcher upgrade; do not invent a pin or use npm `latest`
 
 Older installed skills without this procedure cannot discover it retroactively. Bootstrap them
 once by giving the agent the official repository URL and requesting replacement of the installed
-`enterprise-hub-mcp` skill from `skills/enterprise-hub-mcp/`. Subsequent requests can simply name
-`enterprise-hub-mcp` or `enterprise-hub-mcp-skill`.
+`smedc-mcp` skill from `skills/smedc-mcp/`. Subsequent requests can simply name
+`smedc-mcp` or `smedc-mcp-skill`.

@@ -81,7 +81,7 @@ describe("read-only MCP tool handlers", () => {
     const result = await handlers.download_structured_partitions?.(
       {
         dataset: "business",
-        enterpriseName: "Maijia",
+        enterpriseName: "Synthetic",
         startDate: "20260907",
         endDate: "20260913"
       },

@@ -17,7 +17,7 @@
 - The official launcher is `smedc-mcp-launcher@0.5.0`, executable `smedc-mcp-launcher`, MCP entry `smedc`, and base-URL variable `SMEDC_BASE_URL`.
 - Staging runtime identities hard-cut to database `smedc`, database user `smedc_app`, ACR namespace `smedc`, runtime root `/opt/smedc`, compose/concurrency name `smedc-staging`, OSS prefixes `smedc/` and `smedc-readiness/`, and Qdrant collection `smedc_evidence`.
 - Branded tools are exactly `smedc_login`, `smedc_logout`, `smedc_auth_status`, `smedc_get_current_user`, and `smedc_list_skills`. Existing unbranded business-tool names remain unchanged.
-- `smedc_get_current_user.user.organizationName` comes from the authenticated organization record and is the only company-name source for business-report presentation.
+- `smedc_get_current_user.user.organizationName` comes from the authenticated organization record and is the default company-name source for business-report presentation. The standalone weekly and monthly renderers may accept an explicit non-blank `--company` title override; it does not change data scope. Diagnosis does not accept the override.
 - `enterpriseName` remains a structured-data selector. It must not replace or override `organizationName` in report headings.
 - The `delivery_ledger` detail profile is exactly `food-purchase-ledger-cn-v1`, title `食品经营单位进货台帐`, with the ten ordered Chinese columns from the approved specification. It excludes `序号`.
 - The Ledger CSV is UTF-8 with BOM, contains only the ten profile columns, preserves decimal/telephone strings, uses `YYYY-MM-DD`, protects against spreadsheet formulas, and writes atomically.
@@ -601,11 +601,11 @@ Add fixture identity data:
 }
 ```
 
-Assert all report `<h1>` titles contain `示例餐饮管理有限公司`, no report/config/current fixture contains the removed seed-customer names, and blank `organizationName` exits nonzero with a business-readable account-organization error.
+Assert diagnosis, weekly, and monthly report `<h1>` titles contain `示例餐饮管理有限公司` when no override is supplied; weekly and monthly use an explicit non-blank `--company` only when supplied. No report/config/current fixture contains the removed seed-customer names, and blank `organizationName` exits nonzero with a business-readable account-organization error before query planning.
 
 - [ ] **Step 3: Make organization name an explicit report input**
 
-Extend the run/profile/render pipeline with one field named `organization_name`. Populate it only from the saved result of `smedc_get_current_user`. Thread it through bundle metadata and HTML generation; do not infer it from filenames, partitions, stores, or enterprise selectors.
+Extend the run/profile/render pipeline with one field named `organization_name`. Populate it only from the saved result of `smedc_get_current_user`. Thread it through bundle metadata and HTML generation; do not infer it from filenames, partitions, stores, or enterprise selectors. Retain `--company` on the standalone weekly and monthly renderers as an explicit presentation-title override; blank overrides fail and the option never changes query scope. Diagnosis has no override.
 
 - [ ] **Step 4: Remove tenant-specific configuration and transformations**
 

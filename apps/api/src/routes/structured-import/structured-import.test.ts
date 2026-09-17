@@ -52,7 +52,7 @@ describe("structured imports", () => {
       eventLog?: string[];
     } = {}
   ) {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-structured-import-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-structured-import-"));
     const documentRepository = createDocumentRepository();
     const structuredImportRepository = createInMemoryStructuredImportRepository(
       documentRepository.documents,
@@ -257,7 +257,7 @@ describe("structured imports", () => {
 
     const response = await postStructuredImport(app, {
       dataset: "dish_catalog",
-      enterpriseName: "麦家",
+      enterpriseName: "示例",
       startDate: null,
       endDate: null,
       snapshotDate: "20260819",
@@ -275,7 +275,7 @@ describe("structured imports", () => {
     expect(response.json().importBatch).not.toHaveProperty("startDate");
     expect(response.json().importBatch).not.toHaveProperty("endDate");
     expect(response.json().document.storageObjectKey).toContain(
-      "u9ea6_u5bb6_dish_catalog_20260819.csv"
+      "u793a_u4f8b_dish_catalog_20260819.csv"
     );
     expect(structuredImportRepository.batches[0]).toMatchObject({
       dataset: "dish_catalog",
@@ -544,10 +544,10 @@ describe("structured imports", () => {
     const { app } = await buildStructuredImportTestServer();
 
     const response = await postStructuredImport(app, {
-      enterpriseName: "麦家",
+      enterpriseName: "示例",
       dataset: "vip",
       idempotencyKey: "xlsx-preface-success",
-      fileName: "麦家菜品记录.xlsx",
+      fileName: "示例菜品记录.xlsx",
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       body: await structuredWorkbook({
         dataset: "vip",
@@ -572,7 +572,7 @@ describe("structured imports", () => {
     const footer = ["合计", ...registry.fields.slice(1).map(() => "--")].join(",");
 
     const response = await postStructuredImport(app, {
-      enterpriseName: "麦家",
+      enterpriseName: "示例",
       dataset: "vip",
       idempotencyKey: "csv-summary-footer-success",
       fileName: "business.csv",

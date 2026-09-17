@@ -35,7 +35,7 @@ describe("auth primitives", () => {
       valid: false,
       reason: "common_password"
     });
-    expect(validatePassword("enterprisehub")).toEqual({
+    expect(validatePassword("smedatacenter")).toEqual({
       valid: false,
       reason: "common_password"
     });

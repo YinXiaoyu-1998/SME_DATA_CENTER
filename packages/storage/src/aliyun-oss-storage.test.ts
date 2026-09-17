@@ -87,7 +87,7 @@ describe("AliyunOssStorageAdapter", () => {
       endpoint: "https://oss-cn-beijing.aliyuncs.com",
       accessKeyId: "test-access-key",
       secretAccessKey: "test-secret-key",
-      keyPrefix: "enterprise-hub-tests/",
+      keyPrefix: "smedc-tests/",
       client: fake.client,
       presign: presign as unknown as NonNullable<AliyunOssStorageAdapterOptions["presign"]>
     });
@@ -108,7 +108,7 @@ describe("AliyunOssStorageAdapter", () => {
       hash: createHash("sha256").update(originalBytes).digest("hex")
     });
     expect([...fake.objects.keys()]).toEqual([
-      "enterprise-hub-tests/org/default-org/documents/doc_123/original/June_Report.csv"
+      "smedc-tests/org/default-org/documents/doc_123/original/June_Report.csv"
     ]);
     await expect(adapter.statObject(storedObject.key)).resolves.toEqual(storedObject);
     await expect(readStream(await adapter.getObjectStream(storedObject.key))).resolves.toEqual(
@@ -142,7 +142,7 @@ describe("AliyunOssStorageAdapter", () => {
       endpoint: "https://oss-cn-beijing.aliyuncs.com",
       accessKeyId: "test-access-key",
       secretAccessKey: "test-secret-key",
-      keyPrefix: "enterprise-hub",
+      keyPrefix: "smedc",
       client: fake.client
     });
 

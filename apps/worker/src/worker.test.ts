@@ -190,7 +190,7 @@ describe("processing worker", () => {
   });
 
   async function createStorage() {
-    storageRoot = await mkdtemp(path.join(os.tmpdir(), "enterprise-hub-worker-"));
+    storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-worker-"));
     return new LocalFileSystemStorageAdapter({ root: storageRoot });
   }
 
@@ -221,7 +221,7 @@ describe("processing worker", () => {
       async indexDocument() {
         return {
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test",
+          qdrantCollection: "smedc_evidence_test",
           embeddingProvider: "fake",
           embeddingModel: "fake-embedding-v1",
           embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
@@ -325,8 +325,8 @@ describe("processing worker", () => {
       partitionImport: {
         jobId: "pjob_1",
         dataset: "business",
-        enterpriseKey: "maijia",
-        enterpriseName: "Maijia",
+        enterpriseKey: "synthetic",
+        enterpriseName: "Synthetic",
         confidentialityLevel: 0,
         originalFileName: "business.xlsx",
         sourceByteSize: 1n,
@@ -466,7 +466,7 @@ describe("processing worker", () => {
         indexedInputs.push(input.content.toString("utf8"));
         return {
           retrievalConfigVersion: "phase3.retrieval.v1",
-          qdrantCollection: "enterprise_hub_evidence_test",
+          qdrantCollection: "smedc_evidence_test",
           embeddingProvider: "fake",
           embeddingModel: "fake-embedding-v1",
           embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",

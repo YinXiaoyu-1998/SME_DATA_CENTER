@@ -39,8 +39,8 @@ describe("runtime image contracts", () => {
     const workerSection = dockerStage("worker");
 
     expect(dockerfile).toContain("AS calamine-reader-build");
-    expect(workerSection).toContain("enterprise-hub-calamine-reader");
-    expect(apiSection).not.toContain("enterprise-hub-calamine-reader");
+    expect(workerSection).toContain("smedc-calamine-reader");
+    expect(apiSection).not.toContain("smedc-calamine-reader");
   });
 
   it("provides release operations as an explicit ephemeral Compose profile", () => {
@@ -56,20 +56,20 @@ describe("runtime image contracts", () => {
     expect(releaseOpsDockerfile).toContain("dist/release/staging-upload-domain-cleanup.js");
     expect(releaseOpsDockerfile).toContain('CMD ["node", "dist/release/readiness.js"]');
     expect(compose).toContain('profiles: ["release"]');
-    expect(compose).toContain("${ENTERPRISE_HUB_RELEASE_OPS_IMAGE}");
+    expect(compose).toContain("${SMEDC_RELEASE_OPS_IMAGE}");
     expect(releaseOpsSection).not.toContain("restart:");
     expect(releaseOpsSection).not.toContain("depends_on:");
   });
 
   it("passes the public origin to release operations", () => {
     expect(composeService("release-ops")).toContain(
-      "ENTERPRISE_HUB_PUBLIC_ORIGIN: ${ENTERPRISE_HUB_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}"
+      "SMEDC_PUBLIC_ORIGIN: ${SMEDC_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}"
     );
   });
 
   it("mounts a dedicated worker partition scratch directory", () => {
     expect(composeService("worker")).toContain(
-      "/opt/enterprise-hub/partition-work:/var/lib/enterprise-hub/partition-work"
+      "/opt/smedc/partition-work:/var/lib/smedc/partition-work"
     );
   });
 });
