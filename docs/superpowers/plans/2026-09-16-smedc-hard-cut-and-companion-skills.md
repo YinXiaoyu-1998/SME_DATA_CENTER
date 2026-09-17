@@ -413,7 +413,7 @@ Set:
 }
 ```
 
-Change repository/homepage/bugs links to `YinXiaoyu-1998/smedc`. Update the release workflow workspace, package name, and tag prefix to `smedc-mcp-launcher-v*` while retaining native macOS/Windows acceptance and Trusted Publisher staging.
+Keep repository/homepage/bugs links on `YinXiaoyu-1998/SME_DATA_CENTER`. Update the release workflow workspace, package name, and tag prefix to `smedc-mcp-launcher-v*` while retaining native macOS/Windows acceptance and Trusted Publisher staging.
 
 - [ ] **Step 6: Verify the renamed code contract**
 
@@ -777,7 +777,7 @@ Each PR description includes scope, tests, environment changes, human decisions,
 **Interfaces:**
 
 - Consumes: PR-ready reviewed branches and explicit human confirmation at this external-mutation gate.
-- Produces: renamed repositories, updated remotes/publisher trust, and staging frozen on the last known-good release.
+- Produces: renamed Skill repositories, updated remotes/publisher trust, and staging frozen on the last known-good release. The main service repository intentionally retains its existing `SME_DATA_CENTER` name.
 
 - [ ] **Step 1: Stop and request explicit confirmation**
 
@@ -792,7 +792,6 @@ After confirmation, use `gh workflow disable staging-deploy.yml --repo YinXiaoyu
 Verify `gh repo rename --help`, then rename exactly:
 
 ```text
-YinXiaoyu-1998/SME_DATA_CENTER                  -> YinXiaoyu-1998/smedc
 YinXiaoyu-1998/enterprise-hub-mcp-skill         -> YinXiaoyu-1998/smedc-mcp-skill
 YinXiaoyu-1998/maijia-business-analyses-smedc   -> YinXiaoyu-1998/smedc-companion-skills
 ```
@@ -801,7 +800,7 @@ Update each local `origin`, fetch, and verify default branch, branch protection,
 
 - [ ] **Step 4: Configure and verify npm Trusted Publisher**
 
-Set the publisher to repository `YinXiaoyu-1998/smedc` and workflow `.github/workflows/launcher-release.yml`. If npm requires an interactive owner-only console action that cannot be completed safely by the agent, stop with only that exact action requested; do not ask for an npm token.
+Set the publisher to repository `YinXiaoyu-1998/SME_DATA_CENTER` and workflow `.github/workflows/launcher-release.yml`. If npm requires an interactive owner-only console action that cannot be completed safely by the agent, stop with only that exact action requested; do not ask for an npm token.
 
 ## Task 11: Merge The Release Boundary And Publish Launcher 0.5.0
 
@@ -868,7 +867,7 @@ ACR Personal Edition requires the owner to create namespace `smedc` and reposito
 
 - [ ] **Step 4: Re-enable and dispatch staging deployment**
 
-Enable `staging-deploy.yml` in `YinXiaoyu-1998/smedc`, then dispatch a deploy from `main`. Verify health, readiness boundary, image SHA, OAuth metadata package/version, and that the service exposes the SMEDC branded tool contract.
+Enable `staging-deploy.yml` in `YinXiaoyu-1998/SME_DATA_CENTER`, then dispatch a deploy from `main`. Verify health, readiness boundary, image SHA, OAuth metadata package/version, and that the service exposes the SMEDC branded tool contract.
 
 - [ ] **Step 5: Destructively reset only the QA client state**
 
