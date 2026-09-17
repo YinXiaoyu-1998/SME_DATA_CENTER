@@ -59,7 +59,7 @@ describe("published launcher artifact", () => {
       license: "MIT",
       bin: { "smedc-mcp-launcher": "dist/index.js" },
       repository: {
-        url: "git+https://github.com/YinXiaoyu-1998/smedc.git",
+        url: "git+https://github.com/YinXiaoyu-1998/SME_DATA_CENTER.git",
         directory: "apps/mcp-launcher"
       },
       publishConfig: { access: "public" }

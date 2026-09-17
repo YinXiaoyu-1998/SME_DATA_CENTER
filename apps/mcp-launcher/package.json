@@ -5,12 +5,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YinXiaoyu-1998/smedc.git",
+    "url": "git+https://github.com/YinXiaoyu-1998/SME_DATA_CENTER.git",
     "directory": "apps/mcp-launcher"
   },
-  "homepage": "https://github.com/YinXiaoyu-1998/smedc#readme",
+  "homepage": "https://github.com/YinXiaoyu-1998/SME_DATA_CENTER#readme",
   "bugs": {
-    "url": "https://github.com/YinXiaoyu-1998/smedc/issues"
+    "url": "https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues"
   },
   "publishConfig": {
     "access": "public"

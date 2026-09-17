@@ -569,8 +569,8 @@ configuration, but it must not contain a second copy of launcher source.
 
 Release status during the SMEDC hard-cut branch: code and repo-local Skill guidance target
 `smedc-mcp-launcher@0.5.0`, the `smedc` MCP entry, and the canonical main-repository target
-`YinXiaoyu-1998/smedc`. Public npm publication of 0.5.0, the GitHub repository rename, Trusted
-Publisher retargeting, and server recommendation synchronization are still pending the explicit
+`YinXiaoyu-1998/SME_DATA_CENTER`. Public npm publication of 0.5.0, the Skill repository renames, Trusted
+Publisher configuration, and server recommendation synchronization are still pending the explicit
 external-gate tasks. Until those gates complete, server metadata deliberately continues to recommend
 the currently published launcher package/version. The earlier independently verified public
 launcher release and headless Linux container loop remain compatibility evidence. Npm provenance

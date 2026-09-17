@@ -13,7 +13,7 @@ describe("official user install and login documentation", () => {
 
     expect(doc).toContain("launcher 0.5.0 is the code and Skill target");
     expect(doc).toContain("`smedc-mcp-launcher@0.5.0`");
-    expect(doc).toContain("`YinXiaoyu-1998/smedc`");
+    expect(doc).toContain("`YinXiaoyu-1998/SME_DATA_CENTER`");
     expect(doc).toContain("Public npm publication of 0.5.0");
     expect(doc).toContain("server recommendation synchronization are still pending");
     expect(doc).toContain("server metadata deliberately continues to recommend");

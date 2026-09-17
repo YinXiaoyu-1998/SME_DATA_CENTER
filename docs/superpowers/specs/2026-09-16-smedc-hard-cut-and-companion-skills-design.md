@@ -51,7 +51,7 @@ The hard cut uses the following names:
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Product                                  | `SMEDC`                                                                                           |
 | Product expansion                        | `Small and Medium Enterprises Data Center`                                                        |
-| Main GitHub repository                   | `YinXiaoyu-1998/smedc`                                                                            |
+| Main GitHub repository                   | `YinXiaoyu-1998/SME_DATA_CENTER`                                                                  |
 | Root package                             | `smedc`                                                                                           |
 | Workspace package scope                  | `@smedc/*`                                                                                        |
 | Core Skill                               | `smedc-mcp`                                                                                       |
