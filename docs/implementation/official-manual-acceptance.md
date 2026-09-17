@@ -1,6 +1,6 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-09-14
+Last updated: 2026-09-17
 
 This is the active manual acceptance flow for a real beta-style SMEDC user on macOS
 Codex. The old local Phase 3 email-login/HTTP-launcher manual acceptance document has been deleted
@@ -20,7 +20,7 @@ The acceptance run must exercise both sides of the real product boundary:
 | Area                                | Who performs it                   | Required proof                                                                                                                                            |
 | ----------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, explicit role/clearance, and setup link.                                                      |
-| Password setup/reset                | Controller-controlled browser     | Agent-generated test password is entered only into SMEDC HTTPS pages, never reports.                                                                      |
+| Password setup/reset                | Human-controlled browser          | The controller sends first-party setup links; the human chooses and enters synthetic passwords.                                                           |
 | Client installation                 | Employee-owned agent via skill    | Pinned `smedc-mcp-launcher@0.5.0` is installed and configured as a Codex stdio MCP.                                                                       |
 | Durable login                       | Launcher + system browser         | `smedc_login` completes Device Authorization and stores durable credential safely.                                                                        |
 | Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                                                                    |
@@ -45,17 +45,17 @@ expected outcomes is only a guided conformance smoke, not full manual acceptance
 
 ## Password And Secret Rules
 
-- Never ask the employee to paste a password, setup token, access token, durable credential,
-  authorization code, Keychain record, or raw header into chat, files, env vars, or MCP config.
+- Never ask for or expose a real/user-owned password, access token, durable credential,
+  authorization code, Keychain record, or raw header.
 - Password setup and login are completed only in the first-party browser page at
   `https://api.smedatacenter.xyz`.
 - For full manual acceptance, do not use the human owner's real account or existing Keychain
-  session. The controller creates a fresh synthetic account, generates a temporary test password,
-  controls Chrome to set and use it, then deletes the account and all test data. The password is a
-  throwaway test secret and must not be written to reports, PRs, docs, env files, or logs.
-- Operator setup links contain a one-time secret in the URL fragment. Open them directly in the
-  browser or deliver them through a trusted private channel; do not paste full links into reports,
-  PR descriptions, or logs.
+  session. The controller creates fresh synthetic accounts and sends their setup links to the human
+  in the current private chat, but never opens the links or types credentials. The human may choose,
+  type, and disclose a shared synthetic password in that chat.
+- Operator setup links contain a one-time secret in the URL fragment. They and synthetic passwords
+  may appear in the current private human-agent conversation, but never in reports, PR descriptions,
+  repository files, environment variables, command arguments, or logs.
 - The manual runner prints only safe run ids, document ids, report paths, and non-secret status.
 
 ## Preconditions
@@ -173,19 +173,19 @@ docker compose --profile release --env-file /opt/smedc/runtime.env \
 
 The command prints exactly one password setup link. Do not store that full link in git or reports.
 
-### Batch Password Setup
+### Human-Controlled Password Setup
 
-Create every synthetic account required for the run before opening any password page. For the
-standard confidentiality run this means three accounts; if an added acceptance slice needs more,
-create all of those accounts first as well. Generate a distinct throwaway password for each account,
-open every setup link in its own Chrome tab, and fill both password fields in every tab before asking
-the human to intervene.
+Create every synthetic account required for the run and send its one-time setup link directly to the
+human in the current private chat. The controller must not open, prefill, or submit any setup page.
+The human chooses and types the synthetic password and may disclose it in that chat; one shared test
+password is acceptable for all accounts in the same disposable run.
 
-Then tell the human the exact number of ready tabs and make one consolidated handoff: they click
-**Set password** once in each tab. Do not pause separately after each account. After the human
-confirms completion, verify that every tab shows `Password saved` before starting any launcher login.
-The controller enters generated passwords only into the first-party browser pages; the human never
-needs to type or disclose them.
+Several links may be generated before handoff. Complete them one at a time. They use one shared host-only cookie.
+Opening several links before completing the current one replaces the active setup session and can
+make a different link appear invalid or expired. Wait
+for the human's confirmation after each page, then verify operator-side `passwordSet=true` before
+moving to the next account. Never retain links or passwords in repository files, reports, PRs,
+environment variables, command arguments, or logs.
 
 Password reset uses the same browser-only setup flow:
 
@@ -282,8 +282,8 @@ For the current macOS user:
 3. Create a new user-visible Codex task/session with an ordinary install/login request, for example
    “帮我安装并登录 SMEDC，我要用它查公司的资料。” The task should follow
    `skills/smedc-mcp/SKILL.md`. If unauthenticated, it calls `smedc_login`; the
-   controller completes browser login for the synthetic account in Chrome. Do not ask the human to
-   type credentials.
+   human completes browser login for the synthetic account. The controller must not control the
+   browser or type credentials.
 4. Create separate user-visible Codex tasks/sessions for each ordinary employee action. Keep each
    visible prompt as one natural request, not a list of test instructions or expected answers. A
    representative sequence is:
@@ -433,8 +433,9 @@ Pass only when:
 Pass only when:
 
 - self-check is healthy;
-- three fresh synthetic test accounts were created with their explicit role/clearance, password
-  setup/login was completed through Chrome, and every account was deleted afterward;
+- three fresh synthetic test accounts were created with their explicit role/clearance, the human
+  completed password setup/login through the first-party pages, and every account was deleted
+  afterward;
 - the flow ran as multiple newly created user-visible Codex tasks/sessions with one ordinary
   employee request per task, not only in the controller and not as a single all-in-one prompt;
 - the official launcher session is authenticated and survives a new process;
@@ -456,7 +457,8 @@ Pass only when:
 
 Fail immediately for:
 
-- any request to paste passwords/tokens into chat/config/env;
+- any request to disclose a real/user-owned password or any token, or to persist even a synthetic
+  test password outside the current private chat;
 - direct employee-client HTTP/DB/Qdrant/storage use instead of MCP;
 - public `/readyz` exposure;
 - cross-organization or above-clearance data leakage;
