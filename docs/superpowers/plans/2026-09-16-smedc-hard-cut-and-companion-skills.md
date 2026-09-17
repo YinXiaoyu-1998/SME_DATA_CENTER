@@ -798,9 +798,9 @@ YinXiaoyu-1998/maijia-business-analyses-smedc   -> YinXiaoyu-1998/smedc-companio
 
 Update each local `origin`, fetch, and verify default branch, branch protection, environments, variables, and secrets names without exposing values.
 
-- [ ] **Step 4: Configure and verify npm Trusted Publisher**
+- [ ] **Step 4: Verify the first-publish bootstrap boundary and prepare Trusted Publisher inputs**
 
-Set the publisher to repository `YinXiaoyu-1998/SME_DATA_CENTER` and workflow `.github/workflows/launcher-release.yml`. If npm requires an interactive owner-only console action that cannot be completed safely by the agent, stop with only that exact action requested; do not ask for an npm token.
+Confirm whether `smedc-mcp-launcher` already exists. npm requires a package to exist before either Trusted Publisher configuration or staged publishing, so a registry 404 defers trust configuration until immediately after the explicitly authorized first publish. Prepare the future publisher as repository `YinXiaoyu-1998/SME_DATA_CENTER`, workflow `launcher-release.yml`, with stage-publish permission. Do not ask for an npm token.
 
 ## Task 11: Merge The Release Boundary And Publish Launcher 0.5.0
 
@@ -818,11 +818,13 @@ Set the publisher to repository `YinXiaoyu-1998/SME_DATA_CENTER` and workflow `.
 
 The PR contains Tasks 2–4 and the committed approved specification/plan, but not Task 5's repo-local Skill pins or current release-status documentation. Verify required checks, report diff composition, and merge only after explicit human confirmation. Confirm staging did not deploy because its workflow is disabled.
 
-- [ ] **Step 2: Publish through the push-triggered reviewed workflow**
+- [ ] **Step 2: Complete native acceptance and the guarded first-publish bootstrap**
 
-The merge to `main` triggers `.github/workflows/launcher-release.yml`. Wait according to the repository's three-minute external-blocker policy. Verify the native macOS/Windows acceptance and publish jobs succeed. Do not create a second tag-triggered publication run unless the workflow failed before publication and its documented recovery specifically requires one.
+The merge to `main` triggers `.github/workflows/launcher-release.yml`. Wait according to the repository's three-minute external-blocker policy and verify native macOS/Windows acceptance. For this brand-new package only, the publish job must stop at its explicit `Initial npm package bootstrap required` guard instead of attempting unsupported staged publishing. After separate explicit human confirmation, publish the exact reviewed `main` artifact once with interactive npm authentication and 2FA. Do not use or request a long-lived npm token.
 
-- [ ] **Step 3: Independently verify the registry artifact**
+- [ ] **Step 3: Configure Trusted Publisher and independently verify the registry artifact**
+
+Once the package exists, configure repository `YinXiaoyu-1998/SME_DATA_CENTER`, workflow `launcher-release.yml`, and stage-publish permission as its Trusted Publisher. Rerun the guarded workflow and require it to compare the existing registry artifact byte-for-byte with the reviewed workspace artifact.
 
 In a fresh temporary directory:
 
