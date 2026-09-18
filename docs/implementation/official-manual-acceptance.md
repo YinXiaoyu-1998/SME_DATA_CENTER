@@ -356,10 +356,13 @@ For the current macOS user:
     addresses remain blank, and missing production/batch plus shelf-life values remain empty/null.
     A receipt-level count or field-enrichment summary does not pass this step. In another fresh task,
     make an ordinary per-store/month CSV request into an empty run-scoped directory and verify the
-    conventional filename, UTF-8 BOM, and the same eleven headers. After the second receipt is
-    available, repeat the same natural “生成” request: the existing valid CSV must be maintained in
-    place, append every row of the new receipt, and not duplicate any already-present receipt. A
-    further identical run with no new receipt must be a no-op and leave the CSV byte-identical.
+    conventional filename, UTF-8 BOM, and the same eleven headers. The output directory must contain
+    only the requested CSV files: any serialized MCP query response is an internal temporary input,
+    lives outside that directory, is removed after success or failure, and is not presented to the
+    employee. After the second receipt is available, repeat the same natural “生成” request: the
+    existing valid CSV must be maintained in place, append every row of the new receipt, and not
+    duplicate any already-present receipt. A further identical run with no new receipt must be a
+    no-op and leave the CSV byte-identical.
 16. For the quarantine slice, upload exactly one level-2 certificate to `SH2608250117` from the
     clearance-0 employee, but only because the visible request expressly says level 2. The
     clearance-3 employee queries `query_quarantine_certificates` with that explicit receipt ID,
