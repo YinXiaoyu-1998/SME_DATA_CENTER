@@ -107,9 +107,10 @@ describe("structured query routes", () => {
       .json()
       .datasets.find((dataset: { dataset: string }) => dataset.dataset === "delivery_ledger");
     expect(ledger?.presentation).toEqual({
-      id: "food-purchase-ledger-cn-v1",
+      id: "food-purchase-ledger-cn-v2",
       title: "食品经营单位进货台帐",
       columns: [
+        { canonicalName: "receipt_id", displayName: "收货单号" },
         { canonicalName: "item_name", displayName: "食品名称" },
         { canonicalName: "specification", displayName: "规格" },
         { canonicalName: "purchase_quantity", displayName: "进货数量" },
@@ -227,10 +228,23 @@ describe("structured query routes", () => {
       dataset: "delivery_ledger",
       mode: "detail",
       presentation: {
-        id: "food-purchase-ledger-cn-v1",
+        id: "food-purchase-ledger-cn-v2",
         title: "食品经营单位进货台帐"
       }
     });
+    expect(detail.json().presentation.columns).toEqual([
+      { canonicalName: "receipt_id", displayName: "收货单号" },
+      { canonicalName: "item_name", displayName: "食品名称" },
+      { canonicalName: "specification", displayName: "规格" },
+      { canonicalName: "purchase_quantity", displayName: "进货数量" },
+      { canonicalName: "purchase_amount", displayName: "进货金额" },
+      { canonicalName: "production_date_or_batch", displayName: "生产日期或生产批号" },
+      { canonicalName: "shelf_life", displayName: "保质期" },
+      { canonicalName: "supplier_name", displayName: "供货单位名称" },
+      { canonicalName: "supplier_unit_address", displayName: "供货单位地址" },
+      { canonicalName: "supplier_contact_phone", displayName: "供货单位联系方式" },
+      { canonicalName: "purchase_date", displayName: "进货日期" }
+    ]);
     expect(aggregate.statusCode).toBe(200);
     expect(aggregate.json()).not.toHaveProperty("presentation");
   });
