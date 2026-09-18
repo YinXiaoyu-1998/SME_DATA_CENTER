@@ -135,13 +135,14 @@ describe("structured field registries", () => {
     });
   });
 
-  test("publishes the exact food-purchase ledger presentation profile", () => {
+  test("publishes the exact food-purchase ledger v2 presentation profile", () => {
     const ledger = getStructuredRegistry("delivery_ledger");
 
     expect(ledger.presentation).toEqual({
-      id: "food-purchase-ledger-cn-v1",
+      id: "food-purchase-ledger-cn-v2",
       title: "食品经营单位进货台帐",
       columns: [
+        { canonicalName: "receipt_id", displayName: "收货单号" },
         { canonicalName: "item_name", displayName: "食品名称" },
         { canonicalName: "specification", displayName: "规格" },
         { canonicalName: "purchase_quantity", displayName: "进货数量" },

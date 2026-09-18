@@ -809,6 +809,7 @@ const DELIVERY_LEDGER_FIELDS: StructuredFieldRegistryEntry[] =
   );
 
 const FOOD_PURCHASE_LEDGER_PRESENTATION_COLUMNS = Object.freeze([
+  { canonicalName: "receipt_id", displayName: "收货单号" },
   { canonicalName: "item_name", displayName: "食品名称" },
   { canonicalName: "specification", displayName: "规格" },
   { canonicalName: "purchase_quantity", displayName: "进货数量" },
@@ -822,7 +823,7 @@ const FOOD_PURCHASE_LEDGER_PRESENTATION_COLUMNS = Object.freeze([
 ]) as StructuredPresentationProfile["columns"];
 
 const FOOD_PURCHASE_LEDGER_PRESENTATION = Object.freeze({
-  id: "food-purchase-ledger-cn-v1",
+  id: "food-purchase-ledger-cn-v2",
   title: "食品经营单位进货台帐",
   columns: FOOD_PURCHASE_LEDGER_PRESENTATION_COLUMNS
 } satisfies StructuredPresentationProfile);
