@@ -345,15 +345,21 @@ For the current macOS user:
 14. Upload `fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv`; it must fail
     worker validation, reach a `rejected` terminal state, and not change the previously published
     partition when it is downloaded again.
-15. When the local-only delivery fixtures are available, verify the supplier catalog applies 134
-    rows, the XLSX receipt applies 13 ledger rows, and its CSV peer applies 1 row. In a fresh
-    employee-client task, query `delivery_ledger` without a receipt filter, follow every opaque page
-    cursor until no page remains, and render all visible rows as one Markdown table with these
-    columns: 序号、门店名、单据号、进货日期、供货单位名称、食品名称、规格、进货数量、进货金额、
-    生产日期或生产批号、保质期、供货单位地址、供货单位联系方式. The acceptance account should
-    see exactly the 14 uploaded item rows (13 + 1); verify supplier contacts are enriched per row,
-    blank source addresses remain blank, and production/batch plus shelf-life fields remain empty.
-    A receipt-level count or field-enrichment summary does not pass this step.
+15. When the local-only delivery fixtures are available, upload the supplier catalog and two
+    receipts for the same store and month from separate employee-client tasks, and poll each import
+    to terminal `applied`. In a fresh task, query the bounded store/month scope, follow every opaque
+    page cursor until no page remains, and render all visible rows as one Markdown table titled
+    `食品经营单位进货台帐` with these columns in exact order: 收货单号、食品名称、规格、进货数量、
+    进货金额、生产日期或生产批号、保质期、供货单位名称、供货单位地址、供货单位联系方式、进货日期.
+    Do not add 序号 or 门店名 to the displayed/exported statutory columns. Verify every imported
+    receipt ID is visible, supplier contacts are enriched per row when available, blank source
+    addresses remain blank, and missing production/batch plus shelf-life values remain empty/null.
+    A receipt-level count or field-enrichment summary does not pass this step. In another fresh task,
+    make an ordinary per-store/month CSV request into an empty run-scoped directory and verify the
+    conventional filename, UTF-8 BOM, and the same eleven headers. After the second receipt is
+    available, repeat the same natural “生成” request: the existing valid CSV must be maintained in
+    place, append every row of the new receipt, and not duplicate any already-present receipt. A
+    further identical run with no new receipt must be a no-op and leave the CSV byte-identical.
 16. For the quarantine slice, upload exactly one level-2 certificate to `SH2608250117` from the
     clearance-0 employee, but only because the visible request expressly says level 2. The
     clearance-3 employee queries `query_quarantine_certificates` with that explicit receipt ID,
