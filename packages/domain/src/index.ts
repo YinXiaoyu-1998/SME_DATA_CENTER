@@ -62,6 +62,8 @@ export {
   toEvidenceSearchRetrievalMetadata,
   toIndexModelMetadata,
   type EvidenceSearchRetrievalMetadata,
+  type EvidenceRelevanceCutoffReason,
+  type EvidenceRelevancePolicy,
   type ExplicitRerankConfig,
   type IndexModelMetadata,
   type ModelProviderName,

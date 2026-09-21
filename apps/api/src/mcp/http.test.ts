@@ -311,7 +311,12 @@ function fakeEvidenceRepository(calls: EvidenceSearchInput[] = []): EvidenceSear
           embeddingVersion: "test-embedding",
           lexicalIndexVersion: "test-lexical",
           rerankVersion: null,
-          rerankStatus: "rerank_disabled"
+          rerankStatus: "rerank_disabled",
+          relevance: {
+            policyVersion: "relevance.disabled@test",
+            cutoffReason: "disabled",
+            droppedCount: 0
+          }
         },
         warnings: []
       };

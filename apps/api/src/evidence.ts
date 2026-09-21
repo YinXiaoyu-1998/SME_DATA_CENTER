@@ -14,6 +14,7 @@ import {
   type RetrievalModelConfig
 } from "@smedc/domain";
 import { parseApiRetrievalRuntimeConfig } from "./config/retrieval-runtime.js";
+import { pruneEvidenceCandidates } from "./evidence-relevance.js";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface EvidenceSearchFilters {
@@ -175,14 +176,17 @@ export function createEvidenceSearchService(input: {
         }
       }
 
-      const ordered = dedupeEvidenceCandidates(
-        revalidated
-          .map((candidate) => ({
-            ...candidate,
-            rerankScore: rerankScoreByChunkId.get(candidate.chunkId) ?? null
-          }))
-          .sort(compareEvidenceCandidates)
+      const scoredCandidates = revalidated.map((candidate) => ({
+        ...candidate,
+        rerankScore: rerankScoreByChunkId.get(candidate.chunkId) ?? null
+      }));
+      const relevance = pruneEvidenceCandidates(
+        input.retrievalConfig.relevance.mode === "disabled"
+          ? scoredCandidates.sort(compareEvidenceCandidates)
+          : scoredCandidates,
+        input.retrievalConfig.relevance
       );
+      const ordered = dedupeEvidenceCandidates(relevance.kept);
       const page = ordered.slice(offset, offset + searchInput.limit + 1);
       const visible = page.slice(0, searchInput.limit);
       const hasMore = page.length > searchInput.limit;
@@ -195,10 +199,12 @@ export function createEvidenceSearchService(input: {
             now
           })
         : null;
-      const warnings =
-        candidates.length >= EVIDENCE_CANDIDATE_WINDOW
+      const warnings = [
+        ...(candidates.length >= EVIDENCE_CANDIDATE_WINDOW
           ? ["EVIDENCE_CANDIDATE_WINDOW_TRUNCATED"]
-          : [];
+          : []),
+        ...relevance.warnings
+      ];
 
       return {
         results: visible.map((candidate) => ({
@@ -223,7 +229,10 @@ export function createEvidenceSearchService(input: {
           nextCursor,
           hasMore
         },
-        retrieval: toEvidenceSearchRetrievalMetadata(input.retrievalConfig),
+        retrieval: toEvidenceSearchRetrievalMetadata(input.retrievalConfig, {
+          cutoffReason: relevance.cutoffReason,
+          droppedCount: relevance.droppedCount
+        }),
         warnings
       };
     }

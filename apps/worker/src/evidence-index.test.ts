@@ -65,6 +65,13 @@ describe("evidence indexer", () => {
           model: "fake-rerank-v1",
           version: "fake-rerank-v1@phase3.retrieval.v1"
         },
+        relevance: {
+          version: "relevance.disabled@phase3.retrieval.v1",
+          mode: "disabled",
+          rerankMinScore: 0.3,
+          rerankMinGap: 0.3,
+          rerankLowClusterMaxScore: 0.4
+        },
         qdrant: {
           collection: "smedc_evidence_test"
         }

@@ -52,7 +52,12 @@ export function createEvidenceSearchRepository(): EvidenceSearchRepository & {
           embeddingVersion: "fake-embedding-v1@phase3.retrieval.v1",
           lexicalIndexVersion: "lexical.v1",
           rerankVersion: "fake-rerank-v1@phase3.retrieval.v1",
-          rerankStatus: "enabled"
+          rerankStatus: "enabled",
+          relevance: {
+            policyVersion: "relevance.disabled@phase3.retrieval.v1",
+            cutoffReason: "disabled",
+            droppedCount: 0
+          }
         },
         warnings: []
       };
