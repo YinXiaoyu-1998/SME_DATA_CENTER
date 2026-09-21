@@ -86,7 +86,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-This runner uses the installed `smedc-mcp-launcher@0.5.0`, a clearance-0 employee's
+This runner uses the installed `smedc-mcp-launcher@0.5.1`, a clearance-0 employee's
 operating-system secure-store session, and the public staging service. It checks that upload inputs
 which omit `confidentialityLevel` remain level 0, then covers evidence upload/status/search,
 structured CSV import/query, invalid atomic import rejection, and run-scoped cleanup of evidence,

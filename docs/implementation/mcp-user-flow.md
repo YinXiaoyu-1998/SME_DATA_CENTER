@@ -1,6 +1,6 @@
 # SMEDC MCP User Flow
 
-> **Release note:** `smedc-mcp-launcher@0.5.0` is publicly published and independently
+> **Release note:** `smedc-mcp-launcher@0.5.1` is publicly published and independently
 > verified. It is the pinned distribution for the confidentiality-level contract.
 > Native macOS/Windows package acceptance and the headless Linux loop pass; user-visible OpenClaw
 > and support-class-C phone/browser acceptance remain release evidence. There is no
@@ -11,7 +11,7 @@ Last updated: 2026-09-13
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `smedc-mcp` skill. The official remote origin
 is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`smedc-mcp-launcher@0.5.0`.
+`smedc-mcp-launcher@0.5.1`.
 
 ## Participants And Credential Boundary
 

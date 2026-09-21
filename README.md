@@ -152,7 +152,7 @@ The API entrypoint automatically loads `.env` from the current working directory
 ## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
-`smedc-mcp-launcher@0.5.0` local stdio launcher. The dual-homed
+`smedc-mcp-launcher@0.5.1` local stdio launcher. The dual-homed
 `skills/smedc-mcp/` skill is the authoritative current-user install, configuration,
 browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
 email/password/token/code input, uses `smedc_login`, `smedc_logout`,
@@ -160,11 +160,11 @@ email/password/token/code input, uses `smedc_login`, `smedc_logout`,
 operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
-`smedc-mcp-launcher@0.5.0` is published on npm and its registry integrity, clean install,
+`smedc-mcp-launcher@0.5.1` is published on npm and its registry integrity, clean install,
 CLI, packaging, and production dependency audit have been verified. Native macOS/Windows package
-acceptance and the earlier headless Linux login-to-business-tool loop have passed. Staging remains
-frozen on the last known-good pre-cutover release until the final synchronization branch is merged
-and explicitly deployed; focused hard-cut QA acceptance then follows.
+acceptance and the earlier headless Linux login-to-business-tool loop have passed. Server
+compatibility still accepts launcher 0.5.0 as the minimum. Staging remains on Evidence Retrieval V1
+until the controlled Qdrant upgrade, V2 reindex, and cutover; focused QA acceptance then follows.
 
 ## Official MCP Launcher
 

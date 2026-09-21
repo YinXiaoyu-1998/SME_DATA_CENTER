@@ -1,10 +1,11 @@
 # Official User Installation, Login, and Session Design
 
-Status: `smedc-mcp-launcher@0.5.0` is published and independently verified, both Skill repositories
-use their final SMEDC names, and npm Trusted Publisher is configured. Server recommendation
-synchronization and the staging hard-cut deployment remain gated release tasks.
+Status: `smedc-mcp-launcher@0.5.1` is published and independently verified, both Skill repositories
+use their final SMEDC names, and npm Trusted Publisher is configured. This synchronization branch
+recommends 0.5.1 while preserving 0.5.0 as the minimum compatible launcher; staging remains on V1
+retrieval until the controlled Qdrant upgrade, reindex, and cutover.
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
 ## Purpose
 
@@ -209,7 +210,7 @@ OIDC migration remains a mandatory design constraint.
 - Old implementation and design documents never take precedence over this accepted decision log.
   Retain old material only when it accurately describes current code or useful history, and mark it
   accordingly; delete or supersede conflicting recommendations.
-- The repo-local and standalone skills pin launcher 0.5.0 and its Device Authorization behavior.
+- The repo-local and standalone skills pin launcher 0.5.1 and its Device Authorization behavior.
 
 ## Decision Log
 
@@ -339,7 +340,7 @@ window, the developer issues a replacement link.
 ## Historical Superseded Loopback Authorization Flow
 
 The following Authorization Code + PKCE flow shipped in launcher 0.1.x and remains accepted by the
-server while 0.1.x is minimum-compatible. Launcher 0.5.0 and the current employee skill do not use
+server while 0.1.x is minimum-compatible. Launcher 0.5.1 and the current employee skill do not use
 it; the Device Authorization section below is the pinned and recommended flow.
 
 1. The launcher binds an ephemeral HTTP listener on `127.0.0.1`, generates a random `state` and PKCE
@@ -574,13 +575,13 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Release status during the SMEDC hard cut: `smedc-mcp-launcher@0.5.0` is public and independently
-verified, the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and
-npm Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
-stage-publish-only permission. This synchronization branch changes server metadata to require and
-recommend 0.5.0; staging remains frozen on the last known-good pre-cutover release until that branch
-is merged and explicitly deployed. Npm provenance remains unavailable because the source repository
-is private and is not an approval gate.
+Current launcher release status: `smedc-mcp-launcher@0.5.1` is public and independently verified,
+the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and npm
+Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
+stage-publish-only permission. This synchronization branch keeps 0.5.0 as the minimum compatible
+version and recommends 0.5.1. Staging remains on V1 retrieval until the controlled Qdrant upgrade,
+reindex, and cutover. Npm provenance remains unavailable because the source repository is private
+and is not an approval gate.
 
 The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
 only `SMEDC_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
@@ -854,8 +855,8 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 The official beta installation, Device Authorization login, token/session, secure-store and
 memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
-implemented. Launcher 0.5.0 is public, independently verified, and accepted on native macOS and
-Windows. This synchronization branch changes the server package/minimum/recommended metadata to
-0.5.0; the staging deployment and focused hard-cut QA acceptance remain gated. The earlier headless
-Linux login-to-business-tool loop remains compatibility evidence. Full user-visible OpenClaw and
+implemented. Launcher 0.5.1 is public, independently verified, and accepted on native macOS and
+Windows. This synchronization branch recommends 0.5.1 while preserving the 0.5.0 minimum; the V2
+retrieval staging deployment and QA acceptance remain gated. The earlier headless Linux
+login-to-business-tool loop remains compatibility evidence. Full user-visible OpenClaw and
 support-class-C phone/browser acceptance remain external release evidence.

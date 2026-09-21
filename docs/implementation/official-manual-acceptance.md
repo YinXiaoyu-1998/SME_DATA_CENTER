@@ -21,7 +21,7 @@ The acceptance run must exercise both sides of the real product boundary:
 | ----------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, explicit role/clearance, and setup link.                                                      |
 | Password setup/reset                | Human-controlled browser          | The controller sends first-party setup links; the human chooses and enters synthetic passwords.                                                           |
-| Client installation                 | Employee-owned agent via skill    | Pinned `smedc-mcp-launcher@0.5.0` is installed and configured as a Codex stdio MCP.                                                                       |
+| Client installation                 | Employee-owned agent via skill    | Pinned `smedc-mcp-launcher@0.5.1` is installed and configured as a Codex stdio MCP.                                                                       |
 | Durable login                       | Launcher + system browser         | `smedc_login` completes Device Authorization and stores durable credential safely.                                                                        |
 | Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                                                                    |
 | Current account identity            | Employee-owned MCP client         | A natural account question returns only the synthetic user's display name, email, role, and clearance.                                                    |
@@ -73,7 +73,7 @@ The macOS user must have:
 
 - Node.js 22+ and npm;
 - the published launcher installed at
-  `~/Library/Application Support/SMEDC/launcher/versions/0.5.0/`;
+  `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/`;
 - Codex configured with the exact `smedc` stdio MCP entry from
   `skills/smedc-mcp/SKILL.md`;
 - SSH access to the staging host through the committed strict `known_hosts` identity.
@@ -89,7 +89,7 @@ Credential-free preflight:
 
 ```sh
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" self-check
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" self-check
 ```
 
 Expected:
@@ -397,7 +397,7 @@ npm run test:official-manual -- --run-id=20260730-macos-codex --keep-data
 The runner:
 
 - requires a current authenticated launcher session;
-- runs against the published `smedc-mcp-launcher@0.5.0` and requires the low-clearance
+- runs against the published `smedc-mcp-launcher@0.5.1` and requires the low-clearance
   employee identity (`employee`, clearance 0); it verifies default-level evidence/structured uploads
   by omitting the optional level field;
 - never reads staging database credentials from the local `.env`;
