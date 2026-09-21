@@ -26,6 +26,7 @@ interface EvidenceFixtureManifestV1 {
 const maijiaManifest = JSON.parse(
   readFileSync(path.join(fixturesRoot, "maijia/golden.json"), "utf8")
 ) as EvidenceFixtureManifestV1;
+const maijiaFixturesRoot = path.join(fixturesRoot, "maijia");
 
 describe("evidence parser", () => {
   it("extracts Markdown structure while preserving heading paths, links, lists, tables, and code", async () => {
@@ -127,7 +128,7 @@ describe("evidence parser", () => {
   it.each(maijiaManifest.documents)(
     "parses and chunks the real-world DOCX fixture $fixtureId",
     async (fixture) => {
-      const content = await readFile(path.join(fixturesRoot, fixture.path));
+      const content = await readFile(path.join(maijiaFixturesRoot, fixture.path));
       const result = await parseEvidenceDocument({
         fileType: "docx",
         originalFilename: path.basename(fixture.path),
