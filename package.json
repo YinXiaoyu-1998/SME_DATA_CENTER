@@ -44,6 +44,7 @@
     "purge-data": "tsx scripts/purge-data.ts",
     "staging:cleanup-upload-domain": "tsx scripts/staging-upload-domain-cleanup.ts",
     "qdrant:init": "tsx scripts/readiness.ts init-qdrant",
+    "evidence:reindex": "tsx scripts/reindex-evidence.ts",
     "readyz:local": "tsx scripts/readiness.ts check",
     "worker:dev": "tsx apps/worker/src/dev-loop.ts",
     "worker:once": "tsx apps/worker/src/index.ts",

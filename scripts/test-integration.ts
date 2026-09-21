@@ -378,6 +378,11 @@ try {
       secondEvidencePage.results[0]?.chunkId !== firstEvidencePage.results[0]?.chunkId,
     "Evidence cursor pagination should advance without duplicate chunks."
   );
+  await assertDualCollectionEvidenceReindex({
+    documentId: evidenceUpload.document.documentId,
+    auth,
+    v1Cursor: firstEvidencePage.page.nextCursor!
+  });
   await assertWorkerLeaseRecovery();
   await assertAuditProvenanceMatrix(employeeAccessToken);
 
@@ -400,6 +405,8 @@ try {
           "delivery_supplier_query_authorization",
           "phase3_evidence_upload_worker_status_search",
           "phase3_evidence_signed_pagination",
+          "phase3_evidence_v1_v2_dual_collection_reindex",
+          "phase3_evidence_cross_version_cursor_rejected",
           "phase3_worker_lease_crash_recovery",
           "audit_provenance_persistence_matrix",
           "audit_provenance_run_scoped_cleanup"
@@ -414,6 +421,103 @@ try {
   if (apiProcess) {
     await stopApi(apiProcess);
   }
+}
+
+async function assertDualCollectionEvidenceReindex(input: {
+  documentId: string;
+  auth: HeadersInit;
+  v1Cursor: string;
+}): Promise<void> {
+  const jsonHeaders = new Headers(input.auth);
+  jsonHeaders.set("content-type", "application/json");
+  const v2Collection = `${integrationEnv["QDRANT_COLLECTION_EVIDENCE"]}_v2`;
+  const v2Env: NodeJS.ProcessEnv = {
+    ...integrationEnv,
+    RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v2-bm25",
+    QDRANT_COLLECTION_EVIDENCE: v2Collection
+  };
+  await run("npm", ["run", "qdrant:init"], { env: v2Env });
+  const reindex = parseJson<{ createdJobCount: number }>(
+    (
+      await run(
+        "npm",
+        [
+          "--silent",
+          "run",
+          "evidence:reindex",
+          "--",
+          "--target-config",
+          "phase3.retrieval.v2-bm25",
+          "--target-collection",
+          v2Collection,
+          "--execute"
+        ],
+        { env: v2Env }
+      )
+    ).stdout
+  );
+  assert(
+    reindex.createdJobCount > 0,
+    "V2 reindex must queue at least one active evidence document."
+  );
+  for (let index = 0; index < reindex.createdJobCount; index += 1) {
+    const worker = parseJson<WorkerResponse>(
+      (await run("npm", ["--silent", "run", "worker:once"], { env: v2Env })).stdout
+    );
+    assert(worker.processed === true, "V2 reindex worker must process every queued target job.");
+  }
+
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  try {
+    const indexes = await prisma.documentIndex.findMany({
+      where: { documentId: input.documentId, status: "ready" },
+      include: { retrievalConfig: true }
+    });
+    assert(
+      indexes.some((index) => index.retrievalConfig.version === "phase3.retrieval.v1") &&
+        indexes.some((index) => index.retrievalConfig.version === "phase3.retrieval.v2-bm25"),
+      "V2 reindex must preserve the ready V1 index beside the new ready V2 index."
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
+
+  const v1StillReadable = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ query: "差评处理", filters: { fileTypes: ["md"] }, limit: 5 })
+  });
+  assert(
+    v1StillReadable.results.some((result) => result.documentId === input.documentId),
+    "V1 must remain queryable after the V2 reindex."
+  );
+
+  if (apiProcess) await stopApi(apiProcess);
+  Object.assign(integrationEnv, v2Env);
+  apiProcess = startApi();
+  await waitForApiHealth(apiProcess);
+
+  const v2Search = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ query: "差评处理", filters: { fileTypes: ["md"] }, limit: 5 })
+  });
+  assert(
+    v2Search.results.some((result) => result.documentId === input.documentId),
+    "V2 must return the reindexed evidence document."
+  );
+
+  const crossVersionCursor = await fetch(`${apiUrl}/v1/evidence/search`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      query: "差评处理",
+      filters: { fileTypes: ["md"] },
+      limit: 1,
+      cursor: input.v1Cursor
+    })
+  });
+  assert(crossVersionCursor.status === 400, "A V1 evidence cursor must be rejected by V2.");
 }
 
 async function createOfficialIntegrationAccessToken(employeeId: string): Promise<string> {

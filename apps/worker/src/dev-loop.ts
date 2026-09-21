@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
 import { createStorageAdapter } from "@smedc/storage";
 import { createEvidenceIndexerFromEnv } from "./evidence-index.js";
+import { parseWorkerRetrievalRuntimeConfig } from "./config/retrieval-runtime.js";
 import { loadWorkerRuntimeLimits } from "./config/runtime-limits.js";
 import { createPrismaProcessingWorkerRepository, runWorkerLoop } from "./worker.js";
 import { createPartitionImporter, partitionImportLimitsFromRuntime } from "./partition-import.js";
@@ -11,8 +12,10 @@ export async function main(): Promise<void> {
 
   const abortController = new AbortController();
   const runtimeLimits = loadWorkerRuntimeLimits(process.env);
+  const retrievalRuntime = parseWorkerRetrievalRuntimeConfig(process.env);
   const repository = createPrismaProcessingWorkerRepository(undefined, {
-    structuredImportTransactionTimeoutMs: runtimeLimits.structuredImportTransactionTimeoutMs
+    structuredImportTransactionTimeoutMs: runtimeLimits.structuredImportTransactionTimeoutMs,
+    evidenceRetrievalConfigVersion: retrievalRuntime.qdrant.retrievalConfigVersion
   });
   const storage = createStorageAdapter(process.env);
   const evidenceIndexer = createEvidenceIndexerFromEnv();
