@@ -6,6 +6,22 @@ under `evidence/` exercise the evidence document pipeline (`md`/`txt`/`docx`).
 Files under `manual-acceptance/` are used by the official staging manual acceptance
 flow.
 
+## Evidence retrieval regression corpus
+
+`evidence/maijia/` contains five user-approved, production-like DOCX manuals used only
+for parser and retrieval regression evaluation. The committed copies have personal Word
+properties, custom properties, and revision-session metadata removed without changing
+their retrieval-relevant body content. `golden.json` assigns stable fixture IDs and judged
+queries; `.DS_Store` and temporary `.~*.docx` lock files are explicitly excluded.
+
+| Fixture | SHA-256 |
+| --- | --- |
+| `2.餐厅运营管理手册(1).docx` | `08e9f222b8006769ecce6000544331a325df1d7e676c5effbffe2878e024fd8d` |
+| `2_7-厨房生产管理指导手册(1).docx` | `efd1489695f63079f0a07a9835a6724f51188bfeaed039a2cac9a94ab33723c0` |
+| `丰茂岗位服务流程手册-前厅(1).docx` | `115136351822b1258d251f6a3e098328a099be28e313c88b8cc762782f362b00` |
+| `管氏 开店手册 （1月27日）(1).docx` | `16373699d393be2c97c793394745961299450c42c0842809ca94442ddd3c36ed` |
+| `肉夹馍SOP.docx` | `1084ea94515b8e2ebaf5fcb8e0336e1256ef25bc89663c4183d23456c60baef5` |
+
 ## Typical (accepted) files
 
 - `structured/synthetic_dishes_20260706_20260712_first1000.xlsx` — first 1,000

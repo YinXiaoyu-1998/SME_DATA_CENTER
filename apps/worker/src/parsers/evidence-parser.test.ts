@@ -1,14 +1,31 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
+import { createEvidenceChunks } from "../chunking/evidence-chunker.js";
 import { parseEvidenceDocument } from "./evidence-parser.js";
 
 const fixturesRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../../fixtures/evidence"
 );
+
+interface EvidenceFixtureManifestV1 {
+  schemaVersion: 1;
+  documents: Array<{
+    fixtureId: string;
+    path: string;
+    title: string;
+    sha256: string;
+    confidentialityLevel: 0;
+  }>;
+}
+
+const maijiaManifest = JSON.parse(
+  readFileSync(path.join(fixturesRoot, "maijia/golden.json"), "utf8")
+) as EvidenceFixtureManifestV1;
 
 describe("evidence parser", () => {
   it("extracts Markdown structure while preserving heading paths, links, lists, tables, and code", async () => {
@@ -106,6 +123,37 @@ describe("evidence parser", () => {
       ])
     );
   });
+
+  it.each(maijiaManifest.documents)(
+    "parses and chunks the real-world DOCX fixture $fixtureId",
+    async (fixture) => {
+      const content = await readFile(path.join(fixturesRoot, fixture.path));
+      const result = await parseEvidenceDocument({
+        fileType: "docx",
+        originalFilename: path.basename(fixture.path),
+        content
+      });
+
+      expect(result.blocks.length).toBeGreaterThan(0);
+      expect(result.blocks.map((block) => block.sourceLocation.blockOrdinal)).toEqual(
+        [...result.blocks]
+          .map((block) => block.sourceLocation.blockOrdinal)
+          .sort((left, right) => (left ?? 0) - (right ?? 0))
+      );
+      expect(result.blocks.map((block) => block.text).join("\n")).not.toMatch(
+        /<\/?w:|[\u0000-\u0008\u000b\u000c\u000e-\u001f]/
+      );
+
+      const chunking = createEvidenceChunks({
+        documentId: fixture.fixtureId,
+        contentVersion: 1,
+        retrievalConfigVersion: "phase3.retrieval.v1",
+        blocks: result.blocks
+      });
+
+      expect(chunking.chunks.length).toBeGreaterThan(0);
+    }
+  );
 
   it("records embedded image warnings without OCR text", async () => {
     const content = await createDocxFixture({
