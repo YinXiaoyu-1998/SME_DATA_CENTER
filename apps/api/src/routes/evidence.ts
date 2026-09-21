@@ -12,6 +12,7 @@ import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documen
 import { EvidenceSearchCursorError, type EvidenceSearchRepository } from "../evidence.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import type { RequestAuth } from "../request-auth.js";
+import type { SourceDocumentDownloadIssuer } from "../source-document-downloads.js";
 import {
   errorResponse,
   isPayloadTooLargeError,
@@ -307,6 +308,7 @@ export function registerEvidenceRoutes(
     documents: () => DocumentCatalogRepository;
     storage: () => StorageAdapter;
     evidence: () => EvidenceSearchRepository;
+    sourceDocumentDownloads: () => SourceDocumentDownloadIssuer;
     cursorSigningSecret: string;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
   }
@@ -477,8 +479,24 @@ export function registerEvidenceRoutes(
       throw error;
     }
 
+    const sourceDownloads =
+      result.results.length === 0
+        ? { sources: [], warnings: [] }
+        : await dependencies.sourceDocumentDownloads().issueMany({
+            orgId: employee.orgId,
+            employee,
+            requestedSources: result.results.map((item) => ({
+              sourceDocumentId: item.documentId,
+              documentTitle: item.documentTitle
+            })),
+            audit,
+            reason: "evidence_search_auto"
+          });
+
     return {
       ...result,
+      sources: sourceDownloads.sources,
+      warnings: [...new Set([...result.warnings, ...sourceDownloads.warnings])],
       requestId: request.id
     };
   });

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { buildApiServer } from "../server.js";
@@ -349,9 +349,25 @@ describe("evidence routes", () => {
 
   it("searches evidence chunks without returning natural-language answers", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
+    const issueMany = vi.fn(async () => ({
+      sources: [
+        {
+          sourceDocumentId: "doc_evidence",
+          documentTitle: "客户反馈处理 SOP.docx",
+          originalFileName: "customer-feedback-sop.docx",
+          contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          byteSize: 123,
+          downloadStatus: "available" as const,
+          downloadUrl: "https://download.example.test/doc_evidence",
+          expiresAt: "2026-09-22T00:00:00.000Z"
+        }
+      ],
+      warnings: []
+    }));
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
+      sourceDocumentDownloadIssuer: { issueMany },
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
       logger: false
@@ -399,6 +415,13 @@ describe("evidence routes", () => {
         retrievalConfigVersion: "phase3.retrieval.v1",
         rerankStatus: "enabled"
       },
+      sources: [
+        {
+          sourceDocumentId: "doc_evidence",
+          downloadStatus: "available",
+          downloadUrl: "https://download.example.test/doc_evidence"
+        }
+      ],
       requestId: expect.any(String)
     });
     expect(JSON.stringify(body)).not.toContain("answer");
@@ -411,6 +434,68 @@ describe("evidence routes", () => {
       clientSource: "http_api",
       launcherVersion: null
     });
+    expect(issueMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: adminEmployee.orgId,
+        reason: "evidence_search_auto",
+        requestedSources: [
+          {
+            sourceDocumentId: "doc_evidence",
+            documentTitle: "客户反馈处理 SOP.docx"
+          }
+        ]
+      })
+    );
+  });
+
+  it("returns an explicit unavailable source and warning after an authorization race", async () => {
+    const evidenceRepository = createEvidenceSearchRepository();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository,
+      sourceDocumentDownloadIssuer: {
+        async issueMany() {
+          return {
+            sources: [
+              {
+                sourceDocumentId: "doc_evidence",
+                documentTitle: "客户反馈处理 SOP.docx",
+                originalFileName: null,
+                contentType: null,
+                byteSize: null,
+                downloadStatus: "unavailable",
+                downloadUrl: null,
+                expiresAt: null
+              }
+            ],
+            warnings: ["SOURCE_DOWNLOAD_URL_UNAVAILABLE"]
+          };
+        }
+      },
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: { authorization: `Bearer ${await accessTokenFor(adminEmployee)}` },
+      payload: { query: "差评处理 SOP" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      sources: [
+        {
+          sourceDocumentId: "doc_evidence",
+          originalFileName: null,
+          downloadStatus: "unavailable",
+          downloadUrl: null
+        }
+      ],
+      warnings: ["SOURCE_DOWNLOAD_URL_UNAVAILABLE"]
+    });
   });
 
   it("treats a forged public delegation proof as ordinary HTTP provenance", async () => {
@@ -418,6 +503,26 @@ describe("evidence routes", () => {
     app = buildApiServer({
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
+      sourceDocumentDownloadIssuer: {
+        async issueMany() {
+          return {
+            sources: [
+              {
+                sourceDocumentId: "doc_evidence",
+                documentTitle: "客户反馈处理 SOP.docx",
+                originalFileName: "customer-feedback-sop.docx",
+                contentType:
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                byteSize: 123,
+                downloadStatus: "available",
+                downloadUrl: "https://download.example.test/doc_evidence",
+                expiresAt: "2026-09-22T00:00:00.000Z"
+              }
+            ],
+            warnings: []
+          };
+        }
+      },
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
       internalDelegationProof: Buffer.alloc(32, 0x5a).toString("base64url"),

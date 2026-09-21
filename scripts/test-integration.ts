@@ -72,6 +72,11 @@ interface EvidenceSearchResponse {
     nextCursor: string | null;
     hasMore: boolean;
   };
+  sources: Array<{
+    sourceDocumentId: string;
+    downloadStatus: "available" | "unavailable";
+    downloadUrl: string | null;
+  }>;
 }
 
 interface OAuthTokenResponse {
@@ -354,6 +359,13 @@ try {
     ),
     "Evidence search should return indexed evidence chunks."
   );
+  assert(
+    evidenceSearch.sources.length === 1 &&
+      evidenceSearch.sources[0]?.sourceDocumentId === evidenceUpload.document.documentId &&
+      evidenceSearch.sources[0]?.downloadStatus === "available" &&
+      Boolean(evidenceSearch.sources[0]?.downloadUrl),
+    "Every distinct evidence source must include one automatic download URL."
+  );
   const firstEvidencePage = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
     method: "POST",
     headers: { ...auth, "content-type": "application/json" },
@@ -505,6 +517,13 @@ async function assertDualCollectionEvidenceReindex(input: {
   assert(
     v2Search.results.some((result) => result.documentId === input.documentId),
     "V2 must return the reindexed evidence document."
+  );
+  assert(
+    v2Search.sources.length === 1 &&
+      v2Search.sources[0]?.sourceDocumentId === input.documentId &&
+      v2Search.sources[0]?.downloadStatus === "available" &&
+      Boolean(v2Search.sources[0]?.downloadUrl),
+    "V2 evidence results must include the automatic source download URL."
   );
 
   const crossVersionCursor = await fetch(`${apiUrl}/v1/evidence/search`, {

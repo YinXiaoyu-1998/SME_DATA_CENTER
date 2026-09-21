@@ -365,44 +365,46 @@ export function createInMemorySourceDocumentRepository(
   auditLogs: RecordedAuditLog[]
 ): SourceDocumentRepository {
   return {
-    async findDownloadableSourceDocument(input) {
-      const document = documents.find(
-        (candidate) => candidate.id === input.sourceDocumentId && candidate.orgId === input.orgId
-      );
-      if (
-        !document ||
-        !["pending_processing", "processing", "active", "processing_failed"].includes(
-          document.status
+    async findDownloadableSourceDocuments(input) {
+      if (input.employee.disabled) return [];
+      const requested = new Set(input.sourceDocumentIds);
+      return documents
+        .filter(
+          (document) =>
+            requested.has(document.id) &&
+            document.orgId === input.orgId &&
+            ["pending_processing", "processing", "active", "processing_failed"].includes(
+              document.status
+            ) &&
+            input.employee.clearance >= document.confidentialityLevel
         )
-      ) {
-        return null;
-      }
-      if (input.employee.clearance < document.confidentialityLevel) return null;
-      return {
-        sourceDocumentId: document.id,
-        orgId: document.orgId,
-        status: document.status,
-        storageObjectKey: document.storageObjectKey,
-        originalFileName: document.originalFileName,
-        contentType: document.contentType ?? "application/octet-stream",
-        byteSize: document.byteSize,
-        confidentialityLevel: document.confidentialityLevel
-      };
+        .map((document) => ({
+          sourceDocumentId: document.id,
+          orgId: document.orgId,
+          status: document.status,
+          storageObjectKey: document.storageObjectKey,
+          originalFileName: document.originalFileName,
+          contentType: document.contentType,
+          byteSize: document.byteSize,
+          confidentialityLevel: document.confidentialityLevel
+        }));
     },
-    async recordDownloadIssued(input) {
-      auditLogs.push({
-        action: "document.downloaded",
-        actorEmployeeId: input.employee.id,
-        targetType: "document",
-        targetId: input.sourceDocumentId,
-        result: "succeeded",
-        metadata: null,
-        requestId: input.audit.requestId,
-        clientIp: input.audit.sourceIp,
-        clientSource: input.audit.clientSource,
-        launcherVersion: input.audit.launcherVersion,
-        createdAt: new Date()
-      });
+    async recordDownloadsIssued(input) {
+      for (const sourceDocumentId of new Set(input.sourceDocumentIds)) {
+        auditLogs.push({
+          action: "document.downloaded",
+          actorEmployeeId: input.employee.id,
+          targetType: "document",
+          targetId: sourceDocumentId,
+          result: "succeeded",
+          metadata: { reason: input.reason },
+          requestId: input.audit.requestId,
+          clientIp: input.audit.sourceIp,
+          clientSource: input.audit.clientSource,
+          launcherVersion: input.audit.launcherVersion,
+          createdAt: new Date()
+        });
+      }
     }
   };
 }

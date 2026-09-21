@@ -1,11 +1,7 @@
 import { createDatabaseAdapter } from "@smedc/db";
 import { DocumentStatus, Prisma, PrismaClient } from "@prisma/client";
-import {
-  AUDIT_ACTIONS,
-  canEmployeeAccessDocument,
-  type AuthenticatedEmployee
-} from "@smedc/domain";
-import type { RequestAuditContext } from "./request-audit-context.js";
+import { AUDIT_ACTIONS } from "@smedc/domain";
+import type { SourceDocumentDownloadRepository } from "./source-document-downloads.js";
 
 export const SOURCE_DOCUMENT_DOWNLOAD_EXPIRES_SECONDS = 24 * 60 * 60;
 
@@ -14,24 +10,13 @@ export interface SourceDocumentRecord {
   orgId: string;
   status: string;
   storageObjectKey: string;
-  originalFileName: string;
-  contentType: string;
-  byteSize: number;
+  originalFileName: string | null;
+  contentType: string | null;
+  byteSize: number | null;
   confidentialityLevel: number;
 }
 
-export interface SourceDocumentRepository {
-  findDownloadableSourceDocument(input: {
-    orgId: string;
-    employee: AuthenticatedEmployee;
-    sourceDocumentId: string;
-  }): Promise<SourceDocumentRecord | null>;
-  recordDownloadIssued(input: {
-    orgId: string;
-    employee: AuthenticatedEmployee;
-    sourceDocumentId: string;
-    audit: RequestAuditContext;
-  }): Promise<void>;
+export interface SourceDocumentRepository extends SourceDocumentDownloadRepository {
   disconnect?(): Promise<void>;
 }
 
@@ -50,43 +35,35 @@ export function createPrismaSourceDocumentRepository(
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
 
   return {
-    async findDownloadableSourceDocument(input) {
-      const document = await prisma.document.findFirst({
+    async findDownloadableSourceDocuments(input) {
+      if (input.employee.disabled || input.sourceDocumentIds.length === 0) return [];
+      const documents = await prisma.document.findMany({
         where: {
-          id: input.sourceDocumentId,
+          id: { in: [...new Set(input.sourceDocumentIds)].slice(0, 50) },
           orgId: input.orgId,
           archivedAt: null,
-          status: { in: [...downloadableStatuses] as DocumentStatus[] }
+          status: { in: [...downloadableStatuses] as DocumentStatus[] },
+          confidentialityLevel: { lte: input.employee.clearance }
         },
         include: documentInclude
       });
-      if (!document) return null;
-
-      const record = toSourceDocumentRecord(document);
-      const canAccess = canEmployeeAccessDocument({
-        employee: {
-          disabled: input.employee.disabled,
-          clearance: input.employee.clearance
-        },
-        document: { confidentialityLevel: record.confidentialityLevel }
-      });
-      return canAccess ? record : null;
+      return documents.map(toSourceDocumentRecord);
     },
-    async recordDownloadIssued(input) {
-      await prisma.auditLog.create({
-        data: {
+    async recordDownloadsIssued(input) {
+      await prisma.auditLog.createMany({
+        data: [...new Set(input.sourceDocumentIds)].map((sourceDocumentId) => ({
           orgId: input.orgId,
           actorEmployeeId: input.employee.id,
           action: AUDIT_ACTIONS.documentDownloaded,
           targetType: "document",
-          targetId: input.sourceDocumentId,
+          targetId: sourceDocumentId,
           result: "succeeded",
-          metadata: Prisma.JsonNull,
+          metadata: { reason: input.reason },
           requestId: input.audit.requestId,
           clientIp: input.audit.sourceIp,
           clientSource: input.audit.clientSource,
           launcherVersion: input.audit.launcherVersion
-        }
+        }))
       });
     },
     async disconnect() {
@@ -103,9 +80,9 @@ function toSourceDocumentRecord(
     orgId: document.orgId,
     status: document.status,
     storageObjectKey: document.storageObjectKey,
-    originalFileName: document.originalFileName ?? "source-document",
-    contentType: document.contentType ?? "application/octet-stream",
-    byteSize: document.byteSize ? Number(document.byteSize) : 0,
+    originalFileName: document.originalFileName,
+    contentType: document.contentType,
+    byteSize: document.byteSize === null ? null : Number(document.byteSize),
     confidentialityLevel: document.confidentialityLevel
   };
 }

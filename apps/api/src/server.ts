@@ -30,7 +30,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   const structuredCoverage = context.structuredCoverage;
   const structuredPartitions = context.structuredPartitions;
   const quarantineCertificates = context.quarantineCertificates;
-  const sourceDocuments = context.sourceDocuments;
+  const sourceDocumentDownloads = context.sourceDocumentDownloads;
   const skills = context.skills;
   const evidence = context.evidence;
   const createBusinessRequestAudit = context.createBusinessRequestAudit;
@@ -102,6 +102,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     documents,
     storage,
     evidence,
+    sourceDocumentDownloads,
     cursorSigningSecret,
     createBusinessRequestAudit
   });
@@ -130,8 +131,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   registerSourceDocumentRoutes(app, {
     auth: requestAuth,
-    sourceDocuments,
-    storage,
+    sourceDocumentDownloads,
     createBusinessRequestAudit
   });
 
