@@ -2,10 +2,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createDatabaseAdapter } from "@smedc/db";
 import { DocumentIndexStatus, DocumentKind, DocumentStatus, PrismaClient } from "@prisma/client";
 import {
+  QDRANT_BM25_VECTOR_NAME,
   QDRANT_DENSE_VECTOR_NAME,
   QDRANT_SPARSE_VECTOR_NAME,
   PHASE3_ERROR_CODES,
   buildRetrievalConfigSeed,
+  buildQdrantBm25Document,
   canEmployeeAccessDocument,
   loadActiveRetrievalConfig,
   toEvidenceSearchRetrievalMetadata,
@@ -467,16 +469,14 @@ export class HttpQdrantEvidenceSearcher implements QdrantEvidenceSearcher {
       return [];
     }
 
-    const sparseVector = toSparseVector(input.query);
-    const response = await this.queryQdrant(input, denseVector, sparseVector);
+    const response = await this.queryQdrant(input, denseVector);
 
     return response.map((point) => qdrantPointToCandidate(point, input.retrievalConfig.version));
   }
 
   private async queryQdrant(
     input: EvidenceSearchInput & { retrievalConfig: RetrievalModelConfig },
-    denseVector: number[],
-    sparseVector: SparseVector
+    denseVector: number[]
   ): Promise<QdrantQueryPoint[]> {
     const fetchImpl = this.input.fetch ?? fetch;
     const controller = new AbortController();
@@ -502,12 +502,26 @@ export class HttpQdrantEvidenceSearcher implements QdrantEvidenceSearcher {
                 filter: qdrantPayloadFilter(input),
                 limit: searchLimit
               },
-              {
-                query: sparseVector,
-                using: QDRANT_SPARSE_VECTOR_NAME,
-                filter: qdrantPayloadFilter(input),
-                limit: searchLimit
-              }
+              input.retrievalConfig.lexical.strategy === "qdrant_bm25"
+                ? {
+                    query: buildQdrantBm25Document(input.query),
+                    using: QDRANT_BM25_VECTOR_NAME,
+                    filter: qdrantPayloadFilter(input),
+                    params: {
+                      idf: {
+                        corpus: {
+                          must: [{ key: "orgId", match: { value: input.orgId } }]
+                        }
+                      }
+                    },
+                    limit: searchLimit
+                  }
+                : {
+                    query: toSparseVector(input.query),
+                    using: QDRANT_SPARSE_VECTOR_NAME,
+                    filter: qdrantPayloadFilter(input),
+                    limit: searchLimit
+                  }
             ],
             query: {
               fusion: "rrf"

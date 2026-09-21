@@ -141,9 +141,13 @@ describe("evidence parser", () => {
           .map((block) => block.sourceLocation.blockOrdinal)
           .sort((left, right) => (left ?? 0) - (right ?? 0))
       );
-      expect(result.blocks.map((block) => block.text).join("\n")).not.toMatch(
-        /<\/?w:|[\u0000-\u0008\u000b\u000c\u000e-\u001f]/
-      );
+      const parsedText = result.blocks.map((block) => block.text).join("\n");
+      const hasDisallowedControlCharacter = [...parsedText].some((character) => {
+        const codePoint = character.codePointAt(0) ?? 0;
+        return codePoint < 32 && ![9, 10, 13].includes(codePoint);
+      });
+      expect(parsedText).not.toMatch(/<\/?w:/u);
+      expect(hasDisallowedControlCharacter).toBe(false);
 
       const chunking = createEvidenceChunks({
         documentId: fixture.fixtureId,

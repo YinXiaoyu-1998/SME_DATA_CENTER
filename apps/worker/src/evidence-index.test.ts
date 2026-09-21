@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildRetrievalConfigSeed, loadActiveRetrievalConfig } from "@smedc/domain";
 import {
   createEvidenceIndexer,
   type QdrantEvidencePoint,
@@ -57,7 +58,8 @@ describe("evidence indexer", () => {
         },
         lexical: {
           version: "lexical.v1",
-          sparseModel: "qdrant-native-sparse-v1"
+          sparseModel: "qdrant-native-sparse-v1",
+          strategy: "legacy_hash_tf"
         },
         rerank: {
           enabled: true,
@@ -137,7 +139,43 @@ describe("evidence indexer", () => {
       }
     });
     expect(firstPoint.denseVector).toHaveLength(8);
-    expect(firstPoint.sparseVector.indices.length).toBeGreaterThan(0);
-    expect(firstPoint.sparseVector.indices).toHaveLength(firstPoint.sparseVector.values.length);
+    expect(firstPoint.lexicalVectorName).toBe("sparse");
+    expect(firstPoint.lexicalVector).toMatchObject({
+      indices: expect.any(Array),
+      values: expect.any(Array)
+    });
+  });
+
+  it("writes V2 chunk text as the shared multilingual BM25 document", async () => {
+    const points: QdrantEvidencePoint[] = [];
+    const indexer = createEvidenceIndexer({
+      retrievalConfig: loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({ retrievalConfigVersion: "phase3.retrieval.v2-bm25" }),
+        "phase3.retrieval.v2-bm25"
+      ),
+      embeddingProvider: createFakeEmbeddingProvider({
+        model: "fake-embedding-v1",
+        version: "fake-embedding-v1@phase3.retrieval.v2-bm25",
+        dimension: 8
+      }),
+      rerankProvider: null,
+      qdrantWriter: {
+        async upsertEvidencePoints(input) {
+          points.push(...input.points);
+        }
+      }
+    });
+
+    await indexer.indexDocument({
+      run: evidenceRun(),
+      content: Buffer.from("# 肉夹馍\n\n肉夹馍制作步骤", "utf8")
+    });
+
+    expect(points[0]?.lexicalVectorName).toBe("bm25");
+    expect(points[0]?.lexicalVector).toMatchObject({
+      model: "qdrant/bm25",
+      options: { tokenizer: "multilingual", stemmer: { type: "none" }, stopwords: {} }
+    });
+    expect(JSON.stringify(points[0]?.lexicalVector)).toContain("肉夹馍制作步骤");
   });
 });

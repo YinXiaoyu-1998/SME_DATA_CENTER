@@ -1,3 +1,5 @@
+import { isQdrantBm25RetrievalVersion } from "./retrieval-runtime.js";
+
 export const RETRIEVAL_CONFIG_STATUSES = ["active", "candidate", "deprecated"] as const;
 
 export type RetrievalConfigStatusName = (typeof RETRIEVAL_CONFIG_STATUSES)[number];
@@ -55,6 +57,7 @@ export interface RetrievalModelConfig {
   lexical: {
     version: string;
     sparseModel: string;
+    strategy: "legacy_hash_tf" | "qdrant_bm25";
   };
   rerank: ExplicitRerankConfig;
   relevance: EvidenceRelevancePolicy;
@@ -254,10 +257,17 @@ function createRetrievalConfig(input: {
           ? (input.embeddingDimension ?? FAKE_EMBEDDING_DIMENSION)
           : (input.embeddingDimension ?? OPENAI_COMPATIBLE_EMBEDDING_DIMENSION)
     },
-    lexical: {
-      version: LEXICAL_INDEX_VERSION,
-      sparseModel: "qdrant-native-sparse-v1"
-    },
+    lexical: isQdrantBm25RetrievalVersion(input.version)
+      ? {
+          version: `lexical.bm25.v1@${input.version}`,
+          sparseModel: "qdrant/bm25",
+          strategy: "qdrant_bm25"
+        }
+      : {
+          version: LEXICAL_INDEX_VERSION,
+          sparseModel: "qdrant-native-sparse-v1",
+          strategy: "legacy_hash_tf"
+        },
     rerank: input.rerankEnabled
       ? {
           enabled: true,
@@ -287,9 +297,7 @@ function createEvidenceRelevancePolicy(
       >
     | undefined
 ): EvidenceRelevancePolicy {
-  const v2 =
-    retrievalConfigVersion === "phase3.retrieval.v2-bm25" ||
-    retrievalConfigVersion.startsWith("phase3.retrieval.v2-bm25.");
+  const v2 = isQdrantBm25RetrievalVersion(retrievalConfigVersion);
   const policy: EvidenceRelevancePolicy = {
     version: v2
       ? `relevance.v1@${retrievalConfigVersion}`

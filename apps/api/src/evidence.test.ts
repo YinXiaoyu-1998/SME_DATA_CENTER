@@ -171,6 +171,71 @@ describe("evidence search service", () => {
     ]);
   });
 
+  it("queries V2 BM25 with multilingual options and organization-only IDF corpus", async () => {
+    const requests: unknown[] = [];
+    const searcher = new HttpQdrantEvidenceSearcher({
+      url: "http://127.0.0.1:6333",
+      apiKey: null,
+      timeoutMs: 1_000,
+      embeddingProvider: {
+        async embedTexts() {
+          return [[0.1, 0.2]];
+        }
+      },
+      fetch: (async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ result: { points: [] } }), { status: 200 });
+      }) as typeof fetch
+    });
+    const retrievalConfig = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({ retrievalConfigVersion: "phase3.retrieval.v2-bm25" }),
+      "phase3.retrieval.v2-bm25"
+    );
+
+    await searcher.hybridSearch({
+      orgId: "default-org",
+      employee,
+      query: "肉夹馍怎么做",
+      filters: { fileTypes: ["docx"], documentIds: ["doc_roujiamo"] },
+      limit: 5,
+      cursor: null,
+      cursorSecret: "cursor-secret",
+      audit: {
+        requestId: "req_bm25",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      },
+      retrievalConfig
+    });
+
+    expect(requests[0]).toMatchObject({
+      prefetch: [
+        { using: "dense", query: [0.1, 0.2] },
+        {
+          using: "bm25",
+          query: {
+            text: "肉夹馍怎么做",
+            model: "qdrant/bm25",
+            options: {
+              tokenizer: "multilingual",
+              stemmer: { type: "none" },
+              stopwords: {},
+              k: 1.2,
+              b: 0.75,
+              avg_len: 256
+            }
+          },
+          params: {
+            idf: {
+              corpus: { must: [{ key: "orgId", match: { value: "default-org" } }] }
+            }
+          }
+        }
+      ]
+    });
+  });
+
   it("reranks Qdrant hybrid hits and drops stale chunks through authoritative revalidation", async () => {
     const searchedQueries: string[] = [];
     const qdrantSearcher: QdrantEvidenceSearcher = {

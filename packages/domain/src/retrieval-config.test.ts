@@ -34,6 +34,9 @@ describe("retrieval config seed and loader", () => {
       },
       relevance: {
         mode: "disabled"
+      },
+      lexical: {
+        strategy: "legacy_hash_tf"
       }
     });
   });
@@ -53,6 +56,20 @@ describe("retrieval config seed and loader", () => {
       rerankMinScore: 0.3,
       rerankMinGap: 0.3,
       rerankLowClusterMaxScore: 0.4
+    });
+    expect(active.lexical.strategy).toBe("qdrant_bm25");
+  });
+
+  it("selects native BM25 only for the explicit V2 retrieval family", () => {
+    const active = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({ retrievalConfigVersion: "phase3.retrieval.v2-bm25" }),
+      "phase3.retrieval.v2-bm25"
+    );
+
+    expect(active.lexical).toEqual({
+      version: "lexical.bm25.v1@phase3.retrieval.v2-bm25",
+      sparseModel: "qdrant/bm25",
+      strategy: "qdrant_bm25"
     });
   });
 
