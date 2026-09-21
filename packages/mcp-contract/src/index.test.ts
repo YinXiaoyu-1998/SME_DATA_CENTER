@@ -476,6 +476,20 @@ describe("SMEDC MCP contract", () => {
     expect(importStatus?.resultShape).toEqual(["document", "processing", "importBatch"]);
   });
 
+  it("declares automatic evidence source downloads and relevance pruning metadata", () => {
+    const evidenceSearch = SMEDC_MCP_TOOL_CONTRACTS.find(
+      (contract) => contract.name === "search_document_evidence"
+    );
+
+    expect(evidenceSearch?.resultShape).toEqual([
+      "results[]: authorized evidence chunks and source-location metadata",
+      "sources[]: one automatic download status/link per distinct returned document",
+      "page",
+      "retrieval: config versions, rerank status, relevance policy, cutoff, and dropped count",
+      "warnings"
+    ]);
+  });
+
   it("keeps every tool metadata object valid and registration-ready", () => {
     for (const contract of SMEDC_MCP_TOOL_CONTRACTS) {
       expect(() => mcpToolContractSchema.parse(contract)).not.toThrow();

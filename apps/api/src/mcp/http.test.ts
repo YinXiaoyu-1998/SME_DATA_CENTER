@@ -8,6 +8,7 @@ import type { EmployeeRepository } from "../employees.js";
 import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documents.js";
 import type { EvidenceSearchInput, EvidenceSearchRepository } from "../evidence.js";
 import type { SkillDirectoryRepository } from "../skills.js";
+import type { SourceDocumentDownloadIssuer } from "../source-document-downloads.js";
 import type {
   StructuredImportBatchRecord,
   StructuredImportRepository
@@ -324,6 +325,26 @@ function fakeEvidenceRepository(calls: EvidenceSearchInput[] = []): EvidenceSear
   };
 }
 
+function fakeSourceDocumentDownloadIssuer(): SourceDocumentDownloadIssuer {
+  return {
+    async issueMany(input) {
+      return {
+        sources: input.requestedSources.map((source) => ({
+          sourceDocumentId: source.sourceDocumentId,
+          documentTitle: source.documentTitle ?? source.sourceDocumentId,
+          originalFileName: "evidence-status.md",
+          contentType: "text/markdown",
+          byteSize: 128,
+          downloadStatus: "available" as const,
+          downloadUrl: `https://downloads.example.test/${source.sourceDocumentId}`,
+          expiresAt: "2026-09-22T00:00:00.000Z"
+        })),
+        warnings: []
+      };
+    }
+  };
+}
+
 function buildLiveMcpApiTestServer(
   evidenceCalls: EvidenceSearchInput[] = [],
   overrides: Partial<Parameters<typeof buildApiServer>[0]> = {}
@@ -335,6 +356,7 @@ function buildLiveMcpApiTestServer(
     structuredQueryRepository: fakeStructuredQueryRepository(),
     structuredCoverageRepository: fakeStructuredCoverageRepository(),
     evidenceRepository: fakeEvidenceRepository(evidenceCalls),
+    sourceDocumentDownloadIssuer: fakeSourceDocumentDownloadIssuer(),
     ...overrides
   });
 }
@@ -899,6 +921,13 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     });
     expect(parseToolPayload(evidenceSearch.payload).payload).toMatchObject({
       results: [expect.objectContaining({ chunkId: "chk_1" })],
+      sources: [
+        expect.objectContaining({
+          sourceDocumentId: "doc_evidence_status",
+          downloadStatus: "available",
+          downloadUrl: "https://downloads.example.test/doc_evidence_status"
+        })
+      ],
       requestId: expect.any(String)
     });
     expect(parseToolPayload(evidenceStatus.payload).payload).toMatchObject({

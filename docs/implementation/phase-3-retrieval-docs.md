@@ -674,7 +674,10 @@ Evidence search request shape:
 Evidence search response shape:
 
 - result chunks with `chunkId`, `documentId`, document title, chunk text, score object, `matched_by`, and source location metadata
-- retrieval metadata: retrieval config version, embedding version, lexical index version, rerank version/status
+- one automatic `sources[]` entry for each distinct returned document, including a 24-hour source
+  download URL when issuance succeeds or an explicit unavailable status when it does not
+- retrieval metadata: retrieval config version, embedding version, lexical index version, rerank
+  version/status, and the versioned relevance policy, cutoff reason, and dropped-result count
 - pagination metadata, warnings, and `requestId`
 - no final answer, summary, recommendation, or user-facing analysis
 
@@ -1157,7 +1160,18 @@ New Phase 3 uses hybrid evidence retrieval for MD/TXT/DOCX:
 - reranking
 - evidence-only response
 
-Phase 3 default lexical retrieval should use Qdrant sparse vectors / native hybrid retrieval when supported by the selected Qdrant version and client. Dense embeddings, sparse lexical vectors, chunk text, and payload metadata should share the same Qdrant collection/chunk ids for the first production-grade implementation.
+Retrieval V2 uses Qdrant 1.19.1 native BM25 sparse vectors with the multilingual tokenizer. Dense
+embeddings, BM25 sparse vectors, chunk text, and payload metadata share the same V2 collection and
+chunk ids. BM25 IDF statistics are constrained by the organization tenant filter. Retrieval V1's
+legacy hashed term-frequency lane and collection remain available as the rollback boundary; score
+scales from the V1 fusion path and V2 reranker are never mixed for V2 ordering or cutoff decisions.
+
+After reranking, V2 applies the versioned relevance policy `relevance.v1`: first discard results
+below the configured minimum rerank score, then cut at a score gap only when the lower group also
+falls within the configured low-score cluster. Defaults are `0.30` for minimum score, `0.30` for
+minimum gap, and `0.40` for the lower-cluster maximum. The API reports the policy version, cutoff
+reason, and dropped count. Missing rerank scores are excluded rather than assigned a synthetic
+score.
 
 Rationale:
 
@@ -1174,7 +1188,8 @@ Tradeoff:
 - Chinese tokenization and keyword behavior must be validated on production-like documents
 - retrieval adapter boundaries should allow future migration to Qdrant dense + OpenSearch/Meilisearch lexical if evaluation shows Qdrant lexical quality is insufficient
 
-The retrieval service should expose an internal adapter boundary such as `HybridCandidateProvider` so backend migration does not change the external evidence API.
+The retrieval service exposes its provider behind the existing candidate-provider boundary so the
+V1/V2 backend selection does not change the external evidence API.
 
 See ADR 0012 for the lexical index placement decision.
 

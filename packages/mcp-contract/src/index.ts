@@ -511,7 +511,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       { name: "limit", required: false, description: "1-50 result limit." },
       { name: "cursor", required: false, description: "Opaque pagination cursor." }
     ],
-    resultShape: ["results[]: evidence chunks and source metadata", "page", "retrieval", "warnings"]
+    resultShape: [
+      "results[]: authorized evidence chunks and source-location metadata",
+      "sources[]: one automatic download status/link per distinct returned document",
+      "page",
+      "retrieval: config versions, rerank status, relevance policy, cutoff, and dropped count",
+      "warnings"
+    ]
   }),
   defineToolContract({
     name: "list_structured_datasets",

@@ -299,6 +299,12 @@ looks like a certificate.
 - For downloading originals, call `get_source_document_download_url` with a visible
   `sourceDocumentId`. The result is a 24-hour attachment link; return the link to the employee
   rather than fetching or proxying the file bytes yourself.
+- Evidence search is different: `search_document_evidence` already returns `sources[]`. When any
+  returned evidence is used, show every entry whose `downloadStatus` is `available` as a source-file
+  download link. Do not call `get_source_document_download_url` again and do not decide that a
+  returned source is unimportant. If an entry is `unavailable`, say that its source link could not
+  be issued and preserve `SOURCE_DOWNLOAD_URL_UNAVAILABLE`. Use the explicit tool only to refresh
+  an expired evidence link or for non-evidence source IDs.
 
 ## Official Install Or Update
 

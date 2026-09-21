@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-09-12
+Last updated: 2026-09-21
 
 ## Authorization model
 
@@ -111,6 +111,22 @@ through an older launcher's generic MCP proxy.
 MCP and launcher clients must never expose credentials, tokens, organization IDs, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
 query shape, filters, limit, and retrieval configuration.
+
+### Evidence search response
+
+`POST /v1/evidence/search` and `search_document_evidence` return authorized chunks in `results[]`
+and one `sources[]` entry per distinct document represented on that page, in first-result order.
+Each source entry includes `sourceDocumentId`, title/file metadata, `downloadStatus`, `downloadUrl`,
+and `expiresAt`. Available attachment links expire after 24 hours. An issuance, storage, or audit
+failure is represented as `downloadStatus: "unavailable"`, null link fields, and the warning
+`SOURCE_DOWNLOAD_URL_UNAVAILABLE`; one failed source does not suppress other links or results.
+
+The `retrieval` object includes retrieval, embedding, lexical, and rerank versions/status plus
+`relevance.{policyVersion,cutoffReason,droppedCount}`. Pagination remains under `page`, and the
+service never generates the final answer. Evidence search exposes its source links without an
+extra download-tool call. The explicit source-download endpoint/tool remains available to refresh
+an expired URL and for structured rows or quarantine certificates whose source was not returned by
+evidence search.
 
 ## Migration and retrieval payloads
 
