@@ -131,6 +131,42 @@ describe("Phase 3 runtime readiness", () => {
     ]);
   });
 
+  it("fails V2 readiness when the BM25 collection lacks the organization tenant index", async () => {
+    const collections = new Map<string, RecordedCollection>();
+    const { url } = await startFakeQdrant(collections);
+    const config = parseRuntimeReadinessConfig({
+      QDRANT_URL: url,
+      QDRANT_COLLECTION_EVIDENCE: "smedc_evidence_local_v2",
+      RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v2-bm25"
+    });
+    collections.set(
+      config.qdrant.collectionName,
+      qdrantEvidenceCollectionSchema(8, "phase3.retrieval.v2-bm25")
+    );
+
+    const report = await checkRuntimeReadiness({
+      env: {
+        QDRANT_URL: url,
+        QDRANT_COLLECTION_EVIDENCE: config.qdrant.collectionName,
+        RETRIEVAL_CONFIG_VERSION: config.qdrant.retrievalConfigVersion
+      },
+      checks: {
+        mysql: async () => undefined,
+        storage: async () => undefined,
+        workerLease: async () => undefined
+      }
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toContainEqual(
+      expect.objectContaining({
+        name: "qdrant",
+        ok: false,
+        message: expect.stringContaining("orgId tenant index")
+      })
+    );
+  });
+
   it("times out dependency checks instead of hanging readiness forever", async () => {
     const collections = new Map<string, RecordedCollection>();
     const { url } = await startFakeQdrant(collections);
@@ -325,8 +361,20 @@ async function startFakeQdrant(collections: Map<string, RecordedCollection>) {
           result: {
             status: "green",
             config: {
-              params: collection
-            }
+              params: {
+                vectors: collection.vectors,
+                sparse_vectors: collection.sparse_vectors
+              }
+            },
+            payload_schema: Object.fromEntries(
+              Object.entries(collection.payloadIndexes ?? {}).map(([fieldName, fieldSchema]) => [
+                fieldName,
+                {
+                  data_type: "keyword",
+                  params: fieldSchema
+                }
+              ])
+            )
           }
         })
       );

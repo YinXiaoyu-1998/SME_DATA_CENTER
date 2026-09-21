@@ -163,7 +163,8 @@ function fakeDocumentRepository(): DocumentCatalogRepository {
     sourceTime: null,
     confidentialityLevel: 0,
     processingRunStatus: "succeeded",
-    documentIndexStatus: "indexed"
+    documentIndexStatus: "indexed",
+    documentIndexRetrievalConfigVersion: "phase3.retrieval.v1"
   };
 
   return {

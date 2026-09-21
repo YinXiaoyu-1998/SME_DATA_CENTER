@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
 import {
   parseRuntimeReadinessConfig,
+  qdrantCollectionHasExpectedTenantIndex,
   qdrantCollectionMatchesExpectedSchema,
   qdrantEvidenceCollectionSchema,
   isQdrantBm25RetrievalVersion,
@@ -164,6 +165,14 @@ async function checkQdrant(config: QdrantRuntimeConfig): Promise<ReadinessCheckR
         name: "qdrant",
         ok: false,
         message: `Qdrant evidence collection ${config.collectionName} does not match expected dense/sparse config.`
+      };
+    }
+
+    if (!qdrantCollectionHasExpectedTenantIndex(response.body, config.retrievalConfigVersion)) {
+      return {
+        name: "qdrant",
+        ok: false,
+        message: `Qdrant evidence collection ${config.collectionName} is missing the required orgId tenant index.`
       };
     }
 

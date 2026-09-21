@@ -33,6 +33,7 @@ export interface RecordedDocument {
   confidentialityLevel: number;
   processingRunStatus: string | null;
   documentIndexStatus: string | null;
+  documentIndexRetrievalConfigVersion: string | null;
   createdAt?: Date;
   sourceMetadata?: Record<string, unknown> | null;
   chunks?: string[];
@@ -73,7 +74,12 @@ export function createDocumentRepository() {
     async createUploadedDocument(
       input: Omit<
         RecordedDocument,
-        "contentType" | "processingRunStatus" | "documentIndexStatus" | "documentKind" | "fileType"
+        | "contentType"
+        | "processingRunStatus"
+        | "documentIndexStatus"
+        | "documentIndexRetrievalConfigVersion"
+        | "documentKind"
+        | "fileType"
       > & {
         contentType?: string;
         documentKind?: DocumentKindName;
@@ -89,7 +95,8 @@ export function createDocumentRepository() {
         fileType: input.fileType ?? null,
         contentType: input.contentType ?? null,
         processingRunStatus: "queued",
-        documentIndexStatus: null
+        documentIndexStatus: null,
+        documentIndexRetrievalConfigVersion: null
       };
       documents.push(document);
       processingRuns.push({
@@ -238,6 +245,7 @@ export function createInMemoryQuarantineCertificateRepository(
         confidentialityLevel: input.confidentialityLevel,
         processingRunStatus: null,
         documentIndexStatus: null,
+        documentIndexRetrievalConfigVersion: null,
         createdAt: now
       });
       const certificate = {

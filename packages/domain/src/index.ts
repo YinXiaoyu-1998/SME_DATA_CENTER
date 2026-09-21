@@ -92,6 +92,7 @@ export {
   buildQdrantBm25Document,
   isQdrantBm25RetrievalVersion,
   parseRuntimeReadinessConfig,
+  qdrantCollectionHasExpectedTenantIndex,
   qdrantCollectionMatchesExpectedSchema,
   qdrantEvidenceCollectionSchema,
   type ModelProviderRuntimeConfig,

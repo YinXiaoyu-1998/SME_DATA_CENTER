@@ -38,6 +38,7 @@ describe("evidence routes", () => {
       storageAdapter: new LocalFileSystemStorageAdapter({ root: storageRoot }),
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
+      runtimeEnv: { RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v2-bm25" },
       logger: false
     });
     const accessToken = await accessTokenFor(adminEmployee);
@@ -77,7 +78,7 @@ describe("evidence routes", () => {
         },
         documentIndex: {
           status: "pending",
-          retrievalConfigVersion: "phase3.retrieval.v1"
+          retrievalConfigVersion: "phase3.retrieval.v2-bm25"
         }
       });
       expect(documentRepository.documents[0]).toMatchObject({
@@ -288,6 +289,7 @@ describe("evidence routes", () => {
       confidentialityLevel: 0,
       processingRunStatus: "succeeded",
       documentIndexStatus: "ready",
+      documentIndexRetrievalConfigVersion: "phase3.retrieval.v2-bm25",
       status: "active",
       sourceSystem: "manual",
       sourceTime: null,
@@ -340,7 +342,7 @@ describe("evidence routes", () => {
       },
       documentIndex: {
         status: "ready",
-        retrievalConfigVersion: "phase3.retrieval.v1"
+        retrievalConfigVersion: "phase3.retrieval.v2-bm25"
       }
     });
     expect(adminResponse.statusCode).toBe(404);

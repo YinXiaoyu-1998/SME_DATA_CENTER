@@ -133,6 +133,29 @@ describe("source document download issuer", () => {
     expect(createDownloadUrl).not.toHaveBeenCalled();
     expect(result.warnings).toEqual(["SOURCE_DOWNLOAD_URL_UNAVAILABLE"]);
   });
+
+  it("refuses automatic evidence links when the document is no longer active", async () => {
+    const repository = fakeRepository({
+      doc_failed: { ...record("doc_failed", "failed.docx"), status: "processing_failed" }
+    });
+    const createDownloadUrl = vi.fn(async () => "https://download.test/should-not-run");
+    const issuer = createSourceDocumentDownloadIssuer({
+      repository,
+      storage: fakeStorage(createDownloadUrl)
+    });
+
+    const result = await issuer.issueMany(baseInput(["doc_failed"]));
+
+    expect(result.sources).toEqual([
+      expect.objectContaining({
+        sourceDocumentId: "doc_failed",
+        downloadStatus: "unavailable",
+        downloadUrl: null
+      })
+    ]);
+    expect(result.warnings).toEqual(["SOURCE_DOWNLOAD_URL_UNAVAILABLE"]);
+    expect(createDownloadUrl).not.toHaveBeenCalled();
+  });
 });
 
 function baseInput(documentIds: string[]) {

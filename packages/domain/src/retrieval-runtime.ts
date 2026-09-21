@@ -175,6 +175,32 @@ export function qdrantCollectionMatchesExpectedSchema(
   );
 }
 
+export function qdrantCollectionHasExpectedTenantIndex(
+  collection: unknown,
+  retrievalConfigVersion = DEFAULT_RETRIEVAL_CONFIG_VERSION
+): boolean {
+  if (!isQdrantBm25RetrievalVersion(retrievalConfigVersion)) {
+    return true;
+  }
+
+  if (!isRecord(collection)) return false;
+  const result = collection["result"];
+  if (!isRecord(result)) return false;
+  const payloadSchema = result["payload_schema"];
+  if (!isRecord(payloadSchema)) return false;
+  const orgIdSchema = payloadSchema["orgId"];
+  if (!isRecord(orgIdSchema)) return false;
+  const params = orgIdSchema["params"];
+  const paramsRecord = isRecord(params) ? params : undefined;
+
+  return (
+    (orgIdSchema["data_type"] === "keyword" ||
+      orgIdSchema["type"] === "keyword" ||
+      paramsRecord?.["type"] === "keyword") &&
+    (orgIdSchema["is_tenant"] === true || paramsRecord?.["is_tenant"] === true)
+  );
+}
+
 function collectionParams(collection: unknown):
   | {
       vectors?: Record<string, { size?: unknown; distance?: unknown }>;

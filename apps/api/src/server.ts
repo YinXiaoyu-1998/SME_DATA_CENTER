@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
+import { DEFAULT_RETRIEVAL_CONFIG_VERSION } from "@smedc/domain";
 import { registerMcpHttpRoute } from "./mcp/http.js";
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { registerApiErrorHandler } from "./request-errors.js";
@@ -104,6 +105,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     evidence,
     sourceDocumentDownloads,
     cursorSigningSecret,
+    retrievalConfigVersion:
+      environment["RETRIEVAL_CONFIG_VERSION"]?.trim() || DEFAULT_RETRIEVAL_CONFIG_VERSION,
     createBusinessRequestAudit
   });
 

@@ -66,7 +66,11 @@ export function createSourceDocumentDownloadIssuer(input: {
             sourceDocumentIds: requestedSources.map((source) => source.sourceDocumentId)
           });
       const authorizedById = new Map(
-        authorized.map((document) => [document.sourceDocumentId, document])
+        authorized
+          .filter(
+            (document) => request.reason !== "evidence_search_auto" || document.status === "active"
+          )
+          .map((document) => [document.sourceDocumentId, document])
       );
       const expiresAt = new Date(
         (input.now?.() ?? new Date()).getTime() + SOURCE_DOCUMENT_DOWNLOAD_EXPIRES_SECONDS * 1000

@@ -259,7 +259,7 @@ function parseConfidentialityLevel(upload: ParsedUpload): number | null {
   return Number(upload.confidentialityLevel);
 }
 
-function evidenceUploadResponse(document: DocumentStatusRecord) {
+function evidenceUploadResponse(document: DocumentStatusRecord, retrievalConfigVersion: string) {
   return {
     document: {
       documentId: document.id,
@@ -273,12 +273,12 @@ function evidenceUploadResponse(document: DocumentStatusRecord) {
     },
     documentIndex: {
       status: document.documentIndexStatus ?? "pending",
-      retrievalConfigVersion: DEFAULT_RETRIEVAL_CONFIG_VERSION
+      retrievalConfigVersion
     }
   };
 }
 
-function evidenceStatusResponse(document: DocumentStatusRecord) {
+function evidenceStatusResponse(document: DocumentStatusRecord, retrievalConfigVersion: string) {
   return {
     document: {
       documentId: document.id,
@@ -296,7 +296,7 @@ function evidenceStatusResponse(document: DocumentStatusRecord) {
     },
     documentIndex: {
       status: document.documentIndexStatus ?? "pending",
-      retrievalConfigVersion: DEFAULT_RETRIEVAL_CONFIG_VERSION
+      retrievalConfigVersion: document.documentIndexRetrievalConfigVersion ?? retrievalConfigVersion
     }
   };
 }
@@ -310,6 +310,7 @@ export function registerEvidenceRoutes(
     evidence: () => EvidenceSearchRepository;
     sourceDocumentDownloads: () => SourceDocumentDownloadIssuer;
     cursorSigningSecret: string;
+    retrievalConfigVersion?: string;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
   }
 ): void {
@@ -405,7 +406,14 @@ export function registerEvidenceRoutes(
         audit
       });
 
-      return reply.code(202).send(evidenceUploadResponse(document));
+      return reply
+        .code(202)
+        .send(
+          evidenceUploadResponse(
+            document,
+            dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
+          )
+        );
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
       request.log.error({ err: error, documentId }, "evidence document catalog write failed");
@@ -440,7 +448,10 @@ export function registerEvidenceRoutes(
         return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
       }
 
-      return evidenceStatusResponse(document);
+      return evidenceStatusResponse(
+        document,
+        dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
+      );
     }
   );
 
