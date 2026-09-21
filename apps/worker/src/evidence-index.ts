@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
 import { extname } from "node:path";
 import {
+  QDRANT_BM25_VECTOR_NAME,
   QDRANT_DENSE_VECTOR_NAME,
   QDRANT_SPARSE_VECTOR_NAME,
+  buildQdrantBm25Document,
   type Phase3FileType,
+  type QdrantBm25Document,
   type RetrievalModelConfig
 } from "@smedc/domain";
 import { createEvidenceChunks } from "./chunking/evidence-chunker.js";
@@ -27,7 +30,8 @@ export interface SparseVector {
 export interface QdrantEvidencePoint {
   id: string;
   denseVector: number[];
-  sparseVector: SparseVector;
+  lexicalVectorName: typeof QDRANT_SPARSE_VECTOR_NAME | typeof QDRANT_BM25_VECTOR_NAME;
+  lexicalVector: SparseVector | QdrantBm25Document;
   payload: Record<string, unknown>;
 }
 
@@ -118,7 +122,14 @@ export function createEvidenceIndexer(input: CreateEvidenceIndexerInput): Eviden
         points: chunks.map((chunk) => ({
           id: chunk.qdrantPointId,
           denseVector: chunk.denseVector,
-          sparseVector: toSparseVector(chunk.chunkText),
+          lexicalVectorName:
+            input.retrievalConfig.lexical.strategy === "qdrant_bm25"
+              ? QDRANT_BM25_VECTOR_NAME
+              : QDRANT_SPARSE_VECTOR_NAME,
+          lexicalVector:
+            input.retrievalConfig.lexical.strategy === "qdrant_bm25"
+              ? buildQdrantBm25Document(chunk.chunkText)
+              : toSparseVector(chunk.chunkText),
           payload: {
             orgId: run.orgId,
             documentId: run.documentId,
@@ -205,7 +216,7 @@ export class HttpQdrantEvidenceWriter implements QdrantEvidenceWriter {
               id: point.id,
               vector: {
                 [QDRANT_DENSE_VECTOR_NAME]: point.denseVector,
-                [QDRANT_SPARSE_VECTOR_NAME]: point.sparseVector
+                [point.lexicalVectorName]: point.lexicalVector
               },
               payload: point.payload
             }))

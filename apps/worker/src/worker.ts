@@ -37,6 +37,7 @@ export interface ClaimedProcessingRun {
   jobType: string;
   lockedBy: string | null;
   lockedUntil: Date | null;
+  isEvidenceReindex?: boolean;
   structuredImport?: {
     importBatchId: string;
     dataset: StructuredDatasetName;
@@ -479,6 +480,7 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
 
 export interface PrismaProcessingWorkerRepositoryOptions {
   structuredImportTransactionTimeoutMs?: number;
+  evidenceRetrievalConfigVersion?: string;
 }
 
 export function createPrismaProcessingWorkerRepository(
@@ -490,6 +492,7 @@ export function createPrismaProcessingWorkerRepository(
   const structuredImportTransactionTimeoutMs =
     options.structuredImportTransactionTimeoutMs ??
     PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportTransactionTimeoutMs;
+  const evidenceRetrievalConfigVersion = options.evidenceRetrievalConfigVersion;
 
   return {
     async claimNextProcessingRun(input) {
@@ -512,7 +515,20 @@ export function createPrismaProcessingWorkerRepository(
                         in: [DocumentStatus.pending_processing, DocumentStatus.processing]
                       }
                     }
-                  }
+                  },
+                  ...(evidenceRetrievalConfigVersion
+                    ? [
+                        {
+                          jobType: "evidence_document_index" as const,
+                          jobKey: { endsWith: `:${evidenceRetrievalConfigVersion}` },
+                          document: {
+                            status: DocumentStatus.active,
+                            archivedAt: null,
+                            documentKind: "evidence" as const
+                          }
+                        }
+                      ]
+                    : [])
                 ]
               }
             ],
@@ -575,11 +591,19 @@ export function createPrismaProcessingWorkerRepository(
           return null;
         }
 
+        const isEvidenceReindex =
+          run.document?.status === DocumentStatus.active &&
+          Boolean(
+            evidenceRetrievalConfigVersion &&
+            isEvidenceReindexJobForConfig(run.jobKey, evidenceRetrievalConfigVersion)
+          );
         const document = run.documentId
-          ? await tx.document.update({
-              where: { id: run.documentId },
-              data: { status: DocumentStatus.processing }
-            })
+          ? isEvidenceReindex
+            ? run.document
+            : await tx.document.update({
+                where: { id: run.documentId },
+                data: { status: DocumentStatus.processing }
+              })
           : null;
 
         if (run.jobType === "structured_partition_import") {
@@ -671,7 +695,7 @@ export function createPrismaProcessingWorkerRepository(
           include: { document: true, partitionImportJob: true }
         });
 
-        return toClaimedProcessingRun(claimedRun, document, structuredImport);
+        return toClaimedProcessingRun(claimedRun, document, structuredImport, isEvidenceReindex);
       });
     },
     async heartbeatProcessingRun(input) {
@@ -1157,7 +1181,18 @@ export function createPrismaProcessingWorkerRepository(
           });
         }
 
-        if (run.documentId) {
+        const preserveActiveEvidence =
+          run.documentId &&
+          run.jobType === "evidence_document_index" &&
+          isVersionedEvidenceReindexJob(run.jobKey) &&
+          Boolean(
+            await tx.document.findFirst({
+              where: { id: run.documentId, status: DocumentStatus.active },
+              select: { id: true }
+            })
+          );
+
+        if (run.documentId && !preserveActiveEvidence) {
           await tx.document.update({
             where: { id: run.documentId },
             data: {
@@ -1297,7 +1332,8 @@ function toClaimedProcessingRun(
     include: { document: true; partitionImportJob: true };
   }>,
   document: Prisma.DocumentGetPayload<Record<string, never>> | null,
-  structuredImport?: ClaimedProcessingRun["structuredImport"]
+  structuredImport?: ClaimedProcessingRun["structuredImport"],
+  isEvidenceReindex = false
 ): ClaimedProcessingRun {
   return {
     id: run.id,
@@ -1308,6 +1344,7 @@ function toClaimedProcessingRun(
     jobType: run.jobType,
     lockedBy: run.lockedBy,
     lockedUntil: run.lockedUntil,
+    isEvidenceReindex,
     structuredImport,
     ...(run.partitionImportJob?.temporaryObjectKey
       ? {
@@ -1341,6 +1378,17 @@ function toClaimedProcessingRun(
         }
       : null
   };
+}
+
+export function isEvidenceReindexJobForConfig(
+  jobKey: string,
+  retrievalConfigVersion: string
+): boolean {
+  return isVersionedEvidenceReindexJob(jobKey) && jobKey.endsWith(`:${retrievalConfigVersion}`);
+}
+
+function isVersionedEvidenceReindexJob(jobKey: string): boolean {
+  return /^evidence_document_index:[^:]+:\d+:phase3\.retrieval\.[^:]+$/u.test(jobKey);
 }
 
 function requireDatabaseUrl(): string {

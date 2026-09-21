@@ -31,8 +31,61 @@ describe("retrieval config seed and loader", () => {
       },
       qdrant: {
         collection: "smedc_evidence_test"
+      },
+      relevance: {
+        mode: "disabled"
+      },
+      lexical: {
+        strategy: "legacy_hash_tf"
       }
     });
+  });
+
+  it("enables the versioned relevance floor and gap policy only for V2", () => {
+    const active = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({
+        retrievalConfigVersion: "phase3.retrieval.v2-bm25",
+        qdrantCollection: "smedc_evidence_test_v2"
+      }),
+      "phase3.retrieval.v2-bm25"
+    );
+
+    expect(active.relevance).toEqual({
+      version: "relevance.v1@phase3.retrieval.v2-bm25",
+      mode: "rerank_floor_and_gap",
+      rerankMinScore: 0.3,
+      rerankMinGap: 0.3,
+      rerankLowClusterMaxScore: 0.4
+    });
+    expect(active.lexical.strategy).toBe("qdrant_bm25");
+  });
+
+  it("selects native BM25 only for the explicit V2 retrieval family", () => {
+    const active = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({ retrievalConfigVersion: "phase3.retrieval.v2-bm25" }),
+      "phase3.retrieval.v2-bm25"
+    );
+
+    expect(active.lexical).toEqual({
+      version: "lexical.bm25.v1@phase3.retrieval.v2-bm25",
+      sparseModel: "qdrant/bm25",
+      strategy: "qdrant_bm25"
+    });
+  });
+
+  it.each([
+    { rerankMinScore: Number.NaN },
+    { rerankMinScore: -0.1 },
+    { rerankLowClusterMaxScore: 1.1 },
+    { rerankMinGap: 0 },
+    { rerankMinGap: Number.POSITIVE_INFINITY }
+  ])("rejects invalid relevance policy values: %o", (relevance) => {
+    expect(() =>
+      buildRetrievalConfigSeed({
+        retrievalConfigVersion: "phase3.retrieval.v2-bm25",
+        relevance
+      })
+    ).toThrow(/relevance/i);
   });
 
   it("loads the expected active config and rejects ambiguous active versions", () => {
@@ -87,7 +140,12 @@ describe("retrieval config seed and loader", () => {
       embeddingVersion: "embedding-model@phase3.retrieval.v1",
       lexicalIndexVersion: "lexical.v1",
       rerankVersion: "rerank-model@phase3.retrieval.v1",
-      rerankStatus: "enabled"
+      rerankStatus: "enabled",
+      relevance: {
+        policyVersion: "relevance.disabled@phase3.retrieval.v1",
+        cutoffReason: "disabled",
+        droppedCount: 0
+      }
     });
   });
 

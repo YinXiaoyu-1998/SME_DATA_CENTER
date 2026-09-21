@@ -9,9 +9,26 @@ export const DEFAULT_DASHSCOPE_API_BASE_URL = "https://dashscope.aliyuncs.com/ap
 
 export const QDRANT_DENSE_VECTOR_NAME = "dense";
 export const QDRANT_SPARSE_VECTOR_NAME = "sparse";
+export const QDRANT_BM25_VECTOR_NAME = "bm25";
+export const QDRANT_BM25_MODEL = "qdrant/bm25";
 export const QDRANT_DENSE_VECTOR_SIZE = 8;
 export const OPENAI_COMPATIBLE_DENSE_VECTOR_SIZE = 1536;
 export const QDRANT_DENSE_DISTANCE = "Cosine";
+
+export const QDRANT_BM25_OPTIONS = Object.freeze({
+  tokenizer: "multilingual" as const,
+  stemmer: Object.freeze({ type: "none" as const }),
+  stopwords: Object.freeze({}),
+  k: 1.2,
+  b: 0.75,
+  avg_len: 256
+});
+
+export interface QdrantBm25Document {
+  text: string;
+  model: typeof QDRANT_BM25_MODEL;
+  options: typeof QDRANT_BM25_OPTIONS;
+}
 
 export interface RuntimeEnv {
   [key: string]: string | undefined;
@@ -53,12 +70,26 @@ export interface QdrantEvidenceCollectionSchema {
       distance: typeof QDRANT_DENSE_DISTANCE;
     };
   };
-  sparse_vectors: {
-    [QDRANT_SPARSE_VECTOR_NAME]: {
+  sparse_vectors: Record<
+    string,
+    {
       index: {
         on_disk: boolean;
       };
-    };
+      modifier?: "idf";
+    }
+  >;
+}
+
+export function isQdrantBm25RetrievalVersion(version: string): boolean {
+  return version === "phase3.retrieval.v2-bm25" || version.startsWith("phase3.retrieval.v2-bm25.");
+}
+
+export function buildQdrantBm25Document(text: string): QdrantBm25Document {
+  return {
+    text,
+    model: QDRANT_BM25_MODEL,
+    options: QDRANT_BM25_OPTIONS
   };
 }
 
@@ -95,8 +126,23 @@ export function parseRuntimeReadinessConfig(env: RuntimeEnv = process.env): Runt
 }
 
 export function qdrantEvidenceCollectionSchema(
-  denseVectorSize = QDRANT_DENSE_VECTOR_SIZE
+  denseVectorSize = QDRANT_DENSE_VECTOR_SIZE,
+  retrievalConfigVersion = DEFAULT_RETRIEVAL_CONFIG_VERSION
 ): QdrantEvidenceCollectionSchema {
+  const sparseVectors: QdrantEvidenceCollectionSchema["sparse_vectors"] =
+    isQdrantBm25RetrievalVersion(retrievalConfigVersion)
+      ? {
+          [QDRANT_BM25_VECTOR_NAME]: {
+            index: { on_disk: false },
+            modifier: "idf" as const
+          }
+        }
+      : {
+          [QDRANT_SPARSE_VECTOR_NAME]: {
+            index: { on_disk: false }
+          }
+        };
+
   return {
     vectors: {
       [QDRANT_DENSE_VECTOR_NAME]: {
@@ -104,29 +150,54 @@ export function qdrantEvidenceCollectionSchema(
         distance: QDRANT_DENSE_DISTANCE
       }
     },
-    sparse_vectors: {
-      [QDRANT_SPARSE_VECTOR_NAME]: {
-        index: {
-          on_disk: false
-        }
-      }
-    }
+    sparse_vectors: sparseVectors
   };
 }
 
 export function qdrantCollectionMatchesExpectedSchema(
   collection: unknown,
-  denseVectorSize = QDRANT_DENSE_VECTOR_SIZE
+  denseVectorSize = QDRANT_DENSE_VECTOR_SIZE,
+  retrievalConfigVersion = DEFAULT_RETRIEVAL_CONFIG_VERSION
 ): boolean {
   const params = collectionParams(collection);
   const dense = params?.vectors?.[QDRANT_DENSE_VECTOR_NAME];
-  const sparse = params?.sparse_vectors?.[QDRANT_SPARSE_VECTOR_NAME];
+  const sparseVectorName = isQdrantBm25RetrievalVersion(retrievalConfigVersion)
+    ? QDRANT_BM25_VECTOR_NAME
+    : QDRANT_SPARSE_VECTOR_NAME;
+  const sparse = params?.sparse_vectors?.[sparseVectorName];
+  const sparseRecord = isRecord(sparse) ? sparse : undefined;
 
   return (
     dense?.size === denseVectorSize &&
     dense?.distance === QDRANT_DENSE_DISTANCE &&
-    typeof sparse === "object" &&
-    sparse !== null
+    Boolean(sparseRecord) &&
+    (!isQdrantBm25RetrievalVersion(retrievalConfigVersion) || sparseRecord?.["modifier"] === "idf")
+  );
+}
+
+export function qdrantCollectionHasExpectedTenantIndex(
+  collection: unknown,
+  retrievalConfigVersion = DEFAULT_RETRIEVAL_CONFIG_VERSION
+): boolean {
+  if (!isQdrantBm25RetrievalVersion(retrievalConfigVersion)) {
+    return true;
+  }
+
+  if (!isRecord(collection)) return false;
+  const result = collection["result"];
+  if (!isRecord(result)) return false;
+  const payloadSchema = result["payload_schema"];
+  if (!isRecord(payloadSchema)) return false;
+  const orgIdSchema = payloadSchema["orgId"];
+  if (!isRecord(orgIdSchema)) return false;
+  const params = orgIdSchema["params"];
+  const paramsRecord = isRecord(params) ? params : undefined;
+
+  return (
+    (orgIdSchema["data_type"] === "keyword" ||
+      orgIdSchema["type"] === "keyword" ||
+      paramsRecord?.["type"] === "keyword") &&
+    (orgIdSchema["is_tenant"] === true || paramsRecord?.["is_tenant"] === true)
   );
 }
 

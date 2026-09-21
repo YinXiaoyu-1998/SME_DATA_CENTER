@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const prisma = vi.hoisted(() => ({
   processingRun: {
     updateMany: vi.fn(),
+    findFirst: vi.fn(),
     findUniqueOrThrow: vi.fn()
   },
   importBatch: {
@@ -14,7 +15,7 @@ const prisma = vi.hoisted(() => ({
   dishCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   deliveryLedgerRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   supplierCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  document: { update: vi.fn() },
+  document: { findFirst: vi.fn(), update: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
   $disconnect: vi.fn()
@@ -65,6 +66,77 @@ describe("Prisma structured worker persistence", () => {
     prisma.vipRow.createMany.mockResolvedValue({ count: 1 });
     prisma.document.update.mockResolvedValue({});
     prisma.auditLog.create.mockResolvedValue({});
+  });
+
+  it("claims only matching active evidence reindex jobs without hiding the active document", async () => {
+    const activeDocument = {
+      id: "doc_evidence",
+      orgId: "org_1",
+      uploaderId: "emp_1",
+      status: "active",
+      storageObjectKey: "org/org_1/documents/doc_evidence/original/sop.docx",
+      originalFileName: "sop.docx",
+      documentKind: "evidence",
+      fileType: "docx",
+      contentVersion: 1,
+      confidentialityLevel: 0
+    };
+    const run = {
+      id: "run_reindex",
+      orgId: "org_1",
+      documentId: "doc_evidence",
+      partitionImportJobId: null,
+      jobKey: "evidence_document_index:doc_evidence:1:phase3.retrieval.v2-bm25",
+      status: "queued",
+      jobType: "evidence_document_index",
+      attemptNumber: 0,
+      retryCount: 0,
+      availableAt: new Date("2026-09-21T00:00:00.000Z"),
+      lockedBy: null,
+      lockedUntil: null,
+      partitionImportJob: null,
+      document: activeDocument
+    };
+    prisma.processingRun.findFirst.mockResolvedValueOnce(run);
+    prisma.processingRun.findUniqueOrThrow.mockResolvedValueOnce({
+      ...run,
+      status: "running",
+      lockedBy: "worker-v2",
+      lockedUntil: new Date("2026-09-21T00:01:00.000Z")
+    });
+    const repository = createPrismaProcessingWorkerRepository("mysql://test", {
+      evidenceRetrievalConfigVersion: "phase3.retrieval.v2-bm25"
+    });
+
+    const claimed = await repository.claimNextProcessingRun({
+      workerId: "worker-v2",
+      now: new Date("2026-09-21T00:00:00.000Z"),
+      leaseSeconds: 60
+    });
+
+    expect(prisma.processingRun.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({
+                  jobType: "evidence_document_index",
+                  jobKey: { endsWith: ":phase3.retrieval.v2-bm25" },
+                  document: expect.objectContaining({ status: "active" })
+                })
+              ])
+            })
+          ]
+        })
+      })
+    );
+    expect(prisma.document.update).not.toHaveBeenCalled();
+    expect(claimed).toMatchObject({
+      id: "run_reindex",
+      isEvidenceReindex: true,
+      document: { id: "doc_evidence", status: "active" }
+    });
   });
 
   it("writes catalog rows through their own branch and stores safe imported/ignored summaries", async () => {

@@ -10,6 +10,7 @@ import {
 interface RecordedCollection {
   vectors?: unknown;
   sparse_vectors?: unknown;
+  payloadIndexes?: Record<string, unknown>;
 }
 
 const servers: http.Server[] = [];
@@ -49,6 +50,40 @@ describe("Phase 3 runtime readiness", () => {
     expect(collections.get(config.qdrant.collectionName)).toEqual(
       qdrantEvidenceCollectionSchema(1024)
     );
+  });
+
+  it("fails fast when V2 points at a V1 collection schema", async () => {
+    const collections = new Map<string, RecordedCollection>();
+    const { url } = await startFakeQdrant(collections);
+    const config = parseRuntimeReadinessConfig({
+      QDRANT_URL: url,
+      QDRANT_COLLECTION_EVIDENCE: "smedc_evidence_local_v2",
+      RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v2-bm25"
+    });
+    collections.set(config.qdrant.collectionName, qdrantEvidenceCollectionSchema());
+
+    await expect(bootstrapQdrantEvidenceCollection(config.qdrant)).rejects.toThrow(
+      "does not match"
+    );
+  });
+
+  it("creates the V2 collection and organization tenant payload index", async () => {
+    const collections = new Map<string, RecordedCollection>();
+    const { url } = await startFakeQdrant(collections);
+    const config = parseRuntimeReadinessConfig({
+      QDRANT_URL: url,
+      QDRANT_COLLECTION_EVIDENCE: "smedc_evidence_local_v2",
+      RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v2-bm25"
+    });
+
+    await bootstrapQdrantEvidenceCollection(config.qdrant);
+
+    expect(collections.get(config.qdrant.collectionName)).toMatchObject({
+      sparse_vectors: { bm25: { modifier: "idf" } },
+      payloadIndexes: {
+        orgId: { type: "keyword", is_tenant: true }
+      }
+    });
   });
 
   it("fails readiness clearly when Qdrant is unavailable", async () => {
@@ -94,6 +129,42 @@ describe("Phase 3 runtime readiness", () => {
       ["workerLease", true],
       ["modelProvider", true]
     ]);
+  });
+
+  it("fails V2 readiness when the BM25 collection lacks the organization tenant index", async () => {
+    const collections = new Map<string, RecordedCollection>();
+    const { url } = await startFakeQdrant(collections);
+    const config = parseRuntimeReadinessConfig({
+      QDRANT_URL: url,
+      QDRANT_COLLECTION_EVIDENCE: "smedc_evidence_local_v2",
+      RETRIEVAL_CONFIG_VERSION: "phase3.retrieval.v2-bm25"
+    });
+    collections.set(
+      config.qdrant.collectionName,
+      qdrantEvidenceCollectionSchema(8, "phase3.retrieval.v2-bm25")
+    );
+
+    const report = await checkRuntimeReadiness({
+      env: {
+        QDRANT_URL: url,
+        QDRANT_COLLECTION_EVIDENCE: config.qdrant.collectionName,
+        RETRIEVAL_CONFIG_VERSION: config.qdrant.retrievalConfigVersion
+      },
+      checks: {
+        mysql: async () => undefined,
+        storage: async () => undefined,
+        workerLease: async () => undefined
+      }
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toContainEqual(
+      expect.objectContaining({
+        name: "qdrant",
+        ok: false,
+        message: expect.stringContaining("orgId tenant index")
+      })
+    );
   });
 
   it("times out dependency checks instead of hanging readiness forever", async () => {
@@ -239,7 +310,7 @@ describe("Phase 3 runtime readiness", () => {
 async function startFakeQdrant(collections: Map<string, RecordedCollection>) {
   const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-    const collectionMatch = requestUrl.pathname.match(/^\/collections\/([^/]+)$/);
+    const collectionMatch = requestUrl.pathname.match(/^\/collections\/([^/]+)(\/index)?$/);
 
     if (!collectionMatch) {
       response.writeHead(404, { "content-type": "application/json" });
@@ -257,6 +328,24 @@ async function startFakeQdrant(collections: Map<string, RecordedCollection>) {
 
     const collectionName = decodeURIComponent(rawCollectionName);
 
+    if (collectionMatch[2] === "/index" && request.method === "PUT") {
+      const body = JSON.parse(await readBody(request)) as {
+        field_name: string;
+        field_schema: unknown;
+      };
+      const collection = collections.get(collectionName);
+      if (!collection) {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end(JSON.stringify({ status: "not_found" }));
+        return;
+      }
+      collection.payloadIndexes ??= {};
+      collection.payloadIndexes[body.field_name] = body.field_schema;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ result: true }));
+      return;
+    }
+
     if (request.method === "GET") {
       const collection = collections.get(collectionName);
 
@@ -272,8 +361,20 @@ async function startFakeQdrant(collections: Map<string, RecordedCollection>) {
           result: {
             status: "green",
             config: {
-              params: collection
-            }
+              params: {
+                vectors: collection.vectors,
+                sparse_vectors: collection.sparse_vectors
+              }
+            },
+            payload_schema: Object.fromEntries(
+              Object.entries(collection.payloadIndexes ?? {}).map(([fieldName, fieldSchema]) => [
+                fieldName,
+                {
+                  data_type: "keyword",
+                  params: fieldSchema
+                }
+              ])
+            )
           }
         })
       );

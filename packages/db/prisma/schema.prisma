@@ -301,7 +301,7 @@ model DocumentChunk {
   document               Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
   documentIndex          DocumentIndex? @relation(fields: [documentIndexId], references: [id], onDelete: SetNull)
 
-  @@unique([documentId, chunkHash, indexType])
+  @@index([documentId, chunkHash, indexType])
   @@unique([documentIndexId, chunkId])
   @@index([documentId, chunkIndex])
   @@index([qdrantPointId])

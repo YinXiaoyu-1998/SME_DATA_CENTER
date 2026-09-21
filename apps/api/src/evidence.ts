@@ -2,10 +2,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createDatabaseAdapter } from "@smedc/db";
 import { DocumentIndexStatus, DocumentKind, DocumentStatus, PrismaClient } from "@prisma/client";
 import {
+  QDRANT_BM25_VECTOR_NAME,
   QDRANT_DENSE_VECTOR_NAME,
   QDRANT_SPARSE_VECTOR_NAME,
   PHASE3_ERROR_CODES,
   buildRetrievalConfigSeed,
+  buildQdrantBm25Document,
   canEmployeeAccessDocument,
   loadActiveRetrievalConfig,
   toEvidenceSearchRetrievalMetadata,
@@ -14,6 +16,7 @@ import {
   type RetrievalModelConfig
 } from "@smedc/domain";
 import { parseApiRetrievalRuntimeConfig } from "./config/retrieval-runtime.js";
+import { pruneEvidenceCandidates } from "./evidence-relevance.js";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface EvidenceSearchFilters {
@@ -175,14 +178,17 @@ export function createEvidenceSearchService(input: {
         }
       }
 
-      const ordered = dedupeEvidenceCandidates(
-        revalidated
-          .map((candidate) => ({
-            ...candidate,
-            rerankScore: rerankScoreByChunkId.get(candidate.chunkId) ?? null
-          }))
-          .sort(compareEvidenceCandidates)
+      const scoredCandidates = revalidated.map((candidate) => ({
+        ...candidate,
+        rerankScore: rerankScoreByChunkId.get(candidate.chunkId) ?? null
+      }));
+      const relevance = pruneEvidenceCandidates(
+        input.retrievalConfig.relevance.mode === "disabled"
+          ? scoredCandidates.sort(compareEvidenceCandidates)
+          : scoredCandidates,
+        input.retrievalConfig.relevance
       );
+      const ordered = dedupeEvidenceCandidates(relevance.kept);
       const page = ordered.slice(offset, offset + searchInput.limit + 1);
       const visible = page.slice(0, searchInput.limit);
       const hasMore = page.length > searchInput.limit;
@@ -195,10 +201,12 @@ export function createEvidenceSearchService(input: {
             now
           })
         : null;
-      const warnings =
-        candidates.length >= EVIDENCE_CANDIDATE_WINDOW
+      const warnings = [
+        ...(candidates.length >= EVIDENCE_CANDIDATE_WINDOW
           ? ["EVIDENCE_CANDIDATE_WINDOW_TRUNCATED"]
-          : [];
+          : []),
+        ...relevance.warnings
+      ];
 
       return {
         results: visible.map((candidate) => ({
@@ -223,7 +231,10 @@ export function createEvidenceSearchService(input: {
           nextCursor,
           hasMore
         },
-        retrieval: toEvidenceSearchRetrievalMetadata(input.retrievalConfig),
+        retrieval: toEvidenceSearchRetrievalMetadata(input.retrievalConfig, {
+          cutoffReason: relevance.cutoffReason,
+          droppedCount: relevance.droppedCount
+        }),
         warnings
       };
     }
@@ -458,16 +469,14 @@ export class HttpQdrantEvidenceSearcher implements QdrantEvidenceSearcher {
       return [];
     }
 
-    const sparseVector = toSparseVector(input.query);
-    const response = await this.queryQdrant(input, denseVector, sparseVector);
+    const response = await this.queryQdrant(input, denseVector);
 
     return response.map((point) => qdrantPointToCandidate(point, input.retrievalConfig.version));
   }
 
   private async queryQdrant(
     input: EvidenceSearchInput & { retrievalConfig: RetrievalModelConfig },
-    denseVector: number[],
-    sparseVector: SparseVector
+    denseVector: number[]
   ): Promise<QdrantQueryPoint[]> {
     const fetchImpl = this.input.fetch ?? fetch;
     const controller = new AbortController();
@@ -493,12 +502,26 @@ export class HttpQdrantEvidenceSearcher implements QdrantEvidenceSearcher {
                 filter: qdrantPayloadFilter(input),
                 limit: searchLimit
               },
-              {
-                query: sparseVector,
-                using: QDRANT_SPARSE_VECTOR_NAME,
-                filter: qdrantPayloadFilter(input),
-                limit: searchLimit
-              }
+              input.retrievalConfig.lexical.strategy === "qdrant_bm25"
+                ? {
+                    query: buildQdrantBm25Document(input.query),
+                    using: QDRANT_BM25_VECTOR_NAME,
+                    filter: qdrantPayloadFilter(input),
+                    params: {
+                      idf: {
+                        corpus: {
+                          must: [{ key: "orgId", match: { value: input.orgId } }]
+                        }
+                      }
+                    },
+                    limit: searchLimit
+                  }
+                : {
+                    query: toSparseVector(input.query),
+                    using: QDRANT_SPARSE_VECTOR_NAME,
+                    filter: qdrantPayloadFilter(input),
+                    limit: searchLimit
+                  }
             ],
             query: {
               fusion: "rrf"

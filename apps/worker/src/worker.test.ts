@@ -7,6 +7,7 @@ import {
   PROCESSING_ERROR_CODES,
   runWorkerLoop,
   runWorkerOnce,
+  isEvidenceReindexJobForConfig,
   type ClaimedProcessingRun,
   type EvidenceDocumentChunkWrite,
   type EvidenceIndexer,
@@ -180,6 +181,23 @@ function createFakeRepository(input: {
 }
 
 describe("processing worker", () => {
+  it("recognizes only reindex jobs for the configured retrieval version", () => {
+    expect(
+      isEvidenceReindexJobForConfig(
+        "evidence_document_index:doc_1:2:phase3.retrieval.v2-bm25",
+        "phase3.retrieval.v2-bm25"
+      )
+    ).toBe(true);
+    expect(
+      isEvidenceReindexJobForConfig(
+        "evidence_document_index:doc_1:2:phase3.retrieval.v2-bm25",
+        "phase3.retrieval.v1"
+      )
+    ).toBe(false);
+    expect(
+      isEvidenceReindexJobForConfig("evidence_document_index:doc_1:v1", "phase3.retrieval.v1")
+    ).toBe(false);
+  });
   let storageRoot: string | undefined;
 
   afterEach(async () => {

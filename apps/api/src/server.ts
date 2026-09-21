@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
+import { DEFAULT_RETRIEVAL_CONFIG_VERSION } from "@smedc/domain";
 import { registerMcpHttpRoute } from "./mcp/http.js";
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
 import { registerApiErrorHandler } from "./request-errors.js";
@@ -30,7 +31,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   const structuredCoverage = context.structuredCoverage;
   const structuredPartitions = context.structuredPartitions;
   const quarantineCertificates = context.quarantineCertificates;
-  const sourceDocuments = context.sourceDocuments;
+  const sourceDocumentDownloads = context.sourceDocumentDownloads;
   const skills = context.skills;
   const evidence = context.evidence;
   const createBusinessRequestAudit = context.createBusinessRequestAudit;
@@ -102,7 +103,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     documents,
     storage,
     evidence,
+    sourceDocumentDownloads,
     cursorSigningSecret,
+    retrievalConfigVersion:
+      environment["RETRIEVAL_CONFIG_VERSION"]?.trim() || DEFAULT_RETRIEVAL_CONFIG_VERSION,
     createBusinessRequestAudit
   });
 
@@ -130,8 +134,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   registerSourceDocumentRoutes(app, {
     auth: requestAuth,
-    sourceDocuments,
-    storage,
+    sourceDocumentDownloads,
     createBusinessRequestAudit
   });
 

@@ -35,6 +35,10 @@ import {
   createPrismaSourceDocumentRepository,
   type SourceDocumentRepository
 } from "./source-documents.js";
+import {
+  createSourceDocumentDownloadIssuer,
+  type SourceDocumentDownloadIssuer
+} from "./source-document-downloads.js";
 import { createOriginalObjectKey, createStorageAdapter, type StorageAdapter } from "@smedc/storage";
 import { AuthCore, type AuthRequestAudit } from "./auth/auth-core.js";
 import { createPrismaAuthCoreRepository } from "./auth/prisma-auth-repository.js";
@@ -55,6 +59,7 @@ export interface ApiServerOptions {
   structuredCoverageRepository?: StructuredCoverageRepository;
   quarantineCertificateRepository?: QuarantineCertificateRepository;
   sourceDocumentRepository?: SourceDocumentRepository;
+  sourceDocumentDownloadIssuer?: SourceDocumentDownloadIssuer;
   evidenceRepository?: EvidenceSearchRepository;
   storageAdapter?: StorageAdapter;
   authCore?: AuthCore;
@@ -91,6 +96,7 @@ export interface ApiServerContext {
   structuredCoverage: () => StructuredCoverageRepository;
   quarantineCertificates: () => QuarantineCertificateRepository;
   sourceDocuments: () => SourceDocumentRepository;
+  sourceDocumentDownloads: () => SourceDocumentDownloadIssuer;
   skills: () => SkillDirectoryRepository;
   evidence: () => EvidenceSearchRepository;
   close: () => Promise<void>;
@@ -116,6 +122,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let structuredCoverageRepository = options.structuredCoverageRepository;
   let quarantineCertificateRepository = options.quarantineCertificateRepository;
   let sourceDocumentRepository = options.sourceDocumentRepository;
+  let sourceDocumentDownloadIssuer = options.sourceDocumentDownloadIssuer;
   let evidenceRepository = options.evidenceRepository;
   let storageAdapter = options.storageAdapter;
   const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
@@ -207,6 +214,14 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return sourceDocumentRepository;
   }
 
+  function sourceDocumentDownloads(): SourceDocumentDownloadIssuer {
+    sourceDocumentDownloadIssuer ??= createSourceDocumentDownloadIssuer({
+      repository: sourceDocuments(),
+      storage: storage()
+    });
+    return sourceDocumentDownloadIssuer;
+  }
+
   function skills(): SkillDirectoryRepository {
     skillRepository ??= createPrismaSkillDirectoryRepository();
     return skillRepository;
@@ -255,6 +270,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     structuredCoverage,
     quarantineCertificates,
     sourceDocuments,
+    sourceDocumentDownloads,
     skills,
     evidence,
     close

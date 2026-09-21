@@ -3,8 +3,10 @@ import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
 import {
   parseRuntimeReadinessConfig,
+  qdrantCollectionHasExpectedTenantIndex,
   qdrantCollectionMatchesExpectedSchema,
   qdrantEvidenceCollectionSchema,
+  isQdrantBm25RetrievalVersion,
   type QdrantRuntimeConfig,
   type RuntimeEnv,
   type RuntimeReadinessConfig
@@ -61,29 +63,48 @@ export async function bootstrapQdrantEvidenceCollection(
   }
 
   if (existing.ok) {
-    if (!qdrantCollectionMatchesExpectedSchema(existing.body, config.denseVectorSize)) {
+    if (
+      !qdrantCollectionMatchesExpectedSchema(
+        existing.body,
+        config.denseVectorSize,
+        config.retrievalConfigVersion
+      )
+    ) {
       throw new Error(
         `Qdrant evidence collection ${config.collectionName} exists but does not match the expected dense/sparse config.`
       );
     }
-
-    return;
-  }
-
-  if (existing.status !== 404) {
+  } else if (existing.status !== 404) {
     throw new Error(
       `Qdrant is unavailable or returned ${existing.status} while checking collection ${config.collectionName}.`
     );
+  } else {
+    const created = await fetchQdrantJson(config, collectionUrl(config), "PUT", {
+      body: JSON.stringify(
+        qdrantEvidenceCollectionSchema(config.denseVectorSize, config.retrievalConfigVersion)
+      )
+    });
+
+    if (!created.ok) {
+      throw new Error(
+        `Unable to create Qdrant evidence collection ${config.collectionName}: HTTP ${created.status}.`
+      );
+    }
   }
 
-  const created = await fetchQdrantJson(config, collectionUrl(config), "PUT", {
-    body: JSON.stringify(qdrantEvidenceCollectionSchema(config.denseVectorSize))
-  });
+  if (isQdrantBm25RetrievalVersion(config.retrievalConfigVersion)) {
+    const indexed = await fetchQdrantJson(config, `${collectionUrl(config)}/index`, "PUT", {
+      body: JSON.stringify({
+        field_name: "orgId",
+        field_schema: { type: "keyword", is_tenant: true }
+      })
+    });
 
-  if (!created.ok) {
-    throw new Error(
-      `Unable to create Qdrant evidence collection ${config.collectionName}: HTTP ${created.status}.`
-    );
+    if (!indexed.ok) {
+      throw new Error(
+        `Unable to create the orgId tenant index for Qdrant evidence collection ${config.collectionName}: HTTP ${indexed.status}.`
+      );
+    }
   }
 }
 
@@ -133,11 +154,25 @@ async function checkQdrant(config: QdrantRuntimeConfig): Promise<ReadinessCheckR
       };
     }
 
-    if (!qdrantCollectionMatchesExpectedSchema(response.body, config.denseVectorSize)) {
+    if (
+      !qdrantCollectionMatchesExpectedSchema(
+        response.body,
+        config.denseVectorSize,
+        config.retrievalConfigVersion
+      )
+    ) {
       return {
         name: "qdrant",
         ok: false,
         message: `Qdrant evidence collection ${config.collectionName} does not match expected dense/sparse config.`
+      };
+    }
+
+    if (!qdrantCollectionHasExpectedTenantIndex(response.body, config.retrievalConfigVersion)) {
+      return {
+        name: "qdrant",
+        ok: false,
+        message: `Qdrant evidence collection ${config.collectionName} is missing the required orgId tenant index.`
       };
     }
 

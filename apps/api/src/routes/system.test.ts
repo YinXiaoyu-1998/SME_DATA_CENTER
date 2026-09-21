@@ -64,6 +64,9 @@ function context(): ApiServerContext {
     sourceDocuments: () => {
       throw new Error("not used");
     },
+    sourceDocumentDownloads: () => {
+      throw new Error("not used");
+    },
     close: async () => undefined
   };
 }

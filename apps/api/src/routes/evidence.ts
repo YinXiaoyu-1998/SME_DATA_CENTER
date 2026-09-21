@@ -12,6 +12,7 @@ import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documen
 import { EvidenceSearchCursorError, type EvidenceSearchRepository } from "../evidence.js";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import type { RequestAuth } from "../request-auth.js";
+import type { SourceDocumentDownloadIssuer } from "../source-document-downloads.js";
 import {
   errorResponse,
   isPayloadTooLargeError,
@@ -258,7 +259,7 @@ function parseConfidentialityLevel(upload: ParsedUpload): number | null {
   return Number(upload.confidentialityLevel);
 }
 
-function evidenceUploadResponse(document: DocumentStatusRecord) {
+function evidenceUploadResponse(document: DocumentStatusRecord, retrievalConfigVersion: string) {
   return {
     document: {
       documentId: document.id,
@@ -272,12 +273,12 @@ function evidenceUploadResponse(document: DocumentStatusRecord) {
     },
     documentIndex: {
       status: document.documentIndexStatus ?? "pending",
-      retrievalConfigVersion: DEFAULT_RETRIEVAL_CONFIG_VERSION
+      retrievalConfigVersion
     }
   };
 }
 
-function evidenceStatusResponse(document: DocumentStatusRecord) {
+function evidenceStatusResponse(document: DocumentStatusRecord, retrievalConfigVersion: string) {
   return {
     document: {
       documentId: document.id,
@@ -295,7 +296,7 @@ function evidenceStatusResponse(document: DocumentStatusRecord) {
     },
     documentIndex: {
       status: document.documentIndexStatus ?? "pending",
-      retrievalConfigVersion: DEFAULT_RETRIEVAL_CONFIG_VERSION
+      retrievalConfigVersion: document.documentIndexRetrievalConfigVersion ?? retrievalConfigVersion
     }
   };
 }
@@ -307,7 +308,9 @@ export function registerEvidenceRoutes(
     documents: () => DocumentCatalogRepository;
     storage: () => StorageAdapter;
     evidence: () => EvidenceSearchRepository;
+    sourceDocumentDownloads: () => SourceDocumentDownloadIssuer;
     cursorSigningSecret: string;
+    retrievalConfigVersion?: string;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
   }
 ): void {
@@ -403,7 +406,14 @@ export function registerEvidenceRoutes(
         audit
       });
 
-      return reply.code(202).send(evidenceUploadResponse(document));
+      return reply
+        .code(202)
+        .send(
+          evidenceUploadResponse(
+            document,
+            dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
+          )
+        );
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
       request.log.error({ err: error, documentId }, "evidence document catalog write failed");
@@ -438,7 +448,10 @@ export function registerEvidenceRoutes(
         return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
       }
 
-      return evidenceStatusResponse(document);
+      return evidenceStatusResponse(
+        document,
+        dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
+      );
     }
   );
 
@@ -477,8 +490,24 @@ export function registerEvidenceRoutes(
       throw error;
     }
 
+    const sourceDownloads =
+      result.results.length === 0
+        ? { sources: [], warnings: [] }
+        : await dependencies.sourceDocumentDownloads().issueMany({
+            orgId: employee.orgId,
+            employee,
+            requestedSources: result.results.map((item) => ({
+              sourceDocumentId: item.documentId,
+              documentTitle: item.documentTitle
+            })),
+            audit,
+            reason: "evidence_search_auto"
+          });
+
     return {
       ...result,
+      sources: sourceDownloads.sources,
+      warnings: [...new Set([...result.warnings, ...sourceDownloads.warnings])],
       requestId: request.id
     };
   });

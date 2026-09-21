@@ -4,7 +4,7 @@ Status: `smedc-mcp-launcher@0.5.0` is published and independently verified, both
 use their final SMEDC names, and npm Trusted Publisher is configured. Server recommendation
 synchronization and the staging hard-cut deployment remain gated release tasks.
 
-Last updated: 2026-09-17
+Last updated: 2026-09-21
 
 ## Purpose
 
@@ -187,6 +187,13 @@ An authenticated employee can ask which account is active. The zero-input
 `smedc_get_current_user` tool returns only that bearer-authenticated account's
 `displayName`, `email`, `role`, and `clearance`; it accepts no employee selector and exposes no
 internal IDs or credentials.
+
+When evidence search results are used in an answer, the service returns one automatic source-file
+download status for every distinct document on that result page. The employee-owned agent must show
+every available 24-hour download link, without deciding that a source is unimportant. If issuance is
+unavailable, the agent reports that status and warning instead of inventing or hiding a link. The
+explicit download tool remains the refresh path for an expired link and the source-link path for
+structured rows or quarantine certificates.
 
 The server still accepts the older Authorization Code + PKCE contract for minimum-compatible 0.1.x
 launchers. That compatibility path is not the pinned or recommended employee flow. Future external

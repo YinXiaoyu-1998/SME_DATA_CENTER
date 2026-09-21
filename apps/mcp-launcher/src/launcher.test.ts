@@ -398,6 +398,48 @@ describe("launcher local path upload proxy", () => {
   });
 });
 
+describe("launcher evidence search proxy", () => {
+  it("preserves automatic source links without calling the explicit download tool", async () => {
+    const calls: Array<{ method?: string; params?: unknown }> = [];
+    const sourceUrl = "https://downloads.example.test/evidence/doc_1?signature=opaque";
+    const dependencies = createLauncherToolDependencies({
+      config,
+      auth: fakeAuth(),
+      fetchImplementation: fakeMcpFetch(calls, {
+        results: [{ documentId: "doc_1", chunkId: "chunk_1", text: "制作规范" }],
+        sources: [
+          {
+            sourceDocumentId: "doc_1",
+            documentTitle: "肉夹馍制作标准",
+            downloadStatus: "available",
+            downloadUrl: sourceUrl
+          }
+        ],
+        page: { nextCursor: null },
+        retrieval: { configVersion: "phase3.retrieval.v2-bm25" },
+        warnings: []
+      })
+    });
+
+    const result = await createLauncherToolHandler(
+      "search_document_evidence",
+      dependencies
+    )({
+      query: "肉夹馍怎么制作"
+    });
+
+    expect(result.isError).toBe(false);
+    expect(body(result)).toMatchObject({
+      sources: [{ downloadStatus: "available", downloadUrl: sourceUrl }]
+    });
+    const toolCalls = calls
+      .filter((call) => call.method === "tools/call")
+      .map((call) => (call.params as { name?: string }).name);
+    expect(toolCalls).toEqual(["search_document_evidence"]);
+    expect(toolCalls).not.toContain("get_source_document_download_url");
+  });
+});
+
 function fakeAuth(
   options: { authenticated?: boolean; loginError?: { code: string; message: string } } = {}
 ) {
@@ -432,7 +474,10 @@ function body(result: { content: Array<{ text: string }> }): unknown {
   return JSON.parse(result.content[0]?.text ?? "null");
 }
 
-function fakeMcpFetch(calls: Array<{ method?: string; params?: unknown }>): typeof fetch {
+function fakeMcpFetch(
+  calls: Array<{ method?: string; params?: unknown }>,
+  toolBody: unknown = { accepted: true }
+): typeof fetch {
   return async (url: string | URL | Request, init?: RequestInit) => {
     let parsed: { method?: string; params?: unknown; id?: unknown } | null = null;
     if (typeof init?.body === "string") {
@@ -468,7 +513,7 @@ function fakeMcpFetch(calls: Array<{ method?: string; params?: unknown }>): type
           jsonrpc: "2.0",
           id: parsed.id,
           result: {
-            content: [{ type: "text", text: JSON.stringify({ accepted: true }) }],
+            content: [{ type: "text", text: JSON.stringify(toolBody) }],
             isError: false
           }
         }),

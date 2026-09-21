@@ -171,6 +171,71 @@ describe("evidence search service", () => {
     ]);
   });
 
+  it("queries V2 BM25 with multilingual options and organization-only IDF corpus", async () => {
+    const requests: unknown[] = [];
+    const searcher = new HttpQdrantEvidenceSearcher({
+      url: "http://127.0.0.1:6333",
+      apiKey: null,
+      timeoutMs: 1_000,
+      embeddingProvider: {
+        async embedTexts() {
+          return [[0.1, 0.2]];
+        }
+      },
+      fetch: (async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ result: { points: [] } }), { status: 200 });
+      }) as typeof fetch
+    });
+    const retrievalConfig = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({ retrievalConfigVersion: "phase3.retrieval.v2-bm25" }),
+      "phase3.retrieval.v2-bm25"
+    );
+
+    await searcher.hybridSearch({
+      orgId: "default-org",
+      employee,
+      query: "肉夹馍怎么做",
+      filters: { fileTypes: ["docx"], documentIds: ["doc_roujiamo"] },
+      limit: 5,
+      cursor: null,
+      cursorSecret: "cursor-secret",
+      audit: {
+        requestId: "req_bm25",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      },
+      retrievalConfig
+    });
+
+    expect(requests[0]).toMatchObject({
+      prefetch: [
+        { using: "dense", query: [0.1, 0.2] },
+        {
+          using: "bm25",
+          query: {
+            text: "肉夹馍怎么做",
+            model: "qdrant/bm25",
+            options: {
+              tokenizer: "multilingual",
+              stemmer: { type: "none" },
+              stopwords: {},
+              k: 1.2,
+              b: 0.75,
+              avg_len: 256
+            }
+          },
+          params: {
+            idf: {
+              corpus: { must: [{ key: "orgId", match: { value: "default-org" } }] }
+            }
+          }
+        }
+      ]
+    });
+  });
+
   it("reranks Qdrant hybrid hits and drops stale chunks through authoritative revalidation", async () => {
     const searchedQueries: string[] = [];
     const qdrantSearcher: QdrantEvidenceSearcher = {
@@ -291,8 +356,137 @@ describe("evidence search service", () => {
     ]);
     expect(result.retrieval).toMatchObject({
       retrievalConfigVersion: "phase3.retrieval.v1",
-      rerankStatus: "enabled"
+      rerankStatus: "enabled",
+      relevance: {
+        cutoffReason: "disabled",
+        droppedCount: 0
+      }
     });
+  });
+
+  it("prunes V2 candidates by rerank score before pagination", async () => {
+    const scores = [0.67, 0.62, 0.2, 0.2];
+    const qdrantSearcher: QdrantEvidenceSearcher = {
+      async hybridSearch() {
+        return scores.map((_, index) => ({
+          ...candidate(`chunk_${index}`, 1 - index * 0.1),
+          retrievalConfigVersion: "phase3.retrieval.v2-bm25"
+        }));
+      }
+    };
+    const revalidator: EvidenceRevalidator = {
+      async revalidate(input) {
+        return input.candidates.map((next) => ({
+          ...next,
+          documentTitle: `Document ${next.documentId}`,
+          fileType: "docx",
+          sectionHeadingPath: [],
+          blockType: "paragraph",
+          pageNumber: null
+        }));
+      }
+    };
+    const service = createEvidenceSearchService({
+      retrievalConfig: loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({
+          retrievalConfigVersion: "phase3.retrieval.v2-bm25",
+          qdrantCollection: "smedc_evidence_test_v2"
+        }),
+        "phase3.retrieval.v2-bm25"
+      ),
+      qdrantSearcher,
+      revalidator,
+      rerankProvider: {
+        metadata: { version: "fake-rerank@phase3.retrieval.v2-bm25" },
+        async rerank() {
+          return { scores: scores.map((score, index) => ({ index, score })) };
+        }
+      }
+    });
+
+    const result = await service.searchEvidence({
+      orgId: "default-org",
+      employee,
+      query: "肉夹馍怎么做？",
+      filters: { fileTypes: [], documentIds: [] },
+      limit: 10,
+      cursor: null,
+      cursorSecret: "cursor-secret",
+      audit: {
+        requestId: "req_v2",
+        sourceIp: "198.51.100.8",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
+    });
+
+    expect(result.results.map((item) => item.chunkId)).toEqual(["chunk_0", "chunk_1"]);
+    expect(result.page).toMatchObject({ hasMore: false, nextCursor: null });
+    expect(result.retrieval.relevance).toEqual({
+      policyVersion: "relevance.v1@phase3.retrieval.v2-bm25",
+      cutoffReason: "below_floor",
+      droppedCount: 2
+    });
+  });
+
+  it("does not fall back to hybrid scores for incomplete V2 rerank output", async () => {
+    const qdrantSearcher: QdrantEvidenceSearcher = {
+      async hybridSearch() {
+        return [
+          { ...candidate("chunk_scored", 0.1), retrievalConfigVersion: "phase3.retrieval.v2-bm25" },
+          {
+            ...candidate("chunk_missing", 0.99),
+            retrievalConfigVersion: "phase3.retrieval.v2-bm25"
+          }
+        ];
+      }
+    };
+    const revalidator: EvidenceRevalidator = {
+      async revalidate(input) {
+        return input.candidates.map((next) => ({
+          ...next,
+          documentTitle: `Document ${next.documentId}`,
+          fileType: "md",
+          sectionHeadingPath: [],
+          blockType: "paragraph",
+          pageNumber: null
+        }));
+      }
+    };
+    const service = createEvidenceSearchService({
+      retrievalConfig: loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({ retrievalConfigVersion: "phase3.retrieval.v2-bm25" }),
+        "phase3.retrieval.v2-bm25"
+      ),
+      qdrantSearcher,
+      revalidator,
+      rerankProvider: {
+        metadata: { version: "fake-rerank@phase3.retrieval.v2-bm25" },
+        async rerank() {
+          return { scores: [{ index: 0, score: 0.8 }] };
+        }
+      }
+    });
+
+    const result = await service.searchEvidence({
+      orgId: "default-org",
+      employee,
+      query: "query",
+      filters: { fileTypes: [], documentIds: [] },
+      limit: 10,
+      cursor: null,
+      cursorSecret: "cursor-secret",
+      audit: {
+        requestId: "req_partial",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
+    });
+
+    expect(result.results.map((item) => item.chunkId)).toEqual(["chunk_scored"]);
+    expect(result.warnings).toContain("RERANK_INCOMPLETE");
+    expect(result.retrieval.relevance.droppedCount).toBe(1);
   });
 
   it("returns signed evidence cursor pages and rejects tamper, expiry, and scope changes", async () => {
@@ -378,6 +572,22 @@ describe("evidence search service", () => {
         ...baseInput,
         cursor: firstPage.page.nextCursor,
         query: "另一个问题"
+      })
+    ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
+
+    const v2Service = createEvidenceSearchService({
+      retrievalConfig: loadActiveRetrievalConfig(
+        buildRetrievalConfigSeed({ retrievalConfigVersion: "phase3.retrieval.v2-bm25" }),
+        "phase3.retrieval.v2-bm25"
+      ),
+      qdrantSearcher,
+      revalidator,
+      rerankProvider: null
+    });
+    await expect(
+      v2Service.searchEvidence({
+        ...baseInput,
+        cursor: firstPage.page.nextCursor
       })
     ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
   });

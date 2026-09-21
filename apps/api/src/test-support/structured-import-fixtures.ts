@@ -369,6 +369,7 @@ export function createInMemoryStructuredImportRepository(
         confidentialityLevel: input.document.confidentialityLevel,
         processingRunStatus: null,
         documentIndexStatus: null,
+        documentIndexRetrievalConfigVersion: null,
         createdAt: new Date(),
         sourceMetadata: {
           dataset: input.dataset,

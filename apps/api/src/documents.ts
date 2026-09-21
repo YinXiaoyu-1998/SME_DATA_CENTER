@@ -59,6 +59,7 @@ export interface DocumentStatusRecord {
   confidentialityLevel: number;
   processingRunStatus: string | null;
   documentIndexStatus: string | null;
+  documentIndexRetrievalConfigVersion: string | null;
 }
 
 export interface ArchiveDocumentInput {
@@ -106,7 +107,12 @@ const documentStatusInclude = {
     },
     take: 1,
     select: {
-      status: true
+      status: true,
+      retrievalConfig: {
+        select: {
+          version: true
+        }
+      }
     }
   }
 } satisfies Prisma.DocumentInclude;
@@ -292,6 +298,7 @@ function toDocumentStatusRecord(
     sourceTime: document.sourceTime,
     confidentialityLevel: document.confidentialityLevel,
     processingRunStatus: document.processingRuns[0]?.status ?? null,
-    documentIndexStatus: document.indexes[0]?.status ?? null
+    documentIndexStatus: document.indexes[0]?.status ?? null,
+    documentIndexRetrievalConfigVersion: document.indexes[0]?.retrievalConfig.version ?? null
   };
 }
