@@ -54,6 +54,7 @@ describe("runtime image contracts", () => {
     expect(releaseOpsDockerfile).toContain("dist/release/official-manual-acceptance.js");
     expect(releaseOpsDockerfile).toContain("dist/release/auth-operator.js");
     expect(releaseOpsDockerfile).toContain("dist/release/staging-upload-domain-cleanup.js");
+    expect(releaseOpsDockerfile).toContain("dist/release/evidence-reindex.js");
     expect(releaseOpsDockerfile).toContain('CMD ["node", "dist/release/readiness.js"]');
     expect(compose).toContain('profiles: ["release"]');
     expect(compose).toContain("${SMEDC_RELEASE_OPS_IMAGE}");

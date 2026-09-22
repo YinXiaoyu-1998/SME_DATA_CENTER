@@ -21,7 +21,8 @@ const releaseArtifacts = [
   "staging-smoke",
   "official-manual-acceptance",
   "auth-operator",
-  "staging-upload-domain-cleanup"
+  "staging-upload-domain-cleanup",
+  "evidence-reindex"
 ] as const;
 
 describe("release build", () => {
@@ -33,7 +34,8 @@ describe("release build", () => {
       "staging-smoke": "scripts/staging-smoke.ts",
       "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
       "auth-operator": "apps/api/src/auth/operator-cli.ts",
-      "staging-upload-domain-cleanup": "scripts/staging-upload-domain-cleanup.ts"
+      "staging-upload-domain-cleanup": "scripts/staging-upload-domain-cleanup.ts",
+      "evidence-reindex": "scripts/reindex-evidence.ts"
     });
 
     execFileSync("npm", ["run", "build:release"], {
@@ -61,7 +63,8 @@ describe("release build", () => {
         "staging-smoke",
         "official-manual-acceptance",
         "auth-operator",
-        "staging-upload-domain-cleanup"
+        "staging-upload-domain-cleanup",
+        "evidence-reindex"
       ] as const) {
         execFileSync(
           process.execPath,
