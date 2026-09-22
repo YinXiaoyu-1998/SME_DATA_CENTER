@@ -81,3 +81,50 @@ operations and the other unrelated manuals no longer appear. Broader policy/manu
 retain some judged-unacceptable documents whose rerank scores exceed the configured floor, and the
 no-answer expense-policy query still returns restaurant operations at `0.6365`. This is recorded as
 the known QA follow-up rather than triggering another tuning loop.
+
+## Staging A/B verification
+
+The post-cutover staging comparison ran on 2026-09-22 against release `b3431466d59c` and Qdrant
+1.19.1. Two temporary APIs used the same immutable image, private database, real embedding/rerank
+providers, five already-indexed fixture documents, and six fixed golden queries. They listened only
+on staging loopback: the V1 arm selected `phase3.retrieval.v1` / `smedc_evidence`, while the V2 arm
+selected `phase3.retrieval.v2-bm25` / `smedc_evidence_staging_v2`. Query order alternated between
+the two arms. Each query ran once per arm, without warmup, tuning, or repetition.
+
+An initial incomplete attempt was discarded after one V1 request returned HTTP 500 before the
+report could be completed. The one valid retry below completed all 12 requests. The failure did not
+alter the public runtime, and the temporary APIs and host files were removed after the run.
+
+| Metric                                    | Staging V1 | Staging V2 | Result            |
+| ----------------------------------------- | ---------: | ---------: | ----------------- |
+| Hit rate at 5                             |     1.0000 |     1.0000 | unchanged         |
+| Recall at 10                              |     1.0000 |     1.0000 | unchanged         |
+| MRR at 10                                 |     1.0000 |     1.0000 | unchanged         |
+| Unacceptable returned case/document pairs |         20 |          5 | 15 fewer (`-75%`) |
+| No-answer false-positive rate             |     1.0000 |     0.0000 | fixed in this run |
+| Automatic download-link coverage          |     1.0000 |     1.0000 | complete          |
+
+The staging V1 arm intentionally held the new API code constant and changed only retrieval config
+and collection. Its 100% download-link coverage therefore verifies the new source-link path on V1
+results; it is not a replay of the pre-change V1 API, whose local baseline had no automatic links.
+
+| Case                        | Staging V1 ordered documents                                                                   | Staging V2 ordered documents                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `roujiamo-how-to`           | roujiamo-sop, restaurant-operations, store-opening, kitchen-production, front-of-house-service | roujiamo-sop                                                 |
+| `roujiamo-steps`            | roujiamo-sop, restaurant-operations, store-opening, front-of-house-service, kitchen-production | roujiamo-sop                                                 |
+| `kitchen-manager-duty`      | kitchen-production, restaurant-operations, store-opening, front-of-house-service               | kitchen-production, restaurant-operations, store-opening     |
+| `front-of-house-flow`       | front-of-house-service, restaurant-operations, store-opening, kitchen-production               | front-of-house-service, restaurant-operations, store-opening |
+| `store-opening-preparation` | store-opening, restaurant-operations, front-of-house-service, kitchen-production               | store-opening, restaurant-operations, front-of-house-service |
+| `unanswered-expense-policy` | restaurant-operations, store-opening, front-of-house-service, kitchen-production               | no result                                                    |
+
+V2 applied a `below_floor` cutoff to every staging query. Most importantly, both roujiamo queries
+returned only the dedicated SOP and the no-answer expense-policy query returned no document. The
+remaining five judged-unacceptable pairs come from broader manual questions: store-opening for the
+kitchen-manager question; restaurant-operations and store-opening for the front-of-house question;
+and restaurant-operations plus front-of-house-service for the opening-preparation question.
+
+Observed end-to-end request latency is a six-sample smoke, not a performance benchmark. V1 measured
+460.2 ms median / 708.6 ms mean / 1,728.0 ms p95 and maximum; V2 measured 527.0 ms median / 646.4 ms
+mean / 918.0 ms p95 and maximum. V2's median was 66.8 ms higher (`+14.5%`) while its mean was 62.2
+ms lower (`-8.8%`), with the latter driven by one slow first V1 request. This sample supports no
+strong latency claim, but it shows no obvious staging regression that warrants parameter tuning.
