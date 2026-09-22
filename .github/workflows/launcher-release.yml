@@ -25,6 +25,7 @@ jobs:
         os:
           - macos-latest
           - windows-latest
+          - ubuntu-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -53,7 +54,17 @@ jobs:
       - name: Audit installed production dependencies
         run: npm audit --omit=dev --prefix "${{ runner.temp }}/launcher-install" --audit-level=moderate
       - name: Exercise native secure-store write/read/delete
+        if: runner.os != 'Linux'
         run: node apps/mcp-launcher/scripts/keyring-acceptance.mjs "${{ runner.temp }}/launcher-install"
+      - name: Exercise installed launcher on headless Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          unset DISPLAY WAYLAND_DISPLAY
+          launcher_bin="${{ runner.temp }}/launcher-install/node_modules/.bin/smedc-mcp-launcher"
+          expected_version="$(node -p 'require("./apps/mcp-launcher/package.json").version')"
+          test "$("$launcher_bin" --version)" = "$expected_version"
+          npm test -- apps/mcp-launcher/src/launcher.test.ts apps/mcp-launcher/src/session.test.ts
 
   publish:
     runs-on: ubuntu-latest

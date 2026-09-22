@@ -1,6 +1,6 @@
 # First Beta User Readiness
 
-Last verified: 2026-08-23
+Last verified: 2026-09-22
 
 This document tracks whether SMEDC is ready for a first controlled beta user. It replaces
 the withdrawn 2026-07-23 beta-token bridge snapshot; do not use any design that asks a user or
@@ -18,29 +18,34 @@ It is **not yet ready for real customer data**. Recovery, alerts, retention/dele
 selected operational drills still need owner approval and evidence before customer-confidential
 data is uploaded.
 
-Windows and OpenClaw are intentionally not blocking the first macOS + Codex pilot. They remain
-separate acceptance gates before claiming broad desktop-agent support.
+Windows desktop and user-visible OpenClaw/phone-controlled flows are intentionally not blocking the
+first macOS + Codex pilot. Linux launcher installation is supported separately, with headless
+Device Authorization and memory-only custody when no secure store is available; a particular
+phone-controlled OpenClaw-family product still needs its own end-to-end acceptance.
 
 ## Verified Current Facts
 
-| Boundary              | Current evidence                                                                                           | Result                                                                                                 |
-| --------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Public service        | `https://api.smedatacenter.xyz/healthz`                                                                    | `200`                                                                                                  |
-| Private readiness     | public `GET /readyz`                                                                                       | `404`, as designed; readiness remains internal only                                                    |
-| Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                     | deployed to staging; 0.1.x Authorization Code + PKCE remains server-compatible only                    |
-| Development auth      | old dev email/JWT login and staging JWT secret                                                             | removed from staging runtime/GitHub/local Keychain                                                     |
-| Public MCP            | unauthenticated public `/mcp`                                                                              | rejects unauthenticated requests; authenticated launcher calls succeed                                 |
-| Launcher package      | public npm package `smedc-mcp-launcher@0.5.1`                                                              | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass. |
-| macOS Codex client    | 0.1.x user-visible flow plus 0.3.0 native package acceptance                                               | passed at those scopes; full user-visible 0.3.0 rerun is not yet recorded                              |
-| Full macOS Codex flow | fresh synthetic account, 11 natural user-visible Codex sessions, upload/search/query/logout/reset/re-login | passed core auth/evidence lifecycle; structured-query usability observations remain                    |
-| Cleanup               | manual acceptance cleanup                                                                                  | removed run documents, import batch, Qdrant points, dish rows, identity, employee, session             |
-| Deployment            | GitHub `main` quality gates and staging deploy workflow                                                    | successful deployment observed at immutable tag `bbb227421fa5`                                         |
-| Runtime               | API/worker/Qdrant/nginx/TLS/RDS/OSS                                                                        | healthy in the latest verified live checks                                                             |
-| RDS backup            | 7-day full backup retention and 7-day log backup                                                           | backup exists; restore has not been rehearsed                                                          |
-| RDS transport         | private VPC TCP; provider SSL disabled                                                                     | current staging fact; final SSL policy remains open                                                    |
-| RDS lifecycle         | prepaid RDS expiry and deletion-protection facts recorded in staging readiness                             | human renewal/protection decision still required before customer data                                  |
+| Boundary              | Current evidence                                                                                            | Result                                                                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Public service        | `https://api.smedatacenter.xyz/healthz`                                                                     | `200`                                                                                                                                     |
+| Private readiness     | public `GET /readyz`                                                                                        | `404`, as designed; readiness remains internal only                                                                                       |
+| Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                      | deployed to staging; 0.1.x Authorization Code + PKCE remains server-compatible only                                                       |
+| Development auth      | old dev email/JWT login and staging JWT secret                                                              | removed from staging runtime/GitHub/local Keychain                                                                                        |
+| Public MCP            | unauthenticated public `/mcp`                                                                               | rejects unauthenticated requests; authenticated launcher calls succeed                                                                    |
+| Launcher package      | public npm package `smedc-mcp-launcher@0.5.1`                                                               | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass.                                    |
+| Linux launcher        | XDG current-user install, no-display package load, Device Authorization link delivery, memory-only fallback | supported; headless login-to-business-tool loop passed, while each user-visible OpenClaw-family host remains a separate client acceptance |
+| macOS Codex client    | 0.1.x user-visible flow plus 0.3.0 native package acceptance                                                | passed at those scopes; full user-visible 0.3.0 rerun is not yet recorded                                                                 |
+| Full macOS Codex flow | fresh synthetic account, 11 natural user-visible Codex sessions, upload/search/query/logout/reset/re-login  | passed core auth/evidence lifecycle; structured-query usability observations remain                                                       |
+| Cleanup               | manual acceptance cleanup                                                                                   | removed run documents, import batch, Qdrant points, dish rows, identity, employee, session                                                |
+| Deployment            | GitHub `main` quality gates and staging deploy workflow                                                     | successful deployment observed at immutable tag `bbb227421fa5`                                                                            |
+| Runtime               | API/worker/Qdrant/nginx/TLS/RDS/OSS                                                                         | healthy in the latest verified live checks                                                                                                |
+| RDS backup            | 7-day full backup retention and 7-day log backup                                                            | backup exists; restore has not been rehearsed                                                                                             |
+| RDS transport         | private VPC TCP; provider SSL disabled                                                                      | current staging fact; final SSL policy remains open                                                                                       |
+| RDS lifecycle         | prepaid RDS expiry and deletion-protection facts recorded in staging readiness                              | human renewal/protection decision still required before customer data                                                                     |
 
-The earlier headless Linux loop remains compatibility evidence; it was not rerun against 0.3.0.
+The headless Linux login-to-business-tool loop remains compatibility evidence, and the launcher
+release workflow now installs and loads the pinned artifact under no-display Ubuntu. This does not
+substitute for user-visible phone/OpenClaw acceptance on a particular product host.
 
 ## First Pilot Scope
 

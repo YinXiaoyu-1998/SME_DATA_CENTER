@@ -23,10 +23,13 @@ The official target profile must be actionable enough for an agent to:
 
 1. Verify Node.js 22 or newer plus npm, then install only
    `smedc-mcp-launcher@0.5.1` with `npm install --prefix ... --save-exact` in the approved
-   macOS/Windows versioned directory; never install `latest` or self-update.
+   macOS/Windows/Linux current-user versioned directory; never install `latest` or self-update.
+   Linux uses `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1/` and resolves it
+   to an absolute MCP command path.
 2. Back up and idempotently configure only the invoking agent's local **stdio** entry. Codex uses
    its verified `mcp list`/`get`/`add`/`remove` CLI and bundled macOS binary fallback; OpenClaw uses
-   `mcp add`/`set` and `mcp doctor --probe`, not direct remote OAuth storage.
+   `mcp add`/`set` and `mcp doctor --probe`, not direct remote OAuth storage. Linux examples use
+   the same stdio tuple and never configure a remote OAuth store.
 3. Use `smedc_auth_status`, `smedc_login`, `smedc_logout`, and the
    zero-input `smedc_get_current_user`; account lookup returns only the authenticated
    employee's display name, email, and role, while login never exposes passwords, tokens, device
@@ -44,6 +47,9 @@ The official target profile must be actionable enough for an agent to:
 8. Invoke the exact platform launcher path with only `SMEDC_BASE_URL`: `serve` for stdio,
    `self-check` for safe machine-readable version/origin/store/compatibility/connectivity status,
    and `logout` for safe local-deletion/remote-revocation status.
+9. Treat Linux `secureStore.available:false` as supported memory-only custody, surface the
+   first-party Device Authorization link when `openedBrowser:false`, and require a fresh login after
+   launcher or host restart rather than writing a credential to an ordinary file.
 
 ## Profile Boundaries
 
@@ -71,6 +77,8 @@ The official target profile must be actionable enough for an agent to:
 - [x] Skill requires exact client-side file-byte reads and forbids retyping, normalizing, translating, or reconstructing upload payloads.
 - [x] Skill requires explicit human authorization before uploading real company documents or customer exports.
 - [x] Skill separates per-agent removal, shared logout, and complete uninstall.
+- [x] Skill provides macOS, Windows, and Linux install/config/self-check/logout paths and explains
+      Linux secure-store versus memory-only session behavior.
 - [x] Removed dev-login/JWT behavior is not presented as a current or compatible path.
 
 ## Validation

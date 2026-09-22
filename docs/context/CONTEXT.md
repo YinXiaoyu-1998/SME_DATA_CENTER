@@ -446,12 +446,12 @@ _Avoid_: 多租户 SaaS
 - access token 是至少 256 位随机强度的不透明 bearer 字符串，MySQL 只保存其哈希和会话、员工账号、过期、撤销元数据；每个受保护请求必须查询服务端权威状态
 - launcher 长期会话从最近一次浏览器密码登录起绝对有效 30 天，不设置额外闲置超时，也不能通过日常使用或 access token 续取延长
 - launcher 长期凭证在每次 access token 续取时轮换；服务端只保存各代哈希和会话家族关系，任何已消费旧凭证重放都会撤销整个家族并要求重新进行浏览器登录
-- launcher 在桌面只把长期凭证存入 macOS Keychain 或 Windows Credential Manager；预期存在的安全存储被锁定、拒绝或写入失败时停止认证，真正没有安全存储的无头主机只使用内存态会话，绝不写入普通文件、配置、日志或剪贴板
-- 同一操作系统用户在同一个 SMEDC 服务地址下只有一个当前账号，Codex 和其他本地 Agent 共享同一安全存储记录；beta 不提供账号列表、切换或多账号并存，凭证续取通过跨进程 single-flight 锁串行化
+- launcher 只在操作系统安全存储中保存长期凭证：macOS 使用 Keychain、Windows 使用 Credential Manager，Linux 在兼容 Secret Service 可用时使用它；真正没有可用安全存储的主机只使用 launcher 进程内存会话，绝不写入普通文件、配置、日志或剪贴板
+- 有安全存储时，同一操作系统用户与 canonical SMEDC origin 下的 Codex 和其他本地 Agent 共享一条安全存储记录；无安全存储时，每个长时运行的 launcher 进程拥有独立内存态会话，重启后必须重新登录。beta 不提供账号列表、切换或多账号并存
 - official launcher 使用固定、非秘密的 public client ID，通过 Device Authorization 端点、token 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience，Authorization Code + PKCE 仅保留为 minimum-compatible 0.1.x 服务端路径
 - launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；当前 skill 固定 `smedc-mcp-launcher@0.5.1`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
 - SMEDC skill 是安装编排说明的唯一入口：用户只需向已有该 skill 的 agent 提出自然语言安装请求，agent 按说明为当前用户安装依赖和 launcher、备份并更新自己的 MCP 配置、执行自检，再由 launcher 打开或投递第一方验证链接
-- Codex 和 OpenClaw 的 macOS/Windows 安装与使用链路是首批明确支持并验收的客户端矩阵；对 Qoder 等未命名 agent，skill 仍应提供受约束的自适应说明，允许 agent 判断自己的 MCP 配置位置和方式，在备份、最小修改、不影响其他 MCP 服务并验证成功的前提下完成安装
+- launcher 安装平台正式支持 macOS、Windows 和 Linux；Codex 和 OpenClaw 的 macOS/Windows 链路是首批完整桌面客户端验收矩阵，Linux 另有无图形发行包验收与无头登录到业务工具闭环。对手机遥控 OpenClaw-family 或 Qoder 等宿主，skill 仍应提供受约束的自适应说明，允许 agent 在备份、最小修改、不影响其他 MCP 服务并验证成功的前提下完成安装；具体宿主未验收不等于 Linux 不受支持
 - launcher 不自行升级；服务端只公布最低支持版本和推荐版本，由主仓库与独立仓库中保持同步的 SMEDC skills 决定何时升级、选择哪个已批准的精确 npm 包版本，并指导 agent 完成安装和自检
 - “退出登录”撤销并删除当前操作系统用户共享的长期会话；从单个 agent 移除只删除该 agent 的 MCP 条目；“彻底卸载”才清理所有可安全发现的本地集成、launcher、本地状态和系统凭证，且三者都不删除员工账号、业务资料或 Node.js/npm
 - 每个操作系统用户和 canonical SMEDC HTTPS origin 只有一条版本化系统安全存储记录，其中只包含长期凭证和最小格式信息；轮换后新凭证写入或验证失败时必须尝试撤销并重新浏览器登录，绝不写普通文件或继续使用旧值
@@ -669,7 +669,7 @@ _Avoid_: 多租户 SaaS
 - “launcher 是否需要动态注册客户端”已 rejected：所有 official launcher 使用一个固定 public client 和固定 SMEDC API/MCP 资源；当前契约提供 Device Authorization、token 与 metadata，旧授权码 + PKCE 仅为 0.1.x 兼容。
 - “launcher 源码应该放在 skills repo、独立 repo 还是主仓库”已 resolved：源码留在产品主仓库并作为公开版本化 npm 包发行；skills repo 只保留安装/使用指导和批准版本。
 - “谁执行 launcher 安装和 MCP 配置”已 resolved：skill 负责给出权威步骤，员工拥有的 agent 执行；launcher 不自行修改系统，员工也不需要亲自运行命令。
-- “是否只能支持预先写死的 agent”已 rejected：Codex 与 OpenClaw 是首批正式验收对象，但 skill 必须允许其他具备本地 MCP 能力的 agent 根据自身帮助和配置进行受约束的自适应安装；未经端到端验收时只是不承诺正式支持。
+- “是否只能支持预先写死的 agent”已 rejected：Codex 与 OpenClaw 是首批正式验收对象，但 skill 必须允许其他具备本地 stdio MCP 能力的 agent 根据自身帮助和配置进行受约束的自适应安装。平台支持与具体宿主验收分开表达：Linux 是受支持的 launcher 平台，未经端到端验收的手机/OpenClaw-family 宿主仍只能报告宿主级限制。
 - “launcher 是否自行升级”已 rejected：launcher 只报告版本并读取服务端兼容策略；何时升级以及升级到哪个精确批准版本都由保持同步的两份 skills 指导 agent 完成，实施时必须同时大幅更新主仓库和独立 skills repo。
 - “退出登录、移除单个 agent、彻底卸载是否等价”已 rejected：退出登录影响共享本机会话，移除单个 agent 只改其 MCP 配置，彻底卸载才清理所有本地集成；服务器员工账号和业务数据始终保留。
 - “长期凭证轮换后写不进系统安全存储怎么办”已 resolved：撤销或放弃该会话并要求重新进行浏览器登录；最坏结果是多登录一次，绝不把凭证写入普通文件或继续使用已消费旧值。
@@ -680,7 +680,7 @@ _Avoid_: 多租户 SaaS
 - “单因素密码最低是否使用 NIST 建议的 15 字符”已 rejected for beta：产品决定最低 8 字符、最高 128 字符，其他无组合规则、常见密码拦截、完整验证和 Argon2id 存储要求保持不变。
 - “是否保留本地测试用 dev-login/JWT”已 rejected：旧认证实现完全弃用并删除，不设计迁移或双栈兼容；测试同样使用新系统的正式凭证模型，只能通过内部 fixture/factory 加速准备。
 - “CLI 重置密码”可能被理解为开发者设置或掌握员工密码；已 resolved：beta CLI 只签发 **密码设置链接**，密码始终由员工本人在浏览器页面设置。
-- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、OAuth Device Authorization、不透明 access token、桌面安全存储长期会话和无头内存态会话，不保留 development email/JWT 兼容路径；固定版本 `smedc-mcp-launcher@0.2.4` 已在 npm 发布。原生 macOS/Windows 包验收和无头 Linux 登录到业务工具闭环已通过；此前 macOS Codex 0.1.x 真实浏览器/Keychain 验收保留为兼容证据，用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍是发布门。
+- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、OAuth Device Authorization、不透明 access token、操作系统安全存储长期会话和无头内存态会话，不保留 development email/JWT 兼容路径；固定版本 `smedc-mcp-launcher@0.5.1` 已在 npm 发布。launcher 安装平台支持 macOS、Windows 和 Linux，原生 macOS/Windows 安全存储验收、Ubuntu 无图形发行包验收和无头 Linux 登录到业务工具闭环构成不同层级的证据；用户可见的 OpenClaw/手机宿主验收仍是额外端到端证据。
 - “标签能否表达门店或人员权限”已 superseded by ADR 0025：标签模型完全移除；门店、人员是业务字段，不参与资料访问。
 - “admin 是否天然能读高密级资料”已 resolved：不能。`admin` 仅在明确的 **管理员特权操作** 中无视密级，普通读取仍按资料密级判断。
 - “资料密级是否由 agent 自动推断”已 resolved：不能。员工未明确提供时，新上传资料为 0 级；文件名、内容和外部来源不触发自动升密。
