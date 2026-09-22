@@ -22,7 +22,7 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `smedc-mcp-launcher@0.5.0`. Do not substitute another
+the exact npm package `smedc-mcp-launcher@0.5.1`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself. This pin governs launcher installation, not fetching a newer official
 copy of this skill; after a skill refresh, read the newly verified copy for its current pin.
@@ -321,14 +321,14 @@ current OS user and only on the invoking agent's configuration.
 
    | Platform | Launcher directory                                             |
    | -------- | -------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.0/` |
-   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.0\\`           |
+   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/` |
+   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.1\\`           |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact smedc-mcp-launcher@0.5.0
+   npm install --prefix "<launcher-directory>" --save-exact smedc-mcp-launcher@0.5.1
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -340,12 +340,12 @@ current OS user and only on the invoking agent's configuration.
 
    ```sh
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" self-check
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.0\node_modules\.bin\smedc-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.1\node_modules\.bin\smedc-mcp-launcher.cmd" self-check
    ```
 
    The stable self-check contract is safe machine-readable JSON with this shape:
@@ -353,7 +353,7 @@ current OS user and only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.5.0",
+     "launcherVersion": "0.5.1",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -382,8 +382,8 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                            | Arguments | Environment                                    |
 | -------- | -------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------- |
-| macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher` | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.0\\node_modules\\.bin\\smedc-mcp-launcher.cmd`     | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher` | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.1\\node_modules\\.bin\\smedc-mcp-launcher.cmd`     | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -408,7 +408,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `smedc_login` to obtain a new link.
 
-This flow is available in launcher 0.2.2 and later; this document pins launcher 0.5.0.
+This flow is available in launcher 0.2.2 and later; this document pins launcher 0.5.1.
 
 ## Configure The Invoking Agent
 
@@ -456,7 +456,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env SMEDC_BASE_URL=https://api.smedatacenter.xyz \
   smedc -- \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" serve
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" serve
 "$CODEX_BIN" mcp get smedc --json
 ```
 
@@ -468,7 +468,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.smedc.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.0\node_modules\.bin\smedc-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.1\node_modules\.bin\smedc-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get smedc --json
 ```
@@ -504,7 +504,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
 
    ```sh
    openclaw mcp add smedc \
-     --command "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" \
+     --command "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" \
      --arg serve \
      --env SMEDC_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -669,12 +669,12 @@ the pinned launcher directly:
 
 ```sh
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" logout
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" logout
 ```
 
 ```powershell
 $env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.0\node_modules\.bin\smedc-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.1\node_modules\.bin\smedc-mcp-launcher.cmd" logout
 ```
 
 The stable logout contract returns only

@@ -18,4 +18,11 @@ describe("SMEDC companion skill guidance", () => {
     expect(skill).toContain("Never install it silently");
     expect(skill).toContain("not required for ordinary SMEDC work");
   });
+
+  it("pins the independently verified launcher release", async () => {
+    const skill = await readFile(path.join(root, "skills", "smedc-mcp", "SKILL.md"), "utf8");
+
+    expect(skill).toContain("smedc-mcp-launcher@0.5.1");
+    expect(skill).not.toContain("smedc-mcp-launcher@0.5.0");
+  });
 });

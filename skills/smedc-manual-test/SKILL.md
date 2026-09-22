@@ -102,7 +102,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 
    ```sh
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.0/node_modules/.bin/smedc-mcp-launcher" self-check
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
 9. For full acceptance, ensure the launcher starts logged out and switch among only the synthetic
