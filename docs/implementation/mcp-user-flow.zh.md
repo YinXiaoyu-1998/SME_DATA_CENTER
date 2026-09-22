@@ -1,11 +1,12 @@
 # SMEDC MCP 用户流程
 
 > **发布说明：** `smedc-mcp-launcher@0.5.1` 已公开发布并通过独立验证，是资料密级
-> 契约所固定使用的发行包。原生 macOS/Windows 包验收和无头 Linux 闭环已通过，用户可见的
-> OpenClaw 与支持类 C 手机/浏览器验收仍待补齐。
+> 契约所固定使用的发行包。macOS、Windows 和 Linux 都是正式支持的 launcher 安装平台。
+> 原生 macOS/Windows 包验收和无头 Linux 闭环已通过，发布 workflow 也会验证 Ubuntu 无图形环境。
+> 用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍是额外发布证据，不表示 Linux 不受支持。
 > 不存在 development login 或 JWT 兼容路径。
 
-最后更新：2026-09-13
+最后更新：2026-09-22
 
 本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
 `smedc-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
@@ -25,19 +26,21 @@ flowchart LR
   Api --> Data["后端强制授权的服务\nAPI、storage、worker、MySQL、Qdrant"]
 ```
 
-| 边界                | 凭证规则                                                                                                                  |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 员工 -> agent       | 员工只提出业务请求，绝不向 agent 提供密码、token、授权码或 credential-store record。                                      |
-| Agent -> launcher   | 本机 stdio entry 不含秘密。agent 仅用 `smedc_login`、`smedc_logout`、`smedc_auth_status` 管理会话。                       |
-| Launcher -> browser | 员工只在 SMEDC HTTPS 页面输入密码并确认 agent 实例；浏览器不会通过 agent/model 返回任何凭证。                             |
-| Launcher -> API/MCP | launcher 轮询 token 端点、保护并附加不透明 access token；桌面使用 Keychain/Credential Manager，真正无头主机只保存在内存。 |
-| MCP -> 业务数据     | 每个请求均经认证与后端授权。skill/launcher 绝不直接操作 API 基础设施、数据库、Qdrant、storage、Docker、worker 或云资源。  |
+| 边界                | 凭证规则                                                                                                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 员工 -> agent       | 员工只提出业务请求，绝不向 agent 提供密码、token、授权码或 credential-store record。                                                                                    |
+| Agent -> launcher   | 本机 stdio entry 不含秘密。agent 仅用 `smedc_login`、`smedc_logout`、`smedc_auth_status` 管理会话。                                                                     |
+| Launcher -> browser | 员工只在 SMEDC HTTPS 页面输入密码并确认 agent 实例；浏览器不会通过 agent/model 返回任何凭证。                                                                           |
+| Launcher -> API/MCP | launcher 轮询 token 端点、保护并附加不透明 access token；有可用安全存储时使用 Keychain/Credential Manager/兼容的 Linux Secret Service，否则只保存在 launcher 进程内存。 |
+| MCP -> 业务数据     | 每个请求均经认证与后端授权。skill/launcher 绝不直接操作 API 基础设施、数据库、Qdrant、storage、Docker、worker 或云资源。                                                |
 
 ## 安装或更新
 
 1. 员工用自然语言要求 agent 安装、更新或修复 SMEDC。
-2. agent 确认 macOS 或 Windows，检查当前用户的 Node.js/npm，然后把 skill 批准的精确 launcher
-   包安装到该平台版本目录。
+2. agent 确认 macOS、Windows 或 Linux，检查当前用户的 Node.js/npm，然后把 skill 批准的精确
+   launcher 包安装到该平台版本目录。Linux 使用
+   `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/<version>/`，写入 MCP
+   配置前必须解析为绝对 command 路径。
 3. 修改调用该 agent 的 MCP 配置前，先检查并备份；随后只添加一个固定 launcher 的
    `smedc` **stdio** entry，保留所有无关 entries。
 4. Codex 使用当前版本支持的配置机制。OpenClaw 使用 `openclaw mcp add`/`set`，随后执行
@@ -83,9 +86,9 @@ sequenceDiagram
 `service_unavailable` 表示报告连接失败，不打开浏览器也不修复服务基础设施。`forbidden` 或 not-found
 不证明隐藏数据存在。
 
-`smedc_logout` 必须显式调用。它删除当前 OS 用户共享的本机会话，并在可达时请求服务端
-撤销，从而让共享同一安全存储记录的全部 SMEDC agent 退出。移除一个 agent 的 MCP entry
-不是退出登录；完全卸载是另一个需要明确授权的生命周期动作。
+`smedc_logout` 必须显式调用。它在可达时请求服务端撤销当前 session family，并删除本地
+凭证。使用安全存储时，共享该 OS-user record 的 agent 一起退出；使用仅内存会话时，只影响当前
+launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全卸载是另一个需要明确授权的生命周期动作。
 
 ## 业务 Tool 使用
 
@@ -115,6 +118,7 @@ sequenceDiagram
 
 代码已经实现 OAuth Device Authorization、不透明 access token、轮换 durable credential、桌面
 安全存储与无头内存态保管、公开 HTTPS `/mcp` 和固定版本 launcher。staging migration、正式
-session fixture smoke、原生 macOS/Windows 包验收和无头 Linux 登录到业务工具闭环已通过；用户
-可见的 OpenClaw 与支持类 C 手机/浏览器验收仍待补齐。Authorization Code + PKCE 仅为服务端
+session fixture smoke、原生 macOS/Windows 包验收和无头 Linux 登录到业务工具闭环已通过，发布
+workflow 还会在无图形 Ubuntu 上安装并加载发行包；用户可见的 OpenClaw 与支持类 C
+手机/浏览器验收仍是独立的端到端证据。Authorization Code + PKCE 仅为服务端
 minimum-compatible 0.1.x 路径；已删除的 `/auth/dev-login`、JWT 和本地邮箱登录工具必须持续保持不存在。

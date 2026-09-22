@@ -1,6 +1,6 @@
 # 企业资料中枢 Implementation Plan
 
-Last updated: 2026-09-13
+Last updated: 2026-09-22
 
 ## Product Boundary
 
@@ -311,9 +311,11 @@ The official-auth implementation is merged and deployed with local password iden
 Device Authorization, rotating opaque credentials, public authenticated `/mcp`, the published
 desktop/headless launcher, operator onboarding, and Codex/OpenClaw installation skills. Real macOS
 Codex acceptance passed on the retained 0.1.x compatibility path; native 0.2.0 macOS/Windows package
-acceptance and a full headless Linux loop also pass. Full user-visible OpenClaw and support-class-C
-phone/browser acceptance, database SSL/recovery, monitoring/alerting, rollback rehearsal, and
-real-data governance remain separate Phase 4 gates.
+acceptance and a full headless Linux loop also pass. The current supported launcher installation
+matrix is macOS, Windows, and Linux, with Ubuntu installed-package/no-display coverage in the
+release workflow. Full user-visible OpenClaw and support-class-C phone/browser acceptance,
+database SSL/recovery, monitoring/alerting, rollback rehearsal, and real-data governance remain
+separate Phase 4 gates.
 
 Scope:
 
@@ -355,16 +357,17 @@ accepted official employee installation, browser login, and durable session cont
 `official-user-install-and-login.md`; the implementation and migration are deployed in staging,
 and real macOS Codex acceptance has passed on the retained 0.1.x compatibility path. The pinned and
 recommended launcher `smedc-mcp-launcher@0.5.1` is published and independently verified by
-native macOS/Windows package acceptance; the earlier full headless Linux
-login-to-business-tool loop remains compatibility evidence, and the full user-visible 0.4.0
-acceptance matrix remains open.
+native macOS/Windows secure-store acceptance. Linux is an official XDG current-user installation
+platform; the full headless Linux login-to-business-tool loop and Ubuntu installed-package/no-display
+release check provide its launcher evidence. The full user-visible phone/OpenClaw-family client
+acceptance matrix remains open independently of Linux platform support.
 
 ### Remaining Phase 4 Tracks
 
-- Official user access: macOS Codex browser-login acceptance has passed. Windows Codex and
-  macOS/Windows OpenClaw acceptance remain. The atomic auth cutover and synchronized skill are
-  merged, and the fixed launcher is public. A real user may first use fixture or explicitly
-  approved non-sensitive data.
+- Official user access: macOS Codex browser-login acceptance has passed. Launcher installation is
+  supported on macOS, Windows, and Linux; Windows Codex and user-visible OpenClaw-family client
+  acceptance remain. The atomic auth cutover and synchronized skill are merged, and the fixed
+  launcher is public. A real user may first use fixture or explicitly approved non-sensitive data.
 - Database policy: choose final RDS SSL mode. Provider CLI now verifies 7-day automated full-backup retention plus 7-day log backups and one successful full backup, but restore ownership/RPO/RTO and a recovery drill remain open.
 - Security/auth: ADR 0021 is withdrawn. The accepted identity, employee mapping, browser
   authorization, token lifecycle, password setup/reset, and operator onboarding contract is

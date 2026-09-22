@@ -1,6 +1,6 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-09-17
+Last updated: 2026-09-22
 
 This is the active manual acceptance flow for a real beta-style SMEDC user on macOS
 Codex. The old local Phase 3 email-login/HTTP-launcher manual acceptance document has been deleted
@@ -10,8 +10,10 @@ For onboarding an actual beta user, use
 [`beta-user-onboarding-runbook.md`](./beta-user-onboarding-runbook.md). This document is the
 acceptance-test procedure; the runbook is the support/operator path for a real pilot.
 
-For now, this flow intentionally ignores Windows and OpenClaw. Those remain separate desktop
-acceptance gates.
+The primary flow intentionally ignores Windows and OpenClaw. Those remain separate desktop/client
+acceptance gates. Linux launcher installation is supported; its no-display, memory-only behavior is
+validated separately in the Support Class C section below and does not inherit the macOS Keychain
+persistence expectation.
 
 ## What This Flow Proves
 
@@ -437,7 +439,10 @@ Pass only when:
   a fresh tap-link login is required (memory-only session);
 - cleanup removes the synthetic account and all run-scoped data from DB/storage/Qdrant.
 
-## Pass / Fail
+## macOS Full-Flow Pass / Fail
+
+These criteria apply to the primary macOS flow. The headless Linux flow passes against the separate
+criteria above, including the required loss of authentication after launcher-process restart.
 
 Pass only when:
 

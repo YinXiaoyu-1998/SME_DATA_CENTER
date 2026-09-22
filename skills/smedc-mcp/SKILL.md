@@ -84,9 +84,10 @@ this base skill. Keep the core boundary below and route only the matching employ
   records, statuses, and evidence within the employee's backend-authorized scope.
 - Do not provide an organization ID. The service derives organization and confidentiality access
   from the authenticated Employee Account; never infer hidden data from a forbidden/not-found result.
-- The launcher stores its durable credential only in the operating-system secure store. Never
-  put credentials in configuration, environment variables, arguments, ordinary files, logs, or
-  chat.
+- When an operating-system secure store is available, the launcher stores its durable credential
+  only there. On a host without one, it keeps the credential in launcher-process memory only and
+  requires a fresh login after restart. Never put credentials in configuration, environment
+  variables, arguments, ordinary files, logs, or chat.
 
 ## Tool Discovery
 
@@ -313,16 +314,20 @@ employee does not need to run these commands personally. Agents should also offe
 a self-check reports `recommendedUpdateAvailable: true` (see Tool Discovery). Work only for the
 current OS user and only on the invoking agent's configuration.
 
-1. Confirm the host is macOS or Windows and that the user authorizes this current-user install.
+1. Confirm the host is macOS, Windows, or Linux and that the user authorizes this current-user
+   install.
    Run `node --version` and `npm --version`. Require Node.js major version **22 or newer** and a
    working npm. If Node.js is missing or older than 22, install or upgrade Node.js/npm for the
    current user before continuing; do not use administrator privileges or alter unrelated tools.
-2. Use the fixed platform directory:
+2. Use the fixed platform directory. On Linux, resolve the XDG expression to an absolute path
+   before writing an MCP configuration; do not store the literal `${...}` expression as its
+   command:
 
-   | Platform | Launcher directory                                             |
-   | -------- | -------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/` |
-   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.1\\`           |
+   | Platform | Launcher directory                                                    |
+   | -------- | --------------------------------------------------------------------- |
+   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/`        |
+   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.1\\`                  |
+   | Linux    | `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1/` |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
@@ -348,6 +353,13 @@ current OS user and only on the invoking agent's configuration.
    & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.1\node_modules\.bin\smedc-mcp-launcher.cmd" self-check
    ```
 
+   ```sh
+   # Linux
+   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1"
+   SMEDC_BASE_URL=https://api.smedatacenter.xyz \
+     "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" self-check
+   ```
+
    The stable self-check contract is safe machine-readable JSON with this shape:
 
    ```json
@@ -357,7 +369,7 @@ current OS user and only on the invoking agent's configuration.
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
-       "available": true,
+       "available": false,
        "durableCredentialPresent": false
      },
      "server": {
@@ -375,7 +387,9 @@ current OS user and only on the invoking agent's configuration.
 
    `mcp.handshake` is `ok`, `not_authenticated`, or `unavailable`. Self-check never performs
    browser login and never returns credential contents. If it reports a typed failure, follow the
-   focused recovery below; do not inspect secure storage or repair the remote service.
+   focused recovery below; do not inspect secure storage or repair the remote service. On Linux,
+   `secureStore.available:false` is an expected supported result when no usable Secret Service is
+   present; it selects memory-only session custody and is not by itself a failed self-check.
 
 Use this exact stdio launch tuple after installation. `SMEDC_BASE_URL` is the only
 launcher environment variable; do not add another environment value or any credential.
@@ -384,6 +398,7 @@ launcher environment variable; do not add another environment value or any crede
 | -------- | -------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------- |
 | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher` | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
 | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.1\\node_modules\\.bin\\smedc-mcp-launcher.cmd`     | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| Linux    | `<resolved-linux-data-home>/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher`    | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -399,11 +414,13 @@ name shown on the page, enters email/password, and the launcher completes sign-i
 
 - The employee's only credential input remains email/password on the SMEDC page; never
   ask for, read, or relay verification codes or tokens.
-- On macOS/Windows the launcher keeps the durable session in Keychain/Credential Manager exactly as
-  before.
-- On hosts without a secure store (headless Linux/VPS), the launcher keeps the session in memory
-  only; after a launcher or host restart, run the login tool again so the employee can tap a fresh
-  link.
+- When self-check reports `secureStore.available:true`, the launcher keeps the durable session in
+  the operating-system secure store (Keychain, Credential Manager, or a compatible Linux Secret
+  Service).
+- On hosts without a usable secure store, including typical headless Linux/VPS environments, the
+  launcher keeps the session in memory only. `smedc_login` returns `openedBrowser: false` together
+  with the first-party verification link, which the agent must surface to the employee. After a
+  launcher or host restart, run the login tool again so the employee can tap a fresh link.
 - If a business tool reports `authentication_pending`, tell the employee to complete the sign-in
   link and retry the original request once; if it reports `authentication_required`, run
   `smedc_login` to obtain a new link.
@@ -421,7 +438,8 @@ the local launcher owns browser login and credential storage.
 
 Use the verified Codex CLI MCP registry. On macOS, prefer `codex` from `PATH`; when it is absent,
 use the bundled `/Applications/ChatGPT.app/Contents/Resources/codex` fallback. On Windows, resolve
-`codex.exe` from `PATH`. Stop if neither verified binary exists.
+`codex.exe` from `PATH`. On Linux, resolve `codex` from `PATH`. Stop if the applicable verified
+binary does not exist.
 
 Before the first mutation, inspect with `codex mcp list --json` and
 `codex mcp get smedc --json`. Back up `~/.codex/config.toml` (Windows:
@@ -457,6 +475,35 @@ command:
   --env SMEDC_BASE_URL=https://api.smedatacenter.xyz \
   smedc -- \
   "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" serve
+"$CODEX_BIN" mcp get smedc --json
+```
+
+For Linux, use the same inspection, backup, absent/exact/mismatched decision, and one-entry repair
+sequence. Resolve the XDG data-home expression before passing the command to Codex:
+
+```sh
+CODEX_BIN="$(command -v codex 2>/dev/null || true)"
+test -n "$CODEX_BIN"
+CODEX_CONFIG="$HOME/.codex/config.toml"
+if [ -f "$CODEX_CONFIG" ]; then
+  cp -p "$CODEX_CONFIG" "$CODEX_CONFIG.smedc.bak.$(date +%Y%m%d%H%M%S)"
+fi
+SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1"
+SMEDC_LAUNCHER_BIN="$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher"
+"$CODEX_BIN" mcp list --json
+"$CODEX_BIN" mcp get smedc --json
+```
+
+If the Linux entry is present and mismatched, remove only that entry. If it is absent or was just
+removed, add the resolved absolute launcher path:
+
+```sh
+# Mismatched entry only:
+"$CODEX_BIN" mcp remove smedc
+# Missing or just-removed entry:
+"$CODEX_BIN" mcp add \
+  --env SMEDC_BASE_URL=https://api.smedatacenter.xyz \
+  smedc -- "$SMEDC_LAUNCHER_BIN" serve
 "$CODEX_BIN" mcp get smedc --json
 ```
 
@@ -509,6 +556,16 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
      --env SMEDC_BASE_URL=https://api.smedatacenter.xyz
    ```
 
+   On Linux, resolve the XDG path before storing it, then use the same stdio form:
+
+   ```sh
+   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1"
+   openclaw mcp add smedc \
+     --command "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" \
+     --arg serve \
+     --env SMEDC_BASE_URL=https://api.smedatacenter.xyz
+   ```
+
    If the entry already exists, use `openclaw mcp set smedc '<one stdio JSON object>'`
    with exactly `command`, `args: ["serve"]`, and the one `SMEDC_BASE_URL` environment
    value. Do not add an HTTP URL or `auth: oauth` configuration.
@@ -517,7 +574,14 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
    OpenClaw runtime when required by its current setup.
 
 `openclaw mcp add/set/doctor --probe` are the supported configuration/proof path. The launcher,
-not OpenClaw's OAuth store, opens the browser and manages the SMEDC secure session.
+not OpenClaw's OAuth store, opens the browser when one is available or returns the verification
+link for a headless agent to surface. On Linux without a usable secure store, the session is
+memory-only and a launcher or host restart requires a fresh `smedc_login` link.
+
+If a phone-controlled product is only OpenClaw-like and does not expose these exact MCP CLI
+commands, treat it as Other Agents below: inspect its supported local stdio mechanism and report a
+host-integration blocker only if that mechanism is absent or unclear. Do not report Linux or the
+SMEDC launcher itself as unsupported merely because that product's configuration interface differs.
 
 ### Other Agents
 
@@ -530,15 +594,17 @@ instead of editing guessed files or configuring direct remote OAuth.
 ## Browser Login And Normal Use
 
 Call `smedc_auth_status` before beginning work when the authentication state is unknown.
-If it reports `authentication_required`, call `smedc_login`. The launcher opens the
-system browser; ask the employee to finish login there and never request any credential in chat.
-The launcher returns only a safe outcome.
+If it reports `authentication_required`, call `smedc_login`. The launcher opens the system browser
+when one is available; otherwise it returns a first-party verification link that the agent must
+surface through the employee's current channel. Ask the employee to finish login only on that page
+and never request any credential in chat. The launcher returns only a safe outcome.
 
 After successful login, retry the employee's original business tool call exactly once. Do not
 retry repeatedly after browser cancellation or an unsuccessful login. Use
-`smedc_logout` only when the employee asks to sign out. It clears the shared local
-session for SMEDC under the current OS user, so all locally configured agents on that
-OS user are signed out.
+`smedc_logout` only when the employee asks to sign out. With secure-store-backed custody it clears
+the shared SMEDC session for the current OS user, so all agents using that record are signed out.
+With memory-only Linux custody it clears only that launcher process's session; independently
+running launcher processes have their own sessions.
 
 When the employee asks which SMEDC account is currently active, call the zero-input
 `smedc_get_current_user` tool. Return its `displayName`, `email`, `role`, and `clearance`; do not infer
@@ -664,8 +730,9 @@ For **per-agent removal**, back up that agent's configuration and delete only it
 `smedc` MCP entry. Leave the launcher package, secure-store session, and other agent
 configurations intact.
 
-For **shared logout**, use `smedc_logout` while the MCP connection is available, or invoke
-the pinned launcher directly:
+For **logout**, use `smedc_logout` while the MCP connection is available, or invoke the pinned
+launcher directly. Secure-store-backed logout affects agents sharing that record; memory-only
+logout affects only the current launcher process:
 
 ```sh
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
@@ -675,6 +742,13 @@ SMEDC_BASE_URL=https://api.smedatacenter.xyz \
 ```powershell
 $env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
 & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.1\node_modules\.bin\smedc-mcp-launcher.cmd" logout
+```
+
+```sh
+# Linux
+SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1"
+SMEDC_BASE_URL=https://api.smedatacenter.xyz \
+  "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" logout
 ```
 
 The stable logout contract returns only

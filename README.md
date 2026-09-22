@@ -161,10 +161,14 @@ operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
 `smedc-mcp-launcher@0.5.1` is published on npm and its registry integrity, clean install,
-CLI, packaging, and production dependency audit have been verified. Native macOS/Windows package
-acceptance and the earlier headless Linux login-to-business-tool loop have passed. Server
-compatibility still accepts launcher 0.5.0 as the minimum. Staging remains on Evidence Retrieval V1
-until the controlled Qdrant upgrade, V2 reindex, and cutover; focused QA acceptance then follows.
+CLI, packaging, and production dependency audit have been verified. The supported installation
+matrix is macOS, Windows, and Linux. macOS/Windows use their native secure stores; Linux uses a
+compatible Secret Service when available and otherwise keeps the session in launcher-process
+memory, so headless Linux requires a fresh tap-link login after restart. Native macOS/Windows
+package acceptance and the headless Linux login-to-business-tool loop have passed; the release
+workflow now also exercises the installed package and no-display behavior on Ubuntu. Server
+compatibility still accepts launcher 0.5.0 as the minimum. Staging remains on Evidence Retrieval
+V1 until the controlled Qdrant upgrade, V2 reindex, and cutover; focused QA acceptance then follows.
 
 ## Official MCP Launcher
 
@@ -238,7 +242,8 @@ npm run worker:once
 
 The former local user-visible suite is withdrawn because it depended on the removed development
 email login and an HTTP launcher origin. Official acceptance now uses the published launcher,
-browser login, and staging service on real macOS/Windows desktops; see
+browser login, and staging service. The primary desktop flow remains macOS/Windows; Linux has
+separate installed-package/no-display and headless Device Authorization coverage. See
 `docs/implementation/official-user-install-and-login.md` and `docs/implementation/test-cases.md`.
 
 ## npm Scripts

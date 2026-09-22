@@ -2,11 +2,13 @@
 
 > **Release note:** `smedc-mcp-launcher@0.5.1` is publicly published and independently
 > verified. It is the pinned distribution for the confidentiality-level contract.
-> Native macOS/Windows package acceptance and the headless Linux loop pass; user-visible OpenClaw
-> and support-class-C phone/browser acceptance remain release evidence. There is no
+> macOS, Windows, and Linux are supported launcher-installation platforms. Native macOS/Windows
+> package acceptance and the headless Linux loop pass; automated Ubuntu package acceptance is part
+> of the release workflow. User-visible OpenClaw and support-class-C phone/browser acceptance remain
+> additional release evidence, not a statement that Linux installation is unsupported. There is no
 > development-login or JWT compatibility path.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-22
 
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `smedc-mcp` skill. The official remote origin
@@ -27,19 +29,21 @@ flowchart LR
   Api --> Data["Backend-authorized service\nAPI, storage, worker, MySQL, Qdrant"]
 ```
 
-| Boundary             | Credential rule                                                                                                                                                                     |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Employee -> agent    | The employee requests an action, but never gives a password, token, authorization code, or credential-store record to the agent.                                                    |
-| Agent -> launcher    | The configured local stdio entry contains no secret. The agent may invoke only `smedc_login`, `smedc_logout`, and `smedc_auth_status` for session lifecycle.                        |
-| Launcher -> browser  | The employee enters a password and confirms the agent instance only in the SMEDC HTTPS page; the browser never returns credentials through the agent/model.                         |
-| Launcher -> API/MCP  | The launcher polls the token endpoint, protects and attaches opaque access tokens, and uses Keychain/Credential Manager or memory-only custody on genuinely headless hosts.         |
-| MCP -> business data | Every request is authenticated and backend-authorized. The skill/launcher never directly operate API infrastructure, database, Qdrant, storage, Docker, worker, or cloud resources. |
+| Boundary             | Credential rule                                                                                                                                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Employee -> agent    | The employee requests an action, but never gives a password, token, authorization code, or credential-store record to the agent.                                                                           |
+| Agent -> launcher    | The configured local stdio entry contains no secret. The agent may invoke only `smedc_login`, `smedc_logout`, and `smedc_auth_status` for session lifecycle.                                               |
+| Launcher -> browser  | The employee enters a password and confirms the agent instance only in the SMEDC HTTPS page; the browser never returns credentials through the agent/model.                                                |
+| Launcher -> API/MCP  | The launcher polls the token endpoint, protects and attaches opaque access tokens, and uses Keychain/Credential Manager/a compatible Linux Secret Service when available or memory-only custody otherwise. |
+| MCP -> business data | Every request is authenticated and backend-authorized. The skill/launcher never directly operate API infrastructure, database, Qdrant, storage, Docker, worker, or cloud resources.                        |
 
 ## Installation Or Update
 
 1. The employee asks their agent to install, update, or repair SMEDC.
-2. The agent confirms macOS or Windows, checks current-user Node.js/npm availability, and uses the
-   skill-approved exact launcher package in the platform versioned directory.
+2. The agent confirms macOS, Windows, or Linux, checks current-user Node.js/npm availability, and
+   uses the skill-approved exact launcher package in the platform versioned directory. Linux uses
+   `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/<version>/`, resolved to an
+   absolute command path before writing MCP configuration.
 3. Before modifying the invoking agent's MCP configuration, it inspects and creates a backup.
    It then adds only an `smedc` **stdio** entry for the pinned launcher and leaves all
    unrelated entries unchanged.
@@ -88,10 +92,11 @@ ends that attempt without an automatic browser loop or business-operation retry.
 means the agent reports the connection failure and does not open a browser or repair service
 infrastructure. `forbidden` and not-found results do not prove hidden data exists.
 
-`smedc_logout` is explicit. It removes the shared current-OS-user local session and asks
-the service to revoke it when reachable, which signs out all SMEDC agents sharing that
-secure-store record. Removing one agent's MCP entry is not logout; complete uninstall is a separate,
-explicitly authorized lifecycle action.
+`smedc_logout` is explicit. It asks the service to revoke the current session family when reachable
+and removes the local credential. With secure-store custody, agents sharing that OS-user record are
+signed out; with memory-only custody, only the current launcher process is affected. Removing one
+agent's MCP entry is not logout; complete uninstall is a separate, explicitly authorized lifecycle
+action.
 
 ## Business Tool Use
 
@@ -131,7 +136,8 @@ explicitly authorized lifecycle action.
 The code implements OAuth Device Authorization, opaque access tokens, rotating durable credentials,
 desktop secure-store and headless memory-only custody, public HTTPS `/mcp`, and the pinned launcher.
 The staging migration, official-session fixture smoke, native macOS/Windows package acceptance, and
-headless Linux login-to-business-tool loop have passed. Full user-visible OpenClaw and
-support-class-C phone/browser acceptance remain. The retained Authorization Code + PKCE endpoints
-serve minimum-compatible 0.1.x launchers only; removed `/auth/dev-login`, JWT, and local email-login
-tools must remain absent.
+headless Linux login-to-business-tool loop have passed. The release workflow additionally installs
+and loads the package on headless Ubuntu. Full user-visible OpenClaw and support-class-C
+phone/browser acceptance remains separate end-to-end evidence. The retained Authorization Code +
+PKCE endpoints serve minimum-compatible 0.1.x launchers only; removed `/auth/dev-login`, JWT, and
+local email-login tools must remain absent.

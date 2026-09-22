@@ -73,8 +73,9 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 The old local user-visible controller depended on the removed development email login and an HTTP
 loopback launcher. Its document has been deleted to avoid ambiguity. Do not recreate it, use it as
 post-cutover evidence, or revive it by weakening the HTTPS boundary. Current user-visible evidence
-must come from the published launcher, official browser login, staging service, and clean
-macOS/Windows desktop acceptance.
+must come from the published launcher, official browser login, staging service, and either the
+clean macOS/Windows desktop acceptance or the separately defined headless Linux support-class-C
+flow. Automated Ubuntu package acceptance proves platform loading, not employee browser completion.
 
 ## Active Official Manual Acceptance
 
@@ -123,14 +124,14 @@ account lifecycle, confidentiality, admin-PAO, logout/reset, or account-deletion
 
 ## Official Identity, OAuth, And Launcher Cases
 
-| Area              | Required proof                                                                                                                                                                                                                                              |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Password identity | Unicode NFC and 8–128 boundaries, common-password rejection, Argon2id parameters, dummy verification, non-enumerating failures, and 5/10/20/40/60-minute cooldown                                                                                           |
-| Setup/reset       | 24-hour single-use grant, 10-minute setup transaction, replacement and concurrent-consumption safety, fragment removal, CSRF/cookie/CSP/no-store headers, and session-family revocation                                                                     |
-| OAuth             | Metadata, fixed public client, Device Authorization issue/verify/poll lifecycle, 10-minute single-use pending codes, pairing metadata, pending/expiry/replay rejection, plus retained minimum-compatible 0.1.x Authorization Code + PKCE coverage           |
-| Sessions          | Hash-only opaque tokens, 10-minute access expiry, 30-day absolute session, atomic refresh rotation, replay-family revocation, logout/reset/disabled revocation, and fail-closed database errors                                                             |
-| Launcher          | Desktop browser auto-open and headless link delivery, bounded device polling, macOS Keychain/Windows Credential Manager or headless memory-only custody, cross-process refresh lock, restart recovery, model-safe failure classes, and no credential output |
-| Package           | `npm pack` allowlist and secret scan, no workspace dependency in the tarball, clean-directory install, stdio initialize/list-tools probe, native keyring load on macOS/Windows CI, and tag/version equality                                                 |
+| Area              | Required proof                                                                                                                                                                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Password identity | Unicode NFC and 8–128 boundaries, common-password rejection, Argon2id parameters, dummy verification, non-enumerating failures, and 5/10/20/40/60-minute cooldown                                                                                                          |
+| Setup/reset       | 24-hour single-use grant, 10-minute setup transaction, replacement and concurrent-consumption safety, fragment removal, CSRF/cookie/CSP/no-store headers, and session-family revocation                                                                                    |
+| OAuth             | Metadata, fixed public client, Device Authorization issue/verify/poll lifecycle, 10-minute single-use pending codes, pairing metadata, pending/expiry/replay rejection, plus retained minimum-compatible 0.1.x Authorization Code + PKCE coverage                          |
+| Sessions          | Hash-only opaque tokens, 10-minute access expiry, 30-day absolute session, atomic refresh rotation, replay-family revocation, logout/reset/disabled revocation, and fail-closed database errors                                                                            |
+| Launcher          | Desktop browser auto-open and headless link delivery, bounded device polling, macOS Keychain/Windows Credential Manager or headless memory-only custody, cross-process refresh lock, restart recovery, model-safe failure classes, and no credential output                |
+| Package           | `npm pack` allowlist and secret scan, no workspace dependency in the tarball, clean-directory install, stdio initialize/list-tools probe, native keyring load on macOS/Windows CI, headless installed-package/no-display acceptance on Ubuntu CI, and tag/version equality |
 
 The removed `/auth/dev-login`, JWT verifier/issuer, email-taking launcher tool, and long-lived token
 handoff must remain covered by negative tests and packaging scans.

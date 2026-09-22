@@ -1,6 +1,6 @@
 ---
 name: smedc-manual-test
-description: Run or update the official SME_DATA_CENTER SMEDC manual acceptance flow for staging, macOS Codex, official browser auth, pinned MCP launcher, business tool use, and cleanup.
+description: Run or update the official SME_DATA_CENTER SMEDC manual acceptance flow for staging, macOS Codex or the separate headless Linux support-class-C path, official browser auth, pinned MCP launcher, business tool use, and cleanup.
 ---
 
 # SMEDC Manual Test
@@ -14,8 +14,11 @@ The active flow is **official staging + macOS Codex + browser auth + published l
 Do not run or recreate the deleted local Phase 3 email-login workflow, do not revive
 `/auth/dev-login`, and do not weaken the official launcher's HTTPS requirement.
 
-Windows and OpenClaw are separate gates. If the user says to ignore them, keep the manual run scoped
-to macOS Codex and record Windows/OpenClaw as not run.
+Windows and user-visible OpenClaw-family hosts are separate client gates. Linux launcher
+installation itself is supported: the separate support-class-C flow in the official guide covers
+no-display link delivery, memory-only session custody, and mandatory re-login after process restart.
+If the user asks only for the primary flow, keep the run scoped to macOS Codex and record the other
+client gates as not run; do not describe Linux as unsupported.
 
 Full manual acceptance must use fresh synthetic accounts, not the human owner's real account or an
 already-authenticated Keychain session. The controller creates a clearance-0 employee, a
