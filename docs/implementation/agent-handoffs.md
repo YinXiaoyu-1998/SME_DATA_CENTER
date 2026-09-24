@@ -1095,3 +1095,11 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
 - Call `authorizeFileUpload` with `auditRepository: context.uploadAuthorizationAudit` (the function) to avoid audit initialization for admins and catch audit initialization failures within the denial path. The logger receives only `{ requestId, uploadSurface }`.
 - Final verification: 18 focused tests; 938 full-suite tests passed with 29 skipped; typecheck, lint, changed-file formatting, and `git diff --check` passed. Raw `npm run format:check` reports only two existing ignored SDD documents; excluding `.superpowers` passes.
 - Process progress/handoff updates are intentionally uncommitted to avoid process-only artifacts in the product PR. Full implementer report is under `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-4-implementer-report.md`.
+
+## 2026-09-24 — Task 5 HTTP upload gates
+
+- Branch `codex/task-5-http-upload-gates`, base `codex/admin-only-upload-enforcement@4455017`, commit `463259b`.
+- Six admin-only HTTP upload gates now precede upload-specific parsing, dataset inspection, hashing, repositories, signing, and storage. Lazy audit getter failures preserve canonical 403; logs include only request ID and surface.
+- Employee read/status/manifest/abort behavior remains covered, including demotion of an existing partition owner. Positive setup uploads use admins; the lead approved the additional source-document download test fixture adjustment.
+- Verification: 10 observed RED failures; 64 focused tests and 948 full-suite tests passed (29 skipped); typecheck, lint, source formatting, and diff whitespace checks passed.
+- Product diff: production +82/-6; tests +471/-21; no scripts, lockfiles, or committed process artifacts. Progress/handoff edits remain uncommitted. Report: `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-5-implementer-report.md`.
