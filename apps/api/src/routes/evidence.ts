@@ -1,4 +1,9 @@
 import { randomBytes } from "node:crypto";
+import {
+  authorizeFileUpload,
+  fileUploadAdminRequiredResponse,
+  type UploadAuthorizationAuditRepository
+} from "../file-upload-authorization.js";
 import { extname } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
@@ -312,6 +317,7 @@ export function registerEvidenceRoutes(
     cursorSigningSecret: string;
     retrievalConfigVersion?: string;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
+    uploadAuthorizationAudit: () => UploadAuthorizationAuditRepository;
   }
 ): void {
   app.post("/v1/documents/evidence", async (request, reply) => {
@@ -320,6 +326,16 @@ export function registerEvidenceRoutes(
     if (!authenticated) {
       return;
     }
+
+    const employee = dependencies.auth.employee(request);
+    const allowed = await authorizeFileUpload({
+      employee,
+      uploadSurface: "evidence_document",
+      audit: dependencies.createBusinessRequestAudit(request),
+      auditRepository: dependencies.uploadAuthorizationAudit,
+      logAuditFailure: (context) => request.log.error(context, "upload denial audit failed")
+    });
+    if (!allowed) return reply.code(403).send(fileUploadAdminRequiredResponse(request));
 
     let upload: ParsedUpload;
 
@@ -372,7 +388,6 @@ export function registerEvidenceRoutes(
       );
     }
 
-    const employee = dependencies.auth.employee(request);
     const audit = dependencies.createBusinessRequestAudit(request);
     const orgId = employee.orgId;
     const documentId = createDocumentId();

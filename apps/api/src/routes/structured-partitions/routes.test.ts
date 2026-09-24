@@ -17,6 +17,7 @@ import { registerStructuredPartitionRoutes } from "./routes.js";
 const employee = {
   id: "emp_1",
   orgId: "org_1",
+  organizationName: "Synthetic",
   displayName: "One",
   email: "one@example.invalid",
   role: "employee" as const,
@@ -28,7 +29,115 @@ const auth = {
   employee: vi.fn(() => employee)
 } as unknown as RequestAuth;
 
+const auditContext = {
+  requestId: "req_partition_denied",
+  sourceIp: "127.0.0.1",
+  clientSource: "http_api" as const,
+  launcherVersion: null
+};
+const adminAuth = { ...auth, employee: () => ({ ...employee, role: "admin" as const }) };
+const unusedAudit = {
+  createBusinessRequestAudit: () => auditContext,
+  uploadAuthorizationAudit: () => {
+    throw new Error("admin must not initialize audit repository");
+  }
+};
+
 describe("structured partition routes", () => {
+  it.each([
+    ["POST", "/v1/structured/partition-uploads"],
+    ["GET", "/v1/structured/partition-uploads/pjob_employee/parts"],
+    ["POST", "/v1/structured/partition-uploads/pjob_employee/complete"]
+  ] as const)(
+    "denies employee %s %s before inspecting data or initializing dependencies",
+    async (method, url) => {
+      const app = Fastify({ genReqId: () => auditContext.requestId });
+      const appendDenied = vi.fn(async () => {});
+      const storage = vi.fn(() => {
+        throw new Error("storage must not initialize");
+      });
+      const partitions = vi.fn(() => {
+        throw new Error("repository must not initialize");
+      });
+      const inspectDataset = vi.fn(() => {
+        throw new Error("dataset must not be inspected");
+      });
+      app.addHook("preHandler", async (request) => {
+        request.body = Object.defineProperty({}, "dataset", { get: inspectDataset });
+      });
+      registerStructuredPartitionRoutes(app, {
+        auth,
+        storage,
+        partitions,
+        runtimeLimits: loadApiRuntimeLimits({}),
+        createBusinessRequestAudit: () => auditContext,
+        uploadAuthorizationAudit: () => ({ appendDenied })
+      });
+      try {
+        const response = await app.inject({ method, url });
+        expect(response.statusCode).toBe(403);
+        expect(response.json()).toEqual({
+          error: {
+            code: "UPLOAD_ADMIN_REQUIRED",
+            message: "File upload requires the admin role.",
+            retryable: false,
+            details: {},
+            requestId: auditContext.requestId
+          }
+        });
+        expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
+          orgId: employee.orgId,
+          actorEmployeeId: employee.id,
+          uploadSurface: "structured_dataset",
+          audit: auditContext
+        });
+        expect(inspectDataset).not.toHaveBeenCalled();
+        expect(storage).not.toHaveBeenCalled();
+        expect(partitions).not.toHaveBeenCalled();
+      } finally {
+        await app.close();
+      }
+    }
+  );
+
+  it("keeps the canonical denial when initializing the audit repository fails", async () => {
+    const app = Fastify();
+    const initializeAudit = vi.fn(() => {
+      throw new Error("sensitive configuration");
+    });
+    const logAuditFailure = vi.fn();
+    app.addHook("onRequest", async (request) => {
+      request.log.error = logAuditFailure;
+    });
+    registerStructuredPartitionRoutes(app, {
+      auth,
+      storage: () => {
+        throw new Error("unused");
+      },
+      partitions: () => {
+        throw new Error("unused");
+      },
+      runtimeLimits: loadApiRuntimeLimits({}),
+      createBusinessRequestAudit: () => auditContext,
+      uploadAuthorizationAudit: initializeAudit
+    });
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/structured/partition-uploads",
+        payload: {}
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json().error.code).toBe("UPLOAD_ADMIN_REQUIRED");
+      expect(initializeAudit).toHaveBeenCalledTimes(1);
+      expect(logAuditFailure).toHaveBeenCalledExactlyOnceWith(
+        { requestId: auditContext.requestId, uploadSurface: "structured_dataset" },
+        "upload denial audit failed"
+      );
+    } finally {
+      await app.close();
+    }
+  });
   let root: string | undefined;
   afterEach(async () => {
     if (root) await rm(root, { recursive: true, force: true });
@@ -39,6 +148,11 @@ describe("structured partition routes", () => {
     root = await mkdtemp(path.join(os.tmpdir(), "partition-route-"));
     const storage = new LocalFileSystemStorageAdapter({ root });
     let job: PartitionImportJobRecord | null = null;
+    let isAdmin = true;
+    const appendDenied = vi.fn(async () => {});
+    const initializeAudit = vi.fn(() => ({ appendDenied }));
+    const abort = vi.spyOn(storage, "abortMultipartUpload");
+    const finishJob = vi.fn(async () => {});
     const repository = repositoryStub({
       reserveUpload: async (input) => {
         job = {
@@ -69,11 +183,14 @@ describe("structured partition routes", () => {
         };
         return { state: "created", job };
       },
-      findJobForStatus: async () => job
+      findJobForStatus: async () => job,
+      finishJob
     });
     const app = Fastify();
     registerStructuredPartitionRoutes(app, {
-      auth,
+      ...unusedAudit,
+      auth: { ...auth, employee: () => (isAdmin ? adminAuth.employee() : employee) },
+      uploadAuthorizationAudit: initializeAudit,
       storage: () => storage,
       partitions: () => repository,
       runtimeLimits: loadApiRuntimeLimits({})
@@ -101,6 +218,51 @@ describe("structured partition routes", () => {
       parts: [{ partNumber: 1 }, { partNumber: 2 }]
     });
     expect(response.body).not.toContain("structured-import-staging");
+    const parts = await app.inject({
+      method: "GET",
+      url: `/v1/structured/partition-uploads/${response.json().partitionImportJobId}/parts`
+    });
+    expect(parts.statusCode).toBe(200);
+    expect(parts.json().parts).toHaveLength(2);
+    expect(initializeAudit).not.toHaveBeenCalled();
+    isAdmin = false;
+    const findJob = vi.spyOn(repository, "findJobForStatus");
+    for (const input of [
+      {
+        method: "GET" as const,
+        url: `/v1/structured/partition-uploads/${response.json().partitionImportJobId}/parts`
+      },
+      {
+        method: "POST" as const,
+        url: `/v1/structured/partition-uploads/${response.json().partitionImportJobId}/complete`,
+        payload: {}
+      }
+    ]) {
+      const denied = await app.inject(input);
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json().error.code).toBe("UPLOAD_ADMIN_REQUIRED");
+    }
+    expect(appendDenied).toHaveBeenCalledTimes(2);
+    expect(findJob).not.toHaveBeenCalled();
+    expect(finishJob).not.toHaveBeenCalled();
+    expect(abort).not.toHaveBeenCalled();
+    const status = await app.inject({
+      method: "GET",
+      url: `/v1/structured/partition-imports/${response.json().partitionImportJobId}`
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().status).toBe("uploading");
+    const cancelled = await app.inject({
+      method: "DELETE",
+      url: `/v1/structured/partition-uploads/${response.json().partitionImportJobId}`
+    });
+    expect(cancelled.statusCode).toBe(204);
+    expect(abort).toHaveBeenCalledTimes(1);
+    expect(finishJob).toHaveBeenCalledExactlyOnceWith({
+      orgId: employee.orgId,
+      jobId: response.json().partitionImportJobId,
+      status: "cancelled"
+    });
     await app.close();
   });
 
@@ -129,6 +291,7 @@ describe("structured partition routes", () => {
     const repository = repositoryStub({ listReadableManifestRows: list });
     const app = Fastify();
     registerStructuredPartitionRoutes(app, {
+      ...unusedAudit,
       auth,
       storage: () => storage,
       partitions: () => repository,
@@ -203,7 +366,8 @@ describe("structured partition routes", () => {
     });
     const app = Fastify();
     registerStructuredPartitionRoutes(app, {
-      auth,
+      ...unusedAudit,
+      auth: adminAuth,
       storage: () => storage,
       partitions: () => repository,
       runtimeLimits: loadApiRuntimeLimits({})

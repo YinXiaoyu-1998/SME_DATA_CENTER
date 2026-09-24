@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
@@ -17,6 +17,7 @@ import {
   createRepository,
   jwtSecret,
   lowClearanceAdminEmployee,
+  clearanceZeroAdminEmployee,
   suzhouEmployee
 } from "../test-support/api-server-fixtures.js";
 
@@ -25,6 +26,99 @@ const pngBytes = Buffer.from([
 ]);
 
 describe("quarantine certificate routes", () => {
+  it.each([false, true])(
+    "denies employee upload before parsing or side effects (audit failure: %s)",
+    async (auditFails) => {
+      const documentRepository = createDocumentRepository();
+      const quarantineCertificateRepository = createInMemoryQuarantineCertificateRepository(
+        documentRepository.documents,
+        documentRepository.auditLogs
+      );
+      const uploadRepositoryCalls = Object.keys(quarantineCertificateRepository)
+        .filter(
+          (key) =>
+            typeof quarantineCertificateRepository[
+              key as keyof typeof quarantineCertificateRepository
+            ] === "function"
+        )
+        .map((key) => vi.spyOn(quarantineCertificateRepository, key as "findByIdempotencyKey"));
+      const documentCalls = Object.keys(documentRepository)
+        .filter(
+          (key) => typeof documentRepository[key as keyof typeof documentRepository] === "function"
+        )
+        .map((key) => vi.spyOn(documentRepository, key as "createUploadedDocument"));
+      const appendDenied = vi.fn(async () => {
+        if (auditFails) throw new Error("sensitive upload metadata");
+      });
+      const storagePut = vi.fn();
+      const logAuditFailure = vi.fn();
+      const parseParts = vi.fn(() => {
+        throw new Error("multipart parser must not run");
+      });
+      app = buildApiServer({
+        employeeRepository: createRepository([baoliEmployee]),
+        documentRepository,
+        quarantineCertificateRepository,
+        storageAdapter: {
+          putObject: storagePut
+        } as unknown as import("@smedc/storage").StorageAdapter,
+        uploadAuthorizationAuditRepository: { appendDenied },
+        cursorSigningSecret: jwtSecret,
+        authenticateAccessToken: authenticateTestAccessToken,
+        logger: false
+      });
+      app.addHook("onRequest", async (request) => {
+        request.parts = parseParts;
+        request.log.error = logAuditFailure;
+      });
+      const multipart = createMultipartPayload([{ name: "dataset", value: "delivery_ledger" }]);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/documents/quarantine-certificates",
+        headers: {
+          authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`,
+          "x-request-id": "req_upload_denied",
+          "content-type": multipart.contentType
+        },
+        remoteAddress: "198.51.100.8",
+        payload: multipart.body
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: {
+          code: "UPLOAD_ADMIN_REQUIRED",
+          message: "File upload requires the admin role.",
+          retryable: false,
+          details: {},
+          requestId: "req_upload_denied"
+        }
+      });
+      expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
+        orgId: baoliEmployee.orgId,
+        actorEmployeeId: baoliEmployee.id,
+        uploadSurface: "quarantine_certificate",
+        audit: {
+          requestId: "req_upload_denied",
+          sourceIp: "198.51.100.8",
+          clientSource: "http_api",
+          launcherVersion: null
+        }
+      });
+      expect(parseParts).not.toHaveBeenCalled();
+      expect(storagePut).not.toHaveBeenCalled();
+      if (auditFails) {
+        expect(logAuditFailure).toHaveBeenCalledExactlyOnceWith(
+          { requestId: "req_upload_denied", uploadSurface: "quarantine_certificate" },
+          "upload denial audit failed"
+        );
+      } else {
+        expect(logAuditFailure).not.toHaveBeenCalled();
+      }
+      for (const call of documentCalls) expect(call).not.toHaveBeenCalled();
+      for (const call of uploadRepositoryCalls) expect(call).not.toHaveBeenCalled();
+      expect(documentRepository.documents).toHaveLength(0);
+    }
+  );
   let app: FastifyInstance | undefined;
   let storageRoot: string | undefined;
 
@@ -39,7 +133,12 @@ describe("quarantine certificate routes", () => {
   });
 
   async function buildQuarantineTestServer(
-    employees: AuthenticatedEmployee[] = [adminEmployee, baoliEmployee, suzhouEmployee]
+    employees: AuthenticatedEmployee[] = [
+      adminEmployee,
+      baoliEmployee,
+      suzhouEmployee,
+      clearanceZeroAdminEmployee
+    ]
   ) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-quarantine-"));
     const documentRepository = createDocumentRepository();
@@ -72,7 +171,7 @@ describe("quarantine certificate routes", () => {
       contentType?: string;
       body?: Buffer;
     } = {},
-    employee: AuthenticatedEmployee = baoliEmployee
+    employee: AuthenticatedEmployee = adminEmployee
   ) {
     const multipart = createMultipartPayload([
       {
@@ -161,7 +260,7 @@ describe("quarantine certificate routes", () => {
         idempotencyKey: "idem-hidden",
         confidentialityLevel: 3
       },
-      suzhouEmployee
+      adminEmployee
     );
 
     const response = await queryCertificates(app, [
@@ -228,10 +327,14 @@ describe("quarantine certificate routes", () => {
   it("allows an uploader to declare any confidentiality level", async () => {
     const { app, documentRepository } = await buildQuarantineTestServer();
 
-    const response = await uploadCertificate(app, {
-      idempotencyKey: "idem-level-3",
-      confidentialityLevel: 3
-    });
+    const response = await uploadCertificate(
+      app,
+      {
+        idempotencyKey: "idem-level-3",
+        confidentialityLevel: 3
+      },
+      clearanceZeroAdminEmployee
+    );
 
     expect(response.statusCode).toBe(201);
     expect(documentRepository.documents).toHaveLength(1);
@@ -239,9 +342,15 @@ describe("quarantine certificate routes", () => {
   });
 
   it("archives by source document for the uploader and by receipt ID for admins only", async () => {
-    const { app } = await buildQuarantineTestServer();
-    const first = await uploadCertificate(app, { idempotencyKey: "idem-archive-1" });
-    await uploadCertificate(app, { idempotencyKey: "idem-archive-2" });
+    const formerUploader: AuthenticatedEmployee = { ...baoliEmployee, role: "admin" };
+    const { app } = await buildQuarantineTestServer([adminEmployee, formerUploader]);
+    const first = await uploadCertificate(
+      app,
+      { idempotencyKey: "idem-archive-1" },
+      formerUploader
+    );
+    await uploadCertificate(app, { idempotencyKey: "idem-archive-2" }, formerUploader);
+    formerUploader.role = "employee";
 
     const bySource = await archiveCertificates(app, {
       sourceDocumentId: first.json().sourceDocumentId
@@ -268,6 +377,7 @@ describe("quarantine certificate routes", () => {
   it("lets an admin PAO archive above clearance without granting ordinary read access", async () => {
     const { app } = await buildQuarantineTestServer([
       lowClearanceAdminEmployee,
+      adminEmployee,
       baoliEmployee,
       suzhouEmployee
     ]);
@@ -278,7 +388,7 @@ describe("quarantine certificate routes", () => {
         idempotencyKey: "idem-admin-pao-level-3",
         confidentialityLevel: 3
       },
-      baoliEmployee
+      adminEmployee
     );
     await uploadCertificate(
       app,
@@ -287,7 +397,7 @@ describe("quarantine certificate routes", () => {
         idempotencyKey: "idem-admin-pao-level-3-receipt",
         confidentialityLevel: 3
       },
-      baoliEmployee
+      adminEmployee
     );
 
     const ordinaryQuery = await app.inject({

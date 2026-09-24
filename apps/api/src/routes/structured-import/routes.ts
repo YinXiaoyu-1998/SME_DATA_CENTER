@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import {
+  authorizeFileUpload,
+  fileUploadAdminRequiredResponse,
+  type UploadAuthorizationAuditRepository
+} from "../../file-upload-authorization.js";
 import { performance } from "node:perf_hooks";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { databaseErrorDetails, type DatabaseRetryEvent } from "@smedc/db";
@@ -133,6 +138,7 @@ export function registerStructuredImportRoutes(
     structuredImports: () => StructuredImportRepository;
     runtimeLimits: ApiRuntimeLimits;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
+    uploadAuthorizationAudit: () => UploadAuthorizationAuditRepository;
   }
 ): void {
   app.post("/v1/structured/imports", async (request, reply) => {
@@ -175,6 +181,16 @@ export function registerStructuredImportRoutes(
     if (!authenticated) {
       return;
     }
+
+    const employee = dependencies.auth.employee(request);
+    const allowed = await authorizeFileUpload({
+      employee,
+      uploadSurface: "structured_dataset",
+      audit: dependencies.createBusinessRequestAudit(request),
+      auditRepository: dependencies.uploadAuthorizationAudit,
+      logAuditFailure: (context) => request.log.error(context, "upload denial audit failed")
+    });
+    if (!allowed) return reply.code(403).send(fileUploadAdminRequiredResponse(request));
 
     let upload: ParsedStructuredImportUpload;
 
@@ -241,7 +257,6 @@ export function registerStructuredImportRoutes(
       );
     }
 
-    const employee = dependencies.auth.employee(request);
     const audit = dependencies.createBusinessRequestAudit(request);
     Object.assign(timingContext, {
       dataset,

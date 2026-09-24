@@ -9,6 +9,7 @@ import { buildApiServer } from "../server.js";
 import {
   accessTokenFor,
   authenticateTestAccessToken,
+  adminEmployee,
   baoliEmployee,
   createDocumentRepository,
   createInMemoryQuarantineCertificateRepository,
@@ -60,7 +61,7 @@ describe("source document download routes", () => {
     };
 
     app = buildApiServer({
-      employeeRepository: createRepository([baoliEmployee]),
+      employeeRepository: createRepository([adminEmployee, baoliEmployee]),
       documentRepository,
       quarantineCertificateRepository,
       sourceDocumentRepository,
@@ -90,7 +91,7 @@ describe("source document download routes", () => {
       method: "POST",
       url: "/v1/documents/quarantine-certificates",
       headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`,
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
         "content-type": multipart.contentType
       },
       payload: multipart.body
@@ -100,6 +101,7 @@ describe("source document download routes", () => {
   it("issues a 24-hour attachment download URL for an authorized source document", async () => {
     const { app, createDownloadUrl } = await buildDownloadTestServer();
     const upload = await uploadCertificate(app);
+    expect(upload.statusCode).toBe(201);
 
     const response = await app.inject({
       method: "POST",

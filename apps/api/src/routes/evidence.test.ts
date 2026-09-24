@@ -22,6 +22,85 @@ import {
 } from "../test-support/api-server-fixtures.js";
 
 describe("evidence routes", () => {
+  it.each([false, true])(
+    "denies employee upload before parsing or side effects (audit failure: %s)",
+    async (auditFails) => {
+      const documentRepository = createDocumentRepository();
+      const documentCalls = Object.keys(documentRepository)
+        .filter(
+          (key) => typeof documentRepository[key as keyof typeof documentRepository] === "function"
+        )
+        .map((key) => vi.spyOn(documentRepository, key as "createUploadedDocument"));
+      const appendDenied = vi.fn(async () => {
+        if (auditFails) throw new Error("sensitive upload metadata");
+      });
+      const storagePut = vi.fn();
+      const logAuditFailure = vi.fn();
+      const parseParts = vi.fn(() => {
+        throw new Error("multipart parser must not run");
+      });
+      app = buildApiServer({
+        employeeRepository: createRepository([baoliEmployee]),
+        documentRepository,
+        storageAdapter: {
+          putObject: storagePut
+        } as unknown as import("@smedc/storage").StorageAdapter,
+        uploadAuthorizationAuditRepository: { appendDenied },
+        cursorSigningSecret: jwtSecret,
+        authenticateAccessToken: authenticateTestAccessToken,
+        logger: false
+      });
+      app.addHook("onRequest", async (request) => {
+        request.parts = parseParts;
+        request.log.error = logAuditFailure;
+      });
+      const multipart = createMultipartPayload([{ name: "dataset", value: "delivery_ledger" }]);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/documents/evidence",
+        headers: {
+          authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`,
+          "x-request-id": "req_upload_denied",
+          "content-type": multipart.contentType
+        },
+        remoteAddress: "198.51.100.8",
+        payload: multipart.body
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: {
+          code: "UPLOAD_ADMIN_REQUIRED",
+          message: "File upload requires the admin role.",
+          retryable: false,
+          details: {},
+          requestId: "req_upload_denied"
+        }
+      });
+      expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
+        orgId: baoliEmployee.orgId,
+        actorEmployeeId: baoliEmployee.id,
+        uploadSurface: "evidence_document",
+        audit: {
+          requestId: "req_upload_denied",
+          sourceIp: "198.51.100.8",
+          clientSource: "http_api",
+          launcherVersion: null
+        }
+      });
+      expect(parseParts).not.toHaveBeenCalled();
+      expect(storagePut).not.toHaveBeenCalled();
+      if (auditFails) {
+        expect(logAuditFailure).toHaveBeenCalledExactlyOnceWith(
+          { requestId: "req_upload_denied", uploadSurface: "evidence_document" },
+          "upload denial audit failed"
+        );
+      } else {
+        expect(logAuditFailure).not.toHaveBeenCalled();
+      }
+      for (const call of documentCalls) expect(call).not.toHaveBeenCalled();
+      expect(documentRepository.documents).toHaveLength(0);
+    }
+  );
   let app: FastifyInstance | undefined;
 
   afterEach(async () => {
