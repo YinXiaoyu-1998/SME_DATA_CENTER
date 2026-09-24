@@ -17,6 +17,68 @@ const adminProfile: CachedUserProfile = {
 };
 
 describe("versioned launcher profile record", () => {
+  it.each([
+    { operation: "invalidate", sharedLock: false },
+    { operation: "establish", sharedLock: false },
+    { operation: "invalidate", sharedLock: true },
+    { operation: "establish", sharedLock: true }
+  ] as const)(
+    "does not restore account A after $operation (shared lock: $sharedLock)",
+    async ({ operation, sharedLock }) => {
+      const backingStore = memoryStore("account-a-refresh");
+      const profileWriteStarted = deferred();
+      const finishProfileWrite = deferred();
+      const secureStore = {
+        ...backingStore,
+        set: async (value: string) => {
+          if (JSON.parse(value).profile !== null) {
+            profileWriteStarted.resolve();
+            await finishProfileWrite.promise;
+          }
+          await backingStore.set(value);
+        }
+      };
+      const dependencies = {
+        origin,
+        secureStore,
+        tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" }),
+        ...(sharedLock ? { lock: serialLock() } : {})
+      };
+      const session = new LauncherSession(dependencies);
+      const replacingSession = sharedLock ? new LauncherSession(dependencies) : session;
+      const profileWrite = session.storeProfile(adminProfile);
+      await profileWriteStarted.promise;
+
+      const replacement =
+        operation === "invalidate"
+          ? replacingSession.invalidate()
+          : replacingSession.establish(
+              "account-b-access",
+              "account-b-refresh",
+              Date.now() + 9 * 60_000
+            );
+      // Drain runnable work while A's write is paused, without waiting for the
+      // replacement itself: a serialized replacement must wait behind A.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      finishProfileWrite.resolve();
+      await Promise.all([profileWrite, replacement]);
+
+      await expect(replacingSession.cachedProfile()).resolves.toBeNull();
+      if (operation === "invalidate") {
+        await expect(secureStore.get()).resolves.toBeNull();
+        await expect(replacingSession.status()).resolves.toEqual({ authenticated: false });
+      } else {
+        expect(JSON.parse((await secureStore.get())!)).toEqual({
+          schemaVersion: 2,
+          origin,
+          durableCredential: "account-b-refresh",
+          profile: null
+        });
+        await expect(replacingSession.ensureAccessToken()).resolves.toBe("account-b-access");
+      }
+    }
+  );
+
   it("reads v1 lazily and writes only the v2 credential and public profile fields", async () => {
     const secureStore = memoryStore("legacy-refresh");
     await secureStore.set(
@@ -95,6 +157,7 @@ describe("versioned launcher profile record", () => {
     const session = new LauncherSession({
       origin,
       secureStore,
+      lock: serialLock(),
       tokenClient: {
         refresh: async () => {
           throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
@@ -455,4 +518,27 @@ function tokenClientReturning(result: {
 
 function immediateLock(): LauncherLock {
   return { acquire: async () => async () => undefined };
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+function serialLock(): LauncherLock {
+  let tail = Promise.resolve();
+  return {
+    acquire: async () => {
+      const previous = tail;
+      const next = deferred();
+      tail = next.promise;
+      await previous;
+      return async () => {
+        next.resolve();
+      };
+    }
+  };
 }

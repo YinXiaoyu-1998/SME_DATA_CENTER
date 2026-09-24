@@ -38,6 +38,7 @@ export class LauncherSession {
   #memoryRecord: SessionRecord | null = null;
   #storeAvailable: boolean | null = null;
   #waitingForLogin: Promise<void> | null = null;
+  #recordMutation: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly dependencies: {
@@ -69,7 +70,7 @@ export class LauncherSession {
       }
     }
 
-    const release = this.dependencies.lock ? await this.dependencies.lock.acquire() : null;
+    const release = await this.acquireRecordLock();
     try {
       const record = await this.readRecord();
       if (record === null) {
@@ -81,7 +82,7 @@ export class LauncherSession {
         refreshed = await this.dependencies.tokenClient.refresh(record.durableCredential);
       } catch (error) {
         const typed = asTypedError(error);
-        if (typed.code === "AUTHENTICATION_REQUIRED") await this.invalidate();
+        if (typed.code === "AUTHENTICATION_REQUIRED") await this.invalidateLocked();
         throw typed;
       }
 
@@ -102,7 +103,7 @@ export class LauncherSession {
       this.#accessTokenExpiresAt = refreshed.expiresAt ?? Date.now() + 9 * 60_000;
       return refreshed.accessToken;
     } finally {
-      await release?.();
+      await release();
     }
   }
 
@@ -111,6 +112,7 @@ export class LauncherSession {
     refreshCredential: string,
     expiresAt: number
   ): Promise<void> {
+    const release = await this.acquireRecordLock();
     try {
       await this.storeRecord(refreshCredential, null);
       if ((await this.readCredential()) !== refreshCredential)
@@ -123,11 +125,13 @@ export class LauncherSession {
       await this.dependencies.tokenClient.revoke(refreshCredential).catch(() => undefined);
       await this.deleteRecord();
       throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
+    } finally {
+      await release();
     }
   }
 
   async logout(): Promise<{ remoteRevocationConfirmed: boolean; localCredentialRemoved: boolean }> {
-    const release = this.dependencies.lock ? await this.dependencies.lock.acquire() : null;
+    const release = await this.acquireRecordLock();
     try {
       const refreshCredential = await this.readCredential();
       this.#accessToken = null;
@@ -142,7 +146,7 @@ export class LauncherSession {
       );
       return { remoteRevocationConfirmed, localCredentialRemoved };
     } finally {
-      await release?.();
+      await release();
     }
   }
 
@@ -156,9 +160,12 @@ export class LauncherSession {
   }
 
   async invalidate(): Promise<void> {
-    this.#accessToken = null;
-    this.#accessTokenExpiresAt = 0;
-    await this.deleteRecord();
+    const release = await this.acquireRecordLock();
+    try {
+      await this.invalidateLocked();
+    } finally {
+      await release();
+    }
   }
 
   async cachedProfile(): Promise<CachedUserProfile | null> {
@@ -168,13 +175,13 @@ export class LauncherSession {
 
   async storeProfile(profile: CachedUserProfile): Promise<void> {
     const validated = cachedUserProfileSchema.parse(profile);
-    const release = this.dependencies.lock ? await this.dependencies.lock.acquire() : null;
+    const release = await this.acquireRecordLock();
     try {
       const record = await this.readRecord();
       if (record === null) throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
       await this.storeRecord(record.durableCredential, validated);
     } finally {
-      await release?.();
+      await release();
     }
   }
 
@@ -184,6 +191,34 @@ export class LauncherSession {
 
   waitForLogin(promise: Promise<void>): void {
     this.#waitingForLogin = promise;
+  }
+
+  private async acquireRecordLock(): Promise<() => Promise<void>> {
+    const previous = this.#recordMutation;
+    let releaseLocal!: () => void;
+    this.#recordMutation = new Promise<void>((resolve) => {
+      releaseLocal = resolve;
+    });
+    await previous;
+    try {
+      const releaseShared = await this.dependencies.lock?.acquire();
+      return async () => {
+        try {
+          await releaseShared?.();
+        } finally {
+          releaseLocal();
+        }
+      };
+    } catch (error) {
+      releaseLocal();
+      throw error;
+    }
+  }
+
+  private async invalidateLocked(): Promise<void> {
+    this.#accessToken = null;
+    this.#accessTokenExpiresAt = 0;
+    await this.deleteRecord();
   }
 
   private async readCredential(): Promise<string | null> {
