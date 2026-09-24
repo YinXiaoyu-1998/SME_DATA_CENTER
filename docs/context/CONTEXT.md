@@ -352,7 +352,7 @@ _Avoid_: 多租户 SaaS
 - 本地和 CI 可默认使用 deterministic fake embedding/rerank provider，以避免真实 API key、费用和数据外发；真实外部 provider smoke 应使用合成文本并作为 manual/nightly/staging preflight
 - Qdrant 索引可从 MySQL、OSS 源文件和 retrieval config 重建，但 staging/prod-like runbook 仍需定义 snapshot 或 rebuild 策略；自动 snapshot/restore drill 和一键 rebuild 属于 P2
 - Phase 3 MCP 仍然只是 HTTP API 的薄适配，不直连 MySQL/Qdrant/OSS/model provider，不重复权限/查询校验，不暴露 worker/admin/operator 控制
-- 员工智能体可通过 MCP 做 evidence search、structured dataset discovery、row-dataset controlled query、structured upload、`business` / `dishes` launcher-local partition extract、evidence document upload 和 import/status；模型配置、强制重建索引、worker retry、schema registry 编辑、导入声明修复等保持 HTTP/admin-only
+- 员工智能体可通过 MCP 做 evidence search、structured dataset discovery、row-dataset controlled query、`business` / `dishes` launcher-local partition extract 和 import/status；上传工具保持所有角色可发现，但只有 active admin 可调用 structured、evidence 和检疫证明上传，employee 由 launcher 本地预拦截且后端仍统一强制 403；模型配置、强制重建索引、worker retry、schema registry 编辑、导入声明修复等保持 HTTP/admin-only
 - 在真正修改 `implementation-plan.md` 前，必须做 phase renumbering impact audit；旧 `Phase 3` / `phase-3` 引用需要分类为新检索 Phase 3、旧 staging/readiness 阶段、历史引用或 stale reference
 - supporting docs 优先使用语义化命名；`phase-3-readiness.md` 已按用户确认重命名为 `staging-readiness.md`
 - 历史 progress、handoff、accepted ADR context 不应逐条重写；应通过追加 note 说明 phase numbering changed
@@ -462,7 +462,10 @@ _Avoid_: 多租户 SaaS
 - beta 密码长度为 8–128 个 Unicode 字符，允许空格/粘贴/密码管理器，不设大小写数字符号组合或定期修改规则；使用小型本地常见密码列表拦截明显弱值，并只保存经过实机基准测试的 Argon2id 加盐 hash
 - 现有 development email/JWT 认证系统完全删除，不保留任何环境或测试兼容路径；所有环境、自动化测试、runtime env、部署脚本、文档和两份 skills 使用正式身份、OAuth Device Authorization、不透明 access token 与轮换长期会话
 - **员工账号**创建时必须由开发者显式提供 **功能身份**（`admin` 或 `employee`）和 **账户保密等级**（0–3），两者均无默认值；`manager` 身份不存在
-- 每份资料都带有必填 **资料密级**（0–3）；上传时员工明确指定则采用该值，未指定则为 0，员工智能体不得自行从文件名、内容或业务上下文推断更高密级
+- 每份资料都带有必填 **资料密级**（0–3）；上传时 admin 明确指定则采用该值，未指定则为 0，员工智能体不得自行从文件名、内容或业务上下文推断更高密级
+- 只有 active **admin** 具备员工侧 **文件上传能力**，覆盖 evidence、CSV/XLSX 结构化资料、`business`/`dishes` 分片源文件和检疫证明；employee 角色不能通过 HTTP、MCP、launcher 或未来网页上传
+- **文件上传能力** 与 **账户保密等级** 正交；admin 可以上传高于自身 clearance 的资料，但上传不会让其绕过后续状态、检索、查询、metadata 或下载的普通读取授权
+- 未来定时同步、外部连接器或 service account 导入不继承 admin 员工身份，必须另行设计服务身份、授权和审计边界
 - 普通读取先限制为同组织，再要求账户保密等级不低于资料密级；正文、标题、元数据、状态、检索、结构化行与聚合都遵循同一范围
 - 服务内部从来源资料直接生成的分块、索引、结构化行、聚合与元数据视图继承来源资料密级；系统外产生后再次上传的文件是独立新资料
 - **admin** 只在明确声明的 **管理员特权操作** 中无视资料密级；每一项检查 admin 的功能都属于此类操作，且不扩大其他普通读取范围
@@ -488,7 +491,7 @@ _Avoid_: 多租户 SaaS
 - **审计日志** 只能追加，不能被普通管理员修改；纠错应追加新的纠错事件
 - **审计日志** 至少覆盖上传、下载、查询、状态变更、归档、手动重试和员工访问令牌创建/撤销
 - **管理员后台**如实现，只承担显式声明的 **管理员特权操作**、员工账号启停和最小运维，不承担普通资料读取豁免
-- 普通员工网页第一阶段只保留必要的上传和查看自己上传资料状态，不建设完整知识库门户
+- 普通员工网页第一阶段不提供上传；如未来保留网页上传入口，也必须仅对 active admin 开放并由后端重复强制授权。普通读取和既有上传的可见状态仍按组织与密级规则处理
 - 第一阶段采用 **模块化单体**，并用 **异步处理 Worker** 处理资料解析和索引构建
 - 第一阶段采用 **单企业部署**；可以预留组织字段，但不提供真正多租户 SaaS 能力
 - **派生索引** 可从权威元数据和文件对象存储中重建，不作为不可丢失的权威数据
@@ -521,7 +524,10 @@ _Avoid_: 多租户 SaaS
 > **Domain expert:** “可以。那是管理员特权操作，密级不限制该功能的既定范围，但不会让他在普通查询里读到 2 级资料。”
 
 > **Dev:** “智能体看到文件名有‘保密’两字，能自动上传为 3 级吗？”
-> **Domain expert:** “不能。除非员工明确指定密级，否则新上传资料一律为 0 级。”
+> **Domain expert:** “不能。只有 admin 能上传；除非 admin 明确指定密级，否则新上传资料一律为 0 级。”
+
+> **Dev:** “一个 3 级 employee 可以上传 0 级资料吗？”
+> **Domain expert:** “不能。上传看功能身份而不是保密等级；只有 active admin 可以上传。”
 
 > **Dev:** “员工离职后，他的资料密级和账号记录要删除吗？”
 > **Domain expert:** “不删除。账户被禁用并保留历史记录；禁用期间不能访问或操作资料。”
@@ -551,7 +557,7 @@ _Avoid_: 多租户 SaaS
 > **Domain expert:** “不可以。向量命中后还要校验来源资料是否活跃、同组织，以及当前员工账号的保密等级。”
 
 > **Dev:** “普通员工需要一个完整网页知识库门户吗？”
-> **Domain expert:** “第一阶段不需要。普通员工主要通过员工智能体使用资料中枢，网页只做上传和查看自己上传资料状态。”
+> **Domain expert:** “第一阶段不需要。普通员工主要通过员工智能体读取资料；网页也不能成为 employee 的上传旁路。”
 
 ## Flagged Ambiguities
 
@@ -578,7 +584,7 @@ _Avoid_: 多租户 SaaS
 - “资料中枢是否解释菜品目录演进”已 resolved：不解释；本次只让 `dish_catalog` 参与现有 discovery 和受控结构化查询并暴露 `snapshot_date`，不实现当前目录、最大日期选择、菜品状态或快照 diff。
 - “菜品目录是否只接受 XLSX”已 resolved：不是；`dish_catalog` 同时支持 XLSX 和 CSV，XLSX 可包含多个匹配 sheet，CSV 作为单表使用相同 schema 与校验规则。
 - “菜品目录如何保存演进历史”已 resolved：采用单时间线、单日期、同日唯一、可乱序补录的追加式完整快照；不采用 SCD、增量合并、原地覆盖或自动归档。ADR 0023 记录该决策。
-- “MCP 是否 baseline 上传 evidence docs”已 resolved：baseline MCP 同时支持 structured upload 和 evidence document upload；两者都必须走 HTTP API 和后端权限/校验。
+- “MCP 是否 baseline 上传 evidence docs”已 resolved：baseline MCP 同时暴露 structured、evidence 和检疫证明上传工具；工具保持所有角色可发现，但只有 active admin 可上传，且所有路径都必须经过后端权限/校验。
 - “Phase 3 优先级”已 resolved：核心 baseline 只包含安全上传/处理/授权/检索/查询所必需能力；可观测、诊断、调优和操作体验进入 P2；OCR、PDF、跨表分析、自然语言 query 生成、报告/dashboard、自动替换导入等进入 P3。
 - “Phase 3 worker 架构”已 resolved：使用类型化 ProcessingRun、DB lease、幂等 job key、retry/backoff 和 publish gate；operator UI、priority queue、dead-letter UI、adaptive concurrency 等进入 P2。ADR 0016 记录该决策。
 - “Phase 3 运维监控”已 resolved：baseline 需要 MySQL/Qdrant/OSS/worker/model provider readiness、核心指标和告警；dashboard、自动修复、成本预算等进入 P2，进入 runbook/implementation docs 而非 ADR。
@@ -586,7 +592,7 @@ _Avoid_: 多租户 SaaS
 - “自托管 Qdrant 是否需要 Qdrant Cloud 订阅”已 resolved：baseline 不需要。Qdrant OSS 标注 Apache-2.0 license，自托管成本主要来自我们自己的基础设施和运维；正式商用仍应保留常规开源合规审查。
 - “Qdrant Cloud 是否能在中国大陆/阿里云无缝使用”已 resolved：不能作为假设。Phase 3 默认大陆/阿里云自托管 Qdrant，并通过镜像 pinning/ACR 同步保证部署可重复；托管/Hybrid/Private 方案需另行验证后才可替换。ADR 0017 记录该边界。
 - “CI 是否必须调用真实外部模型 provider”已 resolved：不必须。默认用 deterministic fake embedding/rerank provider 跑真实 Qdrant/MySQL 集成测试；真实 provider smoke 使用合成文本，在 manual/nightly/staging preflight 中跑。
-- “Phase 3 MCP 边界”已 resolved：MCP 继续作为 HTTP API 薄适配，提供员工智能体需要的检索、schema discovery、结构化查询、结构化上传和状态查询；admin/operator/reindex/model/schema 控制不进入 MCP。
+- “Phase 3 MCP 边界”已 resolved：MCP 继续作为 HTTP API 薄适配，提供员工智能体需要的检索、schema discovery、结构化查询、可发现但 admin-only 的上传工具和状态查询；operator/reindex/model/schema 控制不进入 MCP。
 - “插入新 Phase 3 后是否只改 implementation-plan”已 resolved：不可以。需要 phase renumbering impact audit，检查 implementation、readiness、ADR、AGENTS、env/deployment、API/MCP/test/docs/scripts 中的 Phase 3/4 引用。
 - “旧 phase-3-readiness.md 是否直接改名”已 resolved：按用户确认重命名为语义化 `staging-readiness.md`；历史日志里的旧路径保持历史含义。
 - “向量检索”可能被误解为只存 embedding；已 resolved：向量索引需要保存 embedding、可返回文本片段、来源位置、模型版本和权限/metadata 过滤字段，同时由事务型数据库继续维护权威资料状态。
@@ -683,7 +689,8 @@ _Avoid_: 多租户 SaaS
 - “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、OAuth Device Authorization、不透明 access token、操作系统安全存储长期会话和无头内存态会话，不保留 development email/JWT 兼容路径；固定版本 `smedc-mcp-launcher@0.5.1` 已在 npm 发布。launcher 安装平台支持 macOS、Windows 和 Linux，原生 macOS/Windows 安全存储验收、Ubuntu 无图形发行包验收和无头 Linux 登录到业务工具闭环构成不同层级的证据；用户可见的 OpenClaw/手机宿主验收仍是额外端到端证据。
 - “标签能否表达门店或人员权限”已 superseded by ADR 0025：标签模型完全移除；门店、人员是业务字段，不参与资料访问。
 - “admin 是否天然能读高密级资料”已 resolved：不能。`admin` 仅在明确的 **管理员特权操作** 中无视密级，普通读取仍按资料密级判断。
-- “资料密级是否由 agent 自动推断”已 resolved：不能。员工未明确提供时，新上传资料为 0 级；文件名、内容和外部来源不触发自动升密。
+- “资料密级是否由 agent 自动推断”已 resolved：不能。admin 未明确提供时，新上传资料为 0 级；文件名、内容和外部来源不触发自动升密。
+- “谁可以上传文件”已 resolved：只有 active admin 具备员工侧文件上传能力；employee 的 clearance 再高也不能上传，admin 可上传高于自身 clearance 的资料但不会获得后续普通读取豁免。工具保持可发现，launcher 做本地预拦截，后端仍是权威授权边界。
 - “资料密级是否在服务内按来源链路向新上传文件传播”已 resolved：不会。服务内直接派生数据继承来源密级，系统外生成后再次上传的文件是独立新资料。
 - “创建账户是否能省略角色或保密等级”已 resolved：不能。开发者必须明确提供 `admin`/`employee` 和 0–3 保密等级，且无默认值。
 - “禁用账户是否还能保留部分功能”已 resolved：不能。禁用期间没有任何员工侧能力，历史记录只供运维与未来重新启用。
@@ -695,5 +702,5 @@ _Avoid_: 多租户 SaaS
 - “上传成功即活跃”暂不采用；已 resolved：资料上传后先作为 **待处理资料**，处理完成后才成为 **活跃资料**。
 - “入口过滤权限”不足以保证安全；已 resolved：权限过滤必须由 **后端强制权限过滤** 统一执行。
 - “向量索引命中”不等于可返回；已 resolved：向量检索结果必须回到来源资料校验活跃状态和员工账号权限。
-- “企业资料中枢前台”不作为第一阶段主产品；已 resolved：普通员工网页只保留上传、标签确认和状态查看，主要使用入口仍是员工智能体。
+- “企业资料中枢前台”不作为第一阶段主产品；已 resolved：普通员工网页不得提供上传旁路，任何未来网页上传入口同样只能供 active admin 使用并由后端授权。
 - “多企业 SaaS”暂不作为第一阶段目标；已 resolved：采用 **单企业部署**，最多预留组织字段，不实现真正多租户隔离。

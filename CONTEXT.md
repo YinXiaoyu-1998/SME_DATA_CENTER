@@ -35,9 +35,15 @@ the minimum Confidentiality Clearance required to read the document and its deri
 _Avoid_: store tag, personal tag, business category.
 
 **Document Classification**:
-The uploader's explicit selection of a Document Confidentiality Level, defaulting to 0 when no
-level is explicitly supplied by the employee.
+The admin uploader's explicit selection of a Document Confidentiality Level, defaulting to 0 when
+no level is explicitly supplied.
 _Avoid_: AI inference from a filename, document content, uploader, or business context.
+
+**File Upload Capability**:
+The privileged ability of an active admin Employee Account to introduce a new file into the
+service, regardless of document kind, dataset, file format, or upload transport.
+_Avoid_: a capability of the employee role, a file-type-specific exception, client-side hiding,
+service-to-service ingestion authority.
 
 **Immutable Document Classification**:
 The rule that a document's Confidentiality Level is fixed after upload; no in-product
@@ -176,9 +182,16 @@ Fully unattended agent with no interactive login; out of scope for login flows.
   creating an Employee Account; neither has a default value.
 - A Disabled Employee Account cannot read, upload, or perform a Privileged Administrative
   Operation, regardless of its Functional Role, Confidentiality Clearance, or existing session.
-- Any active Employee Account may perform Document Classification while uploading; an
-  employee-owned agent must use level 0 unless the employee explicitly supplies a different level.
-- Document Classification is independent of the uploader's Confidentiality Clearance.
+- Only an active admin Employee Account has **File Upload Capability**; an employee Employee
+  Account cannot start or continue a New Upload through any employee-facing transport.
+- File Upload Capability governs Employee Accounts only; any future scheduled connector, external
+  integration, or service account requires a separately designed service identity and
+  authorization model rather than an admin Employee Account.
+- An admin Employee Account performs Document Classification while uploading; an employee-owned
+  agent must use level 0 unless the admin explicitly supplies a different level.
+- File Upload Capability and Document Classification are independent of the admin uploader's
+  Confidentiality Clearance; an admin may upload at a higher level than the admin can ordinarily
+  read.
 - Every document kind uses the same mandatory Document Confidentiality Level; there are no
   kind-specific classification exceptions.
 - An active Employee Account can read a same-organization document only when its Confidentiality
