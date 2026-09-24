@@ -54,6 +54,33 @@ export interface CurrentEnterpriseHubUserResult {
 
 const STRUCTURED_IMPORT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 
+export type AcceptanceAccount = "employee-low" | "employee-high" | "admin";
+
+export function acceptanceAccountEmails(runId: string): string[] {
+  return [
+    `manual-full-flow-low-${runId}@example.invalid`,
+    `manual-full-flow-high-${runId}@example.invalid`,
+    `manual-acceptance-admin-${runId}@example.invalid`,
+    // Retain cleanup ownership of older, interrupted runs.
+    `manual-full-flow-${runId}@example.invalid`,
+    `manual-acceptance-${runId}@example.invalid`
+  ];
+}
+
+export function isAcceptanceAccount(
+  result: CurrentEnterpriseHubUserResult,
+  runId: string,
+  account: AcceptanceAccount
+): boolean {
+  const index = account === "employee-low" ? 0 : account === "employee-high" ? 1 : 2;
+  return (
+    result.user.email === acceptanceAccountEmails(runId)[index] &&
+    result.user.displayName.trim().length > 0 &&
+    result.user.role === (account === "admin" ? "admin" : "employee") &&
+    result.user.clearance === (account === "employee-high" ? 3 : 0)
+  );
+}
+
 export async function pollStructuredImportStatus<T extends StructuredImportPollResult>(input: {
   importBatchId: string;
   getStatus: () => Promise<T>;

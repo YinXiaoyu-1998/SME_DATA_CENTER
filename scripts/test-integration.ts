@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -141,13 +141,35 @@ try {
     { env: integrationEnv }
   );
   await run("npm", ["run", "db:seed"], { env: integrationEnv });
+  const identitySetup = new PrismaClient({
+    adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)
+  });
+  try {
+    await identitySetup.employee.update({ where: { id: "emp_admin" }, data: { clearance: 0 } });
+    await identitySetup.employee.update({
+      where: { id: "emp_baoli_employee" },
+      data: { clearance: 0 }
+    });
+    await identitySetup.employee.update({
+      where: { id: "emp_suzhou_employee" },
+      data: { clearance: 3 }
+    });
+  } finally {
+    await identitySetup.$disconnect();
+  }
   await run("npm", ["run", "qdrant:init"], { env: integrationEnv });
 
   apiProcess = startApi();
   await waitForApiHealth(apiProcess);
 
   const employeeAccessToken = await createOfficialIntegrationAccessToken("emp_baoli_employee");
-  const auth = authorizationHeader(employeeAccessToken);
+  const employeeAuth = authorizationHeader(employeeAccessToken);
+  const adminAccessToken = await createOfficialIntegrationAccessToken("emp_admin");
+  const adminAuth = authorizationHeader(adminAccessToken);
+  const highEmployeeAuth = authorizationHeader(
+    await createOfficialIntegrationAccessToken("emp_suzhou_employee")
+  );
+  await assertEmployeeUploadDenied(employeeAuth);
 
   const partitionFixturePath = path.join(
     rootDir,
@@ -170,7 +192,7 @@ try {
   legacyPartitionForm.append("idempotencyKey", `legacy-rejected-${Date.now()}`);
   const legacyPartitionUpload = await fetch(`${apiUrl}/v1/structured/imports`, {
     method: "POST",
-    headers: auth,
+    headers: adminAuth,
     body: legacyPartitionForm
   });
   const legacyPartitionBody = (await legacyPartitionUpload.json()) as {
@@ -182,36 +204,99 @@ try {
     "business and dishes must be rejected by the removed row-import endpoint."
   );
 
-  const launcherAdminAccessToken = await createOfficialIntegrationAccessToken("emp_admin");
-  const launcherDependencies = createLauncherToolDependencies({
-    config: { serviceUrl: apiUrl, transport: "stdio" },
-    auth: {
-      login: async () => ({
-        authenticated: false,
-        flow: "device",
-        verificationUri: `${apiUrl}/oauth/device/verify`,
-        verificationUriComplete: `${apiUrl}/oauth/device/verify?user_code=INTEGR8`,
-        userCode: "INTEGR8",
-        instanceName: "integration-agent",
-        instanceHostname: "integration-host",
-        openedBrowser: false
-      }),
-      logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
-      status: async () => ({ authenticated: true }),
-      accessToken: async () => launcherAdminAccessToken,
-      profile: async () => {
-        const response = await fetch(`${apiUrl}/me`, {
-          headers: authorizationHeader(launcherAdminAccessToken)
-        });
-        assert(response.ok, "Launcher admin profile lookup must succeed.");
-        return parseCurrentUserProfileResponse(await response.json());
-      },
-      invalidate: async () => undefined,
-      selfCheck: async () => {
-        throw new Error("not used");
+  const launcherDependenciesFor = (accessToken: string) =>
+    createLauncherToolDependencies({
+      config: { serviceUrl: apiUrl, transport: "stdio" },
+      auth: {
+        login: async () => ({
+          authenticated: false,
+          flow: "device",
+          verificationUri: `${apiUrl}/oauth/device/verify`,
+          verificationUriComplete: `${apiUrl}/oauth/device/verify?user_code=INTEGR8`,
+          userCode: "INTEGR8",
+          instanceName: "integration-agent",
+          instanceHostname: "integration-host",
+          openedBrowser: false
+        }),
+        logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
+        status: async () => ({ authenticated: true }),
+        accessToken: async () => accessToken,
+        profile: async () => {
+          const response = await fetch(`${apiUrl}/me`, {
+            headers: authorizationHeader(accessToken)
+          });
+          assert(response.ok, "Launcher account profile lookup must succeed.");
+          return parseCurrentUserProfileResponse(await response.json());
+        },
+        invalidate: async () => undefined,
+        selfCheck: async () => {
+          throw new Error("not used");
+        }
       }
+    });
+  const launcherDependencies = launcherDependenciesFor(adminAccessToken);
+  const employeeLauncherDependencies = launcherDependenciesFor(employeeAccessToken);
+  for (const fixture of [
+    {
+      dataset: "delivery_ledger",
+      filePath: "fixtures/structured/delivery_sheet_SH2608250117.xlsx",
+      mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    },
+    {
+      dataset: "vip",
+      filePath: "fixtures/manual-acceptance/structured/vip-known-values.csv",
+      mediaType: "text/csv",
+      startDate: "20260809",
+      endDate: "20260809"
     }
-  });
+  ]) {
+    const uploaded = await createLauncherToolHandler(
+      "upload_structured_dataset",
+      launcherDependencies
+    )({
+      file: {
+        name: path.basename(fixture.filePath),
+        mediaType: fixture.mediaType,
+        encoding: "path",
+        filePath: path.join(rootDir, fixture.filePath)
+      },
+      dataset: fixture.dataset,
+      enterpriseName: "Integration Row Imports",
+      ...(fixture.startDate ? { startDate: fixture.startDate, endDate: fixture.endDate } : {}),
+      idempotencyKey: `row-integration-${fixture.dataset}-${Date.now()}`,
+      confidentialityLevel: 0
+    });
+    assert(!uploaded.isError, `Admin c0 row upload failed: ${JSON.stringify(uploaded)}`);
+    const receipt = JSON.parse(uploaded.content[0]?.text ?? "null") as {
+      importBatch: { importBatchId: string };
+    };
+    const worker = parseJson<WorkerResponse>(
+      (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+    );
+    assert(worker.status === "active", "Row-import worker must apply the original XLSX/CSV.");
+    const status = await createLauncherToolHandler(
+      "get_import_status",
+      launcherDependencies
+    )({ importBatchId: receipt.importBatch.importBatchId });
+    const statusBody = JSON.parse(status.content[0]?.text ?? "null") as {
+      importBatch: { status: string };
+    };
+    assert(
+      !status.isError && statusBody.importBatch.status === "applied",
+      "Original row import must reach applied status."
+    );
+    const queried = await createLauncherToolHandler(
+      "query_structured_dataset",
+      employeeLauncherDependencies
+    )({ dataset: fixture.dataset, aggregates: [{ op: "count", as: "row_count" }] });
+    const result = JSON.parse(queried.content[0]?.text ?? "null") as {
+      rows: Array<{ row_count: number }>;
+    };
+    assert(
+      !queried.isError && Number(result.rows[0]?.row_count) > 0,
+      "Employee c0 must query admin-uploaded level-0 rows."
+    );
+  }
   const partitionIdempotencyKey = `partition-integration-${Date.now()}`;
   const partitionUploadInput = {
     file: {
@@ -254,7 +339,7 @@ try {
   );
   const publishedPartitionJob = await waitForPartitionImportStatus(
     partitionUpload.partitionImportJobId,
-    auth,
+    adminAuth,
     "published"
   );
   assert(
@@ -279,7 +364,7 @@ try {
 
   const partitionDownloadResult = await createLauncherToolHandler(
     "download_structured_partitions",
-    launcherDependencies
+    employeeLauncherDependencies
   )({
     dataset: "dishes",
     enterpriseName: "Integration Partitions",
@@ -338,7 +423,7 @@ try {
   evidenceForm.append("confidentialityLevel", "0");
   const evidenceUpload = await apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
     method: "POST",
-    headers: auth,
+    headers: adminAuth,
     body: evidenceForm
   });
   assert(
@@ -355,10 +440,10 @@ try {
   );
   assert(worker.status === "active", "Worker should activate evidence upload.");
 
-  await waitForEvidenceStatus(evidenceUpload.document.documentId, auth);
+  await waitForEvidenceStatus(evidenceUpload.document.documentId, adminAuth);
   const evidenceSearch = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
     method: "POST",
-    headers: { ...auth, "content-type": "application/json" },
+    headers: { ...employeeAuth, "content-type": "application/json" },
     body: JSON.stringify({ query: "差评处理", filters: { fileTypes: ["md"] }, limit: 5 })
   });
   assert(
@@ -377,7 +462,7 @@ try {
   );
   const firstEvidencePage = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
     method: "POST",
-    headers: { ...auth, "content-type": "application/json" },
+    headers: { ...employeeAuth, "content-type": "application/json" },
     body: JSON.stringify({ query: "差评处理", filters: { fileTypes: ["md"] }, limit: 1 })
   });
   assert(
@@ -386,7 +471,7 @@ try {
   );
   const secondEvidencePage = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
     method: "POST",
-    headers: { ...auth, "content-type": "application/json" },
+    headers: { ...employeeAuth, "content-type": "application/json" },
     body: JSON.stringify({
       query: "差评处理",
       filters: { fileTypes: ["md"] },
@@ -401,11 +486,12 @@ try {
   );
   await assertDualCollectionEvidenceReindex({
     documentId: evidenceUpload.document.documentId,
-    auth,
+    auth: employeeAuth,
     v1Cursor: firstEvidencePage.page.nextCursor!
   });
   await assertWorkerLeaseRecovery();
-  await assertAuditProvenanceMatrix(employeeAccessToken);
+  await assertAdminUploadClearanceOrthogonality(adminAuth, highEmployeeAuth);
+  await assertAuditProvenanceMatrix(adminAccessToken);
 
   console.log(
     JSON.stringify(
@@ -418,6 +504,9 @@ try {
         proved: [
           "seed",
           "official_session_authentication",
+          "employee_c0_upload_denied_audit_once_no_residue",
+          "admin_c0_delivery_xlsx_and_row_csv_employee_c0_query",
+          "admin_c0_upload_level2_employee_c3_reads_admin_read_denied",
           "partition_upload_session",
           "partition_worker_atomic_publish",
           "partition_exact_replay",
@@ -442,6 +531,125 @@ try {
   if (apiProcess) {
     await stopApi(apiProcess);
   }
+}
+
+async function assertEmployeeUploadDenied(employeeAuth: Record<string, string>): Promise<void> {
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  const snapshot = async () => ({
+    documents: await prisma.document.count(),
+    imports: await prisma.importBatch.count(),
+    jobs: await prisma.partitionImportJob.count(),
+    partitions: await prisma.structuredPartition.count(),
+    objects: await readdir(storageRoot, { recursive: true }).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      }
+    )
+  });
+  const requestId = `employee_upload_denied_${Date.now()}`;
+  try {
+    const before = await snapshot();
+    const response = await fetch(`${apiUrl}/v1/documents/evidence`, {
+      method: "POST",
+      headers: { ...employeeAuth, "x-request-id": requestId, "content-type": "text/plain" },
+      body: "Private filename/content must never enter denial audit"
+    });
+    const body = (await response.json()) as { error?: { code?: string; retryable?: boolean } };
+    assert(
+      response.status === 403 &&
+        body.error?.code === "UPLOAD_ADMIN_REQUIRED" &&
+        body.error.retryable === false,
+      "Employee upload must return canonical 403 before multipart parsing."
+    );
+    assert(
+      JSON.stringify(await snapshot()) === JSON.stringify(before),
+      "Denied upload must leave no document/import/partition/storage residue."
+    );
+    const audit = await prisma.auditLog.findMany({ where: { requestId } });
+    const metadata = audit[0]?.metadata as Record<string, unknown> | undefined;
+    assert(
+      audit.length === 1 &&
+        audit[0]?.action === "file_upload.denied" &&
+        audit[0]?.result === "denied" &&
+        audit[0]?.actorEmployeeId === "emp_baoli_employee" &&
+        audit[0]?.targetId === null &&
+        metadata?.["uploadSurface"] === "evidence_document" &&
+        metadata["reason"] === "admin_role_required" &&
+        Object.keys(metadata).length === 2,
+      "Denied upload must persist exactly one safe transport-only audit."
+    );
+  } finally {
+    await prisma.auditLog.deleteMany({ where: { requestId } });
+    await prisma.$disconnect();
+  }
+}
+
+async function assertAdminUploadClearanceOrthogonality(
+  adminAuth: Record<string, string>,
+  highEmployeeAuth: Record<string, string>
+): Promise<void> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob(["# Integration confidential SOP\n\n高密级验收资料：折扣口令仅供授权员工查询。"]),
+    "confidential-sop.md"
+  );
+  form.append("title", "Integration confidential SOP");
+  form.append("sourceSystem", "integration_high_clearance");
+  form.append("confidentialityLevel", "2");
+  const upload = await apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
+    method: "POST",
+    headers: adminAuth,
+    body: form
+  });
+  const worker = parseJson<WorkerResponse>(
+    (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+  );
+  assert(
+    worker.documentId === upload.document.documentId && worker.status === "active",
+    "Worker must activate admin-c0's level-2 upload."
+  );
+  const id = upload.document.documentId;
+  const deniedStatus = await fetch(`${apiUrl}/v1/documents/evidence/${id}/status`, {
+    headers: adminAuth
+  });
+  const deniedDownload = await fetch(`${apiUrl}/v1/source-documents/${id}/download-url`, {
+    method: "POST",
+    headers: adminAuth
+  });
+  assert(
+    deniedStatus.status === 404 && deniedDownload.status === 404,
+    "Admin c0 must not bypass ordinary high-level status/download authorization."
+  );
+  const query = JSON.stringify({ query: "折扣口令", filters: { documentIds: [id] }, limit: 5 });
+  const deniedSearch = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
+    method: "POST",
+    headers: { ...adminAuth, "content-type": "application/json" },
+    body: query
+  });
+  assert(
+    deniedSearch.results.length === 0 && deniedSearch.sources.length === 0,
+    "Admin c0 must not read high-level evidence through search."
+  );
+  const allowedSearch = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
+    method: "POST",
+    headers: { ...highEmployeeAuth, "content-type": "application/json" },
+    body: query
+  });
+  assert(
+    allowedSearch.results.some((row) => row.documentId === id),
+    "Employee c3 must read indexed level-2 evidence."
+  );
+  const download = await apiJson<{ downloadUrl: string }>(
+    `/v1/source-documents/${id}/download-url`,
+    { method: "POST", headers: highEmployeeAuth }
+  );
+  // The disposable integration storage adapter returns file: download URLs.
+  const sourceUrl = new URL(download.downloadUrl);
+  assert(sourceUrl.protocol === "file:", "Local storage must issue a local source URL.");
+  const source = await readFile(sourceUrl, "utf8");
+  assert(source.includes("折扣口令"), "Employee c3 must download the original high-level source.");
 }
 
 async function assertDualCollectionEvidenceReindex(input: {
@@ -732,7 +940,7 @@ function parseJson<T>(raw: string): T {
   return JSON.parse(raw) as T;
 }
 
-function authorizationHeader(token: string): HeadersInit {
+function authorizationHeader(token: string): Record<string, string> {
   return {
     authorization: `Bearer ${token}`
   };
@@ -809,10 +1017,13 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
 
   try {
     const identity = await prisma.loginIdentity.findFirst({
-      where: { employeeId: "emp_baoli_employee", disabled: false },
+      where: { employeeId: "emp_admin", disabled: false },
       select: { id: true, employeeId: true, orgId: true }
     });
-    assert(Boolean(identity), "Audit provenance integration requires the seeded Baoli identity.");
+    assert(
+      Boolean(identity),
+      "Audit provenance upload integration requires the seeded admin identity."
+    );
 
     const operatorSession = await auth.createSession({
       identityId: identity!.id,

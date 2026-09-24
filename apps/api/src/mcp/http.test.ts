@@ -1134,7 +1134,10 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
   });
 
   it("serves live upload handlers through MCP without filesystem path inputs", async () => {
-    app = buildLiveMcpApiTestServer();
+    const appendDenied = vi.fn(async () => {});
+    app = buildLiveMcpApiTestServer([], {
+      uploadAuthorizationAuditRepository: { appendDenied }
+    });
 
     const response = await postMcp(
       app,
@@ -1170,6 +1173,13 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(JSON.stringify(result)).not.toContain("MCP_TOOL_NOT_IMPLEMENTED");
     expect(JSON.stringify(result)).not.toContain("filePath");
     expect(result.content?.[0]?.text).toContain("UPLOAD_ADMIN_REQUIRED");
+    expect(appendDenied).toHaveBeenCalledTimes(1);
+    expect(appendDenied).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorEmployeeId: employee.id,
+        uploadSurface: "evidence_document"
+      })
+    );
   });
 
   it("builds live handler state per request so delegated auth never reuses a prior bearer token", async () => {

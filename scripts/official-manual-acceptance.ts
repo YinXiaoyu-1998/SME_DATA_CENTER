@@ -15,7 +15,9 @@ import {
   assertStagingRuntimeDatabaseTarget,
   createStructuredWindow,
   deleteStorageObjects,
-  isLowClearanceAcceptanceEmployee,
+  isAcceptanceAccount,
+  acceptanceAccountEmails,
+  pollStructuredImportStatus,
   rewriteKnownValuesFixture,
   type CleanupCounts,
   type CurrentEnterpriseHubUserResult,
@@ -29,7 +31,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.5.1";
+const LAUNCHER_VERSION = "0.5.2";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
 interface ParsedArgs {
@@ -185,15 +187,39 @@ async function runAcceptance(
       "smedc_get_current_user",
       {}
     );
-    const expectedEmails = new Set(acceptanceAccountEmails(run));
-    if (!isLowClearanceAcceptanceEmployee(currentUser, expectedEmails)) {
-      throw new Error("Current-user MCP result did not match the synthetic acceptance account.");
+    if (!isAcceptanceAccount(currentUser, run.runId, "admin")) {
+      throw new Error("Positive upload smoke requires this run's synthetic admin at clearance 0.");
     }
 
     const [defaultEvidenceUpload, explicitLevelEvidenceUpload] = await uploadEvidenceFixtures(
       client,
       run
     );
+    const deliveryUpload = await callJson<{
+      importBatch: { importBatchId: string; status: string };
+    }>(client, "upload_structured_dataset", {
+      file: {
+        name: "delivery_sheet_SH2608250117.xlsx",
+        mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        encoding: "path",
+        filePath: path.resolve("fixtures/structured/delivery_sheet_SH2608250117.xlsx")
+      },
+      dataset: "delivery_ledger",
+      enterpriseName: run.enterpriseName,
+      idempotencyKey: `official-manual-acceptance:${run.runId}:delivery-ledger`
+    });
+    const deliveryCompletion = await pollStructuredImportStatus({
+      importBatchId: deliveryUpload.importBatch.importBatchId,
+      getStatus: () =>
+        callJson<{ importBatch: { importBatchId: string; status: string } }>(
+          client,
+          "get_import_status",
+          { importBatchId: deliveryUpload.importBatch.importBatchId }
+        )
+    });
+    if (deliveryCompletion.importBatch.status !== "applied") {
+      throw new Error("Delivery Ledger XLSX row import did not apply.");
+    }
     await waitForEvidenceReady(client, defaultEvidenceUpload.document.documentId);
 
     const evidenceSearch = await callJson<EvidenceSearchResult>(
@@ -327,6 +353,11 @@ async function runAcceptance(
       serviceOrigin: SERVICE_ORIGIN,
       launcherVersion: LAUNCHER_VERSION,
       currentUserVerified: true,
+      account: "admin",
+      clearance: 0,
+      coverage:
+        "admin-positive-smoke; full three-account acceptance uses separate visible scenario tasks",
+      deliveryImportBatchId: deliveryUpload.importBatch.importBatchId,
       defaultConfidentialityLevel: 0,
       explicitConfidentialityLevel: 2,
       evidenceDocuments: [
@@ -442,7 +473,7 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   const identities = await prisma.loginIdentity.findMany({
     where: {
       normalizedEmail: {
-        in: [...acceptanceAccountEmails(run)]
+        in: acceptanceAccountEmails(run.runId)
       }
     },
     select: { employeeId: true }
@@ -532,18 +563,6 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     storageObjectKeys,
     uploaderEmployeeIds
   });
-}
-
-function acceptanceAccountEmails(run: ReturnType<typeof runConfig>): string[] {
-  return [
-    `manual-full-flow-low-${run.runId}@example.invalid`,
-    `manual-full-flow-high-${run.runId}@example.invalid`,
-    `manual-acceptance-admin-${run.runId}@example.invalid`,
-    // The former single-account names remain only so cleanup can remove a run
-    // that was started before the multi-account confidentiality procedure.
-    `manual-full-flow-${run.runId}@example.invalid`,
-    `manual-acceptance-${run.runId}@example.invalid`
-  ];
 }
 
 function officialManualDocumentFilters(
