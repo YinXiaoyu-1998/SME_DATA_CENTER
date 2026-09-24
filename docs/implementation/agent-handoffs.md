@@ -1113,3 +1113,20 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
 - Real HTTP evidence: malformed employee upload requests from launcher 0.5.0 return canonical MCP denial, exactly one `mcp_launcher` audit call, and no internal route injection. An admin demoted between MCP and delegated HTTP is independently denied by the route.
 - Product diff: production +90/-16; tests +385/-40; scripts/lockfiles/committed docs +0/-0. Process progress/handoff notes and report remain uncommitted. Removed 27 test temporary directories and generated release output; no `.data` or Task 6 Docker/worktree leftovers.
 - Report: `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-6-implementer-report.md`.
+
+## 2026-09-24 — Task 7 three-account acceptance matrix
+
+- Branch `codex/task-7-acceptance-matrix`, base `codex/admin-only-upload-enforcement@9fb0e4b`, commit `f47733a`.
+- Employee c0 denial and ordinary reads, employee c3 high-level reads, admin c0 uploads/high-read denial are explicit. Sixteen separate natural-language manual tasks include Delivery Ledger XLSX, row CSV, business/dishes partitions, quarantine, and archive PAO. The single-client controller is explicitly admin-positive smoke on launcher 0.5.2.
+- Verified 25 focused tests; real-provider integration using the original ignored local .env with disposable local DB overrides; sourced-env MCP (140 cases); full suite 968 passed / 29 skipped; typecheck, lint, source formatting, whitespace. Preserved uploader-owned status routes and worker readiness for high-level evidence.
+- Lead-approved harness correction isolates one fake-auth MCP denial test from unintended real DB access exposed by sourcing .env; production wiring unchanged. Earlier local harness/infrastructure failures and corrections are recorded in the report.
+- Cleaned smedc-task7 containers, both volumes and network, integration storage/fixtures, generated release files, and empty test extracts. Docker inventory matches the unrelated pre-existing inventory. Assigned active worktree retained; no extra worktree or staging account was created.
+- Diff: tests/harnesses/fixtures +540/-96; production/runtime/CI/deploy/lockfile/committed docs +0/-0. Process-only progress, handoff and report excluded from commit. Task 8 pins/docs remain untouched; visible staging acceptance not run.
+- Report: `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-7-implementer-report.md`.
+
+### Task 7 minor review correction
+
+- Commit `7cd7798` on the same branch adds employee-c3 to the shared upload-denial probe, preserving c0, canonical 403, no-residue, single-safe-audit and actor attribution checks. One harness file +9/-4; no production changes.
+- Passed 14 focused evidence-route tests, real-provider local integration with both c0/c3 denial invariants (19 total), typecheck, targeted ESLint/Prettier and whitespace checks. Existing full-suite/MCP results were not redundantly rerun.
+- Removed disposable smedc-task7 containers, volumes/network, .data/integration and empty partition-extract root. Inventory matches pre-run unrelated resources; no extra worktree/process remains. No staging, push or subagent work.
+- Updated the Task 7 implementer report; report/progress/handoff remain uncommitted process artifacts.
