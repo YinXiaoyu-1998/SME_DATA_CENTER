@@ -1,3 +1,5 @@
+import type { PasswordSetupAccount } from "./auth-core.js";
+
 export interface AuthPageHeaders {
   "cache-control": string;
   "content-security-policy": string;
@@ -138,7 +140,9 @@ export function renderPasswordSetupBootstrapPage(options: PageOptions): string {
   );
 }
 
-export function renderPasswordSetupForm(options: FormPageOptions): string {
+export function renderPasswordSetupForm(
+  options: FormPageOptions & { account: PasswordSetupAccount }
+): string {
   const error = options.error
     ? `<p role="alert" class="error">${escapeHtml(options.error)}</p>`
     : "";
@@ -151,6 +155,15 @@ export function renderPasswordSetupForm(options: FormPageOptions): string {
     `<main>
       <h1>Set your SMEDC password</h1>
       <p>Choose a password with 8–128 characters.</p>
+      <section class="account-details" aria-labelledby="account-details-heading">
+        <h2 id="account-details-heading">Account</h2>
+        <dl>
+          <div><dt>Display name</dt><dd>${escapeHtml(options.account.displayName)}</dd></div>
+          <div><dt>Email</dt><dd>${escapeHtml(options.account.email)}</dd></div>
+          <div><dt>Organization</dt><dd>${escapeHtml(options.account.organizationName)}</dd></div>
+          <div><dt>Role</dt><dd>${escapeHtml(options.account.role)}</dd></div>
+        </dl>
+      </section>
       ${error}
       <form method="post" action="/auth/password/setup/complete">
         <input type="hidden" name="csrfToken" value="${escapeHtml(options.csrfToken)}">
@@ -190,6 +203,12 @@ function pageShell(options: PageOptions & { title: string }, body: string): stri
       body { margin: 0; padding: 2rem 1rem; }
       main { max-width: 28rem; margin: 8vh auto; }
       form { display: grid; gap: 0.75rem; }
+      .account-details { margin: 1.5rem 0; }
+      .account-details h2 { font-size: 1rem; }
+      .account-details dl { display: grid; gap: 0.5rem; margin: 0; }
+      .account-details dl div { display: grid; grid-template-columns: 8rem 1fr; gap: 0.75rem; }
+      .account-details dt { font-weight: 600; }
+      .account-details dd { margin: 0; overflow-wrap: anywhere; }
       input, button { box-sizing: border-box; font: inherit; min-height: 2.75rem; padding: 0.6rem; }
       button { cursor: pointer; margin-top: 0.5rem; }
       .error { color: #b42318; }

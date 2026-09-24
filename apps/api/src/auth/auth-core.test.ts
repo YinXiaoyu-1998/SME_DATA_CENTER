@@ -37,6 +37,7 @@ class MemoryAuthRepository implements AuthCoreRepository {
   setupGrantInput: Parameters<AuthCoreRepository["replacePasswordSetupGrant"]>[0] | null = null;
   setupExchangeInput: Parameters<AuthCoreRepository["exchangePasswordSetupGrant"]>[0] | null = null;
   setupConsumeInput: Parameters<AuthCoreRepository["consumePasswordSetupSession"]>[0] | null = null;
+  setupAccountInput: { sessionHash: string; now: Date } | null = null;
   sessionBundleInput: Parameters<AuthCoreRepository["createSessionBundle"]>[0] | null = null;
   transactionInput: Parameters<AuthCoreRepository["createAuthorizationTransaction"]>[0] | null =
     null;
@@ -111,6 +112,16 @@ class MemoryAuthRepository implements AuthCoreRepository {
   ): Promise<boolean> {
     this.setupConsumeInput = input;
     return true;
+  }
+
+  async findPasswordSetupAccount(input: { sessionHash: string; now: Date }) {
+    this.setupAccountInput = input;
+    return {
+      displayName: "殷啸宇",
+      email: "yxy@example.invalid",
+      organizationName: "麦家小馆",
+      role: "admin" as const
+    };
   }
 
   async createAuthorizationTransaction(
@@ -264,6 +275,24 @@ describe("AuthCore", () => {
     expect(repository.setupConsumeInput?.sessionHash).toBe(hashOpaqueSecret("eh_ps_setup-session"));
     expect(repository.setupConsumeInput).toMatchObject({ audit: browserAudit });
     expect(JSON.stringify(repository.setupConsumeInput)).not.toContain("correct horse");
+  });
+
+  it("looks up password setup account details using only the hashed session secret", async () => {
+    const repository = new MemoryAuthRepository();
+    const now = new Date("2026-09-24T12:00:00.000Z");
+    const core = new AuthCore(repository, () => now);
+
+    await expect(core.findPasswordSetupAccount("eh_ps_setup-session")).resolves.toEqual({
+      displayName: "殷啸宇",
+      email: "yxy@example.invalid",
+      organizationName: "麦家小馆",
+      role: "admin"
+    });
+    expect(repository.setupAccountInput).toEqual({
+      sessionHash: hashOpaqueSecret("eh_ps_setup-session"),
+      now
+    });
+    expect(JSON.stringify(repository.setupAccountInput)).not.toContain("eh_ps_setup-session");
   });
 
   it("uses a dummy hash for unknown email and returns a generic failure", async () => {

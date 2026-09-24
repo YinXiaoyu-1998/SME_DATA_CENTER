@@ -1,10 +1,16 @@
 # Beta User Onboarding Runbook
 
-Last updated: 2026-08-23
+Last updated: 2026-09-24
 
 This runbook is for the first controlled macOS + Codex beta pilot. It is an operator checklist, not
-an employee-facing product page. Do not paste passwords, setup links, tokens, credentials, full
-DSNs, or cloud secrets into chat, git, PRs, logs, screenshots, or support notes.
+an employee-facing product page.
+
+A one-time setup link may be sent directly to the human in the current private human-agent
+conversation. Never place it in a public or shared chat, git, PR, issue, file, configuration,
+environment variable, report, log, screenshot, or support note.
+
+Do not paste passwords, tokens, credentials, full DSNs, or cloud secrets into chat or durable
+artifacts.
 
 ## Pilot Boundary
 
@@ -146,8 +152,10 @@ Rules:
 - the command prints a one-time browser setup link;
 - the setup link itself is valid for 24 hours;
 - after the employee opens the setup link, the password setup form session is valid for 10 minutes;
-- deliver that link only through a trusted private channel;
-- do not paste the full link into chat, docs, issues, PRs, or logs;
+- deliver that link directly in the current private human-agent conversation or through another
+  trusted private channel;
+- never place the full link in a public or shared chat, docs, issues, PRs, files, configuration,
+  environment variables, reports, command arguments or output, logs, screenshots, or support notes;
 - the employee sets their password only on `https://api.smedatacenter.xyz`.
 
 For a synthetic dry run, use only `manual-full-flow-<run-id>@example.invalid` or another documented
@@ -296,8 +304,10 @@ purged.
 Stop the pilot and diagnose before proceeding if:
 
 - the browser asks for credentials outside `https://api.smedatacenter.xyz`;
-- an agent asks the employee to paste a password, token, setup link, authorization code, or raw
-  header into chat/config/env;
+- an agent asks the employee to paste a password, token, authorization code, or raw header into
+  chat/config/env;
+- a setup link appears outside the current private human-agent conversation or another trusted
+  private channel, including in a public/shared chat, config, env, file, issue, PR, report, or log;
 - public `/readyz` becomes reachable;
 - unauthenticated MCP calls succeed;
 - a user can see data outside their organization or above their clearance;

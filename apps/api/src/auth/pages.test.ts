@@ -89,9 +89,22 @@ describe("official authentication browser pages", () => {
     const html = renderPasswordSetupForm({
       csrfToken: "csrf-setup",
       nonce: "form-nonce",
-      error: "Passwords do not match."
+      error: "Passwords do not match.",
+      account: {
+        displayName: `殷啸宇 <script>alert(1)</script>`,
+        email: "yxy@example.invalid",
+        organizationName: "麦家小馆",
+        role: "admin"
+      }
     });
 
+    expect(html).toContain("Display name");
+    expect(html).toContain("殷啸宇 &lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).toContain("yxy@example.invalid");
+    expect(html).toContain("麦家小馆");
+    expect(html).toContain("Role");
+    expect(html).toContain("admin");
     expect(html).toContain('<label for="password">New password</label>');
     expect(html).toContain('<label for="passwordConfirmation">Confirm new password</label>');
     expect(html).toContain('autocomplete="new-password"');

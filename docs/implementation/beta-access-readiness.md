@@ -150,8 +150,11 @@ A first macOS + Codex beta pilot passes only when:
 - the beta user installs or repairs the skill/launcher without seeing command-line internals as a
   required manual step;
 - account password setup and login occur only in the SMEDC browser page;
-- no password, setup link, token, credential, header, or full DSN appears in chat, config, git,
-  logs, or reports;
+- a one-time setup link may appear only in the current private human-agent conversation for direct
+  handoff;
+- setup links never appear in a public/shared chat, config, git, files, issues, PRs, logs, or
+  reports;
+- no password, token, credential, header, or full DSN appears in chat or durable artifacts;
 - the launcher stores durable authentication in the operating-system secure store;
 - a new Codex task can confirm the current account's role/clearance and call SMEDC MCP tools;
 - the employee upload request is denied before local file reading or transformation; tools remain
