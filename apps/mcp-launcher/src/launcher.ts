@@ -2,6 +2,9 @@ import open from "open";
 import os from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { getParseErrorMessage } from "@modelcontextprotocol/sdk/server/zod-compat.js";
+import { CallToolRequestSchema, ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import {
   FILE_UPLOAD_ADMIN_REQUIRED_CODE,
@@ -114,6 +117,7 @@ export interface LauncherToolDependencies {
 }
 
 export interface LauncherToolRegistrar {
+  server?: Pick<McpServer["server"], "setRequestHandler">;
   registerTool(
     name: string,
     options: { title: string; description: string; inputSchema: z.ZodRawShape },
@@ -160,14 +164,25 @@ export function registerLauncherTools(
   registrar: LauncherToolRegistrar,
   dependencies: LauncherToolDependencies
 ): void {
+  const registered = new Map<
+    string,
+    {
+      inputSchema: z.ZodObject<z.ZodRawShape>;
+      handler: (input: unknown) => Promise<LauncherToolResult>;
+    }
+  >();
+  const registerTool: LauncherToolRegistrar["registerTool"] = (name, options, handler) => {
+    registered.set(name, { inputSchema: z.object(options.inputSchema), handler });
+    registrar.registerTool(name, options, handler);
+  };
   for (const tool of bootstrapTools)
-    registrar.registerTool(
+    registerTool(
       tool.name,
       { title: tool.title, description: tool.description, inputSchema: tool.inputShape },
       createLauncherToolHandler(tool.name, dependencies)
     );
   for (const tool of SMEDC_MCP_TOOL_CONTRACTS)
-    registrar.registerTool(
+    registerTool(
       tool.name,
       {
         title: tool.title,
@@ -178,6 +193,40 @@ export function registerLauncherTools(
       },
       createLauncherToolHandler(tool.name, dependencies)
     );
+
+  // McpServer's default tools/call handler validates tool arguments before calling
+  // the registered callback. Own this request boundary so upload authorization
+  // happens first, while SDK tools/list retains the full advertised schemas.
+  registrar.server?.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+    try {
+      const tool = registered.get(params.name);
+      if (!tool) throw new McpError(ErrorCode.InvalidParams, `Tool ${params.name} not found`);
+      const isUpload = LOCAL_PATH_UPLOAD_TOOL_NAMES.has(params.name as LauncherBusinessToolName);
+      if (isUpload) {
+        const denial = await uploadAuthorizationError(dependencies);
+        if (denial) return denial;
+      }
+      const parsed = await tool.inputSchema.safeParseAsync(params.arguments);
+      if (!parsed.success) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Input validation error: Invalid arguments for tool ${params.name}: ${getParseErrorMessage(parsed.error)}`
+        );
+      }
+      return isUpload
+        ? await proxyLocalPathUpload(
+            params.name as LauncherBusinessToolName,
+            parsed.data,
+            dependencies
+          )
+        : await tool.handler(parsed.data);
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+        isError: true
+      };
+    }
+  });
 }
 
 export function createLauncherToolHandler(
@@ -201,6 +250,13 @@ async function preflightUpload(
   input: unknown,
   dependencies: LauncherToolDependencies
 ): Promise<LauncherToolResult> {
+  const denial = await uploadAuthorizationError(dependencies);
+  return denial ?? proxyLocalPathUpload(toolName, input, dependencies);
+}
+
+async function uploadAuthorizationError(
+  dependencies: LauncherToolDependencies
+): Promise<LauncherToolResult | null> {
   try {
     const profile = await dependencies.auth.profile();
     if (profile.role !== "admin") {
@@ -215,7 +271,7 @@ async function preflightUpload(
     const typed = mapMcpError(error);
     return typedToolError(typed);
   }
-  return proxyLocalPathUpload(toolName, input, dependencies);
+  return null;
 }
 
 async function proxyLocalPathUpload(

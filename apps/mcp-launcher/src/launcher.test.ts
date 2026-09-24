@@ -44,6 +44,108 @@ afterEach(() => {
 });
 
 describe("launcher upload role preflight", () => {
+  it.each(uploadToolNames)(
+    "denies malformed employee %s at the MCP request boundary",
+    async (name) => {
+      const auth = fakeAuth({ profile: employeeProfile });
+      const accessToken = vi.spyOn(auth, "accessToken");
+      const read = vi.spyOn(localFiles, "readLocalUploadFile");
+      const partition = vi.spyOn(partitionTransfer, "uploadPartitionDataset");
+      const remote = vi.fn<typeof fetch>();
+      const inputInspected = vi.fn(() => "/definitely-missing/admin-only.csv");
+      const server = new McpServer({ name: "employee-request-preflight", version: "1.0.0" });
+      registerLauncherTools(
+        server,
+        createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+      );
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "employee-request-client", version: "1.0.0" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        const tools = await client.listTools();
+        expect(tools.tools.find((tool) => tool.name === name)?.inputSchema).toMatchObject({
+          type: "object",
+          required: expect.arrayContaining(["file"]),
+          properties: { file: expect.any(Object) }
+        });
+        const result = await client.callTool({
+          name,
+          arguments: {
+            file: {
+              name: null,
+              mediaType: 42,
+              encoding: "path",
+              get filePath() {
+                return inputInspected();
+              }
+            }
+          }
+        });
+        expect(result).toMatchObject({
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: {
+                    code: "UPLOAD_ADMIN_REQUIRED",
+                    message: "File upload requires the admin role.",
+                    retryable: false
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
+        });
+        expect(inputInspected).not.toHaveBeenCalled();
+        expect(accessToken).not.toHaveBeenCalled();
+        expect(read).not.toHaveBeenCalled();
+        expect(partition).not.toHaveBeenCalled();
+        expect(remote).not.toHaveBeenCalled();
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+  );
+
+  it("still validates admin arguments and serves non-upload requests at the MCP boundary", async () => {
+    const auth = fakeAuth({ profile: adminProfile, authenticated: true });
+    const profile = vi.spyOn(auth, "profile");
+    const accessToken = vi.spyOn(auth, "accessToken");
+    const server = new McpServer({ name: "admin-request-preflight", version: "1.0.0" });
+    registerLauncherTools(server, createLauncherToolDependencies({ config, auth }));
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "admin-request-client", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const result = await client.callTool({ name: "upload_evidence_document", arguments: {} });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).toContain("Input validation error");
+      expect(profile).toHaveBeenCalledTimes(1);
+      expect(accessToken).not.toHaveBeenCalled();
+      const status = await client.callTool({ name: "smedc_auth_status", arguments: {} });
+      expect(status).toMatchObject({
+        isError: false,
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ authenticated: true, serviceUrl: config.serviceUrl }, null, 2)
+          }
+        ]
+      });
+      expect(profile).toHaveBeenCalledTimes(1);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it.each(uploadToolNames)("denies employee %s before local file or upload work", async (name) => {
     const auth = fakeAuth({ profile: employeeProfile });
     const accessToken = vi.spyOn(auth, "accessToken");
