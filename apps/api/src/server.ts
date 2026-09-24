@@ -35,6 +35,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   const skills = context.skills;
   const evidence = context.evidence;
   const createBusinessRequestAudit = context.createBusinessRequestAudit;
+  const uploadAuthorizationDependencies = {
+    uploadAuthorizationAudit: context.uploadAuthorizationAudit,
+    createBusinessRequestAudit
+  };
 
   const app = Fastify({
     logger: options.logger ?? true,
@@ -60,6 +64,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   registerApiMultipart(app, { maxUploadBytes: runtimeLimits.maxUploadBytes });
 
   registerMcpHttpRoute(app, {
+    ...uploadAuthorizationDependencies,
     maxUploadBytes: runtimeLimits.maxUploadBytes,
     delegationProof,
     mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
@@ -99,6 +104,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   registerSystemRoutes(app, { auth: requestAuth, readinessCheck });
 
   registerEvidenceRoutes(app, {
+    ...uploadAuthorizationDependencies,
     auth: requestAuth,
     documents,
     storage,
@@ -106,19 +112,19 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     sourceDocumentDownloads,
     cursorSigningSecret,
     retrievalConfigVersion:
-      environment["RETRIEVAL_CONFIG_VERSION"]?.trim() || DEFAULT_RETRIEVAL_CONFIG_VERSION,
-    createBusinessRequestAudit
+      environment["RETRIEVAL_CONFIG_VERSION"]?.trim() || DEFAULT_RETRIEVAL_CONFIG_VERSION
   });
 
   registerStructuredImportRoutes(app, {
+    ...uploadAuthorizationDependencies,
     auth: requestAuth,
     storage,
     structuredImports,
-    runtimeLimits,
-    createBusinessRequestAudit
+    runtimeLimits
   });
 
   registerStructuredPartitionRoutes(app, {
+    ...uploadAuthorizationDependencies,
     auth: requestAuth,
     storage,
     partitions: context.structuredPartitions,
@@ -126,10 +132,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   registerQuarantineCertificateRoutes(app, {
+    ...uploadAuthorizationDependencies,
     auth: requestAuth,
     storage,
-    quarantineCertificates,
-    createBusinessRequestAudit
+    quarantineCertificates
   });
 
   registerSourceDocumentRoutes(app, {

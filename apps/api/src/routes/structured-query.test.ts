@@ -60,6 +60,9 @@ function context(
     evidence: () => {
       throw new Error("not used");
     },
+    uploadAuthorizationAudit: () => {
+      throw new Error("not used");
+    },
     quarantineCertificates: () => {
       throw new Error("not used");
     },

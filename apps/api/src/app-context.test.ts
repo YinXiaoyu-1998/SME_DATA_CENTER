@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 import { createApiServerContext } from "./app-context.js";
+import * as uploadAuthorization from "./file-upload-authorization.js";
+import { buildApiServer } from "./server.js";
 
 const employee: AuthenticatedEmployee = {
   id: "emp_1",
@@ -14,6 +16,58 @@ const employee: AuthenticatedEmployee = {
 };
 
 describe("API server context", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("returns the injected upload audit repository unchanged and disconnects it once", async () => {
+    const repository = { appendDenied: vi.fn(), disconnect: vi.fn() };
+    const context = createApiServerContext({
+      cursorSigningSecret: "cursor-secret",
+      authenticateAccessToken: async () => employee,
+      runtimeEnv: {},
+      uploadAuthorizationAuditRepository: repository
+    });
+
+    expect(context.uploadAuthorizationAudit()).toBe(repository);
+    expect(context.uploadAuthorizationAudit()).toBe(repository);
+    await context.close();
+    await context.close();
+    expect(repository.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("lazily creates and owns one default upload audit repository", async () => {
+    const repository = { appendDenied: vi.fn(), disconnect: vi.fn() };
+    const factory = vi
+      .spyOn(uploadAuthorization, "createPrismaUploadAuthorizationAuditRepository")
+      .mockReturnValue(repository);
+    const context = createApiServerContext({
+      cursorSigningSecret: "cursor-secret",
+      authenticateAccessToken: async () => employee,
+      runtimeEnv: { DATABASE_URL: "mysql://context-test" }
+    });
+
+    expect(factory).not.toHaveBeenCalled();
+    expect(context.uploadAuthorizationAudit()).toBe(repository);
+    expect(context.uploadAuthorizationAudit()).toBe(repository);
+    expect(factory).toHaveBeenCalledExactlyOnceWith("mysql://context-test");
+    await context.close();
+    await context.close();
+    expect(repository.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes an unused server without constructing an audit repository or requiring a database", async () => {
+    const factory = vi.spyOn(uploadAuthorization, "createPrismaUploadAuthorizationAuditRepository");
+    const app = buildApiServer({
+      logger: false,
+      cursorSigningSecret: "cursor-secret",
+      authenticateAccessToken: async () => employee,
+      runtimeEnv: { SMEDC_PUBLIC_ORIGIN: "https://api.example.invalid" }
+    });
+
+    await app.ready();
+    await app.close();
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it("requires the existing cursor secret configuration", () => {
     expect(() =>
       createApiServerContext({

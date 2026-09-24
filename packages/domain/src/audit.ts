@@ -1,4 +1,5 @@
 export const AUDIT_ACTIONS = {
+  fileUploadDenied: "file_upload.denied",
   documentUploaded: "document.uploaded",
   documentProcessingStarted: "document.processing_started",
   documentActivated: "document.activated",
@@ -11,3 +12,6 @@ export const AUDIT_ACTIONS = {
 } as const;
 
 export type AuditActionName = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
+
+export type FileUploadSurface =
+  "evidence_document" | "structured_dataset" | "quarantine_certificate";
