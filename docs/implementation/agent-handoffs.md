@@ -1103,3 +1103,13 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
 - Employee read/status/manifest/abort behavior remains covered, including demotion of an existing partition owner. Positive setup uploads use admins; the lead approved the additional source-document download test fixture adjustment.
 - Verification: 10 observed RED failures; 64 focused tests and 948 full-suite tests passed (29 skipped); typecheck, lint, source formatting, and diff whitespace checks passed.
 - Product diff: production +82/-6; tests +471/-21; no scripts, lockfiles, or committed process artifacts. Progress/handoff edits remain uncommitted. Report: `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-5-implementer-report.md`.
+
+## 2026-09-24 — Task 6 MCP upload gates
+
+- Branch `codex/task6-mcp-upload-gate`, base `codex/admin-only-upload-enforcement@322b23a`, commit `bc4acdc2b6da44722468dbbf7e29fc8a1ee574d3`.
+- Three upload handlers now authorize before abort state, input/size/schema/decode/multipart work, or delegation. Shared lazy audit service records one safe denial; missing/fake/Delivery Ledger structured arguments all use `structured_dataset`.
+- The lead approved `apps/api/src/mcp/server.ts` beyond the original six files to intercept the SDK public request-registration boundary. It restores the original method in `finally`, keeps non-upload/unknown dispatch and discovery intact, and routes upload arguments to the authorization-first handlers. Future SDK registration/schema identity changes require these HTTP regressions to be rerun.
+- Verification: corrected RED 16 failures; GREEN 58 focused tests; final full suite 967 passed / 29 skipped; typecheck, lint, source formatting, and diff checks passed. An unchanged 25 ms launcher-lock retry test failed once under concurrent load, then passed isolated and in two full-suite reruns.
+- Real HTTP evidence: malformed employee upload requests from launcher 0.5.0 return canonical MCP denial, exactly one `mcp_launcher` audit call, and no internal route injection. An admin demoted between MCP and delegated HTTP is independently denied by the route.
+- Product diff: production +90/-16; tests +385/-40; scripts/lockfiles/committed docs +0/-0. Process progress/handoff notes and report remain uncommitted. Removed 27 test temporary directories and generated release output; no `.data` or Task 6 Docker/worktree leftovers.
+- Report: `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-6-implementer-report.md`.
