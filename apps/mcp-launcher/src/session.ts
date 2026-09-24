@@ -198,8 +198,13 @@ export class LauncherSession {
     await this.waitForPendingLogin();
     const release = await this.acquireRecordLock();
     try {
-      const cached = (await this.readRecord())?.profile;
-      if (cached) return cached;
+      const record = await this.readRecord();
+      if (this.#accessTokenCredential !== (record?.durableCredential ?? null)) {
+        this.#accessToken = null;
+        this.#accessTokenExpiresAt = 0;
+        this.#accessTokenCredential = null;
+      }
+      if (record?.profile) return record.profile;
       const profile = cachedUserProfileSchema.parse(
         await resolver(await this.ensureAccessTokenLocked())
       );

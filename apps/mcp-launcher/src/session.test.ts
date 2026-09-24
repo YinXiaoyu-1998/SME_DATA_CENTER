@@ -17,6 +17,56 @@ const adminProfile: CachedUserProfile = {
 };
 
 describe("versioned launcher profile record", () => {
+  it.each([
+    { previousRole: "employee", replacementRole: "admin" },
+    { previousRole: "admin", replacementRole: "employee" }
+  ] as const)(
+    "aligns cached $replacementRole profile with the next token after replacing $previousRole",
+    async ({ previousRole, replacementRole }) => {
+      const secureStore = memoryStore(null);
+      const tokenClient = tokenClientReturning({
+        accessToken: "account-b-refreshed",
+        refreshToken: "account-b-rotated"
+      });
+      const dependencies = { origin, secureStore, tokenClient, lock: serialLock() };
+      const session = new LauncherSession(dependencies);
+      const otherSession = new LauncherSession(dependencies);
+      await session.establish("account-a-access", "account-a-refresh", Date.now() + 9 * 60_000);
+      await session.storeProfile({
+        ...adminProfile,
+        email: "a@example.invalid",
+        role: previousRole
+      });
+      await otherSession.establish(
+        "account-b-access",
+        "account-b-refresh",
+        Date.now() + 9 * 60_000
+      );
+      const replacementProfile = {
+        ...adminProfile,
+        email: "b@example.invalid",
+        role: replacementRole
+      };
+      await otherSession.storeProfile(replacementProfile);
+      const resolver = vi.fn(async () => {
+        throw new Error("cached profile must not require /me");
+      });
+
+      await expect(session.resolveProfile(resolver)).resolves.toEqual(replacementProfile);
+      expect(resolver).not.toHaveBeenCalled();
+      expect(tokenClient.refresh).not.toHaveBeenCalled();
+      // This is the same profile-then-token sequence used by upload preflight.
+      await expect(session.ensureAccessToken()).resolves.toBe("account-b-refreshed");
+      expect(tokenClient.refresh).toHaveBeenCalledExactlyOnceWith("account-b-refresh");
+      expect(JSON.parse((await secureStore.get())!)).toEqual({
+        schemaVersion: 2,
+        origin,
+        durableCredential: "account-b-rotated",
+        profile: replacementProfile
+      });
+    }
+  );
+
   it.each(["replace", "logout then replace"] as const)(
     "keeps pending profile resolution bound to account A during %s from another session",
     async (operation) => {
