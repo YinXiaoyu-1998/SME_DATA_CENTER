@@ -42,6 +42,7 @@ type OfficialAuthCore = Pick<
   | "consumePasswordSetupSession"
   | "createSession"
   | "exchangePasswordSetupGrant"
+  | "findPasswordSetupAccount"
   | "findDeviceAuthorizationByUserCode"
   | "issueDeviceAuthorization"
   | "issueAuthorizationTransaction"
@@ -437,7 +438,8 @@ export function registerOfficialAuthRoutes(
 
   app.get("/auth/password/setup/form", async (request, reply) => {
     const setupSecret = cookieValue(request.headers.cookie, PASSWORD_SETUP_COOKIE);
-    if (!setupSecret) {
+    const account = setupSecret ? await options.auth.findPasswordSetupAccount(setupSecret) : null;
+    if (!setupSecret || !account) {
       return sendHtml(
         reply.code(400),
         renderSafeMessagePage({
@@ -451,7 +453,8 @@ export function registerOfficialAuthRoutes(
       reply,
       renderPasswordSetupForm({
         nonce: nonce(),
-        csrfToken: csrfTokenForSecret(setupSecret)
+        csrfToken: csrfTokenForSecret(setupSecret),
+        account
       })
     );
   });
@@ -459,24 +462,39 @@ export function registerOfficialAuthRoutes(
   app.post<{ Body: FormBody }>("/auth/password/setup/complete", async (request, reply) => {
     const setupSecret = cookieValue(request.headers.cookie, PASSWORD_SETUP_COOKIE);
     const body = request.body;
+    const account = setupSecret ? await options.auth.findPasswordSetupAccount(setupSecret) : null;
+    if (!setupSecret || !account) {
+      return sendHtml(
+        reply.code(400),
+        renderSafeMessagePage({
+          nonce: nonce(),
+          title: "Password setup unavailable",
+          message: INVALID_SETUP_MESSAGE
+        })
+      );
+    }
     if (
-      !setupSecret ||
       !body?.csrfToken ||
       !matchesCsrfToken(setupSecret, body.csrfToken) ||
       !body.password ||
       body.password !== body.passwordConfirmation
     ) {
-      return passwordSetupFormError(reply, setupSecret, "The password confirmation is invalid.");
+      return passwordSetupFormError(
+        reply,
+        setupSecret,
+        account,
+        "The password confirmation is invalid."
+      );
     }
 
     const passwordValidation = validatePassword(body.password);
     if (!passwordValidation.valid) {
-      return passwordSetupFormError(reply, setupSecret, passwordValidation.reason);
+      return passwordSetupFormError(reply, setupSecret, account, passwordValidation.reason);
     }
 
     const audit = authAudit(createRequestAuditContext(request, "browser_auth"));
     if (!(await options.auth.consumePasswordSetupSession(setupSecret, body.password, audit))) {
-      return passwordSetupFormError(reply, setupSecret, INVALID_SETUP_MESSAGE);
+      return passwordSetupFormError(reply, setupSecret, account, INVALID_SETUP_MESSAGE);
     }
 
     return sendHtml(
@@ -529,22 +547,18 @@ function oauthError(reply: FastifyReply, status: number, error: string, descript
     .send({ error, error_description: description });
 }
 
-function passwordSetupFormError(reply: FastifyReply, setupSecret: string | null, error: string) {
-  if (!setupSecret) {
-    return sendHtml(
-      reply.code(400),
-      renderSafeMessagePage({
-        nonce: nonce(),
-        title: "Password setup unavailable",
-        message: INVALID_SETUP_MESSAGE
-      })
-    );
-  }
+function passwordSetupFormError(
+  reply: FastifyReply,
+  setupSecret: string,
+  account: NonNullable<Awaited<ReturnType<OfficialAuthCore["findPasswordSetupAccount"]>>>,
+  error: string
+) {
   return sendHtml(
     reply.code(400),
     renderPasswordSetupForm({
       nonce: nonce(),
       csrfToken: csrfTokenForSecret(setupSecret),
+      account,
       error
     })
   );

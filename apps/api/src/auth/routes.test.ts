@@ -84,6 +84,12 @@ function authFake() {
       sessionSecret: setupSecret,
       expiresAt: new Date(Date.now() + 600_000)
     })),
+    findPasswordSetupAccount: vi.fn(async () => ({
+      displayName: "殷啸宇",
+      email: "yxy@example.invalid",
+      organizationName: "麦家小馆",
+      role: "admin" as const
+    })),
     consumePasswordSetupSession: vi.fn(async () => true),
     pruneSecurityEvents: vi.fn(async () => 0)
   };
@@ -330,6 +336,23 @@ describe("official OAuth and password routes", () => {
     expect(response.headers["set-cookie"]).toContain("__Host-eh_password_setup=eh_ps_");
     expect(response.headers["set-cookie"]).toContain("HttpOnly");
     expect(auth.exchangePasswordSetupGrant).toHaveBeenCalledWith("eh_ps_grant", browserAudit);
+  });
+
+  it("shows the setup account identity without exposing it in the URL or cookie", async () => {
+    const { app, auth } = await build();
+    const response = await app.inject({
+      url: "/auth/password/setup/form",
+      headers: { cookie: `__Host-eh_password_setup=${setupSecret}` }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("殷啸宇");
+    expect(response.body).toContain("yxy@example.invalid");
+    expect(response.body).toContain("麦家小馆");
+    expect(response.body).toContain("admin");
+    expect(auth.findPasswordSetupAccount).toHaveBeenCalledWith(setupSecret);
+    expect(response.headers["set-cookie"]).toBeUndefined();
+    expect(response.headers.location).toBeUndefined();
   });
 
   it("sets a password only with matching confirmation and CSRF", async () => {

@@ -37,6 +37,13 @@ export interface AccessAuthenticationRecord {
   employeeDisabled: boolean;
 }
 
+export interface PasswordSetupAccount {
+  displayName: string;
+  email: string;
+  organizationName: string;
+  role: EmployeeRoleName;
+}
+
 export type RotateCredentialResult =
   | {
       status: "rotated";
@@ -137,6 +144,10 @@ export interface AuthCoreRepository {
     identityId: string;
     purpose: "initial_setup" | "password_reset";
   } | null>;
+  findPasswordSetupAccount(input: {
+    sessionHash: string;
+    now: Date;
+  }): Promise<PasswordSetupAccount | null>;
   consumePasswordSetupSession(input: {
     sessionHash: string;
     passwordHash: string;
@@ -396,6 +407,13 @@ export class AuthCore {
       passwordHash,
       now: this.now(),
       audit
+    });
+  }
+
+  async findPasswordSetupAccount(sessionSecret: string): Promise<PasswordSetupAccount | null> {
+    return this.repository.findPasswordSetupAccount({
+      sessionHash: hashOpaqueSecret(sessionSecret),
+      now: this.now()
     });
   }
 

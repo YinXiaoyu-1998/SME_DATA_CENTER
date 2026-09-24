@@ -151,6 +151,14 @@ describeIntegration("Prisma auth core repository", () => {
     expect(exchanges.filter(Boolean)).toHaveLength(1);
 
     const activeSession = await prisma.passwordSetupSession.findFirstOrThrow();
+    await expect(
+      repository.findPasswordSetupAccount({ sessionHash: activeSession.sessionHash, now })
+    ).resolves.toEqual({
+      displayName: "Test Person",
+      email: "person@example.com",
+      organizationName: "示例餐饮管理有限公司",
+      role: "employee"
+    });
     const durableSessionId = await repository.createSessionBundle({
       identityId: "auth_test_identity",
       employeeId: "auth_test_employee",
@@ -177,6 +185,9 @@ describeIntegration("Prisma auth core repository", () => {
       })
     ]);
     expect(consumptions.sort()).toEqual([false, true]);
+    await expect(
+      repository.findPasswordSetupAccount({ sessionHash: activeSession.sessionHash, now })
+    ).resolves.toBeNull();
     expect(
       (
         await prisma.loginIdentity.findUniqueOrThrow({

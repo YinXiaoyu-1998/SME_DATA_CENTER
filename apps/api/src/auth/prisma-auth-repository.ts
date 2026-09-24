@@ -224,6 +224,40 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
       });
     },
 
+    async findPasswordSetupAccount(input) {
+      const setupSession = await prisma.passwordSetupSession.findFirst({
+        where: {
+          sessionHash: input.sessionHash,
+          consumedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: input.now }
+        },
+        select: {
+          identity: {
+            select: {
+              normalizedEmail: true,
+              employee: {
+                select: {
+                  displayName: true,
+                  role: true,
+                  organization: { select: { name: true } }
+                }
+              }
+            }
+          }
+        }
+      });
+      if (!setupSession) {
+        return null;
+      }
+      return {
+        displayName: setupSession.identity.employee.displayName,
+        email: setupSession.identity.normalizedEmail,
+        organizationName: setupSession.identity.employee.organization.name,
+        role: setupSession.identity.employee.role
+      };
+    },
+
     async consumePasswordSetupSession(input) {
       return prisma.$transaction(async (tx) => {
         const setupSession = await tx.passwordSetupSession.findUnique({
