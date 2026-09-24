@@ -494,7 +494,14 @@ export function registerOfficialAuthRoutes(
 
     const audit = authAudit(createRequestAuditContext(request, "browser_auth"));
     if (!(await options.auth.consumePasswordSetupSession(setupSecret, body.password, audit))) {
-      return passwordSetupFormError(reply, setupSecret, account, INVALID_SETUP_MESSAGE);
+      return sendHtml(
+        reply.code(400).header("set-cookie", clearCookie(PASSWORD_SETUP_COOKIE)),
+        renderSafeMessagePage({
+          nonce: nonce(),
+          title: "Password setup unavailable",
+          message: INVALID_SETUP_MESSAGE
+        })
+      );
     }
 
     return sendHtml(

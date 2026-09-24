@@ -383,6 +383,30 @@ describe("official OAuth and password routes", () => {
     expect(response.headers["set-cookie"]).toContain("Max-Age=0");
   });
 
+  it("does not re-render account details when the setup session cannot be consumed", async () => {
+    const { app, auth } = await build();
+    auth.consumePasswordSetupSession.mockResolvedValueOnce(false);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/password/setup/complete",
+      headers: {
+        cookie: `__Host-eh_password_setup=${setupSecret}`,
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      payload: new URLSearchParams({
+        csrfToken: csrfTokenForSecret(setupSecret),
+        password: "a secure beta password",
+        passwordConfirmation: "a secure beta password"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toContain("Password setup unavailable");
+    expect(response.body).not.toContain("殷啸宇");
+    expect(response.body).not.toContain("yxy@example.invalid");
+  });
+
   it("does not expose unexpected password setup repository failures", async () => {
     const { app, auth } = await build();
     auth.consumePasswordSetupSession.mockRejectedValueOnce(
