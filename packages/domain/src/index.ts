@@ -1,4 +1,9 @@
 export const domainWorkspaceName = "@smedc/domain";
+export {
+  FILE_UPLOAD_ADMIN_REQUIRED_CODE,
+  FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
+  canEmployeeUploadFiles
+} from "./file-upload.js";
 export { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 export {
   PHASE3_RUNTIME_LIMIT_DEFAULTS,

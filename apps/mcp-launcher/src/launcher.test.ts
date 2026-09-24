@@ -1,13 +1,17 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SMEDC_MCP_TOOL_NAMES } from "@smedc/mcp-contract";
 import { createLauncherRuntimeConfig } from "./config.js";
+import * as localFiles from "./local-file.js";
+import * as partitionTransfer from "./partition-transfer.js";
+import * as runtime from "./runtime.js";
+import type { CachedUserProfile } from "./user-profile.js";
 import {
   LAUNCHER_BOOTSTRAP_TOOL_NAMES,
   type LauncherLoginResult,
@@ -20,6 +24,430 @@ import {
 } from "./launcher.js";
 
 const config = createLauncherRuntimeConfig({ smedcBaseUrl: "https://hub.example.test" });
+const adminProfile: CachedUserProfile = {
+  displayName: "Synthetic Admin",
+  email: "admin@example.invalid",
+  role: "admin",
+  clearance: 0,
+  organizationName: "Synthetic"
+};
+const employeeProfile: CachedUserProfile = { ...adminProfile, role: "employee" };
+const uploadToolNames = [
+  "upload_structured_dataset",
+  "upload_evidence_document",
+  "upload_quarantine_certificate"
+] as const;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("launcher upload role preflight", () => {
+  it.each(uploadToolNames)(
+    "denies malformed employee %s at the MCP request boundary",
+    async (name) => {
+      const auth = fakeAuth({ profile: employeeProfile });
+      const accessToken = vi.spyOn(auth, "accessToken");
+      const read = vi.spyOn(localFiles, "readLocalUploadFile");
+      const partition = vi.spyOn(partitionTransfer, "uploadPartitionDataset");
+      const remote = vi.fn<typeof fetch>();
+      const inputInspected = vi.fn(() => "/definitely-missing/admin-only.csv");
+      const server = new McpServer({ name: "employee-request-preflight", version: "1.0.0" });
+      registerLauncherTools(
+        server,
+        createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+      );
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "employee-request-client", version: "1.0.0" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        const tools = await client.listTools();
+        expect(tools.tools.find((tool) => tool.name === name)?.inputSchema).toMatchObject({
+          type: "object",
+          required: expect.arrayContaining(["file"]),
+          properties: { file: expect.any(Object) }
+        });
+        const result = await client.callTool({
+          name,
+          arguments: {
+            file: {
+              name: null,
+              mediaType: 42,
+              encoding: "path",
+              get filePath() {
+                return inputInspected();
+              }
+            }
+          }
+        });
+        expect(result).toMatchObject({
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  error: {
+                    code: "UPLOAD_ADMIN_REQUIRED",
+                    message: "File upload requires the admin role.",
+                    retryable: false
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
+        });
+        expect(inputInspected).not.toHaveBeenCalled();
+        expect(accessToken).not.toHaveBeenCalled();
+        expect(read).not.toHaveBeenCalled();
+        expect(partition).not.toHaveBeenCalled();
+        expect(remote).not.toHaveBeenCalled();
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+  );
+
+  it("still validates admin arguments and serves non-upload requests at the MCP boundary", async () => {
+    const auth = fakeAuth({ profile: adminProfile, authenticated: true });
+    const profile = vi.spyOn(auth, "profile");
+    const accessToken = vi.spyOn(auth, "accessToken");
+    const server = new McpServer({ name: "admin-request-preflight", version: "1.0.0" });
+    registerLauncherTools(server, createLauncherToolDependencies({ config, auth }));
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "admin-request-client", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const result = await client.callTool({ name: "upload_evidence_document", arguments: {} });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).toContain("Input validation error");
+      expect(profile).toHaveBeenCalledTimes(1);
+      expect(accessToken).not.toHaveBeenCalled();
+      const status = await client.callTool({ name: "smedc_auth_status", arguments: {} });
+      expect(status).toMatchObject({
+        isError: false,
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ authenticated: true, serviceUrl: config.serviceUrl }, null, 2)
+          }
+        ]
+      });
+      expect(profile).toHaveBeenCalledTimes(1);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it.each(uploadToolNames)("denies employee %s before local file or upload work", async (name) => {
+    const auth = fakeAuth({ profile: employeeProfile });
+    const accessToken = vi.spyOn(auth, "accessToken");
+    const read = vi.spyOn(localFiles, "readLocalUploadFile");
+    const partition = vi.spyOn(partitionTransfer, "uploadPartitionDataset");
+    const remote = vi.fn<typeof fetch>();
+    const input = {
+      file: {
+        name: "missing.csv",
+        mediaType: "text/csv",
+        encoding: "path",
+        filePath: "/definitely-missing/admin-only.csv"
+      },
+      dataset: "business",
+      enterpriseName: "Synthetic",
+      startDate: "20260701",
+      endDate: "20260731",
+      idempotencyKey: "employee-denied"
+    };
+    const result = await createLauncherToolHandler(
+      name,
+      createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+    )(input);
+    expect(result.isError).toBe(true);
+    expect(body(result)).toEqual({
+      error: {
+        code: "UPLOAD_ADMIN_REQUIRED",
+        message: "File upload requires the admin role.",
+        retryable: false
+      }
+    });
+    expect(accessToken).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+    expect(partition).not.toHaveBeenCalled();
+    expect(remote).not.toHaveBeenCalled();
+  });
+
+  it("denies employee base64 input without reading or converting its content", async () => {
+    const content = vi.fn(() => "YQ==");
+    const auth = fakeAuth({ profile: employeeProfile });
+    const accessToken = vi.spyOn(auth, "accessToken");
+    const remote = vi.fn<typeof fetch>();
+    const result = await createLauncherToolHandler(
+      "upload_evidence_document",
+      createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+    )({
+      file: {
+        encoding: "base64",
+        get contentBase64() {
+          return content();
+        }
+      }
+    });
+    expect(body(result)).toEqual({
+      error: {
+        code: "UPLOAD_ADMIN_REQUIRED",
+        message: "File upload requires the admin role.",
+        retryable: false
+      }
+    });
+    expect(content).not.toHaveBeenCalled();
+    expect(accessToken).not.toHaveBeenCalled();
+    expect(remote).not.toHaveBeenCalled();
+  });
+
+  it("denies employee input before inspecting even the file property", async () => {
+    const file = vi.fn(() => {
+      throw new Error("input inspected before role gate");
+    });
+    const handler = createLauncherToolHandler(
+      "upload_evidence_document",
+      createLauncherToolDependencies({ config, auth: fakeAuth({ profile: employeeProfile }) })
+    );
+    expect(
+      body(
+        await handler({
+          get file() {
+            return file();
+          }
+        })
+      )
+    ).toMatchObject({ error: { code: "UPLOAD_ADMIN_REQUIRED" } });
+    expect(file).not.toHaveBeenCalled();
+  });
+
+  it("keeps all upload tools discoverable for employees without resolving their profile", () => {
+    const auth = fakeAuth({ profile: employeeProfile });
+    const profile = vi.spyOn(auth, "profile");
+    const names: string[] = [];
+    registerLauncherTools(
+      {
+        registerTool: (name) => {
+          names.push(name);
+        }
+      },
+      createLauncherToolDependencies({ config, auth })
+    );
+    expect(names).toEqual(expect.arrayContaining([...uploadToolNames]));
+    expect(profile).not.toHaveBeenCalled();
+  });
+});
+
+describe("launcher live profile resolution", () => {
+  it("upgrades a legacy credential from one authenticated /me lookup and reuses its exact profile", async () => {
+    const fixture = profileResolutionFixture(() =>
+      Response.json({
+        employee: {
+          ...employeeProfile,
+          id: "private-id",
+          disabled: false,
+          futureField: "never-cache"
+        }
+      })
+    );
+    const dependencies = createLauncherToolDependencies({
+      config,
+      fetchImplementation: fixture.fetch
+    });
+    const handler = createLauncherToolHandler("upload_evidence_document", dependencies);
+    expect(body(await handler(null))).toMatchObject({ error: { code: "UPLOAD_ADMIN_REQUIRED" } });
+    expect(JSON.parse(fixture.record()!)).toEqual({
+      schemaVersion: 2,
+      origin: config.serviceUrl,
+      durableCredential: "rotated-refresh",
+      profile: employeeProfile
+    });
+    expect(body(await handler(null))).toMatchObject({ error: { code: "UPLOAD_ADMIN_REQUIRED" } });
+    expect(fixture.meRequests).toHaveLength(1);
+    const request = fixture.meRequests[0]!;
+    expect(request.method).toBe("GET");
+    expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.5.2");
+    expect(request.signal).toBeInstanceOf(AbortSignal);
+    expect(fixture.paths).not.toContain("/mcp");
+    expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
+      authenticated: true,
+      serviceUrl: config.serviceUrl
+    });
+
+    await dependencies.auth.logout();
+    expect(fixture.record()).toBeNull();
+    expect(body(await handler(null))).toMatchObject({ error: { code: "AUTHENTICATION_REQUIRED" } });
+    fixture.restoreLegacy();
+    expect(body(await handler(null))).toMatchObject({ error: { code: "UPLOAD_ADMIN_REQUIRED" } });
+    expect(fixture.meRequests).toHaveLength(2);
+  });
+
+  it.each([
+    {
+      label: "unauthenticated",
+      response: () => new Response(null, { status: 401 }),
+      code: "AUTHENTICATION_REQUIRED"
+    },
+    {
+      label: "server failure",
+      response: () => new Response(null, { status: 503 }),
+      code: "SERVICE_UNAVAILABLE"
+    },
+    {
+      label: "invalid JSON",
+      response: () => new Response("not-json"),
+      code: "SERVICE_UNAVAILABLE"
+    },
+    {
+      label: "invalid profile",
+      response: () => Response.json({ employee: { ...adminProfile, role: "owner" } }),
+      code: "SERVICE_UNAVAILABLE"
+    },
+    {
+      label: "network failure",
+      response: () => {
+        throw new Error("private connection details");
+      },
+      code: "SERVICE_UNAVAILABLE"
+    }
+  ])("fails closed on $label without inspecting upload input", async ({ response, code }) => {
+    const fixture = profileResolutionFixture(response);
+    const dependencies = createLauncherToolDependencies({
+      config,
+      fetchImplementation: fixture.fetch
+    });
+    const file = vi.fn(() => {
+      throw new Error("input inspected before profile resolution");
+    });
+    const result = await createLauncherToolHandler(
+      "upload_evidence_document",
+      dependencies
+    )({
+      get file() {
+        return file();
+      }
+    });
+    expect(result.isError).toBe(true);
+    expect(body(result)).toMatchObject({ error: { code } });
+    expect(JSON.stringify(result)).not.toContain("private connection details");
+    expect(file).not.toHaveBeenCalled();
+    expect(fixture.meRequests).toHaveLength(1);
+    expect(fixture.paths).not.toContain("/mcp");
+    if (code === "AUTHENTICATION_REQUIRED") expect(fixture.record()).toBeNull();
+    else expect(JSON.parse(fixture.record()!).profile).toBeNull();
+  });
+
+  it("keeps backend upload denial authoritative with a locally supplied admin profile", async () => {
+    const denial = {
+      error: {
+        code: "UPLOAD_ADMIN_REQUIRED",
+        message: "File upload requires the admin role.",
+        retryable: false
+      }
+    };
+    const calls: Array<{ method?: string; params?: unknown }> = [];
+    const dependencies = createLauncherToolDependencies({
+      config,
+      auth: fakeAuth(),
+      fetchImplementation: fakeMcpFetch(calls, denial, true)
+    });
+    const result = await createLauncherToolHandler(
+      "upload_evidence_document",
+      dependencies
+    )({ file: { encoding: "base64", contentBase64: "YQ==" } });
+    expect(result.isError).toBe(true);
+    expect(body(result)).toEqual(denial);
+    expect(calls.some((call) => call.method === "tools/call")).toBe(true);
+  });
+
+  it("always proxies current-user requests live without substituting cached identity", async () => {
+    const calls: Array<{ method?: string; params?: unknown }> = [];
+    const auth = fakeAuth({ profile: adminProfile });
+    const profile = vi.spyOn(auth, "profile");
+    const dependencies = createLauncherToolDependencies({
+      config,
+      auth,
+      fetchImplementation: fakeMcpFetch(calls, { employee: employeeProfile })
+    });
+    const result = await createLauncherToolHandler("smedc_get_current_user", dependencies)({});
+    expect(body(result)).toEqual({ employee: employeeProfile });
+    expect(calls.filter((call) => call.method === "tools/call")).toEqual([
+      { method: "tools/call", params: { name: "smedc_get_current_user", arguments: {} } }
+    ]);
+    expect(profile).not.toHaveBeenCalled();
+  });
+});
+
+function profileResolutionFixture(meResponse: () => Response) {
+  const legacy = JSON.stringify({
+    schemaVersion: 1,
+    origin: config.serviceUrl,
+    durableCredential: "legacy-refresh"
+  });
+  let record: string | null = legacy;
+  vi.spyOn(runtime, "createKeychainCredentialStore").mockReturnValue({
+    get: async () => record,
+    set: async (value: string) => {
+      record = value;
+    },
+    delete: async () => {
+      record = null;
+    }
+  });
+  vi.spyOn(runtime, "createCrossProcessLock").mockReturnValue({
+    acquire: async () => async () => undefined
+  });
+  const paths: string[] = [];
+  const meRequests: RequestInit[] = [];
+  const fetchImplementation: typeof fetch = async (input, init) => {
+    const pathname = new URL(input instanceof Request ? input.url : input).pathname;
+    paths.push(pathname);
+    if (pathname === "/.well-known/oauth-authorization-server")
+      return Response.json({
+        issuer: config.serviceUrl,
+        authorization_endpoint: `${config.serviceUrl}/oauth/authorize`,
+        token_endpoint: `${config.serviceUrl}/oauth/token`,
+        revocation_endpoint: `${config.serviceUrl}/oauth/revoke`,
+        response_types_supported: ["code"],
+        smedc_launcher_minimum_version: "0.5.0",
+        smedc_launcher_recommended_version: "0.5.1"
+      });
+    if (pathname === "/oauth/token")
+      return Response.json({
+        access_token: "resolved-access",
+        refresh_token: "rotated-refresh",
+        token_type: "Bearer",
+        expires_in: 600
+      });
+    if (pathname === "/oauth/revoke") return new Response(null, { status: 200 });
+    if (pathname === "/me") {
+      meRequests.push(init ?? {});
+      return meResponse();
+    }
+    throw new Error(`Unexpected request: ${pathname}`);
+  };
+  vi.stubGlobal("fetch", fetchImplementation);
+  return {
+    fetch: fetchImplementation,
+    paths,
+    meRequests,
+    record: () => record,
+    restoreLegacy: () => {
+      record = legacy;
+    }
+  };
+}
 
 describe("official launcher bootstrap tools", () => {
   it("registers empty strict login, logout, and auth-status tools", () => {
@@ -441,7 +869,11 @@ describe("launcher evidence search proxy", () => {
 });
 
 function fakeAuth(
-  options: { authenticated?: boolean; loginError?: { code: string; message: string } } = {}
+  options: {
+    authenticated?: boolean;
+    loginError?: { code: string; message: string };
+    profile?: CachedUserProfile;
+  } = {}
 ) {
   return {
     login: async (): Promise<LauncherLoginResult> => {
@@ -463,6 +895,7 @@ function fakeAuth(
     }),
     status: async () => ({ authenticated: options.authenticated ?? false }),
     accessToken: async () => "access-secret",
+    profile: async () => options.profile ?? adminProfile,
     invalidate: async () => undefined,
     selfCheck: async () => {
       throw new Error("not used");
@@ -476,7 +909,8 @@ function body(result: { content: Array<{ text: string }> }): unknown {
 
 function fakeMcpFetch(
   calls: Array<{ method?: string; params?: unknown }>,
-  toolBody: unknown = { accepted: true }
+  toolBody: unknown = { accepted: true },
+  isError = false
 ): typeof fetch {
   return async (url: string | URL | Request, init?: RequestInit) => {
     let parsed: { method?: string; params?: unknown; id?: unknown } | null = null;
@@ -514,7 +948,7 @@ function fakeMcpFetch(
           id: parsed.id,
           result: {
             content: [{ type: "text", text: JSON.stringify(toolBody) }],
-            isError: false
+            isError
           }
         }),
         { status: 200, headers: { "content-type": "application/json" } }

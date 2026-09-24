@@ -5,8 +5,427 @@ import {
   type LauncherLock,
   type OAuthTokenClient
 } from "./session.js";
+import type { CachedUserProfile } from "./user-profile.js";
 
 const origin = "https://hub.example.test";
+const adminProfile: CachedUserProfile = {
+  displayName: "Admin",
+  email: "admin@example.invalid",
+  role: "admin",
+  clearance: 0,
+  organizationName: "Example Org"
+};
+
+describe("versioned launcher profile record", () => {
+  it.each([
+    { previousRole: "employee", replacementRole: "admin" },
+    { previousRole: "admin", replacementRole: "employee" }
+  ] as const)(
+    "aligns cached $replacementRole profile with the next token after replacing $previousRole",
+    async ({ previousRole, replacementRole }) => {
+      const secureStore = memoryStore(null);
+      const tokenClient = tokenClientReturning({
+        accessToken: "account-b-refreshed",
+        refreshToken: "account-b-rotated"
+      });
+      const dependencies = { origin, secureStore, tokenClient, lock: serialLock() };
+      const session = new LauncherSession(dependencies);
+      const otherSession = new LauncherSession(dependencies);
+      await session.establish("account-a-access", "account-a-refresh", Date.now() + 9 * 60_000);
+      await session.storeProfile({
+        ...adminProfile,
+        email: "a@example.invalid",
+        role: previousRole
+      });
+      await otherSession.establish(
+        "account-b-access",
+        "account-b-refresh",
+        Date.now() + 9 * 60_000
+      );
+      const replacementProfile = {
+        ...adminProfile,
+        email: "b@example.invalid",
+        role: replacementRole
+      };
+      await otherSession.storeProfile(replacementProfile);
+      const resolver = vi.fn(async () => {
+        throw new Error("cached profile must not require /me");
+      });
+
+      await expect(session.resolveProfile(resolver)).resolves.toEqual(replacementProfile);
+      expect(resolver).not.toHaveBeenCalled();
+      expect(tokenClient.refresh).not.toHaveBeenCalled();
+      // This is the same profile-then-token sequence used by upload preflight.
+      await expect(session.ensureAccessToken()).resolves.toBe("account-b-refreshed");
+      expect(tokenClient.refresh).toHaveBeenCalledExactlyOnceWith("account-b-refresh");
+      expect(JSON.parse((await secureStore.get())!)).toEqual({
+        schemaVersion: 2,
+        origin,
+        durableCredential: "account-b-rotated",
+        profile: replacementProfile
+      });
+    }
+  );
+
+  it.each(["replace", "logout then replace"] as const)(
+    "keeps pending profile resolution bound to account A during %s from another session",
+    async (operation) => {
+      const secureStore = memoryStore(null);
+      const dependencies = {
+        origin,
+        secureStore,
+        tokenClient: tokenClientReturning({ accessToken: "refreshed", refreshToken: "rotated" }),
+        lock: serialLock()
+      };
+      const session = new LauncherSession(dependencies);
+      const otherSession = new LauncherSession(dependencies);
+      await session.establish("account-a-access", "account-a-refresh", Date.now() + 9 * 60_000);
+      const lookupStarted = deferred();
+      const finishLookup = deferred();
+      const resolving = session.resolveProfile(async (accessToken) => {
+        expect(accessToken).toBe("account-a-access");
+        lookupStarted.resolve();
+        await finishLookup.promise;
+        return adminProfile;
+      });
+      await lookupStarted.promise;
+      let replaced = false;
+      const replacing = (async () => {
+        if (operation === "logout then replace") await otherSession.logout();
+        await otherSession.establish(
+          "account-b-access",
+          "account-b-refresh",
+          Date.now() + 9 * 60_000
+        );
+        replaced = true;
+      })();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(replaced).toBe(false);
+      finishLookup.resolve();
+      await expect(resolving).resolves.toEqual(adminProfile);
+      await replacing;
+      expect(JSON.parse((await secureStore.get())!)).toEqual({
+        schemaVersion: 2,
+        origin,
+        durableCredential: "account-b-refresh",
+        profile: null
+      });
+    }
+  );
+
+  it("selects the current durable account instead of another process's stale memory token", async () => {
+    const secureStore = memoryStore(null);
+    const tokenClient = tokenClientReturning({
+      accessToken: "account-b-refreshed",
+      refreshToken: "account-b-rotated"
+    });
+    const dependencies = { origin, secureStore, tokenClient, lock: serialLock() };
+    const session = new LauncherSession(dependencies);
+    const otherSession = new LauncherSession(dependencies);
+    await session.establish("account-a-access", "account-a-refresh", Date.now() + 9 * 60_000);
+    await otherSession.establish("account-b-access", "account-b-refresh", Date.now() + 9 * 60_000);
+    const employeeProfile = { ...adminProfile, role: "employee" as const };
+    await expect(
+      session.resolveProfile(async (accessToken) => {
+        expect(accessToken).toBe("account-b-refreshed");
+        return employeeProfile;
+      })
+    ).resolves.toEqual(employeeProfile);
+    expect(tokenClient.refresh).toHaveBeenCalledWith("account-b-refresh");
+    expect(JSON.parse((await secureStore.get())!).profile).toEqual(employeeProfile);
+  });
+
+  it("waits for device login before acquiring the atomic profile resolution lock", async () => {
+    const session = new LauncherSession({
+      origin,
+      tokenClient: tokenClientReturning({ accessToken: "unused", refreshToken: "unused" })
+    });
+    const login = deferred();
+    session.waitForLogin(login.promise);
+    const resolving = session.resolveProfile(async (accessToken) => {
+      expect(accessToken).toBe("after-login");
+      return adminProfile;
+    });
+    await session.establish("after-login", "refresh", Date.now() + 9 * 60_000);
+    login.resolve();
+    await expect(resolving).resolves.toEqual(adminProfile);
+  });
+
+  it.each([
+    { operation: "invalidate", sharedLock: false },
+    { operation: "establish", sharedLock: false },
+    { operation: "invalidate", sharedLock: true },
+    { operation: "establish", sharedLock: true }
+  ] as const)(
+    "does not restore account A after $operation (shared lock: $sharedLock)",
+    async ({ operation, sharedLock }) => {
+      const backingStore = memoryStore("account-a-refresh");
+      const profileWriteStarted = deferred();
+      const finishProfileWrite = deferred();
+      const secureStore = {
+        ...backingStore,
+        set: async (value: string) => {
+          if (JSON.parse(value).profile !== null) {
+            profileWriteStarted.resolve();
+            await finishProfileWrite.promise;
+          }
+          await backingStore.set(value);
+        }
+      };
+      const dependencies = {
+        origin,
+        secureStore,
+        tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" }),
+        ...(sharedLock ? { lock: serialLock() } : {})
+      };
+      const session = new LauncherSession(dependencies);
+      const replacingSession = sharedLock ? new LauncherSession(dependencies) : session;
+      const profileWrite = session.storeProfile(adminProfile);
+      await profileWriteStarted.promise;
+
+      const replacement =
+        operation === "invalidate"
+          ? replacingSession.invalidate()
+          : replacingSession.establish(
+              "account-b-access",
+              "account-b-refresh",
+              Date.now() + 9 * 60_000
+            );
+      // Drain runnable work while A's write is paused, without waiting for the
+      // replacement itself: a serialized replacement must wait behind A.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      finishProfileWrite.resolve();
+      await Promise.all([profileWrite, replacement]);
+
+      await expect(replacingSession.cachedProfile()).resolves.toBeNull();
+      if (operation === "invalidate") {
+        await expect(secureStore.get()).resolves.toBeNull();
+        await expect(replacingSession.status()).resolves.toEqual({ authenticated: false });
+      } else {
+        expect(JSON.parse((await secureStore.get())!)).toEqual({
+          schemaVersion: 2,
+          origin,
+          durableCredential: "account-b-refresh",
+          profile: null
+        });
+        await expect(replacingSession.ensureAccessToken()).resolves.toBe("account-b-access");
+      }
+    }
+  );
+
+  it("reads v1 lazily and writes only the v2 credential and public profile fields", async () => {
+    const secureStore = memoryStore("legacy-refresh");
+    await secureStore.set(
+      JSON.stringify({
+        schemaVersion: 1,
+        origin,
+        durableCredential: "legacy-refresh",
+        internal: "discard"
+      })
+    );
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
+    });
+
+    await expect(session.cachedProfile()).resolves.toBeNull();
+    expect(JSON.parse((await secureStore.get())!).schemaVersion).toBe(1);
+    await session.storeProfile(adminProfile);
+
+    expect(JSON.parse((await secureStore.get())!)).toEqual({
+      schemaVersion: 2,
+      origin,
+      durableCredential: "legacy-refresh",
+      profile: adminProfile
+    });
+    const restarted = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
+    });
+    await expect(restarted.cachedProfile()).resolves.toEqual(adminProfile);
+  });
+
+  it("preserves the profile when a refresh rotates the durable credential", async () => {
+    const secureStore = memoryStore("legacy-refresh");
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" }),
+      lock: immediateLock()
+    });
+    await session.storeProfile(adminProfile);
+
+    await expect(session.ensureAccessToken()).resolves.toBe("access");
+
+    expect(JSON.parse((await secureStore.get())!)).toEqual({
+      schemaVersion: 2,
+      origin,
+      durableCredential: "rotated",
+      profile: adminProfile
+    });
+  });
+
+  it.each(["logout", "invalidate"] as const)(
+    "clears the complete stored record on %s",
+    async (operation) => {
+      const secureStore = memoryStore("legacy-refresh");
+      const session = new LauncherSession({
+        origin,
+        secureStore,
+        tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
+      });
+      await session.storeProfile(adminProfile);
+
+      await session[operation]();
+
+      await expect(secureStore.get()).resolves.toBeNull();
+      await expect(session.cachedProfile()).resolves.toBeNull();
+      await expect(session.status()).resolves.toEqual({ authenticated: false });
+    }
+  );
+
+  it("clears the profile on definitive refresh failure", async () => {
+    const secureStore = memoryStore("invalid-refresh");
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      lock: serialLock(),
+      tokenClient: {
+        refresh: async () => {
+          throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
+        },
+        revoke: async () => true
+      }
+    });
+    await session.storeProfile(adminProfile);
+
+    await expect(session.ensureAccessToken()).rejects.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED"
+    });
+
+    await expect(secureStore.get()).resolves.toBeNull();
+    await expect(session.cachedProfile()).resolves.toBeNull();
+  });
+
+  it("preserves the profile and credential through transient refresh failure", async () => {
+    const secureStore = memoryStore("retry-refresh");
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient: {
+        refresh: async () => {
+          throw new LauncherTypedError("SERVICE_UNAVAILABLE");
+        },
+        revoke: async () => true
+      }
+    });
+    await session.storeProfile(adminProfile);
+
+    await expect(session.ensureAccessToken()).rejects.toMatchObject({
+      code: "SERVICE_UNAVAILABLE"
+    });
+    await expect(session.cachedProfile()).resolves.toEqual(adminProfile);
+    expect(JSON.parse((await secureStore.get())!).durableCredential).toBe("retry-refresh");
+  });
+
+  it("clears the prior account profile when establishing a replacement session", async () => {
+    const secureStore = memoryStore("admin-refresh");
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
+    });
+    await session.storeProfile(adminProfile);
+
+    await session.establish("employee-access", "employee-refresh", Date.now() + 9 * 60_000);
+
+    await expect(session.cachedProfile()).resolves.toBeNull();
+    expect(JSON.parse((await secureStore.get())!)).toEqual({
+      schemaVersion: 2,
+      origin,
+      durableCredential: "employee-refresh",
+      profile: null
+    });
+  });
+
+  it("rejects a profile and credential from a different origin", async () => {
+    const secureStore = memoryStore(null);
+    await secureStore.set(
+      JSON.stringify({
+        schemaVersion: 2,
+        origin: "https://other.example.test",
+        durableCredential: "foreign-refresh",
+        profile: adminProfile
+      })
+    );
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
+    });
+
+    await expect(session.cachedProfile()).resolves.toBeNull();
+    await expect(session.ensureAccessToken()).rejects.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED"
+    });
+  });
+
+  it.each([
+    { ...adminProfile, clearance: 4 },
+    { ...adminProfile, id: "internal" },
+    { role: "admin" }
+  ])("cannot expose malformed v2 profiles as trusted profiles: %j", async (profile) => {
+    const secureStore = memoryStore(null);
+    await secureStore.set(
+      JSON.stringify({ schemaVersion: 2, origin, durableCredential: "refresh", profile })
+    );
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
+    });
+
+    await expect(session.cachedProfile()).resolves.toBeNull();
+  });
+
+  it("does not create an orphan profile without an authenticated record", async () => {
+    const secureStore = memoryStore(null);
+    const session = new LauncherSession({
+      origin,
+      secureStore,
+      tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
+    });
+
+    await expect(session.storeProfile(adminProfile)).rejects.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED"
+    });
+    await expect(secureStore.get()).resolves.toBeNull();
+  });
+
+  it.each(["logout", "invalidate"] as const)(
+    "keeps memory-only profiles in-process and clears them on %s",
+    async (operation) => {
+      const tokenClient = tokenClientReturning({
+        accessToken: "refreshed",
+        refreshToken: "rotated"
+      });
+      const session = new LauncherSession({ origin, tokenClient });
+      await session.establish("access", "refresh", Date.now() + 30_000);
+      await session.storeProfile(adminProfile);
+      await expect(session.ensureAccessToken()).resolves.toBe("refreshed");
+      await expect(session.cachedProfile()).resolves.toEqual(adminProfile);
+
+      const restarted = new LauncherSession({ origin, tokenClient });
+      await expect(restarted.cachedProfile()).resolves.toBeNull();
+      await expect(restarted.status()).resolves.toEqual({ authenticated: false });
+      await session[operation]();
+      await expect(session.cachedProfile()).resolves.toBeNull();
+      await expect(session.status()).resolves.toEqual({ authenticated: false });
+    }
+  );
+});
 
 describe("durable official launcher session", () => {
   it("reuses a durable credential after a launcher restart and rotates it on refresh", async () => {
@@ -233,4 +652,27 @@ function tokenClientReturning(result: {
 
 function immediateLock(): LauncherLock {
   return { acquire: async () => async () => undefined };
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+function serialLock(): LauncherLock {
+  let tail = Promise.resolve();
+  return {
+    acquire: async () => {
+      const previous = tail;
+      const next = deferred();
+      tail = next.promise;
+      await previous;
+      return async () => {
+        next.resolve();
+      };
+    }
+  };
 }

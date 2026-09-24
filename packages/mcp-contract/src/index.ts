@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+export { FILE_UPLOAD_ADMIN_REQUIRED_CODE, FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE } from "@smedc/domain";
 import {
   PHASE3_RUNTIME_LIMIT_DEFAULTS,
   PUBLIC_INPUT_LIMITS,
@@ -607,7 +608,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload SMEDC structured dataset",
     description:
-      "Upload the user's original XLSX/CSV. Launcher 0.5.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. A 202 queued response requires polling the matching status tool.",
+      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: [
       {
@@ -667,7 +668,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_evidence_document",
     title: "Upload SMEDC evidence document",
     description:
-      "Upload MD/TXT/DOCX evidence by calling authenticated multipart POST /v1/documents/evidence.",
+      "Upload MD/TXT/DOCX evidence by calling authenticated multipart POST /v1/documents/evidence. Requires the admin role.",
     inputSchema: uploadEvidenceDocumentInputSchema,
     inputFields: [
       { name: "file", required: true, description: "Base64 upload file payload." },
@@ -685,7 +686,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_quarantine_certificate",
     title: "Upload SMEDC quarantine certificate",
     description:
-      "Upload one JPG/PNG quarantine certificate linked to a receipt ID by calling authenticated multipart POST /v1/documents/quarantine-certificates.",
+      "Upload one JPG/PNG quarantine certificate linked to a receipt ID by calling authenticated multipart POST /v1/documents/quarantine-certificates. Requires the admin role.",
     inputSchema: uploadQuarantineCertificateInputSchema,
     inputFields: [
       { name: "file", required: true, description: "Base64 upload image payload." },
