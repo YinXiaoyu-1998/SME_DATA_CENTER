@@ -22,9 +22,9 @@ report generator, dashboard service, or skill execution platform.
 The official target profile must be actionable enough for an agent to:
 
 1. Verify Node.js 22 or newer plus npm, then install only
-   `smedc-mcp-launcher@0.5.1` with `npm install --prefix ... --save-exact` in the approved
+   `smedc-mcp-launcher@0.5.2` with `npm install --prefix ... --save-exact` in the approved
    macOS/Windows/Linux current-user versioned directory; never install `latest` or self-update.
-   Linux uses `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1/` and resolves it
+   Linux uses `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.2/` and resolves it
    to an absolute MCP command path.
 2. Back up and idempotently configure only the invoking agent's local **stdio** entry. Codex uses
    its verified `mcp list`/`get`/`add`/`remove` CLI and bundled macOS binary fallback; OpenClaw uses
@@ -32,13 +32,17 @@ The official target profile must be actionable enough for an agent to:
    the same stdio tuple and never configure a remote OAuth store.
 3. Use `smedc_auth_status`, `smedc_login`, `smedc_logout`, and the
    zero-input `smedc_get_current_user`; account lookup returns only the authenticated
-   employee's display name, email, and role, while login never exposes passwords, tokens, device
+   employee's display name, email, role, clearance, and organization name, while login never exposes passwords, tokens, device
    codes, headers, or secure-store records to the agent/model.
 4. Treat browser cancellation, `authentication_required`, `service_unavailable`, `forbidden`, and
    `launcher_upgrade_required` as distinct typed outcomes. Retry the original operation exactly
    once after successful browser login.
-5. List labels before upload; read assigned file bytes exactly; poll status without starting a
-   worker; use only API-visible records and never supply an organization ID.
+5. Resolve upload role before local file access. Only active admins upload; known employees must
+   not read or transform the file. Tools remain visible. `403 UPLOAD_ADMIN_REQUIRED`,
+   `File upload requires the admin role.`, `retryable: false` must not cause re-login or retry.
+   Clearance is independent: admins may explicitly upload above their clearance without a read
+   bypass. Upload original files, report service validation errors, and poll status without starting
+   a worker; use only API-visible records and never supply an organization ID. There are no labels.
 6. Reuse structured-import idempotency keys only for exact file/metadata replay; treat
    inaccessible import-status 404s as non-enumerating not-found results; use evidence cursors
    only as opaque same-query continuations.
@@ -62,7 +66,8 @@ The official target profile must be actionable enough for an agent to:
 
 - [x] Skill name is exactly `smedc-mcp`.
 - [x] Skill includes only the official remote employee profile.
-- [x] Skill pins `smedc-mcp-launcher@0.5.1`, rejects `latest`, and never directs launcher self-update.
+- [x] Skill pins `smedc-mcp-launcher@0.5.2`, rejects `latest`, and never directs launcher self-update.
+- [x] Admin-only guidance includes Delivery Ledger, static discovery, local preflight without a backend audit, best-effort backend `file_upload.denied`, and the partition owner-abort exception.
 - [x] Skill contains no real tokens, passwords, customer data, endpoint secrets, or service-account material.
 - [x] Skill says MCP tools must use the HTTP API and inherit API authorization.
 - [x] Skill forbids direct DB/storage reads for data access.

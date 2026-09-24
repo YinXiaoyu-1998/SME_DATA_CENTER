@@ -1,6 +1,6 @@
 # SMEDC MCP User Flow
 
-> **Release note:** `smedc-mcp-launcher@0.5.1` is publicly published and independently
+> **Release note:** `smedc-mcp-launcher@0.5.2` is publicly published and independently
 > verified. It is the pinned distribution for the confidentiality-level contract.
 > macOS, Windows, and Linux are supported launcher-installation platforms. Native macOS/Windows
 > package acceptance and the headless Linux loop pass; automated Ubuntu package acceptance is part
@@ -13,7 +13,20 @@ Last updated: 2026-09-22
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `smedc-mcp` skill. The official remote origin
 is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`smedc-mcp-launcher@0.5.1`.
+`smedc-mcp-launcher@0.5.2`.
+
+## Upload Authorization
+
+Only active admins upload evidence, structured datasets (including Delivery Ledger), or quarantine
+certificates. Upload tools remain visible and marked admin-only. For a known employee role, the
+agent must not read or transform the local file; launcher 0.5.2 preflights before file access.
+HTTP/MCP denial is `403 UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`,
+`retryable: false`: explain the admin requirement without re-login, retry, or a clearance workaround.
+Local prevention produces no backend audit; backend denial best-effort records `file_upload.denied`.
+An admin may explicitly classify above their clearance, but ordinary read/status/search/query/download
+rules still apply. Partition create/parts/complete require admin; owner abort remains allowed.
+Minimum compatibility stays 0.5.0 and the backend protects older compatible launchers. See the
+[endpoint matrix](api-contract.md#file-upload-capability) for surfaces and the future service-identity non-goal.
 
 ## Participants And Credential Boundary
 

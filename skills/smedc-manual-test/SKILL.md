@@ -27,13 +27,23 @@ setup links to the human. The controller must not open setup links or type test 
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
+Use launcher `smedc-mcp-launcher@0.5.2` and the 16-task three-account manifest. All positive uploads
+use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
+XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
+before reading or transforming files. Tools remain visible; `403 UPLOAD_ADMIN_REQUIRED` has exact
+message `File upload requires the admin role.` and `retryable: false`, with no re-login or retry.
+Launcher-local prevention creates no backend audit; automated backend tests separately verify
+best-effort `file_upload.denied`, partition create/parts/complete denial, and owner abort access.
+Clearance is orthogonal: admin c0 may explicitly upload level 2 but cannot ordinarily read it;
+employee c3 can read eligible data but cannot upload. Preserve ordinary status/manifest/read rules.
+
 A user-requested **scoped QA acceptance** may reuse the current authenticated launcher session
 instead of creating accounts when all of these conditions hold:
 
 - the user explicitly scopes the run to selected business flows rather than the full account,
   browser-login, confidentiality, admin-PAO, logout, or password-reset gate;
 - `smedc_auth_status` is authenticated and `smedc_get_current_user` identifies
-  the expected QA employee;
+  the expected QA account, with active `admin` role for any positive upload;
 - the controller verifies through a read-only operator-side lookup that the employee belongs to
   organization ID `default-org`; the employee-client task must not receive database access or an
   organization ID input;
@@ -105,7 +115,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 
    ```sh
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" self-check
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
 9. For full acceptance, ensure the launcher starts logged out and switch among only the synthetic
@@ -131,7 +141,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     all visible delivery-ledger rows and display them as a row-level Markdown table. The query task
     must follow every returned page cursor until no page remains; a receipt-level count or enrichment
     summary is not a substitute for displaying the ledger.
-    For the quarantine-certificate slice, have the clearance-0 employee explicitly request level 2
+    For the quarantine-certificate slice, have the clearance-0 admin explicitly request level 2
     when uploading `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` for an
     explicit `receiptId`; a filename must never choose the level. The clearance-3 employee queries
     that receipt and requests a 24-hour source-file download link for its returned

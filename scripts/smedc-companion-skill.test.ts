@@ -22,7 +22,7 @@ describe("SMEDC companion skill guidance", () => {
   it("pins the independently verified launcher release", async () => {
     const skill = await readFile(path.join(root, "skills", "smedc-mcp", "SKILL.md"), "utf8");
 
-    expect(skill).toContain("smedc-mcp-launcher@0.5.1");
+    expect(skill).toContain("smedc-mcp-launcher@0.5.2");
     expect(skill).not.toContain("smedc-mcp-launcher@0.5.0");
   });
 });
