@@ -41,7 +41,7 @@ describe("official user install and login documentation", () => {
       "utf8"
     );
 
-    const status = doc.split("\n## ")[0];
+    const status = doc.split("\n## ")[0] ?? "";
     const distribution = section(doc, "Accepted Launcher Source And Distribution Boundary");
     expectPinnedReferences(status, "current install/login status");
     expectPinnedReferences(distribution, "current launcher distribution");
@@ -66,7 +66,7 @@ describe("official user install and login documentation", () => {
       path.join(root, "skills/smedc-mcp/references/update-skill.md"),
       "utf8"
     );
-    expectPinnedReferences(skill.split("\n## ")[0], "Skill approved package");
+    expectPinnedReferences(skill.split("\n## ")[0] ?? "", "Skill approved package");
     for (const heading of [
       "Official Install Or Update",
       "Device-Code Login Flow",
