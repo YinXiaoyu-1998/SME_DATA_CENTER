@@ -1130,3 +1130,28 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
 - Passed 14 focused evidence-route tests, real-provider local integration with both c0/c3 denial invariants (19 total), typecheck, targeted ESLint/Prettier and whitespace checks. Existing full-suite/MCP results were not redundantly rerun.
 - Removed disposable smedc-task7 containers, volumes/network, .data/integration and empty partition-extract root. Inventory matches pre-run unrelated resources; no extra worktree/process remains. No staging, push or subagent work.
 - Updated the Task 7 implementer report; report/progress/handoff remain uncommitted process artifacts.
+
+## 2026-09-24 — Task 8 contract and dual-homed Skill synchronization
+
+- Branch `codex/task-8-contract-sync`, base `codex/admin-only-upload-enforcement@7aa3115`, product commit `945233cb7e8f667ca82da0c8905c48642c1fc15c`; standalone branch `codex/admin-only-upload-0-5-2`, base `main@e34f8cc`.
+- Fresh registry metadata and downloaded tarball independently match public launcher 0.5.2 SHA-512 and SHA-1. Recommended server version and every active install/update path are now exactly 0.5.2; minimum remains 0.5.0.
+- Current API/product/manual/beta docs and both Skill copies cover admin-only uploads, static discovery, pre-file local prevention, nonretryable canonical denial, local/backend audit distinction, Ledger, clearance orthogonality, owner abort, old-compatible backend protection, and future service identity non-goal. Corrected the active AGENTS manual pin and obsolete label instruction in the Skill review checklist. Historical plans/reports were not rewritten.
+- TDD: six main tests and seventeen standalone subcases failed before synchronization. Passed 79 focused main tests, 7 standalone contract tests, edited-file Prettier, whitespace checks, 14 relative links, and full shared Skill directory byte comparison.
+- `npm run format:check` was run and fails only on seven pre-existing ignored SDD files; the controller directed preserving those files. No full suite, provider, live staging, or human manual acceptance is claimed here.
+- Standalone commit `1bfe6b0a7e6f52d458272e835ffb1759256f9eb2` was pushed; PR https://github.com/YinXiaoyu-1998/smedc-mcp-skill/pull/46 is open and attached, not merged. No main push/PR; Task 9 owns it.
+- Removed the exact registry-verification temporary directory including the tarball and PR-body file. Focused tests created no `.data` files, Docker resources, or new worktrees; unrelated Docker/worktree inventory remains intact. Progress/handoff and the ignored report stay out of the product commit.
+- Diff composition: main production/version config +2/-2, tests +43/-8, product docs/Skill UI metadata +305/-100; standalone docs/Skill UI metadata +105/-42 and tests +25/-3. Runtime/CI/deploy scripts and lockfiles unchanged in both; process artifacts excluded.
+- Report: `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-8-implementer-report.md`.
+
+### Task 8 spec-review correction
+
+- Commit `174390f344d214b4aa457f10d116417ee10c80dc` fixes the active beta readiness pilot's employee-only successful-upload assumption: separate active admin upload, employee denial, authorized employee reads, and the synthetic c0/c3/admin-c0 role-clearance prerequisite are explicit throughout current scope, inputs, success criteria, and acceptance gates.
+- New section-scoped regression failed before the doc fix; `npm test -- scripts/official-user-install-and-login.test.ts` passes 5 tests. Edited-file Prettier and `git diff --check` pass. Historical facts are unchanged; obsolete labels were removed only from active pilot instructions.
+- Correction diff: docs +44/-26, tests +28/-0; no production/runtime/CI/deploy/lockfile changes. No files/resources created by this focused test. Standalone bytes and PR #46 unchanged/open; no main push or PR. Process notes/report remain outside product commits.
+
+### Task 8 quality-review minor
+
+- Main test-only commit `a990f9c31fdb12280ee3ca7853f02137644f548e` scopes active policy/acceptance assertions, normalizes prose whitespace, and extracts every selected active package pin, POSIX/Windows version path, CLI version field, and declared current pin. Canonical `403 UPLOAD_ADMIN_REQUIRED`, message, and nonretryable literal remain exact. Historical bare compatibility versions are excluded.
+- Standalone test-only commit `d2a9bdb4842076523a04d39a3393730672bd850b` mirrors the test approach; pushed to the existing branch and updated/reattached open PR #46. No Skill content changes; complete shared directories remain byte-identical.
+- Mutation evidence: a single Windows path changed temporarily to 0.5.3 was missed by both old suites, then rejected by both refined suites. Reflowing the admin-only prose across a newline passes. Both mutations were restored. Final main focused suite passes 6 tests and standalone passes 8; main Prettier/ESLint, both diff checks, and Skill byte comparison pass.
+- Incremental diffs: main tests +95/-39, standalone tests +90/-35; no product/runtime/CI/deploy/lockfile/doc changes. Standalone PR cumulative tests +106/-29 and docs/Skill metadata +105/-42. Removed the PR-body temp directory; no test resource outputs. Main remains local; process notes/report excluded from commits.
