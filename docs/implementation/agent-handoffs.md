@@ -1087,32 +1087,3 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
-
-## 2026-09-24 — Admin-only upload Task 1 profile record
-
-- Branch: `codex/admin-only-upload-profile-record`, from launcher lead `codex/admin-only-upload-launcher-0-5-2@b6a6527`.
-- Delivered exact public profile type/schema/parser exports and session-owned schema-v2 storage with lazy v1 reading; refresh preserves the profile, while logout, invalidation, definitive refresh failure, and account replacement clear it.
-- Verification: profile RED missing module; session RED 14 missing-API failures with 11 prior tests passing; GREEN 48 focused tests. Full suite: 111 files / 897 tests passed, 6 files / 29 tests skipped. Lint and typecheck pass. Initial format check found only two supplied local orchestration artifacts; formatting those artifacts resolves the check.
-- Scope boundary: no Task 2 live `/me` resolver or upload gate, no launcher version bump, publication, or skill pin changes. These remain the lead's subsequent release tasks.
-- Process notes and the detailed `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-1-implementer-report.md` are intentionally excluded from the implementation commit.
-- Fix Round 1 resolves the review's profile-write race with invalidation/account replacement by serializing every record mutation; four deterministic interleavings fail before and pass after the fix, including separate sessions using a shared lock. The focused suite now passes 52 tests; exact final verification is appended to the implementer report.
-
-## 2026-09-24 — Admin-only upload Task 2 launcher preflight
-
-- Branch: `codex/admin-only-upload-task2`, from launcher lead `codex/admin-only-upload-launcher-0-5-2@85f1fc0`.
-- Delivered canonical domain denial/capability, unchanged static upload schemas with admin-only descriptions, employee rejection before input/file/token/partition work, lazy live five-field profile resolution, and the launcher 0.5.2 version/package boundary.
-- Self-review found an in-flight profile/account-replacement race. With lead approval, `LauncherSession.resolveProfile()` now holds the existing local/shared lock across token selection, live lookup, and persistence; deterministic concurrent replacement, logout/replacement, stale-memory token, and pending-login cases pass without widening persisted fields.
-- Verification: 134 focused tests; full suite 111 files / 921 tests passed (6 files / 29 tests skipped); build, pack dry-run, five fresh-install/package tests, lint, typecheck, and format pass. Installed CLI and protocol report 0.5.2; all upload tools remain visible with admin-only descriptions.
-- Accepted scope exceptions: the integration adapter uses a real seeded admin token and authenticated `/me` for its existing launcher-positive path; local MCP smoke and device-login version assertions are aligned to 0.5.2. Broader fixture migrations remain outside Task 2.
-- No npm publication, server recommendation, Skill pins, active install docs, official manual acceptance, or staging changes. The integration adapter is typechecked but no new real-provider integration run is claimed.
-- Package/unit temporary files are cleaned; `.data` has no run-owned leftovers; no Docker resources or additional worktrees were created. Existing unrelated Docker/worktree state remains untouched.
-- Full RED/GREEN evidence, self-review, package shasum, limitations, and diff composition are in `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-2-implementer-report.md`. Progress/handoff/report artifacts are intentionally excluded from implementation commits.
-- Fix Round 1 resolves the review's P1 SDK-ordering issue: the actual MCP `tools/call` request boundary now checks upload role before upload-schema validation while preserving advertised schemas. All three malformed employee requests are tested through `McpServer` + `InMemoryTransport`, with nested input/file/token/partition/network side-effect checks. Final results: 138 focused tests, 925 full-suite tests (29 skipped), five installed-package tests, lint, and typecheck pass.
-
-## 2026-09-24 — Launcher final-review cached profile/token alignment
-
-- Branch: `codex/admin-upload-final-profile-token-fix`, based on launcher lead `fd5162d`.
-- Fixed the populated-cache branch of `resolveProfile()`: shared record and memory-token credential associations are reconciled under the lock before returning a cached profile. Mismatch clears only memory token/expiry/association, so later token refresh belongs to the profile account. Persisted fields are unchanged.
-- Deterministic employee-A/admin-B and admin-A/employee-B regressions failed before the fix and pass after it. Final checks: 72 session/launcher tests; full suite 927 passed / 29 skipped; five installed-package tests; build/pack/lint/typecheck pass. The unchanged short-budget runtime lock test failed once under concurrent load, passed its six-test focused rerun, and passed the complete rerun without concurrent builds.
-- Runtime fixture cleanup removed 18 empty run-owned lock-test directories; package/local-file cleanup ran, `.data` is clean, and no Docker resources or extra worktrees were created. No later release/Skill/server tasks were touched.
-- Full evidence and latest package shasum are appended under `Final Review Fix` in the Task 2 implementer report. Only session implementation/tests belong in the fix commit; these process records remain local.
