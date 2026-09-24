@@ -22,7 +22,9 @@ the project is ready to ingest customer-confidential or authoritative production
 
 ## Current Answer
 
-SMEDC is ready for a **controlled macOS + Codex beta pilot with non-sensitive data**.
+The first pilot scope is a **controlled macOS + Codex beta pilot with non-sensitive data**.
+Invite the user after the admin-only backend enforcement deployment and focused role/clearance
+acceptance pass; the historical results below do not satisfy that new gate.
 
 It is **not yet ready for real customer data**. Recovery, alerts, retention/deletion policy, and
 selected operational drills still need owner approval and evidence before customer-confidential
@@ -61,28 +63,34 @@ substitute for user-visible phone/OpenClaw acceptance on a particular product ho
 
 The recommended first pilot is:
 
-- one real beta user;
+- one real beta user with role `employee`, plus a separate active `admin` account for positive uploads;
 - macOS + Codex only;
 - official skill installation and `smedc-mcp-launcher@0.5.2`;
 - browser password setup and Device Authorization login only;
 - fixture or explicitly approved non-sensitive documents;
-- one or a few simple visibility labels;
-- evidence document upload/search as the primary workflow;
-- structured CSV upload/query only with the tightened skill guidance and explicit date/import
-  context.
+- one organization and explicitly assigned clearance for each account;
+- employee upload denial, admin evidence upload/indexing, and authorized employee search as the primary workflow;
+- structured CSV upload by the active admin and query by the employee only with the tightened
+  skill guidance and explicit date/import context.
+
+The beta user keeps the `employee` role; do not promote the user or raise clearance to make an
+upload succeed. An authorized admin supplies the data. The synthetic acceptance gate separately
+uses employee c0, employee c3, and admin c0 to prove that eligible high-clearance reads do not
+grant upload permission and explicit above-clearance admin uploads do not grant ordinary reads.
 
 The first pilot should avoid real customer-confidential data, broad multi-user rollout, Windows,
 OpenClaw, admin UI, MFA, self-service registration, and automated password-reset email.
 
 ## Remaining Before Inviting The First macOS + Codex Beta User
 
-| Item                            | Status                | Why it matters                                                                                                                           |
-| ------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Beta onboarding runbook         | covered by this slice | The operator needs one repeatable path for account creation, setup-link delivery, verification, reset, and deletion.                     |
-| Skill structured-query guidance | covered by this slice | Manual acceptance showed low-technical prompts like “this table” can cause an agent to answer from a local CSV or query historical rows. |
-| Actual beta identity details    | needed per user       | Operator needs email, display name, role, organization, and allowed labels for the real beta user.                                       |
-| First-run data approval         | needed per pilot      | Decide whether the user uses repo fixtures, synthetic internal docs, or a specific non-sensitive real document.                          |
-| Support owner/contact           | needed per pilot      | Someone must own setup-link delivery, first-login support, reset, and cleanup during the pilot.                                          |
+| Item                            | Status                 | Why it matters                                                                                                                           |
+| ------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Beta onboarding runbook         | covered by this slice  | The operator needs one repeatable path for account creation, setup-link delivery, verification, reset, and deletion.                     |
+| Skill structured-query guidance | covered by this slice  | Manual acceptance showed low-technical prompts like “this table” can cause an agent to answer from a local CSV or query historical rows. |
+| Role-boundary acceptance        | required before invite | Deploy backend enforcement and pass the focused employee c0/c3 denial, admin c0 upload, and ordinary-read checks.                        |
+| Actual beta identity details    | needed per user        | Operator needs email, display name, role, organization, and explicit 0–3 clearance for the beta employee and uploading admin.            |
+| First-run data approval         | needed per pilot       | Decide whether the user uses repo fixtures, synthetic internal docs, or a specific non-sensitive real document.                          |
+| Support owner/contact           | needed per pilot       | Someone must own setup-link delivery, first-login support, reset, and cleanup during the pilot.                                          |
 
 No additional ACR, SSH, RDS password, OSS key, domain, TLS, GitHub Actions secret, npm token, or
 JWT secret is required for the first macOS + Codex pilot.
@@ -107,16 +115,17 @@ to refer to that upload, not all accessible history or an agent-side local short
 
 ## Human Inputs Required For The First Beta User
 
-| Input                  | Why it is needed                            | Recommended default                                  |
-| ---------------------- | ------------------------------------------- | ---------------------------------------------------- |
-| Beta email             | login identity and setup-link recipient     | real beta email                                      |
-| Display name           | operator clarity and audit readability      | real name or agreed nickname                         |
-| Organization           | backend tenant boundary                     | current staging org, unless a new org is intentional |
-| Role                   | backend authorization role                  | `employee`                                           |
-| Allowed labels         | document/query visibility                   | one personal label plus explicit store/team labels   |
-| First-run data class   | prevents accidental customer-data upload    | fixture or approved non-sensitive internal document  |
-| Support/reset contact  | account setup and recovery during the pilot | repository operator                                  |
-| Pilot success criteria | determines whether the pilot is done        | install, login, upload, search, logout/reset         |
+| Input                  | Why it is needed                            | Recommended default                                                       |
+| ---------------------- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| Beta email             | login identity and setup-link recipient     | real beta email                                                           |
+| Display name           | operator clarity and audit readability      | real name or agreed nickname                                              |
+| Organization           | backend tenant boundary                     | current staging org, unless a new org is intentional                      |
+| Role                   | backend authorization role                  | `employee`                                                                |
+| Uploading admin        | separate identity for positive uploads      | active `admin` in the same organization; explicit clearance               |
+| Clearance              | ordinary document/query visibility          | explicit integer 0–3 for each account; no upload permission               |
+| First-run data class   | prevents accidental customer-data upload    | fixture or approved non-sensitive internal document                       |
+| Support/reset contact  | account setup and recovery during the pilot | repository operator                                                       |
+| Pilot success criteria | determines whether the pilot is done        | install/login, employee denial, admin upload, employee read, logout/reset |
 
 ## Before Real Customer Data
 
@@ -142,8 +151,17 @@ A first macOS + Codex beta pilot passes only when:
 - no password, setup link, token, credential, header, or full DSN appears in chat, config, git,
   logs, or reports;
 - the launcher stores durable authentication in the operating-system secure store;
-- a new Codex task can list authenticated labels and call SMEDC MCP tools;
-- fixture or approved non-sensitive evidence upload, indexing, and search succeed;
-- any structured follow-up query is scoped to the intended upload/window or asks for clarification;
+- a new Codex task can confirm the current account's role/clearance and call SMEDC MCP tools;
+- the employee upload request is denied before local file reading or transformation; tools remain
+  visible and the outcome is `403 UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`,
+  `retryable: false`, with no re-login, retry, or clearance workaround;
+- a separate active admin uploads the fixture or approved non-sensitive evidence and confirms
+  indexing with the permitted status path; the employee searches from a fresh task, with the
+  same organization and adequate clearance, and receives only authorized evidence;
+- any structured file is uploaded by the active admin; the employee's follow-up query is scoped
+  to that upload/window or asks for clarification, and follows ordinary organization/clearance rules;
+- the synthetic three-account acceptance proves employee c0/c3 cannot upload, admin c0 can
+  explicitly classify above its clearance, employee c3 can read eligible data, and admin c0 cannot
+  bypass ordinary high-level read authorization;
 - logout and operator password reset revoke old access;
 - pilot test data can be deleted or clearly retained under the agreed policy.

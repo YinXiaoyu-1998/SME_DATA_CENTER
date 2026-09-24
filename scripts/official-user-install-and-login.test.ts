@@ -50,6 +50,34 @@ describe("official user install and login documentation", () => {
     expect(skill).not.toContain("smedc-mcp-launcher@latest");
   });
 
+  it("requires separate upload and read roles in the active beta pilot", async () => {
+    const doc = await readFile(
+      path.join(root, "docs/implementation/beta-access-readiness.md"),
+      "utf8"
+    );
+    const section = (heading: string) => doc.split(`## ${heading}\n`)[1]?.split("\n## ")[0];
+    const scope = section("First Pilot Scope");
+    const inputs = section("Human Inputs Required For The First Beta User");
+    const gates = section("Pilot Acceptance Gates");
+
+    expect(scope).toContain("one real beta user with role `employee`");
+    expect(scope).toContain("a separate active `admin` account for positive uploads");
+    expect(scope).toContain("employee upload denial");
+    expect(scope).not.toContain("visibility labels");
+    expect(inputs).toContain("Uploading admin");
+    expect(inputs).toContain("employee denial, admin upload, employee read");
+    expect(inputs).not.toContain("Allowed labels");
+    expect(gates).toContain(
+      "employee upload request is denied before local file reading or transformation"
+    );
+    expect(gates).toContain("UPLOAD_ADMIN_REQUIRED");
+    expect(gates).toContain("active admin uploads");
+    expect(gates).toContain("employee searches");
+    expect(gates).toContain("same organization and adequate clearance");
+    expect(gates).not.toContain("list authenticated labels");
+    expect(gates).not.toContain("evidence upload, indexing, and search succeed");
+  });
+
   it("keeps active acceptance uploads on admin and preserves the partition abort exception", async () => {
     const acceptance = await readFile(
       path.join(root, "docs/implementation/official-manual-acceptance.md"),
