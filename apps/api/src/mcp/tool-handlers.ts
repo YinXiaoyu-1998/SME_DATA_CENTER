@@ -5,6 +5,10 @@ import {
 } from "@smedc/mcp-contract";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 import type { RequestAuditContext } from "../request-audit-context.js";
+import {
+  authorizeFileUpload,
+  type UploadAuthorizationAuditRepository
+} from "../file-upload-authorization.js";
 import { createActionMcpToolHandlers } from "./action-tools.js";
 import { createReadOnlyMcpToolHandlers } from "./read-tools.js";
 import type { ApiDelegationContext } from "./api-delegation.js";
@@ -28,6 +32,8 @@ export type SmedcMcpToolHandler = (
 export type SmedcMcpToolHandlers = Partial<Record<SmedcMcpToolName, SmedcMcpToolHandler>>;
 
 export interface CreateSmedcMcpToolHandlersOptions {
+  uploadAuthorizationAudit: () => UploadAuthorizationAuditRepository;
+  logAuditFailure: Parameters<typeof authorizeFileUpload>[0]["logAuditFailure"];
   bearerToken: string;
   audit: RequestAuditContext;
   delegationProof: string;
@@ -46,6 +52,14 @@ export function createSmedcMcpToolHandlers(
     inject: options.inject
   });
   const uploadHandlers = createUploadToolHandlers({
+    authorizeUpload: (context, uploadSurface) =>
+      authorizeFileUpload({
+        employee: context.employee,
+        audit: context.audit,
+        uploadSurface,
+        auditRepository: options.uploadAuthorizationAudit,
+        logAuditFailure: options.logAuditFailure
+      }),
     delegate: options.uploadDelegate,
     getDelegationContext: (context): UploadApiDelegationContext => ({
       authorization: `Bearer ${options.bearerToken}`,

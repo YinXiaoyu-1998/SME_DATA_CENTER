@@ -19,8 +19,10 @@ import {
   type McpRequestContext
 } from "./tool-handlers.js";
 import { createRequestAuditContext } from "../request-audit-context.js";
+import type { UploadAuthorizationAuditRepository } from "../file-upload-authorization.js";
 
 export interface McpHttpRouteOptions {
+  uploadAuthorizationAudit: () => UploadAuthorizationAuditRepository;
   maxUploadBytes: number;
   delegationProof: string;
   mcpMaxConcurrentRequests?: number;
@@ -254,6 +256,9 @@ export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRoute
           const handlers =
             options.toolHandlers ??
             createSmedcMcpToolHandlers({
+              uploadAuthorizationAudit: options.uploadAuthorizationAudit,
+              logAuditFailure: (context) =>
+                request.log.error(context, "upload denial audit failed"),
               bearerToken,
               audit: context.audit,
               delegationProof: options.delegationProof,
