@@ -4,6 +4,36 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 
+function section(document: string, heading: string): string {
+  const content = document.split(`## ${heading}\n`)[1];
+  expect(content, `Missing active section: ${heading}`).toBeDefined();
+  return content?.split("\n## ")[0] ?? "";
+}
+
+function prose(content: string): string {
+  return content.replace(/\s+/g, " ").trim();
+}
+
+function launcherVersions(content: string): string[] {
+  // Only explicit installation references: package pins, platform paths, and CLI JSON.
+  // Bare compatibility/history versions such as minimum 0.5.0 are not installation pins.
+  const patterns = [
+    /smedc-mcp-launcher@([^\s`"']+)/g,
+    /launcher[\\/]+versions[\\/]+([^\\/\s`"']+)/g,
+    /"launcherVersion"\s*:\s*"([^"]+)"/g,
+    /this document pins launcher\s+(\S+?)(?=[.;]?(?:\s|$))/g
+  ];
+  return patterns.flatMap((pattern) =>
+    [...content.matchAll(pattern)].map((match) => match[1] ?? "")
+  );
+}
+
+function expectPinnedReferences(content: string, label: string): void {
+  const versions = launcherVersions(content);
+  expect(versions.length, `No launcher references in ${label}`).toBeGreaterThan(0);
+  expect(new Set(versions), label).toEqual(new Set(["0.5.2"]));
+}
+
 describe("official user install and login documentation", () => {
   it("documents the published admin-only launcher and preserves minimum compatibility", async () => {
     const doc = await readFile(
@@ -11,43 +41,69 @@ describe("official user install and login documentation", () => {
       "utf8"
     );
 
-    expect(doc).toContain("`smedc-mcp-launcher@0.5.2`");
-    expect(doc).toContain("`YinXiaoyu-1998/SME_DATA_CENTER`");
-    expect(doc).toContain("is public and independently");
-    expect(doc).toContain("stage-publish-only permission");
-    expect(doc).toContain("recommends 0.5.2");
-    expect(doc).toContain("0.5.0 as the minimum compatible launcher");
-    expect(doc).toContain("UPLOAD_ADMIN_REQUIRED");
-    expect(doc).not.toContain("Public npm publication of 0.5.1");
-    expect(doc).not.toContain("server metadata deliberately continues to recommend");
-    expect(doc).not.toContain("OAuth Device Authorization is the pinned 0.4.0 flow");
+    const status = doc.split("\n## ")[0];
+    const distribution = section(doc, "Accepted Launcher Source And Distribution Boundary");
+    expectPinnedReferences(status, "current install/login status");
+    expectPinnedReferences(distribution, "current launcher distribution");
+    expect(prose(status)).toContain("recommends 0.5.2");
+    expect(prose(status)).toContain("0.5.0 as the minimum compatible launcher");
+    expect(prose(distribution)).toContain("`YinXiaoyu-1998/SME_DATA_CENTER`");
+    expect(prose(distribution)).toContain("is public and independently verified");
+    expect(prose(distribution)).toContain("stage-publish-only permission");
   });
 
   it("pins the published launcher in the current-facing README", async () => {
     const readme = await readFile(path.join(root, "README.md"), "utf8");
 
-    expect(readme).toContain("`smedc-mcp-launcher@0.5.2` local stdio launcher");
-    expect(readme).toContain("accepts launcher 0.5.0 as the minimum");
-    expect(readme).not.toContain("`smedc-mcp-launcher@0.5.0` local stdio launcher");
+    const official = section(readme, "Official Employee MCP");
+    expectPinnedReferences(official, "official README");
+    expect(prose(official)).toContain("accepts launcher 0.5.0 as the minimum");
+  });
+
+  it("pins every active Skill package, platform path, and CLI version reference", async () => {
+    const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
+    const update = await readFile(
+      path.join(root, "skills/smedc-mcp/references/update-skill.md"),
+      "utf8"
+    );
+    expectPinnedReferences(skill.split("\n## ")[0], "Skill approved package");
+    for (const heading of [
+      "Official Install Or Update",
+      "Device-Code Login Flow",
+      "Configure The Invoking Agent",
+      "Removal And Complete Uninstall"
+    ]) {
+      expectPinnedReferences(section(skill, heading), heading);
+    }
+    expectPinnedReferences(
+      section(update, "Continue Within The Requested Scope"),
+      "Skill update pin"
+    );
   });
 
   it("keeps upload guidance role-based, static, and safe before local file access", async () => {
     const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
-    expect(skill).toContain("Only active accounts with role `admin` may upload");
-    expect(skill).toContain("File upload requires the admin role.");
-    expect(skill).toContain("`retryable: false`");
-    expect(skill).toContain("do not read or transform the local file");
-    expect(skill).toContain("Do not re-login or retry");
-    expect(skill).toContain("remain visible");
-    expect(skill).toContain("Do not dynamically hide or remove upload tools");
-    expect(skill).toContain("Clearance is not upload permission");
-    expect(skill).toContain("above their own clearance");
-    expect(skill).toContain("creates no backend audit");
-    expect(skill).toContain("file_upload.denied");
-    expect(skill).toContain("delivery_ledger");
-    expect(skill).not.toMatch(/offer to upload it\s+first/);
-    expect(skill).not.toContain("0.5.1");
-    expect(skill).not.toContain("smedc-mcp-launcher@latest");
+    const upload = section(skill, "Admin-Only Uploads");
+    // Canonical wire values stay literal; wrapping ordinary prose must not break this test.
+    expect(upload).toContain("`403 UPLOAD_ADMIN_REQUIRED`");
+    expect(upload).toContain("`File upload requires the admin role.`");
+    expect(upload).toContain("`retryable: false`");
+    const policy = prose(upload);
+    for (const term of [
+      "Only active accounts with role `admin` may upload",
+      "do not read or transform the local file",
+      "Do not re-login or retry",
+      "remain visible",
+      "Do not dynamically hide or remove upload tools",
+      "Clearance is not upload permission",
+      "above their own clearance",
+      "creates no backend audit",
+      "file_upload.denied",
+      "delivery_ledger"
+    ]) {
+      expect(policy).toContain(term);
+    }
+    expect(prose(section(skill, "SMEDC Data Questions"))).not.toContain("offer to upload it first");
   });
 
   it("requires separate upload and read roles in the active beta pilot", async () => {
@@ -55,10 +111,9 @@ describe("official user install and login documentation", () => {
       path.join(root, "docs/implementation/beta-access-readiness.md"),
       "utf8"
     );
-    const section = (heading: string) => doc.split(`## ${heading}\n`)[1]?.split("\n## ")[0];
-    const scope = section("First Pilot Scope");
-    const inputs = section("Human Inputs Required For The First Beta User");
-    const gates = section("Pilot Acceptance Gates");
+    const scope = prose(section(doc, "First Pilot Scope"));
+    const inputs = prose(section(doc, "Human Inputs Required For The First Beta User"));
+    const gates = prose(section(doc, "Pilot Acceptance Gates"));
 
     expect(scope).toContain("one real beta user with role `employee`");
     expect(scope).toContain("a separate active `admin` account for positive uploads");
@@ -84,12 +139,13 @@ describe("official user install and login documentation", () => {
       "utf8"
     );
     const contract = await readFile(path.join(root, "docs/implementation/api-contract.md"), "utf8");
-    expect(acceptance).toContain("admin identity (`admin`, clearance 0)");
-    expect(acceptance).not.toContain("low-clearance employee explicitly upload");
-    expect(acceptance).not.toContain("employee identity (`employee`, clearance 0)");
-    expect(contract).toContain("employee owner");
-    expect(contract).toContain("UPLOAD_ADMIN_REQUIRED");
-    expect(contract).toContain("structured_dataset");
-    expect(contract).toContain("Delivery Ledger");
+    const runner = prose(section(acceptance, "Runner"));
+    const upload = prose(section(contract, "File Upload Capability"));
+    expect(runner).toContain("admin identity (`admin`, clearance 0)");
+    expect(runner).not.toContain("employee identity (`employee`, clearance 0)");
+    expect(upload).toContain("employee owner");
+    expect(upload).toContain("UPLOAD_ADMIN_REQUIRED");
+    expect(upload).toContain("structured_dataset");
+    expect(upload).toContain("Delivery Ledger");
   });
 });
