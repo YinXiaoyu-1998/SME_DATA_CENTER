@@ -1,7 +1,7 @@
 # Admin-only file upload design
 
-Status: accepted design; implementation pending  
-Base branch: `main`  
+Status: accepted design; implementation pending
+Base branch: `main`
 Design branch: `codex/admin-only-file-upload-design`
 
 ## Goal
