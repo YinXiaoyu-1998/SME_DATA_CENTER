@@ -52,9 +52,11 @@ logging remains an implementation concern.
 
 Only active `admin` accounts may upload; an `employee` is denied at every clearance, including 3.
 Authentication precedes the role check, which precedes parsing, schema validation, local file access
-in the launcher, hashing, storage, and upload side effects. HTTP and MCP use the same canonical
-denial: status `403`, code `UPLOAD_ADMIN_REQUIRED`, message `File upload requires the admin role.`,
-and `retryable: false`. Re-login, retries, or higher clearance cannot grant upload permission.
+in the launcher, hashing, storage, and upload side effects. Direct HTTP upload endpoints return
+transport status `403`. MCP JSON-RPC transport remains HTTP `200`, with a tool result carrying
+`isError: true`. Both use the canonical error code `UPLOAD_ADMIN_REQUIRED`, message
+`File upload requires the admin role.`, and `retryable: false`. Re-login, retries, or higher
+clearance cannot grant upload permission.
 
 | Upload entry point                                      | MCP tool / transport                                                       | Denied audit `uploadSurface` |
 | ------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------- |
@@ -76,7 +78,7 @@ The cached profile is exactly `displayName`, `email`, `role`, `clearance`, `orga
 `smedc_get_current_user` continues to read live server state. A local denial creates no backend
 audit. Backend denials best-effort record `file_upload.denied`, with actor, organization, safe
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
-is parsed for auditing, and audit failure cannot change the 403.
+is parsed for auditing, and audit failure cannot change the denial.
 
 The recommended launcher is exactly 0.5.2; minimum compatibility remains 0.5.0. Older compatible
 launchers remain protected by authoritative backend denial. This change adds no historical

@@ -1,5 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { CallToolRequestSchema, type CallToolRequest } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  McpError,
+  type CallToolRequest
+} from "@modelcontextprotocol/sdk/types.js";
 import { SMEDC_MCP_TOOL_CONTRACTS, type SmedcMcpToolName } from "@smedc/mcp-contract";
 import type { McpRequestContext, SmedcMcpToolHandlers } from "./tool-handlers.js";
 import { createNoopToolHandler } from "./tool-handlers.js";
@@ -34,7 +39,20 @@ export function createSmedcHttpMcpServer(input: {
       ) {
         const upload = input.handlers?.[params.name];
         if (upload) {
-          return upload(params.arguments, { ...input.context, abortSignal: extra.signal });
+          try {
+            return await upload(params.arguments, { ...input.context, abortSignal: extra.signal });
+          } catch (error) {
+            // Match the SDK tools/call wrapper after authorization-first dispatch.
+            if (error instanceof McpError && error.code === ErrorCode.UrlElicitationRequired) {
+              throw error;
+            }
+            return {
+              content: [
+                { type: "text", text: error instanceof Error ? error.message : String(error) }
+              ],
+              isError: true
+            };
+          }
         }
       }
       return handler(request, extra);

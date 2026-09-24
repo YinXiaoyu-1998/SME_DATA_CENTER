@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { createSmedcHttpMcpServer } from "./server.js";
 import type { InjectOptions, InjectPayload, Response as InjectResponse } from "light-my-request";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -555,6 +556,62 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         ]
       });
     }
+  });
+
+  it.each(["throw", "reject"] as const)(
+    "normalizes an unexpected upload handler %s like an ordinary SDK tool failure",
+    async (mode) => {
+      const fail = vi.fn(() => {
+        if (mode === "throw") throw new Error("unexpected tool failure");
+        return Promise.reject("unexpected tool failure");
+      });
+      app = buildCustomMcpTestServer({
+        smedc_get_current_user: fail,
+        upload_evidence_document: fail
+      });
+      const results = [];
+      for (const name of ["smedc_get_current_user", "upload_evidence_document"]) {
+        const response = await postMcp(
+          app,
+          { jsonrpc: "2.0", id: 65, method: "tools/call", params: { name, arguments: {} } },
+          { "mcp-protocol-version": "2025-11-25" }
+        );
+        expect(response.statusCode).toBe(200);
+        const body = parseJsonRpc(response.payload);
+        expect(body).not.toHaveProperty("error");
+        expect(body.result).toEqual({
+          content: [{ type: "text", text: "unexpected tool failure" }],
+          isError: true
+        });
+        results.push(body);
+      }
+      expect(results[1]).toEqual(results[0]);
+      expect(fail).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it("preserves the SDK URL-elicitation protocol exception for upload handlers", async () => {
+    const fail = async () => {
+      throw new McpError(ErrorCode.UrlElicitationRequired, "URL elicitation required");
+    };
+    app = buildCustomMcpTestServer({
+      smedc_get_current_user: fail,
+      upload_evidence_document: fail
+    });
+    const results = [];
+    for (const name of ["smedc_get_current_user", "upload_evidence_document"]) {
+      const response = await postMcp(
+        app,
+        { jsonrpc: "2.0", id: 66, method: "tools/call", params: { name, arguments: {} } },
+        { "mcp-protocol-version": "2025-11-25" }
+      );
+      expect(response.statusCode).toBe(200);
+      const body = parseJsonRpc(response.payload);
+      expect(body).not.toHaveProperty("result");
+      expect(body.error?.code).toBe(ErrorCode.UrlElicitationRequired);
+      results.push(body);
+    }
+    expect(results[1]).toEqual(results[0]);
   });
 
   it("restores the SDK registration method when tool registration throws", () => {
