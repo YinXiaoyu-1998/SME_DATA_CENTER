@@ -2,7 +2,7 @@ import * as oauth from "oauth4webapi";
 import semver from "semver";
 import { LauncherTypedError, type OAuthTokenClient } from "./session.js";
 
-export const LAUNCHER_VERSION = "0.5.1";
+export const LAUNCHER_VERSION = "0.5.2";
 const CLIENT: oauth.Client = { client_id: "smedc-desktop-launcher" };
 const VERSION_HEADER = { "x-smedc-launcher-version": LAUNCHER_VERSION };
 const REQUEST_TIMEOUT_MS = 10_000;

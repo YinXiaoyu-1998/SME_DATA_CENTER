@@ -4,6 +4,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
 import {
+  FILE_UPLOAD_ADMIN_REQUIRED_CODE,
+  FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
   SMEDC_MCP_TOOL_CONTRACTS,
   SMEDC_MCP_TOOL_NAMES,
   errorToolResult,
@@ -18,6 +20,7 @@ import { readLocalUploadFile } from "./local-file.js";
 import { downloadPartitionDataset, uploadPartitionDataset } from "./partition-transfer.js";
 import { createCrossProcessLock, createKeychainCredentialStore } from "./runtime.js";
 import { LauncherSession, LauncherTypedError } from "./session.js";
+import { parseCurrentUserProfileResponse, type CachedUserProfile } from "./user-profile.js";
 
 export const LAUNCHER_BOOTSTRAP_TOOL_NAMES = [
   "smedc_login",
@@ -70,6 +73,7 @@ export interface LauncherAuthentication {
   logout(): Promise<{ remoteRevocationConfirmed: boolean; localCredentialRemoved: boolean }>;
   status(): Promise<{ authenticated: boolean }>;
   accessToken(): Promise<string>;
+  profile(): Promise<CachedUserProfile>;
   invalidate(): Promise<void>;
   selfCheck(): Promise<LauncherSelfCheck>;
 }
@@ -146,7 +150,8 @@ export function createLauncherToolDependencies(input: {
 }): LauncherToolDependencies {
   return {
     config: input.config,
-    auth: input.auth ?? createOfficialLauncherAuthentication(input.config),
+    auth:
+      input.auth ?? createOfficialLauncherAuthentication(input.config, input.fetchImplementation),
     fetchImplementation: input.fetchImplementation ?? fetch
   };
 }
@@ -185,11 +190,32 @@ export function createLauncherToolHandler(
   if (toolName === "download_structured_partitions")
     return (input) => proxyPartitionDownload(input, dependencies);
   if (LOCAL_PATH_UPLOAD_TOOL_NAMES.has(toolName as LauncherBusinessToolName))
-    return (input) =>
-      proxyLocalPathUpload(toolName as LauncherBusinessToolName, input, dependencies);
+    return (input) => preflightUpload(toolName as LauncherBusinessToolName, input, dependencies);
   if ((SMEDC_MCP_TOOL_NAMES as readonly string[]).includes(toolName))
     return (input) => proxy(toolName as LauncherBusinessToolName, input, dependencies);
   return async () => toolNotFoundResult(toolName);
+}
+
+async function preflightUpload(
+  toolName: LauncherBusinessToolName,
+  input: unknown,
+  dependencies: LauncherToolDependencies
+): Promise<LauncherToolResult> {
+  try {
+    const profile = await dependencies.auth.profile();
+    if (profile.role !== "admin") {
+      return errorToolResult(
+        FILE_UPLOAD_ADMIN_REQUIRED_CODE,
+        FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
+        undefined,
+        { retryable: false }
+      );
+    }
+  } catch (error) {
+    const typed = mapMcpError(error);
+    return typedToolError(typed);
+  }
+  return proxyLocalPathUpload(toolName, input, dependencies);
 }
 
 async function proxyLocalPathUpload(
@@ -356,16 +382,21 @@ function uploadFileFromInput(
 }
 
 export function createOfficialLauncherAuthentication(
-  config: LauncherRuntimeConfig
+  config: LauncherRuntimeConfig,
+  fetchImplementation: typeof fetch = fetch
 ): LauncherAuthentication {
   const origin = config.serviceUrl;
-  const oauth = new SmedcOAuthClient(new URL(origin));
+  const oauth = new SmedcOAuthClient(new URL(origin), fetchImplementation);
   const session = new LauncherSession({
     origin,
     secureStore: createKeychainCredentialStore(origin),
     tokenClient: oauth,
     lock: createCrossProcessLock(origin)
   });
+  const accessToken = async () => {
+    await oauth.metadata(true);
+    return session.ensureAccessToken();
+  };
   return {
     login: async () => {
       const metadata = await oauth.metadata(true);
@@ -393,10 +424,12 @@ export function createOfficialLauncherAuthentication(
     },
     logout: () => session.logout(),
     status: () => session.status(),
-    accessToken: async () => {
-      await oauth.metadata(true);
-      return session.ensureAccessToken();
-    },
+    accessToken,
+    profile: () =>
+      session.resolveProfile(async (token) => {
+        await oauth.metadata(true);
+        return fetchCurrentUserProfile(origin, token, fetchImplementation);
+      }),
     invalidate: () => session.invalidate(),
     selfCheck: async () => {
       let secureStoreAvailable = false;
@@ -419,7 +452,7 @@ export function createOfficialLauncherAuthentication(
       if (metadata?.compatible && authenticated) {
         try {
           const accessToken = await session.ensureAccessToken();
-          await verifyMcpHandshake(config, accessToken, fetch);
+          await verifyMcpHandshake(config, accessToken, fetchImplementation);
           handshake = "ok";
         } catch {
           handshake = "unavailable";
@@ -446,6 +479,29 @@ export function createOfficialLauncherAuthentication(
       };
     }
   };
+}
+
+async function fetchCurrentUserProfile(
+  serviceUrl: string,
+  accessToken: string,
+  fetchImplementation: typeof fetch
+): Promise<CachedUserProfile> {
+  try {
+    const response = await fetchImplementation(new URL("/me", serviceUrl), {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "x-smedc-launcher-version": LAUNCHER_VERSION
+      },
+      signal: AbortSignal.timeout(REMOTE_MCP_TIMEOUT_MS)
+    });
+    if (response.status === 401) throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
+    if (!response.ok) throw new LauncherTypedError("SERVICE_UNAVAILABLE");
+    return parseCurrentUserProfileResponse(await response.json());
+  } catch (error) {
+    if (error instanceof LauncherTypedError) throw error;
+    throw new LauncherTypedError("SERVICE_UNAVAILABLE");
+  }
 }
 
 async function login(

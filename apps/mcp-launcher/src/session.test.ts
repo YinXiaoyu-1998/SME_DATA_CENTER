@@ -17,6 +17,90 @@ const adminProfile: CachedUserProfile = {
 };
 
 describe("versioned launcher profile record", () => {
+  it.each(["replace", "logout then replace"] as const)(
+    "keeps pending profile resolution bound to account A during %s from another session",
+    async (operation) => {
+      const secureStore = memoryStore(null);
+      const dependencies = {
+        origin,
+        secureStore,
+        tokenClient: tokenClientReturning({ accessToken: "refreshed", refreshToken: "rotated" }),
+        lock: serialLock()
+      };
+      const session = new LauncherSession(dependencies);
+      const otherSession = new LauncherSession(dependencies);
+      await session.establish("account-a-access", "account-a-refresh", Date.now() + 9 * 60_000);
+      const lookupStarted = deferred();
+      const finishLookup = deferred();
+      const resolving = session.resolveProfile(async (accessToken) => {
+        expect(accessToken).toBe("account-a-access");
+        lookupStarted.resolve();
+        await finishLookup.promise;
+        return adminProfile;
+      });
+      await lookupStarted.promise;
+      let replaced = false;
+      const replacing = (async () => {
+        if (operation === "logout then replace") await otherSession.logout();
+        await otherSession.establish(
+          "account-b-access",
+          "account-b-refresh",
+          Date.now() + 9 * 60_000
+        );
+        replaced = true;
+      })();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(replaced).toBe(false);
+      finishLookup.resolve();
+      await expect(resolving).resolves.toEqual(adminProfile);
+      await replacing;
+      expect(JSON.parse((await secureStore.get())!)).toEqual({
+        schemaVersion: 2,
+        origin,
+        durableCredential: "account-b-refresh",
+        profile: null
+      });
+    }
+  );
+
+  it("selects the current durable account instead of another process's stale memory token", async () => {
+    const secureStore = memoryStore(null);
+    const tokenClient = tokenClientReturning({
+      accessToken: "account-b-refreshed",
+      refreshToken: "account-b-rotated"
+    });
+    const dependencies = { origin, secureStore, tokenClient, lock: serialLock() };
+    const session = new LauncherSession(dependencies);
+    const otherSession = new LauncherSession(dependencies);
+    await session.establish("account-a-access", "account-a-refresh", Date.now() + 9 * 60_000);
+    await otherSession.establish("account-b-access", "account-b-refresh", Date.now() + 9 * 60_000);
+    const employeeProfile = { ...adminProfile, role: "employee" as const };
+    await expect(
+      session.resolveProfile(async (accessToken) => {
+        expect(accessToken).toBe("account-b-refreshed");
+        return employeeProfile;
+      })
+    ).resolves.toEqual(employeeProfile);
+    expect(tokenClient.refresh).toHaveBeenCalledWith("account-b-refresh");
+    expect(JSON.parse((await secureStore.get())!).profile).toEqual(employeeProfile);
+  });
+
+  it("waits for device login before acquiring the atomic profile resolution lock", async () => {
+    const session = new LauncherSession({
+      origin,
+      tokenClient: tokenClientReturning({ accessToken: "unused", refreshToken: "unused" })
+    });
+    const login = deferred();
+    session.waitForLogin(login.promise);
+    const resolving = session.resolveProfile(async (accessToken) => {
+      expect(accessToken).toBe("after-login");
+      return adminProfile;
+    });
+    await session.establish("after-login", "refresh", Date.now() + 9 * 60_000);
+    login.resolve();
+    await expect(resolving).resolves.toEqual(adminProfile);
+  });
+
   it.each([
     { operation: "invalidate", sharedLock: false },
     { operation: "establish", sharedLock: false },

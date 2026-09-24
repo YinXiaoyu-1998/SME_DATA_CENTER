@@ -9,7 +9,7 @@ interface CommandResult {
 }
 
 const rootDir = process.cwd();
-export const EXPECTED_MCP_LAUNCHER_VERSION = "0.5.1";
+export const EXPECTED_MCP_LAUNCHER_VERSION = "0.5.2";
 
 async function main(): Promise<void> {
   try {

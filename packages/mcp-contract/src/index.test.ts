@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { STRUCTURED_QUERY_LIMITS } from "@smedc/domain";
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
   SMEDC_MCP_TOOL_NAMES,
+  FILE_UPLOAD_ADMIN_REQUIRED_CODE,
+  FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
   MCP_LOCAL_FILE_PATH_MAX_LENGTH,
   MCP_STRUCTURED_QUERY_LIMITS,
   MCP_UPLOAD_FILENAME_MAX_LENGTH,
@@ -22,6 +25,41 @@ import {
 const contractsByName = new Map(
   SMEDC_MCP_TOOL_CONTRACTS.map((contract) => [contract.name, contract])
 );
+
+it("marks only the existing upload contracts admin-only without changing their schemas", () => {
+  expect(FILE_UPLOAD_ADMIN_REQUIRED_CODE).toBe("UPLOAD_ADMIN_REQUIRED");
+  expect(FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE).toBe("File upload requires the admin role.");
+  const uploads = SMEDC_MCP_TOOL_CONTRACTS.filter((tool) => tool.name.startsWith("upload_"));
+  expect(uploads.map((tool) => tool.name)).toEqual([
+    "upload_structured_dataset",
+    "upload_evidence_document",
+    "upload_quarantine_certificate"
+  ]);
+  // Release compatibility fingerprints captured from the pre-change public contracts.
+  expect(
+    uploads.map((tool) =>
+      createHash("sha256")
+        .update(JSON.stringify(z.toJSONSchema(tool.inputSchema)))
+        .digest("hex")
+    )
+  ).toEqual([
+    "11c800833e21cd941035dcc5c3e0d038338f244754947699868beaa94a85727c",
+    "c0f9fcfeaad06bf464a5fdff0a67f510fa0838b328bd9486add970b4a4714aad",
+    "41228c8beb97b8fab72e83301e87334180b37ee2d516f804116c767d4e00e9cb"
+  ]);
+  for (const tool of uploads) expect(tool.description).toContain("Requires the admin role.");
+  expect(
+    createHash("sha256")
+      .update(
+        JSON.stringify(
+          SMEDC_MCP_TOOL_CONTRACTS.filter((tool) => !tool.name.startsWith("upload_")).map(
+            (tool) => [tool.name, tool.description]
+          )
+        )
+      )
+      .digest("hex")
+  ).toBe("1170cf08029144775da774da11f9d29fa0ceb44a9e04d5ff8e5f630f0d6f8c60");
+});
 
 const validInputs = {
   smedc_get_current_user: {},

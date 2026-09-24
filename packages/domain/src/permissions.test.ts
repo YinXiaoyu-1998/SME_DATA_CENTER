@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { canEmployeeAccessDocument } from "./permissions.js";
+import { canEmployeeUploadFiles } from "./index.js";
+
+describe("canEmployeeUploadFiles", () => {
+  it("allows only active admins, independently of read clearance", () => {
+    expect(canEmployeeUploadFiles({ role: "admin", disabled: false })).toBe(true);
+    expect(canEmployeeUploadFiles({ role: "employee", disabled: false })).toBe(false);
+    expect(canEmployeeUploadFiles({ role: "admin", disabled: true })).toBe(false);
+  });
+});
 
 describe("canEmployeeAccessDocument", () => {
   it("allows an active employee whose clearance reaches the document level", () => {

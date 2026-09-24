@@ -17,7 +17,8 @@ import {
 import { AuthCore } from "../apps/api/src/auth/auth-core.js";
 import {
   createLauncherToolDependencies,
-  createLauncherToolHandler
+  createLauncherToolHandler,
+  parseCurrentUserProfileResponse
 } from "../apps/mcp-launcher/src/index.js";
 import {
   OAUTH_CLIENT_ID,
@@ -181,6 +182,7 @@ try {
     "business and dishes must be rejected by the removed row-import endpoint."
   );
 
+  const launcherAdminAccessToken = await createOfficialIntegrationAccessToken("emp_admin");
   const launcherDependencies = createLauncherToolDependencies({
     config: { serviceUrl: apiUrl, transport: "stdio" },
     auth: {
@@ -196,7 +198,14 @@ try {
       }),
       logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
       status: async () => ({ authenticated: true }),
-      accessToken: async () => employeeAccessToken,
+      accessToken: async () => launcherAdminAccessToken,
+      profile: async () => {
+        const response = await fetch(`${apiUrl}/me`, {
+          headers: authorizationHeader(launcherAdminAccessToken)
+        });
+        assert(response.ok, "Launcher admin profile lookup must succeed.");
+        return parseCurrentUserProfileResponse(await response.json());
+      },
       invalidate: async () => undefined,
       selfCheck: async () => {
         throw new Error("not used");
