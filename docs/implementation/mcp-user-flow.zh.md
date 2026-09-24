@@ -16,7 +16,8 @@ launcher 发行包为 `smedc-mcp-launcher@0.5.2`。
 
 仅启用的 `admin` 可上传证据文档、结构化数据（含进货台账 Delivery Ledger）和检疫证明。
 上传工具保持静态可见并标为仅管理员可用；已知为 `employee` 时，agent 不得读取或转换本地文件。
-launcher 0.5.2 在文件访问前检查身份，HTTP/MCP 拒绝契约为 `403 UPLOAD_ADMIN_REQUIRED`、
+launcher 0.5.2 在文件访问前检查身份。直接 HTTP 上传端点返回 HTTP `403`；
+MCP JSON-RPC 传输返回 HTTP `200`，工具结果包含 `isError: true`。两者均携带 `UPLOAD_ADMIN_REQUIRED`、
 `File upload requires the admin role.`、`retryable: false`。解释管理员要求即可，不重登、不重试，
 不通过提高 clearance 绕过。仅本地阻止不产生后端审计；后端拒绝尽力记录 `file_upload.denied`。
 管理员可明确声明高于自身 clearance 的密级，但普通状态、清单、检索、查询和下载仍遵循原有读取规则。

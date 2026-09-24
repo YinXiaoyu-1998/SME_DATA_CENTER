@@ -56,9 +56,11 @@ For the first real beta user, use `employee` and select clearance separately.
 That employee can read eligible data but cannot upload at any clearance. Arrange a separate active
 admin for approved pilot uploads, including evidence, structured tables, Delivery Ledger, and
 quarantine certificates. Tools remain visible and admin-only. A known employee request must stop
-before local file reading/transformation; `403 UPLOAD_ADMIN_REQUIRED`,
-`File upload requires the admin role.`, `retryable: false` requires explaining the admin role,
-without re-login, retry, or raising clearance. Local preflight creates no backend audit; backend
+before local file reading/transformation. Direct HTTP upload endpoints return HTTP `403`;
+MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result. Both carry
+`UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and `retryable: false`.
+Explain the admin role without re-login, retry, or raising clearance.
+Local preflight creates no backend audit; backend
 denial best-effort records `file_upload.denied`. Admins may explicitly classify above their
 clearance, but ordinary read rules remain. See [the endpoint matrix](api-contract.md#file-upload-capability)
 for partition create/parts/complete, owner abort, and older-launcher backend safety.

@@ -5,8 +5,10 @@ Last verified: 2026-09-22 (historical acceptance evidence below); current guidan
 Current upload policy requires active `admin` for evidence, structured data (including Delivery
 Ledger), and quarantine certificates. Employee c0/c3 may read eligible data but cannot upload;
 admin c0 may explicitly upload higher-level files without gaining ordinary read access. Tools stay
-visible. `403 UPLOAD_ADMIN_REQUIRED` / `File upload requires the admin role.` / `retryable: false`
-requires an admin, not re-login, retry, or a clearance change. Launcher 0.5.2 preflights before local
+visible. Direct HTTP upload endpoints return HTTP `403`; MCP JSON-RPC transport returns HTTP `200`
+with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+`File upload requires the admin role.`, and `retryable: false`. This requires an admin, not
+re-login, retry, or a clearance change. Launcher 0.5.2 preflights before local
 file access and creates no backend audit; backend denial best-effort records `file_upload.denied`.
 The [current endpoint matrix](api-contract.md#file-upload-capability) governs new pilots. Previous
 full-flow results below remain historical evidence and do not prove the new three-account gate.
@@ -153,8 +155,10 @@ A first macOS + Codex beta pilot passes only when:
 - the launcher stores durable authentication in the operating-system secure store;
 - a new Codex task can confirm the current account's role/clearance and call SMEDC MCP tools;
 - the employee upload request is denied before local file reading or transformation; tools remain
-  visible and the outcome is `403 UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`,
-  `retryable: false`, with no re-login, retry, or clearance workaround;
+  visible. Direct HTTP upload endpoints return HTTP `403`; MCP JSON-RPC transport returns HTTP `200`
+  with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+  `File upload requires the admin role.`, and `retryable: false`, with no re-login, retry,
+  or clearance workaround;
 - a separate active admin uploads the fixture or approved non-sensitive evidence and confirms
   indexing with the permitted status path; the employee searches from a fresh task, with the
   same organization and adequate clearance, and receives only authorized evidence;

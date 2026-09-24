@@ -19,8 +19,9 @@ profile contains exactly `displayName`, `email`, `role`, `clearance`, and `organ
 legacy profiles are resolved lazily, and logout/session clearing removes the profile. The live
 `smedc_get_current_user` response remains authoritative for current-user questions.
 
-Employee-role calls receive HTTP/MCP `403 UPLOAD_ADMIN_REQUIRED`,
-`File upload requires the admin role.`, `retryable: false`. Do not re-login or retry for this error.
+Employee-role uploads receive HTTP `403` from direct HTTP endpoints. MCP JSON-RPC transport
+returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+`File upload requires the admin role.`, and `retryable: false`. Do not re-login or retry for this error.
 A local preflight denial creates no backend audit; a backend denial best-effort records
 `file_upload.denied`. Older compatible launchers are still denied by the backend. Partition
 create/parts/complete require admin, while owner abort and existing read/status/manifest rules stay

@@ -170,8 +170,10 @@ workflow now also exercises the installed package and no-display behavior on Ubu
 compatibility still accepts launcher 0.5.0 as the minimum and recommends exactly 0.5.2.
 
 Only active admins upload evidence, structured datasets (including Delivery Ledger), and quarantine
-certificates. Employees at every clearance receive nonretryable `403 UPLOAD_ADMIN_REQUIRED`
-(`File upload requires the admin role.`). Tools stay visible; launcher 0.5.2 preflights the role
+certificates. Employee uploads at every clearance receive HTTP `403` from direct HTTP endpoints;
+MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result. Both carry
+`UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and `retryable: false`.
+Tools stay visible; launcher 0.5.2 preflights the role
 before reading a file, while the backend also protects older compatible launchers. Clearance
 continues to govern ordinary reads independently. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
 Publication is verified; deployment of this backend enforcement slice remains a separate gate.

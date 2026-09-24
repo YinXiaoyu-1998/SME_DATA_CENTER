@@ -38,8 +38,10 @@ The official target profile must be actionable enough for an agent to:
    `launcher_upgrade_required` as distinct typed outcomes. Retry the original operation exactly
    once after successful browser login.
 5. Resolve upload role before local file access. Only active admins upload; known employees must
-   not read or transform the file. Tools remain visible. `403 UPLOAD_ADMIN_REQUIRED`,
-   `File upload requires the admin role.`, `retryable: false` must not cause re-login or retry.
+   not read or transform the file. Tools remain visible. Direct HTTP upload endpoints return
+   HTTP `403`; MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result.
+   Both carry `UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and
+   `retryable: false`, which must not cause re-login or retry.
    Clearance is independent: admins may explicitly upload above their clearance without a read
    bypass. Upload original files, report service validation errors, and poll status without starting
    a worker; use only API-visible records and never supply an organization ID. There are no labels.

@@ -8,8 +8,10 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 
 Launcher recommendation is exactly 0.5.2; minimum compatibility is 0.5.0. Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
-prove employee c0/c3 receive `403 UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`,
-`retryable: false` before input/file/storage side effects. Tools remain statically visible.
+prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
+returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+`File upload requires the admin role.`, and `retryable: false` before input/file/storage side effects.
+Tools remain statically visible.
 Local denial creates no backend audit; backend denial best-effort records `file_upload.denied`
 using `evidence_document`, `structured_dataset` (including Delivery Ledger), or
 `quarantine_certificate`. Audit failure cannot change denial.

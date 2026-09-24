@@ -20,8 +20,10 @@ is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
 Only active admins upload evidence, structured datasets (including Delivery Ledger), or quarantine
 certificates. Upload tools remain visible and marked admin-only. For a known employee role, the
 agent must not read or transform the local file; launcher 0.5.2 preflights before file access.
-HTTP/MCP denial is `403 UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`,
-`retryable: false`: explain the admin requirement without re-login, retry, or a clearance workaround.
+Direct HTTP upload endpoints return HTTP `403`. MCP JSON-RPC transport returns HTTP `200`
+with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+`File upload requires the admin role.`, and `retryable: false`: explain the admin requirement
+without re-login, retry, or a clearance workaround.
 Local prevention produces no backend audit; backend denial best-effort records `file_upload.denied`.
 An admin may explicitly classify above their clearance, but ordinary read/status/search/query/download
 rules still apply. Partition create/parts/complete require admin; owner abort remains allowed.

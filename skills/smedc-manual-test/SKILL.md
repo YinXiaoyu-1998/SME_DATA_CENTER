@@ -30,8 +30,10 @@ The controller then deletes every account and all test data after the run.
 Use launcher `smedc-mcp-launcher@0.5.2` and the 16-task three-account manifest. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
-before reading or transforming files. Tools remain visible; `403 UPLOAD_ADMIN_REQUIRED` has exact
-message `File upload requires the admin role.` and `retryable: false`, with no re-login or retry.
+before reading or transforming files. Tools remain visible. Direct HTTP upload endpoints return
+HTTP `403`; MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result.
+Both carry `UPLOAD_ADMIN_REQUIRED`, exact message `File upload requires the admin role.`,
+and `retryable: false`, with no re-login or retry.
 Launcher-local prevention creates no backend audit; automated backend tests separately verify
 best-effort `file_upload.denied`, partition create/parts/complete denial, and owner abort access.
 Clearance is orthogonal: admin c0 may explicitly upload level 2 but cannot ordinarily read it;

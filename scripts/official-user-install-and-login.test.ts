@@ -85,7 +85,7 @@ describe("official user install and login documentation", () => {
     const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
     const upload = section(skill, "Admin-Only Uploads");
     // Canonical wire values stay literal; wrapping ordinary prose must not break this test.
-    expect(upload).toContain("`403 UPLOAD_ADMIN_REQUIRED`");
+    expect(upload).toContain("`UPLOAD_ADMIN_REQUIRED`");
     expect(upload).toContain("`File upload requires the admin role.`");
     expect(upload).toContain("`retryable: false`");
     const policy = prose(upload);
@@ -104,6 +104,37 @@ describe("official user install and login documentation", () => {
       expect(policy).toContain(term);
     }
     expect(prose(section(skill, "SMEDC Data Questions"))).not.toContain("offer to upload it first");
+  });
+
+  it.each([
+    ["skills/smedc-mcp/SKILL.md", "Admin-Only Uploads"],
+    ["skills/smedc-manual-test/SKILL.md", "Current Acceptance Boundary"],
+    ["README.md", "Official Employee MCP"],
+    ["docs/implementation/official-user-install-and-login.md", "Upload Role And Launcher Profile"],
+    ["docs/implementation/mcp-user-flow.md", "Upload Authorization"],
+    ["docs/implementation/mcp-user-flow.zh.md", "上传权限"],
+    ["docs/context/CONTEXT.md", "Flagged Ambiguities"],
+    ["docs/implementation/api-contract.md", "File Upload Capability"],
+    ["docs/implementation/smedc-mcp-skill.md", "Required Behavior"],
+    ["docs/implementation/beta-user-onboarding-runbook.md", "Information To Collect"],
+    ["docs/implementation/beta-access-readiness.md", ""],
+    ["docs/implementation/beta-access-readiness.md", "Pilot Acceptance Gates"],
+    ["docs/implementation/test-cases.md", "Admin-only upload regression boundary"],
+    ["docs/implementation/official-manual-acceptance.md", "Upload Authorization Acceptance"]
+  ])("distinguishes HTTP and MCP upload denial transport in %s / %s", async (file, heading) => {
+    const document = await readFile(path.join(root, file), "utf8");
+    const active = prose(heading ? section(document, heading) : (document.split("\n## ")[0] ?? ""));
+    expect(active).toMatch(/(?:HTTP|transport status) `403`/);
+    expect(active).toMatch(/MCP JSON-RPC.{0,80}HTTP `200`/);
+    for (const literal of [
+      "`isError: true`",
+      "`UPLOAD_ADMIN_REQUIRED`",
+      "`File upload requires the admin role.`",
+      "`retryable: false`"
+    ]) {
+      expect(active).toContain(literal);
+    }
+    expect(active).not.toMatch(/HTTP\/MCP[^.!。]*403|MCP\s+`403|MCP JSON-RPC[^.!。]*HTTP `403`/);
   });
 
   it("requires separate upload and read roles in the active beta pilot", async () => {

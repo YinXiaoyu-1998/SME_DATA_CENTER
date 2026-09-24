@@ -238,9 +238,10 @@ read denial. Positive upload families include evidence, row CSV, business/dishes
 unchanged Delivery Ledger XLSX, and quarantine certificates. Do not normalize or convert the Ledger
 file; the service validates the original. Optional companion delivery-report checks remain separate.
 
-Automated HTTP/MCP regressions prove `403 UPLOAD_ADMIN_REQUIRED`, exact message
-`File upload requires the admin role.`, `retryable: false`, before validation/storage work, and
-best-effort `file_upload.denied` with `uploadSurface` equal to `evidence_document`,
+Automated regressions prove direct HTTP upload endpoints return HTTP `403`, while MCP JSON-RPC
+transport returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+exact message `File upload requires the admin role.`, and `retryable: false` before validation/storage
+work. Tests also prove best-effort `file_upload.denied` with `uploadSurface` equal to `evidence_document`,
 `structured_dataset` (including Ledger), or `quarantine_certificate`. Local launcher denial occurs
 before file reads and creates no backend audit. Tools remain visible; no re-login or retry is a
 valid recovery. Automated tests also cover partition create/parts/complete denial, employee owner

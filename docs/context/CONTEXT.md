@@ -352,7 +352,7 @@ _Avoid_: 多租户 SaaS
 - 本地和 CI 可默认使用 deterministic fake embedding/rerank provider，以避免真实 API key、费用和数据外发；真实外部 provider smoke 应使用合成文本并作为 manual/nightly/staging preflight
 - Qdrant 索引可从 MySQL、OSS 源文件和 retrieval config 重建，但 staging/prod-like runbook 仍需定义 snapshot 或 rebuild 策略；自动 snapshot/restore drill 和一键 rebuild 属于 P2
 - Phase 3 MCP 仍然只是 HTTP API 的薄适配，不直连 MySQL/Qdrant/OSS/model provider，不重复权限/查询校验，不暴露 worker/admin/operator 控制
-- 员工智能体可通过 MCP 做 evidence search、structured dataset discovery、row-dataset controlled query、`business` / `dishes` launcher-local partition extract 和 import/status；上传工具保持所有角色可发现，但只有 active admin 可调用 structured、evidence 和检疫证明上传，employee 由 launcher 本地预拦截且后端仍统一强制 403；模型配置、强制重建索引、worker retry、schema registry 编辑、导入声明修复等保持 HTTP/admin-only
+- 员工智能体可通过 MCP 做 evidence search、structured dataset discovery、row-dataset controlled query、`business` / `dishes` launcher-local partition extract 和 import/status；上传工具保持所有角色可发现，但只有 active admin 可调用 structured、evidence 和检疫证明上传，employee 由 launcher 本地预拦截，后端独立授权；直接 HTTP 上传端点返回 HTTP `403`，MCP JSON-RPC 传输返回 HTTP `200` 且工具结果为 `isError: true`；模型配置、强制重建索引、worker retry、schema registry 编辑、导入声明修复等保持 HTTP/admin-only
 - 在真正修改 `implementation-plan.md` 前，必须做 phase renumbering impact audit；旧 `Phase 3` / `phase-3` 引用需要分类为新检索 Phase 3、旧 staging/readiness 阶段、历史引用或 stale reference
 - supporting docs 优先使用语义化命名；`phase-3-readiness.md` 已按用户确认重命名为 `staging-readiness.md`
 - 历史 progress、handoff、accepted ADR context 不应逐条重写；应通过追加 note 说明 phase numbering changed
@@ -691,7 +691,7 @@ _Avoid_: 多租户 SaaS
 - “admin 是否天然能读高密级资料”已 resolved：不能。`admin` 仅在明确的 **管理员特权操作** 中无视密级，普通读取仍按资料密级判断。
 - “资料密级是否由 agent 自动推断”已 resolved：不能。admin 未明确提供时，新上传资料为 0 级；文件名、内容和外部来源不触发自动升密。
 - “谁可以上传文件”已 resolved：只有 active admin 具备员工侧文件上传能力；employee 的 clearance 再高也不能上传，admin 可上传高于自身 clearance 的资料但不会获得后续普通读取豁免。工具保持可发现，launcher 做本地预拦截，后端仍是权威授权边界。
-- 上传拒绝契约为 HTTP/MCP `403 UPLOAD_ADMIN_REQUIRED`、`File upload requires the admin role.`、`retryable: false`；已知 employee 时不得读取或转换本地文件，不重登、不重试、不提高 clearance 绕过。本地拒绝无后端审计；后端尽力记录 `file_upload.denied`，`uploadSurface` 仅为 `evidence_document`、`structured_dataset`（含 Delivery Ledger）、`quarantine_certificate`。分片 create/parts/complete 仅 admin，owner abort 保留；无历史迁移、已有 OSS URL 失效或传输中降权机制。
+- 上传拒绝契约为：直接 HTTP 上传端点返回 HTTP `403`；MCP JSON-RPC 传输返回 HTTP `200`，工具结果包含 `isError: true`。两者均携带 `UPLOAD_ADMIN_REQUIRED`、`File upload requires the admin role.`、`retryable: false`；已知 employee 时不得读取或转换本地文件，不重登、不重试、不提高 clearance 绕过。本地拒绝无后端审计；后端尽力记录 `file_upload.denied`，`uploadSurface` 仅为 `evidence_document`、`structured_dataset`（含 Delivery Ledger）、`quarantine_certificate`。分片 create/parts/complete 仅 admin，owner abort 保留；无历史迁移、已有 OSS URL 失效或传输中降权机制。
 - launcher 0.5.2 缓存身份只包含 `displayName`、`email`、`role`、`clearance`、`organizationName`；实时当前账号工具仍查询服务。最低兼容版本保持 0.5.0，推荐精确版本为 0.5.2；旧兼容客户端仍受后端上传授权约束。
 - “资料密级是否在服务内按来源链路向新上传文件传播”已 resolved：不会。服务内直接派生数据继承来源密级，系统外生成后再次上传的文件是独立新资料。
 - “创建账户是否能省略角色或保密等级”已 resolved：不能。开发者必须明确提供 `admin`/`employee` 和 0–3 保密等级，且无默认值。

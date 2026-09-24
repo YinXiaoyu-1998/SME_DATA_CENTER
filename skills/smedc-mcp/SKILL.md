@@ -140,8 +140,9 @@ Explain that an admin must upload the original file. Launcher 0.5.2 also preflig
 profile before local file access. Its cached profile contains exactly `displayName`, `email`,
 `role`, `clearance`, and `organizationName`; current-user questions still use the live tool.
 
-The canonical HTTP/MCP denial is `403 UPLOAD_ADMIN_REQUIRED`, message
-`File upload requires the admin role.`, with `retryable: false`. Do not re-login or retry
+Direct HTTP upload endpoints return HTTP `403`. MCP JSON-RPC transport returns HTTP `200`
+with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`, the exact message
+`File upload requires the admin role.`, and `retryable: false`. Do not re-login or retry
 after this denial, change clearance, switch transport, or attempt to bypass it. A local preflight
 denial creates no backend audit; a backend denial best-effort records `file_upload.denied`.
 
