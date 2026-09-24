@@ -169,7 +169,8 @@ try {
   const highEmployeeAuth = authorizationHeader(
     await createOfficialIntegrationAccessToken("emp_suzhou_employee")
   );
-  await assertEmployeeUploadDenied(employeeAuth);
+  await assertEmployeeUploadDenied(employeeAuth, "emp_baoli_employee");
+  await assertEmployeeUploadDenied(highEmployeeAuth, "emp_suzhou_employee");
 
   const partitionFixturePath = path.join(
     rootDir,
@@ -505,6 +506,7 @@ try {
           "seed",
           "official_session_authentication",
           "employee_c0_upload_denied_audit_once_no_residue",
+          "employee_c3_upload_denied_audit_once_no_residue",
           "admin_c0_delivery_xlsx_and_row_csv_employee_c0_query",
           "admin_c0_upload_level2_employee_c3_reads_admin_read_denied",
           "partition_upload_session",
@@ -533,7 +535,10 @@ try {
   }
 }
 
-async function assertEmployeeUploadDenied(employeeAuth: Record<string, string>): Promise<void> {
+async function assertEmployeeUploadDenied(
+  employeeAuth: Record<string, string>,
+  employeeId: string
+): Promise<void> {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
   const snapshot = async () => ({
     documents: await prisma.document.count(),
@@ -547,7 +552,7 @@ async function assertEmployeeUploadDenied(employeeAuth: Record<string, string>):
       }
     )
   });
-  const requestId = `employee_upload_denied_${Date.now()}`;
+  const requestId = `employee_upload_denied_${employeeId}_${Date.now()}`;
   try {
     const before = await snapshot();
     const response = await fetch(`${apiUrl}/v1/documents/evidence`, {
@@ -572,7 +577,7 @@ async function assertEmployeeUploadDenied(employeeAuth: Record<string, string>):
       audit.length === 1 &&
         audit[0]?.action === "file_upload.denied" &&
         audit[0]?.result === "denied" &&
-        audit[0]?.actorEmployeeId === "emp_baoli_employee" &&
+        audit[0]?.actorEmployeeId === employeeId &&
         audit[0]?.targetId === null &&
         metadata?.["uploadSurface"] === "evidence_document" &&
         metadata["reason"] === "admin_role_required" &&
