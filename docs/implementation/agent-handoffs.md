@@ -1087,3 +1087,12 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
+
+## 2026-09-24 — Admin-only upload Task 1 profile record
+
+- Branch: `codex/admin-only-upload-profile-record`, from launcher lead `codex/admin-only-upload-launcher-0-5-2@b6a6527`.
+- Delivered exact public profile type/schema/parser exports and session-owned schema-v2 storage with lazy v1 reading; refresh preserves the profile, while logout, invalidation, definitive refresh failure, and account replacement clear it.
+- Verification: profile RED missing module; session RED 14 missing-API failures with 11 prior tests passing; GREEN 48 focused tests. Full suite: 111 files / 897 tests passed, 6 files / 29 tests skipped. Lint and typecheck pass. Initial format check found only two supplied local orchestration artifacts; formatting those artifacts resolves the check.
+- Scope boundary: no Task 2 live `/me` resolver or upload gate, no launcher version bump, publication, or skill pin changes. These remain the lead's subsequent release tasks.
+- Process notes and the detailed `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-1-implementer-report.md` are intentionally excluded from the implementation commit.
+- Fix Round 1 resolves the review's profile-write race with invalidation/account replacement by serializing every record mutation; four deterministic interleavings fail before and pass after the fix, including separate sessions using a shared lock. The focused suite now passes 52 tests; exact final verification is appended to the implementer report.
