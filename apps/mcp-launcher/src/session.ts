@@ -1,4 +1,12 @@
 import type { SecureCredentialStore } from "./auth.js";
+import { cachedUserProfileSchema, type CachedUserProfile } from "./user-profile.js";
+
+interface SessionRecord {
+  schemaVersion: 2;
+  origin: string;
+  durableCredential: string;
+  profile: CachedUserProfile | null;
+}
 
 export type LauncherErrorCode =
   | "AUTHENTICATION_REQUIRED"
@@ -27,7 +35,7 @@ export interface LauncherLock {
 export class LauncherSession {
   #accessToken: string | null = null;
   #accessTokenExpiresAt = 0;
-  #memoryCredential: string | null = null;
+  #memoryRecord: SessionRecord | null = null;
   #storeAvailable: boolean | null = null;
   #waitingForLogin: Promise<void> | null = null;
 
@@ -63,14 +71,14 @@ export class LauncherSession {
 
     const release = this.dependencies.lock ? await this.dependencies.lock.acquire() : null;
     try {
-      const refreshCredential = await this.readCredential();
-      if (refreshCredential === null) {
+      const record = await this.readRecord();
+      if (record === null) {
         throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
       }
 
       let refreshed: { accessToken: string; refreshToken: string; expiresAt?: number };
       try {
-        refreshed = await this.dependencies.tokenClient.refresh(refreshCredential);
+        refreshed = await this.dependencies.tokenClient.refresh(record.durableCredential);
       } catch (error) {
         const typed = asTypedError(error);
         if (typed.code === "AUTHENTICATION_REQUIRED") await this.invalidate();
@@ -78,7 +86,7 @@ export class LauncherSession {
       }
 
       try {
-        await this.storeCredential(refreshed.refreshToken);
+        await this.storeRecord(refreshed.refreshToken, record.profile);
         if ((await this.readCredential()) !== refreshed.refreshToken) {
           throw new Error("credential verification failed");
         }
@@ -86,7 +94,7 @@ export class LauncherSession {
         this.#accessToken = null;
         this.#accessTokenExpiresAt = 0;
         await this.dependencies.tokenClient.revoke(refreshed.refreshToken).catch(() => undefined);
-        await this.deleteCredential();
+        await this.deleteRecord();
         throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
       }
 
@@ -104,7 +112,7 @@ export class LauncherSession {
     expiresAt: number
   ): Promise<void> {
     try {
-      await this.storeCredential(refreshCredential);
+      await this.storeRecord(refreshCredential, null);
       if ((await this.readCredential()) !== refreshCredential)
         throw new Error("credential verification failed");
       this.#accessToken = accessToken;
@@ -113,7 +121,7 @@ export class LauncherSession {
       this.#accessToken = null;
       this.#accessTokenExpiresAt = 0;
       await this.dependencies.tokenClient.revoke(refreshCredential).catch(() => undefined);
-      await this.deleteCredential();
+      await this.deleteRecord();
       throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
     }
   }
@@ -124,11 +132,11 @@ export class LauncherSession {
       const refreshCredential = await this.readCredential();
       this.#accessToken = null;
       this.#accessTokenExpiresAt = 0;
-      this.#memoryCredential = null;
+      this.#memoryRecord = null;
       const remoteRevocationConfirmed = refreshCredential
         ? await this.dependencies.tokenClient.revoke(refreshCredential).catch(() => false)
         : true;
-      const localCredentialRemoved = await this.deleteCredential().then(
+      const localCredentialRemoved = await this.deleteRecord().then(
         () => true,
         () => false
       );
@@ -142,7 +150,7 @@ export class LauncherSession {
     return {
       authenticated:
         this.#accessToken !== null ||
-        this.#memoryCredential !== null ||
+        this.#memoryRecord !== null ||
         (await this.readCredential()) !== null
     };
   }
@@ -150,8 +158,24 @@ export class LauncherSession {
   async invalidate(): Promise<void> {
     this.#accessToken = null;
     this.#accessTokenExpiresAt = 0;
-    this.#memoryCredential = null;
-    await this.deleteCredential();
+    await this.deleteRecord();
+  }
+
+  async cachedProfile(): Promise<CachedUserProfile | null> {
+    const profile = (await this.readRecord())?.profile;
+    return profile ? cachedUserProfileSchema.parse(profile) : null;
+  }
+
+  async storeProfile(profile: CachedUserProfile): Promise<void> {
+    const validated = cachedUserProfileSchema.parse(profile);
+    const release = this.dependencies.lock ? await this.dependencies.lock.acquire() : null;
+    try {
+      const record = await this.readRecord();
+      if (record === null) throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
+      await this.storeRecord(record.durableCredential, validated);
+    } finally {
+      await release?.();
+    }
   }
 
   async secureStoreAvailable(): Promise<boolean> {
@@ -163,23 +187,35 @@ export class LauncherSession {
   }
 
   private async readCredential(): Promise<string | null> {
+    return (await this.readRecord())?.durableCredential ?? null;
+  }
+
+  private async readRecord(): Promise<SessionRecord | null> {
     if (!(await this.#isStoreAvailable())) {
-      return this.#memoryCredential;
+      return this.#memoryRecord;
     }
     const record = await this.dependencies.secureStore!.get();
     if (!record) return null;
     try {
-      const value = JSON.parse(record) as {
-        schemaVersion?: unknown;
-        origin?: unknown;
-        durableCredential?: unknown;
+      const value = JSON.parse(record) as Record<string, unknown> | null;
+      if (
+        value === null ||
+        (value.schemaVersion !== 1 && value.schemaVersion !== 2) ||
+        value.origin !== this.dependencies.origin ||
+        typeof value.durableCredential !== "string" ||
+        !value.durableCredential
+      )
+        return null;
+      const profile =
+        value.schemaVersion === 1 || value.profile === null
+          ? null
+          : cachedUserProfileSchema.parse(value.profile);
+      return {
+        schemaVersion: 2,
+        origin: this.dependencies.origin,
+        durableCredential: value.durableCredential,
+        profile
       };
-      return value.schemaVersion === 1 &&
-        value.origin === this.dependencies.origin &&
-        typeof value.durableCredential === "string" &&
-        value.durableCredential
-        ? value.durableCredential
-        : null;
     } catch {
       return null;
     }
@@ -200,18 +236,25 @@ export class LauncherSession {
     return this.#storeAvailable;
   }
 
-  private async storeCredential(refreshCredential: string): Promise<void> {
+  private async storeRecord(
+    durableCredential: string,
+    profile: CachedUserProfile | null
+  ): Promise<void> {
+    const record: SessionRecord = {
+      schemaVersion: 2,
+      origin: this.dependencies.origin,
+      durableCredential,
+      profile
+    };
     if (await this.#isStoreAvailable()) {
-      await this.dependencies.secureStore!.set(
-        credentialRecord(this.dependencies.origin, refreshCredential)
-      );
+      await this.dependencies.secureStore!.set(JSON.stringify(record));
       return;
     }
-    this.#memoryCredential = refreshCredential;
+    this.#memoryRecord = record;
   }
 
-  private async deleteCredential(): Promise<void> {
-    this.#memoryCredential = null;
+  private async deleteRecord(): Promise<void> {
+    this.#memoryRecord = null;
     if (await this.#isStoreAvailable()) {
       await this.dependencies.secureStore!.delete().catch(() => undefined);
     }
@@ -242,10 +285,6 @@ function asTypedError(error: unknown): LauncherTypedError {
       ? "SERVICE_UNAVAILABLE"
       : "AUTHENTICATION_REQUIRED"
   );
-}
-
-function credentialRecord(origin: string, durableCredential: string): string {
-  return JSON.stringify({ schemaVersion: 1, origin, durableCredential });
 }
 
 function messageFor(code: LauncherErrorCode): string {

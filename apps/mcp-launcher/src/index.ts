@@ -33,6 +33,11 @@ export {
   type LauncherToolResult
 } from "./launcher.js";
 export { LauncherSession, LauncherTypedError, type LauncherErrorCode } from "./session.js";
+export {
+  cachedUserProfileSchema,
+  parseCurrentUserProfileResponse,
+  type CachedUserProfile
+} from "./user-profile.js";
 export { createAuthorizationRequest, createLoopbackCallbackServer, redactSecrets } from "./auth.js";
 
 if (isMainModule()) {
