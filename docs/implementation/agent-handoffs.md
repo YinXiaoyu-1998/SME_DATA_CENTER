@@ -1087,3 +1087,11 @@ dist/release/official-manual-acceptance.js controller-...`; extracted shared sta
   workspace edits overlap files changed by the merged PRs (#118..#122); commit or stash those
   edits, then `git pull --ff-only`. Optional follow-up: delete the merged origin PR-head
   branch for #122 if desired.
+
+## 2026-09-24 — Task 4 backend upload authorization primitive
+
+- Branch `codex/task-4-upload-authorization`, base `codex/admin-only-upload-enforcement@303b2f4`, commit `6e3208e0da277031d7cd71d4407437424f127474`.
+- Added shared canonical upload authorization, fixed safe denied-audit persistence, canonical denial response, and lazy injected/default audit repository ownership and cleanup. Server registrations receive the lazy accessor and request-audit factory; route/MCP gates remain for Tasks 5/6.
+- Call `authorizeFileUpload` with `auditRepository: context.uploadAuthorizationAudit` (the function) to avoid audit initialization for admins and catch audit initialization failures within the denial path. The logger receives only `{ requestId, uploadSurface }`.
+- Final verification: 18 focused tests; 938 full-suite tests passed with 29 skipped; typecheck, lint, changed-file formatting, and `git diff --check` passed. Raw `npm run format:check` reports only two existing ignored SDD documents; excluding `.superpowers` passes.
+- Process progress/handoff updates are intentionally uncommitted to avoid process-only artifacts in the product PR. Full implementer report is under `.superpowers/sdd/2026-09-24-admin-only-file-upload/task-4-implementer-report.md`.
