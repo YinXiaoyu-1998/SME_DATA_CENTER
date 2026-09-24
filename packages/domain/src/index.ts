@@ -30,7 +30,7 @@ export {
   type DocumentStatusName,
   type DocumentTypeName
 } from "./documents.js";
-export { AUDIT_ACTIONS, type AuditActionName } from "./audit.js";
+export { AUDIT_ACTIONS, type AuditActionName, type FileUploadSurface } from "./audit.js";
 export { SKILL_ENTRY_STATUSES, type SkillEntryStatusName } from "./skills.js";
 export {
   EVIDENCE_BLOCK_TYPES,

@@ -1,5 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { RequestAuditContext } from "../../request-audit-context.js";
+import {
+  authorizeFileUpload,
+  fileUploadAdminRequiredResponse,
+  type UploadAuthorizationAuditRepository
+} from "../../file-upload-authorization.js";
 import {
   PARTITION_ERROR_CODES,
   isPartitionDataset,
@@ -48,6 +54,8 @@ export function registerStructuredPartitionRoutes(
     storage: () => StorageAdapter;
     partitions: () => StructuredPartitionRepository;
     runtimeLimits: ApiRuntimeLimits;
+    createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
+    uploadAuthorizationAudit: () => UploadAuthorizationAuditRepository;
   }
 ): void {
   app.post<{ Body: CreateUploadBody }>(
@@ -55,10 +63,18 @@ export function registerStructuredPartitionRoutes(
     async (request, reply) => {
       const authenticated = await dependencies.auth.authenticate(request, reply);
       if (!authenticated) return;
+      const employee = dependencies.auth.employee(request);
+      const allowed = await authorizeFileUpload({
+        employee,
+        uploadSurface: "structured_dataset",
+        audit: dependencies.createBusinessRequestAudit(request),
+        auditRepository: dependencies.uploadAuthorizationAudit,
+        logAuditFailure: (context) => request.log.error(context, "upload denial audit failed")
+      });
+      if (!allowed) return reply.code(403).send(fileUploadAdminRequiredResponse(request));
       const parsed = parseCreateBody(request.body, dependencies.runtimeLimits);
       if (!parsed.ok) return validationError(reply, parsed.code, parsed.message);
 
-      const employee = dependencies.auth.employee(request);
       const jobId = `pjob_${randomBytes(12).toString("hex")}`;
       const objectKey = createPartitionStagingObjectKey({ orgId: employee.orgId, jobId });
       const storage = requireMultipartStorage(dependencies.storage());
@@ -132,6 +148,14 @@ export function registerStructuredPartitionRoutes(
       const authenticated = await dependencies.auth.authenticate(request, reply);
       if (!authenticated) return;
       const employee = dependencies.auth.employee(request);
+      const allowed = await authorizeFileUpload({
+        employee,
+        uploadSurface: "structured_dataset",
+        audit: dependencies.createBusinessRequestAudit(request),
+        auditRepository: dependencies.uploadAuthorizationAudit,
+        logAuditFailure: (context) => request.log.error(context, "upload denial audit failed")
+      });
+      if (!allowed) return reply.code(403).send(fileUploadAdminRequiredResponse(request));
       const job = await dependencies
         .partitions()
         .findJobForStatus(employee.orgId, request.params.jobId);
@@ -171,6 +195,14 @@ export function registerStructuredPartitionRoutes(
       const authenticated = await dependencies.auth.authenticate(request, reply);
       if (!authenticated) return;
       const employee = dependencies.auth.employee(request);
+      const allowed = await authorizeFileUpload({
+        employee,
+        uploadSurface: "structured_dataset",
+        audit: dependencies.createBusinessRequestAudit(request),
+        auditRepository: dependencies.uploadAuthorizationAudit,
+        logAuditFailure: (context) => request.log.error(context, "upload denial audit failed")
+      });
+      if (!allowed) return reply.code(403).send(fileUploadAdminRequiredResponse(request));
       const repository = dependencies.partitions();
       const job = await repository.findJobForStatus(employee.orgId, request.params.jobId);
       if (!job || job.uploaderId !== employee.id)

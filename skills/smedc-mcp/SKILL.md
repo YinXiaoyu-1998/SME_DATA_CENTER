@@ -22,7 +22,7 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `smedc-mcp-launcher@0.5.1`. Do not substitute another
+the exact npm package `smedc-mcp-launcher@0.5.2`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself. This pin governs launcher installation, not fetching a newer official
 copy of this skill; after a skill refresh, read the newly verified copy for its current pin.
@@ -127,6 +127,34 @@ discover them by hand.
   offer to update. If that update is already requested, proceed without asking again. Refresh
   stale skill guidance through Update This Skill before choosing the approved exact launcher
   version. Follow Official Install Or Update; never update silently in the background.
+
+## Admin-Only Uploads
+
+Only active accounts with role `admin` may upload evidence documents, structured datasets
+(including Delivery Ledger / `delivery_ledger`), and quarantine certificates. The three upload
+tools remain visible and are marked admin-only. Do not dynamically hide or remove upload tools.
+
+Before handling an upload, resolve an unknown role with `smedc_get_current_user`. For a known
+`employee` role, do not read or transform the local file, encode bytes, or call an upload tool.
+Explain that an admin must upload the original file. Launcher 0.5.2 also preflights its authenticated
+profile before local file access. Its cached profile contains exactly `displayName`, `email`,
+`role`, `clearance`, and `organizationName`; current-user questions still use the live tool.
+
+Direct HTTP upload endpoints return HTTP `403`. MCP JSON-RPC transport returns HTTP `200`
+with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`, the exact message
+`File upload requires the admin role.`, and `retryable: false`. Do not re-login or retry
+after this denial, change clearance, switch transport, or attempt to bypass it. A local preflight
+denial creates no backend audit; a backend denial best-effort records `file_upload.denied`.
+
+Clearance is not upload permission. Employees at clearance 3 still cannot upload. Admins may
+explicitly classify files at levels 0–3, including above their own clearance; omitted levels remain 0. This does not grant ordinary read access. Status, manifest, search, query, and download retain
+their existing organization, owner, and clearance rules. Partition create/parts/complete require
+admin; owner abort remains allowed. Older compatible launchers (minimum 0.5.0) remain subject to
+the authoritative backend gate even when they lack local preflight.
+
+Upload original files and report service validation errors. This skill does not provide
+dataset-specific transformations. Future service identities require a separate design; they must
+not impersonate an admin Employee Account.
 
 ## Request Limits
 
@@ -325,15 +353,15 @@ current OS user and only on the invoking agent's configuration.
 
    | Platform | Launcher directory                                                    |
    | -------- | --------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/`        |
-   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.1\\`                  |
-   | Linux    | `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1/` |
+   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.2/`        |
+   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.2\\`                  |
+   | Linux    | `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.2/` |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact smedc-mcp-launcher@0.5.1
+   npm install --prefix "<launcher-directory>" --save-exact smedc-mcp-launcher@0.5.2
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -345,17 +373,17 @@ current OS user and only on the invoking agent's configuration.
 
    ```sh
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" self-check
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.1\node_modules\.bin\smedc-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.2\node_modules\.bin\smedc-mcp-launcher.cmd" self-check
    ```
 
    ```sh
    # Linux
-   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1"
+   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.2"
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
      "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
@@ -365,7 +393,7 @@ current OS user and only on the invoking agent's configuration.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.5.1",
+     "launcherVersion": "0.5.2",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -396,9 +424,9 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                            | Arguments | Environment                                    |
 | -------- | -------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------- |
-| macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher` | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.1\\node_modules\\.bin\\smedc-mcp-launcher.cmd`     | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
-| Linux    | `<resolved-linux-data-home>/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher`    | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher` | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.5.2\\node_modules\\.bin\\smedc-mcp-launcher.cmd`     | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| Linux    | `<resolved-linux-data-home>/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher`    | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -425,7 +453,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `smedc_login` to obtain a new link.
 
-This flow is available in launcher 0.2.2 and later; this document pins launcher 0.5.1.
+This flow is available in launcher 0.2.2 and later; this document pins launcher 0.5.2.
 
 ## Configure The Invoking Agent
 
@@ -474,7 +502,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env SMEDC_BASE_URL=https://api.smedatacenter.xyz \
   smedc -- \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" serve
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher" serve
 "$CODEX_BIN" mcp get smedc --json
 ```
 
@@ -488,7 +516,7 @@ CODEX_CONFIG="$HOME/.codex/config.toml"
 if [ -f "$CODEX_CONFIG" ]; then
   cp -p "$CODEX_CONFIG" "$CODEX_CONFIG.smedc.bak.$(date +%Y%m%d%H%M%S)"
 fi
-SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1"
+SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.2"
 SMEDC_LAUNCHER_BIN="$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher"
 "$CODEX_BIN" mcp list --json
 "$CODEX_BIN" mcp get smedc --json
@@ -515,7 +543,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.smedc.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.1\node_modules\.bin\smedc-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.2\node_modules\.bin\smedc-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get smedc --json
 ```
@@ -551,7 +579,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
 
    ```sh
    openclaw mcp add smedc \
-     --command "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" \
+     --command "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher" \
      --arg serve \
      --env SMEDC_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -559,7 +587,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
    On Linux, resolve the XDG path before storing it, then use the same stdio form:
 
    ```sh
-   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1"
+   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.2"
    openclaw mcp add smedc \
      --command "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" \
      --arg serve \
@@ -658,8 +686,8 @@ For structured-table questions:
   metadata. Avoid broad unbounded queries for phrases like “这份表”, “刚才那张表”, or “我刚传的”.
 - For `dish_catalog`, scope queries with the discovery-reported `snapshot_date` field. Do not
   infer latest/current catalog state, diffs, or row status across snapshots.
-- If the employee asks about a local spreadsheet before it has been uploaded, offer to upload it
-  first. Do not compute final SMEDC answers directly from the local spreadsheet unless the
+- If a local spreadsheet has not been uploaded, explain that an admin must upload it first;
+  proceed only when the current account is an admin. Do not compute final SMEDC answers directly from the local spreadsheet unless the
   employee explicitly says they want a local-file-only inspection.
 - If a query result contains historical rows outside the intended upload/window, narrow the query
   or ask for clarification before presenting totals as “这份表”的 totals.
@@ -720,6 +748,7 @@ limit, or operator help.
 | `authentication_required`                     | Call `smedc_login`, wait for browser completion, then retry the original business operation once.                                            |
 | Browser cancelled, timed out, or login failed | Report the safe outcome. Do not reopen the browser automatically or retry the business operation.                                            |
 | `service_unavailable`                         | Report that the official service cannot be reached. Do not start, repair, or diagnose service infrastructure.                                |
+| `UPLOAD_ADMIN_REQUIRED`                       | Explain that upload requires admin; nonretryable. Do not re-login, retry, read the file, or change clearance.                                |
 | `forbidden` or not-found                      | Treat the resource as unavailable to this employee; do not infer hidden data.                                                                |
 | `launcher_upgrade_required`                   | Install the skill-approved exact launcher version, re-run self-check, then retry the original operation once if installation succeeds.       |
 | Local configuration/self-check failure        | Restore the backup only when the agent can do so safely; otherwise report the focused configuration failure. Never delete unrelated entries. |
@@ -736,17 +765,17 @@ logout affects only the current launcher process:
 
 ```sh
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" logout
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher" logout
 ```
 
 ```powershell
 $env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.1\node_modules\.bin\smedc-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.5.2\node_modules\.bin\smedc-mcp-launcher.cmd" logout
 ```
 
 ```sh
 # Linux
-SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.1"
+SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.5.2"
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
   "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" logout
 ```

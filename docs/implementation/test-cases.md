@@ -4,6 +4,26 @@ Last updated: 2026-09-14
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
+## Admin-only upload regression boundary
+
+Launcher recommendation is exactly 0.5.2; minimum compatibility is 0.5.0. Run the HTTP upload
+route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
+prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
+returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+`File upload requires the admin role.`, and `retryable: false` before input/file/storage side effects.
+Tools remain statically visible.
+Local denial creates no backend audit; backend denial best-effort records `file_upload.denied`
+using `evidence_document`, `structured_dataset` (including Delivery Ledger), or
+`quarantine_certificate`. Audit failure cannot change denial.
+
+Positive uploads use admin c0 across evidence, row CSV, business/dishes partitions, unchanged
+Delivery Ledger XLSX, and quarantine images. Explicit high-level admin uploads succeed without
+granting ordinary read access; employee c3 can read eligible data but cannot upload. Partition
+create/parts/complete require admin; owner abort and existing status/manifest/read/search/query/download
+rules remain. Older compatible launchers are backend-denied. The manual manifest has 16 separate
+natural-language tasks; the controller smoke requires admin c0. No historical-data migration,
+OSS URL invalidation, mid-transfer downgrade handling, or future service-identity design is added.
+
 ## Required Repository Checks
 
 | Check              | Command                                                                                                                                | Expected                                                                                                                                |
@@ -87,7 +107,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-This runner uses the installed `smedc-mcp-launcher@0.5.1`, a clearance-0 employee's
+This runner uses the installed `smedc-mcp-launcher@0.5.2`, a clearance-0 admin's
 operating-system secure-store session, and the public staging service. It checks that upload inputs
 which omit `confidentialityLevel` remain level 0, then covers evidence upload/status/search,
 structured CSV import/query, invalid atomic import rejection, and run-scoped cleanup of evidence,
@@ -117,7 +137,7 @@ account lifecycle, confidentiality, admin-PAO, logout/reset, or account-deletion
 | Case                              | Test / command                                                                                                                                                                                                                             | Expected                                                                                                                                                                                |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Explicit account attributes       | `npm test -- apps/api/src/auth/operator-cli.test.ts apps/api/src/auth/http-contract.test.ts apps/api/src/mcp/read-tools.test.ts`                                                                                                           | Onboarding requires a role of `admin` or `employee` and 0–3 clearance; current-user returns role and clearance but no internal ID or credential.                                        |
-| Default and explicit upload level | `npm test -- apps/api/src/routes/evidence.test.ts apps/api/src/routes/structured-import/structured-import.test.ts apps/api/src/routes/quarantine-certificates.test.ts`                                                                     | Omitted level is 0; only explicit 0–3 values are accepted; the service/agent never infers a level; a caller may upload above their clearance.                                           |
+| Default and explicit upload level | `npm test -- apps/api/src/routes/evidence.test.ts apps/api/src/routes/structured-import/structured-import.test.ts apps/api/src/routes/quarantine-certificates.test.ts`                                                                     | Omitted level is 0; only explicit 0–3 values are accepted; the service/agent never infers a level; an active admin may upload above their clearance.                                    |
 | Ordinary read boundary            | `npm test -- apps/api/src/evidence.test.ts apps/api/src/routes/evidence.test.ts apps/api/src/routes/structured-import/structured-import.test.ts apps/api/src/routes/structured-query.test.ts apps/api/src/routes/source-documents.test.ts` | Active same-org employee needs `clearance >= confidentialityLevel`; admin role does not bypass ordinary status/search/query/download; denied responses do not enumerate protected data. |
 | Admin archive PAO                 | `npm test -- apps/api/src/routes/quarantine-certificates.test.ts apps/api/src/mcp/action-tools.test.ts`                                                                                                                                    | Only active admin can archive by receipt ID above clearance; an employee cannot; the PAO returns `archivedCount` and does not grant normal read capability.                             |
 | Removed legacy model              | `rg -n -e labelIds -e labelKeys -e employeeLabels -e documentLabels -e manager apps packages scripts skills docs --glob '!docs/implementation/progress.md'`                                                                                | No active tag/store/person/manager authorization surface remains; the former label and audit employee APIs are absent.                                                                  |

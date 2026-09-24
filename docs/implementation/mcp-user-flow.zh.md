@@ -1,6 +1,6 @@
 # SMEDC MCP 用户流程
 
-> **发布说明：** `smedc-mcp-launcher@0.5.1` 已公开发布并通过独立验证，是资料密级
+> **发布说明：** `smedc-mcp-launcher@0.5.2` 已公开发布并通过独立验证，是资料密级
 > 契约所固定使用的发行包。macOS、Windows 和 Linux 都是正式支持的 launcher 安装平台。
 > 原生 macOS/Windows 包验收和无头 Linux 闭环已通过，发布 workflow 也会验证 Ubuntu 无图形环境。
 > 用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍是额外发布证据，不表示 Linux 不受支持。
@@ -10,7 +10,20 @@
 
 本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
 `smedc-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
-launcher 发行包为 `smedc-mcp-launcher@0.5.1`。
+launcher 发行包为 `smedc-mcp-launcher@0.5.2`。
+
+## 上传权限
+
+仅启用的 `admin` 可上传证据文档、结构化数据（含进货台账 Delivery Ledger）和检疫证明。
+上传工具保持静态可见并标为仅管理员可用；已知为 `employee` 时，agent 不得读取或转换本地文件。
+launcher 0.5.2 在文件访问前检查身份。直接 HTTP 上传端点返回 HTTP `403`；
+MCP JSON-RPC 传输返回 HTTP `200`，工具结果包含 `isError: true`。两者均携带 `UPLOAD_ADMIN_REQUIRED`、
+`File upload requires the admin role.`、`retryable: false`。解释管理员要求即可，不重登、不重试，
+不通过提高 clearance 绕过。仅本地阻止不产生后端审计；后端拒绝尽力记录 `file_upload.denied`。
+管理员可明确声明高于自身 clearance 的密级，但普通状态、清单、检索、查询和下载仍遵循原有读取规则。
+分片 create/parts/complete 要求管理员，原上传所有者仍可 abort。最低兼容版本保持 0.5.0，旧版
+兼容 launcher 仍受后端授权保护。完整入口矩阵和未来服务身份的独立设计边界见
+[API 契约](api-contract.md#file-upload-capability)。
 
 ## 参与者与凭证边界
 

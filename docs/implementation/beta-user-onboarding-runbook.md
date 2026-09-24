@@ -12,7 +12,7 @@ Use this runbook only for:
 
 - macOS + Codex;
 - the official SMEDC skill;
-- `smedc-mcp-launcher@0.5.1`;
+- `smedc-mcp-launcher@0.5.2`;
 - browser password setup and Device Authorization login;
 - fixture or explicitly approved non-sensitive data.
 
@@ -46,12 +46,24 @@ command: the operator CLI fails if the organization does not already exist.
 
 `role` is the `EmployeeRole` enum. Current values:
 
-| Value      | Difference                                                                                     | First beta default |
-| ---------- | ---------------------------------------------------------------------------------------------- | ------------------ |
-| `employee` | Normal beta user. Role alone does not grant ordinary document reads.                           | yes                |
-| `admin`    | May use explicitly declared privileged administrative operations. It does not raise clearance. | no                 |
+| Value      | Difference                                                                                           | First beta default |
+| ---------- | ---------------------------------------------------------------------------------------------------- | ------------------ |
+| `employee` | Normal beta user. Role alone does not grant ordinary document reads.                                 | yes                |
+| `admin`    | May upload files and use declared privileged administrative operations. It does not raise clearance. | no                 |
 
 For the first real beta user, use `employee` and select clearance separately.
+
+That employee can read eligible data but cannot upload at any clearance. Arrange a separate active
+admin for approved pilot uploads, including evidence, structured tables, Delivery Ledger, and
+quarantine certificates. Tools remain visible and admin-only. A known employee request must stop
+before local file reading/transformation. Direct HTTP upload endpoints return HTTP `403`;
+MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result. Both carry
+`UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and `retryable: false`.
+Explain the admin role without re-login, retry, or raising clearance.
+Local preflight creates no backend audit; backend
+denial best-effort records `file_upload.denied`. Admins may explicitly classify above their
+clearance, but ordinary read rules remain. See [the endpoint matrix](api-contract.md#file-upload-capability)
+for partition create/parts/complete, owner abort, and older-launcher backend safety.
 
 ### Confidentiality Clearance
 
@@ -79,7 +91,7 @@ is fixed unless the pilot owner explicitly narrows it:
 - install or repair the skill/launcher;
 - browser login;
 - confirm the current account's role and clearance;
-- upload one approved evidence file;
+- have an active admin upload one approved evidence file; an employee upload request must be denied;
 - wait for indexing;
 - search from a fresh task;
 - logout or password reset/re-login.
@@ -149,7 +161,7 @@ The employee should ask their agent naturally, for example:
 
 The agent must follow `skills/smedc-mcp/SKILL.md`:
 
-- install `smedc-mcp-launcher@0.5.1` into the current-user versioned directory;
+- install `smedc-mcp-launcher@0.5.2` into the current-user versioned directory;
 - configure a local stdio MCP entry named `smedc`;
 - set only `SMEDC_BASE_URL=https://api.smedatacenter.xyz`;
 - call `smedc_login` if authentication is required;
@@ -182,7 +194,7 @@ Expected:
 
 ## First Evidence Upload/Search
 
-Use a fixture or approved non-sensitive file. The employee prompt should remain natural:
+Use a fixture or approved non-sensitive file and an active admin account. The prompt should remain natural:
 
 ```text
 帮我把这份资料放进 SMEDC，之后大家能查到。
@@ -190,7 +202,7 @@ Use a fixture or approved non-sensitive file. The employee prompt should remain 
 
 Acceptance checks:
 
-- agent reads exact file bytes and uploads through MCP;
+- an admin's agent reads exact file bytes and uploads through MCP; a known employee must be denied before file reading or transformation;
 - an omitted upload confidentiality level is stored as `0`, and an explicit level is an integer
   from `0` through `3`;
 - evidence document status eventually becomes ready/active;

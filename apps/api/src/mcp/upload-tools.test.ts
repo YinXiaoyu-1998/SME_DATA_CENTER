@@ -1,8 +1,10 @@
 import type { AuthenticatedEmployee } from "@smedc/domain";
+import { SMEDC_MCP_TOOL_CONTRACTS } from "@smedc/mcp-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
   createUploadToolHandlers,
   type UploadApiDelegate,
+  type UploadToolHandlerOptions,
   type UploadApiDelegationRequest
 } from "./upload-tools.js";
 
@@ -12,7 +14,7 @@ const employee: AuthenticatedEmployee = {
   organizationName: "Default Organization",
   displayName: "MCP Upload Employee",
   email: "mcp-upload@example.com",
-  role: "employee",
+  role: "admin",
   disabled: false,
   clearance: 3
 };
@@ -53,6 +55,7 @@ function createHandlers(input: {
   return {
     requests,
     handlers: createUploadToolHandlers({
+      authorizeUpload: async () => true,
       delegate,
       getDelegationContext: () => ({
         authorization: "Bearer secret-upload-token",
@@ -175,6 +178,78 @@ function textField(fields: Map<string, Buffer[]>, name: string) {
 }
 
 describe("upload MCP tool handlers", () => {
+  it.each([
+    ["upload_evidence_document", "evidence_document"],
+    ["upload_quarantine_certificate", "quarantine_certificate"],
+    ["upload_structured_dataset", "structured_dataset"]
+  ] as const)("denies %s before any input, abort, or upload work", async (toolName, surface) => {
+    const authorizeUpload = vi.fn<UploadToolHandlerOptions["authorizeUpload"]>(async () => false);
+    const delegate = vi.fn<UploadApiDelegate>();
+    const getDelegationContext = vi.fn();
+    const handlers = createUploadToolHandlers({ authorizeUpload, delegate, getDelegationContext });
+    const context = { ...mcpContext, employee: { ...employee, role: "employee" as const } };
+    const abortRead = vi.fn(() => {
+      throw new Error("abort accessed before authorization");
+    });
+    Object.defineProperty(context, "abortSignal", { get: abortRead });
+    const inspectInput = vi.fn(() => {
+      throw new Error("input accessed before authorization");
+    });
+    const input = new Proxy({}, { get: inspectInput, has: inspectInput, ownKeys: inspectInput });
+    const contract = SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === toolName)!;
+    const parse = vi.spyOn(contract.inputSchema, "safeParse");
+    const decode = vi.spyOn(Buffer, "from");
+    const assemble = vi.spyOn(Buffer, "concat");
+    try {
+      const result = await handlers[toolName]!(input, context);
+      expect(result.isError).toBe(true);
+      expect(parseResult(result)).toEqual({
+        error: {
+          code: "UPLOAD_ADMIN_REQUIRED",
+          message: "File upload requires the admin role.",
+          retryable: false,
+          requestId: "mcp_req_1"
+        }
+      });
+      expect(authorizeUpload).toHaveBeenCalledOnce();
+      expect(authorizeUpload.mock.calls[0]?.[0]).toBe(context);
+      expect(authorizeUpload.mock.calls[0]?.[1]).toBe(surface);
+      for (const operation of [
+        abortRead,
+        inspectInput,
+        getDelegationContext,
+        parse,
+        decode,
+        assemble,
+        delegate
+      ]) {
+        expect(operation).not.toHaveBeenCalled();
+      }
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it.each([{}, { dataset: "private-fake-dataset" }, { dataset: "delivery_ledger" }])(
+    "classifies every denied structured request without inspecting its dataset: %j",
+    async (input) => {
+      const authorizeUpload = vi.fn(async () => false);
+      const delegate = vi.fn<UploadApiDelegate>();
+      const handlers = createUploadToolHandlers({
+        authorizeUpload,
+        delegate,
+        getDelegationContext: vi.fn()
+      });
+      const context = { ...mcpContext, employee: { ...employee, role: "employee" as const } };
+      const result = await handlers.upload_structured_dataset!(input, context);
+      expect(parseResult(result)).toMatchObject({
+        error: { code: "UPLOAD_ADMIN_REQUIRED", retryable: false, requestId: "mcp_req_1" }
+      });
+      expect(authorizeUpload).toHaveBeenCalledExactlyOnceWith(context, "structured_dataset");
+      expect(JSON.stringify(result)).not.toContain("private-fake-dataset");
+      expect(delegate).not.toHaveBeenCalled();
+    }
+  );
   it("exports a partial handler map for both upload tools", () => {
     const { handlers } = createHandlers({});
 
@@ -479,6 +554,7 @@ describe("upload MCP tool handlers", () => {
     const getDelegationContext = vi.fn();
     const delegate = vi.fn<UploadApiDelegate>();
     const handlers = createUploadToolHandlers({
+      authorizeUpload: async () => true,
       delegate,
       getDelegationContext
     });

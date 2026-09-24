@@ -11,8 +11,11 @@ import {
 import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 import { launcherVersionAtLeast, type RequestAuditContext } from "../request-audit-context.js";
 import {
+  FILE_UPLOAD_ADMIN_REQUIRED_CODE,
+  FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
   getStructuredRegistry,
   isPartitionDataset,
+  type FileUploadSurface,
   type StructuredDatasetName
 } from "@smedc/domain";
 
@@ -77,6 +80,10 @@ export type UploadApiDelegate = (
 ) => Promise<UploadApiDelegationResponse>;
 
 export interface UploadToolHandlerOptions {
+  authorizeUpload: (
+    context: McpRequestContext,
+    uploadSurface: FileUploadSurface
+  ) => Promise<boolean>;
   delegate: UploadApiDelegate;
   getDelegationContext: (context: McpRequestContext) => UploadApiDelegationContext;
 }
@@ -115,6 +122,9 @@ async function uploadStructuredDataset(
   context: McpRequestContext,
   options: UploadToolHandlerOptions
 ): Promise<McpJsonToolResult> {
+  if (!(await options.authorizeUpload(context, "structured_dataset"))) {
+    return uploadAdminRequiredError(context.audit.requestId);
+  }
   if (context.abortSignal?.aborted) {
     return requestCancelledUploadError(context.audit.requestId);
   }
@@ -203,6 +213,9 @@ async function uploadEvidenceDocument(
   context: McpRequestContext,
   options: UploadToolHandlerOptions
 ): Promise<McpJsonToolResult> {
+  if (!(await options.authorizeUpload(context, "evidence_document"))) {
+    return uploadAdminRequiredError(context.audit.requestId);
+  }
   if (context.abortSignal?.aborted) {
     return requestCancelledUploadError(context.audit.requestId);
   }
@@ -254,6 +267,9 @@ async function uploadQuarantineCertificate(
   context: McpRequestContext,
   options: UploadToolHandlerOptions
 ): Promise<McpJsonToolResult> {
+  if (!(await options.authorizeUpload(context, "quarantine_certificate"))) {
+    return uploadAdminRequiredError(context.audit.requestId);
+  }
   if (context.abortSignal?.aborted) {
     return requestCancelledUploadError(context.audit.requestId);
   }
@@ -407,6 +423,15 @@ function maxBase64EncodedLength(maxUploadBytes: number): number {
   }
 
   return uploadQuanta * 4;
+}
+
+function uploadAdminRequiredError(requestId: string): McpJsonToolResult {
+  return errorToolResult(
+    FILE_UPLOAD_ADMIN_REQUIRED_CODE,
+    FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
+    undefined,
+    { retryable: false, requestId }
+  );
 }
 
 function requestCancelledUploadError(requestId: string): McpJsonToolResult {

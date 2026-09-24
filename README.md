@@ -152,7 +152,7 @@ The API entrypoint automatically loads `.env` from the current working directory
 ## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
-`smedc-mcp-launcher@0.5.1` local stdio launcher. The dual-homed
+`smedc-mcp-launcher@0.5.2` local stdio launcher. The dual-homed
 `skills/smedc-mcp/` skill is the authoritative current-user install, configuration,
 browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
 email/password/token/code input, uses `smedc_login`, `smedc_logout`,
@@ -160,15 +160,23 @@ email/password/token/code input, uses `smedc_login`, `smedc_logout`,
 operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
-`smedc-mcp-launcher@0.5.1` is published on npm and its registry integrity, clean install,
+`smedc-mcp-launcher@0.5.2` is published on npm and its registry integrity, clean install,
 CLI, packaging, and production dependency audit have been verified. The supported installation
 matrix is macOS, Windows, and Linux. macOS/Windows use their native secure stores; Linux uses a
 compatible Secret Service when available and otherwise keeps the session in launcher-process
 memory, so headless Linux requires a fresh tap-link login after restart. Native macOS/Windows
 package acceptance and the headless Linux login-to-business-tool loop have passed; the release
 workflow now also exercises the installed package and no-display behavior on Ubuntu. Server
-compatibility still accepts launcher 0.5.0 as the minimum. Staging remains on Evidence Retrieval
-V1 until the controlled Qdrant upgrade, V2 reindex, and cutover; focused QA acceptance then follows.
+compatibility still accepts launcher 0.5.0 as the minimum and recommends exactly 0.5.2.
+
+Only active admins upload evidence, structured datasets (including Delivery Ledger), and quarantine
+certificates. Employee uploads at every clearance receive HTTP `403` from direct HTTP endpoints;
+MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result. Both carry
+`UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and `retryable: false`.
+Tools stay visible; launcher 0.5.2 preflights the role
+before reading a file, while the backend also protects older compatible launchers. Clearance
+continues to govern ordinary reads independently. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
+Publication is verified; deployment of this backend enforcement slice remains a separate gate.
 
 ## Official MCP Launcher
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "企业数据中枢 SMEDC MCP"
-  short_description: "上传文件到企业数据中枢并查询企业资料（通过官方远程 MCP 启动器）"
+  short_description: "管理员上传文件，员工按权限查询企业资料（通过官方远程 MCP 启动器）"
   default_prompt: "Use $smedc-mcp with a configured SMEDC MCP connection."

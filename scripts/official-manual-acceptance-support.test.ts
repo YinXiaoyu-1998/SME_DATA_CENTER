@@ -5,6 +5,8 @@ import {
   createStructuredWindow,
   deleteStorageObjects,
   isLowClearanceAcceptanceEmployee,
+  isAcceptanceAccount,
+  acceptanceAccountEmails,
   pollStructuredImportStatus,
   rewriteKnownValuesFixture
 } from "./official-manual-acceptance-support.js";
@@ -29,6 +31,52 @@ describe("official manual acceptance staging database target", () => {
 
 describe("official manual acceptance current account", () => {
   const expectedEmails = new Set(["manual-full-flow-low-run@example.invalid"]);
+
+  it("binds each role and clearance to its own run identity, including all cleanup owners", () => {
+    const accounts = [
+      {
+        account: "employee-low" as const,
+        email: "manual-full-flow-low-run@example.invalid",
+        role: "employee",
+        clearance: 0
+      },
+      {
+        account: "employee-high" as const,
+        email: "manual-full-flow-high-run@example.invalid",
+        role: "employee",
+        clearance: 3
+      },
+      {
+        account: "admin" as const,
+        email: "manual-acceptance-admin-run@example.invalid",
+        role: "admin",
+        clearance: 0
+      }
+    ];
+    for (const expected of accounts) {
+      const result = { user: { ...expected, displayName: "Synthetic acceptance" } };
+      expect(isAcceptanceAccount(result, "run", expected.account)).toBe(true);
+      expect(acceptanceAccountEmails("run")).toContain(expected.email);
+      expect(isAcceptanceAccount(result, "another-run", expected.account)).toBe(false);
+      expect(
+        isAcceptanceAccount({ user: { ...result.user, clearance: 2 } }, "run", expected.account)
+      ).toBe(false);
+      expect(
+        isAcceptanceAccount(
+          { user: { ...result.user, role: expected.role === "admin" ? "employee" : "admin" } },
+          "run",
+          expected.account
+        )
+      ).toBe(false);
+    }
+    expect(
+      isAcceptanceAccount(
+        { user: { ...accounts[0]!, displayName: "Synthetic", email: accounts[1]!.email } },
+        "run",
+        "employee-low"
+      )
+    ).toBe(false);
+  });
 
   it("accepts the nested current-user result for the low-clearance employee", () => {
     expect(

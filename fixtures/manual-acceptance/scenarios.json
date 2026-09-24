@@ -1,115 +1,211 @@
 {
-  "version": "2026-09-14.v4",
+  "version": "2026-09-24.v5",
+  "accounts": {
+    "employee-low": {
+      "role": "employee",
+      "clearance": 0
+    },
+    "employee-high": {
+      "role": "employee",
+      "clearance": 3
+    },
+    "admin": {
+      "role": "admin",
+      "clearance": 0
+    }
+  },
   "tasks": [
     {
       "id": "current-account-low",
-      "title": "自然手测 1/8：账号身份",
+      "title": "自然手测 1/16：账号身份",
       "freshContext": true,
       "turns": [
         {
           "id": "current-account",
           "prompt": "我当前登录的 SMEDC 账号是什么身份和保密等级？"
         }
-      ]
+      ],
+      "account": "employee-low"
+    },
+    {
+      "id": "employee-upload-denied",
+      "freshContext": true,
+      "turns": [
+        {
+          "id": "employee-evidence-denied",
+          "prompt": "帮我把 fixtures/manual-acceptance/evidence/baoli-roujiamo-sop.md 这份肉夹馍 SOP 上传到 SMEDC。"
+        }
+      ],
+      "account": "employee-low",
+      "title": "自然手测 2/16：员工上传拒绝"
     },
     {
       "id": "upload-default-level",
-      "title": "自然手测 2/8：默认密级上传",
+      "title": "自然手测 3/16：默认密级证据上传",
       "freshContext": true,
       "turns": [
         {
           "id": "default-evidence-upload",
           "prompt": "帮我把 fixtures/manual-acceptance/evidence/baoli-roujiamo-sop.md 这份肉夹馍 SOP 上传到 SMEDC。"
         }
-      ]
+      ],
+      "account": "admin"
     },
     {
       "id": "upload-explicit-level",
-      "title": "自然手测 3/8：指定密级上传",
+      "title": "自然手测 4/16：指定密级证据上传",
       "freshContext": true,
       "turns": [
         {
           "id": "high-evidence-upload",
           "prompt": "请把 fixtures/manual-acceptance/evidence/prompt-injection-sop.md 这份验收资料按 2 级密级上传到 SMEDC。"
         }
-      ]
+      ],
+      "account": "admin"
     },
     {
-      "id": "search-low-clearance",
-      "title": "自然手测 4/8：普通资料查询",
+      "id": "delivery-ledger-upload",
       "freshContext": true,
       "turns": [
         {
-          "id": "default-evidence-search",
-          "prompt": "我们的肉夹馍怎么做？要不要放青椒？"
+          "id": "delivery-ledger-upload",
+          "prompt": "请把 fixtures/structured/delivery_sheet_SH2608250117.xlsx 这份收货明细按 2 级密级上传到 SMEDC。"
         }
-      ]
+      ],
+      "account": "admin",
+      "title": "自然手测 5/16：收货明细 XLSX 上传"
     },
     {
-      "id": "search-high-clearance",
-      "title": "自然手测 5/8：高密级资料查询",
+      "id": "row-query-upload",
       "freshContext": true,
       "turns": [
         {
-          "id": "high-evidence-search",
-          "prompt": "前台折扣说明里有没有通用折扣口令？"
+          "id": "row-query-upload",
+          "prompt": "请把 fixtures/manual-acceptance/structured/vip-known-values.csv 这份会员表上传到 SMEDC。"
         }
-      ]
+      ],
+      "account": "admin",
+      "title": "自然手测 6/16：会员 CSV 上传"
     },
     {
-      "id": "search-admin-denied",
-      "title": "自然手测 6/8：admin 普通读取",
+      "id": "business-partition-upload",
       "freshContext": true,
       "turns": [
         {
-          "id": "admin-high-evidence-search",
-          "prompt": "前台折扣说明里有没有通用折扣口令？"
+          "id": "business-partition-upload",
+          "prompt": "请把 fixtures/structured/synthetic_business_20260706_20260712_first1000.xlsx 这份营业数据上传到 SMEDC。"
         }
-      ]
-    },
-    {
-      "id": "archive-admin-pao",
-      "title": "自然手测 7/8：admin 归档",
-      "freshContext": true,
-      "turns": [
-        {
-          "id": "admin-receipt-archive",
-          "prompt": "请把收货单 SH2608250117 关联的检疫证明全部归档。"
-        }
-      ]
+      ],
+      "account": "admin",
+      "title": "自然手测 7/16：营业数据分区上传"
     },
     {
       "id": "structured-default-level",
-      "title": "自然手测 8/8：菜品销售表上传",
+      "title": "自然手测 8/16：菜品销售分区上传",
       "freshContext": true,
       "turns": [
         {
           "id": "structured-upload",
           "prompt": "这份菜品销售表帮我传进去：fixtures/manual-acceptance/structured/dishes-known-values.csv。"
         }
-      ]
+      ],
+      "account": "admin"
+    },
+    {
+      "id": "quarantine-upload",
+      "freshContext": true,
+      "turns": [
+        {
+          "id": "quarantine-upload",
+          "prompt": "请将 fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg 作为收货单 SH2608250117 的检疫证明按 2 级密级上传。"
+        }
+      ],
+      "account": "admin",
+      "title": "自然手测 9/16：检疫证明上传"
+    },
+    {
+      "id": "search-low-clearance",
+      "title": "自然手测 10/16：普通资料查询",
+      "freshContext": true,
+      "turns": [
+        {
+          "id": "default-evidence-search",
+          "prompt": "我们的肉夹馍怎么做？要不要放青椒？"
+        }
+      ],
+      "account": "employee-low"
+    },
+    {
+      "id": "search-high-clearance",
+      "title": "自然手测 11/16：高密级资料查询",
+      "freshContext": true,
+      "turns": [
+        {
+          "id": "high-evidence-search",
+          "prompt": "前台折扣说明里有没有通用折扣口令？"
+        }
+      ],
+      "account": "employee-high"
+    },
+    {
+      "id": "delivery-ledger-query",
+      "freshContext": true,
+      "turns": [
+        {
+          "id": "delivery-ledger-query",
+          "prompt": "收货单 SH2608250117 有哪些商品，实收金额合计多少？"
+        }
+      ],
+      "account": "employee-high",
+      "title": "自然手测 12/16：收货明细查询"
+    },
+    {
+      "id": "search-admin-denied",
+      "title": "自然手测 13/16：管理员普通读取拒绝",
+      "freshContext": true,
+      "turns": [
+        {
+          "id": "admin-high-evidence-search",
+          "prompt": "前台折扣说明里有没有通用折扣口令？"
+        }
+      ],
+      "account": "admin"
+    },
+    {
+      "id": "archive-admin-pao",
+      "title": "自然手测 14/16：管理员归档",
+      "freshContext": true,
+      "turns": [
+        {
+          "id": "admin-receipt-archive",
+          "prompt": "请把收货单 SH2608250117 关联的检疫证明全部归档。"
+        }
+      ],
+      "account": "admin"
     },
     {
       "id": "structured-query",
-      "title": "自然手测补充：菜品销售查询",
+      "title": "自然手测 15/16：菜品销售查询",
       "freshContext": true,
       "turns": [
         {
           "id": "structured-query",
           "prompt": "这份表一共有多少条记录？销售额加起来是多少？销售额最高的两个菜是什么？"
         }
-      ]
+      ],
+      "account": "employee-low"
     },
     {
       "id": "structured-invalid-atomic",
-      "title": "自然手测补充：无效销售表",
+      "title": "自然手测 16/16：无效销售表",
       "freshContext": true,
       "turns": [
         {
           "id": "invalid-atomic",
           "prompt": "这份菜品销售表也帮我上传：fixtures/manual-acceptance/structured/dishes-invalid-atomic.csv。"
         }
-      ]
+      ],
+      "account": "admin"
     }
   ]
 }

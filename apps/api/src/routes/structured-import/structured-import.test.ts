@@ -2,13 +2,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 import { AUDIT_ACTIONS, getStructuredRegistry } from "@smedc/domain";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@smedc/storage";
 import { structuredImportFingerprint } from "./workflow.js";
 import { buildApiServer } from "../../server.js";
+import type { StructuredImportRepository } from "../../structured-imports.js";
 import {
   adminEmployee,
   baoliEmployee,
@@ -22,6 +23,7 @@ import {
   createDocumentRepository,
   createInMemoryStructuredImportRepository,
   createRepository,
+  createMultipartPayload,
   createStructuredImportMultipart,
   jwtSecret,
   storedObjectCount,
@@ -30,6 +32,99 @@ import {
 } from "../../test-support/api-server-fixtures.js";
 
 describe("structured imports", () => {
+  it.each([false, true])(
+    "denies employee upload before parsing or side effects (audit failure: %s)",
+    async (auditFails) => {
+      const documentRepository = createDocumentRepository();
+      const structuredImportRepository = createInMemoryStructuredImportRepository(
+        documentRepository.documents,
+        documentRepository.auditLogs
+      );
+      const uploadRepositoryCalls = Object.keys(structuredImportRepository)
+        .filter(
+          (key) =>
+            typeof structuredImportRepository[key as keyof typeof structuredImportRepository] ===
+            "function"
+        )
+        .map((key) => vi.spyOn(structuredImportRepository, key as "reserveStructuredImport"));
+      const documentCalls = Object.keys(documentRepository)
+        .filter(
+          (key) => typeof documentRepository[key as keyof typeof documentRepository] === "function"
+        )
+        .map((key) => vi.spyOn(documentRepository, key as "createUploadedDocument"));
+      const appendDenied = vi.fn(async () => {
+        if (auditFails) throw new Error("sensitive upload metadata");
+      });
+      const storagePut = vi.fn();
+      const logAuditFailure = vi.fn();
+      const parseParts = vi.fn(() => {
+        throw new Error("multipart parser must not run");
+      });
+      app = buildApiServer({
+        employeeRepository: createRepository([baoliEmployee]),
+        documentRepository,
+        structuredImportRepository:
+          structuredImportRepository as unknown as StructuredImportRepository,
+        storageAdapter: {
+          putObject: storagePut
+        } as unknown as import("@smedc/storage").StorageAdapter,
+        uploadAuthorizationAuditRepository: { appendDenied },
+        cursorSigningSecret: jwtSecret,
+        authenticateAccessToken: authenticateTestAccessToken,
+        logger: false
+      });
+      app.addHook("onRequest", async (request) => {
+        request.parts = parseParts;
+        request.log.error = logAuditFailure;
+      });
+      const multipart = createMultipartPayload([{ name: "dataset", value: "delivery_ledger" }]);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/structured/imports",
+        headers: {
+          authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`,
+          "x-request-id": "req_upload_denied",
+          "content-type": multipart.contentType
+        },
+        remoteAddress: "198.51.100.8",
+        payload: multipart.body
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: {
+          code: "UPLOAD_ADMIN_REQUIRED",
+          message: "File upload requires the admin role.",
+          retryable: false,
+          details: {},
+          requestId: "req_upload_denied"
+        }
+      });
+      expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
+        orgId: baoliEmployee.orgId,
+        actorEmployeeId: baoliEmployee.id,
+        uploadSurface: "structured_dataset",
+        audit: {
+          requestId: "req_upload_denied",
+          sourceIp: "198.51.100.8",
+          clientSource: "http_api",
+          launcherVersion: null
+        }
+      });
+      expect(parseParts).not.toHaveBeenCalled();
+      expect(storagePut).not.toHaveBeenCalled();
+      if (auditFails) {
+        expect(logAuditFailure).toHaveBeenCalledExactlyOnceWith(
+          { requestId: "req_upload_denied", uploadSurface: "structured_dataset" },
+          "upload denial audit failed"
+        );
+      } else {
+        expect(logAuditFailure).not.toHaveBeenCalled();
+      }
+      for (const call of documentCalls) expect(call).not.toHaveBeenCalled();
+      for (const call of uploadRepositoryCalls) expect(call).not.toHaveBeenCalled();
+      expect(documentRepository.documents).toHaveLength(0);
+    }
+  );
   let app: FastifyInstance | undefined;
   let storageRoot: string | undefined;
 
@@ -103,7 +198,7 @@ describe("structured imports", () => {
   async function postStructuredImport(
     server: FastifyInstance,
     input: Parameters<typeof createStructuredImportMultipart>[0] = {},
-    employee: AuthenticatedEmployee = baoliEmployee
+    employee: AuthenticatedEmployee = adminEmployee
   ) {
     const multipartBody = createStructuredImportMultipart(input);
 
@@ -227,7 +322,7 @@ describe("structured imports", () => {
     expect(documentRepository.auditLogs).toEqual([
       expect.objectContaining({
         action: "structured_import.started",
-        actorEmployeeId: baoliEmployee.id,
+        actorEmployeeId: adminEmployee.id,
         targetType: "import_batch",
         result: "succeeded",
         requestId: "req_http_1",

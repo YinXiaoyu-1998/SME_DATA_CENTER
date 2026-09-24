@@ -1,14 +1,14 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-09-21
+Last updated: 2026-09-24
 
 ## Authorization model
 
 Every non-health endpoint is authenticated by the backend. An authenticated account has two
 independent, explicitly provisioned properties:
 
-- `role`: exactly `admin` or `employee`; this controls only product operations explicitly
-  declared as privileged administrative operations (PAOs).
+- `role`: exactly `admin` or `employee`; this controls File Upload Capability and explicitly
+  declared privileged administrative operations (PAOs).
 - `clearance`: an integer from `0` through `3`; it controls ordinary reading of documents and
   anything derived directly from them.
 
@@ -27,7 +27,7 @@ document visibility exists.
 The three upload routes accept optional `confidentialityLevel` multipart/MCP input. It defaults to
 `0` only when omitted. Valid values are integers `0`, `1`, `2`, and `3`.
 
-The caller may declare any level regardless of their own clearance. The service and its agents must
+An active admin may declare any level regardless of their own clearance. The service and its agents must
 not infer a level from a filename, content, surrounding context, or an apparent source lineage. A
 file newly uploaded after external editing is a new document with the level explicitly supplied for
 that upload. The product has no endpoint to reclassify a document or edit an employee's clearance.
@@ -45,8 +45,47 @@ level without granting the caller ordinary read access. The current PAO is
 - a PAO response returns operational results only and does not make a document readable through
   search, query, status, or download.
 
-There are no other admin-gated employee-facing endpoints. `GET /audit` is removed; internal audit
+File uploads separately require admin as specified below. `GET /audit` is removed; internal audit
 logging remains an implementation concern.
+
+## File Upload Capability
+
+Only active `admin` accounts may upload; an `employee` is denied at every clearance, including 3.
+Authentication precedes the role check, which precedes parsing, schema validation, local file access
+in the launcher, hashing, storage, and upload side effects. Direct HTTP upload endpoints return
+transport status `403`. MCP JSON-RPC transport remains HTTP `200`, with a tool result carrying
+`isError: true`. Both use the canonical error code `UPLOAD_ADMIN_REQUIRED`, message
+`File upload requires the admin role.`, and `retryable: false`. Re-login, retries, or higher
+clearance cannot grant upload permission.
+
+| Upload entry point                                      | MCP tool / transport                                                       | Denied audit `uploadSurface` |
+| ------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------- |
+| `POST /v1/documents/evidence`                           | `upload_evidence_document`                                                 | `evidence_document`          |
+| `POST /v1/structured/imports`                           | `upload_structured_dataset`, including Delivery Ledger (`delivery_ledger`) | `structured_dataset`         |
+| `POST /v1/documents/quarantine-certificates`            | `upload_quarantine_certificate`                                            | `quarantine_certificate`     |
+| `POST /v1/structured/partition-uploads`                 | `business`/`dishes` create                                                 | `structured_dataset`         |
+| `GET /v1/structured/partition-uploads/:jobId/parts`     | partition part URLs                                                        | `structured_dataset`         |
+| `POST /v1/structured/partition-uploads/:jobId/complete` | partition complete                                                         | `structured_dataset`         |
+
+Partition owner abort (`DELETE /v1/structured/partition-uploads/:jobId`) remains allowed for an
+employee owner. Status, manifest, read, search, query, and download are not made admin-only; their
+existing organization, owner, and clearance checks still apply. Admin upload above the admin's
+clearance does not make later ordinary reads succeed.
+
+Upload tools remain statically visible and marked admin-only. Launcher 0.5.2 rejects a known
+employee profile before reading/transforming a local file; unknown profiles are lazily resolved.
+The cached profile is exactly `displayName`, `email`, `role`, `clearance`, `organizationName`;
+`smedc_get_current_user` continues to read live server state. A local denial creates no backend
+audit. Backend denials best-effort record `file_upload.denied`, with actor, organization, safe
+request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
+is parsed for auditing, and audit failure cannot change the denial.
+
+The recommended launcher is exactly 0.5.2; minimum compatibility remains 0.5.0. Older compatible
+launchers remain protected by authoritative backend denial. This change adds no historical
+migration, OSS URL invalidation, or mid-transfer downgrade handling. Existing attribution and
+read access remain intact. Future scheduled/connector/service identities need a separate design,
+not impersonation of an admin Employee Account; workers and operator utilities are outside this
+employee-callable upload boundary.
 
 ## Public HTTP surface
 
@@ -98,8 +137,8 @@ limits. Label keys and label arrays are not accepted.
 
 ## MCP surface
 
-MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns role and
-clearance. The former `smedc_list_labels` tool is absent. The three upload tools accept
+MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly `displayName`,
+`email`, `role`, `clearance`, and `organizationName`. The former `smedc_list_labels` tool is absent. The three upload tools accept
 optional numeric `confidentialityLevel`; callers must not fabricate it based on content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 

@@ -1,4 +1,8 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { createSmedcHttpMcpServer } from "./server.js";
 import type { InjectOptions, InjectPayload, Response as InjectResponse } from "light-my-request";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthenticatedEmployee } from "@smedc/domain";
@@ -381,6 +385,7 @@ function buildCustomMcpTestServer(toolHandlers: SmedcMcpToolHandlers) {
   });
 
   registerMcpHttpRoute(customApp, {
+    uploadAuthorizationAudit: () => ({ appendDenied: async () => {} }),
     maxUploadBytes: 52_428_800,
     delegationProof: Buffer.alloc(32, 0x5a).toString("base64url"),
     authenticate: async () => employee,
@@ -396,6 +401,246 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
   afterEach(async () => {
     await app?.close();
     app = undefined;
+  });
+
+  it.each([
+    ["upload_evidence_document", "evidence_document", {}],
+    [
+      "upload_quarantine_certificate",
+      "quarantine_certificate",
+      { file: { contentBase64: "private-not-base64" } }
+    ],
+    ["upload_structured_dataset", "structured_dataset", {}],
+    ["upload_structured_dataset", "structured_dataset", { dataset: "private-fake-dataset" }],
+    ["upload_structured_dataset", "structured_dataset", { dataset: "delivery_ledger" }]
+  ] as const)(
+    "denies old-launcher employee %s before SDK upload validation (%j)",
+    async (name, surface, arguments_) => {
+      const appendDenied = vi.fn(async () => {});
+      app = buildMcpTestServer({ uploadAuthorizationAuditRepository: { appendDenied } });
+      const requests: string[] = [];
+      app.addHook("onRequest", async (request) => {
+        requests.push(request.url);
+      });
+      const response = await postMcp(
+        app,
+        {
+          jsonrpc: "2.0",
+          id: 61,
+          method: "tools/call",
+          params: { name, arguments: arguments_ }
+        },
+        {
+          "mcp-protocol-version": "2025-11-25",
+          "x-request-id": "denied_upload_req",
+          "x-smedc-launcher-version": "0.5.0"
+        }
+      );
+      expect(response.statusCode).toBe(200);
+      expect(response.payload).toContain("UPLOAD_ADMIN_REQUIRED");
+      const result = parseToolPayload(response.payload);
+      expect(result.result?.isError).toBe(true);
+      expect(result.payload).toEqual({
+        error: {
+          code: "UPLOAD_ADMIN_REQUIRED",
+          message: "File upload requires the admin role.",
+          retryable: false,
+          requestId: "denied_upload_req"
+        }
+      });
+      expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
+        orgId: employee.orgId,
+        actorEmployeeId: employee.id,
+        uploadSurface: surface,
+        audit: {
+          requestId: "denied_upload_req",
+          sourceIp: "127.0.0.1",
+          clientSource: "mcp_launcher",
+          launcherVersion: "0.5.0"
+        }
+      });
+      expect(requests).toEqual(["/mcp"]);
+      expect(JSON.stringify([result, appendDenied.mock.calls])).not.toContain("private-");
+    }
+  );
+
+  it("keeps admin upload validation and independent HTTP authorization", async () => {
+    const appendDenied = vi.fn(async () => {});
+    app = buildMcpTestServer({ uploadAuthorizationAuditRepository: { appendDenied } });
+    const requests: string[] = [];
+    app.addHook("onRequest", async (request) => {
+      requests.push(request.url);
+      if (request.url === "/v1/documents/evidence") {
+        officialTestTokens.set(`eh_at_test_${adminEmployee.id}`, {
+          ...adminEmployee,
+          role: "employee"
+        });
+      }
+    });
+    const headers = { "mcp-protocol-version": "2025-11-25", "x-request-id": "admin_recheck_req" };
+    const invalid = await postMcp(
+      app,
+      {
+        jsonrpc: "2.0",
+        id: 62,
+        method: "tools/call",
+        params: { name: "upload_evidence_document", arguments: {} }
+      },
+      headers,
+      { employee: adminEmployee }
+    );
+    expect(invalid.payload).toContain("MCP_INPUT_VALIDATION_ERROR");
+    expect(parseToolPayload(invalid.payload).payload).toMatchObject({
+      error: { code: "MCP_INPUT_VALIDATION_ERROR" }
+    });
+    expect(requests).toEqual(["/mcp"]);
+    expect(appendDenied).not.toHaveBeenCalled();
+    requests.length = 0;
+    const response = await postMcp(
+      app,
+      {
+        jsonrpc: "2.0",
+        id: 63,
+        method: "tools/call",
+        params: {
+          name: "upload_evidence_document",
+          arguments: {
+            file: {
+              name: "evidence.md",
+              mediaType: "text/markdown",
+              encoding: "base64",
+              contentBase64: "IyBFdmlkZW5jZQo="
+            },
+            title: "Evidence",
+            confidentialityLevel: 0
+          }
+        }
+      },
+      headers,
+      { employee: adminEmployee }
+    );
+    expect(response.statusCode).toBe(200);
+    expect(parseToolPayload(response.payload).payload).toMatchObject({
+      error: { code: "UPLOAD_ADMIN_REQUIRED", requestId: "admin_recheck_req" }
+    });
+    expect(requests).toEqual(["/mcp", "/v1/documents/evidence"]);
+    expect(appendDenied).toHaveBeenCalledOnce();
+    expect(appendDenied.mock.calls[0]).toEqual([
+      expect.objectContaining({
+        actorEmployeeId: adminEmployee.id,
+        uploadSurface: "evidence_document"
+      })
+    ]);
+  });
+
+  it("preserves SDK unknown-tool and non-upload validation errors", async () => {
+    app = buildMcpTestServer();
+    for (const name of ["unknown_tool", "get_import_status"]) {
+      const response = await postMcp(
+        app,
+        { jsonrpc: "2.0", id: 64, method: "tools/call", params: { name, arguments: {} } },
+        { "mcp-protocol-version": "2025-11-25" }
+      );
+      expect(response.statusCode).toBe(200);
+      expect(parseJsonRpc(response.payload).result).toMatchObject({
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining(
+              name === "unknown_tool"
+                ? "MCP error -32602: Tool unknown_tool not found"
+                : "MCP error -32602: Input validation error"
+            )
+          }
+        ]
+      });
+    }
+  });
+
+  it.each(["throw", "reject"] as const)(
+    "normalizes an unexpected upload handler %s like an ordinary SDK tool failure",
+    async (mode) => {
+      const fail = vi.fn(() => {
+        if (mode === "throw") throw new Error("unexpected tool failure");
+        return Promise.reject("unexpected tool failure");
+      });
+      app = buildCustomMcpTestServer({
+        smedc_get_current_user: fail,
+        upload_evidence_document: fail
+      });
+      const results = [];
+      for (const name of ["smedc_get_current_user", "upload_evidence_document"]) {
+        const response = await postMcp(
+          app,
+          { jsonrpc: "2.0", id: 65, method: "tools/call", params: { name, arguments: {} } },
+          { "mcp-protocol-version": "2025-11-25" }
+        );
+        expect(response.statusCode).toBe(200);
+        const body = parseJsonRpc(response.payload);
+        expect(body).not.toHaveProperty("error");
+        expect(body.result).toEqual({
+          content: [{ type: "text", text: "unexpected tool failure" }],
+          isError: true
+        });
+        results.push(body);
+      }
+      expect(results[1]).toEqual(results[0]);
+      expect(fail).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it("preserves the SDK URL-elicitation protocol exception for upload handlers", async () => {
+    const fail = async () => {
+      throw new McpError(ErrorCode.UrlElicitationRequired, "URL elicitation required");
+    };
+    app = buildCustomMcpTestServer({
+      smedc_get_current_user: fail,
+      upload_evidence_document: fail
+    });
+    const results = [];
+    for (const name of ["smedc_get_current_user", "upload_evidence_document"]) {
+      const response = await postMcp(
+        app,
+        { jsonrpc: "2.0", id: 66, method: "tools/call", params: { name, arguments: {} } },
+        { "mcp-protocol-version": "2025-11-25" }
+      );
+      expect(response.statusCode).toBe(200);
+      const body = parseJsonRpc(response.payload);
+      expect(body).not.toHaveProperty("result");
+      expect(body.error?.code).toBe(ErrorCode.UrlElicitationRequired);
+      results.push(body);
+    }
+    expect(results[1]).toEqual(results[0]);
+  });
+
+  it("restores the SDK registration method when tool registration throws", () => {
+    const instances: Server[] = [];
+    const register = vi.spyOn(McpServer.prototype, "registerTool").mockImplementation(function (
+      this: McpServer
+    ) {
+      instances.push(this.server);
+      expect(this.server.setRequestHandler).not.toBe(Server.prototype.setRequestHandler);
+      throw new Error("registration failed");
+    });
+    try {
+      expect(() =>
+        createSmedcHttpMcpServer({
+          context: {
+            employee,
+            audit: {
+              requestId: "restore_req",
+              sourceIp: "127.0.0.1",
+              clientSource: "mcp_launcher",
+              launcherVersion: null
+            }
+          }
+        })
+      ).toThrow("registration failed");
+      expect(instances[0]?.setRequestHandler).toBe(Server.prototype.setRequestHandler);
+    } finally {
+      register.mockRestore();
+    }
   });
 
   it("requires bearer auth before initialize or tool discovery can list tools", async () => {
@@ -692,38 +937,42 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(capturedContext.mock.calls[0]?.[0].abortSignal).toBeInstanceOf(AbortSignal);
   });
 
-  it("initializes without returning a session id and lists contract tools", async () => {
-    app = buildMcpTestServer();
+  it.each([employee, adminEmployee])(
+    "initializes and lists all static tools for $role",
+    async (authenticatedEmployee) => {
+      app = buildMcpTestServer();
 
-    const initialize = await postMcp(app, initializeRequest());
-    const toolsList = await postMcp(
-      app,
-      {
-        jsonrpc: "2.0",
-        id: 2,
-        method: "tools/list",
-        params: {}
-      },
-      {
-        "mcp-protocol-version": "2025-11-25"
-      }
-    );
+      const initialize = await postMcp(app, initializeRequest());
+      const toolsList = await postMcp(
+        app,
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {}
+        },
+        {
+          "mcp-protocol-version": "2025-11-25"
+        },
+        { employee: authenticatedEmployee }
+      );
 
-    expect(initialize.statusCode).toBe(200);
-    expect(initialize.headers["mcp-session-id"]).toBeUndefined();
-    expect(parseJsonRpc(initialize.payload).result).toMatchObject({
-      serverInfo: {
-        name: "smedc-api-mcp"
-      }
-    });
+      expect(initialize.statusCode).toBe(200);
+      expect(initialize.headers["mcp-session-id"]).toBeUndefined();
+      expect(parseJsonRpc(initialize.payload).result).toMatchObject({
+        serverInfo: {
+          name: "smedc-api-mcp"
+        }
+      });
 
-    expect(toolsList.statusCode).toBe(200);
-    expect(toolsList.headers["mcp-session-id"]).toBeUndefined();
-    const toolNames = (
-      parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
-    ).map((tool) => tool.name);
-    expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
-  });
+      expect(toolsList.statusCode).toBe(200);
+      expect(toolsList.headers["mcp-session-id"]).toBeUndefined();
+      const toolNames = (
+        parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
+      ).map((tool) => tool.name);
+      expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
+    }
+  );
 
   it("returns only the current authenticated employee's self-profile", async () => {
     app = buildLiveMcpApiTestServer();
@@ -942,7 +1191,10 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
   });
 
   it("serves live upload handlers through MCP without filesystem path inputs", async () => {
-    app = buildLiveMcpApiTestServer();
+    const appendDenied = vi.fn(async () => {});
+    app = buildLiveMcpApiTestServer([], {
+      uploadAuthorizationAuditRepository: { appendDenied }
+    });
 
     const response = await postMcp(
       app,
@@ -977,7 +1229,14 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(result).toMatchObject({ isError: true });
     expect(JSON.stringify(result)).not.toContain("MCP_TOOL_NOT_IMPLEMENTED");
     expect(JSON.stringify(result)).not.toContain("filePath");
-    expect(result.content?.[0]?.text).toContain("MCP error -32602");
+    expect(result.content?.[0]?.text).toContain("UPLOAD_ADMIN_REQUIRED");
+    expect(appendDenied).toHaveBeenCalledTimes(1);
+    expect(appendDenied).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorEmployeeId: employee.id,
+        uploadSurface: "evidence_document"
+      })
+    );
   });
 
   it("builds live handler state per request so delegated auth never reuses a prior bearer token", async () => {

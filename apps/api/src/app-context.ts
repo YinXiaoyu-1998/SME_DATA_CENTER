@@ -10,6 +10,10 @@ import {
 } from "./documents.js";
 import type { EmployeeRepository } from "./employees.js";
 import { createPrismaEvidenceSearchRepository, type EvidenceSearchRepository } from "./evidence.js";
+import {
+  createPrismaUploadAuthorizationAuditRepository,
+  type UploadAuthorizationAuditRepository
+} from "./file-upload-authorization.js";
 import { createPrismaSkillDirectoryRepository, type SkillDirectoryRepository } from "./skills.js";
 import {
   createPrismaStructuredImportRepository,
@@ -61,6 +65,7 @@ export interface ApiServerOptions {
   sourceDocumentRepository?: SourceDocumentRepository;
   sourceDocumentDownloadIssuer?: SourceDocumentDownloadIssuer;
   evidenceRepository?: EvidenceSearchRepository;
+  uploadAuthorizationAuditRepository?: UploadAuthorizationAuditRepository;
   storageAdapter?: StorageAdapter;
   authCore?: AuthCore;
   authenticateAccessToken?: (
@@ -99,6 +104,7 @@ export interface ApiServerContext {
   sourceDocumentDownloads: () => SourceDocumentDownloadIssuer;
   skills: () => SkillDirectoryRepository;
   evidence: () => EvidenceSearchRepository;
+  uploadAuthorizationAudit: () => UploadAuthorizationAuditRepository;
   close: () => Promise<void>;
 }
 
@@ -124,6 +130,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let sourceDocumentRepository = options.sourceDocumentRepository;
   let sourceDocumentDownloadIssuer = options.sourceDocumentDownloadIssuer;
   let evidenceRepository = options.evidenceRepository;
+  let uploadAuthorizationAuditRepository = options.uploadAuthorizationAuditRepository;
   let storageAdapter = options.storageAdapter;
   const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
   const cursorSigningSecret =
@@ -232,6 +239,13 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return evidenceRepository;
   }
 
+  function uploadAuthorizationAudit(): UploadAuthorizationAuditRepository {
+    uploadAuthorizationAuditRepository ??= createPrismaUploadAuthorizationAuditRepository(
+      environment["DATABASE_URL"]
+    );
+    return uploadAuthorizationAuditRepository;
+  }
+
   async function close() {
     if (closed) {
       return;
@@ -248,6 +262,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     await quarantineCertificateRepository?.disconnect?.();
     await sourceDocumentRepository?.disconnect?.();
     await evidenceRepository?.disconnect?.();
+    await uploadAuthorizationAuditRepository?.disconnect?.();
   }
 
   return {
@@ -273,6 +288,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     sourceDocumentDownloads,
     skills,
     evidence,
+    uploadAuthorizationAudit,
     close
   };
 }

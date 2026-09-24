@@ -1,4 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
+import {
+  authorizeFileUpload,
+  fileUploadAdminRequiredResponse,
+  type UploadAuthorizationAuditRepository
+} from "../file-upload-authorization.js";
 import { extname } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
@@ -157,11 +162,22 @@ export function registerQuarantineCertificateRoutes(
     storage: () => StorageAdapter;
     quarantineCertificates: () => QuarantineCertificateRepository;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
+    uploadAuthorizationAudit: () => UploadAuthorizationAuditRepository;
   }
 ): void {
   app.post("/v1/documents/quarantine-certificates", async (request, reply) => {
     const authenticated = await dependencies.auth.authenticate(request, reply);
     if (!authenticated) return;
+
+    const employee = dependencies.auth.employee(request);
+    const allowed = await authorizeFileUpload({
+      employee,
+      uploadSurface: "quarantine_certificate",
+      audit: dependencies.createBusinessRequestAudit(request),
+      auditRepository: dependencies.uploadAuthorizationAudit,
+      logAuditFailure: (context) => request.log.error(context, "upload denial audit failed")
+    });
+    if (!allowed) return reply.code(403).send(fileUploadAdminRequiredResponse(request));
 
     let upload: ParsedQuarantineUpload;
     try {
@@ -221,8 +237,6 @@ export function registerQuarantineCertificateRoutes(
         "Confidentiality level must be an integer from 0 through 3."
       );
     }
-
-    const employee = dependencies.auth.employee(request);
 
     const fileHash = createHash("sha256").update(file.body).digest("hex");
     const requestFingerprint = quarantineCertificateFingerprint({

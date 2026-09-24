@@ -23,7 +23,7 @@ The acceptance run must exercise both sides of the real product boundary:
 | ----------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, explicit role/clearance, and setup link.                                                      |
 | Password setup/reset                | Human-controlled browser          | The controller sends first-party setup links; the human chooses and enters synthetic passwords.                                                           |
-| Client installation                 | Employee-owned agent via skill    | Pinned `smedc-mcp-launcher@0.5.1` is installed and configured as a Codex stdio MCP.                                                                       |
+| Client installation                 | Employee-owned agent via skill    | Pinned `smedc-mcp-launcher@0.5.2` is installed and configured as a Codex stdio MCP.                                                                       |
 | Durable login                       | Launcher + system browser         | `smedc_login` completes Device Authorization and stores durable credential safely.                                                                        |
 | Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                                                                    |
 | Current account identity            | Employee-owned MCP client         | A natural account question returns only the synthetic user's display name, email, role, and clearance.                                                    |
@@ -75,7 +75,7 @@ The macOS user must have:
 
 - Node.js 22+ and npm;
 - the published launcher installed at
-  `~/Library/Application Support/SMEDC/launcher/versions/0.5.1/`;
+  `~/Library/Application Support/SMEDC/launcher/versions/0.5.2/`;
 - Codex configured with the exact `smedc` stdio MCP entry from
   `skills/smedc-mcp/SKILL.md`;
 - SSH access to the staging host through the committed strict `known_hosts` identity.
@@ -91,7 +91,7 @@ Credential-free preflight:
 
 ```sh
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.1/node_modules/.bin/smedc-mcp-launcher" self-check
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher" self-check
 ```
 
 Expected:
@@ -128,7 +128,7 @@ acceptance**, never as the full manual acceptance gate.
 ## Operator Account Lifecycle Check
 
 Use three fresh synthetic accounts in `default-org`, never a real customer address. The account
-attributes are deliberately orthogonal: role enables only named admin operations, while clearance
+attributes are deliberately orthogonal: role enables uploads and named admin operations, while clearance
 governs ordinary reads. Every `onboard` command must state both `--role` and `--clearance`; there is
 no product default for either field.
 
@@ -230,6 +230,27 @@ advice. At the 10-minute limit without a terminal status, report **still process
 Document/ImportBatch IDs in acceptance evidence, and say it can be checked later with the status
 tool; this is not a failure.
 
+## Upload Authorization Acceptance
+
+Use the 16-task three-account manifest in `fixtures/manual-acceptance/scenarios.json` as the primary
+visible workflow: employee c0 denial, employee c0/c3 reads, admin c0 positive uploads and ordinary high-level
+read denial. Positive upload families include evidence, row CSV, business/dishes partitions,
+unchanged Delivery Ledger XLSX, and quarantine certificates. Do not normalize or convert the Ledger
+file; the service validates the original. Optional companion delivery-report checks remain separate.
+
+Automated regressions prove direct HTTP upload endpoints return HTTP `403`, while MCP JSON-RPC
+transport returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+exact message `File upload requires the admin role.`, and `retryable: false` before validation/storage
+work. Tests also prove best-effort `file_upload.denied` with `uploadSurface` equal to `evidence_document`,
+`structured_dataset` (including Ledger), or `quarantine_certificate`. Local launcher denial occurs
+before file reads and creates no backend audit. Tools remain visible; no re-login or retry is a
+valid recovery. Automated tests also cover partition create/parts/complete denial, employee owner
+abort, unchanged status/manifest/read access, and older compatible launcher backend safety.
+Do not claim these backend proofs from the local-preflight transcript alone.
+
+No migration, existing OSS URL invalidation, mid-transfer downgrade test mechanism, or service-account
+ingestion design is introduced. See [the contract matrix](api-contract.md#file-upload-capability).
+
 ## Confidentiality And Admin Model Acceptance
 
 Run the following cases in the same organization and in this order. The visible employee tasks use
@@ -237,15 +258,17 @@ ordinary language; the controller alone knows which synthetic account is current
 records the expected result. Do not ask an agent to infer a level from a filename, words such as
 “保密”, a sender, or business context.
 
-| Account                 | One ordinary user-visible request                  | Required proof                                                                                                                                                                                                         |
-| ----------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `employee`, clearance 0 | “帮我把这份肉夹馍 SOP 上传到 SMEDC。”              | The upload omits `confidentialityLevel`, therefore creates level 0. The uploader can poll its status and later search it.                                                                                              |
-| `employee`, clearance 0 | “请把这份验收资料按 2 级密级上传到 SMEDC。”        | The level is sent only because the employee explicitly said `2`; an upload above the caller's clearance is accepted. The caller's later ordinary status/search request receives no result and must not leak metadata.  |
-| `employee`, clearance 3 | “前台折扣说明里有没有通用折扣口令？”               | A same-organization employee with adequate clearance can find the level-2 fixture through an ordinary MCP read. This is not an admin feature.                                                                          |
-| `admin`, clearance 0    | “前台折扣说明里有没有通用折扣口令？”               | The ordinary search returns no high-level material. `admin` is not a general read bypass.                                                                                                                              |
-| `admin`, clearance 0    | “请把收货单 SH2608250117 关联的检疫证明全部归档。” | `archive_quarantine_certificates` accepts `receiptId` as the named admin-only PAO even when the certificate is level 2 or 3; it returns only `archivedCount`, not document contents, metadata, or a normal read grant. |
+| Account                 | One ordinary user-visible request                      | Required proof                                                                                                                                                                                                         |
+| ----------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `employee`, clearance 0 | “帮我把这份肉夹馍 SOP 上传到 SMEDC。”                  | Explain admin is required before reading or transforming the file; tools stay visible. Launcher prevention produces no backend audit.                                                                                  |
+| `employee`, clearance 3 | Optional visible extension: “请把这份表上传到 SMEDC。” | Higher clearance does not grant upload permission; automated backend tests cover this denial even when this extension is not run.                                                                                      |
+| `admin`, clearance 0    | “帮我把这份肉夹馍 SOP 上传到 SMEDC。”                  | The upload omits `confidentialityLevel`, therefore creates level 0. The uploader can poll its status and later search it.                                                                                              |
+| `admin`, clearance 0    | “请把这份验收资料按 2 级密级上传到 SMEDC。”            | The level is sent only because the employee explicitly said `2`; an upload above the caller's clearance is accepted. The caller's later ordinary status/search request receives no result and must not leak metadata.  |
+| `employee`, clearance 3 | “前台折扣说明里有没有通用折扣口令？”                   | A same-organization employee with adequate clearance can find the level-2 fixture through an ordinary MCP read. This is not an admin feature.                                                                          |
+| `admin`, clearance 0    | “前台折扣说明里有没有通用折扣口令？”                   | The ordinary search returns no high-level material. `admin` is not a general read bypass.                                                                                                                              |
+| `admin`, clearance 0    | “请把收货单 SH2608250117 关联的检疫证明全部归档。”     | `archive_quarantine_certificates` accepts `receiptId` as the named admin-only PAO even when the certificate is level 2 or 3; it returns only `archivedCount`, not document contents, metadata, or a normal read grant. |
 
-Prepare the PAO target by having the low-clearance employee explicitly upload
+Prepare the PAO target by having the low-clearance admin explicitly upload
 `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` at level 2 for the
 receipt in the table. Before running the admin archive, the high-clearance employee may query that
 specific receipt to confirm the certificate exists. The low-clearance admin must not be asked to
@@ -288,7 +311,7 @@ For the current macOS user:
    browser or type credentials.
 4. Create separate user-visible Codex tasks/sessions for each ordinary employee action. Keep each
    visible prompt as one natural request, not a list of test instructions or expected answers. A
-   representative sequence is:
+   representative sequence is (all positive uploads use the clearance-0 admin):
    - current account from a fresh task: “我当前登录的 SMEDC 账号是什么身份和保密等级？”
    - default-level evidence upload: “帮我把这份肉夹馍 SOP 放进 SMEDC，之后大家能查到。”
      Do not mention a level; the required result is the service default of 0.
@@ -306,10 +329,10 @@ For the current macOS user:
    - structured upload/query from separate tasks: “这份菜品销售表帮我传进去。” then
      “这份表一共有多少条记录？销售额加起来是多少？销售额最高的两个菜是什么？”
    - when the untracked delivery samples are available, upload the supplier catalog, one XLSX
-     receipt, and the temporary CSV conversion of the second receipt from separate tasks; then use
+     receipt unchanged, and a separate committed row-query CSV fixture from separate tasks; then use
      one fresh task with an ordinary request such as “请查询 SMEDC 里的全部收货台账，并按
      台账字段逐行显示成一个表格。” Do not ask only for receipt counts or an enrichment summary.
-   - for the quarantine slice, the low-clearance employee first uses
+   - for the quarantine slice, the low-clearance admin first uses
      `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` with “帮我把这张检疫
      证明按 2 级密级关联到收货单据 SH2608250117。” The high-clearance employee may then query the
      explicit receipt ID and request a source-file download link. The low-clearance admin must use
@@ -327,11 +350,11 @@ For the current macOS user:
    role, and clearance match the synthetic account; the result must not contain internal IDs or
    credentials.
 8. Confirm the current account reports the explicitly assigned role and clearance.
-9. Upload default-level evidence fixtures with a unique `sourceSystem=manual_acceptance_<runId>`.
+9. Switch to the clearance-0 admin for all positive uploads. Upload default-level evidence fixtures with a unique `sourceSystem=manual_acceptance_<runId>`.
    Omit `confidentialityLevel`; check the uploader's status response confirms level 0 and reaches
    `active/ready`.
 10. Upload one evidence fixture only after the visible employee request expressly says level 2. The
-    clearance-0 uploader may receive the upload acknowledgement but must receive a non-enumerating
+    clearance-0 admin uploader may receive the upload acknowledgement but must receive a non-enumerating
     result from later ordinary status/search attempts. Do not poll that document as the low-clearance
     uploader.
 11. After login switches to the clearance-3 employee, search the high-level evidence and confirm a
@@ -366,7 +389,7 @@ For the current macOS user:
     duplicate any already-present receipt. A further identical run with no new receipt must be a
     no-op and leave the CSV byte-identical.
 16. For the quarantine slice, upload exactly one level-2 certificate to `SH2608250117` from the
-    clearance-0 employee, but only because the visible request expressly says level 2. The
+    clearance-0 admin, but only because the visible request expressly says level 2. The
     clearance-3 employee queries `query_quarantine_certificates` with that explicit receipt ID,
     verifies the returned `sourceDocumentId`, calls `get_source_document_download_url`, and confirms
     a 24-hour attachment link without fetching file bytes. Then log in as the clearance-0 admin and
@@ -399,8 +422,8 @@ npm run test:official-manual -- --run-id=20260730-macos-codex --keep-data
 The runner:
 
 - requires a current authenticated launcher session;
-- runs against the published `smedc-mcp-launcher@0.5.1` and requires the low-clearance
-  employee identity (`employee`, clearance 0); it verifies default-level evidence/structured uploads
+- runs against the published `smedc-mcp-launcher@0.5.2` and requires the low-clearance
+  admin identity (`admin`, clearance 0); it verifies default-level evidence/structured uploads
   by omitting the optional level field;
 - never reads staging database credentials from the local `.env`;
 - resolves the live staging runtime over strict-host-key SSH and runs controller-only window
@@ -417,7 +440,7 @@ release-ops node dist/release/official-manual-acceptance.js controller-...`);
   structured rows, date-window claims, OSS objects, or Qdrant points.
 
 For full manual acceptance, use the three-account browser lifecycle and user-visible tasks above.
-The runner is an additional low-clearance default-level smoke and cleanup helper; it cannot replace
+The runner is an additional admin-c0 default-level smoke and cleanup helper; it cannot replace
 the cross-account ordinary-read and PAO checks.
 
 ## Headless Remote Agent (Support Class C) Flow

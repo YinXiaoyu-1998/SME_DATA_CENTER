@@ -1,11 +1,33 @@
 # Official User Installation, Login, and Session Design
 
-Status: `smedc-mcp-launcher@0.5.1` is published and independently verified, both Skill repositories
+Status: `smedc-mcp-launcher@0.5.2` is published and independently verified, both Skill repositories
 use their final SMEDC names, and npm Trusted Publisher is configured. This synchronization branch
-recommends 0.5.1 while preserving 0.5.0 as the minimum compatible launcher; staging remains on V1
-retrieval until the controlled Qdrant upgrade, reindex, and cutover.
+recommends 0.5.2 while preserving 0.5.0 as the minimum compatible launcher. The admin-only backend
+enforcement release still requires its quality-gated deployment; publication alone is not deployment.
 
-Last updated: 2026-09-22
+Last updated: 2026-09-24
+
+## Upload Role And Launcher Profile
+
+Only active `admin` accounts may upload evidence, structured datasets (including Delivery Ledger),
+and quarantine certificates. Clearance controls ordinary reads and never grants upload permission.
+An admin may explicitly classify an upload above their clearance without gaining later read access.
+The upload tools remain statically visible and marked admin-only.
+
+Launcher 0.5.2 checks the authenticated profile before reading a local upload file. Its cached
+profile contains exactly `displayName`, `email`, `role`, `clearance`, and `organizationName`; unknown
+legacy profiles are resolved lazily, and logout/session clearing removes the profile. The live
+`smedc_get_current_user` response remains authoritative for current-user questions.
+
+Employee-role uploads receive HTTP `403` from direct HTTP endpoints. MCP JSON-RPC transport
+returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
+`File upload requires the admin role.`, and `retryable: false`. Do not re-login or retry for this error.
+A local preflight denial creates no backend audit; a backend denial best-effort records
+`file_upload.denied`. Older compatible launchers are still denied by the backend. Partition
+create/parts/complete require admin, while owner abort and existing read/status/manifest rules stay
+available. See [the endpoint matrix](api-contract.md#file-upload-capability). This release adds no
+historical migration, existing OSS URL invalidation, or mid-transfer downgrade mechanism; future
+service identities are a separate design.
 
 ## Purpose
 
@@ -213,7 +235,7 @@ OIDC migration remains a mandatory design constraint.
 - Old implementation and design documents never take precedence over this accepted decision log.
   Retain old material only when it accurately describes current code or useful history, and mark it
   accordingly; delete or supersede conflicting recommendations.
-- The repo-local and standalone skills pin launcher 0.5.1 and its Device Authorization behavior.
+- The repo-local and standalone skills pin launcher 0.5.2 and its Device Authorization behavior.
 
 ## Decision Log
 
@@ -345,7 +367,7 @@ window, the developer issues a replacement link.
 ## Historical Superseded Loopback Authorization Flow
 
 The following Authorization Code + PKCE flow shipped in launcher 0.1.x and remains accepted by the
-server while 0.1.x is minimum-compatible. Launcher 0.5.1 and the current employee skill do not use
+server while 0.1.x is minimum-compatible. Launcher 0.5.2 and the current employee skill do not use
 it; the Device Authorization section below is the pinned and recommended flow.
 
 1. The launcher binds an ephemeral HTTP listener on `127.0.0.1`, generates a random `state` and PKCE
@@ -583,12 +605,12 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Current launcher release status: `smedc-mcp-launcher@0.5.1` is public and independently verified,
+Current launcher release status: `smedc-mcp-launcher@0.5.2` is public and independently verified,
 the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and npm
 Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
 stage-publish-only permission. This synchronization branch keeps 0.5.0 as the minimum compatible
-version and recommends 0.5.1. Staging remains on V1 retrieval until the controlled Qdrant upgrade,
-reindex, and cutover. Npm provenance remains unavailable because the source repository is private
+version and recommends 0.5.2. Backend enforcement deployment is a separate release gate.
+Npm provenance remains unavailable because the source repository is private
 and is not an approval gate.
 
 The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
@@ -873,9 +895,9 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 The official beta installation, Device Authorization login, token/session, secure-store and
 memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
-implemented. Launcher 0.5.1 is public, independently verified, and supported on macOS, Windows, and
+implemented. Launcher 0.5.2 is public, independently verified, and supported on macOS, Windows, and
 Linux. Native macOS/Windows secure-store acceptance and the headless Linux login-to-business-tool
 loop have passed; the release workflow also exercises the installed package with no display on
-Ubuntu. This synchronization branch recommends 0.5.1 while preserving the 0.5.0 minimum; the V2
-retrieval staging deployment and QA acceptance remain gated. Full user-visible OpenClaw and
+Ubuntu. This synchronization branch recommends 0.5.2 while preserving the 0.5.0 minimum; the
+admin-only backend deployment and focused QA acceptance remain gated. Full user-visible OpenClaw and
 support-class-C phone/browser acceptance remains additional external evidence.

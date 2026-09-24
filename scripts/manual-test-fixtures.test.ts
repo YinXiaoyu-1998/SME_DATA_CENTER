@@ -12,28 +12,59 @@ describe("manual acceptance scenario manifest", () => {
       await readFile(path.join(fixtureRoot, "scenarios.json"), "utf8")
     ) as {
       version: string;
+      accounts: Record<string, { role: string; clearance: number }>;
       tasks: Array<{
         id: string;
+        account: string;
         freshContext: boolean;
         turns: Array<{ id: string; prompt: string }>;
       }>;
     };
 
-    expect(manifest.version).toBe("2026-09-14.v4");
+    expect(manifest.version).toBe("2026-09-24.v5");
+    expect(manifest.accounts).toEqual({
+      "employee-low": { role: "employee", clearance: 0 },
+      "employee-high": { role: "employee", clearance: 3 },
+      admin: { role: "admin", clearance: 0 }
+    });
     expect(manifest.tasks.map((task) => task.id)).toEqual([
       "current-account-low",
+      "employee-upload-denied",
       "upload-default-level",
       "upload-explicit-level",
+      "delivery-ledger-upload",
+      "row-query-upload",
+      "business-partition-upload",
+      "structured-default-level",
+      "quarantine-upload",
       "search-low-clearance",
       "search-high-clearance",
+      "delivery-ledger-query",
       "search-admin-denied",
       "archive-admin-pao",
-      "structured-default-level",
       "structured-query",
       "structured-invalid-atomic"
     ]);
     expect(manifest.tasks.every((task) => task.freshContext)).toBe(true);
     expect(manifest.tasks.every((task) => task.turns.length === 1)).toBe(true);
+    expect(manifest.tasks.map((task) => task.account)).toEqual([
+      "employee-low",
+      "employee-low",
+      "admin",
+      "admin",
+      "admin",
+      "admin",
+      "admin",
+      "admin",
+      "admin",
+      "employee-low",
+      "employee-high",
+      "employee-high",
+      "admin",
+      "admin",
+      "employee-low",
+      "admin"
+    ]);
   });
 
   it("contains only ordinary employee language, never controller or protocol instructions", async () => {
@@ -182,8 +213,8 @@ describe("manual acceptance scenario manifest", () => {
     expect(runner).toContain('"download_structured_partitions"');
     expect(runner).toContain("Expected three published partitions");
     expect(runner).toContain("Expected invalid partition source to be rejected atomically");
-    expect(runner).toContain('const LAUNCHER_VERSION = "0.5.1"');
-    expect(runner).toContain("isLowClearanceAcceptanceEmployee(currentUser, expectedEmails)");
+    expect(runner).toContain('const LAUNCHER_VERSION = "0.5.2"');
+    expect(runner).toContain('isAcceptanceAccount(currentUser, run.runId, "admin")');
     expect(runner).toContain("gross_sales");
     expect(runner).not.toContain('field: "dish_sales_amount"');
     expect(runner).toContain("defaultConfidentialityLevel: 0");

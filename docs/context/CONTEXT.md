@@ -352,7 +352,7 @@ _Avoid_: 多租户 SaaS
 - 本地和 CI 可默认使用 deterministic fake embedding/rerank provider，以避免真实 API key、费用和数据外发；真实外部 provider smoke 应使用合成文本并作为 manual/nightly/staging preflight
 - Qdrant 索引可从 MySQL、OSS 源文件和 retrieval config 重建，但 staging/prod-like runbook 仍需定义 snapshot 或 rebuild 策略；自动 snapshot/restore drill 和一键 rebuild 属于 P2
 - Phase 3 MCP 仍然只是 HTTP API 的薄适配，不直连 MySQL/Qdrant/OSS/model provider，不重复权限/查询校验，不暴露 worker/admin/operator 控制
-- 员工智能体可通过 MCP 做 evidence search、structured dataset discovery、row-dataset controlled query、`business` / `dishes` launcher-local partition extract 和 import/status；上传工具保持所有角色可发现，但只有 active admin 可调用 structured、evidence 和检疫证明上传，employee 由 launcher 本地预拦截且后端仍统一强制 403；模型配置、强制重建索引、worker retry、schema registry 编辑、导入声明修复等保持 HTTP/admin-only
+- 员工智能体可通过 MCP 做 evidence search、structured dataset discovery、row-dataset controlled query、`business` / `dishes` launcher-local partition extract 和 import/status；上传工具保持所有角色可发现，但只有 active admin 可调用 structured、evidence 和检疫证明上传，employee 由 launcher 本地预拦截，后端独立授权；直接 HTTP 上传端点返回 HTTP `403`，MCP JSON-RPC 传输返回 HTTP `200` 且工具结果为 `isError: true`；模型配置、强制重建索引、worker retry、schema registry 编辑、导入声明修复等保持 HTTP/admin-only
 - 在真正修改 `implementation-plan.md` 前，必须做 phase renumbering impact audit；旧 `Phase 3` / `phase-3` 引用需要分类为新检索 Phase 3、旧 staging/readiness 阶段、历史引用或 stale reference
 - supporting docs 优先使用语义化命名；`phase-3-readiness.md` 已按用户确认重命名为 `staging-readiness.md`
 - 历史 progress、handoff、accepted ADR context 不应逐条重写；应通过追加 note 说明 phase numbering changed
@@ -449,7 +449,7 @@ _Avoid_: 多租户 SaaS
 - launcher 只在操作系统安全存储中保存长期凭证：macOS 使用 Keychain、Windows 使用 Credential Manager，Linux 在兼容 Secret Service 可用时使用它；真正没有可用安全存储的主机只使用 launcher 进程内存会话，绝不写入普通文件、配置、日志或剪贴板
 - 有安全存储时，同一操作系统用户与 canonical SMEDC origin 下的 Codex 和其他本地 Agent 共享一条安全存储记录；无安全存储时，每个长时运行的 launcher 进程拥有独立内存态会话，重启后必须重新登录。beta 不提供账号列表、切换或多账号并存
 - official launcher 使用固定、非秘密的 public client ID，通过 Device Authorization 端点、token 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience，Authorization Code + PKCE 仅保留为 minimum-compatible 0.1.x 服务端路径
-- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；当前 skill 固定 `smedc-mcp-launcher@0.5.1`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
+- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；当前 skill 固定 `smedc-mcp-launcher@0.5.2`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
 - SMEDC skill 是安装编排说明的唯一入口：用户只需向已有该 skill 的 agent 提出自然语言安装请求，agent 按说明为当前用户安装依赖和 launcher、备份并更新自己的 MCP 配置、执行自检，再由 launcher 打开或投递第一方验证链接
 - launcher 安装平台正式支持 macOS、Windows 和 Linux；Codex 和 OpenClaw 的 macOS/Windows 链路是首批完整桌面客户端验收矩阵，Linux 另有无图形发行包验收与无头登录到业务工具闭环。对手机遥控 OpenClaw-family 或 Qoder 等宿主，skill 仍应提供受约束的自适应说明，允许 agent 在备份、最小修改、不影响其他 MCP 服务并验证成功的前提下完成安装；具体宿主未验收不等于 Linux 不受支持
 - launcher 不自行升级；服务端只公布最低支持版本和推荐版本，由主仓库与独立仓库中保持同步的 SMEDC skills 决定何时升级、选择哪个已批准的精确 npm 包版本，并指导 agent 完成安装和自检
@@ -686,11 +686,13 @@ _Avoid_: 多租户 SaaS
 - “单因素密码最低是否使用 NIST 建议的 15 字符”已 rejected for beta：产品决定最低 8 字符、最高 128 字符，其他无组合规则、常见密码拦截、完整验证和 Argon2id 存储要求保持不变。
 - “是否保留本地测试用 dev-login/JWT”已 rejected：旧认证实现完全弃用并删除，不设计迁移或双栈兼容；测试同样使用新系统的正式凭证模型，只能通过内部 fixture/factory 加速准备。
 - “CLI 重置密码”可能被理解为开发者设置或掌握员工密码；已 resolved：beta CLI 只签发 **密码设置链接**，密码始终由员工本人在浏览器页面设置。
-- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、OAuth Device Authorization、不透明 access token、操作系统安全存储长期会话和无头内存态会话，不保留 development email/JWT 兼容路径；固定版本 `smedc-mcp-launcher@0.5.1` 已在 npm 发布。launcher 安装平台支持 macOS、Windows 和 Linux，原生 macOS/Windows 安全存储验收、Ubuntu 无图形发行包验收和无头 Linux 登录到业务工具闭环构成不同层级的证据；用户可见的 OpenClaw/手机宿主验收仍是额外端到端证据。
+- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、OAuth Device Authorization、不透明 access token、操作系统安全存储长期会话和无头内存态会话，不保留 development email/JWT 兼容路径；固定版本 `smedc-mcp-launcher@0.5.2` 已在 npm 发布。launcher 安装平台支持 macOS、Windows 和 Linux，原生 macOS/Windows 安全存储验收、Ubuntu 无图形发行包验收和无头 Linux 登录到业务工具闭环构成不同层级的证据；用户可见的 OpenClaw/手机宿主验收仍是额外端到端证据。
 - “标签能否表达门店或人员权限”已 superseded by ADR 0025：标签模型完全移除；门店、人员是业务字段，不参与资料访问。
 - “admin 是否天然能读高密级资料”已 resolved：不能。`admin` 仅在明确的 **管理员特权操作** 中无视密级，普通读取仍按资料密级判断。
 - “资料密级是否由 agent 自动推断”已 resolved：不能。admin 未明确提供时，新上传资料为 0 级；文件名、内容和外部来源不触发自动升密。
 - “谁可以上传文件”已 resolved：只有 active admin 具备员工侧文件上传能力；employee 的 clearance 再高也不能上传，admin 可上传高于自身 clearance 的资料但不会获得后续普通读取豁免。工具保持可发现，launcher 做本地预拦截，后端仍是权威授权边界。
+- 上传拒绝契约为：直接 HTTP 上传端点返回 HTTP `403`；MCP JSON-RPC 传输返回 HTTP `200`，工具结果包含 `isError: true`。两者均携带 `UPLOAD_ADMIN_REQUIRED`、`File upload requires the admin role.`、`retryable: false`；已知 employee 时不得读取或转换本地文件，不重登、不重试、不提高 clearance 绕过。本地拒绝无后端审计；后端尽力记录 `file_upload.denied`，`uploadSurface` 仅为 `evidence_document`、`structured_dataset`（含 Delivery Ledger）、`quarantine_certificate`。分片 create/parts/complete 仅 admin，owner abort 保留；无历史迁移、已有 OSS URL 失效或传输中降权机制。
+- launcher 0.5.2 缓存身份只包含 `displayName`、`email`、`role`、`clearance`、`organizationName`；实时当前账号工具仍查询服务。最低兼容版本保持 0.5.0，推荐精确版本为 0.5.2；旧兼容客户端仍受后端上传授权约束。
 - “资料密级是否在服务内按来源链路向新上传文件传播”已 resolved：不会。服务内直接派生数据继承来源密级，系统外生成后再次上传的文件是独立新资料。
 - “创建账户是否能省略角色或保密等级”已 resolved：不能。开发者必须明确提供 `admin`/`employee` 和 0–3 保密等级，且无默认值。
 - “禁用账户是否还能保留部分功能”已 resolved：不能。禁用期间没有任何员工侧能力，历史记录只供运维与未来重新启用。
