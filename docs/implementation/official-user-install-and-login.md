@@ -1,11 +1,11 @@
 # Official User Installation, Login, and Session Design
 
 Status: `smedc-mcp-launcher@0.6.0` is published and independently verified, both Skill repositories
-use their final SMEDC names, and npm Trusted Publisher is configured. This synchronization branch
-recommends 0.6.0 and requires at least 0.6.0. The admin-only backend
-enforcement release still requires its quality-gated deployment; publication alone is not deployment.
+use their final SMEDC names, and npm Trusted Publisher is configured. Staging recommends 0.6.0 and
+requires at least 0.6.0. The synchronized backend, web i18n, and legacy-auth removal are deployed
+and have passed focused public verification.
 
-Last updated: 2026-09-24
+Last updated: 2026-09-26
 
 ## Upload Role And Launcher Profile
 
@@ -874,5 +874,6 @@ implemented. Launcher 0.6.0 is public, independently verified, and supported on 
 Linux. Native macOS/Windows secure-store acceptance and the headless Linux login-to-business-tool
 loop have passed; the release workflow also exercises the installed package with no display on
 Ubuntu. This synchronization branch requires and recommends 0.6.0; the i18n and legacy-auth
-cleanup deployment and focused QA acceptance remain gated. Full user-visible OpenClaw and
-support-class-C phone/browser acceptance remains additional external evidence.
+cleanup deployment and focused public acceptance have passed. The full user-visible workflow was
+not repeated for this cutover. Full user-visible OpenClaw and support-class-C phone/browser
+acceptance remains additional external evidence.

@@ -11,8 +11,9 @@ with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
 re-login, retry, or a clearance change. Launcher 0.6.0 preflights before local
 file access and creates no backend audit; backend denial best-effort records `file_upload.denied`.
 The [current endpoint matrix](api-contract.md#file-upload-capability) governs new pilots. Previous
-full-flow results below remain historical evidence and do not prove the new three-account gate.
-The published launcher is verified; the enforcement deployment and focused acceptance remain pending.
+full-flow results below remain historical evidence. The three-account admin-only upload gate passed
+on 2026-09-24; launcher 0.6.0 and the synchronized backend were deployed and received focused public
+acceptance on 2026-09-26. The full user-visible workflow was not repeated for this i18n/auth cleanup.
 
 This document tracks whether SMEDC is ready for a first controlled beta user. It replaces
 the withdrawn 2026-07-23 beta-token bridge snapshot; do not use any design that asks a user or
@@ -25,8 +26,8 @@ the project is ready to ingest customer-confidential or authoritative production
 ## Current Answer
 
 The first pilot scope is a **controlled macOS + Codex beta pilot with non-sensitive data**.
-Invite the user after the admin-only backend enforcement deployment and focused role/clearance
-acceptance pass; the historical results below do not satisfy that new gate.
+The admin-only backend deployment and focused role/clearance acceptance gate have passed, so this
+controlled pilot may proceed without repeating the unchanged full workflow.
 
 It is **not yet ready for real customer data**. Recovery, alerts, retention/deletion policy, and
 selected operational drills still need owner approval and evidence before customer-confidential
@@ -43,7 +44,7 @@ phone-controlled OpenClaw-family product still needs its own end-to-end acceptan
 | --------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Public service        | `https://api.smedatacenter.xyz/healthz`                                                                     | `200`                                                                                                                                     |
 | Private readiness     | public `GET /readyz`                                                                                        | `404`, as designed; readiness remains internal only                                                                                       |
-| Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                      | deployed to staging; the former 0.1.x Authorization Code + PKCE server path is removed in the pending 0.6.0 synchronization release       |
+| Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                      | deployed to staging; the former Authorization Code + PKCE and loopback callback paths are removed                                         |
 | Development auth      | old dev email/JWT login and staging JWT secret                                                              | removed from staging runtime/GitHub/local Keychain                                                                                        |
 | Public MCP            | unauthenticated public `/mcp`                                                                               | rejects unauthenticated requests; authenticated launcher calls succeed                                                                    |
 | Launcher package      | public npm package `smedc-mcp-launcher@0.6.0`                                                               | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass.                                    |
@@ -51,7 +52,7 @@ phone-controlled OpenClaw-family product still needs its own end-to-end acceptan
 | macOS Codex client    | 0.1.x user-visible flow plus 0.3.0 native package acceptance                                                | passed at those scopes; full user-visible 0.3.0 rerun is not yet recorded                                                                 |
 | Full macOS Codex flow | fresh synthetic account, 11 natural user-visible Codex sessions, upload/search/query/logout/reset/re-login  | passed core auth/evidence lifecycle; structured-query usability observations remain                                                       |
 | Cleanup               | manual acceptance cleanup                                                                                   | removed run documents, import batch, Qdrant points, dish rows, identity, employee, session                                                |
-| Deployment            | GitHub `main` quality gates and staging deploy workflow                                                     | successful deployment observed at immutable tag `bbb227421fa5`                                                                            |
+| Deployment            | GitHub `main` quality gates and staging deploy workflow                                                     | launcher 0.6.0 synchronization and version-gate hotfix deployed at immutable tag `be4c610b1992`                                           |
 | Runtime               | API/worker/Qdrant/nginx/TLS/RDS/OSS                                                                         | healthy in the latest verified live checks                                                                                                |
 | RDS backup            | 7-day full backup retention and 7-day log backup                                                            | backup exists; restore has not been rehearsed                                                                                             |
 | RDS transport         | private VPC TCP; provider SSL disabled                                                                      | current staging fact; final SSL policy remains open                                                                                       |
@@ -85,14 +86,14 @@ OpenClaw, admin UI, MFA, self-service registration, and automated password-reset
 
 ## Remaining Before Inviting The First macOS + Codex Beta User
 
-| Item                            | Status                 | Why it matters                                                                                                                           |
-| ------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Beta onboarding runbook         | covered by this slice  | The operator needs one repeatable path for account creation, setup-link delivery, verification, reset, and deletion.                     |
-| Skill structured-query guidance | covered by this slice  | Manual acceptance showed low-technical prompts like “this table” can cause an agent to answer from a local CSV or query historical rows. |
-| Role-boundary acceptance        | required before invite | Deploy backend enforcement and pass the focused employee c0/c3 denial, admin c0 upload, and ordinary-read checks.                        |
-| Actual beta identity details    | needed per user        | Operator needs email, display name, role, organization, and explicit 0–3 clearance for the beta employee and uploading admin.            |
-| First-run data approval         | needed per pilot       | Decide whether the user uses repo fixtures, synthetic internal docs, or a specific non-sensitive real document.                          |
-| Support owner/contact           | needed per pilot       | Someone must own setup-link delivery, first-login support, reset, and cleanup during the pilot.                                          |
+| Item                            | Status                | Why it matters                                                                                                                           |
+| ------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Beta onboarding runbook         | covered by this slice | The operator needs one repeatable path for account creation, setup-link delivery, verification, reset, and deletion.                     |
+| Skill structured-query guidance | covered by this slice | Manual acceptance showed low-technical prompts like “this table” can cause an agent to answer from a local CSV or query historical rows. |
+| Role-boundary acceptance        | passed 2026-09-24     | Three-account staging acceptance covered employee c0/c3 denial, admin c0 uploads, and unchanged ordinary-read controls.                  |
+| Actual beta identity details    | needed per user       | Operator needs email, display name, role, organization, and explicit 0–3 clearance for the beta employee and uploading admin.            |
+| First-run data approval         | needed per pilot      | Decide whether the user uses repo fixtures, synthetic internal docs, or a specific non-sensitive real document.                          |
+| Support owner/contact           | needed per pilot      | Someone must own setup-link delivery, first-login support, reset, and cleanup during the pilot.                                          |
 
 No additional ACR, SSH, RDS password, OSS key, domain, TLS, GitHub Actions secret, npm token, or
 JWT secret is required for the first macOS + Codex pilot.
