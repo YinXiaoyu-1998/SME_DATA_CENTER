@@ -249,7 +249,7 @@ describe("launcher upload role preflight", () => {
 });
 
 describe("launcher live profile resolution", () => {
-  it("upgrades a legacy credential from one authenticated /me lookup and reuses its exact profile", async () => {
+  it("resolves a missing cached profile once and reuses its exact value", async () => {
     const fixture = profileResolutionFixture(() =>
       Response.json({
         employee: {
@@ -277,7 +277,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.5.2");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.6.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -288,7 +288,7 @@ describe("launcher live profile resolution", () => {
     await dependencies.auth.logout();
     expect(fixture.record()).toBeNull();
     expect(body(await handler(null))).toMatchObject({ error: { code: "AUTHENTICATION_REQUIRED" } });
-    fixture.restoreLegacy();
+    fixture.restoreProfilelessRecord();
     expect(body(await handler(null))).toMatchObject({ error: { code: "UPLOAD_ADMIN_REQUIRED" } });
     expect(fixture.meRequests).toHaveLength(2);
   });
@@ -390,12 +390,13 @@ describe("launcher live profile resolution", () => {
 });
 
 function profileResolutionFixture(meResponse: () => Response) {
-  const legacy = JSON.stringify({
-    schemaVersion: 1,
+  const profilelessRecord = JSON.stringify({
+    schemaVersion: 2,
     origin: config.serviceUrl,
-    durableCredential: "legacy-refresh"
+    durableCredential: "current-refresh",
+    profile: null
   });
-  let record: string | null = legacy;
+  let record: string | null = profilelessRecord;
   vi.spyOn(runtime, "createKeychainCredentialStore").mockReturnValue({
     get: async () => record,
     set: async (value: string) => {
@@ -416,12 +417,12 @@ function profileResolutionFixture(meResponse: () => Response) {
     if (pathname === "/.well-known/oauth-authorization-server")
       return Response.json({
         issuer: config.serviceUrl,
-        authorization_endpoint: `${config.serviceUrl}/oauth/authorize`,
+        device_authorization_endpoint: `${config.serviceUrl}/oauth/device_authorization`,
         token_endpoint: `${config.serviceUrl}/oauth/token`,
         revocation_endpoint: `${config.serviceUrl}/oauth/revoke`,
-        response_types_supported: ["code"],
-        smedc_launcher_minimum_version: "0.5.0",
-        smedc_launcher_recommended_version: "0.5.1"
+        grant_types_supported: ["refresh_token", "urn:ietf:params:oauth:grant-type:device_code"],
+        smedc_launcher_minimum_version: "0.6.0",
+        smedc_launcher_recommended_version: "0.6.0"
       });
     if (pathname === "/oauth/token")
       return Response.json({
@@ -443,8 +444,8 @@ function profileResolutionFixture(meResponse: () => Response) {
     paths,
     meRequests,
     record: () => record,
-    restoreLegacy: () => {
-      record = legacy;
+    restoreProfilelessRecord: () => {
+      record = profilelessRecord;
     }
   };
 }
@@ -537,7 +538,7 @@ describe("official launcher bootstrap tools", () => {
     expect(JSON.stringify(safe)).not.toContain(token);
   });
 
-  it.each(["eh_rt_", "eh_ac_", "eh_ps_", "eh_tx_", "eh_at_"])(
+  it.each(["eh_rt_", "eh_ps_", "eh_at_"])(
     "rejects a high-entropy %s credential in an ordinary value",
     (prefix) => {
       const leakedCredential = `${prefix}${"a".repeat(43)}`;
@@ -579,7 +580,7 @@ describe("official launcher bootstrap tools", () => {
         storeCode: "S001",
         barcode: "6900000000000",
         secretMenu: true,
-        tokenFormat: "The eh_tx_ prefix alone is documentation, not a credential."
+        tokenFormat: "Credential prefixes alone are documentation, not credentials."
       },
       isError: true
     };

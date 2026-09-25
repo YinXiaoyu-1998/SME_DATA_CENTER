@@ -2,14 +2,13 @@ import * as oauth from "oauth4webapi";
 import semver from "semver";
 import { LauncherTypedError, type OAuthTokenClient } from "./session.js";
 
-export const LAUNCHER_VERSION = "0.5.2";
+export const LAUNCHER_VERSION = "0.6.0";
 const CLIENT: oauth.Client = { client_id: "smedc-desktop-launcher" };
 const VERSION_HEADER = { "x-smedc-launcher-version": LAUNCHER_VERSION };
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export interface LauncherMetadata {
-  authorizationEndpoint: URL;
-  deviceAuthorizationEndpoint: URL | null;
+  deviceAuthorizationEndpoint: URL;
   minimumVersion: string;
   recommendedVersion: string;
   recommendedUpdateAvailable: boolean;
@@ -26,7 +25,7 @@ export class SmedcOAuthClient implements OAuthTokenClient {
 
   async metadata(force = false, enforce = true): Promise<LauncherMetadata> {
     const server = await this.discovery(force);
-    if (!server.authorization_endpoint || !server.token_endpoint) {
+    if (!server.device_authorization_endpoint || !server.token_endpoint) {
       throw new LauncherTypedError("SERVICE_UNAVAILABLE");
     }
     const extensions = server as oauth.AuthorizationServer & Record<string, unknown>;
@@ -38,42 +37,12 @@ export class SmedcOAuthClient implements OAuthTokenClient {
       throw new LauncherTypedError("LAUNCHER_UPGRADE_REQUIRED");
     }
     return {
-      authorizationEndpoint: new URL(server.authorization_endpoint),
-      deviceAuthorizationEndpoint: server.device_authorization_endpoint
-        ? new URL(server.device_authorization_endpoint)
-        : null,
+      deviceAuthorizationEndpoint: new URL(server.device_authorization_endpoint),
       minimumVersion,
       recommendedVersion,
       recommendedUpdateAvailable: semver.lt(LAUNCHER_VERSION, recommendedVersion),
       compatible
     };
-  }
-
-  async exchange(
-    callbackParameters: URLSearchParams,
-    redirectUri: URL,
-    verifier: string
-  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> {
-    const server = await this.discovery();
-    try {
-      const response = await oauth.authorizationCodeGrantRequest(
-        server,
-        CLIENT,
-        oauth.None(),
-        callbackParameters,
-        redirectUri.toString(),
-        verifier,
-        requestOptions(this.fetchImplementation)
-      );
-      return readToken(await oauth.processAuthorizationCodeResponse(server, CLIENT, response));
-    } catch (error) {
-      throw mapOAuthError(error);
-    }
-  }
-
-  validateCallback(callbackUrl: URL, expectedState: string): URLSearchParams {
-    if (!this.#server) throw new LauncherTypedError("SERVICE_UNAVAILABLE");
-    return validateAuthorizationCallback(this.#server, callbackUrl, expectedState);
   }
 
   async requestDeviceAuthorization(input: {
@@ -198,23 +167,6 @@ export class SmedcOAuthClient implements OAuthTokenClient {
     } catch (error) {
       throw mapOAuthError(error, "SERVICE_UNAVAILABLE");
     }
-  }
-}
-
-export function validateAuthorizationCallback(
-  server: oauth.AuthorizationServer,
-  callbackUrl: URL,
-  expectedState: string
-): URLSearchParams {
-  try {
-    for (const name of ["code", "state", "error", "iss"]) {
-      if (callbackUrl.searchParams.getAll(name).length > 1) {
-        throw new LauncherTypedError("AUTHENTICATION_REQUIRED");
-      }
-    }
-    return oauth.validateAuthResponse(server, CLIENT, callbackUrl, expectedState);
-  } catch (error) {
-    throw mapOAuthError(error);
   }
 }
 

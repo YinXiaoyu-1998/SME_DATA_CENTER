@@ -24,8 +24,7 @@ describe("OAuth typed failures", () => {
     expect(mapOAuthError(new Error("network timeout")).code).toBe("SERVICE_UNAVAILABLE");
   });
 
-  it("uses the server OAuth metadata and interoperable form contract for code exchange", async () => {
-    let tokenRequest: { body: URLSearchParams; launcherVersion?: string } | undefined;
+  it("accepts device-only metadata without an authorization endpoint", async () => {
     const server = createServer((request, response) => {
       const origin = `https://127.0.0.1:${(server.address() as { port: number }).port}`;
       if (request.url === "/.well-known/oauth-authorization-server") {
@@ -33,40 +32,17 @@ describe("OAuth typed failures", () => {
         response.end(
           JSON.stringify({
             issuer: origin,
-            authorization_endpoint: `${origin}/oauth/authorize`,
+            device_authorization_endpoint: `${origin}/oauth/device_authorization`,
             token_endpoint: `${origin}/oauth/token`,
             revocation_endpoint: `${origin}/oauth/revoke`,
-            response_types_supported: ["code"],
-            grant_types_supported: ["authorization_code", "refresh_token"],
-            code_challenge_methods_supported: ["S256"],
-            smedc_launcher_minimum_version: "0.1.0",
-            smedc_launcher_recommended_version: "0.1.0"
+            grant_types_supported: [
+              "refresh_token",
+              "urn:ietf:params:oauth:grant-type:device_code"
+            ],
+            smedc_launcher_minimum_version: "0.6.0",
+            smedc_launcher_recommended_version: "0.6.0"
           })
         );
-        return;
-      }
-      if (request.url === "/oauth/token" && request.method === "POST") {
-        let body = "";
-        request.setEncoding("utf8");
-        request.on("data", (chunk: string) => {
-          body += chunk;
-        });
-        request.on("end", () => {
-          tokenRequest = {
-            body: new URLSearchParams(body),
-            launcherVersion: request.headers["x-smedc-launcher-version"] as string | undefined
-          };
-          response.setHeader("content-type", "application/json");
-          response.setHeader("cache-control", "no-store");
-          response.end(
-            JSON.stringify({
-              access_token: "eh_at_test",
-              token_type: "Bearer",
-              expires_in: 600,
-              refresh_token: "eh_rt_test"
-            })
-          );
-        });
         return;
       }
       response.statusCode = 404;
@@ -89,26 +65,10 @@ describe("OAuth typed failures", () => {
     });
 
     const metadata = await client.metadata();
-    const callbackParameters = client.validateCallback(
-      new URL("http://127.0.0.1:43121/oauth/callback?code=eh_ac_test&state=expected-state"),
-      "expected-state"
-    );
-    const token = await client.exchange(
-      callbackParameters,
-      new URL("http://127.0.0.1:43121/oauth/callback"),
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
-    );
-
     expect(metadata).toMatchObject({ compatible: true, recommendedUpdateAvailable: false });
-    expect(token).toMatchObject({ accessToken: "eh_at_test", refreshToken: "eh_rt_test" });
-    expect(tokenRequest?.launcherVersion).toBe("0.5.2");
-    expect(Object.fromEntries(tokenRequest!.body)).toMatchObject({
-      grant_type: "authorization_code",
-      client_id: "smedc-desktop-launcher",
-      code: "eh_ac_test",
-      redirect_uri: "http://127.0.0.1:43121/oauth/callback"
-    });
-    expect(tokenRequest?.body.get("code_verifier")).toHaveLength(66);
+    expect(metadata.deviceAuthorizationEndpoint.href).toBe(
+      `${origin.href}oauth/device_authorization`
+    );
   });
 });
 
@@ -122,15 +82,15 @@ describe("device authorization grant", () => {
         response.end(
           JSON.stringify({
             issuer: origin,
-            authorization_endpoint: `${origin}/oauth/authorize`,
             device_authorization_endpoint: `${origin}/oauth/device_authorization`,
             token_endpoint: `${origin}/oauth/token`,
             revocation_endpoint: `${origin}/oauth/revoke`,
-            response_types_supported: ["code"],
-            grant_types_supported: ["authorization_code", "refresh_token"],
-            code_challenge_methods_supported: ["S256"],
-            smedc_launcher_minimum_version: "0.1.0",
-            smedc_launcher_recommended_version: "0.2.0"
+            grant_types_supported: [
+              "refresh_token",
+              "urn:ietf:params:oauth:grant-type:device_code"
+            ],
+            smedc_launcher_minimum_version: "0.6.0",
+            smedc_launcher_recommended_version: "0.6.0"
           })
         );
         return;
@@ -187,7 +147,7 @@ describe("device authorization grant", () => {
       intervalSeconds: 5
     });
     expect(device.verificationUriComplete?.toString()).toContain("user_code=ABCDEFGH");
-    expect(deviceRequest?.launcherVersion).toBe("0.5.2");
+    expect(deviceRequest?.launcherVersion).toBe("0.6.0");
     expect(deviceRequest?.body.get("client_id")).toBe("smedc-desktop-launcher");
     expect(deviceRequest?.body.get("instanceName")).toBe("agent-a");
     expect(deviceRequest?.body.get("instanceHostname")).toBe("vps-1");
@@ -202,15 +162,15 @@ describe("device authorization grant", () => {
         response.end(
           JSON.stringify({
             issuer: origin,
-            authorization_endpoint: `${origin}/oauth/authorize`,
             device_authorization_endpoint: `${origin}/oauth/device_authorization`,
             token_endpoint: `${origin}/oauth/token`,
             revocation_endpoint: `${origin}/oauth/revoke`,
-            response_types_supported: ["code"],
-            grant_types_supported: ["authorization_code", "refresh_token"],
-            code_challenge_methods_supported: ["S256"],
-            smedc_launcher_minimum_version: "0.1.0",
-            smedc_launcher_recommended_version: "0.2.0"
+            grant_types_supported: [
+              "refresh_token",
+              "urn:ietf:params:oauth:grant-type:device_code"
+            ],
+            smedc_launcher_minimum_version: "0.6.0",
+            smedc_launcher_recommended_version: "0.6.0"
           })
         );
         return;
