@@ -378,6 +378,28 @@ describe("device authorization endpoints", () => {
     expect(response.json()).toMatchObject({ code: "LAUNCHER_UPGRADE_REQUIRED" });
   });
 
+  it("rejects device authorization before auth work when launcher 0.5.2 is below the 0.6.0 floor", async () => {
+    const { app, auth } = await build();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/oauth/device_authorization",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-smedc-launcher-version": "0.5.2"
+      },
+      payload: new URLSearchParams({
+        client_id: "smedc-desktop-launcher",
+        instanceName: "agent-a",
+        instanceHostname: "vps-1"
+      }).toString()
+    });
+
+    expect(response.statusCode).toBe(426);
+    expect(response.json()).toMatchObject({ code: "LAUNCHER_UPGRADE_REQUIRED" });
+    expect(auth.issueDeviceAuthorization).not.toHaveBeenCalled();
+  });
+
   it("rejects device authorization requests from an unknown client or missing instance identity", async () => {
     const { app } = await build();
 
