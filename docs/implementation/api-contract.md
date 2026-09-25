@@ -72,7 +72,7 @@ employee owner. Status, manifest, read, search, query, and download are not made
 existing organization, owner, and clearance checks still apply. Admin upload above the admin's
 clearance does not make later ordinary reads succeed.
 
-Upload tools remain statically visible and marked admin-only. Launcher 0.5.2 rejects a known
+Upload tools remain statically visible and marked admin-only. Launcher 0.6.0 rejects a known
 employee profile before reading/transforming a local file; unknown profiles are lazily resolved.
 The cached profile is exactly `displayName`, `email`, `role`, `clearance`, `organizationName`;
 `smedc_get_current_user` continues to read live server state. A local denial creates no backend
@@ -80,8 +80,8 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The recommended launcher is exactly 0.5.2; minimum compatibility remains 0.5.0. Older compatible
-launchers remain protected by authoritative backend denial. This change adds no historical
+The recommended launcher is exactly 0.6.0 and minimum compatibility is 0.6.0. Older
+launchers are rejected with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This change adds no historical
 migration, OSS URL invalidation, or mid-transfer downgrade handling. Existing attribution and
 read access remain intact. Future scheduled/connector/service identities need a separate design,
 not impersonation of an admin Employee Account; workers and operator utilities are outside this

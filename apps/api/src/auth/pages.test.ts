@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   authPageHeaders,
   renderDeviceVerificationPage,
-  renderLoginPage,
   renderPasswordSetupBootstrapPage,
   renderPasswordSetupForm
 } from "./pages.js";
@@ -20,47 +19,33 @@ describe("official authentication browser pages", () => {
     });
   });
 
-  it("allows only the validated launcher callback origin for the OAuth form redirect", () => {
-    expect(
-      authPageHeaders("nonce-value", {
-        allowLoopbackFormRedirect: true
-      })["content-security-policy"]
-    ).toContain("form-action 'self' http://127.0.0.1:*");
-  });
-
-  it("escapes login errors and CSRF values while preserving accessible labels", () => {
-    const html = renderLoginPage({
-      csrfToken: `csrf"><script>alert(1)</script>`,
-      error: `<img src=x onerror=alert(1)>`,
-      nonce: "login-nonce"
-    });
-
-    expect(html).toContain('<label for="email">Email</label>');
-    expect(html).toContain('<label for="password">Password</label>');
-    expect(html).toContain('autocomplete="username"');
-    expect(html).toContain('autocomplete="current-password"');
-    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
-    expect(html).not.toContain("<script>alert(1)</script>");
-    expect(html).not.toContain("<img src=x onerror=alert(1)>");
-  });
-
-  it("renders the device verification page with pairing details and a hidden user code", () => {
+  it("renders Chinese by default with a persistent Chinese-English switch", () => {
     const html = renderDeviceVerificationPage({
       csrfToken: "csrf-device",
       userCode: "ABCDEFGH",
       instanceName: "agent-a",
       instanceHostname: "vps-1",
       nonce: "device-nonce",
-      error: "The email or password is incorrect."
+      error: {
+        zh: "邮箱或密码错误。",
+        en: "The email or password is incorrect."
+      }
     });
 
+    expect(html).toContain('<html lang="zh-CN">');
+    expect(html).toContain('data-locale-option="zh-CN"');
+    expect(html).toContain('data-locale-option="en"');
+    expect(html).toContain("smedc-locale");
+    expect(html).toContain("登录 SMEDC");
+    expect(html).toContain("Sign in to SMEDC");
+    expect(html).toContain("邮箱或密码错误。");
+    expect(html).toContain("The email or password is incorrect.");
     expect(html).toContain("agent-a");
     expect(html).toContain("vps-1");
     expect(html).toContain('action="/oauth/device/verify/login"');
     expect(html).toContain('name="userCode" value="ABCDEFGH"');
     expect(html).toContain('autocomplete="username"');
     expect(html).toContain('autocomplete="current-password"');
-    expect(html).toContain("The email or password is incorrect.");
   });
 
   it("escapes pairing metadata so agent-declared names cannot inject markup", () => {
@@ -79,6 +64,8 @@ describe("official authentication browser pages", () => {
   it("clears the setup fragment before posting the one-time token", () => {
     const html = renderPasswordSetupBootstrapPage({ nonce: "setup-nonce" });
 
+    expect(html).toContain("正在准备密码设置…");
+    expect(html).toContain("Preparing password setup…");
     expect(html).toContain('window.history.replaceState(null, "", window.location.pathname)');
     expect(html).toContain('form.action = "/auth/password/setup/session"');
     expect(html).toContain('input.name = "token"');
@@ -89,7 +76,7 @@ describe("official authentication browser pages", () => {
     const html = renderPasswordSetupForm({
       csrfToken: "csrf-setup",
       nonce: "form-nonce",
-      error: "Passwords do not match.",
+      error: { zh: "两次输入的密码不一致。", en: "Passwords do not match." },
       account: {
         displayName: `殷啸宇 <script>alert(1)</script>`,
         email: "yxy@example.invalid",
@@ -98,15 +85,19 @@ describe("official authentication browser pages", () => {
       }
     });
 
+    expect(html).toContain("显示名称");
     expect(html).toContain("Display name");
     expect(html).toContain("殷啸宇 &lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("yxy@example.invalid");
     expect(html).toContain("麦家小馆");
     expect(html).toContain("Role");
-    expect(html).toContain("admin");
-    expect(html).toContain('<label for="password">New password</label>');
-    expect(html).toContain('<label for="passwordConfirmation">Confirm new password</label>');
+    expect(html).toContain("管理员");
+    expect(html).toContain("Admin");
+    expect(html).toContain('<label for="password">');
+    expect(html).toContain("New password");
+    expect(html).toContain('<label for="passwordConfirmation">');
+    expect(html).toContain("Confirm new password");
     expect(html).toContain('autocomplete="new-password"');
     expect(html).toContain("Passwords do not match.");
     expect(html).not.toContain("eh_ps_");

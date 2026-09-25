@@ -310,7 +310,7 @@ As of 2026-07-23, the first online skeleton slice is live in staging: API, worke
 The official-auth implementation is merged and deployed with local password identities, OAuth
 Device Authorization, rotating opaque credentials, public authenticated `/mcp`, the published
 desktop/headless launcher, operator onboarding, and Codex/OpenClaw installation skills. Real macOS
-Codex acceptance passed on the retained 0.1.x compatibility path; native 0.2.0 macOS/Windows package
+Codex acceptance passed historically on the former 0.1.x compatibility path; native 0.2.0 macOS/Windows package
 acceptance and a full headless Linux loop also pass. The current supported launcher installation
 matrix is macOS, Windows, and Linux, with Ubuntu installed-package/no-display coverage in the
 release workflow. Full user-visible OpenClaw and support-class-C phone/browser acceptance,
@@ -355,7 +355,7 @@ The deployed slice is intentionally staging-only and uses fixture documents plus
 data. The earlier ADR 0021 opaque-token bridge was withdrawn and must not be implemented. The
 accepted official employee installation, browser login, and durable session contract is defined in
 `official-user-install-and-login.md`; the implementation and migration are deployed in staging,
-and real macOS Codex acceptance has passed on the retained 0.1.x compatibility path. The pinned and
+and real macOS Codex acceptance passed historically on the former 0.1.x compatibility path. The pinned and
 recommended launcher `smedc-mcp-launcher@0.5.1` is published and independently verified by
 native macOS/Windows secure-store acceptance. Linux is an official XDG current-user installation
 platform; the full headless Linux login-to-business-tool loop and Ubuntu installed-package/no-display

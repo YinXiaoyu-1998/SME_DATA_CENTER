@@ -1,71 +1,21 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
 export const OAUTH_CLIENT_ID = "smedc-desktop-launcher";
-export const OAUTH_TRANSACTION_COOKIE = "__Host-eh_oauth_transaction";
 export const PASSWORD_SETUP_COOKIE = "__Host-eh_password_setup";
 export const DEVICE_VERIFY_COOKIE = "__Host-eh_device_verify";
 export const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 export const DEVICE_USER_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{8}$/;
 
-interface AuthorizationQuery {
-  response_type?: unknown;
-  client_id?: unknown;
-  redirect_uri?: unknown;
-  state?: unknown;
-  code_challenge?: unknown;
-  code_challenge_method?: unknown;
-}
-
-export interface ValidAuthorizationRequest {
-  clientId: typeof OAUTH_CLIENT_ID;
-  redirectUri: string;
-  state: string;
-  pkceChallenge: string;
-}
-
 export interface OAuthAuthorizationServerMetadata {
   issuer: string;
-  authorization_endpoint: string;
   device_authorization_endpoint: string;
   token_endpoint: string;
   revocation_endpoint: string;
-  response_types_supported: ["code"];
-  grant_types_supported: ["authorization_code", "refresh_token", typeof DEVICE_CODE_GRANT_TYPE];
-  code_challenge_methods_supported: ["S256"];
+  grant_types_supported: ["refresh_token", typeof DEVICE_CODE_GRANT_TYPE];
   token_endpoint_auth_methods_supported: ["none"];
   smedc_launcher_package: "smedc-mcp-launcher";
-  smedc_launcher_minimum_version: "0.5.0";
-  smedc_launcher_recommended_version: "0.5.2";
-}
-
-export function authorizationRequest(query: AuthorizationQuery): ValidAuthorizationRequest {
-  const responseType = singleString(query.response_type);
-  const clientId = singleString(query.client_id);
-  const redirectUri = singleString(query.redirect_uri);
-  const state = singleString(query.state);
-  const pkceChallenge = singleString(query.code_challenge);
-  const pkceMethod = singleString(query.code_challenge_method);
-
-  if (
-    responseType !== "code" ||
-    clientId !== OAUTH_CLIENT_ID ||
-    !redirectUri ||
-    !isExactLoopbackRedirect(redirectUri) ||
-    !state ||
-    !/^[A-Za-z0-9_-]{16,512}$/.test(state) ||
-    !pkceChallenge ||
-    !/^[A-Za-z0-9_-]{43}$/.test(pkceChallenge) ||
-    pkceMethod !== "S256"
-  ) {
-    throw invalidAuthorizationRequest();
-  }
-
-  return {
-    clientId,
-    redirectUri,
-    state,
-    pkceChallenge
-  };
+  smedc_launcher_minimum_version: "0.6.0";
+  smedc_launcher_recommended_version: "0.6.0";
 }
 
 export function hostOnlyCookie(name: string, value: string, maxAgeSeconds: number): string {
@@ -116,70 +66,24 @@ export function matchesCsrfToken(transactionSecret: string, suppliedToken: strin
   return expected.byteLength === supplied.byteLength && timingSafeEqual(expected, supplied);
 }
 
-export function pkceChallengeForVerifier(verifier: string): string {
-  if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) {
-    throw new Error("invalid PKCE verifier");
-  }
-
-  return createHash("sha256").update(verifier, "utf8").digest("base64url");
-}
-
 export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMetadata {
   const issuer = canonicalHttpsOrigin(publicOrigin);
 
   return {
     issuer,
-    authorization_endpoint: `${issuer}/oauth/authorize`,
     device_authorization_endpoint: `${issuer}/oauth/device_authorization`,
     token_endpoint: `${issuer}/oauth/token`,
     revocation_endpoint: `${issuer}/oauth/revoke`,
-    response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token", DEVICE_CODE_GRANT_TYPE],
-    code_challenge_methods_supported: ["S256"],
+    grant_types_supported: ["refresh_token", DEVICE_CODE_GRANT_TYPE],
     token_endpoint_auth_methods_supported: ["none"],
     smedc_launcher_package: "smedc-mcp-launcher",
-    smedc_launcher_minimum_version: "0.5.0",
-    smedc_launcher_recommended_version: "0.5.2"
+    smedc_launcher_minimum_version: "0.6.0",
+    smedc_launcher_recommended_version: "0.6.0"
   };
 }
 
 export function isValidDeviceUserCode(value: unknown): value is string {
   return typeof value === "string" && DEVICE_USER_CODE_PATTERN.test(value);
-}
-
-function isExactLoopbackRedirect(value: string): boolean {
-  const match = /^http:\/\/127\.0\.0\.1:(\d{1,5})\/oauth\/callback$/.exec(value);
-  if (!match) {
-    return false;
-  }
-
-  const port = Number(match[1]);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    return false;
-  }
-
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "http:" &&
-      url.hostname === "127.0.0.1" &&
-      !url.username &&
-      !url.password &&
-      !url.search &&
-      !url.hash &&
-      url.pathname === "/oauth/callback"
-    );
-  } catch {
-    return false;
-  }
-}
-
-function singleString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function invalidAuthorizationRequest(): Error {
-  return new Error("invalid OAuth authorization request");
 }
 
 function canonicalHttpsOrigin(value: string): string {

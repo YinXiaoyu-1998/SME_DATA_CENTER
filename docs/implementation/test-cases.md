@@ -1,12 +1,12 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-09-14
+Last updated: 2026-09-26
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
 ## Admin-only upload regression boundary
 
-Launcher recommendation is exactly 0.5.2; minimum compatibility is 0.5.0. Run the HTTP upload
+Launcher recommendation and minimum compatibility are exactly 0.6.0. Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
 prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
@@ -20,7 +20,7 @@ Positive uploads use admin c0 across evidence, row CSV, business/dishes partitio
 Delivery Ledger XLSX, and quarantine images. Explicit high-level admin uploads succeed without
 granting ordinary read access; employee c3 can read eligible data but cannot upload. Partition
 create/parts/complete require admin; owner abort and existing status/manifest/read/search/query/download
-rules remain. Older compatible launchers are backend-denied. The manual manifest has 16 separate
+rules remain. Launchers older than 0.6.0 are rejected with `LAUNCHER_UPGRADE_REQUIRED`. The manual manifest has 16 separate
 natural-language tasks; the controller smoke requires admin c0. No historical-data migration,
 OSS URL invalidation, mid-transfer downgrade handling, or future service-identity design is added.
 
@@ -107,7 +107,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-This runner uses the installed `smedc-mcp-launcher@0.5.2`, a clearance-0 admin's
+This runner uses the installed `smedc-mcp-launcher@0.6.0`, a clearance-0 admin's
 operating-system secure-store session, and the public staging service. It checks that upload inputs
 which omit `confidentialityLevel` remain level 0, then covers evidence upload/status/search,
 structured CSV import/query, invalid atomic import rejection, and run-scoped cleanup of evidence,
@@ -148,7 +148,7 @@ account lifecycle, confidentiality, admin-PAO, logout/reset, or account-deletion
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Password identity | Unicode NFC and 8–128 boundaries, common-password rejection, Argon2id parameters, dummy verification, non-enumerating failures, and 5/10/20/40/60-minute cooldown                                                                                                          |
 | Setup/reset       | 24-hour single-use grant, 10-minute setup transaction, replacement and concurrent-consumption safety, fragment removal, CSRF/cookie/CSP/no-store headers, and session-family revocation                                                                                    |
-| OAuth             | Metadata, fixed public client, Device Authorization issue/verify/poll lifecycle, 10-minute single-use pending codes, pairing metadata, pending/expiry/replay rejection, plus retained minimum-compatible 0.1.x Authorization Code + PKCE coverage                          |
+| OAuth             | Metadata, fixed public client, Device Authorization issue/verify/poll lifecycle, 10-minute single-use pending codes, pairing metadata, pending/expiry/replay rejection, and negative coverage proving the removed Authorization Code routes/grant stay unavailable         |
 | Sessions          | Hash-only opaque tokens, 10-minute access expiry, 30-day absolute session, atomic refresh rotation, replay-family revocation, logout/reset/disabled revocation, and fail-closed database errors                                                                            |
 | Launcher          | Desktop browser auto-open and headless link delivery, bounded device polling, macOS Keychain/Windows Credential Manager or headless memory-only custody, cross-process refresh lock, restart recovery, model-safe failure classes, and no credential output                |
 | Package           | `npm pack` allowlist and secret scan, no workspace dependency in the tarball, clean-directory install, stdio initialize/list-tools probe, native keyring load on macOS/Windows CI, headless installed-package/no-display acceptance on Ubuntu CI, and tag/version equality |

@@ -175,12 +175,6 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
         await tx.authSession.deleteMany({
           where: { id: { in: sessionIds } }
         });
-        await tx.oAuthAuthorizationCode.deleteMany({
-          where: { OR: [{ employeeId: identity.employeeId }, { identityId: { in: identityIds } }] }
-        });
-        await tx.oAuthAuthorizationTransaction.deleteMany({
-          where: { identityId: { in: identityIds } }
-        });
         await tx.passwordSetupSession.deleteMany({
           where: { identityId: { in: identityIds } }
         });

@@ -1,6 +1,6 @@
 # First Beta User Readiness
 
-Last verified: 2026-09-22 (historical acceptance evidence below); current guidance updated 2026-09-24.
+Last verified: 2026-09-22 (historical acceptance evidence below); current guidance updated 2026-09-26.
 
 Current upload policy requires active `admin` for evidence, structured data (including Delivery
 Ledger), and quarantine certificates. Employee c0/c3 may read eligible data but cannot upload;
@@ -8,7 +8,7 @@ admin c0 may explicitly upload higher-level files without gaining ordinary read 
 visible. Direct HTTP upload endpoints return HTTP `403`; MCP JSON-RPC transport returns HTTP `200`
 with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
 `File upload requires the admin role.`, and `retryable: false`. This requires an admin, not
-re-login, retry, or a clearance change. Launcher 0.5.2 preflights before local
+re-login, retry, or a clearance change. Launcher 0.6.0 preflights before local
 file access and creates no backend audit; backend denial best-effort records `file_upload.denied`.
 The [current endpoint matrix](api-contract.md#file-upload-capability) governs new pilots. Previous
 full-flow results below remain historical evidence and do not prove the new three-account gate.
@@ -43,10 +43,10 @@ phone-controlled OpenClaw-family product still needs its own end-to-end acceptan
 | --------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Public service        | `https://api.smedatacenter.xyz/healthz`                                                                     | `200`                                                                                                                                     |
 | Private readiness     | public `GET /readyz`                                                                                        | `404`, as designed; readiness remains internal only                                                                                       |
-| Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                      | deployed to staging; 0.1.x Authorization Code + PKCE remains server-compatible only                                                       |
+| Official identity     | browser password setup/login, OAuth Device Authorization, rotating durable credentials                      | deployed to staging; the former 0.1.x Authorization Code + PKCE server path is removed in the pending 0.6.0 synchronization release       |
 | Development auth      | old dev email/JWT login and staging JWT secret                                                              | removed from staging runtime/GitHub/local Keychain                                                                                        |
 | Public MCP            | unauthenticated public `/mcp`                                                                               | rejects unauthenticated requests; authenticated launcher calls succeed                                                                    |
-| Launcher package      | public npm package `smedc-mcp-launcher@0.5.2`                                                               | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass.                                    |
+| Launcher package      | public npm package `smedc-mcp-launcher@0.6.0`                                                               | exact install, native macOS/Windows package acceptance, registry integrity, packaging, and audit pass.                                    |
 | Linux launcher        | XDG current-user install, no-display package load, Device Authorization link delivery, memory-only fallback | supported; headless login-to-business-tool loop passed, while each user-visible OpenClaw-family host remains a separate client acceptance |
 | macOS Codex client    | 0.1.x user-visible flow plus 0.3.0 native package acceptance                                                | passed at those scopes; full user-visible 0.3.0 rerun is not yet recorded                                                                 |
 | Full macOS Codex flow | fresh synthetic account, 11 natural user-visible Codex sessions, upload/search/query/logout/reset/re-login  | passed core auth/evidence lifecycle; structured-query usability observations remain                                                       |
@@ -67,7 +67,7 @@ The recommended first pilot is:
 
 - one real beta user with role `employee`, plus a separate active `admin` account for positive uploads;
 - macOS + Codex only;
-- official skill installation and `smedc-mcp-launcher@0.5.2`;
+- official skill installation and `smedc-mcp-launcher@0.6.0`;
 - browser password setup and Device Authorization login only;
 - fixture or explicitly approved non-sensitive documents;
 - one organization and explicitly assigned clearance for each account;

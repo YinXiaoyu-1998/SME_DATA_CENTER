@@ -213,7 +213,7 @@ describe("manual acceptance scenario manifest", () => {
     expect(runner).toContain('"download_structured_partitions"');
     expect(runner).toContain("Expected three published partitions");
     expect(runner).toContain("Expected invalid partition source to be rejected atomically");
-    expect(runner).toContain('const LAUNCHER_VERSION = "0.5.2"');
+    expect(runner).toContain('const LAUNCHER_VERSION = "0.6.0"');
     expect(runner).toContain('isAcceptanceAccount(currentUser, run.runId, "admin")');
     expect(runner).toContain("gross_sales");
     expect(runner).not.toContain('field: "dish_sales_amount"');

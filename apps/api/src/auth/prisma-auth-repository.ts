@@ -2,7 +2,6 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
   AccessAuthenticationRecord,
   AuthCoreRepository,
-  AuthorizationCodeRedemption,
   DeviceCodeRedemption,
   RotateCredentialResult,
   SecurityEventInput
@@ -333,129 +332,6 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           }
         });
         return true;
-      });
-    },
-
-    async createAuthorizationTransaction(input) {
-      const transaction = await prisma.oAuthAuthorizationTransaction.create({
-        data: {
-          transactionHash: input.transactionHash,
-          clientId: input.clientId,
-          redirectUri: input.redirectUri,
-          state: input.state,
-          pkceChallenge: input.pkceChallenge,
-          expiresAt: input.expiresAt,
-          createdAt: input.now
-        },
-        select: { id: true }
-      });
-      return transaction.id;
-    },
-
-    async consumeAuthorizationTransactionAndCreateCode(input) {
-      return prisma.$transaction(async (tx) => {
-        const transaction = await tx.oAuthAuthorizationTransaction.findUnique({
-          where: { transactionHash: input.transactionHash }
-        });
-        if (
-          !transaction ||
-          transaction.status !== "pending" ||
-          transaction.expiresAt <= input.now
-        ) {
-          return null;
-        }
-        const identity = await tx.loginIdentity.findUnique({
-          where: { id: input.identityId },
-          include: {
-            employee: {
-              select: { id: true, orgId: true, disabled: true }
-            }
-          }
-        });
-        if (
-          !identity ||
-          identity.disabled ||
-          identity.employee.disabled ||
-          identity.employeeId !== input.employeeId ||
-          identity.orgId !== input.orgId ||
-          identity.employee.orgId !== input.orgId
-        ) {
-          return null;
-        }
-        const consumed = await tx.oAuthAuthorizationTransaction.updateMany({
-          where: {
-            id: transaction.id,
-            status: "pending",
-            expiresAt: { gt: input.now }
-          },
-          data: {
-            status: "completed",
-            identityId: input.identityId,
-            completedAt: input.now
-          }
-        });
-        if (consumed.count !== 1) {
-          return null;
-        }
-        const code = await tx.oAuthAuthorizationCode.create({
-          data: {
-            transactionId: transaction.id,
-            identityId: input.identityId,
-            employeeId: input.employeeId,
-            orgId: input.orgId,
-            codeHash: input.codeHash,
-            clientId: transaction.clientId,
-            redirectUri: transaction.redirectUri,
-            pkceChallenge: transaction.pkceChallenge,
-            expiresAt: input.codeExpiresAt,
-            createdAt: input.now
-          },
-          select: { id: true }
-        });
-        return {
-          codeId: code.id,
-          clientId: transaction.clientId,
-          redirectUri: transaction.redirectUri,
-          state: transaction.state
-        };
-      });
-    },
-
-    async redeemAuthorizationCode(input): Promise<AuthorizationCodeRedemption> {
-      return prisma.$transaction(async (tx) => {
-        const code = await tx.oAuthAuthorizationCode.findUnique({
-          where: { codeHash: input.codeHash }
-        });
-        if (
-          !code ||
-          code.clientId !== input.clientId ||
-          code.redirectUri !== input.redirectUri ||
-          code.pkceChallenge !== input.pkceChallenge ||
-          code.redeemedAt ||
-          code.expiresAt <= input.now
-        ) {
-          return { status: "invalid" };
-        }
-        const redeemed = await tx.oAuthAuthorizationCode.updateMany({
-          where: {
-            id: code.id,
-            clientId: input.clientId,
-            redirectUri: input.redirectUri,
-            pkceChallenge: input.pkceChallenge,
-            redeemedAt: null,
-            expiresAt: { gt: input.now }
-          },
-          data: { redeemedAt: input.now }
-        });
-        if (redeemed.count !== 1) {
-          return { status: "invalid" };
-        }
-        return {
-          status: "redeemed",
-          identityId: code.identityId,
-          employeeId: code.employeeId,
-          orgId: code.orgId
-        };
       });
     },
 

@@ -11,8 +11,6 @@ export const ARGON2ID_OPTIONS = {
 
 export const AUTH_LIFETIMES_MS = {
   accessToken: 10 * 60_000,
-  authorizationCode: 60_000,
-  browserTransaction: 10 * 60_000,
   deviceAuthorization: 10 * 60_000,
   passwordSetupSession: 10 * 60_000,
   passwordSetupGrant: 24 * 60 * 60_000,
@@ -20,7 +18,7 @@ export const AUTH_LIFETIMES_MS = {
   securityEventRetention: 90 * 24 * 60 * 60_000
 } as const;
 
-export type OpaqueSecretPrefix = "eh_ps_" | "eh_at_" | "eh_rt_" | "eh_ac_" | "eh_tx_" | "eh_dc_";
+export type OpaqueSecretPrefix = "eh_ps_" | "eh_at_" | "eh_rt_" | "eh_dc_";
 
 const DEVICE_USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -103,10 +101,6 @@ export function generateOpaqueSecret(prefix: OpaqueSecretPrefix): string {
 
 export function hashOpaqueSecret(secret: string): string {
   return createHash("sha256").update(secret, "utf8").digest("hex");
-}
-
-export function derivePkceS256Challenge(verifier: string): string {
-  return createHash("sha256").update(verifier, "ascii").digest("base64url");
 }
 
 export function safeHashEquals(leftHash: string, rightHash: string): boolean {

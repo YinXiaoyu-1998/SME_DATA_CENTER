@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   AuthCore,
@@ -39,11 +38,6 @@ class MemoryAuthRepository implements AuthCoreRepository {
   setupConsumeInput: Parameters<AuthCoreRepository["consumePasswordSetupSession"]>[0] | null = null;
   setupAccountInput: { sessionHash: string; now: Date } | null = null;
   sessionBundleInput: Parameters<AuthCoreRepository["createSessionBundle"]>[0] | null = null;
-  transactionInput: Parameters<AuthCoreRepository["createAuthorizationTransaction"]>[0] | null =
-    null;
-  codeInput:
-    Parameters<AuthCoreRepository["consumeAuthorizationTransactionAndCreateCode"]>[0] | null = null;
-  redemptionInput: Parameters<AuthCoreRepository["redeemAuthorizationCode"]>[0] | null = null;
   deviceIssueInput: Parameters<AuthCoreRepository["createDeviceAuthorization"]>[0] | null = null;
   deviceLookupInput: Parameters<AuthCoreRepository["findDeviceAuthorizationByUserCode"]>[0] | null =
     null;
@@ -121,47 +115,6 @@ class MemoryAuthRepository implements AuthCoreRepository {
       email: "yxy@example.invalid",
       organizationName: "麦家小馆",
       role: "admin" as const
-    };
-  }
-
-  async createAuthorizationTransaction(
-    input: Parameters<AuthCoreRepository["createAuthorizationTransaction"]>[0]
-  ): Promise<string> {
-    this.transactionInput = input;
-    return "transaction-1";
-  }
-
-  async consumeAuthorizationTransactionAndCreateCode(
-    input: Parameters<AuthCoreRepository["consumeAuthorizationTransactionAndCreateCode"]>[0]
-  ): Promise<{
-    codeId: string;
-    clientId: string;
-    redirectUri: string;
-    state: string;
-  } | null> {
-    this.codeInput = input;
-    return {
-      codeId: "code-1",
-      clientId: "smedc-desktop-launcher",
-      redirectUri: "http://127.0.0.1:43123/callback",
-      state: "stored-launcher-state"
-    };
-  }
-
-  async redeemAuthorizationCode(
-    input: Parameters<AuthCoreRepository["redeemAuthorizationCode"]>[0]
-  ): Promise<{
-    status: "redeemed";
-    identityId: string;
-    employeeId: string;
-    orgId: string;
-  }> {
-    this.redemptionInput = input;
-    return {
-      status: "redeemed",
-      identityId: "identity-1",
-      employeeId: "employee-1",
-      orgId: "org-1"
     };
   }
 
@@ -395,16 +348,10 @@ describe("AuthCore", () => {
     expect(repository.resetCalls).toBe(0);
   });
 
-  it("issues transaction, access, and durable secrets without persisting plaintext", async () => {
+  it("issues access and durable secrets without persisting plaintext", async () => {
     const repository = new MemoryAuthRepository();
     const core = new AuthCore(repository);
 
-    const transaction = await core.issueAuthorizationTransaction({
-      clientId: "smedc-desktop-launcher",
-      redirectUri: "http://127.0.0.1:43123/callback",
-      state: "launcher-state",
-      pkceChallenge: "challenge"
-    });
     const session = await core.createSession(
       {
         identityId: "identity-1",
@@ -414,10 +361,8 @@ describe("AuthCore", () => {
       oauthAudit
     );
 
-    expect(transaction.secret).toMatch(/^eh_tx_/);
     expect(session.durableCredential).toMatch(/^eh_rt_/);
     expect(session.accessToken).toMatch(/^eh_at_/);
-    expect(JSON.stringify(repository.transactionInput)).not.toContain(transaction.secret);
     expect(repository.sessionBundleInput?.credentialHash).toBe(
       hashOpaqueSecret(session.durableCredential)
     );
@@ -427,55 +372,6 @@ describe("AuthCore", () => {
     expect(repository.sessionBundleInput).toMatchObject({ audit: oauthAudit });
     expect(JSON.stringify(repository.sessionBundleInput)).not.toContain(session.durableCredential);
     expect(JSON.stringify(repository.sessionBundleInput)).not.toContain(session.accessToken);
-  });
-
-  it("atomically completes the transaction cookie using only server-held OAuth bindings", async () => {
-    const repository = new MemoryAuthRepository();
-    const core = new AuthCore(repository);
-
-    const completed = await core.completeAuthorizationTransaction(
-      "eh_tx_cookie",
-      {
-        identityId: "identity-1",
-        employeeId: "employee-1",
-        orgId: "org-1"
-      },
-      browserAudit
-    );
-
-    expect(completed).toEqual({
-      codeId: "code-1",
-      code: expect.stringMatching(/^eh_ac_/),
-      clientId: "smedc-desktop-launcher",
-      redirectUri: "http://127.0.0.1:43123/callback",
-      state: "stored-launcher-state",
-      expiresAt: expect.any(Date)
-    });
-    expect(repository.codeInput?.codeHash).toBe(hashOpaqueSecret(completed!.code));
-    expect(repository.codeInput).toMatchObject({ audit: browserAudit });
-    expect(JSON.stringify(repository.codeInput)).not.toContain(completed!.code);
-  });
-
-  it("derives the S256 challenge from the raw verifier during code redemption", async () => {
-    const repository = new MemoryAuthRepository();
-    const core = new AuthCore(repository);
-    const verifier = "raw-pkce-verifier-that-never-reaches-the-repository";
-
-    await core.redeemAuthorizationCode(
-      {
-        secret: "eh_ac_code",
-        clientId: "smedc-desktop-launcher",
-        redirectUri: "http://127.0.0.1:43123/callback",
-        verifier
-      },
-      oauthAudit
-    );
-
-    expect(repository.redemptionInput?.pkceChallenge).toBe(
-      createHash("sha256").update(verifier).digest("base64url")
-    );
-    expect(repository.redemptionInput).toMatchObject({ audit: oauthAudit });
-    expect(JSON.stringify(repository.redemptionInput)).not.toContain(verifier);
   });
 
   it("returns rotated credentials only after atomic repository rotation", async () => {

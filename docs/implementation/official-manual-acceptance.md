@@ -23,7 +23,7 @@ The acceptance run must exercise both sides of the real product boundary:
 | ----------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Operator onboarding                 | Release/operator controller       | `auth:operator onboard` creates an Employee, LoginIdentity, explicit role/clearance, and setup link.                                                      |
 | Password setup/reset                | Human-controlled browser          | The controller sends first-party setup links; the human chooses and enters synthetic passwords.                                                           |
-| Client installation                 | Employee-owned agent via skill    | Pinned `smedc-mcp-launcher@0.5.2` is installed and configured as a Codex stdio MCP.                                                                       |
+| Client installation                 | Employee-owned agent via skill    | Pinned `smedc-mcp-launcher@0.6.0` is installed and configured as a Codex stdio MCP.                                                                       |
 | Durable login                       | Launcher + system browser         | `smedc_login` completes Device Authorization and stores durable credential safely.                                                                        |
 | Continued use                       | Launcher + MCP tools              | A new launcher process can reuse Keychain state and call authenticated business tools.                                                                    |
 | Current account identity            | Employee-owned MCP client         | A natural account question returns only the synthetic user's display name, email, role, and clearance.                                                    |
@@ -75,7 +75,7 @@ The macOS user must have:
 
 - Node.js 22+ and npm;
 - the published launcher installed at
-  `~/Library/Application Support/SMEDC/launcher/versions/0.5.2/`;
+  `~/Library/Application Support/SMEDC/launcher/versions/0.6.0/`;
 - Codex configured with the exact `smedc` stdio MCP entry from
   `skills/smedc-mcp/SKILL.md`;
 - SSH access to the staging host through the committed strict `known_hosts` identity.
@@ -91,7 +91,7 @@ Credential-free preflight:
 
 ```sh
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher" self-check
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.6.0/node_modules/.bin/smedc-mcp-launcher" self-check
 ```
 
 Expected:
@@ -245,11 +245,12 @@ work. Tests also prove best-effort `file_upload.denied` with `uploadSurface` equ
 `structured_dataset` (including Ledger), or `quarantine_certificate`. Local launcher denial occurs
 before file reads and creates no backend audit. Tools remain visible; no re-login or retry is a
 valid recovery. Automated tests also cover partition create/parts/complete denial, employee owner
-abort, unchanged status/manifest/read access, and older compatible launcher backend safety.
+abort, unchanged status/manifest/read access, and authoritative backend checks for accepted requests.
 Do not claim these backend proofs from the local-preflight transcript alone.
 
-No migration, existing OSS URL invalidation, mid-transfer downgrade test mechanism, or service-account
-ingestion design is introduced. See [the contract matrix](api-contract.md#file-upload-capability).
+The only schema migration drops the unused legacy Authorization Code tables. No existing OSS URL
+invalidation, mid-transfer downgrade test mechanism, or service-account ingestion design is introduced.
+See [the contract matrix](api-contract.md#file-upload-capability).
 
 ## Confidentiality And Admin Model Acceptance
 
@@ -422,7 +423,7 @@ npm run test:official-manual -- --run-id=20260730-macos-codex --keep-data
 The runner:
 
 - requires a current authenticated launcher session;
-- runs against the published `smedc-mcp-launcher@0.5.2` and requires the low-clearance
+- runs against the published `smedc-mcp-launcher@0.6.0` and requires the low-clearance
   admin identity (`admin`, clearance 0); it verifies default-level evidence/structured uploads
   by omitting the optional level field;
 - never reads staging database credentials from the local `.env`;

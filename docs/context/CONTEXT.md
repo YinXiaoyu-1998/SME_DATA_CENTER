@@ -441,15 +441,15 @@ _Avoid_: 多租户 SaaS
 - 开发者 CLI 可以为 beta **登录身份** 签发 **密码设置链接**；员工只在浏览器页面设置密码
 - launcher 作为无客户端密钥的 public client，统一通过 OAuth Device Authorization 完成登录：取得第一方验证链接，桌面自动打开、无头/异机由 agent 投递，员工在浏览器确认实例并输入密码，launcher 轮询 token 端点
 - beta 登录、密码设置和安全错误页面由现有 API 在当前 HTTPS 域名上直接返回服务端 HTML，不新增前端框架、独立容器、域名或 `apps/admin-web` 实现
-- 浏览器只保存最长 10 分钟的授权事务 Cookie，不保存长期登录状态；Device Authorization 完成后，关闭页面或清空 Cookie 不影响 launcher 的持续 MCP 访问
+- 浏览器只保存最长 10 分钟的设备验证 Cookie，不保存长期登录状态；Device Authorization 完成后，关闭页面或清空 Cookie 不影响 launcher 的持续 MCP 访问
 - SMEDC token 接口签发有效期 10 分钟的 bearer access token，launcher 只在进程内存中持有并使用长期会话凭证自动续取；有安全存储的桌面 launcher 重启无需重新登录，真正无头的内存态进程重启后必须重新登录
 - access token 是至少 256 位随机强度的不透明 bearer 字符串，MySQL 只保存其哈希和会话、员工账号、过期、撤销元数据；每个受保护请求必须查询服务端权威状态
 - launcher 长期会话从最近一次浏览器密码登录起绝对有效 30 天，不设置额外闲置超时，也不能通过日常使用或 access token 续取延长
 - launcher 长期凭证在每次 access token 续取时轮换；服务端只保存各代哈希和会话家族关系，任何已消费旧凭证重放都会撤销整个家族并要求重新进行浏览器登录
 - launcher 只在操作系统安全存储中保存长期凭证：macOS 使用 Keychain、Windows 使用 Credential Manager，Linux 在兼容 Secret Service 可用时使用它；真正没有可用安全存储的主机只使用 launcher 进程内存会话，绝不写入普通文件、配置、日志或剪贴板
 - 有安全存储时，同一操作系统用户与 canonical SMEDC origin 下的 Codex 和其他本地 Agent 共享一条安全存储记录；无安全存储时，每个长时运行的 launcher 进程拥有独立内存态会话，重启后必须重新登录。beta 不提供账号列表、切换或多账号并存
-- official launcher 使用固定、非秘密的 public client ID，通过 Device Authorization 端点、token 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience，Authorization Code + PKCE 仅保留为 minimum-compatible 0.1.x 服务端路径
-- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；当前 skill 固定 `smedc-mcp-launcher@0.5.2`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
+- official launcher 使用固定、非秘密的 public client ID，通过 Device Authorization 端点、token 端点和服务端 metadata 工作；不支持动态客户端注册、password grant、客户端密钥、任意 scope 或 audience；Authorization Code + PKCE 与 loopback 回调已删除
+- launcher 权威源码保留在 private 主仓库 `apps/mcp-launcher`，通过 GitHub Actions 的 npm Trusted Publisher/OIDC 发布公开版本包；Trusted Publisher 可用于 private GitHub repo，但 npm provenance 对 private source repo 不可用，因此发布流程不得声明或要求 provenance；当前 skill 固定 `smedc-mcp-launcher@0.6.0`，只锁定并安装发行版本，不复制 launcher 源码，暂不建立独立 launcher 仓库
 - SMEDC skill 是安装编排说明的唯一入口：用户只需向已有该 skill 的 agent 提出自然语言安装请求，agent 按说明为当前用户安装依赖和 launcher、备份并更新自己的 MCP 配置、执行自检，再由 launcher 打开或投递第一方验证链接
 - launcher 安装平台正式支持 macOS、Windows 和 Linux；Codex 和 OpenClaw 的 macOS/Windows 链路是首批完整桌面客户端验收矩阵，Linux 另有无图形发行包验收与无头登录到业务工具闭环。对手机遥控 OpenClaw-family 或 Qoder 等宿主，skill 仍应提供受约束的自适应说明，允许 agent 在备份、最小修改、不影响其他 MCP 服务并验证成功的前提下完成安装；具体宿主未验收不等于 Linux 不受支持
 - launcher 不自行升级；服务端只公布最低支持版本和推荐版本，由主仓库与独立仓库中保持同步的 SMEDC skills 决定何时升级、选择哪个已批准的精确 npm 包版本，并指导 agent 完成安装和自检
@@ -672,7 +672,7 @@ _Avoid_: 多租户 SaaS
 - “长期凭证是否固定不变”已 rejected：每次续取 access token 都返回新长期凭证并消费旧值；旧值再次出现即视为可能复制并撤销整个会话家族，不设置重放宽限期。
 - “系统安全存储不可用时是否写普通文件”已 rejected：桌面预期安全存储被锁定、拒绝或失败时 launcher 停止认证并给出安全提示；真正无安全存储的无头主机只保存在内存，任何形态都不写普通文件。
 - “同一台电脑上的不同 Agent 是否分别登录”已 rejected：同一操作系统用户下的所有 Agent 共享一个 SMEDC 账号和安全存储记录；beta 假设用户只有一个账号，不设计账号切换或多账号操作。
-- “launcher 是否需要动态注册客户端”已 rejected：所有 official launcher 使用一个固定 public client 和固定 SMEDC API/MCP 资源；当前契约提供 Device Authorization、token 与 metadata，旧授权码 + PKCE 仅为 0.1.x 兼容。
+- “launcher 是否需要动态注册客户端”已 rejected：所有 official launcher 使用一个固定 public client 和固定 SMEDC API/MCP 资源；当前契约只提供 Device Authorization、token 与 metadata，旧授权码 + PKCE 已删除。
 - “launcher 源码应该放在 skills repo、独立 repo 还是主仓库”已 resolved：源码留在产品主仓库并作为公开版本化 npm 包发行；skills repo 只保留安装/使用指导和批准版本。
 - “谁执行 launcher 安装和 MCP 配置”已 resolved：skill 负责给出权威步骤，员工拥有的 agent 执行；launcher 不自行修改系统，员工也不需要亲自运行命令。
 - “是否只能支持预先写死的 agent”已 rejected：Codex 与 OpenClaw 是首批正式验收对象，但 skill 必须允许其他具备本地 stdio MCP 能力的 agent 根据自身帮助和配置进行受约束的自适应安装。平台支持与具体宿主验收分开表达：Linux 是受支持的 launcher 平台，未经端到端验收的手机/OpenClaw-family 宿主仍只能报告宿主级限制。
@@ -686,13 +686,13 @@ _Avoid_: 多租户 SaaS
 - “单因素密码最低是否使用 NIST 建议的 15 字符”已 rejected for beta：产品决定最低 8 字符、最高 128 字符，其他无组合规则、常见密码拦截、完整验证和 Argon2id 存储要求保持不变。
 - “是否保留本地测试用 dev-login/JWT”已 rejected：旧认证实现完全弃用并删除，不设计迁移或双栈兼容；测试同样使用新系统的正式凭证模型，只能通过内部 fixture/factory 加速准备。
 - “CLI 重置密码”可能被理解为开发者设置或掌握员工密码；已 resolved：beta CLI 只签发 **密码设置链接**，密码始终由员工本人在浏览器页面设置。
-- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、OAuth Device Authorization、不透明 access token、操作系统安全存储长期会话和无头内存态会话，不保留 development email/JWT 兼容路径；固定版本 `smedc-mcp-launcher@0.5.2` 已在 npm 发布。launcher 安装平台支持 macOS、Windows 和 Linux，原生 macOS/Windows 安全存储验收、Ubuntu 无图形发行包验收和无头 Linux 登录到业务工具闭环构成不同层级的证据；用户可见的 OpenClaw/手机宿主验收仍是额外端到端证据。
+- “Phase 3 MCP 连接鉴权”已成为历史实现：当前 staging 已运行公开 HTTPS MCP、OAuth Device Authorization、不透明 access token、操作系统安全存储长期会话和无头内存态会话，不保留 development email/JWT 兼容路径；固定版本 `smedc-mcp-launcher@0.6.0` 已在 npm 发布。launcher 安装平台支持 macOS、Windows 和 Linux，原生 macOS/Windows 安全存储验收、Ubuntu 无图形发行包验收和无头 Linux 登录到业务工具闭环构成不同层级的证据；用户可见的 OpenClaw/手机宿主验收仍是额外端到端证据。
 - “标签能否表达门店或人员权限”已 superseded by ADR 0025：标签模型完全移除；门店、人员是业务字段，不参与资料访问。
 - “admin 是否天然能读高密级资料”已 resolved：不能。`admin` 仅在明确的 **管理员特权操作** 中无视密级，普通读取仍按资料密级判断。
 - “资料密级是否由 agent 自动推断”已 resolved：不能。admin 未明确提供时，新上传资料为 0 级；文件名、内容和外部来源不触发自动升密。
 - “谁可以上传文件”已 resolved：只有 active admin 具备员工侧文件上传能力；employee 的 clearance 再高也不能上传，admin 可上传高于自身 clearance 的资料但不会获得后续普通读取豁免。工具保持可发现，launcher 做本地预拦截，后端仍是权威授权边界。
 - 上传拒绝契约为：直接 HTTP 上传端点返回 HTTP `403`；MCP JSON-RPC 传输返回 HTTP `200`，工具结果包含 `isError: true`。两者均携带 `UPLOAD_ADMIN_REQUIRED`、`File upload requires the admin role.`、`retryable: false`；已知 employee 时不得读取或转换本地文件，不重登、不重试、不提高 clearance 绕过。本地拒绝无后端审计；后端尽力记录 `file_upload.denied`，`uploadSurface` 仅为 `evidence_document`、`structured_dataset`（含 Delivery Ledger）、`quarantine_certificate`。分片 create/parts/complete 仅 admin，owner abort 保留；无历史迁移、已有 OSS URL 失效或传输中降权机制。
-- launcher 0.5.2 缓存身份只包含 `displayName`、`email`、`role`、`clearance`、`organizationName`；实时当前账号工具仍查询服务。最低兼容版本保持 0.5.0，推荐精确版本为 0.5.2；旧兼容客户端仍受后端上传授权约束。
+- launcher 0.6.0 缓存身份只包含 `displayName`、`email`、`role`、`clearance`、`organizationName`；实时当前账号工具仍查询服务。最低与推荐版本均为 0.6.0；更旧客户端会收到升级错误。
 - “资料密级是否在服务内按来源链路向新上传文件传播”已 resolved：不会。服务内直接派生数据继承来源密级，系统外生成后再次上传的文件是独立新资料。
 - “创建账户是否能省略角色或保密等级”已 resolved：不能。开发者必须明确提供 `admin`/`employee` 和 0–3 保密等级，且无默认值。
 - “禁用账户是否还能保留部分功能”已 resolved：不能。禁用期间没有任何员工侧能力，历史记录只供运维与未来重新启用。
