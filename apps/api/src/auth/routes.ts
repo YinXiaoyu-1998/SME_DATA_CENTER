@@ -4,11 +4,9 @@ import { createRequestAuditContext, type RequestAuditContext } from "../request-
 import type { AuthCore, AuthRequestAudit } from "./auth-core.js";
 import {
   OAUTH_CLIENT_ID,
-  OAUTH_TRANSACTION_COOKIE,
   PASSWORD_SETUP_COOKIE,
   DEVICE_VERIFY_COOKIE,
   DEVICE_CODE_GRANT_TYPE,
-  authorizationRequest,
   cookieValue,
   csrfTokenForSecret,
   hostOnlyCookie,
@@ -19,25 +17,32 @@ import {
 import {
   authPageHeaders,
   renderDeviceVerificationPage,
-  renderLoginPage,
   renderPasswordSetupBootstrapPage,
   renderPasswordSetupForm,
-  renderSafeMessagePage
+  renderSafeMessagePage,
+  type LocalizedText
 } from "./pages.js";
 import { validatePassword } from "./primitives.js";
 
-const MINIMUM_LAUNCHER_VERSION = "0.1.0";
+const MINIMUM_LAUNCHER_VERSION = "0.6.0";
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
-const INVALID_LOGIN_MESSAGE = "The email or password is incorrect.";
-const INVALID_SETUP_MESSAGE = "This password setup link is invalid or expired.";
-const DEVICE_LINK_INVALID_MESSAGE =
-  "This sign-in link is invalid or expired. Return to your agent and start sign-in again.";
+const INVALID_LOGIN_MESSAGE: LocalizedText = {
+  zh: "邮箱或密码错误。",
+  en: "The email or password is incorrect."
+};
+const INVALID_SETUP_MESSAGE: LocalizedText = {
+  zh: "此密码设置链接无效或已过期。",
+  en: "This password setup link is invalid or expired."
+};
+const DEVICE_LINK_INVALID_MESSAGE: LocalizedText = {
+  zh: "此登录链接无效或已过期。请返回你的 Agent 并重新开始登录。",
+  en: "This sign-in link is invalid or expired. Return to your agent and start sign-in again."
+};
 const DEVICE_AUTHORIZATION_TTL_SECONDS = 10 * 60;
 
 type OfficialAuthCore = Pick<
   AuthCore,
   | "authenticateAccessToken"
-  | "completeAuthorizationTransaction"
   | "completeDeviceAuthorization"
   | "consumePasswordSetupSession"
   | "createSession"
@@ -45,10 +50,8 @@ type OfficialAuthCore = Pick<
   | "findPasswordSetupAccount"
   | "findDeviceAuthorizationByUserCode"
   | "issueDeviceAuthorization"
-  | "issueAuthorizationTransaction"
   | "logout"
   | "pruneSecurityEvents"
-  | "redeemAuthorizationCode"
   | "redeemDeviceAuthorization"
   | "rotateDurableCredential"
   | "verifyLogin"
@@ -78,88 +81,6 @@ export function registerOfficialAuthRoutes(
   app.get("/.well-known/oauth-authorization-server", async (_request, reply) =>
     reply.header("cache-control", "no-store").send(oauthMetadata(options.publicOrigin))
   );
-
-  app.get("/oauth/authorize", async (request, reply) => {
-    let authorization;
-    try {
-      authorization = authorizationRequest(request.query as Record<string, unknown>);
-    } catch {
-      return oauthError(reply, 400, "invalid_request", "The authorization request is invalid.");
-    }
-
-    const transaction = await options.auth.issueAuthorizationTransaction(authorization);
-    reply.header(
-      "set-cookie",
-      hostOnlyCookie(OAUTH_TRANSACTION_COOKIE, transaction.secret, 10 * 60)
-    );
-    return sendHtml(
-      reply,
-      renderLoginPage({
-        nonce: nonce(),
-        csrfToken: csrfTokenForSecret(transaction.secret)
-      }),
-      { allowLoopbackFormRedirect: true }
-    );
-  });
-
-  app.post<{ Body: FormBody }>("/oauth/authorize/login", async (request, reply) => {
-    const transactionSecret = cookieValue(request.headers.cookie, OAUTH_TRANSACTION_COOKIE);
-    const body = request.body;
-
-    if (
-      !transactionSecret ||
-      !body ||
-      typeof body.csrfToken !== "string" ||
-      !matchesCsrfToken(transactionSecret, body.csrfToken)
-    ) {
-      return sendHtml(
-        reply.code(400),
-        renderSafeMessagePage({
-          nonce: nonce(),
-          title: "Sign-in expired",
-          message: "Return to your agent and start sign-in again."
-        })
-      );
-    }
-
-    const audit = authAudit(createRequestAuditContext(request, "browser_auth"));
-    const result = await options.auth.verifyLogin(body.email ?? "", body.password ?? "", audit);
-    if (!result.ok) {
-      return sendHtml(
-        reply.code(401),
-        renderLoginPage({
-          nonce: nonce(),
-          csrfToken: csrfTokenForSecret(transactionSecret),
-          error: INVALID_LOGIN_MESSAGE
-        }),
-        { allowLoopbackFormRedirect: true }
-      );
-    }
-
-    const completed = await options.auth.completeAuthorizationTransaction(
-      transactionSecret,
-      result,
-      audit
-    );
-    if (!completed) {
-      return sendHtml(
-        reply.code(400).header("set-cookie", clearCookie(OAUTH_TRANSACTION_COOKIE)),
-        renderSafeMessagePage({
-          nonce: nonce(),
-          title: "Sign-in expired",
-          message: "Return to your agent and start sign-in again."
-        })
-      );
-    }
-
-    const callback = new URL(completed.redirectUri);
-    callback.searchParams.set("code", completed.code);
-    callback.searchParams.set("state", completed.state);
-    return reply
-      .header("cache-control", "no-store")
-      .header("set-cookie", clearCookie(OAUTH_TRANSACTION_COOKIE))
-      .redirect(callback.toString(), 303);
-  });
 
   app.post<{ Body: FormBody }>("/oauth/device_authorization", async (request, reply) => {
     const context = createRequestAuditContext(request, "oauth_launcher");
@@ -220,7 +141,7 @@ export function registerOfficialAuthRoutes(
           reply.code(400),
           renderSafeMessagePage({
             nonce: nonce(),
-            title: "Sign-in link invalid",
+            title: { zh: "登录链接无效", en: "Sign-in link invalid" },
             message: DEVICE_LINK_INVALID_MESSAGE
           })
         );
@@ -231,7 +152,7 @@ export function registerOfficialAuthRoutes(
           reply.code(400),
           renderSafeMessagePage({
             nonce: nonce(),
-            title: "Sign-in link expired",
+            title: { zh: "登录链接已过期", en: "Sign-in link expired" },
             message: DEVICE_LINK_INVALID_MESSAGE
           })
         );
@@ -264,7 +185,7 @@ export function registerOfficialAuthRoutes(
         reply.code(400),
         renderSafeMessagePage({
           nonce: nonce(),
-          title: "Sign-in expired",
+          title: { zh: "登录已过期", en: "Sign-in expired" },
           message: DEVICE_LINK_INVALID_MESSAGE
         })
       );
@@ -278,7 +199,7 @@ export function registerOfficialAuthRoutes(
           reply.code(400),
           renderSafeMessagePage({
             nonce: nonce(),
-            title: "Sign-in expired",
+            title: { zh: "登录已过期", en: "Sign-in expired" },
             message: DEVICE_LINK_INVALID_MESSAGE
           })
         );
@@ -310,7 +231,7 @@ export function registerOfficialAuthRoutes(
         reply.code(400).header("set-cookie", clearCookie(DEVICE_VERIFY_COOKIE)),
         renderSafeMessagePage({
           nonce: nonce(),
-          title: "Sign-in expired",
+          title: { zh: "登录已过期", en: "Sign-in expired" },
           message: DEVICE_LINK_INVALID_MESSAGE
         })
       );
@@ -319,8 +240,11 @@ export function registerOfficialAuthRoutes(
       reply.header("set-cookie", clearCookie(DEVICE_VERIFY_COOKIE)),
       renderSafeMessagePage({
         nonce: nonce(),
-        title: "Sign-in complete",
-        message: "You can close this page and return to your agent."
+        title: { zh: "登录完成", en: "Sign-in complete" },
+        message: {
+          zh: "你可以关闭此页面并返回你的 Agent。",
+          en: "You can close this page and return to your agent."
+        }
       })
     );
   });
@@ -340,26 +264,6 @@ export function registerOfficialAuthRoutes(
     const body = request.body;
     if (!body || body.client_id !== OAUTH_CLIENT_ID) {
       return oauthError(reply, 400, "invalid_client", "The OAuth client is invalid.");
-    }
-
-    if (body.grant_type === "authorization_code") {
-      if (!body.code || !body.redirect_uri || !body.code_verifier) {
-        return oauthError(reply, 400, "invalid_request", "Required token fields are missing.");
-      }
-      const redemption = await options.auth.redeemAuthorizationCode(
-        {
-          secret: body.code,
-          clientId: body.client_id,
-          redirectUri: body.redirect_uri,
-          verifier: body.code_verifier
-        },
-        audit
-      );
-      if (redemption.status !== "redeemed") {
-        return oauthError(reply, 400, "invalid_grant", "The authorization grant is invalid.");
-      }
-      const session = await options.auth.createSession(redemption, audit);
-      return tokenResponse(reply, session.accessToken, session.durableCredential);
     }
 
     if (body.grant_type === "refresh_token") {
@@ -425,7 +329,7 @@ export function registerOfficialAuthRoutes(
         reply.code(400),
         renderSafeMessagePage({
           nonce: nonce(),
-          title: "Password setup unavailable",
+          title: { zh: "无法设置密码", en: "Password setup unavailable" },
           message: INVALID_SETUP_MESSAGE
         })
       );
@@ -444,7 +348,7 @@ export function registerOfficialAuthRoutes(
         reply.code(400),
         renderSafeMessagePage({
           nonce: nonce(),
-          title: "Password setup unavailable",
+          title: { zh: "无法设置密码", en: "Password setup unavailable" },
           message: INVALID_SETUP_MESSAGE
         })
       );
@@ -468,7 +372,7 @@ export function registerOfficialAuthRoutes(
         reply.code(400),
         renderSafeMessagePage({
           nonce: nonce(),
-          title: "Password setup unavailable",
+          title: { zh: "无法设置密码", en: "Password setup unavailable" },
           message: INVALID_SETUP_MESSAGE
         })
       );
@@ -479,17 +383,18 @@ export function registerOfficialAuthRoutes(
       !body.password ||
       body.password !== body.passwordConfirmation
     ) {
-      return passwordSetupFormError(
-        reply,
-        setupSecret,
-        account,
-        "The password confirmation is invalid."
-      );
+      return passwordSetupFormError(reply, setupSecret, account, {
+        zh: "两次输入的密码不一致。",
+        en: "The password confirmation is invalid."
+      });
     }
 
     const passwordValidation = validatePassword(body.password);
     if (!passwordValidation.valid) {
-      return passwordSetupFormError(reply, setupSecret, account, passwordValidation.reason);
+      return passwordSetupFormError(reply, setupSecret, account, {
+        zh: "密码不符合要求，请使用 8–128 个字符且不要使用常见密码。",
+        en: passwordValidation.reason
+      });
     }
 
     const audit = authAudit(createRequestAuditContext(request, "browser_auth"));
@@ -498,7 +403,7 @@ export function registerOfficialAuthRoutes(
         reply.code(400).header("set-cookie", clearCookie(PASSWORD_SETUP_COOKIE)),
         renderSafeMessagePage({
           nonce: nonce(),
-          title: "Password setup unavailable",
+          title: { zh: "无法设置密码", en: "Password setup unavailable" },
           message: INVALID_SETUP_MESSAGE
         })
       );
@@ -508,8 +413,11 @@ export function registerOfficialAuthRoutes(
       reply.header("set-cookie", clearCookie(PASSWORD_SETUP_COOKIE)),
       renderSafeMessagePage({
         nonce: nonce(),
-        title: "Password saved",
-        message: "You can close this page and return to your agent."
+        title: { zh: "密码已保存", en: "Password saved" },
+        message: {
+          zh: "你可以关闭此页面并返回你的 Agent。",
+          en: "You can close this page and return to your agent."
+        }
       })
     );
   });
@@ -519,16 +427,12 @@ function nonce(): string {
   return randomBytes(18).toString("base64url");
 }
 
-function sendHtml(
-  reply: FastifyReply,
-  html: string,
-  options: { allowLoopbackFormRedirect?: boolean } = {}
-) {
+function sendHtml(reply: FastifyReply, html: string) {
   const cspNonce = /<style nonce="([^"]+)"/.exec(html)?.[1];
   if (!cspNonce) {
     throw new Error("Authentication page is missing its CSP nonce.");
   }
-  for (const [name, value] of Object.entries(authPageHeaders(cspNonce, options))) {
+  for (const [name, value] of Object.entries(authPageHeaders(cspNonce))) {
     reply.header(name, value);
   }
   return reply.type("text/html; charset=utf-8").send(html);
@@ -558,7 +462,7 @@ function passwordSetupFormError(
   reply: FastifyReply,
   setupSecret: string,
   account: NonNullable<Awaited<ReturnType<OfficialAuthCore["findPasswordSetupAccount"]>>>,
-  error: string
+  error: LocalizedText
 ) {
   return sendHtml(
     reply.code(400),

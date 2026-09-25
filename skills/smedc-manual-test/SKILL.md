@@ -27,7 +27,7 @@ setup links to the human. The controller must not open setup links or type test 
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
-Use launcher `smedc-mcp-launcher@0.5.2` and the 16-task three-account manifest. All positive uploads
+Use launcher `smedc-mcp-launcher@0.6.0` and the 16-task three-account manifest. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
 before reading or transforming files. Tools remain visible. Direct HTTP upload endpoints return
@@ -117,7 +117,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 
    ```sh
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.5.2/node_modules/.bin/smedc-mcp-launcher" self-check
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.6.0/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
 9. For full acceptance, ensure the launcher starts logged out and switch among only the synthetic

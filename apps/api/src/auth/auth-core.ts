@@ -2,7 +2,6 @@ import type { AuthenticatedEmployee, EmployeeRoleName } from "@smedc/domain";
 import type { RequestAuditContext } from "../request-audit-context.js";
 import {
   AUTH_LIFETIMES_MS,
-  derivePkceS256Challenge,
   generateDeviceUserCode,
   generateOpaqueSecret,
   hashOpaqueSecret,
@@ -53,15 +52,6 @@ export type RotateCredentialResult =
       orgId: string;
     }
   | { status: "replayed"; sessionId: string }
-  | { status: "invalid" };
-
-export type AuthorizationCodeRedemption =
-  | {
-      status: "redeemed";
-      identityId: string;
-      employeeId: string;
-      orgId: string;
-    }
   | { status: "invalid" };
 
 export type DeviceCodeRedemption =
@@ -154,38 +144,6 @@ export interface AuthCoreRepository {
     now: Date;
     audit: AuthRequestAudit;
   }): Promise<boolean>;
-  createAuthorizationTransaction(input: {
-    transactionHash: string;
-    clientId: string;
-    redirectUri: string;
-    state: string;
-    pkceChallenge: string;
-    expiresAt: Date;
-    now: Date;
-  }): Promise<string>;
-  consumeAuthorizationTransactionAndCreateCode(input: {
-    transactionHash: string;
-    identityId: string;
-    employeeId: string;
-    orgId: string;
-    codeHash: string;
-    codeExpiresAt: Date;
-    now: Date;
-    audit: AuthRequestAudit;
-  }): Promise<{
-    codeId: string;
-    clientId: string;
-    redirectUri: string;
-    state: string;
-  } | null>;
-  redeemAuthorizationCode(input: {
-    codeHash: string;
-    clientId: string;
-    redirectUri: string;
-    pkceChallenge: string;
-    now: Date;
-    audit: AuthRequestAudit;
-  }): Promise<AuthorizationCodeRedemption>;
   createDeviceAuthorization(input: {
     deviceCodeHash: string;
     userCodeHash: string;
@@ -414,72 +372,6 @@ export class AuthCore {
     return this.repository.findPasswordSetupAccount({
       sessionHash: hashOpaqueSecret(sessionSecret),
       now: this.now()
-    });
-  }
-
-  async issueAuthorizationTransaction(input: {
-    clientId: string;
-    redirectUri: string;
-    state: string;
-    pkceChallenge: string;
-  }): Promise<{ id: string; secret: string; expiresAt: Date }> {
-    const now = this.now();
-    const secret = generateOpaqueSecret("eh_tx_");
-    const expiresAt = new Date(now.getTime() + AUTH_LIFETIMES_MS.browserTransaction);
-    const id = await this.repository.createAuthorizationTransaction({
-      transactionHash: hashOpaqueSecret(secret),
-      clientId: input.clientId,
-      redirectUri: input.redirectUri,
-      state: input.state,
-      pkceChallenge: input.pkceChallenge,
-      expiresAt,
-      now
-    });
-    return { id, secret, expiresAt };
-  }
-
-  async completeAuthorizationTransaction(
-    transactionSecret: string,
-    identity: { identityId: string; employeeId: string; orgId: string },
-    audit: AuthRequestAudit
-  ): Promise<{
-    codeId: string;
-    code: string;
-    clientId: string;
-    redirectUri: string;
-    state: string;
-    expiresAt: Date;
-  } | null> {
-    const now = this.now();
-    const code = generateOpaqueSecret("eh_ac_");
-    const expiresAt = new Date(now.getTime() + AUTH_LIFETIMES_MS.authorizationCode);
-    const result = await this.repository.consumeAuthorizationTransactionAndCreateCode({
-      transactionHash: hashOpaqueSecret(transactionSecret),
-      ...identity,
-      codeHash: hashOpaqueSecret(code),
-      codeExpiresAt: expiresAt,
-      now,
-      audit
-    });
-    return result ? { ...result, code, expiresAt } : null;
-  }
-
-  redeemAuthorizationCode(
-    input: {
-      secret: string;
-      clientId: string;
-      redirectUri: string;
-      verifier: string;
-    },
-    audit: AuthRequestAudit
-  ): Promise<AuthorizationCodeRedemption> {
-    return this.repository.redeemAuthorizationCode({
-      codeHash: hashOpaqueSecret(input.secret),
-      clientId: input.clientId,
-      redirectUri: input.redirectUri,
-      pkceChallenge: derivePkceS256Challenge(input.verifier),
-      now: this.now(),
-      audit
     });
   }
 

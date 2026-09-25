@@ -1,8 +1,8 @@
 # Official User Installation, Login, and Session Design
 
-Status: `smedc-mcp-launcher@0.5.2` is published and independently verified, both Skill repositories
+Status: `smedc-mcp-launcher@0.6.0` is published and independently verified, both Skill repositories
 use their final SMEDC names, and npm Trusted Publisher is configured. This synchronization branch
-recommends 0.5.2 while preserving 0.5.0 as the minimum compatible launcher. The admin-only backend
+recommends 0.6.0 and requires at least 0.6.0. The admin-only backend
 enforcement release still requires its quality-gated deployment; publication alone is not deployment.
 
 Last updated: 2026-09-24
@@ -14,16 +14,16 @@ and quarantine certificates. Clearance controls ordinary reads and never grants 
 An admin may explicitly classify an upload above their clearance without gaining later read access.
 The upload tools remain statically visible and marked admin-only.
 
-Launcher 0.5.2 checks the authenticated profile before reading a local upload file. Its cached
-profile contains exactly `displayName`, `email`, `role`, `clearance`, and `organizationName`; unknown
-legacy profiles are resolved lazily, and logout/session clearing removes the profile. The live
+Launcher 0.6.0 checks the authenticated profile before reading a local upload file. Its cached
+profile contains exactly `displayName`, `email`, `role`, `clearance`, and `organizationName`; a new
+session resolves a missing profile once, and logout/session clearing removes the profile. The live
 `smedc_get_current_user` response remains authoritative for current-user questions.
 
 Employee-role uploads receive HTTP `403` from direct HTTP endpoints. MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
 `File upload requires the admin role.`, and `retryable: false`. Do not re-login or retry for this error.
 A local preflight denial creates no backend audit; a backend denial best-effort records
-`file_upload.denied`. Older compatible launchers are still denied by the backend. Partition
+`file_upload.denied`. Launchers older than 0.6.0 are rejected. Partition
 create/parts/complete require admin, while owner abort and existing read/status/manifest rules stay
 available. See [the endpoint matrix](api-contract.md#file-upload-capability). This release adds no
 historical migration, existing OSS URL invalidation, or mid-transfer downgrade mechanism; future
@@ -221,9 +221,9 @@ unavailable, the agent reports that status and warning instead of inventing or h
 explicit download tool remains the refresh path for an expired link and the source-link path for
 structured rows or quarantine certificates.
 
-The server still accepts the older Authorization Code + PKCE contract for minimum-compatible 0.1.x
-launchers. That compatibility path is not the pinned or recommended employee flow. Future external
-OIDC migration remains a mandatory design constraint.
+The server accepts only Device Authorization and durable-credential renewal. Authorization Code +
+PKCE and loopback callback support have been removed. Future external OIDC migration remains a
+mandatory design constraint.
 
 ## Documentation Conflicts To Retire
 
@@ -235,7 +235,9 @@ OIDC migration remains a mandatory design constraint.
 - Old implementation and design documents never take precedence over this accepted decision log.
   Retain old material only when it accurately describes current code or useful history, and mark it
   accordingly; delete or supersede conflicting recommendations.
-- The repo-local and standalone skills pin launcher 0.5.2 and its Device Authorization behavior.
+- The repo-local and standalone skills pin the currently published launcher 0.6.0 and its Device
+  Authorization behavior. Launcher 0.6.0 must be published and independently verified before those
+  pins or the server recommendation are advanced.
 
 ## Decision Log
 
@@ -262,7 +264,7 @@ OIDC migration remains a mandatory design constraint.
 | 2026-07-23 | Confirmed                 | The normalized login email is globally unique, trimmed and compared case-insensitively, without provider-specific dot or plus-address rewriting; public failures never disclose identity existence                                                                                                                                                                |
 | 2026-07-23 | Confirmed                 | Password login allows five consecutive failures, then applies per-identity cooldowns of 5, 10, 20, 40, and at most 60 minutes; cooldown requests neither increment nor extend it                                                                                                                                                                                  |
 | 2026-07-23 | Deferred                  | Beta has no employee-facing or admin-UI account disable/reactivate/delete lifecycle; an emergency developer CLI operation may be added, while hard-delete semantics are explicitly outside this design                                                                                                                                                            |
-| 2026-07-23 | Superseded                | The 0.1.x launcher used Authorization Code + PKCE with a system browser and exact IPv4 loopback callback; the server retains it only for minimum-version compatibility                                                                                                                                                                                            |
+| 2026-07-23 | Superseded                | The 0.1.x launcher used Authorization Code + PKCE with a system browser and exact IPv4 loopback callback; that compatibility path was removed in the 0.6.0 hard cut                                                                                                                                                                                               |
 | 2026-07-23 | Confirmed                 | Login, password setup, and safe error pages are server-rendered by the existing Fastify API on its current HTTPS origin; beta adds no frontend framework, container, domain, or admin-web implementation                                                                                                                                                          |
 | 2026-07-23 | Confirmed                 | The browser keeps no durable login session; clearing or closing it after code handoff has no effect, while incomplete flows simply restart and durable MCP access belongs only to the launcher                                                                                                                                                                    |
 | 2026-07-24 | Confirmed                 | SMEDC's token endpoint issues a 10-minute bearer access token kept only in launcher memory; the launcher renews it automatically from the durable session, including after a launcher restart                                                                                                                                                                     |
@@ -271,7 +273,7 @@ OIDC migration remains a mandatory design constraint.
 | 2026-07-24 | Confirmed                 | The opaque durable credential rotates after every access-token renewal; reuse of any consumed generation revokes the whole session family and requires browser login                                                                                                                                                                                              |
 | 2026-07-24 | Superseded                | Durable credentials are stored only in macOS Keychain or Windows Credential Manager; unavailable or failed secure storage stops authentication and never falls back to plaintext                                                                                                                                                                                  |
 | 2026-07-24 | Superseded                | One operating-system user has one active SMEDC account per service origin; every local agent client shares it, account switching is absent, and refresh is cross-process single-flight                                                                                                                                                                            |
-| 2026-07-24 | Superseded                | All official launchers use one fixed public client ID and server metadata. Device Authorization is now official; Authorization Code + PKCE remains only for 0.1.x compatibility                                                                                                                                                                                   |
+| 2026-07-24 | Superseded                | All official launchers use one fixed public client ID and server metadata. Device Authorization is now official; the former 0.1.x Authorization Code + PKCE compatibility path was removed in the 0.6.0 hard cut                                                                                                                                                  |
 | 2026-07-24 | Confirmed                 | Authoritative launcher source remains in `apps/mcp-launcher` in the product monorepo and is released as a public, versioned npm package; skills pin and install the package but do not duplicate its source                                                                                                                                                       |
 | 2026-07-24 | Confirmed                 | The skill is the installation runbook and the employee-owned agent performs its steps; the employee requests installation in natural language and only directly interacts with the browser login                                                                                                                                                                  |
 | 2026-07-24 | Confirmed                 | Codex and OpenClaw on macOS and Windows are the first explicitly verified clients; the skill also gives other capable agents a guarded adaptive path to locate and update their own MCP configuration                                                                                                                                                             |
@@ -285,7 +287,7 @@ OIDC migration remains a mandatory design constraint.
 | 2026-07-24 | Confirmed                 | Beta passwords are 8–128 Unicode characters with no composition or periodic-change rule, a small local common-password blocklist, and reviewed benchmarked Argon2id storage                                                                                                                                                                                       |
 | 2026-07-24 | Confirmed                 | The temporary development email/JWT authentication system is deleted completely; every environment and test moves to the official identity/session model with no compatibility period                                                                                                                                                                             |
 | 2026-08-07 | Implemented               | Device-code/headless/secondary-device login was reopened and implemented using the OAuth Device Authorization Grant (RFC 8628) with a first-party mobile-friendly tap-link verification page and headless-agent token polling; PR #107 fully completed it and launcher 0.2.0 made it official.                                                                    |
-| 2026-08-08 | Implemented               | PR #107 implemented the server Device Authorization state machine and routes, first-party verification page, launcher polling, desktop auto-open, and memory-only headless session mode; Authorization Code remains only as a minimum-compatible 0.1.x server path                                                                                                |
+| 2026-08-08 | Implemented               | PR #107 implemented the server Device Authorization state machine and routes, first-party verification page, launcher polling, desktop auto-open, and memory-only headless session mode; the temporary 0.1.x Authorization Code compatibility path was removed in the 0.6.0 hard cut                                                                              |
 | 2026-09-22 | Confirmed                 | Linux is an official launcher-installation platform. The skill uses an XDG current-user versioned directory, interactive Linux opens a browser when available, and headless/no-keyring Linux returns the verification link and uses a memory-only session. User-visible phone/OpenClaw acceptance remains additional evidence rather than a support prerequisite. |
 | 2026-08-09 | Released                  | PR #108 published and verified `smedc-mcp-launcher@0.2.0`; PR #109 synchronized server metadata and the repo-local skill to the released recommended version                                                                                                                                                                                                      |
 
@@ -310,8 +312,7 @@ Resolve these branches in dependency order:
 6. **OAuth/OIDC client shape**: implemented — one fixed public client uses OAuth Device
    Authorization, a first-party verification link, token polling, the fixed SMEDC resource,
    and authorization-server metadata. Dynamic client registration, password grant, and embedded
-   client secrets do not exist. The older Authorization Code + PKCE path remains server-compatible
-   for minimum-supported 0.1.x launchers only.
+   client secrets do not exist. Authorization Code + PKCE and loopback callbacks are removed.
 7. **Session model**: resolved — opaque access tokens last 10 minutes and remain in launcher memory;
    opaque durable credentials rotate on every renewal within a fixed 30-day family, and replay
    revokes the family. Both token types are restricted to the SMEDC API/MCP resource.
@@ -364,27 +365,6 @@ The minimal page and backend flow are shared by initial setup and developer-init
 Initial-setup and beta password-reset links use one 24-hour expiry. If the employee misses the
 window, the developer issues a replacement link.
 
-## Historical Superseded Loopback Authorization Flow
-
-The following Authorization Code + PKCE flow shipped in launcher 0.1.x and remains accepted by the
-server while 0.1.x is minimum-compatible. Launcher 0.5.2 and the current employee skill do not use
-it; the Device Authorization section below is the pinned and recommended flow.
-
-1. The launcher binds an ephemeral HTTP listener on `127.0.0.1`, generates a random `state` and PKCE
-   verifier/challenge, and opens the system browser.
-2. The employee enters email and password only on the SMEDC HTTPS page.
-3. After successful authentication, the server redirects the browser with a short-lived,
-   single-use authorization code to the exact loopback callback.
-4. The launcher validates `state` and exchanges the code plus PKCE verifier directly with the HTTPS
-   token endpoint.
-5. Only that back-channel response contains the access and durable session credentials. The
-   loopback listener returns “登录成功，可以返回 Codex” and then closes.
-
-The launcher is a public client and has no embedded client secret. The redirect never carries an
-access or refresh token. The launcher binds only to IPv4 loopback on a random available port, the
-server enforces the exact callback from the authorization request, and requests without PKCE are
-rejected. No custom URL scheme is required.
-
 ## Current Official Device Authorization Login
 
 Status: implemented in merged PR #107, published as launcher 0.2.0 in PR #108, and synchronized to
@@ -426,8 +406,8 @@ desktop browser.
 - Preserve the existing secret boundaries: passwords and tokens never enter agent/model-visible
   channels; the browser never receives durable credentials; tokens continue to flow only over the
   back-channel poll response.
-- This is the pinned and recommended employee login flow. The loopback Authorization Code flow is a
-  minimum-compatible 0.1.x server path, not current skill guidance.
+- This is the only employee login flow. The superseded loopback Authorization Code flow is not
+  exposed by the server or launcher.
 
 **Resolved design decisions (2026-08-07).**
 
@@ -465,23 +445,21 @@ server or launcher implementation.
 Current staging runs one Fastify API container behind nginx and TLS at
 `https://api.smedatacenter.xyz`. The same API renders:
 
-- the authorization/login form and safe error state;
+- the Device Authorization verification/login form and safe error state;
 - the initial/reset password form;
 - the invalid or expired setup-link page.
 
 The Device Authorization verification page renders the successful-login state. Pages use plain
 server-rendered HTML with no React/Next.js bundle, client-side authentication state, external script/CDN, separate
 frontend container, new domain, or `apps/admin-web` implementation. They require strict security
-headers, CSRF and authorization-transaction checks, form-level tests, accessibility basics, and
+headers, CSRF and device-verification checks, form-level tests, accessibility basics, and
 neutral styling. Login pages keep the normal same-origin form target and add only
-`form-action 'self'`. The retained 0.1.x loopback compatibility page additionally permits only a
-validated `http://127.0.0.1:*` form redirect. Existing Docker, nginx, TLS, and deployment topology
-remains unchanged.
+`form-action 'self'`. Existing Docker, nginx, TLS, and deployment topology remains unchanged.
 
 ## Accepted Browser Session Behavior
 
 The browser has no durable SSO session. It receives only a short-lived, `Secure`, `HttpOnly`,
-`SameSite=Lax` authorization-transaction cookie that expires after 10 minutes and is deleted on
+`SameSite=Lax` device-verification cookie that expires after 10 minutes and is deleted on
 completion. Once Device Authorization completes, closing the page or clearing all
 browser cookies has no effect on continued MCP use.
 
@@ -580,15 +558,13 @@ All official launcher instances use the fixed, non-secret client ID
   device authorization endpoint, token endpoint, and supported grant types.
 
 Device and user codes are short-lived, single-use, stored only as hashes where secret, and bound to
-the client ID, requesting agent metadata, Login Identity, and authorization transaction. Polling is
+the client ID, requesting agent metadata, and, after completion, Login Identity. Polling is
 rate-limited and returns the standard pending, slow-down, expiry, denial, and success states. The
 token endpoint has no password grant, client secret, arbitrary audience, or arbitrary scope. Issued
 tokens are restricted to the SMEDC API/MCP resource. Dynamic client registration does not
 exist.
 
-For the server's minimum-compatible 0.1.x launcher range only, SMEDC also retains
-`GET /oauth/authorize` plus authorization-code exchange with exact IPv4 loopback redirect, random
-`state`, and PKCE `S256`. This is not the pinned, recommended, or documented employee login path.
+`GET /oauth/authorize`, its login POST, and the authorization-code token grant do not exist.
 
 ## Accepted Launcher Source And Distribution Boundary
 
@@ -605,11 +581,11 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Current launcher release status: `smedc-mcp-launcher@0.5.2` is public and independently verified,
+Current launcher release status: `smedc-mcp-launcher@0.6.0` is public and independently verified,
 the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and npm
 Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
-stage-publish-only permission. This synchronization branch keeps 0.5.0 as the minimum compatible
-version and recommends 0.5.2. Backend enforcement deployment is a separate release gate.
+stage-publish-only permission. This synchronization branch requires and recommends the currently
+published 0.6.0 release; the server metadata and both Skill pins are synchronized to it.
 Npm provenance remains unavailable because the source repository is private
 and is not an approval gate.
 
@@ -766,7 +742,7 @@ denial.
 
 The skill tells the agent to run the launcher login command. After browser login succeeds, the agent
 retries the employee's original MCP operation once without asking the employee to repeat the
-request. Browser cancellation or the ten-minute authorization-transaction timeout ends the attempt
+request. Browser cancellation or the ten-minute device-authorization timeout ends the attempt
 without reopening the browser or retrying the MCP operation.
 
 Failure classes remain distinct:
@@ -777,8 +753,7 @@ Failure classes remain distinct:
 - an incompatible launcher returns `launcher_upgrade_required` and follows the skill-driven update
   path; and
 - Device Authorization expiry or polling failure returns a focused typed diagnostic and does not
-  silently fall back to agent-visible credentials. The retained 0.1.x compatibility flow keeps its
-  bounded loopback callback retry.
+  silently fall back to agent-visible credentials.
 
 The launcher reports typed conditions; the skill guides the agent's recovery while preserving the
 employee's original intent.
@@ -895,9 +870,9 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 The official beta installation, Device Authorization login, token/session, secure-store and
 memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
-implemented. Launcher 0.5.2 is public, independently verified, and supported on macOS, Windows, and
+implemented. Launcher 0.6.0 is public, independently verified, and supported on macOS, Windows, and
 Linux. Native macOS/Windows secure-store acceptance and the headless Linux login-to-business-tool
 loop have passed; the release workflow also exercises the installed package with no display on
-Ubuntu. This synchronization branch recommends 0.5.2 while preserving the 0.5.0 minimum; the
-admin-only backend deployment and focused QA acceptance remain gated. Full user-visible OpenClaw and
+Ubuntu. This synchronization branch requires and recommends 0.6.0; the i18n and legacy-auth
+cleanup deployment and focused QA acceptance remain gated. Full user-visible OpenClaw and
 support-class-C phone/browser acceptance remains additional external evidence.

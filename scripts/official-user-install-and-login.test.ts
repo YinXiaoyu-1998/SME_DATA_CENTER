@@ -16,7 +16,7 @@ function prose(content: string): string {
 
 function launcherVersions(content: string): string[] {
   // Only explicit installation references: package pins, platform paths, and CLI JSON.
-  // Bare compatibility/history versions such as minimum 0.5.0 are not installation pins.
+  // Bare historical versions are not installation pins.
   const patterns = [
     /smedc-mcp-launcher@([^\s`"']+)/g,
     /launcher[\\/]+versions[\\/]+([^\\/\s`"']+)/g,
@@ -31,11 +31,11 @@ function launcherVersions(content: string): string[] {
 function expectPinnedReferences(content: string, label: string): void {
   const versions = launcherVersions(content);
   expect(versions.length, `No launcher references in ${label}`).toBeGreaterThan(0);
-  expect(new Set(versions), label).toEqual(new Set(["0.5.2"]));
+  expect(new Set(versions), label).toEqual(new Set(["0.6.0"]));
 }
 
 describe("official user install and login documentation", () => {
-  it("documents the published admin-only launcher and preserves minimum compatibility", async () => {
+  it("documents the published admin-only launcher and current minimum version", async () => {
     const doc = await readFile(
       path.join(root, "docs", "implementation", "official-user-install-and-login.md"),
       "utf8"
@@ -45,8 +45,8 @@ describe("official user install and login documentation", () => {
     const distribution = section(doc, "Accepted Launcher Source And Distribution Boundary");
     expectPinnedReferences(status, "current install/login status");
     expectPinnedReferences(distribution, "current launcher distribution");
-    expect(prose(status)).toContain("recommends 0.5.2");
-    expect(prose(status)).toContain("0.5.0 as the minimum compatible launcher");
+    expect(prose(status)).toContain("recommends 0.6.0");
+    expect(prose(status)).toContain("requires at least 0.6.0");
     expect(prose(distribution)).toContain("`YinXiaoyu-1998/SME_DATA_CENTER`");
     expect(prose(distribution)).toContain("is public and independently verified");
     expect(prose(distribution)).toContain("stage-publish-only permission");
@@ -57,7 +57,7 @@ describe("official user install and login documentation", () => {
 
     const official = section(readme, "Official Employee MCP");
     expectPinnedReferences(official, "official README");
-    expect(prose(official)).toContain("accepts launcher 0.5.0 as the minimum");
+    expect(prose(official)).toContain("requires and recommends exactly launcher 0.6.0");
   });
 
   it("pins every active Skill package, platform path, and CLI version reference", async () => {

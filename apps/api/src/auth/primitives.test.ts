@@ -71,7 +71,7 @@ describe("auth primitives", () => {
   });
 
   it("generates recognizable secrets with at least 256 random bits and hashes them safely", () => {
-    for (const prefix of ["eh_ps_", "eh_at_", "eh_rt_", "eh_ac_", "eh_tx_"] as const) {
+    for (const prefix of ["eh_ps_", "eh_at_", "eh_rt_", "eh_dc_"] as const) {
       const secret = generateOpaqueSecret(prefix);
       expect(secret.startsWith(prefix)).toBe(true);
       expect(Buffer.from(secret.slice(prefix.length), "base64url")).toHaveLength(32);
@@ -84,8 +84,6 @@ describe("auth primitives", () => {
   it("exports the accepted fixed lifetimes", () => {
     expect(AUTH_LIFETIMES_MS).toEqual({
       accessToken: 10 * 60_000,
-      authorizationCode: 60_000,
-      browserTransaction: 10 * 60_000,
       deviceAuthorization: 10 * 60_000,
       passwordSetupSession: 10 * 60_000,
       passwordSetupGrant: 24 * 60 * 60_000,

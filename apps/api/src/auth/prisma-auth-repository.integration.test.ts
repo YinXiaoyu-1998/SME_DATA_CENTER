@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
@@ -60,21 +59,8 @@ describeIntegration("Prisma auth core repository", () => {
       where: { session: { orgId: "auth-test-org" } }
     });
     await prisma.authSession.deleteMany({ where: { orgId: "auth-test-org" } });
-    await prisma.oAuthAuthorizationCode.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.deviceAuthorization.deleteMany({
       where: { clientId: "smedc-desktop-launcher" }
-    });
-    await prisma.oAuthAuthorizationTransaction.deleteMany({
-      where: {
-        OR: [
-          { identity: { orgId: "auth-test-org" } },
-          {
-            transactionHash: {
-              in: ["5".repeat(64), "de".repeat(32)]
-            }
-          }
-        ]
-      }
     });
     await prisma.passwordSetupSession.deleteMany({
       where: { identity: { orgId: "auth-test-org" } }
@@ -232,64 +218,6 @@ describeIntegration("Prisma auth core repository", () => {
     expect(duringCooldown.failedAttemptCount).toBe(5);
     expect(duringCooldown.cooldownUntil).toEqual(afterFifth.cooldownUntil);
     await repository.resetLoginFailures("auth_test_identity");
-  });
-
-  it("derives PKCE S256 from the raw verifier, rejects the wrong verifier, and redeems once", async () => {
-    const verifier = "real-raw-verifier-used-only-at-the-auth-core-boundary";
-    const transaction = await core.issueAuthorizationTransaction({
-      clientId: "smedc-desktop-launcher",
-      redirectUri: "http://127.0.0.1:32123/callback",
-      state: "original-state",
-      pkceChallenge: createHash("sha256").update(verifier).digest("base64url")
-    });
-    const completed = await core.completeAuthorizationTransaction(
-      transaction.secret,
-      {
-        identityId: "auth_test_identity",
-        employeeId: "auth_test_employee",
-        orgId: "auth-test-org"
-      },
-      browserAudit
-    );
-    expect(completed).toMatchObject({
-      codeId: expect.any(String),
-      redirectUri: "http://127.0.0.1:32123/callback",
-      state: "original-state"
-    });
-
-    await expect(
-      core.redeemAuthorizationCode(
-        {
-          secret: completed!.code,
-          clientId: "smedc-desktop-launcher",
-          redirectUri: "http://127.0.0.1:32123/callback",
-          verifier: "wrong-raw-verifier"
-        },
-        oauthAudit
-      )
-    ).resolves.toEqual({ status: "invalid" });
-
-    const results = await Promise.all([
-      core.redeemAuthorizationCode(
-        {
-          secret: completed!.code,
-          clientId: "smedc-desktop-launcher",
-          redirectUri: "http://127.0.0.1:32123/callback",
-          verifier
-        },
-        oauthAudit
-      ),
-      core.redeemAuthorizationCode(
-        {
-          secret: completed!.code,
-          clientId: "smedc-desktop-launcher",
-          redirectUri: "http://127.0.0.1:32123/callback",
-          verifier
-        },
-        oauthAudit
-      )
-    ]);
-    expect(results.filter((result) => result.status === "redeemed")).toHaveLength(1);
   });
 
   it("issues, completes, and redeems a device authorization exactly once", async () => {
@@ -539,27 +467,6 @@ describeIntegration("Prisma auth core repository", () => {
       }
     );
 
-    await repository.createAuthorizationTransaction({
-      transactionHash: "de".repeat(32),
-      clientId: "smedc-desktop-launcher",
-      redirectUri: "http://127.0.0.1:32124/callback",
-      state: "disabled-state",
-      pkceChallenge: "disabled-challenge",
-      expiresAt: new Date(now.getTime() + 600_000),
-      now
-    });
-    await expect(
-      repository.consumeAuthorizationTransactionAndCreateCode({
-        transactionHash: "de".repeat(32),
-        identityId: "auth_test_identity",
-        employeeId: "auth_test_employee",
-        orgId: "auth-test-org",
-        codeHash: "df".repeat(32),
-        codeExpiresAt: new Date(now.getTime() + 60_000),
-        now,
-        audit: browserAudit
-      })
-    ).resolves.toBeNull();
     await prisma.employee.update({
       where: { id: "auth_test_employee" },
       data: { disabled: false }

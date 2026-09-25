@@ -1,12 +1,10 @@
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { csrfTokenForSecret, pkceChallengeForVerifier } from "./http-contract.js";
+import { csrfTokenForSecret } from "./http-contract.js";
 import { registerOfficialAuthRoutes } from "./routes.js";
 import { registerApiErrorHandler } from "../request-errors.js";
 
-const transactionSecret = "eh_tx_abcdefghijklmnopqrstuvwxyz0123456789";
 const setupSecret = "eh_ps_abcdefghijklmnopqrstuvwxyz0123456789";
-const verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
 const browserAudit = {
   requestId: "browser_request_1",
   sourceIp: "198.51.100.7",
@@ -15,33 +13,14 @@ const browserAudit = {
 const oauthAudit = {
   requestId: "oauth_request_1",
   sourceIp: "203.0.113.9",
-  launcherVersion: "0.1.0"
+  launcherVersion: "0.6.0"
 };
 
 function authFake() {
   return {
     authenticateAccessToken: vi.fn(),
-    issueAuthorizationTransaction: vi.fn(async () => ({
-      id: "tx_1",
-      secret: transactionSecret,
-      expiresAt: new Date(Date.now() + 600_000)
-    })),
     verifyLogin: vi.fn(async () => ({
       ok: true as const,
-      identityId: "identity_1",
-      employeeId: "employee_1",
-      orgId: "org_1"
-    })),
-    completeAuthorizationTransaction: vi.fn(async () => ({
-      codeId: "code_1",
-      code: "eh_ac_abcdefghijklmnopqrstuvwxyz0123456789",
-      clientId: "smedc-desktop-launcher" as const,
-      redirectUri: "http://127.0.0.1:43121/oauth/callback",
-      state: "abcdefghijklmnop",
-      expiresAt: new Date(Date.now() + 60_000)
-    })),
-    redeemAuthorizationCode: vi.fn(async () => ({
-      status: "redeemed" as const,
       identityId: "identity_1",
       employeeId: "employee_1",
       orgId: "org_1"
@@ -123,136 +102,40 @@ describe("official OAuth and password routes", () => {
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.json()).toMatchObject({
       issuer: "https://api.smedatacenter.xyz",
-      authorization_endpoint: "https://api.smedatacenter.xyz/oauth/authorize",
       smedc_launcher_package: "smedc-mcp-launcher",
-      smedc_launcher_minimum_version: "0.5.0",
-      smedc_launcher_recommended_version: "0.5.2"
+      smedc_launcher_minimum_version: "0.6.0",
+      smedc_launcher_recommended_version: "0.6.0"
     });
+    expect(response.json()).not.toHaveProperty("authorization_endpoint");
   });
 
-  it("binds an authorization transaction to a secure host-only cookie", async () => {
-    const { app, auth } = await build();
-    const response = await app.inject({
-      url:
-        "/oauth/authorize?response_type=code&client_id=smedc-desktop-launcher" +
-        "&redirect_uri=http%3A%2F%2F127.0.0.1%3A43121%2Foauth%2Fcallback" +
-        "&state=abcdefghijklmnop&code_challenge=" +
-        pkceChallengeForVerifier(verifier) +
-        "&code_challenge_method=S256"
-    });
+  it("does not expose the removed authorization-code browser flow", async () => {
+    const { app } = await build();
 
-    expect(response.statusCode).toBe(200);
-    expect(response.headers["set-cookie"]).toContain("__Host-eh_oauth_transaction=eh_tx_");
-    expect(response.headers["set-cookie"]).toContain("Secure");
-    expect(response.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
-    expect(response.headers["content-security-policy"]).toContain(
-      "form-action 'self' http://127.0.0.1:*"
-    );
-    expect(auth.issueAuthorizationTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ redirectUri: "http://127.0.0.1:43121/oauth/callback" })
+    expect((await app.inject({ url: "/oauth/authorize" })).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: "/oauth/authorize/login" })).statusCode).toBe(
+      404
     );
   });
 
-  it("keeps invalid credentials generic and never redirects", async () => {
-    const { app, auth } = await build();
-    auth.verifyLogin.mockResolvedValueOnce({
-      ok: false,
-      reason: "invalid_credentials"
-    } as never);
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/oauth/authorize/login",
-      headers: {
-        cookie: `__Host-eh_oauth_transaction=${transactionSecret}`,
-        "content-type": "application/x-www-form-urlencoded",
-        "x-request-id": browserAudit.requestId
-      },
-      remoteAddress: browserAudit.sourceIp,
-      payload: new URLSearchParams({
-        csrfToken: csrfTokenForSecret(transactionSecret),
-        email: "unknown@example.com",
-        password: "wrong password"
-      }).toString()
-    });
-
-    expect(response.statusCode).toBe(401);
-    expect(response.body).toContain("The email or password is incorrect.");
-    expect(response.headers.location).toBeUndefined();
-    expect(auth.verifyLogin).toHaveBeenCalledWith(
-      "unknown@example.com",
-      "wrong password",
-      browserAudit
-    );
-  });
-
-  it("passes browser request metadata through successful login and authorization completion", async () => {
-    const { app, auth } = await build();
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/oauth/authorize/login",
-      headers: {
-        cookie: `__Host-eh_oauth_transaction=${transactionSecret}`,
-        "content-type": "application/x-www-form-urlencoded",
-        "x-request-id": browserAudit.requestId
-      },
-      remoteAddress: browserAudit.sourceIp,
-      payload: new URLSearchParams({
-        csrfToken: csrfTokenForSecret(transactionSecret),
-        email: "person@example.com",
-        password: "correct horse"
-      }).toString()
-    });
-
-    expect(response.statusCode).toBe(303);
-    expect(auth.verifyLogin).toHaveBeenCalledWith(
-      "person@example.com",
-      "correct horse",
-      browserAudit
-    );
-    expect(auth.completeAuthorizationTransaction).toHaveBeenCalledWith(
-      transactionSecret,
-      expect.objectContaining({ identityId: "identity_1" }),
-      browserAudit
-    );
-  });
-
-  it("redeems a code and returns only standard token response fields", async () => {
-    const { app, auth } = await build();
+  it("rejects the removed authorization-code grant", async () => {
+    const { app } = await build();
     const response = await app.inject({
       method: "POST",
       url: "/oauth/token",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-smedc-launcher-version": "0.1.0",
-        "x-request-id": oauthAudit.requestId
+        "x-smedc-launcher-version": "0.6.0"
       },
-      remoteAddress: oauthAudit.sourceIp,
       payload: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: "smedc-desktop-launcher",
-        code: "eh_ac_code",
-        redirect_uri: "http://127.0.0.1:43121/oauth/callback",
-        code_verifier: verifier
+        code: "removed_code"
       }).toString()
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      access_token: "eh_at_access",
-      token_type: "Bearer",
-      expires_in: 600,
-      refresh_token: "eh_rt_durable"
-    });
-    expect(auth.redeemAuthorizationCode).toHaveBeenCalledWith(
-      expect.objectContaining({ verifier }),
-      oauthAudit
-    );
-    expect(auth.createSession).toHaveBeenCalledWith(
-      expect.objectContaining({ identityId: "identity_1" }),
-      oauthAudit
-    );
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: "unsupported_grant_type" });
   });
 
   it("passes normalized OAuth request metadata through refresh rotation", async () => {
@@ -263,7 +146,7 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/token",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-smedc-launcher-version": "0.1.0",
+        "x-smedc-launcher-version": "0.6.0",
         "x-request-id": oauthAudit.requestId
       },
       remoteAddress: oauthAudit.sourceIp,
@@ -286,7 +169,7 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/revoke",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-smedc-launcher-version": "0.1.0",
+        "x-smedc-launcher-version": "0.6.0",
         "x-request-id": oauthAudit.requestId
       },
       remoteAddress: oauthAudit.sourceIp,
@@ -349,7 +232,8 @@ describe("official OAuth and password routes", () => {
     expect(response.body).toContain("殷啸宇");
     expect(response.body).toContain("yxy@example.invalid");
     expect(response.body).toContain("麦家小馆");
-    expect(response.body).toContain("admin");
+    expect(response.body).toContain("管理员");
+    expect(response.body).toContain("Admin");
     expect(auth.findPasswordSetupAccount).toHaveBeenCalledWith(setupSecret);
     expect(response.headers["set-cookie"]).toBeUndefined();
     expect(response.headers.location).toBeUndefined();
@@ -442,7 +326,7 @@ describe("official OAuth and password routes", () => {
 describe("device authorization endpoints", () => {
   const launcherHeaders = {
     "content-type": "application/x-www-form-urlencoded",
-    "x-smedc-launcher-version": "0.1.0",
+    "x-smedc-launcher-version": "0.6.0",
     "x-request-id": oauthAudit.requestId
   };
 

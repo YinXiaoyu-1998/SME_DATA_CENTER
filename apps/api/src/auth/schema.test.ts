@@ -6,6 +6,10 @@ const migrationUrl = new URL(
   "../../../../packages/db/prisma/migrations/20260724190000_official_auth_core/migration.sql",
   import.meta.url
 );
+const legacyOAuthDropMigrationUrl = new URL(
+  "../../../../packages/db/prisma/migrations/20260926090000_remove_legacy_authorization_code/migration.sql",
+  import.meta.url
+);
 
 describe("official auth schema", () => {
   it("defines every auth model and removes the legacy AccessToken model", async () => {
@@ -15,8 +19,6 @@ describe("official auth schema", () => {
       "LoginIdentity",
       "PasswordSetupGrant",
       "PasswordSetupSession",
-      "OAuthAuthorizationTransaction",
-      "OAuthAuthorizationCode",
       "DeviceAuthorization",
       "AuthSession",
       "DurableCredential",
@@ -25,7 +27,20 @@ describe("official auth schema", () => {
     ]) {
       expect(schema).toContain(`model ${model} {`);
     }
+    expect(schema).not.toContain("model OAuthAuthorizationTransaction {");
+    expect(schema).not.toContain("model OAuthAuthorizationCode {");
+    expect(schema).not.toContain("enum OAuthTransactionStatus {");
     expect(schema).not.toContain("model AccessToken {");
+  });
+
+  it("drops the unused authorization-code tables in dependency order", async () => {
+    const migration = await readFile(legacyOAuthDropMigrationUrl, "utf8").catch(() => "");
+
+    expect(migration).toContain("DROP TABLE `oauth_authorization_codes`");
+    expect(migration).toContain("DROP TABLE `oauth_authorization_transactions`");
+    expect(migration.indexOf("oauth_authorization_codes")).toBeLessThan(
+      migration.indexOf("oauth_authorization_transactions")
+    );
   });
 
   it("guards the legacy access-token drop with an empty-table SQL preflight", async () => {
@@ -55,8 +70,7 @@ describe("official auth schema", () => {
 
     expect(schema.match(/tokenHash\s+String\s+@unique/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(schema).toContain("credentialHash String");
-    expect(schema).toContain("codeHash");
-    expect(schema).toContain("transactionHash");
+    expect(schema).not.toContain("transactionHash");
     expect(schema).toMatch(/organization\s+Organization/);
     expect(schema).toMatch(/employee\s+Employee/);
   });

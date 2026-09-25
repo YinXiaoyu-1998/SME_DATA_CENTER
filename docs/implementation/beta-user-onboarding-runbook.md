@@ -18,7 +18,7 @@ Use this runbook only for:
 
 - macOS + Codex;
 - the official SMEDC skill;
-- `smedc-mcp-launcher@0.5.2`;
+- `smedc-mcp-launcher@0.6.0`;
 - browser password setup and Device Authorization login;
 - fixture or explicitly approved non-sensitive data.
 
@@ -169,7 +169,7 @@ The employee should ask their agent naturally, for example:
 
 The agent must follow `skills/smedc-mcp/SKILL.md`:
 
-- install `smedc-mcp-launcher@0.5.2` into the current-user versioned directory;
+- install `smedc-mcp-launcher@0.6.0` into the current-user versioned directory;
 - configure a local stdio MCP entry named `smedc`;
 - set only `SMEDC_BASE_URL=https://api.smedatacenter.xyz`;
 - call `smedc_login` if authentication is required;

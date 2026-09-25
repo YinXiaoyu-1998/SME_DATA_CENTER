@@ -35,7 +35,7 @@ try {
     selfCheck.secureStore.available === expectedSecureStore,
     `Secure-store availability must match the environment expectation (${expectedSecureStore}).`
   );
-  assert(selfCheck.launcherVersion === "0.5.2", "Launcher self-check must report 0.5.2.");
+  assert(selfCheck.launcherVersion === "0.6.0", "Launcher self-check must report 0.6.0.");
 
   const loginResult = await createLauncherToolHandler("smedc_login", dependencies)({});
   assert(!loginResult.isError, "Device login must not fail on a headless host.");
@@ -82,7 +82,7 @@ try {
     JSON.stringify(
       {
         ok: true,
-        launcherVersion: "0.5.2",
+        launcherVersion: "0.6.0",
         secureStoreAvailable: selfCheck.secureStore.available,
         flow: body.flow,
         openedBrowser: body.openedBrowser,

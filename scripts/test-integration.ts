@@ -21,10 +21,9 @@ import {
   parseCurrentUserProfileResponse
 } from "../apps/mcp-launcher/src/index.js";
 import {
+  DEVICE_VERIFY_COOKIE,
   OAUTH_CLIENT_ID,
-  OAUTH_TRANSACTION_COOKIE,
-  csrfTokenForSecret,
-  pkceChallengeForVerifier
+  csrfTokenForSecret
 } from "../apps/api/src/auth/http-contract.js";
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
@@ -1017,7 +1016,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
   const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
   const storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
-  const transactionIds: string[] = [];
+  const deviceInstanceNames = [`${runId}-browser`, `${runId}-oauth`, `${runId}-agent`];
   const sessionIds: string[] = [];
 
   try {
@@ -1041,7 +1040,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       requestId: requestIds.direct,
       sourceSystem,
       title: `${runId} direct`,
-      extraHeaders: { "x-smedc-launcher-version": "0.1.0" }
+      extraHeaders: { "x-smedc-launcher-version": "0.6.0" }
     });
     const trustedProxy = await uploadAuditEvidence(accessToken, {
       requestId: requestIds.trustedProxy,
@@ -1055,7 +1054,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       title: `${runId} forged proof`,
       extraHeaders: {
         "x-smedc-internal-delegation": "A".repeat(43),
-        "x-smedc-launcher-version": "0.1.0"
+        "x-smedc-launcher-version": "0.6.0"
       }
     });
     const mcp = await uploadAuditEvidenceThroughMcp(accessToken, {
@@ -1066,26 +1065,30 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     });
     const businessDocuments = [direct, trustedProxy, forgedProof, mcp];
 
-    const browserTransaction = await auth.issueAuthorizationTransaction({
+    const browserAuthorization = await auth.issueDeviceAuthorization({
       clientId: OAUTH_CLIENT_ID,
-      redirectUri: "http://127.0.0.1:43121/oauth/callback",
-      state: `${runId}_browser_state`,
-      pkceChallenge: pkceChallengeForVerifier(
-        "audit-provenance-browser-verifier-abcdefghijklmnopqrstuvwxyz0123456789"
-      )
+      instanceName: deviceInstanceNames[0]!,
+      instanceHostname: "integration-host",
+      audit: { requestId: `${runId}_browser_setup`, sourceIp: "127.0.0.1", launcherVersion: null }
     });
-    transactionIds.push(browserTransaction.id);
-    const browserResponse = await fetch(`${apiUrl}/oauth/authorize/login`, {
+    const browserPage = await fetch(
+      `${apiUrl}/oauth/device/verify?user_code=${browserAuthorization.userCode}`
+    );
+    const verifySecret = new RegExp(`${DEVICE_VERIFY_COOKIE}=([^;]+)`).exec(
+      browserPage.headers.get("set-cookie") ?? ""
+    )?.[1];
+    assert(browserPage.status === 200 && Boolean(verifySecret), "Device login page must render.");
+    const browserResponse = await fetch(`${apiUrl}/oauth/device/verify/login`, {
       method: "POST",
       headers: {
-        cookie: `${OAUTH_TRANSACTION_COOKIE}=${browserTransaction.secret}`,
+        cookie: `${DEVICE_VERIFY_COOKIE}=${verifySecret}`,
         "content-type": "application/x-www-form-urlencoded",
-        "x-smedc-launcher-version": "0.1.0",
         "x-forwarded-for": "198.51.100.31",
         "x-request-id": requestIds.browser
       },
       body: new URLSearchParams({
-        csrfToken: csrfTokenForSecret(browserTransaction.secret),
+        csrfToken: csrfTokenForSecret(verifySecret!),
+        userCode: browserAuthorization.userCode,
         email: `${runId}@example.invalid`,
         password: "intentionally invalid"
       }).toString(),
@@ -1093,17 +1096,14 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     });
     assert(browserResponse.status === 401, "Synthetic browser login must fail generically.");
 
-    const verifier = "audit-provenance-oauth-verifier-abcdefghijklmnopqrstuvwxyz0123456789";
-    const redirectUri = "http://127.0.0.1:43122/oauth/callback";
-    const oauthTransaction = await auth.issueAuthorizationTransaction({
+    const oauthAuthorization = await auth.issueDeviceAuthorization({
       clientId: OAUTH_CLIENT_ID,
-      redirectUri,
-      state: `${runId}_oauth_state`,
-      pkceChallenge: pkceChallengeForVerifier(verifier)
+      instanceName: deviceInstanceNames[1]!,
+      instanceHostname: "integration-host",
+      audit: { requestId: `${runId}_oauth_setup`, sourceIp: "127.0.0.1", launcherVersion: null }
     });
-    transactionIds.push(oauthTransaction.id);
-    const authorization = await auth.completeAuthorizationTransaction(
-      oauthTransaction.secret,
+    const authorizationCompleted = await auth.completeDeviceAuthorization(
+      oauthAuthorization.userCode,
       {
         identityId: identity!.id,
         employeeId: identity!.employeeId,
@@ -1111,21 +1111,19 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       },
       { requestId: `${runId}_oauth_setup`, sourceIp: "127.0.0.1", launcherVersion: null }
     );
-    assert(Boolean(authorization), "Synthetic OAuth authorization code must be created.");
+    assert(authorizationCompleted, "Synthetic device authorization must complete.");
 
     const tokenResponse = await fetch(`${apiUrl}/oauth/token`, {
       method: "POST",
       headers: oauthHeaders(requestIds.oauthToken, "198.51.100.32"),
       body: new URLSearchParams({
-        grant_type: "authorization_code",
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
         client_id: OAUTH_CLIENT_ID,
-        code: authorization!.code,
-        redirect_uri: redirectUri,
-        code_verifier: verifier
+        device_code: oauthAuthorization.deviceCode
       }).toString()
     });
     const tokens = (await tokenResponse.json()) as OAuthTokenResponse;
-    assert(tokenResponse.status === 200, "Synthetic OAuth code exchange must succeed.");
+    assert(tokenResponse.status === 200, "Synthetic device-code exchange must succeed.");
 
     const refreshResponse = await fetch(`${apiUrl}/oauth/token`, {
       method: "POST",
@@ -1171,7 +1169,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       mcp.document.documentId,
       "203.0.113.42",
       "mcp_launcher",
-      "0.1.0"
+      "0.6.0"
     );
     assertBusinessAudit(
       auditRows,
@@ -1190,14 +1188,14 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     const tokenEvent = await prisma.authSecurityEvent.findFirst({
       where: { requestId: requestIds.oauthToken, eventType: "session_created" }
     });
-    assertAuthEvent(tokenEvent, "198.51.100.32", "0.1.0", "OAuth token");
+    assertAuthEvent(tokenEvent, "198.51.100.32", "0.6.0", "OAuth token");
     assert(Boolean(tokenEvent?.sessionId), "OAuth token event must identify its session.");
     sessionIds.push(tokenEvent!.sessionId!);
 
     const refreshEvent = await prisma.authSecurityEvent.findFirst({
       where: { requestId: requestIds.oauthRefresh, eventType: "renewal_failed" }
     });
-    assertAuthEvent(refreshEvent, "198.51.100.33", "0.1.0", "OAuth refresh");
+    assertAuthEvent(refreshEvent, "198.51.100.33", "0.6.0", "OAuth refresh");
 
     const revokeEvents = await prisma.authSecurityEvent.findMany({
       where: {
@@ -1207,13 +1205,13 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     });
     assert(revokeEvents.length === 2, "OAuth revoke must persist logout and revocation events.");
     for (const event of revokeEvents) {
-      assertAuthEvent(event, "198.51.100.34", "0.1.0", "OAuth revoke");
+      assertAuthEvent(event, "198.51.100.34", "0.6.0", "OAuth revoke");
     }
 
     const deviceRunId = `${runId}_device`;
     const deviceHeaders = (requestId: string, forwardedIp: string) => ({
       ...oauthHeaders(requestId, forwardedIp),
-      "x-smedc-launcher-version": "0.2.0"
+      "x-smedc-launcher-version": "0.6.0"
     });
     const deviceRequest = await fetch(`${apiUrl}/oauth/device_authorization`, {
       method: "POST",
@@ -1314,7 +1312,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     const deviceTokenEvent = await prisma.authSecurityEvent.findFirst({
       where: { requestId: `${deviceRunId}_token`, eventType: "session_created" }
     });
-    assertAuthEvent(deviceTokenEvent, "198.51.100.39", "0.2.0", "device token");
+    assertAuthEvent(deviceTokenEvent, "198.51.100.39", "0.6.0", "device token");
     if (deviceTokenEvent?.sessionId) {
       sessionIds.push(deviceTokenEvent.sessionId);
     }
@@ -1350,7 +1348,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
         sourceSystem,
         businessRequestIds,
         authRequestIds,
-        transactionIds,
+        deviceInstanceNames,
         sessionIds
       });
     } finally {
@@ -1404,7 +1402,7 @@ async function uploadAuditEvidenceThroughMcp(
       authorization: `Bearer ${accessToken}`,
       "content-type": "application/json",
       "mcp-protocol-version": "2025-11-25",
-      "x-smedc-launcher-version": "0.1.0",
+      "x-smedc-launcher-version": "0.6.0",
       "x-forwarded-for": input.forwardedIp,
       "x-request-id": input.requestId
     },
@@ -1442,7 +1440,7 @@ async function uploadAuditEvidenceThroughMcp(
 function oauthHeaders(requestId: string, forwardedIp: string): Record<string, string> {
   return {
     "content-type": "application/x-www-form-urlencoded",
-    "x-smedc-launcher-version": "0.1.0",
+    "x-smedc-launcher-version": "0.6.0",
     "x-forwarded-for": forwardedIp,
     "x-request-id": requestId
   };
@@ -1499,7 +1497,7 @@ async function cleanupAuditProvenanceRun(
     sourceSystem: string;
     businessRequestIds: string[];
     authRequestIds: string[];
-    transactionIds: string[];
+    deviceInstanceNames: string[];
     sessionIds: string[];
   }
 ): Promise<void> {
@@ -1564,9 +1562,9 @@ async function cleanupAuditProvenanceRun(
     if (sessionIds.length > 0) {
       await tx.authSession.deleteMany({ where: { id: { in: sessionIds } } });
     }
-    if (input.transactionIds.length > 0) {
-      await tx.oAuthAuthorizationTransaction.deleteMany({
-        where: { id: { in: input.transactionIds } }
+    if (input.deviceInstanceNames.length > 0) {
+      await tx.deviceAuthorization.deleteMany({
+        where: { instanceName: { in: input.deviceInstanceNames } }
       });
     }
     if (documentIds.length > 0) {
@@ -1590,7 +1588,7 @@ async function cleanupAuditProvenanceRun(
     retainedAudits,
     retainedEvents,
     retainedSessions,
-    retainedTransactions
+    retainedDeviceAuthorizations
   ] = await Promise.all([
     prisma.document.count({ where: { sourceSystem: input.sourceSystem } }),
     prisma.auditLog.count({ where: { requestId: { in: input.businessRequestIds } } }),
@@ -1605,9 +1603,9 @@ async function cleanupAuditProvenanceRun(
     sessionIds.length > 0
       ? prisma.authSession.count({ where: { id: { in: sessionIds } } })
       : Promise.resolve(0),
-    input.transactionIds.length > 0
-      ? prisma.oAuthAuthorizationTransaction.count({
-          where: { id: { in: input.transactionIds } }
+    input.deviceInstanceNames.length > 0
+      ? prisma.deviceAuthorization.count({
+          where: { instanceName: { in: input.deviceInstanceNames } }
         })
       : Promise.resolve(0)
   ]);
@@ -1617,7 +1615,7 @@ async function cleanupAuditProvenanceRun(
       retainedAudits === 0 &&
       retainedEvents === 0 &&
       retainedSessions === 0 &&
-      retainedTransactions === 0 &&
+      retainedDeviceAuthorizations === 0 &&
       retainedStorageObjects === 0 &&
       retainedQdrantPoints === 0,
     "Audit provenance integration cleanup must leave no run-scoped DB/storage/Qdrant residue."
