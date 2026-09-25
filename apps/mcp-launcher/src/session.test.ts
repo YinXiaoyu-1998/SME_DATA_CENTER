@@ -213,7 +213,7 @@ describe("versioned launcher profile record", () => {
     }
   );
 
-  it("reads v1 lazily and writes only the v2 credential and public profile fields", async () => {
+  it("rejects obsolete v1 credential records instead of migrating them", async () => {
     const secureStore = memoryStore("legacy-refresh");
     await secureStore.set(
       JSON.stringify({
@@ -229,22 +229,10 @@ describe("versioned launcher profile record", () => {
       tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
     });
 
-    await expect(session.cachedProfile()).resolves.toBeNull();
-    expect(JSON.parse((await secureStore.get())!).schemaVersion).toBe(1);
-    await session.storeProfile(adminProfile);
-
-    expect(JSON.parse((await secureStore.get())!)).toEqual({
-      schemaVersion: 2,
-      origin,
-      durableCredential: "legacy-refresh",
-      profile: adminProfile
+    await expect(session.status()).resolves.toEqual({ authenticated: false });
+    await expect(session.ensureAccessToken()).rejects.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED"
     });
-    const restarted = new LauncherSession({
-      origin,
-      secureStore,
-      tokenClient: tokenClientReturning({ accessToken: "access", refreshToken: "rotated" })
-    });
-    await expect(restarted.cachedProfile()).resolves.toEqual(adminProfile);
   });
 
   it("preserves the profile when a refresh rotates the durable credential", async () => {
@@ -500,7 +488,7 @@ describe("durable official launcher session", () => {
     });
     expect(await secureStore.get()).toBeNull();
     await secureStore.set(
-      JSON.stringify({ schemaVersion: 1, origin, durableCredential: "logout" })
+      JSON.stringify({ schemaVersion: 2, origin, durableCredential: "logout", profile: null })
     );
     await expect(session.logout()).resolves.toEqual({
       remoteRevocationConfirmed: true,
@@ -629,7 +617,7 @@ function memoryStore(initial: string | null, options: { failSet?: boolean } = {}
   let value =
     initial === null
       ? null
-      : JSON.stringify({ schemaVersion: 1, origin, durableCredential: initial });
+      : JSON.stringify({ schemaVersion: 2, origin, durableCredential: initial, profile: null });
   return {
     get: async () => value,
     set: async (next: string) => {

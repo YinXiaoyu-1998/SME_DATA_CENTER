@@ -38,7 +38,7 @@ export {
   parseCurrentUserProfileResponse,
   type CachedUserProfile
 } from "./user-profile.js";
-export { createAuthorizationRequest, createLoopbackCallbackServer, redactSecrets } from "./auth.js";
+export { redactSecrets } from "./auth.js";
 
 if (isMainModule()) {
   void runCommand();

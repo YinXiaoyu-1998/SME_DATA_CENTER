@@ -1,16 +1,16 @@
 # SMEDC MCP Launcher
 
 Official stdio MCP launcher for SMEDC. It reads only `SMEDC_BASE_URL`, which must
-be a canonical HTTPS origin. Browser sign-in uses OAuth Authorization Code with PKCE; credentials
-are never accepted through command arguments, environment variables, or MCP tool inputs.
+be a canonical HTTPS origin. Browser sign-in uses OAuth Device Authorization; credentials are
+never accepted through command arguments, environment variables, or MCP tool inputs.
 
 Commands: `serve`, `self-check`, `logout`, and `--version`.
 
-Release: `smedc-mcp-launcher@0.5.2` (`smedc-mcp-launcher --version` reports `0.5.2`).
+Release target: `smedc-mcp-launcher@0.6.0` (`smedc-mcp-launcher --version` reports `0.6.0`).
 
 All three file-upload tools remain discoverable and require the admin role. The launcher
 rejects cached employee-role uploads before reading a local file or processing upload input.
-For an unknown or legacy profile, it first queries authenticated `/me` and securely caches
+For a newly established session without a cached profile, it first queries authenticated `/me` and securely caches
 only display name, email, role, clearance, and organization name with the credential. Profile
 lookup failures stop the upload. Logout clears the cached profile. The service remains the
 authority for upload authorization, including when a local cache has been modified.

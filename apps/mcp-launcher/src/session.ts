@@ -285,16 +285,13 @@ export class LauncherSession {
       const value = JSON.parse(record) as Record<string, unknown> | null;
       if (
         value === null ||
-        (value.schemaVersion !== 1 && value.schemaVersion !== 2) ||
+        value.schemaVersion !== 2 ||
         value.origin !== this.dependencies.origin ||
         typeof value.durableCredential !== "string" ||
         !value.durableCredential
       )
         return null;
-      const profile =
-        value.schemaVersion === 1 || value.profile === null
-          ? null
-          : cachedUserProfileSchema.parse(value.profile);
+      const profile = value.profile === null ? null : cachedUserProfileSchema.parse(value.profile);
       return {
         schemaVersion: 2,
         origin: this.dependencies.origin,
