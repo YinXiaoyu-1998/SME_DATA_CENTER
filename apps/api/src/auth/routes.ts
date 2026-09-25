@@ -1,6 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { createRequestAuditContext, type RequestAuditContext } from "../request-audit-context.js";
+import {
+  createRequestAuditContext,
+  launcherVersionAtLeast,
+  type RequestAuditContext
+} from "../request-audit-context.js";
 import type { AuthCore, AuthRequestAudit } from "./auth-core.js";
 import {
   OAUTH_CLIENT_ID,
@@ -484,18 +488,5 @@ function authAudit(context: RequestAuditContext): AuthRequestAudit {
 }
 
 function isSupportedLauncherVersion(value: string | null): boolean {
-  const version = value;
-  if (!version) {
-    return false;
-  }
-  const parsed = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!parsed) {
-    return false;
-  }
-  const minimum = MINIMUM_LAUNCHER_VERSION.split(".").map(Number);
-  const actual = parsed.slice(1).map(Number);
-  return (
-    actual.some((part, index) => part > minimum[index]!) ||
-    actual.every((part, index) => part === minimum[index]!)
-  );
+  return launcherVersionAtLeast(value, MINIMUM_LAUNCHER_VERSION);
 }
