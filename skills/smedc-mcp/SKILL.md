@@ -434,7 +434,7 @@ setting.
 
 ## Device-Code Login Flow
 
-With the pinned launcher 0.6.0, every login uses the OAuth Device Authorization Grant: the launcher
+With the pinned package `smedc-mcp-launcher@0.6.0`, every login uses the OAuth Device Authorization Grant: the launcher
 obtains a first-party SMEDC verification link, opens it automatically when a system
 browser is available (desktop agents), or returns it for the agent to surface through the employee
 channel (phone-remote-controlled and headless agents). The employee confirms the agent instance
