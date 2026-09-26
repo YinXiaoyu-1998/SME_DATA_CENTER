@@ -176,7 +176,9 @@ MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool resul
 Tools stay visible; launcher 0.6.0 preflights the role
 before reading a file, while the backend remains authoritative for accepted requests. Clearance
 continues to govern ordinary reads independently. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
-Publication is verified; deployment of this backend enforcement slice remains a separate gate.
+Launcher 0.6.0 and the synchronized backend are deployed to staging. Focused public verification
+confirmed the 0.6.0 compatibility gate, Device Authorization-only metadata, legacy-auth removal,
+and Chinese-first browser pages with a Chinese/English switch.
 
 ## Official MCP Launcher
 
