@@ -434,7 +434,7 @@ setting.
 
 ## Device-Code Login Flow
 
-Starting with launcher 0.2.2, every login uses the OAuth Device Authorization Grant: the launcher
+With the pinned package `smedc-mcp-launcher@0.6.0`, every login uses the OAuth Device Authorization Grant: the launcher
 obtains a first-party SMEDC verification link, opens it automatically when a system
 browser is available (desktop agents), or returns it for the agent to surface through the employee
 channel (phone-remote-controlled and headless agents). The employee confirms the agent instance
@@ -453,7 +453,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `smedc_login` to obtain a new link.
 
-This flow is available in launcher 0.2.2 and later; this document pins launcher 0.6.0.
+This is the only supported login flow in launcher 0.6.0.
 
 ## Configure The Invoking Agent
 
