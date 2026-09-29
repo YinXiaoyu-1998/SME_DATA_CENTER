@@ -266,6 +266,64 @@ describe("structured partition routes", () => {
     await app.close();
   });
 
+  it("shows partition import status only to its uploader with sufficient clearance", async () => {
+    const job: PartitionImportJobRecord = {
+      id: "pjob_private",
+      orgId: employee.orgId,
+      uploaderId: employee.id,
+      dataset: "business",
+      enterpriseKey: "private-enterprise",
+      enterpriseName: "Private Enterprise",
+      confidentialityLevel: 1,
+      originalFileName: "private.csv",
+      mediaType: "text/csv",
+      sourceByteSize: 100n,
+      sourceChecksumSha256: "a".repeat(64),
+      sourceStartDate: new Date("2026-09-07T00:00:00.000Z"),
+      sourceEndDate: new Date("2026-09-07T00:00:00.000Z"),
+      temporaryObjectKey: null,
+      multipartUploadId: null,
+      status: "rejected",
+      totalRowCount: 0n,
+      partitionCount: 0,
+      errorCode: "INVALID_SOURCE",
+      errorSummary: "Private validation detail",
+      validationErrors: ["Private validation detail"],
+      expiresAt: new Date("2026-09-30T00:00:00.000Z"),
+      publishedAt: null,
+      finishedAt: new Date("2026-09-29T00:00:00.000Z")
+    };
+    let actor = employee;
+    const app = Fastify();
+    registerStructuredPartitionRoutes(app, {
+      ...unusedAudit,
+      auth: { ...auth, employee: () => actor },
+      storage: () => {
+        throw new Error("unused");
+      },
+      partitions: () => repositoryStub({ findJobForStatus: async () => job }),
+      runtimeLimits: loadApiRuntimeLimits({})
+    });
+    try {
+      const url = `/v1/structured/partition-imports/${job.id}`;
+      const owner = await app.inject({ method: "GET", url });
+      expect(owner.statusCode).toBe(200);
+      expect(owner.json().validationErrors).toEqual(["Private validation detail"]);
+
+      actor = { ...employee, id: "emp_2" };
+      const otherEmployee = await app.inject({ method: "GET", url });
+      expect(otherEmployee.statusCode).toBe(404);
+      expect(otherEmployee.body).not.toContain("Private");
+
+      actor = { ...employee, clearance: 0 };
+      const downgradedOwner = await app.inject({ method: "GET", url });
+      expect(downgradedOwner.statusCode).toBe(404);
+      expect(downgradedOwner.body).not.toContain("Private");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("builds an authorized manifest and never includes object keys", async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "partition-route-"));
     const storage = new LocalFileSystemStorageAdapter({ root });
