@@ -8,6 +8,7 @@ import {
 } from "../../file-upload-authorization.js";
 import {
   PARTITION_ERROR_CODES,
+  canEmployeeAccessDocument,
   isPartitionDataset,
   normalizeEnterpriseIdentity
 } from "@smedc/domain";
@@ -296,7 +297,14 @@ export function registerStructuredPartitionRoutes(
       const job = await dependencies
         .partitions()
         .findJobForStatus(employee.orgId, request.params.jobId);
-      if (!job)
+      if (
+        !job ||
+        job.uploaderId !== employee.id ||
+        !canEmployeeAccessDocument({
+          employee,
+          document: { confidentialityLevel: job.confidentialityLevel }
+        })
+      )
         return reply
           .code(404)
           .send(errorResponse("PARTITION_IMPORT_NOT_FOUND", "Partition import not found."));
