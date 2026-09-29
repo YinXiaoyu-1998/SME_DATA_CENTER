@@ -158,7 +158,8 @@ export interface StructuredPartitionRepository {
     startDate: string;
     endDate: string;
     storeIds?: string[];
-  }): Promise<StructuredPartitionRecord[]>;
+    maxPartitions: number;
+  }): Promise<PartitionManifestRow[]>;
   listCoverage?(input: {
     orgId: string;
     clearance: number;
@@ -203,6 +204,17 @@ export interface StructuredPartitionRecord extends CurrentPartitionState {
   publishedByJobId: string;
 }
 
+export type PartitionManifestRow = Pick<
+  StructuredPartitionRecord,
+  | "businessDate"
+  | "merchantId"
+  | "storeName"
+  | "rowCount"
+  | "byteSize"
+  | "checksumSha256"
+  | "objectKey"
+>;
+
 export class StructuredPartitionRepositoryError extends Error {
   constructor(
     readonly code: string,
@@ -246,7 +258,8 @@ export function createPrismaStructuredPartitionRepository(
           orgId_idempotencyKey: { orgId: input.orgId, idempotencyKey: input.idempotencyKey }
         }
       });
-      if (existing) return existingReservation(existing, input.requestFingerprint);
+      if (existing)
+        return existingReservation(existing, input.requestFingerprint, input.uploaderId);
       try {
         const created = await prisma.partitionImportJob.create({
           data: {
@@ -278,7 +291,7 @@ export function createPrismaStructuredPartitionRepository(
             orgId_idempotencyKey: { orgId: input.orgId, idempotencyKey: input.idempotencyKey }
           }
         });
-        return existingReservation(authoritative, input.requestFingerprint);
+        return existingReservation(authoritative, input.requestFingerprint, input.uploaderId);
       }
     },
 
@@ -484,9 +497,19 @@ export function createPrismaStructuredPartitionRepository(
           },
           ...(input.storeIds?.length ? { merchantId: { in: input.storeIds } } : {})
         },
-        orderBy: [{ businessDate: "asc" }, { storeKey: "asc" }]
+        orderBy: [{ businessDate: "asc" }, { storeKey: "asc" }],
+        take: input.maxPartitions + 1,
+        select: {
+          businessDate: true,
+          merchantId: true,
+          storeName: true,
+          rowCount: true,
+          byteSize: true,
+          checksumSha256: true,
+          objectKey: true
+        }
       });
-      return rows as StructuredPartitionRecord[];
+      return rows;
     },
 
     async listCoverage(input) {
@@ -596,9 +619,10 @@ export function createPrismaStructuredPartitionRepository(
 
 function existingReservation(
   existing: Parameters<typeof toJobRecord>[0] & { requestFingerprint: string },
-  requestFingerprint: string
+  requestFingerprint: string,
+  uploaderId: string
 ): { state: "existing"; job: PartitionImportJobRecord } {
-  if (existing.requestFingerprint !== requestFingerprint)
+  if (existing.requestFingerprint !== requestFingerprint || existing.uploaderId !== uploaderId)
     throw new StructuredPartitionRepositoryError(
       "IDEMPOTENCY_KEY_REUSED",
       "Idempotency key was already used for a different partition upload."

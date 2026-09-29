@@ -83,7 +83,8 @@ suite("structured partition repository", () => {
         dataset: "business",
         enterpriseKey: "synthetic",
         startDate: "2026-09-07",
-        endDate: "2026-09-07"
+        endDate: "2026-09-07",
+        maxPartitions: 10
       })
     ).resolves.toHaveLength(1);
 

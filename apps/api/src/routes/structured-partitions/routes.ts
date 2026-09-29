@@ -325,7 +325,8 @@ export function registerStructuredPartitionRoutes(
       enterpriseKey: parsed.value.enterpriseKey,
       startDate: parsed.value.startDate,
       endDate: parsed.value.endDate,
-      storeIds: parsed.value.storeIds
+      storeIds: parsed.value.storeIds,
+      maxPartitions: dependencies.runtimeLimits.partitionManifestMaxPartitions
     });
     if (rows.length > dependencies.runtimeLimits.partitionManifestMaxPartitions)
       return reply
@@ -390,44 +391,61 @@ function isObjectNotFound(error: unknown): boolean {
   );
 }
 
-function parseCreateBody(body: CreateUploadBody | undefined, limits: ApiRuntimeLimits) {
-  if (!body || !body.dataset || !isPartitionDataset(body.dataset))
+function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
+  if (!isRecord(body) || typeof body.dataset !== "string" || !isPartitionDataset(body.dataset))
     return invalid("INVALID_PARTITION_UPLOAD", "dataset must be business or dishes.");
+  const enterpriseName = body.enterpriseName;
+  if (typeof enterpriseName !== "string")
+    return invalid("INVALID_PARTITION_UPLOAD", "enterpriseName is required.");
   let enterprise: ReturnType<typeof normalizeEnterpriseIdentity>;
   try {
-    enterprise = normalizeEnterpriseIdentity(body.enterpriseName ?? "");
+    enterprise = normalizeEnterpriseIdentity(enterpriseName);
   } catch {
     return invalid("INVALID_PARTITION_UPLOAD", "enterpriseName is required.");
   }
-  if (!validDate(body.startDate) || !validDate(body.endDate) || body.startDate! > body.endDate!)
+  const startDate = body.startDate;
+  const endDate = body.endDate;
+  if (!validDate(startDate) || !validDate(endDate) || startDate > endDate)
     return invalid(
       "INVALID_PARTITION_UPLOAD",
       "startDate and endDate must be a valid inclusive date range."
     );
-  if (!body.originalFileName?.trim() || !/\.(csv|xlsx)$/i.test(body.originalFileName))
-    return invalid("INVALID_PARTITION_UPLOAD", "originalFileName must be CSV or XLSX.");
-  if (!body.mediaType?.trim()) return invalid("INVALID_PARTITION_UPLOAD", "mediaType is required.");
+  const originalFileName = body.originalFileName;
   if (
-    !Number.isSafeInteger(body.sourceByteSize) ||
-    body.sourceByteSize! <= 0 ||
-    body.sourceByteSize! > limits.partitionImportMaxSourceBytes
+    typeof originalFileName !== "string" ||
+    !originalFileName.trim() ||
+    !/\.(csv|xlsx)$/i.test(originalFileName)
+  )
+    return invalid("INVALID_PARTITION_UPLOAD", "originalFileName must be CSV or XLSX.");
+  const mediaType = body.mediaType;
+  if (typeof mediaType !== "string" || !mediaType.trim())
+    return invalid("INVALID_PARTITION_UPLOAD", "mediaType is required.");
+  const sourceByteSize = body.sourceByteSize;
+  if (
+    typeof sourceByteSize !== "number" ||
+    !Number.isSafeInteger(sourceByteSize) ||
+    sourceByteSize <= 0 ||
+    sourceByteSize > limits.partitionImportMaxSourceBytes
   )
     return invalid(
       PARTITION_ERROR_CODES.limitExceeded,
       `sourceByteSize must be between 1 and ${limits.partitionImportMaxSourceBytes}.`
     );
-  if (!/^[a-f0-9]{64}$/.test(body.sourceChecksumSha256 ?? ""))
+  const sourceChecksumSha256 = body.sourceChecksumSha256;
+  if (typeof sourceChecksumSha256 !== "string" || !/^[a-f0-9]{64}$/.test(sourceChecksumSha256))
     return invalid(
       "INVALID_PARTITION_UPLOAD",
       "sourceChecksumSha256 must be lowercase SHA-256 hex."
     );
-  if (!body.idempotencyKey?.trim() || body.idempotencyKey.length > 255)
+  const idempotencyKey = body.idempotencyKey;
+  if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 255)
     return invalid(
       "INVALID_PARTITION_UPLOAD",
       "idempotencyKey is required and must be at most 255 characters."
     );
   const confidentialityLevel = body.confidentialityLevel ?? 0;
   if (
+    typeof confidentialityLevel !== "number" ||
     !Number.isInteger(confidentialityLevel) ||
     confidentialityLevel < 0 ||
     confidentialityLevel > 3
@@ -443,47 +461,56 @@ function parseCreateBody(body: CreateUploadBody | undefined, limits: ApiRuntimeL
       dataset: body.dataset,
       ...enterprise,
       enterpriseName: enterprise.enterpriseName,
-      originalFileName: body.originalFileName.trim(),
-      mediaType: body.mediaType.trim(),
-      sourceByteSize: body.sourceByteSize!,
-      sourceChecksumSha256: body.sourceChecksumSha256!,
-      idempotencyKey: body.idempotencyKey.trim(),
+      originalFileName: originalFileName.trim(),
+      mediaType: mediaType.trim(),
+      sourceByteSize,
+      sourceChecksumSha256,
+      idempotencyKey: idempotencyKey.trim(),
       confidentialityLevel,
-      startDate: body.startDate!,
-      endDate: body.endDate!
+      startDate,
+      endDate
     }
   };
 }
 
-function parseManifestBody(body: ManifestBody | undefined) {
-  if (!body?.dataset || !isPartitionDataset(body.dataset))
+function parseManifestBody(body: unknown) {
+  if (!isRecord(body) || typeof body.dataset !== "string" || !isPartitionDataset(body.dataset))
     return invalid("INVALID_PARTITION_MANIFEST", "dataset must be business or dishes.");
+  const enterpriseName = body.enterpriseName;
+  if (typeof enterpriseName !== "string")
+    return invalid("INVALID_PARTITION_MANIFEST", "enterpriseName is required.");
   let enterprise: ReturnType<typeof normalizeEnterpriseIdentity>;
   try {
-    enterprise = normalizeEnterpriseIdentity(body.enterpriseName ?? "");
+    enterprise = normalizeEnterpriseIdentity(enterpriseName);
   } catch {
     return invalid("INVALID_PARTITION_MANIFEST", "enterpriseName is required.");
   }
-  if (!validDate(body.startDate) || !validDate(body.endDate) || body.startDate! > body.endDate!)
+  const startDate = body.startDate;
+  const endDate = body.endDate;
+  if (!validDate(startDate) || !validDate(endDate) || startDate > endDate)
     return invalid(
       "INVALID_PARTITION_MANIFEST",
       "startDate and endDate must be a valid inclusive date range."
     );
-  if (
-    body.storeIds &&
-    (body.storeIds.length > 10_000 || body.storeIds.some((value) => !value.trim()))
-  )
-    return invalid("INVALID_PARTITION_MANIFEST", "storeIds must contain non-empty merchant IDs.");
+  const storeIds = body.storeIds;
+  let normalizedStoreIds: string[] | undefined;
+  if (storeIds !== undefined) {
+    if (
+      !Array.isArray(storeIds) ||
+      storeIds.length > 10_000 ||
+      storeIds.some((value) => typeof value !== "string" || !value.trim())
+    )
+      return invalid("INVALID_PARTITION_MANIFEST", "storeIds must contain non-empty merchant IDs.");
+    normalizedStoreIds = [...new Set(storeIds.map((value: string) => value.trim()))];
+  }
   return {
     ok: true as const,
     value: {
       dataset: body.dataset,
       ...enterprise,
-      startDate: body.startDate!,
-      endDate: body.endDate!,
-      ...(body.storeIds
-        ? { storeIds: [...new Set(body.storeIds.map((value) => value.trim()))] }
-        : {})
+      startDate,
+      endDate,
+      ...(normalizedStoreIds ? { storeIds: normalizedStoreIds } : {})
     }
   };
 }
@@ -491,9 +518,13 @@ function parseManifestBody(body: ManifestBody | undefined) {
 function invalid(code: string, message: string) {
   return { ok: false as const, code, message };
 }
-function validDate(value: string | undefined): boolean {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  return new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function validDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 function validParts(
   parts: MultipartUploadPart[] | undefined,
