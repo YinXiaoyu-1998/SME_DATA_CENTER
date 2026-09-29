@@ -367,7 +367,12 @@ describe("structured partition routes", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(list).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: "org_1", clearance: 1, enterpriseKey: "synthetic" })
+      expect.objectContaining({
+        orgId: "org_1",
+        clearance: 1,
+        enterpriseKey: "synthetic",
+        maxPartitions: 10_000
+      })
     );
     expect(response.json()).toMatchObject({
       partitionCount: 1,
@@ -376,6 +381,127 @@ describe("structured partition routes", () => {
     });
     expect(response.body).not.toContain("objectKey");
     await app.close();
+  });
+
+  it("rejects an oversized manifest before signing download URLs", async () => {
+    const row = {
+      businessDate: new Date("2026-09-07T00:00:00.000Z"),
+      merchantId: "001",
+      storeName: "Store A",
+      rowCount: 4n,
+      byteSize: 20n,
+      checksumSha256: "b".repeat(64),
+      objectKey: "structured-partitions/org_1/pjob_1/part_1.csv"
+    };
+    const list = vi.fn(async () => [row, row]);
+    const storage = vi.fn(() => {
+      throw new Error("oversized manifests must not initialize storage");
+    });
+    const app = Fastify();
+    registerStructuredPartitionRoutes(app, {
+      ...unusedAudit,
+      auth,
+      storage,
+      partitions: () => repositoryStub({ listReadableManifestRows: list }),
+      runtimeLimits: { ...loadApiRuntimeLimits({}), partitionManifestMaxPartitions: 1 }
+    });
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/structured/partition-manifests",
+        payload: {
+          dataset: "business",
+          enterpriseName: "Synthetic",
+          startDate: "2026-09-07",
+          endDate: "2026-09-13"
+        }
+      });
+      expect(response.statusCode).toBe(413);
+      expect(response.json().error.code).toBe("PARTITION_MANIFEST_TOO_LARGE");
+      expect(list).toHaveBeenCalledWith(expect.objectContaining({ maxPartitions: 1 }));
+      expect(storage).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("returns 400 for malformed upload metadata before creating a multipart upload", async () => {
+    const storage = vi.fn(() => {
+      throw new Error("invalid upload must not initialize storage");
+    });
+    const app = Fastify();
+    registerStructuredPartitionRoutes(app, {
+      ...unusedAudit,
+      auth: adminAuth,
+      storage,
+      partitions: () => repositoryStub({}),
+      runtimeLimits: loadApiRuntimeLimits({})
+    });
+    const valid = {
+      dataset: "business",
+      enterpriseName: "Synthetic",
+      startDate: "2026-09-07",
+      endDate: "2026-09-13",
+      originalFileName: "business.csv",
+      mediaType: "text/csv",
+      sourceByteSize: 100,
+      sourceChecksumSha256: "a".repeat(64),
+      idempotencyKey: "idem-valid"
+    };
+    try {
+      for (const payload of [
+        { ...valid, mediaType: 42 },
+        { ...valid, idempotencyKey: 42 },
+        { ...valid, startDate: "9999-99-99" }
+      ]) {
+        const response = await app.inject({
+          method: "POST",
+          url: "/v1/structured/partition-uploads",
+          payload
+        });
+        expect(response.statusCode).toBe(400);
+      }
+      expect(storage).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("returns 400 for malformed manifest fields before querying partitions", async () => {
+    const list = vi.fn(async () => []);
+    const app = Fastify();
+    registerStructuredPartitionRoutes(app, {
+      ...unusedAudit,
+      auth,
+      storage: () => {
+        throw new Error("unused");
+      },
+      partitions: () => repositoryStub({ listReadableManifestRows: list }),
+      runtimeLimits: loadApiRuntimeLimits({})
+    });
+    const valid = {
+      dataset: "business",
+      enterpriseName: "Synthetic",
+      startDate: "2026-09-07",
+      endDate: "2026-09-13"
+    };
+    try {
+      for (const payload of [
+        { ...valid, storeIds: { storeId: "001" } },
+        { ...valid, storeIds: ["001", 42] },
+        { ...valid, endDate: "9999-99-99" }
+      ]) {
+        const response = await app.inject({
+          method: "POST",
+          url: "/v1/structured/partition-manifests",
+          payload
+        });
+        expect(response.statusCode).toBe(400);
+      }
+      expect(list).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
   });
 
   it("queues an already completed source without completing the multipart upload twice", async () => {
