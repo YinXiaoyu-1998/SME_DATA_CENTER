@@ -18,6 +18,10 @@ const employee: AuthenticatedEmployee = {
   clearance: 3
 };
 
+function unexpectedDependency(): never {
+  throw new Error("Unexpected dependency in structured query route test");
+}
+
 function context(
   repository: StructuredQueryRepository,
   coverageRepository: StructuredCoverageRepository = {
@@ -37,43 +41,33 @@ function context(
     authCore: undefined,
     authenticateOfficialAccessToken: async (token) => (token === "valid" ? employee : null),
     authenticationClientSource: () => "http_api",
-    createBusinessRequestAudit: () => {
-      throw new Error("not used");
-    },
-    documents: () => {
-      throw new Error("not used");
-    },
-    storage: () => {
-      throw new Error("not used");
-    },
-    structuredImports: () => {
-      throw new Error("not used");
-    },
-    structuredPartitions: () => {
-      throw new Error("not used");
-    },
+    createBusinessRequestAudit: unexpectedDependency,
+    documents: unexpectedDependency,
+    storage: unexpectedDependency,
+    structuredImports: unexpectedDependency,
+    structuredPartitions: unexpectedDependency,
     structuredQueries: () => repository,
     structuredCoverage: () => coverageRepository,
-    skills: () => {
-      throw new Error("not used");
-    },
-    evidence: () => {
-      throw new Error("not used");
-    },
-    uploadAuthorizationAudit: () => {
-      throw new Error("not used");
-    },
-    quarantineCertificates: () => {
-      throw new Error("not used");
-    },
-    sourceDocuments: () => {
-      throw new Error("not used");
-    },
-    sourceDocumentDownloads: () => {
-      throw new Error("not used");
-    },
+    skills: unexpectedDependency,
+    evidence: unexpectedDependency,
+    uploadAuthorizationAudit: unexpectedDependency,
+    quarantineCertificates: unexpectedDependency,
+    sourceDocuments: unexpectedDependency,
+    sourceDocumentDownloads: unexpectedDependency,
     close: async () => undefined
   };
+}
+
+function createApp(dependencies: ApiServerContext): FastifyInstance {
+  const app = Fastify({ logger: false });
+  registerStructuredQueryRoutes(app, {
+    auth: createRequestAuth(dependencies),
+    structuredQueries: dependencies.structuredQueries,
+    structuredCoverage: dependencies.structuredCoverage,
+    structuredPartitions: dependencies.structuredPartitions,
+    cursorSigningSecret: dependencies.cursorSigningSecret
+  });
+  return app;
 }
 
 describe("structured query routes", () => {
@@ -86,14 +80,7 @@ describe("structured query routes", () => {
 
   it("serves dataset registry metadata only after authentication", async () => {
     const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
-    app = Fastify({ logger: false });
-    registerStructuredQueryRoutes(app, {
-      auth: createRequestAuth(dependencies),
-      structuredQueries: dependencies.structuredQueries,
-      structuredCoverage: dependencies.structuredCoverage,
-      structuredPartitions: dependencies.structuredPartitions,
-      cursorSigningSecret: dependencies.cursorSigningSecret
-    });
+    app = createApp(dependencies);
 
     const missing = await app.inject({ method: "GET", url: "/v1/structured/datasets" });
     const present = await app.inject({
@@ -147,14 +134,7 @@ describe("structured query routes", () => {
       }
     };
     const dependencies = context(repository);
-    app = Fastify({ logger: false });
-    registerStructuredQueryRoutes(app, {
-      auth: createRequestAuth(dependencies),
-      structuredQueries: dependencies.structuredQueries,
-      structuredCoverage: dependencies.structuredCoverage,
-      structuredPartitions: dependencies.structuredPartitions,
-      cursorSigningSecret: dependencies.cursorSigningSecret
-    });
+    app = createApp(dependencies);
 
     const ok = await app.inject({
       method: "POST",
@@ -198,14 +178,7 @@ describe("structured query routes", () => {
 
   it("returns the ledger presentation profile for delivery-ledger detail queries only", async () => {
     const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
-    app = Fastify({ logger: false });
-    registerStructuredQueryRoutes(app, {
-      auth: createRequestAuth(dependencies),
-      structuredQueries: dependencies.structuredQueries,
-      structuredCoverage: dependencies.structuredCoverage,
-      structuredPartitions: dependencies.structuredPartitions,
-      cursorSigningSecret: dependencies.cursorSigningSecret
-    });
+    app = createApp(dependencies);
 
     const detail = await app.inject({
       method: "POST",
@@ -281,14 +254,7 @@ describe("structured query routes", () => {
       { execute: async () => ({ rows: [], hasMore: false }) },
       coverageRepository
     );
-    app = Fastify({ logger: false });
-    registerStructuredQueryRoutes(app, {
-      auth: createRequestAuth(dependencies),
-      structuredQueries: dependencies.structuredQueries,
-      structuredCoverage: dependencies.structuredCoverage,
-      structuredPartitions: dependencies.structuredPartitions,
-      cursorSigningSecret: dependencies.cursorSigningSecret
-    });
+    app = createApp(dependencies);
 
     const missing = await app.inject({
       method: "GET",
@@ -363,14 +329,7 @@ describe("structured query routes", () => {
           };
         }
       }) as never;
-    app = Fastify({ logger: false });
-    registerStructuredQueryRoutes(app, {
-      auth: createRequestAuth(dependencies),
-      structuredQueries: dependencies.structuredQueries,
-      structuredCoverage: dependencies.structuredCoverage,
-      structuredPartitions: dependencies.structuredPartitions,
-      cursorSigningSecret: dependencies.cursorSigningSecret
-    });
+    app = createApp(dependencies);
     const response = await app.inject({
       method: "GET",
       url: "/v1/structured/datasets/dishes/coverage",
