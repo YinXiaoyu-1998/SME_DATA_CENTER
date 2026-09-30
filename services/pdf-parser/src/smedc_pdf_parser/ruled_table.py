@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import math
 import ctypes
+from contextlib import closing
 
 import pypdfium2 as pdfium
+
+FILLED_ROI_TOLERANCE_POINTS = 3.0
 
 
 def extract_vector_grid(page, bbox: tuple[float, float, float, float]) -> dict | None:
@@ -143,7 +146,9 @@ def extract_filled_grid(page, bbox: tuple[float, float, float, float]) -> dict |
 
     Used only when model structure is invalid and the preferred straight grid
     cannot be recovered. Direct page objects avoid uncomposed Form transforms.
-    Every grid slot must belong to exactly one original rectangle.
+    Every grid slot must belong to exactly one original rectangle, and its
+    envelope must cover the requested table ROI within 3 PDF points. That
+    tolerance permits empty model-boundary error, never omitted native text.
     """
     if not _native_page_supported(page):
         return None
@@ -226,6 +231,24 @@ def extract_filled_grid(page, bbox: tuple[float, float, float, float]) -> dict |
 
     xs = cluster([v for l, t, r, b in rectangles for v in (l, r)])
     ys = cluster([v for l, t, r, b in rectangles for v in (t, b)])
+    if not all(
+        math.isclose(
+            actual, requested, rel_tol=0, abs_tol=FILLED_ROI_TOLERANCE_POINTS
+        )
+        for actual, requested in zip((xs[0], ys[0], xs[-1], ys[-1]), bbox)
+    ):
+        # Completeness cannot be established from the rectangle-derived grid
+        # alone: a filled header/row/column may tile only a table subsection.
+        return None
+    with closing(page.get_textpage()) as text_page:
+        for i in range(text_page.count_chars()):
+            if not text_page.get_text_range(i, 1).strip():
+                continue
+            l, b, r, t = text_page.get_charbox(i)
+            x, y = (l + r) / 2, height - (t + b) / 2
+            if left <= x <= right and top <= y <= bottom:
+                if not (xs[0] <= x <= xs[-1] and ys[0] <= y <= ys[-1]):
+                    return None
     rows, columns = len(ys) - 1, len(xs) - 1
     if not 1 <= rows <= 1024 or not 1 <= columns <= 128 or rows * columns > 16384:
         return None

@@ -7,7 +7,7 @@ import pytest
 from reportlab.pdfgen import canvas
 
 
-def filled_table(path, *, overlap=False):
+def filled_table(path, *, overlap=False, margin_text=False):
     c = canvas.Canvas(str(path), pagesize=(400, 300))
     cells = [
         (30, 210, 170, 50, "Group"),
@@ -26,6 +26,9 @@ def filled_table(path, *, overlap=False):
         c.setFillColorRGB(0, 0, 0)
         c.setFont("Helvetica", 14)
         c.drawString(x + 8, y + 20, text)
+    if margin_text:
+        c.setFont("Helvetica", 1)
+        c.drawString(28, 200, "X")
     c.save()
     return path
 
@@ -68,6 +71,50 @@ def test_rotated_filled_grid_is_not_used(tmp_path):
         page = pdf[0]
         page.set_rotation(180)
         assert extract(page) is None
+
+
+@pytest.mark.parametrize("section", ["header", "bottom", "column"])
+def test_filled_subsection_cannot_replace_unfilled_native_cells(tmp_path, section):
+    c = canvas.Canvas(str(tmp_path / "partial.pdf"), pagesize=(400, 300))
+    for row in range(4):
+        for column in range(2):
+            filled = {
+                "header": row == 0,
+                "bottom": row == 3,
+                "column": column == 0,
+            }[section]
+            x, y = 30 + column * 170, 210 - row * 50
+            c.rect(x, y, 170, 50, fill=int(filled), stroke=int(not filled))
+            c.drawString(x + 8, y + 20, f"Native cell {row}:{column}")
+    c.save()
+    with pdfium.PdfDocument(tmp_path / "partial.pdf") as pdf:
+        assert extract(pdf[0]) is None
+
+
+@pytest.mark.parametrize("error, accepted", [(2.5, True), (3.0, True), (3.01, False)])
+def test_complete_grid_accepts_bounded_prediction_error(tmp_path, error, accepted):
+    from smedc_pdf_parser.ruled_table import extract_filled_grid
+
+    with pdfium.PdfDocument(filled_table(tmp_path / "complete.pdf")) as pdf:
+        grid = extract_filled_grid(
+            pdf[0], (30 - error, 40 - error, 370 + error, 240 + error)
+        )
+    if not accepted:
+        assert grid is None
+        return
+    assert grid is not None
+    assert (grid["rowCount"], grid["columnCount"]) == (4, 2)
+    assert len(grid["cells"]) == 7
+
+
+def test_native_content_in_roi_margin_cannot_be_discarded(tmp_path):
+    from smedc_pdf_parser.ruled_table import extract_filled_grid
+
+    # The ROI tolerance is for empty prediction margins, not an extra column.
+    with pdfium.PdfDocument(
+        filled_table(tmp_path / "margin.pdf", margin_text=True)
+    ) as pdf:
+        assert extract_filled_grid(pdf[0], (27.5, 37.5, 372.5, 242.5)) is None
 
 
 def test_recovery_retains_both_distinct_native_cell_texts(tmp_path):
