@@ -75,6 +75,31 @@ describe("Prisma document catalog audit provenance", () => {
     prisma.document.update.mockResolvedValue({ ...documentRecord(), status: "archived" });
   });
 
+  it("selects the latest run's bounded code without persisted exception details", async () => {
+    prisma.document.findFirst.mockResolvedValue({
+      ...documentRecord(),
+      fileType: "pdf",
+      processingRuns: [{ status: "failed", errorCode: "PDF_INCOMPLETE_PARSE" }]
+    });
+    const repository = createPrismaDocumentCatalogRepository("mysql://test");
+    const status = await repository.findEvidenceDocumentStatus("org_1", "doc_1");
+    expect(status).toMatchObject({
+      processingRunStatus: "failed",
+      processingRunErrorCode: "PDF_INCOMPLETE_PARSE"
+    });
+    expect(prisma.document.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "doc_1", orgId: "org_1", documentKind: "evidence" },
+        include: expect.objectContaining({
+          processingRuns: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { status: true, errorCode: true }
+          }
+        })
+      })
+    );
+  });
   it("persists the complete audit context for upload and archive writes", async () => {
     const repository = createPrismaDocumentCatalogRepository("mysql://test");
 

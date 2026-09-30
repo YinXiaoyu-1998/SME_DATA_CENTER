@@ -1,6 +1,8 @@
+import { runDurablePdfRemoteCommand } from "./pdf-acceptance-runtime.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   cleanupPdfAcceptanceRun,
+  preparePdfAcceptanceCleanup,
   createPdfAcceptanceManifest,
   validatePdfAcceptanceManifest,
   assertPdfInventory,
@@ -173,6 +175,136 @@ describe("isolated PDF acceptance", () => {
       /recovery required/i
     );
     expect(f.inventory.objectKeys).toEqual([]);
+  });
+  it("persists a prepared manifest outside the remote process before a lost final reply", async () => {
+    const f = fixture();
+    f.manifest.phase = "registered";
+    f.manifest.attemptIds = ["confirmed"];
+    f.inventory.attempts = [
+      { id: "confirmed", orgId: f.manifest.orgIds[0]!, documentId: "doc-a", settled: true }
+    ];
+    let persisted = JSON.stringify(f.manifest);
+    let loseFinalReply = true;
+    const remote = vi.fn(async (_args, caller, prepare = false) => {
+      const remoteManifest = JSON.parse(JSON.stringify(caller));
+      const deps = { ...f.dependencies, save: async () => {} };
+      if (prepare) {
+        await preparePdfAcceptanceCleanup(remoteManifest, deps);
+        expect(deps.detach).not.toHaveBeenCalled();
+      } else {
+        expect(JSON.parse(persisted).phase).toBe("cleanup");
+        await cleanupPdfAcceptanceRun(remoteManifest, deps);
+        if (loseFinalReply) {
+          loseFinalReply = false;
+          throw new Error("SSH reply lost");
+        }
+      }
+      return { ok: true, manifest: remoteManifest };
+    });
+    const args = {
+      command: "cleanup" as const,
+      runId: f.manifest.runId,
+      manifestPath: "/private/manifest.json"
+    };
+    const d = {
+      remote,
+      save: async (m: typeof f.manifest) => {
+        persisted = JSON.stringify(m);
+      }
+    };
+    await expect(runDurablePdfRemoteCommand(args, JSON.parse(persisted), d)).rejects.toThrow(
+      "SSH reply lost"
+    );
+    expect(JSON.parse(persisted).phase).toBe("cleanup");
+    expect(JSON.parse(persisted).settledAttemptIds).toEqual(["confirmed"]);
+    await expect(runDurablePdfRemoteCommand(args, JSON.parse(persisted), d)).resolves.toMatchObject(
+      { ok: true }
+    );
+    expect(JSON.parse(persisted).phase).toBe("complete");
+    expect(f.dependencies.removeRows).toHaveBeenCalledTimes(1);
+  });
+  it("retries a lost prepare reply without deleting or advancing the caller manifest", async () => {
+    const f = fixture();
+    f.manifest.phase = "registered";
+    const saved = vi.fn(async () => {});
+    const remote = vi.fn(async (_args, caller) => {
+      await preparePdfAcceptanceCleanup(JSON.parse(JSON.stringify(caller)), f.dependencies);
+      throw new Error("prepare reply lost");
+    });
+    const args = {
+      command: "cleanup" as const,
+      runId: f.manifest.runId,
+      manifestPath: "/private/manifest.json"
+    };
+    for (let retry = 0; retry < 2; retry++)
+      await expect(
+        runDurablePdfRemoteCommand(args, f.manifest, { remote, save: saved })
+      ).rejects.toThrow("prepare reply lost");
+    expect(f.manifest.phase).toBe("registered");
+    expect(saved).not.toHaveBeenCalled();
+    expect(f.dependencies.detach).not.toHaveBeenCalled();
+    expect(f.dependencies.removeRows).not.toHaveBeenCalled();
+  });
+  it("never dispatches deletion when preparing or persisting cleanup intent fails", async () => {
+    const f = fixture();
+    f.manifest.phase = "registered";
+    const args = {
+      command: "cleanup" as const,
+      runId: f.manifest.runId,
+      manifestPath: "/private/manifest.json"
+    };
+    const remote = vi.fn(async (_args, caller) => {
+      const m = JSON.parse(JSON.stringify(caller));
+      await preparePdfAcceptanceCleanup(m, f.dependencies);
+      return { ok: true, manifest: m };
+    });
+    await expect(
+      runDurablePdfRemoteCommand(args, f.manifest, {
+        remote,
+        save: async () => {
+          throw new Error("disk unavailable");
+        }
+      })
+    ).rejects.toThrow("disk unavailable");
+    expect(remote).toHaveBeenCalledTimes(1);
+    expect(f.dependencies.removeRows).not.toHaveBeenCalled();
+    f.inventory.orgs = [];
+    remote.mockClear();
+    const save = vi.fn(async () => {});
+    await expect(runDurablePdfRemoteCommand(args, f.manifest, { remote, save })).rejects.toThrow(
+      /missing/i
+    );
+    expect(save).not.toHaveBeenCalled();
+    expect(remote).toHaveBeenCalledTimes(1);
+    expect(f.manifest.phase).toBe("registered");
+  });
+  it.each(["foreign", "unknown"])("prepared cleanup still rejects %s resources", async (kind) => {
+    const f = fixture();
+    f.manifest.phase = "registered";
+    if (kind === "foreign") {
+      await preparePdfAcceptanceCleanup(f.manifest, f.dependencies);
+      vi.mocked(f.dependencies.preventClaims).mockClear();
+      f.manifest.phase = "registered"; // caller retained this phase after a lost prepare reply
+      f.inventory.unexpected.push("foreign-resource");
+    } else {
+      f.manifest.attemptIds = ["unknown"];
+      f.inventory.attempts = [
+        { id: "unknown", orgId: f.manifest.orgIds[0]!, documentId: "doc-a", settled: false }
+      ];
+    }
+    if (kind === "foreign") {
+      await expect(preparePdfAcceptanceCleanup(f.manifest, f.dependencies)).rejects.toThrow(
+        /unregistered/i
+      );
+      expect(f.manifest.phase).toBe("registered");
+      expect(f.dependencies.preventClaims).not.toHaveBeenCalled();
+    } else {
+      await preparePdfAcceptanceCleanup(f.manifest, f.dependencies);
+      await expect(cleanupPdfAcceptanceRun(f.manifest, f.dependencies)).rejects.toThrow(
+        /unknown late writes/i
+      );
+    }
+    expect(f.dependencies.removeRows).not.toHaveBeenCalled();
   });
   it("rejects PDF routing without explicit manifest and named profile", () => {
     expect(() => parsePdfAcceptanceArgs(["--profile=pdf", "--run-id=x"])).toThrow();

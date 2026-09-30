@@ -230,6 +230,20 @@ def _ruled_table(
             }
             for cell_left, t, r, b in (cell["bboxPoints"] for cell in grid["cells"])
         ]
+        # The native coverage check cannot see OCR-only content in a small
+        # prediction margin. Retain TableFormer if any ROI cell is outside.
+        envelope = {
+            "left": min(cb["left"] for cb in cell_boxes),
+            "top": min(cb["top"] for cb in cell_boxes),
+            "right": max(cb["right"] for cb in cell_boxes),
+            "bottom": max(cb["bottom"] for cb in cell_boxes),
+        }
+        for text_cell, text_box in source_cells:
+            cx = (text_box["left"] + text_box["right"]) / 2
+            cy = (text_box["top"] + text_box["bottom"]) / 2
+            if box["left"] <= cx <= box["right"] and box["top"] <= cy <= box["bottom"]:
+                if not (envelope["left"] <= cx <= envelope["right"] and envelope["top"] <= cy <= envelope["bottom"]):
+                    return None
         text_page = page.get_textpage()
         native_chars = []
         for i in range(text_page.count_chars()):

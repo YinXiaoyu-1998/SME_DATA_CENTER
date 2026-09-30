@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { PdfUploadAdmission } from "../pdf-upload-admission.js";
-import { projectPdfParsingSummary } from "../evidence-provenance.js";
+import { projectPdfParsingSummary, projectPdfProcessingError } from "../evidence-provenance.js";
 import {
   authorizeFileUpload,
   fileUploadAdminRequiredResponse,
@@ -299,7 +299,15 @@ function evidenceStatusResponse(document: DocumentStatusRecord, retrievalConfigV
     },
     processing: {
       processingRunId: null,
-      status: document.processingRunStatus
+      status: document.processingRunStatus,
+      ...(document.fileType === "pdf"
+        ? {
+            error:
+              document.processingRunStatus === "failed"
+                ? projectPdfProcessingError(document.processingRunErrorCode)
+                : null
+          }
+        : {})
     },
     documentIndex: {
       status: document.documentIndexStatus ?? "pending",

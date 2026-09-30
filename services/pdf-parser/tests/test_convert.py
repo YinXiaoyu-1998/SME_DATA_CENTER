@@ -379,3 +379,73 @@ def test_password_protected_pdf_has_stable_failure(tmp_path):
     c.save()
     with pytest.raises(PdfParseError, match="^PDF_INVALID_OR_ENCRYPTED$"):
         convert(source)
+
+
+def partial_grid_pdf(path, region):
+    c = canvas.Canvas(str(path), pagesize=(400, 300))
+    left, top, right, bottom = region
+    for y in (top, (top + bottom) / 2, bottom):
+        c.line(left, 300 - y, right, 300 - y)
+    for x in (left, (left + right) / 2, right):
+        c.line(x, 300 - top, x, 300 - bottom)
+    c.save()
+    return path
+
+
+@pytest.mark.parametrize("region", [(30, 40, 370, 140), (30, 140, 370, 240), (30, 40, 200, 240)])
+def test_vector_subsection_cannot_replace_full_predicted_table(tmp_path, region):
+    from smedc_pdf_parser.ruled_table import extract_vector_grid
+    with pdfium.PdfDocument(partial_grid_pdf(tmp_path / "partial.pdf", region)) as pdf:
+        assert extract_vector_grid(pdf[0], (30, 40, 370, 240)) is None
+
+
+def test_vector_grid_accepts_empty_prediction_margins_but_not_omitted_native_text(tmp_path):
+    from smedc_pdf_parser.ruled_table import extract_vector_grid
+    source = partial_grid_pdf(tmp_path / "margins.pdf", (30, 40, 370, 240))
+    with pdfium.PdfDocument(source) as pdf:
+        assert extract_vector_grid(pdf[0], (28, 38, 372, 242)) is not None
+    c = canvas.Canvas(str(source), pagesize=(400, 300))
+    for y in (60, 160, 260):
+        c.line(30, y, 370, y)
+    for x in (30, 200, 370):
+        c.line(x, 60, x, 260)
+    c.setFont("Helvetica", 1)
+    c.drawString(30.1, 261.2, "omitted")  # inside the prediction margin, outside the grid
+    c.save()
+    with pdfium.PdfDocument(source) as pdf:
+        assert extract_vector_grid(pdf[0], (28, 38, 372, 242)) is None
+
+
+def test_converter_retains_predicted_rows_when_vector_grid_is_partial(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from docling.datamodel.base_models import ConversionStatus
+    from docling_core.types.doc import BoundingBox, CoordOrigin, Size
+    from smedc_pdf_parser import convert as adapter
+
+    source = partial_grid_pdf(tmp_path / "partial-conversion.pdf", (30, 140, 370, 240))
+    size = Size(width=400, height=300)
+    data = NS(num_rows=4, num_cols=2, table_cells=[
+        NS(start_row_offset_idx=r, start_col_offset_idx=c, row_span=1, col_span=1,
+           text=f"row{r}col{c}", column_header=r == 0)
+        for r in range(4) for c in range(2)
+    ])
+    item = NS(label=NS(value="table"), data=data, prov=[NS(page_no=1, bbox=BoundingBox(l=30, t=40, r=370, b=240, coord_origin=CoordOrigin.TOPLEFT))])
+    document = NS(pages={1: NS(size=size)}, iterate_items=lambda: [(item, 0)])
+    conversion = NS(status=ConversionStatus.SUCCESS, pages=[NS(page_no=1, size=size, cells=[])], document=document)
+    converter = NS(convert=lambda *args, **kwargs: conversion, initialized_pipelines={0: NS(ocr_model=NS(reader=None))})
+    monkeypatch.setattr(adapter, "_models", lambda _: tmp_path)
+    monkeypatch.setattr(adapter, "_converter", lambda *args: converter)
+    result = convert(source)
+    assert result["tables"][0]["rowCount"] == 4
+    assert len(result["tables"][0]["cells"]) == 8
+    assert "row0col0" in result["blocks"][0]["text"]
+    assert "row3col1" in result["blocks"][0]["text"]
+
+
+def test_ruled_converter_rejects_ocr_content_outside_native_grid(tmp_path):
+    from types import SimpleNamespace as NS
+    from smedc_pdf_parser.convert import _ruled_table
+    source = partial_grid_pdf(tmp_path / "ocr-margin.pdf", (30, 40, 370, 240))
+    box = dict(left=28/400, top=38/300, right=372/400, bottom=242/300)
+    cell = (NS(text="omitted OCR", from_ocr=True), dict(left=28/400, right=29/400, top=50/300, bottom=60/300))
+    assert _ruled_table(source, 1, box, NS(width=400, height=300), [cell], None, None) is None

@@ -101,7 +101,8 @@ export interface RemoteWindowResult {
 /** PDF manifests contain identifiers only. stdin avoids quoting private paths or setup secrets. */
 export async function runPdfStagingController(
   args: import("./pdf-acceptance-support.js").PdfAcceptanceArgs,
-  manifest: import("./pdf-acceptance-support.js").PdfAcceptanceManifest
+  manifest: import("./pdf-acceptance-support.js").PdfAcceptanceManifest,
+  prepareCleanup = false
 ): Promise<{ ok: boolean; manifest: import("./pdf-acceptance-support.js").PdfAcceptanceManifest }> {
   const { spawn } = await import("node:child_process");
   const { validatePdfAcceptanceManifest } = await import("./pdf-acceptance-support.js");
@@ -121,6 +122,7 @@ export async function runPdfStagingController(
     "--rm",
     "-e",
     "SMEDC_PDF_ACCEPTANCE_CONTROLLER=1",
+    ...(prepareCleanup ? ["-e", "SMEDC_PDF_ACCEPTANCE_PREPARE_CLEANUP=1"] : []),
     "release-ops",
     "node",
     "dist/release/pdf-acceptance.js",

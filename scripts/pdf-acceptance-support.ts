@@ -190,6 +190,27 @@ export function assertPdfInventory(m: PdfAcceptanceManifest, i: PdfAcceptanceInv
   if (i.objectKeys.some((key) => !m.objectKeys.includes(key)))
     throw new Error("Unregistered PDF storage object.");
 }
+/** Prepare only: capture ownership/proof before the caller durably authorizes deletion. */
+export async function preparePdfAcceptanceCleanup(
+  value: PdfAcceptanceManifest,
+  d: Pick<PdfAcceptanceDependencies, "inventory" | "preventClaims" | "save">
+): Promise<void> {
+  const m = validatePdfAcceptanceManifest(value);
+  let inventory = await d.inventory();
+  assertPdfInventory(m, inventory);
+  await d.preventClaims(); // Only this run; running/ambiguous workers must not be declared settled.
+  inventory = await d.inventory();
+  assertPdfInventory(m, inventory);
+  m.settledAttemptIds = [
+    ...new Set([
+      ...m.settledAttemptIds,
+      ...inventory.attempts.filter((a) => a.settled).map((a) => a.id)
+    ])
+  ];
+  m.phase = "cleanup";
+  await d.save(m); // Persist before removing authoritative index references.
+}
+
 export async function cleanupPdfAcceptanceRun(
   value: PdfAcceptanceManifest,
   d: PdfAcceptanceDependencies
@@ -220,17 +241,7 @@ export async function cleanupPdfAcceptanceRun(
       qdrantPoints: 0
     };
   }
-  await d.preventClaims(); // Only this run; running/ambiguous workers must not be declared settled.
-  inventory = await d.inventory();
-  assertPdfInventory(m, inventory);
-  m.settledAttemptIds = [
-    ...new Set([
-      ...m.settledAttemptIds,
-      ...inventory.attempts.filter((a) => a.settled).map((a) => a.id)
-    ])
-  ];
-  m.phase = "cleanup";
-  await d.save(m); // Persist before removing authoritative index references.
+  await preparePdfAcceptanceCleanup(m, d);
   await d.detach();
   await d.reconcile();
   await d.deletePoints(m.pointIds, m.collection);

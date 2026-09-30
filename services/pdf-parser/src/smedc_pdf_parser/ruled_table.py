@@ -12,7 +12,28 @@ from contextlib import closing
 
 import pypdfium2 as pdfium
 
-FILLED_ROI_TOLERANCE_POINTS = 3.0
+ROI_TOLERANCE_POINTS = 3.0
+
+
+def _covers_roi_content(page, bbox, envelope):
+    if not all(
+        math.isclose(actual, requested, rel_tol=0, abs_tol=ROI_TOLERANCE_POINTS)
+        for actual, requested in zip(envelope, bbox)
+    ):
+        return False
+    left, top, right, bottom = bbox
+    l0, t0, r0, b0 = envelope
+    height = page.get_size()[1]
+    with closing(page.get_textpage()) as text_page:
+        for i in range(text_page.count_chars()):
+            if not text_page.get_text_range(i, 1).strip():
+                continue
+            l, b, r, t = text_page.get_charbox(i)
+            x, y = (l + r) / 2, height - (t + b) / 2
+            if left <= x <= right and top <= y <= bottom:
+                if not (l0 <= x <= r0 and t0 <= y <= b0):
+                    return False
+    return True
 
 
 def extract_vector_grid(page, bbox: tuple[float, float, float, float]) -> dict | None:
@@ -70,6 +91,9 @@ def extract_vector_grid(page, bbox: tuple[float, float, float, float]) -> dict |
             boundary(vertical, xs[-1], ys[0], ys[-1]),
         )
     ):
+        return None
+    # A closed subsection is not a complete replacement for the predicted table.
+    if not _covers_roi_content(page, bbox, (xs[0], ys[0], xs[-1], ys[-1])):
         return None
     parents = list(range(rows * columns))
 
@@ -231,24 +255,8 @@ def extract_filled_grid(page, bbox: tuple[float, float, float, float]) -> dict |
 
     xs = cluster([v for l, t, r, b in rectangles for v in (l, r)])
     ys = cluster([v for l, t, r, b in rectangles for v in (t, b)])
-    if not all(
-        math.isclose(
-            actual, requested, rel_tol=0, abs_tol=FILLED_ROI_TOLERANCE_POINTS
-        )
-        for actual, requested in zip((xs[0], ys[0], xs[-1], ys[-1]), bbox)
-    ):
-        # Completeness cannot be established from the rectangle-derived grid
-        # alone: a filled header/row/column may tile only a table subsection.
+    if not _covers_roi_content(page, bbox, (xs[0], ys[0], xs[-1], ys[-1])):
         return None
-    with closing(page.get_textpage()) as text_page:
-        for i in range(text_page.count_chars()):
-            if not text_page.get_text_range(i, 1).strip():
-                continue
-            l, b, r, t = text_page.get_charbox(i)
-            x, y = (l + r) / 2, height - (t + b) / 2
-            if left <= x <= right and top <= y <= bottom:
-                if not (xs[0] <= x <= xs[-1] and ys[0] <= y <= ys[-1]):
-                    return None
     rows, columns = len(ys) - 1, len(xs) - 1
     if not 1 <= rows <= 1024 or not 1 <= columns <= 128 or rows * columns > 16384:
         return None

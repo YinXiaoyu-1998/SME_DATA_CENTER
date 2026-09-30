@@ -451,6 +451,56 @@ describe("evidence routes", () => {
     expect(allowed.statusCode).toBe(200);
     expect(allowed.json().parsing).toEqual(parsing);
     expect(allowed.payload).not.toContain("private/");
+    Object.assign(created, {
+      processingRunStatus: "failed",
+      documentIndexParseSummary: null,
+      processingRunErrorSummary: "private/path token provider-body"
+    });
+    for (const [code, message] of [
+      ["PDF_INVALID_OR_ENCRYPTED", "PDF is invalid or password protected."],
+      ["PDF_INCOMPLETE_PARSE", "PDF conversion is incomplete."],
+      ["PDF_PIXEL_LIMIT", "PDF rendering exceeds the limit."]
+    ]) {
+      Object.assign(created, { processingRunErrorCode: code });
+      const failed = await status();
+      expect(failed.json()).toMatchObject({
+        parsing: null,
+        processing: { status: "failed", error: { code, message } }
+      });
+      expect(failed.payload).not.toContain("private/");
+      expect(failed.payload).not.toContain("provider-body");
+    }
+    for (const code of ["UNKNOWN private/path", "__proto__", "constructor"]) {
+      Object.assign(created, { processingRunErrorCode: code });
+      expect((await status()).json().processing.error).toBeNull();
+    }
+    Object.assign(created, { processingRunErrorCode: "PDF_PIXEL_LIMIT" });
+    const mcpStatus = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        host: "127.0.0.1:3000",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-protocol-version": "2025-11-25"
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "get_evidence_document_status", arguments: { documentId: created.id } }
+      }
+    });
+    expect(mcpStatus.statusCode).toBe(200);
+    expect(JSON.parse(mcpStatus.json().result.content[0].text).processing.error).toEqual({
+      code: "PDF_PIXEL_LIMIT",
+      message: "PDF rendering exceeds the limit."
+    });
+    expect(mcpStatus.payload).not.toContain("provider-body");
+    created.uploaderId = "another-uploader";
+    expect((await status()).statusCode).toBe(404);
+    created.uploaderId = adminEmployee.id;
     created.orgId = orgBAdminEmployee.orgId;
     const foreign = await status();
     expect(foreign.statusCode).toBe(404);

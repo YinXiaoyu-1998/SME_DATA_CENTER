@@ -58,6 +58,7 @@ export interface DocumentStatusRecord {
   sourceTime: Date | null;
   confidentialityLevel: number;
   processingRunStatus: string | null;
+  processingRunErrorCode?: string | null;
   documentIndexStatus: string | null;
   documentIndexRetrievalConfigVersion: string | null;
   documentIndexParseSummary?: unknown;
@@ -95,11 +96,12 @@ export interface DocumentCatalogRepository {
 const documentStatusInclude = {
   processingRuns: {
     orderBy: {
-      createdAt: "asc"
+      createdAt: "desc"
     },
     take: 1,
     select: {
-      status: true
+      status: true,
+      errorCode: true
     }
   },
   indexes: {
@@ -300,6 +302,7 @@ function toDocumentStatusRecord(
     sourceTime: document.sourceTime,
     confidentialityLevel: document.confidentialityLevel,
     processingRunStatus: document.processingRuns[0]?.status ?? null,
+    processingRunErrorCode: document.processingRuns[0]?.errorCode ?? null,
     documentIndexStatus: document.indexes[0]?.status ?? null,
     documentIndexRetrievalConfigVersion: document.indexes[0]?.retrievalConfig.version ?? null,
     documentIndexParseSummary: document.indexes[0]?.parseSummary ?? null

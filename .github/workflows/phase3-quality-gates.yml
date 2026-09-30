@@ -171,9 +171,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - run: |
+      - working-directory: services/pdf-parser
+        run: |
           python3 -m pip install uv==0.12.10
           uv python install 3.12.14
-          uv sync --python 3.12.14 --locked --project services/pdf-parser
-          uv run --python 3.12.14 --locked --project services/pdf-parser python -m smedc_pdf_parser.prepare_models --output .codex-build/pdf-ci/models
-          SMEDC_PDF_MODELS_PATH="$PWD/.codex-build/pdf-ci/models" uv run --python 3.12.14 --locked --project services/pdf-parser pytest services/pdf-parser/tests -q
+          uv sync --python 3.12.14 --locked --project .
+          uv run --python 3.12.14 --locked --project . python -m smedc_pdf_parser.prepare_models --output .codex-build/pdf-ci/models
+          SMEDC_PDF_MODELS_PATH="$PWD/.codex-build/pdf-ci/models" uv run --python 3.12.14 --locked --project . pytest tests -q

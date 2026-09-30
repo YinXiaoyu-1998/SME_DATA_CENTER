@@ -17,6 +17,7 @@ import {
 } from "../apps/worker/src/evidence-artifacts.js";
 import {
   cleanupPdfAcceptanceRun,
+  preparePdfAcceptanceCleanup,
   parsePdfAcceptanceArgs,
   PDF_ACCOUNTS,
   pdfAccountEmail,
@@ -434,10 +435,11 @@ export async function cleanupPrismaPdfAcceptanceRun(
   prisma: PrismaClient,
   m: PdfAcceptanceManifest,
   e: PdfExternalResources,
-  save: (m: PdfAcceptanceManifest) => Promise<void>
+  save: (m: PdfAcceptanceManifest) => Promise<void>,
+  prepareOnly = false
 ) {
   const repository = createPrismaPdfEvidenceAttemptRepository(prisma);
-  return cleanupPdfAcceptanceRun(m, {
+  return (prepareOnly ? preparePdfAcceptanceCleanup : cleanupPdfAcceptanceRun)(m, {
     inventory: () => inventoryPdfAcceptanceRun(prisma, m, e),
     save,
     preventClaims: () => preventPdfAcceptanceClaims(prisma, m),

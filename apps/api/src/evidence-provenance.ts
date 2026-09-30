@@ -164,3 +164,26 @@ export function projectPdfTableProvenance(value: unknown): PdfTableProvenance | 
   }
   return result;
 }
+
+/** Persisted exceptions are private; only exact known PDF codes have public messages. */
+export function projectPdfProcessingError(code: unknown): { code: string; message: string } | null {
+  const messages: Readonly<Record<string, string>> = {
+    PDF_INVALID_OR_ENCRYPTED: "PDF is invalid or password protected.",
+    PDF_INPUT_TOO_LARGE: "PDF input exceeds the limit.",
+    PDF_OUTPUT_TOO_LARGE: "PDF output exceeds the limit.",
+    PDF_PAGE_LIMIT: "PDF page count exceeds the limit.",
+    PDF_PIXEL_LIMIT: "PDF rendering exceeds the limit.",
+    PDF_INCOMPLETE_PARSE: "PDF conversion is incomplete.",
+    PDF_TIMEOUT: "PDF conversion deadline exceeded.",
+    PDF_UPLOAD_TIMEOUT: "PDF upload deadline exceeded.",
+    PDF_BUSY: "Parser is busy. Retry later.",
+    PDF_INVALID_RESULT: "Invalid PDF evidence result.",
+    PDF_MODEL_MISSING: "Parser models unavailable.",
+    PDF_MODEL_CHECKSUM_MISMATCH: "Parser models unavailable.",
+    PDF_RUNTIME_VERSION_MISMATCH: "Parser runtime unavailable.",
+    PDF_PARSE_FAILED: "PDF conversion failed."
+  };
+  return typeof code === "string" && Object.hasOwn(messages, code)
+    ? { code, message: messages[code]! }
+    : null;
+}

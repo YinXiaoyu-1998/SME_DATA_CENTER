@@ -41,6 +41,28 @@ export function assertLocalPdfTargets(env: NodeJS.ProcessEnv) {
     if (!["127.0.0.1", "localhost"].includes(new URL(target).hostname))
       throw new Error("Local PDF proof refuses remote targets.");
 }
+/** The prepare reply contains identifiers/proof only; persist it on the operator host
+ * before the ephemeral remote process is allowed to remove authoritative rows. */
+export async function runDurablePdfRemoteCommand(
+  args: PdfAcceptanceArgs,
+  manifest: PdfAcceptanceManifest,
+  d: {
+    remote: typeof runPdfStagingController;
+    save(m: PdfAcceptanceManifest): Promise<void>;
+  }
+) {
+  if (args.command === "cleanup" && !["cleanup", "complete"].includes(manifest.phase)) {
+    const prepared = await d.remote(args, manifest, true);
+    if (!prepared.ok || prepared.manifest.phase !== "cleanup")
+      throw new Error("PDF cleanup preparation failed; deletion not authorized.");
+    await d.save(prepared.manifest);
+    manifest = prepared.manifest;
+  }
+  const response = await d.remote(args, manifest);
+  await d.save(response.manifest);
+  return response;
+}
+
 export async function runPdfAcceptanceRuntime(args: PdfAcceptanceArgs) {
   // This path never reads .env or the legacy/default credential namespace.
   const local = process.env["SMEDC_PDF_ACCEPTANCE_LOCAL"] === "1";
@@ -86,8 +108,10 @@ export async function runPdfAcceptanceRuntime(args: PdfAcceptanceArgs) {
       }
     }
     if (!local && !controller) {
-      const response = await runPdfStagingController(args, manifest);
-      await writePdfManifest(args.manifestPath, response.manifest);
+      const response = await runDurablePdfRemoteCommand(args, manifest, {
+        remote: runPdfStagingController,
+        save: (m) => writePdfManifest(args.manifestPath, m)
+      });
       if (!response.ok)
         throw new Error(
           "PDF controller cleanup/verification failed; private manifest retained for recovery."
@@ -119,7 +143,13 @@ export async function runPdfAcceptanceRuntime(args: PdfAcceptanceArgs) {
       else if (args.command === "register")
         await registerPdfDocument(prisma, manifest, args.documentId!, external, save);
       else if (args.command === "cleanup")
-        await cleanupPrismaPdfAcceptanceRun(prisma, manifest, external, save);
+        await cleanupPrismaPdfAcceptanceRun(
+          prisma,
+          manifest,
+          external,
+          save,
+          controller && process.env["SMEDC_PDF_ACCEPTANCE_PREPARE_CLEANUP"] === "1"
+        );
       else {
         const inventory = await inventoryPdfAcceptanceRun(prisma, manifest, external);
         assertPdfInventory(manifest, inventory);
