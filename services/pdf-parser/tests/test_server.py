@@ -17,6 +17,7 @@ async def serve(tmp_path, operation, **options):
         from smedc_pdf_parser.server import create_app
     except ModuleNotFoundError:
         pytest.fail("Authenticated parser service is missing")
+    options.setdefault("readiness_check", lambda: None)
     app = create_app(secret=SECRET, temp_root=tmp_path, **options)
     server = web.AppRunner(app, handler_cancellation=True)
     await server.setup()
@@ -210,3 +211,65 @@ def test_private_exception_is_never_returned(tmp_path):
                 }
 
     asyncio.run(serve(tmp_path, scenario, runner=Crashing()))
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        None,
+        "PDF_MODEL_MISSING",
+        "PDF_MODEL_CHECKSUM_MISMATCH",
+        "PDF_RUNTIME_VERSION_MISMATCH",
+    ],
+)
+def test_authenticated_readiness_validates_assets_once_at_startup(tmp_path, code):
+    from smedc_pdf_parser.convert import PdfParseError
+
+    checks = []
+
+    def checker():
+        checks.append(True)
+        if code:
+            raise PdfParseError(code)
+
+    async def scenario(url):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url + "/health") as response:
+                assert response.status == 200
+            async with session.get(
+                url + "/v1/ready", headers={"Authorization": "Bearer wrong-token"}
+            ) as response:
+                assert response.status == 401
+            for _ in range(2):
+                async with session.get(
+                    url + "/v1/ready", headers={"Authorization": "Bearer " + SECRET}
+                ) as response:
+                    value = await response.json()
+                    if code:
+                        assert response.status == 503
+                        assert value["code"] == code
+                        assert set(value) == {"code", "message"}
+                    else:
+                        assert response.status == 200
+                        assert value["status"] == "ready"
+                        assert value["schemaVersion"] == 1
+                        assert len(value["parserFingerprint"]) == 64
+                        assert set(value) == {
+                            "status",
+                            "schemaVersion",
+                            "parserFingerprint",
+                        }
+            if code:
+                async with session.post(
+                    url + "/v1/parse",
+                    headers={
+                        "Authorization": "Bearer " + SECRET,
+                        "Content-Type": "application/pdf",
+                    },
+                    data=b"%PDF-ok",
+                ) as response:
+                    assert response.status == 503
+                    assert (await response.json())["code"] == code
+            assert len(checks) == 1
+
+    asyncio.run(serve(tmp_path, scenario, runner=Success(), readiness_check=checker))

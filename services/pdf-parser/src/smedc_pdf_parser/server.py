@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,7 +12,7 @@ import tempfile
 
 from aiohttp import web
 
-from .convert import PdfParseError, _manifest
+from .convert import PdfParseError, _manifest, _models
 from .protocol import validate_result
 from .runner import Runner
 
@@ -49,14 +50,47 @@ def failure(code):
 
 
 def create_app(
-    *, secret: str, temp_root: Path, runner=None, input_bytes=None, upload_seconds=120
+    *,
+    secret: str,
+    temp_root: Path,
+    runner=None,
+    input_bytes=None,
+    upload_seconds=120,
+    readiness_check=None,
 ):
     if len(secret.encode()) < 32:
         raise ValueError("Parser secret must contain at least 32 bytes.")
-    budget = _manifest()["budgets"]
+    manifest = _manifest()
+    budget = manifest["budgets"]
     input_bytes = budget["inputBytes"] if input_bytes is None else input_bytes
     runner = runner or Runner()
     busy = False
+    readiness_error = "PDF_RUNTIME_VERSION_MISMATCH"
+    fingerprint = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    checker = readiness_check or (lambda: _models(manifest))
+
+    async def check_readiness(app):
+        nonlocal readiness_error
+        try:
+            # Fixed, read-only deployment artifacts are validated once. Do not
+            # rescan 400 MiB synchronously on a request or run OCR for readiness.
+            await asyncio.to_thread(checker)
+            readiness_error = None
+        except Exception as error:
+            code = str(error)
+            readiness_error = (
+                code
+                if code
+                in {
+                    "PDF_MODEL_MISSING",
+                    "PDF_MODEL_CHECKSUM_MISMATCH",
+                    "PDF_RUNTIME_VERSION_MISMATCH",
+                }
+                else "PDF_RUNTIME_VERSION_MISMATCH"
+            )
+
     temp_root.mkdir(parents=True, exist_ok=True, mode=0o700)
 
     async def handle(request):
@@ -70,6 +104,22 @@ def create_app(
         credential = request.headers.get("Authorization", "")
         if not hmac.compare_digest(credential.encode(), ("Bearer " + secret).encode()):
             return failure("PDF_UNAUTHORIZED")
+        if request.path == "/v1/ready" and request.method == "GET":
+            if (
+                request.query_string
+                or (request.content_length or 0) > 0
+                or request.headers.get("Transfer-Encoding")
+            ):
+                return failure("PDF_INVALID_REQUEST")
+            if readiness_error:
+                return failure(readiness_error)
+            return web.json_response(
+                {
+                    "status": "ready",
+                    "schemaVersion": 1,
+                    "parserFingerprint": fingerprint,
+                }
+            )
         if request.path != "/v1/parse" or request.method != "POST":
             return failure("PDF_NOT_FOUND")
         if (
@@ -81,6 +131,8 @@ def create_app(
             return failure("PDF_UNSUPPORTED_MEDIA_TYPE")
         if request.content_length is not None and request.content_length > input_bytes:
             return failure("PDF_INPUT_TOO_LARGE")
+        if readiness_error:
+            return failure(readiness_error)
         if busy:
             return failure("PDF_BUSY")
         busy = True  # No await between check and acquisition; no pending queue.
@@ -121,6 +173,7 @@ def create_app(
             busy = False
 
     app = web.Application(client_max_size=input_bytes)
+    app.on_startup.append(check_readiness)
     app.router.add_route("*", "/{path:.*}", handle)
     return app
 
