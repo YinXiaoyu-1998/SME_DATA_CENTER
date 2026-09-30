@@ -152,6 +152,8 @@ export {
 } from "./structured-coverage.js";
 export {
   parsePdfEvidenceResult,
+  validatePdfTableWorkBudget,
+  PDF_TABLE_LIMITS,
   type PdfSourceLocation,
   type PdfTableCell,
   type PdfTable,

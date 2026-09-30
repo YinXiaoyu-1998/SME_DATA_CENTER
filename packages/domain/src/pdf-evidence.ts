@@ -67,6 +67,38 @@ export interface PictureEnricher {
   ): Promise<PictureAnnotation[]>;
 }
 
+/** Finite work budgets, generous relative to the qualified sample grids (largest: 276 slots). */
+export const PDF_TABLE_LIMITS = {
+  maxRows: 1024,
+  maxColumns: 128,
+  maxCells: 4096,
+  maxGridSlots: 16384,
+  maxDocumentGridSlots: 65536,
+  maxExpandedTextChars: 4 * 1024 * 1024,
+  maxDocumentExpandedTextChars: 16 * 1024 * 1024
+} as const;
+
+/** Also used before direct chunker allocation; byte limits cannot bound merged expansion. */
+export function validatePdfTableWorkBudget(table: PdfTable): {
+  gridSlots: number;
+  expandedTextChars: number;
+} {
+  const rows = integer(table.rowCount, 1, PDF_TABLE_LIMITS.maxRows);
+  const columns = integer(table.columnCount, 1, PDF_TABLE_LIMITS.maxColumns);
+  const gridSlots = rows * columns;
+  check(gridSlots <= PDF_TABLE_LIMITS.maxGridSlots);
+  check(table.cells.length <= PDF_TABLE_LIMITS.maxCells);
+  let expandedTextChars = 0;
+  for (const cell of table.cells) {
+    const rowSpan = integer(cell.rowSpan, 1, rows);
+    const columnSpan = integer(cell.columnSpan, 1, columns);
+    check(typeof cell.text === "string");
+    expandedTextChars += cell.text.length * rowSpan * columnSpan;
+    check(expandedTextChars <= PDF_TABLE_LIMITS.maxExpandedTextChars);
+  }
+  return { gridSlots, expandedTextChars };
+}
+
 /** Validate the internal, untrusted parser response, without leaking its body in errors. */
 export function parsePdfEvidenceResult(value: unknown): PdfEvidenceResult {
   const result = object(value);
@@ -103,7 +135,17 @@ export function parsePdfEvidenceResult(value: unknown): PdfEvidenceResult {
     );
   }
 
-  const tables = array(result.tables).map(parseTable);
+  let totalGridSlots = 0;
+  let totalExpandedTextChars = 0;
+  const tables = array(result.tables).map((entry) => {
+    const table = parseTable(entry);
+    const budget = validatePdfTableWorkBudget(table);
+    totalGridSlots += budget.gridSlots;
+    totalExpandedTextChars += budget.expandedTextChars;
+    check(totalGridSlots <= PDF_TABLE_LIMITS.maxDocumentGridSlots);
+    check(totalExpandedTextChars <= PDF_TABLE_LIMITS.maxDocumentExpandedTextChars);
+    return table;
+  });
   const tableMap = uniqueMap(tables, (table) => table.id);
   const blocks = array(result.blocks);
   const blockMap = new Map<string, Record<string, unknown>>();
@@ -180,11 +222,14 @@ function parseTable(value: unknown): PdfTable {
   const table = object(value);
   keys(table, ["id", "cells", "headerRows", "rowCount", "columnCount"]);
   nonempty(table.id);
-  const rowCount = integer(table.rowCount, 1);
-  const columnCount = integer(table.columnCount, 1);
+  const rowCount = integer(table.rowCount, 1, PDF_TABLE_LIMITS.maxRows);
+  const columnCount = integer(table.columnCount, 1, PDF_TABLE_LIMITS.maxColumns);
+  check(rowCount * columnCount <= PDF_TABLE_LIMITS.maxGridSlots);
   const headers = array(table.headerRows).map((row) => integer(row, 0, rowCount - 1));
   check(new Set(headers).size === headers.length);
-  const cells = array(table.cells).map((entry) => {
+  const rawCells = array(table.cells);
+  check(rawCells.length <= PDF_TABLE_LIMITS.maxCells);
+  const cells = rawCells.map((entry) => {
     const cell = object(entry);
     keys(cell, ["row", "column", "rowSpan", "columnSpan", "text"]);
     const row = integer(cell.row, 0, rowCount - 1);
@@ -195,6 +240,7 @@ function parseTable(value: unknown): PdfTable {
     return cell as unknown as PdfTableCell;
   });
   check(cells.length > 0);
+  validatePdfTableWorkBudget(value as PdfTable);
   for (let index = 0; index < cells.length; index++) {
     const cell = cells[index]!;
     for (let prior = 0; prior < index; prior++) {

@@ -1,5 +1,6 @@
 import {
   EvidenceParseError,
+  validatePdfTableWorkBudget,
   type EvidenceWarning,
   type ParsedEvidenceBlock,
   type PdfSourceLocation,
@@ -15,6 +16,7 @@ export function createPdfTableBlocks(
   if (!Number.isSafeInteger(context.maxChunkChars) || context.maxChunkChars < 1) {
     throw new EvidenceParseError("PDF_INVALID_CHUNK_LIMIT", "Invalid PDF table chunk limit.");
   }
+  validatePdfTableWorkBudget(table);
   const headers = new Set(table.headerRows);
   const labels = Array.from({ length: table.columnCount }, (_, column) => {
     const values = [...headers]
@@ -146,7 +148,7 @@ export function createPdfTableBlocks(
     blocks.push({
       blockId: `${table.id}:rows:${rows[0]}-${rows.at(-1)}${continuation ? `:part:${continuation.partIndex}` : ""}`,
       blockType: "table",
-      text: (prefix + text).trim(),
+      text: text.length === 0 ? prefix.slice(0, -1) : prefix + text,
       headingPath: [...context.headingPath],
       sourceLocation,
       metadata: {

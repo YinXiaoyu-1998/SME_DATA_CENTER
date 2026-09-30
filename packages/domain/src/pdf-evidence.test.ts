@@ -146,6 +146,68 @@ describe("PDF evidence contract", () => {
     expect(() => parsePdfEvidenceResult(input)).toThrow("Invalid PDF evidence result.");
   });
 
+  it.each(["rowCount", "columnCount"])(
+    "rejects enormous declared %s before table work",
+    (dimension) => {
+      const input = fixture();
+      input.tables[0][dimension] = Number.MAX_SAFE_INTEGER;
+      expect(() => parsePdfEvidenceResult(input)).toThrow(EvidenceParseError);
+    }
+  );
+
+  it("rejects excessive grid expansion from one merged cell", () => {
+    const input = fixture();
+    Object.assign(input.tables[0], {
+      rowCount: 512,
+      columnCount: 64,
+      cells: [{ row: 0, column: 0, rowSpan: 512, columnSpan: 64, text: "合成合并单元格" }]
+    });
+    expect(() => parsePdfEvidenceResult(input)).toThrow(EvidenceParseError);
+  });
+
+  it("rejects excessive total grid work across individually bounded tables", () => {
+    const input = fixture();
+    input.tables = Array.from({ length: 5 }, (_, index) => ({
+      id: `synthetic-${index}`,
+      rowCount: 128,
+      columnCount: 128,
+      headerRows: [0],
+      cells: [{ row: 0, column: 0, rowSpan: 128, columnSpan: 128, text: "合成" }]
+    }));
+    input.blocks = input.tables.map((table: { id: string }, index: number) => ({
+      ...input.blocks[0],
+      blockId: `block-${index}`,
+      metadata: { tableId: table.id, rowStart: 0, rowEnd: 127 }
+    }));
+    input.pictures[0].ocrBlockIds = ["block-0"];
+    expect(() => parsePdfEvidenceResult(input)).toThrow(EvidenceParseError);
+  });
+
+  it("rejects excessive text expansion from an otherwise bounded merged grid", () => {
+    const input = fixture();
+    Object.assign(input.tables[0], {
+      rowCount: 16,
+      columnCount: 16,
+      cells: [{ row: 0, column: 0, rowSpan: 16, columnSpan: 16, text: "x".repeat(17000) }]
+    });
+    expect(() => parsePdfEvidenceResult(input)).toThrow(EvidenceParseError);
+  });
+
+  it("retains bounded sparse grids and valid merged cells", () => {
+    const input = fixture();
+    Object.assign(input.tables[0], {
+      rowCount: 32,
+      columnCount: 32,
+      cells: [{ row: 0, column: 0, rowSpan: 2, columnSpan: 3, text: "合成合并单元格" }]
+    });
+    const parsed = parsePdfEvidenceResult(input);
+    expect(parsed.tables[0]?.cells).toEqual([
+      { row: 0, column: 0, rowSpan: 2, columnSpan: 3, text: "合成合并单元格" }
+    ]);
+    expect(parsed.tables[0]?.rowCount).toBe(32);
+    expect(parsed.tables[0]?.columnCount).toBe(32);
+  });
+
   it("retains explicit failed pages so activation can reject incomplete parsing", () => {
     const input = fixture();
     input.pages[1].outcome = "failed";

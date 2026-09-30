@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parsePdfEvidenceResult, type PdfTable } from "@smedc/domain";
+import { EvidenceParseError, parsePdfEvidenceResult, type PdfTable } from "@smedc/domain";
 import { createEvidenceChunks } from "./evidence-chunker.js";
 import { createPdfTableBlocks } from "./pdf-table-chunker.js";
 
@@ -140,6 +140,32 @@ describe("PDF table chunker", () => {
       .map((block) => block.text.split("条款: ")[1]!.split(" | 金额:")[0])
       .join("");
     expect(recovered).toBe("条款甲" + "😀".repeat(100));
+  });
+
+  it("preserves spaces and newlines in long last-column continuations", () => {
+    const original = "alpha beta gamma delta epsilon zeta eta theta\n  ";
+    const input: PdfTable = {
+      id: "whitespace",
+      rowCount: 2,
+      columnCount: 2,
+      headerRows: [0],
+      cells: [
+        { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "ID" },
+        { row: 0, column: 1, rowSpan: 1, columnSpan: 1, text: "Text" },
+        { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "A" },
+        { row: 1, column: 1, rowSpan: 1, columnSpan: 1, text: original }
+      ]
+    };
+    const result = chunks(createPdfTableBlocks(input, { ...context, maxChunkChars: 39 }), 39);
+    expect(result.chunks.length).toBeGreaterThan(1);
+    const recovered = result.chunks.map((chunk) => chunk.text.split("Text: ")[1]!).join("");
+    expect(recovered).toBe(original);
+  });
+
+  it("rejects enormous dimensions even at the direct chunking boundary", () => {
+    const input = table();
+    input.columnCount = Number.MAX_SAFE_INTEGER;
+    expect(() => createPdfTableBlocks(input, context)).toThrow(EvidenceParseError);
   });
 
   it("refuses generic silent splitting of unprepared PDF tables", () => {
