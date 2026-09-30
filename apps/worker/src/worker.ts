@@ -1,3 +1,7 @@
+import {
+  createPrismaPdfEvidenceAttemptRepository,
+  type PdfEvidenceAttemptRepository
+} from "./evidence-artifacts.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { createDatabaseAdapter } from "@smedc/db";
 import {
@@ -67,6 +71,7 @@ export interface ClaimedProcessingRun {
     documentKind?: string | null;
     fileType?: string | null;
     contentVersion?: number;
+    checksumSha256?: string | null;
     confidentialityLevel: number;
   } | null;
 }
@@ -101,26 +106,37 @@ export interface EvidenceIndexingResult {
   rerankModel: string | null;
   rerankVersion: string | null;
   chunks: EvidenceDocumentChunkWrite[];
+  parserFingerprint?: string;
+  parsedObjectKey?: string;
+  parseSummary?: Record<string, unknown>;
+  pdfAttemptId?: string;
 }
 
 export interface EvidenceIndexer {
   indexDocument(input: {
     run: ClaimedProcessingRun;
     content: Buffer;
+    signal?: AbortSignal;
   }): Promise<EvidenceIndexingResult>;
+  releaseCandidate?(result: EvidenceIndexingResult): void;
+  resolveCandidate?(result: EvidenceIndexingResult): Promise<"owned" | "cleaned">;
+  recoverArtifacts?(): Promise<void>;
 }
 
 export interface ClaimProcessingRunInput {
   workerId: string;
   now: Date;
   leaseSeconds: number;
+  jobScope?: "general" | "pdf";
 }
 
 export interface HeartbeatProcessingRunInput extends ClaimProcessingRunInput {
   runId: string;
+  attemptNumber?: number;
 }
 
 export interface CompleteEvidenceIndexingInput {
+  attemptNumber?: number;
   runId: string;
   documentId: string;
   workerId: string;
@@ -130,6 +146,7 @@ export interface CompleteEvidenceIndexingInput {
 }
 
 export interface FailProcessingRunInput {
+  attemptNumber?: number;
   runId: string;
   documentId: string;
   workerId: string;
@@ -159,6 +176,7 @@ export interface RejectStructuredImportInput extends BeginStructuredImportApplyI
 }
 
 export interface ProcessingWorkerRepository {
+  pdfArtifacts?: PdfEvidenceAttemptRepository;
   claimNextProcessingRun(input: ClaimProcessingRunInput): Promise<ClaimedProcessingRun | null>;
   heartbeatProcessingRun?(input: HeartbeatProcessingRunInput): Promise<boolean>;
   completeEvidenceIndexing?(input: CompleteEvidenceIndexingInput): Promise<void>;
@@ -199,6 +217,7 @@ export interface RunWorkerLoopInput {
   structuredImportBatchInsertSize?: number;
   workerId?: string;
   workerConcurrency?: number;
+  jobScope?: "general" | "pdf";
   leaseSeconds?: number;
   maxAttempts?: number;
   retryBaseMs?: number;
@@ -218,6 +237,8 @@ export async function runWorkerOnce(input: {
   structuredIngestionLimits?: StructuredIngestionLimits;
   structuredImportBatchInsertSize?: number;
   workerId?: string;
+  jobScope?: "general" | "pdf";
+  signal?: AbortSignal;
   leaseSeconds?: number;
   maxAttempts?: number;
   retryBaseMs?: number;
@@ -230,9 +251,11 @@ export async function runWorkerOnce(input: {
   const retryBaseMs = input.retryBaseMs ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerRetryBaseMs;
   const retryMaxMs = input.retryMaxMs ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerRetryMaxMs;
   const now = input.now ?? (() => new Date());
+  input.signal?.throwIfAborted();
   const run = await input.repository.claimNextProcessingRun({
     workerId,
     leaseSeconds,
+    jobScope: input.jobScope ?? "general",
     now: now()
   });
 
@@ -240,12 +263,22 @@ export async function runWorkerOnce(input: {
     return { processed: false };
   }
 
+  const attemptController = new AbortController();
+  const signal = input.signal
+    ? AbortSignal.any([input.signal, attemptController.signal])
+    : attemptController.signal;
+  const assertCurrent = () => {
+    if (signal.aborted) throw new ProcessingLeaseLostError(run.id);
+  };
   const heartbeat = startHeartbeat({
     repository: input.repository,
     runId: run.id,
+    attemptNumber: run.attemptNumber,
     workerId,
     leaseSeconds,
-    now
+    now,
+    lockedUntil: run.lockedUntil,
+    abort: () => attemptController.abort(new ProcessingLeaseLostError(run.id))
   });
 
   try {
@@ -265,16 +298,30 @@ export async function runWorkerOnce(input: {
           false
         );
       const content = await readDocumentContent(run.document, input.storage);
-      const result = await input.evidenceIndexer.indexDocument({ run, content });
-      await input.repository.completeEvidenceIndexing({
-        runId: run.id,
-        documentId: run.documentId,
-        workerId,
-        now: now(),
-        result,
-        chunks: result.chunks
-      });
+      assertCurrent();
+      const result = await input.evidenceIndexer.indexDocument({ run, content, signal });
+      try {
+        assertCurrent();
+        await input.repository.completeEvidenceIndexing({
+          runId: run.id,
+          attemptNumber: run.attemptNumber,
+          documentId: run.documentId,
+          workerId,
+          now: now(),
+          result,
+          chunks: result.chunks
+        });
+      } catch (error) {
+        // A thrown COMMIT may have succeeded; the attempt row serializes reconciliation.
+        if (
+          !result.pdfAttemptId ||
+          !input.evidenceIndexer.resolveCandidate ||
+          (await input.evidenceIndexer.resolveCandidate(result)) !== "owned"
+        )
+          throw error;
+      }
 
+      input.evidenceIndexer.releaseCandidate?.(result);
       return {
         processed: true,
         documentId: run.documentId,
@@ -384,7 +431,17 @@ export async function runWorkerOnce(input: {
       );
     }
   } catch (error) {
-    const processingError = toProcessingError(error, run.jobType);
+    const processingError = toProcessingError(
+      signal.aborted &&
+        !(
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "PDF_ARTIFACT_RECOVERY_REQUIRED"
+        )
+        ? new ProcessingLeaseLostError(run.id)
+        : error,
+      run.jobType
+    );
     if (processingError.code === PROCESSING_ERROR_CODES.leaseLost) {
       return {
         processed: true,
@@ -398,6 +455,7 @@ export async function runWorkerOnce(input: {
     try {
       await input.repository.failProcessingRun({
         runId: run.id,
+        attemptNumber: run.attemptNumber,
         documentId: run.documentId,
         workerId,
         now: failedAt,
@@ -415,6 +473,7 @@ export async function runWorkerOnce(input: {
       }
     } catch (failureError) {
       if (toProcessingError(failureError, run.jobType).code === PROCESSING_ERROR_CODES.leaseLost) {
+        if (processingError.code === "PDF_ARTIFACT_RECOVERY_REQUIRED") throw error;
         return {
           processed: true,
           documentId: run.documentId,
@@ -437,7 +496,10 @@ export async function runWorkerOnce(input: {
 export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
   const pollIntervalMs = input.pollIntervalMs ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerPollIntervalMs;
   const workerConcurrency =
-    input.workerConcurrency ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerConcurrency;
+    input.workerConcurrency ??
+    (input.jobScope === "pdf" ? 1 : PHASE3_RUNTIME_LIMIT_DEFAULTS.workerConcurrency);
+  if (input.jobScope === "pdf" && workerConcurrency !== 1)
+    throw new Error("PDF worker concurrency must be 1.");
   const workerIds = Array.from(
     { length: workerConcurrency },
     (_, index) => input.workerId ?? createWorkerId(index + 1)
@@ -455,6 +517,8 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
             structuredIngestionLimits: input.structuredIngestionLimits,
             structuredImportBatchInsertSize: input.structuredImportBatchInsertSize,
             workerId,
+            jobScope: input.jobScope,
+            signal: input.signal,
             leaseSeconds: input.leaseSeconds,
             maxAttempts: input.maxAttempts,
             retryBaseMs: input.retryBaseMs,
@@ -495,6 +559,7 @@ export function createPrismaProcessingWorkerRepository(
   const evidenceRetrievalConfigVersion = options.evidenceRetrievalConfigVersion;
 
   return {
+    pdfArtifacts: createPrismaPdfEvidenceAttemptRepository(prisma),
     async claimNextProcessingRun(input) {
       const lockedUntil = addSeconds(input.now, input.leaseSeconds);
 
@@ -502,6 +567,15 @@ export function createPrismaProcessingWorkerRepository(
         const run = await tx.processingRun.findFirst({
           where: {
             AND: [
+              input.jobScope === "pdf"
+                ? { jobType: "evidence_document_index", document: { fileType: "pdf" } }
+                : {
+                    OR: [
+                      { document: { fileType: { not: "pdf" } } },
+                      { document: { fileType: null } },
+                      { documentId: null }
+                    ]
+                  },
               {
                 OR: [
                   {
@@ -514,6 +588,15 @@ export function createPrismaProcessingWorkerRepository(
                       status: {
                         in: [DocumentStatus.pending_processing, DocumentStatus.processing]
                       }
+                    }
+                  },
+                  {
+                    jobType: "evidence_document_index",
+                    document: {
+                      fileType: "pdf",
+                      status: DocumentStatus.active,
+                      archivedAt: null,
+                      documentKind: "evidence"
                     }
                   },
                   ...(evidenceRetrievalConfigVersion
@@ -562,10 +645,14 @@ export function createPrismaProcessingWorkerRepository(
           where: {
             id: run.id,
             OR: [
-              {
-                status: run.status,
-                availableAt: { lte: input.now }
-              },
+              ...(run.status === ProcessingRunStatus.running
+                ? []
+                : [
+                    {
+                      status: run.status,
+                      availableAt: { lte: input.now }
+                    }
+                  ]),
               {
                 status: ProcessingRunStatus.running,
                 lockedUntil: { lt: input.now }
@@ -594,8 +681,9 @@ export function createPrismaProcessingWorkerRepository(
         const isEvidenceReindex =
           run.document?.status === DocumentStatus.active &&
           Boolean(
-            evidenceRetrievalConfigVersion &&
-            isEvidenceReindexJobForConfig(run.jobKey, evidenceRetrievalConfigVersion)
+            run.document?.fileType === "pdf" ||
+            (evidenceRetrievalConfigVersion &&
+              isEvidenceReindexJobForConfig(run.jobKey, evidenceRetrievalConfigVersion))
           );
         const document = run.documentId
           ? isEvidenceReindex
@@ -724,16 +812,32 @@ export function createPrismaProcessingWorkerRepository(
     },
     async completeEvidenceIndexing(input) {
       await prisma.$transaction(async (tx) => {
+        if (input.result.pdfAttemptId) {
+          const attempt = await tx.pdfEvidenceAttempt.updateMany({
+            where: {
+              id: input.result.pdfAttemptId,
+              runId: input.runId,
+              documentId: input.documentId,
+              state: "staged",
+              parsedObjectKey: input.result.parsedObjectKey,
+              parserFingerprint: input.result.parserFingerprint
+            },
+            data: { state: "active", nextRecoveryAt: new Date(input.now.getTime() + 86_400_000) }
+          });
+          if (attempt.count !== 1) throw new ProcessingLeaseLostError(input.runId);
+        }
         const claimed = await tx.processingRun.updateMany({
           where: activeLeaseWhere(input),
-          data: {
-            status: ProcessingRunStatus.succeeded,
-            lockedBy: null,
-            lockedUntil: null,
-            errorCode: null,
-            errorSummary: null,
-            finishedAt: input.now
-          }
+          data: input.result.pdfAttemptId
+            ? { lastHeartbeatAt: input.now }
+            : {
+                status: ProcessingRunStatus.succeeded,
+                lockedBy: null,
+                lockedUntil: null,
+                errorCode: null,
+                errorSummary: null,
+                finishedAt: input.now
+              }
         });
         if (claimed.count !== 1) {
           throw new ProcessingLeaseLostError(input.runId);
@@ -744,6 +848,21 @@ export function createPrismaProcessingWorkerRepository(
           }
         });
 
+        if (run.documentId !== input.documentId) throw new ProcessingLeaseLostError(input.runId);
+        if (input.result.pdfAttemptId) {
+          const attempt = await tx.pdfEvidenceAttempt.findUniqueOrThrow({
+            where: { id: input.result.pdfAttemptId }
+          });
+          if (
+            attempt.orgId !== run.orgId ||
+            attempt.attemptNumber !== run.attemptNumber ||
+            attempt.retrievalConfigVersion !== input.result.retrievalConfigVersion ||
+            attempt.collection !== input.result.qdrantCollection ||
+            JSON.stringify(attempt.pointIds) !==
+              JSON.stringify(input.chunks.map((chunk) => chunk.qdrantPointId))
+          )
+            throw new ProcessingLeaseLostError(input.runId);
+        }
         const retrievalConfig = await tx.retrievalConfig.upsert({
           where: {
             version: input.result.retrievalConfigVersion
@@ -780,6 +899,23 @@ export function createPrismaProcessingWorkerRepository(
           }
         });
 
+        if (
+          input.result.pdfAttemptId &&
+          input.chunks.some(
+            (chunk) =>
+              chunk.documentId !== input.documentId ||
+              chunk.contentVersion !== document.contentVersion ||
+              chunk.retrievalConfigVersion !== input.result.retrievalConfigVersion
+          )
+        )
+          throw new ProcessingLeaseLostError(input.runId);
+        const pdfFields = input.result.pdfAttemptId
+          ? {
+              parserFingerprint: input.result.parserFingerprint,
+              parsedObjectKey: input.result.parsedObjectKey,
+              parseSummary: input.result.parseSummary as Prisma.InputJsonValue
+            }
+          : {};
         const documentIndex = await tx.documentIndex.upsert({
           where: {
             documentId_retrievalConfigId_contentVersion: {
@@ -789,6 +925,7 @@ export function createPrismaProcessingWorkerRepository(
             }
           },
           create: {
+            ...pdfFields,
             orgId: run.orgId,
             documentId: input.documentId,
             retrievalConfigId: retrievalConfig.id,
@@ -800,6 +937,7 @@ export function createPrismaProcessingWorkerRepository(
             readyAt: input.now
           },
           update: {
+            ...pdfFields,
             status: "ready",
             indexedChunkCount: input.chunks.length,
             errorCode: null,
@@ -808,6 +946,20 @@ export function createPrismaProcessingWorkerRepository(
           }
         });
 
+        if (input.result.pdfAttemptId) {
+          await tx.documentChunk.deleteMany({ where: { documentIndexId: documentIndex.id } });
+          await tx.pdfEvidenceAttempt.updateMany({
+            where: {
+              documentId: input.documentId,
+              orgId: run.orgId,
+              contentVersion: document.contentVersion,
+              retrievalConfigVersion: input.result.retrievalConfigVersion,
+              state: "active",
+              id: { not: input.result.pdfAttemptId }
+            },
+            data: { state: "cleanup", nextRecoveryAt: new Date(input.now.getTime() + 60_000) }
+          });
+        }
         if (input.chunks.length > 0) {
           await tx.documentChunk.createMany({
             data: input.chunks.map((chunk) => ({
@@ -825,18 +977,28 @@ export function createPrismaProcessingWorkerRepository(
               qdrantPointId: chunk.qdrantPointId,
               sourceLocation: chunk.sourceLocation as Prisma.InputJsonValue
             })),
-            skipDuplicates: true
+            skipDuplicates: !input.result.pdfAttemptId
           });
         }
 
-        await tx.document.update({
-          where: {
-            id: input.documentId
-          },
-          data: {
-            status: DocumentStatus.active
-          }
-        });
+        if (input.result.pdfAttemptId) {
+          const published = await tx.document.updateMany({
+            where: {
+              id: input.documentId,
+              orgId: run.orgId,
+              contentVersion: document.contentVersion,
+              archivedAt: null,
+              status: { in: [DocumentStatus.processing, DocumentStatus.active] }
+            },
+            data: { status: DocumentStatus.active }
+          });
+          if (published.count !== 1) throw new ProcessingLeaseLostError(input.runId);
+        } else {
+          await tx.document.update({
+            where: { id: input.documentId },
+            data: { status: DocumentStatus.active }
+          });
+        }
 
         await tx.auditLog.create({
           data: {
@@ -855,6 +1017,20 @@ export function createPrismaProcessingWorkerRepository(
             }
           }
         });
+        if (input.result.pdfAttemptId) {
+          const finished = await tx.processingRun.updateMany({
+            where: activeLeaseWhere({ ...input, now: new Date() }),
+            data: {
+              status: ProcessingRunStatus.succeeded,
+              lockedBy: null,
+              lockedUntil: null,
+              errorCode: null,
+              errorSummary: null,
+              finishedAt: new Date()
+            }
+          });
+          if (finished.count !== 1) throw new ProcessingLeaseLostError(input.runId);
+        }
       });
     },
     async beginStructuredImportApply(input) {
@@ -1184,7 +1360,13 @@ export function createPrismaProcessingWorkerRepository(
         const preserveActiveEvidence =
           run.documentId &&
           run.jobType === "evidence_document_index" &&
-          isVersionedEvidenceReindexJob(run.jobKey) &&
+          (isVersionedEvidenceReindexJob(run.jobKey) ||
+            Boolean(
+              await tx.document.findFirst({
+                where: { id: run.documentId, fileType: "pdf" },
+                select: { id: true }
+              })
+            )) &&
           Boolean(
             await tx.document.findFirst({
               where: { id: run.documentId, status: DocumentStatus.active },
@@ -1374,6 +1556,7 @@ function toClaimedProcessingRun(
           documentKind: document.documentKind,
           fileType: document.fileType,
           contentVersion: document.contentVersion,
+          checksumSha256: document.checksumSha256,
           confidentialityLevel: document.confidentialityLevel
         }
       : null
@@ -1514,9 +1697,15 @@ async function waitForNextPoll(pollIntervalMs: number, signal: AbortSignal | und
   }
 }
 
-function activeLeaseWhere(input: { runId: string; workerId: string; now: Date }) {
+function activeLeaseWhere(input: {
+  runId: string;
+  workerId: string;
+  now: Date;
+  attemptNumber?: number;
+}) {
   return {
     id: input.runId,
+    ...(input.attemptNumber === undefined ? {} : { attemptNumber: input.attemptNumber }),
     status: ProcessingRunStatus.running,
     lockedBy: input.workerId,
     lockedUntil: { gt: input.now }
@@ -1539,31 +1728,71 @@ function createWorkerId(slot?: number) {
 function startHeartbeat(input: {
   repository: ProcessingWorkerRepository;
   runId: string;
+  attemptNumber: number;
   workerId: string;
   leaseSeconds: number;
   now: () => Date;
+  lockedUntil: Date | null;
+  abort: () => void;
 }) {
-  if (!input.repository.heartbeatProcessingRun) {
-    return { stop() {} };
-  }
-
-  const interval = setInterval(
-    () => {
-      void input.repository
-        .heartbeatProcessingRun?.({
-          runId: input.runId,
-          workerId: input.workerId,
-          leaseSeconds: input.leaseSeconds,
-          now: input.now()
-        })
-        .catch(() => undefined);
-    },
-    Math.max(1, Math.floor((input.leaseSeconds * 1_000) / 3))
-  );
-
+  let stopped = false;
+  let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
+  let expiryTimer: ReturnType<typeof setTimeout>;
+  const loseLease = () => {
+    stopped = true;
+    clearTimeout(heartbeatTimer);
+    clearTimeout(expiryTimer);
+    input.abort();
+  };
+  const armExpiry = (until: Date) => {
+    clearTimeout(expiryTimer);
+    expiryTimer = setTimeout(
+      () => {
+        if (!stopped) loseLease();
+      },
+      Math.max(0, until.getTime() - input.now().getTime())
+    );
+  };
+  const beat = async () => {
+    if (stopped) return;
+    try {
+      const heartbeatAt = input.now();
+      const renewed = await input.repository.heartbeatProcessingRun?.({
+        runId: input.runId,
+        attemptNumber: input.attemptNumber,
+        workerId: input.workerId,
+        leaseSeconds: input.leaseSeconds,
+        now: heartbeatAt
+      });
+      if (stopped) return;
+      if (renewed !== true) {
+        loseLease();
+        return;
+      }
+      armExpiry(addSeconds(heartbeatAt, input.leaseSeconds));
+      heartbeatTimer = setTimeout(
+        () => {
+          void beat();
+        },
+        Math.max(1, (input.leaseSeconds * 1_000) / 3)
+      );
+    } catch {
+      if (!stopped) loseLease();
+    }
+  };
+  armExpiry(input.lockedUntil ?? addSeconds(input.now(), input.leaseSeconds));
+  if (input.repository.heartbeatProcessingRun)
+    heartbeatTimer = setTimeout(
+      () => {
+        void beat();
+      },
+      Math.max(1, (input.leaseSeconds * 1_000) / 3)
+    );
   return {
     stop() {
-      clearInterval(interval);
+      stopped = true;
+      clearTimeout(heartbeatTimer);
+      clearTimeout(expiryTimer);
     }
   };
 }

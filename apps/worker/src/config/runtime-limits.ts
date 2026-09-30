@@ -6,6 +6,7 @@ export interface WorkerRuntimeLimits {
   structuredImportBatchInsertSize: number;
   structuredImportTransactionTimeoutMs: number;
   workerConcurrency: number;
+  workerJobScope: "general" | "pdf";
   workerLeaseSeconds: number;
   workerPollIntervalMs: number;
   workerMaxAttempts: number;
@@ -23,7 +24,11 @@ export interface WorkerRuntimeLimits {
 }
 
 export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLimits {
-  const limits = {
+  const workerJobScope = env["WORKER_JOB_SCOPE"]?.trim() || "general";
+  if (workerJobScope !== "general" && workerJobScope !== "pdf")
+    throw new Error("WORKER_JOB_SCOPE must be general or pdf.");
+  const limits: WorkerRuntimeLimits = {
+    workerJobScope,
     maxDocumentChars: parsePositiveSafeInteger(env, "MAX_DOCUMENT_CHARS", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxDocumentChars
     }),
@@ -41,7 +46,7 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
       { defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportTransactionTimeoutMs }
     ),
     workerConcurrency: parsePositiveSafeInteger(env, "WORKER_CONCURRENCY", {
-      defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.workerConcurrency
+      defaultValue: workerJobScope === "pdf" ? 1 : PHASE3_RUNTIME_LIMIT_DEFAULTS.workerConcurrency
     }),
     workerLeaseSeconds: parsePositiveSafeInteger(env, "WORKER_LEASE_SECONDS", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.workerLeaseSeconds
@@ -93,6 +98,8 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
     )
   };
 
+  if (workerJobScope === "pdf" && limits.workerConcurrency !== 1)
+    throw new Error("PDF worker concurrency must be 1.");
   if (limits.workerRetryBaseMs > limits.workerRetryMaxMs) {
     throw new Error("WORKER_RETRY_BASE_MS must be less than or equal to WORKER_RETRY_MAX_MS.");
   }

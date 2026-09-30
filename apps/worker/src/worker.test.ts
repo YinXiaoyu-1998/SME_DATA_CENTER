@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import {
   PROCESSING_ERROR_CODES,
@@ -571,5 +571,171 @@ describe("processing worker", () => {
     });
     expect(repository.document.status).toBe("pending_processing");
     expect(repository.evidenceChunks).toHaveLength(0);
+  });
+  it("passes scope to claiming and rejects PDF loop concurrency above one", async () => {
+    const storage = await createStorage();
+    let scope: unknown;
+    const repository: ProcessingWorkerRepository = {
+      async claimNextProcessingRun(input) {
+        scope = input.jobScope;
+        return null;
+      },
+      async failProcessingRun() {}
+    };
+    await runWorkerOnce({ repository, storage, jobScope: "pdf" });
+    expect(scope).toBe("pdf");
+    await expect(
+      runWorkerLoop({ repository, storage, jobScope: "pdf", workerConcurrency: 2 })
+    ).rejects.toThrow("PDF worker concurrency must be 1.");
+  });
+  it.each(["cancel", "lease"])(
+    "aborts in-flight PDF work on %s and cannot activate",
+    async (mode) => {
+      const storage = await createStorage();
+      const stored = await storage.putObject({
+        orgId: "default-org",
+        documentId: "doc_abort",
+        fileName: "a.pdf",
+        body: "%PDF"
+      });
+      const repository = createFakeRepository({
+        document: {
+          id: "doc_abort",
+          orgId: "default-org",
+          uploaderId: "emp",
+          status: "pending_processing",
+          storageObjectKey: stored.key,
+          originalFileName: "a.pdf",
+          fileType: "pdf",
+          confidentialityLevel: 0
+        }
+      });
+      const complete = vi.fn(repository.completeEvidenceIndexing);
+      repository.completeEvidenceIndexing = complete;
+      repository.heartbeatProcessingRun = async () => false;
+      const controller = new AbortController();
+      let observedAbort = false;
+      const evidenceIndexer: EvidenceIndexer = {
+        async indexDocument({ signal }) {
+          expect(signal).toBeDefined();
+          if (mode === "cancel") controller.abort();
+          await new Promise<void>((resolve, reject) => {
+            if (signal!.aborted) {
+              observedAbort = true;
+              reject(signal!.reason);
+            } else
+              signal!.addEventListener(
+                "abort",
+                () => {
+                  observedAbort = true;
+                  reject(signal!.reason);
+                },
+                { once: true }
+              );
+          });
+          throw new Error("unreachable");
+        }
+      };
+      const outcome = await runWorkerOnce({
+        repository,
+        storage,
+        evidenceIndexer,
+        jobScope: "pdf",
+        signal: controller.signal,
+        leaseSeconds: 0.06
+      });
+      expect(outcome).toMatchObject({ status: "retry_scheduled" });
+      expect(observedAbort).toBe(true);
+      expect(complete).not.toHaveBeenCalled();
+      expect(repository.document.status).not.toBe("active");
+    }
+  );
+  it("handles a confirmed but ambiguous candidate COMMIT as success", async () => {
+    const storage = await createStorage();
+    const stored = await storage.putObject({
+      orgId: "org",
+      documentId: "ambiguous",
+      fileName: "a.pdf",
+      body: "%PDF"
+    });
+    const repository = createFakeRepository({
+      document: {
+        id: "ambiguous",
+        orgId: "org",
+        uploaderId: "emp",
+        status: "pending_processing",
+        storageObjectKey: stored.key,
+        originalFileName: "a.pdf",
+        fileType: "pdf",
+        confidentialityLevel: 0
+      }
+    });
+    const complete = repository.completeEvidenceIndexing!;
+    repository.completeEvidenceIndexing = async (input) => {
+      await complete(input);
+      throw new Error("connection lost after COMMIT");
+    };
+    const evidenceIndexer: EvidenceIndexer = {
+      async indexDocument() {
+        return {
+          pdfAttemptId: "candidate",
+          retrievalConfigVersion: "v1",
+          qdrantCollection: "c",
+          embeddingProvider: "fake",
+          embeddingModel: "m",
+          embeddingVersion: "v",
+          embeddingDimension: 8,
+          lexicalIndexVersion: "v",
+          rerankProvider: null,
+          rerankModel: null,
+          rerankVersion: null,
+          chunks: []
+        };
+      },
+      async resolveCandidate() {
+        return "owned";
+      }
+    };
+    expect(
+      await runWorkerOnce({ repository, storage, evidenceIndexer, jobScope: "pdf" })
+    ).toMatchObject({ status: "active" });
+    expect(repository.run.retryCount).toBe(0);
+  });
+  it("preserves and reports pending artifact recovery when cancellation coincides with cleanup failure", async () => {
+    const storage = await createStorage();
+    const stored = await storage.putObject({
+      orgId: "org",
+      documentId: "cleanup_fail",
+      fileName: "a.pdf",
+      body: "%PDF"
+    });
+    const controller = new AbortController();
+    const repository = createFakeRepository({
+      document: {
+        id: "cleanup_fail",
+        orgId: "org",
+        uploaderId: "emp",
+        status: "pending_processing",
+        storageObjectKey: stored.key,
+        originalFileName: "a.pdf",
+        fileType: "pdf",
+        confidentialityLevel: 0
+      }
+    });
+    const evidenceIndexer: EvidenceIndexer = {
+      async indexDocument() {
+        controller.abort();
+        const error = new Error("PDF artifact recovery remains pending.");
+        throw Object.assign(error, { code: "PDF_ARTIFACT_RECOVERY_REQUIRED", retryable: true });
+      }
+    };
+    await runWorkerOnce({
+      repository,
+      storage,
+      evidenceIndexer,
+      jobScope: "pdf",
+      signal: controller.signal
+    });
+    expect(repository.run.errorCode).toBe("PDF_ARTIFACT_RECOVERY_REQUIRED");
   });
 });

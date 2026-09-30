@@ -18,13 +18,19 @@ export async function main(): Promise<void> {
     evidenceRetrievalConfigVersion: retrievalRuntime.qdrant.retrievalConfigVersion
   });
   const storage = createStorageAdapter(process.env);
-  const evidenceIndexer = createEvidenceIndexerFromEnv();
-  const partitionImporter = createPartitionImporter({
-    limits: partitionImportLimitsFromRuntime(runtimeLimits),
-    onTimingEvent(event) {
-      console.log(JSON.stringify(event));
-    }
+  const evidenceIndexer = createEvidenceIndexerFromEnv({
+    storage,
+    pdfArtifacts: repository.pdfArtifacts
   });
+  const partitionImporter =
+    runtimeLimits.workerJobScope === "general"
+      ? createPartitionImporter({
+          limits: partitionImportLimitsFromRuntime(runtimeLimits),
+          onTimingEvent(event) {
+            console.log(JSON.stringify(event));
+          }
+        })
+      : undefined;
 
   const stop = () => {
     abortController.abort();
@@ -32,17 +38,29 @@ export async function main(): Promise<void> {
 
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
-  const maintenanceTimer = setInterval(() => {
-    void partitionImporter.maintain({ storage }).catch(console.error);
-  }, 60_000);
+  let maintenance: Promise<void> | undefined;
+  const maintain = () => {
+    if (maintenance) return;
+    maintenance = (async () => {
+      await partitionImporter?.maintain({ storage });
+      await evidenceIndexer.recoverArtifacts?.();
+    })()
+      .catch(console.error)
+      .finally(() => {
+        maintenance = undefined;
+      });
+  };
+  const maintenanceTimer = setInterval(maintain, 60_000);
 
   try {
-    await partitionImporter.maintain({ storage });
+    if (runtimeLimits.workerJobScope === "pdf") maintain();
+    else await partitionImporter?.maintain({ storage });
     await runWorkerLoop({
       repository,
       storage,
       evidenceIndexer,
       partitionImporter,
+      jobScope: runtimeLimits.workerJobScope,
       structuredImportBatchInsertSize: runtimeLimits.structuredImportBatchInsertSize,
       workerConcurrency: runtimeLimits.workerConcurrency,
       leaseSeconds: runtimeLimits.workerLeaseSeconds,
@@ -64,8 +82,9 @@ export async function main(): Promise<void> {
     clearInterval(maintenanceTimer);
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
+    await maintenance;
     await repository.disconnect?.();
-    await partitionImporter.disconnect();
+    await partitionImporter?.disconnect();
   }
 }
 

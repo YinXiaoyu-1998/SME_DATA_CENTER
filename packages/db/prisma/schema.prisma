@@ -790,3 +790,28 @@ model AuthSecurityEvent {
   @@index([sessionId, createdAt])
   @@map("auth_security_events")
 }
+
+// Durable exact-resource ownership for one PDF indexing attempt. Retained after cleanup
+// because a timed-out external write can complete after its first successful delete.
+model PdfEvidenceAttempt {
+  id                     String   @id @db.VarChar(32)
+  orgId                  String   @map("org_id") @db.VarChar(64)
+  documentId             String   @map("document_id") @db.VarChar(32)
+  runId                  String   @map("run_id") @db.VarChar(32)
+  attemptNumber          Int      @map("attempt_number")
+  contentVersion         Int      @map("content_version")
+  retrievalConfigVersion String   @map("retrieval_config_version") @db.VarChar(128)
+  parserFingerprint      String   @map("parser_fingerprint") @db.VarChar(256)
+  generation             String   @unique @db.VarChar(64)
+  collection             String   @db.VarChar(255)
+  pointIds               Json     @map("point_ids")
+  parsedObjectKey        String   @unique @map("parsed_object_key") @db.VarChar(768)
+  state                  String   @default("staged") @db.VarChar(16)
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  nextRecoveryAt         DateTime @default(now()) @map("next_recovery_at")
+  @@index([state, nextRecoveryAt])
+  @@index([orgId, documentId])
+  @@index([runId, attemptNumber])
+  @@map("pdf_evidence_attempts")
+}

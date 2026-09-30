@@ -1,0 +1,23 @@
+CREATE TABLE `pdf_evidence_attempts` (
+  `id` VARCHAR(32) NOT NULL,
+  `org_id` VARCHAR(64) NOT NULL,
+  `document_id` VARCHAR(32) NOT NULL,
+  `run_id` VARCHAR(32) NOT NULL,
+  `attempt_number` INTEGER NOT NULL,
+  `content_version` INTEGER NOT NULL,
+  `retrieval_config_version` VARCHAR(128) NOT NULL,
+  `parser_fingerprint` VARCHAR(256) NOT NULL,
+  `generation` VARCHAR(64) NOT NULL,
+  `collection` VARCHAR(255) NOT NULL,
+  `point_ids` JSON NOT NULL,
+  `parsed_object_key` VARCHAR(768) NOT NULL,
+  `state` VARCHAR(16) NOT NULL DEFAULT 'staged',
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` DATETIME(3) NOT NULL,
+  UNIQUE INDEX `pdf_evidence_attempts_generation_key` (`generation`),
+  UNIQUE INDEX `pdf_evidence_attempts_parsed_object_key_key` (`parsed_object_key`),
+  INDEX `pdf_evidence_attempts_state_updated_at_idx` (`state`, `updated_at`),
+  INDEX `pdf_evidence_attempts_org_id_document_id_idx` (`org_id`, `document_id`),
+  INDEX `pdf_evidence_attempts_run_id_attempt_number_idx` (`run_id`, `attempt_number`),
+  PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

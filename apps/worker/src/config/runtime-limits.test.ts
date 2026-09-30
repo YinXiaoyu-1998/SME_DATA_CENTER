@@ -9,6 +9,7 @@ describe("worker runtime limits", () => {
       structuredImportBatchInsertSize: 500,
       structuredImportTransactionTimeoutMs: 120_000,
       workerConcurrency: 2,
+      workerJobScope: "general",
       workerLeaseSeconds: 120,
       workerPollIntervalMs: 1_000,
       workerMaxAttempts: 3,
@@ -54,6 +55,7 @@ describe("worker runtime limits", () => {
       structuredImportBatchInsertSize: 8,
       structuredImportTransactionTimeoutMs: 9,
       workerConcurrency: 3,
+      workerJobScope: "general",
       workerLeaseSeconds: 4,
       workerPollIntervalMs: 100,
       workerMaxAttempts: 5,
@@ -96,5 +98,17 @@ describe("worker runtime limits", () => {
     expect(() =>
       loadWorkerRuntimeLimits({ WORKER_RETRY_BASE_MS: "1001", WORKER_RETRY_MAX_MS: "1000" })
     ).toThrow("WORKER_RETRY_BASE_MS must be less than or equal to WORKER_RETRY_MAX_MS.");
+  });
+  it("limits the dedicated PDF scope to one worker", () => {
+    expect(loadWorkerRuntimeLimits({ WORKER_JOB_SCOPE: "pdf" })).toMatchObject({
+      workerConcurrency: 1,
+      workerJobScope: "pdf"
+    });
+    expect(() =>
+      loadWorkerRuntimeLimits({ WORKER_JOB_SCOPE: "pdf", WORKER_CONCURRENCY: "2" })
+    ).toThrow("PDF worker concurrency must be 1.");
+    expect(() => loadWorkerRuntimeLimits({ WORKER_JOB_SCOPE: "other" })).toThrow(
+      "WORKER_JOB_SCOPE must be general or pdf."
+    );
   });
 });

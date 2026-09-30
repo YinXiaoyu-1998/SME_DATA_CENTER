@@ -19,21 +19,29 @@ export async function main(): Promise<void> {
     evidenceRetrievalConfigVersion: retrievalRuntime.qdrant.retrievalConfigVersion
   });
   const storage = createStorageAdapter(process.env);
-  const evidenceIndexer = createEvidenceIndexerFromEnv();
-  const partitionImporter = createPartitionImporter({
-    limits: partitionImportLimitsFromRuntime(runtimeLimits),
-    onTimingEvent(event) {
-      console.error(JSON.stringify(event));
-    }
+  const evidenceIndexer = createEvidenceIndexerFromEnv({
+    storage,
+    pdfArtifacts: repository.pdfArtifacts
   });
+  const partitionImporter =
+    runtimeLimits.workerJobScope === "general"
+      ? createPartitionImporter({
+          limits: partitionImportLimitsFromRuntime(runtimeLimits),
+          onTimingEvent(event) {
+            console.error(JSON.stringify(event));
+          }
+        })
+      : undefined;
 
   try {
-    await partitionImporter.maintain({ storage });
+    await partitionImporter?.maintain({ storage });
+    await evidenceIndexer.recoverArtifacts?.();
     const result = await runWorkerOnce({
       repository,
       storage,
       evidenceIndexer,
       partitionImporter,
+      jobScope: runtimeLimits.workerJobScope,
       structuredImportBatchInsertSize: runtimeLimits.structuredImportBatchInsertSize,
       leaseSeconds: runtimeLimits.workerLeaseSeconds,
       maxAttempts: runtimeLimits.workerMaxAttempts,
@@ -43,7 +51,7 @@ export async function main(): Promise<void> {
     console.log(JSON.stringify(result));
   } finally {
     await repository.disconnect?.();
-    await partitionImporter.disconnect();
+    await partitionImporter?.disconnect();
   }
 }
 
