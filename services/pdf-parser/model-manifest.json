@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "configuration": "docling-standard-fullpage-preserve-native-rapidocr-zh-tableformer-accurate",
+  "packages": {
+    "docling": "2.83.0",
+    "docling-core": "2.99.0",
+    "docling-ibm-models": "3.15.0",
+    "rapidocr": "3.6.0",
+    "onnxruntime": "1.24.2",
+    "pypdfium2": "5.8.0",
+    "torch": "2.14.0",
+    "torchvision": "0.29.0",
+    "transformers": "5.8.1",
+    "numpy": "2.5.3",
+    "opencv-python": "5.0.0.93"
+  },
+  "parameters": {
+    "cpuThreads": 2,
+    "ocrTextScore": 0.5,
+    "rapidocr": {
+      "Det.limit_side_len": 1536,
+      "Det.limit_type": "max",
+      "Global.max_side_len": 3200,
+      "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+      "Global.log_level": "warning"
+    },
+    "ocrCoverage": "full_page_preserve_native_spatial_text_dedup",
+    "ruledTable": "native-straight-path-grid-with-cropped-ocr-for-crossing-cells",
+    "ocrRenderScale": 3,
+    "device": "cpu",
+    "nativeNormalization": "NFKC",
+    "nativeOcrSimilarity": 0.85,
+    "tableFormerMode": "accurate",
+    "doCellMatching": true,
+    "pageBatches": {
+      "ocr": 1,
+      "layout": 1,
+      "table": 1
+    },
+    "queueMaxSize": 2,
+    "imageDescriptions": false,
+    "externalServices": false,
+    "runtimeDownloads": false,
+    "linuxTorchIndex": "https://download.pytorch.org/whl/cpu"
+  },
+  "budgets": {
+    "inputBytes": 52428800,
+    "pages": 200,
+    "concurrency": 1,
+    "pagePixels": 20000000,
+    "totalPixels": 2000000000,
+    "outputBytes": 16777216,
+    "timeoutSeconds": 3600,
+    "memoryBytes": 8589934592
+  },
+  "files": [
+    {
+      "path": "docling-project--docling-layout-heron/config.json",
+      "sha256": "fdea30805ce2f5666b147fca941dcdd27ad468e27d6ed21902207d3da056a97d",
+      "bytes": 3268,
+      "url": "https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/config.json",
+      "repository": "docling-project/docling-layout-heron",
+      "revision": "8f39ad3c0b4c58e9c2d2c84a38465abf757272d8",
+      "license": "apache-2.0"
+    },
+    {
+      "path": "docling-project--docling-layout-heron/model.safetensors",
+      "sha256": "00333a43451945aaf89db8ca9c0a17e75d1537c17db60fdb91aa95f4c7929e0c",
+      "bytes": 171658996,
+      "url": "https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/model.safetensors",
+      "repository": "docling-project/docling-layout-heron",
+      "revision": "8f39ad3c0b4c58e9c2d2c84a38465abf757272d8",
+      "license": "apache-2.0"
+    },
+    {
+      "path": "docling-project--docling-layout-heron/preprocessor_config.json",
+      "sha256": "cd38cd59999e7a95d68e487fbe5132df3d4e5c32a0836add57e6126ba0c4eaf1",
+      "bytes": 444,
+      "url": "https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/preprocessor_config.json",
+      "repository": "docling-project/docling-layout-heron",
+      "revision": "8f39ad3c0b4c58e9c2d2c84a38465abf757272d8",
+      "license": "apache-2.0"
+    },
+    {
+      "path": "docling-project--docling-models/model_artifacts/tableformer/accurate/tableformer_accurate.safetensors",
+      "sha256": "2a7d6c924b3cd12fb99a09280ca9c33a89c5d60b93253617d2e088c1a40374d9",
+      "bytes": 212758388,
+      "url": "https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts/tableformer/accurate/tableformer_accurate.safetensors",
+      "repository": "docling-project/docling-models",
+      "revision": "fc0f2d45e2218ea24bce5045f58a389aed16dc23",
+      "license": "cdla-permissive-2.0"
+    },
+    {
+      "path": "docling-project--docling-models/model_artifacts/tableformer/accurate/tm_config.json",
+      "sha256": "984e122ceb8ccf84d84c9d2882f6f2302a44b4f1e577babd6289892c36f3cffd",
+      "bytes": 7060,
+      "url": "https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts/tableformer/accurate/tm_config.json",
+      "repository": "docling-project/docling-models",
+      "revision": "fc0f2d45e2218ea24bce5045f58a389aed16dc23",
+      "license": "cdla-permissive-2.0"
+    },
+    {
+      "path": "RapidOcr/onnx/PP-OCRv4/det/ch_PP-OCRv4_det_infer.onnx",
+      "sha256": "d2a7720d45a54257208b1e13e36a8479894cb74155a5efe29462512d42f49da9",
+      "bytes": 4745517,
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.5.0/onnx/PP-OCRv4/det/ch_PP-OCRv4_det_infer.onnx",
+      "repository": "RapidAI/RapidOCR",
+      "revision": "v3.5.0",
+      "license": "Apache-2.0"
+    },
+    {
+      "path": "RapidOcr/onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_infer.onnx",
+      "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+      "bytes": 585532,
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.5.0/onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_infer.onnx",
+      "repository": "RapidAI/RapidOCR",
+      "revision": "v3.5.0",
+      "license": "Apache-2.0"
+    },
+    {
+      "path": "RapidOcr/onnx/PP-OCRv4/rec/ch_PP-OCRv4_rec_infer.onnx",
+      "sha256": "48fc40f24f6d2a207a2b1091d3437eb3cc3eb6b676dc3ef9c37384005483683b",
+      "bytes": 10857958,
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.5.0/onnx/PP-OCRv4/rec/ch_PP-OCRv4_rec_infer.onnx",
+      "repository": "RapidAI/RapidOCR",
+      "revision": "v3.5.0",
+      "license": "Apache-2.0"
+    },
+    {
+      "path": "RapidOcr/paddle/PP-OCRv4/rec/ch_PP-OCRv4_rec_infer/ppocr_keys_v1.txt",
+      "sha256": "28b2362ad4ab2dc38769aa72feb535e3a9ddb3fd2a7585a05920e6393b1dc7f7",
+      "bytes": 26249,
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.5.0/paddle/PP-OCRv4/rec/ch_PP-OCRv4_rec_infer/ppocr_keys_v1.txt",
+      "repository": "RapidAI/RapidOCR",
+      "revision": "v3.5.0",
+      "license": "Apache-2.0"
+    },
+    {
+      "path": "fonts/NotoSansCJKsc-Regular.otf",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
+      "repository": "notofonts/noto-cjk",
+      "revision": "f8d157532fbfaeda587e826d4cd5b21a49186f7c",
+      "license": "OFL-1.1",
+      "bytes": 16437364,
+      "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
+    },
+    {
+      "path": "fonts/LICENSE.NotoSansCJK",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/LICENSE",
+      "repository": "notofonts/noto-cjk",
+      "revision": "f8d157532fbfaeda587e826d4cd5b21a49186f7c",
+      "license": "OFL-1.1",
+      "bytes": 4301,
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    }
+  ],
+  "adapterVersion": "0.1.0",
+  "python": "3.12.12",
+  "deploymentRecommendation": {
+    "cpuCores": 4,
+    "hostMemoryBytes": 12884901888,
+    "parserMemoryLimitBytes": 8589934592,
+    "reason": "Largest representative measured peak RSS 5242339328 bytes; 8GiB parser limit gives about1.64x headroom. Reserve further memory for OS and other components. CPU thread count is per engine, overlapping stages can use multiple cores. Linux staging workload must be measured independently before deployment readiness."
+  },
+  "licenses": {
+    "docling": "MIT",
+    "docling-core": "MIT",
+    "docling-ibm-models": "MIT",
+    "rapidocr": "Apache-2.0",
+    "onnxruntime": "MIT",
+    "pypdfium2": "BSD-3-Clause/Apache-2.0 plus bundled PDFium dependency notices",
+    "tableformer": "CDLA-Permissive-2.0",
+    "layout-heron": "Apache-2.0",
+    "PP-OCRv4": "Apache-2.0",
+    "noto-cjk-font": "OFL-1.1"
+  }
+}
