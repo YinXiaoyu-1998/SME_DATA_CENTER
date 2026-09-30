@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -53,6 +54,8 @@ interface RunOptions {
   stderr?: "inherit" | "ignore";
 }
 
+const PDF_RELEASE_GUARD = readFileSync(join(REPO_ROOT, "deploy/pdf/release-guard.sh"), "utf8");
+
 const REMOTE_ROLLOUT_SCRIPT = String.raw`
 set -Eeuo pipefail
 
@@ -65,6 +68,12 @@ api_image="$1"
 worker_image="$2"
 release_ops_image="$3"
 run_migrate="$4"
+parser_image="${BASH_DOLLAR}{5:-}"
+pdf_guard_image="$release_ops_image"
+processing="$(sed -n 's/^SMEDC_PDF_PROCESSING_ENABLED=//p' "$runtime_file" | tail -n 1)"
+processing="${BASH_DOLLAR}{processing:-false}"
+uploads="$(sed -n 's/^SMEDC_PDF_UPLOAD_ENABLED=//p' "$runtime_file" | tail -n 1)"
+uploads="${BASH_DOLLAR}{uploads:-false}"
 
 exec 9>/opt/smedc/deploy.lock
 if ! flock -n 9; then
@@ -76,28 +85,13 @@ test -f "$runtime_file"
 test -f "$compose_next"
 umask 077
 install -d -o 1000 -g 1000 -m 0750 /opt/smedc/partition-work
+install -d -o root -g root -m 0755 /opt/smedc/pdf-runtime
 
 compose() {
   docker compose --env-file "$runtime_file" -f "$compose_file" "$@"
 }
 
-update_images() {
-  local next_api="$1"
-  local next_worker="$2"
-  local next_release_ops="$3"
-  local temp_file
-  temp_file="$(mktemp "${BASH_DOLLAR}{runtime_file}.XXXXXX")"
-  awk '
-    !/^SMEDC_API_IMAGE=/ &&
-    !/^SMEDC_WORKER_IMAGE=/ &&
-    !/^SMEDC_RELEASE_OPS_IMAGE=/
-  ' "$runtime_file" > "$temp_file"
-  printf 'SMEDC_API_IMAGE=%s\n' "$next_api" >> "$temp_file"
-  printf 'SMEDC_WORKER_IMAGE=%s\n' "$next_worker" >> "$temp_file"
-  printf 'SMEDC_RELEASE_OPS_IMAGE=%s\n' "$next_release_ops" >> "$temp_file"
-  install -o root -g root -m 0600 "$temp_file" "$runtime_file"
-  rm -f "$temp_file"
-}
+${PDF_RELEASE_GUARD}
 
 wait_for_url() {
   local url="$1"
@@ -119,18 +113,8 @@ rollback_on_error() {
   trap - EXIT
   if [ "$status" -ne 0 ] && [ "$rollback_armed" -eq 1 ] && [ -f "$previous_file" ]; then
     set +e
-    previous_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$previous_file" | tail -n 1)"
-    previous_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
-    previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
-    if [ -n "$previous_api" ] && [ -n "$previous_worker" ] && [ -n "$previous_release_ops" ]; then
-      echo "Rollout failed; restoring the previous API and worker images." >&2
-      if [ -f "$previous_compose" ]; then
-        install -o root -g root -m 0644 "$previous_compose" "$compose_file"
-      fi
-      update_images "$previous_api" "$previous_worker" "$previous_release_ops"
-      compose pull api worker
-      compose up -d api worker
-      wait_for_url http://127.0.0.1:3000/healthz "rolled-back API health"
+    if ! pdf_restore_previous; then
+      echo "Automatic rollback refused or failed; retain current images and PDF recovery state." >&2
     fi
     set -e
   fi
@@ -141,6 +125,7 @@ trap rollback_on_error EXIT
 SMEDC_API_IMAGE="$api_image" \
 SMEDC_WORKER_IMAGE="$worker_image" \
 SMEDC_RELEASE_OPS_IMAGE="$release_ops_image" \
+SMEDC_PDF_PARSER_IMAGE="$parser_image" \
   docker compose --env-file "$runtime_file" -f "$compose_next" config --quiet
 
 current_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$runtime_file" | tail -n 1)"
@@ -152,16 +137,35 @@ if [ -z "$current_release_ops" ]; then
   current_release_ops="$release_ops_image"
 fi
 test -n "$current_release_ops"
-printf 'SMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\n' \
-  "$current_api" "$current_worker" "$current_release_ops" > "$previous_file"
+current_parser="$(pdf_value "$runtime_file" SMEDC_PDF_PARSER_IMAGE)"
+# The current feature state comes from protected verified state, not the operator's
+# next-release flags. This preserves the disabled first compatibility release.
+current_processing=false
+current_uploads=false
+if [ -f /opt/smedc/pdf-runtime/state.json ]; then
+  node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1])); const [api,worker,ops,parser]=process.argv.slice(2); if(s.current.api.image!==api||s.current.worker.image!==worker||s.current.releaseOps.image!==ops||(s.current.parser?.image||"")!==parser)throw Error("PDF runtime identity mismatch; recovery required")' /opt/smedc/pdf-runtime/state.json "$current_api" "$current_worker" "$current_release_ops" "$current_parser"
+  current_processing="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1])).current.pdfProcessing))' /opt/smedc/pdf-runtime/state.json)"
+  current_uploads="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1])).current.uploads))' /opt/smedc/pdf-runtime/state.json)"
+fi
+pdf_require_budget "$processing"
+current_bundle="$(pdf_bundle "$current_api" "$current_worker" "$current_release_ops" "$current_parser" "$current_processing" "$current_uploads")"
+next_bundle="$(pdf_bundle "$api_image" "$worker_image" "$release_ops_image" "$parser_image" "$processing" "$uploads")"
+docker pull "$pdf_guard_image"
+# Validate before changing recovery metadata or arming the restoration trap.
+pdf_tool validate /state/state.json "$next_bundle" "$current_bundle"
+printf 'SMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\nSMEDC_PDF_PARSER_IMAGE=%s\nSMEDC_PDF_PROCESSING_ENABLED=%s\nSMEDC_PDF_UPLOAD_ENABLED=%s\n' \
+  "$current_api" "$current_worker" "$current_release_ops" "$current_parser" "$current_processing" "$current_uploads" > "$previous_file"
 chown root:root "$previous_file"
 chmod 0600 "$previous_file"
 
 install -o root -g root -m 0644 "$compose_file" "$previous_compose"
+# Persist the floor only after exact recovery metadata and its trap are ready.
 rollback_armed=1
+pdf_tool transition /state/state.json "$next_bundle" "$current_bundle"
 install -o root -g root -m 0644 "$compose_next" "$compose_file"
 rm -f "$compose_next"
-update_images "$api_image" "$worker_image" "$release_ops_image"
+pdf_stop_consumer
+pdf_update_runtime "$api_image" "$worker_image" "$release_ops_image" "$parser_image" "$processing" "$uploads"
 compose config --quiet
 compose --profile release pull api worker release-ops
 compose up -d qdrant
@@ -170,7 +174,16 @@ compose --profile release run -T --rm release-ops node dist/release/readiness.js
 if [ "$run_migrate" = "1" ]; then
   compose --profile release run -T --rm release-ops node node_modules/prisma/build/index.js migrate deploy --config packages/db/prisma.config.ts </dev/null
 fi
-compose up -d --remove-orphans
+if [ "$processing" = true ]; then
+  compose --profile pdf up -d pdf-parser
+  compose --profile release run -T --rm release-ops node dist/release/readiness.js pdf-parser </dev/null
+  pdf_tool restore /state
+  compose --profile pdf up -d pdf-worker
+else
+  pdf_tool park /state
+  pdf_stop_parser
+fi
+compose up -d qdrant api worker
 wait_for_url http://127.0.0.1:3000/healthz "API health"
 wait_for_url http://127.0.0.1:3000/readyz "API readiness"
 compose ps
@@ -197,36 +210,11 @@ test -f "$runtime_file"
 test -f "$compose_file"
 test -f "$previous_file"
 umask 077
-previous_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$previous_file" | tail -n 1)"
-previous_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
-previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
-test -n "$previous_api"
-test -n "$previous_worker"
-test -n "$previous_release_ops"
-
-if [ -f "$previous_compose" ]; then
-  install -o root -g root -m 0644 "$previous_compose" "$compose_file"
-fi
-
-temp_file="$(mktemp "${BASH_DOLLAR}{runtime_file}.XXXXXX")"
-awk '
-  !/^SMEDC_API_IMAGE=/ &&
-  !/^SMEDC_WORKER_IMAGE=/ &&
-  !/^SMEDC_RELEASE_OPS_IMAGE=/
-' "$runtime_file" > "$temp_file"
-printf 'SMEDC_API_IMAGE=%s\n' "$previous_api" >> "$temp_file"
-printf 'SMEDC_WORKER_IMAGE=%s\n' "$previous_worker" >> "$temp_file"
-printf 'SMEDC_RELEASE_OPS_IMAGE=%s\n' "$previous_release_ops" >> "$temp_file"
-install -o root -g root -m 0600 "$temp_file" "$runtime_file"
-rm -f "$temp_file"
-
-compose() {
-  docker compose --env-file "$runtime_file" -f "$compose_file" "$@"
-}
-
-compose config --quiet
-compose pull api worker
-compose up -d api worker
+${PDF_RELEASE_GUARD}
+pdf_guard_image="$(pdf_value "$runtime_file" SMEDC_RELEASE_OPS_IMAGE)"
+test -n "$pdf_guard_image"
+compose() { docker compose --env-file "$runtime_file" -f "$compose_file" "$@"; }
+pdf_restore_previous
 
 for attempt in $(seq 1 60); do
   if curl -fsS --max-time 5 -o /dev/null http://127.0.0.1:3000/healthz && \
@@ -240,13 +228,6 @@ for attempt in $(seq 1 60); do
   sleep 2
 done
 
-rollback_tag="${BASH_DOLLAR}{previous_api##*:}"
-temp_current="$(mktemp "${BASH_DOLLAR}{current_file}.XXXXXX")"
-printf 'GIT_SHA=%s\nSMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\nDEPLOYED_AT=%s\n' \
-  "$rollback_tag" "$previous_api" "$previous_worker" "$previous_release_ops" \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temp_current"
-install -o root -g root -m 0644 "$temp_current" "$current_file"
-rm -f "$temp_current"
 compose ps
 `;
 
@@ -263,9 +244,8 @@ if ! flock -n 9; then
   exit 75
 fi
 temp_file="$(mktemp "${BASH_DOLLAR}{current_file}.XXXXXX")"
-printf 'GIT_SHA=%s\nSMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\nDEPLOYED_AT=%s\n' \
-  "$git_sha" "$api_image" "$worker_image" "$release_ops_image" \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temp_file"
+awk '/^SMEDC_(API_IMAGE|WORKER_IMAGE|RELEASE_OPS_IMAGE|PDF_PARSER_IMAGE|PDF_PROCESSING_ENABLED|PDF_UPLOAD_ENABLED)=/' /opt/smedc/runtime.env > "$temp_file"
+printf 'GIT_SHA=%s\nDEPLOYED_AT=%s\n' "$git_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$temp_file"
 install -o root -g root -m 0644 "$temp_file" "$current_file"
 rm -f "$temp_file"
 `;
@@ -276,6 +256,7 @@ previous_file=/opt/smedc/previous-release.env
 api_image="$1"
 worker_image="$2"
 release_ops_image="$3"
+parser_image="${BASH_DOLLAR}{4:-}"
 
 exec 9>/opt/smedc/deploy.lock
 if ! flock -n 9; then
@@ -286,6 +267,7 @@ fi
 test -f "$previous_file"
 previous_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$previous_file" | tail -n 1)"
 previous_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
+previous_parser="$(sed -n 's/^SMEDC_PDF_PARSER_IMAGE=//p' "$previous_file" | tail -n 1)"
 previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
 test -n "$api_image"
 test -n "$worker_image"
@@ -299,7 +281,7 @@ worker_repository="${BASH_DOLLAR}{worker_image%:*}"
 while IFS= read -r image; do
   case "$image" in
     "$api_image"|"$worker_image"|"$release_ops_image"|\
-    "$previous_api"|"$previous_worker"|"$previous_release_ops")
+    "$previous_api"|"$previous_worker"|"$previous_release_ops"|"$parser_image"|"$previous_parser")
       continue
       ;;
     "${BASH_DOLLAR}{api_repository}:"*|"${BASH_DOLLAR}{worker_repository}:"*)
@@ -320,7 +302,6 @@ while IFS= read -r image; do
       ;;
   esac
 done < <(docker image ls --format '{{.Repository}}:{{.Tag}}')
-docker image prune --force
 `;
 
 const REMOTE_SMOKE_SCRIPT = String.raw`
@@ -450,6 +431,29 @@ export function stagingBuildxBuildArgs(target: string, image: string, tag: strin
     "--push",
     "."
   ];
+}
+
+export function pdfParserBuildArgs(image: string, tag: string): string[] {
+  return [
+    "buildx",
+    "build",
+    "--pull",
+    "--platform",
+    "linux/amd64",
+    "--label",
+    `org.opencontainers.image.revision=${validateGitShaTag(tag)}`,
+    "--provenance=false",
+    "--sbom=false",
+    "--tag",
+    image,
+    "--push",
+    "services/pdf-parser"
+  ];
+}
+export function trivyPdfParserScanArgs(reportPath: string, image: string): string[] {
+  const args = trivyRuntimeImageScanArgs(reportPath, image);
+  args[args.indexOf("os")] = "os,library";
+  return args;
 }
 
 export function remoteScriptsForValidation(): string[] {
@@ -677,6 +681,7 @@ async function buildAndPush(
   apiImage: string,
   workerImage: string,
   releaseOpsImage: string,
+  parserImage: string,
   tag: string
 ): Promise<void> {
   console.log("\n==> Build and push linux/amd64 API image");
@@ -687,23 +692,31 @@ async function buildAndPush(
 
   console.log("\n==> Build and push linux/amd64 release-ops image");
   await run("docker", stagingBuildxBuildArgs("release-ops", releaseOpsImage, tag));
+  await run("docker", pdfParserBuildArgs(parserImage, tag));
 }
 
 async function scanImages(
   apiImage: string,
   workerImage: string,
-  releaseOpsImage: string
+  releaseOpsImage: string,
+  parserImage: string
 ): Promise<void> {
   const reportDirectory = await mkdtemp(join(tmpdir(), "smedc-trivy-"));
   try {
     for (const [service, component, image] of [
       ["API", "api-image", apiImage],
       ["worker", "worker-image", workerImage],
-      ["release-ops", "release-ops-image", releaseOpsImage]
+      ["release-ops", "release-ops-image", releaseOpsImage],
+      ["PDF parser", "pdf-parser-image", parserImage]
     ] as const) {
       const report = join(reportDirectory, `${component}.json`);
       console.log(`\n==> Scan ${service} image through the dependency risk policy`);
-      await run("trivy", trivyRuntimeImageScanArgs(report, image));
+      await run(
+        "trivy",
+        component === "pdf-parser-image"
+          ? trivyPdfParserScanArgs(report, image)
+          : trivyRuntimeImageScanArgs(report, image)
+      );
       await run("npm", [
         "run",
         "audit:report",
@@ -862,7 +875,9 @@ async function main(): Promise<void> {
     config.apiRepository,
     tag
   );
+  const parserImage = `${config.registry}/${config.namespace}/${config.apiRepository}:pdf-${tag}`;
   printPlan(options, config, tag, apiImage, workerImage, releaseOpsImage);
+  console.log(JSON.stringify({ parserImage }));
   if (options.dryRun) {
     return;
   }
@@ -888,9 +903,9 @@ async function main(): Promise<void> {
 
   await loginToAcr(config, password, true);
   if (!options.skipBuild) {
-    await buildAndPush(config, apiImage, workerImage, releaseOpsImage, tag);
+    await buildAndPush(config, apiImage, workerImage, releaseOpsImage, parserImage, tag);
   }
-  await scanImages(apiImage, workerImage, releaseOpsImage);
+  await scanImages(apiImage, workerImage, releaseOpsImage, parserImage);
 
   await loginToAcr(config, password, false);
   await uploadCompose(config);
@@ -901,7 +916,8 @@ async function main(): Promise<void> {
       apiImage,
       workerImage,
       releaseOpsImage,
-      options.skipMigrate ? "0" : "1"
+      options.skipMigrate ? "0" : "1",
+      parserImage
     ]);
     releaseNeedsRollback = true;
     await publicChecks(config);
@@ -919,7 +935,7 @@ async function main(): Promise<void> {
       config,
       "Remove staging images older than the rollback release",
       REMOTE_IMAGE_CLEANUP_SCRIPT,
-      [apiImage, workerImage, releaseOpsImage]
+      [apiImage, workerImage, releaseOpsImage, parserImage]
     );
   } catch (error) {
     if (releaseNeedsRollback) {

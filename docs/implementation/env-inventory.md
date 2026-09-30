@@ -211,3 +211,22 @@ The dependency risk policy applies to repository production dependencies and
 all runtime image targets. New high/critical findings or unregistered moderate
 findings block CI. The registered ExcelJS read-only XLSX exception is reviewed
 no later than `2027-01-31`.
+
+## PDF runtime admission and isolation
+
+| Variable                       | Default / purpose                                                                                                                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SMEDC_PDF_UPLOAD_ENABLED`     | `false`; new PDF admission only after deployment verifies current and rollback reader bundles and parser readiness. Existing reads remain available.                                                   |
+| `SMEDC_PDF_PROCESSING_ENABLED` | `false`; deployment starts the dedicated parser/worker profile only when enabled. Uploads require this setting.                                                                                        |
+| `SMEDC_PDF_SERVICE_URL`        | Staging fixes `http://172.30.96.2:8080` on a private internal Docker network, with no published parser port. Local clients must share a controlled network.                                            |
+| `SMEDC_PDF_SERVICE_TOKEN`      | Secret, at least 32 bytes, provided through root-only runtime configuration; same token for API readiness, PDF worker and parser. General worker receives an empty token.                              |
+| `SMEDC_PDF_PARSER_IMAGE`       | Immutable `pdf-<12-character SHA>` sibling tag in the existing account-owned API ACR repository; deployment owns this reference.                                                                       |
+| `SMEDC_PDF_RUNTIME_STATE_PATH` | Staging mounts `/var/run/smedc/pdf/state.json` read-only. Deployment writes durable root-owned image-ID and compatibility state under `/opt/smedc/pdf-runtime`; no operator VERIFIED flag is accepted. |
+| `WORKER_JOB_SCOPE`             | Existing worker `general`; dedicated PDF worker `pdf` with `WORKER_CONCURRENCY=1`.                                                                                                                     |
+
+Parser limits are locked in `services/pdf-parser/model-manifest.json`: 50 MiB
+input, 16 MiB output, 3600-second conversion deadline (120-second upload), finite
+page/pixel budgets, maximum 8 GiB memory. Worker total transport deadline is
+3750 seconds. Production Compose uses 8 GiB memory/swap, 4 CPUs, pids128 and
+128 MiB scratch tmpfs; local synthetic qualification uses 5 GiB. These are not
+operator quality-reduction controls.

@@ -154,7 +154,7 @@ describe("deploy-staging remote scripts", () => {
       .flatMap((script) => script.split("\n"))
       .filter((line) => line.includes("compose ") && line.includes(" run "));
     expect(composeRuns).not.toHaveLength(0);
-    expect(composeRuns.every((line) => line.endsWith("</dev/null"))).toBe(true);
+    expect(composeRuns.every((line) => line.includes("</dev/null"))).toBe(true);
   });
 
   it("runs release operations in the ephemeral release-ops service", () => {
@@ -222,7 +222,7 @@ cp "\${files[0]}" "\${files[1]}"
 
       expect(result.status).toBe(42);
       expect(await readFile(installLog, "utf8")).toBe(
-        `-d -o 1000 -g 1000 -m 0750 ${join(root, "partition-work")}\n`
+        `-d -o 1000 -g 1000 -m 0750 ${join(root, "partition-work")}\n-d -o root -g root -m 0755 ${join(root, "pdf-runtime")}\n`
       );
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -251,11 +251,25 @@ cp "\${files[0]}" "\${files[1]}"
         join(fakeBin, "docker"),
         `#!/usr/bin/env bash
 set -euo pipefail
-count=0
-if [ -f "$FAKE_DOCKER_STATE" ]; then count="$(<"$FAKE_DOCKER_STATE")"; fi
-count=$((count + 1))
-printf '%s\n' "$count" > "$FAKE_DOCKER_STATE"
-if [ "$count" -eq 2 ]; then exit 42; fi
+if [ "$1" = pull ]; then exit 0; fi
+if [ "$1:$2" = image:inspect ]; then if [[ "$*" = *aaaaaaaaaaaa* ]]; then printf 'sha256:%064d\n' 1; else printf 'sha256:%064d\n' 2; fi; exit 0; fi
+if [ "$1" = run ]; then
+  if [[ "$*" = *dist/release/pdf-release.js* ]]; then
+    args=("$@")
+    for ((i=0; i<\${#args[@]}; i++)); do
+      if [ "\${args[$i]}" = dist/release/pdf-release.js ]; then
+        tool_args=("\${args[@]:$((i+1))}")
+        tool_args[1]="$FAKE_STATE_DIR\${tool_args[1]#/state}"
+        exec "$FAKE_NODE" --import tsx "$FAKE_RELEASE_TOOL" "\${tool_args[@]}"
+      fi
+    done
+  fi
+  if [[ "$*" = *000001* ]]; then printf false; else printf true; fi
+  exit 0
+fi
+if [[ "$*" = *"config --services"* ]]; then exit 0; fi
+if [[ "$*" = *"pull api worker release-ops"* ]]; then exit 42; fi
+exit 0
 `
       );
       await writeFile(
@@ -292,6 +306,9 @@ cp "\${files[0]}" "\${files[1]}"
         env: {
           ...process.env,
           FAKE_DOCKER_STATE: dockerState,
+          FAKE_NODE: process.execPath,
+          FAKE_RELEASE_TOOL: join(process.cwd(), "scripts/pdf-release.ts"),
+          FAKE_STATE_DIR: join(root, "pdf-runtime"),
           PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`
         },
         input: rollout
@@ -406,5 +423,16 @@ esac
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("PDF parser image pipeline", () => {
+  it("builds only the allowlisted parser service context and scans Python packages", async () => {
+    const { pdfParserBuildArgs, trivyPdfParserScanArgs } = await import("./deploy-staging.js");
+    expect(pdfParserBuildArgs("registry/api:pdf-0123456789ab", "0123456789ab")).toContain(
+      "services/pdf-parser"
+    );
+    expect(pdfParserBuildArgs("registry/api:pdf-0123456789ab", "0123456789ab")).not.toContain(".");
+    expect(trivyPdfParserScanArgs("report.json", "image")).toContain("os,library");
   });
 });

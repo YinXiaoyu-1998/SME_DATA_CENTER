@@ -1,0 +1,21 @@
+name: smedc-pdf-local
+services:
+  parser:
+    build:
+      context: ../../services/pdf-parser
+    image: smedc-pdf-parser:local
+    mem_limit: 5g
+    memswap_limit: 5g
+    cpus: "4.0"
+    pids_limit: 128
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=134217728,uid=10001,gid=10001,mode=0700
+    environment:
+      SMEDC_PDF_SERVICE_TOKEN: ${SMEDC_PDF_SERVICE_TOKEN:?Provide a private local parser token}
+    networks: [pdf_internal]
+networks:
+  pdf_internal:
+    internal: true

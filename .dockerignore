@@ -11,3 +11,10 @@ npm-debug.log*
 *.pem
 *.key
 *.crt
+
+.codex-build
+.superpowers
+**/.venv
+**/models
+**/__pycache__
+**/*.pdf

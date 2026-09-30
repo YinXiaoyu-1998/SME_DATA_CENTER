@@ -21,7 +21,11 @@ services:
       NODE_ENV: production
       HOST: 127.0.0.1
       PORT: "3000"
+      SMEDC_PDF_RUNTIME_STATE_PATH: /var/run/smedc/pdf/state.json
+      SMEDC_PDF_SERVICE_URL: http://172.30.96.2:8080
       SMEDC_PUBLIC_ORIGIN: ${SMEDC_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}
+    volumes:
+      - /opt/smedc/pdf-runtime:/var/run/smedc/pdf:ro
     depends_on:
       - qdrant
 
@@ -33,6 +37,8 @@ services:
       - ${SMEDC_RUNTIME_ENV_FILE:-/opt/smedc/runtime.env}
     environment:
       NODE_ENV: production
+      WORKER_JOB_SCOPE: general
+      SMEDC_PDF_SERVICE_TOKEN: ""
     volumes:
       - /opt/smedc/partition-work:/var/lib/smedc/partition-work
     depends_on:
@@ -45,8 +51,68 @@ services:
     env_file:
       - ${SMEDC_RUNTIME_ENV_FILE:-/opt/smedc/runtime.env}
     environment:
+      SMEDC_PDF_RUNTIME_STATE_PATH: /var/run/smedc/pdf/state.json
       NODE_ENV: production
+      SMEDC_PDF_SERVICE_URL: http://172.30.96.2:8080
       SMEDC_PUBLIC_ORIGIN: ${SMEDC_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}
+    volumes:
+      - /opt/smedc/pdf-runtime:/var/run/smedc/pdf:ro
+
+  pdf-parser:
+    image: ${SMEDC_PDF_PARSER_IMAGE:-smedc-pdf-disabled:unused}
+    profiles: ["pdf"]
+    restart: unless-stopped
+    mem_limit: 8g
+    memswap_limit: 8g
+    cpus: "4.0"
+    pids_limit: 128
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=134217728,uid=10001,gid=10001,mode=0700
+    environment:
+      SMEDC_PDF_SERVICE_TOKEN: ${SMEDC_PDF_SERVICE_TOKEN:-}
+    networks:
+      pdf_internal:
+        ipv4_address: 172.30.96.2
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  pdf-worker:
+    image: ${SMEDC_WORKER_IMAGE}
+    profiles: ["pdf"]
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: "1.0"
+    pids_limit: 128
+    network_mode: host
+    env_file:
+      - ${SMEDC_RUNTIME_ENV_FILE:-/opt/smedc/runtime.env}
+    environment:
+      NODE_ENV: production
+      WORKER_JOB_SCOPE: pdf
+      WORKER_CONCURRENCY: "1"
+      SMEDC_PDF_SERVICE_URL: http://172.30.96.2:8080
+    depends_on:
+      - pdf-parser
+
+networks:
+  pdf_internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.96.0/29
 
 volumes:
   qdrant_data:

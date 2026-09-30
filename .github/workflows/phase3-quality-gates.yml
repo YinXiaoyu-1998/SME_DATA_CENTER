@@ -40,7 +40,7 @@ jobs:
   runtime-images:
     name: Hardened linux/amd64 runtime images
     runs-on: ubuntu-latest
-    needs: unit-and-static
+    needs: [unit-and-static, pdf-parser-unit]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -55,6 +55,13 @@ jobs:
           docker buildx build --pull --platform linux/amd64 --target api --tag smedc-api:ci --load .
           docker buildx build --pull --platform linux/amd64 --target worker --tag smedc-worker:ci --load .
           docker buildx build --pull --platform linux/amd64 --target release-ops --tag smedc-release-ops:ci --load .
+          docker buildx build --pull --platform linux/amd64 --tag smedc-pdf-parser:ci --load services/pdf-parser
+      - name: Qualify offline PDF parser with synthetic OCR and bounded failures
+        run: |
+          python3 -m pip install uv==0.12.10
+          uv python install 3.12.12
+          uv sync --python 3.12.12 --locked --project services/pdf-parser
+          uv run --python 3.12.12 --locked --project services/pdf-parser python scripts/test-pdf-container.py
       - name: Verify the packaged Calamine reader against the real fixture
         run: |
           reader_container="$(docker create smedc-worker:ci)"
@@ -76,8 +83,10 @@ jobs:
           trap 'rm -rf -- "$report_dir"' EXIT
 
           audit_status=0
-          for component in api worker release-ops; do
-            if trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/$component.json" --platform linux/amd64 "smedc-$component:ci" &&
+          for component in api worker release-ops pdf-parser; do
+            pkg_types=os
+            if [ "$component" = pdf-parser ]; then pkg_types=os,library; fi
+            if trivy image --scanners vuln --pkg-types "$pkg_types" --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/$component.json" --platform linux/amd64 "smedc-$component:ci" &&
               npm run audit:report -- --kind trivy --component "$component-image" --input "$report_dir/$component.json"; then
               continue
             fi
@@ -133,6 +142,7 @@ jobs:
       - run: npm run readyz:local
       - run: npm run test:phase3:golden
       - run: npm run test:phase3:perf
+      - run: RUN_PDF_WORKER_PRISMA_INTEGRATION=1 RUN_PDF_RELEASE_PRISMA_INTEGRATION=1 npm test -- --no-file-parallelism apps/worker/src/pdf-worker.prisma.integration.test.ts scripts/pdf-release.prisma.integration.test.ts
       - run: COMPOSE_PROJECT_NAME=sme_data_center_ci MYSQL_PORT=3307 npm run test:integration
 
   external-provider-smoke-gated:
@@ -154,3 +164,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test -- apps/worker/src/model-providers/embedding.test.ts apps/worker/src/model-providers/rerank.test.ts apps/worker/src/model-providers/readiness.test.ts
+
+  pdf-parser-unit:
+    name: Locked Python PDF parser tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: |
+          python3 -m pip install uv==0.12.10
+          uv python install 3.12.12
+          uv sync --python 3.12.12 --locked --project services/pdf-parser
+          uv run --python 3.12.12 --locked --project services/pdf-parser python -m smedc_pdf_parser.prepare_models --output .codex-build/pdf-ci/models
+          SMEDC_PDF_MODELS_PATH="$PWD/.codex-build/pdf-ci/models" uv run --python 3.12.12 --locked --project services/pdf-parser pytest services/pdf-parser/tests -q

@@ -1,3 +1,4 @@
+import { createDeploymentPdfRollbackFloorVerifier } from "../../../scripts/pdf-runtime-state.js";
 import { randomUUID } from "node:crypto";
 import { createPdfUploadAdmission } from "./pdf-upload-admission.js";
 import Fastify from "fastify";
@@ -112,7 +113,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     evidence,
     pdfUploadAdmission: createPdfUploadAdmission({
       environment,
-      verifyRollbackFloor: options.pdfRollbackFloorVerifier
+      verifyRollbackFloor:
+        options.pdfRollbackFloorVerifier ?? createDeploymentPdfRollbackFloorVerifier(environment)
     }),
     sourceDocumentDownloads,
     cursorSigningSecret,

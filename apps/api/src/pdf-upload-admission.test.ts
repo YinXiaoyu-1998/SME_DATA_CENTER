@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPdfUploadAdmission } from "./pdf-upload-admission.js";
+import { checkParserReadiness, createPdfUploadAdmission } from "./pdf-upload-admission.js";
 
 const environment = {
   SMEDC_PDF_UPLOAD_ENABLED: "true",
@@ -70,4 +70,22 @@ describe("PDF upload admission", () => {
     });
     expect(await admission()).toEqual({ allowed: false, code: "PDF_SERVICE_UNAVAILABLE" });
   });
+});
+
+// A reachable stale parser must not satisfy the deployment's verified image proof.
+it("checks the verified parser fingerprint during release readiness", async () => {
+  expect(
+    await checkParserReadiness({
+      environment,
+      expectedFingerprint: "b".repeat(64),
+      fetch: async () => ready()
+    })
+  ).toBe(false);
+  expect(
+    await checkParserReadiness({
+      environment,
+      expectedFingerprint: "a".repeat(64),
+      fetch: async () => ready()
+    })
+  ).toBe(true);
 });

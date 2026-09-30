@@ -45,6 +45,7 @@ jobs:
       name: staging
       url: https://api.smedatacenter.xyz/healthz
     env:
+      # Parser uses pdf-<sha> in the account-owned API repository.
       SMEDC_ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
       SMEDC_ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
       SMEDC_ACR_USERNAME: ${{ vars.ACR_USERNAME }}

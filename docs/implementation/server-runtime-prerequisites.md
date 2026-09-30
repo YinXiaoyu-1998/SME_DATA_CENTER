@@ -100,3 +100,58 @@ backup and data-retention decision.
 An image rollback restores image/Compose references only. It never reverses a
 forward-only Prisma migration; migration compatibility and database recovery
 require a separate operations decision.
+
+## PDF release prerequisite and rollback floor
+
+The old 2 GiB staging host is **not ready for PDF**. Before enabling the PDF
+profile, approve and provide at least 12 GiB host memory and 4 CPU cores, then
+qualify the full workload on Linux/amd64 with existing services. The parser has
+an 8 GiB cgroup ceiling and 4 CPUs; its dedicated single-slot worker has a 1 GiB
+ceiling and 1 CPU quota. The 12 GiB recommendation still requires measured
+headroom for OS, API, general worker and Qdrant. Local aarch64 synthetic tests
+under 5 GiB do not establish amd64 or full 104-page readiness. Deployment
+refuses enabled PDF processing when the host prerequisite is absent.
+
+The parser uses `pdf-<SHA>` tags in the existing private Beijing `smedc/api`
+repository, so no new console-only ACR repository is required. Its Docker build
+context is `services/pdf-parser`, with a locked CPU-only Python dependency set
+and manifest-verified build-time public models. Runtime has no external network,
+runs UID10001, read-only rootfs, pids128, dropped capabilities and bounded tmpfs.
+The private internal bridge is `172.30.96.0/29`, parser `172.30.96.2`; check this
+subnet for conflicts before enabling. Only controlled host API/release readiness
+and PDF worker use the private endpoint plus Bearer secret; no public port is
+published. The general worker receives no parser token.
+
+Release sequence:
+
+1. Deploy the PDF-compatible API, general worker and release-ops with both PDF
+   switches false. The deploy guard probes the actual generated `FileType.pdf`,
+   packaged scope capability marker and immutable Docker IDs of every reader.
+   First initialization is permitted only from a verified PDF-unaware API AND
+   worker; missing state on a compatible runtime requires recovery, never an
+   inferred empty database or an operator boolean.
+2. After resource/full-workload qualification and compatible rollback image
+   verification, enable processing and uploads in root-only `runtime.env`, then
+   use the canonical GitHub staging deployment. Current AND rollback bundles
+   must be compatible. The guard fsyncs the sticky floor before API admission
+   can occur and checks authenticated parser readiness before starting PDF
+   consumption. API default startup rereads the protected proof per new upload.
+3. Rollout EXIT recovery, post-verification recovery and explicit rollback share
+   the same guard. Once admission has ever been enabled, every restored Prisma
+   reader must remain PDF-compatible even if uploads are disabled or there are
+   currently zero PDF rows. Missing/corrupt floor state fails closed. No reverse
+   migrations, enum rewrites, customer-row hiding or whole-table freezing occur.
+
+A compatible rollback with PDF processing disabled stops the PDF consumer,
+parks only unfinished PDF jobs and preserves each original `availableAt` in
+root-only `/opt/smedc/pdf-runtime/parked-runs.json`. Repeated parking retains the
+original values and captures newly queued jobs. Compatible processing recovery
+restores only exact run/organization/document/attempt identities whose parked
+value remains owned; changed/completed runs are untouched. The write-ahead
+manifest survives DB/restore failures and is removed only after successful
+release. Preserve both runtime proof and parking manifest in host backup and
+recovery; never delete them to bypass a failed guard. Disabling the profile
+keeps ordinary API health, business traffic and existing PDF reads available.
+
+Launcher 0.7.0 publication/independent verification and server/Skill pin changes
+remain separate post-merge release steps.

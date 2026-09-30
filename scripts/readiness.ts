@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { parsePdfRuntimeState } from "./pdf-runtime-state.js";
+import { checkParserReadiness } from "../apps/api/src/pdf-upload-admission.js";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
@@ -473,6 +476,21 @@ async function main() {
     return;
   }
 
+  if (command === "pdf-parser") {
+    const statePath = process.env["SMEDC_PDF_RUNTIME_STATE_PATH"];
+    if (!statePath) throw new Error("PDF runtime proof is required for parser readiness.");
+    const expectedFingerprint = parsePdfRuntimeState(JSON.parse(await readFile(statePath, "utf8")))
+      .current.parser?.parserFingerprint;
+    if (!expectedFingerprint) throw new Error("Verified parser fingerprint is missing.");
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      if (await checkParserReadiness({ environment: process.env, expectedFingerprint })) {
+        console.log("PDF parser is authenticated and ready.");
+        return;
+      }
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 2000));
+    }
+    throw new Error("PDF parser readiness failed; uploads remain unavailable.");
+  }
   if (command !== "check") {
     throw new Error(`Unsupported readiness command ${command}. Use check or init-qdrant.`);
   }

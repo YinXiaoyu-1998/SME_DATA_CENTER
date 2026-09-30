@@ -43,10 +43,11 @@ export function createPdfUploadAdmission(input: {
   };
 }
 
-async function checkParserReadiness(input: {
+export async function checkParserReadiness(input: {
   environment: NodeJS.ProcessEnv;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  expectedFingerprint?: string;
 }): Promise<boolean> {
   try {
     const url = new URL(input.environment["SMEDC_PDF_SERVICE_URL"] ?? "");
@@ -106,7 +107,9 @@ async function checkParserReadiness(input: {
       value.schemaVersion === 1 &&
       "parserFingerprint" in value &&
       typeof value.parserFingerprint === "string" &&
-      /^[a-f0-9]{64}$/u.test(value.parserFingerprint)
+      /^[a-f0-9]{64}$/u.test(value.parserFingerprint) &&
+      (input.expectedFingerprint === undefined ||
+        value.parserFingerprint === input.expectedFingerprint)
     );
   } catch {
     return false;

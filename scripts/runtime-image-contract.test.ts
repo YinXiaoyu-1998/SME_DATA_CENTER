@@ -74,3 +74,22 @@ describe("runtime image contracts", () => {
     );
   });
 });
+
+describe("isolated PDF runtime", () => {
+  it("bounds the parser on a private internal network without a public port", () => {
+    const parser = composeService("pdf-parser");
+    expect(parser).toContain("mem_limit: 8g");
+    expect(parser).toContain('cpus: "4.0"');
+    expect(parser).toContain("pids_limit: 128");
+    expect(parser).toContain("read_only: true");
+    expect(parser).not.toContain("ports:");
+    expect(parser).toContain("pdf_internal");
+    expect(compose).toContain("internal: true");
+  });
+  it("uses a dedicated single-slot PDF worker and general legacy worker", () => {
+    expect(composeService("worker")).toContain("WORKER_JOB_SCOPE: general");
+    expect(composeService("pdf-worker")).toContain("WORKER_JOB_SCOPE: pdf");
+    expect(composeService("pdf-worker")).toContain('WORKER_CONCURRENCY: "1"');
+    expect(composeService("api")).toContain("/opt/smedc/pdf-runtime:/var/run/smedc/pdf:ro");
+  });
+});

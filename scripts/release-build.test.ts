@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -18,6 +18,7 @@ const releaseArtifacts = [
   "api",
   "worker",
   "readiness",
+  "pdf-release",
   "staging-smoke",
   "official-manual-acceptance",
   "auth-operator",
@@ -31,6 +32,7 @@ describe("release build", () => {
       api: "apps/api/src/index.ts",
       worker: "apps/worker/src/dev-loop.ts",
       readiness: "scripts/readiness.ts",
+      "pdf-release": "scripts/pdf-release.ts",
       "staging-smoke": "scripts/staging-smoke.ts",
       "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
       "auth-operator": "apps/api/src/auth/operator-cli.ts",
@@ -60,6 +62,7 @@ describe("release build", () => {
       for (const artifact of [
         "worker",
         "readiness",
+        "pdf-release",
         "staging-smoke",
         "official-manual-acceptance",
         "auth-operator",
@@ -73,6 +76,18 @@ describe("release build", () => {
         );
       }
 
+      const directReadiness = spawnSync(
+        process.execPath,
+        ["dist/release/readiness.js", "pdf-parser"],
+        {
+          cwd: cleanRoot,
+          encoding: "utf8",
+          env: { ...process.env, SMEDC_PDF_RUNTIME_STATE_PATH: "" }
+        }
+      );
+      expect(directReadiness.status).toBe(1);
+      expect(directReadiness.stderr).toContain("PDF runtime proof is required");
+      expect(directReadiness.stderr).not.toContain("PDF release state path required");
       await expectCompiledApiStarts(cleanRoot);
     } finally {
       rmSync(cleanRoot, { recursive: true, force: true });
@@ -114,6 +129,7 @@ async function expectCompiledApiStarts(cleanRoot: string): Promise<void> {
       try {
         const response = await fetch(`http://127.0.0.1:${port}/healthz`);
         if (response.ok) {
+          expect(output).not.toContain("PDF release state path required");
           return;
         }
       } catch {

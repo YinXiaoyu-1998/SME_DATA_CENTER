@@ -23,7 +23,11 @@ const config = `phase3.retrieval.${orgId}`;
   });
   let baseline: unknown;
   beforeAll(async () => {
-    if (url !== "mysql://smedc:smedc_local_password@127.0.0.1:13307/smedc")
+    const ownedCi =
+      process.env["CI"] === "true" &&
+      process.env["COMPOSE_PROJECT_NAME"] === "sme_data_center_ci" &&
+      url === "mysql://smedc:smedc_local_password@127.0.0.1:3307/smedc";
+    if (url !== "mysql://smedc:smedc_local_password@127.0.0.1:13307/smedc" && !ownedCi)
       throw new Error("Dedicated local PDF DB required.");
     baseline = await prisma.document.findMany({
       where: { orgId: "pdf-migration-baseline" },
