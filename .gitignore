@@ -9,3 +9,6 @@ coverage/
 dist/
 *.tsbuildinfo
 .worktrees/
+
+# PDF public model cache may be a local symlink or directory.
+/services/pdf-parser/models

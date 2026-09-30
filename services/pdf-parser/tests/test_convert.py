@@ -349,3 +349,33 @@ def test_intermediate_render_pixel_limit_rejects_before_model_loading(
     monkeypatch.setattr(adapter, "_models", unexpected_model_loading)
     with pytest.raises(adapter.PdfParseError, match="^PDF_PIXEL_LIMIT$"):
         convert(source)
+
+
+def test_invalid_structured_table_is_rejected_before_row_expansion(
+    tmp_path, monkeypatch
+):
+    from smedc_pdf_parser import convert as adapter
+
+    monkeypatch.setattr(
+        adapter,
+        "_ruled_table",
+        lambda *args, **kwargs: dict(
+            rowCount=1025,
+            columnCount=1,
+            headerRows=[],
+            cells=[dict(row=0, column=0, rowSpan=1, columnSpan=1, text="invalid")],
+        ),
+    )
+    with pytest.raises(ValueError, match="^PDF_INVALID_RESULT$"):
+        convert(create_pdf(tmp_path / "schema-table.pdf"))
+
+
+def test_password_protected_pdf_has_stable_failure(tmp_path):
+    from smedc_pdf_parser.convert import PdfParseError
+
+    source = tmp_path / "protected.pdf"
+    c = canvas.Canvas(str(source), encrypt="synthetic-pdf-password")
+    c.drawString(20, 20, "Synthetic protected document")
+    c.save()
+    with pytest.raises(PdfParseError, match="^PDF_INVALID_OR_ENCRYPTED$"):
+        convert(source)

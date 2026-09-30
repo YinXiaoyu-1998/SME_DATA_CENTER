@@ -1,0 +1,10 @@
+**
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!model-manifest.json
+!model-notices.json
+!src
+!src/smedc_pdf_parser
+!src/smedc_pdf_parser/*.py

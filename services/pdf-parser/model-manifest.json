@@ -25,7 +25,7 @@
       "Global.log_level": "warning"
     },
     "ocrCoverage": "full_page_preserve_native_spatial_text_dedup",
-    "ruledTable": "native-straight-path-grid-with-cropped-ocr-for-crossing-cells",
+    "ruledTable": "native-straight-path-grid-with-cropped-ocr-for-crossing-cells;invalid-model-only-complete-filled-rectangle-tiling",
     "ocrRenderScale": 3,
     "device": "cpu",
     "nativeNormalization": "NFKC",
@@ -157,7 +157,7 @@
       "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
     }
   ],
-  "adapterVersion": "0.1.1",
+  "adapterVersion": "0.1.2",
   "python": "3.12.12",
   "deploymentRecommendation": {
     "cpuCores": 4,

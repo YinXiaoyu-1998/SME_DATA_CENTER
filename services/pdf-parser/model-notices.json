@@ -1,0 +1,16 @@
+[
+  {
+    "path": "notices/LICENSE.RapidOCR",
+    "url": "https://raw.githubusercontent.com/RapidAI/RapidOCR/v3.5.0/LICENSE",
+    "bytes": 11422,
+    "sha256": "3e0af25fdd06aa9586ae97adb00ea927ebe5a3805ac77d2d3a81ce5f55693333",
+    "appliesTo": "RapidAI/RapidOCR and layout-heron Apache-2.0 license terms; original model attribution is retained in MODEL-MANIFEST.json"
+  },
+  {
+    "path": "notices/LICENSE.tableformer",
+    "url": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/CDLA-Permissive-2.0.txt",
+    "bytes": 2354,
+    "sha256": "4531a67d443284d93ffed0803df5b10634aff21c3d77e381f2d48af01d875868",
+    "appliesTo": "docling-project/docling-models TableFormer accurate (CDLA-Permissive-2.0)"
+  }
+]

@@ -1,4 +1,4 @@
-"""Local PDF qualification adapter. Task 2/3 freeze the public DTO/service boundary."""
+"""Qualified local PDF adapter producing the strict worker evidence DTO."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ import unicodedata
 from pathlib import Path
 
 import pypdfium2 as pdfium
+
+from .protocol import validate_result, validate_table
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 _PACKAGED_MANIFEST = Path(__file__).with_name("model-manifest.json")
@@ -186,8 +188,18 @@ def _converter(root: Path, manifest: dict):
     )
 
 
-def _ruled_table(source, page_number, box, size, source_cells, reader, predicted):
-    from smedc_pdf_parser.ruled_table import extract_vector_grid
+def _ruled_table(
+    source,
+    page_number,
+    box,
+    size,
+    source_cells,
+    reader,
+    predicted,
+    *,
+    repair_invalid_prediction=False,
+):
+    from smedc_pdf_parser.ruled_table import extract_vector_grid, extract_filled_grid
     import numpy as np
 
     roi = (
@@ -199,6 +211,8 @@ def _ruled_table(source, page_number, box, size, source_cells, reader, predicted
     with pdfium.PdfDocument(source) as pdf:
         page = pdf[page_number - 1]
         grid = extract_vector_grid(page, roi)
+        if grid is None and repair_invalid_prediction:
+            grid = extract_filled_grid(page, roi)
         if grid is None:
             return None
         cell_boxes = [
@@ -469,6 +483,24 @@ def convert_pdf(source: Path) -> dict:
                 for c in data.table_cells
             ]
             table_cells.sort(key=lambda c: (c["row"], c["column"]))
+            predicted_table = {
+                "id": table_id,
+                "cells": table_cells,
+                "headerRows": sorted(
+                    {
+                        c.start_row_offset_idx
+                        for c in data.table_cells
+                        if c.column_header
+                    }
+                ),
+                "rowCount": data.num_rows,
+                "columnCount": data.num_cols,
+            }
+            try:
+                validate_table(predicted_table)
+                repair_invalid_prediction = False
+            except ValueError:
+                repair_invalid_prediction = True
             structured = _ruled_table(
                 source,
                 page_number,
@@ -477,6 +509,7 @@ def convert_pdf(source: Path) -> dict:
                 cells_by_page[page_number],
                 reader,
                 data,
+                repair_invalid_prediction=repair_invalid_prediction,
             )
             if structured:
                 ruled_regions.append((page_number, box))
@@ -492,6 +525,7 @@ def convert_pdf(source: Path) -> dict:
                 "rowCount": data.num_rows,
                 "columnCount": data.num_cols,
             }
+            validate_table({"id": table_id, **table})
             tables.append({"id": table_id, **table})
             text = "\n".join(
                 " | ".join(c["text"] for c in table["cells"] if c["row"] == row)
@@ -606,4 +640,4 @@ def convert_pdf(source: Path) -> dict:
     }
     if len(json.dumps(result, ensure_ascii=False).encode()) > budgets["outputBytes"]:
         raise PdfParseError("PDF_OUTPUT_TOO_LARGE")
-    return result
+    return validate_result(result)

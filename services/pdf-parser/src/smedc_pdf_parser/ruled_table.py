@@ -7,28 +7,15 @@ qualified TableFormer result. Reject incomplete or nonrectangular grids.
 from __future__ import annotations
 
 import math
+import ctypes
 
 import pypdfium2 as pdfium
 
 
 def extract_vector_grid(page, bbox: tuple[float, float, float, float]) -> dict | None:
-    # Object/glyph bounds use the original PDF canvas. Rendering and Docling
-    # boxes use the displayed page. Until all native operations share a full
-    # affine transform, leave rotated/cropped/translated pages to TableFormer.
-    if page.get_rotation() != 0:
+    if not _native_page_supported(page):
         return None
-    width, height = page.get_size()
-    expected = (0, 0, width, height)
-    for page_box in (
-        page.get_bbox(),  # inherits page-tree boxes, unlike get_*box in PDFium
-        page.get_mediabox(fallback_ok=False),
-        page.get_cropbox(fallback_ok=False),
-    ):
-        if page_box is not None and not all(
-            math.isclose(actual, wanted, rel_tol=0, abs_tol=0.01)
-            for actual, wanted in zip(page_box, expected)
-        ):
-            return None
+    height = page.get_size()[1]
     left, top, right, bottom = bbox
     horizontal, vertical = [], []
     for obj in page.get_objects(filter=[pdfium.raw.FPDF_PAGEOBJ_PATH]):
@@ -128,3 +115,142 @@ def extract_vector_grid(page, bbox: tuple[float, float, float, float]) -> dict |
         )
     cells.sort(key=lambda cell: (cell["row"], cell["column"]))
     return {"cells": cells, "rowCount": rows, "columnCount": columns}
+
+
+def _native_page_supported(page):
+    # Object/glyph bounds use the original PDF canvas. Rendering and Docling
+    # boxes use the displayed page. Until all native operations share a full
+    # affine transform, leave rotated/cropped/translated pages to TableFormer.
+    if page.get_rotation() != 0:
+        return False
+    width, height = page.get_size()
+    expected = (0, 0, width, height)
+    for page_box in (
+        page.get_bbox(),  # inherits page-tree boxes, unlike get_*box in PDFium
+        page.get_mediabox(fallback_ok=False),
+        page.get_cropbox(fallback_ok=False),
+    ):
+        if page_box is not None and not all(
+            math.isclose(actual, wanted, rel_tol=0, abs_tol=0.01)
+            for actual, wanted in zip(page_box, expected)
+        ):
+            return False
+    return True
+
+
+def extract_filled_grid(page, bbox: tuple[float, float, float, float]) -> dict | None:
+    """A complete native filled-rectangle tiling, never a guessed span repair.
+
+    Used only when model structure is invalid and the preferred straight grid
+    cannot be recovered. Direct page objects avoid uncomposed Form transforms.
+    Every grid slot must belong to exactly one original rectangle.
+    """
+    if not _native_page_supported(page):
+        return None
+    height = page.get_size()[1]
+    left, top, right, bottom = bbox
+    rectangles = []
+    for obj in page.get_objects(filter=[pdfium.raw.FPDF_PAGEOBJ_PATH], max_depth=1):
+        count = pdfium.raw.FPDFPath_CountSegments(obj)
+        if count not in (4, 5):
+            continue
+        fill, stroke = ctypes.c_int(), ctypes.c_int()
+        if not pdfium.raw.FPDFPath_GetDrawMode(obj, fill, stroke) or fill.value == 0:
+            continue
+        points = []
+        matrix = obj.get_matrix()
+        valid = True
+        for i in range(count):
+            segment = pdfium.raw.FPDFPath_GetPathSegment(obj, i)
+            kind = pdfium.raw.FPDFPathSegment_GetType(segment)
+            if kind != (
+                pdfium.raw.FPDF_SEGMENT_MOVETO
+                if i == 0
+                else pdfium.raw.FPDF_SEGMENT_LINETO
+            ):
+                valid = False
+                break
+            x, y = ctypes.c_float(), ctypes.c_float()
+            if not pdfium.raw.FPDFPathSegment_GetPoint(segment, x, y):
+                valid = False
+                break
+            x, y = matrix.on_point(x.value, y.value)
+            points.append((x, height - y))
+        if not valid or not pdfium.raw.FPDFPathSegment_GetClose(segment):
+            continue
+        if count == 5:
+            if not all(
+                math.isclose(a, b, abs_tol=0.01) for a, b in zip(points[0], points[-1])
+            ):
+                continue
+            points.pop()
+        l, t = min(p[0] for p in points), min(p[1] for p in points)
+        r, b = max(p[0] for p in points), max(p[1] for p in points)
+        if (
+            r - l <= 3
+            or b - t <= 3
+            or l < left - 3
+            or r > right + 3
+            or t < top - 3
+            or b > bottom + 3
+        ):
+            continue
+        if not all(
+            (math.isclose(x, l, abs_tol=0.01) or math.isclose(x, r, abs_tol=0.01))
+            and (math.isclose(y, t, abs_tol=0.01) or math.isclose(y, b, abs_tol=0.01))
+            for x, y in points
+        ):
+            continue
+        if any(
+            not (
+                math.isclose(a[0], b[0], abs_tol=0.01)
+                or math.isclose(a[1], b[1], abs_tol=0.01)
+            )
+            for a, b in zip(points, points[1:] + points[:1])
+        ):
+            continue
+        rectangles.append((l, t, r, b))
+        if len(rectangles) > 4096:
+            return None
+    if not rectangles:
+        return None
+
+    def cluster(values):
+        groups = []
+        for value in sorted(values):
+            if not groups or value - groups[-1][-1] > 0.5:
+                groups.append([value])
+            else:
+                groups[-1].append(value)
+        return [sum(group) / len(group) for group in groups]
+
+    xs = cluster([v for l, t, r, b in rectangles for v in (l, r)])
+    ys = cluster([v for l, t, r, b in rectangles for v in (t, b)])
+    rows, columns = len(ys) - 1, len(xs) - 1
+    if not 1 <= rows <= 1024 or not 1 <= columns <= 128 or rows * columns > 16384:
+        return None
+    occupied = set()
+    cells = []
+    for l, t, r, b in rectangles:
+        c0, c1 = (min(range(len(xs)), key=lambda i: abs(xs[i] - v)) for v in (l, r))
+        r0, r1 = (min(range(len(ys)), key=lambda i: abs(ys[i] - v)) for v in (t, b))
+        if c0 >= c1 or r0 >= r1:
+            return None
+        for row in range(r0, r1):
+            for column in range(c0, c1):
+                if (row, column) in occupied:
+                    return None
+                occupied.add((row, column))
+        cells.append(
+            dict(
+                row=r0,
+                column=c0,
+                rowSpan=r1 - r0,
+                columnSpan=c1 - c0,
+                bboxPoints=(l, t, r, b),
+            )
+        )
+    if len(occupied) != rows * columns:
+        return None
+    cells.sort(key=lambda cell: (cell["row"], cell["column"]))
+    return dict(cells=cells, rowCount=rows, columnCount=columns)
