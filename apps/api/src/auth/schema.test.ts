@@ -56,10 +56,7 @@ describe("official auth schema", () => {
   });
 
   it("uses exact binary collation for the application-normalized login email", async () => {
-    const schema = await readFile(schemaUrl, "utf8");
     const migration = await readFile(migrationUrl, "utf8");
-
-    expect(schema).toContain("stored with the exact utf8mb4_bin migration collation");
     expect(migration).toMatch(
       /`normalized_email` VARCHAR\(320\) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL/
     );

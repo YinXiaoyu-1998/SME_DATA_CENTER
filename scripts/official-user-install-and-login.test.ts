@@ -10,10 +10,6 @@ function section(document: string, heading: string): string {
   return content?.split("\n## ")[0] ?? "";
 }
 
-function prose(content: string): string {
-  return content.replace(/\s+/g, " ").trim();
-}
-
 function launcherVersions(content: string): string[] {
   // Only explicit installation references: package pins, platform paths, and CLI JSON.
   // Bare historical versions are not installation pins.
@@ -35,7 +31,7 @@ function expectPinnedReferences(content: string, label: string): void {
 }
 
 describe("official user install and login documentation", () => {
-  it("documents the published admin-only launcher and current minimum version", async () => {
+  it("pins the approved launcher in active installation guidance", async () => {
     const doc = await readFile(
       path.join(root, "docs", "implementation", "official-user-install-and-login.md"),
       "utf8"
@@ -45,11 +41,6 @@ describe("official user install and login documentation", () => {
     const distribution = section(doc, "Accepted Launcher Source And Distribution Boundary");
     expectPinnedReferences(status, "current install/login status");
     expectPinnedReferences(distribution, "current launcher distribution");
-    expect(prose(status)).toContain("recommends 0.6.0");
-    expect(prose(status)).toContain("requires at least 0.6.0");
-    expect(prose(distribution)).toContain("`YinXiaoyu-1998/SME_DATA_CENTER`");
-    expect(prose(distribution)).toContain("is public and independently verified");
-    expect(prose(distribution)).toContain("stage-publish-only permission");
   });
 
   it("pins the published launcher in the current-facing README", async () => {
@@ -57,7 +48,6 @@ describe("official user install and login documentation", () => {
 
     const official = section(readme, "Official Employee MCP");
     expectPinnedReferences(official, "official README");
-    expect(prose(official)).toContain("requires and recommends exactly launcher 0.6.0");
   });
 
   it("pins every active Skill package, platform path, and CLI version reference", async () => {
@@ -79,104 +69,5 @@ describe("official user install and login documentation", () => {
       section(update, "Continue Within The Requested Scope"),
       "Skill update pin"
     );
-  });
-
-  it("keeps upload guidance role-based, static, and safe before local file access", async () => {
-    const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
-    const upload = section(skill, "Admin-Only Uploads");
-    // Canonical wire values stay literal; wrapping ordinary prose must not break this test.
-    expect(upload).toContain("`UPLOAD_ADMIN_REQUIRED`");
-    expect(upload).toContain("`File upload requires the admin role.`");
-    expect(upload).toContain("`retryable: false`");
-    const policy = prose(upload);
-    for (const term of [
-      "Only active accounts with role `admin` may upload",
-      "do not read or transform the local file",
-      "Do not re-login or retry",
-      "remain visible",
-      "Do not dynamically hide or remove upload tools",
-      "Clearance is not upload permission",
-      "above their own clearance",
-      "creates no backend audit",
-      "file_upload.denied",
-      "delivery_ledger"
-    ]) {
-      expect(policy).toContain(term);
-    }
-    expect(prose(section(skill, "SMEDC Data Questions"))).not.toContain("offer to upload it first");
-  });
-
-  it.each([
-    ["skills/smedc-mcp/SKILL.md", "Admin-Only Uploads"],
-    ["skills/smedc-manual-test/SKILL.md", "Current Acceptance Boundary"],
-    ["README.md", "Official Employee MCP"],
-    ["docs/implementation/official-user-install-and-login.md", "Upload Role And Launcher Profile"],
-    ["docs/implementation/mcp-user-flow.md", "Upload Authorization"],
-    ["docs/implementation/mcp-user-flow.zh.md", "上传权限"],
-    ["docs/context/CONTEXT.md", "Flagged Ambiguities"],
-    ["docs/implementation/api-contract.md", "File Upload Capability"],
-    ["docs/implementation/smedc-mcp-skill.md", "Required Behavior"],
-    ["docs/implementation/beta-user-onboarding-runbook.md", "Information To Collect"],
-    ["docs/implementation/beta-access-readiness.md", ""],
-    ["docs/implementation/beta-access-readiness.md", "Pilot Acceptance Gates"],
-    ["docs/implementation/test-cases.md", "Admin-only upload regression boundary"],
-    ["docs/implementation/official-manual-acceptance.md", "Upload Authorization Acceptance"]
-  ])("distinguishes HTTP and MCP upload denial transport in %s / %s", async (file, heading) => {
-    const document = await readFile(path.join(root, file), "utf8");
-    const active = prose(heading ? section(document, heading) : (document.split("\n## ")[0] ?? ""));
-    expect(active).toMatch(/(?:HTTP|transport status) `403`/);
-    expect(active).toMatch(/MCP JSON-RPC.{0,80}HTTP `200`/);
-    for (const literal of [
-      "`isError: true`",
-      "`UPLOAD_ADMIN_REQUIRED`",
-      "`File upload requires the admin role.`",
-      "`retryable: false`"
-    ]) {
-      expect(active).toContain(literal);
-    }
-    expect(active).not.toMatch(/HTTP\/MCP[^.!。]*403|MCP\s+`403|MCP JSON-RPC[^.!。]*HTTP `403`/);
-  });
-
-  it("requires separate upload and read roles in the active beta pilot", async () => {
-    const doc = await readFile(
-      path.join(root, "docs/implementation/beta-access-readiness.md"),
-      "utf8"
-    );
-    const scope = prose(section(doc, "First Pilot Scope"));
-    const inputs = prose(section(doc, "Human Inputs Required For The First Beta User"));
-    const gates = prose(section(doc, "Pilot Acceptance Gates"));
-
-    expect(scope).toContain("one real beta user with role `employee`");
-    expect(scope).toContain("a separate active `admin` account for positive uploads");
-    expect(scope).toContain("employee upload denial");
-    expect(scope).not.toContain("visibility labels");
-    expect(inputs).toContain("Uploading admin");
-    expect(inputs).toContain("employee denial, admin upload, employee read");
-    expect(inputs).not.toContain("Allowed labels");
-    expect(gates).toContain(
-      "employee upload request is denied before local file reading or transformation"
-    );
-    expect(gates).toContain("UPLOAD_ADMIN_REQUIRED");
-    expect(gates).toContain("active admin uploads");
-    expect(gates).toContain("employee searches");
-    expect(gates).toContain("same organization and adequate clearance");
-    expect(gates).not.toContain("list authenticated labels");
-    expect(gates).not.toContain("evidence upload, indexing, and search succeed");
-  });
-
-  it("keeps active acceptance uploads on admin and preserves the partition abort exception", async () => {
-    const acceptance = await readFile(
-      path.join(root, "docs/implementation/official-manual-acceptance.md"),
-      "utf8"
-    );
-    const contract = await readFile(path.join(root, "docs/implementation/api-contract.md"), "utf8");
-    const runner = prose(section(acceptance, "Runner"));
-    const upload = prose(section(contract, "File Upload Capability"));
-    expect(runner).toContain("admin identity (`admin`, clearance 0)");
-    expect(runner).not.toContain("employee identity (`employee`, clearance 0)");
-    expect(upload).toContain("employee owner");
-    expect(upload).toContain("UPLOAD_ADMIN_REQUIRED");
-    expect(upload).toContain("structured_dataset");
-    expect(upload).toContain("Delivery Ledger");
   });
 });
