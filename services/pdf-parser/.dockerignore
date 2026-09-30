@@ -8,3 +8,5 @@
 !src
 !src/smedc_pdf_parser
 !src/smedc_pdf_parser/*.py
+!tests
+!tests/*.py

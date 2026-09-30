@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { createServer, type Server, type RequestListener } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
+import { Agent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { HttpPdfParserClient } from "./pdf-parser-client.js";
 
 const content = Buffer.from("%PDF-synthetic");
@@ -119,6 +120,37 @@ describe("internal PDF parser client", () => {
     const pending = parser.parse(content, { signal: controller.signal });
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+  it("keeps long PDF header and body waits scoped to its own transport", async () => {
+    const original = getGlobalDispatcher();
+    const shortGlobal = new Agent({ headersTimeout: 25, bodyTimeout: 25 });
+    setGlobalDispatcher(shortGlobal);
+    try {
+      let parseCalls = 0;
+      const parser = await client(
+        (request, response) => {
+          if (request.url === "/v1/ready") return ready(response);
+          parseCalls += 1;
+          if (parseCalls === 1) setTimeout(() => response.end(JSON.stringify(result())), 100);
+          else {
+            response.writeHead(200, { "content-type": "application/json" });
+            response.flushHeaders();
+            setTimeout(() => response.end(JSON.stringify(result())), 100);
+          }
+        },
+        { timeoutMs: 1_000 }
+      );
+      expect(await parser.parse(content, { signal: new AbortController().signal })).toEqual(
+        result()
+      );
+      expect(await parser.parse(content, { signal: new AbortController().signal })).toEqual(
+        result()
+      );
+      expect(getGlobalDispatcher()).toBe(shortGlobal);
+    } finally {
+      setGlobalDispatcher(original);
+      await shortGlobal.destroy();
+    }
   });
   it("rejects unsafe endpoint configuration", () => {
     for (const url of [

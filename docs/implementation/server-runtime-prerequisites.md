@@ -103,13 +103,16 @@ require a separate operations decision.
 
 ## PDF release prerequisite and rollback floor
 
-The old 2 GiB staging host is **not ready for PDF**. Before enabling the PDF
-profile, approve and provide at least 12 GiB host memory and 4 CPU cores, then
+The staging host is **not ready for PDF**. A read-only host check on 2026-09-30
+confirmed `x86_64`, 2 CPUs, 1,647,540 KiB total memory (about 1.57 GiB), and
+29,311,455,232 bytes of available root disk. Before enabling the PDF profile,
+approve and provide at least 12 GiB host memory and 4 CPU cores, then
 qualify the full workload on Linux/amd64 with existing services. The parser has
 an 8 GiB cgroup ceiling and 4 CPUs; its dedicated single-slot worker has a 1 GiB
 ceiling and 1 CPU quota. The 12 GiB recommendation still requires measured
-headroom for OS, API, general worker and Qdrant. Local aarch64 synthetic tests
-under 5 GiB do not establish amd64 or full 104-page readiness. Deployment
+headroom for OS, API, general worker and Qdrant. Local Linux/arm64 synthetic
+tests and selected 4- and 19-page originals passed under a 5 GiB parser ceiling;
+they do not establish amd64 or full 104-page end-to-end readiness. Deployment
 refuses enabled PDF processing when the host prerequisite is absent.
 
 The parser uses `pdf-<SHA>` tags in the existing private Beijing `smedc/api`

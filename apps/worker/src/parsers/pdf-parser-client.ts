@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { parsePdfEvidenceResult, type PdfEvidenceResult } from "@smedc/domain";
+import { Agent, fetch as undiciFetch } from "undici";
 
 export interface PdfParserClient {
   parse(content: Buffer, options: { signal: AbortSignal }): Promise<PdfEvidenceResult>;
@@ -67,11 +68,24 @@ export class HttpPdfParserClient implements PdfParserClient {
     if (content.length > 50 * 1024 * 1024)
       throw new PdfParserRequestError("PDF_INPUT_LIMIT", false);
     const deadline = new AbortController();
-    const timeout = setTimeout(() => deadline.abort(), this.input.timeoutMs ?? 3_750_000);
+    const timeoutMs = this.input.timeoutMs ?? 3_750_000;
+    const timeout = setTimeout(() => deadline.abort(), timeoutMs);
     const combined = AbortSignal.any([signal, deadline.signal]);
+    // Parsing can legitimately take longer than Undici's default 300-second header deadline.
+    // Keep the longer transport deadline local to the PDF service, with a bounded connect wait.
+    const dispatcher = this.input.fetch
+      ? undefined
+      : new Agent({ headersTimeout: timeoutMs, bodyTimeout: timeoutMs, connectTimeout: 10_000 });
+    const pdfFetch: typeof fetch =
+      this.input.fetch ??
+      ((url, init) =>
+        undiciFetch(url instanceof Request ? url.url : String(url), {
+          ...init,
+          dispatcher: dispatcher!
+        } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>);
     try {
       combined.throwIfAborted();
-      const ready = await this.request("/v1/ready", combined, undefined, 1024);
+      const ready = await this.request("/v1/ready", combined, undefined, 1024, pdfFetch);
       if (
         !ready ||
         typeof ready !== "object" ||
@@ -88,7 +102,8 @@ export class HttpPdfParserClient implements PdfParserClient {
         "/v1/parse",
         combined,
         content,
-        this.input.maxResponseBytes ?? 16 * 1024 * 1024
+        this.input.maxResponseBytes ?? 16 * 1024 * 1024,
+        pdfFetch
       );
       const result = parsePdfEvidenceResult(value);
       if (result.sourceChecksumSha256 !== createHash("sha256").update(content).digest("hex"))
@@ -108,15 +123,17 @@ export class HttpPdfParserClient implements PdfParserClient {
       throw new PdfParserRequestError("PDF_SERVICE_UNAVAILABLE", true);
     } finally {
       clearTimeout(timeout);
+      await dispatcher?.destroy();
     }
   }
   private async request(
     path: string,
     signal: AbortSignal,
     content: Buffer | undefined,
-    maxBytes: number
+    maxBytes: number,
+    pdfFetch: typeof fetch
   ): Promise<unknown> {
-    const response = await (this.input.fetch ?? fetch)(`${this.url}${path}`, {
+    const response = await pdfFetch(`${this.url}${path}`, {
       method: content ? "POST" : "GET",
       redirect: "error",
       headers: {

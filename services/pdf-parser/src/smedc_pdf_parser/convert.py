@@ -169,6 +169,12 @@ def _converter(root: Path, manifest: dict):
         ),
         ocr_options=RapidOcrOptions(
             backend="onnxruntime",
+            # Docling 2.94 defaults to RapidOCR's renamed "mobile" paths.
+            # The pinned, checksum-verified PP-OCRv4 assets retain "infer" names.
+            det_model_path=str(root / "RapidOcr/onnx/PP-OCRv4/det/ch_PP-OCRv4_det_infer.onnx"),
+            cls_model_path=str(root / "RapidOcr/onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_infer.onnx"),
+            rec_model_path=str(root / "RapidOcr/onnx/PP-OCRv4/rec/ch_PP-OCRv4_rec_infer.onnx"),
+            rec_keys_path=str(root / "RapidOcr/paddle/PP-OCRv4/rec/ch_PP-OCRv4_rec_infer/ppocr_keys_v1.txt"),
             font_path=str(root / "fonts/NotoSansCJKsc-Regular.otf"),
             force_full_page_ocr=False,
             bitmap_area_threshold=0.0,

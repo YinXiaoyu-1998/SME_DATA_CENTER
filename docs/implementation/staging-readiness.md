@@ -15,6 +15,16 @@ Chinese/English switch. The 2026-09-24 three-account admin-only upload acceptanc
 unchanged full user-visible workflow was not repeated. No migration or environment-variable change
 was required. See [the upload contract](api-contract.md#file-upload-capability).
 
+PDF capacity check (2026-09-30): a read-only check of the existing staging host
+confirmed `x86_64`, 2 CPUs, 1,647,540 KiB total memory (about 1.57 GiB), and
+29,311,455,232 bytes of available root disk. PDF processing remains blocked by
+the 12 GiB / 4 CPU host prerequisite in
+[server-runtime-prerequisites.md](server-runtime-prerequisites.md#pdf-release-prerequisite-and-rollback-floor).
+Resource approval and a full `linux/amd64` workload qualification remain pending.
+Local Linux/arm64 qualification passed the selected 4- and 19-page originals
+(23 pages, 8 frozen cold questions). The 104-page original parsed locally but
+its Qdrant upsert returned HTTP 400; its end-to-end ingestion is not accepted.
+
 ## Status Vocabulary
 
 Database upload incident update (2026-09-03): the current Serverless instance

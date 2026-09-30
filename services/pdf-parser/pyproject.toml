@@ -3,13 +3,14 @@ name = "smedc-pdf-parser"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "docling==2.83.0",
-    "rapidocr==3.6.0",
+    "docling==2.94.0",
+    "rapidocr==3.8.0",
     "onnxruntime==1.24.2",
     "pypdfium2==5.8.0",
     "torch==2.14.0",
     "torchvision==0.29.0",
-    "aiohttp==3.13.4",
+    "aiohttp==3.14.3",
+    "transformers==5.10.1",
 ]
 
 [dependency-groups]
@@ -21,7 +22,7 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-# Docling 2.83.0 internally reads these deprecated fields even when disabled.
+# Docling internally reads these deprecated fields even when disabled.
 # Match the exact messages and emitting modules; all other warnings stay visible.
 filterwarnings = [
     'ignore:^This field is deprecated\. Use `generate_page_images=True` and call `TableItem\.get_image\(\)` to extract table images from page images\.$:DeprecationWarning:^docling\.pipeline\.standard_pdf_pipeline$',

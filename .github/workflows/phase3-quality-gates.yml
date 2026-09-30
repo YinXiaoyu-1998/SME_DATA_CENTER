@@ -59,9 +59,9 @@ jobs:
       - name: Qualify offline PDF parser with synthetic OCR and bounded failures
         run: |
           python3 -m pip install uv==0.12.10
-          uv python install 3.12.12
-          uv sync --python 3.12.12 --locked --project services/pdf-parser
-          uv run --python 3.12.12 --locked --project services/pdf-parser python scripts/test-pdf-container.py
+          uv python install 3.12.14
+          uv sync --python 3.12.14 --locked --project services/pdf-parser
+          uv run --python 3.12.14 --locked --project services/pdf-parser python scripts/test-pdf-container.py
       - name: Verify the packaged Calamine reader against the real fixture
         run: |
           reader_container="$(docker create smedc-worker:ci)"
@@ -173,7 +173,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - run: |
           python3 -m pip install uv==0.12.10
-          uv python install 3.12.12
-          uv sync --python 3.12.12 --locked --project services/pdf-parser
-          uv run --python 3.12.12 --locked --project services/pdf-parser python -m smedc_pdf_parser.prepare_models --output .codex-build/pdf-ci/models
-          SMEDC_PDF_MODELS_PATH="$PWD/.codex-build/pdf-ci/models" uv run --python 3.12.12 --locked --project services/pdf-parser pytest services/pdf-parser/tests -q
+          uv python install 3.12.14
+          uv sync --python 3.12.14 --locked --project services/pdf-parser
+          uv run --python 3.12.14 --locked --project services/pdf-parser python -m smedc_pdf_parser.prepare_models --output .codex-build/pdf-ci/models
+          SMEDC_PDF_MODELS_PATH="$PWD/.codex-build/pdf-ci/models" uv run --python 3.12.14 --locked --project services/pdf-parser pytest services/pdf-parser/tests -q

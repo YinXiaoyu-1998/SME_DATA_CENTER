@@ -2,17 +2,19 @@
   "schemaVersion": 1,
   "configuration": "docling-standard-fullpage-preserve-native-rapidocr-zh-tableformer-accurate",
   "packages": {
-    "docling": "2.83.0",
+    "docling": "2.94.0",
     "docling-core": "2.99.0",
     "docling-ibm-models": "3.15.0",
-    "rapidocr": "3.6.0",
+    "rapidocr": "3.8.0",
     "onnxruntime": "1.24.2",
     "pypdfium2": "5.8.0",
     "torch": "2.14.0",
     "torchvision": "0.29.0",
-    "transformers": "5.8.1",
+    "transformers": "5.10.1",
     "numpy": "2.5.3",
-    "opencv-python": "5.0.0.93"
+    "opencv-python": "5.0.0.93",
+    "docling-slim": "2.94.0",
+    "aiohttp": "3.14.3"
   },
   "parameters": {
     "cpuThreads": 2,
@@ -25,6 +27,7 @@
       "Global.log_level": "warning"
     },
     "ocrCoverage": "full_page_preserve_native_spatial_text_dedup",
+    "pdfiumSystemFontFallback": "manifest-verified-NotoSansCJKsc-Regular.otf-system-font-symlink",
     "ruledTable": "native-straight-path-grid-with-cropped-ocr-for-crossing-cells;invalid-model-only-complete-filled-rectangle-tiling",
     "ocrRenderScale": 3,
     "device": "cpu",
@@ -157,8 +160,8 @@
       "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
     }
   ],
-  "adapterVersion": "0.1.3",
-  "python": "3.12.12",
+  "adapterVersion": "0.1.4",
+  "python": "3.12.14",
   "deploymentRecommendation": {
     "cpuCores": 4,
     "hostMemoryBytes": 12884901888,
@@ -175,6 +178,8 @@
     "tableformer": "CDLA-Permissive-2.0",
     "layout-heron": "Apache-2.0",
     "PP-OCRv4": "Apache-2.0",
-    "noto-cjk-font": "OFL-1.1"
+    "noto-cjk-font": "OFL-1.1",
+    "docling-slim": "MIT",
+    "aiohttp": "Apache-2.0"
   }
 }
