@@ -19,6 +19,84 @@ const proof = (name: string): PdfReleaseBundle => ({
 });
 
 describe("actual release rollback guards", () => {
+  it("probes the current parser manifest and rejects incompatible or malformed bundles", async () => {
+    const root = await mkdtemp(join(tmpdir(), "smedc-pdf-bundle-"));
+    try {
+      const packageRoot = join(root, "smedc_pdf_parser");
+      await mkdir(packageRoot);
+      await writeFile(join(packageRoot, "__init__.py"), "");
+      const manifestText = await readFile("services/pdf-parser/model-manifest.json", "utf8");
+      const manifest = JSON.parse(manifestText);
+      const expected = spawnSync(
+        "python3",
+        [
+          "-c",
+          "import hashlib,json,sys; m=json.loads(sys.stdin.read()); print(hashlib.sha256(json.dumps(m,sort_keys=True,separators=(',',':')).encode()).hexdigest())"
+        ],
+        { input: manifestText, encoding: "utf8" }
+      );
+      expect(expected.status, expected.stderr).toBe(0);
+      const guard = await readFile("deploy/pdf/release-guard.sh", "utf8");
+      const probe = async (text: string) => {
+        await writeFile(join(packageRoot, "model-manifest.json"), text);
+        return spawnSync("bash", ["-s"], {
+          encoding: "utf8",
+          env: { ...process.env, PYTHONPATH: root },
+          input: `set -euo pipefail
+${guard}
+docker() {
+  if [ "$1" = pull ]; then return 0; fi
+  if [ "$1:$2" = image:inspect ]; then printf 'sha256:%064d\n' 1; return 0; fi
+  if [ "$1" = run ]; then
+    args=("$@")
+    for ((i=0;i<\${#args[@]};i++)); do
+      if [ "\${args[$i]}" = -c ]; then
+        python3 -c "\${args[$((i+1))]}"; return $?
+      fi
+    done
+    printf true; return 0
+  fi
+  return 99
+}
+pdf_bundle registry/api:current registry/worker:current registry/api:ops-current registry/parser:current false false
+`
+        });
+      };
+      const current = await probe(manifestText);
+      expect(current.status, current.stderr).toBe(0);
+      expect(JSON.parse(current.stdout)).toMatchObject({
+        parser: {
+          id: `sha256:${"0".repeat(63)}1`,
+          schemaVersion: 1,
+          parserFingerprint: expected.stdout.trim()
+        },
+        pdfProcessing: false,
+        uploads: false
+      });
+      // A manifest change must change the actual probe identity, not reuse a pinned hash.
+      const changed = await probe(
+        JSON.stringify({ ...manifest, configuration: "synthetic-identity-change" })
+      );
+      expect(changed.status, changed.stderr).toBe(0);
+      expect(JSON.parse(changed.stdout).parser.parserFingerprint).not.toBe(expected.stdout.trim());
+      for (const incompatible of [
+        { ...manifest, adapterVersion: "0.1.4" }, // local-only, never production-qualified
+        { ...manifest, adapterVersion: "0.2.0" },
+        { ...manifest, schemaVersion: 2 },
+        { ...manifest, schemaVersion: true },
+        {}
+      ]) {
+        const rejected = await probe(JSON.stringify(incompatible));
+        expect(rejected.status).not.toBe(0);
+        expect(rejected.stdout).toBe("");
+      }
+      const malformed = await probe("{invalid json");
+      expect(malformed.status).not.toBe(0);
+      expect(malformed.stdout).toBe("");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it.each([
     [false, "explicit"],
     [true, "explicit"],

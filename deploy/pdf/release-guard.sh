@@ -24,7 +24,9 @@ pdf_bundle() {
   if [ -n "$parser" ]; then
     docker pull "$parser" >&2 || return 1
     parser_id="$(docker image inspect --format '{{.Id}}' "$parser")" || return 1
-    fingerprint="$(docker run --rm --network none --read-only --memory 512m --entrypoint python "$parser_id" -c 'import hashlib,json,importlib.resources; m=json.loads(importlib.resources.files("smedc_pdf_parser").joinpath("model-manifest.json").read_text()); assert m["adapterVersion"]=="0.1.4"; print(hashlib.sha256(json.dumps(m,sort_keys=True,separators=(",",":")).encode()).hexdigest())' </dev/null)" || return 1
+    # Only adapter 0.1.5/schema 1 is supported here. 0.1.4 was local-only and has
+    # known table loss; future adapters need qualification before extending this rule.
+    fingerprint="$(docker run --rm --network none --read-only --memory 512m --entrypoint python "$parser_id" -c 'import hashlib,json,importlib.resources; m=json.loads(importlib.resources.files("smedc_pdf_parser").joinpath("model-manifest.json").read_text()); assert isinstance(m,dict) and type(m.get("schemaVersion")) is int and m.get("schemaVersion")==1 and m.get("adapterVersion")=="0.1.5"; print(hashlib.sha256(json.dumps(m,sort_keys=True,separators=(",",":")).encode()).hexdigest())' </dev/null)" || return 1
     parser_proof="$(node -e 'process.stdout.write(JSON.stringify({image:process.argv[1],id:process.argv[2],parserFingerprint:process.argv[3],schemaVersion:1}))' "$parser" "$parser_id" "$fingerprint")" || return 1
   fi
   node -e 'const [api,worker,releaseOps,parser,pdfProcessing,uploads]=process.argv.slice(1).map(JSON.parse);process.stdout.write(JSON.stringify({api,worker,releaseOps,parser,pdfProcessing,uploads}))' \
