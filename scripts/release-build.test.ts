@@ -18,6 +18,7 @@ const releaseArtifacts = [
   "api",
   "worker",
   "readiness",
+  "pdf-acceptance",
   "pdf-release",
   "staging-smoke",
   "official-manual-acceptance",
@@ -32,6 +33,7 @@ describe("release build", () => {
       api: "apps/api/src/index.ts",
       worker: "apps/worker/src/dev-loop.ts",
       readiness: "scripts/readiness.ts",
+      "pdf-acceptance": "scripts/pdf-acceptance.ts",
       "pdf-release": "scripts/pdf-release.ts",
       "staging-smoke": "scripts/staging-smoke.ts",
       "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
@@ -62,6 +64,7 @@ describe("release build", () => {
       for (const artifact of [
         "worker",
         "readiness",
+        "pdf-acceptance",
         "pdf-release",
         "staging-smoke",
         "official-manual-acceptance",
@@ -74,6 +77,22 @@ describe("release build", () => {
           ["--input-type=module", "--eval", `await import('./dist/release/${artifact}.js')`],
           { cwd: cleanRoot, stdio: "pipe" }
         );
+      }
+
+      for (const artifact of ["pdf-acceptance", "official-manual-acceptance"] as const) {
+        const rejected = spawnSync(
+          process.execPath,
+          [`dist/release/${artifact}.js`, "cleanup", "--profile=pdf", "--run-id=test7"],
+          {
+            cwd: cleanRoot,
+            encoding: "utf8",
+            env: { ...process.env, DATABASE_URL: "", SMEDC_CREDENTIAL_PROFILE: "default" }
+          }
+        );
+        expect(rejected.status).toBe(1);
+        expect(rejected.stderr).toContain("explicit absolute private manifest path");
+        expect(rejected.stderr).not.toContain("Auth operator");
+        expect(rejected.stderr).not.toContain("staging API container");
       }
 
       const directReadiness = spawnSync(

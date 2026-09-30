@@ -444,6 +444,106 @@ For full manual acceptance, use the three-account browser lifecycle and user-vis
 The runner is an additional admin-c0 default-level smoke and cleanup helper; it cannot replace
 the cross-account ordinary-read and PAO checks.
 
+## Isolated PDF Acceptance Profile
+
+This is a separate, explicitly requested PDF gate. It uses two fresh organizations
+`pdf-acceptance-<run-id>-a` and `pdf-acceptance-<run-id>-b`; **default-org and an existing QA login
+are forbidden**. Run IDs are explicit, 1–32 safe ASCII letters/digits/underscore/hyphen. This path
+routes before every legacy cleanup or smoke and never falls through when arguments are invalid.
+The ordinary full-flow procedure and its published 0.6.0 pin remain the default. PDF acceptance
+waits for a compatible published launcher, independent package verification and service release;
+development 0.7.0 is not yet a published installation pin.
+
+Operator-only commands (private manifest path must be absolute, operator-owned and mode 0600):
+
+```sh
+npm run test:official-manual -- setup --profile=pdf --run-id=<id> --manifest=<private-path>
+npm run test:official-manual -- register --profile=pdf --run-id=<id> --manifest=<private-path> --document-id=<returned-id>
+npm run test:official-manual -- verify --profile=pdf --run-id=<id> --manifest=<private-path>
+npm run test:official-manual -- cleanup --profile=pdf --run-id=<id> --manifest=<private-path>
+```
+
+The local entry requires `SMEDC_PDF_ACCEPTANCE_LAUNCHER` to point at that approved installed
+launcher and `SMEDC_CREDENTIAL_PROFILE=pdf-<id>-a-admin`; it runs the actual launcher's self-check,
+checks its named profile, compatible version and official origin, then uses strict-host-key SSH
+and release-ops for controller actions. The PDF route never loads a local `.env` as staging config.
+The release-ops executable is `dist/release/pdf-acceptance.js`. Its stdin manifest carries only
+resource identifiers; no credentials, source text, setup links or answers are serialized.
+
+`setup` reuses official operator onboarding for admin c0 and reader c3 in organization A and reader
+c3 in B. It persists recovery identifiers before/on creation and rejects unrelated accounts in
+those organizations. Use the existing `auth-operator reset-password --employee-id <id>` to issue
+each account's browser setup link privately, one at a time, and let the human complete setup.
+Do not capture the command's setup link in files/logs or let an agent open/type it. `verify` checks
+passwords are set without returning their hashes. It verifies structural readiness only; it does
+not simulate employee MCP actions or declare the visible acceptance gate passed.
+
+### Actual Employee-Chat Credential Binding
+
+Each actual MCP launcher process must select `SMEDC_CREDENTIAL_PROFILE=pdf-<id>-a-admin`,
+`pdf-<id>-a-reader` or `pdf-<id>-b-reader` as appropriate. Before login, its credential-free
+self-check must report exactly that `credentialProfile` and the official service origin. Then
+check the current account through MCP and independently verify its dedicated-org membership
+operator-side. Profiles isolate local credentials and locks; backend authorization still derives
+organization from the employee, never a client-supplied org ID. Logout affects only that named
+profile. Preserve the default user's session and global Codex configuration.
+
+The app's chat-creation tool currently provides no arbitrary MCP env/config override. Prefer a
+supported per-chat/project binding only when the running launcher actually verifies the named
+profile. If the app cannot supply that binding, the installed official Codex CLI exposes this
+per-process fallback (substitute the approved absolute launcher path and safe run ID):
+
+```sh
+codex exec --ignore-user-config -C <private-run-project> --skip-git-repo-check --json \
+  -c 'mcp_servers.smedc.command="<approved-absolute-launcher>"' \
+  -c 'mcp_servers.smedc.args=["serve"]' \
+  -c 'mcp_servers.smedc.env={SMEDC_BASE_URL="https://api.smedatacenter.xyz",SMEDC_CREDENTIAL_PROFILE="pdf-<id>-a-admin"}' \
+  '<one ordinary employee request>'
+```
+
+Inspect current CLI help before using this fallback. It ignores user MCP configuration without
+changing it and persists the chat by default: do not use `--ephemeral`. Verify the created chat is
+actually visible through the app before counting its transcript as evidence; CLI persistence is
+not an app-visibility claim. If project trust or visibility needs human action, report that exact
+blocker and retain safe setup state. No chats or credentials are created by the controller runner.
+
+Use separate ordinary chats for login, each of the three original PDF uploads (4, 104 and 19
+physical pages), terminal status, cold retrieval of text/OCR/table rows with page citations, warning
+and image-semantic limits, source links, above-clearance denial and B-to-A isolation. Set the exact
+run source marker `pdf_acceptance_<id>` in upload metadata. Preserve returned IDs and register each
+upload; after terminal processing re-register it to capture final attempts/points/derived keys.
+Register every ID before verify/cleanup, including failed attempts. Do not feed employee chats
+hidden expected answers or let them substitute local files, direct API/DB/storage access or controller
+verification for MCP evidence. Leave accepted chats visible after data cleanup.
+
+### Exact Cleanup And Recovery
+
+The manifest records two org IDs, exact employees/documents/attempts/points/object keys and one
+runtime collection. Bounded org-directory and Qdrant inventories reject extra resources, foreign
+ownership, missing orgs, forged lists and ambiguous filename prefixes. Account disabling and queued
+job cancellation are scoped to this run. Any running job, including one with an expired lease,
+requires retry after its actual worker finishes; do not stop a shared worker.
+
+For each active attempt the controller locks authoritative org/doc/run/attempt rows and verifies
+successful processing plus its ready index, parser/config identity and complete resources before
+setting nullable `PdfEvidenceAttempt.acceptanceRunId`. This derived proof survives index detachment
+and authoritative reconciliation. Neither manifest `settledAttemptIds` nor elapsed time is a proof.
+Confirmed cleanup retries after interruption or external deletion failure; it preserves DB ownership
+and the private manifest until external absence is verified, then removes sessions/identities,
+exact run rows and both empty dedicated orgs. A complete manifest remains as a non-secret receipt.
+
+Failed/staged/cleaned attempts lacking that successful-publication proof may still have unknown
+late writes. Their exact artifacts are reconciled, but final recovery rows/organizations/manifest
+remain and cleanup returns **recovery required**, even when the first delete finds no objects.
+A later run repeats exact reconciliation; it cannot invent the missing external-write settlement
+signal. Report this as a cleanup blocker with safe resource IDs. There is no force-delete option.
+Never invoke `purge-data`, legacy upload-domain cleanup, global queue clearing or default-org cleanup.
+
+Local deterministic proof uses only explicit loopback DB/Qdrant and local storage targets with
+`SMEDC_PDF_ACCEPTANCE_LOCAL=1`; it is not staging, browser, real-provider or three-sample acceptance.
+The focused Prisma proof preserves an outside synthetic row/object/point and the migration baseline,
+then removes only its own resources. Full sample/provider qualification belongs to the integration gate.
+
 ## Headless Remote Agent (Support Class C) Flow
 
 This scenario extends acceptance to the headless remote agent form (no local browser, no

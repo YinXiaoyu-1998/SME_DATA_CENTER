@@ -52,3 +52,9 @@ function sanitizeFileName(fileName: string): string {
 
   return safeName || "file";
 }
+
+export function assertOrgInventoryPrefix(prefix: string): void {
+  if (!/^org\/[A-Za-z0-9_-]+\/$/.test(prefix)) {
+    throw new Error("Object inventory requires one exact org directory prefix.");
+  }
+}

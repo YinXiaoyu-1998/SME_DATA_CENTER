@@ -55,6 +55,8 @@ export interface StorageAdapter {
   abortMultipartUpload?(input: { key: string; uploadId: string }): Promise<void>;
   putObjectAtKey?(input: PutObjectAtKeyInput): Promise<StorageObject>;
   downloadObjectToFile?(key: string, filePath: string): Promise<StorageObject>;
+  /** Bounded read-only inventory of one exact org directory; never a deletion selector. */
+  listObjectKeys?(prefix: string): Promise<string[]>;
   deleteObject(key: string): Promise<void>;
 }
 import type { Readable } from "node:stream";

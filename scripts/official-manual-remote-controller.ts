@@ -97,3 +97,65 @@ export interface RemoteWindowResult {
   runId: string;
   structuredWindow: StructuredWindow;
 }
+
+/** PDF manifests contain identifiers only. stdin avoids quoting private paths or setup secrets. */
+export async function runPdfStagingController(
+  args: import("./pdf-acceptance-support.js").PdfAcceptanceArgs,
+  manifest: import("./pdf-acceptance-support.js").PdfAcceptanceManifest
+): Promise<{ ok: boolean; manifest: import("./pdf-acceptance-support.js").PdfAcceptanceManifest }> {
+  const { spawn } = await import("node:child_process");
+  const { validatePdfAcceptanceManifest } = await import("./pdf-acceptance-support.js");
+  validatePdfAcceptanceManifest(manifest);
+  const target = `${process.env["SMEDC_STAGING_SSH_USER"] ?? DEFAULT_STAGING_USER}@${process.env["SMEDC_STAGING_HOST"] ?? DEFAULT_STAGING_HOST}`;
+  const command = [
+    "docker",
+    "compose",
+    "--profile",
+    "release",
+    "--env-file",
+    STAGING_RUNTIME_ENV_FILE,
+    "-f",
+    STAGING_COMPOSE_FILE,
+    "run",
+    "-T",
+    "--rm",
+    "-e",
+    "SMEDC_PDF_ACCEPTANCE_CONTROLLER=1",
+    "release-ops",
+    "node",
+    "dist/release/pdf-acceptance.js",
+    args.command,
+    "--profile=pdf",
+    `--run-id=${args.runId}`,
+    `--manifest=/tmp/pdf-acceptance-${args.runId}.json`,
+    ...(args.documentId ? [`--document-id=${args.documentId}`] : [])
+  ];
+  if (args.documentId && !/^[A-Za-z0-9_-]{1,32}$/.test(args.documentId))
+    throw new Error("Invalid exact PDF document ID.");
+  const result = await new Promise<string>((resolve, reject) => {
+    const child = spawn("ssh", [...buildStagingSshArgs(), target, ...command], {
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let output = "";
+    let oversized = false;
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+      if (output.length > 4 * 1024 * 1024) {
+        oversized = true;
+        child.kill();
+      }
+    });
+    child.stderr.resume(); // Never echo controller exceptions containing runtime details.
+    child.on("error", reject);
+    child.on("close", () => {
+      if (oversized) reject(new Error("PDF controller reply exceeded bound."));
+      else resolve(output);
+    });
+    child.stdin.end(JSON.stringify(manifest));
+  });
+  const response = JSON.parse(result) as { ok: boolean; manifest: unknown };
+  const returned = validatePdfAcceptanceManifest(response.manifest);
+  if (returned.runId !== args.runId || typeof response.ok !== "boolean")
+    throw new Error("Invalid PDF controller response.");
+  return { ok: response.ok, manifest: returned };
+}

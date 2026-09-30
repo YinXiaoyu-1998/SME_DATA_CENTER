@@ -28,7 +28,8 @@ import {
   type RemoteWindowResult
 } from "./official-manual-remote-controller.js";
 
-loadDotenv({ quiet: true, override: false });
+import { dispatchAcceptanceProfile } from "./pdf-acceptance-controller.js";
+import { runPdfAcceptanceRuntime } from "./pdf-acceptance-runtime.js";
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
 const LAUNCHER_VERSION = "0.6.0";
@@ -73,12 +74,15 @@ interface PartitionDownloadResult extends ToolTextResult {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const parsedArgs = parseArgs(process.argv.slice(2));
-  if (parsedArgs.command.startsWith("controller-")) {
-    await runControllerCommand(parsedArgs);
-  } else {
-    await runLocalAcceptance(parsedArgs);
-  }
+  await dispatchAcceptanceProfile(process.argv.slice(2), {
+    pdf: runPdfAcceptanceRuntime,
+    legacy: async () => {
+      loadDotenv({ quiet: true, override: false });
+      const parsedArgs = parseArgs(process.argv.slice(2));
+      if (parsedArgs.command.startsWith("controller-")) await runControllerCommand(parsedArgs);
+      else await runLocalAcceptance(parsedArgs);
+    }
+  });
 }
 
 async function runLocalAcceptance(args: ParsedArgs): Promise<void> {

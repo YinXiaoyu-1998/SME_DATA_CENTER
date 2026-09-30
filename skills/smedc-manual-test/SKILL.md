@@ -78,6 +78,28 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 - repo-local skill `skills/smedc-mcp/`
 - standalone skill repo `YinXiaoyu-1998/smedc-mcp-skill`
 
+## Scoped PDF Profile
+
+For PDF-only acceptance use the isolated `--profile=pdf` procedure in the official guide. It
+replaces the default-org account/legacy cleanup path for this scope: create two fresh dedicated
+organizations and the three named synthetic accounts, register exact returned document IDs, and
+use only their verified named launcher credential profiles. The default-org QA shortcut above
+never applies to this profile. A controller environment variable alone does not configure an
+employee chat; verify its actual MCP process selection before login or upload.
+
+The runner performs operator setup, structural verification and precise cleanup only. Employee
+uploads, status, search, page/table/warning checks, authorized source downloads and cross-org denial
+remain separate visible chats using the official launcher. Read the guide's per-process CLI
+configuration fallback and verify app visibility at execution time; it has not yet been accepted
+as a visible-chat flow. Do not change global Codex config or access the default credential record.
+Keep the published pin 0.6.0 until the new launcher is independently released and verified.
+
+A running worker blocks cleanup. Successful attempts require a persisted controller-derived DB
+proof; unknown late writes retain durable attempts and the private manifest and return recovery
+required. No timestamp, deleted lease, user-edited manifest or force flag proves settlement. Do not
+stop shared workers or run broad upload-domain cleanup. Retry interrupted exact cleanup using the
+same private manifest; report success only after external and DB inventories are empty.
+
 ## Roles
 
 | Role                    | Allowed                                                                                                          | Forbidden                                                                                           |

@@ -1,12 +1,16 @@
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
-import { assertSafeObjectKey, createOriginalObjectKey } from "./object-key.js";
+import {
+  assertSafeObjectKey,
+  assertOrgInventoryPrefix,
+  createOriginalObjectKey
+} from "./object-key.js";
 import type {
   CreateDownloadUrlOptions,
   PutObjectInput,
@@ -34,6 +38,39 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
     }
 
     this.root = path.resolve(root);
+  }
+
+  async listObjectKeys(prefix: string): Promise<string[]> {
+    assertOrgInventoryPrefix(prefix);
+    for (const segment of ["org", prefix.slice(0, -1)]) {
+      try {
+        if ((await lstat(path.join(this.root, segment))).isSymbolicLink())
+          throw new Error("Object inventory refuses symbolic links.");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    const keys: string[] = [];
+    let visited = 0;
+    const walk = async (directory: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await readdir(path.join(this.root, directory), { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
+      }
+      for (const entry of entries) {
+        if (++visited > 20000) throw new Error("Object inventory exceeded its bound.");
+        if (entry.isSymbolicLink()) throw new Error("Object inventory refuses symbolic links.");
+        const key = `${directory}${entry.name}`;
+        if (entry.isDirectory()) await walk(`${key}/`);
+        else if (entry.isFile() && !entry.name.endsWith(".metadata.json")) keys.push(key);
+        else if (!entry.isFile()) throw new Error("Object inventory found a non-regular object.");
+      }
+    };
+    await walk(prefix);
+    return keys.sort();
   }
 
   async putObject(input: PutObjectInput): Promise<StorageObject> {

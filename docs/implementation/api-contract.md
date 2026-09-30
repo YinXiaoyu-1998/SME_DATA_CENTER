@@ -173,3 +173,29 @@ The one-way migration maps legacy `manager` accounts to `admin`, assigns existin
 clearance `3`, assigns existing documents level `0`, and deletes legacy label tables/data. Existing
 Qdrant vectors without a confidentiality payload are treated as level-0 candidates only; the
 database revalidator checks the authoritative document level before reranking or response output.
+
+## PDF Evidence Extension
+
+A compatible deployed PDF service admits original `.pdf`/`application/pdf` evidence through the
+existing admin-only upload contract. It also requires enabled PDF admission, authenticated parser
+readiness and verified compatible rollback state. Disabled/unready admission returns safe typed
+503 (`PDF_UPLOAD_DISABLED`, `PDF_SERVICE_UNAVAILABLE`, `PDF_ROLLBACK_FLOOR_UNVERIFIED`) without
+creating an object or queued job. Format/header disagreement is rejected. Existing non-PDF flows
+and authorized original downloads retain their contracts.
+
+PDF status adds nullable `parsing: {schemaVersion:1,pageCount,pages,complete,tableCount,pictureCount,
+warnings}` from the persisted index. Physical page outcomes are parsed/blank/image_only/failed.
+Only complete successful parsing is activated. Status remains uploader-only and clearance checked.
+Evidence search accepts `filters.fileTypes:["pdf"]`; each visible source may expose `pageNumbers`,
+full `sourceLocations` (1-based physical pages, normalized bbox, native/OCR and block/table fields),
+warning objects and `pdfTable` (tableId,rowStart,rowEnd,rowIds,cellOrigins, optional long-row
+continuation). The legacy single `pageNumber` is populated only for a single represented page.
+Internal paths/parsed object keys are never public. Existing `sources[]` links download the original
+PDF with the same organization/clearance checks and 24-hour attachment policy. Image references
+preserve regions and recognized text; the first release generates no picture-semantic descriptions.
+
+Launcher 0.7.0 implements the compatible bundled contract and named `SMEDC_CREDENTIAL_PROFILE`
+namespace; it is currently unpublished. Approved Skill pins and server recommendation stay 0.6.0
+until publication and independent verification. A named profile is local credential/lock isolation,
+never an organization or authorization selector. Self-check adds safe `credentialProfile`; the
+isolated PDF manual profile refuses default credentials and uses exact controller cleanup.

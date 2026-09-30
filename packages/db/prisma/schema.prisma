@@ -806,6 +806,9 @@ model PdfEvidenceAttempt {
   collection             String   @db.VarChar(255)
   pointIds               Json     @map("point_ids")
   parsedObjectKey        String   @unique @map("parsed_object_key") @db.VarChar(768)
+  /// Controller proof: successful publication and exact resources verified under DB locks.
+  /// Preserved across recovery; never writable through an employee API or manifest input.
+  acceptanceRunId        String?  @map("acceptance_run_id") @db.VarChar(32)
   state                  String   @default("staged") @db.VarChar(16)
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")

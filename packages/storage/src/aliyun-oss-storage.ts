@@ -6,6 +6,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
   UploadPartCommand
@@ -15,7 +16,11 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { assertSafeObjectKey, createOriginalObjectKey } from "./object-key.js";
+import {
+  assertSafeObjectKey,
+  assertOrgInventoryPrefix,
+  createOriginalObjectKey
+} from "./object-key.js";
 import type {
   CreateDownloadUrlOptions,
   PutObjectInput,
@@ -91,6 +96,37 @@ export class AliyunOssStorageAdapter implements StorageAdapter {
         requestChecksumCalculation: "WHEN_REQUIRED",
         responseChecksumValidation: "WHEN_REQUIRED"
       });
+  }
+
+  async listObjectKeys(prefix: string): Promise<string[]> {
+    assertOrgInventoryPrefix(prefix);
+    const physicalPrefix = `${this.keyPrefix ? `${this.keyPrefix}/` : ""}${prefix}`;
+    const keys: string[] = [];
+    let token: string | undefined;
+    const tokens = new Set<string>();
+    for (let page = 0; page < 20; page++) {
+      const result = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: physicalPrefix,
+          MaxKeys: 1000,
+          ContinuationToken: token
+        }),
+        { abortSignal: AbortSignal.timeout(10000) }
+      );
+      for (const object of result.Contents ?? []) {
+        if (!object.Key?.startsWith(physicalPrefix))
+          throw new Error("Object inventory returned unexpected ownership.");
+        keys.push(object.Key.slice(physicalPrefix.length - prefix.length));
+        if (keys.length > 10000) throw new Error("Object inventory exceeded its bound.");
+      }
+      if (!result.IsTruncated) return keys.sort();
+      token = result.NextContinuationToken;
+      if (!token || tokens.has(token))
+        throw new Error("Object inventory returned invalid pagination.");
+      tokens.add(token);
+    }
+    throw new Error("Object inventory exceeded its page bound.");
   }
 
   async putObject(input: PutObjectInput): Promise<StorageObject> {

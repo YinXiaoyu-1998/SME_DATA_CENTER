@@ -223,6 +223,62 @@ checks. For a source file at or below 50 MiB, use the ordinary polling schedule 
 `processing` response is not complete. Exact-repeat uploads may return the existing published job;
 same-key requests with different bytes or metadata are conflicts, not retries.
 
+## PDF Evidence (Requires A Compatible Published Release)
+
+PDF support requires the deployed PDF service and a compatible published launcher. The current
+approved installation pin above remains **0.6.0**; development launcher 0.7.0 is not an approved
+installation target until it is published, independently verified, and the official Skill pin is
+updated. If PDF is unavailable, report that release dependency. Do not install an unpublished
+package, convert the PDF locally, or retry another transport to bypass service admission.
+
+After that compatible release is available:
+
+- Upload the original `.pdf` with `upload_evidence_document`, `mediaType: "application/pdf"`,
+  preferably path encoding, and the employee's title/source metadata. Admin-only upload, the
+  ordinary 50 MiB ceiling, explicit confidentiality levels and server authorization still apply.
+- Native text and local OCR of scanned/image text are indexed. OCR can contain recognition errors.
+  Table evidence preserves headers, rows, merged-cell origins and long-row continuation metadata;
+  it is evidence text, not a structured dataset. Do not use `query_structured_dataset` for a PDF.
+- Picture regions and their references are retained. This release does not describe charts,
+  photographs or other image semantics; a caption or recognized image text does not prove visual
+  understanding. Preserve returned warnings rather than claiming those regions were understood.
+- Poll `get_evidence_document_status` using the ordinary evidence schedule. Its optional `parsing`
+  summary exposes `pageCount`, physical-page outcomes, `complete`, table/picture counts and safe
+  warnings. Queued/running is still processing. Failed/incomplete parsing is not ready evidence;
+  give the safe returned error and keep the document ID for recovery.
+- Query with `search_document_evidence`; use `filters.fileTypes: ["pdf"]` only when the connected
+  compatible launcher advertises it. Cite the returned `source.pageNumbers` and `sourceLocations`
+  as **1-based physical PDF pages**, not printed page labels. Preserve native/OCR provenance and
+  `source.pdfTable` row/cell/continuation associations; do not join unrelated rows or infer missing
+  amounts. Include returned warnings with any answer based on affected evidence.
+- Show every available original-file link in `sources[]` as for other evidence. Those links download
+  the original PDF; parsing artifacts and picture references are not separate public downloads.
+  Refresh an expired original link with the existing source-download tool when requested.
+
+A compatible-release path upload uses the existing tool input (substitute the employee's actual
+path and metadata; omitted confidentiality remains 0):
+
+```json
+{
+  "tool": "upload_evidence_document",
+  "arguments": {
+    "file": {
+      "name": "reference.pdf",
+      "mediaType": "application/pdf",
+      "encoding": "path",
+      "filePath": "/absolute/employee/reference.pdf"
+    },
+    "title": "Employee reference",
+    "sourceSystem": "employee_provided_source"
+  }
+}
+```
+
+`PDF_UPLOAD_DISABLED`, `PDF_ROLLBACK_FLOOR_UNVERIFIED`, or `PDF_SERVICE_UNAVAILABLE` means
+PDF admission is unavailable. Return the safe service outcome; agents must not start workers or
+operate parsing infrastructure. Ordinary authorized retrieval and existing original downloads may
+remain usable even when new PDF uploads are disabled.
+
 ## Business And Dishes Partition Uploads
 
 `business` and `dishes` use an atomic source-to-partitions workflow. Upload the employee's original

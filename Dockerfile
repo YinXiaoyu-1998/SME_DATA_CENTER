@@ -105,6 +105,7 @@ COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.pr
 COPY --chown=node:node package.json ./package.json
 COPY --chown=node:node packages/db/prisma.config.ts ./packages/db/prisma.config.ts
 COPY --chown=node:node packages/db/prisma ./packages/db/prisma
+COPY --from=build --chown=node:node /app/dist/release/pdf-acceptance.js ./dist/release/pdf-acceptance.js
 COPY --from=build --chown=node:node /app/dist/release/pdf-release.js ./dist/release/pdf-release.js
 COPY --from=build --chown=node:node /app/dist/release/readiness.js ./dist/release/readiness.js
 COPY --from=build --chown=node:node /app/dist/release/staging-smoke.js ./dist/release/staging-smoke.js

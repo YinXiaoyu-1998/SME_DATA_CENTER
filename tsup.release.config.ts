@@ -4,6 +4,7 @@ export const releaseEntries = {
   api: "apps/api/src/index.ts",
   worker: "apps/worker/src/dev-loop.ts",
   readiness: "scripts/readiness.ts",
+  "pdf-acceptance": "scripts/pdf-acceptance.ts",
   "pdf-release": "scripts/pdf-release.ts",
   "staging-smoke": "scripts/staging-smoke.ts",
   "official-manual-acceptance": "scripts/official-manual-acceptance.ts",

@@ -142,7 +142,8 @@ jobs:
       - run: npm run readyz:local
       - run: npm run test:phase3:golden
       - run: npm run test:phase3:perf
-      - run: RUN_PDF_WORKER_PRISMA_INTEGRATION=1 RUN_PDF_RELEASE_PRISMA_INTEGRATION=1 npm test -- --no-file-parallelism apps/worker/src/pdf-worker.prisma.integration.test.ts scripts/pdf-release.prisma.integration.test.ts
+      - run: npm run build:release
+      - run: RUN_PDF_WORKER_PRISMA_INTEGRATION=1 RUN_PDF_RELEASE_PRISMA_INTEGRATION=1 RUN_PDF_ACCEPTANCE_PRISMA_INTEGRATION=1 npm test -- --no-file-parallelism apps/worker/src/pdf-worker.prisma.integration.test.ts scripts/pdf-release.prisma.integration.test.ts scripts/pdf-acceptance.prisma.integration.test.ts
       - run: COMPOSE_PROJECT_NAME=sme_data_center_ci MYSQL_PORT=3307 npm run test:integration
 
   external-provider-smoke-gated:

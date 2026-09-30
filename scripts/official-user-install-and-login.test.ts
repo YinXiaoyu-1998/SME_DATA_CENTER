@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { launcherUploadFileInputSchema, SMEDC_MCP_TOOL_CONTRACTS } from "@smedc/mcp-contract";
 
 const root = process.cwd();
 
@@ -31,6 +33,21 @@ function expectPinnedReferences(content: string, label: string): void {
 }
 
 describe("official user install and login documentation", () => {
+  it("validates the conditional PDF upload example against the bundled public tool contract", async () => {
+    const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
+    const examples = [...skill.matchAll(/^ *```json\n([\s\S]*?)\n *```/gm)]
+      .map((match) => JSON.parse(match[1]!))
+      .filter((value) => value.tool === "upload_evidence_document");
+    expect(examples).toHaveLength(1);
+    const contract = SMEDC_MCP_TOOL_CONTRACTS.find((c) => c.name === "upload_evidence_document")!;
+    // Native launcher contracts extend the HTTP upload shape with local path encoding.
+    const launcherSchema = z
+      .object({ ...contract.inputShape, file: launcherUploadFileInputSchema })
+      .strict();
+    expect(launcherSchema.safeParse(examples[0].arguments).success).toBe(true);
+    expect(examples[0].arguments.confidentialityLevel).toBeUndefined();
+  });
+
   it("pins the approved launcher in active installation guidance", async () => {
     const doc = await readFile(
       path.join(root, "docs", "implementation", "official-user-install-and-login.md"),
