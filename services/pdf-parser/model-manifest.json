@@ -41,7 +41,10 @@
     "imageDescriptions": false,
     "externalServices": false,
     "runtimeDownloads": false,
-    "linuxTorchIndex": "https://download.pytorch.org/whl/cpu"
+    "linuxTorchIndex": "https://download.pytorch.org/whl/cpu",
+    "nativeGridPageTransform": "unrotated-zero-origin-unclipped-canvas-only;otherwise-tableformer",
+    "backendRasterOversampling": 1.5,
+    "maxIntermediateRenderScale": 4.5
   },
   "budgets": {
     "inputBytes": 52428800,
@@ -154,7 +157,7 @@
       "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
     }
   ],
-  "adapterVersion": "0.1.0",
+  "adapterVersion": "0.1.1",
   "python": "3.12.12",
   "deploymentRecommendation": {
     "cpuCores": 4,

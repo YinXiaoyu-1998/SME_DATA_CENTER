@@ -378,8 +378,14 @@ def convert_pdf(source: Path) -> dict:
         total_pixels = 0
         for page in pdf:
             width, height = page.get_size()
-            pixels = math.ceil(width * 3) * math.ceil(height * 3)
-            if not math.isfinite(width * height) or pixels > budgets["pagePixels"]:
+            if not all(math.isfinite(value) and value > 0 for value in (width, height)):
+                raise PdfParseError("PDF_PIXEL_LIMIT")
+            # Pinned DoclingParse backend rasterizes at 1.5x before resizing
+            # the 3x OCR input. Budget PDFium's largest intermediate raster,
+            # using its ceil-per-dimension rule, not only the resized image.
+            render_scale = manifest["parameters"]["maxIntermediateRenderScale"]
+            pixels = math.ceil(width * render_scale) * math.ceil(height * render_scale)
+            if pixels > budgets["pagePixels"]:
                 raise PdfParseError("PDF_PIXEL_LIMIT")
             total_pixels += pixels
             page.close()

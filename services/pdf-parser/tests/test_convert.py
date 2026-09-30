@@ -298,3 +298,54 @@ def test_ruled_cell_preserves_native_and_separate_bitmap_text(tmp_path):
         "Visiblenativetext" in compact(text) and "RASTER76" in compact(text)
         for text in cells
     )
+
+
+def test_upright_table_with_rotated_page_keeps_rows_columns_and_header(tmp_path):
+    data = BytesIO()
+    c = canvas.Canvas(data, pagesize=(600, 400))
+    c.translate(600, 400)
+    c.rotate(180)  # inverse content transform: /Rotate makes it visibly upright
+    for y in (50, 150, 250, 350):
+        c.line(30, y, 570, y)
+    for x in (30, 300, 570):
+        c.line(x, 50, x, 350)
+    c.setFont("Helvetica", 20)
+    for y, row in (
+        (310, ("Description", "Amount")),
+        (210, ("Apples", "10")),
+        (110, ("Pears", "20")),
+    ):
+        for x, text in zip((50, 320), row):
+            c.drawString(x, y, text)
+    c.save()
+    source = tmp_path / "rotated.pdf"
+    with pdfium.PdfDocument(data.getvalue()) as pdf:
+        page = pdf[0]
+        page.set_rotation(180)
+        pdf.save(source)
+        page.close()
+    result = convert(source)
+    assert table_rows(result) == [
+        ["Description", "Amount"],
+        ["Apples", "10"],
+        ["Pears", "20"],
+    ]
+    assert result["tables"][0]["headerRows"] == [0]
+
+
+def test_intermediate_render_pixel_limit_rejects_before_model_loading(
+    tmp_path, monkeypatch
+):
+    from smedc_pdf_parser import convert as adapter
+
+    source = tmp_path / "intermediate-limit.pdf"
+    c = canvas.Canvas(str(source), pagesize=(1000, 1000))
+    c.drawString(30, 30, "pixel probe")
+    c.save()
+
+    def unexpected_model_loading(*args):
+        pytest.fail("pixel preflight must reject before model loading")
+
+    monkeypatch.setattr(adapter, "_models", unexpected_model_loading)
+    with pytest.raises(adapter.PdfParseError, match="^PDF_PIXEL_LIMIT$"):
+        convert(source)

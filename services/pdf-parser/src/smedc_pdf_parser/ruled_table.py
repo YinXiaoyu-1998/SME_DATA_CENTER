@@ -6,12 +6,30 @@ qualified TableFormer result. Reject incomplete or nonrectangular grids.
 
 from __future__ import annotations
 
+import math
+
 import pypdfium2 as pdfium
 
 
 def extract_vector_grid(page, bbox: tuple[float, float, float, float]) -> dict | None:
+    # Object/glyph bounds use the original PDF canvas. Rendering and Docling
+    # boxes use the displayed page. Until all native operations share a full
+    # affine transform, leave rotated/cropped/translated pages to TableFormer.
+    if page.get_rotation() != 0:
+        return None
+    width, height = page.get_size()
+    expected = (0, 0, width, height)
+    for page_box in (
+        page.get_bbox(),  # inherits page-tree boxes, unlike get_*box in PDFium
+        page.get_mediabox(fallback_ok=False),
+        page.get_cropbox(fallback_ok=False),
+    ):
+        if page_box is not None and not all(
+            math.isclose(actual, wanted, rel_tol=0, abs_tol=0.01)
+            for actual, wanted in zip(page_box, expected)
+        ):
+            return None
     left, top, right, bottom = bbox
-    height = page.get_size()[1]
     horizontal, vertical = [], []
     for obj in page.get_objects(filter=[pdfium.raw.FPDF_PAGEOBJ_PATH]):
         if pdfium.raw.FPDFPath_CountSegments(obj) > 5:

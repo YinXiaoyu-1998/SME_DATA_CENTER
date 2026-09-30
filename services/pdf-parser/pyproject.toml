@@ -13,6 +13,12 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+# Docling 2.83.0 internally reads these deprecated fields even when disabled.
+# Match the exact messages and emitting modules; all other warnings stay visible.
+filterwarnings = [
+    'ignore:^This field is deprecated\. Use `generate_page_images=True` and call `TableItem\.get_image\(\)` to extract table images from page images\.$:DeprecationWarning:^docling\.pipeline\.standard_pdf_pipeline$',
+    'ignore:^deprecated$:DeprecationWarning:^docling\.models\.stages\.ocr\.rapid_ocr_model$',
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/smedc_pdf_parser"]
