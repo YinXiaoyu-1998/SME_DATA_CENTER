@@ -43,6 +43,7 @@ enum FileType {
   jpg
   jpeg
   png
+  pdf
 }
 
 enum ProcessingRunStatus {
@@ -331,6 +332,9 @@ model DocumentIndex {
   indexedChunkCount Int                 @default(0) @map("indexed_chunk_count")
   errorCode         String?             @map("error_code") @db.VarChar(128)
   errorSummary      String?             @map("error_summary") @db.Text
+  parserFingerprint String?             @map("parser_fingerprint") @db.VarChar(256)
+  parsedObjectKey   String?             @map("parsed_object_key") @db.VarChar(1024)
+  parseSummary      Json?               @map("parse_summary")
   startedAt         DateTime?           @map("started_at")
   readyAt           DateTime?           @map("ready_at")
   createdAt         DateTime            @default(now()) @map("created_at")

@@ -28,6 +28,13 @@ describe("Phase 3 retrieval contracts", () => {
     expect(isAllowedFileTypeForDocumentKind("quarantine_certificate", "docx")).toBe(false);
   });
 
+  it("allows PDF only for evidence documents", () => {
+    expect(isPhase3FileType("pdf")).toBe(true);
+    expect(isAllowedFileTypeForDocumentKind("evidence", "pdf")).toBe(true);
+    expect(isAllowedFileTypeForDocumentKind("structured", "pdf")).toBe(false);
+    expect(isAllowedFileTypeForDocumentKind("quarantine_certificate", "pdf")).toBe(false);
+  });
+
   it("publishes stable client-safe Phase 3 error codes", () => {
     expect(PHASE3_ERROR_CODES.unsupportedFileType).toBe("UNSUPPORTED_FILE_TYPE");
     expect(PHASE3_ERROR_CODES.temporarilyUnavailable).toBe("TEMPORARILY_UNAVAILABLE");

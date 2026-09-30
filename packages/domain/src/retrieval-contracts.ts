@@ -10,13 +10,14 @@ export const PHASE3_FILE_TYPES = [
   "csv",
   "jpg",
   "jpeg",
-  "png"
+  "png",
+  "pdf"
 ] as const;
 
 export type Phase3FileType = (typeof PHASE3_FILE_TYPES)[number];
 
 const FILE_TYPES_BY_DOCUMENT_KIND: Record<DocumentKindName, readonly Phase3FileType[]> = {
-  evidence: ["md", "txt", "docx"],
+  evidence: ["md", "txt", "docx", "pdf"],
   structured: ["xlsx", "csv"],
   quarantine_certificate: ["jpg", "jpeg", "png"]
 };

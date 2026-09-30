@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import type {
-  EvidenceBlockType,
-  EvidenceSourceLocation,
-  EvidenceWarning,
-  ParsedEvidenceBlock
+import {
+  EvidenceParseError,
+  type EvidenceBlockType,
+  type EvidenceSourceLocation,
+  type EvidenceWarning,
+  type ParsedEvidenceBlock
 } from "@smedc/domain";
 
 export type EvidenceChunkerBlock = Pick<
@@ -33,6 +34,7 @@ export interface EvidenceChunk {
   metadata: {
     fallbackStrategy: "pathological_long_block" | null;
     fallbackChunkIndex?: number;
+    pdfTable?: Record<string, unknown>;
   };
 }
 
@@ -47,10 +49,41 @@ export function createEvidenceChunks(input: CreateEvidenceChunksInput): Evidence
   const maxChunkChars = input.maxChunkChars ?? DEFAULT_MAX_CHUNK_CHARS;
   const chunks: EvidenceChunk[] = [];
   const warnings: EvidenceWarning[] = [];
+  const warnedPdfRows = new Set<string>();
   let pendingBlocks: EvidenceChunkerBlock[] = [];
   let pendingHeadingKey: string | null = null;
 
   for (const block of input.blocks.filter((candidate) => candidate.text.trim().length > 0)) {
+    if (block.blockType === "table" && block.sourceLocation.pageNumber !== undefined) {
+      flushPending();
+      if (block.metadata?.pdfTableChunk !== true) {
+        throw new EvidenceParseError(
+          "PDF_TABLE_REQUIRES_ROW_CHUNKING",
+          "PDF tables require row-aware chunking."
+        );
+      }
+      chunks.push(
+        toChunk({
+          input,
+          chunkOrdinal: chunks.length,
+          text: block.text,
+          headingPath: block.headingPath,
+          blockTypes: ["table"],
+          sourceLocations: [block.sourceLocation],
+          fallbackStrategy: null,
+          pdfTable: block.metadata
+        })
+      );
+      const blockWarnings = (block.metadata.warnings ?? []) as EvidenceWarning[];
+      for (const warning of blockWarnings) {
+        const key = `${warning.code}:${block.metadata.tableId}:${block.metadata.rowStart}`;
+        if (!warnedPdfRows.has(key)) {
+          warnings.push(warning);
+          warnedPdfRows.add(key);
+        }
+      }
+      continue;
+    }
     if (block.text.length > maxChunkChars) {
       flushPending();
       splitPathologicalLongBlock(block, maxChunkChars).forEach((piece, fallbackChunkIndex) => {
@@ -127,6 +160,7 @@ function toChunk(input: {
   sourceLocations: EvidenceSourceLocation[];
   fallbackStrategy: "pathological_long_block" | null;
   fallbackChunkIndex?: number;
+  pdfTable?: Record<string, unknown>;
 }): EvidenceChunk {
   return {
     chunkOrdinal: input.chunkOrdinal,
@@ -138,6 +172,7 @@ function toChunk(input: {
     sourceLocations: input.sourceLocations,
     metadata: {
       fallbackStrategy: input.fallbackStrategy,
+      ...(input.pdfTable ? { pdfTable: input.pdfTable } : {}),
       ...(input.fallbackChunkIndex === undefined
         ? {}
         : { fallbackChunkIndex: input.fallbackChunkIndex })

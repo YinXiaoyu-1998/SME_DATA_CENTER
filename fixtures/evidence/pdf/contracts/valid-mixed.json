@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "sourceChecksumSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "parserFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "pageCount": 3,
+  "pages": [
+    {
+      "pageNumber": 1,
+      "outcome": "parsed"
+    },
+    {
+      "pageNumber": 2,
+      "outcome": "blank"
+    },
+    {
+      "pageNumber": 3,
+      "outcome": "image_only"
+    }
+  ],
+  "blocks": [
+    {
+      "blockId": "block-synthetic-p1-0",
+      "blockType": "table",
+      "text": "条款 | 金额\n条款甲 | 20元\n条款甲 | 20元\n条款乙 | 30元",
+      "headingPath": ["合成规则"],
+      "sourceLocation": {
+        "pageNumber": 1,
+        "bbox": {
+          "left": 0.1,
+          "top": 0.2,
+          "right": 0.9,
+          "bottom": 0.8
+        },
+        "method": "ocr",
+        "blockOrdinal": 1
+      },
+      "metadata": {
+        "tableId": "table-synthetic-p1-0",
+        "rowStart": 0,
+        "rowEnd": 3
+      }
+    }
+  ],
+  "tables": [
+    {
+      "id": "table-synthetic-p1-0",
+      "rowCount": 4,
+      "columnCount": 2,
+      "headerRows": [0],
+      "cells": [
+        {
+          "row": 0,
+          "column": 0,
+          "rowSpan": 1,
+          "columnSpan": 1,
+          "text": "条款"
+        },
+        {
+          "row": 0,
+          "column": 1,
+          "rowSpan": 1,
+          "columnSpan": 1,
+          "text": "金额"
+        },
+        {
+          "row": 1,
+          "column": 0,
+          "rowSpan": 1,
+          "columnSpan": 1,
+          "text": "条款甲"
+        },
+        {
+          "row": 1,
+          "column": 1,
+          "rowSpan": 1,
+          "columnSpan": 1,
+          "text": "20元"
+        },
+        {
+          "row": 2,
+          "column": 0,
+          "rowSpan": 1,
+          "columnSpan": 1,
+          "text": "条款甲"
+        },
+        {
+          "row": 2,
+          "column": 1,
+          "rowSpan": 1,
+          "columnSpan": 1,
+          "text": "20元"
+        },
+        {
+          "row": 3,
+          "column": 0,
+          "rowSpan": 1,
+          "columnSpan": 1,
+          "text": "条款乙"
+        },
+        {
+          "row": 3,
+          "column": 1,
+          "rowSpan": 1,
+          "columnSpan": 1,
+          "text": "30元"
+        }
+      ]
+    }
+  ],
+  "pictures": [
+    {
+      "id": "picture-synthetic-p1-0",
+      "pageNumber": 1,
+      "bbox": {
+        "left": 0.1,
+        "top": 0.2,
+        "right": 0.9,
+        "bottom": 0.8
+      },
+      "caption": null,
+      "ocrBlockIds": ["block-synthetic-p1-0"]
+    },
+    {
+      "id": "picture-synthetic-p3-1",
+      "pageNumber": 3,
+      "bbox": {
+        "left": 0.1,
+        "top": 0.2,
+        "right": 0.9,
+        "bottom": 0.8
+      },
+      "caption": "合成图片",
+      "ocrBlockIds": []
+    }
+  ],
+  "warnings": []
+}

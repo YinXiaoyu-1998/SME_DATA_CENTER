@@ -3,6 +3,9 @@ export const EVIDENCE_BLOCK_TYPES = ["heading", "paragraph", "list", "table", "c
 export type EvidenceBlockType = (typeof EVIDENCE_BLOCK_TYPES)[number];
 
 export interface EvidenceSourceLocation {
+  pageNumber?: number;
+  bbox?: { left: number; top: number; right: number; bottom: number };
+  method?: "native" | "ocr";
   startLine?: number;
   endLine?: number;
   blockOrdinal?: number;

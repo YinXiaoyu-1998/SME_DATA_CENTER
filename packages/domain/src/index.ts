@@ -150,3 +150,13 @@ export {
   type StructuredCoverageSourceBase,
   type StructuredDatasetCoverage
 } from "./structured-coverage.js";
+export {
+  parsePdfEvidenceResult,
+  type PdfSourceLocation,
+  type PdfTableCell,
+  type PdfTable,
+  type PdfPictureRef,
+  type PdfEvidenceResult,
+  type PictureAnnotation,
+  type PictureEnricher
+} from "./pdf-evidence.js";
