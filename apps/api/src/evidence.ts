@@ -1,4 +1,10 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import {
+  projectEvidenceSourceLocation,
+  projectEvidenceWarnings,
+  projectPdfTableProvenance,
+  type PdfTableProvenance
+} from "./evidence-provenance.js";
 import { createDatabaseAdapter } from "@smedc/db";
 import { DocumentIndexStatus, DocumentKind, DocumentStatus, PrismaClient } from "@prisma/client";
 import {
@@ -11,6 +17,8 @@ import {
   canEmployeeAccessDocument,
   loadActiveRetrievalConfig,
   toEvidenceSearchRetrievalMetadata,
+  type EvidenceSourceLocation,
+  type EvidenceWarning,
   type AuthenticatedEmployee,
   type EvidenceSearchRetrievalMetadata,
   type RetrievalModelConfig
@@ -46,6 +54,10 @@ export interface EvidenceSearchResultItem {
     sectionHeadingPath: string[];
     blockType: string | null;
     pageNumber: number | null;
+    pageNumbers?: number[];
+    sourceLocations?: EvidenceSourceLocation[];
+    warnings?: EvidenceWarning[];
+    pdfTable?: PdfTableProvenance;
   };
   score: {
     hybrid: number;
@@ -87,6 +99,10 @@ export interface RevalidatedEvidenceCandidate extends QdrantEvidenceCandidate {
   sectionHeadingPath: string[];
   blockType: string | null;
   pageNumber: number | null;
+  pageNumbers?: number[];
+  sourceLocations?: EvidenceSourceLocation[];
+  warnings?: EvidenceWarning[];
+  pdfTable?: PdfTableProvenance;
   rerankScore?: number | null;
 }
 
@@ -205,7 +221,8 @@ export function createEvidenceSearchService(input: {
         ...(candidates.length >= EVIDENCE_CANDIDATE_WINDOW
           ? ["EVIDENCE_CANDIDATE_WINDOW_TRUNCATED"]
           : []),
-        ...relevance.warnings
+        ...relevance.warnings,
+        ...visible.flatMap((candidate) => candidate.warnings?.map((warning) => warning.code) ?? [])
       ];
 
       return {
@@ -218,7 +235,15 @@ export function createEvidenceSearchService(input: {
             fileType: candidate.fileType,
             sectionHeadingPath: candidate.sectionHeadingPath,
             blockType: candidate.blockType,
-            pageNumber: candidate.pageNumber
+            pageNumber: candidate.pageNumber,
+            ...(candidate.sourceLocations
+              ? {
+                  pageNumbers: candidate.pageNumbers,
+                  sourceLocations: candidate.sourceLocations,
+                  warnings: candidate.warnings ?? [],
+                  ...(candidate.pdfTable ? { pdfTable: candidate.pdfTable } : {})
+                }
+              : {})
           },
           score: {
             hybrid: candidate.hybridScore,
@@ -630,6 +655,8 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
       }
 
       const sourceLocation = sourceLocationFromJson(chunk.sourceLocation);
+      const summary = chunk.documentIndex.parseSummary;
+      const warnings = isRecord(summary) ? projectEvidenceWarnings(summary.warnings) : [];
       revalidated.push({
         ...candidate,
         text: chunk.chunkText,
@@ -637,7 +664,15 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
         fileType: chunk.document.fileType,
         sectionHeadingPath: sourceLocation.sectionHeadingPath,
         blockType: sourceLocation.blockType,
-        pageNumber: sourceLocation.pageNumber
+        pageNumber: sourceLocation.pageNumber,
+        ...(chunk.document.fileType === "pdf"
+          ? {
+              pageNumbers: sourceLocation.pageNumbers,
+              sourceLocations: sourceLocation.sourceLocations,
+              warnings,
+              ...(sourceLocation.pdfTable ? { pdfTable: sourceLocation.pdfTable } : {})
+            }
+          : {})
       });
     }
 
@@ -1003,12 +1038,17 @@ function sourceLocationFromJson(value: unknown): {
   sectionHeadingPath: string[];
   blockType: string | null;
   pageNumber: number | null;
+  pageNumbers: number[];
+  sourceLocations: EvidenceSourceLocation[];
+  pdfTable?: PdfTableProvenance;
 } {
   if (!isRecord(value)) {
     return {
       sectionHeadingPath: [],
       blockType: null,
-      pageNumber: null
+      pageNumber: null,
+      pageNumbers: [],
+      sourceLocations: []
     };
   }
 
@@ -1019,10 +1059,34 @@ function sourceLocationFromJson(value: unknown): {
     ? value["blockTypes"].filter((item): item is string => typeof item === "string")
     : [];
 
+  const sourceLocations = Array.isArray(value.sourceLocations)
+    ? value.sourceLocations.flatMap((entry) => {
+        const location = projectEvidenceSourceLocation(entry);
+        return location ? [location] : [];
+      })
+    : [];
+  const pdfTable = isRecord(value.metadata)
+    ? projectPdfTableProvenance(value.metadata.pdfTable)
+    : null;
+  const legacyPage =
+    typeof value.pageNumber === "number" &&
+    Number.isSafeInteger(value.pageNumber) &&
+    value.pageNumber > 0
+      ? value.pageNumber
+      : null;
+  const pageNumbers = [
+    ...new Set(
+      sourceLocations.flatMap((location) => (location.pageNumber ? [location.pageNumber] : []))
+    )
+  ].sort((a, b) => a - b);
+  if (pageNumbers.length === 0 && legacyPage !== null) pageNumbers.push(legacyPage);
   return {
     sectionHeadingPath: headingPath,
     blockType: blockTypes[0] ?? null,
-    pageNumber: typeof value["pageNumber"] === "number" ? value["pageNumber"] : null
+    pageNumber: pageNumbers.length === 1 ? pageNumbers[0]! : null,
+    pageNumbers,
+    sourceLocations,
+    ...(pdfTable ? { pdfTable } : {})
   };
 }
 

@@ -1,16 +1,23 @@
 import { AsyncEntry } from "@napi-rs/keyring";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { link, mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { SecureCredentialStore } from "./auth.js";
 import type { LauncherLock } from "./session.js";
+import { validateCredentialProfile } from "./config.js";
 
 const SERVICE_NAME = "com.smedatacenter.smedc.launcher";
 
-export function createKeychainCredentialStore(origin: string): SecureCredentialStore {
+export function createKeychainCredentialStore(
+  origin: string,
+  credentialProfile = "default"
+): SecureCredentialStore {
+  const profile = validateCredentialProfile(credentialProfile);
+  // JSON namespaces cannot collide with a canonical HTTPS origin. Default keeps legacy keys.
+  const account = profile === "default" ? origin : JSON.stringify([origin, profile]);
   let entry: AsyncEntry | null = null;
-  const entryFor = () => (entry ??= new AsyncEntry(SERVICE_NAME, origin));
+  const entryFor = () => (entry ??= new AsyncEntry(SERVICE_NAME, account));
   return {
     get: async () => (await entryFor().getPassword()) ?? null,
     set: async (credential) => entryFor().setPassword(credential),
@@ -20,8 +27,16 @@ export function createKeychainCredentialStore(origin: string): SecureCredentialS
   };
 }
 
-export function createCrossProcessLock(origin: string): LauncherLock {
-  const filename = `${encodeURIComponent(origin)}.lock`;
+export function createCrossProcessLock(
+  origin: string,
+  credentialProfile = "default"
+): LauncherLock {
+  const profile = validateCredentialProfile(credentialProfile);
+  const identity = profile === "default" ? origin : JSON.stringify([origin, profile]);
+  const filename =
+    profile === "default"
+      ? `${encodeURIComponent(origin)}.lock`
+      : `profile-${createHash("sha256").update(identity).digest("hex")}.lock`;
   return createFileLock(path.join(appDataDirectory(), "SMEDC", "launcher", "locks", filename));
 }
 

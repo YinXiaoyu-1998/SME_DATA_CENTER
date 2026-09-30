@@ -17,7 +17,7 @@ import {
   toolNotFoundResult,
   validationErrorToolResult
 } from "@smedc/mcp-contract";
-import type { LauncherRuntimeConfig } from "./config.js";
+import { validateCredentialProfile, type LauncherRuntimeConfig } from "./config.js";
 import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
 import { downloadPartitionDataset, uploadPartitionDataset } from "./partition-transfer.js";
@@ -98,6 +98,7 @@ export interface LauncherSelfCheck {
   ok: boolean;
   launcherVersion: string;
   serviceOrigin: string;
+  credentialProfile?: string;
   platform: string;
   secureStore: { available: boolean; durableCredentialPresent: boolean };
   server: {
@@ -441,13 +442,14 @@ export function createOfficialLauncherAuthentication(
   config: LauncherRuntimeConfig,
   fetchImplementation: typeof fetch = fetch
 ): LauncherAuthentication {
+  const credentialProfile = validateCredentialProfile(config.credentialProfile);
   const origin = config.serviceUrl;
   const oauth = new SmedcOAuthClient(new URL(origin), fetchImplementation);
   const session = new LauncherSession({
     origin,
-    secureStore: createKeychainCredentialStore(origin),
+    secureStore: createKeychainCredentialStore(origin, credentialProfile),
     tokenClient: oauth,
-    lock: createCrossProcessLock(origin)
+    lock: createCrossProcessLock(origin, credentialProfile)
   });
   const accessToken = async () => {
     await oauth.metadata(true);
@@ -519,6 +521,7 @@ export function createOfficialLauncherAuthentication(
         ok,
         launcherVersion: LAUNCHER_VERSION,
         serviceOrigin: origin,
+        credentialProfile,
         platform: process.platform,
         secureStore: {
           available: secureStoreAvailable,

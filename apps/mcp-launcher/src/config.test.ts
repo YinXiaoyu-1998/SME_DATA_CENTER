@@ -9,7 +9,8 @@ describe("SMEDC MCP launcher config", () => {
       })
     ).toEqual({
       serviceUrl: "https://hub.example.com",
-      transport: "stdio"
+      transport: "stdio",
+      credentialProfile: "default"
     });
   });
 
@@ -20,7 +21,8 @@ describe("SMEDC MCP launcher config", () => {
       })
     ).toEqual({
       serviceUrl: "https://hub.example.com",
-      transport: "stdio"
+      transport: "stdio",
+      credentialProfile: "default"
     });
   });
 
@@ -70,7 +72,7 @@ describe("SMEDC MCP launcher config", () => {
         smedcBaseUrl: "https://hub.example.com",
         accessToken: "secret"
       } as unknown as { smedcBaseUrl: string })
-    ).toThrow("Launcher config accepts only smedcBaseUrl.");
+    ).toThrow("Launcher config accepts only smedcBaseUrl and credentialProfile.");
   });
 
   it("requires an explicit SMEDC base URL", () => {
@@ -79,4 +81,29 @@ describe("SMEDC MCP launcher config", () => {
     );
     expect(() => loadLauncherRuntimeConfig({})).toThrow("SMEDC_BASE_URL is required.");
   });
+});
+
+describe("launcher credential profiles", () => {
+  it("loads and preserves an explicit named credential namespace", () => {
+    expect(
+      loadLauncherRuntimeConfig({
+        SMEDC_BASE_URL: "https://hub.example.test",
+        SMEDC_CREDENTIAL_PROFILE: "pdf-run1-admin"
+      })
+    ).toMatchObject({ credentialProfile: "pdf-run1-admin" });
+    expect(
+      createLauncherRuntimeConfig({
+        smedcBaseUrl: "https://hub.example.test",
+        credentialProfile: "default"
+      }).credentialProfile
+    ).toBe("default");
+  });
+  it.each(["", "../default", "a/b", "a\\b", "a.b", " spaced", "x".repeat(65)])(
+    "rejects invalid profile %j",
+    (credentialProfile) => {
+      expect(() =>
+        createLauncherRuntimeConfig({ smedcBaseUrl: "https://hub.example.test", credentialProfile })
+      ).toThrow("credential profile");
+    }
+  );
 });

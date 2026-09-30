@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createPdfUploadAdmission } from "./pdf-upload-admission.js";
 import Fastify from "fastify";
 import { DEFAULT_RETRIEVAL_CONFIG_VERSION } from "@smedc/domain";
 import { registerMcpHttpRoute } from "./mcp/http.js";
@@ -109,6 +110,10 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     documents,
     storage,
     evidence,
+    pdfUploadAdmission: createPdfUploadAdmission({
+      environment,
+      verifyRollbackFloor: options.pdfRollbackFloorVerifier
+    }),
     sourceDocumentDownloads,
     cursorSigningSecret,
     retrievalConfigVersion:

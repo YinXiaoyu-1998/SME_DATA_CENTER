@@ -15,7 +15,9 @@ export const MCP_UPLOAD_MAX_BYTES = PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes
 export const MCP_LOCAL_FILE_PATH_MAX_LENGTH = 4096;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 
-const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
+const evidenceFileType = z
+  .enum(["md", "txt", "docx", "pdf"])
+  .describe("Evidence file type filter.");
 const structuredDataset = z.enum(STRUCTURED_DATASETS).describe("Phase 3 structured dataset name.");
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -139,7 +141,10 @@ const searchDocumentEvidenceInputSchema = z
       .describe("Evidence search query."),
     filters: z
       .object({
-        fileTypes: z.array(evidenceFileType).optional().describe("Optional md/txt/docx filters."),
+        fileTypes: z
+          .array(evidenceFileType)
+          .optional()
+          .describe("Optional md/txt/docx/pdf filters."),
         documentIds: z
           .array(evidenceFilterId)
           .max(PUBLIC_INPUT_LIMITS.evidenceFilterIdsPerGroup)
@@ -513,7 +518,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       { name: "cursor", required: false, description: "Opaque pagination cursor." }
     ],
     resultShape: [
-      "results[]: authorized evidence chunks and source-location metadata",
+      "results[]: authorized evidence chunks; PDF sources include all pageNumbers/sourceLocations, warnings and optional pdfTable row/continuation provenance",
       "sources[]: one automatic download status/link per distinct returned document",
       "page",
       "retrieval: config versions, rerank status, relevance policy, cutoff, and dropped count",
@@ -668,7 +673,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_evidence_document",
     title: "Upload SMEDC evidence document",
     description:
-      "Upload MD/TXT/DOCX evidence by calling authenticated multipart POST /v1/documents/evidence. Requires the admin role.",
+      "Upload MD/TXT/DOCX/PDF evidence by calling authenticated multipart POST /v1/documents/evidence. Requires the admin role.",
     inputSchema: uploadEvidenceDocumentInputSchema,
     inputFields: [
       { name: "file", required: true, description: "Base64 upload file payload." },
@@ -755,7 +760,12 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       "Read evidence indexing status by calling authenticated GET /v1/documents/evidence/:documentId/status.",
     inputSchema: evidenceDocumentStatusInputSchema,
     inputFields: [{ name: "documentId", required: true, description: "Evidence document id." }],
-    resultShape: ["document", "processing", "documentIndex"]
+    resultShape: [
+      "document",
+      "processing",
+      "documentIndex",
+      "parsing: PDF page outcomes, counts and warnings; null until parsed"
+    ]
   }),
   defineToolContract({
     name: "get_import_status",

@@ -60,6 +60,7 @@ export interface DocumentStatusRecord {
   processingRunStatus: string | null;
   documentIndexStatus: string | null;
   documentIndexRetrievalConfigVersion: string | null;
+  documentIndexParseSummary?: unknown;
 }
 
 export interface ArchiveDocumentInput {
@@ -108,6 +109,7 @@ const documentStatusInclude = {
     take: 1,
     select: {
       status: true,
+      parseSummary: true,
       retrievalConfig: {
         select: {
           version: true
@@ -299,6 +301,7 @@ function toDocumentStatusRecord(
     confidentialityLevel: document.confidentialityLevel,
     processingRunStatus: document.processingRuns[0]?.status ?? null,
     documentIndexStatus: document.indexes[0]?.status ?? null,
-    documentIndexRetrievalConfigVersion: document.indexes[0]?.retrievalConfig.version ?? null
+    documentIndexRetrievalConfigVersion: document.indexes[0]?.retrievalConfig.version ?? null,
+    documentIndexParseSummary: document.indexes[0]?.parseSummary ?? null
   };
 }

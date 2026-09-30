@@ -99,6 +99,7 @@ describe("published launcher artifact", () => {
   it("passes a built-artifact secret and legacy-contract scan", () => {
     const bundledSource = exec("tar", ["-xOf", tarballPath, "package/dist/index.js"]);
     expect(bundledSource).toContain("SMEDC_BASE_URL");
+    expect(bundledSource).toContain("SMEDC_CREDENTIAL_PROFILE");
     expect(bundledSource).toContain("Launcher 0.5.0+");
     for (const forbidden of [
       "SMEDC_API_URL",
@@ -121,7 +122,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.6.0");
+    expect(manifest.version).toBe("0.7.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -140,13 +141,14 @@ describe("published launcher artifact", () => {
       args: ["serve"],
       env: {
         ...process.env,
-        SMEDC_BASE_URL: "https://hub.example.test"
+        SMEDC_BASE_URL: "https://hub.example.test",
+        SMEDC_CREDENTIAL_PROFILE: "pdf-package-admin"
       } as Record<string, string>
     });
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.6.0");
+      expect(client.getServerVersion()?.version).toBe("0.7.0");
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -157,6 +159,16 @@ describe("published launcher artifact", () => {
           "describe_structured_dataset_coverage"
         ])
       );
+      expect(
+        tools.tools.find((tool) => tool.name === "upload_evidence_document")?.description
+      ).toContain("PDF");
+      expect(
+        tools.tools.find((tool) => tool.name === "search_document_evidence")?.inputSchema
+      ).toMatchObject({
+        properties: {
+          filters: { properties: { fileTypes: { items: { enum: ["md", "txt", "docx", "pdf"] } } } }
+        }
+      });
       const structuredUpload = tools.tools.find(
         (tool) => tool.name === "upload_structured_dataset"
       );

@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import type { PdfUploadAdmission } from "../pdf-upload-admission.js";
+import { projectPdfParsingSummary } from "../evidence-provenance.js";
 import {
   authorizeFileUpload,
   fileUploadAdminRequiredResponse,
@@ -227,7 +229,7 @@ function validateEvidenceSearchBody(value: unknown): EvidenceSearchValidation {
   }
 
   const filters = filtersValue as Record<string, unknown> | undefined;
-  const fileTypes = evidenceFilterGroup(filters?.fileTypes, new Set(["md", "txt", "docx"]));
+  const fileTypes = evidenceFilterGroup(filters?.fileTypes, new Set(["md", "txt", "docx", "pdf"]));
   const documentIds = evidenceFilterGroup(filters?.documentIds);
   if (!fileTypes.ok || !documentIds.ok) {
     const limitExceeded =
@@ -302,7 +304,10 @@ function evidenceStatusResponse(document: DocumentStatusRecord, retrievalConfigV
     documentIndex: {
       status: document.documentIndexStatus ?? "pending",
       retrievalConfigVersion: document.documentIndexRetrievalConfigVersion ?? retrievalConfigVersion
-    }
+    },
+    ...(document.fileType === "pdf"
+      ? { parsing: projectPdfParsingSummary(document.documentIndexParseSummary) }
+      : {})
   };
 }
 
@@ -314,6 +319,7 @@ export function registerEvidenceRoutes(
     storage: () => StorageAdapter;
     evidence: () => EvidenceSearchRepository;
     sourceDocumentDownloads: () => SourceDocumentDownloadIssuer;
+    pdfUploadAdmission: PdfUploadAdmission;
     cursorSigningSecret: string;
     retrievalConfigVersion?: string;
     createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
@@ -375,7 +381,24 @@ export function registerEvidenceRoutes(
       return validationError(
         reply,
         PHASE3_ERROR_CODES.invalidDocumentKindFileType,
-        "Evidence documents must be .md, .txt, or .docx files."
+        "Evidence documents must be .md, .txt, .docx, or .pdf files."
+      );
+    }
+
+    const pdfMime =
+      upload.file.contentType?.split(";")[0]?.trim().toLowerCase() === "application/pdf";
+    const pdfMagic = upload.file.body.subarray(0, 5).toString("latin1") === "%PDF-";
+    const validPdfHeader = /^%PDF-(?:1\.[0-7]|2\.0)[\r\n]/u.test(
+      upload.file.body.subarray(0, 9).toString("latin1")
+    );
+    if (
+      (fileType === "pdf" && (!pdfMime || !validPdfHeader)) ||
+      (fileType !== "pdf" && (pdfMime || pdfMagic))
+    ) {
+      return validationError(
+        reply,
+        "INVALID_EVIDENCE_UPLOAD",
+        "PDF filename, media type, and file signature must agree."
       );
     }
 
@@ -386,6 +409,24 @@ export function registerEvidenceRoutes(
         "INVALID_CONFIDENTIALITY_LEVEL",
         "Confidentiality level must be an integer from 0 through 3."
       );
+    }
+
+    if (fileType === "pdf") {
+      const admission = await dependencies.pdfUploadAdmission();
+      if (!admission.allowed)
+        return reply.code(503).send({
+          error: {
+            code: admission.code,
+            message:
+              admission.code === "PDF_UPLOAD_DISABLED"
+                ? "New PDF uploads are disabled."
+                : admission.code === "PDF_ROLLBACK_FLOOR_UNVERIFIED"
+                  ? "PDF uploads require a verified compatible rollback runtime."
+                  : "PDF parsing service is unavailable; retry later.",
+            retryable: admission.code === "PDF_SERVICE_UNAVAILABLE",
+            requestId: request.id
+          }
+        });
     }
 
     const audit = dependencies.createBusinessRequestAudit(request);
@@ -457,6 +498,7 @@ export function registerEvidenceRoutes(
       }
 
       if (
+        document.orgId !== employee.orgId ||
         document.uploaderId !== employee.id ||
         employee.clearance < document.confidentialityLevel
       ) {

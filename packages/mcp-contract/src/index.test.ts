@@ -163,7 +163,7 @@ const invalidInputCases = [
       { label: "empty query", input: { query: "" } },
       {
         label: "invalid evidence file type",
-        input: { query: "refund", filters: { fileTypes: ["pdf"] } }
+        input: { query: "refund", filters: { fileTypes: ["csv"] } }
       },
       { label: "limit below range", input: { query: "refund", limit: 0 } },
       { label: "limit above range", input: { query: "refund", limit: 51 } },
@@ -520,7 +520,7 @@ describe("SMEDC MCP contract", () => {
     );
 
     expect(evidenceSearch?.resultShape).toEqual([
-      "results[]: authorized evidence chunks and source-location metadata",
+      "results[]: authorized evidence chunks; PDF sources include all pageNumbers/sourceLocations, warnings and optional pdfTable row/continuation provenance",
       "sources[]: one automatic download status/link per distinct returned document",
       "page",
       "retrieval: config versions, rerank status, relevance policy, cutoff, and dropped count",
@@ -1265,4 +1265,31 @@ describe("launcher path-mode upload schema", () => {
       }).success
     ).toBe(false);
   });
+});
+
+it("accepts PDF evidence search and PDF base64/path uploads through the existing tool contracts", () => {
+  expect(
+    contractsByName
+      .get("search_document_evidence")!
+      .inputSchema.safeParse({ query: "synthetic clause", filters: { fileTypes: ["pdf"] } }).success
+  ).toBe(true);
+  expect(
+    contractsByName.get("upload_evidence_document")!.inputSchema.safeParse({
+      title: "Synthetic PDF",
+      file: {
+        name: "evidence.pdf",
+        mediaType: "application/pdf",
+        encoding: "base64",
+        contentBase64: "JVBERi0xLjcK"
+      }
+    }).success
+  ).toBe(true);
+  expect(
+    launcherUploadFileInputSchema.safeParse({
+      name: "evidence.pdf",
+      mediaType: "application/pdf",
+      encoding: "path",
+      filePath: "/synthetic/evidence.pdf"
+    }).success
+  ).toBe(true);
 });

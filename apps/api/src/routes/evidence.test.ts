@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { buildApiServer } from "../server.js";
+import { buildRetrievalConfigSeed, loadActiveRetrievalConfig } from "@smedc/domain";
+import { PrismaEvidenceRevalidator, createEvidenceSearchService } from "../evidence.js";
+import { createPdfTableBlocks } from "../../../worker/src/chunking/pdf-table-chunker.js";
+import { createEvidenceChunks } from "../../../worker/src/chunking/evidence-chunker.js";
 import {
   adminEmployee,
   baoliEmployee,
@@ -106,6 +110,356 @@ describe("evidence routes", () => {
   afterEach(async () => {
     await app?.close();
     app = undefined;
+    vi.unstubAllGlobals();
+  });
+
+  async function uploadPdfCase(
+    options: {
+      fileName?: string;
+      contentType?: string;
+      content?: Buffer;
+      enabled?: boolean;
+      verified?: boolean;
+      ready?: boolean;
+    } = {}
+  ) {
+    const documents = createDocumentRepository();
+    const storage = createOrganizationContextStorageAdapter();
+    const readyFetch = vi.fn<typeof fetch>(async () => {
+      if (options.ready === false) throw new Error("private parser host unavailable");
+      return Response.json({
+        status: "ready",
+        schemaVersion: 1,
+        parserFingerprint: "a".repeat(64)
+      });
+    });
+    vi.stubGlobal("fetch", readyFetch);
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository: documents,
+      storageAdapter: storage,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false,
+      runtimeEnv: {
+        SMEDC_PDF_UPLOAD_ENABLED: options.enabled === false ? "false" : "true",
+        SMEDC_PDF_SERVICE_URL: "http://parser.synthetic.test",
+        SMEDC_PDF_SERVICE_TOKEN: "s".repeat(32)
+      },
+      pdfRollbackFloorVerifier: async () => options.verified !== false
+    });
+    const multipart = createMultipartPayload([
+      {
+        name: "file",
+        fileName: options.fileName ?? "synthetic.pdf",
+        contentType: options.contentType ?? "application/pdf",
+        value: options.content ?? Buffer.from("%PDF-1.7\nsynthetic")
+      },
+      { name: "title", value: "Synthetic PDF" }
+    ]);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/documents/evidence",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+        "content-type": multipart.contentType
+      },
+      payload: multipart.body
+    });
+    return { response, documents, storage, readyFetch };
+  }
+
+  it("admits an authenticated admin PDF only after verified rollback floor and authenticated readiness", async () => {
+    const { response, documents, storage, readyFetch } = await uploadPdfCase();
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      document: { fileType: "pdf" },
+      processing: { status: "queued" }
+    });
+    expect(documents.processingRuns).toEqual([
+      expect.objectContaining({ jobType: "evidence_document_index" })
+    ]);
+    expect(storage.putInputs).toHaveLength(1);
+    expect(readyFetch).toHaveBeenCalledWith(
+      "http://parser.synthetic.test/v1/ready",
+      expect.objectContaining({
+        method: "GET",
+        redirect: "error",
+        headers: { authorization: `Bearer ${"s".repeat(32)}` }
+      })
+    );
+  });
+
+  it.each([
+    { content: Buffer.from("not a PDF") },
+    { content: Buffer.from([0xa5, 0xd0, 0xc4, 0xc6, 0xad, 0xb1, 0xae, 0xb7, 0x8a]) },
+    { contentType: "text/plain" },
+    { fileName: "renamed.md" },
+    { fileName: "renamed.txt", contentType: "text/plain" }
+  ])("rejects mismatched PDF extension, MIME or magic before storage %j", async (options) => {
+    const { response, documents, storage, readyFetch } = await uploadPdfCase(options);
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: { code: "INVALID_EVIDENCE_UPLOAD" } });
+    expect(documents.documents).toHaveLength(0);
+    expect(storage.putInputs).toHaveLength(0);
+    expect(readyFetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { enabled: false, code: "PDF_UPLOAD_DISABLED" },
+    { verified: false, code: "PDF_ROLLBACK_FLOOR_UNVERIFIED" },
+    { ready: false, code: "PDF_SERVICE_UNAVAILABLE" }
+  ])("refuses new PDF admission without durable queueing when unavailable %j", async (options) => {
+    const { response, documents, storage } = await uploadPdfCase(options);
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ error: { code: options.code } });
+    expect(response.payload).not.toContain("private parser");
+    expect(documents.processingRuns).toHaveLength(0);
+    expect(storage.putInputs).toHaveLength(0);
+  });
+
+  it("keeps PDF search independent of upload readiness", async () => {
+    const repository = createEvidenceSearchRepository();
+    const search = vi.spyOn(repository, "searchEvidence");
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository: repository,
+      sourceDocumentDownloadIssuer: { issueMany: async () => ({ sources: [], warnings: [] }) },
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      runtimeEnv: { SMEDC_PDF_UPLOAD_ENABLED: "false" },
+      logger: false
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: { authorization: `Bearer ${await accessTokenFor(adminEmployee)}` },
+      payload: { query: "synthetic clause", filters: { fileTypes: ["pdf"] } }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(search).toHaveBeenCalledWith(
+      expect.objectContaining({ filters: { fileTypes: ["pdf"], documentIds: [] } })
+    );
+  });
+
+  it("preserves row continuation provenance from real PDF table chunks through API and MCP while excluding arbitrary metadata", async () => {
+    const blocks = createPdfTableBlocks(
+      {
+        id: "synthetic-table",
+        rowCount: 2,
+        columnCount: 2,
+        headerRows: [0],
+        cells: [
+          { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "Clause" },
+          { row: 0, column: 1, rowSpan: 1, columnSpan: 1, text: "Amount" },
+          { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "x".repeat(500) },
+          { row: 1, column: 1, rowSpan: 1, columnSpan: 1, text: "100-200" }
+        ]
+      },
+      {
+        headingPath: ["Synthetic"],
+        sourceLocation: { pageNumber: 3, method: "native" },
+        maxChunkChars: 100
+      }
+    );
+    const chunking = createEvidenceChunks({
+      documentId: "synthetic-table-doc",
+      contentVersion: 2,
+      retrievalConfigVersion: "phase3.retrieval.v1",
+      blocks,
+      maxChunkChars: 100
+    });
+    expect(chunking.chunks.length).toBeGreaterThan(1);
+    const chunk = chunking.chunks[0]!;
+    const location = {
+      sectionHeadingPath: chunk.headingPath,
+      blockTypes: chunk.blockTypes,
+      sourceLocations: chunk.sourceLocations,
+      metadata: {
+        ...chunk.metadata,
+        pdfTable: {
+          ...chunk.metadata.pdfTable,
+          parsedObjectKey: "private/parsed.json",
+          url: "https://private.invalid"
+        }
+      }
+    };
+    const revalidator = new PrismaEvidenceRevalidator({
+      documentChunk: {
+        findMany: async () => [
+          {
+            qdrantPointId: chunk.pointId,
+            documentId: "synthetic-table-doc",
+            chunkId: chunk.chunkId,
+            contentVersion: 2,
+            retrievalConfigVersion: "phase3.retrieval.v1",
+            chunkText: chunk.text,
+            sourceLocation: location,
+            document: { title: "Synthetic PDF", fileType: "pdf", confidentialityLevel: 0 },
+            documentIndex: { contentVersion: 2, parseSummary: { warnings: chunking.warnings } }
+          }
+        ]
+      }
+    } as unknown as ConstructorParameters<typeof PrismaEvidenceRevalidator>[0]);
+    const retrievalConfig = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({
+        retrievalConfigVersion: "phase3.retrieval.v1",
+        qdrantCollection: "synthetic"
+      }),
+      "phase3.retrieval.v1"
+    );
+    const repository = createEvidenceSearchService({
+      retrievalConfig,
+      revalidator,
+      rerankProvider: null,
+      qdrantSearcher: {
+        hybridSearch: async () => [
+          {
+            chunkId: chunk.chunkId,
+            documentId: "synthetic-table-doc",
+            qdrantPointId: chunk.pointId,
+            contentVersion: 2,
+            retrievalConfigVersion: "phase3.retrieval.v1",
+            text: "stale",
+            hybridScore: 0.9,
+            matchedBy: ["dense"]
+          }
+        ]
+      }
+    });
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository: repository,
+      sourceDocumentDownloadIssuer: { issueMany: async () => ({ sources: [], warnings: [] }) },
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      runtimeEnv: { SMEDC_PDF_UPLOAD_ENABLED: "false" },
+      logger: false
+    });
+    const args = { query: "synthetic clause", filters: { fileTypes: ["pdf"] } };
+    const token = await accessTokenFor(adminEmployee);
+    const api = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: { authorization: `Bearer ${token}` },
+      payload: args
+    });
+    expect(api.statusCode).toBe(200);
+    const expected = {
+      tableId: "synthetic-table",
+      rowStart: 1,
+      rowEnd: 1,
+      rowIds: ["synthetic-table:row:1"],
+      cellOrigins: [
+        { row: 1, column: 0, rowSpan: 1, columnSpan: 1 },
+        { row: 1, column: 1, rowSpan: 1, columnSpan: 1 }
+      ],
+      continuation: { rowId: "synthetic-table:row:1", partIndex: 0, partCount: expect.any(Number) }
+    };
+    expect(api.json().results[0].source.pdfTable).toEqual(expected);
+    expect(api.json().results[0].source.pdfTable.continuation.partCount).toBeGreaterThan(1);
+    expect(api.payload).not.toContain("private/");
+    expect(api.payload).not.toContain("private.invalid");
+    const mcp = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        host: "127.0.0.1:3000",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-protocol-version": "2025-11-25"
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "search_document_evidence", arguments: args }
+      }
+    });
+    expect(mcp.statusCode).toBe(200);
+    const output = JSON.parse(mcp.json().result.content[0].text);
+    expect(output.results[0].source.pdfTable).toEqual(expected);
+    expect(output.warnings).toContain("PDF_TABLE_ROW_CONTINUED");
+    expect(mcp.payload).not.toContain("parsedObjectKey");
+  });
+
+  it("projects PDF parsing summary without private artifacts and denies foreign organization or insufficient clearance", async () => {
+    const documents = createDocumentRepository();
+    const created = await documents.createUploadedDocument({
+      id: "synthetic-pdf-status",
+      orgId: adminEmployee.orgId,
+      uploaderId: adminEmployee.id,
+      status: "active",
+      title: "Synthetic PDF",
+      documentType: "management_knowledge",
+      documentKind: "evidence",
+      fileType: "pdf",
+      sourceSystem: null,
+      sourceTime: null,
+      storageObjectKey: "private/original.pdf",
+      originalFileName: "synthetic.pdf",
+      byteSize: 12,
+      checksumSha256: "a".repeat(64),
+      confidentialityLevel: 0,
+      processingJobType: "evidence_document_index",
+      audit: {
+        requestId: "synthetic",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
+    });
+    const parsing = {
+      schemaVersion: 1,
+      pageCount: 2,
+      pages: [
+        { pageNumber: 1, outcome: "parsed" },
+        { pageNumber: 2, outcome: "image_only" }
+      ],
+      complete: true,
+      tableCount: 1,
+      pictureCount: 1,
+      warnings: [
+        {
+          code: "PDF_IMAGE_ONLY",
+          message: "No searchable text",
+          sourceLocation: { pageNumber: 2, method: "ocr" }
+        }
+      ]
+    };
+    Object.assign(created, {
+      documentIndexParseSummary: { ...parsing, parsedObjectKey: "private/parsed.json" },
+      parsedObjectKey: "private/parsed.json"
+    });
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee, orgBAdminEmployee]),
+      documentRepository: documents,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      runtimeEnv: { SMEDC_PDF_UPLOAD_ENABLED: "false" },
+      logger: false
+    });
+    const status = () =>
+      app!.inject({
+        method: "GET",
+        url: "/v1/documents/evidence/synthetic-pdf-status/status",
+        headers: { authorization: `Bearer ${token}` }
+      });
+    const token = await accessTokenFor(adminEmployee);
+    const allowed = await status();
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json().parsing).toEqual(parsing);
+    expect(allowed.payload).not.toContain("private/");
+    created.orgId = orgBAdminEmployee.orgId;
+    const foreign = await status();
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.payload).not.toContain("parsing");
+    created.orgId = adminEmployee.orgId;
+    created.confidentialityLevel = adminEmployee.clearance + 1;
+    const denied = await status();
+    expect(denied.statusCode).toBe(404);
+    expect(denied.payload).not.toContain("PDF_IMAGE_ONLY");
   });
 
   it("uploads evidence documents and queues evidence indexing", async () => {
@@ -769,11 +1123,11 @@ describe("evidence routes", () => {
     const multipartPayload = createMultipartPayload([
       {
         name: "file",
-        fileName: "invalid-format.pdf",
-        contentType: "application/pdf",
-        value: Buffer.from("%PDF-1.4 fake evidence", "utf8")
+        fileName: "invalid-format.csv",
+        contentType: "text/csv",
+        value: Buffer.from("a,b\n1,2", "utf8")
       },
-      { name: "title", value: "PDF 不是支持的证据格式" },
+      { name: "title", value: "CSV 不是支持的证据格式" },
       { name: "confidentialityLevel", value: "0" }
     ]);
 
@@ -791,7 +1145,7 @@ describe("evidence routes", () => {
     expect(response.json()).toMatchObject({
       error: {
         code: "INVALID_DOCUMENT_KIND_FILE_TYPE",
-        message: "Evidence documents must be .md, .txt, or .docx files."
+        message: "Evidence documents must be .md, .txt, .docx, or .pdf files."
       }
     });
   });

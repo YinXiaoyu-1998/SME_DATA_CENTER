@@ -1,24 +1,29 @@
 export interface LauncherRuntimeConfig {
   serviceUrl: string;
   transport: "stdio";
+  credentialProfile?: string;
 }
 
 export interface LauncherRuntimeConfigInput {
   smedcBaseUrl: string;
+  credentialProfile?: string;
 }
 
-type LauncherRuntimeEnv = Partial<Record<"SMEDC_BASE_URL", string | undefined>>;
+type LauncherRuntimeEnv = Partial<
+  Record<"SMEDC_BASE_URL" | "SMEDC_CREDENTIAL_PROFILE", string | undefined>
+>;
 
-const CONFIG_INPUT_KEYS = new Set(["smedcBaseUrl"]);
+const CONFIG_INPUT_KEYS = new Set(["smedcBaseUrl", "credentialProfile"]);
 
 export function createLauncherRuntimeConfig(
   input: LauncherRuntimeConfigInput
 ): LauncherRuntimeConfig {
-  assertOnlyBaseUrlInput(input);
+  assertConfigInputKeys(input);
 
   return {
     serviceUrl: normalizeSmedcBaseUrl(input.smedcBaseUrl),
-    transport: "stdio"
+    transport: "stdio",
+    credentialProfile: validateCredentialProfile(input.credentialProfile)
   };
 }
 
@@ -31,14 +36,17 @@ export function loadLauncherRuntimeConfig(
     throw new Error("SMEDC_BASE_URL is required.");
   }
 
-  return createLauncherRuntimeConfig({ smedcBaseUrl });
+  return createLauncherRuntimeConfig({
+    smedcBaseUrl,
+    credentialProfile: env.SMEDC_CREDENTIAL_PROFILE
+  });
 }
 
-function assertOnlyBaseUrlInput(input: LauncherRuntimeConfigInput): void {
+function assertConfigInputKeys(input: LauncherRuntimeConfigInput): void {
   const keys = Object.keys(input);
 
   if (keys.some((key) => !CONFIG_INPUT_KEYS.has(key))) {
-    throw new Error("Launcher config accepts only smedcBaseUrl.");
+    throw new Error("Launcher config accepts only smedcBaseUrl and credentialProfile.");
   }
 }
 
@@ -70,4 +78,12 @@ function normalizeSmedcBaseUrl(value: string): string {
   }
 
   return url.origin;
+}
+
+/** A local credential namespace, never an organization or authorization selector. */
+export function validateCredentialProfile(value: unknown = "default"): string {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(value)) {
+    throw new Error("SMEDC credential profile must match [A-Za-z0-9_-]{1,64}.");
+  }
+  return value;
 }

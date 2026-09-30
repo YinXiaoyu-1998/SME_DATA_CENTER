@@ -1,6 +1,6 @@
 {
   "name": "smedc-mcp-launcher",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Official desktop stdio MCP launcher for SMEDC",
   "license": "MIT",
   "repository": {

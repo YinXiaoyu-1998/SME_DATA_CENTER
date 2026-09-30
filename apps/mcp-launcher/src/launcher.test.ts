@@ -277,7 +277,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.6.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.7.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -599,6 +599,62 @@ describe("launcher local path upload proxy", () => {
 
   afterAll(async () => {
     await Promise.all(tempRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  it("transfers PDF bytes from a local path and preserves all remote pages, locations and warnings", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "launcher-pdf-path-"));
+    tempRoots.push(root);
+    const filePath = path.join(root, "synthetic.pdf");
+    const pdf = Buffer.from("%PDF-1.7\nsynthetic");
+    await writeFile(filePath, pdf);
+    const calls: Array<{ method?: string; params?: unknown }> = [];
+    const remote = {
+      document: { fileType: "pdf" },
+      parsing: {
+        pageCount: 2,
+        warnings: [
+          {
+            code: "PDF_IMAGE_ONLY",
+            message: "No text",
+            sourceLocation: { pageNumber: 2, method: "ocr" }
+          }
+        ]
+      },
+      source: {
+        pageNumber: null,
+        pageNumbers: [1, 2],
+        sourceLocations: [
+          { pageNumber: 1, method: "native" },
+          { pageNumber: 2, method: "ocr" }
+        ]
+      }
+    };
+    const dependencies = createLauncherToolDependencies({
+      config,
+      auth: fakeAuth({ profile: adminProfile }),
+      fetchImplementation: fakeMcpFetch(calls, remote)
+    });
+    const result = await createLauncherToolHandler(
+      "upload_evidence_document",
+      dependencies
+    )({
+      file: { name: "synthetic.pdf", mediaType: "application/pdf", encoding: "path", filePath },
+      title: "Synthetic PDF"
+    });
+    expect(result.isError).toBe(false);
+    expect(body(result)).toEqual(remote);
+    expect(calls.find((call) => call.method === "tools/call")?.params).toEqual({
+      name: "upload_evidence_document",
+      arguments: {
+        file: {
+          name: "synthetic.pdf",
+          mediaType: "application/pdf",
+          encoding: "base64",
+          contentBase64: "JVBERi0xLjcKc3ludGhldGlj"
+        },
+        title: "Synthetic PDF"
+      }
+    });
   });
 
   const pathInput = (filePath: string) => ({

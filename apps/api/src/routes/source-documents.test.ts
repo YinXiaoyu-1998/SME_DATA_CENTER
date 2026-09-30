@@ -11,6 +11,7 @@ import {
   authenticateTestAccessToken,
   adminEmployee,
   baoliEmployee,
+  orgBAdminEmployee,
   createDocumentRepository,
   createInMemoryQuarantineCertificateRepository,
   createInMemorySourceDocumentRepository,
@@ -61,17 +62,18 @@ describe("source document download routes", () => {
     };
 
     app = buildApiServer({
-      employeeRepository: createRepository([adminEmployee, baoliEmployee]),
+      employeeRepository: createRepository([adminEmployee, baoliEmployee, orgBAdminEmployee]),
       documentRepository,
       quarantineCertificateRepository,
       sourceDocumentRepository,
       storageAdapter,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
+      runtimeEnv: { SMEDC_PDF_UPLOAD_ENABLED: "false" },
       logger: false
     });
 
-    return { app, createDownloadUrl };
+    return { app, createDownloadUrl, documentRepository, storageAdapter };
   }
 
   async function uploadCertificate(server: FastifyInstance) {
@@ -97,6 +99,77 @@ describe("source document download routes", () => {
       payload: multipart.body
     });
   }
+
+  it("downloads only the original PDF through the signed audit chain during disabled admission, enforcing org and clearance", async () => {
+    const { app, createDownloadUrl, documentRepository, storageAdapter } =
+      await buildDownloadTestServer();
+    const object = await storageAdapter.putObject({
+      orgId: adminEmployee.orgId,
+      documentId: "pdf-synthetic",
+      fileName: "synthetic.pdf",
+      contentType: "application/pdf",
+      body: Buffer.from("%PDF-1.7\nsynthetic")
+    });
+    const document = await documentRepository.createUploadedDocument({
+      id: "pdf-synthetic",
+      orgId: adminEmployee.orgId,
+      uploaderId: adminEmployee.id,
+      status: "active",
+      title: "Synthetic PDF",
+      documentType: "management_knowledge",
+      documentKind: "evidence",
+      fileType: "pdf",
+      sourceSystem: null,
+      sourceTime: null,
+      storageObjectKey: object.key,
+      originalFileName: "synthetic.pdf",
+      contentType: "application/pdf",
+      byteSize: object.size,
+      checksumSha256: object.hash,
+      confidentialityLevel: 2,
+      processingJobType: "evidence_document_index",
+      audit: {
+        requestId: "synthetic",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
+    });
+    Object.assign(document, { parsedObjectKey: "private/parsed.json" });
+    const request = async (employee: typeof adminEmployee) =>
+      app.inject({
+        method: "POST",
+        url: "/v1/source-documents/pdf-synthetic/download-url",
+        headers: { authorization: `Bearer ${await accessTokenFor(employee)}` }
+      });
+    for (const employee of [orgBAdminEmployee, baoliEmployee]) {
+      const denied = await request(employee);
+      expect(denied.statusCode).toBe(404);
+      expect(denied.payload).not.toContain("synthetic.pdf");
+    }
+    expect(createDownloadUrl).not.toHaveBeenCalled();
+    const allowed = await request(adminEmployee);
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
+      originalFileName: "synthetic.pdf",
+      contentType: "application/pdf",
+      downloadUrl: "https://download.example.test/source"
+    });
+    expect(allowed.payload).not.toContain("parsed.json");
+    expect(createDownloadUrl).toHaveBeenCalledExactlyOnceWith(object.key, {
+      expiresInSeconds: 86400,
+      downloadFileName: "synthetic.pdf"
+    });
+    expect(
+      documentRepository.auditLogs.filter((log) => log.action === "document.downloaded")
+    ).toEqual([
+      expect.objectContaining({
+        actorEmployeeId: adminEmployee.id,
+        targetId: "pdf-synthetic",
+        metadata: { reason: "explicit_request" }
+      })
+    ]);
+  });
 
   it("issues a 24-hour attachment download URL for an authorized source document", async () => {
     const { app, createDownloadUrl } = await buildDownloadTestServer();

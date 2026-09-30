@@ -52,8 +52,10 @@ import {
   verifyInternalDelegationProof,
   type RequestAuditContext
 } from "./request-audit-context.js";
+import type { PdfRollbackFloorVerifier } from "./pdf-upload-admission.js";
 
 export interface ApiServerOptions {
+  pdfRollbackFloorVerifier?: PdfRollbackFloorVerifier;
   employeeRepository?: EmployeeRepository;
   documentRepository?: DocumentCatalogRepository;
   structuredImportRepository?: StructuredImportRepository;

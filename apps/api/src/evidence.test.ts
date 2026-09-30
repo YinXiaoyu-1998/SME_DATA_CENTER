@@ -927,6 +927,110 @@ describe("evidence MySQL revalidation", () => {
     expect(result[0]?.text).not.toBe("stale qdrant text must not be trusted");
   });
 
+  it("projects every nested PDF page and provenance instead of claiming only its first page", async () => {
+    const locations = [
+      {
+        pageNumber: 3,
+        method: "native",
+        bbox: { left: 0, top: 0, right: 1, bottom: 1 },
+        blockOrdinal: 1
+      },
+      {
+        pageNumber: 4,
+        method: "ocr",
+        bbox: { left: 0.1, top: 0.2, right: 0.8, bottom: 0.9 },
+        blockOrdinal: 2
+      }
+    ];
+    const { revalidator } = createRevalidator([
+      evidenceChunk({
+        sourceLocation: {
+          sectionHeadingPath: ["Synthetic"],
+          blockTypes: ["paragraph"],
+          sourceLocations: locations.map((location) => ({
+            ...location,
+            parsedObjectKey: "private/nested.json"
+          })),
+          metadata: { parsedObjectKey: "private/parsed.json" }
+        },
+        document: { title: "Synthetic PDF", fileType: "pdf", confidentialityLevel: 0 },
+        documentIndex: {
+          contentVersion: 2,
+          parseSummary: {
+            warnings: [
+              {
+                code: "PDF_IMAGE_ONLY",
+                message: "No text",
+                sourceLocation: { pageNumber: 5, method: "ocr" }
+              }
+            ]
+          },
+          parsedObjectKey: "private/parsed.json"
+        }
+      })
+    ]);
+    const result = await revalidator.revalidate({
+      orgId: "default-org",
+      employee: baoliEmployee,
+      candidates: [evidenceCandidate()],
+      filters: { fileTypes: ["pdf"], documentIds: [] }
+    });
+    expect(result[0]).toMatchObject({
+      pageNumber: null,
+      pageNumbers: [3, 4],
+      sourceLocations: locations,
+      warnings: [
+        {
+          code: "PDF_IMAGE_ONLY",
+          message: "No text",
+          sourceLocation: { pageNumber: 5, method: "ocr" }
+        }
+      ]
+    });
+    expect(JSON.stringify(result)).not.toContain("private/");
+    const config = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({
+        retrievalConfigVersion: "phase3.retrieval.v1",
+        qdrantCollection: "synthetic"
+      }),
+      "phase3.retrieval.v1"
+    );
+    const service = createEvidenceSearchService({
+      retrievalConfig: config,
+      qdrantSearcher: { hybridSearch: async () => [evidenceCandidate()] },
+      rerankProvider: null,
+      revalidator
+    });
+    const response = await service.searchEvidence({
+      orgId: "default-org",
+      employee: baoliEmployee,
+      query: "synthetic",
+      filters: { fileTypes: ["pdf"], documentIds: [] },
+      limit: 10,
+      cursor: null,
+      cursorSecret: "synthetic-secret",
+      audit: {
+        requestId: "synthetic",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      }
+    });
+    expect(response.results[0]?.source).toMatchObject({
+      pageNumber: null,
+      pageNumbers: [3, 4],
+      sourceLocations: locations,
+      warnings: [
+        {
+          code: "PDF_IMAGE_ONLY",
+          message: "No text",
+          sourceLocation: { pageNumber: 5, method: "ocr" }
+        }
+      ]
+    });
+    expect(response.warnings).toContain("PDF_IMAGE_ONLY");
+  });
+
   it("applies the current source document confidentiality level during revalidation", async () => {
     const suzhouOnlyChunk = evidenceChunk({
       document: {
