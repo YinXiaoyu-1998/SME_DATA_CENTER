@@ -1,0 +1,25 @@
+name: Verified PDF dependencies
+description: Restore downloads, then verify locked dependencies and every model hash.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      with:
+        path: ~/.cache/uv
+        key: pdf-uv-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/pdf-parser/uv.lock', 'services/pdf-parser/.python-version') }}
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+      id: models
+      with:
+        path: services/pdf-parser/.codex-build/pdf-ci/model-cache
+        key: pdf-models-v1-${{ hashFiles('services/pdf-parser/model-manifest.json', 'services/pdf-parser/model-notices.json') }}
+    - shell: bash
+      working-directory: services/pdf-parser
+      run: |
+        python3 -m pip install uv==0.12.10
+        uv python install 3.12.14
+        uv sync --python 3.12.14 --locked --project .
+        uv run --python 3.12.14 --locked --project . python -m smedc_pdf_parser.prepare_models --cache .codex-build/pdf-ci/model-cache --output .codex-build/pdf-ci/models
+    - if: steps.models.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: services/pdf-parser
+      run: cp -R .codex-build/pdf-ci/models .codex-build/pdf-ci/model-cache

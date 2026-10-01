@@ -15,7 +15,10 @@ describe("staging GitHub Actions release boundary", () => {
     const source = await workflow(qualityWorkflowPath);
 
     expect(source).toMatch(/push:\n\s+branches:\n\s+- main/);
-    expect(source).toContain('paths-ignore:\n      - "docs/**"\n      - "**/*.md"');
+    expect(source).toContain('paths-ignore:\n      - "docs/**"');
+    expect(source).not.toContain('"**/*.md"');
+    expect(source).not.toContain('"fixtures/**"');
+    expect(source).toContain('"skills/**/*.md"');
     expect(source).toContain("pull_request:");
   });
 
@@ -55,5 +58,55 @@ describe("staging GitHub Actions release boundary", () => {
     expect(source).toContain("shred --remove");
     expect(source).not.toContain("nick2373262573");
     expect(source).not.toContain("39.96.66.185");
+  });
+});
+
+describe("quality gate cost controls", () => {
+  it("keeps PR checks visible and cancels only superseded PR runs", async () => {
+    const source = await workflow(qualityWorkflowPath);
+    expect(source).toContain(
+      "group: quality-${{ github.event.pull_request.number || github.run_id }}"
+    );
+    expect(source).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+    expect(source).toContain("pull_request:\n  push:");
+    expect(source).toContain("fetch-depth: 0");
+    expect(source).toContain("PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
+    expect(source).toContain("PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}");
+    expect(source).toContain('git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"');
+    expect(source).toContain("name: Unit mocks and static checks");
+  });
+
+  it("lets Node image checks run when an unrelated parser job is intentionally skipped", async () => {
+    const source = await workflow(qualityWorkflowPath);
+    expect(source).toContain("needs.pdf-parser-unit.result == 'skipped'");
+    expect(source).toContain("!cancelled() && needs.unit-and-static.result == 'success'");
+    expect(source).toContain("if: needs.unit-and-static.outputs.integration == 'true'");
+    expect(source).toContain("if: needs.unit-and-static.outputs.pdf == 'true'");
+  });
+
+  it("caches each image separately but refreshes security layers and retains scanners", async () => {
+    const source = await workflow(qualityWorkflowPath);
+    for (const target of ["api", "worker", "release-ops", "pdf-parser"]) {
+      expect(source).toContain(`cache-from: type=gha,scope=ci-${target}`);
+      expect(source).toContain(`cache-to: type=gha,scope=ci-${target},mode=`);
+    }
+    expect(source.match(/no-cache-filters: runtime-base/g)).toHaveLength(3);
+    expect(source).toContain("no-cache-filters: runtime\n");
+    expect(source.match(/pull: true/g)).toHaveLength(4);
+    expect(source).toContain("Report runtime image advisories");
+    expect(source).toContain('DOCKER_BUILD_RECORD_UPLOAD: "false"');
+  });
+
+  it("keys only download caches and verifies restored models before use", async () => {
+    const source = await workflow(join(repoRoot, ".github/actions/pdf-dependencies/action.yml"));
+    expect(source).toContain("runner.arch");
+    expect(source).toContain("services/pdf-parser/uv.lock");
+    expect(source).toContain("services/pdf-parser/model-notices.json");
+    expect(source).not.toContain("restore-keys:");
+    expect(source).not.toContain("path: services/pdf-parser/.venv");
+    expect(source).toContain("uv sync --python 3.12.14 --locked");
+    expect(source).toContain(
+      "prepare_models --cache .codex-build/pdf-ci/model-cache --output .codex-build/pdf-ci/models"
+    );
   });
 });

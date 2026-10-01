@@ -7,21 +7,56 @@ on:
       - main
     paths-ignore:
       - "docs/**"
-      - "**/*.md"
+      - "*.md"
+      - "**/README.md"
+      - "**/AGENTS.md"
+      - "skills/**/*.md"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded PR work only. Never interrupt a trusted main release gate.
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   unit-and-static:
     name: Unit mocks and static checks
     runs-on: ubuntu-latest
+    outputs:
+      node_images: ${{ steps.scope.outputs.node_images }}
+      pdf: ${{ steps.scope.outputs.pdf }}
+      integration: ${{ steps.scope.outputs.integration }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci
+      - name: Select checks for the complete PR diff
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node --experimental-strip-types scripts/ci-quality-scope.ts
+      - name: Check changed-line whitespace
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"
+          else
+            git diff --check
+          fi
+      - if: steps.scope.outputs.code == 'true'
+        run: npm ci
       - name: Report production dependency advisories
+        if: steps.scope.outputs.code == 'true'
         id: dependency-audit
         continue-on-error: true
         run: npm run audit:production
@@ -30,17 +65,28 @@ jobs:
         run: |
           echo "::warning::Production dependency audit reported findings or could not complete. This check is informational; see the audit step for details."
           echo "Production dependency audit is informational and does not block quality gates. See the audit step for findings or scan errors." >> "$GITHUB_STEP_SUMMARY"
-      - run: npm run db:generate
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run format:check
+      - if: steps.scope.outputs.code == 'true'
+        run: npm run db:generate
+      - if: steps.scope.outputs.code == 'true'
+        run: npm test
+      - if: steps.scope.outputs.code == 'true'
+        run: npm run typecheck
+      - if: steps.scope.outputs.code == 'true'
+        run: npm run lint
+      - if: steps.scope.outputs.code == 'true'
+        run: npm run format:check
       - run: git diff --check
 
   runtime-images:
     name: Hardened linux/amd64 runtime images
     runs-on: ubuntu-latest
     needs: [unit-and-static, pdf-parser-unit]
+    if: >-
+      ${{ !cancelled() && needs.unit-and-static.result == 'success' &&
+          (needs.pdf-parser-unit.result == 'success' || needs.pdf-parser-unit.result == 'skipped') &&
+          (needs.unit-and-static.outputs.node_images == 'true' || needs.unit-and-static.outputs.pdf == 'true') }}
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -50,19 +96,66 @@ jobs:
       - run: npm ci
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
-      - name: Build all runtime targets
-        run: |
-          docker buildx build --pull --platform linux/amd64 --target api --tag smedc-api:ci --load .
-          docker buildx build --pull --platform linux/amd64 --target worker --tag smedc-worker:ci --load .
-          docker buildx build --pull --platform linux/amd64 --target release-ops --tag smedc-release-ops:ci --load .
-          docker buildx build --pull --platform linux/amd64 --tag smedc-pdf-parser:ci --load services/pdf-parser
+      - name: Build api image
+        if: needs.unit-and-static.outputs.node_images == 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          target: api
+          platforms: linux/amd64
+          pull: true
+          load: true
+          tags: smedc-api:ci
+          no-cache-filters: runtime-base
+          cache-from: type=gha,scope=ci-api
+          cache-to: type=gha,scope=ci-api,mode=max
+      - name: Build worker image
+        if: needs.unit-and-static.outputs.node_images == 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          target: worker
+          platforms: linux/amd64
+          pull: true
+          load: true
+          tags: smedc-worker:ci
+          no-cache-filters: runtime-base
+          cache-from: type=gha,scope=ci-worker
+          cache-to: type=gha,scope=ci-worker,mode=max
+      - name: Build release-ops image
+        if: needs.unit-and-static.outputs.node_images == 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          target: release-ops
+          platforms: linux/amd64
+          pull: true
+          load: true
+          tags: smedc-release-ops:ci
+          no-cache-filters: runtime-base
+          cache-from: type=gha,scope=ci-release-ops
+          cache-to: type=gha,scope=ci-release-ops,mode=max
+      - name: Prepare cached and verified PDF dependencies
+        if: needs.unit-and-static.outputs.pdf == 'true'
+        uses: ./.github/actions/pdf-dependencies
+      - name: Build PDF parser image
+        if: needs.unit-and-static.outputs.pdf == 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: services/pdf-parser
+          platforms: linux/amd64
+          pull: true
+          load: true
+          tags: smedc-pdf-parser:ci
+          build-contexts: model-cache=./services/pdf-parser/.codex-build/pdf-ci/models
+          no-cache-filters: runtime
+          cache-from: type=gha,scope=ci-pdf-parser
+          cache-to: type=gha,scope=ci-pdf-parser,mode=min
       - name: Qualify offline PDF parser with synthetic OCR and bounded failures
-        run: |
-          python3 -m pip install uv==0.12.10
-          uv python install 3.12.14
-          uv sync --python 3.12.14 --locked --project services/pdf-parser
-          uv run --python 3.12.14 --locked --project services/pdf-parser python scripts/test-pdf-container.py
+        if: needs.unit-and-static.outputs.pdf == 'true'
+        run: uv run --python 3.12.14 --locked --project services/pdf-parser python scripts/test-pdf-container.py
       - name: Verify the packaged Calamine reader against the real fixture
+        if: needs.unit-and-static.outputs.node_images == 'true'
         run: |
           reader_container="$(docker create smedc-worker:ci)"
           trap 'docker rm -f "$reader_container" >/dev/null' EXIT
@@ -76,6 +169,9 @@ jobs:
           cache: true
       - name: Report runtime image advisories
         id: image-audit
+        env:
+          CHECK_NODE_IMAGES: ${{ needs.unit-and-static.outputs.node_images }}
+          CHECK_PDF: ${{ needs.unit-and-static.outputs.pdf }}
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -83,7 +179,10 @@ jobs:
           trap 'rm -rf -- "$report_dir"' EXIT
 
           audit_status=0
-          for component in api worker release-ops pdf-parser; do
+          components=()
+          if [ "$CHECK_NODE_IMAGES" = true ]; then components+=(api worker release-ops); fi
+          if [ "$CHECK_PDF" = true ]; then components+=(pdf-parser); fi
+          for component in "${components[@]}"; do
             pkg_types=os
             if [ "$component" = pdf-parser ]; then pkg_types=os,library; fi
             if trivy image --scanners vuln --pkg-types "$pkg_types" --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/$component.json" --platform linux/amd64 "smedc-$component:ci" &&
@@ -103,6 +202,7 @@ jobs:
     name: Real MySQL + Qdrant with fake provider
     runs-on: ubuntu-latest
     needs: unit-and-static
+    if: needs.unit-and-static.outputs.integration == 'true'
     env:
       COMPOSE_PROJECT_NAME: sme_data_center_ci
       MYSQL_PORT: "3307"
@@ -143,7 +243,8 @@ jobs:
       - run: npm run test:phase3:golden
       - run: npm run test:phase3:perf
       - run: npm run build:release
-      - run: RUN_PDF_WORKER_PRISMA_INTEGRATION=1 RUN_PDF_RELEASE_PRISMA_INTEGRATION=1 RUN_PDF_ACCEPTANCE_PRISMA_INTEGRATION=1 npm test -- --no-file-parallelism apps/worker/src/pdf-worker.prisma.integration.test.ts scripts/pdf-release.prisma.integration.test.ts scripts/pdf-acceptance.prisma.integration.test.ts
+      - if: needs.unit-and-static.outputs.pdf == 'true'
+        run: RUN_PDF_WORKER_PRISMA_INTEGRATION=1 RUN_PDF_RELEASE_PRISMA_INTEGRATION=1 RUN_PDF_ACCEPTANCE_PRISMA_INTEGRATION=1 npm test -- --no-file-parallelism apps/worker/src/pdf-worker.prisma.integration.test.ts scripts/pdf-release.prisma.integration.test.ts scripts/pdf-acceptance.prisma.integration.test.ts
       - run: COMPOSE_PROJECT_NAME=sme_data_center_ci MYSQL_PORT=3307 npm run test:integration
 
   external-provider-smoke-gated:
@@ -169,12 +270,10 @@ jobs:
   pdf-parser-unit:
     name: Locked Python PDF parser tests
     runs-on: ubuntu-latest
+    needs: unit-and-static
+    if: needs.unit-and-static.outputs.pdf == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/pdf-dependencies
       - working-directory: services/pdf-parser
-        run: |
-          python3 -m pip install uv==0.12.10
-          uv python install 3.12.14
-          uv sync --python 3.12.14 --locked --project .
-          uv run --python 3.12.14 --locked --project . python -m smedc_pdf_parser.prepare_models --output .codex-build/pdf-ci/models
-          SMEDC_PDF_MODELS_PATH="$PWD/.codex-build/pdf-ci/models" uv run --python 3.12.14 --locked --project . pytest tests -q
+        run: SMEDC_PDF_MODELS_PATH="$PWD/.codex-build/pdf-ci/models" uv run --python 3.12.14 --locked --project . pytest tests -q
