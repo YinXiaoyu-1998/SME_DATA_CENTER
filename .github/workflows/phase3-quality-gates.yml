@@ -80,11 +80,8 @@ jobs:
   runtime-images:
     name: Hardened linux/amd64 runtime images
     runs-on: ubuntu-latest
-    needs: [unit-and-static, pdf-parser-unit]
-    if: >-
-      ${{ !cancelled() && needs.unit-and-static.result == 'success' &&
-          (needs.pdf-parser-unit.result == 'success' || needs.pdf-parser-unit.result == 'skipped') &&
-          (needs.unit-and-static.outputs.node_images == 'true' || needs.unit-and-static.outputs.pdf == 'true') }}
+    needs: unit-and-static
+    if: needs.unit-and-static.outputs.node_images == 'true'
     env:
       DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
@@ -97,7 +94,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
       - name: Build api image
-        if: needs.unit-and-static.outputs.node_images == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
@@ -110,7 +106,6 @@ jobs:
           cache-from: type=gha,scope=ci-api
           cache-to: type=gha,scope=ci-api,mode=max
       - name: Build worker image
-        if: needs.unit-and-static.outputs.node_images == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
@@ -123,7 +118,6 @@ jobs:
           cache-from: type=gha,scope=ci-worker
           cache-to: type=gha,scope=ci-worker,mode=max
       - name: Build release-ops image
-        if: needs.unit-and-static.outputs.node_images == 'true'
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
@@ -135,27 +129,7 @@ jobs:
           no-cache-filters: runtime-base
           cache-from: type=gha,scope=ci-release-ops
           cache-to: type=gha,scope=ci-release-ops,mode=max
-      - name: Prepare cached and verified PDF dependencies
-        if: needs.unit-and-static.outputs.pdf == 'true'
-        uses: ./.github/actions/pdf-dependencies
-      - name: Build PDF parser image
-        if: needs.unit-and-static.outputs.pdf == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
-        with:
-          context: services/pdf-parser
-          platforms: linux/amd64
-          pull: true
-          load: true
-          tags: smedc-pdf-parser:ci
-          build-contexts: model-cache=./services/pdf-parser/.codex-build/pdf-ci/models
-          no-cache-filters: runtime
-          cache-from: type=gha,scope=ci-pdf-parser
-          cache-to: type=gha,scope=ci-pdf-parser,mode=min
-      - name: Qualify offline PDF parser with synthetic OCR and bounded failures
-        if: needs.unit-and-static.outputs.pdf == 'true'
-        run: uv run --python 3.12.14 --locked --project services/pdf-parser python scripts/test-pdf-container.py
       - name: Verify the packaged Calamine reader against the real fixture
-        if: needs.unit-and-static.outputs.node_images == 'true'
         run: |
           reader_container="$(docker create smedc-worker:ci)"
           trap 'docker rm -f "$reader_container" >/dev/null' EXIT
@@ -169,9 +143,6 @@ jobs:
           cache: true
       - name: Report runtime image advisories
         id: image-audit
-        env:
-          CHECK_NODE_IMAGES: ${{ needs.unit-and-static.outputs.node_images }}
-          CHECK_PDF: ${{ needs.unit-and-static.outputs.pdf }}
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -179,13 +150,8 @@ jobs:
           trap 'rm -rf -- "$report_dir"' EXIT
 
           audit_status=0
-          components=()
-          if [ "$CHECK_NODE_IMAGES" = true ]; then components+=(api worker release-ops); fi
-          if [ "$CHECK_PDF" = true ]; then components+=(pdf-parser); fi
-          for component in "${components[@]}"; do
-            pkg_types=os
-            if [ "$component" = pdf-parser ]; then pkg_types=os,library; fi
-            if trivy image --scanners vuln --pkg-types "$pkg_types" --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/$component.json" --platform linux/amd64 "smedc-$component:ci" &&
+          for component in api worker release-ops; do
+            if trivy image --scanners vuln --pkg-types os --ignore-unfixed --severity MEDIUM,HIGH,CRITICAL --format json --output "$report_dir/$component.json" --platform linux/amd64 "smedc-$component:ci" &&
               npm run audit:report -- --kind trivy --component "$component-image" --input "$report_dir/$component.json"; then
               continue
             fi

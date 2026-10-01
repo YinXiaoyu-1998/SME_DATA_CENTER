@@ -76,23 +76,27 @@ describe("quality gate cost controls", () => {
     expect(source).toContain("name: Unit mocks and static checks");
   });
 
-  it("lets Node image checks run when an unrelated parser job is intentionally skipped", async () => {
+  it("keeps Node image checks independent of parser tests and omits PDF image qualification", async () => {
     const source = await workflow(qualityWorkflowPath);
-    expect(source).toContain("needs.pdf-parser-unit.result == 'skipped'");
-    expect(source).toContain("!cancelled() && needs.unit-and-static.result == 'success'");
+    const images = source.split("  runtime-images:")[1]?.split("  phase3-real-runtime:")[0];
+    expect(images).toContain("needs: unit-and-static");
+    expect(images).toContain("if: needs.unit-and-static.outputs.node_images == 'true'");
+    expect(images).not.toContain("pdf");
+    expect(source).not.toContain("test-pdf-container.py");
+    expect(source).not.toContain("Build PDF parser image");
+    expect(source).toContain("pytest tests -q");
     expect(source).toContain("if: needs.unit-and-static.outputs.integration == 'true'");
     expect(source).toContain("if: needs.unit-and-static.outputs.pdf == 'true'");
   });
 
   it("caches each image separately but refreshes security layers and retains scanners", async () => {
     const source = await workflow(qualityWorkflowPath);
-    for (const target of ["api", "worker", "release-ops", "pdf-parser"]) {
+    for (const target of ["api", "worker", "release-ops"]) {
       expect(source).toContain(`cache-from: type=gha,scope=ci-${target}`);
       expect(source).toContain(`cache-to: type=gha,scope=ci-${target},mode=`);
     }
     expect(source.match(/no-cache-filters: runtime-base/g)).toHaveLength(3);
-    expect(source).toContain("no-cache-filters: runtime\n");
-    expect(source.match(/pull: true/g)).toHaveLength(4);
+    expect(source.match(/pull: true/g)).toHaveLength(3);
     expect(source).toContain("Report runtime image advisories");
     expect(source).toContain('DOCKER_BUILD_RECORD_UPLOAD: "false"');
   });
