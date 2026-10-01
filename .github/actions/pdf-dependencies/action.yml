@@ -19,6 +19,12 @@ runs:
         uv python install 3.12.14
         uv sync --python 3.12.14 --locked --project .
         uv run --python 3.12.14 --locked --project . python -m smedc_pdf_parser.prepare_models --cache .codex-build/pdf-ci/model-cache --output .codex-build/pdf-ci/models
+    # PDFium needs the same system fallback as the production Docker image when
+    # rendering PDFs that reference Chinese CID fonts without embedding them.
+    - name: Install verified CJK fallback font
+      shell: bash
+      working-directory: services/pdf-parser
+      run: sudo install -D -m 0644 .codex-build/pdf-ci/models/fonts/NotoSansCJKsc-Regular.otf /usr/local/share/fonts/NotoSansCJKsc-Regular.otf
     - if: steps.models.outputs.cache-hit != 'true'
       shell: bash
       working-directory: services/pdf-parser
