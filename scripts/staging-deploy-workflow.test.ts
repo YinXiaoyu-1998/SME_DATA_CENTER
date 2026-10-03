@@ -19,6 +19,19 @@ describe("staging GitHub Actions release boundary", () => {
     expect(source).toContain("pull_request:");
   });
 
+  it("gates unit checks and their dependent runtime jobs on the PR scope result", async () => {
+    const source = await workflow(qualityWorkflowPath);
+    expect(source).toContain('run: bash scripts/quality-gate-scope.sh >> "$GITHUB_OUTPUT"');
+    expect(source).toContain("fetch-depth: 0");
+    const unit = source.split("\n  unit-and-static:")[1]?.split("\n  runtime-images:")[0];
+    expect(unit).toContain("needs: change-scope");
+    expect(unit).toContain("if: ${{ needs.change-scope.outputs.run_full == 'true' }}");
+    for (const job of ["runtime-images", "phase3-real-runtime"]) {
+      const body = source.split(`\n  ${job}:`)[1]?.split(/\n {2}[a-z-]+:/)[0];
+      expect(body).toContain("needs: unit-and-static");
+    }
+  });
+
   it("deploys only after a successful main push quality run or a main manual dispatch", async () => {
     const source = await workflow(deployWorkflowPath);
 

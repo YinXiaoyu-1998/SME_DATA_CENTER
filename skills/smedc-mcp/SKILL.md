@@ -43,8 +43,11 @@ Use ordinary Git/HTTPS and local file tools for this maintenance task.
 Follow [the skill update procedure](references/update-skill.md) for source retrieval, backup,
 complete-directory replacement, verification, and host reload. A skill-only update does not
 authorize a launcher upgrade. For an authorized launcher update, first refresh this skill if its
-pin is older than the server recommendation, then follow Official Install Or Update using the
-newly verified exact pin. Never derive a new approved pin from server metadata alone.
+copy has not yet been verified against the official default branch, then follow Official Install
+Or Update using the
+newly verified exact pin. Never derive a new approved pin from server metadata alone. A general
+SMEDC update includes both the skill and launcher; finish the required
+[upgrade, restart, and cleanup procedure](references/upgrade-cleanup.md) before reporting success.
 
 ## Optional Companion Skills
 
@@ -340,7 +343,11 @@ looks like a certificate.
 An employee may ask in natural language to install, update, or repair SMEDC. The
 employee does not need to run these commands personally. Agents should also offer an update when
 a self-check reports `recommendedUpdateAvailable: true` (see Tool Discovery). Work only for the
-current OS user and only on the invoking agent's configuration.
+current OS user. Ordinary installation targets the invoking agent; full old-version cleanup also
+covers that user's safely discoverable SMEDC integrations as defined in the required
+[upgrade and cleanup procedure](references/upgrade-cleanup.md). Read it before any launcher update
+or old-version cleanup, including when the approved version is already installed. Refresh the
+official skill first; use only its approved exact version.
 
 1. Confirm the host is macOS, Windows, or Linux and that the user authorizes this current-user
    install.
@@ -366,8 +373,10 @@ current OS user and only on the invoking agent's configuration.
 
 4. Preserve the existing installation if the same pinned package is already present. For an
    approved update, install the newly approved exact version into its own versioned directory,
-   update the one launcher path in the invoking agent's MCP entry, then run the self-check.
-   Updating does not delete the secure-store session or unrelated MCP servers.
+   pass the self-check before switching the in-scope MCP entries. Then reconnect their hosts,
+   verify the new running version, stop old launcher processes, and remove superseded installs
+   using the upgrade and cleanup procedure. Updating preserves secure-store sessions and
+   unrelated MCP servers; an unchanged version pin does not skip residual cleanup.
 5. Run the installed launcher's credential-free self-check before changing or declaring an MCP
    configuration healthy:
 
@@ -458,7 +467,8 @@ This is the only supported login flow in launcher 0.6.0.
 ## Configure The Invoking Agent
 
 Always inspect the existing configuration first, create a timestamped backup before modifying it,
-then make the smallest idempotent change: one `smedc` stdio MCP entry. Preserve every
+then retain one effective `smedc` stdio MCP entry per in-scope host. Remove verified legacy
+SMEDC aliases and shadowing overrides under the upgrade and cleanup procedure. Preserve every
 unrelated server and setting. Do not configure a direct HTTP/OAuth SMEDC server because
 the local launcher owns browser login and credential storage.
 
@@ -473,7 +483,7 @@ Before the first mutation, inspect with `codex mcp list --json` and
 `codex mcp get smedc --json`. Back up `~/.codex/config.toml` (Windows:
 `%USERPROFILE%\.codex\config.toml`) to a timestamped sibling file when it exists. If the existing
 entry already matches the exact command, `serve` argument, and sole BASE_URL environment value, do
-nothing.
+not rewrite that entry; still complete reconnection and cleanup when updating.
 
 For macOS add/repair:
 
@@ -491,7 +501,8 @@ fi
 "$CODEX_BIN" mcp get smedc --json
 ```
 
-If `get` reports the entry absent, add it. If it is present and exact, stop without mutation. Only
+If `get` reports the entry absent, add it. If it is present and exact, skip entry mutation and
+continue upgrade verification/cleanup. Only
 when it is present and mismatched, remove that one entry immediately before running the same add
 command:
 
@@ -548,7 +559,8 @@ $LauncherBin = "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.6.0\node_modules\.bi
 & $CodexBin mcp get smedc --json
 ```
 
-If `get` reports the entry absent, add it. If it is present and exact, stop without mutation. Only
+If `get` reports the entry absent, add it. If it is present and exact, skip entry mutation and
+continue upgrade verification/cleanup. Only
 for a present mismatched entry, run:
 
 ```powershell
@@ -561,6 +573,8 @@ for a present mismatched entry, run:
 
 After add/repair, run the platform self-check above, restart/reload Codex, run
 `codex mcp list --json` and `codex mcp get smedc --json`, and confirm the discovered tools.
+For updates, also prove the connected launcher version and
+complete old-process/file cleanup; `list`/`get` and self-check alone are insufficient.
 If add fails after removal, restore the timestamped backup and report the focused failure. For
 per-agent removal, back up first, run `codex mcp remove smedc`, then verify
 `codex mcp list --json` no longer contains it and `codex mcp get smedc --json` reports it
@@ -599,7 +613,8 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
    value. Do not add an HTTP URL or `auth: oauth` configuration.
 
 4. Verify with `openclaw mcp doctor smedc --probe`. Reload or restart the owning
-   OpenClaw runtime when required by its current setup.
+   OpenClaw runtime when required by its current setup. For updates, verify the connected version
+   and complete the shared upgrade and cleanup procedure.
 
 `openclaw mcp add/set/doctor --probe` are the supported configuration/proof path. The launcher,
 not OpenClaw's OAuth store, opens the browser when one is available or returns the verification
@@ -743,21 +758,22 @@ limit, or operator help.
 
 ## Typed Recovery
 
-| Condition                                     | Required response                                                                                                                            |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `authentication_required`                     | Call `smedc_login`, wait for browser completion, then retry the original business operation once.                                            |
-| Browser cancelled, timed out, or login failed | Report the safe outcome. Do not reopen the browser automatically or retry the business operation.                                            |
-| `service_unavailable`                         | Report that the official service cannot be reached. Do not start, repair, or diagnose service infrastructure.                                |
-| `UPLOAD_ADMIN_REQUIRED`                       | Explain that upload requires admin; nonretryable. Do not re-login, retry, read the file, or change clearance.                                |
-| `forbidden` or not-found                      | Treat the resource as unavailable to this employee; do not infer hidden data.                                                                |
-| `launcher_upgrade_required`                   | Install the skill-approved exact launcher version, re-run self-check, then retry the original operation once if installation succeeds.       |
-| Local configuration/self-check failure        | Restore the backup only when the agent can do so safely; otherwise report the focused configuration failure. Never delete unrelated entries. |
+| Condition                                     | Required response                                                                                                                                           |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authentication_required`                     | Call `smedc_login`, wait for browser completion, then retry the original business operation once.                                                           |
+| Browser cancelled, timed out, or login failed | Report the safe outcome. Do not reopen the browser automatically or retry the business operation.                                                           |
+| `service_unavailable`                         | Report that the official service cannot be reached. Do not start, repair, or diagnose service infrastructure.                                               |
+| `UPLOAD_ADMIN_REQUIRED`                       | Explain that upload requires admin; nonretryable. Do not re-login, retry, read the file, or change clearance.                                               |
+| `forbidden` or not-found                      | Treat the resource as unavailable to this employee; do not infer hidden data.                                                                               |
+| `launcher_upgrade_required`                   | Install the skill-approved exact launcher version through the upgrade and cleanup procedure; retry the original operation once after verified reconnection. |
+| Local configuration/self-check failure        | Restore the backup only when the agent can do so safely; otherwise report the focused configuration failure. Never delete unrelated entries.                |
 
 ## Removal And Complete Uninstall
 
-For **per-agent removal**, back up that agent's configuration and delete only its
-`smedc` MCP entry. Leave the launcher package, secure-store session, and other agent
-configurations intact.
+For **per-agent removal**, back up that agent's configuration, disconnect its SMEDC connection,
+remove its verified SMEDC entries, and verify its launcher processes exit using the scoped process
+checks in [upgrade cleanup](references/upgrade-cleanup.md). Leave the launcher package,
+secure-store session, and other agent configurations intact.
 
 For **logout**, use `smedc_logout` while the MCP connection is available, or invoke the pinned
 launcher directly. Secure-store-backed logout affects agents sharing that record; memory-only
@@ -788,10 +804,11 @@ credential contents. If the service is unreachable, report that remote revocatio
 confirmed.
 
 For **complete uninstall**, with explicit employee authorization: perform shared logout; remove
-SMEDC entries only from safely discoverable local agents; remove the current-user pinned
-launcher directory and its non-secret SMEDC state; retain backups until the employee
-confirms success. Never remove Node.js/npm, the Employee Account, server-side business data, or
-unrelated MCP entries.
+SMEDC entries and autostarts from safely discoverable current-user agents; stop their verified
+launcher processes, then remove all verified SMEDC launcher versions, installed skill copies, and
+non-secret SMEDC state using the same scoped deletion checks. Verify removal before deleting
+uninstall-created backups. Report inaccessible or ambiguous remnants as incomplete uninstall.
+Never remove Node.js/npm, the Employee Account, server-side business data, or unrelated MCP entries.
 
 ## Live Service Status
 
