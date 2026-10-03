@@ -9,7 +9,7 @@ This document records the companion skill scope and review checklist for `skills
 - UI metadata: `skills/smedc-mcp/agents/openai.yaml`
 
 The skill is repo-local and dual-homed with the standalone
-`YinXiaoyu-1998/smedc-mcp-skill` repository. The two `SKILL.md` copies must remain
+`YinXiaoyu-1998/smedc-mcp-skill` repository. The complete distributed skill directories, including references, must remain
 byte-identical. The standalone repository is the distributable copy; this repository's copy is the
 product-side source of synchronized guidance.
 
@@ -26,7 +26,9 @@ The official target profile must be actionable enough for an agent to:
    macOS/Windows/Linux current-user versioned directory; never install `latest` or self-update.
    Linux uses `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.6.0/` and resolves it
    to an absolute MCP command path.
-2. Back up and idempotently configure only the invoking agent's local **stdio** entry. Codex uses
+2. Back up and idempotently configure the invoking agent's local **stdio** entry. Full old-version
+   cleanup additionally migrates safely discoverable current-user SMEDC integrations, removes
+   duplicate entries, and stops obsolete processes before deleting old installations. Codex uses
    its verified `mcp list`/`get`/`add`/`remove` CLI and bundled macOS binary fallback; OpenClaw uses
    `mcp add`/`set` and `mcp doctor --probe`, not direct remote OAuth storage. Linux examples use
    the same stdio tuple and never configure a remote OAuth store.
@@ -56,6 +58,11 @@ The official target profile must be actionable enough for an agent to:
 9. Treat Linux `secureStore.available:false` as supported memory-only custody, surface the
    first-party Device Authorization link when `openedBrowser:false`, and require a fresh login after
    launcher or host restart rather than writing a credential to an ordinary file.
+
+10. Complete `references/upgrade-cleanup.md` on upgrades: refresh the official skill, verify the
+    approved package, reconnect hosts and prove the running version, then remove superseded
+    installations and temporary backups. A self-check alone is not host-version evidence. Report
+    pending restarts, inaccessible integrations, or remaining old versions as incomplete.
 
 ## Profile Boundaries
 
