@@ -1,4 +1,9 @@
-import { Prisma, type PrismaClient, type LedgerArtifactRequest } from "@prisma/client";
+import {
+  Prisma,
+  type PrismaClient,
+  type LedgerArtifactRequest,
+  type LedgerPdfPartition
+} from "@prisma/client";
 import { retryIdempotentDatabaseOperation } from "@smedc/db";
 import {
   assertLedgerPartitionObjectKeyFits,
@@ -12,7 +17,31 @@ import type { LedgerActor, LedgerPartitionKey, LedgerRequestRef, LedgerScope } f
 export type LedgerItemStatus =
   "queued" | "running" | "succeeded" | "empty" | "superseded" | "failed";
 export type LedgerRequestStatus = "queued" | "running" | "succeeded" | "partial_failed" | "failed";
-export type LedgerRequestScope = LedgerScope | { partitionKeys: LedgerPartitionKey[] };
+/** Internal developer selection; never accepted by public API scope parsing. */
+export type LedgerInternalSelection = { storeNames: string[] | null } & (
+  | { dates: string[] | null; startDate?: never; endDate?: never }
+  | { startDate: string; endDate: string; dates?: never }
+);
+export type LedgerInternalRefreshScope = {
+  internal: true;
+  selection: LedgerInternalSelection | { retryOfRequestId: string };
+  enumerationCursor: string | null;
+  enumerationComplete: boolean;
+};
+export type LedgerInternalRefreshState = LedgerRequestRef & {
+  cursor: string | null;
+  complete: boolean;
+};
+export type LedgerRequestScope =
+  LedgerScope | { partitionKeys: LedgerPartitionKey[] } | LedgerInternalRefreshScope;
+export type BeginLedgerInternalRefreshInput = {
+  orgId: string;
+  actor: LedgerActor;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  selection: LedgerInternalRefreshScope["selection"];
+  retryOfRequestId?: string;
+};
 export type LedgerRequestItemResult = {
   itemId: string;
   key: LedgerPartitionKey;
@@ -64,6 +93,16 @@ export interface LedgerArchiveRepository {
     requestId: string;
     cursor?: string;
   }): Promise<LedgerRequestResult | null>;
+  beginInternalRefresh?(
+    input: BeginLedgerInternalRefreshInput
+  ): Promise<LedgerInternalRefreshState>;
+  appendInternalRefreshPage?(input: {
+    orgId: string;
+    requestId: string;
+    expectedCursor: string | null;
+    nextCursor: string | null;
+    keys: LedgerPartitionKey[];
+  }): Promise<LedgerInternalRefreshState>;
   listFailedPartitionKeys(input: {
     orgId: string;
     requestId: string;
@@ -147,9 +186,192 @@ export function createPrismaLedgerArchiveRepository({
     return matchingRequest(request, input.requestFingerprint);
   }
 
+  async function lockPartition(tx: Prisma.TransactionClient, key: LedgerPartitionKey) {
+    const identity = {
+      orgId: key.orgId,
+      storeNameHash: ledgerStoreNameHash(key.storeName),
+      purchaseDate: date(key.purchaseDate)
+    };
+    const partition = await tx.ledgerPdfPartition.upsert({
+      where: { orgId_storeNameHash_purchaseDate: identity },
+      create: { ...identity, storeName: key.storeName },
+      update: {}
+    });
+    // Check exact UTF-8 name even with a hash identity; never silently alias a collision.
+    if (partition.storeName !== key.storeName) throw new Error("LEDGER_STORE_HASH_COLLISION");
+    await tx.$queryRaw(
+      Prisma.sql`SELECT id FROM ledger_pdf_partitions WHERE id = ${partition.id} AND org_id = ${key.orgId} FOR UPDATE`
+    );
+    const current = await tx.ledgerPdfPartition.findUniqueOrThrow({
+      where: { id: partition.id }
+    });
+    return current;
+  }
+  async function enqueuePartitions(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    actor: LedgerActor,
+    requestId: string,
+    partitions: LedgerPdfPartition[]
+  ) {
+    for (const partition of partitions) {
+      const item = await tx.ledgerArtifactRequestItem.create({
+        data: {
+          orgId,
+          requestId,
+          partitionId: partition.id,
+          generation: partition.requestedGeneration,
+          dataRevision: partition.dataRevision
+        }
+      });
+      await tx.processingRun.create({
+        data: {
+          orgId,
+          jobType: "ledger_pdf_generate",
+          jobKey: `ledger-pdf:${partition.id}:${item.generation}`,
+          priority: actor.kind === "system_reconciler" ? 20 : 10,
+          ledgerArtifactRequestItemId: item.id
+        }
+      });
+    }
+  }
+  function internalState(request: LedgerArtifactRequest): LedgerInternalRefreshState {
+    const scope = request.scope as unknown as LedgerInternalRefreshScope;
+    if (
+      scope.internal !== true ||
+      typeof scope.enumerationComplete !== "boolean" ||
+      (scope.enumerationCursor !== null && typeof scope.enumerationCursor !== "string")
+    )
+      throw new Error("LEDGER_INTERNAL_SCOPE_INVALID");
+    return {
+      requestId: request.id,
+      status: scope.enumerationComplete
+        ? request.status
+        : request.status === "queued"
+          ? "queued"
+          : "running",
+      cursor: scope.enumerationCursor,
+      complete: scope.enumerationComplete
+    };
+  }
   return {
     objectKeyPrefix: normalizedPrefix,
     findIdempotentRequest,
+    async beginInternalRefresh(input) {
+      return retryIdempotentDatabaseOperation(() =>
+        prisma.$transaction(
+          async (tx) => {
+            const organizations = await tx.$queryRaw<{ id: string }[]>(
+              Prisma.sql`SELECT id FROM organizations WHERE id = ${input.orgId} FOR UPDATE`
+            );
+            if (!organizations.length) throw new Error("LEDGER_ORG_NOT_FOUND");
+            const existing = await tx.ledgerArtifactRequest.findUnique({
+              where: {
+                orgId_idempotencyKey: { orgId: input.orgId, idempotencyKey: input.idempotencyKey }
+              }
+            });
+            if (existing) {
+              matchingRequest(existing, input.requestFingerprint);
+              return internalState(existing);
+            }
+            const scope: LedgerInternalRefreshScope = {
+              internal: true,
+              selection: input.selection,
+              enumerationCursor: null,
+              enumerationComplete: false
+            };
+            const request = await tx.ledgerArtifactRequest.create({
+              data: {
+                orgId: input.orgId,
+                kind: "refresh",
+                ...actorFields(input.actor),
+                idempotencyKey: input.idempotencyKey,
+                requestFingerprint: input.requestFingerprint,
+                scope,
+                retryOfRequestId: input.retryOfRequestId,
+                status: "queued"
+              }
+            });
+            await tx.auditLog.create({
+              data: {
+                orgId: input.orgId,
+                actorEmployeeId: input.actor.kind === "employee" ? input.actor.employeeId : null,
+                action: "ledger_pdf.refresh_requested",
+                targetType: "ledger_artifact_request",
+                targetId: request.id,
+                metadata: {
+                  actor: input.actor,
+                  scope,
+                  idempotencyKey: input.idempotencyKey,
+                  retryOfRequestId: input.retryOfRequestId ?? null
+                }
+              }
+            });
+            return internalState(request);
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 60_000 }
+        )
+      );
+    },
+    async appendInternalRefreshPage(input) {
+      if (input.keys.length > LEDGER_PAGE_SIZE) throw new Error("LEDGER_PAGE_LIMIT_EXCEEDED");
+      input.keys.forEach((key) => {
+        if (key.orgId !== input.orgId) throw new Error("LEDGER_ORG_MISMATCH");
+        assertLedgerPartitionObjectKeyFits(key, normalizedPrefix);
+      });
+      return retryIdempotentDatabaseOperation(() =>
+        prisma.$transaction(
+          async (tx) => {
+            await tx.$queryRaw(
+              Prisma.sql`SELECT id FROM organizations WHERE id = ${input.orgId} FOR UPDATE`
+            );
+            const request = await tx.ledgerArtifactRequest.findFirst({
+              where: { orgId: input.orgId, id: input.requestId, kind: "refresh" }
+            });
+            if (!request) throw new Error("LEDGER_REQUEST_NOT_FOUND");
+            const state = internalState(request);
+            // Another CLI may already have committed this page. Resume from its durable state.
+            if (state.complete || state.cursor !== input.expectedCursor) return state;
+            const partitions: LedgerPdfPartition[] = [];
+            const unique = new Map(
+              input.keys.map((key) => [JSON.stringify([key.storeName, key.purchaseDate]), key])
+            );
+            for (const key of unique.values()) {
+              const current = await lockPartition(tx, key);
+              const existing = await tx.ledgerArtifactRequestItem.findFirst({
+                where: { orgId: input.orgId, requestId: request.id, partitionId: current.id }
+              });
+              if (!existing)
+                partitions.push(
+                  await tx.ledgerPdfPartition.update({
+                    where: { id: current.id },
+                    data: { requestedGeneration: { increment: 1 } }
+                  })
+                );
+            }
+            await enqueuePartitions(tx, input.orgId, requestActor(request), request.id, partitions);
+            const scope: LedgerInternalRefreshScope = {
+              ...(request.scope as unknown as LedgerInternalRefreshScope),
+              enumerationCursor: input.nextCursor,
+              enumerationComplete: input.nextCursor === null
+            };
+            const groups = await tx.ledgerArtifactRequestItem.groupBy({
+              by: ["status"],
+              where: { orgId: input.orgId, requestId: request.id }
+            });
+            const status = scope.enumerationComplete
+              ? reduceLedgerRequestStatus(groups.map((group) => group.status))
+              : "running";
+            const updated = await tx.ledgerArtifactRequest.update({
+              where: { id: request.id },
+              data: { scope, status }
+            });
+            return internalState(updated);
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 60_000 }
+        )
+      );
+    },
     async listPartitionKeys(input) {
       const binding = JSON.stringify([input.orgId, input.scope ?? null]);
       const cursor = decodeCursor(input.cursor, binding, 2);
@@ -215,25 +437,7 @@ export function createPrismaLedgerArchiveRepository({
               throw new Error("LEDGER_PARTITION_KEY_INVALID");
             const partitions = [];
             for (const key of keys) {
-              const identity = {
-                orgId: key.orgId,
-                storeNameHash: ledgerStoreNameHash(key.storeName),
-                purchaseDate: date(key.purchaseDate)
-              };
-              const partition = await tx.ledgerPdfPartition.upsert({
-                where: { orgId_storeNameHash_purchaseDate: identity },
-                create: { ...identity, storeName: key.storeName },
-                update: {}
-              });
-              // Check exact UTF-8 name even with a hash identity; never silently alias a collision.
-              if (partition.storeName !== key.storeName)
-                throw new Error("LEDGER_STORE_HASH_COLLISION");
-              await tx.$queryRaw(
-                Prisma.sql`SELECT id FROM ledger_pdf_partitions WHERE id = ${partition.id} AND org_id = ${input.orgId} FOR UPDATE`
-              );
-              const current = await tx.ledgerPdfPartition.findUniqueOrThrow({
-                where: { id: partition.id }
-              });
+              const current = await lockPartition(tx, key);
               if (input.onlyIfNeeded) {
                 const inflight = await tx.ledgerArtifactRequestItem.findFirst({
                   where: {
@@ -274,26 +478,7 @@ export function createPrismaLedgerArchiveRepository({
                 status: partitions.length ? "queued" : "succeeded"
               }
             });
-            for (const partition of partitions) {
-              const item = await tx.ledgerArtifactRequestItem.create({
-                data: {
-                  orgId: input.orgId,
-                  requestId: request.id,
-                  partitionId: partition.id,
-                  generation: partition.requestedGeneration,
-                  dataRevision: partition.dataRevision
-                }
-              });
-              await tx.processingRun.create({
-                data: {
-                  orgId: input.orgId,
-                  jobType: "ledger_pdf_generate",
-                  jobKey: `ledger-pdf:${partition.id}:${item.generation}`,
-                  priority: input.actor.kind === "system_reconciler" ? 20 : 10,
-                  ledgerArtifactRequestItemId: item.id
-                }
-              });
-            }
+            await enqueuePartitions(tx, input.orgId, input.actor, request.id, partitions);
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
@@ -381,14 +566,23 @@ export function createPrismaLedgerArchiveRepository({
               : null
           });
         }
+        const internalScope = request.scope as unknown as Partial<LedgerInternalRefreshScope>;
         const status =
-          request.kind === "refresh"
-            ? reduceLedgerRequestStatus(
-                Object.entries(counts).flatMap(([status, count]) =>
-                  count ? [status as LedgerItemStatus] : []
+          internalScope.internal === true && !internalScope.enumerationComplete
+            ? counts.running ||
+              counts.succeeded ||
+              counts.empty ||
+              counts.failed ||
+              counts.superseded
+              ? "running"
+              : "queued"
+            : request.kind === "refresh"
+              ? reduceLedgerRequestStatus(
+                  Object.entries(counts).flatMap(([status, count]) =>
+                    count ? [status as LedgerItemStatus] : []
+                  )
                 )
-              )
-            : request.status;
+              : request.status;
         // Persistent request status is maintained by processors. Reads derive from all items,
         // not just this page, without mutating anything (including dry-run/status requests).
         return {

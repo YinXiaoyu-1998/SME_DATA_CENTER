@@ -6,6 +6,7 @@
   "dependencies": {
     "@smedc/api": "0.0.0",
     "prisma": "7.9.1",
-    "@smedc/ledger-archive": "0.0.0"
+    "@smedc/ledger-archive": "0.0.0",
+    "@smedc/storage": "0.0.0"
   }
 }

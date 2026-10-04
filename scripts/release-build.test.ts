@@ -18,6 +18,7 @@ const releaseArtifacts = [
   "api",
   "worker",
   "ledger-pdf-render-check",
+  "ledger-pdf",
   "readiness",
   "staging-smoke",
   "official-manual-acceptance",
@@ -32,6 +33,7 @@ describe("release build", () => {
       api: "apps/api/src/index.ts",
       worker: "apps/worker/src/dev-loop.ts",
       "ledger-pdf-render-check": "apps/worker/src/ledger-pdf/renderer.integration.ts",
+      "ledger-pdf": "scripts/ledger-pdf.ts",
       readiness: "scripts/readiness.ts",
       "staging-smoke": "scripts/staging-smoke.ts",
       "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
@@ -76,6 +78,15 @@ describe("release build", () => {
         );
       }
 
+      const help = execFileSync(process.execPath, ["dist/release/ledger-pdf.js", "--help"], {
+        cwd: cleanRoot,
+        encoding: "utf8"
+      });
+      expect(help).toContain("retry-failed");
+      expect(help).toContain("--all-dates");
+      expect(readFileSync(join(cleanReleaseDir, "ledger-pdf.js"), "utf8")).not.toMatch(
+        /from ["'](?:exceljs|pdf-lib)["']/
+      );
       await expectCompiledApiStarts(cleanRoot);
     } finally {
       rmSync(cleanRoot, { recursive: true, force: true });
