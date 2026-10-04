@@ -971,6 +971,22 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
       ).map((tool) => tool.name);
       expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
+      const tools = parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{
+        name: string;
+        annotations?: Record<string, boolean>;
+      }>;
+      for (const name of ["refresh_ledger_pdfs", "prepare_ledger_pdf_download"])
+        expect(tools.find((tool) => tool.name === name)?.annotations).toMatchObject({
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true
+        });
+      for (const name of [
+        "describe_ledger_pdf_coverage",
+        "get_ledger_pdf_request_status",
+        "get_ledger_pdf_download_url"
+      ])
+        expect(tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(true);
     }
   );
 

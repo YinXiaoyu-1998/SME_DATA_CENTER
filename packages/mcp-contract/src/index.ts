@@ -6,7 +6,8 @@ import {
   PUBLIC_INPUT_LIMITS,
   STRUCTURED_DATASETS,
   STRUCTURED_QUERY_LIMITS,
-  getStructuredRegistry
+  getStructuredRegistry,
+  PHASE3_ERROR_CODES
 } from "@smedc/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
@@ -408,6 +409,140 @@ const sourceDocumentDownloadUrlInputSchema = z
   })
   .strict();
 
+// Keep these as object schemas: the exporter and launcher consume .shape.
+const ledgerPdfDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return (
+      value >= "1000-01-01" &&
+      value <= "9999-12-31" &&
+      !Number.isNaN(date.getTime()) &&
+      date.toISOString().slice(0, 10) === value
+    );
+  }, "Use a real YYYY-MM-DD calendar date.");
+const ledgerPdfStoreNames = z
+  .array(
+    z
+      .string()
+      .min(1)
+      .max(512)
+      .refine((name) => name.trim().length > 0)
+  )
+  .min(1)
+  .max(50)
+  .describe("1-50 exact store names, preserved without trimming.");
+const ledgerPdfScopeShape = {
+  storeNames: ledgerPdfStoreNames,
+  dates: z
+    .array(ledgerPdfDate)
+    .min(1)
+    .max(366)
+    .optional()
+    .describe("1-366 explicit dates; exclusive with the date range."),
+  startDate: ledgerPdfDate
+    .optional()
+    .describe("Inclusive range start; requires endDate and excludes dates."),
+  endDate: ledgerPdfDate
+    .optional()
+    .describe("Inclusive range end; requires startDate and excludes dates.")
+};
+const ledgerPdfCursor = z
+  .string()
+  .min(1)
+  .max(PUBLIC_INPUT_LIMITS.cursorChars)
+  .optional()
+  .describe("Opaque service cursor; pages contain at most 200 items.");
+const ledgerPdfRequestId = z
+  .string()
+  .min(1)
+  .max(128)
+  .describe("Service-issued ledger PDF request ID.");
+const ledgerPdfCoverageInputSchema = z
+  .object({
+    ...ledgerPdfScopeShape,
+    storeNames: ledgerPdfStoreNames.optional(),
+    cursor: ledgerPdfCursor
+  })
+  .strict()
+  .superRefine(validateLedgerPdfDateSelection);
+const ledgerPdfActionInputSchema = z
+  .object({
+    ...ledgerPdfScopeShape,
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.idempotencyKeyChars)
+      .describe("Client-generated retry/idempotency key.")
+  })
+  .strict()
+  .superRefine(validateLedgerPdfDateSelection);
+const ledgerPdfRequestStatusInputSchema = z
+  .object({ requestId: ledgerPdfRequestId, cursor: ledgerPdfCursor })
+  .strict();
+const ledgerPdfDownloadUrlInputSchema = z.object({ requestId: ledgerPdfRequestId }).strict();
+const ledgerPdfScopeFields: McpToolInputField[] = [
+  { name: "storeNames", required: true, description: "1-50 exact store names." },
+  {
+    name: "dates",
+    required: false,
+    description: "1-366 real YYYY-MM-DD dates, exclusive with startDate/endDate."
+  },
+  {
+    name: "startDate",
+    required: false,
+    description: "Inclusive YYYY-MM-DD range start, paired with endDate."
+  },
+  {
+    name: "endDate",
+    required: false,
+    description: "Inclusive YYYY-MM-DD range end, at most 366 days."
+  }
+];
+const ledgerPdfReadAnnotations = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true
+};
+const ledgerPdfActionAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true
+};
+
+function validateLedgerPdfDateSelection(
+  input: { dates?: string[]; startDate?: string; endDate?: string },
+  context: z.RefinementCtx
+): void {
+  if (input.dates !== undefined) {
+    if (input.startDate !== undefined || input.endDate !== undefined)
+      context.addIssue({
+        code: "custom",
+        path: ["dates"],
+        message: "Provide dates or startDate/endDate, never both."
+      });
+    return;
+  }
+  if (input.startDate === undefined || input.endDate === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["startDate"],
+      message: "Provide dates or both startDate and endDate."
+    });
+    return;
+  }
+  if (
+    input.startDate > input.endDate ||
+    (Date.parse(input.endDate) - Date.parse(input.startDate)) / 86_400_000 + 1 > 366
+  )
+    context.addIssue({
+      code: "custom",
+      path: ["endDate"],
+      message: "Date range must be ordered and contain at most 366 days."
+    });
+}
+
 export const SMEDC_MCP_TOOL_NAMES = [
   "smedc_get_current_user",
   "smedc_list_skills",
@@ -424,7 +559,12 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_evidence_document_status",
   "get_import_status",
   "get_partition_import_status",
-  "download_structured_partitions"
+  "download_structured_partitions",
+  "describe_ledger_pdf_coverage",
+  "refresh_ledger_pdfs",
+  "get_ledger_pdf_request_status",
+  "prepare_ledger_pdf_download",
+  "get_ledger_pdf_download_url"
 ] as const;
 
 export type SmedcMcpToolName = (typeof SMEDC_MCP_TOOL_NAMES)[number];
@@ -443,6 +583,7 @@ export interface SmedcMcpToolContract {
   inputShape: z.ZodRawShape;
   inputFields: McpToolInputField[];
   resultShape: string[];
+  annotations?: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean };
 }
 
 export interface McpTextContent {
@@ -767,6 +908,75 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       { name: "importBatchId", required: true, description: "Structured import batch id." }
     ],
     resultShape: ["document", "processing", "importBatch"]
+  }),
+  defineToolContract({
+    name: "describe_ledger_pdf_coverage",
+    title: "Describe ledger PDF coverage",
+    description:
+      "Query authorized ledger PDF coverage using POST /v1/ledger-pdfs/coverage. Dates are required; stores may be omitted. Pages contain at most 200 scope facts. The service limits each scope to 5,000 actual partitions, independent of the store/date Cartesian product.",
+    inputSchema: ledgerPdfCoverageInputSchema,
+    inputFields: [
+      ...ledgerPdfScopeFields.map((field) =>
+        field.name === "storeNames" ? { ...field, required: false } : field
+      ),
+      { name: "cursor", required: false, description: "Opaque service pagination cursor." }
+    ],
+    resultShape: ["scope", "partitions[]: authorized scope coverage facts", "nextCursor"],
+    annotations: ledgerPdfReadAnnotations
+  }),
+  defineToolContract({
+    name: "refresh_ledger_pdfs",
+    title: "Refresh ledger PDFs",
+    description:
+      "Submit an idempotent refresh using POST /v1/ledger-pdfs/refresh. Requires the admin role, enforced by the API. Explicit stores/dates are required; at most 5,000 actual partitions. A 202 queued requestId must be polled with get_ledger_pdf_request_status before completion is claimed.",
+    inputSchema: ledgerPdfActionInputSchema,
+    inputFields: [
+      ...ledgerPdfScopeFields,
+      { name: "idempotencyKey", required: true, description: "Retry/idempotency key." }
+    ],
+    resultShape: ["requestId", "status: queued; poll get_ledger_pdf_request_status"],
+    annotations: ledgerPdfActionAnnotations
+  }),
+  defineToolContract({
+    name: "get_ledger_pdf_request_status",
+    title: "Get ledger PDF request status",
+    description:
+      "Read an authorized request using GET /v1/ledger-pdfs/requests/:requestId. Poll queued requests to a terminal status; cursor pages contain at most 200 scope facts. This tool never issues download URLs.",
+    inputSchema: ledgerPdfRequestStatusInputSchema,
+    inputFields: [
+      { name: "requestId", required: true, description: "Service-issued ledger PDF request ID." },
+      { name: "cursor", required: false, description: "Opaque service pagination cursor." }
+    ],
+    resultShape: [
+      "requestId",
+      "status",
+      "partitions[]: authorized request scope facts",
+      "nextCursor"
+    ],
+    annotations: ledgerPdfReadAnnotations
+  }),
+  defineToolContract({
+    name: "prepare_ledger_pdf_download",
+    title: "Prepare ledger PDF ZIP download",
+    description:
+      "Submit an idempotent ZIP request using POST /v1/ledger-pdfs/downloads for existing authorized PDFs in explicit stores/dates, at most 5,000 actual partitions. A 202 queued requestId must be polled with get_ledger_pdf_request_status. Preparation never invokes the renderer; refresh missing or stale PDFs first. After ready, call get_ledger_pdf_download_url.",
+    inputSchema: ledgerPdfActionInputSchema,
+    inputFields: [
+      ...ledgerPdfScopeFields,
+      { name: "idempotencyKey", required: true, description: "Retry/idempotency key." }
+    ],
+    resultShape: ["requestId", "status: queued; poll get_ledger_pdf_request_status"],
+    annotations: ledgerPdfActionAnnotations
+  }),
+  defineToolContract({
+    name: "get_ledger_pdf_download_url",
+    title: "Get ledger PDF ZIP download URL",
+    description:
+      "Get a short-lived service-signed ZIP link using POST /v1/ledger-pdfs/requests/:requestId/download-url. The service reauthorizes current access on every call. Returns a link only; no PDF base64, binary content, local file generation, or renderer invocation.",
+    inputSchema: ledgerPdfDownloadUrlInputSchema,
+    inputFields: [{ name: "requestId", required: true, description: "Ready ZIP request ID." }],
+    resultShape: ["requestId", "downloadUrl", "expiresAt"],
+    annotations: ledgerPdfReadAnnotations
   })
 ] as const satisfies readonly SmedcMcpToolContract[];
 
@@ -786,7 +996,15 @@ export const mcpToolContractSchema = z
         })
         .strict()
     ),
-    resultShape: z.array(z.string().min(1)).min(1)
+    resultShape: z.array(z.string().min(1)).min(1),
+    annotations: z
+      .object({
+        readOnlyHint: z.boolean(),
+        destructiveHint: z.boolean(),
+        idempotentHint: z.boolean()
+      })
+      .strict()
+      .optional()
   })
   .strict()
   .superRefine((contract, context) => {
@@ -924,6 +1142,12 @@ function defaultMcpErrorRetryable(code: McpErrorCode | string): boolean {
 }
 
 function defaultApiErrorRetryable(code: string): boolean {
+  if (
+    code === PHASE3_ERROR_CODES.ledgerPdfNotEnabled ||
+    code === PHASE3_ERROR_CODES.ledgerDetailDisabled ||
+    code === PHASE3_ERROR_CODES.ledgerPdfBundleStale
+  )
+    return false;
   const normalized = code.toUpperCase();
 
   if (

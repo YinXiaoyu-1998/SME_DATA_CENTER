@@ -69,7 +69,8 @@ export function createSmedcHttpMcpServer(input: {
         {
           title: tool.title,
           description: tool.description,
-          inputSchema: tool.inputSchema
+          inputSchema: tool.inputSchema,
+          annotations: tool.annotations
         },
         async (toolInput, extra) =>
           handler(toolInput, {

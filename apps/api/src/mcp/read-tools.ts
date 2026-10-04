@@ -28,7 +28,10 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "get_evidence_document_status",
   "get_import_status",
   "get_partition_import_status",
-  "download_structured_partitions"
+  "download_structured_partitions",
+  "describe_ledger_pdf_coverage",
+  "get_ledger_pdf_request_status",
+  "get_ledger_pdf_download_url"
 ] as const satisfies readonly SmedcMcpToolName[];
 
 type ReadOnlyMcpToolName = (typeof READ_ONLY_MCP_TOOL_NAMES)[number];
@@ -81,6 +84,19 @@ function routeForReadOnlyTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "describe_ledger_pdf_coverage":
+      return { method: "POST", path: "/v1/ledger-pdfs/coverage", body: input };
+    case "get_ledger_pdf_request_status":
+      return {
+        method: "GET",
+        path: `/v1/ledger-pdfs/requests/${encodeURIComponent(String(input["requestId"]))}`,
+        query: { cursor: optionalString(input["cursor"]) }
+      };
+    case "get_ledger_pdf_download_url":
+      return {
+        method: "POST",
+        path: `/v1/ledger-pdfs/requests/${encodeURIComponent(String(input["requestId"]))}/download-url`
+      };
     case "smedc_get_current_user":
       return {
         method: "GET",

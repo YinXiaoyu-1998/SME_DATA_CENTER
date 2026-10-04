@@ -277,7 +277,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.6.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.7.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -454,7 +454,16 @@ describe("official launcher bootstrap tools", () => {
   it("registers empty strict login, logout, and auth-status tools", () => {
     const registered: Array<{ name: string; shape: Record<string, unknown> }> = [];
     registerLauncherTools(
-      { registerTool: (name, options) => registered.push({ name, shape: options.inputSchema }) },
+      {
+        registerTool: (name, options) =>
+          registered.push({
+            name,
+            shape:
+              options.inputSchema instanceof z.ZodObject
+                ? options.inputSchema.shape
+                : options.inputSchema
+          })
+      },
       createLauncherToolDependencies({ config, auth: fakeAuth() })
     );
 
@@ -661,7 +670,16 @@ describe("launcher local path upload proxy", () => {
   it("registers path-capable schemas for upload tools", () => {
     const registered: Array<{ name: string; shape: Record<string, unknown> }> = [];
     registerLauncherTools(
-      { registerTool: (name, options) => registered.push({ name, shape: options.inputSchema }) },
+      {
+        registerTool: (name, options) =>
+          registered.push({
+            name,
+            shape:
+              options.inputSchema instanceof z.ZodObject
+                ? options.inputSchema.shape
+                : options.inputSchema
+          })
+      },
       createLauncherToolDependencies({ config, auth: fakeAuth() })
     );
 
@@ -964,3 +982,51 @@ function fakeMcpFetch(
     });
   };
 }
+
+it("advertises PDF side effects and validates scope before contacting service", async () => {
+  const server = new McpServer({ name: "ledger-contract", version: "0.0.0" });
+  const remote = vi.fn<typeof fetch>();
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({ config, auth: fakeAuth(), fetchImplementation: remote })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "ledger-contract-test", version: "0.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const tools = await client.listTools();
+    for (const name of ["refresh_ledger_pdfs", "prepare_ledger_pdf_download"])
+      expect(tools.tools.find((tool) => tool.name === name)?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true
+      });
+    for (const name of [
+      "describe_ledger_pdf_coverage",
+      "get_ledger_pdf_request_status",
+      "get_ledger_pdf_download_url"
+    ])
+      expect(tools.tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(true);
+    const result = await client.callTool({
+      name: "refresh_ledger_pdfs",
+      arguments: { storeNames: ["店"], dates: ["2026-02-30"], idempotencyKey: "key" }
+    });
+    expect(result.isError).toBe(true);
+    expect(remote).not.toHaveBeenCalled();
+    const crossOrganization = await client.callTool({
+      name: "refresh_ledger_pdfs",
+      arguments: {
+        storeNames: ["店"],
+        dates: ["2026-02-28"],
+        idempotencyKey: "key",
+        orgId: "other-org"
+      }
+    });
+    expect(crossOrganization.isError).toBe(true);
+    expect(remote).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
