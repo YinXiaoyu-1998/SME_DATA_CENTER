@@ -57,6 +57,9 @@ enum ProcessingJobType {
   evidence_document_index
   structured_import
   structured_partition_import
+  ledger_pdf_generate
+  ledger_pdf_bundle
+  ledger_pdf_reconcile
 }
 
 enum RetrievalConfigStatus {
@@ -172,6 +175,9 @@ model Organization {
   deviceAuthorizations   DeviceAuthorization[]
   oauthTokens            OAuthAccessToken[]
   authEvents             AuthSecurityEvent[]
+  ledgerPdfPartitions         LedgerPdfPartition[]
+  ledgerArtifactRequests      LedgerArtifactRequest[]
+  ledgerPdfReconciliationRuns LedgerPdfReconciliationRun[]
 
   @@map("organizations")
 }
@@ -195,7 +201,9 @@ model Employee {
   oauthTokens          OAuthAccessToken[]
   authEvents           AuthSecurityEvent[]
   partitionImports     PartitionImportJob[]
+  ledgerArtifactRequests LedgerArtifactRequest[]
 
+  @@unique([orgId, id])
   @@index([orgId])
   @@map("employees")
 }
@@ -233,7 +241,9 @@ model Document {
   deliveryLedgerRows    DeliveryLedgerRow[]
   supplierCatalogRows   SupplierCatalogRow[]
   quarantineCertificate QuarantineCertificate?
+  ledgerPdfSources      LedgerPdfSource[]
 
+  @@unique([orgId, id])
   @@index([orgId, status])
   @@index([orgId, status, confidentialityLevel])
   @@index([orgId, documentType])
@@ -251,6 +261,13 @@ model ProcessingRun {
   jobKey               String              @unique @map("job_key") @db.VarChar(255)
   status               ProcessingRunStatus @default(queued)
   jobType              ProcessingJobType   @map("job_type")
+  priority                     Int                         @default(0)
+  ledgerArtifactRequestItemId  String?                     @unique @map("ledger_artifact_request_item_id") @db.VarChar(32)
+  ledgerArtifactRequestId      String?                     @unique @map("ledger_artifact_request_id") @db.VarChar(32)
+  ledgerPdfReconciliationRunId String?                     @unique @map("ledger_pdf_reconciliation_run_id") @db.VarChar(32)
+  ledgerArtifactRequestItem    LedgerArtifactRequestItem?  @relation(fields: [orgId, ledgerArtifactRequestItemId], references: [orgId, id], onDelete: Restrict)
+  ledgerArtifactRequest        LedgerArtifactRequest?      @relation(fields: [orgId, ledgerArtifactRequestId], references: [orgId, id], onDelete: Restrict)
+  ledgerPdfReconciliationRun   LedgerPdfReconciliationRun? @relation(fields: [orgId, ledgerPdfReconciliationRunId], references: [orgId, id], onDelete: Restrict)
   attemptNumber        Int                 @default(0) @map("attempt_number")
   retryCount           Int                 @default(0) @map("retry_count")
   availableAt          DateTime            @default(now()) @map("available_at")
@@ -267,8 +284,11 @@ model ProcessingRun {
   document             Document?           @relation(fields: [documentId], references: [id], onDelete: Cascade)
   partitionImportJob   PartitionImportJob? @relation(fields: [partitionImportJobId], references: [id], onDelete: Cascade)
 
+  @@unique([orgId, ledgerArtifactRequestItemId], map: "processing_run_ledger_item_uq")
+  @@unique([orgId, ledgerArtifactRequestId], map: "processing_run_ledger_request_uq")
+  @@unique([orgId, ledgerPdfReconciliationRunId], map: "processing_run_ledger_reconcile_uq")
   @@index([orgId, status])
-  @@index([status, availableAt, lockedUntil])
+  @@index([status, priority, availableAt, lockedUntil])
   @@index([documentId])
   @@map("processing_runs")
 }
@@ -785,4 +805,169 @@ model AuthSecurityEvent {
   @@index([identityId, createdAt])
   @@index([sessionId, createdAt])
   @@map("auth_security_events")
+}
+
+enum LedgerArtifactRequestKind {
+  refresh
+  download
+}
+
+enum LedgerArtifactRequestStatus {
+  queued
+  running
+  succeeded
+  partial_failed
+  failed
+}
+
+enum LedgerArtifactItemStatus {
+  queued
+  running
+  succeeded
+  empty
+  superseded
+  failed
+}
+
+enum LedgerActorKind {
+  employee
+  operator
+  system_reconciler
+}
+
+enum LedgerPdfSourceKind {
+  ledger
+  supplier
+  certificate
+}
+
+model LedgerPdfPartition {
+  id                         String                      @id @default(cuid()) @db.VarChar(32)
+  orgId                      String                      @map("org_id") @db.VarChar(64)
+  storeName                  String                      @map("store_name") @db.VarChar(512)
+  storeNameHash              String                      @map("store_name_hash") @db.Char(64)
+  purchaseDate               DateTime                    @map("purchase_date") @db.Date
+  dataRevision               Int                         @default(0) @map("data_revision") @db.UnsignedInt
+  requestedGeneration        Int                         @default(0) @map("requested_generation") @db.UnsignedInt
+  publishedGeneration        Int?                        @map("published_generation") @db.UnsignedInt
+  publishedDataRevision      Int?                        @map("published_data_revision") @db.UnsignedInt
+  publishedSourceFingerprint String?                     @map("published_source_fingerprint") @db.Char(64)
+  currentObjectKey           String?                     @map("current_object_key") @db.VarChar(1024)
+  checksumSha256             String?                     @map("checksum_sha256") @db.Char(64)
+  byteSize                   BigInt?                     @map("byte_size") @db.UnsignedBigInt
+  rowCount                   Int?                        @map("row_count") @db.UnsignedInt
+  certificateCount           Int?                        @map("certificate_count") @db.UnsignedInt
+  confidentialityLevel       Int                         @default(0) @map("confidentiality_level") @db.UnsignedTinyInt
+  templateVersion            String?                     @map("template_version") @db.VarChar(128)
+  generatedAt                DateTime?                   @map("generated_at")
+  errorCode                  String?                     @map("error_code") @db.VarChar(128)
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  organization               Organization                @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  items                      LedgerArtifactRequestItem[]
+  sources                    LedgerPdfSource[]
+
+  @@unique([orgId, id])
+  @@unique([orgId, storeNameHash, purchaseDate], map: "ledger_pdf_partition_key_uq")
+  @@index([orgId, purchaseDate])
+  @@map("ledger_pdf_partitions")
+}
+
+model LedgerArtifactRequest {
+  id                  String                      @id @default(cuid()) @db.VarChar(32)
+  orgId               String                      @map("org_id") @db.VarChar(64)
+  kind                LedgerArtifactRequestKind
+  actorKind           LedgerActorKind             @map("actor_kind")
+  actorEmployeeId     String?                     @map("actor_employee_id") @db.VarChar(32)
+  actorLabel          String?                     @map("actor_label") @db.VarChar(255)
+  reconciliationRunId String?                     @map("reconciliation_run_id") @db.VarChar(32)
+  /// Opaque case-sensitive key; binary collation is applied by the archive migration.
+  idempotencyKey      String                      @map("idempotency_key") @db.VarChar(255)
+  requestFingerprint  String                      @map("request_fingerprint") @db.Char(64)
+  scope               Json
+  status              LedgerArtifactRequestStatus @default(queued)
+  zipObjectKey        String?                     @map("zip_object_key") @db.VarChar(1024)
+  zipExpiresAt        DateTime?                   @map("zip_expires_at")
+  retryOfRequestId    String?                     @map("retry_of_request_id") @db.VarChar(32)
+  errorCode           String?                     @map("error_code") @db.VarChar(128)
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  organization        Organization                @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  actor               Employee?                   @relation(fields: [orgId, actorEmployeeId], references: [orgId, id], onDelete: Restrict)
+  reconciliationRun   LedgerPdfReconciliationRun? @relation(fields: [orgId, reconciliationRunId], references: [orgId, id], onDelete: Restrict)
+  retryOfRequest      LedgerArtifactRequest?      @relation("LedgerRequestRetry", fields: [orgId, retryOfRequestId], references: [orgId, id], onDelete: Restrict)
+  retries             LedgerArtifactRequest[]     @relation("LedgerRequestRetry")
+  items               LedgerArtifactRequestItem[]
+  processingRun       ProcessingRun?
+
+  @@unique([orgId, id])
+  @@unique([orgId, idempotencyKey], map: "ledger_artifact_request_idempotency_uq")
+  @@index([orgId, status, createdAt])
+  @@map("ledger_artifact_requests")
+}
+
+model LedgerArtifactRequestItem {
+  id            String                   @id @default(cuid()) @db.VarChar(32)
+  orgId         String                   @map("org_id") @db.VarChar(64)
+  requestId     String                   @map("request_id") @db.VarChar(32)
+  partitionId   String                   @map("partition_id") @db.VarChar(32)
+  generation    Int                      @db.UnsignedInt
+  dataRevision  Int                      @map("data_revision") @db.UnsignedInt
+  status        LedgerArtifactItemStatus @default(queued)
+  errorCode     String?                  @map("error_code") @db.VarChar(128)
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
+  request       LedgerArtifactRequest    @relation(fields: [orgId, requestId], references: [orgId, id], onDelete: Restrict)
+  partition     LedgerPdfPartition       @relation(fields: [orgId, partitionId], references: [orgId, id], onDelete: Restrict)
+  processingRun ProcessingRun?
+
+  @@unique([orgId, id])
+  @@unique([requestId, partitionId])
+  @@index([orgId, partitionId, generation])
+  @@index([orgId, requestId, status])
+  @@map("ledger_artifact_request_items")
+}
+
+model LedgerPdfSource {
+  id                   String              @id @default(cuid()) @db.VarChar(32)
+  orgId                String              @map("org_id") @db.VarChar(64)
+  partitionId          String              @map("partition_id") @db.VarChar(32)
+  sourceDocumentId     String              @map("source_document_id") @db.VarChar(32)
+  kind                 LedgerPdfSourceKind
+  confidentialityLevel Int                 @map("confidentiality_level") @db.UnsignedTinyInt
+  checksumSha256       String              @map("checksum_sha256") @db.Char(64)
+  partition            LedgerPdfPartition  @relation(fields: [orgId, partitionId], references: [orgId, id], onDelete: Restrict)
+  sourceDocument       Document            @relation(fields: [orgId, sourceDocumentId], references: [orgId, id], onDelete: Restrict)
+
+  @@unique([partitionId, sourceDocumentId, kind])
+  @@index([orgId, sourceDocumentId])
+  @@map("ledger_pdf_sources")
+}
+
+model LedgerPdfReconciliationRun {
+  id                   String                      @id @default(cuid()) @db.VarChar(32)
+  orgId                String                      @map("org_id") @db.VarChar(64)
+  scheduleDate         DateTime                    @map("schedule_date") @db.Date
+  status               LedgerArtifactRequestStatus @default(queued)
+  phase                String                      @default("facts") @db.VarChar(32)
+  cursor               Json?
+  scannedCount         Int                         @default(0) @map("scanned_count") @db.UnsignedInt
+  healthyCount         Int                         @default(0) @map("healthy_count") @db.UnsignedInt
+  abnormalCount        Int                         @default(0) @map("abnormal_count") @db.UnsignedInt
+  submittedCount       Int                         @default(0) @map("submitted_count") @db.UnsignedInt
+  inflightSkippedCount Int                         @default(0) @map("inflight_skipped_count") @db.UnsignedInt
+  failedCount          Int                         @default(0) @map("failed_count") @db.UnsignedInt
+  startedAt            DateTime?                   @map("started_at")
+  finishedAt           DateTime?                   @map("finished_at")
+  errorCode            String?                     @map("error_code") @db.VarChar(128)
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
+  organization         Organization                @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  processingRun        ProcessingRun?
+  requests             LedgerArtifactRequest[]
+
+  @@unique([orgId, id])
+  @@unique([orgId, scheduleDate], map: "ledger_reconciliation_schedule_uq")
+  @@index([orgId, status])
+  @@map("ledger_pdf_reconciliation_runs")
 }

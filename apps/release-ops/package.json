@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@smedc/api": "0.0.0",
-    "prisma": "7.9.1"
+    "prisma": "7.9.1",
+    "@smedc/ledger-archive": "0.0.0"
   }
 }

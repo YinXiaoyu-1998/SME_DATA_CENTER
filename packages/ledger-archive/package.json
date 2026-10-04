@@ -3,5 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "src/index.ts"
+  "main": "src/index.ts",
+  "dependencies": {
+    "@smedc/db": "0.0.0",
+    "@prisma/client": "7.9.1"
+  }
 }
