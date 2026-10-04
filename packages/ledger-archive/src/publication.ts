@@ -149,9 +149,11 @@ export function createPrismaLedgerPublicationArchive({
           const partition = await tx.ledgerPdfPartition.findFirstOrThrow({
             where: { id: input.partitionId, orgId: run.orgId }
           });
-          const superseded =
-            partition.requestedGeneration !== input.generation ||
-            partition.dataRevision !== input.dataRevision;
+          const superseded = partition.requestedGeneration !== input.generation;
+          // A dirty revision alone has no replacement job. Keep this generation alive and
+          // let the bounded worker retry read a fresh snapshot instead of orphaning repair.
+          if (!superseded && partition.dataRevision !== input.dataRevision)
+            throw new LedgerPublicationError("LEDGER_SOURCE_CHANGED", true);
           if (
             !superseded &&
             !(await access.sourcesAreCurrent({ orgId: run.orgId, sources: input.sources, tx }))

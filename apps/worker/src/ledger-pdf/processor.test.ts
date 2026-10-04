@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LedgerSnapshot } from "@smedc/ledger-archive";
+import { LedgerPublicationError, type LedgerSnapshot } from "@smedc/ledger-archive";
 import type { StorageAdapter } from "@smedc/storage";
 import {
   processLedgerPdf,
@@ -158,6 +158,24 @@ describe("ledger PDF worker generation", () => {
     vi.mocked(input.archive.leaseIsActive).mockResolvedValueOnce(false);
     await cleanupLedgerScratch(input);
     expect(await readdir(input.scratchRoot)).toEqual([]);
+  });
+  it("reads a fresh revision and uses a new candidate when source change requests a retry", async () => {
+    const input = await fixture();
+    vi.mocked(input.archive.publishLedgerPdf).mockRejectedValueOnce(
+      new LedgerPublicationError("LEDGER_SOURCE_CHANGED", true)
+    );
+    await expect(processLedgerPdf(input)).rejects.toMatchObject({
+      code: "LEDGER_SOURCE_CHANGED",
+      retryable: true
+    });
+    input.snapshot.dataRevision = 6;
+    input.run.attemptNumber = 3;
+    expect(await processLedgerPdf(input)).toEqual({ status: "published" });
+    const calls = vi.mocked(input.archive.publishLedgerPdf).mock.calls;
+    expect(calls[0]![0].dataRevision).toBe(5);
+    expect(calls[1]![0]).toMatchObject({ dataRevision: 6, leaseToken: { attemptNumber: 3 } });
+    expect(calls[1]![0].candidate!.objectKey).not.toBe(calls[0]![0].candidate!.objectKey);
+    expect(input.storage.deleteObject).not.toHaveBeenCalled();
   });
   it("uses a new immutable candidate for every retry", async () => {
     const input = await fixture();

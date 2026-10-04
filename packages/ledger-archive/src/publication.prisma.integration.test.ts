@@ -1,3 +1,4 @@
+import type { StorageAdapter } from "@smedc/storage";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -10,7 +11,8 @@ import {
 } from "@smedc/db";
 import {
   createPrismaProcessingWorkerRepository,
-  ProcessingLeaseLostError
+  ProcessingLeaseLostError,
+  runWorkerOnce
 } from "../../../apps/worker/src/worker.js";
 import { createPrismaLedgerArchiveRepository } from "./repository.js";
 import { createPrismaLedgerPublicationArchive, type PublishLedgerPdfInput } from "./publication.js";
@@ -197,16 +199,93 @@ if (enabled) {
       ])
     );
   });
-  it("source revision changes during conversion supersede the old snapshot", async () => {
+  it("same-generation revision change requeues its job and the next attempt publishes fresh data", async () => {
+    const previous = await reserve("Revision");
+    await publication.publishLedgerPdf(previous.input);
     const value = await reserve("Revision");
     await prisma.ledgerPdfPartition.update({
       where: { id: value.item.partitionId },
       data: { dataRevision: { increment: 1 } }
     });
-    expect(await publication.publishLedgerPdf(value.input)).toBe("superseded");
+    const now = new Date();
+    await prisma.processingRun.update({
+      where: { id: value.run.id },
+      data: {
+        status: "queued",
+        attemptNumber: 0,
+        lockedBy: null,
+        lockedUntil: null,
+        availableAt: new Date(0),
+        priority: -101
+      }
+    });
+    const latestKey = `synthetic/${orgId}/${randomUUID()}.pdf`;
+    garbageKeys.push(latestKey);
+    const handler = {
+      async process({
+        run
+      }: {
+        run: { id: string; lockedBy: string | null; attemptNumber: number };
+      }) {
+        const leaseToken = {
+          runId: run.id,
+          lockedBy: run.lockedBy!,
+          attemptNumber: run.attemptNumber
+        };
+        if (run.attemptNumber === 1)
+          return publication.publishLedgerPdf({ ...value.input, leaseToken });
+        const current = await prisma.ledgerPdfPartition.findUniqueOrThrow({
+          where: { id: value.item.partitionId }
+        });
+        await publication.registerCandidate({ orgId, leaseToken, objectKey: latestKey });
+        return publication.publishLedgerPdf({
+          ...value.input,
+          leaseToken,
+          dataRevision: current.dataRevision,
+          candidate: { ...value.input.candidate!, objectKey: latestKey }
+        });
+      }
+    };
+    const input = {
+      repository: worker,
+      storage: {} as StorageAdapter,
+      ledgerJobs: { ledger_pdf_generate: handler },
+      workerId: "synthetic-worker",
+      retryBaseMs: 1
+    };
+    expect(await runWorkerOnce({ ...input, now: () => now })).toMatchObject({
+      status: "retry_scheduled"
+    });
     expect(
-      await prisma.ledgerPdfPartition.findUnique({ where: { id: value.item.partitionId } })
-    ).toMatchObject({ currentObjectKey: null });
+      await prisma.processingRun.findUniqueOrThrow({ where: { id: value.run.id } })
+    ).toMatchObject({
+      status: "retry_scheduled",
+      attemptNumber: 1,
+      errorCode: "LEDGER_SOURCE_CHANGED"
+    });
+    expect(
+      await prisma.ledgerArtifactRequestItem.findUniqueOrThrow({ where: { id: value.item.id } })
+    ).toMatchObject({ status: "queued", generation: value.item.generation });
+    expect(
+      await prisma.ledgerPdfPartition.findUniqueOrThrow({ where: { id: value.item.partitionId } })
+    ).toMatchObject({ currentObjectKey: previous.input.candidate!.objectKey });
+    expect(await runWorkerOnce({ ...input, now: () => new Date(now.getTime() + 5) })).toMatchObject(
+      { status: "active" }
+    );
+    expect(
+      await prisma.processingRun.findUniqueOrThrow({ where: { id: value.run.id } })
+    ).toMatchObject({
+      status: "succeeded",
+      attemptNumber: 2,
+      ledgerArtifactRequestItemId: value.item.id
+    });
+    expect(
+      await prisma.ledgerPdfPartition.findUniqueOrThrow({ where: { id: value.item.partitionId } })
+    ).toMatchObject({
+      currentObjectKey: latestKey,
+      publishedDataRevision: 1,
+      publishedGeneration: value.item.generation
+    });
   });
   it("invalid source rolls back publication and preserves its candidate registration", async () => {
     const previous = await reserve("Invalid");
