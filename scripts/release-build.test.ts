@@ -17,6 +17,7 @@ import { releaseEntries } from "../tsup.release.config.js";
 const releaseArtifacts = [
   "api",
   "worker",
+  "ledger-pdf-render-check",
   "readiness",
   "staging-smoke",
   "official-manual-acceptance",
@@ -30,6 +31,7 @@ describe("release build", () => {
     expect(releaseEntries).toEqual({
       api: "apps/api/src/index.ts",
       worker: "apps/worker/src/dev-loop.ts",
+      "ledger-pdf-render-check": "apps/worker/src/ledger-pdf/renderer.integration.ts",
       readiness: "scripts/readiness.ts",
       "staging-smoke": "scripts/staging-smoke.ts",
       "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
@@ -59,6 +61,7 @@ describe("release build", () => {
 
       for (const artifact of [
         "worker",
+        "ledger-pdf-render-check",
         "readiness",
         "staging-smoke",
         "official-manual-acceptance",

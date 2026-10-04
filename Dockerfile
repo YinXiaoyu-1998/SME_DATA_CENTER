@@ -12,6 +12,7 @@ COPY apps/release-ops/package.json ./apps/release-ops/package.json
 COPY apps/worker/package.json ./apps/worker/package.json
 COPY packages/db/package.json ./packages/db/package.json
 COPY packages/domain/package.json ./packages/domain/package.json
+COPY packages/ledger-archive/package.json ./packages/ledger-archive/package.json
 COPY packages/mcp-contract/package.json ./packages/mcp-contract/package.json
 COPY packages/storage/package.json ./packages/storage/package.json
 COPY packages/structured-ingestion/package.json ./packages/structured-ingestion/package.json
@@ -87,9 +88,14 @@ CMD ["node", "dist/release/api.js"]
 
 FROM runtime-base AS worker
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libreoffice-calc fonts-noto-cjk poppler-utils \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=worker-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build --chown=node:node /app/dist/release/worker.js ./dist/release/worker.js
+COPY --from=build --chown=node:node /app/dist/release/ledger-pdf-render-check.js ./dist/release/ledger-pdf-render-check.js
 COPY --from=calamine-reader-build --chown=root:root /src/target/release/smedc-calamine-reader /usr/local/bin/smedc-calamine-reader
 
 USER node
