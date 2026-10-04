@@ -6,20 +6,33 @@ This document tracks human-provided staging inputs, validation evidence, and per
 
 It is intentionally safe to commit. Do not store secret values here.
 
-Current synchronization state (2026-10-05): ledger archive `main@693217d99542` is deployed by
-canonical staging run `37214387947`. All five forward-only archive/garbage/reconciliation migrations
-are applied, API/worker are healthy, private readiness passes, and public `/readyz` remains 404.
-The worker uses the writable node-owned `/opt/smedc/ledger-pdf` mount; both PDF delivery and daily
-reconciliation remain false for the initial rollout. The same synthetic Chinese/long-field/photo
-fixture passes on the deployed AMD64 worker: 9 pages, 306477 bytes, with run-created files removed.
+Current synchronization state (2026-10-05): ledger archive and release synchronization
+`main@59da8e2cf372` are deployed by canonical staging run `37219995232`. All five forward-only
+archive/garbage/reconciliation migrations are applied. PDF delivery and daily reconciliation are
+enabled on both API and worker, with reconciliation at 03:00 Asia/Shanghai. Private health/readiness
+return 200, public health returns 200, public `/readyz` remains 404, and unauthenticated PDF coverage
+and download preparation return 401. The worker retains the writable node-owned ledger mount.
+The synthetic Chinese/long-field/photo fixture previously passed on the deployed AMD64 worker:
+9 pages, 306477 bytes, with run-created files removed.
 
 Launcher 0.7.0 is public and independently verified after release run `37213716438` and maintainer
 stage approval. The clean official-registry install reports 0.7.0, discovers 23 tools with four PDF
 download tools and no generation entry, rejects the removed refresh tool, has zero production audit
 findings, and matches the reviewed merge artifact after extraction. Post-publication synchronization
-PRs #205 (service), #53 (core Skill), and #25 (companion) recommend/pin 0.7.0 while retaining the
-0.6.0 minimum. They are pending review/merge; live server metadata still requires and recommends
-0.6.0. Real enterprise backfill and delivery/reconciliation cutover remain pending scope confirmation.
+PRs #205 (service), #53 (core Skill), and #25 (companion) are merged. Live metadata recommends 0.7.0
+and retains the 0.6.0 minimum; both core Skill pins and companion guidance are synchronized.
+
+The authorized 麦家小馆 backfill completed all 359 partitions across 10 stores, covering 12,696
+ledger rows with no failures or source/revision mismatches. Four actual PDFs passed visual checks
+and exact comparison of all 5,115 cells across 465 sampled rows. These historical partitions have no
+associated quarantine photos; actual photo rendering was verified with the synthetic fixture.
+The first automatic reconciliation completed with 359 healthy partitions, zero abnormalities,
+zero submitted repairs, and no new PDF generations. Official launcher 0.7.0 verification confirms
+single-store/day coverage is ready, ledger detail and original-file download are denied, and
+aggregated row counts remain available. A downloaded single-PDF ZIP preserves the expected
+store/date path, filename, 96,835-byte size, and SHA-256 of the previously verified PDF.
+A query across all 359 historical partitions exceeds the
+launcher's 30-second timeout; large-scope coverage performance remains an open limitation.
 See [ledger-pdf-operations.md](ledger-pdf-operations.md) for rollout boundaries.
 
 ## Status Vocabulary
