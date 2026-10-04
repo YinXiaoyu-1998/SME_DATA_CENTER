@@ -281,6 +281,9 @@ function fakeStorage(createDownloadUrl: StorageAdapter["createDownloadUrl"]): St
     async getObjectStream() {
       throw new Error("not used");
     },
+    async headObject() {
+      return { state: "found", size: 123, hash: "hash" };
+    },
     async statObject(key) {
       return { key, size: 123, hash: "hash", contentType: "application/octet-stream" };
     },

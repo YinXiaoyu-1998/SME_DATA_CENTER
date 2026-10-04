@@ -55,6 +55,7 @@ describe("source document download routes", () => {
     const storageAdapter: StorageAdapter = {
       putObject: localStorage.putObject.bind(localStorage),
       getObjectStream: localStorage.getObjectStream.bind(localStorage),
+      headObject: localStorage.headObject.bind(localStorage),
       statObject: localStorage.statObject.bind(localStorage),
       createDownloadUrl,
       deleteObject: localStorage.deleteObject.bind(localStorage)

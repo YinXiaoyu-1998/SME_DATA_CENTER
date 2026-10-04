@@ -56,6 +56,9 @@ describe("public ledger source download policy", () => {
       async getObjectStream() {
         throw new Error("unused");
       },
+      async headObject() {
+        return { state: "found", size: 12, hash: "synthetic" };
+      },
       async statObject(key) {
         return { key, size: 12, hash: "synthetic", contentType: "application/octet-stream" };
       },

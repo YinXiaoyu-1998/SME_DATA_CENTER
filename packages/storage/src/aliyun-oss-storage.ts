@@ -18,6 +18,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { assertSafeObjectKey, createOriginalObjectKey } from "./object-key.js";
 import type {
   CreateDownloadUrlOptions,
+  HeadObjectResult,
   PutObjectInput,
   StorageAdapter,
   StorageObject,
@@ -132,6 +133,23 @@ export class AliyunOssStorageAdapter implements StorageAdapter {
     }
 
     return response.Body as NodeJS.ReadableStream;
+  }
+
+  async headObject(key: string): Promise<HeadObjectResult> {
+    const physicalKey = this.physicalKey(key);
+    try {
+      const response = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: physicalKey })
+      );
+      if (response.ContentLength === undefined) {
+        throw new Error("OSS object metadata did not contain a content length.");
+      }
+      const hash = response.Metadata?.[HASH_METADATA_KEY];
+      return { state: "found", size: response.ContentLength, ...(hash ? { hash } : {}) };
+    } catch (error) {
+      if (isMissingObject(error)) return { state: "not_found" };
+      throw error;
+    }
   }
 
   async statObject(key: string): Promise<StorageObject> {
@@ -274,8 +292,31 @@ export class AliyunOssStorageAdapter implements StorageAdapter {
 
   private physicalKey(key: string): string {
     assertSafeObjectKey(key);
-    return this.keyPrefix ? `${this.keyPrefix}/${key}` : key;
+    const physicalKey = this.keyPrefix ? `${this.keyPrefix}/${key}` : key;
+    if (Buffer.byteLength(physicalKey, "utf8") > 1023) {
+      throw new Error(
+        /^org\/[^/]+\/ledger_records\//.test(key)
+          ? "LEDGER_OBJECT_KEY_TOO_LONG"
+          : "Storage object key exceeds the 1023-byte limit."
+      );
+    }
+    return physicalKey;
   }
+}
+
+function isMissingObject(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const failure = error as {
+    $metadata?: { httpStatusCode?: number };
+    name?: string;
+    Code?: string;
+    code?: string;
+  };
+  const status = failure.$metadata?.httpStatusCode;
+  if (status !== undefined) return status === 404;
+  return (
+    failure.name === "NoSuchKey" || failure.Code === "NoSuchKey" || failure.code === "NoSuchKey"
+  );
 }
 
 function attachmentDisposition(fileName: string): string {

@@ -169,6 +169,7 @@ describe("structured imports", () => {
         return delegateStorage.putObject(input);
       },
       getObjectStream: delegateStorage.getObjectStream.bind(delegateStorage),
+      headObject: delegateStorage.headObject.bind(delegateStorage),
       statObject: delegateStorage.statObject.bind(delegateStorage),
       createDownloadUrl: delegateStorage.createDownloadUrl.bind(delegateStorage),
       deleteObject: delegateStorage.deleteObject.bind(delegateStorage)

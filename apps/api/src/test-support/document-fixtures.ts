@@ -461,6 +461,9 @@ export function createOrganizationContextStorageAdapter(): StorageAdapter & {
     async getObjectStream() {
       throw new Error("not used by this test");
     },
+    async headObject() {
+      throw new Error("not used by this test");
+    },
     async statObject() {
       throw new Error("not used by this test");
     },
