@@ -72,6 +72,14 @@ type Photo = {
   confidentialityLevel: number;
 };
 
+type LedgerMetadataRow = {
+  sourceDocumentId: string;
+  batchId: string;
+  rowCount: bigint;
+  checksumSha256: string;
+  confidentialityLevel: number;
+};
+
 export type LedgerSourceMetadata = {
   sourceFingerprint: string;
   rowCount: number;
@@ -90,15 +98,7 @@ export async function readLedgerSourceMetadata(
   );
   const rowCount = Number(stats?.count ?? 0);
   if (rowCount > LEDGER_SNAPSHOT_LIMITS.rows) throw new Error("LEDGER_ROW_LIMIT_EXCEEDED");
-  const ledger = await tx.$queryRaw<
-    {
-      sourceDocumentId: string;
-      batchId: string;
-      rowCount: bigint;
-      checksumSha256: string;
-      confidentialityLevel: number;
-    }[]
-  >(Prisma.sql`
+  const ledger = await tx.$queryRaw<LedgerMetadataRow[]>(Prisma.sql`
     SELECT r.source_document_id AS sourceDocumentId, r.import_batch_id AS batchId,
       COUNT(*) AS rowCount, d.checksum_sha256 AS checksumSha256,
       d.confidentiality_level AS confidentialityLevel
@@ -116,6 +116,14 @@ export async function readLedgerSourceMetadata(
         AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) = CAST(q.receipt_id AS BINARY))
     ORDER BY CAST(q.receipt_id AS BINARY), q.created_at, q.source_document_id
     LIMIT ${LEDGER_SNAPSHOT_LIMITS.certificates + 1}`);
+  return ledgerSourceMetadata(rowCount, ledger, photos);
+}
+
+function ledgerSourceMetadata(
+  rowCount: number,
+  ledger: LedgerMetadataRow[],
+  photos: Photo[]
+): LedgerSourceMetadata {
   if (photos.length > LEDGER_SNAPSHOT_LIMITS.certificates)
     throw new Error("LEDGER_CERTIFICATE_LIMIT_EXCEEDED");
   let bytes = 0n;
@@ -170,6 +178,103 @@ export async function readLedgerSourceMetadata(
       .update(JSON.stringify(fingerprintMetadata))
       .digest("hex")
   };
+}
+
+export const LEDGER_METADATA_BATCH_SIZE = 20;
+
+/** A bounded snapshot of readable partitions; hidden metadata is never decoded. */
+export async function readReadableLedgerSourceMetadataBatch(
+  tx: Prisma.TransactionClient,
+  employee: { id: string; orgId: string; clearance: number; disabled: boolean },
+  keys: LedgerPartitionKey[]
+): Promise<Map<LedgerPartitionKey, LedgerSourceMetadata>> {
+  const result = new Map<LedgerPartitionKey, LedgerSourceMetadata>();
+  if (!keys.length || employee.disabled) return result;
+  if (
+    keys.length > LEDGER_METADATA_BATCH_SIZE ||
+    keys.some((key) => key.orgId !== employee.orgId || !key.storeName)
+  )
+    throw new Error("LEDGER_PARTITION_KEY_INVALID");
+  keys.forEach((key) => assertLedgerDate(key.purchaseDate));
+  const current = await tx.employee.findFirst({
+    where: { id: employee.id, orgId: employee.orgId, disabled: false }
+  });
+  if (!current) return result;
+  const clearance = Math.min(employee.clearance, current.clearance);
+  function from(batch: LedgerPartitionKey[]) {
+    const requested = Prisma.join(
+      batch.map(
+        (key) => Prisma.sql`SELECT ${keys.indexOf(key)} AS partitionIndex,
+      ${key.storeName} AS storeName, ${key.purchaseDate} AS purchaseDate`
+      ),
+      " UNION ALL "
+    );
+    return Prisma.sql`(${requested}) k JOIN delivery_ledger_rows r ON r.org_id = ${employee.orgId}
+      AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) AS BINARY) = CAST(k.storeName AS BINARY)
+      AND JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) = k.purchaseDate
+      JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
+      JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id`;
+  }
+  const active = Prisma.sql`d.status = 'active' AND d.archived_at IS NULL AND b.status = 'applied' AND b.archived_at IS NULL`;
+  function receipts(batch: LedgerPartitionKey[]) {
+    return Prisma.sql`SELECT DISTINCT k.partitionIndex,
+      CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) AS receiptId
+      FROM ${from(batch)} WHERE ${active}`;
+  }
+  function photoFrom(batch: LedgerPartitionKey[]) {
+    return Prisma.sql`(${receipts(batch)}) receipts JOIN quarantine_certificates q
+      ON q.org_id = ${employee.orgId} AND CAST(q.receipt_id AS BINARY) = receipts.receiptId
+      JOIN documents cd ON cd.id = q.source_document_id AND cd.org_id = q.org_id`;
+  }
+  const stats = await tx.$queryRaw<
+    { partitionIndex: number; rowCount: bigint; hidden: bigint }[]
+  >(Prisma.sql`
+    SELECT partitionIndex, SUM(kind = 'ledger') AS rowCount, SUM(level > ${clearance}) AS hidden FROM (
+      SELECT k.partitionIndex, 'ledger' AS kind, d.confidentiality_level AS level FROM ${from(keys)} WHERE ${active}
+      UNION ALL
+      SELECT receipts.partitionIndex, 'certificate' AS kind, cd.confidentiality_level AS level FROM ${photoFrom(keys)}
+        WHERE cd.status = 'active' AND cd.archived_at IS NULL
+    ) dependencies GROUP BY partitionIndex`);
+  const counts = new Map(stats.map((stat) => [Number(stat.partitionIndex), Number(stat.rowCount)]));
+  const visible = keys.filter((_, index) =>
+    stats.some(
+      (stat) =>
+        Number(stat.partitionIndex) === index &&
+        Number(stat.rowCount) > 0 &&
+        Number(stat.hidden) === 0
+    )
+  );
+  if (!visible.length) return result;
+  for (const key of visible) {
+    if (counts.get(keys.indexOf(key))! > LEDGER_SNAPSHOT_LIMITS.rows)
+      throw new Error("LEDGER_ROW_LIMIT_EXCEEDED");
+  }
+  const ledger = await tx.$queryRaw<(LedgerMetadataRow & { partitionIndex: number })[]>(Prisma.sql`
+    SELECT k.partitionIndex, r.source_document_id AS sourceDocumentId, r.import_batch_id AS batchId,
+      COUNT(*) AS rowCount, d.checksum_sha256 AS checksumSha256, d.confidentiality_level AS confidentialityLevel
+    FROM ${from(visible)} WHERE ${active}
+    GROUP BY k.partitionIndex, r.source_document_id, r.import_batch_id, d.checksum_sha256, d.confidentiality_level
+    LIMIT ${visible.length * (LEDGER_SNAPSHOT_LIMITS.rows + 1)}`);
+  const photos = await tx.$queryRaw<(Photo & { partitionIndex: number })[]>(Prisma.sql`
+    SELECT receipts.partitionIndex, q.source_document_id AS sourceDocumentId, q.receipt_id AS receiptId,
+      cd.storage_object_key AS storageObjectKey, cd.checksum_sha256 AS checksumSha256,
+      cd.content_type AS contentType, cd.byte_size AS byteSize, q.created_at AS uploadedAt,
+      cd.confidentiality_level AS confidentialityLevel
+    FROM ${photoFrom(visible)} WHERE cd.status = 'active' AND cd.archived_at IS NULL
+    ORDER BY receipts.partitionIndex, CAST(q.receipt_id AS BINARY), q.created_at, q.source_document_id
+    LIMIT ${visible.length * (LEDGER_SNAPSHOT_LIMITS.certificates + 1)}`);
+  for (const key of visible) {
+    const index = keys.indexOf(key);
+    result.set(
+      key,
+      ledgerSourceMetadata(
+        counts.get(index)!,
+        ledger.filter((row) => Number(row.partitionIndex) === index),
+        photos.filter((row) => Number(row.partitionIndex) === index)
+      )
+    );
+  }
+  return result;
 }
 
 export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClient }) {
