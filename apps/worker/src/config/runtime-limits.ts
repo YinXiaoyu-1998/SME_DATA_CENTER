@@ -11,6 +11,7 @@ export interface WorkerRuntimeLimits {
   workerMaxAttempts: number;
   workerRetryBaseMs: number;
   workerRetryMaxMs: number;
+  ledgerPdfScratchRoot: string;
   partitionImportMaxSourceBytes: number;
   partitionImportMaxRows: number;
   partitionImportMaxPartitions: number;
@@ -59,6 +60,7 @@ export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLi
     workerRetryMaxMs: parsePositiveSafeInteger(env, "WORKER_RETRY_MAX_MS", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.workerRetryMaxMs
     }),
+    ledgerPdfScratchRoot: env["LEDGER_PDF_SCRATCH_ROOT"]?.trim() || "/var/lib/smedc/ledger-pdf",
     partitionImportMaxSourceBytes: parsePositiveSafeInteger(
       env,
       "PARTITION_IMPORT_MAX_SOURCE_BYTES",

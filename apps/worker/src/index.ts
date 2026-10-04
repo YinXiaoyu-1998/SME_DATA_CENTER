@@ -1,3 +1,4 @@
+import { createLedgerPdfProcessor } from "./ledger-pdf/processor.js";
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
 import { createStorageAdapter } from "@smedc/storage";
@@ -11,6 +12,10 @@ export const workerWorkspaceName = "@smedc/worker";
 
 export async function main(): Promise<void> {
   loadDotenv({ quiet: true, override: false });
+  const abortController = new AbortController();
+  const stop = () => abortController.abort();
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
   const runtimeLimits = loadWorkerRuntimeLimits(process.env);
   const retrievalRuntime = parseWorkerRetrievalRuntimeConfig(process.env);
 
@@ -20,6 +25,9 @@ export async function main(): Promise<void> {
   });
   const storage = createStorageAdapter(process.env);
   const evidenceIndexer = createEvidenceIndexerFromEnv();
+  const ledgerProcessor = createLedgerPdfProcessor({
+    scratchRoot: runtimeLimits.ledgerPdfScratchRoot
+  });
   const partitionImporter = createPartitionImporter({
     limits: partitionImportLimitsFromRuntime(runtimeLimits),
     onTimingEvent(event) {
@@ -28,11 +36,14 @@ export async function main(): Promise<void> {
   });
 
   try {
+    await ledgerProcessor.maintain();
     await partitionImporter.maintain({ storage });
     const result = await runWorkerOnce({
       repository,
       storage,
+      signal: abortController.signal,
       evidenceIndexer,
+      ledgerJobs: { ledger_pdf_generate: ledgerProcessor },
       partitionImporter,
       structuredImportBatchInsertSize: runtimeLimits.structuredImportBatchInsertSize,
       leaseSeconds: runtimeLimits.workerLeaseSeconds,
@@ -42,8 +53,11 @@ export async function main(): Promise<void> {
     });
     console.log(JSON.stringify(result));
   } finally {
+    process.off("SIGINT", stop);
+    process.off("SIGTERM", stop);
     await repository.disconnect?.();
     await partitionImporter.disconnect();
+    await ledgerProcessor.disconnect();
   }
 }
 

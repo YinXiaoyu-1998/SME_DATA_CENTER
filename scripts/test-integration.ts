@@ -1732,6 +1732,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
     assert(!claimedByBWhileLeased, "Worker B must not claim an active lease.");
     const heartbeated = await repository.heartbeatProcessingRun?.({
       runId,
+      attemptNumber: 1,
       workerId: "worker-a",
       leaseSeconds: 1,
       now: new Date("2026-07-20T00:00:00.500Z")
@@ -1754,6 +1755,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
     try {
       await repository.completeEvidenceIndexing?.({
         runId,
+        attemptNumber: 1,
         documentId,
         workerId: "worker-a",
         now: new Date("2026-07-20T00:00:01.700Z"),
@@ -1772,6 +1774,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
 
     await repository.completeEvidenceIndexing?.({
       runId,
+      attemptNumber: 2,
       documentId,
       workerId: "worker-b",
       now: new Date("2026-07-20T00:00:01.700Z"),
@@ -1782,6 +1785,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
     try {
       await repository.failProcessingRun({
         runId,
+        attemptNumber: 1,
         documentId,
         workerId: "worker-a",
         now: new Date("2026-07-20T00:00:01.800Z"),

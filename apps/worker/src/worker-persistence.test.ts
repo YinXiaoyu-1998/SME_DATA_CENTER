@@ -150,6 +150,7 @@ describe("Prisma structured worker persistence", () => {
 
     await repository.completeStructuredImport?.({
       runId: "run_1",
+      attemptNumber: 1,
       documentId: "doc_1",
       importBatchId: "imp_1",
       dataset: "dish_catalog",
@@ -225,6 +226,7 @@ describe("Prisma structured worker persistence", () => {
 
     await repository.completeStructuredImport?.({
       runId: "run_delivery",
+      attemptNumber: 1,
       documentId: "doc_delivery",
       importBatchId: "imp_delivery",
       dataset: "delivery_ledger",
@@ -309,6 +311,7 @@ describe("Prisma structured worker persistence", () => {
 
     await repository.completeStructuredImport?.({
       runId: "run_supplier",
+      attemptNumber: 1,
       documentId: "doc_supplier",
       importBatchId: "imp_supplier",
       dataset: "supplier_catalog",
@@ -377,6 +380,7 @@ describe("Prisma structured worker persistence", () => {
 
     await repository.completeStructuredImport?.({
       runId: "run_1",
+      attemptNumber: 1,
       documentId: "doc_1",
       importBatchId: "imp_1",
       dataset: "vip",
@@ -421,6 +425,7 @@ describe("Prisma structured worker persistence", () => {
 
     await repository.rejectStructuredImport?.({
       runId: "run_1",
+      attemptNumber: 1,
       documentId: "doc_1",
       importBatchId: "imp_1",
       dataset: "vip",
@@ -451,4 +456,40 @@ describe("Prisma structured worker persistence", () => {
       })
     );
   });
+});
+
+it("fences failure by attempt and stops before document/domain mutation when stale", async () => {
+  prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
+    callback(prisma)
+  );
+  prisma.processingRun.findUniqueOrThrow.mockResolvedValue({
+    orgId: "synthetic",
+    jobType: "evidence_document_index"
+  });
+  prisma.processingRun.updateMany.mockResolvedValueOnce({ count: 0 });
+  prisma.document.update.mockClear();
+  const repository = createPrismaProcessingWorkerRepository("mysql://test");
+  await expect(
+    repository.failProcessingRun({
+      runId: "stale",
+      documentId: "doc",
+      workerId: "same-worker",
+      attemptNumber: 1,
+      now: new Date(),
+      errorCode: "STALE",
+      errorSummary: "synthetic",
+      willRetry: false,
+      nextAvailableAt: new Date()
+    })
+  ).rejects.toThrow("no longer leased");
+  expect(prisma.processingRun.updateMany).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      where: expect.objectContaining({
+        attemptNumber: 1,
+        lockedBy: "same-worker",
+        status: "running"
+      })
+    })
+  );
+  expect(prisma.document.update).not.toHaveBeenCalled();
 });

@@ -1,6 +1,7 @@
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsFromRows,
+  updateLedgerRefreshRequestStatus,
   markLedgerPartitionsChanged
 } from "@smedc/ledger-archive";
 import { setTimeout as delay } from "node:timers/promises";
@@ -40,6 +41,9 @@ export interface ClaimedProcessingRun {
   retryCount: number;
   attemptNumber: number;
   jobType: string;
+  ledgerArtifactRequestItemId?: string | null;
+  ledgerArtifactRequestId?: string | null;
+  ledgerPdfReconciliationRunId?: string | null;
   lockedBy: string | null;
   lockedUntil: Date | null;
   isEvidenceReindex?: boolean;
@@ -123,10 +127,12 @@ export interface ClaimProcessingRunInput {
 
 export interface HeartbeatProcessingRunInput extends ClaimProcessingRunInput {
   runId: string;
+  attemptNumber: number;
 }
 
 export interface CompleteEvidenceIndexingInput {
   runId: string;
+  attemptNumber: number;
   documentId: string;
   workerId: string;
   now: Date;
@@ -136,6 +142,7 @@ export interface CompleteEvidenceIndexingInput {
 
 export interface FailProcessingRunInput {
   runId: string;
+  attemptNumber: number;
   documentId: string;
   workerId: string;
   now: Date;
@@ -147,6 +154,7 @@ export interface FailProcessingRunInput {
 
 export interface BeginStructuredImportApplyInput {
   runId: string;
+  attemptNumber: number;
   documentId: string;
   importBatchId: string;
   dataset: StructuredDatasetName;
@@ -172,6 +180,7 @@ export interface ProcessingWorkerRepository {
   rejectStructuredImport?(input: RejectStructuredImportInput): Promise<void>;
   completePartitionProcessing?(input: {
     runId: string;
+    attemptNumber: number;
     workerId: string;
     now: Date;
   }): Promise<void>;
@@ -189,9 +198,33 @@ export type RunWorkerOnceResult =
       status: "active" | "processing_failed" | "retry_scheduled" | "rejected";
     };
 
+export type LedgerWorkerJobType =
+  "ledger_pdf_generate" | "ledger_pdf_bundle" | "ledger_pdf_reconcile";
+export type LedgerWorkerJobs = Partial<
+  Record<
+    LedgerWorkerJobType,
+    {
+      /** Owns fenced completion/requeue in the same transaction as its domain changes. */
+      process(input: {
+        run: ClaimedProcessingRun;
+        storage: StorageAdapter;
+        signal?: AbortSignal;
+      }): Promise<"published" | "empty" | "superseded" | "completed" | "continue">;
+    }
+  >
+>;
+function isLedgerJob(jobType: string): jobType is LedgerWorkerJobType {
+  return (
+    jobType === "ledger_pdf_generate" ||
+    jobType === "ledger_pdf_bundle" ||
+    jobType === "ledger_pdf_reconcile"
+  );
+}
+
 export interface RunWorkerLoopInput {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
+  ledgerJobs?: LedgerWorkerJobs;
   evidenceIndexer?: EvidenceIndexer;
   partitionImporter?: {
     process(input: {
@@ -218,6 +251,7 @@ export interface RunWorkerLoopInput {
 export async function runWorkerOnce(input: {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
+  ledgerJobs?: LedgerWorkerJobs;
   evidenceIndexer?: EvidenceIndexer;
   partitionImporter?: RunWorkerLoopInput["partitionImporter"];
   structuredIngestionLimits?: StructuredIngestionLimits;
@@ -228,6 +262,7 @@ export async function runWorkerOnce(input: {
   retryBaseMs?: number;
   retryMaxMs?: number;
   now?: () => Date;
+  signal?: AbortSignal;
 }): Promise<RunWorkerOnceResult> {
   const workerId = input.workerId ?? createWorkerId();
   const leaseSeconds = input.leaseSeconds ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.workerLeaseSeconds;
@@ -245,15 +280,40 @@ export async function runWorkerOnce(input: {
     return { processed: false };
   }
 
+  const abortController = new AbortController();
+  const abort = () => abortController.abort();
+  input.signal?.addEventListener("abort", abort, { once: true });
+  if (input.signal?.aborted) abort();
   const heartbeat = startHeartbeat({
     repository: input.repository,
     runId: run.id,
+    attemptNumber: run.attemptNumber,
     workerId,
     leaseSeconds,
+    abortController,
     now
   });
 
   try {
+    if (isLedgerJob(run.jobType)) {
+      const handler = input.ledgerJobs?.[run.jobType];
+      if (!handler)
+        throw new ProcessingError(
+          PROCESSING_ERROR_CODES.unsupportedProcessingJobType,
+          `Ledger handler is not configured: ${run.jobType}`,
+          false
+        );
+      const outcome = await handler.process({
+        run,
+        storage: input.storage,
+        signal: abortController.signal
+      });
+      return {
+        processed: true,
+        documentId: run.id,
+        status: outcome === "continue" ? "retry_scheduled" : "active"
+      };
+    }
     if (run.jobType === "evidence_document_index") {
       if (!input.evidenceIndexer || !input.repository.completeEvidenceIndexing) {
         throw new ProcessingError(
@@ -273,6 +333,7 @@ export async function runWorkerOnce(input: {
       const result = await input.evidenceIndexer.indexDocument({ run, content });
       await input.repository.completeEvidenceIndexing({
         runId: run.id,
+        attemptNumber: run.attemptNumber,
         documentId: run.documentId,
         workerId,
         now: now(),
@@ -305,6 +366,7 @@ export async function runWorkerOnce(input: {
 
       const transition = () => ({
         runId: run.id,
+        attemptNumber: run.attemptNumber,
         documentId: run.documentId,
         importBatchId: structuredImport.importBatchId,
         dataset: structuredImport.dataset,
@@ -373,7 +435,12 @@ export async function runWorkerOnce(input: {
         );
       }
       const outcome = await input.partitionImporter.process({ run, storage: input.storage });
-      await input.repository.completePartitionProcessing({ runId: run.id, workerId, now: now() });
+      await input.repository.completePartitionProcessing({
+        runId: run.id,
+        attemptNumber: run.attemptNumber,
+        workerId,
+        now: now()
+      });
       return {
         processed: true,
         documentId: run.partitionImport.jobId,
@@ -403,6 +470,7 @@ export async function runWorkerOnce(input: {
     try {
       await input.repository.failProcessingRun({
         runId: run.id,
+        attemptNumber: run.attemptNumber,
         documentId: run.documentId,
         workerId,
         now: failedAt,
@@ -436,6 +504,7 @@ export async function runWorkerOnce(input: {
     };
   } finally {
     heartbeat.stop();
+    input.signal?.removeEventListener("abort", abort);
   }
 }
 
@@ -456,6 +525,8 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
             repository: input.repository,
             storage: input.storage,
             evidenceIndexer: input.evidenceIndexer,
+            ledgerJobs: input.ledgerJobs,
+            signal: input.signal,
             partitionImporter: input.partitionImporter,
             structuredIngestionLimits: input.structuredIngestionLimits,
             structuredImportBatchInsertSize: input.structuredImportBatchInsertSize,
@@ -510,6 +581,18 @@ export function createPrismaProcessingWorkerRepository(
               {
                 OR: [
                   {
+                    jobType: "ledger_pdf_generate",
+                    ledgerArtifactRequestItem: { status: { in: ["queued", "running"] } }
+                  },
+                  {
+                    jobType: "ledger_pdf_bundle",
+                    ledgerArtifactRequest: { status: { in: ["queued", "running"] } }
+                  },
+                  {
+                    jobType: "ledger_pdf_reconcile",
+                    ledgerPdfReconciliationRun: { status: { in: ["queued", "running"] } }
+                  },
+                  {
                     jobType: "structured_partition_import",
                     partitionImportJob: { status: { in: ["queued", "processing"] } }
                   },
@@ -552,7 +635,12 @@ export function createPrismaProcessingWorkerRepository(
               }
             ]
           },
-          orderBy: [{ availableAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+          orderBy: [
+            { priority: "asc" },
+            { availableAt: "asc" },
+            { createdAt: "asc" },
+            { id: "asc" }
+          ],
           include: {
             document: true,
             partitionImportJob: true
@@ -566,16 +654,12 @@ export function createPrismaProcessingWorkerRepository(
         const claimed = await tx.processingRun.updateMany({
           where: {
             id: run.id,
-            OR: [
-              {
-                status: run.status,
-                availableAt: { lte: input.now }
-              },
-              {
-                status: ProcessingRunStatus.running,
-                lockedUntil: { lt: input.now }
-              }
-            ]
+            status: run.status,
+            attemptNumber: run.attemptNumber,
+            lockedBy: run.lockedBy,
+            ...(run.status === ProcessingRunStatus.running
+              ? { lockedUntil: { equals: run.lockedUntil, lt: input.now } }
+              : { lockedUntil: run.lockedUntil, availableAt: { lte: input.now } })
           },
           data: {
             status: ProcessingRunStatus.running,
@@ -602,15 +686,34 @@ export function createPrismaProcessingWorkerRepository(
             evidenceRetrievalConfigVersion &&
             isEvidenceReindexJobForConfig(run.jobKey, evidenceRetrievalConfigVersion)
           );
-        const document = run.documentId
-          ? isEvidenceReindex
-            ? run.document
-            : await tx.document.update({
-                where: { id: run.documentId },
-                data: { status: DocumentStatus.processing }
-              })
-          : null;
+        const document =
+          !isLedgerJob(run.jobType) && run.documentId
+            ? isEvidenceReindex
+              ? run.document
+              : await tx.document.update({
+                  where: { id: run.documentId },
+                  data: { status: DocumentStatus.processing }
+                })
+            : null;
 
+        if (run.jobType === "ledger_pdf_generate" && run.ledgerArtifactRequestItemId) {
+          await tx.ledgerArtifactRequestItem.update({
+            where: { id: run.ledgerArtifactRequestItemId },
+            data: { status: "running", errorCode: null }
+          });
+        }
+        if (run.jobType === "ledger_pdf_bundle" && run.ledgerArtifactRequestId) {
+          await tx.ledgerArtifactRequest.update({
+            where: { id: run.ledgerArtifactRequestId },
+            data: { status: "running", errorCode: null }
+          });
+        }
+        if (run.jobType === "ledger_pdf_reconcile" && run.ledgerPdfReconciliationRunId) {
+          await tx.ledgerPdfReconciliationRun.update({
+            where: { id: run.ledgerPdfReconciliationRunId },
+            data: { status: "running", startedAt: input.now }
+          });
+        }
         if (run.jobType === "structured_partition_import") {
           if (!run.partitionImportJobId || !run.partitionImportJob?.temporaryObjectKey) {
             throw new Error(`Partition import job is not claimable for processing run ${run.id}.`);
@@ -677,7 +780,7 @@ export function createPrismaProcessingWorkerRepository(
           });
         }
 
-        if (run.documentId) {
+        if (!isLedgerJob(run.jobType) && run.documentId) {
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
@@ -1088,6 +1191,8 @@ export function createPrismaProcessingWorkerRepository(
     },
     async failProcessingRun(input) {
       await prisma.$transaction(async (tx) => {
+        const candidate = await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } });
+        if (isLedgerJob(candidate.jobType)) await lockLedgerSourceMutation(tx, candidate.orgId);
         const claimed = await tx.processingRun.updateMany({
           where: activeLeaseWhere(input),
           data: {
@@ -1113,6 +1218,38 @@ export function createPrismaProcessingWorkerRepository(
             id: input.runId
           }
         });
+
+        if (isLedgerJob(run.jobType)) {
+          if (run.ledgerArtifactRequestItemId) {
+            const item = await tx.ledgerArtifactRequestItem.update({
+              where: { id: run.ledgerArtifactRequestItemId },
+              data: { status: input.willRetry ? "queued" : "failed", errorCode: input.errorCode }
+            });
+            await updateLedgerRefreshRequestStatus(tx, run.orgId, item.requestId);
+            await tx.ledgerPdfPartition.updateMany({
+              where: {
+                id: item.partitionId,
+                orgId: run.orgId,
+                requestedGeneration: item.generation
+              },
+              data: { errorCode: input.errorCode }
+            });
+          }
+          if (run.ledgerArtifactRequestId)
+            await tx.ledgerArtifactRequest.update({
+              where: { id: run.ledgerArtifactRequestId },
+              data: { status: input.willRetry ? "queued" : "failed", errorCode: input.errorCode }
+            });
+          if (run.ledgerPdfReconciliationRunId)
+            await tx.ledgerPdfReconciliationRun.update({
+              where: { id: run.ledgerPdfReconciliationRunId },
+              data: {
+                status: input.willRetry ? "queued" : "failed",
+                ...(input.willRetry ? {} : { finishedAt: input.now })
+              }
+            });
+          return;
+        }
 
         if (run.jobType === "structured_import" && input.willRetry) {
           await tx.importBatch.updateMany({
@@ -1296,8 +1433,18 @@ function toProcessingError(error: unknown, jobType?: string): ProcessingError {
     return error;
   }
 
-  if (error instanceof ProcessingLeaseLostError) {
-    return new ProcessingError(PROCESSING_ERROR_CODES.leaseLost, error.message, false);
+  if (
+    error instanceof ProcessingLeaseLostError ||
+    (typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === PROCESSING_ERROR_CODES.leaseLost)
+  ) {
+    return new ProcessingError(
+      PROCESSING_ERROR_CODES.leaseLost,
+      error instanceof Error ? error.message : "Lease lost",
+      false
+    );
   }
 
   if (error instanceof EvidenceParseError) {
@@ -1332,11 +1479,13 @@ function toProcessingError(error: unknown, jobType?: string): ProcessingError {
   }
 
   const code =
-    jobType === "structured_partition_import"
-      ? PROCESSING_ERROR_CODES.partitionImportFailed
-      : jobType === "structured_import"
-        ? PROCESSING_ERROR_CODES.structuredImportFailed
-        : PROCESSING_ERROR_CODES.evidenceIndexingFailed;
+    jobType && isLedgerJob(jobType)
+      ? "LEDGER_JOB_FAILED"
+      : jobType === "structured_partition_import"
+        ? PROCESSING_ERROR_CODES.partitionImportFailed
+        : jobType === "structured_import"
+          ? PROCESSING_ERROR_CODES.structuredImportFailed
+          : PROCESSING_ERROR_CODES.evidenceIndexingFailed;
   return new ProcessingError(
     code,
     error instanceof Error ? error.message : "Processing failed.",
@@ -1359,6 +1508,9 @@ function toClaimedProcessingRun(
     retryCount: run.retryCount,
     attemptNumber: run.attemptNumber,
     jobType: run.jobType,
+    ledgerArtifactRequestItemId: run.ledgerArtifactRequestItemId,
+    ledgerArtifactRequestId: run.ledgerArtifactRequestId,
+    ledgerPdfReconciliationRunId: run.ledgerPdfReconciliationRunId,
     lockedBy: run.lockedBy,
     lockedUntil: run.lockedUntil,
     isEvidenceReindex,
@@ -1531,11 +1683,17 @@ async function waitForNextPoll(pollIntervalMs: number, signal: AbortSignal | und
   }
 }
 
-function activeLeaseWhere(input: { runId: string; workerId: string; now: Date }) {
+function activeLeaseWhere(input: {
+  runId: string;
+  workerId: string;
+  attemptNumber: number;
+  now: Date;
+}) {
   return {
     id: input.runId,
     status: ProcessingRunStatus.running,
     lockedBy: input.workerId,
+    attemptNumber: input.attemptNumber,
     lockedUntil: { gt: input.now }
   };
 }
@@ -1557,7 +1715,9 @@ function startHeartbeat(input: {
   repository: ProcessingWorkerRepository;
   runId: string;
   workerId: string;
+  attemptNumber: number;
   leaseSeconds: number;
+  abortController: AbortController;
   now: () => Date;
 }) {
   if (!input.repository.heartbeatProcessingRun) {
@@ -1569,11 +1729,15 @@ function startHeartbeat(input: {
       void input.repository
         .heartbeatProcessingRun?.({
           runId: input.runId,
+          attemptNumber: input.attemptNumber,
           workerId: input.workerId,
           leaseSeconds: input.leaseSeconds,
           now: input.now()
         })
-        .catch(() => undefined);
+        .then((active) => {
+          if (active === false) input.abortController.abort();
+        })
+        .catch(() => input.abortController.abort());
     },
     Math.max(1, Math.floor((input.leaseSeconds * 1_000) / 3))
   );

@@ -167,6 +167,7 @@ if (enabled) {
       });
       await worker.completeStructuredImport?.({
         runId: run.id,
+        attemptNumber: run.attemptNumber,
         documentId: sourceDocumentId,
         importBatchId: batch.id,
         dataset: "delivery_ledger",

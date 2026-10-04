@@ -7,3 +7,4 @@ export * from "./source-reader.js";
 export * from "./supplier-values.js";
 export * from "./access.js";
 export * from "./changes.js";
+export * from "./publication.js";
