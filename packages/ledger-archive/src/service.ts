@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertLedgerPartitionObjectKeyFits, normalizeLedgerObjectKeyPrefix } from "./keys.js";
 import type {
   LedgerArchiveRepository,
   LedgerItemStatus,
@@ -49,11 +50,20 @@ function canonicalActor(actor: LedgerActor): LedgerActor {
 }
 
 export function createLedgerArchiveService(repository: LedgerArchiveRepository) {
+  const objectKeyPrefix = normalizeLedgerObjectKeyPrefix(repository.objectKeyPrefix ?? "");
+  function validateScopeObjectKeys(orgId: string, scope: LedgerScope) {
+    // Every normalized date has the same fixed width, so one date proves each store path.
+    const purchaseDate = ledgerScopeDates(scope)[0]!;
+    scope.storeNames.forEach((storeName) =>
+      assertLedgerPartitionObjectKeyFits({ orgId, storeName, purchaseDate }, objectKeyPrefix)
+    );
+  }
   async function resolveScope(orgId: string, scope: LedgerScope) {
     const keys: LedgerPartitionKey[] = [];
     let cursor: string | undefined;
     do {
       const page = await repository.listPartitionKeys({ orgId, scope, cursor });
+      page.keys.forEach((key) => assertLedgerPartitionObjectKeyFits(key, objectKeyPrefix));
       keys.push(...page.keys);
       if (keys.length > LEDGER_SCOPE_MAX_PARTITIONS) throw new Error("LEDGER_SCOPE_LIMIT_EXCEEDED");
       cursor = page.nextCursor ?? undefined;
@@ -64,6 +74,7 @@ export function createLedgerArchiveService(repository: LedgerArchiveRepository) 
   return {
     async previewRefresh(input: { orgId: string; scope: LedgerScope }) {
       const scope = parseLedgerScope(input.scope);
+      validateScopeObjectKeys(input.orgId, scope);
       const keys = await resolveScope(input.orgId, scope);
       return {
         scope,
@@ -81,6 +92,7 @@ export function createLedgerArchiveService(repository: LedgerArchiveRepository) 
     }) {
       validateSubmission(input.orgId, input.actor, input.idempotencyKey);
       const scope = parseLedgerScope(input.scope);
+      validateScopeObjectKeys(input.orgId, scope);
       const actor = canonicalActor(input.actor);
       const requestFingerprint = fingerprint({
         kind: "refresh",
@@ -111,6 +123,7 @@ export function createLedgerArchiveService(repository: LedgerArchiveRepository) 
       assertLedgerDate(input.key.purchaseDate);
       if (!input.key.storeName || input.key.storeName.length > 512)
         throw new Error("LEDGER_PARTITION_KEY_INVALID");
+      assertLedgerPartitionObjectKeyFits(input.key, objectKeyPrefix);
       const actor = canonicalActor(input.actor);
       return repository.reserveRefresh({
         orgId: input.key.orgId,
@@ -153,6 +166,7 @@ export function createLedgerArchiveService(repository: LedgerArchiveRepository) 
       if (existing) return existing;
       const keys = await repository.listFailedPartitionKeys(input);
       if (keys.length === 0) throw new Error("LEDGER_REQUEST_NO_FAILED_ITEMS");
+      keys.forEach((key) => assertLedgerPartitionObjectKeyFits(key, objectKeyPrefix));
       const request = await repository.reserveRefresh({
         orgId: input.orgId,
         actor,

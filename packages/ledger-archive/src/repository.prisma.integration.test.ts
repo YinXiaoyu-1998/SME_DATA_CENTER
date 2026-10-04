@@ -98,6 +98,43 @@ if (enabled) {
     ).toBeNull();
   });
 
+  it("rejects prefixed UTF-8 paths before any durable reservation, including direct repository use", async () => {
+    const repository = createPrismaLedgerArchiveRepository({
+      prisma: first,
+      objectKeyPrefix: `/${"中".repeat(180)}/`
+    });
+    const prefixedService = createLedgerArchiveService(repository);
+    expect(repository.objectKeyPrefix).toBe("中".repeat(180));
+    const counts = () =>
+      Promise.all([
+        first.ledgerPdfPartition.count({ where: { orgId } }),
+        first.ledgerArtifactRequest.count({ where: { orgId } }),
+        first.ledgerArtifactRequestItem.count({ where: { orgId } }),
+        first.processingRun.count({ where: { orgId } }),
+        first.auditLog.count({ where: { orgId } })
+      ]);
+    const before = await counts();
+    const oversizedKey = { ...key, storeName: "a".repeat(512) };
+    const scope = { storeNames: [oversizedKey.storeName], dates: [key.purchaseDate] };
+    await expect(prefixedService.previewRefresh({ orgId, scope })).rejects.toThrow(
+      "LEDGER_OBJECT_KEY_TOO_LONG"
+    );
+    await expect(
+      prefixedService.requestRefresh({ orgId, scope, actor, idempotencyKey: "oversize-public" })
+    ).rejects.toThrow("LEDGER_OBJECT_KEY_TOO_LONG");
+    await expect(
+      repository.reserveRefresh({
+        orgId,
+        scope,
+        keys: [oversizedKey],
+        actor,
+        idempotencyKey: "oversize-direct",
+        requestFingerprint: "b".repeat(64)
+      })
+    ).rejects.toThrow("LEDGER_OBJECT_KEY_TOO_LONG");
+    expect(await counts()).toEqual(before);
+  });
+
   it("keeps case-sensitive idempotency keys distinct", async () => {
     const upper = await service.requestPartitionRefresh({
       key,

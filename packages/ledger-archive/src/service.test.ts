@@ -108,3 +108,37 @@ it("keeps single-partition idempotency independent of key property order", async
     reserveRefresh.mock.calls[0]?.[0].requestFingerprint
   );
 });
+
+it("rejects unrepresentable exact paths in preview and refresh before reservation", async () => {
+  const reserveRefresh = vi.fn().mockResolvedValue({ requestId: "request-a", status: "queued" });
+  const repository = {
+    objectKeyPrefix: "中".repeat(180),
+    listPartitionKeys: vi.fn().mockResolvedValue({ keys: [], nextCursor: null }),
+    reserveRefresh,
+    findIdempotentRequest: vi.fn().mockResolvedValue(null),
+    getRequestStatus: vi.fn(),
+    listFailedPartitionKeys: vi.fn()
+  } satisfies LedgerArchiveRepository;
+  const service = createLedgerArchiveService(repository);
+  const scope = { storeNames: ["a".repeat(512)], dates: ["2026-10-01"] };
+  await expect(service.previewRefresh({ orgId: "org-a", scope })).rejects.toThrow(
+    "LEDGER_OBJECT_KEY_TOO_LONG"
+  );
+  await expect(
+    service.requestRefresh({
+      orgId: "org-a",
+      scope,
+      actor: { kind: "operator", label: "ops" },
+      idempotencyKey: "long-prefix"
+    })
+  ).rejects.toThrow("LEDGER_OBJECT_KEY_TOO_LONG");
+  await expect(
+    service.requestPartitionRefresh({
+      key: { orgId: "org-a", storeName: "中".repeat(512), purchaseDate: "2026-10-01" },
+      actor: { kind: "operator", label: "ops" },
+      idempotencyKey: "long-name",
+      onlyIfNeeded: false
+    })
+  ).rejects.toThrow("LEDGER_OBJECT_KEY_TOO_LONG");
+  expect(reserveRefresh).not.toHaveBeenCalled();
+});

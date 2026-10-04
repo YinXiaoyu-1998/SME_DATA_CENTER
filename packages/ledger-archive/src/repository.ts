@@ -1,6 +1,10 @@
 import { Prisma, type PrismaClient, type LedgerArtifactRequest } from "@prisma/client";
 import { retryIdempotentDatabaseOperation } from "@smedc/db";
-import { ledgerStoreNameHash } from "./keys.js";
+import {
+  assertLedgerPartitionObjectKeyFits,
+  ledgerStoreNameHash,
+  normalizeLedgerObjectKeyPrefix
+} from "./keys.js";
 import { LEDGER_PAGE_SIZE, ledgerScopeDates } from "./scope.js";
 import { reduceLedgerRequestStatus } from "./service.js";
 import type { LedgerActor, LedgerPartitionKey, LedgerRequestRef, LedgerScope } from "./types.js";
@@ -42,6 +46,8 @@ export type ReserveLedgerRefreshInput = {
   retryOfRequestId?: string;
 };
 export interface LedgerArchiveRepository {
+  /** Normalized physical prefix from the actual storage adapter; defaults to empty. */
+  readonly objectKeyPrefix?: string;
   listPartitionKeys(input: {
     orgId: string;
     scope?: LedgerScope;
@@ -123,10 +129,13 @@ function decodeCursor(
 }
 
 export function createPrismaLedgerArchiveRepository({
-  prisma
+  prisma,
+  objectKeyPrefix = ""
 }: {
   prisma: PrismaClient;
+  objectKeyPrefix?: string;
 }): LedgerArchiveRepository {
+  const normalizedPrefix = normalizeLedgerObjectKeyPrefix(objectKeyPrefix);
   async function findIdempotentRequest(input: {
     orgId: string;
     idempotencyKey: string;
@@ -139,6 +148,7 @@ export function createPrismaLedgerArchiveRepository({
   }
 
   return {
+    objectKeyPrefix: normalizedPrefix,
     findIdempotentRequest,
     async listPartitionKeys(input) {
       const binding = JSON.stringify([input.orgId, input.scope ?? null]);
@@ -175,6 +185,7 @@ export function createPrismaLedgerArchiveRepository({
       };
     },
     async reserveRefresh(input) {
+      input.keys.forEach((key) => assertLedgerPartitionObjectKeyFits(key, normalizedPrefix));
       if (input.keys.some((key) => key.orgId !== input.orgId))
         throw new Error("LEDGER_ORG_MISMATCH");
       return retryIdempotentDatabaseOperation(() =>
