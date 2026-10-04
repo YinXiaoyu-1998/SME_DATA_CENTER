@@ -57,7 +57,7 @@ export function ledgerBundleEntryName(entry: LedgerBundleEntry): string {
       character.codePointAt(0)! < 32 ||
       character.codePointAt(0) === 127 ||
       (character === " " && index === characters.length - 1)
-        ? encodeURIComponent(character).replaceAll(".", "%2E")
+        ? `%${character.codePointAt(0)!.toString(16).toUpperCase().padStart(2, "0")}`
         : character
     )
     .join("");

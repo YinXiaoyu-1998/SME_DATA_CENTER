@@ -218,6 +218,10 @@ describe("streaming existing ledger PDF ZIP", () => {
     const b = { ...a, key: { ...a.key, storeName: "%2E%2E" } };
     expect(ledgerBundleEntryName(a)).not.toBe(ledgerBundleEntryName(b));
     expect(decodeURIComponent(ledgerBundleEntryName(a).split("/")[0]!)).toBe(a.key.storeName);
+    const reserved = { ...a, key: { ...a.key, storeName: '门店:*?"<>| ' } };
+    const segment = ledgerBundleEntryName(reserved).split("/")[0]!;
+    expect(segment).not.toMatch(/[:*?"<>|]/);
+    expect(decodeURIComponent(segment)).toBe(reserved.key.storeName);
   });
 });
 
