@@ -13,13 +13,13 @@ approved installation pins. Discover tools through the host MCP integration.
 All inputs are flat, strict objects. Do not send `orgId`, feature/force/renderer flags, filesystem
 paths, binaries, or base64. Authentication determines organization and authorization on the server.
 
-| Tool | Required input | Optional input |
-| --- | --- | --- |
-| `describe_ledger_pdf_coverage` | date selection | `storeNames`, `cursor` |
-| `refresh_ledger_pdfs` | `storeNames`, date selection, `idempotencyKey` | none |
-| `get_ledger_pdf_request_status` | `requestId` | `cursor` |
-| `prepare_ledger_pdf_download` | `storeNames`, date selection, `idempotencyKey` | none |
-| `get_ledger_pdf_download_url` | `requestId` | none |
+| Tool                            | Required input                                 | Optional input         |
+| ------------------------------- | ---------------------------------------------- | ---------------------- |
+| `describe_ledger_pdf_coverage`  | date selection                                 | `storeNames`, `cursor` |
+| `refresh_ledger_pdfs`           | `storeNames`, date selection, `idempotencyKey` | none                   |
+| `get_ledger_pdf_request_status` | `requestId`                                    | `cursor`               |
+| `prepare_ledger_pdf_download`   | `storeNames`, date selection, `idempotencyKey` | none                   |
+| `get_ledger_pdf_download_url`   | `requestId`                                    | none                   |
 
 Date selection is exactly one of `dates: ["YYYY-MM-DD", ...]` or both `startDate` and `endDate`.
 Use real calendar dates, years 1000–9999. Ranges are ordered and include both endpoints.
