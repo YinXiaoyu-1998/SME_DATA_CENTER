@@ -125,3 +125,47 @@ describe("complete ledger source snapshot", () => {
     );
   });
 });
+
+describe("bounded ledger source metadata", () => {
+  it("matches snapshot fingerprint, returns ledger refs and never selects full business payloads", async () => {
+    const snapshot = await fixture().reader.readLedgerSnapshot(key);
+    const tx = {
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValueOnce([{ count: 1n }])
+        .mockResolvedValueOnce([
+          {
+            sourceDocumentId: "ledger",
+            batchId: "batch",
+            rowCount: 1n,
+            confidentialityLevel: 1,
+            checksumSha256: checksum
+          }
+        ])
+        .mockResolvedValueOnce([])
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(tx))
+    };
+    const reader = createPrismaLedgerSourceReader({ prisma: prisma as unknown as PrismaClient });
+    const metadata = await reader.readLedgerSourceMetadata(key);
+    expect(metadata.sourceFingerprint).toBe(snapshot.sourceFingerprint);
+    expect(metadata.rowCount).toBe(1);
+    expect(metadata.sources).toEqual(snapshot.sources.filter((ref) => ref.kind !== "supplier"));
+    const sql = tx.$queryRaw.mock.calls.map(([query]) => (query as { sql: string }).sql).join("\n");
+    for (const selection of sql.matchAll(/SELECT[\s\S]*?FROM/g))
+      expect(selection[0]).not.toContain("r.payload");
+    expect(sql).not.toContain("supplier_catalog");
+    expect(sql).toContain("COUNT(*)");
+    expect(sql).toContain("LIMIT");
+  });
+  it("rejects over-limit rows before loading even source metadata", async () => {
+    const tx = { $queryRaw: vi.fn().mockResolvedValue([{ count: 10_001n }]) };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(tx))
+    };
+    const reader = createPrismaLedgerSourceReader({ prisma: prisma as unknown as PrismaClient });
+    await expect(reader.readLedgerSourceMetadata(key)).rejects.toThrow("LEDGER_ROW_LIMIT_EXCEEDED");
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+});

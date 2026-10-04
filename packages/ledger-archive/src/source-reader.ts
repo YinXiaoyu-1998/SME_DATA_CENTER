@@ -72,8 +72,114 @@ type Photo = {
   confidentialityLevel: number;
 };
 
+export type LedgerSourceMetadata = {
+  sourceFingerprint: string;
+  rowCount: number;
+  sources: LedgerSourceRef[];
+};
+/** Bounded metadata only: never selects business payloads or fetches object/photo bytes. */
+export async function readLedgerSourceMetadata(
+  tx: Prisma.TransactionClient,
+  key: LedgerPartitionKey
+): Promise<LedgerSourceMetadata> {
+  assertLedgerDate(key.purchaseDate);
+  const filter = factFilter(key);
+  const from = factFrom();
+  const [stats] = await tx.$queryRaw<{ count: bigint }[]>(
+    Prisma.sql`SELECT COUNT(*) AS count FROM ${from} WHERE ${filter}`
+  );
+  const rowCount = Number(stats?.count ?? 0);
+  if (rowCount > LEDGER_SNAPSHOT_LIMITS.rows) throw new Error("LEDGER_ROW_LIMIT_EXCEEDED");
+  const ledger = await tx.$queryRaw<
+    {
+      sourceDocumentId: string;
+      batchId: string;
+      rowCount: bigint;
+      checksumSha256: string;
+      confidentialityLevel: number;
+    }[]
+  >(Prisma.sql`
+    SELECT r.source_document_id AS sourceDocumentId, r.import_batch_id AS batchId,
+      COUNT(*) AS rowCount, d.checksum_sha256 AS checksumSha256,
+      d.confidentiality_level AS confidentialityLevel
+    FROM ${from} WHERE ${filter}
+    GROUP BY r.source_document_id, r.import_batch_id, d.checksum_sha256, d.confidentiality_level
+    LIMIT ${LEDGER_SNAPSHOT_LIMITS.rows + 1}`);
+  const photos = await tx.$queryRaw<Photo[]>(Prisma.sql`
+    SELECT q.source_document_id AS sourceDocumentId, q.receipt_id AS receiptId,
+      cd.storage_object_key AS storageObjectKey, cd.checksum_sha256 AS checksumSha256,
+      cd.content_type AS contentType, cd.byte_size AS byteSize, q.created_at AS uploadedAt,
+      cd.confidentiality_level AS confidentialityLevel
+    FROM quarantine_certificates q JOIN documents cd ON cd.id = q.source_document_id AND cd.org_id = q.org_id
+    WHERE q.org_id = ${key.orgId} AND cd.status = 'active' AND cd.archived_at IS NULL
+      AND EXISTS (SELECT 1 FROM ${from} WHERE ${filter}
+        AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) = CAST(q.receipt_id AS BINARY))
+    ORDER BY CAST(q.receipt_id AS BINARY), q.created_at, q.source_document_id
+    LIMIT ${LEDGER_SNAPSHOT_LIMITS.certificates + 1}`);
+  if (photos.length > LEDGER_SNAPSHOT_LIMITS.certificates)
+    throw new Error("LEDGER_CERTIFICATE_LIMIT_EXCEEDED");
+  let bytes = 0n;
+  const certificates = photos.map((photo) => {
+    if (
+      !photo.byteSize ||
+      photo.byteSize <= 0n ||
+      !["image/jpeg", "image/png"].includes(photo.contentType)
+    )
+      throw new Error("LEDGER_SOURCE_METADATA_INVALID");
+    bytes += photo.byteSize;
+    return {
+      sourceDocumentId: photo.sourceDocumentId,
+      receiptId: requiredText(photo.receiptId),
+      storageObjectKey: requiredText(photo.storageObjectKey),
+      checksumSha256: sourceChecksum(photo.checksumSha256),
+      contentType: photo.contentType,
+      byteSize: Number(photo.byteSize),
+      uploadedAt: photo.uploadedAt.toISOString(),
+      confidentialityLevel: photo.confidentialityLevel
+    };
+  });
+  if (bytes > BigInt(LEDGER_SNAPSHOT_LIMITS.certificateBytes))
+    throw new Error("LEDGER_CERTIFICATE_BYTES_LIMIT_EXCEEDED");
+  const fingerprintMetadata = {
+    ledger: ledger
+      .map((entry) => ({
+        source: {
+          sourceDocumentId: entry.sourceDocumentId,
+          kind: "ledger",
+          confidentialityLevel: entry.confidentialityLevel,
+          checksumSha256: sourceChecksum(entry.checksumSha256)
+        },
+        batchId: entry.batchId,
+        rowCount: Number(entry.rowCount)
+      }))
+      .sort((a, b) => a.source.sourceDocumentId.localeCompare(b.source.sourceDocumentId)),
+    certificates
+  };
+  return {
+    rowCount,
+    sources: [
+      ...fingerprintMetadata.ledger.map((entry) => ({ ...entry.source, kind: "ledger" as const })),
+      ...photos.map((photo) => ({
+        sourceDocumentId: photo.sourceDocumentId,
+        kind: "certificate" as const,
+        confidentialityLevel: photo.confidentialityLevel,
+        checksumSha256: sourceChecksum(photo.checksumSha256)
+      }))
+    ],
+    sourceFingerprint: createHash("sha256")
+      .update(JSON.stringify(fingerprintMetadata))
+      .digest("hex")
+  };
+}
+
 export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClient }) {
   return {
+    readLedgerSourceMetadata(key: LedgerPartitionKey) {
+      return prisma.$transaction((tx) => readLedgerSourceMetadata(tx, key), {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: 30_000
+      });
+    },
     async readLedgerSnapshot(key: LedgerPartitionKey): Promise<LedgerSnapshot> {
       assertLedgerDate(key.purchaseDate);
       if (!key.orgId || !key.storeName) throw new Error("LEDGER_PARTITION_KEY_INVALID");

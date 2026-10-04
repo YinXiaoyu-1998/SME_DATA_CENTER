@@ -7,5 +7,10 @@
   "dependencies": {
     "@smedc/db": "0.0.0",
     "@prisma/client": "7.9.1"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./reconciliation": "./src/reconciliation.ts",
+    "./source-reader": "./src/source-reader.ts"
   }
 }
