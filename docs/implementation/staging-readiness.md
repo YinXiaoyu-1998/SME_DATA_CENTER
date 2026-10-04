@@ -7,7 +7,7 @@ This document tracks human-provided staging inputs, validation evidence, and per
 It is intentionally safe to commit. Do not store secret values here.
 
 Current synchronization state (2026-10-05): ledger archive and release synchronization
-`main@59da8e2cf372` are deployed by canonical staging run `37219995232`. All five forward-only
+`main@cb575a88b074` are deployed by canonical staging run `37225348519`. All five forward-only
 archive/garbage/reconciliation migrations are applied. PDF delivery and daily reconciliation are
 enabled on both API and worker, with reconciliation at 03:00 Asia/Shanghai. Private health/readiness
 return 200, public health returns 200, public `/readyz` remains 404, and unauthenticated PDF coverage
@@ -22,6 +22,15 @@ findings, and matches the reviewed merge artifact after extraction. Post-publica
 PRs #205 (service), #53 (core Skill), and #25 (companion) are merged. Live metadata recommends 0.7.0
 and retains the 0.6.0 minimum; both core Skill pins and companion guidance are synchronized.
 
+Launcher 0.7.1 is also public after release run `37225034201`; its registry integrity matches
+that run. An independent clean install reports 0.7.1, has zero production dependency advisories,
+and connects to the official authenticated MCP with 23 tools including the four PDF download
+tools. The published bundle sets business MCP calls to 45 seconds while retaining 30 seconds for
+connection/profile checks. PRs #207/#208 are merged as `main@840a52a931bf`; its quality gates pass.
+The service recommendation and core/companion pin updates are proposed in service PR #206,
+core PR #55, and companion PR #26, while live metadata still recommends 0.7.0. Existing client
+installations require the normal authorized update flow to use the 45-second deadline.
+
 The authorized 麦家小馆 backfill completed all 359 partitions across 10 stores, covering 12,696
 ledger rows with no failures or source/revision mismatches. Four actual PDFs passed visual checks
 and exact comparison of all 5,115 cells across 465 sampled rows. These historical partitions have no
@@ -31,8 +40,13 @@ zero submitted repairs, and no new PDF generations. Official launcher 0.7.0 veri
 single-store/day coverage is ready, ledger detail and original-file download are denied, and
 aggregated row counts remain available. A downloaded single-PDF ZIP preserves the expected
 store/date path, filename, 96,835-byte size, and SHA-256 of the previously verified PDF.
-A query across all 359 historical partitions exceeds the
-launcher's 30-second timeout; large-scope coverage performance remains an open limitation.
+After the batching fix is deployed, the same official MCP full-history coverage query completes
+all 359 ready partitions in two pages: 200 partitions in 13.240 seconds and 159 in 9.012 seconds,
+versus the previous first-page timeout beyond 30 seconds. The single-day 10-partition query takes
+1.537 seconds, and the structured summary still returns 12,696 rows. These are observed staging
+timings for this existing workload, not latency guarantees. API/worker images are independently
+verified at `cb575a88b074`, with both delivery/reconciliation switches still true and the HTTP
+200/404/401 boundaries unchanged.
 See [ledger-pdf-operations.md](ledger-pdf-operations.md) for rollout boundaries.
 
 ## Status Vocabulary
