@@ -17,6 +17,8 @@ const prisma = vi.hoisted(() => ({
   supplierCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   document: { findFirst: vi.fn(), update: vi.fn() },
   auditLog: { create: vi.fn() },
+  ledgerPdfPartition: { upsert: vi.fn() },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn(),
   $disconnect: vi.fn()
 }));
@@ -43,6 +45,7 @@ import { createPrismaProcessingWorkerRepository } from "./worker.js";
 describe("Prisma structured worker persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.$queryRaw.mockResolvedValue([{ id: "org_1" }]);
     prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
       callback(prisma)
     );
@@ -66,6 +69,7 @@ describe("Prisma structured worker persistence", () => {
     prisma.vipRow.createMany.mockResolvedValue({ count: 1 });
     prisma.document.update.mockResolvedValue({});
     prisma.auditLog.create.mockResolvedValue({});
+    prisma.ledgerPdfPartition.upsert.mockImplementation(async (input) => input.create);
   });
 
   it("claims only matching active evidence reindex jobs without hiding the active document", async () => {
@@ -237,7 +241,12 @@ describe("Prisma structured worker persistence", () => {
             sourceSheetIndex: 0,
             sourceSheetName: "Receipt",
             sourceRowNumber: 8,
-            payload: { receipt_id: "SH-1", item_name: "Rice" }
+            payload: {
+              receipt_id: "SH-1",
+              item_name: "Rice",
+              store_name: "Synthetic",
+              purchase_date: "2026-08-19"
+            }
           }
         ],
         validationErrors: [],
@@ -246,6 +255,16 @@ describe("Prisma structured worker persistence", () => {
       }
     });
 
+    expect(prisma.ledgerPdfPartition.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          orgId: "org_1",
+          storeName: "Synthetic",
+          dataRevision: 1
+        }),
+        update: { dataRevision: { increment: 1 } }
+      })
+    );
     expect(prisma.deliveryLedgerRow.deleteMany).toHaveBeenCalledWith({
       where: { importBatchId: "imp_delivery" }
     });
@@ -258,7 +277,12 @@ describe("Prisma structured worker persistence", () => {
           sourceSheetIndex: 0,
           sourceSheetName: "Receipt",
           sourceRowNumber: 8,
-          payload: { receipt_id: "SH-1", item_name: "Rice" }
+          payload: {
+            receipt_id: "SH-1",
+            item_name: "Rice",
+            store_name: "Synthetic",
+            purchase_date: "2026-08-19"
+          }
         }
       ]
     });

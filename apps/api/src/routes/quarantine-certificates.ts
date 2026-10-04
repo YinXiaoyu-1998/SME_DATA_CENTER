@@ -131,7 +131,8 @@ function certificateResponse(certificate: QuarantineCertificateRecord) {
     originalFileName: certificate.originalFileName,
     contentType: certificate.contentType,
     byteSize: certificate.byteSize,
-    uploadedAt: certificate.uploadedAt.toISOString()
+    uploadedAt: certificate.uploadedAt.toISOString(),
+    affectedLedgerPartitions: certificate.affectedLedgerPartitions ?? []
   };
 }
 
@@ -246,7 +247,7 @@ export function registerQuarantineCertificateRoutes(
     });
     const existing = await dependencies
       .quarantineCertificates()
-      .findByIdempotencyKey(employee.orgId, upload.idempotencyKey);
+      .findByIdempotencyKey(employee.orgId, upload.idempotencyKey, employee.id);
     if (existing) {
       if (existing.requestFingerprint !== requestFingerprint) {
         return reply
@@ -377,7 +378,9 @@ export function registerQuarantineCertificateRoutes(
         receiptId,
         audit
       });
-      return { archivedCount };
+      return typeof archivedCount === "number"
+        ? { archivedCount, affectedLedgerPartitions: [] }
+        : archivedCount;
     }
 
     const archivedCount = await dependencies.quarantineCertificates().archiveBySourceDocumentId({
@@ -394,6 +397,8 @@ export function registerQuarantineCertificateRoutes(
         );
     }
 
-    return { archivedCount };
+    return typeof archivedCount === "number"
+      ? { archivedCount, affectedLedgerPartitions: [] }
+      : archivedCount;
   });
 }

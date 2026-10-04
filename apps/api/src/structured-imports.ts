@@ -1,3 +1,9 @@
+import {
+  lockLedgerSourceMutation,
+  ledgerPartitionsFromRows,
+  markLedgerPartitionsChanged,
+  type LedgerPartitionKey
+} from "@smedc/ledger-archive";
 import { randomBytes } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
@@ -47,6 +53,7 @@ export interface StructuredImportTimingEvent {
 }
 
 export interface StructuredImportBatchRecord {
+  affectedLedgerPartitions?: LedgerPartitionKey[];
   id: string;
   orgId: string;
   sourceDocumentId: string;
@@ -274,6 +281,25 @@ export function createPrismaStructuredImportRepository(options: {
   const adapter = createDatabaseAdapter(databaseUrl);
   const prisma = new PrismaClient({ adapter });
 
+  async function recordWithPartitions(
+    batch: Prisma.ImportBatchGetPayload<{ include: typeof importBatchInclude }>,
+    client: Prisma.TransactionClient = prisma
+  ): Promise<StructuredImportBatchRecord> {
+    const record = toImportBatchRecord(batch);
+    if (record.dataset !== "delivery_ledger" || record.status !== "applied") return record;
+    const rows = await client.deliveryLedgerRow.findMany({
+      where: { orgId: batch.orgId, sourceDocumentId: batch.sourceDocumentId },
+      select: { payload: true }
+    });
+    return {
+      ...record,
+      affectedLedgerPartitions: ledgerPartitionsFromRows(
+        batch.orgId,
+        rows.map((row) => ({ payload: row.payload as Record<string, unknown> }))
+      )
+    };
+  }
+
   async function resolveExistingReservation(input: ReserveStructuredImportInput): Promise<{
     state: "resumable" | "existing";
     importBatch: StructuredImportBatchRecord;
@@ -298,7 +324,7 @@ export function createPrismaStructuredImportRepository(options: {
           existingIdempotencyBatch.sourceDocument.processingRuns.length > 0
             ? "existing"
             : "resumable",
-        importBatch: toImportBatchRecord(existingIdempotencyBatch)
+        importBatch: await recordWithPartitions(existingIdempotencyBatch)
       };
     }
 
@@ -324,7 +350,7 @@ export function createPrismaStructuredImportRepository(options: {
             existingNaturalKeyBatch.sourceDocument.processingRuns.length > 0
               ? "existing"
               : "resumable",
-          importBatch: toImportBatchRecord(existingNaturalKeyBatch)
+          importBatch: await recordWithPartitions(existingNaturalKeyBatch)
         };
       }
     }
@@ -386,7 +412,7 @@ export function createPrismaStructuredImportRepository(options: {
         include: importBatchInclude
       });
 
-      return batch ? toImportBatchRecord(batch) : null;
+      return batch ? recordWithPartitions(batch) : null;
     },
     async reserveStructuredImport(input) {
       if (getStructuredRegistry(input.dataset).accessMode !== "row_query") {
@@ -510,6 +536,7 @@ export function createPrismaStructuredImportRepository(options: {
         const transactionStarted = performance.now();
         const applied = await prisma.$transaction(
           async (tx) => {
+            await lockLedgerSourceMutation(tx, input.orgId);
             const existing = await measureStructuredImportStage(input, "apply.find_import", () =>
               tx.importBatch.findFirst({
                 where: { id: input.importBatchId, orgId: input.orgId },
@@ -517,7 +544,8 @@ export function createPrismaStructuredImportRepository(options: {
               })
             );
             if (!existing) throw new Error("Reserved import batch was not found.");
-            if (existing.status === ImportBatchStatus.applied) return toImportBatchRecord(existing);
+            if (existing.status === ImportBatchStatus.applied)
+              return recordWithPartitions(existing, tx);
 
             const baseTiming = {
               importBatchId: input.importBatchId,
@@ -667,7 +695,12 @@ export function createPrismaStructuredImportRepository(options: {
                 dataset: batch.dataset
               }
             );
-            return toImportBatchRecord(batch);
+            const affectedLedgerPartitions =
+              batch.dataset === "delivery_ledger"
+                ? ledgerPartitionsFromRows(input.orgId, input.rows)
+                : [];
+            await markLedgerPartitionsChanged(tx, affectedLedgerPartitions);
+            return { ...toImportBatchRecord(batch), affectedLedgerPartitions };
           },
           { timeout: options.transactionTimeoutMs }
         );
@@ -689,7 +722,7 @@ export function createPrismaStructuredImportRepository(options: {
             })
         );
         if (authoritative?.status === ImportBatchStatus.applied) {
-          return toImportBatchRecord(authoritative);
+          return recordWithPartitions(authoritative);
         }
         throw new Error("Reserved import batch cannot be applied.");
       } finally {
@@ -748,7 +781,7 @@ export function createPrismaStructuredImportRepository(options: {
               include: importBatchInclude
             });
             if (authoritative?.sourceDocument.processingRuns.length) {
-              return toImportBatchRecord(authoritative);
+              return recordWithPartitions(authoritative);
             }
           }
           throw error;

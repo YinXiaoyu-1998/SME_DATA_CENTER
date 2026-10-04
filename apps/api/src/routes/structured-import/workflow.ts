@@ -350,7 +350,10 @@ function structuredImportResponse(input: {
       processingRunId: input.importBatch.processingRunId,
       status: input.importBatch.processingStatus
     },
-    importBatch: importBatchResponse(input.importBatch)
+    importBatch: importBatchResponse(input.importBatch),
+    ...(input.importBatch.dataset === "delivery_ledger" && input.importBatch.status === "applied"
+      ? { affectedLedgerPartitions: input.importBatch.affectedLedgerPartitions ?? [] }
+      : {})
   };
 }
 
@@ -383,7 +386,10 @@ export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
     validationErrorsTruncated: importBatch.validationErrorsTruncated,
     totalRowCount: importBatch.totalRowCount,
     appliedRowCount: importBatch.appliedRowCount,
-    queryableRowCount: importBatch.queryableRowCount
+    queryableRowCount: importBatch.queryableRowCount,
+    ...(importBatch.status === "applied" && importBatch.dataset === "delivery_ledger"
+      ? { affectedLedgerPartitions: importBatch.affectedLedgerPartitions ?? [] }
+      : {})
   };
 
   const metadataPolicy = getStructuredRegistry(importBatch.dataset).metadataPolicy;

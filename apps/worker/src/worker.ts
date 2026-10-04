@@ -1,5 +1,10 @@
+import {
+  lockLedgerSourceMutation,
+  ledgerPartitionsFromRows,
+  markLedgerPartitionsChanged
+} from "@smedc/ledger-archive";
 import { setTimeout as delay } from "node:timers/promises";
-import { createDatabaseAdapter } from "@smedc/db";
+import { retryIdempotentDatabaseOperation, createDatabaseAdapter } from "@smedc/db";
 import {
   DocumentStatus,
   ImportBatchStatus,
@@ -896,7 +901,11 @@ export function createPrismaProcessingWorkerRepository(
       });
     },
     async completeStructuredImport(input) {
+      const sourceRun = await prisma.processingRun.findUniqueOrThrow({
+        where: { id: input.runId }
+      });
       const publishStructuredImport = async (tx: Prisma.TransactionClient) => {
+        await lockLedgerSourceMutation(tx, sourceRun.orgId);
         const leased = await tx.processingRun.updateMany({
           where: activeLeaseWhere(input),
           data: {
@@ -974,6 +983,12 @@ export function createPrismaProcessingWorkerRepository(
           where: { id: input.documentId },
           data: { status: DocumentStatus.active }
         });
+        if (batch.dataset === ImportDataset.delivery_ledger) {
+          await markLedgerPartitionsChanged(
+            tx,
+            ledgerPartitionsFromRows(run.orgId, input.result.rows)
+          );
+        }
         await tx.auditLog.create({
           data: {
             orgId: run.orgId,
@@ -993,9 +1008,11 @@ export function createPrismaProcessingWorkerRepository(
           }
         });
       };
-      await prisma.$transaction(publishStructuredImport, {
-        timeout: structuredImportTransactionTimeoutMs
-      });
+      await retryIdempotentDatabaseOperation(() =>
+        prisma.$transaction(publishStructuredImport, {
+          timeout: structuredImportTransactionTimeoutMs
+        })
+      );
     },
     async rejectStructuredImport(input) {
       await prisma.$transaction(async (tx) => {

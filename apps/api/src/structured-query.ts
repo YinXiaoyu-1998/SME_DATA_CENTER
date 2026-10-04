@@ -1,3 +1,8 @@
+import {
+  findReadableCurrentSupplierCatalog,
+  findSupplierCatalogMatches,
+  dynamicValuesFor
+} from "@smedc/ledger-archive";
 import { createDatabaseAdapter } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
 import type { StructuredCompiledQuery } from "@smedc/domain";
@@ -13,15 +18,6 @@ export interface StructuredQueryRepository {
 }
 
 const STRUCTURED_QUERY_SUPPLIER_NAME = "structured_query_supplier_name";
-const SUPPLIER_CONTACT_PHONE = "supplier_contact_phone";
-const SUPPLIER_UNIT_ADDRESS = "supplier_unit_address";
-
-interface CurrentSupplierCatalog {
-  id: string;
-  source_document_id: string;
-}
-
-type StructuredQueryAuthorizationScope = StructuredCompiledQuery["authorizationScope"];
 
 function serializeStructuredQueryValue(value: unknown): unknown {
   if (typeof value !== "bigint") {
@@ -128,111 +124,6 @@ function uniqueSupplierNames(rows: Array<Record<string, unknown>>): string[] {
         .filter((value): value is string => typeof value === "string" && value.length > 0)
     )
   ];
-}
-
-async function findReadableCurrentSupplierCatalog(
-  prisma: PrismaClient,
-  scope: StructuredQueryAuthorizationScope
-): Promise<CurrentSupplierCatalog | null> {
-  const params: Array<string | number> = [
-    scope.orgId,
-    "supplier_catalog",
-    "applied",
-    "structured",
-    "active"
-  ];
-  const clauses = [
-    "d.id = latest.source_document_id",
-    "d.org_id = latest.org_id",
-    "d.document_kind = ?",
-    "d.status = ?",
-    "d.archived_at IS NULL"
-  ];
-
-  clauses.push("d.confidentiality_level <= ?");
-  params.push(scope.employee.clearance);
-
-  const rows = (await prisma.$queryRawUnsafe(
-    `SELECT latest.id, latest.source_document_id
-       FROM (
-          SELECT ib.id, ib.org_id, ib.source_document_id
-           FROM import_batches ib
-          WHERE ib.org_id = ?
-            AND ib.dataset = ?
-            AND ib.status = ?
-            AND ib.applied_at IS NOT NULL
-            AND ib.archived_at IS NULL
-          ORDER BY ib.applied_at DESC, ib.id DESC
-          LIMIT 1
-       ) latest
-       JOIN documents d ON d.id = latest.source_document_id
-      WHERE ${clauses.join(" AND ")}
-      LIMIT 1`,
-    ...params
-  )) as Array<CurrentSupplierCatalog>;
-  return rows[0] ?? null;
-}
-
-async function findSupplierCatalogMatches(
-  prisma: PrismaClient,
-  importBatchId: string,
-  sourceDocumentId: string,
-  supplierNames: string[],
-  dynamicFields: string[],
-  orgId: string
-): Promise<Array<Record<string, unknown>>> {
-  const selectedColumns = [
-    "scr.source_document_id AS source_document_id",
-    `JSON_UNQUOTE(JSON_EXTRACT(scr.payload, ?)) AS supplier_name`
-  ];
-  const params: Array<string> = ["$.supplier_name"];
-  if (dynamicFields.includes(SUPPLIER_CONTACT_PHONE)) {
-    selectedColumns.push(`JSON_UNQUOTE(JSON_EXTRACT(scr.payload, ?)) AS contact_phone`);
-    params.push("$.contact_phone");
-  }
-  if (dynamicFields.includes(SUPPLIER_UNIT_ADDRESS)) {
-    selectedColumns.push(`JSON_UNQUOTE(JSON_EXTRACT(scr.payload, ?)) AS unit_address`);
-    params.push("$.unit_address");
-  }
-
-  params.push(orgId, importBatchId, sourceDocumentId, "$.supplier_name", ...supplierNames);
-  const rows = (await prisma.$queryRawUnsafe(
-    `SELECT ${selectedColumns.join(", ")}
-       FROM supplier_catalog_rows scr
-      WHERE scr.org_id = ?
-        AND scr.import_batch_id = ?
-        AND scr.source_document_id = ?
-        AND JSON_UNQUOTE(JSON_EXTRACT(scr.payload, ?)) IN (${supplierNames.map(() => "?").join(", ")})`,
-    ...params
-  )) as Array<Record<string, unknown>>;
-  return rows;
-}
-
-function dynamicValuesFor(
-  row: Record<string, unknown>,
-  compiled: StructuredCompiledQuery
-): Record<string, unknown> {
-  return Object.fromEntries(
-    compiled.dynamicSelectedFields.flatMap((field) => {
-      if (field === SUPPLIER_CONTACT_PHONE) {
-        return [[field, nullableValue(row["contact_phone"])]];
-      }
-      if (field === SUPPLIER_UNIT_ADDRESS) {
-        return [[field, nullableValue(row["unit_address"])]];
-      }
-      return [];
-    })
-  );
-}
-
-function nullableValue(value: unknown): unknown {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value === "string" && value.trim().length === 0) {
-    return null;
-  }
-  return value;
 }
 
 function withoutInternalSupplierName(row: Record<string, unknown>): Record<string, unknown> {

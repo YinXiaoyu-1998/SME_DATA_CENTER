@@ -8,8 +8,11 @@ const prisma = vi.hoisted(() => ({
   document: {
     create: vi.fn(),
     findFirst: vi.fn(),
-    update: vi.fn()
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    findFirstOrThrow: vi.fn()
   },
+  $queryRaw: vi.fn(),
   $transaction: vi.fn(),
   $disconnect: vi.fn()
 }));
@@ -66,6 +69,7 @@ function documentRecord() {
 describe("Prisma document catalog audit provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.$queryRaw.mockResolvedValue([{ id: "org_1" }]);
     prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
       callback(prisma)
     );
@@ -73,6 +77,8 @@ describe("Prisma document catalog audit provenance", () => {
     prisma.document.create.mockResolvedValue(documentRecord());
     prisma.document.findFirst.mockResolvedValue({ status: "active" });
     prisma.document.update.mockResolvedValue({ ...documentRecord(), status: "archived" });
+    prisma.document.updateMany.mockResolvedValue({ count: 1 });
+    prisma.document.findFirstOrThrow.mockResolvedValue({ ...documentRecord(), status: "archived" });
   });
 
   it("persists the complete audit context for upload and archive writes", async () => {

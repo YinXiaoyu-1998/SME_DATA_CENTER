@@ -1,4 +1,11 @@
-import { createDatabaseAdapter } from "@smedc/db";
+import {
+  lockLedgerSourceMutation,
+  ledgerPartitionsForDocument,
+  readableLedgerPartitionHints,
+  markLedgerPartitionsChanged,
+  type LedgerPartitionKey
+} from "@smedc/ledger-archive";
+import { createDatabaseAdapter, retryIdempotentDatabaseOperation } from "@smedc/db";
 import {
   DocumentKind,
   DocumentStatus,
@@ -41,6 +48,7 @@ export interface CreateUploadedDocumentInput {
 }
 
 export interface DocumentStatusRecord {
+  affectedLedgerPartitions?: LedgerPartitionKey[];
   id: string;
   orgId: string;
   uploaderId: string;
@@ -225,51 +233,81 @@ export function createPrismaDocumentCatalogRepository(
       });
     },
     async archiveDocument(input) {
-      const document = await prisma.$transaction(async (tx) => {
-        const existingDocument = await tx.document.findFirst({
-          where: {
-            id: input.documentId,
-            orgId: input.orgId
+      const document = await retryIdempotentDatabaseOperation(() =>
+        prisma.$transaction(async (tx) => {
+          await lockLedgerSourceMutation(tx, input.orgId);
+          const existingDocument = await tx.document.findFirst({
+            where: {
+              id: input.documentId,
+              orgId: input.orgId
+            }
+          });
+
+          if (!existingDocument) {
+            return null;
           }
-        });
 
-        if (!existingDocument) {
-          return null;
-        }
-
-        const updatedDocument = await tx.document.update({
-          where: {
-            id: input.documentId
-          },
-          data: {
-            status: DocumentStatus.archived,
-            archivedAt: new Date()
-          },
-          include: documentStatusInclude
-        });
-
-        await tx.auditLog.create({
-          data: {
-            orgId: input.orgId,
-            actorEmployeeId: input.actorEmployeeId,
-            action: AUDIT_ACTIONS.documentArchived,
-            targetType: "document",
-            targetId: input.documentId,
-            result: "succeeded",
-            metadata: {
-              previousStatus: existingDocument.status
+          const affectedLedgerPartitions =
+            existingDocument.status !== DocumentStatus.archived &&
+            !existingDocument.archivedAt &&
+            ["structured", "quarantine_certificate"].includes(existingDocument.documentKind ?? "")
+              ? await ledgerPartitionsForDocument(tx, input.orgId, input.documentId)
+              : [];
+          const visibleHints = await readableLedgerPartitionHints(
+            tx,
+            input.actorEmployeeId,
+            affectedLedgerPartitions
+          );
+          const changed = await tx.document.updateMany({
+            where: {
+              id: input.documentId,
+              orgId: input.orgId,
+              status: { not: DocumentStatus.archived },
+              archivedAt: null
             },
-            requestId: input.audit.requestId,
-            clientIp: input.audit.sourceIp,
-            clientSource: input.audit.clientSource,
-            launcherVersion: input.audit.launcherVersion
+            data: {
+              status: DocumentStatus.archived,
+              archivedAt: new Date()
+            }
+          });
+          const updatedDocument = await tx.document.findFirstOrThrow({
+            where: { id: input.documentId, orgId: input.orgId },
+            include: documentStatusInclude
+          });
+          if (!changed.count) return { document: updatedDocument, affectedLedgerPartitions: [] };
+
+          await tx.auditLog.create({
+            data: {
+              orgId: input.orgId,
+              actorEmployeeId: input.actorEmployeeId,
+              action: AUDIT_ACTIONS.documentArchived,
+              targetType: "document",
+              targetId: input.documentId,
+              result: "succeeded",
+              metadata: {
+                previousStatus: existingDocument.status
+              },
+              requestId: input.audit.requestId,
+              clientIp: input.audit.sourceIp,
+              clientSource: input.audit.clientSource,
+              launcherVersion: input.audit.launcherVersion
+            }
+          });
+
+          await markLedgerPartitionsChanged(tx, affectedLedgerPartitions);
+          return {
+            document: updatedDocument,
+            affectedLedgerPartitions: visibleHints
+          };
+        })
+      );
+
+      return document
+        ? {
+            ...toDocumentStatusRecord(document.document),
+            affectedLedgerPartitions: document.affectedLedgerPartitions
           }
-        });
-
-        return updatedDocument;
-      });
-
-      return document ? toDocumentStatusRecord(document) : null;
+        : null;
     },
     async disconnect() {
       await prisma.$disconnect();

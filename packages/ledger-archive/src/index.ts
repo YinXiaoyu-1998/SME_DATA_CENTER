@@ -3,3 +3,7 @@ export * from "./scope.js";
 export * from "./keys.js";
 export * from "./repository.js";
 export * from "./service.js";
+export * from "./source-reader.js";
+export * from "./supplier-values.js";
+export * from "./access.js";
+export * from "./changes.js";
