@@ -5,6 +5,8 @@ import { createDatabaseAdapter } from "@smedc/db";
 import { ledgerStoreNameHash } from "./keys.js";
 import { createPrismaLedgerSourceReader } from "./source-reader.js";
 import { createPrismaLedgerArtifactAccess } from "./access.js";
+import { createPrismaLedgerDeliveryRepository } from "./delivery.js";
+import type { StorageAdapter } from "@smedc/storage";
 import { lockLedgerSourceMutation, markLedgerPartitionsChanged } from "./changes.js";
 import { createPrismaQuarantineCertificateRepository } from "../../../apps/api/src/quarantine-certificates.js";
 import { createPrismaDocumentCatalogRepository } from "../../../apps/api/src/documents.js";
@@ -501,5 +503,105 @@ if (enabled) {
     });
     await prisma.$transaction((tx) => markLedgerPartitionsChanged(tx, [key, key]));
     expect((await reader.readLedgerSnapshot(key)).dataRevision).toBe(original.dataRevision + 2);
+  });
+  it("covers many ready days with bounded source scans and preserves exact names, visibility, and object checks", async () => {
+    const stores = [
+      "Batch Shop",
+      "batch shop",
+      "Batch Shop ",
+      ...Array.from({ length: 18 }, (_, i) => `Batch ${i}`)
+    ];
+    const snapshots = [];
+    for (const [index, storeName] of stores.entries()) {
+      const receiptId = `B${index}`;
+      await fact(receiptId, storeName);
+      if (index === 0) {
+        const row = await prisma.deliveryLedgerRow.findFirstOrThrow({
+          where: { orgId, sourceDocumentId: `${orgId}_${receiptId}` }
+        });
+        await prisma.deliveryLedgerRow.create({
+          data: {
+            orgId,
+            sourceDocumentId: row.sourceDocumentId,
+            importBatchId: row.importBatchId,
+            sourceRowNumber: 3,
+            payload: row.payload!
+          }
+        });
+        await photo(receiptId, "batch-visible");
+        await photo(receiptId, "batch-hidden", 3);
+      }
+      const snapshot = await reader.readLedgerSnapshot({ ...key, storeName });
+      snapshots.push(snapshot);
+      const published = await prisma.ledgerPdfPartition.update({
+        where: {
+          orgId_storeNameHash_purchaseDate: {
+            orgId,
+            storeNameHash: ledgerStoreNameHash(storeName),
+            purchaseDate: new Date(key.purchaseDate + "T00:00:00Z")
+          }
+        },
+        data: {
+          publishedGeneration: 1,
+          publishedDataRevision: snapshot.dataRevision,
+          publishedSourceFingerprint: snapshot.sourceFingerprint,
+          currentObjectKey: `synthetic/batch-${index}.pdf`,
+          checksumSha256: checksum,
+          byteSize: 12
+        }
+      });
+      await prisma.ledgerPdfSource.createMany({
+        data: snapshot.sources.map((source) => ({ orgId, partitionId: published.id, ...source }))
+      });
+    }
+    let sourceScans = 0;
+    const measured = prisma.$extends({
+      query: {
+        $allOperations({ operation, args, query }) {
+          if (operation === "$queryRaw") sourceScans++;
+          return query(args);
+        }
+      }
+    });
+    let activeHeads = 0;
+    let peakHeads = 0;
+    const storage = {
+      async headObject(objectKey: string) {
+        activeHeads++;
+        peakHeads = Math.max(peakHeads, activeHeads);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        activeHeads--;
+        return objectKey === "synthetic/batch-20.pdf"
+          ? { state: "found", size: 12, hash: "b".repeat(64) }
+          : { state: "found", size: 12, hash: checksum };
+      }
+    } as StorageAdapter;
+    const delivery = createPrismaLedgerDeliveryRepository({
+      prisma: measured as unknown as PrismaClient,
+      storage
+    });
+    const facts = await delivery.facts(actor, { storeNames: stores, dates: [key.purchaseDate] });
+    expect(facts).toHaveLength(21);
+    expect(facts.filter((fact) => fact.status === "ready")).toHaveLength(20);
+    expect(facts.find((fact) => fact.key.storeName === "Batch 17")?.status).toBe("missing");
+    for (const snapshot of snapshots) {
+      const result = facts.find((fact) => fact.key.storeName === snapshot.key.storeName);
+      if (result?.status === "ready")
+        expect(result.entry?.sourceFingerprint).toBe(snapshot.sourceFingerprint);
+    }
+    // A per-key source scan regresses the public coverage path beyond the launcher timeout.
+    expect(sourceScans).toBeLessThanOrEqual(12);
+    expect(peakHeads).toBeGreaterThan(1);
+    expect(peakHeads).toBeLessThanOrEqual(4);
+    const hiddenPhotoId = `${orgId}_batch-hidden`;
+    await prisma.document.update({ where: { id: hiddenPhotoId }, data: { byteSize: null } });
+    const visible = await delivery.facts(low, { storeNames: stores, dates: [key.purchaseDate] });
+    expect(visible).toHaveLength(20);
+    expect(visible.some((fact) => fact.key.storeName === "Batch Shop")).toBe(false);
+    await prisma.employee.update({ where: { id: actor.id }, data: { disabled: true } });
+    expect(await delivery.facts(actor, { storeNames: stores, dates: [key.purchaseDate] })).toEqual(
+      []
+    );
+    await prisma.employee.update({ where: { id: actor.id }, data: { disabled: false } });
   });
 });

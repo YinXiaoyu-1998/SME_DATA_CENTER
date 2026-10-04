@@ -3,7 +3,10 @@ import type { PrismaClient } from "@prisma/client";
 import type { StorageAdapter } from "@smedc/storage";
 import { createPrismaLedgerDeliveryRepository, type LedgerDeliveryEmployee } from "./delivery.js";
 import { readLedgerSourceMetadata } from "./source-reader.js";
-vi.mock("./source-reader.js", () => ({ readLedgerSourceMetadata: vi.fn() }));
+vi.mock("./source-reader.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./source-reader.js")>()),
+  readLedgerSourceMetadata: vi.fn()
+}));
 const hash = "a".repeat(64);
 const employee: LedgerDeliveryEmployee = {
   id: "e",

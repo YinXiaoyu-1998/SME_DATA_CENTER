@@ -7,7 +7,12 @@ import { reduceLedgerRequestStatus } from "./service.js";
 import { ledgerScopeDates, parseLedgerScope, LEDGER_SCOPE_MAX_PARTITIONS } from "./scope.js";
 import { ledgerStoreNameHash } from "./keys.js";
 import { readableLedgerPartitionHints } from "./changes.js";
-import { readLedgerSourceMetadata } from "./source-reader.js";
+import {
+  readLedgerSourceMetadata,
+  readReadableLedgerSourceMetadataBatch,
+  LEDGER_METADATA_BATCH_SIZE,
+  type LedgerSourceMetadata
+} from "./source-reader.js";
 import {
   findReadableCurrentSupplierCatalog,
   findSupplierCatalogMatches,
@@ -459,10 +464,12 @@ export function createPrismaLedgerDeliveryRepository({
   async function readFact(
     tx: Prisma.TransactionClient,
     key: LedgerPartitionKey,
-    employee: LedgerDeliveryEmployee
+    employee: LedgerDeliveryEmployee,
+    preloaded?: LedgerSourceMetadata
   ): Promise<LedgerPdfFact | null> {
-    if (!(await readableLedgerPartitionHints(tx, employee.id, [key])).length) return null;
-    const metadata = await readLedgerSourceMetadata(tx, key);
+    if (!preloaded && !(await readableLedgerPartitionHints(tx, employee.id, [key])).length)
+      return null;
+    const metadata = preloaded ?? (await readLedgerSourceMetadata(tx, key));
     if (!metadata.rowCount) return null;
     const partition = await tx.ledgerPdfPartition.findUnique({
       where: {
@@ -595,12 +602,32 @@ export function createPrismaLedgerDeliveryRepository({
           ...(scope.storeNames ? { scope: parseLedgerScope(scope) } : {}),
           ...(cursor ? { cursor } : {})
         });
-        for (const key of page.keys.filter((k) => dates.includes(k.purchaseDate))) {
-          const fact = await prisma.$transaction((tx) => readFact(tx, key, employee), {
-            isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
-            timeout: 30000
-          });
-          if (fact) facts.push(fact);
+        const keys = page.keys.filter((k) => dates.includes(k.purchaseDate));
+        for (let offset = 0; offset < keys.length; offset += LEDGER_METADATA_BATCH_SIZE) {
+          const batch = keys.slice(offset, offset + LEDGER_METADATA_BATCH_SIZE);
+          const results = await prisma.$transaction(
+            async (tx) => {
+              if (batch.length === 1) return [await readFact(tx, batch[0]!, employee)];
+              const metadata = await readReadableLedgerSourceMetadataBatch(tx, employee, batch);
+              const visible = batch.filter((key) => metadata.has(key));
+              const results: (LedgerPdfFact | null)[] = [];
+              for (let index = 0; index < visible.length; index += 4) {
+                // Drain every check before ending the transaction, including on failure.
+                const checks = await Promise.allSettled(
+                  visible
+                    .slice(index, index + 4)
+                    .map((key) => readFact(tx, key, employee, metadata.get(key)!))
+                );
+                for (const check of checks) {
+                  if (check.status === "rejected") throw check.reason;
+                  results.push(check.value);
+                }
+              }
+              return results;
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000 }
+          );
+          for (const fact of results) if (fact) facts.push(fact);
           if (facts.length > LEDGER_SCOPE_MAX_PARTITIONS)
             return fail("LEDGER_SCOPE_LIMIT_EXCEEDED");
         }
