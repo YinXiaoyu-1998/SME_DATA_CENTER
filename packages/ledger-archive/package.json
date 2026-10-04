@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./reconciliation": "./src/reconciliation.ts",
-    "./source-reader": "./src/source-reader.ts"
+    "./source-reader": "./src/source-reader.ts",
+    "./delivery": "./src/delivery.ts"
   }
 }
