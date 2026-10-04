@@ -1,4 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import {
+  getPublicStructuredRegistry,
+  PUBLIC_LEDGER_SCOPE_FIELDS
+} from "./structured-ledger-policy.js";
 import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 import { PHASE3_ERROR_CODES, type Phase3ErrorCode } from "./retrieval-contracts.js";
 import {
@@ -157,7 +161,76 @@ export function compileStructuredQuery(
   input: CompileStructuredQueryInput
 ): StructuredCompiledQuery {
   const query = normalizeQuery(input.query);
-  const registry = getStructuredRegistry(query.dataset);
+  return compileNormalizedQuery(input, query, getStructuredRegistry(query.dataset));
+}
+
+/** Only server configuration can activate this policy; no bypass is accepted in query bodies. */
+export function compilePublicStructuredQuery(
+  input: CompileStructuredQueryInput & { ledgerPdfDeliveryEnabled?: boolean }
+): StructuredCompiledQuery {
+  const query = normalizeQuery(input.query);
+  if (input.ledgerPdfDeliveryEnabled && query.dataset === "delivery_ledger") {
+    validatePublicLedgerQuery(query);
+  }
+  return compileNormalizedQuery(
+    input,
+    query,
+    getPublicStructuredRegistry(query.dataset, input.ledgerPdfDeliveryEnabled)
+  );
+}
+
+function validatePublicLedgerQuery(query: NormalizedQuery): void {
+  if (query.aggregates.length === 0 && query.groupBy.length === 0) {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.ledgerDetailDisabled,
+      "Ledger detail is disabled. Use the archived PDF APIs for ledger documents.",
+      { dataset: "delivery_ledger" }
+    );
+  }
+  if (query.aggregates.length === 0) {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.invalidAggregation,
+      "Ledger queries require at least one aggregate."
+    );
+  }
+  for (const aggregate of query.aggregates) {
+    const allowed =
+      (aggregate.op === "count" && aggregate.field === undefined) ||
+      (aggregate.op === "countDistinct" && aggregate.field === "receipt_id") ||
+      (aggregate.op === "sum" && aggregate.field === "purchase_amount");
+    if (!allowed) {
+      throw new StructuredQueryValidationError(
+        PHASE3_ERROR_CODES.invalidAggregation,
+        "Ledger aggregation is not supported."
+      );
+    }
+  }
+  for (const field of query.groupBy) requirePublicLedgerScopeField(field);
+  validatePublicLedgerFilter(query.filter);
+}
+
+function requirePublicLedgerScopeField(field: string): void {
+  if (!PUBLIC_LEDGER_SCOPE_FIELDS.has(field)) {
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.unsupportedCapability,
+      "Ledger grouping and filters support only store_name and purchase_date."
+    );
+  }
+}
+
+function validatePublicLedgerFilter(filter: FilterNode | null): void {
+  if (!filter) return;
+  if ("and" in filter) filter.and.forEach(validatePublicLedgerFilter);
+  else if ("or" in filter) filter.or.forEach(validatePublicLedgerFilter);
+  else if ("not" in filter) validatePublicLedgerFilter(filter.not);
+  else requirePublicLedgerScopeField(filter.field);
+}
+
+function compileNormalizedQuery(
+  input: CompileStructuredQueryInput,
+  query: NormalizedQuery,
+  registry: StructuredDatasetRegistry
+): StructuredCompiledQuery {
   if (!registry.rowTable) {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.datasetRequiresPartitionExtract,
@@ -1364,7 +1437,8 @@ function scalarParam(value: ScalarValue | ScalarValue[]): string | number {
 }
 
 function quoteIdentifier(identifier: string): string {
-  if (!isSafeAlias(identifier)) {
+  // Generated aggregate aliases retain camel-case operators such as countDistinct.
+  if (!/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(identifier)) {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.invalidQuery,
       "Identifier is not allowed."

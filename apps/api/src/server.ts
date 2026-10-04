@@ -149,6 +149,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     structuredQueries,
     structuredCoverage,
     structuredPartitions,
+    ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled,
     cursorSigningSecret
   });
 

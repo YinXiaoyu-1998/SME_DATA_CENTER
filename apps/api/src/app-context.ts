@@ -224,7 +224,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   function sourceDocumentDownloads(): SourceDocumentDownloadIssuer {
     sourceDocumentDownloadIssuer ??= createSourceDocumentDownloadIssuer({
       repository: sourceDocuments(),
-      storage: storage()
+      storage: storage(),
+      ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled
     });
     return sourceDocumentDownloadIssuer;
   }

@@ -394,7 +394,8 @@ export function createInMemorySourceDocumentRepository(
           originalFileName: document.originalFileName,
           contentType: document.contentType,
           byteSize: document.byteSize,
-          confidentialityLevel: document.confidentialityLevel
+          confidentialityLevel: document.confidentialityLevel,
+          importDataset: null
         }));
     },
     async recordDownloadsIssued(input) {

@@ -4,6 +4,7 @@ import { loadApiRuntimeLimits } from "./runtime-limits.js";
 describe("API runtime limits", () => {
   it("uses the documented defaults", () => {
     expect(loadApiRuntimeLimits({})).toEqual({
+      ledgerPdfDeliveryEnabled: false,
       maxUploadBytes: 52_428_800,
       mcpMaxConcurrentRequests: 8,
       maxStructuredImportRows: 100_000,
@@ -42,6 +43,7 @@ describe("API runtime limits", () => {
         PARTITION_MANIFEST_URL_TTL_SECONDS: "13"
       })
     ).toEqual({
+      ledgerPdfDeliveryEnabled: false,
       maxUploadBytes: 1,
       mcpMaxConcurrentRequests: 2,
       maxStructuredImportRows: 2,
@@ -68,4 +70,21 @@ describe("API runtime limits", () => {
       );
     }
   );
+});
+
+describe("ledger PDF delivery switch", () => {
+  it("defaults to disabled and accepts only explicit boolean strings", () => {
+    expect(loadApiRuntimeLimits({}).ledgerPdfDeliveryEnabled).toBe(false);
+    expect(
+      loadApiRuntimeLimits({ LEDGER_PDF_DELIVERY_ENABLED: "false" }).ledgerPdfDeliveryEnabled
+    ).toBe(false);
+    expect(
+      loadApiRuntimeLimits({ LEDGER_PDF_DELIVERY_ENABLED: "true" }).ledgerPdfDeliveryEnabled
+    ).toBe(true);
+  });
+  it.each(["1", "TRUE", "yes", "", " true "])("rejects invalid switch %j", (value) => {
+    expect(() => loadApiRuntimeLimits({ LEDGER_PDF_DELIVERY_ENABLED: value })).toThrow(
+      "LEDGER_PDF_DELIVERY_ENABLED must be true or false."
+    );
+  });
 });

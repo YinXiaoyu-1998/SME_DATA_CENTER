@@ -62,6 +62,7 @@ export const PHASE3_ERROR_CODES = {
   queryTooExpensive: "QUERY_TOO_EXPENSIVE",
   invalidCursor: "INVALID_CURSOR",
   cursorExpired: "CURSOR_EXPIRED",
+  ledgerDetailDisabled: "LEDGER_DETAIL_DISABLED",
   datasetForbidden: "DATASET_FORBIDDEN",
   datasetRequiresPartitionExtract: "DATASET_REQUIRES_PARTITION_EXTRACT",
   activeImportExists: "ACTIVE_IMPORT_EXISTS",
