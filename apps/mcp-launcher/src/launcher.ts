@@ -713,7 +713,7 @@ async function proxy(
           arguments: input as Record<string, unknown>
         },
         undefined,
-        { timeout: REMOTE_MCP_TIMEOUT_MS }
+        { timeout: REMOTE_MCP_TOOL_TIMEOUT_MS }
       );
       return sanitizeRemoteToolResult(remoteResult, accessToken);
     } finally {
@@ -727,6 +727,7 @@ async function proxy(
 }
 
 const REMOTE_MCP_TIMEOUT_MS = 30_000;
+const REMOTE_MCP_TOOL_TIMEOUT_MS = 45_000;
 
 export function sanitizeRemoteToolResult(result: unknown, accessToken: string): LauncherToolResult {
   if (containsCredential(result, accessToken)) {

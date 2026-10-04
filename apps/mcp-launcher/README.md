@@ -6,7 +6,11 @@ never accepted through command arguments, environment variables, or MCP tool inp
 
 Commands: `serve`, `self-check`, `logout`, and `--version`.
 
-Release target: `smedc-mcp-launcher@0.7.0` (`smedc-mcp-launcher --version` reports `0.7.0`).
+Release target: `smedc-mcp-launcher@0.7.1` (`smedc-mcp-launcher --version` reports `0.7.1`).
+
+Business tool calls wait up to 45 seconds for the remote result. Connection handshakes
+and profile lookups keep their existing 30-second deadlines.
+Version 0.7.1 extends the business-call deadline without changing tool contracts.
 
 All three file-upload tools remain discoverable and require the admin role. The launcher
 rejects cached employee-role uploads before reading a local file or processing upload input.
@@ -53,4 +57,4 @@ An older service may reject the new tools or return `LEDGER_PDF_NOT_ENABLED` (50
 `LEDGER_PDF_NOT_READY`, wait for scheduled service generation, then recheck coverage;
 `LEDGER_PDF_BUNDLE_STALE` requires a new preparation request. Existing validation,
 permission, and idempotency errors retain their service semantics. The release target
-above does not indicate that 0.7.0 has been published.
+above does not indicate that 0.7.1 has been published.

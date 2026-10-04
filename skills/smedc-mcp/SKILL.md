@@ -671,6 +671,11 @@ identity from launcher configuration or `smedc_auth_status`, and do not ask for 
 selector. The tool is self-scoped to the bearer-authenticated employee and never returns internal
 IDs or credentials. Follow the normal authentication recovery above if login is required.
 
+Remote business tools use a bounded response deadline. A timeout can return
+`SERVICE_UNAVAILABLE` and does not prove that server-side work stopped. For a download
+submission, retain the same `idempotencyKey`; if a `requestId` is known, check its status
+before resubmitting. Avoid immediate repeated retries of a timed-out tool call.
+
 ## SMEDC Data Questions
 
 When the employee asks about资料、SOP、上传过的文件、公司数据、SMEDC 里的表格, or what was
