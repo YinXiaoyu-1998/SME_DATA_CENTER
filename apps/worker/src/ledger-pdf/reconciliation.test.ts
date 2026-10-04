@@ -20,12 +20,18 @@ describe("reconciliation worker adapter", () => {
       time: "03:00",
       timeZone: "Asia/Shanghai"
     });
-    expect(() =>
-      readLedgerReconciliationConfig({ LEDGER_PDF_RECONCILIATION_ENABLED: "yes" })
-    ).toThrow("CONFIG_INVALID");
-    expect(() =>
-      readLedgerReconciliationConfig({ LEDGER_PDF_RECONCILIATION_TIMEZONE: "UTC" })
-    ).toThrow("CONFIG_INVALID");
+    expect(
+      readLedgerReconciliationConfig({
+        LEDGER_PDF_RECONCILE_ENABLED: "true",
+        LEDGER_PDF_RECONCILE_TIME: "05:45"
+      })
+    ).toEqual({ enabled: true, time: "05:45", timeZone: "Asia/Shanghai" });
+    expect(() => readLedgerReconciliationConfig({ LEDGER_PDF_RECONCILE_ENABLED: "yes" })).toThrow(
+      "CONFIG_INVALID"
+    );
+    expect(() => readLedgerReconciliationConfig({ LEDGER_PDF_RECONCILE_TIME: "24:00" })).toThrow(
+      "CONFIG_INVALID"
+    );
   });
   it("passes the exact lease and reports continue vs completed for entrypoint wiring", async () => {
     const worker = createLedgerReconciliationWorker({

@@ -7,11 +7,10 @@ import {
 import type { StorageAdapter } from "@smedc/storage";
 
 export function readLedgerReconciliationConfig(env: NodeJS.ProcessEnv = process.env) {
-  const enabled = env["LEDGER_PDF_RECONCILIATION_ENABLED"] ?? "false";
+  const enabled = env["LEDGER_PDF_RECONCILE_ENABLED"] ?? "false";
   if (!["true", "false"].includes(enabled)) throw new Error("LEDGER_RECONCILIATION_CONFIG_INVALID");
-  const time = env["LEDGER_PDF_RECONCILIATION_TIME"] ?? LEDGER_RECONCILIATION_DEFAULTS.time;
-  const timeZone =
-    env["LEDGER_PDF_RECONCILIATION_TIMEZONE"] ?? LEDGER_RECONCILIATION_DEFAULTS.timeZone;
+  const time = env["LEDGER_PDF_RECONCILE_TIME"] ?? LEDGER_RECONCILIATION_DEFAULTS.time;
+  const timeZone = LEDGER_RECONCILIATION_DEFAULTS.timeZone;
   mostRecentLedgerScheduleDate({ now: new Date(0), time, timeZone });
   return { enabled: enabled === "true", time, timeZone };
 }
