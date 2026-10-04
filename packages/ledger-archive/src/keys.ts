@@ -62,7 +62,8 @@ export function assertLedgerObjectKeyByteLength(objectKey: string, objectKeyPref
 export function createLedgerPdfObjectKey(
   key: LedgerPartitionKey,
   generationId: number,
-  objectKeyPrefix = ""
+  objectKeyPrefix = "",
+  attemptId?: string
 ): string {
   assertLedgerDate(key.purchaseDate);
   if (
@@ -71,7 +72,14 @@ export function createLedgerPdfObjectKey(
     generationId > LEDGER_PDF_MAX_GENERATION
   )
     throw new Error("LEDGER_GENERATION_INVALID");
-  const objectKey = `org/${pathSegment(key.orgId)}/ledger_records/${pathSegment(key.storeName)}/${key.purchaseDate.replaceAll("-", "/")}/台账_${generationId}.pdf`;
+  if (
+    attemptId !== undefined &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(attemptId)
+  )
+    throw new Error("LEDGER_ATTEMPT_ID_INVALID");
+  const filenameId =
+    attemptId === undefined ? String(generationId) : `${generationId}-${attemptId}`;
+  const objectKey = `org/${pathSegment(key.orgId)}/ledger_records/${pathSegment(key.storeName)}/${key.purchaseDate.replaceAll("-", "/")}/台账_${filenameId}.pdf`;
   assertLedgerObjectKeyByteLength(objectKey, objectKeyPrefix);
   return objectKey;
 }
@@ -81,5 +89,10 @@ export function assertLedgerPartitionObjectKeyFits(
   key: LedgerPartitionKey,
   objectKeyPrefix = ""
 ): void {
-  createLedgerPdfObjectKey(key, LEDGER_PDF_MAX_GENERATION, objectKeyPrefix);
+  createLedgerPdfObjectKey(
+    key,
+    LEDGER_PDF_MAX_GENERATION,
+    objectKeyPrefix,
+    "ffffffff-ffff-ffff-ffff-ffffffffffff"
+  );
 }

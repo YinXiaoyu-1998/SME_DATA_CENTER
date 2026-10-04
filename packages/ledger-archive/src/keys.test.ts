@@ -56,3 +56,16 @@ it("enforces the complete physical OSS key UTF-8 budget including prefix and gen
     "LEDGER_OBJECT_KEY_TOO_LONG"
   );
 });
+
+it("reserves immutable attempt filename width at admission", async () => {
+  const { assertLedgerPartitionObjectKeyFits } = await import("./keys.js");
+  const key = { orgId: "org", storeName: "x", purchaseDate: "2026-10-01" };
+  const uuid = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+  expect(createLedgerPdfObjectKey(key, 1, "", uuid)).toContain(`台账_1-${uuid}.pdf`);
+  expect(() => createLedgerPdfObjectKey(key, 1, "", "../bad")).toThrow("LEDGER_ATTEMPT_ID_INVALID");
+  const overhead = Buffer.byteLength(createLedgerPdfObjectKey(key, 4_294_967_295, "", uuid)) - 1;
+  assertLedgerPartitionObjectKeyFits({ ...key, storeName: "x".repeat(1023 - overhead) });
+  expect(() =>
+    assertLedgerPartitionObjectKeyFits({ ...key, storeName: "x".repeat(1024 - overhead) })
+  ).toThrow("LEDGER_OBJECT_KEY_TOO_LONG");
+});

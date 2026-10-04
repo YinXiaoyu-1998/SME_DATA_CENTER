@@ -1,3 +1,4 @@
+import { enqueueStorageGarbage, listDueStorageGarbage } from "./storage-garbage.js";
 import { randomBytes } from "node:crypto";
 import { createDatabaseAdapter } from "./adapter.js";
 import { retryIdempotentDatabaseOperation } from "./retry.js";
@@ -437,25 +438,12 @@ export function createPrismaStructuredPartitionRepository(
               }
             }
             for (const objectKey of garbage) {
-              await tx.storageGarbage.upsert({
-                where: { objectKey },
-                create: {
-                  id: createId("garb"),
-                  objectKey,
-                  reason: "partition_replaced"
-                },
-                update: { availableAt: new Date(), lastErrorCode: null }
-              });
+              await enqueueStorageGarbage(tx, { objectKey, reason: "partition_replaced" });
             }
             if (job.temporaryObjectKey) {
-              await tx.storageGarbage.upsert({
-                where: { objectKey: job.temporaryObjectKey },
-                create: {
-                  id: createId("garb"),
-                  objectKey: job.temporaryObjectKey,
-                  reason: "partition_source_terminal"
-                },
-                update: { availableAt: new Date(), lastErrorCode: null }
+              await enqueueStorageGarbage(tx, {
+                objectKey: job.temporaryObjectKey,
+                reason: "partition_source_terminal"
               });
             }
             const now = new Date();
@@ -555,24 +543,23 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async enqueueGarbage(objectKey, reason) {
-      await prisma.storageGarbage.upsert({
-        where: { objectKey },
-        create: { id: createId("garb"), objectKey, reason },
-        update: { reason, availableAt: new Date(), lastErrorCode: null }
-      });
+      await enqueueStorageGarbage(prisma, { objectKey, reason });
     },
 
     async listDueGarbage(now, limit) {
-      return prisma.storageGarbage.findMany({
-        where: { availableAt: { lte: now } },
-        orderBy: { availableAt: "asc" },
-        take: limit,
-        select: { id: true, objectKey: true }
-      });
+      return listDueStorageGarbage(prisma, now, limit);
     },
 
     async deleteGarbage(id) {
-      await prisma.storageGarbage.deleteMany({ where: { id } });
+      // Keep candidate tombstones: a paused expired uploader can still finish a late write.
+      await prisma.storageGarbage.updateMany({
+        where: { id, repeatDeletion: true },
+        data: {
+          availableAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          lastErrorCode: null
+        }
+      });
+      await prisma.storageGarbage.deleteMany({ where: { id, repeatDeletion: false } });
     },
 
     async markObjectDeleted(objectKey) {

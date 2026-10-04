@@ -280,6 +280,7 @@ model ProcessingRun {
   finishedAt           DateTime?           @map("finished_at")
   createdAt            DateTime            @default(now()) @map("created_at")
   updatedAt            DateTime            @updatedAt @map("updated_at")
+  storageGarbage       StorageGarbage[]
   organization         Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
   document             Document?           @relation(fields: [documentId], references: [id], onDelete: Cascade)
   partitionImportJob   PartitionImportJob? @relation(fields: [partitionImportJobId], references: [id], onDelete: Cascade)
@@ -501,7 +502,11 @@ model StructuredPartition {
 
 model StorageGarbage {
   id            String   @id @db.VarChar(32)
-  objectKey     String   @unique @map("object_key") @db.VarChar(512)
+  objectKey     String   @map("object_key") @db.VarChar(1024)
+  objectKeyHash String   @unique @map("object_key_hash") @db.Char(64)
+  repeatDeletion Boolean @default(false) @map("repeat_deletion")
+  processingRunId String? @map("processing_run_id") @db.VarChar(32)
+  processingRun ProcessingRun? @relation(fields: [processingRunId], references: [id], onDelete: SetNull)
   reason        String   @db.VarChar(64)
   attemptCount  Int      @default(0) @map("attempt_count")
   availableAt   DateTime @default(now()) @map("available_at")
@@ -510,6 +515,7 @@ model StorageGarbage {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@index([availableAt])
+  @@index([processingRunId])
   @@map("storage_garbage")
 }
 
