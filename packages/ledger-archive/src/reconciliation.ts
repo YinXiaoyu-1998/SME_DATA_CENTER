@@ -105,8 +105,7 @@ export function ledgerNeedsRepair(
   return (
     head?.state === "not_found" ||
     (head?.state === "found" &&
-      (BigInt(head.size) !== partition.byteSize ||
-        (head.hash !== undefined && head.hash !== partition.checksumSha256)))
+      (BigInt(head.size) !== partition.byteSize || head.hash !== partition.checksumSha256))
   );
 }
 

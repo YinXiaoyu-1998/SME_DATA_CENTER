@@ -68,6 +68,9 @@ function fixture() {
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx)),
     employee: { findFirst: vi.fn(async () => employee) },
     document: { findMany: vi.fn(async () => [document("ledger")]) },
+    ledgerArtifactRequestItem: {
+      findFirst: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => null)
+    },
     ledgerArtifactRequest: {
       findFirst: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => null)
     }
@@ -89,6 +92,129 @@ beforeEach(() =>
     .mockResolvedValue({ sourceFingerprint: hash, rowCount: 1, sources: [ledger] })
 );
 describe("Prisma delivery current data boundaries", () => {
+  it("keeps the current prior PDF readable after a voluntary failed refresh and requires HEAD hash", async () => {
+    const f = fixture();
+    const pointer = await f.tx.ledgerPdfPartition.findUnique();
+    f.tx.ledgerPdfPartition.findUnique.mockResolvedValue({
+      ...pointer,
+      requestedGeneration: 2,
+      errorCode: "LEDGER_RENDER_FAILED"
+    } as never);
+    const scope = { storeNames: [key.storeName], dates: [key.purchaseDate] };
+    expect((await f.repository.facts(employee, scope))[0]).toMatchObject({
+      status: "ready",
+      entry: { generation: 1 }
+    });
+    vi.mocked(f.storage.headObject).mockResolvedValue({ state: "found", size: 10 });
+    expect((await f.repository.facts(employee, scope))[0]?.status).toBe("missing");
+    f.tx.ledgerPdfPartition.findUnique.mockResolvedValue({
+      ...pointer,
+      requestedGeneration: 2,
+      dataRevision: 2
+    });
+    expect((await f.repository.facts(employee, scope))[0]?.status).toBe("stale");
+  });
+  it("authorizes no-item and current empty publications only for their owner", async () => {
+    const f = fixture();
+    const request = {
+      kind: "refresh",
+      status: "succeeded",
+      scope: { storeNames: [key.storeName], dates: [key.purchaseDate] },
+      actorKind: "employee",
+      actorEmployeeId: employee.id,
+      items: []
+    };
+    f.prisma.ledgerArtifactRequest.findFirst.mockResolvedValue(request);
+    expect(await f.repository.request(employee, "empty")).toMatchObject({
+      allowEmptyRequest: true,
+      visibleEmptyKeys: []
+    });
+    expect(
+      await f.repository.request({ ...employee, id: "admin", role: "admin" }, "empty")
+    ).toMatchObject({ allowEmptyRequest: false });
+    const pointer = await f.tx.ledgerPdfPartition.findUnique();
+    f.tx.ledgerPdfPartition.findUnique.mockResolvedValue({
+      ...pointer,
+      storeName: key.storeName,
+      purchaseDate: new Date(key.purchaseDate),
+      rowCount: 0,
+      currentObjectKey: null,
+      sources: []
+    } as never);
+    vi.mocked(readLedgerSourceMetadata).mockResolvedValue({
+      sourceFingerprint: hash,
+      rowCount: 0,
+      sources: []
+    });
+    f.prisma.ledgerArtifactRequest.findFirst.mockResolvedValue({
+      ...request,
+      items: [
+        {
+          partitionId: "p",
+          generation: 1,
+          status: "empty",
+          errorCode: null,
+          partition: { storeName: key.storeName, purchaseDate: new Date(key.purchaseDate) }
+        }
+      ]
+    });
+    expect(await f.repository.request(employee, "empty")).toMatchObject({
+      visibleEmptyKeys: [key]
+    });
+    expect(
+      await f.repository.request({ ...employee, id: "admin", role: "admin" }, "empty")
+    ).toMatchObject({ visibleEmptyKeys: [] });
+    vi.mocked(readLedgerSourceMetadata).mockResolvedValue({
+      sourceFingerprint: hash,
+      rowCount: 1,
+      sources: [photo]
+    });
+    expect(await f.repository.request(employee, "empty")).toMatchObject({ visibleEmptyKeys: [] });
+  });
+  it("looks up replacements only for a readable item and an owner-authorized employee request", async () => {
+    const f = fixture();
+    const item = {
+      partitionId: "p",
+      generation: 1,
+      status: "superseded",
+      errorCode: null,
+      partition: { storeName: key.storeName, purchaseDate: new Date(key.purchaseDate) }
+    };
+    f.prisma.ledgerArtifactRequest.findFirst.mockResolvedValue({
+      kind: "refresh",
+      status: "succeeded",
+      actorKind: "employee",
+      actorEmployeeId: employee.id,
+      scope: { storeNames: [key.storeName], dates: [key.purchaseDate] },
+      items: [item]
+    });
+    f.prisma.ledgerArtifactRequestItem.findFirst.mockResolvedValue({
+      requestId: "replacement",
+      status: "queued"
+    });
+    expect(await f.repository.request(employee, "old")).toMatchObject({
+      items: [{ latestRequest: { requestId: "replacement", status: "queued" } }]
+    });
+    expect(f.prisma.ledgerArtifactRequestItem.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          orgId: "org",
+          partitionId: "p",
+          generation: { gt: 1 },
+          request: { actorKind: "employee", actorEmployeeId: "e", kind: "refresh" }
+        }
+      })
+    );
+    vi.mocked(readLedgerSourceMetadata).mockResolvedValue({
+      rowCount: 1,
+      sourceFingerprint: "b".repeat(64),
+      sources: [ledger, photo]
+    });
+    expect(await f.repository.request(employee, "old")).toMatchObject({
+      items: [{ latestRequest: null }]
+    });
+    expect(f.prisma.ledgerArtifactRequestItem.findFirst).toHaveBeenCalledTimes(1);
+  });
   it("checks current account plus every published dependency without loading business payloads", async () => {
     const f = fixture();
     expect(

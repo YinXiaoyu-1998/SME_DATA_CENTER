@@ -89,12 +89,19 @@ describe("ledger PDF workbook", () => {
       .jpeg()
       .withMetadata({ orientation: 6 })
       .toFile(imagePath);
-    const snapshot = syntheticSnapshot(1, 2);
+    const snapshot = syntheticSnapshot(2, 3);
+    snapshot.rows[1]!.receipt_id = "TEST-RECEIPT-002";
+    snapshot.certificates[2]!.receiptId = "TEST-RECEIPT-002";
     const workbook = await buildLedgerWorkbook(
       snapshot,
       new Map(snapshot.certificates.map((c) => [c.sourceDocumentId, imagePath]))
     );
-    expect(workbook.worksheets).toHaveLength(3);
+    expect(workbook.worksheets).toHaveLength(4);
+    expect(workbook.worksheets.slice(1).map((s) => s.getCell("A1").value)).toEqual([
+      "检疫证明 — 收货单号：TEST-RECEIPT-001 — 照片 1",
+      "检疫证明 — 收货单号：TEST-RECEIPT-001 — 照片 2",
+      "检疫证明 — 收货单号：TEST-RECEIPT-002 — 照片 1"
+    ]);
     expect(workbook.worksheets[1]!.getCell("A1").value).toContain("TEST-RECEIPT-001");
     expect(workbook.worksheets[2]!.getCell("A1").value).toContain("TEST-RECEIPT-001");
     for (const sheet of workbook.worksheets.slice(1)) {

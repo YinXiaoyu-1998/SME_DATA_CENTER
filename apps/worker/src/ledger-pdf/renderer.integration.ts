@@ -12,6 +12,8 @@ import { renderLedgerPdf, runLedgerTool } from "./renderer.js";
 export async function verifySyntheticLedgerRender(directory: string) {
   await mkdir(directory, { recursive: true });
   const snapshot = syntheticSnapshot(80, 2);
+  snapshot.rows[1]!.receipt_id = "TEST-RECEIPT-002";
+  snapshot.certificates[1]!.receiptId = "TEST-RECEIPT-002";
   snapshot.rows[0]!.item_name = "锚".repeat(512);
   snapshot.rows[0]!.supplier_unit_address = "鎏".repeat(512);
   snapshot.rows[1]!.item_name = "W".repeat(512);
@@ -21,7 +23,7 @@ export async function verifySyntheticLedgerRender(directory: string) {
   for (const [index, certificate] of snapshot.certificates.entries()) {
     const path = join(directory, `synthetic-photo-${index}.png`);
     const color = index === 0 ? "#db2020" : "#2040db";
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="2560" height="1920"><rect width="2560" height="1920" fill="${color}"/><rect x="80" y="80" width="2400" height="1760" fill="none" stroke="white" stroke-width="12"/><g fill="white" font-family="Noto Sans CJK SC" font-size="120"><text x="180" y="360">合成检疫证明</text><text x="180" y="640">TEST-RECEIPT-001</text><text x="180" y="920">检疫结果：合成样本合格</text><text x="180" y="1200">日期：2026-10-04</text><text x="180" y="1480">照片 ${index + 1} / 无真实业务数据</text></g></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="2560" height="1920"><rect width="2560" height="1920" fill="${color}"/><rect x="80" y="80" width="2400" height="1760" fill="none" stroke="white" stroke-width="12"/><g fill="white" font-family="Noto Sans CJK SC" font-size="120"><text x="180" y="360">合成检疫证明</text><text x="180" y="640">${certificate.receiptId}</text><text x="180" y="920">检疫结果：合成样本合格</text><text x="180" y="1200">日期：2026-10-04</text><text x="180" y="1480">照片 1 / 无真实业务数据</text></g></svg>`;
     await sharp(Buffer.from(svg)).png().toFile(path);
     paths.set(certificate.sourceDocumentId, path);
     originalChecksums.set(
@@ -92,8 +94,10 @@ export async function verifySyntheticLedgerRender(directory: string) {
   assert.equal([...bodyText].filter((character) => character === "鎏").length, 512);
   assert.equal([...bodyText].filter((character) => character === "W").length, 512);
   assert.equal([...bodyText].filter((character) => character === "M").length, 512);
-  for (const page of pages.slice(-2))
-    assert.ok(compact(page).includes("检疫证明—收货单号：TEST-RECEIPT-001"));
+  for (const [index, page] of pages.slice(-2).entries())
+    assert.ok(
+      compact(page).includes(`检疫证明—收货单号：${snapshot.certificates[index]!.receiptId}—照片1`)
+    );
   const imageDirectory = join(directory, "pages");
   await mkdir(imageDirectory);
   await runLedgerTool(

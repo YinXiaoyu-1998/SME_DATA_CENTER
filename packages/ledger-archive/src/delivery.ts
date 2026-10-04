@@ -13,7 +13,12 @@ import {
   findSupplierCatalogMatches,
   nullableValue
 } from "./supplier-values.js";
-import type { LedgerPartitionKey, LedgerScope, LedgerSourceRef } from "./types.js";
+import type {
+  LedgerPartitionKey,
+  LedgerScope,
+  LedgerSourceRef,
+  LedgerRequestRef
+} from "./types.js";
 
 export type LedgerDeliveryEmployee = {
   id: string;
@@ -72,9 +77,13 @@ export interface LedgerDeliveryRepository {
     kind: "refresh" | "download";
     status: string;
     scope: LedgerCoverageScope;
+    allowEmptyRequest?: boolean;
+    visibleEmptyKeys?: LedgerPartitionKey[];
     items: {
       key: LedgerPartitionKey;
       status: "queued" | "running" | "succeeded" | "empty" | "superseded" | "failed";
+      errorCode?: string | null;
+      latestRequest?: LedgerRequestRef | null;
     }[];
     bundle: LedgerBundleRecord | null;
   } | null>;
@@ -103,9 +112,67 @@ export function ledgerBundleFingerprint(
     )
     .digest("hex");
 }
-export function ledgerBundleEntriesEqual(a: LedgerBundleEntry[], b: LedgerBundleEntry[]): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+function partitionIdentity(key: LedgerPartitionKey): string {
+  return JSON.stringify([key.orgId, key.storeName, key.purchaseDate]);
 }
+export function ledgerBundleEntriesEqual(a: LedgerBundleEntry[], b: LedgerBundleEntry[]): boolean {
+  const canonical = (entries: LedgerBundleEntry[]) =>
+    entries.map((e) => [
+      partitionIdentity(e.key),
+      e.partitionId,
+      e.generation,
+      e.dataRevision,
+      e.sourceFingerprint,
+      e.objectKey,
+      e.checksumSha256,
+      e.byteSize,
+      e.sources.map((s) => [s.sourceDocumentId, s.kind, s.confidentialityLevel, s.checksumSha256])
+    ]);
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+/** The captured identities are immutable; only their published generations may advance. */
+export function capturedLedgerBundleEntries(
+  entries: LedgerBundleEntry[],
+  captured: LedgerBundleEntry[]
+): LedgerBundleEntry[] {
+  const byKey = new Map(entries.map((e) => [partitionIdentity(e.key), e]));
+  if (byKey.size !== entries.length) return fail("LEDGER_PDF_UNAVAILABLE");
+  return captured.map((original) => {
+    const current = byKey.get(partitionIdentity(original.key));
+    if (!current || current.partitionId !== original.partitionId)
+      return fail("LEDGER_PDF_UNAVAILABLE");
+    return current;
+  });
+}
+export function readyCapturedLedgerBundleEntries(
+  facts: LedgerPdfFact[],
+  captured: LedgerBundleEntry[]
+): LedgerBundleEntry[] {
+  const selected = captured.map((entry) => {
+    const fact = facts.find((f) => partitionIdentity(f.key) === partitionIdentity(entry.key));
+    if (!fact) return fail("LEDGER_PDF_UNAVAILABLE");
+    return fact;
+  });
+  if (selected.some((f) => f.status !== "ready" || !f.entry))
+    return fail("LEDGER_PDF_BUNDLE_STALE");
+  return capturedLedgerBundleEntries(readyLedgerBundleEntries(selected), captured);
+}
+const safeItemErrors = new Set([
+  "LEDGER_LIMIT_EXCEEDED",
+  "LEDGER_IMAGE_INVALID",
+  "LEDGER_CERTIFICATE_INVALID",
+  "LEDGER_RENDER_ABORTED",
+  "LEDGER_RENDER_TIMEOUT",
+  "LEDGER_RENDER_FAILED",
+  "LEDGER_PDF_INVALID",
+  "LEDGER_SOURCE_CHANGED",
+  "LEDGER_UPLOAD_VERIFICATION_FAILED",
+  "LEDGER_STORAGE_UNSUPPORTED",
+  "LEDGER_GENERATION_FAILED"
+]);
+const publicErrorCode = (code?: string | null) =>
+  code ? (safeItemErrors.has(code) ? code : "LEDGER_GENERATION_FAILED") : undefined;
+
 export function readyLedgerBundleEntries(facts: LedgerPdfFact[]): LedgerBundleEntry[] {
   if (!facts.length) return fail("LEDGER_PDF_UNAVAILABLE");
   if (facts.some((f) => f.status !== "ready" || !f.entry)) return fail("LEDGER_PDF_NOT_READY");
@@ -225,25 +292,41 @@ export function createLedgerPdfDelivery({
       const request = await repository.request(current, input.requestId);
       if (!request) return fail("LEDGER_PDF_UNAVAILABLE");
       const facts = await repository.facts(current, request.scope);
-      const visible = new Set(facts.map((f) => JSON.stringify(f.key)));
-      const items = request.items.filter((item) => visible.has(JSON.stringify(item.key)));
-      if (
-        !facts.length ||
-        (request.bundle && facts.length !== request.bundle.manifest.entries.length)
-      )
+      const visible = new Set(
+        [...facts.map((f) => f.key), ...(request.visibleEmptyKeys ?? [])].map(partitionIdentity)
+      );
+      const items = request.items.filter((item) => visible.has(partitionIdentity(item.key)));
+      if (request.kind === "refresh" && !items.length && !request.allowEmptyRequest)
         return fail("LEDGER_PDF_UNAVAILABLE");
-      const partitions: { storeName: string; purchaseDate: string; status: string }[] =
+      const bundleFacts = request.bundle
+        ? request.bundle.manifest.entries.map((e) => {
+            const fact = facts.find((f) => partitionIdentity(f.key) === partitionIdentity(e.key));
+            if (!fact) return fail("LEDGER_PDF_UNAVAILABLE");
+            return fact;
+          })
+        : facts;
+      const partitions: {
+        storeName: string;
+        purchaseDate: string;
+        status: string;
+        errorCode?: string;
+        latestRequest?: LedgerRequestRef;
+      }[] =
         request.kind === "download"
-          ? facts.map(publicFact)
+          ? bundleFacts.map(publicFact)
           : items.map((i) => ({
               storeName: i.key.storeName,
               purchaseDate: i.key.purchaseDate,
-              status: i.status
+              status: i.status,
+              ...(publicErrorCode(i.errorCode) ? { errorCode: publicErrorCode(i.errorCode) } : {}),
+              ...(i.latestRequest ? { latestRequest: i.latestRequest } : {})
             }));
       const status =
         request.kind === "download"
           ? request.status
-          : reduceLedgerRequestStatus(items.map((i) => i.status));
+          : items.length
+            ? reduceLedgerRequestStatus(items.map((i) => i.status))
+            : request.status;
       return {
         requestId: input.requestId,
         status,
@@ -278,9 +361,7 @@ export function createLedgerPdfDelivery({
         );
       const facts = await repository.facts(current, bundle.manifest.scope);
       if (!facts.length) return fail("LEDGER_PDF_UNAVAILABLE");
-      if (facts.some((fact) => fact.status !== "ready" || !fact.entry))
-        return fail("LEDGER_PDF_BUNDLE_STALE");
-      const entries = readyLedgerBundleEntries(facts);
+      const entries = readyCapturedLedgerBundleEntries(facts, bundle.manifest.entries);
       if (!ledgerBundleEntriesEqual(entries, bundle.manifest.entries))
         return fail("LEDGER_PDF_BUNDLE_STALE");
       if ((await storage.headObject(bundle.zipObjectKey)).state !== "found")
@@ -298,9 +379,7 @@ export function createLedgerPdfDelivery({
       const fresh = await employee(current);
       const freshFacts = await repository.facts(fresh, bundle.manifest.scope);
       if (!freshFacts.length) return fail("LEDGER_PDF_UNAVAILABLE");
-      if (freshFacts.some((fact) => fact.status !== "ready" || !fact.entry))
-        return fail("LEDGER_PDF_BUNDLE_STALE");
-      const latest = readyLedgerBundleEntries(freshFacts);
+      const latest = readyCapturedLedgerBundleEntries(freshFacts, bundle.manifest.entries);
       if (!ledgerBundleEntriesEqual(latest, bundle.manifest.entries))
         return fail("LEDGER_PDF_BUNDLE_STALE");
       return {
@@ -362,7 +441,7 @@ export function parseLedgerBundleManifest(value: Prisma.JsonValue): LedgerBundle
   if (
     !entries.length ||
     entries.length > 5000 ||
-    new Set(entries.map((e) => JSON.stringify(e.key))).size !== entries.length
+    new Set(entries.map((e) => partitionIdentity(e.key))).size !== entries.length
   )
     return fail("LEDGER_BUNDLE_MANIFEST_INVALID");
   return { version: 1, scope, entries };
@@ -416,7 +495,8 @@ export function createPrismaLedgerDeliveryRepository({
     let sources = metadata.sources;
     const ready =
       partition &&
-      partition.publishedGeneration === partition.requestedGeneration &&
+      partition.publishedGeneration !== null &&
+      partition.publishedGeneration > 0 &&
       partition.publishedDataRevision === partition.dataRevision &&
       partition.publishedSourceFingerprint === metadata.sourceFingerprint &&
       partition.currentObjectKey &&
@@ -498,7 +578,7 @@ export function createPrismaLedgerDeliveryRepository({
     if (
       object.state !== "found" ||
       object.size !== Number(partition.byteSize) ||
-      (object.hash && object.hash !== partition.checksumSha256)
+      object.hash !== partition.checksumSha256
     )
       return { key, status: "missing", entry: null };
     return {
@@ -602,18 +682,73 @@ export function createPrismaLedgerDeliveryRepository({
       const manifest =
         request.kind === "download" ? parseLedgerBundleManifest(request.scope) : null;
       const scope = manifest?.scope ?? parseLedgerScope(request.scope);
+      const visibleEmptyKeys: LedgerPartitionKey[] = [];
+      const items = [];
+      for (const i of request.items) {
+        const key = {
+          orgId: employee.orgId,
+          storeName: i.partition.storeName,
+          purchaseDate: i.partition.purchaseDate.toISOString().slice(0, 10)
+        };
+        if (i.status === "empty" && request.actorEmployeeId === employee.id) {
+          const empty = await prisma.$transaction(
+            async (tx) => {
+              const metadata = await readLedgerSourceMetadata(tx, key);
+              const pointer = await tx.ledgerPdfPartition.findUnique({
+                where: { id: i.partitionId },
+                include: { sources: true }
+              });
+              return (
+                metadata.rowCount === 0 &&
+                metadata.sources.length === 0 &&
+                pointer &&
+                pointer.rowCount === 0 &&
+                pointer.currentObjectKey === null &&
+                pointer.sources.length === 0 &&
+                pointer.publishedGeneration !== null &&
+                pointer.publishedGeneration >= i.generation &&
+                pointer.publishedDataRevision === pointer.dataRevision &&
+                pointer.publishedSourceFingerprint === metadata.sourceFingerprint
+              );
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000 }
+          );
+          if (empty) visibleEmptyKeys.push(key);
+        }
+        let latestRequest: LedgerRequestRef | null = null;
+        if (
+          i.status === "superseded" &&
+          (await prisma.$transaction((tx) => readFact(tx, key, employee)))
+        ) {
+          const latest = await prisma.ledgerArtifactRequestItem.findFirst({
+            where: {
+              orgId: employee.orgId,
+              partitionId: i.partitionId,
+              generation: { gt: i.generation },
+              request: { actorKind: "employee", actorEmployeeId: employee.id, kind: "refresh" }
+            },
+            orderBy: { generation: "desc" },
+            select: { requestId: true, status: true }
+          });
+          if (latest) latestRequest = { requestId: latest.requestId, status: latest.status };
+        }
+        items.push({
+          key,
+          status: i.status,
+          errorCode: publicErrorCode(i.errorCode),
+          latestRequest
+        });
+      }
       return {
         kind: request.kind,
+        allowEmptyRequest:
+          request.kind === "refresh" &&
+          request.actorEmployeeId === employee.id &&
+          request.items.length === 0,
+        visibleEmptyKeys,
         status: request.status,
         scope,
-        items: request.items.map((i) => ({
-          key: {
-            orgId: employee.orgId,
-            storeName: i.partition.storeName,
-            purchaseDate: i.partition.purchaseDate.toISOString().slice(0, 10)
-          },
-          status: i.status
-        })),
+        items,
         bundle: manifest
           ? {
               requestId: request.id,

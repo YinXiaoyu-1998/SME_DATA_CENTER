@@ -48,7 +48,7 @@ function fixture() {
       .mockImplementation(async ({ needsRepair }) => (needsRepair ? "submitted" : "healthy")),
     checkpoint: vi.fn().mockResolvedValue(undefined)
   } satisfies LedgerReconciliationRepository;
-  const storage = { headObject: vi.fn().mockResolvedValue({ state: "found", size: 12 }) };
+  const storage = { headObject: vi.fn().mockResolvedValue({ state: "found", size: 12, hash }) };
   return {
     state,
     repository,
@@ -94,7 +94,7 @@ describe("daily ledger reconciliation policy", () => {
     expect(
       ledgerNeedsRepair(partition(), source, { state: "found", size: 12, hash: "b".repeat(64) })
     ).toBe(true);
-    expect(ledgerNeedsRepair(partition(), source, { state: "found", size: 12 })).toBe(false);
+    expect(ledgerNeedsRepair(partition(), source, { state: "found", size: 12 })).toBe(true);
     expect(ledgerNeedsRepair(partition(), source, { state: "found", size: 12, hash })).toBe(false);
   });
   it("sends emptied index partitions through the same generation path and skips published empties", () => {
@@ -168,7 +168,7 @@ describe("daily ledger reconciliation policy", () => {
       max = Math.max(max, active);
       await new Promise((resolve) => setTimeout(resolve, 1));
       active--;
-      return { state: "found", size: 12 };
+      return { state: "found", size: 12, hash };
     });
     expect(await f.run()).toEqual({ done: false, nextCursor: "next", phase: "facts" });
     expect(max).toBe(4);

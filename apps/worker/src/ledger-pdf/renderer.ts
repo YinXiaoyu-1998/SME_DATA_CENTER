@@ -173,6 +173,7 @@ export async function buildLedgerWorkbook(
   sheet.headerFooter.oddFooter = "&C第 &P 页 / 共 &N 页";
   let imageBytesRead = 0;
   let normalizedBytes = 0;
+  const receiptPhotoCounts = new Map<string, number>();
   for (const [index, certificate] of snapshot.certificates.entries()) {
     checkAbort(signal);
     let normalized: { data: Buffer; info: OutputInfo };
@@ -213,8 +214,10 @@ export async function buildLedgerWorkbook(
     });
     attachment.columns = Array.from({ length: 8 }, () => ({ width: 14 }));
     attachment.mergeCells("A1:H2");
+    const photoNumber = (receiptPhotoCounts.get(certificate.receiptId) ?? 0) + 1;
+    receiptPhotoCounts.set(certificate.receiptId, photoNumber);
     attachment.getCell("A1").value =
-      `检疫证明 — 收货单号：${certificate.receiptId} — 照片 ${index + 1}`;
+      `检疫证明 — 收货单号：${certificate.receiptId} — 照片 ${photoNumber}`;
     attachment.getCell("A1").font = { name: "Noto Sans CJK SC", size: 14, bold: true };
     attachment.getCell("A1").alignment = { wrapText: true, vertical: "middle" };
     for (let row = 1; row <= 55; row++) attachment.getRow(row).height = 16;

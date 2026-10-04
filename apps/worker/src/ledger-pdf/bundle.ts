@@ -13,8 +13,9 @@ import { createPrismaLedgerArtifactAccess } from "@smedc/ledger-archive";
 import {
   createPrismaLedgerDeliveryRepository,
   ledgerBundleEntriesEqual,
+  capturedLedgerBundleEntries,
   parseLedgerBundleManifest,
-  readyLedgerBundleEntries,
+  readyCapturedLedgerBundleEntries,
   type LedgerBundleEntry,
   type LedgerBundleLease,
   type LedgerBundleRecord,
@@ -50,8 +51,17 @@ export const LEDGER_BUNDLE_LIMITS = {
 } as const;
 export function ledgerBundleEntryName(entry: LedgerBundleEntry): string {
   // Percent itself is escaped, making the segment reversible and preventing collisions/traversal.
-  const store = encodeURIComponent(entry.key.storeName).replaceAll(".", "%2E");
-  return `${store}/${entry.key.purchaseDate}/台账.pdf`;
+  const store = [...entry.key.storeName]
+    .map((character, index, characters) =>
+      '%./\\<>:"|?*'.includes(character) ||
+      character.codePointAt(0)! < 32 ||
+      character.codePointAt(0) === 127 ||
+      (character === " " && index === characters.length - 1)
+        ? encodeURIComponent(character).replaceAll(".", "%2E")
+        : character
+    )
+    .join("");
+  return `${store}/${entry.key.purchaseDate}/食品经营单位进货台帐_${store}_${entry.key.purchaseDate}.pdf`;
 }
 function error(code: string): never {
   throw new Error(code);
@@ -95,10 +105,12 @@ export async function processLedgerBundle({
         .finally(() => controller.signal.removeEventListener("abort", onAbort));
     });
   }
+  const select = async () =>
+    capturedLedgerBundleEntries(await archive.selectBundle(record), record.manifest.entries);
   const directory = await mkdtemp(join(tmpdir(), "smedc-ledger-zip-"));
   try {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const entries = await bounded(() => archive.selectBundle(record));
+      const entries = await bounded(select);
       if (!entries.length) error("LEDGER_PDF_UNAVAILABLE");
       if (
         entries.length > limits.files ||
@@ -160,7 +172,7 @@ export async function processLedgerBundle({
           createWriteStream(outputFile),
           { signal: controller.signal }
         );
-        const latest = await bounded(() => archive.selectBundle(record));
+        const latest = await bounded(select);
         if (!ledgerBundleEntriesEqual(entries, latest)) {
           if (attempt < 2) continue;
           error("LEDGER_PDF_BUNDLE_STALE");
@@ -178,7 +190,7 @@ export async function processLedgerBundle({
           })
         );
         if (controller.signal.aborted) throw controller.signal.reason;
-        const afterUpload = await bounded(() => archive.selectBundle(record));
+        const afterUpload = await bounded(select);
         if (!ledgerBundleEntriesEqual(entries, afterUpload)) {
           if (attempt < 2) continue;
           error("LEDGER_PDF_BUNDLE_STALE");
@@ -201,7 +213,7 @@ export async function processLedgerBundle({
         return "completed";
       } catch (cause) {
         if (controller.signal.aborted) error("LEDGER_PDF_BUNDLE_TIMEOUT");
-        const changed = await bounded(() => archive.selectBundle(record)).catch(() => null);
+        const changed = await bounded(select).catch(() => null);
         if (attempt < 2 && changed && !ledgerBundleEntriesEqual(entries, changed)) continue;
         throw cause;
       } finally {
@@ -247,8 +259,9 @@ export function createPrismaLedgerBundleArchive({
       where: { id: record.employeeId, orgId: record.orgId, disabled: false }
     });
     if (!employee) error("LEDGER_PDF_UNAVAILABLE");
-    return readyLedgerBundleEntries(
-      await delivery.facts(employee as LedgerDeliveryEmployee, record.manifest.scope)
+    return readyCapturedLedgerBundleEntries(
+      await delivery.facts(employee as LedgerDeliveryEmployee, record.manifest.scope),
+      record.manifest.entries
     );
   }
   async function fenced<T>(
@@ -312,6 +325,8 @@ export function createPrismaLedgerBundleArchive({
     },
     async completeBundle({ record, lease, key, entries, expiresAt }) {
       // This check is repeated inside the lease lock, before the final CAS write.
+      capturedLedgerBundleEntries(entries, record.manifest.entries);
+      if (entries.length !== record.manifest.entries.length) return false;
       return fenced(lease, record.requestId, async (tx) => {
         await tx.$queryRaw(
           Prisma.sql`SELECT id FROM organizations WHERE id=${record.orgId} FOR UPDATE`
@@ -352,8 +367,10 @@ export function createPrismaLedgerBundleArchive({
           const pointer = byId.get(entry.partitionId);
           if (
             !pointer ||
+            pointer.orgId !== entry.key.orgId ||
+            pointer.storeName !== entry.key.storeName ||
+            pointer.purchaseDate.toISOString().slice(0, 10) !== entry.key.purchaseDate ||
             pointer.currentObjectKey !== entry.objectKey ||
-            pointer.requestedGeneration !== entry.generation ||
             pointer.publishedGeneration !== entry.generation ||
             pointer.dataRevision !== entry.dataRevision ||
             pointer.publishedDataRevision !== entry.dataRevision ||

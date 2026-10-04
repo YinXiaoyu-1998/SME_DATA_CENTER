@@ -82,6 +82,24 @@ function fixture() {
   return { record, archive, storage, objects, run };
 }
 describe("streaming existing ledger PDF ZIP", () => {
+  it("fails a mixed-clearance revocation after prepare without completing a partial subset", async () => {
+    const f = fixture();
+    vi.mocked(f.archive.selectBundle)
+      .mockResolvedValueOnce(f.record.manifest.entries)
+      .mockResolvedValue(f.record.manifest.entries.slice(0, 2));
+    await f.run();
+    expect(f.archive.completeBundle).not.toHaveBeenCalled();
+    expect(f.storage.putObjectAtKey).not.toHaveBeenCalled();
+    expect(f.archive.failBundle).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "LEDGER_PDF_UNAVAILABLE" })
+    );
+  });
+  it("retains ordinary Chinese store names and the required PDF filename", () => {
+    const e = { ...entry(1), key: { ...entry(1).key, storeName: "北京朝阳门店" } };
+    expect(ledgerBundleEntryName(e)).toBe(
+      "北京朝阳门店/2026-10-01/食品经营单位进货台帐_北京朝阳门店_2026-10-01.pdf"
+    );
+  });
   it("streams exactly three PDFs for four requested dates with collision-safe paths", async () => {
     const f = fixture();
     expect(await f.run()).toBe("completed");
@@ -112,6 +130,7 @@ describe("streaming existing ledger PDF ZIP", () => {
   });
   it("reselects and retries if old object 404s during replacement", async () => {
     const f = fixture();
+    f.record.manifest.entries = [entry(1)];
     let selected = 0;
     vi.mocked(f.archive.selectBundle).mockImplementation(async () =>
       ++selected === 1 ? [entry(1)] : [entry(1, 2)]
@@ -203,6 +222,71 @@ describe("streaming existing ledger PDF ZIP", () => {
 });
 
 describe("bundle durable lease and expiration boundaries", () => {
+  it("publishes the captured current pointers despite a newer requested rebuild, and rejects lost identities or changed data", async () => {
+    const f = fixture();
+    const pointers = f.record.manifest.entries.map((e) => ({
+      id: e.partitionId,
+      orgId: e.key.orgId,
+      storeName: e.key.storeName,
+      purchaseDate: new Date(e.key.purchaseDate),
+      currentObjectKey: e.objectKey,
+      requestedGeneration: e.generation + 1,
+      publishedGeneration: e.generation,
+      dataRevision: e.dataRevision,
+      publishedDataRevision: e.dataRevision,
+      publishedSourceFingerprint: e.sourceFingerprint,
+      checksumSha256: e.checksumSha256,
+      byteSize: BigInt(e.byteSize)
+    }));
+    const tx = {
+      $queryRaw: vi.fn(async () => []),
+      employee: { findFirst: vi.fn(async () => ({ clearance: 0 })) },
+      document: {
+        findMany: vi.fn(async () => [
+          {
+            id: "source",
+            status: "active",
+            archivedAt: null,
+            confidentialityLevel: 0,
+            checksumSha256: "b".repeat(64),
+            documentKind: "structured",
+            importBatch: {
+              orgId: "org",
+              status: "applied",
+              archivedAt: null,
+              dataset: "delivery_ledger"
+            }
+          }
+        ])
+      },
+      processingRun: { findFirst: vi.fn(async () => ({})), update: vi.fn() },
+      ledgerPdfPartition: { findMany: vi.fn(async () => pointers) },
+      ledgerArtifactRequest: { update: vi.fn() },
+      storageGarbage: {
+        deleteMany: vi.fn(),
+        upsert: vi.fn(async () => ({ objectKey: "candidate.zip" }))
+      }
+    };
+    const prisma = {
+      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx))
+    } as unknown as PrismaClient;
+    const archive = createPrismaLedgerBundleArchive({ prisma, storage: f.storage });
+    const input = {
+      record: f.record,
+      lease: { runId: "run", lockedBy: "w", attemptNumber: 1 },
+      key: "candidate.zip",
+      entries: f.record.manifest.entries,
+      expiresAt: new Date("2026-10-05")
+    };
+    expect(await archive.completeBundle(input)).toBe(true);
+    expect(tx.ledgerArtifactRequest.update).toHaveBeenCalledTimes(1);
+    pointers[0]!.dataRevision++;
+    expect(await archive.completeBundle(input)).toBe(false);
+    await expect(
+      archive.completeBundle({ ...input, entries: input.entries.slice(0, 2) })
+    ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");
+    expect(tx.ledgerArtifactRequest.update).toHaveBeenCalledTimes(1);
+  });
   it("fences candidate, success and failure against the same running unexpired attempt", async () => {
     const f = fixture();
     const tx = {

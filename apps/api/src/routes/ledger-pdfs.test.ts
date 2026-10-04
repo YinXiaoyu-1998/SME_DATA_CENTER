@@ -23,7 +23,7 @@ function fixture(enabled = true, role: "employee" | "admin" = "employee") {
     })),
     refresh: vi.fn(async () => ({ requestId: "r", status: "queued" })),
     requestLedgerBundle: vi.fn(async () => ({ requestId: "b", status: "queued" })),
-    status: vi.fn(async () => ({
+    status: vi.fn<LedgerPdfDelivery["status"]>(async () => ({
       requestId: "r",
       status: "succeeded",
       partitions: [],
@@ -55,6 +55,38 @@ function fixture(enabled = true, role: "employee" | "admin" = "employee") {
 const action = { storeNames: [" 店 / % .. "], dates: ["2026-10-01"], idempotencyKey: "key" };
 const headers = { authorization: "Bearer synthetic" };
 describe("ledger PDF HTTP contracts", () => {
+  it("preserves safe item diagnostics and authorized empty outcomes on the public status route", async () => {
+    const f = fixture();
+    const response = {
+      requestId: "r",
+      status: "partial_failed",
+      nextCursor: null,
+      partitions: [
+        {
+          storeName: "门店",
+          purchaseDate: "2026-10-01",
+          status: "failed",
+          errorCode: "LEDGER_LIMIT_EXCEEDED"
+        },
+        {
+          storeName: "门店",
+          purchaseDate: "2026-10-02",
+          status: "superseded",
+          latestRequest: { requestId: "replacement", status: "queued" }
+        },
+        { storeName: "门店", purchaseDate: "2026-10-03", status: "empty" }
+      ]
+    };
+    f.delivery.status.mockResolvedValue(response);
+    const result = await f.app.inject({
+      method: "GET",
+      url: "/v1/ledger-pdfs/requests/r",
+      headers
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toEqual(response);
+    await f.app.close();
+  });
   it("authenticates all five routes before delivery", async () => {
     const f = fixture();
     for (const [method, url, payload] of [

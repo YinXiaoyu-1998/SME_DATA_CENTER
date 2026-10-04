@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createLedgerPdfDelivery,
+  ledgerBundleEntriesEqual,
+  parseLedgerBundleManifest,
   type LedgerBundleEntry,
   type LedgerDeliveryRepository,
   type LedgerDeliveryEmployee
@@ -67,6 +69,138 @@ function fixture() {
   };
 }
 describe("authorized ledger PDF delivery", () => {
+  it("compares known nested manifest values after a MySQL JSON-style key reorder", async () => {
+    function reorder(value: unknown): unknown {
+      if (Array.isArray(value)) return value.map(reorder);
+      if (value && typeof value === "object")
+        return Object.fromEntries(
+          Object.entries(value)
+            .reverse()
+            .map(([key, child]) => [key, reorder(child)])
+        );
+      return value;
+    }
+    const f = fixture();
+    const entries = [1, 2, 3].map((i) => entry(`2026-10-0${i}`));
+    const manifest = parseLedgerBundleManifest(
+      JSON.parse(JSON.stringify(reorder({ version: 1, scope, entries })))
+    );
+    expect(ledgerBundleEntriesEqual(entries, manifest.entries)).toBe(true);
+    for (const changed of [
+      { ...entry(), key: { ...entry().key, orgId: "other" } },
+      { ...entry(), partitionId: "other" },
+      { ...entry(), generation: 2 },
+      { ...entry(), dataRevision: 2 },
+      { ...entry(), sourceFingerprint: "d".repeat(64) },
+      { ...entry(), objectKey: "other" },
+      { ...entry(), checksumSha256: "d".repeat(64) },
+      { ...entry(), byteSize: 11 },
+      ...["sourceDocumentId", "kind", "confidentialityLevel", "checksumSha256"].map((field) => ({
+        ...entry(),
+        sources: [{ ...entry().sources[0]!, [field]: "changed" }]
+      }))
+    ])
+      expect(ledgerBundleEntriesEqual([entry()], [changed as LedgerBundleEntry])).toBe(false);
+    vi.mocked(f.repository.request).mockResolvedValue({
+      kind: "download",
+      status: "succeeded",
+      scope,
+      items: [],
+      bundle: {
+        requestId: "download",
+        orgId: "org",
+        employeeId: employee.id,
+        status: "succeeded",
+        manifest,
+        zipObjectKey: "bundle.zip",
+        zipExpiresAt: new Date("2026-10-05"),
+        errorCode: null
+      }
+    });
+    await expect(
+      f.delivery.issueLedgerBundleUrl({ employee, requestId: "download" })
+    ).resolves.toHaveProperty("downloadUrl");
+    vi.mocked(f.repository.facts).mockResolvedValue(
+      entries.slice(0, 2).map((e) => ({ key: e.key, status: "ready", entry: e }))
+    );
+    await expect(
+      f.delivery.issueLedgerBundleUrl({ employee, requestId: "download" })
+    ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");
+    await expect(f.delivery.status({ employee, requestId: "download" })).rejects.toThrow(
+      "LEDGER_PDF_UNAVAILABLE"
+    );
+    expect(f.storage.createDownloadUrl).toHaveBeenCalledTimes(1);
+  });
+  it("exposes owner-authorized empty outcomes but keeps hidden-only requests unavailable", async () => {
+    const f = fixture();
+    vi.mocked(f.repository.facts).mockResolvedValue([]);
+    const request = {
+      kind: "refresh" as const,
+      status: "succeeded",
+      scope,
+      items: [],
+      bundle: null,
+      allowEmptyRequest: true
+    };
+    vi.mocked(f.repository.request).mockResolvedValue(request);
+    expect(await f.delivery.status({ employee, requestId: "empty" })).toMatchObject({
+      status: "succeeded",
+      partitions: []
+    });
+    vi.mocked(f.repository.request).mockResolvedValue({
+      ...request,
+      allowEmptyRequest: false,
+      items: [{ key: entry().key, status: "empty" }],
+      visibleEmptyKeys: [entry().key]
+    });
+    expect(await f.delivery.status({ employee, requestId: "empty" })).toMatchObject({
+      status: "succeeded",
+      partitions: [{ storeName: "门店", purchaseDate: "2026-10-01", status: "empty" }]
+    });
+    vi.mocked(f.repository.request).mockResolvedValue({
+      ...request,
+      allowEmptyRequest: false,
+      items: [{ key: entry().key, status: "failed" }]
+    });
+    await expect(f.delivery.status({ employee, requestId: "hidden" })).rejects.toThrow(
+      "LEDGER_PDF_UNAVAILABLE"
+    );
+  });
+  it("returns only safe per-item diagnostics and visible authorized replacement references", async () => {
+    const f = fixture();
+    vi.mocked(f.repository.request).mockResolvedValue({
+      kind: "refresh",
+      status: "partial_failed",
+      scope,
+      bundle: null,
+      items: [
+        { key: entry().key, status: "failed", errorCode: "LEDGER_LIMIT_EXCEEDED" },
+        {
+          key: entry("2026-10-02").key,
+          status: "failed",
+          errorCode: "database SQL private-object/source-id"
+        },
+        {
+          key: entry("2026-10-03").key,
+          status: "superseded",
+          latestRequest: { requestId: "authorized-replacement", status: "queued" }
+        },
+        {
+          key: { ...entry().key, storeName: "hidden" },
+          status: "failed",
+          errorCode: "private-error",
+          latestRequest: { requestId: "hidden-request", status: "failed" }
+        }
+      ]
+    });
+    const result = await f.delivery.status({ employee, requestId: "refresh" });
+    expect(result.partitions).toMatchObject([
+      { errorCode: "LEDGER_LIMIT_EXCEEDED" },
+      { errorCode: "LEDGER_GENERATION_FAILED" },
+      { latestRequest: { requestId: "authorized-replacement", status: "queued" } }
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/private|hidden|SQL|source-id/);
+  });
   it("captures exactly three existing PDFs for four dates and omits private metadata", async () => {
     const f = fixture();
     await f.delivery.requestLedgerBundle({ employee, scope, idempotencyKey: "key" });
