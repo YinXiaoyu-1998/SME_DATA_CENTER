@@ -535,7 +535,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
 
   it("preserves SDK unknown-tool and non-upload validation errors", async () => {
     app = buildMcpTestServer();
-    for (const name of ["unknown_tool", "get_import_status"]) {
+    for (const name of ["unknown_tool", "refresh_ledger_pdfs", "get_import_status"]) {
       const response = await postMcp(
         app,
         { jsonrpc: "2.0", id: 64, method: "tools/call", params: { name, arguments: {} } },
@@ -548,9 +548,9 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
           {
             type: "text",
             text: expect.stringContaining(
-              name === "unknown_tool"
-                ? "MCP error -32602: Tool unknown_tool not found"
-                : "MCP error -32602: Input validation error"
+              name === "get_import_status"
+                ? "MCP error -32602: Input validation error"
+                : `MCP error -32602: Tool ${name} not found`
             )
           }
         ]
@@ -971,11 +971,32 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
         parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
       ).map((tool) => tool.name);
       expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
+      expect(toolNames).not.toContain("refresh_ledger_pdfs");
+      const removed = await postMcp(
+        app,
+        {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: {
+            name: "refresh_ledger_pdfs",
+            arguments: { storeNames: ["店"], dates: ["2026-10-04"], idempotencyKey: "key" }
+          }
+        },
+        { "mcp-protocol-version": "2025-11-25" },
+        { employee: authenticatedEmployee }
+      );
+      expect(parseJsonRpc(removed.payload).result).toMatchObject({
+        isError: true,
+        content: [
+          { type: "text", text: expect.stringContaining("Tool refresh_ledger_pdfs not found") }
+        ]
+      });
       const tools = parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{
         name: string;
         annotations?: Record<string, boolean>;
       }>;
-      for (const name of ["refresh_ledger_pdfs", "prepare_ledger_pdf_download"])
+      for (const name of ["prepare_ledger_pdf_download"])
         expect(tools.find((tool) => tool.name === name)?.annotations).toMatchObject({
           readOnlyHint: false,
           destructiveHint: false,

@@ -32,9 +32,9 @@ Ledger PDF tools in 0.7.0:
 - `describe_ledger_pdf_coverage`: select real `YYYY-MM-DD` dates or an inclusive
   `startDate`/`endDate` range, with optional exact `storeNames` and opaque `cursor`.
   Pages contain at most 200 facts.
-- `refresh_ledger_pdfs`: admins submit explicit stores/dates and `idempotencyKey`.
 - `prepare_ledger_pdf_download`: submit explicit stores/dates and `idempotencyKey`
-  to bundle existing authorized PDFs. Missing or stale PDFs require refresh first.
+  to bundle existing authorized PDFs. Missing or stale PDFs await the service's daily
+  03:00 Asia/Shanghai generation; employee agents cannot trigger generation.
 - `get_ledger_pdf_request_status`: poll the returned `requestId` to terminal status;
   optional `cursor` reads the next page. A queued 202 response is not completion.
 - `get_ledger_pdf_download_url`: after ZIP readiness, exchange `requestId` for a
@@ -44,12 +44,13 @@ Public scopes accept at most 50 exact stores, 366 dates, and 5,000 actual partit
 counted by the service. They reject organization selectors and render/download flags.
 The launcher returns service JSON and signed links; it does not generate ledger files
 or return base64 PDF contents. Coverage, status, and link issuance have read-only
-annotations; refresh and ZIP preparation advertise idempotent side effects.
+annotations; ZIP preparation advertises idempotent side effects. Uploads and photo
+changes record changed dates for scheduled generation; they do not generate PDFs immediately.
 
 This version requires a coordinated service rollout for the ledger PDF endpoints.
 An older service may reject the new tools or return `LEDGER_PDF_NOT_ENABLED` (503).
 `LEDGER_DETAIL_DISABLED` directs clients to the PDF workflow. For
-`LEDGER_PDF_NOT_READY`, wait or refresh as indicated by the service, then retry;
+`LEDGER_PDF_NOT_READY`, wait for scheduled service generation, then recheck coverage;
 `LEDGER_PDF_BUNDLE_STALE` requires a new preparation request. Existing validation,
 permission, and idempotency errors retain their service semantics. The release target
 above does not indicate that 0.7.0 has been published.

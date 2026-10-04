@@ -397,7 +397,10 @@ Scope:
 
 Delivery Ledger applied imports and certificate changes advance store/day source
 revisions. Durable worker jobs generate the current PDF, build authorized ZIPs
-and reconcile missing/stale objects. The release-ops CLI supports single-tenant
+and reconcile missing/stale objects. Employee MCP/HTTP expose only coverage, ZIP
+preparation, status and URL issuance; no employee/admin generation entry remains.
+Applied uploads and photo changes await daily 03:00 Asia/Shanghai generation, which
+coalesces changes and skips healthy PDFs. The release-ops CLI supports single-tenant
 full enumeration and failed-only retries; it does not turn the service into an
 employee agent or report runner. Public delivery and daily reconciliation remain
 disabled until the authorized rollout sequence in

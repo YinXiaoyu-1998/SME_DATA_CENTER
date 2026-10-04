@@ -561,7 +561,6 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_partition_import_status",
   "download_structured_partitions",
   "describe_ledger_pdf_coverage",
-  "refresh_ledger_pdfs",
   "get_ledger_pdf_request_status",
   "prepare_ledger_pdf_download",
   "get_ledger_pdf_download_url"
@@ -925,19 +924,6 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     annotations: ledgerPdfReadAnnotations
   }),
   defineToolContract({
-    name: "refresh_ledger_pdfs",
-    title: "Refresh ledger PDFs",
-    description:
-      "Submit an idempotent refresh using POST /v1/ledger-pdfs/refresh. Requires the admin role, enforced by the API. Explicit stores/dates are required; at most 5,000 actual partitions. A 202 queued requestId must be polled with get_ledger_pdf_request_status before completion is claimed.",
-    inputSchema: ledgerPdfActionInputSchema,
-    inputFields: [
-      ...ledgerPdfScopeFields,
-      { name: "idempotencyKey", required: true, description: "Retry/idempotency key." }
-    ],
-    resultShape: ["requestId", "status: queued; poll get_ledger_pdf_request_status"],
-    annotations: ledgerPdfActionAnnotations
-  }),
-  defineToolContract({
     name: "get_ledger_pdf_request_status",
     title: "Get ledger PDF request status",
     description:
@@ -959,7 +945,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "prepare_ledger_pdf_download",
     title: "Prepare ledger PDF ZIP download",
     description:
-      "Submit an idempotent ZIP request using POST /v1/ledger-pdfs/downloads for existing authorized PDFs in explicit stores/dates, at most 5,000 actual partitions. A 202 queued requestId must be polled with get_ledger_pdf_request_status. Preparation never invokes the renderer; refresh missing or stale PDFs first. After ready, call get_ledger_pdf_download_url.",
+      "Submit an idempotent ZIP request using POST /v1/ledger-pdfs/downloads for existing authorized PDFs in explicit stores/dates, at most 5,000 actual partitions. A 202 queued requestId must be polled with get_ledger_pdf_request_status. Preparation never invokes the renderer. Missing or stale PDFs must wait for the service's daily 03:00 Asia/Shanghai generation; employee agents cannot trigger generation. After ready, call get_ledger_pdf_download_url.",
     inputSchema: ledgerPdfActionInputSchema,
     inputFields: [
       ...ledgerPdfScopeFields,

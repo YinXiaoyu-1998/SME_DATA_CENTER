@@ -13,7 +13,6 @@ import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js
 
 export const ACTION_MCP_TOOL_NAMES = [
   "archive_quarantine_certificates",
-  "refresh_ledger_pdfs",
   "prepare_ledger_pdf_download"
 ] as const satisfies readonly SmedcMcpToolName[];
 
@@ -53,8 +52,6 @@ function routeForActionTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
-    case "refresh_ledger_pdfs":
-      return { method: "POST", path: "/v1/ledger-pdfs/refresh", body: input };
     case "prepare_ledger_pdf_download":
       return { method: "POST", path: "/v1/ledger-pdfs/downloads", body: input };
     case "archive_quarantine_certificates":

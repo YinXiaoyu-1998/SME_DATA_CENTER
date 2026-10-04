@@ -563,6 +563,6 @@ it("delegates ledger PDF reads and signed ZIP issuance without local output", as
     ]
   );
   expect(calls.every((call) => call.headers.authorization === "Bearer employee-token")).toBe(true);
-  expect(handlers.refresh_ledger_pdfs).toBeUndefined();
+  expect(handlers).not.toHaveProperty("refresh_ledger_pdfs");
   expect(handlers.prepare_ledger_pdf_download).toBeUndefined();
 });

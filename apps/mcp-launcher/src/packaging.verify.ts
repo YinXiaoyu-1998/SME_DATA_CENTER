@@ -156,13 +156,18 @@ describe("published launcher artifact", () => {
           "smedc_get_current_user",
           "describe_structured_dataset_coverage",
           "describe_ledger_pdf_coverage",
-          "refresh_ledger_pdfs",
           "get_ledger_pdf_request_status",
           "prepare_ledger_pdf_download",
           "get_ledger_pdf_download_url"
         ])
       );
-      for (const name of ["refresh_ledger_pdfs", "prepare_ledger_pdf_download"]) {
+      expect(tools.tools.map((tool) => tool.name)).not.toContain("refresh_ledger_pdfs");
+      const removed = await client.callTool({
+        name: "refresh_ledger_pdfs",
+        arguments: { storeNames: ["店"], dates: ["2026-10-04"], idempotencyKey: "key" }
+      });
+      expect(removed.isError).toBe(true);
+      for (const name of ["prepare_ledger_pdf_download"]) {
         expect(tools.tools.find((tool) => tool.name === name)).toMatchObject({
           annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
           inputSchema: {

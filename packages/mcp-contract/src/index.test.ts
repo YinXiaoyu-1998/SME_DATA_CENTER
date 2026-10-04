@@ -137,11 +137,6 @@ const validInputs = {
   get_import_status: { importBatchId: "imp_1" },
   get_partition_import_status: { partitionImportJobId: "pjob_1" },
   describe_ledger_pdf_coverage: { dates: ["2026-10-04"] },
-  refresh_ledger_pdfs: {
-    storeNames: ["合成门店"],
-    dates: ["2026-10-04"],
-    idempotencyKey: "refresh-1"
-  },
   get_ledger_pdf_request_status: { requestId: "request-1", cursor: "opaque-cursor" },
   prepare_ledger_pdf_download: {
     storeNames: ["合成门店"],
@@ -463,7 +458,6 @@ const invalidInputCases = [
   ...(
     [
       "describe_ledger_pdf_coverage",
-      "refresh_ledger_pdfs",
       "get_ledger_pdf_request_status",
       "prepare_ledger_pdf_download",
       "get_ledger_pdf_download_url"
@@ -500,7 +494,6 @@ describe("SMEDC MCP contract", () => {
       "get_partition_import_status",
       "download_structured_partitions",
       "describe_ledger_pdf_coverage",
-      "refresh_ledger_pdfs",
       "get_ledger_pdf_request_status",
       "prepare_ledger_pdf_download",
       "get_ledger_pdf_download_url"
@@ -1302,11 +1295,11 @@ describe("launcher path-mode upload schema", () => {
 });
 
 describe("ledger PDF contracts", () => {
-  const scopeTools = [
-    "describe_ledger_pdf_coverage",
-    "refresh_ledger_pdfs",
-    "prepare_ledger_pdf_download"
-  ] as const;
+  it("offers download tools without any employee PDF generation contract", () => {
+    expect(SMEDC_MCP_TOOL_NAMES).not.toContain("refresh_ledger_pdfs");
+    expect([...contractsByName.keys()]).not.toContain("refresh_ledger_pdfs");
+  });
+  const scopeTools = ["describe_ledger_pdf_coverage", "prepare_ledger_pdf_download"] as const;
   it.each(scopeTools)(
     "%s validates exclusive dates and public limits without guessing actual partitions",
     (name) => {
@@ -1352,8 +1345,8 @@ describe("ledger PDF contracts", () => {
       expect(z.toJSONSchema(schema!).additionalProperties).toBe(false);
     }
   );
-  it("requires explicit stores and idempotency for both side effects", () => {
-    for (const name of ["refresh_ledger_pdfs", "prepare_ledger_pdf_download"] as const) {
+  it("requires explicit stores and idempotency for ZIP preparation", () => {
+    for (const name of ["prepare_ledger_pdf_download"] as const) {
       expect(safeParseTool(name, { dates: ["2026-01-01"], idempotencyKey: "key" }).success).toBe(
         false
       );

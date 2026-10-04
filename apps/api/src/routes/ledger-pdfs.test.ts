@@ -21,7 +21,6 @@ function fixture(enabled = true, role: "employee" | "admin" = "employee") {
       partitions: [],
       nextCursor: null
     })),
-    refresh: vi.fn(async () => ({ requestId: "r", status: "queued" })),
     requestLedgerBundle: vi.fn(async () => ({ requestId: "b", status: "queued" })),
     status: vi.fn<LedgerPdfDelivery["status"]>(async () => ({
       requestId: "r",
@@ -87,11 +86,10 @@ describe("ledger PDF HTTP contracts", () => {
     expect(result.json()).toEqual(response);
     await f.app.close();
   });
-  it("authenticates all five routes before delivery", async () => {
+  it("authenticates all four routes before delivery", async () => {
     const f = fixture();
     for (const [method, url, payload] of [
       ["POST", "/v1/ledger-pdfs/coverage", action],
-      ["POST", "/v1/ledger-pdfs/refresh", action],
       ["POST", "/v1/ledger-pdfs/downloads", action],
       ["GET", "/v1/ledger-pdfs/requests/r", undefined],
       ["POST", "/v1/ledger-pdfs/requests/r/download-url", undefined]
@@ -106,7 +104,6 @@ describe("ledger PDF HTTP contracts", () => {
     const f = fixture(false);
     for (const [method, url] of [
       ["POST", "/v1/ledger-pdfs/coverage"],
-      ["POST", "/v1/ledger-pdfs/refresh"],
       ["POST", "/v1/ledger-pdfs/downloads"],
       ["GET", "/v1/ledger-pdfs/requests/r"],
       ["POST", "/v1/ledger-pdfs/requests/r/download-url"]
@@ -152,38 +149,22 @@ describe("ledger PDF HTTP contracts", () => {
     ).toBe(400);
     await f.app.close();
   });
-  it("enforces admin refresh and forwards org exclusively from authentication", async () => {
-    const f = fixture();
-    expect(
-      (
-        await f.app.inject({
-          method: "POST",
-          url: "/v1/ledger-pdfs/refresh",
-          headers,
-          payload: action
-        })
-      ).statusCode
-    ).toBe(403);
-    expect(f.delivery.refresh).not.toHaveBeenCalled();
-    const a = fixture(true, "admin");
-    expect(
-      (
-        await a.app.inject({
-          method: "POST",
-          url: "/v1/ledger-pdfs/refresh",
-          headers,
-          payload: action
-        })
-      ).statusCode
-    ).toBe(202);
-    expect(a.delivery.refresh).toHaveBeenCalledWith({
-      employee: { ...employee, role: "admin" },
-      scope: { storeNames: action.storeNames, dates: action.dates },
-      idempotencyKey: "key"
-    });
-    await f.app.close();
-    await a.app.close();
-  });
+  it.each(["employee", "admin"] as const)(
+    "does not expose PDF generation to a $role through the former HTTP route",
+    async (role) => {
+      const f = fixture(true, role);
+      const response = await f.app.inject({
+        method: "POST",
+        url: "/v1/ledger-pdfs/refresh",
+        headers,
+        payload: action
+      });
+      expect(response.statusCode).toBe(404);
+      expect(f.delivery).not.toHaveProperty("refresh");
+      expect(f.delivery.requestLedgerBundle).not.toHaveBeenCalled();
+      await f.app.close();
+    }
+  );
   it("supports omitted coverage stores and exact names with fixed wire responses", async () => {
     const f = fixture();
     expect(

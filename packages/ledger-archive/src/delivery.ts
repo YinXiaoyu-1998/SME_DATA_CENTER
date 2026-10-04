@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import type { StorageAdapter } from "@smedc/storage";
 import { createPrismaLedgerArtifactAccess } from "./access.js";
 import { createPrismaLedgerArchiveRepository } from "./repository.js";
-import { createLedgerArchiveService, reduceLedgerRequestStatus } from "./service.js";
+import { reduceLedgerRequestStatus } from "./service.js";
 import { ledgerScopeDates, parseLedgerScope, LEDGER_SCOPE_MAX_PARTITIONS } from "./scope.js";
 import { ledgerStoreNameHash } from "./keys.js";
 import { readableLedgerPartitionHints } from "./changes.js";
@@ -59,11 +59,6 @@ export type LedgerBundleRecord = {
 export interface LedgerDeliveryRepository {
   currentEmployee(employee: LedgerDeliveryEmployee): Promise<LedgerDeliveryEmployee | null>;
   facts(employee: LedgerDeliveryEmployee, scope: LedgerCoverageScope): Promise<LedgerPdfFact[]>;
-  refresh(input: {
-    employee: LedgerDeliveryEmployee;
-    scope: LedgerScope;
-    idempotencyKey: string;
-  }): Promise<{ requestId: string; status: string }>;
   reserveBundle(input: {
     employee: LedgerDeliveryEmployee;
     manifest: LedgerBundleManifest;
@@ -262,16 +257,6 @@ export function createLedgerPdfDelivery({
         )
       };
     },
-    async refresh(input: {
-      employee: LedgerDeliveryEmployee;
-      scope: LedgerScope;
-      idempotencyKey: string;
-    }) {
-      const current = await employee(input.employee);
-      if (current.role !== "admin") return fail("ADMIN_REQUIRED");
-      const request = await repository.refresh({ ...input, employee: current });
-      return { requestId: request.requestId, status: "queued" };
-    },
     async requestLedgerBundle(input: {
       employee: LedgerDeliveryEmployee;
       scope: LedgerScope;
@@ -457,7 +442,6 @@ export function createPrismaLedgerDeliveryRepository({
   objectKeyPrefix?: string;
 }): LedgerDeliveryRepository {
   const archive = createPrismaLedgerArchiveRepository({ prisma, objectKeyPrefix });
-  const service = createLedgerArchiveService(archive);
   const access = createPrismaLedgerArtifactAccess({ prisma });
   async function currentEmployee(employee: LedgerDeliveryEmployee) {
     if (employee.disabled) return null;
@@ -623,14 +607,6 @@ export function createPrismaLedgerDeliveryRepository({
         cursor = page.nextCursor ?? undefined;
       } while (cursor);
       return facts;
-    },
-    refresh({ employee, scope, idempotencyKey }) {
-      return service.requestRefresh({
-        orgId: employee.orgId,
-        actor: { kind: "employee", employeeId: employee.id },
-        scope,
-        idempotencyKey
-      });
     },
     async reserveBundle({ employee, manifest, idempotencyKey, fingerprint }) {
       return prisma.$transaction(async (tx) => {

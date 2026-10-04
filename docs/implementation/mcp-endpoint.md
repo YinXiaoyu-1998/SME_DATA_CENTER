@@ -31,10 +31,13 @@ Current authoritative sources:
 - [ADR 0020](../adr/0020-local-streamable-http-mcp-endpoint.md) — historical transport decision;
 - [ADR 0021](../adr/0021-remote-mcp-opaque-token-bridge.md) — explicitly withdrawn token bridge.
 
-The current launcher adds `describe_ledger_pdf_coverage`, `refresh_ledger_pdfs`,
-`get_ledger_pdf_request_status` `prepare_ledger_pdf_download` and `get_ledger_pdf_download_url`. These delegate through
+The current launcher adds `describe_ledger_pdf_coverage`, `get_ledger_pdf_request_status`,
+`prepare_ledger_pdf_download` and `get_ledger_pdf_download_url`. These delegate through
 the authenticated HTTP boundary; the service still owns generation and
-authorization. The employee agent requests a ZIP, polls its status, obtains a download URL and saves the file locally. Refresh requires an admin.
+authorization. The employee agent checks coverage, requests a ZIP, polls its status and returns a download URL.
+Employee agents cannot trigger generation, including admins; applied ledger imports
+and photo changes await daily 03:00 Asia/Shanghai service generation. Internal operator
+CLI refresh/backfill remains a separate service operation.
 These capabilities require launcher 0.7.0 after its independent publication and
 verification; publication and recommended-version updates are a later release
 step. The historical transport decisions above do not change.

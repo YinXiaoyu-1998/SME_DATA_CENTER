@@ -49,7 +49,6 @@ function fixture() {
         entry: entry(`2026-10-0${i}`)
       }))
     ),
-    refresh: vi.fn(async () => ({ requestId: "refresh", status: "queued" })),
     reserveBundle: vi.fn(async () => ({ requestId: "download", status: "queued" })),
     request: vi.fn(async () => null)
   };
@@ -228,16 +227,9 @@ describe("authorized ledger PDF delivery", () => {
     ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");
     expect(f.repository.reserveBundle).not.toHaveBeenCalled();
   });
-  it("allows low-clearance admin refresh but rechecks disabled accounts", async () => {
+  it("keeps employee delivery read-only for generation and rechecks disabled accounts", async () => {
     const f = fixture();
-    await f.delivery.refresh({
-      employee: { ...employee, role: "admin", clearance: 0 },
-      scope,
-      idempotencyKey: "k"
-    });
-    await expect(f.delivery.refresh({ employee, scope, idempotencyKey: "k" })).rejects.toThrow(
-      "ADMIN_REQUIRED"
-    );
+    expect(f.delivery).not.toHaveProperty("refresh");
     await expect(
       f.delivery.coverage({ employee: { ...employee, disabled: true }, scope })
     ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");

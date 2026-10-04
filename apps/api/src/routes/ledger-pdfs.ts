@@ -103,8 +103,7 @@ export function registerLedgerPdfRoutes(
             "LEDGER_PDF_UNAVAILABLE",
             "LEDGER_PDF_NOT_READY",
             "LEDGER_PDF_BUNDLE_STALE",
-            "LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED",
-            "ADMIN_REQUIRED"
+            "LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED"
           ]);
           if (!known.has(code)) {
             request.log.error({ err: error }, "Ledger PDF request failed.");
@@ -113,15 +112,13 @@ export function registerLedgerPdfRoutes(
               .send(errorResponse("INTERNAL_ERROR", "Ledger PDF request could not be completed."));
           }
           const status =
-            code === "ADMIN_REQUIRED"
-              ? 403
-              : code === "LEDGER_PDF_UNAVAILABLE"
-                ? 404
-                : code === "LEDGER_IDEMPOTENCY_CONFLICT" ||
-                    code === "LEDGER_PDF_BUNDLE_STALE" ||
-                    code === "LEDGER_PDF_NOT_READY"
-                  ? 409
-                  : 400;
+            code === "LEDGER_PDF_UNAVAILABLE"
+              ? 404
+              : code === "LEDGER_IDEMPOTENCY_CONFLICT" ||
+                  code === "LEDGER_PDF_BUNDLE_STALE" ||
+                  code === "LEDGER_PDF_NOT_READY"
+                ? 409
+                : 400;
           return reply
             .code(status)
             .send(
@@ -130,7 +127,7 @@ export function registerLedgerPdfRoutes(
                 code === "LEDGER_PDF_UNAVAILABLE"
                   ? "Ledger PDF request is unavailable."
                   : code === "LEDGER_PDF_NOT_READY"
-                    ? "Ledger PDFs are not ready. Refresh and retry."
+                    ? "Ledger PDFs are not ready. Wait for the next daily generation."
                     : code === "LEDGER_PDF_BUNDLE_STALE"
                       ? "Prepare a new ledger PDF download."
                       : "Ledger PDF request was rejected."
@@ -152,22 +149,6 @@ export function registerLedgerPdfRoutes(
       ...(parsed.cursor ? { cursor: parsed.cursor } : {})
     });
   });
-  register(
-    "POST",
-    "/v1/ledger-pdfs/refresh",
-    (r) => {
-      noQuery(r);
-      const parsed = scopeBody(r.body, true);
-      const employee = dependencies.auth.employee(r);
-      if (employee.role !== "admin") throw new LedgerDeliveryError("ADMIN_REQUIRED");
-      return dependencies.delivery().refresh({
-        employee,
-        scope: parseLedgerScope(parsed.scope),
-        idempotencyKey: parsed.idempotencyKey!
-      });
-    },
-    true
-  );
   register(
     "POST",
     "/v1/ledger-pdfs/downloads",

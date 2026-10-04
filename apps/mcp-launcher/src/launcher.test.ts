@@ -996,7 +996,14 @@ it("advertises PDF side effects and validates scope before contacting service", 
   await client.connect(clientTransport);
   try {
     const tools = await client.listTools();
-    for (const name of ["refresh_ledger_pdfs", "prepare_ledger_pdf_download"])
+    expect(tools.tools.map((tool) => tool.name)).not.toContain("refresh_ledger_pdfs");
+    const removed = await client.callTool({
+      name: "refresh_ledger_pdfs",
+      arguments: { storeNames: ["店"], dates: ["2026-02-28"], idempotencyKey: "key" }
+    });
+    expect(removed.isError).toBe(true);
+    expect(remote).not.toHaveBeenCalled();
+    for (const name of ["prepare_ledger_pdf_download"])
       expect(tools.tools.find((tool) => tool.name === name)?.annotations).toMatchObject({
         readOnlyHint: false,
         destructiveHint: false,
@@ -1009,13 +1016,13 @@ it("advertises PDF side effects and validates scope before contacting service", 
     ])
       expect(tools.tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(true);
     const result = await client.callTool({
-      name: "refresh_ledger_pdfs",
+      name: "prepare_ledger_pdf_download",
       arguments: { storeNames: ["店"], dates: ["2026-02-30"], idempotencyKey: "key" }
     });
     expect(result.isError).toBe(true);
     expect(remote).not.toHaveBeenCalled();
     const crossOrganization = await client.callTool({
-      name: "refresh_ledger_pdfs",
+      name: "prepare_ledger_pdf_download",
       arguments: {
         storeNames: ["店"],
         dates: ["2026-02-28"],

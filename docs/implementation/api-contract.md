@@ -176,7 +176,7 @@ database revalidator checks the authoritative document level before reranking or
 
 ## Archived Delivery Ledger PDFs
 
-`LEDGER_PDF_DELIVERY_ENABLED` defaults to false. All five endpoints authenticate the
+`LEDGER_PDF_DELIVERY_ENABLED` defaults to false. All four endpoints authenticate the
 current employee and enforce tenant, employee state, clearance and current source
 authorization on the backend. Disabled endpoints return `LEDGER_PDF_NOT_ENABLED`;
 request IDs and cursors cannot grant access across organizations.
@@ -184,12 +184,11 @@ request IDs and cursors cannot grant access across organizations.
 | Method | Route                                              | Behavior                                                                   |
 | ------ | -------------------------------------------------- | -------------------------------------------------------------------------- |
 | POST   | `/v1/ledger-pdfs/coverage`                         | Read authorized store/day PDF states, at most 200 per page                 |
-| POST   | `/v1/ledger-pdfs/refresh`                          | Admin-only asynchronous refresh; requires idempotencyKey                   |
 | POST   | `/v1/ledger-pdfs/downloads`                        | Queue an authorized ZIP; requires idempotencyKey                           |
 | GET    | `/v1/ledger-pdfs/requests/:requestId`              | Read authorized status with optional cursor                                |
 | POST   | `/v1/ledger-pdfs/requests/:requestId/download-url` | Recheck permission and current PDF pointers before issuing a 15-minute URL |
 
-Coverage/refresh/download bodies use `storeNames` and either `dates` or inclusive
+Coverage/download bodies use `storeNames` and either `dates` or inclusive
 `startDate`/`endDate`, with real `YYYY-MM-DD` calendar dates. Public limits are 50
 exact store names, 366 dates and 5000 actual partitions. The coverage body may
 include `cursor`; action bodies include `idempotencyKey`. Caller-supplied orgId
@@ -199,4 +198,11 @@ and unknown fields are rejected. ZIP limits are 5000 PDFs/1 GiB/10 minutes with
 At cutover, Delivery Ledger detail queries and original ledger-file URL issuance
 are disabled together; authorized aggregate queries remain available. Other
 datasets keep their existing behavior. Read operations never render on demand.
+
+Employee-facing MCP and HTTP have no PDF generation endpoint, including for admins.
+Applied imports and photo changes only update partition revisions. Daily 03:00
+Asia/Shanghai reconciliation generates changed/missing partitions and skips healthy
+PDFs. Before that run completes, current coverage may be pending/stale/missing and
+ZIP preparation returns `LEDGER_PDF_NOT_READY`; report the scheduled wait. Internal
+operator CLI refresh/backfill remains available outside the employee API.
 See [ledger-pdf-operations.md](./ledger-pdf-operations.md) for backfill and recovery.

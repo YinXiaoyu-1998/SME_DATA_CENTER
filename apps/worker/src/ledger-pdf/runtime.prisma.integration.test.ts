@@ -27,7 +27,7 @@ import sharp from "sharp";
 import { expect, it } from "vitest";
 
 it.skipIf(process.env["RUN_LEDGER_FLOW_INTEGRATION"] !== "1")(
-  "joins CLI, authenticated launcher/MCP, real renderer, ZIP, revisions and missing-PDF repair",
+  "joins internal CLI, daily generation, employee download-only MCP, real PDFs and missing repair",
   async () => {
     const databaseUrl = process.env["DATABASE_URL"] ?? "";
     const target = new URL(databaseUrl);
@@ -258,6 +258,17 @@ it.skipIf(process.env["RUN_LEDGER_FLOW_INTEGRATION"] !== "1")(
       await drain();
       const first = await current();
       expect(first.rowCount).toBe(1);
+      const firstGenerationCount = await prisma.processingRun.count({
+        where: { orgId, jobType: "ledger_pdf_generate" }
+      });
+      await runtime.maintain();
+      await drain();
+      await runtime.maintain();
+      await drain();
+      expect((await current()).currentObjectKey).toBe(first.currentObjectKey);
+      expect(
+        await prisma.processingRun.count({ where: { orgId, jobType: "ledger_pdf_generate" } })
+      ).toBe(firstGenerationCount);
       expect((await tool("describe_ledger_pdf_coverage", scope)).result.isError).toBe(false);
       const bundle = await tool("prepare_ledger_pdf_download", {
         ...scope,
@@ -325,14 +336,49 @@ it.skipIf(process.env["RUN_LEDGER_FLOW_INTEGRATION"] !== "1")(
         });
         await markLedgerPartitionsChanged(tx, [key]);
       });
+      const generationCount = await prisma.processingRun.count({
+        where: { orgId, jobType: "ledger_pdf_generate" }
+      });
       expect(
         (await tool("refresh_ledger_pdfs", { ...scope, idempotencyKey: "synthetic-rebuild" }))
           .result.isError
-      ).toBe(false);
+      ).toBe(true);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/v1/ledger-pdfs/refresh",
+            headers: { authorization: `Bearer ${employee.id}` },
+            payload: { ...scope, idempotencyKey: "synthetic-direct-rebuild" }
+          })
+        ).statusCode
+      ).toBe(404);
+      expect(
+        await prisma.processingRun.count({ where: { orgId, jobType: "ledger_pdf_generate" } })
+      ).toBe(generationCount);
+      const pending = await tool("describe_ledger_pdf_coverage", scope);
+      expect(pending.body["partitions"]).toEqual([
+        expect.objectContaining({
+          storeName: key.storeName,
+          purchaseDate: key.purchaseDate,
+          status: "stale"
+        })
+      ]);
+      const prematureDownload = await tool("prepare_ledger_pdf_download", {
+        ...scope,
+        idempotencyKey: "synthetic-not-ready"
+      });
+      expect(prematureDownload.result.isError).toBe(true);
+      expect(prematureDownload.body).toMatchObject({ error: { code: "LEDGER_PDF_NOT_READY" } });
+      clock = new Date(clock.getTime() + 86400000);
+      await runtime.maintain();
       await drain();
       const second = await current();
       expect(second).toMatchObject({ rowCount: 2, certificateCount: 1 });
       expect(second.currentObjectKey).not.toBe(first.currentObjectKey);
+      expect(
+        await prisma.processingRun.count({ where: { orgId, jobType: "ledger_pdf_generate" } })
+      ).toBe(generationCount + 1);
       const text = await runLedgerTool(
         "pdftotext",
         [join(storageRoot, second.currentObjectKey!), "-"],
@@ -351,7 +397,10 @@ it.skipIf(process.env["RUN_LEDGER_FLOW_INTEGRATION"] !== "1")(
       expect(await storage.headObject(repaired.currentObjectKey!)).toMatchObject({
         state: "found"
       });
-      const scan = await prisma.ledgerPdfReconciliationRun.findFirstOrThrow({ where: { orgId } });
+      const scan = await prisma.ledgerPdfReconciliationRun.findFirstOrThrow({
+        where: { orgId },
+        orderBy: { scheduleDate: "desc" }
+      });
       const reconciliation = createPrismaLedgerReconciliation({ prisma, now: () => clock });
       expect(await reconciliation.getReconciliationStatus(scan.id)).toMatchObject({
         scanCompleted: true,

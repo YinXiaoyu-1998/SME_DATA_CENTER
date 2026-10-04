@@ -49,7 +49,6 @@ export type LauncherBusinessToolName =
   | "get_partition_import_status"
   | "download_structured_partitions"
   | "describe_ledger_pdf_coverage"
-  | "refresh_ledger_pdfs"
   | "get_ledger_pdf_request_status"
   | "prepare_ledger_pdf_download"
   | "get_ledger_pdf_download_url";
@@ -57,7 +56,6 @@ export type LauncherToolName = LauncherBootstrapToolName | LauncherBusinessToolN
 
 const LEDGER_PDF_TOOL_NAMES = new Set<LauncherBusinessToolName>([
   "describe_ledger_pdf_coverage",
-  "refresh_ledger_pdfs",
   "get_ledger_pdf_request_status",
   "prepare_ledger_pdf_download",
   "get_ledger_pdf_download_url"

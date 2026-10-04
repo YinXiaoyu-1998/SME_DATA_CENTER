@@ -2,6 +2,8 @@
 
 台账以企业、精确门店名称和进货日期为一个分区。源收货单、台账行、供应商资料和检疫照片保留；刷新只替换派生 PDF 的当前指针，旧 PDF 和过期 ZIP 由已知对象键垃圾队列清理。无台账行的分区不生成空白 PDF。运行命令的系统或运维身份不会伪造员工账户。
 
+员工 MCP 和 HTTP 均不提供 PDF 生成入口，管理员同样不能触发。导入 applied、补单或照片变化只更新对应门店/日期 revision；服务端每日北京时间 03:00 巡检统一生成新增、变化和缺失分区，健康 PDF 跳过。同一分区当天多次变化合并处理。上传成功不等于 PDF 已完成；尚未就绪时说明等待下一轮任务完成，禁止通过重复准备 ZIP 触发生成。运维 CLI 保留首次回填及恢复能力。
+
 公共请求状态仅返回当前可读分区；失败项可带安全 `errorCode`，未知内部错误统一为 `LEDGER_GENERATION_FAILED`。`latestRequest` 仅在替代请求属于当前员工且该分区仍可读时返回，其 `status` 为该分区的替代项状态。请求所有者可以看到初始无分区请求的终态与当前已发布的 `empty` 项；隐藏分区仍按不可用处理。纯主动重绘失败且源版本、依赖授权与对象元数据未变化时，已有 PDF 继续可用。HEAD 缺少规定的 SHA-256 元数据视为异常。
 
 ZIP 固定包含准备时捕获的精确门店/日期分区；可选取这些分区的新一代 PDF，权限变化不能把子集标为完整成功。普通中文门店名保留可读，路径特殊字符可逆转义。文件名为 `食品经营单位进货台帐_<门店>_<YYYY-MM-DD>.pdf`，检疫照片编号在每张收货单内从 1 开始。
@@ -11,7 +13,7 @@ ZIP 固定包含准备时捕获的精确门店/日期分区；可选取这些分
 API、worker 和 release-ops 使用同一目标企业所在的 `DATABASE_URL`、存储配置与真实 OSS `AWS_S3_PREFIX`。命令先输出不含凭证的 host/database/企业环境信息。不要在命令、日志或版本库里放数据库密码和 OSS 密钥。CLI 对远程数据库默认拒绝，明确检查目标后才使用 `--allow-remote`。
 
 - `LEDGER_PDF_DELIVERY_ENABLED=false`：新公共 HTTP/MCP 入口默认关闭；开启后 Delivery Ledger 行明细查询和原始台账文件签发同时关闭，汇总继续可用。
-- `LEDGER_PDF_RECONCILE_ENABLED=false`：首次回填期间关闭每日巡检。
+- `LEDGER_PDF_RECONCILE_ENABLED=false`：首次回填期间关闭每日巡检；正式交付后须开启，它是新增和变化 PDF 的常规生成入口。
 - `LEDGER_PDF_RECONCILE_TIME=03:00`：固定 `Asia/Shanghai` 时区，可配置每日时刻。
 - `LEDGER_PDF_SCRATCH_ROOT=/var/lib/smedc/ledger-pdf`：worker 独占临时目录；Compose 挂载 `/opt/smedc/ledger-pdf`，主机目录必须允许镜像的非 root node 用户写入。
 - `LEDGER_PDF_RENDER_CONCURRENCY=1`：单 worker 进程串行转换。多副本各有独立转换队列，应按主机 CPU/内存容量部署。
@@ -60,7 +62,7 @@ ZIP 最多 5000 PDF、1 GiB、10 分钟，保存 24 小时；签名 URL 为 15 �
 1. 完成集中 review、最终质量门禁及 worker 镜像转换检查。明确新增 Prisma archive/reconciliation/exact-key garbage 迁移、挂载、配置和人工输入。通过正式 `main` gates 与 GitHub `staging` Environment 部署后台及 CLI，两个开关保持关闭。PR 不部署；回滚恢复镜像，不回退迁移。
 2. 获得 launcher 发布授权后，发布并独立验证 0.7.0，再更新服务推荐版本、两处基础 Skill pin 和 companion Skill。未发布时现有 Skill 的 0.6.0 pin 保持有效，不抢先推荐未验证版本。
 3. 只在明确授权的企业内运行全量 dry-run，人工确认环境、企业、门店/日期范围和预计分区数后执行同一 CLI。缺失历史源数据、依赖扫描或转换验证未通过时保留旧路径。
-4. 核对 PDF 的 11 列内容、照片、实际分区覆盖和失败重试结果后，通过正式配置部署开启 `LEDGER_PDF_DELIVERY_ENABLED=true` 与 `LEDGER_PDF_RECONCILE_ENABLED=true`。可分两次正式配置部署。
+4. 核对 PDF 的 11 列内容、照片、实际分区覆盖和失败重试结果后，通过正式配置部署先开启 `LEDGER_PDF_RECONCILE_ENABLED=true`，确认日常调度正常，再开启 `LEDGER_PDF_DELIVERY_ENABLED=true`；同次配置部署也可同时开启。正式交付不能长期关闭每日生成。
 5. 上线验收只验证本次合成样例和获授权回填结果。发布授权不包含全套官方人工验收，也不授权其他企业回填。仅耐久发布里程碑更新 progress。
 
 开发验证仅使用独立本地测试库与运行专属目录。加载真实本地 provider 配置后，必须先覆盖并断言 DB 为 localhost/127.0.0.1、storage 为本地专属路径，再做任何修改；此流程无需调用 AI provider。丢失恢复测试只删除当前运行生成的合成 PDF。最后删除自己创建的数据和对象，清理仓库拥有的测试资源；不删除其他项目容器或活动未合并工作树。

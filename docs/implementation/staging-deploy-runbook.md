@@ -321,8 +321,10 @@ reverse these migrations.
 
 Publish and independently verify launcher 0.7.0 before changing server
 recommended-version metadata and both base Skill pins. Only explicitly
-authorized enterprises may be previewed/backfilled. Enable public delivery and
-daily reconciliation after source completeness, PDF content and coverage pass,
+authorized enterprises may be previewed/backfilled. Daily 03:00 Asia/Shanghai
+reconciliation is the normal generation path; employee MCP/HTTP cannot generate PDFs.
+Enable daily reconciliation before or together with public delivery after source
+completeness, PDF content and coverage pass,
 using the same formal configuration deployment path. ZIP expiry remains active
 while reconciliation is disabled. Validate only the changed synthetic workflow
 and authorized backfill results; full official acceptance needs separate

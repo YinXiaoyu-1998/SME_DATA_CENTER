@@ -37,7 +37,6 @@ describe("action MCP tool handlers", () => {
 
     expect(ACTION_MCP_TOOL_NAMES).toEqual([
       "archive_quarantine_certificates",
-      "refresh_ledger_pdfs",
       "prepare_ledger_pdf_download"
     ]);
     expect(JSON.parse(result?.content[0]?.text ?? "{}")).toEqual({ archivedCount: 1 });
@@ -50,11 +49,8 @@ describe("action MCP tool handlers", () => {
   });
 });
 
-it.each([
-  ["refresh_ledger_pdfs", "/v1/ledger-pdfs/refresh"],
-  ["prepare_ledger_pdf_download", "/v1/ledger-pdfs/downloads"]
-] as const)(
-  "%s delegates an idempotent async request and leaves admin authorization to API",
+it.each([["prepare_ledger_pdf_download", "/v1/ledger-pdfs/downloads"]] as const)(
+  "%s delegates an idempotent ZIP request without rendering",
   async (name, url) => {
     const calls: ApiDelegationInjectRequest[] = [];
     const handlers = createActionMcpToolHandlers({
