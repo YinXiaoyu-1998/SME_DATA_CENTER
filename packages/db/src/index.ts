@@ -6,3 +6,5 @@ export {
   type DatabaseRetryEvent
 } from "./retry.js";
 export * from "./structured-partitions.js";
+
+export * from "./storage-garbage.js";

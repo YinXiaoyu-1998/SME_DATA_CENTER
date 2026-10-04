@@ -47,8 +47,19 @@ export type LauncherBusinessToolName =
   | "get_evidence_document_status"
   | "get_import_status"
   | "get_partition_import_status"
-  | "download_structured_partitions";
+  | "download_structured_partitions"
+  | "describe_ledger_pdf_coverage"
+  | "get_ledger_pdf_request_status"
+  | "prepare_ledger_pdf_download"
+  | "get_ledger_pdf_download_url";
 export type LauncherToolName = LauncherBootstrapToolName | LauncherBusinessToolName;
+
+const LEDGER_PDF_TOOL_NAMES = new Set<LauncherBusinessToolName>([
+  "describe_ledger_pdf_coverage",
+  "get_ledger_pdf_request_status",
+  "prepare_ledger_pdf_download",
+  "get_ledger_pdf_download_url"
+]);
 
 const LOCAL_PATH_UPLOAD_TOOL_NAMES = new Set<LauncherBusinessToolName>([
   "upload_structured_dataset",
@@ -120,7 +131,12 @@ export interface LauncherToolRegistrar {
   server?: Pick<McpServer["server"], "setRequestHandler">;
   registerTool(
     name: string,
-    options: { title: string; description: string; inputSchema: z.ZodRawShape },
+    options: {
+      title: string;
+      description: string;
+      inputSchema: z.ZodRawShape | z.ZodObject<z.ZodRawShape>;
+      annotations?: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean };
+    },
     handler: (input: unknown) => Promise<LauncherToolResult>
   ): void;
 }
@@ -172,7 +188,13 @@ export function registerLauncherTools(
     }
   >();
   const registerTool: LauncherToolRegistrar["registerTool"] = (name, options, handler) => {
-    registered.set(name, { inputSchema: z.object(options.inputSchema), handler });
+    registered.set(name, {
+      inputSchema:
+        options.inputSchema instanceof z.ZodObject
+          ? options.inputSchema
+          : z.object(options.inputSchema),
+      handler
+    });
     registrar.registerTool(name, options, handler);
   };
   for (const tool of bootstrapTools)
@@ -187,9 +209,12 @@ export function registerLauncherTools(
       {
         title: tool.title,
         description: tool.description,
+        annotations: tool.annotations,
         inputSchema: LOCAL_PATH_UPLOAD_TOOL_NAMES.has(tool.name)
           ? launcherUploadToolInputShape(tool)
-          : tool.inputShape
+          : LEDGER_PDF_TOOL_NAMES.has(tool.name)
+            ? tool.inputSchema
+            : tool.inputShape
       },
       createLauncherToolHandler(tool.name, dependencies)
     );

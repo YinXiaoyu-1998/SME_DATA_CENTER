@@ -15,6 +15,8 @@
 
 ## Branches And PRs
 
+- For completed and verified SMEDC work, default to pushing the feature branch and creating or updating a PR, including coordinated changes in companion repositories. This is the user's standing preference and authorization; do not ask them to choose between merging, creating a PR, and keeping the branch again unless they give different task-specific instructions or a concrete blocker requires input.
+- This default covers feature-branch pushes and PR creation, not merging, publishing, deployment, or real-data backfills; follow the separate authorization and release boundaries for those actions.
 - Define the base branch in the plan or PR; otherwise verify the repository's current default branch.
 - PR descriptions must state scope, tests, environment changes, human inputs, and known limitations.
 - Before or with each PR, report approximate inserted/deleted lines for production/config, runtime/CI/deploy, tests/harnesses, docs/plans/reports, and `package-lock.json`.

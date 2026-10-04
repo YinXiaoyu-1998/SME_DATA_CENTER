@@ -52,9 +52,9 @@ it("marks only the existing upload contracts admin-only without changing their s
     createHash("sha256")
       .update(
         JSON.stringify(
-          SMEDC_MCP_TOOL_CONTRACTS.filter((tool) => !tool.name.startsWith("upload_")).map(
-            (tool) => [tool.name, tool.description]
-          )
+          SMEDC_MCP_TOOL_CONTRACTS.slice(0, 16)
+            .filter((tool) => !tool.name.startsWith("upload_"))
+            .map((tool) => [tool.name, tool.description])
         )
       )
       .digest("hex")
@@ -136,6 +136,15 @@ const validInputs = {
   get_evidence_document_status: { documentId: "doc_1" },
   get_import_status: { importBatchId: "imp_1" },
   get_partition_import_status: { partitionImportJobId: "pjob_1" },
+  describe_ledger_pdf_coverage: { dates: ["2026-10-04"] },
+  get_ledger_pdf_request_status: { requestId: "request-1", cursor: "opaque-cursor" },
+  prepare_ledger_pdf_download: {
+    storeNames: ["合成门店"],
+    startDate: "2026-10-01",
+    endDate: "2026-10-04",
+    idempotencyKey: "zip-1"
+  },
+  get_ledger_pdf_download_url: { requestId: "request-1" },
   download_structured_partitions: {
     dataset: "business",
     enterpriseName: "Synthetic",
@@ -445,7 +454,21 @@ const invalidInputCases = [
         input: { ...validInputs.download_structured_partitions, dataset: "vip" }
       }
     ]
-  }
+  },
+  ...(
+    [
+      "describe_ledger_pdf_coverage",
+      "get_ledger_pdf_request_status",
+      "prepare_ledger_pdf_download",
+      "get_ledger_pdf_download_url"
+    ] as const
+  ).map((tool) => ({
+    tool,
+    cases: [
+      { label: "missing required selectors", input: {} },
+      { label: "organization selector", input: { ...validInputs[tool], orgId: "other-org" } }
+    ]
+  }))
 ] satisfies Array<{
   tool: SmedcMcpToolName;
   cases: Array<{ label: string; input: unknown }>;
@@ -469,7 +492,11 @@ describe("SMEDC MCP contract", () => {
       "get_evidence_document_status",
       "get_import_status",
       "get_partition_import_status",
-      "download_structured_partitions"
+      "download_structured_partitions",
+      "describe_ledger_pdf_coverage",
+      "get_ledger_pdf_request_status",
+      "prepare_ledger_pdf_download",
+      "get_ledger_pdf_download_url"
     ]);
     expect(
       SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
@@ -1264,5 +1291,87 @@ describe("launcher path-mode upload schema", () => {
         file: pathFile
       }).success
     ).toBe(false);
+  });
+});
+
+describe("ledger PDF contracts", () => {
+  it("offers download tools without any employee PDF generation contract", () => {
+    expect(SMEDC_MCP_TOOL_NAMES).not.toContain("refresh_ledger_pdfs");
+    expect([...contractsByName.keys()]).not.toContain("refresh_ledger_pdfs");
+  });
+  const scopeTools = ["describe_ledger_pdf_coverage", "prepare_ledger_pdf_download"] as const;
+  it.each(scopeTools)(
+    "%s validates exclusive dates and public limits without guessing actual partitions",
+    (name) => {
+      const schema = contractsByName.get(name)?.inputSchema;
+      expect(schema).toBeInstanceOf(z.ZodObject);
+      const base = { storeNames: [" 门店名称 "], idempotencyKey: "scope-1" };
+      if (name === "describe_ledger_pdf_coverage")
+        delete (base as { idempotencyKey?: string }).idempotencyKey;
+      expect(schema?.safeParse({ ...base, dates: ["2024-02-29"] }).success).toBe(true);
+      expect(
+        schema?.safeParse({
+          ...base,
+          startDate: "2024-01-01",
+          endDate: "2024-12-31",
+          storeNames: Array.from({ length: 50 }, (_, i) => `门店${i}`)
+        }).success
+      ).toBe(true);
+      for (const input of [
+        { ...base, dates: ["2023-02-29"] },
+        { ...base, dates: ["2026-04-31"] },
+        { ...base, dates: ["2026-1-01"] },
+        { ...base, dates: ["0000-01-01"] },
+        { ...base, dates: [] },
+        { ...base, dates: ["2026-01-01"], startDate: "2026-01-01", endDate: "2026-01-01" },
+        { ...base, startDate: "2026-01-01" },
+        { ...base, startDate: "2026-02-02", endDate: "2026-02-01" },
+        { ...base, startDate: "2024-01-01", endDate: "2025-01-01" },
+        {
+          ...base,
+          dates: ["2026-01-01"],
+          storeNames: Array.from({ length: 51 }, (_, i) => `门店${i}`)
+        },
+        {
+          ...base,
+          dates: Array.from({ length: 367 }, (_, i) =>
+            new Date(Date.UTC(2024, 0, i + 1)).toISOString().slice(0, 10)
+          )
+        },
+        { ...base, dates: ["2026-01-01"], storeNames: ["   "] },
+        { ...base, dates: ["2026-01-01"], force: true }
+      ])
+        expect(schema?.safeParse(input).success, JSON.stringify(input)).toBe(false);
+      expect(z.toJSONSchema(schema!).additionalProperties).toBe(false);
+    }
+  );
+  it("requires explicit stores and idempotency for ZIP preparation", () => {
+    for (const name of ["prepare_ledger_pdf_download"] as const) {
+      expect(safeParseTool(name, { dates: ["2026-01-01"], idempotencyKey: "key" }).success).toBe(
+        false
+      );
+      expect(safeParseTool(name, { storeNames: ["店"], dates: ["2026-01-01"] }).success).toBe(
+        false
+      );
+    }
+  });
+  it.each([
+    ["LEDGER_PDF_NOT_ENABLED", false],
+    ["LEDGER_DETAIL_DISABLED", false],
+    ["LEDGER_PDF_NOT_READY", true],
+    ["LEDGER_PDF_BUNDLE_STALE", false]
+  ])("maps %s without internal error details", (code, retryable) => {
+    expect(
+      JSON.parse(
+        apiErrorToolResult({
+          error: {
+            code,
+            message: "Unavailable.",
+            requestId: "req_pdf",
+            details: { storageObjectKey: "private" }
+          }
+        }).content[0]!.text
+      )
+    ).toEqual({ error: { code, message: "Unavailable.", requestId: "req_pdf", retryable } });
   });
 });

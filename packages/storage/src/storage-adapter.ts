@@ -31,9 +31,13 @@ export interface CreateDownloadUrlOptions {
   downloadFileName?: string;
 }
 
+export type HeadObjectResult =
+  { state: "found"; size: number; hash?: string } | { state: "not_found" };
+
 export interface StorageAdapter {
   putObject(input: PutObjectInput): Promise<StorageObject>;
   getObjectStream(key: string): Promise<NodeJS.ReadableStream>;
+  headObject(key: string): Promise<HeadObjectResult>;
   statObject(key: string): Promise<StorageObject>;
   createDownloadUrl(key: string, options?: CreateDownloadUrlOptions): Promise<string>;
   createMultipartUpload?(input: {

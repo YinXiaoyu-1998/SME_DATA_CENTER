@@ -35,7 +35,10 @@ describe("action MCP tool handlers", () => {
       {} as never
     );
 
-    expect(ACTION_MCP_TOOL_NAMES).toEqual(["archive_quarantine_certificates"]);
+    expect(ACTION_MCP_TOOL_NAMES).toEqual([
+      "archive_quarantine_certificates",
+      "prepare_ledger_pdf_download"
+    ]);
     expect(JSON.parse(result?.content[0]?.text ?? "{}")).toEqual({ archivedCount: 1 });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
@@ -45,3 +48,45 @@ describe("action MCP tool handlers", () => {
     });
   });
 });
+
+it.each([["prepare_ledger_pdf_download", "/v1/ledger-pdfs/downloads"]] as const)(
+  "%s delegates an idempotent ZIP request without rendering",
+  async (name, url) => {
+    const calls: ApiDelegationInjectRequest[] = [];
+    const handlers = createActionMcpToolHandlers({
+      bearerToken: "employee-token",
+      audit,
+      delegationProof: "proof",
+      async inject(request) {
+        calls.push(request);
+        return {
+          statusCode: 202,
+          payload: JSON.stringify({ requestId: "pdf-1", status: "queued" })
+        };
+      }
+    });
+    const input = {
+      storeNames: ["合成门店"],
+      startDate: "2026-10-01",
+      endDate: "2026-10-04",
+      idempotencyKey: "key-1"
+    };
+    const result = await handlers[name]?.(input, {} as never);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      url,
+      payload: input,
+      headers: { authorization: "Bearer employee-token" }
+    });
+    expect(JSON.parse(result?.content[0]?.text ?? "{}")).toEqual({
+      requestId: "pdf-1",
+      status: "queued"
+    });
+    expect(result?.isError).toBe(false);
+    expect(JSON.stringify(result)).not.toMatch(/base64|storageObjectKey|sourceDocument/);
+    const invalid = await handlers[name]?.({ ...input, orgId: "other-org" }, {} as never);
+    expect(invalid?.isError).toBe(true);
+    expect(calls).toHaveLength(1);
+  }
+);

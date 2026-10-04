@@ -26,6 +26,7 @@ const prisma = vi.hoisted(() => ({
     deleteMany: vi.fn()
   },
   deliveryLedgerRow: {
+    findMany: vi.fn().mockResolvedValue([]),
     deleteMany: vi.fn()
   },
   supplierCatalogRow: {
@@ -38,6 +39,7 @@ const prisma = vi.hoisted(() => ({
     create: vi.fn()
   },
   $executeRaw: vi.fn(),
+  $queryRaw: vi.fn(),
   $transaction: vi.fn(),
   $disconnect: vi.fn()
 }));
@@ -267,6 +269,7 @@ function useStatefulReservationPrisma(
 describe("Prisma structured import audit provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.$queryRaw.mockResolvedValue([{ id: "org_1" }]);
     prisma.importBatch.findUnique.mockResolvedValue(null);
     prisma.importWindowClaim.findUnique.mockResolvedValue(null);
     prisma.importWindowClaim.delete.mockResolvedValue({});

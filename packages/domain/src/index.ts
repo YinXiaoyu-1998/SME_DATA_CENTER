@@ -138,6 +138,7 @@ export {
   STRUCTURED_QUERY_LIMITS,
   StructuredQueryValidationError,
   compileStructuredQuery,
+  compilePublicStructuredQuery,
   createStructuredCursor,
   decodeStructuredCursor,
   type StructuredCompiledQuery,
@@ -150,3 +151,5 @@ export {
   type StructuredCoverageSourceBase,
   type StructuredDatasetCoverage
 } from "./structured-coverage.js";
+
+export { getPublicStructuredRegistry } from "./structured-ledger-policy.js";

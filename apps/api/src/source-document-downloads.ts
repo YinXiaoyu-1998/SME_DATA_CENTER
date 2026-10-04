@@ -49,6 +49,7 @@ export function createSourceDocumentDownloadIssuer(input: {
   repository: SourceDocumentDownloadRepository;
   storage: StorageAdapter;
   now?: () => Date;
+  ledgerPdfDeliveryEnabled?: boolean;
 }): SourceDocumentDownloadIssuer {
   return {
     async issueMany(request) {
@@ -68,7 +69,11 @@ export function createSourceDocumentDownloadIssuer(input: {
       const authorizedById = new Map(
         authorized
           .filter(
-            (document) => request.reason !== "evidence_search_auto" || document.status === "active"
+            (document) =>
+              (!input.ledgerPdfDeliveryEnabled ||
+                (document.importDataset !== undefined &&
+                  document.importDataset !== "delivery_ledger")) &&
+              (request.reason !== "evidence_search_auto" || document.status === "active")
           )
           .map((document) => [document.sourceDocumentId, document])
       );

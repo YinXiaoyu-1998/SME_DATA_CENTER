@@ -49,6 +49,9 @@ function context(
     structuredQueries: () => repository,
     structuredCoverage: () => coverageRepository,
     skills: unexpectedDependency,
+    ledgerPdfs: () => {
+      throw new Error("Unexpected ledger PDF dependency");
+    },
     evidence: unexpectedDependency,
     uploadAuthorizationAudit: unexpectedDependency,
     quarantineCertificates: unexpectedDependency,

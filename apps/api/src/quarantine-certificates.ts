@@ -1,5 +1,12 @@
+import {
+  lockLedgerSourceMutation,
+  ledgerPartitionsForReceipt,
+  readableLedgerPartitionHints,
+  markLedgerPartitionsChanged,
+  type LedgerPartitionKey
+} from "@smedc/ledger-archive";
 import { createHash } from "node:crypto";
-import { createDatabaseAdapter } from "@smedc/db";
+import { createDatabaseAdapter, retryIdempotentDatabaseOperation } from "@smedc/db";
 import {
   DocumentKind,
   DocumentStatus,
@@ -23,6 +30,7 @@ export const QUARANTINE_CERTIFICATE_LIMITS = {
 } as const;
 
 export interface QuarantineCertificateRecord {
+  affectedLedgerPartitions?: LedgerPartitionKey[];
   sourceDocumentId: string;
   receiptId: string;
   originalFileName: string;
@@ -72,19 +80,28 @@ export interface ArchiveQuarantineCertificatesByReceiptInput {
   audit: RequestAuditContext;
 }
 
+export type QuarantineCertificateArchiveResult = {
+  archivedCount: number;
+  affectedLedgerPartitions: LedgerPartitionKey[];
+};
+
 export interface QuarantineCertificateRepository {
   findByIdempotencyKey(
     orgId: string,
-    idempotencyKey: string
+    idempotencyKey: string,
+    actorEmployeeId?: string
   ): Promise<(QuarantineCertificateRecord & { requestFingerprint: string }) | null>;
   createCertificate(input: CreateQuarantineCertificateInput): Promise<QuarantineCertificateRecord>;
   queryVisibleByReceiptIds(
     input: QueryQuarantineCertificatesInput
   ): Promise<QuarantineCertificateRecord[]>;
+  // Legacy injected repositories may return counts; the HTTP adapter normalizes this seam.
   archiveBySourceDocumentId(
     input: ArchiveQuarantineCertificateBySourceInput
-  ): Promise<number | null>;
-  archiveByReceiptId(input: ArchiveQuarantineCertificatesByReceiptInput): Promise<number>;
+  ): Promise<number | QuarantineCertificateArchiveResult | null>;
+  archiveByReceiptId(
+    input: ArchiveQuarantineCertificatesByReceiptInput
+  ): Promise<number | QuarantineCertificateArchiveResult>;
   disconnect?(): Promise<void>;
 }
 
@@ -126,7 +143,7 @@ export function createPrismaQuarantineCertificateRepository(
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
 
   return {
-    async findByIdempotencyKey(orgId, idempotencyKey) {
+    async findByIdempotencyKey(orgId, idempotencyKey, actorEmployeeId) {
       const certificate = await prisma.quarantineCertificate.findUnique({
         where: {
           orgId_idempotencyKey: {
@@ -137,66 +154,102 @@ export function createPrismaQuarantineCertificateRepository(
         include: certificateInclude
       });
 
-      return certificate ? toCertificateRecord(certificate) : null;
+      if (!certificate) return null;
+      const audit = await prisma.auditLog.findFirst({
+        where: {
+          orgId,
+          targetId: certificate.sourceDocumentId,
+          action: AUDIT_ACTIONS.documentUploaded
+        },
+        orderBy: { createdAt: "asc" }
+      });
+      const metadata = audit?.metadata as {
+        affectedLedgerPartitions?: LedgerPartitionKey[];
+      } | null;
+      return {
+        ...toCertificateRecord(certificate),
+        affectedLedgerPartitions: await readableLedgerPartitionHints(
+          prisma,
+          actorEmployeeId ?? certificate.sourceDocument.uploaderId,
+          metadata?.affectedLedgerPartitions ?? []
+        )
+      };
     },
     async createCertificate(input) {
       try {
-        const certificate = await prisma.$transaction(async (tx) => {
-          await tx.document.create({
-            data: {
-              id: input.sourceDocumentId,
-              orgId: input.orgId,
-              title: input.title,
-              documentType: DocumentType.raw_material,
-              documentKind: DocumentKind.quarantine_certificate,
-              fileType: input.fileType as FileType,
-              status: DocumentStatus.active,
-              confidentialityLevel: input.confidentialityLevel,
-              storageObjectKey: input.storageObjectKey,
-              originalFileName: input.originalFileName,
-              contentType: input.contentType,
-              byteSize: BigInt(input.byteSize),
-              checksumSha256: input.checksumSha256,
-              uploaderId: input.actorEmployeeId,
-              sourceSystem: null,
-              sourceTime: null
-            }
-          });
+        const certificate = await retryIdempotentDatabaseOperation(() =>
+          prisma.$transaction(async (tx) => {
+            await lockLedgerSourceMutation(tx, input.orgId);
+            await tx.document.create({
+              data: {
+                id: input.sourceDocumentId,
+                orgId: input.orgId,
+                title: input.title,
+                documentType: DocumentType.raw_material,
+                documentKind: DocumentKind.quarantine_certificate,
+                fileType: input.fileType as FileType,
+                status: DocumentStatus.active,
+                confidentialityLevel: input.confidentialityLevel,
+                storageObjectKey: input.storageObjectKey,
+                originalFileName: input.originalFileName,
+                contentType: input.contentType,
+                byteSize: BigInt(input.byteSize),
+                checksumSha256: input.checksumSha256,
+                uploaderId: input.actorEmployeeId,
+                sourceSystem: null,
+                sourceTime: null
+              }
+            });
 
-          const created = await tx.quarantineCertificate.create({
-            data: {
-              orgId: input.orgId,
-              sourceDocumentId: input.sourceDocumentId,
-              receiptId: input.receiptId,
-              idempotencyKey: input.idempotencyKey,
-              requestFingerprint: input.requestFingerprint
-            },
-            include: certificateInclude
-          });
-
-          await tx.auditLog.create({
-            data: {
-              orgId: input.orgId,
-              actorEmployeeId: input.actorEmployeeId,
-              action: AUDIT_ACTIONS.documentUploaded,
-              targetType: "quarantine_certificate",
-              targetId: input.sourceDocumentId,
-              result: "succeeded",
-              metadata: {
+            const created = await tx.quarantineCertificate.create({
+              data: {
+                orgId: input.orgId,
+                sourceDocumentId: input.sourceDocumentId,
                 receiptId: input.receiptId,
-                confidentialityLevel: input.confidentialityLevel
-              } satisfies Prisma.InputJsonObject,
-              requestId: input.audit.requestId,
-              clientIp: input.audit.sourceIp,
-              clientSource: input.audit.clientSource,
-              launcherVersion: input.audit.launcherVersion
-            }
-          });
+                idempotencyKey: input.idempotencyKey,
+                requestFingerprint: input.requestFingerprint
+              },
+              include: certificateInclude
+            });
 
-          return created;
-        });
+            const affectedLedgerPartitions = await ledgerPartitionsForReceipt(
+              tx,
+              input.orgId,
+              input.receiptId
+            );
+            await markLedgerPartitionsChanged(tx, affectedLedgerPartitions);
+            await tx.auditLog.create({
+              data: {
+                orgId: input.orgId,
+                actorEmployeeId: input.actorEmployeeId,
+                action: AUDIT_ACTIONS.documentUploaded,
+                targetType: "quarantine_certificate",
+                targetId: input.sourceDocumentId,
+                result: "succeeded",
+                metadata: {
+                  receiptId: input.receiptId,
+                  affectedLedgerPartitions,
+                  confidentialityLevel: input.confidentialityLevel
+                } satisfies Prisma.InputJsonObject,
+                requestId: input.audit.requestId,
+                clientIp: input.audit.sourceIp,
+                clientSource: input.audit.clientSource,
+                launcherVersion: input.audit.launcherVersion
+              }
+            });
 
-        return toCertificateRecord(certificate);
+            return {
+              ...toCertificateRecord(created),
+              affectedLedgerPartitions: await readableLedgerPartitionHints(
+                tx,
+                input.actorEmployeeId,
+                affectedLedgerPartitions
+              )
+            };
+          })
+        );
+
+        return certificate;
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
           const existing = await prisma.quarantineCertificate.findUnique({
@@ -209,7 +262,25 @@ export function createPrismaQuarantineCertificateRepository(
             include: certificateInclude
           });
           if (existing?.requestFingerprint === input.requestFingerprint) {
-            return toCertificateRecord(existing);
+            const audit = await prisma.auditLog.findFirst({
+              where: {
+                orgId: input.orgId,
+                targetId: existing.sourceDocumentId,
+                action: AUDIT_ACTIONS.documentUploaded
+              },
+              orderBy: { createdAt: "asc" }
+            });
+            const metadata = audit?.metadata as {
+              affectedLedgerPartitions?: LedgerPartitionKey[];
+            } | null;
+            return {
+              ...toCertificateRecord(existing),
+              affectedLedgerPartitions: await readableLedgerPartitionHints(
+                prisma,
+                input.actorEmployeeId,
+                metadata?.affectedLedgerPartitions ?? []
+              )
+            };
           }
 
           throw new QuarantineCertificateError(
@@ -259,23 +330,46 @@ export function createPrismaQuarantineCertificateRepository(
         certificate.sourceDocument.status === DocumentStatus.archived ||
         certificate.sourceDocument.archivedAt
       ) {
-        return 0;
+        return { archivedCount: 0, affectedLedgerPartitions: [] };
       }
 
-      await prisma.$transaction(async (tx) => {
-        await tx.document.update({
-          where: { id: input.sourceDocumentId },
-          data: { status: DocumentStatus.archived, archivedAt: new Date() }
-        });
-        await tx.auditLog.create({
-          data: archiveAuditData({
-            input,
-            targetId: input.sourceDocumentId,
-            metadata: { receiptId: certificate.receiptId, mode: "sourceDocumentId" }
-          })
-        });
-      });
-      return 1;
+      return retryIdempotentDatabaseOperation(() =>
+        prisma.$transaction(async (tx) => {
+          await lockLedgerSourceMutation(tx, input.orgId);
+          const affectedLedgerPartitions = await ledgerPartitionsForReceipt(
+            tx,
+            input.orgId,
+            certificate.receiptId
+          );
+          const visibleHints = await readableLedgerPartitionHints(
+            tx,
+            input.employee.id,
+            affectedLedgerPartitions
+          );
+          const changed = await tx.document.updateMany({
+            where: {
+              id: input.sourceDocumentId,
+              orgId: input.orgId,
+              status: { not: DocumentStatus.archived },
+              archivedAt: null
+            },
+            data: { status: DocumentStatus.archived, archivedAt: new Date() }
+          });
+          if (!changed.count) return { archivedCount: 0, affectedLedgerPartitions: [] };
+          await markLedgerPartitionsChanged(tx, affectedLedgerPartitions);
+          await tx.auditLog.create({
+            data: archiveAuditData({
+              input,
+              targetId: input.sourceDocumentId,
+              metadata: { receiptId: certificate.receiptId, mode: "sourceDocumentId" }
+            })
+          });
+          return {
+            archivedCount: changed.count,
+            affectedLedgerPartitions: visibleHints
+          };
+        })
+      );
     },
     async archiveByReceiptId(input) {
       if (
@@ -284,40 +378,63 @@ export function createPrismaQuarantineCertificateRepository(
           "archiveQuarantineCertificates"
         )
       ) {
-        return 0;
+        return { archivedCount: 0, affectedLedgerPartitions: [] };
       }
-      const certificates = await prisma.quarantineCertificate.findMany({
-        where: {
-          orgId: input.orgId,
-          receiptId: input.receiptId,
-          sourceDocument: {
-            status: { not: DocumentStatus.archived },
-            archivedAt: null
-          }
-        },
-        select: { sourceDocumentId: true }
-      });
-      if (certificates.length === 0) return 0;
-      const sourceDocumentIds = certificates.map((certificate) => certificate.sourceDocumentId);
-
-      await prisma.$transaction(async (tx) => {
-        await tx.document.updateMany({
-          where: { id: { in: sourceDocumentIds }, orgId: input.orgId },
-          data: { status: DocumentStatus.archived, archivedAt: new Date() }
-        });
-        await tx.auditLog.create({
-          data: archiveAuditData({
-            input,
-            targetId: input.receiptId,
-            metadata: {
+      return retryIdempotentDatabaseOperation(() =>
+        prisma.$transaction(async (tx) => {
+          await lockLedgerSourceMutation(tx, input.orgId);
+          const certificates = await tx.quarantineCertificate.findMany({
+            where: {
+              orgId: input.orgId,
               receiptId: input.receiptId,
-              mode: "receiptId",
-              sourceDocumentIds
-            }
-          })
-        });
-      });
-      return sourceDocumentIds.length;
+              sourceDocument: {
+                status: { not: DocumentStatus.archived },
+                archivedAt: null
+              }
+            },
+            select: { sourceDocumentId: true }
+          });
+          if (certificates.length === 0) return { archivedCount: 0, affectedLedgerPartitions: [] };
+          const sourceDocumentIds = certificates.map((certificate) => certificate.sourceDocumentId);
+
+          const affectedLedgerPartitions = await ledgerPartitionsForReceipt(
+            tx,
+            input.orgId,
+            input.receiptId
+          );
+          const visibleHints = await readableLedgerPartitionHints(
+            tx,
+            input.employee.id,
+            affectedLedgerPartitions
+          );
+          const changed = await tx.document.updateMany({
+            where: {
+              id: { in: sourceDocumentIds },
+              orgId: input.orgId,
+              status: { not: DocumentStatus.archived },
+              archivedAt: null
+            },
+            data: { status: DocumentStatus.archived, archivedAt: new Date() }
+          });
+          if (!changed.count) return { archivedCount: 0, affectedLedgerPartitions: [] };
+          await markLedgerPartitionsChanged(tx, affectedLedgerPartitions);
+          await tx.auditLog.create({
+            data: archiveAuditData({
+              input,
+              targetId: input.receiptId,
+              metadata: {
+                receiptId: input.receiptId,
+                mode: "receiptId",
+                sourceDocumentIds
+              }
+            })
+          });
+          return {
+            archivedCount: changed.count,
+            affectedLedgerPartitions: visibleHints
+          };
+        })
+      );
     },
     async disconnect() {
       await prisma.$disconnect();

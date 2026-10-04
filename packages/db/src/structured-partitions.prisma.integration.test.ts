@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { storageGarbageKeyHash } from "./storage-garbage.js";
 import { createDatabaseAdapter } from "./adapter.js";
 import {
   createPrismaStructuredPartitionRepository,
@@ -74,7 +75,9 @@ suite("structured partition repository", () => {
     expect(current.objectKey).toBe(first.objectKey);
     expect(current.confidentialityLevel).toBe(0);
     expect(
-      await prisma.storageGarbage.findUnique({ where: { objectKey: sameBytes.objectKey } })
+      await prisma.storageGarbage.findUnique({
+        where: { objectKeyHash: storageGarbageKeyHash(sameBytes.objectKey) }
+      })
     ).not.toBeNull();
     await expect(
       repository.listReadableManifestRows({

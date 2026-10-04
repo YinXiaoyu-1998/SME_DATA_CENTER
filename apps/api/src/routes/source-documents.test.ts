@@ -37,7 +37,7 @@ describe("source document download routes", () => {
     }
   });
 
-  async function buildDownloadTestServer() {
+  async function buildDownloadTestServer(ledgerPdfDeliveryEnabled = false) {
     storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-source-download-"));
     const documentRepository = createDocumentRepository();
     const quarantineCertificateRepository = createInMemoryQuarantineCertificateRepository(
@@ -55,12 +55,14 @@ describe("source document download routes", () => {
     const storageAdapter: StorageAdapter = {
       putObject: localStorage.putObject.bind(localStorage),
       getObjectStream: localStorage.getObjectStream.bind(localStorage),
+      headObject: localStorage.headObject.bind(localStorage),
       statObject: localStorage.statObject.bind(localStorage),
       createDownloadUrl,
       deleteObject: localStorage.deleteObject.bind(localStorage)
     };
 
     app = buildApiServer({
+      runtimeEnv: { LEDGER_PDF_DELIVERY_ENABLED: String(ledgerPdfDeliveryEnabled) },
       employeeRepository: createRepository([adminEmployee, baoliEmployee]),
       documentRepository,
       quarantineCertificateRepository,
@@ -98,31 +100,34 @@ describe("source document download routes", () => {
     });
   }
 
-  it("issues a 24-hour attachment download URL for an authorized source document", async () => {
-    const { app, createDownloadUrl } = await buildDownloadTestServer();
-    const upload = await uploadCertificate(app);
-    expect(upload.statusCode).toBe(201);
+  it.each([false, true])(
+    "issues a certificate download with ledger PDF switch %s",
+    async (enabled) => {
+      const { app, createDownloadUrl } = await buildDownloadTestServer(enabled);
+      const upload = await uploadCertificate(app);
+      expect(upload.statusCode).toBe(201);
 
-    const response = await app.inject({
-      method: "POST",
-      url: `/v1/source-documents/${upload.json().sourceDocumentId}/download-url`,
-      headers: {
-        authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
-      }
-    });
+      const response = await app.inject({
+        method: "POST",
+        url: `/v1/source-documents/${upload.json().sourceDocumentId}/download-url`,
+        headers: {
+          authorization: `Bearer ${await accessTokenFor(baoliEmployee)}`
+        }
+      });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      sourceDocumentId: upload.json().sourceDocumentId,
-      downloadUrl: "https://download.example.test/source",
-      originalFileName: "quarantine.png",
-      contentType: "image/png",
-      byteSize: pngBytes.byteLength
-    });
-    expect(Date.parse(response.json().expiresAt)).toBeGreaterThan(Date.now() + 86_000_000);
-    expect(createDownloadUrl).toHaveBeenCalledWith(expect.any(String), {
-      expiresInSeconds: 86_400,
-      downloadFileName: "quarantine.png"
-    });
-  });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        sourceDocumentId: upload.json().sourceDocumentId,
+        downloadUrl: "https://download.example.test/source",
+        originalFileName: "quarantine.png",
+        contentType: "image/png",
+        byteSize: pngBytes.byteLength
+      });
+      expect(Date.parse(response.json().expiresAt)).toBeGreaterThan(Date.now() + 86_000_000);
+      expect(createDownloadUrl).toHaveBeenCalledWith(expect.any(String), {
+        expiresInSeconds: 86_400,
+        downloadFileName: "quarantine.png"
+      });
+    }
+  );
 });

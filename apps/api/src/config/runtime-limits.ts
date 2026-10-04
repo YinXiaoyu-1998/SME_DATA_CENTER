@@ -1,6 +1,7 @@
 import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@smedc/domain";
 
 export interface ApiRuntimeLimits {
+  ledgerPdfDeliveryEnabled: boolean;
   maxUploadBytes: number;
   mcpMaxConcurrentRequests: number;
   maxStructuredImportRows: number;
@@ -20,6 +21,7 @@ export interface ApiRuntimeLimits {
 
 export function loadApiRuntimeLimits(env: NodeJS.ProcessEnv): ApiRuntimeLimits {
   return {
+    ledgerPdfDeliveryEnabled: loadLedgerPdfDeliveryEnabled(env),
     maxUploadBytes: parsePositiveSafeInteger(env, "MAX_UPLOAD_BYTES", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes
     }),
@@ -87,4 +89,11 @@ export function loadApiRuntimeLimits(env: NodeJS.ProcessEnv): ApiRuntimeLimits {
       }
     )
   };
+}
+
+function loadLedgerPdfDeliveryEnabled(env: NodeJS.ProcessEnv): boolean {
+  const value = env["LEDGER_PDF_DELIVERY_ENABLED"];
+  if (value === undefined || value === "false") return false;
+  if (value === "true") return true;
+  throw new Error("LEDGER_PDF_DELIVERY_ENABLED must be true or false.");
 }

@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { assertSafeObjectKey, createOriginalObjectKey } from "./object-key.js";
 import type {
   CreateDownloadUrlOptions,
+  HeadObjectResult,
   PutObjectInput,
   StorageAdapter,
   StorageObject,
@@ -20,6 +21,8 @@ interface LocalFileSystemStorageAdapterOptions {
 }
 
 interface StoredObjectMetadata {
+  size?: number;
+  hash?: string;
   contentType?: string;
 }
 
@@ -53,26 +56,40 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
 
     await pipeline(source, createWriteStream(targetPath));
 
-    if (input.contentType) {
-      await writeFile(
-        metadataPathFor(targetPath),
-        JSON.stringify({ contentType: input.contentType }, null, 2),
-        "utf8"
-      );
-    } else {
-      await rm(metadataPathFor(targetPath), { force: true });
-    }
+    const checksum = hash.digest("hex");
+    await writeMetadata(targetPath, { size, hash: checksum, contentType: input.contentType });
 
     return {
       key,
       size,
       contentType: input.contentType,
-      hash: hash.digest("hex")
+      hash: checksum
     };
   }
 
   async getObjectStream(key: string): Promise<NodeJS.ReadableStream> {
     return createReadStream(this.resolveObjectPath(key));
+  }
+
+  async headObject(key: string): Promise<HeadObjectResult> {
+    const objectPath = this.resolveObjectPath(key);
+    let objectStat;
+    try {
+      objectStat = await stat(objectPath);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        return { state: "not_found" };
+      }
+      throw error;
+    }
+    const metadata = await readMetadata(objectPath);
+    const hash =
+      metadata.size === objectStat.size &&
+      typeof metadata.hash === "string" &&
+      /^[a-f0-9]{64}$/.test(metadata.hash)
+        ? metadata.hash
+        : undefined;
+    return { state: "found", size: objectStat.size, ...(hash ? { hash } : {}) };
   }
 
   async statObject(key: string): Promise<StorageObject> {
@@ -94,11 +111,18 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
     return pathToFileURL(this.resolveObjectPath(key)).href;
   }
 
-  async createMultipartUpload(input: { key: string }): Promise<{ uploadId: string }> {
+  async createMultipartUpload(input: {
+    key: string;
+    contentType?: string;
+    checksumSha256?: string;
+  }): Promise<{ uploadId: string }> {
     assertSafeObjectKey(input.key);
     const uploadId = randomUUID();
     await mkdir(this.multipartDirectory(uploadId), { recursive: true });
     await writeFile(path.join(this.multipartDirectory(uploadId), "key"), input.key, "utf8");
+    await writeMetadata(path.join(this.multipartDirectory(uploadId), "key"), {
+      contentType: input.contentType
+    });
     return { uploadId };
   }
 
@@ -122,19 +146,29 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
     const target = this.resolveObjectPath(input.key);
     await mkdir(path.dirname(target), { recursive: true });
     const output = createWriteStream(target);
+    const hash = createHash("sha256");
+    let size = 0;
     for (const part of [...input.parts].sort((a, b) => a.partNumber - b.partNumber)) {
-      await pipeline(
-        createReadStream(
-          path.join(this.multipartDirectory(input.uploadId), `${part.partNumber}.part`)
-        ),
-        output,
-        { end: false }
+      const source = createReadStream(
+        path.join(this.multipartDirectory(input.uploadId), `${part.partNumber}.part`)
       );
+      source.on("data", (chunk: Buffer | string) => {
+        const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += bytes.byteLength;
+        hash.update(bytes);
+      });
+      await pipeline(source, output, { end: false });
     }
     output.end();
     await new Promise<void>((resolve, reject) => {
       output.once("finish", resolve);
       output.once("error", reject);
+    });
+    const metadata = await readMetadata(path.join(this.multipartDirectory(input.uploadId), "key"));
+    await writeMetadata(target, {
+      size,
+      hash: hash.digest("hex"),
+      contentType: metadata.contentType
     });
     await rm(this.multipartDirectory(input.uploadId), { recursive: true, force: true });
   }
@@ -157,6 +191,7 @@ export class LocalFileSystemStorageAdapter implements StorageAdapter {
       throw new Error("Storage object size or checksum did not match the declared value.");
     }
     await rename(temporary, target);
+    await writeMetadata(target, { size: actual.size, hash, contentType: input.contentType });
     return { key: input.key, size: actual.size, hash, contentType: input.contentType };
   }
 
@@ -226,6 +261,10 @@ async function readMetadata(objectPath: string): Promise<StoredObjectMetadata> {
 
     throw error;
   }
+}
+
+async function writeMetadata(objectPath: string, metadata: StoredObjectMetadata): Promise<void> {
+  await writeFile(metadataPathFor(objectPath), JSON.stringify(metadata, null, 2), "utf8");
 }
 
 function metadataPathFor(objectPath: string): string {

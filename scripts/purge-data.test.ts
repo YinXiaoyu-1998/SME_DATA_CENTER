@@ -4,6 +4,18 @@ import { describe, expect, it, vi } from "vitest";
 const prisma = vi.hoisted(() => ({
   auditLog: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   processingRun: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  ledgerPdfReconciliationTarget: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  ledgerArtifactRequestItem: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  ledgerArtifactRequest: {
+    updateMany: vi.fn(async () => ({ count: 0 })),
+    deleteMany: vi.fn(async () => ({ count: 0 }))
+  },
+  ledgerPdfSource: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  ledgerPdfPartition: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  ledgerPdfReconciliationRun: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  deliveryLedgerRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  supplierCatalogRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  quarantineCertificate: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   structuredPartition: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   storageGarbage: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   partitionImportJob: { deleteMany: vi.fn(async () => ({ count: 0 })) },
@@ -142,7 +154,12 @@ describe("purge-data database target resolution", () => {
       env: { DATABASE_URL: "mysql://user:password@localhost:3307/smedc" }
     });
 
-    for (const rows of [prisma.vipRow, prisma.dishCatalogRow]) {
+    for (const rows of [
+      prisma.vipRow,
+      prisma.dishCatalogRow,
+      prisma.deliveryLedgerRow,
+      prisma.supplierCatalogRow
+    ]) {
       expect(rows.deleteMany).toHaveBeenCalledWith({});
       expect(rows.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.importBatch.deleteMany.mock.invocationCallOrder[0]!
@@ -153,5 +170,11 @@ describe("purge-data database target resolution", () => {
     expect(prisma.structuredPartition.deleteMany).toHaveBeenCalledWith({});
     expect(prisma.partitionImportJob.deleteMany).toHaveBeenCalledWith({});
     expect(prisma.document.deleteMany).toHaveBeenCalledWith({});
+    expect(
+      prisma.ledgerPdfReconciliationTarget.deleteMany.mock.invocationCallOrder[0]
+    ).toBeLessThan(prisma.ledgerArtifactRequestItem.deleteMany.mock.invocationCallOrder[0]!);
+    expect(prisma.ledgerPdfSource.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.document.deleteMany.mock.invocationCallOrder[0]!
+    );
   });
 });

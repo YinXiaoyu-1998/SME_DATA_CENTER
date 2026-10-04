@@ -364,11 +364,11 @@ describe("quarantine certificate routes", () => {
     );
 
     expect(bySource.statusCode).toBe(200);
-    expect(bySource.json()).toEqual({ archivedCount: 1 });
+    expect(bySource.json()).toEqual({ archivedCount: 1, affectedLedgerPartitions: [] });
     expect(employeeBulk.statusCode).toBe(403);
     expect(adminBulk.statusCode).toBe(200);
-    expect(adminBulk.json()).toEqual({ archivedCount: 1 });
-    expect(repeatAdminBulk.json()).toEqual({ archivedCount: 0 });
+    expect(adminBulk.json()).toEqual({ archivedCount: 1, affectedLedgerPartitions: [] });
+    expect(repeatAdminBulk.json()).toEqual({ archivedCount: 0, affectedLedgerPartitions: [] });
     expect((await queryCertificates(app, ["SH2608250117"])).json()).toEqual({
       results: [{ receiptId: "SH2608250117", certificates: [] }]
     });
@@ -424,8 +424,8 @@ describe("quarantine certificate routes", () => {
       results: [{ receiptId: "SH2608250999", certificates: [] }]
     });
     expect(paoArchive.statusCode).toBe(200);
-    expect(paoArchive.json()).toEqual({ archivedCount: 1 });
+    expect(paoArchive.json()).toEqual({ archivedCount: 1, affectedLedgerPartitions: [] });
     expect(paoArchiveBySource.statusCode).toBe(200);
-    expect(paoArchiveBySource.json()).toEqual({ archivedCount: 1 });
+    expect(paoArchiveBySource.json()).toEqual({ archivedCount: 1, affectedLedgerPartitions: [] });
   });
 });

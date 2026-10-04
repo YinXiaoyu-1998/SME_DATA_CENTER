@@ -7,6 +7,7 @@ export {
 } from "./object-key.js";
 export { createStorageAdapter } from "./storage-factory.js";
 export type {
+  HeadObjectResult,
   MultipartUploadPart,
   PutObjectAtKeyInput,
   PutObjectInput,

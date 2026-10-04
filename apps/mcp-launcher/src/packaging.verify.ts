@@ -121,7 +121,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.6.0");
+    expect(manifest.version).toBe("0.7.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -146,7 +146,7 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.6.0");
+      expect(client.getServerVersion()?.version).toBe("0.7.0");
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -154,9 +154,37 @@ describe("published launcher artifact", () => {
           "smedc_logout",
           "smedc_auth_status",
           "smedc_get_current_user",
-          "describe_structured_dataset_coverage"
+          "describe_structured_dataset_coverage",
+          "describe_ledger_pdf_coverage",
+          "get_ledger_pdf_request_status",
+          "prepare_ledger_pdf_download",
+          "get_ledger_pdf_download_url"
         ])
       );
+      expect(tools.tools.map((tool) => tool.name)).not.toContain("refresh_ledger_pdfs");
+      const removed = await client.callTool({
+        name: "refresh_ledger_pdfs",
+        arguments: { storeNames: ["店"], dates: ["2026-10-04"], idempotencyKey: "key" }
+      });
+      expect(removed.isError).toBe(true);
+      for (const name of ["prepare_ledger_pdf_download"]) {
+        expect(tools.tools.find((tool) => tool.name === name)).toMatchObject({
+          annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+          inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: expect.arrayContaining(["storeNames", "idempotencyKey"])
+          }
+        });
+      }
+      for (const name of [
+        "describe_ledger_pdf_coverage",
+        "get_ledger_pdf_request_status",
+        "get_ledger_pdf_download_url"
+      ])
+        expect(tools.tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(
+          true
+        );
       const structuredUpload = tools.tools.find(
         (tool) => tool.name === "upload_structured_dataset"
       );

@@ -394,7 +394,8 @@ export function createInMemorySourceDocumentRepository(
           originalFileName: document.originalFileName,
           contentType: document.contentType,
           byteSize: document.byteSize,
-          confidentialityLevel: document.confidentialityLevel
+          confidentialityLevel: document.confidentialityLevel,
+          importDataset: null
         }));
     },
     async recordDownloadsIssued(input) {
@@ -458,6 +459,9 @@ export function createOrganizationContextStorageAdapter(): StorageAdapter & {
       };
     },
     async getObjectStream() {
+      throw new Error("not used by this test");
+    },
+    async headObject() {
       throw new Error("not used by this test");
     },
     async statObject() {

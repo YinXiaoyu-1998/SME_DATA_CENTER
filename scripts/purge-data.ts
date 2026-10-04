@@ -151,12 +151,32 @@ async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeR
       }
     });
     const documents = await prisma.$transaction(async (tx) => {
-      await tx.processingRun.deleteMany({ where: { partitionImportJobId: { not: null } } });
+      await tx.processingRun.deleteMany({
+        where: {
+          OR: [
+            { partitionImportJobId: { not: null } },
+            { ledgerArtifactRequestItemId: { not: null } },
+            { ledgerArtifactRequestId: { not: null } },
+            { ledgerPdfReconciliationRunId: { not: null } }
+          ]
+        }
+      });
+      await tx.ledgerPdfReconciliationTarget.deleteMany({});
+      await tx.ledgerArtifactRequestItem.deleteMany({});
+      // Retry requests have a restrictive self-reference; detach before bulk teardown.
+      await tx.ledgerArtifactRequest.updateMany({ data: { retryOfRequestId: null } });
+      await tx.ledgerArtifactRequest.deleteMany({});
+      await tx.ledgerPdfSource.deleteMany({});
+      await tx.ledgerPdfPartition.deleteMany({});
+      await tx.ledgerPdfReconciliationRun.deleteMany({});
       await tx.structuredPartition.deleteMany({});
       await tx.storageGarbage.deleteMany({});
       await tx.partitionImportJob.deleteMany({});
       await tx.vipRow.deleteMany({});
       await tx.dishCatalogRow.deleteMany({});
+      await tx.deliveryLedgerRow.deleteMany({});
+      await tx.supplierCatalogRow.deleteMany({});
+      await tx.quarantineCertificate.deleteMany({});
       await tx.importWindowClaim.deleteMany({});
       await tx.importBatch.deleteMany({});
       return tx.document.deleteMany({});

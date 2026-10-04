@@ -1,6 +1,6 @@
 import { createDatabaseAdapter } from "@smedc/db";
 import { DocumentStatus, Prisma, PrismaClient } from "@prisma/client";
-import { AUDIT_ACTIONS } from "@smedc/domain";
+import { AUDIT_ACTIONS, type StructuredDatasetName } from "@smedc/domain";
 import type { SourceDocumentDownloadRepository } from "./source-document-downloads.js";
 
 export const SOURCE_DOCUMENT_DOWNLOAD_EXPIRES_SECONDS = 24 * 60 * 60;
@@ -14,6 +14,7 @@ export interface SourceDocumentRecord {
   contentType: string | null;
   byteSize: number | null;
   confidentialityLevel: number;
+  importDataset: StructuredDatasetName | null;
 }
 
 export interface SourceDocumentRepository extends SourceDocumentDownloadRepository {
@@ -27,7 +28,9 @@ const downloadableStatuses = new Set([
   "processing_failed"
 ]);
 
-const documentInclude = {} satisfies Prisma.DocumentInclude;
+const documentInclude = {
+  importBatch: { select: { dataset: true } }
+} satisfies Prisma.DocumentInclude;
 
 export function createPrismaSourceDocumentRepository(
   databaseUrl = requireDatabaseUrl()
@@ -83,7 +86,8 @@ function toSourceDocumentRecord(
     originalFileName: document.originalFileName,
     contentType: document.contentType,
     byteSize: document.byteSize === null ? null : Number(document.byteSize),
-    confidentialityLevel: document.confidentialityLevel
+    confidentialityLevel: document.confidentialityLevel,
+    importDataset: document.importBatch?.dataset ?? null
   };
 }
 

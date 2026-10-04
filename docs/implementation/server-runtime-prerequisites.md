@@ -100,3 +100,18 @@ backup and data-retention decision.
 An image rollback restores image/Compose references only. It never reverses a
 forward-only Prisma migration; migration compatibility and database recovery
 require a separate operations decision.
+
+## Ledger PDF worker prerequisite
+
+The worker image installs LibreOffice Calc, Noto CJK fonts and Poppler, with
+ExcelJS/Sharp limited to the worker dependency set. AMD64 CI executes the
+packaged synthetic renderer check with no network and a writable temporary
+filesystem. Before an authorized deployment, prepare `/opt/smedc/ledger-pdf`
+writable by the image's node UID (normally 1000) for its Compose mount at
+`/var/lib/smedc/ledger-pdf`. Check disk capacity for bounded photo/PDF scratch and
+keep only the configured worker's scratch directory under lease-aware cleanup.
+
+API/release-ops do not need Office or fonts. Release-ops includes the compiled
+`node dist/release/ledger-pdf.js` CLI. Both delivery and daily reconciliation stay
+disabled until authorized backfill and content/coverage verification; see
+[ledger-pdf-operations.md](./ledger-pdf-operations.md).

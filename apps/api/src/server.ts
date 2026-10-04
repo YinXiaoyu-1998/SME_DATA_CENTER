@@ -8,6 +8,7 @@ import { isTrustedLoopbackProxy, normalizeRequestId } from "./request-audit-cont
 import { createApiServerContext, type ApiServerOptions } from "./app-context.js";
 import { createRequestAuth, type AuthenticatedRequest } from "./request-auth.js";
 import { registerApiMultipart } from "./http/multipart.js";
+import { registerLedgerPdfRoutes } from "./routes/ledger-pdfs.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerCatalogRoutes } from "./routes/catalog.js";
 import { registerStructuredQueryRoutes } from "./routes/structured-query.js";
@@ -102,6 +103,11 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   }
 
   registerSystemRoutes(app, { auth: requestAuth, readinessCheck });
+  registerLedgerPdfRoutes(app, {
+    auth: requestAuth,
+    ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled,
+    delivery: context.ledgerPdfs
+  });
 
   registerEvidenceRoutes(app, {
     ...uploadAuthorizationDependencies,
@@ -149,6 +155,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     structuredQueries,
     structuredCoverage,
     structuredPartitions,
+    ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled,
     cursorSigningSecret
   });
 

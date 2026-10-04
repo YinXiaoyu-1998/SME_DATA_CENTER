@@ -1,3 +1,8 @@
+import {
+  createLedgerPdfDelivery,
+  createPrismaLedgerDeliveryRepository,
+  type LedgerPdfDelivery
+} from "@smedc/ledger-archive/delivery";
 import { randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import { createDatabaseAdapter } from "@smedc/db";
@@ -54,6 +59,7 @@ import {
 } from "./request-audit-context.js";
 
 export interface ApiServerOptions {
+  ledgerPdfDelivery?: LedgerPdfDelivery;
   employeeRepository?: EmployeeRepository;
   documentRepository?: DocumentCatalogRepository;
   structuredImportRepository?: StructuredImportRepository;
@@ -93,6 +99,7 @@ export interface ApiServerContext {
   ) => Promise<AuthenticatedEmployee | null>;
   authenticationClientSource: (request: FastifyRequest) => "http_api" | "mcp_launcher";
   createBusinessRequestAudit: (request: FastifyRequest) => RequestAuditContext;
+  ledgerPdfs: () => LedgerPdfDelivery;
   documents: () => DocumentCatalogRepository;
   storage: () => StorageAdapter;
   structuredImports: () => StructuredImportRepository;
@@ -120,6 +127,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   const environment = options.runtimeEnv ?? process.env;
   const delegationProof = options.internalDelegationProof ?? randomBytes(32).toString("base64url");
   const legacyEmployeeRepository = options.employeeRepository;
+  let ledgerPdfDelivery = options.ledgerPdfDelivery;
+  let ledgerPrisma: PrismaClient | undefined;
   let documentRepository = options.documentRepository;
   let structuredImportRepository = options.structuredImportRepository;
   let structuredPartitionRepository = options.structuredPartitionRepository;
@@ -176,6 +185,27 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return authCore.authenticateAccessToken(token, audit);
   };
 
+  function ledgerPdfs(): LedgerPdfDelivery {
+    if (!ledgerPdfDelivery) {
+      const databaseUrl = environment["DATABASE_URL"];
+      if (!databaseUrl) throw new Error("DATABASE_URL is required for ledger PDF delivery.");
+      ledgerPrisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
+      ledgerPdfDelivery = createLedgerPdfDelivery({
+        repository: createPrismaLedgerDeliveryRepository({
+          prisma: ledgerPrisma,
+          storage: storage(),
+          objectKeyPrefix:
+            "keyPrefix" in storage()
+              ? String((storage() as StorageAdapter & { keyPrefix: string }).keyPrefix)
+              : ""
+        }),
+        storage: storage(),
+        cursorSecret: cursorSigningSecret
+      });
+    }
+    return ledgerPdfDelivery;
+  }
+
   function documents(): DocumentCatalogRepository {
     documentRepository ??= createPrismaDocumentCatalogRepository();
     return documentRepository;
@@ -224,7 +254,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   function sourceDocumentDownloads(): SourceDocumentDownloadIssuer {
     sourceDocumentDownloadIssuer ??= createSourceDocumentDownloadIssuer({
       repository: sourceDocuments(),
-      storage: storage()
+      storage: storage(),
+      ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled
     });
     return sourceDocumentDownloadIssuer;
   }
@@ -253,6 +284,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     closed = true;
     await legacyEmployeeRepository?.disconnect?.();
     await authPrisma?.$disconnect();
+    await ledgerPrisma?.$disconnect();
     await documentRepository?.disconnect?.();
     await structuredImportRepository?.disconnect?.();
     await structuredPartitionRepository?.disconnect?.();
@@ -277,6 +309,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     createBusinessRequestAudit(request) {
       return createRequestAuditContext(request, authenticationClientSource(request));
     },
+    ledgerPdfs,
     documents,
     storage,
     structuredImports,

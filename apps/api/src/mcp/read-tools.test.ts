@@ -69,7 +69,10 @@ describe("read-only MCP tool handlers", () => {
       "get_evidence_document_status",
       "get_import_status",
       "get_partition_import_status",
-      "download_structured_partitions"
+      "download_structured_partitions",
+      "describe_ledger_pdf_coverage",
+      "get_ledger_pdf_request_status",
+      "get_ledger_pdf_download_url"
     ]);
     expect(Object.keys(createCapturingDelegate().handlers).sort()).toEqual(
       [...READ_ONLY_MCP_TOOL_NAMES].sort()
@@ -524,4 +527,42 @@ describe("read-only MCP tool handlers", () => {
     expect(serialized).not.toContain(token);
     expect(serialized).not.toContain("secret query");
   });
+});
+
+it("delegates ledger PDF reads and signed ZIP issuance without local output", async () => {
+  const { calls, handlers } = createCapturingDelegate();
+  await handlers.describe_ledger_pdf_coverage?.(
+    { dates: ["2026-10-04"], cursor: "page-2" },
+    {} as never
+  );
+  await handlers.get_ledger_pdf_request_status?.(
+    { requestId: "req/1", cursor: "page-2" },
+    {} as never
+  );
+  await handlers.get_ledger_pdf_download_url?.({ requestId: "req/1" }, {} as never);
+  expect(calls.map(({ method, url, query, payload }) => ({ method, url, query, payload }))).toEqual(
+    [
+      {
+        method: "POST",
+        url: "/v1/ledger-pdfs/coverage",
+        query: undefined,
+        payload: { dates: ["2026-10-04"], cursor: "page-2" }
+      },
+      {
+        method: "GET",
+        url: "/v1/ledger-pdfs/requests/req%2F1",
+        query: { cursor: "page-2" },
+        payload: undefined
+      },
+      {
+        method: "POST",
+        url: "/v1/ledger-pdfs/requests/req%2F1/download-url",
+        query: undefined,
+        payload: undefined
+      }
+    ]
+  );
+  expect(calls.every((call) => call.headers.authorization === "Bearer employee-token")).toBe(true);
+  expect(handlers).not.toHaveProperty("refresh_ledger_pdfs");
+  expect(handlers.prepare_ledger_pdf_download).toBeUndefined();
 });

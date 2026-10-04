@@ -9,6 +9,11 @@ import { PrismaClient } from "@prisma/client";
 import { parse as parseCsv } from "csv-parse/sync";
 import { config as loadDotenv } from "dotenv";
 import { createStorageAdapter } from "@smedc/storage";
+import {
+  ledgerPartitionsFromRows,
+  ledgerStoreNameHash,
+  createPrismaLedgerSourceReader
+} from "@smedc/ledger-archive";
 import { parseApiRetrievalRuntimeConfig } from "../apps/api/src/config/retrieval-runtime.js";
 import {
   assertCleanupCountsAreZero,
@@ -509,8 +514,103 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   );
   await deleteQdrantPoints(qdrantPointIds);
 
+  // Archive cleanup stays within the run's synthetic documents and employees.
+  // Refuse a shared derived partition/request rather than deleting another run's data.
+  const ownedDocumentIds = documents.map((document) => document.id);
+  const receiptRows = await prisma.deliveryLedgerRow.findMany({
+    where: { sourceDocumentId: { in: ownedDocumentIds } },
+    select: { orgId: true, payload: true }
+  });
+  const receiptKeys = receiptRows.flatMap((row) =>
+    ledgerPartitionsFromRows(row.orgId, [{ payload: row.payload as Record<string, unknown> }])
+  );
+  const ledgerPartitions = await prisma.ledgerPdfPartition.findMany({
+    where: {
+      OR: [
+        { sources: { some: { sourceDocumentId: { in: ownedDocumentIds } } } },
+        ...receiptKeys.map((key) => ({
+          orgId: key.orgId,
+          storeNameHash: ledgerStoreNameHash(key.storeName),
+          purchaseDate: new Date(`${key.purchaseDate}T00:00:00Z`)
+        }))
+      ]
+    },
+    include: { sources: { select: { sourceDocumentId: true } } }
+  });
+  const ownedIds = new Set(ownedDocumentIds);
+  if (
+    ledgerPartitions.some((partition) =>
+      partition.sources.some((source) => !ownedIds.has(source.sourceDocumentId))
+    )
+  )
+    throw new Error("Official cleanup refuses a shared ledger PDF partition");
+  const sourceReader = createPrismaLedgerSourceReader({ prisma });
+  for (const partition of ledgerPartitions) {
+    const metadata = await sourceReader.readLedgerSourceMetadata({
+      orgId: partition.orgId,
+      storeName: partition.storeName,
+      purchaseDate: partition.purchaseDate.toISOString().slice(0, 10)
+    });
+    if (metadata.sources.some((source) => !ownedIds.has(source.sourceDocumentId)))
+      throw new Error("Official cleanup refuses shared ledger source facts");
+  }
+  const ledgerPartitionIds = ledgerPartitions.map((partition) => partition.id);
+  const ledgerRequests = await prisma.ledgerArtifactRequest.findMany({
+    where: {
+      OR: [
+        { actorEmployeeId: { in: uploaderEmployeeIds } },
+        { items: { some: { partitionId: { in: ledgerPartitionIds } } } }
+      ]
+    },
+    include: { items: { select: { id: true, partitionId: true } } }
+  });
+  const partitionIds = new Set(ledgerPartitionIds);
+  if (
+    ledgerRequests.some((request) =>
+      request.items.some((item) => !partitionIds.has(item.partitionId))
+    )
+  )
+    throw new Error("Official cleanup refuses a shared ledger PDF request");
+  const ledgerRequestIds = ledgerRequests.map((request) => request.id);
+  const ledgerItemIds = ledgerRequests.flatMap((request) => request.items.map((item) => item.id));
+  const ledgerTargets = await prisma.ledgerPdfReconciliationTarget.findMany({
+    where: { requestItemId: { in: ledgerItemIds } },
+    select: { reconciliationRunId: true }
+  });
+  const reconciliationIds = [
+    ...new Set([
+      ...ledgerTargets.map((target) => target.reconciliationRunId),
+      ...ledgerRequests.flatMap((request) =>
+        request.reconciliationRunId ? [request.reconciliationRunId] : []
+      )
+    ])
+  ];
+  const ledgerJobs = await prisma.processingRun.findMany({
+    where: {
+      OR: [
+        { ledgerArtifactRequestId: { in: ledgerRequestIds } },
+        { ledgerArtifactRequestItemId: { in: ledgerItemIds } }
+      ]
+    },
+    select: { id: true }
+  });
+  if (
+    await prisma.processingRun.count({
+      where: { id: { in: ledgerJobs.map((job) => job.id) }, status: "running" }
+    })
+  )
+    throw new Error("Official cleanup refuses active ledger jobs");
+  const ledgerGarbage = await prisma.storageGarbage.findMany({
+    where: { processingRunId: { in: ledgerJobs.map((job) => job.id) } },
+    select: { objectKey: true }
+  });
   const storage = createStorageAdapter(process.env);
   const storageObjectKeys = [
+    ...ledgerPartitions.flatMap((partition) =>
+      partition.currentObjectKey ? [partition.currentObjectKey] : []
+    ),
+    ...ledgerRequests.flatMap((request) => (request.zipObjectKey ? [request.zipObjectKey] : [])),
+    ...ledgerGarbage.map((garbage) => garbage.objectKey),
     ...documents.map((document) => document.storageObjectKey),
     ...partitionJobs
       .map((job) => job.temporaryObjectKey)
@@ -525,6 +625,28 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     .filter((id): id is string => Boolean(id));
 
   await prisma.$transaction(async (tx) => {
+    await tx.storageGarbage.deleteMany({ where: { objectKey: { in: storageObjectKeys } } });
+    await tx.processingRun.deleteMany({ where: { id: { in: ledgerJobs.map((job) => job.id) } } });
+    await tx.ledgerPdfReconciliationTarget.deleteMany({
+      where: { requestItemId: { in: ledgerItemIds } }
+    });
+    await tx.ledgerArtifactRequestItem.deleteMany({ where: { id: { in: ledgerItemIds } } });
+    await tx.ledgerArtifactRequest.updateMany({
+      where: { id: { in: ledgerRequestIds } },
+      data: { retryOfRequestId: null }
+    });
+    await tx.ledgerArtifactRequest.deleteMany({ where: { id: { in: ledgerRequestIds } } });
+    await tx.ledgerPdfSource.deleteMany({ where: { partitionId: { in: ledgerPartitionIds } } });
+    await tx.ledgerPdfPartition.deleteMany({ where: { id: { in: ledgerPartitionIds } } });
+    const emptyReconciliations = await tx.ledgerPdfReconciliationRun.findMany({
+      where: { id: { in: reconciliationIds }, requests: { none: {} }, targets: { none: {} } },
+      select: { id: true }
+    });
+    const emptyIds = emptyReconciliations.map((run) => run.id);
+    await tx.processingRun.deleteMany({
+      where: { ledgerPdfReconciliationRunId: { in: emptyIds } }
+    });
+    await tx.ledgerPdfReconciliationRun.deleteMany({ where: { id: { in: emptyIds } } });
     if (partitionJobIds.length > 0) {
       await tx.processingRun.deleteMany({
         where: { partitionImportJobId: { in: partitionJobIds } }

@@ -6,7 +6,8 @@ import {
   StructuredQueryValidationError,
   compileStructuredCoverageQuery,
   createStructuredCursor,
-  compileStructuredQuery,
+  compilePublicStructuredQuery,
+  getPublicStructuredRegistry,
   PHASE3_ERROR_CODES
 } from "@smedc/domain";
 import type { RequestAuth } from "../request-auth.js";
@@ -37,18 +38,24 @@ function structuredFieldResponse(
   };
 }
 
-function structuredDatasetRegistryResponse() {
+function structuredDatasetRegistryResponse(ledgerPdfDeliveryEnabled = false) {
   return {
     limits: STRUCTURED_QUERY_LIMITS,
-    datasets: Object.values(STRUCTURED_DATASET_REGISTRIES).map((registry) => ({
-      dataset: registry.dataset,
-      accessMode: registry.accessMode,
-      ...(registry.accessMode === "row_query" ? { rowTable: registry.rowTable } : {}),
-      ...(registry.presentation ? { presentation: registry.presentation } : {}),
-      fields: registry.fields.map((field) =>
-        structuredFieldResponse(field, registry.accessMode === "row_query")
-      )
-    }))
+    datasets: Object.values(STRUCTURED_DATASET_REGISTRIES).map((original) => {
+      const registry = getPublicStructuredRegistry(original.dataset, ledgerPdfDeliveryEnabled);
+      return {
+        dataset: registry.dataset,
+        accessMode: registry.accessMode,
+        ...(registry.accessMode === "row_query" ? { rowTable: registry.rowTable } : {}),
+        ...(registry.queryModes
+          ? { queryModes: registry.queryModes, allowedAggregates: registry.allowedAggregates }
+          : {}),
+        ...(registry.presentation ? { presentation: registry.presentation } : {}),
+        fields: registry.fields.map((field) =>
+          structuredFieldResponse(field, registry.accessMode === "row_query")
+        )
+      };
+    })
   };
 }
 
@@ -60,6 +67,7 @@ export function registerStructuredQueryRoutes(
     structuredCoverage: () => StructuredCoverageRepository;
     structuredPartitions: () => StructuredPartitionRepository;
     cursorSigningSecret: string;
+    ledgerPdfDeliveryEnabled?: boolean;
   }
 ): void {
   app.get("/v1/structured/datasets", async (request, reply) => {
@@ -69,7 +77,7 @@ export function registerStructuredQueryRoutes(
       return;
     }
 
-    return structuredDatasetRegistryResponse();
+    return structuredDatasetRegistryResponse(dependencies.ledgerPdfDeliveryEnabled);
   });
 
   app.get<{
@@ -145,14 +153,15 @@ export function registerStructuredQueryRoutes(
     const employee = dependencies.auth.employee(request);
 
     try {
-      const compiled = compileStructuredQuery({
+      const compiled = compilePublicStructuredQuery({
         orgId: employee.orgId,
         employee: {
           id: employee.id,
           clearance: employee.clearance
         },
         query: request.body,
-        cursorSecret: dependencies.cursorSigningSecret
+        cursorSecret: dependencies.cursorSigningSecret,
+        ledgerPdfDeliveryEnabled: dependencies.ledgerPdfDeliveryEnabled
       });
       const result = await dependencies.structuredQueries().execute(compiled);
       const nextCursor = result.hasMore
@@ -175,7 +184,8 @@ export function registerStructuredQueryRoutes(
     } catch (error) {
       if (error instanceof StructuredQueryValidationError) {
         const statusCode =
-          error.code === PHASE3_ERROR_CODES.datasetForbidden
+          error.code === PHASE3_ERROR_CODES.datasetForbidden ||
+          error.code === PHASE3_ERROR_CODES.ledgerDetailDisabled
             ? 403
             : error.code === PHASE3_ERROR_CODES.cursorExpired ||
                 error.code === PHASE3_ERROR_CODES.invalidCursor

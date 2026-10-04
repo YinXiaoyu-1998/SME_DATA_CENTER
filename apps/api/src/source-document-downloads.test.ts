@@ -18,6 +18,75 @@ const employee: AuthenticatedEmployee = {
 };
 
 describe("source document download issuer", () => {
+  it.each(["explicit_request", "evidence_search_auto"] as const)(
+    "never signs ledger originals through %s while leaving other sources downloadable",
+    async (reason) => {
+      const recorded: unknown[] = [];
+      const repository = fakeRepository(
+        {
+          ledger: {
+            ...record("ledger", "ledger.xlsx"),
+            importDataset: "delivery_ledger",
+            status: reason === "explicit_request" ? "processing_failed" : "active"
+          },
+          catalog: { ...record("catalog", "catalog.xlsx"), importDataset: "supplier_catalog" },
+          certificate: record("certificate", "certificate.png")
+        },
+        recorded
+      );
+      const createDownloadUrl = vi.fn(async (key: string) => `https://download.test/${key}`);
+      const issuer = createSourceDocumentDownloadIssuer({
+        repository,
+        storage: fakeStorage(createDownloadUrl),
+        ledgerPdfDeliveryEnabled: true
+      });
+      const result = await issuer.issueMany({
+        ...baseInput(["ledger", "catalog", "certificate"]),
+        reason
+      });
+      expect(
+        result.sources.map((source) => [source.sourceDocumentId, source.downloadStatus])
+      ).toEqual([
+        ["ledger", "unavailable"],
+        ["catalog", "available"],
+        ["certificate", "available"]
+      ]);
+      expect(createDownloadUrl.mock.calls.map(([key]) => key)).toEqual([
+        "org/org_1/catalog",
+        "org/org_1/certificate"
+      ]);
+      expect(recorded).toEqual([
+        expect.objectContaining({ sourceDocumentIds: ["catalog", "certificate"] })
+      ]);
+    }
+  );
+
+  it("fails closed when a repository omits required classification", async () => {
+    const incomplete = { ...record("unknown", "unknown.xlsx"), importDataset: undefined };
+    const createDownloadUrl = vi.fn(async () => "https://download.test/unknown");
+    const issuer = createSourceDocumentDownloadIssuer({
+      repository: fakeRepository({ unknown: incomplete } as never),
+      storage: fakeStorage(createDownloadUrl),
+      ledgerPdfDeliveryEnabled: true
+    });
+    expect((await issuer.issueMany(baseInput(["unknown"]))).sources[0]?.downloadStatus).toBe(
+      "unavailable"
+    );
+    expect(createDownloadUrl).not.toHaveBeenCalled();
+  });
+
+  it("preserves original ledger download issuance when disabled", async () => {
+    const issuer = createSourceDocumentDownloadIssuer({
+      repository: fakeRepository({
+        ledger: { ...record("ledger", "ledger.xlsx"), importDataset: "delivery_ledger" }
+      }),
+      storage: fakeStorage(async () => "https://download.test/ledger")
+    });
+    expect((await issuer.issueMany(baseInput(["ledger"]))).sources[0]?.downloadStatus).toBe(
+      "available"
+    );
+  });
+
   it("dedupes in stable order and issues one audited 24-hour link per authorized document", async () => {
     const recorded: unknown[] = [];
     const repository = fakeRepository(
@@ -185,7 +254,8 @@ function record(sourceDocumentId: string, originalFileName: string) {
     originalFileName,
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     byteSize: 123,
-    confidentialityLevel: 0
+    confidentialityLevel: 0,
+    importDataset: null as import("@smedc/domain").StructuredDatasetName | null
   };
 }
 
@@ -210,6 +280,9 @@ function fakeStorage(createDownloadUrl: StorageAdapter["createDownloadUrl"]): St
     },
     async getObjectStream() {
       throw new Error("not used");
+    },
+    async headObject() {
+      return { state: "found", size: 123, hash: "hash" };
     },
     async statObject(key) {
       return { key, size: 123, hash: "hash", contentType: "application/octet-stream" };

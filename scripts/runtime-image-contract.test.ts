@@ -43,6 +43,19 @@ describe("runtime image contracts", () => {
     expect(apiSection).not.toContain("smedc-calamine-reader");
   });
 
+  it("keeps Calc, CJK fonts, Poppler and synthetic PDF verification in the worker only", () => {
+    const workerSection = dockerStage("worker");
+    expect(workerSection).toContain("libreoffice-calc");
+    expect(workerSection).toContain("fonts-noto-cjk");
+    expect(workerSection).toContain("poppler-utils");
+    expect(workerSection).toContain("ledger-pdf-render-check.js");
+    for (const stage of ["runtime-base", "api", "release-ops"]) {
+      expect(dockerStage(stage)).not.toMatch(
+        /libreoffice-calc|fonts-noto-cjk|poppler-utils|ledger-pdf-render-check/
+      );
+    }
+  });
+
   it("provides release operations as an explicit ephemeral Compose profile", () => {
     const releaseOpsSection = composeService("release-ops");
     const releaseOpsDockerfile = dockerfile.slice(
@@ -55,6 +68,7 @@ describe("runtime image contracts", () => {
     expect(releaseOpsDockerfile).toContain("dist/release/auth-operator.js");
     expect(releaseOpsDockerfile).toContain("dist/release/staging-upload-domain-cleanup.js");
     expect(releaseOpsDockerfile).toContain("dist/release/evidence-reindex.js");
+    expect(releaseOpsDockerfile).toContain("dist/release/ledger-pdf.js");
     expect(releaseOpsDockerfile).toContain('CMD ["node", "dist/release/readiness.js"]');
     expect(compose).toContain('profiles: ["release"]');
     expect(compose).toContain("${SMEDC_RELEASE_OPS_IMAGE}");

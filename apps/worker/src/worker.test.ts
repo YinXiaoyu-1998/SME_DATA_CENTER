@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import {
   PROCESSING_ERROR_CODES,
@@ -571,5 +571,78 @@ describe("processing worker", () => {
     });
     expect(repository.document.status).toBe("pending_processing");
     expect(repository.evidenceChunks).toHaveLength(0);
+  });
+});
+
+describe("non-document ledger worker dispatch", () => {
+  it.each(["ledger_pdf_generate", "ledger_pdf_bundle", "ledger_pdf_reconcile"] as const)(
+    "dispatches %s without requiring a Document",
+    async (jobType) => {
+      const run = {
+        id: "ledger-run",
+        orgId: "synthetic",
+        documentId: "ledger-run",
+        document: null,
+        jobType,
+        lockedBy: "worker",
+        lockedUntil: new Date(Date.now() + 60_000),
+        retryCount: 0,
+        attemptNumber: 2
+      };
+      const process = vi.fn(async () => "completed" as const);
+      const repository = {
+        claimNextProcessingRun: vi.fn(async () => run),
+        failProcessingRun: vi.fn()
+      };
+      const result = await runWorkerOnce({
+        repository,
+        storage: {} as LocalFileSystemStorageAdapter,
+        ledgerJobs: { [jobType]: { process } },
+        workerId: "worker"
+      });
+      expect(result).toMatchObject({ processed: true, status: "active" });
+      expect(process).toHaveBeenCalledWith(
+        expect.objectContaining({ run, signal: expect.any(AbortSignal) })
+      );
+      expect(repository.failProcessingRun).not.toHaveBeenCalled();
+    }
+  );
+  it("passes the exact attempt to failure handling", async () => {
+    const run = {
+      id: "ledger-run",
+      orgId: "synthetic",
+      documentId: "ledger-run",
+      document: null,
+      jobType: "ledger_pdf_generate",
+      lockedBy: "worker",
+      lockedUntil: new Date(Date.now() + 60_000),
+      retryCount: 0,
+      attemptNumber: 2
+    };
+    const repository = {
+      claimNextProcessingRun: vi.fn(async () => run),
+      failProcessingRun: vi.fn()
+    };
+    const result = await runWorkerOnce({
+      repository,
+      storage: {} as LocalFileSystemStorageAdapter,
+      workerId: "worker",
+      ledgerJobs: {
+        ledger_pdf_generate: {
+          process: async () => {
+            throw new Error("Synthetic upload unavailable");
+          }
+        }
+      }
+    });
+    expect(result).toMatchObject({ status: "retry_scheduled" });
+    expect(repository.failProcessingRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "ledger-run",
+        attemptNumber: 2,
+        workerId: "worker",
+        errorCode: "LEDGER_JOB_FAILED"
+      })
+    );
   });
 });

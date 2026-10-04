@@ -61,9 +61,10 @@ access; a companion owns its business-specific analysis and deliverables.
   employee asks for one of those deliverables and the companion is installed, use it together with
   this skill instead of creating the report here.
 - [`smedc-delivery-ledger`](https://github.com/YinXiaoyu-1998/smedc-companion-skills)
-  renders the standard delivery-ledger table, exports the approved CSV, and guides receipt-linked
-  quarantine-certificate photo operations. When the employee asks for those ledger deliverables and
-  the companion is installed, use it together with this skill instead of recreating ledger-specific
+  coordinates scheduled server-generated daily ledger PDFs, ZIP download preparation, and receipt-linked
+  quarantine-certificate photo operations after the archive capability is released and enabled.
+  When the employee asks for those ledger deliverables and the companion is installed, use it
+  together with this skill instead of recreating ledger-specific
   presentation logic here.
 - If the matching companion is not installed, explain that it is optional, identify its official
   source, and offer to install it. Install it only when the employee explicitly authorizes its
@@ -288,8 +289,17 @@ or `snapshotDate`.
   original receipt file as provided, even when receipt-level fields appear in header rows rather
   than in the item table. Do not generate a normalized CSV with repeated receipt metadata. The
   normalized receipt ID is the organization-scoped natural idempotency key, so different content
-  for the same receipt is a conflict rather than an overwrite.
-- For delivery-ledger queries, use the `list_structured_datasets` registry's `canonicalName`,
+  for the same receipt returns `RECEIPT_ID_CONFLICT` rather than an overwrite. Do not edit or replace
+  existing receipts.
+- Before constructing a delivery-ledger query, inspect discovery. When service archive delivery is
+  enabled, detail queries and original ledger CSV/XLSX source signing are disabled, including for
+  admins. Only store/date aggregates remain: `count` without a field,
+  `countDistinct(receipt_id)`, and `sum(purchase_amount)`; filters/groups use only `store_name`
+  and `purchase_date`. Respect the returned `queryModes` and `allowedAggregates`. Other datasets
+  retain their existing query and source-download behavior. Read
+  [ledger PDF tool contracts](references/ledger-pdf-tools.md) for archive tool parameters and errors.
+- When discovery still permits delivery detail, use the `list_structured_datasets` registry's
+  `canonicalName`,
   `sourceColumn`, and `aliases` instead of guessing English field names. Paper-ledger terms such as
   `进货数量`, `进货金额`, and `供货单位名称` are aliases for the matching fields; resolve them to
   `purchase_quantity`, `purchase_amount`, and `supplier_name` before querying.
@@ -300,14 +310,19 @@ or `snapshotDate`.
   upload cannot replace it.
 - Keep the returned `importBatchId` and poll `get_import_status` until
   `importBatch.status=applied` before querying. A queued or pending response is not success.
-- In delivery detail queries, `supplier_contact_phone` and `supplier_unit_address` are selectable
-  dynamic fields only; they cannot filter, sort, group, or aggregate. They may be `null` when no
+- For `delivery_ledger`, successful application confirms data ingestion, not PDF completion. The
+  service generates changed/missing daily PDFs at **03:00 Asia/Shanghai**; employee agents, including
+  admins, cannot trigger generation through MCP or HTTP. Report pending scheduled generation until
+  coverage is ready. Photo changes follow the same schedule; do not use download preparation as a
+  generation trigger.
+- Only when discovery still permits delivery detail, `supplier_contact_phone` and
+  `supplier_unit_address` are selectable dynamic fields only; they cannot filter, sort, group, or aggregate. They may be `null` when no
   current catalog is available or visible, no exact match exists, the source value is blank, or the
   supplier name is ambiguous. Enrichment never changes the authorized ledger page or falls back to
   an older catalog.
-- Select `source_document_id` on detail-row structured queries when the employee needs the
-  original uploaded receipt file. This field is not returned by default and cannot filter, sort,
-  group, or aggregate.
+- Before archive delivery is enabled, select `source_document_id` on permitted detail-row queries
+  when the employee needs the original uploaded receipt file. This field is not returned by default
+  and cannot filter, sort, group, or aggregate.
 
 ## Quarantine Certificates And Source Downloads
 
@@ -328,9 +343,10 @@ looks like a certificate.
 - Archive with `archive_quarantine_certificates`. Use `sourceDocumentId` for a single visible
   certificate. Only admins may archive by `receiptId`, which archives all visible certificates
   under that receipt ID.
-- For downloading originals, call `get_source_document_download_url` with a visible
+- For eligible originals, call `get_source_document_download_url` with a visible
   `sourceDocumentId`. The result is a 24-hour attachment link; return the link to the employee
-  rather than fetching or proxying the file bytes yourself.
+  rather than fetching or proxying the file bytes yourself. When archive delivery is enabled,
+  original delivery-ledger CSV/XLSX links are unavailable; do not retry another signing path.
 - Evidence search is different: `search_document_evidence` already returns `sources[]`. When any
   returned evidence is used, show every entry whose `downloadStatus` is `available` as a source-file
   download link. Do not call `get_source_document_download_url` again and do not decide that a
@@ -689,8 +705,9 @@ For structured-table questions:
   in the same dataset. It represents `SUM(field * weightField) / SUM(weightField)` with a `null`
   result when total weight is zero or missing; do not describe it as a service-generated business
   conclusion.
-- Select `source_document_id` on detail-row queries when the employee needs the original uploaded
-  file behind a structured row, then pass it to `get_source_document_download_url`. This field is
+- For datasets that permit detail and original signing, select `source_document_id` when the
+  employee needs the original file behind a structured row, then pass it to
+  `get_source_document_download_url`. This field is
   not returned by default and is not for filters, sorting, grouping, or aggregates.
 - Call `describe_structured_dataset_coverage` before answering whether SMEDC has enough
   readable applied data for a dataset, time window, snapshot, or source-file scope. Coverage shares

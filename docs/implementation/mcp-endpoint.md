@@ -25,7 +25,19 @@ Current authoritative sources:
   OAuth/PKCE, durable credentials, installation, and supported desktop clients;
 - [mcp-user-flow.md](./mcp-user-flow.md) and
   [mcp-user-flow.zh.md](./mcp-user-flow.zh.md) — current end-to-end user flows;
+- [ledger-pdf-operations.md](./ledger-pdf-operations.md) — archived ledger delivery, CLI backfill, flags and recovery;
 - [api-contract.md](./api-contract.md) — current HTTP and MCP contract;
 - [staging-deploy-runbook.md](./staging-deploy-runbook.md) — staging release boundary;
 - [ADR 0020](../adr/0020-local-streamable-http-mcp-endpoint.md) — historical transport decision;
 - [ADR 0021](../adr/0021-remote-mcp-opaque-token-bridge.md) — explicitly withdrawn token bridge.
+
+The current launcher adds `describe_ledger_pdf_coverage`, `get_ledger_pdf_request_status`,
+`prepare_ledger_pdf_download` and `get_ledger_pdf_download_url`. These delegate through
+the authenticated HTTP boundary; the service still owns generation and
+authorization. The employee agent checks coverage, requests a ZIP, polls its status and returns a download URL.
+Employee agents cannot trigger generation, including admins; applied ledger imports
+and photo changes await daily 03:00 Asia/Shanghai service generation. Internal operator
+CLI refresh/backfill remains a separate service operation.
+These capabilities require launcher 0.7.0 after its independent publication and
+verification; publication and recommended-version updates are a later release
+step. The historical transport decisions above do not change.
