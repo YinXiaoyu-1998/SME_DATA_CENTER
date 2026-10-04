@@ -152,7 +152,7 @@ The API entrypoint automatically loads `.env` from the current working directory
 ## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
-`smedc-mcp-launcher@0.6.0` local stdio launcher. The dual-homed
+`smedc-mcp-launcher@0.7.0` local stdio launcher. The dual-homed
 `skills/smedc-mcp/` skill is the authoritative current-user install, configuration,
 browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
 email/password/token/code input, uses `smedc_login`, `smedc_logout`,
@@ -160,25 +160,27 @@ email/password/token/code input, uses `smedc_login`, `smedc_logout`,
 operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
-`smedc-mcp-launcher@0.6.0` is published on npm and its registry integrity, clean install,
+`smedc-mcp-launcher@0.7.0` is published on npm and its registry integrity, clean install,
 CLI, packaging, and production dependency audit have been verified. The supported installation
 matrix is macOS, Windows, and Linux. macOS/Windows use their native secure stores; Linux uses a
 compatible Secret Service when available and otherwise keeps the session in launcher-process
 memory, so headless Linux requires a fresh tap-link login after restart. Native macOS/Windows
 package acceptance and the headless Linux login-to-business-tool loop have passed; the release
 workflow now also exercises the installed package and no-display behavior on Ubuntu. Server
-compatibility now requires and recommends exactly launcher 0.6.0; older launchers are rejected.
+compatibility requires at least 0.6.0 and recommends launcher 0.7.0; older launchers are rejected.
 
 Only active admins upload evidence, structured datasets (including Delivery Ledger), and quarantine
 certificates. Employee uploads at every clearance receive HTTP `403` from direct HTTP endpoints;
 MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result. Both carry
 `UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and `retryable: false`.
-Tools stay visible; launcher 0.6.0 preflights the role
+Tools stay visible; launcher 0.7.0 preflights the role
 before reading a file, while the backend remains authoritative for accepted requests. Clearance
 continues to govern ordinary reads independently. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
-Launcher 0.6.0 and the synchronized backend are deployed to staging. Focused public verification
-confirmed the 0.6.0 compatibility gate, Device Authorization-only metadata, legacy-auth removal,
-and Chinese-first browser pages with a Chinese/English switch.
+Launcher 0.7.0 exposes the four ledger PDF download tools and no employee PDF generation tool.
+Archive delivery is gated by the service rollout; until enabled, report `LEDGER_PDF_NOT_ENABLED`.
+Daily 03:00 Asia/Shanghai reconciliation generates changed PDFs; uploads reaching `applied`
+do not mean PDF completion. The earlier 0.6.0 staging release verified Device Authorization-only
+metadata, legacy-auth removal, and Chinese-first browser pages with a Chinese/English switch.
 
 ## Official MCP Launcher
 
