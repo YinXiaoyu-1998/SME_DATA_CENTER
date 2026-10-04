@@ -190,4 +190,3 @@ ALTER TABLE `ledger_pdf_sources` ADD CONSTRAINT `ledger_pdf_sources_org_id_sourc
 
 -- AddForeignKey
 ALTER TABLE `ledger_pdf_reconciliation_runs` ADD CONSTRAINT `ledger_pdf_reconciliation_runs_org_id_fkey` FOREIGN KEY (`org_id`) REFERENCES `organizations`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
-
