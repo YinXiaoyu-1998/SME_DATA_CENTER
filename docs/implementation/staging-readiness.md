@@ -6,14 +6,21 @@ This document tracks human-provided staging inputs, validation evidence, and per
 
 It is intentionally safe to commit. Do not store secret values here.
 
-Current synchronization state (2026-09-26): launcher 0.6.0 is public and independently verified;
-main `be4c610b1992f89056c3eaf2e66cca8871c1a922` is deployed and requires and recommends exactly
-0.6.0. Public verification confirmed health, the private-readiness boundary, Device
-Authorization-only metadata, rejection of launcher 0.5.2, acceptance of 0.6.0, removal of the former
-Authorization Code + PKCE and loopback paths, and Chinese-first browser pages with a persistent
-Chinese/English switch. The 2026-09-24 three-account admin-only upload acceptance remains valid; the
-unchanged full user-visible workflow was not repeated. No migration or environment-variable change
-was required. See [the upload contract](api-contract.md#file-upload-capability).
+Current synchronization state (2026-10-05): ledger archive `main@693217d99542` is deployed by
+canonical staging run `37214387947`. All five forward-only archive/garbage/reconciliation migrations
+are applied, API/worker are healthy, private readiness passes, and public `/readyz` remains 404.
+The worker uses the writable node-owned `/opt/smedc/ledger-pdf` mount; both PDF delivery and daily
+reconciliation remain false for the initial rollout. The same synthetic Chinese/long-field/photo
+fixture passes on the deployed AMD64 worker: 9 pages, 306477 bytes, with run-created files removed.
+
+Launcher 0.7.0 is public and independently verified after release run `37213716438` and maintainer
+stage approval. The clean official-registry install reports 0.7.0, discovers 23 tools with four PDF
+download tools and no generation entry, rejects the removed refresh tool, has zero production audit
+findings, and matches the reviewed merge artifact after extraction. Post-publication synchronization
+PRs #205 (service), #53 (core Skill), and #25 (companion) recommend/pin 0.7.0 while retaining the
+0.6.0 minimum. They are pending review/merge; live server metadata still requires and recommends
+0.6.0. Real enterprise backfill and delivery/reconciliation cutover remain pending scope confirmation.
+See [ledger-pdf-operations.md](ledger-pdf-operations.md) for rollout boundaries.
 
 ## Status Vocabulary
 

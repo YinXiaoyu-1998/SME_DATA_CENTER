@@ -1,12 +1,11 @@
 # Ledger PDF MCP Contracts
 
-This pending capability requires launcher **0.7.0 once published** and service archive delivery
-enabled. Version 0.7.0 is not published by this change. The approved installation pin remains
-`smedc-mcp-launcher@0.6.0`; do not install an unpublished version or change that pin from service
-metadata. A connected 0.6.0 launcher does not expose these four tools. If absent, report the
-capability as pending; if the service returns `LEDGER_PDF_NOT_ENABLED`, report it as unavailable.
-A later coordinated release must publish and independently verify the launcher before changing
-approved installation pins. Discover tools through the host MCP integration.
+Launcher **0.7.0 is published and independently verified**. The approved installation pin is
+`smedc-mcp-launcher@0.7.0`; install or update only through the core Skill's approved flow.
+These four tools also require service archive delivery enabled. Discover tools through the host
+MCP integration. If absent, verify the installed launcher version; if the service returns
+`LEDGER_PDF_NOT_ENABLED`, report archive delivery as unavailable until the service rollout is
+complete. Do not generate PDFs locally or change service flags.
 
 ## Inputs
 

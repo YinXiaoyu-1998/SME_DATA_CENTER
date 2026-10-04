@@ -1,25 +1,27 @@
 # SMEDC MCP User Flow
 
-> **Release note:** `smedc-mcp-launcher@0.6.0` is publicly published and independently
-> verified. It is the pinned distribution for the confidentiality-level contract.
+> **Release note:** `smedc-mcp-launcher@0.7.0` is publicly published and independently
+> verified. It is the pinned distribution with ledger PDF download tools. Archive delivery
+> remains gated by service rollout; generation runs daily at 03:00 Asia/Shanghai, and employee
+> MCP/HTTP cannot trigger it.
 > macOS, Windows, and Linux are supported launcher-installation platforms. Native macOS/Windows
 > package acceptance and the headless Linux loop pass; automated Ubuntu package acceptance is part
 > of the release workflow. User-visible OpenClaw and support-class-C phone/browser acceptance remain
 > additional release evidence, not a statement that Linux installation is unsupported. There is no
 > development-login or JWT compatibility path.
 
-Last updated: 2026-09-26
+Last updated: 2026-10-04
 
 This document describes the employee-facing trust boundary, not a service-operations runbook. The
 authoritative agent runbook is the dual-homed `smedc-mcp` skill. The official remote origin
 is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`smedc-mcp-launcher@0.6.0`.
+`smedc-mcp-launcher@0.7.0`.
 
 ## Upload Authorization
 
 Only active admins upload evidence, structured datasets (including Delivery Ledger), or quarantine
 certificates. Upload tools remain visible and marked admin-only. For a known employee role, the
-agent must not read or transform the local file; launcher 0.6.0 preflights before file access.
+agent must not read or transform the local file; launcher 0.7.0 preflights before file access.
 Direct HTTP upload endpoints return HTTP `403`. MCP JSON-RPC transport returns HTTP `200`
 with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
 `File upload requires the admin role.`, and `retryable: false`: explain the admin requirement
@@ -27,7 +29,7 @@ without re-login, retry, or a clearance workaround.
 Local prevention produces no backend audit; backend denial best-effort records `file_upload.denied`.
 An admin may explicitly classify above their clearance, but ordinary read/status/search/query/download
 rules still apply. Partition create/parts/complete require admin; owner abort remains allowed.
-The minimum and recommended launcher version is 0.6.0; older launchers receive an upgrade error. See the
+The minimum launcher version is 0.6.0 and the recommended version is 0.7.0; older launchers receive an upgrade error. See the
 [endpoint matrix](api-contract.md#file-upload-capability) for surfaces and the future service-identity non-goal.
 
 ## Participants And Credential Boundary
