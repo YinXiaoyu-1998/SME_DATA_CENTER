@@ -15,6 +15,10 @@ const MAX_PDF_BYTES = 200 * MIB;
 const CONVERSION_TIMEOUT_MS = 180_000;
 const profile = STRUCTURED_DATASET_REGISTRIES.delivery_ledger.presentation!;
 const columnWidths = [18, 20, 12, 20, 16, 22, 14, 23, 30, 20, 16];
+// At 10pt Noto Sans CJK, a full-em glyph fits in two Excel width units.
+// Use that upper bound for every code point: Latin W/M are nearly a full em,
+// and treating all ASCII as half-width can underestimate Calc's wrapping.
+const glyphWidthUnits = 2;
 
 export class LedgerRenderError extends Error {
   constructor(
@@ -52,17 +56,7 @@ function wrappedLines(text: string, width: number) {
     .split("\n")
     .reduce(
       (lines, part) =>
-        lines +
-        Math.max(
-          1,
-          Math.ceil(
-            [...part].reduce(
-              (length, character) => length + (character.codePointAt(0)! > 255 ? 2 : 1),
-              0
-            ) /
-              (width - 2)
-          )
-        ),
+        lines + Math.max(1, Math.ceil(([...part].length * glyphWidthUnits) / (width - 2))),
       0
     );
 }
@@ -74,7 +68,7 @@ function printSegments(text: string, width: number): string[] {
     lineWidth = 0,
     lines = 1;
   for (const character of text) {
-    const units = character.codePointAt(0)! > 255 ? 2 : 1;
+    const units = glyphWidthUnits;
     const nextLines = lines + (character === "\n" || lineWidth + units > width - 2 ? 1 : 0);
     if (nextLines > 18) {
       segments.push(segment);

@@ -65,6 +65,23 @@ describe("ledger PDF workbook", () => {
     expect(names).toBe(snapshot.rows[0]!.item_name);
     expect(addresses).toBe(snapshot.rows[0]!.supplier_unit_address);
   });
+  it("keeps wide Latin continuation chunks inside the font-width line bound", async () => {
+    const snapshot = syntheticSnapshot(1);
+    snapshot.rows[0]!.item_name = "W".repeat(512);
+    snapshot.rows[0]!.supplier_unit_address = "M".repeat(512);
+    const workbook = await buildLedgerWorkbook(snapshot, new Map());
+    const sheet = workbook.worksheets[0]!;
+    expect(String(sheet.getCell("B3").value).length).toBeLessThanOrEqual(162);
+    expect(String(sheet.getCell("I3").value).length).toBeLessThanOrEqual(252);
+    let names = "",
+      addresses = "";
+    for (let row = 3; row <= sheet.rowCount; row++) {
+      names += sheet.getCell(`B${row}`).value ?? "";
+      addresses += sheet.getCell(`I${row}`).value ?? "";
+    }
+    expect(names).toBe("W".repeat(512));
+    expect(addresses).toBe("M".repeat(512));
+  });
   it("adds one labelled attachment sheet per photo, auto-orients EXIF and preserves aspect ratio", async () => {
     const directory = await scratch();
     const imagePath = join(directory, "certificate.jpg");

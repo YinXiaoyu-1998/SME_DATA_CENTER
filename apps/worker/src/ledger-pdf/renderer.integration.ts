@@ -14,6 +14,8 @@ export async function verifySyntheticLedgerRender(directory: string) {
   const snapshot = syntheticSnapshot(80, 2);
   snapshot.rows[0]!.item_name = "锚".repeat(512);
   snapshot.rows[0]!.supplier_unit_address = "鎏".repeat(512);
+  snapshot.rows[1]!.item_name = "W".repeat(512);
+  snapshot.rows[1]!.supplier_unit_address = "M".repeat(512);
   const paths = new Map<string, string>();
   const originalChecksums = new Map<string, string>();
   for (const [index, certificate] of snapshot.certificates.entries()) {
@@ -74,20 +76,22 @@ export async function verifySyntheticLedgerRender(directory: string) {
     }
   }
   const bodyText = body.join("");
-  for (const row of snapshot.rows.slice(1))
+  for (const row of snapshot.rows.slice(2))
     assert.ok(bodyText.includes(row.item_name), `Missing row: ${row.item_name}`);
   for (const value of [
     "00123",
     "+86123",
     "1234567890.123456789",
     "12.3400",
-    snapshot.rows[1]!.supplier_unit_address!
+    snapshot.rows[2]!.supplier_unit_address!
   ]) {
     assert.ok(bodyText.includes(value), `Lost or changed literal text: ${value}`);
   }
   assert.ok(!bodyText.includes("null"));
   assert.equal([...bodyText].filter((character) => character === "锚").length, 512);
   assert.equal([...bodyText].filter((character) => character === "鎏").length, 512);
+  assert.equal([...bodyText].filter((character) => character === "W").length, 512);
+  assert.equal([...bodyText].filter((character) => character === "M").length, 512);
   for (const page of pages.slice(-2))
     assert.ok(compact(page).includes("检疫证明—收货单号：TEST-RECEIPT-001"));
   const imageDirectory = join(directory, "pages");
@@ -99,6 +103,41 @@ export async function verifySyntheticLedgerRender(directory: string) {
   );
   const images = (await readdir(imageDirectory)).filter((name) => name.endsWith(".png")).sort();
   assert.equal(images.length, result.pageCount);
+  // Extracted text can include glyphs that Calc clips. Compare their geometry
+  // against actual rasterized full-width row rules, not text completeness alone.
+  const bbox = await runLedgerTool("pdftotext", ["-bbox", result.path, "-"], { timeoutMs: 15_000 });
+  const bboxPages = [
+    ...bbox.matchAll(/<page width="([\d.]+)" height="[\d.]+">([\s\S]*?)<\/page>/g)
+  ];
+  assert.equal(bboxPages.length, result.pageCount);
+  let checkedWideWords = 0;
+  for (const [index, page] of bboxPages.slice(0, -2).entries()) {
+    const { data, info } = await sharp(await readFile(join(imageDirectory, images[index]!)))
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const scale = info.width / Number(page[1]);
+    const rules: number[] = [];
+    for (let y = 0; y < info.height; y++) {
+      let dark = 0;
+      for (let x = 0; x < info.width; x++)
+        if (data[(y * info.width + x) * info.channels]! < 220) dark++;
+      if (dark > info.width * 0.7) rules.push(y);
+    }
+    assert.ok(rules.length > 1, "No rasterized table row boundaries detected");
+    for (const word of page[2]!.matchAll(
+      /<word xMin="[\d.]+" yMin="([\d.]+)" xMax="[\d.]+" yMax="([\d.]+)">([WM]+)<\/word>/g
+    )) {
+      checkedWideWords++;
+      const top = Number(word[1]) * scale,
+        bottom = Number(word[2]) * scale;
+      assert.ok(
+        !rules.some((y) => y >= top - 1 && y <= bottom + 1),
+        `Wide glyph overlaps a row boundary on page ${index + 1}: ${word[3]} (y=${top.toFixed(1)}..${bottom.toFixed(1)})`
+      );
+    }
+  }
+  assert.ok(checkedWideWords > 20, "Wide-glyph raster-bound regression was not exercised");
   for (const [index, file] of images.slice(-2).entries()) {
     const { data, info } = await sharp(await readFile(join(imageDirectory, file)))
       .removeAlpha()
