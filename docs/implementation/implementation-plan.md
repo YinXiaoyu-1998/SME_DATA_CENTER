@@ -392,3 +392,20 @@ Scope:
 - retrieval quality tuning using approved data;
 - performance/cost hardening;
 - retention/admin lifecycle features.
+
+## Archived Delivery Ledger runtime boundary
+
+Delivery Ledger applied imports and certificate changes advance store/day source
+revisions. Durable worker jobs generate the current PDF, build authorized ZIPs
+and reconcile missing/stale objects. The release-ops CLI supports single-tenant
+full enumeration and failed-only retries; it does not turn the service into an
+employee agent or report runner. Public delivery and daily reconciliation remain
+disabled until the authorized rollout sequence in
+[ledger-pdf-operations.md](./ledger-pdf-operations.md) is completed.
+
+The worker entrypoints register all three job handlers and invoke daily scheduling
+and ZIP expiry on startup/maintenance. Public contracts use one delivery flag;
+cutover simultaneously closes raw ledger detail/file delivery while preserving
+aggregates. Launcher publication and independent verification precede recommended
+version and dual-homed Skill pin changes. Local integration proves only synthetic
+flows; staging performance/content and first real backfill remain release work.

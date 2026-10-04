@@ -55,6 +55,9 @@ function context(): ApiServerContext {
     skills: () => {
       throw new Error("not used");
     },
+    ledgerPdfs: () => {
+      throw new Error("Unexpected ledger PDF dependency");
+    },
     evidence: () => {
       throw new Error("not used");
     },

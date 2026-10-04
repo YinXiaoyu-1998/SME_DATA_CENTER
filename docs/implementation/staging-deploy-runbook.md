@@ -307,3 +307,23 @@ migrations: migrations are forward-only, so the prior image must remain compatib
 already-applied migration.
 
 Do not delete the Qdrant volume or RDS data during a routine image rollback.
+
+## Ledger PDF archive rollout
+
+Follow [ledger-pdf-operations.md](./ledger-pdf-operations.md) for the exact CLI
+commands and switching sequence. This release adds forward-only archive,
+reconciliation-target and exact storage-garbage key migrations, worker Office/
+font/Poppler dependencies, and `/opt/smedc/ledger-pdf` writable scratch. Prepare
+the node UID ownership before deployment; keep both PDF feature switches false
+for the initial deployment. Use the existing main quality gates and GitHub
+staging Environment deployment, never a PR deployment. Image rollback does not
+reverse these migrations.
+
+Publish and independently verify launcher 0.7.0 before changing server
+recommended-version metadata and both base Skill pins. Only explicitly
+authorized enterprises may be previewed/backfilled. Enable public delivery and
+daily reconciliation after source completeness, PDF content and coverage pass,
+using the same formal configuration deployment path. ZIP expiry remains active
+while reconciliation is disabled. Validate only the changed synthetic workflow
+and authorized backfill results; full official acceptance needs separate
+authorization. No deployment or live backfill is implied by this runbook.

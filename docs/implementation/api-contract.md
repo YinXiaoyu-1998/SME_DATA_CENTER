@@ -173,3 +173,30 @@ The one-way migration maps legacy `manager` accounts to `admin`, assigns existin
 clearance `3`, assigns existing documents level `0`, and deletes legacy label tables/data. Existing
 Qdrant vectors without a confidentiality payload are treated as level-0 candidates only; the
 database revalidator checks the authoritative document level before reranking or response output.
+
+## Archived Delivery Ledger PDFs
+
+`LEDGER_PDF_DELIVERY_ENABLED` defaults to false. All five endpoints authenticate the
+current employee and enforce tenant, employee state, clearance and current source
+authorization on the backend. Disabled endpoints return `LEDGER_PDF_NOT_ENABLED`;
+request IDs and cursors cannot grant access across organizations.
+
+| Method | Route                                              | Behavior                                                                   |
+| ------ | -------------------------------------------------- | -------------------------------------------------------------------------- |
+| POST   | `/v1/ledger-pdfs/coverage`                         | Read authorized store/day PDF states, at most 200 per page                 |
+| POST   | `/v1/ledger-pdfs/refresh`                          | Admin-only asynchronous refresh; requires idempotencyKey                   |
+| POST   | `/v1/ledger-pdfs/downloads`                        | Queue an authorized ZIP; requires idempotencyKey                           |
+| GET    | `/v1/ledger-pdfs/requests/:requestId`              | Read authorized status with optional cursor                                |
+| POST   | `/v1/ledger-pdfs/requests/:requestId/download-url` | Recheck permission and current PDF pointers before issuing a 15-minute URL |
+
+Coverage/refresh/download bodies use `storeNames` and either `dates` or inclusive
+`startDate`/`endDate`, with real `YYYY-MM-DD` calendar dates. Public limits are 50
+exact store names, 366 dates and 5000 actual partitions. The coverage body may
+include `cursor`; action bodies include `idempotencyKey`. Caller-supplied orgId
+and unknown fields are rejected. ZIP limits are 5000 PDFs/1 GiB/10 minutes with
+24-hour retention. Status and URL issuance do not accept arbitrary scope changes.
+
+At cutover, Delivery Ledger detail queries and original ledger-file URL issuance
+are disabled together; authorized aggregate queries remain available. Other
+datasets keep their existing behavior. Read operations never render on demand.
+See [ledger-pdf-operations.md](./ledger-pdf-operations.md) for backfill and recovery.

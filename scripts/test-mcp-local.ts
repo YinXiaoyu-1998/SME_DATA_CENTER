@@ -9,7 +9,7 @@ interface CommandResult {
 }
 
 const rootDir = process.cwd();
-export const EXPECTED_MCP_LAUNCHER_VERSION = "0.6.0";
+export const EXPECTED_MCP_LAUNCHER_VERSION = "0.7.0";
 
 async function main(): Promise<void> {
   try {
@@ -21,7 +21,8 @@ async function main(): Promise<void> {
       "apps/mcp-launcher/src/launcher.test.ts",
       "packages/mcp-contract/src/index.test.ts",
       "apps/api/src/mcp/upload-tools.test.ts",
-      "apps/api/src/mcp/read-tools.test.ts"
+      "apps/api/src/mcp/read-tools.test.ts",
+      "apps/api/src/routes/ledger-pdfs.test.ts"
     ]);
 
     console.log(
@@ -34,7 +35,8 @@ async function main(): Promise<void> {
             "launcher_stdio_to_http_proxy",
             "mcp_current_authenticated_user",
             "mcp_partition_import_and_download_contracts",
-            "mcp_delivery_supplier_contract_and_delegation"
+            "mcp_delivery_supplier_contract_and_delegation",
+            "mcp_ledger_pdf_tools_and_authenticated_routes"
           ]
         },
         null,

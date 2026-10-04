@@ -211,3 +211,18 @@ The dependency risk policy applies to repository production dependencies and
 all runtime image targets. New high/critical findings or unregistered moderate
 findings block CI. The registered ExcelJS read-only XLSX exception is reviewed
 no later than `2027-01-31`.
+
+## Ledger PDF archive
+
+| Variable                        | Default                     | Consumer | Purpose                                                                               |
+| ------------------------------- | --------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| `LEDGER_PDF_DELIVERY_ENABLED`   | `false`                     | API/MCP  | Enable archived PDF delivery and simultaneously close ledger detail/original download |
+| `LEDGER_PDF_RECONCILE_ENABLED`  | `false`                     | Worker   | Schedule durable daily scans after authorized backfill                                |
+| `LEDGER_PDF_RECONCILE_TIME`     | `03:00`                     | Worker   | Daily HH:mm in fixed Asia/Shanghai timezone                                           |
+| `LEDGER_PDF_SCRATCH_ROOT`       | `/var/lib/smedc/ledger-pdf` | Worker   | Writable non-root scratch mount; lease-scoped cleanup                                 |
+| `LEDGER_PDF_RENDER_CONCURRENCY` | `1`                         | Worker   | Enforced single conversion per worker process                                         |
+
+Archive factories use the configured OSS physical key prefix. ZIP expiration
+maintenance runs independently of reconciliation/delivery flags. The CLI uses
+existing database/storage configuration and requires `--allow-remote` for a
+non-local database. See [ledger-pdf-operations.md](./ledger-pdf-operations.md).
