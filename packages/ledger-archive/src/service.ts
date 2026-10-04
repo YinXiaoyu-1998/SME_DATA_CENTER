@@ -4,6 +4,7 @@ import type {
   LedgerArchiveRepository,
   LedgerInternalSelection,
   LedgerItemStatus,
+  LedgerReconciliationObservation,
   LedgerRequestStatus
 } from "./repository.js";
 import {
@@ -278,6 +279,7 @@ export function createLedgerArchiveService(repository: LedgerArchiveRepository) 
       actor: LedgerActor;
       idempotencyKey: string;
       onlyIfNeeded: boolean;
+      reconciliationObservation?: LedgerReconciliationObservation;
     }) {
       validateSubmission(input.key.orgId, input.actor, input.idempotencyKey);
       assertLedgerDate(input.key.purchaseDate);
@@ -292,6 +294,7 @@ export function createLedgerArchiveService(repository: LedgerArchiveRepository) 
         scope: { storeNames: [input.key.storeName], dates: [input.key.purchaseDate] },
         keys: [input.key],
         onlyIfNeeded: input.onlyIfNeeded,
+        reconciliationObservation: input.reconciliationObservation,
         requestFingerprint: fingerprint({
           kind: "refresh",
           orgId: input.key.orgId,

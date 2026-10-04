@@ -926,6 +926,7 @@ model LedgerArtifactRequestItem {
   request       LedgerArtifactRequest    @relation(fields: [orgId, requestId], references: [orgId, id], onDelete: Restrict)
   partition     LedgerPdfPartition       @relation(fields: [orgId, partitionId], references: [orgId, id], onDelete: Restrict)
   processingRun ProcessingRun?
+  reconciliationTargets LedgerPdfReconciliationTarget[]
 
   @@unique([orgId, id])
   @@unique([requestId, partitionId])
@@ -971,9 +972,25 @@ model LedgerPdfReconciliationRun {
   organization         Organization                @relation(fields: [orgId], references: [id], onDelete: Restrict)
   processingRun        ProcessingRun?
   requests             LedgerArtifactRequest[]
+  targets              LedgerPdfReconciliationTarget[]
 
   @@unique([orgId, id])
   @@unique([orgId, scheduleDate], map: "ledger_reconciliation_schedule_uq")
   @@index([orgId, status])
   @@map("ledger_pdf_reconciliation_runs")
+}
+
+/// Exact repair targets, including reused requests owned by another actor/run.
+model LedgerPdfReconciliationTarget {
+  id                  String @id @default(cuid()) @db.VarChar(32)
+  orgId               String @map("org_id") @db.VarChar(64)
+  reconciliationRunId String @map("reconciliation_run_id") @db.VarChar(32)
+  requestItemId       String @map("request_item_id") @db.VarChar(32)
+  createdAt           DateTime @default(now()) @map("created_at")
+  reconciliationRun   LedgerPdfReconciliationRun @relation(fields: [orgId, reconciliationRunId], references: [orgId, id], onDelete: Restrict, map: "ledger_reconciliation_target_run_fk")
+  requestItem         LedgerArtifactRequestItem @relation(fields: [orgId, requestItemId], references: [orgId, id], onDelete: Restrict, map: "ledger_reconciliation_target_item_fk")
+
+  @@unique([reconciliationRunId, requestItemId], map: "ledger_reconciliation_target_uq")
+  @@index([orgId, requestItemId])
+  @@map("ledger_pdf_reconciliation_targets")
 }

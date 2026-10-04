@@ -34,6 +34,8 @@ services:
     environment:
       NODE_ENV: production
     volumes:
+      # Prepare host directory writable by the worker image's node UID before startup.
+      - /opt/smedc/ledger-pdf:/var/lib/smedc/ledger-pdf
       - /opt/smedc/partition-work:/var/lib/smedc/partition-work
     depends_on:
       - qdrant

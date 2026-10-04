@@ -10,6 +10,7 @@ import {
   ledgerStoreNameHash,
   normalizeLedgerObjectKeyPrefix
 } from "./keys.js";
+import { readLedgerSourceMetadata } from "./source-reader.js";
 import { LEDGER_PAGE_SIZE, ledgerScopeDates } from "./scope.js";
 import { reduceLedgerRequestStatus } from "./service.js";
 import type { LedgerActor, LedgerPartitionKey, LedgerRequestRef, LedgerScope } from "./types.js";
@@ -64,6 +65,25 @@ export type LedgerRequestResult = {
   counts: Record<LedgerItemStatus, number>;
   nextCursor: string | null;
 };
+export type LedgerReconciliationLease = { runId: string; lockedBy: string; attemptNumber: number };
+export type LedgerReconciliationObservation = Pick<
+  LedgerPdfPartition,
+  | "dataRevision"
+  | "requestedGeneration"
+  | "publishedGeneration"
+  | "publishedSourceFingerprint"
+  | "currentObjectKey"
+  | "checksumSha256"
+  | "byteSize"
+  | "errorCode"
+  | "publishedDataRevision"
+  | "rowCount"
+> & {
+  sourceFingerprint: string;
+  needsRepair: boolean;
+  lease: LedgerReconciliationLease;
+  now: () => Date;
+};
 export type ReserveLedgerRefreshInput = {
   orgId: string;
   actor: LedgerActor;
@@ -72,6 +92,7 @@ export type ReserveLedgerRefreshInput = {
   scope: LedgerRequestScope;
   keys: LedgerPartitionKey[];
   onlyIfNeeded?: boolean;
+  reconciliationObservation?: LedgerReconciliationObservation;
   retryOfRequestId?: string;
 };
 export interface LedgerArchiveRepository {
@@ -419,12 +440,60 @@ export function createPrismaLedgerArchiveRepository({
               Prisma.sql`SELECT id FROM organizations WHERE id = ${input.orgId} FOR UPDATE`
             );
             if (!organizations.length) throw new Error("LEDGER_ORG_NOT_FOUND");
+            const observation = input.reconciliationObservation;
+            async function assertObservationLease() {
+              if (!observation) return;
+              if (!input.onlyIfNeeded || input.actor.kind !== "system_reconciler")
+                throw new Error("LEDGER_OBSERVATION_INVALID");
+              const leased = await tx.processingRun.findFirst({
+                where: {
+                  id: observation.lease.runId,
+                  orgId: input.orgId,
+                  status: "running",
+                  jobType: "ledger_pdf_reconcile",
+                  lockedBy: observation.lease.lockedBy,
+                  attemptNumber: observation.lease.attemptNumber,
+                  lockedUntil: { gt: observation.now() },
+                  ledgerPdfReconciliationRunId: input.actor.reconciliationRunId
+                }
+              });
+              if (!leased) throw new Error("LEDGER_RECONCILIATION_LEASE_LOST");
+            }
+            async function trackTarget(requestId: string, partitionId: string) {
+              if (!observation || input.actor.kind !== "system_reconciler") return;
+              await assertObservationLease();
+              const item = await tx.ledgerArtifactRequestItem.findFirstOrThrow({
+                where: { orgId: input.orgId, requestId, partitionId }
+              });
+              await tx.ledgerPdfReconciliationTarget.upsert({
+                where: {
+                  reconciliationRunId_requestItemId: {
+                    reconciliationRunId: input.actor.reconciliationRunId,
+                    requestItemId: item.id
+                  }
+                },
+                create: {
+                  orgId: input.orgId,
+                  reconciliationRunId: input.actor.reconciliationRunId,
+                  requestItemId: item.id
+                },
+                update: {}
+              });
+              await assertObservationLease();
+            }
+            if (observation) {
+              await tx.$queryRaw(
+                Prisma.sql`SELECT id FROM processing_runs WHERE id = ${observation.lease.runId} FOR UPDATE`
+              );
+              await assertObservationLease();
+            }
             const existing = await tx.ledgerArtifactRequest.findUnique({
               where: {
                 orgId_idempotencyKey: { orgId: input.orgId, idempotencyKey: input.idempotencyKey }
               }
             });
-            if (existing) return matchingRequest(existing, input.requestFingerprint);
+            if (existing && !observation)
+              return matchingRequest(existing, input.requestFingerprint);
             const unique = new Map(
               input.keys.map((key) => [JSON.stringify([key.storeName, key.purchaseDate]), key])
             );
@@ -439,6 +508,31 @@ export function createPrismaLedgerArchiveRepository({
             for (const key of keys) {
               const current = await lockPartition(tx, key);
               if (input.onlyIfNeeded) {
+                if (observation) {
+                  const fields = [
+                    "dataRevision",
+                    "requestedGeneration",
+                    "publishedGeneration",
+                    "publishedSourceFingerprint",
+                    "currentObjectKey",
+                    "checksumSha256",
+                    "byteSize",
+                    "errorCode",
+                    "publishedDataRevision",
+                    "rowCount"
+                  ] as const;
+                  if (
+                    fields.some((field) => current[field] !== observation[field]) ||
+                    (await readLedgerSourceMetadata(tx, key)).sourceFingerprint !==
+                      observation.sourceFingerprint
+                  )
+                    throw new Error("LEDGER_OBSERVATION_STALE");
+                  await assertObservationLease();
+                  if (existing) {
+                    await trackTarget(existing.id, current.id);
+                    return matchingRequest(existing, input.requestFingerprint);
+                  }
+                }
                 const inflight = await tx.ledgerArtifactRequestItem.findFirst({
                   where: {
                     orgId: input.orgId,
@@ -450,9 +544,13 @@ export function createPrismaLedgerArchiveRepository({
                   },
                   include: { request: true }
                 });
-                if (inflight)
+                if (inflight) {
+                  await trackTarget(inflight.requestId, current.id);
                   return { requestId: inflight.requestId, status: inflight.request.status };
+                }
+                if (observation && !observation.needsRepair) return null;
                 if (
+                  !observation &&
                   current.currentObjectKey &&
                   current.publishedDataRevision === current.dataRevision &&
                   !current.errorCode
@@ -466,6 +564,7 @@ export function createPrismaLedgerArchiveRepository({
                 })
               );
             }
+            await assertObservationLease();
             const request = await tx.ledgerArtifactRequest.create({
               data: {
                 orgId: input.orgId,
@@ -479,6 +578,7 @@ export function createPrismaLedgerArchiveRepository({
               }
             });
             await enqueuePartitions(tx, input.orgId, input.actor, request.id, partitions);
+            for (const partition of partitions) await trackTarget(request.id, partition.id);
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
@@ -495,6 +595,7 @@ export function createPrismaLedgerArchiveRepository({
                 }
               }
             });
+            await assertObservationLease();
             return { requestId: request.id, status: request.status };
           },
           { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 60_000 }
