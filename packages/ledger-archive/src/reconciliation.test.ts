@@ -106,9 +106,9 @@ describe("daily ledger reconciliation policy", () => {
       })
     ).toBe(false);
   });
-  it("healthy checks use HEAD only and advance durable facts to index phase", async () => {
+  it("finishes the candidate page without a second full index pass", async () => {
     const f = fixture();
-    expect(await f.run()).toEqual({ done: false, nextCursor: null, phase: "index" });
+    expect(await f.run()).toEqual({ done: true, nextCursor: null, phase: "completed" });
     expect(f.repository.reserveRepair).toHaveBeenCalledWith(
       expect.objectContaining({ needsRepair: false })
     );
@@ -116,6 +116,17 @@ describe("daily ledger reconciliation policy", () => {
       expect.objectContaining({
         counts: expect.objectContaining({ healthyCount: 1, submittedCount: 0 })
       })
+    );
+  });
+  it("does not read sources or HEAD objects when no partitions are marked", async () => {
+    const f = fixture();
+    f.repository.listKeys.mockResolvedValue({ keys: [], nextCursor: null });
+    expect(await f.run()).toEqual({ done: true, nextCursor: null, phase: "completed" });
+    expect(f.repository.observe).not.toHaveBeenCalled();
+    expect(f.storage.headObject).not.toHaveBeenCalled();
+    expect(f.repository.reserveRepair).not.toHaveBeenCalled();
+    expect(f.repository.checkpoint).toHaveBeenCalledWith(
+      expect.objectContaining({ counts: expect.objectContaining({ scannedCount: 0 }) })
     );
   });
   it("records storage forbidden/timeout/rate-limit failures without rebuilding", async () => {

@@ -5,6 +5,7 @@ import {
   type createLedgerArchiveService
 } from "../packages/ledger-archive/src/service.js";
 import type { LedgerInternalSelection } from "../packages/ledger-archive/src/repository.js";
+import type { LedgerPartitionKey } from "../packages/ledger-archive/src/types.js";
 
 type Common = { orgId: string; allowRemote: boolean; wait: boolean };
 type Mutation = { execute: boolean; requestKey?: string; operator?: string };
@@ -28,6 +29,8 @@ Default: dry-run (no writes, uploads or rendering). DATABASE_URL comes from the
 environment; remote databases require --allow-remote. Interrupted --wait leaves
 submitted jobs running. Resume interrupted enumeration with the same request key.
 Source records are read only. Store names are exact; repeated stores/dates merge.
+Refresh dry-run checks source metadata and OSS objects for every selected partition,
+including unmarked history. Execute refresh rebuilds the whole selected scope.
 `;
 
 export function parseLedgerCliArgs(argv: readonly string[]): LedgerCliCommand {
@@ -133,12 +136,14 @@ export async function runLedgerCli(
     now,
     output,
     signal,
+    inspectPartition,
     poll = () => delay(1000, undefined, { signal })
   }: {
     archive: ReturnType<typeof createLedgerArchiveService>;
     now: () => Date;
     output: (value: unknown) => void;
     signal?: AbortSignal;
+    inspectPartition?: (key: LedgerPartitionKey) => Promise<boolean>;
     poll?: () => Promise<void>;
   }
 ): Promise<number> {
@@ -189,8 +194,33 @@ export async function runLedgerCli(
         : archive.previewFailedRequest({ orgId: command.orgId, requestId: command.requestId });
     const stores = new Set<string>();
     let partitionCount = 0;
+    let healthyCount = 0,
+      abnormalCount = 0,
+      failedCount = 0;
     for await (const page of pages) {
-      for (const key of page.keys) stores.add(key.storeName);
+      for (const key of page.keys) {
+        stores.add(key.storeName);
+        if (command.kind !== "refresh" || !inspectPartition) continue;
+        try {
+          const needsRepair = await inspectPartition(key);
+          if (needsRepair) abnormalCount++;
+          else healthyCount++;
+          emit({
+            mode: "dry-run",
+            storeName: key.storeName,
+            purchaseDate: key.purchaseDate,
+            needsRepair
+          });
+        } catch {
+          failedCount++;
+          emit({
+            mode: "dry-run",
+            storeName: key.storeName,
+            purchaseDate: key.purchaseDate,
+            errorCode: "LEDGER_RECONCILIATION_CHECK_FAILED"
+          });
+        }
+      }
       partitionCount += page.keys.length;
     }
     emit({
@@ -200,9 +230,12 @@ export async function runLedgerCli(
         command.kind === "refresh" ? command.selection : { retryOfRequestId: command.requestId },
       storeCount: stores.size,
       partitionCount,
-      estimatedTaskCount: partitionCount
+      estimatedTaskCount: partitionCount,
+      ...(inspectPartition && command.kind === "refresh"
+        ? { healthyCount, abnormalCount, failedCount }
+        : {})
     });
-    return 0;
+    return failedCount ? 1 : 0;
   }
   const input = {
     orgId: command.orgId,

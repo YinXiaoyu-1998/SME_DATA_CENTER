@@ -100,6 +100,15 @@ if (enabled) {
         }
       }
     });
+    await first.ledgerPdfPartition.create({
+      data: {
+        orgId,
+        storeName: key.storeName,
+        storeNameHash: ledgerStoreNameHash(key.storeName),
+        purchaseDate: new Date(`${key.purchaseDate}T00:00:00Z`),
+        dataRevision: 1
+      }
+    });
     await first.ledgerPdfPartition.createMany({
       data: ["Orphan A", "Orphan B", "Orphan C"].map((storeName) => ({
         orgId,
@@ -155,23 +164,66 @@ if (enabled) {
     });
     expect(processing.priority).toBe(20);
   });
-  it("discovers unindexed facts, recovers a page crash without duplicate refresh, checkpoints phases", async () => {
+  it("selects only marked partitions, including emptied sources and failures", async () => {
+    const current = await first.ledgerPdfPartition.create({
+      data: {
+        orgId,
+        storeName: "Healthy",
+        storeNameHash: ledgerStoreNameHash("Healthy"),
+        purchaseDate: new Date(`${key.purchaseDate}T00:00:00Z`),
+        dataRevision: 2,
+        publishedDataRevision: 2
+      }
+    });
+    const state = await a.repository.getState(reconciliationRunId, await claim());
+    const keys = (await a.repository.listKeys(state, 200)).keys;
+    expect(keys.map((entry) => entry.storeName)).toEqual([
+      key.storeName,
+      "Orphan A",
+      "Orphan B",
+      "Orphan C"
+    ]);
+    await first.ledgerPdfPartition.update({
+      where: { id: current.id },
+      data: { dataRevision: 3 }
+    });
+    expect(
+      (await a.repository.listKeys(state, 200)).keys.map((entry) => entry.storeName)
+    ).toContain("Healthy");
+    await first.ledgerPdfPartition.update({
+      where: { id: current.id },
+      data: { publishedDataRevision: 3, errorCode: "LEDGER_GENERATION_FAILED" }
+    });
+    expect(
+      (await a.repository.listKeys(state, 200)).keys.map((entry) => entry.storeName)
+    ).toContain("Healthy");
+    await first.ledgerPdfPartition.update({
+      where: { id: current.id },
+      data: { errorCode: null }
+    });
+    expect(
+      (await a.repository.listKeys(state, 200)).keys.map((entry) => entry.storeName)
+    ).not.toContain("Healthy");
+  });
+  it("recovers a candidate page crash without duplicate refresh and resumes its cursor", async () => {
     const lease = await claim();
     const checkpoint = a.repository.checkpoint;
     a.repository.checkpoint = async () => {
       throw new Error("synthetic checkpoint interruption");
     };
     await expect(
-      a.reconcileLedgerPage({ runId: reconciliationRunId, lease, storage: head })
+      a.reconcileLedgerPage({ runId: reconciliationRunId, lease, storage: head, limit: 1 })
     ).rejects.toThrow("checkpoint interruption");
     a.repository.checkpoint = checkpoint;
     expect(await first.ledgerArtifactRequest.count({ where: { orgId } })).toBe(1);
     const result = await b.reconcileLedgerPage({
       runId: reconciliationRunId,
       lease,
-      storage: head
+      storage: head,
+      limit: 1
     });
-    expect(result).toEqual({ done: false, phase: "index", nextCursor: null });
+    expect(result).toMatchObject({ done: false, phase: "facts" });
+    expect(result.nextCursor).not.toBeNull();
     const after = await first.ledgerPdfPartition.findUniqueOrThrow({
       where: {
         orgId_storeNameHash_purchaseDate: {
@@ -216,7 +268,7 @@ if (enabled) {
     expect(winners).toHaveLength(1);
     expect(competingPages.filter((result) => result.status === "rejected")).toHaveLength(1);
     const next = winners[0]!.value;
-    expect(next.phase).toBe("index");
+    expect(next.phase).toBe("facts");
     expect(next.nextCursor).not.toBeNull();
     const resumed = await b.reconcileLedgerPage({
       runId: reconciliationRunId,
