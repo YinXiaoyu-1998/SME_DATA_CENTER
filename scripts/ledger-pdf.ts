@@ -8,6 +8,10 @@ import {
 } from "@smedc/ledger-archive";
 import { AliyunOssStorageAdapter, createStorageAdapter } from "@smedc/storage";
 import {
+  createPrismaLedgerReconciliation,
+  ledgerNeedsRepair
+} from "@smedc/ledger-archive/reconciliation";
+import {
   assertLedgerCliDatabase,
   ledgerCliHelp,
   LedgerCliUsageError,
@@ -38,11 +42,19 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     const archive = createLedgerArchiveService(
       createPrismaLedgerArchiveRepository({ prisma, objectKeyPrefix })
     );
+    const reconciliation = createPrismaLedgerReconciliation({ prisma, objectKeyPrefix });
     return await runLedgerCli(command, {
       archive,
       now: () => new Date(),
       output: (value) => console.log(JSON.stringify(value)),
-      signal: controller.signal
+      signal: controller.signal,
+      inspectPartition: async (key) => {
+        const { partition, source } = await reconciliation.repository.observe(key);
+        const head = partition?.currentObjectKey
+          ? await storage!.headObject(partition.currentObjectKey)
+          : undefined;
+        return ledgerNeedsRepair(partition, source, head);
+      }
     });
   } finally {
     process.off("SIGINT", interrupt);

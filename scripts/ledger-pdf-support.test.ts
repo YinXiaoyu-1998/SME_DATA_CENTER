@@ -155,6 +155,44 @@ describe("developer ledger CLI", () => {
     expect(writes).toEqual([]);
     expect(repo.listPartitionKeys).toHaveBeenLastCalledWith({ orgId: "org-a", cursor: "second" });
   });
+  it("full dry-run inspects every selected partition and reports failures without writing", async () => {
+    const { repo, writes } = repository();
+    repo.listPartitionKeys = vi.fn().mockResolvedValue({
+      keys: [key("Healthy"), key("Missing"), key("Changed"), key("Forbidden")],
+      nextCursor: null
+    });
+    const output: unknown[] = [];
+    const visited: string[] = [];
+    const code = await runLedgerCli(
+      parseLedgerCliArgs(["refresh", "--org-id", "org-a", "--all-stores", "--all-dates"]),
+      {
+        archive: createLedgerArchiveService(repo),
+        now: () => new Date(),
+        output: (value) => output.push(value),
+        inspectPartition: async (partition) => {
+          visited.push(partition.storeName);
+          if (partition.storeName === "Forbidden") throw new Error("private provider details");
+          return partition.storeName !== "Healthy";
+        }
+      }
+    );
+    expect(visited).toEqual(["Healthy", "Missing", "Changed", "Forbidden"]);
+    expect(code).toBe(1);
+    expect(writes).toEqual([]);
+    expect(output.at(-1)).toMatchObject({
+      partitionCount: 4,
+      healthyCount: 1,
+      abnormalCount: 2,
+      failedCount: 1
+    });
+    expect(output).toContainEqual(
+      expect.objectContaining({
+        storeName: "Missing",
+        needsRepair: true
+      })
+    );
+    expect(JSON.stringify(output)).not.toContain("private provider details");
+  });
   it("retry executes only failed partitions and preserves the parent request", async () => {
     const { repo, writes } = repository();
     await runLedgerCli(

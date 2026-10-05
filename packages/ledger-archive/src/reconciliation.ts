@@ -8,11 +8,7 @@ import {
   type LedgerReconciliationLease
 } from "./repository.js";
 import { createLedgerArchiveService } from "./service.js";
-import {
-  readLedgerSourceMetadata,
-  createPrismaLedgerSourceReader,
-  type LedgerSourceMetadata
-} from "./source-reader.js";
+import { readLedgerSourceMetadata, type LedgerSourceMetadata } from "./source-reader.js";
 import type { LedgerPartitionKey } from "./types.js";
 
 export type LedgerHead = { state: "found"; size: number; hash?: string } | { state: "not_found" };
@@ -180,7 +176,7 @@ export async function reconcileLedgerPage(input: {
       }
     })
   );
-  const phase = page.nextCursor ? state.phase : state.phase === "facts" ? "index" : "completed";
+  const phase = page.nextCursor ? state.phase : "completed";
   await input.repository.checkpoint({
     state,
     lease: input.lease,
@@ -229,7 +225,6 @@ export function createPrismaLedgerReconciliation({
   objectKeyPrefix?: string;
   now?: () => Date;
 }) {
-  const sourceReader = createPrismaLedgerSourceReader({ prisma });
   const archive = createLedgerArchiveService(
     createPrismaLedgerArchiveRepository({ prisma, objectKeyPrefix })
   );
@@ -277,12 +272,6 @@ export function createPrismaLedgerReconciliation({
       return stateFrom(run);
     },
     async listKeys(state, limit) {
-      if (state.phase === "facts")
-        return sourceReader.listLedgerFactPartitions({
-          orgId: state.orgId,
-          limit,
-          ...(state.cursor ? { cursor: state.cursor } : {})
-        });
       let after: [string, string] | null = null;
       if (state.cursor) {
         try {
@@ -302,18 +291,17 @@ export function createPrismaLedgerReconciliation({
       const filter = after
         ? Prisma.sql`AND (CAST(p.store_name AS BINARY) > CAST(${after[0]} AS BINARY) OR (CAST(p.store_name AS BINARY) = CAST(${after[0]} AS BINARY) AND p.purchase_date > ${after[1]}))`
         : Prisma.empty;
-      // Facts were scanned first; index-only entries cover partitions emptied/deleted at source.
+      // Source mutations create/update this index in their own transaction. Matching published
+      // revisions need no source reads or storage HEAD; successful publication clears the marker.
+      // Keep the existing cursor shape so unfinished pre-upgrade pages can resume safely.
       const found = await prisma.$queryRaw<
         { storeName: string; purchaseDate: string }[]
       >(Prisma.sql`
         SELECT p.store_name AS storeName, DATE_FORMAT(p.purchase_date, '%Y-%m-%d') AS purchaseDate
-        FROM ledger_pdf_partitions p WHERE p.org_id = ${state.orgId} ${filter} AND NOT EXISTS (
-          SELECT 1 FROM delivery_ledger_rows r JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
-            JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id
-          WHERE r.org_id = p.org_id AND d.status = 'active' AND d.archived_at IS NULL AND b.status = 'applied' AND b.archived_at IS NULL
-            AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) AS BINARY) = CAST(p.store_name AS BINARY)
-            AND JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) = DATE_FORMAT(p.purchase_date, '%Y-%m-%d')
-        ) ORDER BY CAST(p.store_name AS BINARY), p.purchase_date LIMIT ${limit + 1}`);
+        FROM ledger_pdf_partitions p WHERE p.org_id = ${state.orgId} ${filter}
+          AND (p.published_data_revision IS NULL OR p.published_data_revision <> p.data_revision
+            OR p.error_code IS NOT NULL)
+        ORDER BY CAST(p.store_name AS BINARY), p.purchase_date LIMIT ${limit + 1}`);
       const keys = found.slice(0, limit).map((row) => ({ orgId: state.orgId, ...row }));
       const last = keys.at(-1);
       return {

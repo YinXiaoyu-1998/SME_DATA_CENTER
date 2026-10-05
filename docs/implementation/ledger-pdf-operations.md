@@ -2,7 +2,7 @@
 
 台账以企业、精确门店名称和进货日期为一个分区。源收货单、台账行、供应商资料和检疫照片保留；刷新只替换派生 PDF 的当前指针，旧 PDF 和过期 ZIP 由已知对象键垃圾队列清理。无台账行的分区不生成空白 PDF。运行命令的系统或运维身份不会伪造员工账户。
 
-员工 MCP 和 HTTP 均不提供 PDF 生成入口，管理员同样不能触发。导入 applied、补单或照片变化只更新对应门店/日期 revision；服务端每日北京时间 03:00 巡检统一生成新增、变化和缺失分区，健康 PDF 跳过。同一分区当天多次变化合并处理。上传成功不等于 PDF 已完成；尚未就绪时说明等待下一轮任务完成，禁止通过重复准备 ZIP 触发生成。运维 CLI 保留首次回填及恢复能力。
+员工 MCP 和 HTTP 均不提供 PDF 生成入口，管理员同样不能触发。导入 applied、补单或照片变化只更新对应门店/日期 revision；服务端每日北京时间 03:00 巡检先筛选未发布、源版本变化或有错误的分区，再检查并生成 PDF。同一分区当天多次变化合并处理。上传成功不等于 PDF 已完成；尚未就绪时说明等待下一轮任务完成，禁止通过重复准备 ZIP 触发生成。运维 CLI 保留首次回填及恢复能力。
 
 公共请求状态仅返回当前可读分区；失败项可带安全 `errorCode`，未知内部错误统一为 `LEDGER_GENERATION_FAILED`。`latestRequest` 仅在替代请求属于当前员工且该分区仍可读时返回，其 `status` 为该分区的替代项状态。请求所有者可以看到初始无分区请求的终态与当前已发布的 `empty` 项；隐藏分区仍按不可用处理。纯主动重绘失败且源版本、依赖授权与对象元数据未变化时，已有 PDF 继续可用。HEAD 缺少规定的 SHA-256 元数据视为异常。
 
@@ -45,13 +45,13 @@ node dist/release/ledger-pdf.js retry-failed --org-id ORG --request-id REQUEST -
 node dist/release/ledger-pdf.js retry-failed --org-id ORG --request-id REQUEST --execute --request-key retry-REQUEST-1 --operator 'authorized-operator' --wait --allow-remote
 ```
 
-Dry-run 不写数据库、不上传、不渲染。执行前必须明确企业 scope、目标环境、授权运维 actor 与同一预览范围。相同操作键绑定相同范围，参数变化会冲突。内部枚举中断后用同一 request-key 重启原命令；枚举未完成的请求保持非终态，即使此前页面已全部生成。中断 `--wait` 不取消已提交任务；随后用 `status --wait` 继续。失败/部分失败返回 1，中断等待返回 130。
+Dry-run 不写数据库、不上传、不渲染。`refresh` dry-run 检查所选范围全部分区的来源指纹和 OSS HEAD，逐项输出 `needsRepair`，汇总健康、异常和检查失败数量；不依赖每日更新标记，可发现未标记历史对象丢失、源数据变化及无索引台账。检查失败返回非零且不当作对象缺失。`refresh --execute` 保持全量重建所选范围的行为。执行前必须明确企业 scope、目标环境、授权运维 actor 与同一预览范围。相同操作键绑定相同范围，参数变化会冲突。内部枚举中断后用同一 request-key 重启原命令；枚举未完成的请求保持非终态，即使此前页面已全部生成。中断 `--wait` 不取消已提交任务；随后用 `status --wait` 继续。失败/部分失败返回 1，中断等待返回 130。
 
 ## 停机恢复、巡检与清理
 
 Worker 启动时与每分钟维护时安排每日任务、清理已结束 lease 的临时目录并登记过期 ZIP。长维护周期不重叠；关机等待进行中的维护完成后断开数据库。心跳丢失或退出信号中止转换，过期租约由后续 worker 重新认领。生成与 ZIP handler 自行完成带 attempt/owner 的 fenced 状态修改，通用 worker 不重复完成任务。
 
-巡检持久化企业/每日日期去重与分页游标，恢复最早未结束的扫描，每页最多 200 分区、HEAD 并发 4。它发现无索引、源版本变化、丢失或校验不一致的对象；健康对象只检查元数据，不重新渲染。供应商普通资料变更不会使历史 PDF 自动刷新，实际重新生成使用当时的可读供应商目录。
+巡检持久化企业/每日日期去重与分页游标，恢复最早未结束的扫描，每页最多 200 个候选分区、HEAD 并发 4。候选条件为 `publishedDataRevision` 为空、不等于 `dataRevision`，或 `errorCode` 非空；来源变更与 revision 更新在同一事务中提交。成功发布使版本一致并清除错误，下次巡检不再读取该分区来源或 HEAD 对象；空分区也会发布 empty 状态。失败和生成期间的新变更保留待更新状态。每日巡检不再检查未标记历史分区的对象丢失或漏标记变更，恢复使用运维 CLI。供应商普通资料变更不会使历史 PDF 自动刷新，实际重新生成使用当时的可读供应商目录。
 
 巡检服务的 `getReconciliationStatus(runId)` 分别返回 `scanCompleted` 和 `repairsCompleted`；扫描结束只代表发现过程结束。结合 `repairPending`、`repairFailedCount`、`repairSupersededCount` 和 `repairedCount` 判断修复结果，后来的无关手工成功不会覆盖本次巡检失败。存储 403、超时或限流是巡检错误，不当成对象丢失盲目重建。
 

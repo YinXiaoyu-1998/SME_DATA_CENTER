@@ -38,7 +38,8 @@ idempotency conflicts as successful completion.
 `prepare_ledger_pdf_download` packages readable existing PDFs; it does not render or repair
 missing/stale PDFs. PDF generation belongs to the service: applied ledger imports and successful
 photo mutations record changed store/day partitions, and daily **03:00 Asia/Shanghai** reconciliation
-generates new, changed, or missing PDFs while skipping healthy ones. Employee agents cannot trigger
+processes unpublished, changed, or failed partitions; unchanged historical PDFs are not rechecked.
+Employee agents cannot trigger
 generation, including admins. After uploads reach `applied`, confirm data ingestion and explain
 that the current PDF becomes available after the next scheduled generation completes; do not
 promise an immediate PDF or repeatedly submit downloads to trigger it. Internal operator CLI
