@@ -36,13 +36,13 @@ idempotency conflicts as successful completion.
 ## Completion, Links And Authorization
 
 `prepare_ledger_pdf_download` packages readable existing PDFs; it does not render or repair
-missing/stale PDFs. PDF generation belongs to the service: applied ledger imports and successful
-photo mutations record changed store/day partitions, and daily **03:00 Asia/Shanghai** reconciliation
-processes unpublished, changed, or failed partitions; unchanged historical PDFs are not rechecked.
-Employee agents cannot trigger
-generation, including admins. After uploads reach `applied`, confirm data ingestion and explain
-that the current PDF becomes available after the next scheduled generation completes; do not
-promise an immediate PDF or repeatedly submit downloads to trigger it. Internal operator CLI
+missing/stale PDFs. The service automatically updates affected daily PDFs after applied ledger
+imports or successful photo changes. Employee agents cannot trigger generation, including admins.
+After uploads reach `applied`, confirm data ingestion and explain that the PDF will be available
+once its automatic update completes; use coverage to establish actual readiness. Keep internal
+scheduling details out of user-facing replies. Do not promise an immediate PDF, infer a fixed run
+time or a completion window such as “within 24 hours”, or repeatedly submit downloads to trigger it.
+Only quote a completion window when explicitly provided by the service. Internal operator CLI
 backfill/recovery is outside this employee MCP workflow. An accepted HTTP **202** response containing
 `requestId` and `status` is pending. Poll `get_ledger_pdf_request_status` while `queued` or
 `running`; terminal request statuses are `succeeded`, `partial_failed`, and `failed`. Inspect all
@@ -68,11 +68,11 @@ published partition PDF, not a client-side filtered subset.
 - `LEDGER_PDF_NOT_ENABLED`: non-retryable availability boundary; report that rollout is pending.
 - `LEDGER_DETAIL_DISABLED`: do not retry detail, old cursors, or original ledger signing. Use the
   advertised aggregates or archive tools within the available capability.
-- `LEDGER_PDF_NOT_READY`: report pending daily generation and retry after it completes;
+- `LEDGER_PDF_NOT_READY`: report a pending automatic update and retry after readiness is established;
   preparation/download does not generate PDFs. Do not request an admin refresh or use another API
   to trigger rendering.
 - `LEDGER_PDF_BUNDLE_STALE`: non-retryable for that prepared bundle; submit a new prepare request
-  with a new idempotency key once coverage is ready after scheduled generation.
+  with a new idempotency key once coverage is ready after the automatic update.
 - Preserve ordinary validation, authentication, authorization, and idempotency errors. A safe
   unavailable result is not proof that no ledger exists.
 
