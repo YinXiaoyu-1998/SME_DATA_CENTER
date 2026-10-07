@@ -6,7 +6,26 @@ This document tracks human-provided staging inputs, validation evidence, and per
 
 It is intentionally safe to commit. Do not store secret values here.
 
-Current synchronization state (2026-10-05): ledger archive and release synchronization
+Current synchronization state (2026-10-07): Worker maintenance performance PR #211 is deployed
+as `main@ab50e0fd8380` by canonical staging run `37601237333`, after main quality gates
+`37600243589` passed. API/worker image references match that commit, have no restarts or OOM
+events, and the maintenance-index migration finished successfully. Both PDF delivery and
+reconciliation remain enabled; the observed runtime schedule remains 10:00 Asia/Shanghai.
+Private health/readiness return 200, public health returns 200, public `/readyz` returns 404,
+and unauthenticated PDF coverage/download preparation return 401.
+
+The staging read-only comparison used identical query shapes, fixed time parameters and unchanged
+table counts before/after deployment. Expired ZIP cleanup changed from a full scan with sorting
+(33 estimated rows) to the `(kind, zip_expires_at)` range index (1 estimated row); terminal import
+retention changed from a full scan with sorting (53 estimated rows) to the covering
+`(finished_at, status)` range index (1 estimated row). Both plans omit filesort. The repeated daily
+scheduling candidate read returned zero organizations with one SELECT, so no per-organization
+transaction is needed for this already-scheduled workload. These are query-plan observations,
+not elapsed-time or throughput measurements. The probe created no staging data or files.
+
+## Earlier rollout evidence (2026-10-05)
+
+Earlier synchronization state: ledger archive and release synchronization
 `main@cb575a88b074` are deployed by canonical staging run `37225348519`. All five forward-only
 archive/garbage/reconciliation migrations are applied. PDF delivery and daily reconciliation are
 enabled on both API and worker, with reconciliation at 03:00 Asia/Shanghai. Private health/readiness
