@@ -21,10 +21,13 @@ import {
   createStructuredWindow,
   deleteStorageObjects,
   isAcceptanceAccount,
+  isReusedAcceptanceAccount,
+  validateAcceptanceScope,
   acceptanceAccountEmails,
   pollStructuredImportStatus,
   rewriteKnownValuesFixture,
   type CleanupCounts,
+  type AcceptanceScope,
   type CurrentEnterpriseHubUserResult,
   type StructuredWindow
 } from "./official-manual-acceptance-support.js";
@@ -36,10 +39,10 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.6.0";
+const LAUNCHER_VERSION = "0.7.1";
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
-interface ParsedArgs {
+interface ParsedArgs extends AcceptanceScope {
   command: "run" | "cleanup" | "controller-cleanup" | "controller-window";
   runId: string;
   keepData: boolean;
@@ -87,9 +90,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 }
 
 async function runLocalAcceptance(args: ParsedArgs): Promise<void> {
-  const run = runConfig(args.runId);
+  const run = runConfig(args.runId, args);
   await removeStaleReport(run);
-  await runStagingController("cleanup", run.runId);
+  await runStagingController("cleanup", run.runId, args);
   if (args.command === "cleanup") {
     await writeReport(run, {
       ok: true,
@@ -102,14 +105,14 @@ async function runLocalAcceptance(args: ParsedArgs): Promise<void> {
     return;
   }
 
-  const windowResult = await runStagingController<RemoteWindowResult>("window", run.runId);
+  const windowResult = await runStagingController<RemoteWindowResult>("window", run.runId, args);
   let outcome: Record<string, unknown>;
   let cleanupVerified = false;
   try {
     outcome = await runAcceptance(run, windowResult.structuredWindow);
   } finally {
     if (!args.keepData) {
-      await runStagingController("cleanup", run.runId);
+      await runStagingController("cleanup", run.runId, args);
       cleanupVerified = true;
       printSafe({ ok: true, command: "cleanup", runId: run.runId });
     }
@@ -136,9 +139,19 @@ async function runControllerCommand(args: ParsedArgs): Promise<void> {
   }
   assertStagingRuntimeDatabaseTarget(databaseUrl);
 
-  const run = runConfig(args.runId);
+  const run = runConfig(args.runId, args);
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
   try {
+    if (run.reuseSession) {
+      const employee = await prisma.employee.findUnique({
+        where: { email: run.reuseSession },
+        select: { id: true, orgId: true, role: true, disabled: true }
+      });
+      if (!employee || employee.role !== "admin" || employee.disabled)
+        throw new Error("Existing-session acceptance requires the selected active admin.");
+      run.reusedEmployeeId = employee.id;
+      run.orgId = employee.orgId;
+    }
     if (args.command === "controller-cleanup") {
       await cleanupRun(prisma, run);
       printSafe({
@@ -149,7 +162,7 @@ async function runControllerCommand(args: ParsedArgs): Promise<void> {
       });
       return;
     }
-    const structuredWindow = await selectAvailableStructuredWindow(prisma, run.runId);
+    const structuredWindow = await selectAvailableStructuredWindow(prisma, run.runId, run.orgId);
     printSafe({
       ok: true,
       command: "controller-window",
@@ -192,22 +205,29 @@ async function runAcceptance(
       "smedc_get_current_user",
       {}
     );
-    if (!isAcceptanceAccount(currentUser, run.runId, "admin")) {
+    const acceptedAccount = run.reuseSession
+      ? isReusedAcceptanceAccount(currentUser, run.reuseSession)
+      : isAcceptanceAccount(currentUser, run.runId, "admin");
+    if (!acceptedAccount) {
       throw new Error("Positive upload smoke requires this run's synthetic admin at clearance 0.");
     }
+
+    // Confirm the current dataset contract before any structured tool call.
+    await callJson(client, "list_structured_datasets", {});
 
     const [defaultEvidenceUpload, explicitLevelEvidenceUpload] = await uploadEvidenceFixtures(
       client,
       run
     );
+    const deliveryFile = await writeRunDeliveryFixture(run);
     const deliveryUpload = await callJson<{
       importBatch: { importBatchId: string; status: string };
     }>(client, "upload_structured_dataset", {
       file: {
-        name: "delivery_sheet_SH2608250117.xlsx",
+        name: path.basename(deliveryFile),
         mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         encoding: "path",
-        filePath: path.resolve("fixtures/structured/delivery_sheet_SH2608250117.xlsx")
+        filePath: deliveryFile
       },
       dataset: "delivery_ledger",
       enterpriseName: run.enterpriseName,
@@ -225,7 +245,26 @@ async function runAcceptance(
     if (deliveryCompletion.importBatch.status !== "applied") {
       throw new Error("Delivery Ledger XLSX row import did not apply.");
     }
+    const deliverySummary = await callJson<{ rows: Array<Record<string, unknown>> }>(
+      client,
+      "query_structured_dataset",
+      {
+        dataset: "delivery_ledger",
+        filter: { field: "store_name", op: "eq", value: run.enterpriseName },
+        aggregates: [
+          { op: "count", as: "rows" },
+          { op: "sum", field: "purchase_amount", as: "amount" }
+        ]
+      }
+    );
+    if (
+      Number(deliverySummary.rows[0]?.["rows"]) !== 2 ||
+      Number(deliverySummary.rows[0]?.["amount"]) !== 42.5
+    )
+      throw new Error("Delivery ledger aggregate did not match the run receipt.");
     await waitForEvidenceReady(client, defaultEvidenceUpload.document.documentId);
+    if (currentUser.user.clearance >= 2)
+      await waitForEvidenceReady(client, explicitLevelEvidenceUpload.document.documentId);
 
     const evidenceSearch = await callJson<EvidenceSearchResult>(
       client,
@@ -297,8 +336,10 @@ async function runAcceptance(
       throw new Error(`Unexpected partition download: ${JSON.stringify(redactObject(downloaded))}`);
     }
     const rows: Array<Record<string, string>> = [];
+    const partitionContents: string[] = [];
     for (const fileName of downloaded.files) {
       const csv = await readFile(path.join(downloaded.localDirectory, fileName), "utf8");
+      partitionContents.push(csv);
       rows.push(
         ...(parseCsv(csv, {
           bom: true,
@@ -351,6 +392,24 @@ async function runAcceptance(
         "Expected invalid partition source to be rejected atomically with a safe error."
       );
     }
+    const afterRejection = await callJson<PartitionDownloadResult>(
+      client,
+      "download_structured_partitions",
+      {
+        dataset: "dishes",
+        enterpriseName: run.enterpriseName,
+        startDate: structuredWindow.startCompact,
+        endDate: structuredWindow.endCompact
+      }
+    );
+    localExtracts.push(afterRejection.localDirectory);
+    const afterContents = await Promise.all(
+      afterRejection.files.map((file) =>
+        readFile(path.join(afterRejection.localDirectory, file), "utf8")
+      )
+    );
+    if (JSON.stringify(partitionContents.sort()) !== JSON.stringify(afterContents.sort()))
+      throw new Error("Rejected import changed previously published partitions.");
 
     return {
       ok: true,
@@ -359,9 +418,10 @@ async function runAcceptance(
       launcherVersion: LAUNCHER_VERSION,
       currentUserVerified: true,
       account: "admin",
-      clearance: 0,
-      coverage:
-        "admin-positive-smoke; full three-account acceptance uses separate visible scenario tasks",
+      clearance: currentUser.user.clearance,
+      coverage: run.reuseSession
+        ? "existing-session business smoke; identity-switch and auth cases excluded"
+        : "admin-positive-smoke; full three-account acceptance uses separate visible scenario tasks",
       deliveryImportBatchId: deliveryUpload.importBatch.importBatchId,
       defaultConfidentialityLevel: 0,
       explicitConfidentialityLevel: 2,
@@ -375,6 +435,7 @@ async function runAcceptance(
         endDate: structuredWindow.endDate
       },
       aggregate: redactObject(aggregate),
+      publishedPartitionsUnchangedAfterRejection: true,
       topDishes: topNames
     };
   } finally {
@@ -474,9 +535,13 @@ async function callJson<T>(
   return { ...parsed, isError: Boolean(result.isError) } as T;
 }
 
-async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig>): Promise<void> {
+export async function cleanupRun(
+  prisma: PrismaClient,
+  run: ReturnType<typeof runConfig>
+): Promise<void> {
   const identities = await prisma.loginIdentity.findMany({
     where: {
+      orgId: run.orgId,
       normalizedEmail: {
         in: acceptanceAccountEmails(run.runId)
       }
@@ -484,8 +549,38 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     select: { employeeId: true }
   });
   const uploaderEmployeeIds = identities.map((identity) => identity.employeeId);
+  // The reused employee is deliberately never added to this uploader-wide selector.
+  if (run.reusedEmployeeId) {
+    const foreignDocuments = await prisma.document.count({
+      where: {
+        id: { in: run.documentIds },
+        NOT: { uploaderId: run.reusedEmployeeId, orgId: run.orgId }
+      }
+    });
+    const foreignJobs = await prisma.partitionImportJob.count({
+      where: {
+        id: { in: run.partitionJobIds },
+        NOT: { uploaderId: run.reusedEmployeeId, orgId: run.orgId }
+      }
+    });
+    const foreignRequests = await prisma.ledgerArtifactRequest.count({
+      where: {
+        id: { in: run.ledgerRequestIds },
+        NOT: { actorEmployeeId: run.reusedEmployeeId, orgId: run.orgId, kind: "download" }
+      }
+    });
+    if (foreignDocuments || foreignJobs || foreignRequests)
+      throw new Error("Cleanup IDs do not belong to the selected QA account.");
+  }
   const partitionJobs = await prisma.partitionImportJob.findMany({
-    where: { uploaderId: { in: uploaderEmployeeIds } },
+    where: {
+      orgId: run.orgId,
+      OR: [
+        { uploaderId: { in: uploaderEmployeeIds } },
+        { enterpriseName: run.enterpriseName },
+        { id: { in: run.partitionJobIds } }
+      ]
+    },
     select: { id: true, temporaryObjectKey: true }
   });
   const partitionJobIds = partitionJobs.map((job) => job.id);
@@ -495,7 +590,7 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   });
   const documentFilters = officialManualDocumentFilters(run, uploaderEmployeeIds);
   const documents = await prisma.document.findMany({
-    where: { OR: documentFilters },
+    where: { orgId: run.orgId, OR: documentFilters },
     select: {
       id: true,
       storageObjectKey: true,
@@ -512,7 +607,6 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
       .map((chunk) => chunk.qdrantPointId)
       .filter((pointId): pointId is string => Boolean(pointId))
   );
-  await deleteQdrantPoints(qdrantPointIds);
 
   // Archive cleanup stays within the run's synthetic documents and employees.
   // Refuse a shared derived partition/request rather than deleting another run's data.
@@ -557,8 +651,10 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   const ledgerPartitionIds = ledgerPartitions.map((partition) => partition.id);
   const ledgerRequests = await prisma.ledgerArtifactRequest.findMany({
     where: {
+      orgId: run.orgId,
       OR: [
         { actorEmployeeId: { in: uploaderEmployeeIds } },
+        { id: { in: run.ledgerRequestIds } },
         { items: { some: { partitionId: { in: ledgerPartitionIds } } } }
       ]
     },
@@ -566,8 +662,10 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   });
   const partitionIds = new Set(ledgerPartitionIds);
   if (
-    ledgerRequests.some((request) =>
-      request.items.some((item) => !partitionIds.has(item.partitionId))
+    ledgerRequests.some(
+      (request) =>
+        !run.ledgerRequestIds.includes(request.id) &&
+        request.items.some((item) => !partitionIds.has(item.partitionId))
     )
   )
     throw new Error("Official cleanup refuses a shared ledger PDF request");
@@ -596,12 +694,26 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
   });
   if (
     await prisma.processingRun.count({
-      where: { id: { in: ledgerJobs.map((job) => job.id) }, status: "running" }
+      where: {
+        OR: [
+          { id: { in: ledgerJobs.map((job) => job.id) } },
+          { documentId: { in: ownedDocumentIds } },
+          { partitionImportJobId: { in: partitionJobIds } }
+        ],
+        status: { in: ["queued", "running", "retry_scheduled"] }
+      }
     })
   )
-    throw new Error("Official cleanup refuses active ledger jobs");
+    throw new Error("Official cleanup refuses active processing jobs");
   const ledgerGarbage = await prisma.storageGarbage.findMany({
-    where: { processingRunId: { in: ledgerJobs.map((job) => job.id) } },
+    where: {
+      processingRun: {
+        OR: [
+          { id: { in: ledgerJobs.map((job) => job.id) } },
+          { partitionImportJobId: { in: partitionJobIds } }
+        ]
+      }
+    },
     select: { objectKey: true }
   });
   const storage = createStorageAdapter(process.env);
@@ -617,7 +729,8 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
       .filter((key): key is string => Boolean(key)),
     ...partitions.map((partition) => partition.objectKey)
   ];
-  await deleteStorageObjects(storage, storageObjectKeys);
+  await deleteQdrantPoints(qdrantPointIds);
+  await deleteStorageObjects(storage, [...new Set(storageObjectKeys)]);
 
   const documentIds = documents.map((document) => document.id);
   const importBatchIds = documents
@@ -685,6 +798,13 @@ async function cleanupRun(prisma: PrismaClient, run: ReturnType<typeof runConfig
     storageObjectKeys,
     uploaderEmployeeIds
   });
+  const ledgerResidue = await Promise.all([
+    prisma.ledgerArtifactRequest.count({ where: { id: { in: ledgerRequestIds } } }),
+    prisma.ledgerPdfPartition.count({ where: { id: { in: ledgerPartitionIds } } }),
+    prisma.processingRun.count({ where: { id: { in: ledgerJobs.map((job) => job.id) } } })
+  ]);
+  if (ledgerResidue.some(Boolean))
+    throw new Error("Ledger archive cleanup left run-scoped residue.");
 }
 
 function officialManualDocumentFilters(
@@ -695,6 +815,7 @@ function officialManualDocumentFilters(
     { sourceSystem: run.evidenceSourceSystem },
     { title: { startsWith: `${run.enterpriseName}_` } },
     { title: { startsWith: run.titlePrefix } },
+    { id: { in: run.documentIds } },
     ...(uploaderEmployeeIds.length > 0 ? [{ uploaderId: { in: uploaderEmployeeIds } }] : [])
   ];
 }
@@ -728,13 +849,14 @@ async function deleteQdrantPoints(pointIds: string[]): Promise<void> {
 
 async function selectAvailableStructuredWindow(
   prisma: PrismaClient,
-  runId: string
+  runId: string,
+  orgId: string
 ): Promise<StructuredWindow> {
   for (let attempt = 0; attempt < 256; attempt += 1) {
     const candidate = createStructuredWindow(runId, attempt);
     const overlap = await prisma.importWindowClaim.findFirst({
       where: {
-        orgId: "default-org",
+        orgId,
         dataset: "dishes",
         startDate: { lte: new Date(`${candidate.endDate}T00:00:00.000Z`) },
         endDate: { gte: new Date(`${candidate.startDate}T00:00:00.000Z`) }
@@ -784,7 +906,10 @@ async function verifyCleanup(
     qdrantPoints
   ] = await Promise.all([
     prisma.document.count({
-      where: { OR: officialManualDocumentFilters(run, deleted.uploaderEmployeeIds) }
+      where: {
+        orgId: run.orgId,
+        OR: officialManualDocumentFilters(run, deleted.uploaderEmployeeIds)
+      }
     }),
     countByIds(deleted.importBatchIds, (ids) =>
       prisma.importBatch.count({ where: { id: { in: ids } } })
@@ -937,6 +1062,27 @@ async function writeRunInvalidStructuredFixture(
   return target;
 }
 
+async function writeRunDeliveryFixture(run: ReturnType<typeof runConfig>): Promise<string> {
+  // Local fixture preparation only; release-ops does not install the workbook writer.
+  const { default: ExcelJS } = await import("exceljs");
+  const destination = path.join(RUN_ROOT, run.runId, "receipt.xlsx");
+  await mkdir(path.dirname(destination), { recursive: true });
+  const workbook = new ExcelJS.Workbook();
+  workbook
+    .addWorksheet("送货单")
+    .addRows([
+      ["送货单"],
+      ["单据号", `MANUAL-${run.runId.toUpperCase()}`, "订货机构", run.enterpriseName],
+      ["送货机构", "合成验收供应商", "收货日期", "2026-10-07"],
+      ["序号", "物品名称", "规格型号", "收货数量", "收货金额"],
+      [1, "验收青菜", "千克", 2, 12.5],
+      [2, "验收大米", "千克", 3, 30],
+      ["合计", "", "", 5, 42.5]
+    ]);
+  await workbook.xlsx.writeFile(destination);
+  return destination;
+}
+
 async function fileBase64(filePath: string): Promise<string> {
   return (await readFile(filePath)).toString("base64");
 }
@@ -961,7 +1107,10 @@ async function writeReport(run: ReturnType<typeof runConfig>, result: Record<str
   await writeFile(reportPath(run), body);
 }
 
-function runConfig(runId: string) {
+export function runConfig(
+  runId: string,
+  scope: AcceptanceScope = { documentIds: [], partitionJobIds: [] }
+) {
   const safeRunId = runId
     .trim()
     .replace(/[^A-Za-z0-9_-]/g, "-")
@@ -971,6 +1120,10 @@ function runConfig(runId: string) {
   }
   const compact = safeRunId.replace(/[^A-Za-z0-9]/g, "_");
   return {
+    ...scope,
+    ledgerRequestIds: scope.ledgerRequestIds ?? [],
+    orgId: "default-org",
+    reusedEmployeeId: undefined as string | undefined,
     runId: safeRunId,
     titlePrefix: `[manual-acceptance:${safeRunId}]`,
     evidenceSourceSystem: `manual_acceptance_${compact}`,
@@ -1016,7 +1169,26 @@ function parseArgs(args: string[]): ParsedArgs {
   const rest = first && commands.includes(first) ? args.slice(1) : args;
   let runId = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "Z");
   let keepData = false;
+  const scope: AcceptanceScope = { documentIds: [], partitionJobIds: [] };
   for (const arg of rest) {
+    if (arg.startsWith("--reuse-session=")) {
+      scope.reuseSession = arg.slice("--reuse-session=".length);
+      if (!scope.reuseSession)
+        throw new Error("--reuse-session requires the expected account email.");
+      continue;
+    }
+    if (arg.startsWith("--document-id=")) {
+      scope.documentIds.push(arg.slice("--document-id=".length));
+      continue;
+    }
+    if (arg.startsWith("--partition-job-id=")) {
+      scope.partitionJobIds.push(arg.slice("--partition-job-id=".length));
+      continue;
+    }
+    if (arg.startsWith("--ledger-request-id=")) {
+      (scope.ledgerRequestIds ??= []).push(arg.slice("--ledger-request-id=".length));
+      continue;
+    }
     if (arg === "--keep-data") {
       keepData = true;
       continue;
@@ -1027,7 +1199,8 @@ function parseArgs(args: string[]): ParsedArgs {
     }
     throw new Error(`Unknown argument: ${arg}`);
   }
-  return { command, runId, keepData };
+  validateAcceptanceScope(scope);
+  return { command, runId, keepData, ...scope };
 }
 
 function printSafe(value: Record<string, unknown>): void {

@@ -1,12 +1,12 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-09-26
+Last updated: 2026-10-07
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
 ## Admin-only upload regression boundary
 
-Launcher recommendation and minimum compatibility are exactly 0.6.0. Run the HTTP upload
+Launcher recommendation is 0.7.1; minimum compatibility remains 0.6.0. Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
 prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
@@ -20,8 +20,8 @@ Positive uploads use admin c0 across evidence, row CSV, business/dishes partitio
 Delivery Ledger XLSX, and quarantine images. Explicit high-level admin uploads succeed without
 granting ordinary read access; employee c3 can read eligible data but cannot upload. Partition
 create/parts/complete require admin; owner abort and existing status/manifest/read/search/query/download
-rules remain. Launchers older than 0.6.0 are rejected with `LAUNCHER_UPGRADE_REQUIRED`. The manual manifest has 16 separate
-natural-language tasks; the controller smoke requires admin c0. No historical-data migration,
+rules remain. Launchers older than 0.6.0 are rejected with `LAUNCHER_UPGRADE_REQUIRED`. The manual manifest uses separate natural-language tasks; the default controller smoke requires
+synthetic admin c0, while explicit existing-session mode preserves the selected admin. No historical-data migration,
 OSS URL invalidation, mid-transfer downgrade handling, or future service-identity design is added.
 
 ## Required Repository Checks
@@ -107,30 +107,30 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-This runner uses the installed `smedc-mcp-launcher@0.6.0`, a clearance-0 admin's
-operating-system secure-store session, and the public staging service. It checks that upload inputs
-which omit `confidentialityLevel` remain level 0, then covers evidence upload/status/search,
-structured CSV import/query, invalid atomic import rejection, and run-scoped cleanup of evidence,
-Qdrant points, OSS objects, structured rows, import batches, and documents. The stricter
-user-visible flow also proves explicit high-level upload, cross-clearance ordinary reads, the
-low-clearance admin read denial, and the named receipt-archive PAO, in addition to delivery-ledger
-uploads/queries and the quarantine certificate/source-document download slice when in scope.
-Password setup/reset remains browser-only and is proved separately through `auth:operator onboard`
-/ `auth:operator reset-password` without recording full setup links.
+The runner uses the installed `smedc-mcp-launcher@0.7.1`. Its default profile requires the
+run's synthetic admin c0. The explicit `--reuse-session=<expected-email>` profile verifies the
+selected existing admin without logging out or changing role/clearance. It covers real MCP
+evidence readiness/search, run-unique receipt XLSX upload and allowed aggregates, dishes partition
+publication/download, invalid-source rejection, unchanged prior partitions, and exact cleanup.
 
-The full manual acceptance gate is stricter than the runner: it creates a clearance-0 employee, a
-clearance-3 employee, and a clearance-0 admin in the same organization, each with an explicit
-role/clearance and a `manual-full-flow-*` or `manual-acceptance-*` `@example.invalid` email. It
-sets/logs in through Chrome using an agent-generated throwaway password, exercises the flow as
-multiple newly created user-visible Codex tasks/sessions with one normal low-technical request per
-task, and then removes uploaded test data plus hard-deletes every synthetic account with
-`auth:operator delete-test-account`.
+The complete user-visible business suite also covers VIP, business partitions, dish/supplier
+catalogs, receipt CSV, quarantine query/download/archive, and server PDF coverage/download. Archive
+delivery no longer permits receipt detail rows or agent-maintained statutory CSVs. New receipts
+wait for the configured daily generation; use a ready authorized partition for successful download.
 
-A user-requested scoped QA run may instead reuse an authenticated employee only after controller
-verification that its organization ID is `default-org`. It still requires new natural-language
-Codex tasks, official launcher/MCP calls, a run-unique exact cleanup scope, complete test-data
-cleanup, and preservation of the existing login. This narrower run does not satisfy the full
-account lifecycle, confidentiality, admin-PAO, logout/reset, or account-deletion gate.
+Natural chat prompts contain only the ordinary request and necessary business inputs. Do not add
+harness restrictions, tool/skill allowlists, expected answers, or test-controller instructions.
+Fixture oracles and cleanup IDs stay in the controller. Chats remain visible after data cleanup.
+
+The account-lifecycle profile additionally creates employee c0/c3 and admin c0 identities with
+explicit attributes. The human completes setup and login in the first-party browser; the agent
+never types credentials. It proves cross-clearance reads, employee upload denial, above-clearance
+archive PAO and logout/reset/revocation, then deletes all synthetic accounts after cleanup.
+
+When the user requests the complete suite with an existing login, run all applicable business
+cases and explicitly exclude identity-switch and authentication cases. Do not silently reduce it
+to a few smoke tests or label excluded cases passed. Cleanup uses exact returned IDs and run
+markers; it never selects all data uploaded by that existing employee, and preserves their login.
 
 ## Confidentiality And Privileged Admin Operation Cases
 
@@ -175,7 +175,7 @@ The removed route/tool names may appear only in negative tests, migration/remova
 2. migrations and seed apply;
 3. API starts on an available port;
 4. the integration harness creates an official short-lived session without a test login endpoint;
-5. structured `dishes` fixture imports and can be queried;
+5. structured `dishes` fixture publishes and can be downloaded through authorized partitions;
 6. evidence markdown fixture uploads;
 7. worker indexes evidence into Qdrant;
 8. evidence status becomes ready;

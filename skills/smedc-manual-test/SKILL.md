@@ -20,14 +20,16 @@ no-display link delivery, memory-only session custody, and mandatory re-login af
 If the user asks only for the primary flow, keep the run scoped to macOS Codex and record the other
 client gates as not run; do not describe Linux as unsupported.
 
-Full manual acceptance must use fresh synthetic accounts, not the human owner's real account or an
-already-authenticated Keychain session. The controller creates a clearance-0 employee, a
+The default full account-lifecycle profile uses fresh synthetic accounts. When the human explicitly
+requests the complete business suite with the existing login, use the existing-session profile below
+and preserve that account and session. The controller creates a clearance-0 employee, a
 clearance-3 employee, and a clearance-0 admin in the same organization and sends their one-time
 setup links to the human. The controller must not open setup links or type test credentials. The
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
-Use launcher `smedc-mcp-launcher@0.6.0` and the 16-task three-account manifest. All positive uploads
+Use launcher `smedc-mcp-launcher@0.7.1` and the current scenario manifest; account assignments
+apply to the full lifecycle profile and map to the current account in the existing-session profile. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
 before reading or transforming files. Tools remain visible. Direct HTTP upload endpoints return
@@ -39,23 +41,24 @@ best-effort `file_upload.denied`, partition create/parts/complete denial, and ow
 Clearance is orthogonal: admin c0 may explicitly upload level 2 but cannot ordinarily read it;
 employee c3 can read eligible data but cannot upload. Preserve ordinary status/manifest/read rules.
 
-A user-requested **scoped QA acceptance** may reuse the current authenticated launcher session
-instead of creating accounts when all of these conditions hold:
+## Existing-session business acceptance
 
-- the user explicitly scopes the run to selected business flows rather than the full account,
-  browser-login, confidentiality, admin-PAO, logout, or password-reset gate;
-- `smedc_auth_status` is authenticated and `smedc_get_current_user` identifies
-  the expected QA account, with active `admin` role for any positive upload;
-- the controller verifies through a read-only operator-side lookup that the employee belongs to
-  organization ID `default-org`; the employee-client task must not receive database access or an
-  organization ID input;
-- every upload uses a run-unique cleanup scope, such as a unique `enterpriseName`, so cleanup cannot
-  delete pre-existing QA partitions; and
-- the run preserves the shared login: do not log out, reset, disable, or delete the reused account.
+An explicit request to reuse the current login authorizes the complete business suite without
+creating accounts, switching identities, login, logout, password resets, or account deletion.
+Verify the live MCP identity is the intended active admin. The controller verifies its organization membership without exposing internal IDs to employee chats. Run every applicable business task
+in `fixtures/manual-acceptance/scenarios.json`, including evidence, row queries, partitions, receipt
+uploads/aggregates, PDF coverage/download, and quarantine query/download/archive.
 
-This shortcut proves only the selected business flows and durable reuse of an existing QA session.
-It is not full manual acceptance and must not be reported as proof of onboarding, cross-clearance,
-admin, password, logout, or account-deletion behavior.
+Keep cross-clearance denial, employee upload denial, above-clearance PAO, and session revocation
+marked **not run: identity switching excluded**. A clearance-3 admin can prove successful reads and
+archive behavior, but cannot prove the low-clearance denial. Do not change role or clearance to
+simulate a different account. Report this as the complete business suite with explicit identity
+exclusions, never as account-lifecycle acceptance or unrestricted beta readiness.
+
+Use unique receipt/store/enterprise names and track every document, partition-job, and PDF-request
+ID returned in the visible chats. Cleanup uses these exact IDs plus run markers; never select all
+uploads or download requests owned by the reused account. Preserve unrelated supplier snapshots,
+partitions, PDF sources, and the existing shared login.
 
 Full manual acceptance must also look like normal low-technical employee usage. Create multiple
 new user-visible Codex tasks/sessions, one ordinary natural-language request at a time. Do not
@@ -100,13 +103,12 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 5. Run normal repository checks proportionate to the change. For documentation-only changes,
    run at least `npm run format:check`. For runner or script changes, run the focused tests plus
    TypeScript checking when practical.
-6. For full acceptance, create the three synthetic manual accounts through the operator CLI using
+6. For the account-lifecycle profile, create the three synthetic manual accounts through the operator CLI using
    `manual-full-flow-low-<runId>`, `manual-full-flow-high-<runId>`, and
    `manual-acceptance-admin-<runId>` `@example.invalid` emails. State `--role` and `--clearance`
-   explicitly for each. For a scoped QA acceptance, apply the reuse preconditions above instead and
-   record the safe current-user identity plus the `default-org` verification. Never use a real
-   customer/user email. Keep setup links and synthetic passwords out of reports and commits.
-7. Human-controlled password setup is required for full acceptance. Generate all required setup
+   explicitly for each. For existing-session acceptance, apply the reuse preconditions above instead and
+   record the safe current-user identity plus the organization verification. Use synthetic emails only when creating accounts. Keep setup links and synthetic passwords out of reports and commits.
+7. Human-controlled password setup applies only to the account-lifecycle profile. Generate all required setup
    links, send them directly to the human in the current private chat, and do not open or prefill
    them. The human may use and disclose one shared throwaway password for all synthetic accounts.
    Although links may be generated together, the human must open and finish them one at a time:
@@ -117,19 +119,21 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 
    ```sh
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.6.0/node_modules/.bin/smedc-mcp-launcher" self-check
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.7.1/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
-9. For full acceptance, ensure the launcher starts logged out and switch among only the synthetic
-   accounts required by the procedure. For scoped QA acceptance, preserve the verified existing
+9. For the account-lifecycle profile, ensure the launcher starts logged out and switch among only the synthetic
+   accounts required by the procedure. For existing-session acceptance, preserve the verified existing
    session and never call `smedc_logout` merely to make the test start clean.
 10. Create a sequence of new user-visible Codex tasks/sessions for the employee-client
-    interactions. Each task receives exactly one normal employee request in ordinary language and
-    must follow `skills/smedc-mcp/SKILL.md`; it must not inspect service internals. In full
-    acceptance, begin with the install/login task. In scoped QA acceptance, begin directly with the
-    selected business action after the existing session and `default-org` membership are verified;
+    interactions. Each task receives exactly one normal employee request in ordinary language. Do not append
+    harness instructions such as “只使用某个 Skill/tool”, “不要读取文件”, “禁止某动作”, expected
+    answers, or a test checklist. Installed skill behavior is what the test observes. Put fixture
+    paths and necessary business names/dates in the request; keep oracles and cleanup IDs in the controller. In the
+    account-lifecycle profile, begin with the install/login task. In existing-session acceptance, begin directly with the
+    selected business action after the existing session and organization membership are verified;
     do not create a synthetic login task merely for ceremony.
-11. The first task should be an install/login-style request. If the launcher is unauthenticated,
+11. Only the account-lifecycle profile starts with an install/login-style request. If the launcher is unauthenticated,
     that task calls `smedc_login` and surfaces the first-party device verification link. The human
     completes browser login with the synthetic password; the controller must not control the
     browser or type the credential.
@@ -137,24 +141,20 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     high-level upload, low/high-clearance search, the low-clearance admin normal-read denial, the
     admin receipt-archive PAO, cold search, prompt-injection
     resistance, structured upload/query, logout/reset/re-login, and any scoped recovery probes.
-    Upload and cold-search must not be collapsed into the same employee-client task when independent
-    retrieval evidence matters. When the local-only delivery samples are available, include separate
-    supplier-catalog, XLSX-receipt, and CSV-receipt tasks, followed by one ordinary request to query
-    all visible delivery-ledger rows and display them as a row-level Markdown table. The query task
-    must follow every returned page cursor until no page remains; a receipt-level count or enrichment
-    summary is not a substitute for displaying the ledger.
-    For the quarantine-certificate slice, have the clearance-0 admin explicitly request level 2
-    when uploading `fixtures/manual-acceptance/quarantine/animal-quarantine-certificate.jpg` for an
-    explicit `receiptId`; a filename must never choose the level. The clearance-3 employee queries
-    that receipt and requests a 24-hour source-file download link for its returned
-    `sourceDocumentId`. The clearance-0 admin then uses receipt-ID archive as the named PAO; it must
-    not query the certificate first. Do not query all certificates, fetch file bytes directly, or
-    visually verify downloaded image contents in the automated flow.
-13. Optionally run the official macOS Codex business-flow runner as an extra smoke, but do not treat
+    Upload and cold-search use independent chats. With archive delivery enabled, receipt details
+    and original receipt signing are unavailable: verify allowed store/date aggregates and server
+    PDF coverage/download instead of an agent-generated row table or maintained CSV. Newly uploaded
+    receipts wait for the configured daily schedule; the employee never triggers PDF generation.
+    Use an already-ready authorized partition for the successful ZIP case and record a new receipt's
+    pending state separately. Quarantine cases cover upload, explicit-receipt query, source download,
+    receipt archive, and post-archive absence. Run-scoped test receipts must not collide with real ones.
+13. Run the official macOS Codex business-flow runner as an extra smoke, but do not treat
     it as a replacement for the new user-visible task:
 
 ```sh
 npm run test:official-manual
+# When reusing the explicitly selected admin:
+npm run test:official-manual -- --run-id=<safe-id> --reuse-session=<expected-email>
 ```
 
 Use `--run-id=<safe-id>` for repeatability. The runner must clean before and after the run unless
@@ -183,13 +183,13 @@ Manual staging uploads must not accumulate.
 - Runner-owned structured uploads must use unique `enterpriseName=ManualAcceptance_<runId>` and a
   dedicated date window. Natural employee tasks may use the real business/store name; cleanup must
   therefore also select every document uploaded by the run's synthetic employee.
-- Scoped QA acceptance must use a run-unique enterprise or equivalent exact cleanup selector. Never
+- Existing-session acceptance must use a run-unique enterprise or explicit returned document/job/request IDs. Never
   rely on the reused employee ID alone, because that employee may own unrelated QA data.
 - Cleanup must remove test documents, quarantine certificates, all structured row types (including
   delivery and supplier rows), import batches/window claims, OSS objects, and Qdrant points
   associated with the run.
 - Synthetic test accounts must be deleted with `delete-test-account` after uploaded documents are
-  removed. A reused `default-org` QA account must not be deleted, logged out, reset, or disabled.
+  removed. A reused account must not be deleted, logged out, reset, or disabled.
 - If cleanup fails, stop and report that as a release blocker before further beta testing.
 
 ## Integrity Rules

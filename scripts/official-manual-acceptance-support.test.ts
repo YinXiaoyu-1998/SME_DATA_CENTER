@@ -6,6 +6,8 @@ import {
   deleteStorageObjects,
   isLowClearanceAcceptanceEmployee,
   isAcceptanceAccount,
+  isReusedAcceptanceAccount,
+  validateAcceptanceScope,
   acceptanceAccountEmails,
   pollStructuredImportStatus,
   rewriteKnownValuesFixture
@@ -31,6 +33,20 @@ describe("official manual acceptance staging database target", () => {
 
 describe("official manual acceptance current account", () => {
   const expectedEmails = new Set(["manual-full-flow-low-run@example.invalid"]);
+
+  it("allows only the explicitly selected existing admin without changing its clearance", () => {
+    const user = {
+      displayName: "Existing QA",
+      email: "qa@example.invalid",
+      role: "admin",
+      clearance: 3
+    };
+    expect(isReusedAcceptanceAccount({ user }, user.email)).toBe(true);
+    expect(isReusedAcceptanceAccount({ user }, "another@example.invalid")).toBe(false);
+    expect(isReusedAcceptanceAccount({ user: { ...user, role: "employee" } }, user.email)).toBe(
+      false
+    );
+  });
 
   it("binds each role and clearance to its own run identity, including all cleanup owners", () => {
     const accounts = [
@@ -125,6 +141,22 @@ describe("official manual acceptance current account", () => {
 });
 
 describe("official manual acceptance remote controller", () => {
+  it("passes explicit cleanup IDs without granting cleanup of an existing uploader's other data", () => {
+    const scope = {
+      reuseSession: "qa@example.invalid",
+      documentIds: ["doc_run"],
+      partitionJobIds: ["pjob_run"]
+    };
+    expect(buildRemoteControllerCommand("cleanup", "safe-run", scope)).toEqual(
+      expect.arrayContaining([
+        "--reuse-session=qa@example.invalid",
+        "--document-id=doc_run",
+        "--partition-job-id=pjob_run"
+      ])
+    );
+    expect(() => validateAcceptanceScope({ ...scope, documentIds: ["doc_run;echo"] })).toThrow();
+    expect(() => validateAcceptanceScope({ ...scope, reuseSession: undefined })).toThrow();
+  });
   it("uses strict SSH host verification and the staging container runtime", () => {
     const sshArgs = buildStagingSshArgs();
     const command = buildRemoteControllerCommand("cleanup", "safe-run");

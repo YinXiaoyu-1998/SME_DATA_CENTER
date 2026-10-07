@@ -52,6 +52,37 @@ export interface CurrentEnterpriseHubUserResult {
   };
 }
 
+export interface AcceptanceScope {
+  reuseSession?: string | undefined;
+  documentIds: string[];
+  partitionJobIds: string[];
+  ledgerRequestIds?: string[];
+}
+
+export function validateAcceptanceScope(scope: AcceptanceScope): void {
+  if (scope.reuseSession && !/^[A-Za-z0-9._+@-]+$/.test(scope.reuseSession))
+    throw new Error("Existing-session email contains unsupported characters.");
+  const ids = [...scope.documentIds, ...scope.partitionJobIds, ...(scope.ledgerRequestIds ?? [])];
+  if (ids.length && !scope.reuseSession)
+    throw new Error("Explicit cleanup IDs require --reuse-session=<expected-email>.");
+  if (ids.length > 200 || ids.some((id) => !/^[A-Za-z0-9_-]{1,64}$/.test(id)))
+    throw new Error("Invalid acceptance cleanup IDs.");
+}
+
+export function isReusedAcceptanceAccount(
+  result: CurrentEnterpriseHubUserResult,
+  expectedEmail: string
+): boolean {
+  return (
+    result.user.email === expectedEmail &&
+    result.user.role === "admin" &&
+    result.user.displayName.trim().length > 0 &&
+    Number.isInteger(result.user.clearance) &&
+    result.user.clearance >= 0 &&
+    result.user.clearance <= 3
+  );
+}
+
 const STRUCTURED_IMPORT_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 
 export type AcceptanceAccount = "employee-low" | "employee-high" | "admin";

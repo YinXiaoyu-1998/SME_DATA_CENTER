@@ -2,7 +2,11 @@ import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { StructuredWindow } from "./official-manual-acceptance-support.js";
+import {
+  validateAcceptanceScope,
+  type AcceptanceScope,
+  type StructuredWindow
+} from "./official-manual-acceptance-support.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_STAGING_HOST = "39.96.66.185";
@@ -31,8 +35,11 @@ export function buildStagingSshArgs(): string[] {
 
 export function buildRemoteControllerCommand(
   command: RemoteControllerCommand,
-  runId: string
+  runId: string,
+  scope: AcceptanceScope = { documentIds: [], partitionJobIds: [] }
 ): string[] {
+  validateAcceptanceScope(scope);
+  if (!/^[A-Za-z0-9_-]{1,48}$/.test(runId)) throw new Error("Invalid acceptance run ID.");
   return [
     "docker",
     "compose",
@@ -49,13 +56,18 @@ export function buildRemoteControllerCommand(
     "node",
     "dist/release/official-manual-acceptance.js",
     `controller-${command}`,
-    `--run-id=${runId}`
+    `--run-id=${runId}`,
+    ...(scope.reuseSession ? [`--reuse-session=${scope.reuseSession}`] : []),
+    ...scope.documentIds.map((id) => `--document-id=${id}`),
+    ...scope.partitionJobIds.map((id) => `--partition-job-id=${id}`),
+    ...(scope.ledgerRequestIds ?? []).map((id) => `--ledger-request-id=${id}`)
   ];
 }
 
 export async function runStagingController<T>(
   command: RemoteControllerCommand,
-  runId: string
+  runId: string,
+  scope?: AcceptanceScope
 ): Promise<T> {
   const target = `${
     process.env["SMEDC_STAGING_SSH_USER"] ?? DEFAULT_STAGING_USER
@@ -86,7 +98,7 @@ export async function runStagingController<T>(
   const { stdout } = await execFileAsync("ssh", [
     ...sshArgs,
     target,
-    ...buildRemoteControllerCommand(command, runId)
+    ...buildRemoteControllerCommand(command, runId, scope)
   ]);
   return JSON.parse(stdout) as T;
 }
