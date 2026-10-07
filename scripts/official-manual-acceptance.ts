@@ -7,7 +7,6 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 import { parse as parseCsv } from "csv-parse/sync";
-import ExcelJS from "exceljs";
 import { config as loadDotenv } from "dotenv";
 import { createStorageAdapter } from "@smedc/storage";
 import {
@@ -1064,6 +1063,8 @@ async function writeRunInvalidStructuredFixture(
 }
 
 async function writeRunDeliveryFixture(run: ReturnType<typeof runConfig>): Promise<string> {
+  // Local fixture preparation only; release-ops does not install the workbook writer.
+  const { default: ExcelJS } = await import("exceljs");
   const destination = path.join(RUN_ROOT, run.runId, "receipt.xlsx");
   await mkdir(path.dirname(destination), { recursive: true });
   const workbook = new ExcelJS.Workbook();
