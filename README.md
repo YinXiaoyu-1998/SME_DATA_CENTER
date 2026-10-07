@@ -180,7 +180,7 @@ before reading a file, while the backend remains authoritative for accepted requ
 continues to govern ordinary reads independently. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
 Launcher 0.7.1 exposes the four ledger PDF download tools and no employee PDF generation tool.
 Archive delivery is gated by the service rollout; until enabled, report `LEDGER_PDF_NOT_ENABLED`.
-Daily 03:00 Asia/Shanghai reconciliation generates changed PDFs; uploads reaching `applied`
+The service automatically updates affected daily PDFs; uploads reaching `applied`
 do not mean PDF completion. The earlier 0.6.0 staging release verified Device Authorization-only
 metadata, legacy-auth removal, and Chinese-first browser pages with a Chinese/English switch.
 

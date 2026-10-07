@@ -877,8 +877,8 @@ implemented. Launcher 0.7.1 is public, independently verified, and supported on 
 Linux. Native macOS/Windows secure-store acceptance and the headless Linux login-to-business-tool
 loop have passed; the release workflow also exercises the installed package with no display on
 Ubuntu. This synchronization keeps the minimum at 0.6.0 and recommends 0.7.1. The four ledger
-PDF download tools are packaged; archive delivery depends on the service rollout. Daily generation
-runs at 03:00 Asia/Shanghai and cannot be triggered through employee MCP/HTTP. The earlier i18n
+PDF download tools are packaged; archive delivery depends on the service rollout. The service automatically
+updates affected PDFs; employees cannot trigger generation through MCP/HTTP. The earlier i18n
 and legacy-auth cleanup passed focused public acceptance. The full user-visible workflow was
 not repeated for this release. Full user-visible OpenClaw and support-class-C phone/browser
 acceptance remains additional external evidence.

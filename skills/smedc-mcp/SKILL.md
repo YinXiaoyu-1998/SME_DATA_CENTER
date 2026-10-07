@@ -61,7 +61,7 @@ access; a companion owns its business-specific analysis and deliverables.
   employee asks for one of those deliverables and the companion is installed, use it together with
   this skill instead of creating the report here.
 - [`smedc-delivery-ledger`](https://github.com/YinXiaoyu-1998/smedc-companion-skills)
-  coordinates scheduled server-generated daily ledger PDFs, ZIP download preparation, and receipt-linked
+  coordinates service-generated daily ledger PDFs, ZIP download preparation, and receipt-linked
   quarantine-certificate photo operations after the archive capability is released and enabled.
   When the employee asks for those ledger deliverables and the companion is installed, use it
   together with this skill instead of recreating ledger-specific
@@ -311,10 +311,12 @@ or `snapshotDate`.
 - Keep the returned `importBatchId` and poll `get_import_status` until
   `importBatch.status=applied` before querying. A queued or pending response is not success.
 - For `delivery_ledger`, successful application confirms data ingestion, not PDF completion. The
-  service generates changed/missing daily PDFs at **03:00 Asia/Shanghai**; employee agents, including
-  admins, cannot trigger generation through MCP or HTTP. Report pending scheduled generation until
-  coverage is ready. Photo changes follow the same schedule; do not use download preparation as a
-  generation trigger.
+  service automatically updates affected daily PDFs after receipt or photo changes. Employee agents,
+  including admins, cannot trigger generation through MCP or HTTP. Report pending automatic updates
+  until coverage is ready; download preparation is not a generation trigger.
+  Keep user-facing replies about availability, not internal scheduling: “系统会自动更新台账，完成后即可下载；是否就绪以查询结果为准。”
+  Do not infer a fixed run time or promise completion within 24 hours; only give a completion window
+  when the service explicitly provides one. Link expiry and ZIP retention are separate limits.
 - Only when discovery still permits delivery detail, `supplier_contact_phone` and
   `supplier_unit_address` are selectable dynamic fields only; they cannot filter, sort, group, or aggregate. They may be `null` when no
   current catalog is available or visible, no exact match exists, the source value is blank, or the
