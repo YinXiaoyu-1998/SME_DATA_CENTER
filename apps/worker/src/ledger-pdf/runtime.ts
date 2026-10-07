@@ -7,6 +7,8 @@ import { PrismaClient } from "@prisma/client";
 import { createDatabaseAdapter } from "@smedc/db";
 import { AliyunOssStorageAdapter, type StorageAdapter } from "@smedc/storage";
 import { createLedgerPdfProcessor } from "./processor.js";
+import { createMaintenanceTask } from "../maintenance.js";
+import { mostRecentLedgerScheduleDate } from "@smedc/ledger-archive/reconciliation";
 import {
   createLedgerReconciliationWorker,
   readLedgerReconciliationConfig
@@ -37,6 +39,13 @@ export function createLedgerWorkerRuntime(input: {
     storage: input.storage,
     ...(input.now ? { now: input.now } : {})
   });
+  const scratch = createMaintenanceTask(15 * 60_000);
+  const expiry = createMaintenanceTask(5 * 60_000);
+  const daily = createMaintenanceTask(60 * 60_000, (now) => {
+    const date = mostRecentLedgerScheduleDate({ now, ...config });
+    // Shanghai has no DST. Check at the next configured time, or hourly for missed/new work.
+    return new Date(`${date}T${config.time}:00+08:00`).getTime() + 24 * 60 * 60_000;
+  });
   let maintenance: Promise<void> | undefined;
   let stopped = false;
   return {
@@ -60,12 +69,13 @@ export function createLedgerWorkerRuntime(input: {
     },
     maintain(): Promise<void> {
       if (stopped) return Promise.resolve();
+      const now = input.now?.() ?? new Date();
       // A slow cycle must not overlap the timer's next maintenance cycle.
       maintenance ??= Promise.allSettled([
-        generator.maintain(),
-        reconciliation.ensureDailyReconciliation(),
+        scratch(now, () => generator.maintain()),
+        daily(now, () => reconciliation.ensureDailyReconciliation()),
         // Expiry applies even during backfill with delivery/reconciliation disabled.
-        enqueueExpiredLedgerBundles(prisma, input.now?.())
+        expiry(now, async () => (await enqueueExpiredLedgerBundles(prisma, now)) === 200)
       ])
         .then((results) => {
           const failed = results.find((result) => result.status === "rejected");

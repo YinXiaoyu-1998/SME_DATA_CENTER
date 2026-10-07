@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, mkdtemp, rm } from "node:fs/promises";
+import { readdir, mkdtemp, mkdir, rm, utimes } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -406,6 +406,60 @@ describe("partition importer", () => {
         errorCode: "PARTITION_UPLOAD_EXPIRED"
       })
     );
+  });
+
+  it("cleans newly due garbage after five minutes and retains hourly job and scratch schedules", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });
+    const work = path.join(root, "work");
+    await mkdir(work);
+    const retention = vi.fn(async () => 0);
+    const uploads = vi.fn(async () => []);
+    let garbage: Array<{ id: string; objectKey: string }> = [];
+    const importer = createPartitionImporter({
+      repository: repositoryStub({
+        listExpiredUploads: uploads,
+        listDueGarbage: async () => garbage,
+        deleteGarbage: async () => {
+          garbage = [];
+        },
+        deleteTerminalJobs: retention
+      }),
+      limits: limits(work)
+    });
+    const start = new Date("2026-10-07T02:00:00Z");
+    const atMinute = (minutes: number) => new Date(start.getTime() + minutes * 60_000);
+    try {
+      await importer.maintain({ storage, now: start });
+      const key = "synthetic/garbage.csv";
+      await storage.putObjectAtKey({
+        key,
+        body: Readable.from([Buffer.from("x")]),
+        contentLength: 1,
+        checksumSha256: sha(Buffer.from("x"))
+      });
+      garbage = [{ id: "garbage", objectKey: key }];
+      const abandoned = path.join(work, "pjob_abandoned");
+      await mkdir(abandoned);
+      await utimes(abandoned, new Date("2026-10-05"), new Date("2026-10-05"));
+
+      await importer.maintain({ storage, now: atMinute(1) });
+      expect((await storage.statObject(key)).size).toBe(1);
+      expect(uploads).toHaveBeenCalledTimes(1);
+      await importer.maintain({ storage, now: atMinute(5) });
+      await expect(storage.statObject(key)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readdir(work)).toContain("pjob_abandoned");
+      expect(uploads).toHaveBeenCalledTimes(2);
+      expect(retention).toHaveBeenCalledTimes(1);
+
+      await importer.maintain({ storage, now: atMinute(15) });
+      expect(await readdir(work)).toEqual([]);
+      expect(retention).toHaveBeenCalledTimes(1);
+      await importer.maintain({ storage, now: atMinute(60) });
+      expect(retention).toHaveBeenCalledTimes(2);
+    } finally {
+      await importer.disconnect();
+    }
   });
 
   it("coalesces slow maintenance and drains it before disconnecting", async () => {

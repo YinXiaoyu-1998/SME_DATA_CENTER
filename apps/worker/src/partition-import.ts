@@ -19,6 +19,7 @@ import {
 } from "@smedc/structured-ingestion";
 import type { ClaimedProcessingRun } from "./worker.js";
 import type { WorkerRuntimeLimits } from "./config/runtime-limits.js";
+import { createMaintenanceTask } from "./maintenance.js";
 
 export interface PartitionImportRuntimeLimits extends StructuredPartitionLimits {
   workDirectory: string;
@@ -97,6 +98,10 @@ export function createPartitionImporter(input: {
     throw new Error("objectUploadConcurrency must be an integer between 1 and 8.");
   }
   const repository = input.repository ?? createPrismaStructuredPartitionRepository();
+  const scratch = createMaintenanceTask(15 * 60_000);
+  const uploads = createMaintenanceTask(5 * 60_000);
+  const garbageCollection = createMaintenanceTask(5 * 60_000);
+  const retention = createMaintenanceTask(60 * 60_000);
   let maintenance: Promise<void> | undefined;
   let stopped = false;
   return {
@@ -340,24 +345,31 @@ export function createPartitionImporter(input: {
     }): Promise<void> {
       if (stopped) return Promise.resolve();
       maintenance ??= (async () => {
-        await cleanupStaleWorkDirectories(input.limits.workDirectory, now);
-        await cleanupExpiredUploads(storage, repository, now);
-        const garbage = await repository.listDueGarbage(now, 100);
-        for (const item of garbage) {
-          try {
-            await storage.deleteObject(item.objectKey);
-            await repository.deleteGarbage(item.id);
-          } catch (error) {
-            await repository.postponeGarbage(
-              item.id,
-              error instanceof Error ? error.name : "STORAGE_DELETE_FAILED",
-              new Date(now.getTime() + 5 * 60 * 1000)
-            );
+        await scratch(now, () => cleanupStaleWorkDirectories(input.limits.workDirectory, now));
+        await uploads(now, () => cleanupExpiredUploads(storage, repository, now));
+        await garbageCollection(now, async () => {
+          const garbage = await repository.listDueGarbage(now, 100);
+          for (const item of garbage) {
+            try {
+              await storage.deleteObject(item.objectKey);
+              await repository.deleteGarbage(item.id);
+            } catch (error) {
+              await repository.postponeGarbage(
+                item.id,
+                error instanceof Error ? error.name : "STORAGE_DELETE_FAILED",
+                new Date(now.getTime() + 5 * 60 * 1000)
+              );
+            }
           }
-        }
-        await repository.deleteTerminalJobs(
-          new Date(now.getTime() - input.limits.jobRetentionDays * 24 * 60 * 60 * 1000),
-          100
+          return garbage.length === 100;
+        });
+        await retention(
+          now,
+          async () =>
+            (await repository.deleteTerminalJobs(
+              new Date(now.getTime() - input.limits.jobRetentionDays * 24 * 60 * 60 * 1000),
+              100
+            )) === 100
         );
       })().finally(() => {
         maintenance = undefined;
@@ -514,7 +526,7 @@ async function cleanupExpiredUploads(
   storage: StorageAdapter,
   repository: StructuredPartitionRepository,
   now: Date
-): Promise<void> {
+): Promise<boolean> {
   const uploads = await repository.listExpiredUploads(now, 100);
   for (const upload of uploads) {
     if (!storage.abortMultipartUpload) continue;
@@ -544,6 +556,7 @@ async function cleanupExpiredUploads(
       });
     }
   }
+  return uploads.length === 100;
 }
 
 function isMissingStorageObject(error: unknown): boolean {
