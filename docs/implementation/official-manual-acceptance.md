@@ -110,7 +110,7 @@ contract before assessing a query; source-column labels are not canonical query 
 | Dishes partitions               | Original fixture reaches `published`; three fixture rows total 91, with 合成凉皮 and 合成肉夹馍 as the top two                                         |
 | Invalid atomic source           | Safe terminal `rejected`; no partial publication; previously published partitions remain unchanged                                                     |
 | Dish catalog                    | Complete snapshot reaches `applied`; query is bounded by `snapshot_date`                                                                               |
-| Supplier catalog                | Complete snapshot reaches `applied`; query uses the current successfully applied source; cleanup restores the prior state                              |
+| Supplier catalog                | Complete snapshot reaches `applied`; bounded queries may include visible historical snapshots; cleanup restores the prior current enrichment source    |
 | Delivery XLSX and CSV           | Two distinct original receipt files reach `applied`; count/receipt-count/amount aggregates match known store/date facts                                |
 | Ledger detail boundary          | With PDF archive delivery enabled, detail-row queries and original receipt signing remain unavailable even for admins                                  |
 | New receipt PDF coverage        | Ingestion success is separate from PDF readiness; coverage shows pending until the configured daily reconciliation runs                                |

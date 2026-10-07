@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-07.v6",
+  "version": "2026-10-07.v7",
   "accounts": {
     "employee-low": {
       "role": "employee",
@@ -170,6 +170,19 @@
       "account": "employee-high",
       "title": "收货汇总查询",
       "existingSession": "run"
+    },
+    {
+      "id": "ledger-detail-boundary",
+      "title": "收货明细与原件边界",
+      "account": "admin",
+      "freshContext": true,
+      "existingSession": "run",
+      "turns": [
+        {
+          "id": "ledger-detail-boundary",
+          "prompt": "把 {storeName} 在 {receiptDate} 的收货商品明细和原始收货文件发给我。"
+        }
+      ]
     },
     {
       "id": "search-admin-denied",
