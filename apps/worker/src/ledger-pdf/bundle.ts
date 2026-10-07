@@ -446,6 +446,7 @@ export async function enqueueExpiredLedgerBundles(
   return prisma.$transaction(async (tx) => {
     const expired = await tx.ledgerArtifactRequest.findMany({
       where: { kind: "download", zipExpiresAt: { lte: now }, zipObjectKey: { not: null } },
+      orderBy: [{ zipExpiresAt: "asc" }, { id: "asc" }],
       take: 200
     });
     for (const request of expired) {
@@ -455,7 +456,8 @@ export async function enqueueExpiredLedgerBundles(
       });
       await tx.ledgerArtifactRequest.updateMany({
         where: { id: request.id, zipObjectKey: request.zipObjectKey, zipExpiresAt: { lte: now } },
-        data: { zipObjectKey: null }
+        // Clear expiry with its pointer so future scans skip reclaimed bundles in the expiry index.
+        data: { zipObjectKey: null, zipExpiresAt: null }
       });
     }
     return expired.length;

@@ -436,10 +436,31 @@ export function createPrismaLedgerReconciliation({
       const scheduleDate = new Date(
         `${mostRecentLedgerScheduleDate({ now: input.now ?? now(), time: input.time ?? "03:00", timeZone: input.timeZone ?? "Asia/Shanghai" })}T00:00:00Z`
       );
+      const unfinishedWhere: Prisma.LedgerPdfReconciliationRunWhereInput = {
+        phase: { not: "completed" },
+        status: { in: ["queued", "running"] }
+      };
       let orgCursor: string | undefined;
       do {
         const organizations = await prisma.organization.findMany({
-          where: input.orgId ? { id: input.orgId } : orgCursor ? { id: { gt: orgCursor } } : {},
+          // Durable jobs resume themselves. Only lock organizations needing a new or missing job.
+          // Re-read under the organization lock below: another scheduler may win this read race.
+          where: {
+            ...(input.orgId ? { id: input.orgId } : orgCursor ? { id: { gt: orgCursor } } : {}),
+            OR: [
+              {
+                ledgerPdfReconciliationRuns: {
+                  some: { ...unfinishedWhere, processingRun: { is: null } }
+                }
+              },
+              {
+                AND: [
+                  { ledgerPdfReconciliationRuns: { none: unfinishedWhere } },
+                  { ledgerPdfReconciliationRuns: { none: { scheduleDate } } }
+                ]
+              }
+            ]
+          },
           select: { id: true },
           orderBy: { id: "asc" },
           take: 200

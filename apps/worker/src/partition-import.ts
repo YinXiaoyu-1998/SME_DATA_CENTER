@@ -97,6 +97,8 @@ export function createPartitionImporter(input: {
     throw new Error("objectUploadConcurrency must be an integer between 1 and 8.");
   }
   const repository = input.repository ?? createPrismaStructuredPartitionRepository();
+  let maintenance: Promise<void> | undefined;
+  let stopped = false;
   return {
     async process({ run, storage }: { run: ClaimedProcessingRun; storage: StorageAdapter }) {
       const job = run.partitionImport;
@@ -329,29 +331,46 @@ export function createPartitionImporter(input: {
       if (objectKey)
         await deleteOrEnqueue(storage, repository, objectKey, "partition_source_terminal");
     },
-    async maintain({ storage, now = new Date() }: { storage: StorageAdapter; now?: Date }) {
-      await cleanupStaleWorkDirectories(input.limits.workDirectory, now);
-      await cleanupExpiredUploads(storage, repository, now);
-      const garbage = await repository.listDueGarbage(now, 100);
-      for (const item of garbage) {
-        try {
-          await storage.deleteObject(item.objectKey);
-          await repository.deleteGarbage(item.id);
-        } catch (error) {
-          await repository.postponeGarbage(
-            item.id,
-            error instanceof Error ? error.name : "STORAGE_DELETE_FAILED",
-            new Date(now.getTime() + 5 * 60 * 1000)
-          );
+    maintain({
+      storage,
+      now = new Date()
+    }: {
+      storage: StorageAdapter;
+      now?: Date;
+    }): Promise<void> {
+      if (stopped) return Promise.resolve();
+      maintenance ??= (async () => {
+        await cleanupStaleWorkDirectories(input.limits.workDirectory, now);
+        await cleanupExpiredUploads(storage, repository, now);
+        const garbage = await repository.listDueGarbage(now, 100);
+        for (const item of garbage) {
+          try {
+            await storage.deleteObject(item.objectKey);
+            await repository.deleteGarbage(item.id);
+          } catch (error) {
+            await repository.postponeGarbage(
+              item.id,
+              error instanceof Error ? error.name : "STORAGE_DELETE_FAILED",
+              new Date(now.getTime() + 5 * 60 * 1000)
+            );
+          }
         }
-      }
-      await repository.deleteTerminalJobs(
-        new Date(now.getTime() - input.limits.jobRetentionDays * 24 * 60 * 60 * 1000),
-        100
-      );
+        await repository.deleteTerminalJobs(
+          new Date(now.getTime() - input.limits.jobRetentionDays * 24 * 60 * 60 * 1000),
+          100
+        );
+      })().finally(() => {
+        maintenance = undefined;
+      });
+      return maintenance;
     },
     async disconnect() {
-      await repository.disconnect?.();
+      stopped = true;
+      try {
+        await maintenance;
+      } finally {
+        await repository.disconnect?.();
+      }
     }
   };
 }

@@ -24,6 +24,7 @@ if (enabled) {
     b: ReturnType<typeof createPrismaLedgerReconciliation>;
   let reconciliationRunId: string;
   let documentId: string;
+  const queries: string[] = [];
   const head = { headObject: async () => ({ state: "not_found" as const }) };
   async function claim() {
     const processing = await first.processingRun.findFirstOrThrow({
@@ -45,7 +46,12 @@ if (enabled) {
     };
   }
   beforeAll(async () => {
-    first = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
+    const observed = new PrismaClient({
+      adapter: createDatabaseAdapter(databaseUrl),
+      log: [{ emit: "event", level: "query" }]
+    });
+    observed.$on("query", (event) => queries.push(event.query));
+    first = observed;
     second = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
     a = createPrismaLedgerReconciliation({ prisma: first, now: () => clock });
     b = createPrismaLedgerReconciliation({ prisma: second, now: () => clock });
@@ -163,6 +169,53 @@ if (enabled) {
       where: { orgId, ledgerPdfReconciliationRunId: reconciliationRunId }
     });
     expect(processing.priority).toBe(20);
+    await first.processingRun.delete({ where: { id: processing.id } });
+    await a.ensureDailyReconciliation({
+      enabled: true,
+      orgId,
+      now: new Date("2026-10-20T19:00:00Z")
+    });
+    expect(await first.ledgerPdfReconciliationRun.count({ where: { orgId } })).toBe(1);
+    expect(
+      await first.processingRun.count({
+        where: { orgId, ledgerPdfReconciliationRunId: reconciliationRunId }
+      })
+    ).toBe(1);
+  });
+  it("keeps scheduled organizations read-only while discovering new organizations on the same day", async () => {
+    const completedOrgIds = Array.from({ length: 100 }, (_, index) => `${orgId}_done_${index}`);
+    const newOrgId = `${orgId}_new`;
+    const organizationIds = [...completedOrgIds, newOrgId];
+    const where = { orgId: { in: organizationIds } };
+    try {
+      await first.organization.createMany({
+        data: completedOrgIds.map((id) => ({ id, name: "Completed synthetic" }))
+      });
+      await first.ledgerPdfReconciliationRun.createMany({
+        data: completedOrgIds.map((id) => ({
+          orgId: id,
+          scheduleDate: new Date("2026-10-04T00:00:00Z"),
+          phase: "completed",
+          status: "succeeded"
+        }))
+      });
+      await a.ensureDailyReconciliation({ enabled: true });
+      queries.length = 0;
+      await a.ensureDailyReconciliation({ enabled: true });
+      expect(queries.some((query) => /FOR UPDATE|INSERT|UPDATE|DELETE/i.test(query))).toBe(false);
+      expect(queries.filter((query) => /^SELECT/i.test(query))).toHaveLength(1);
+
+      await first.organization.create({ data: { id: newOrgId, name: "New synthetic" } });
+      await Promise.all(
+        [a, b].map((service) => service.ensureDailyReconciliation({ enabled: true }))
+      );
+      expect(await first.ledgerPdfReconciliationRun.count({ where: { orgId: newOrgId } })).toBe(1);
+      expect(await first.processingRun.count({ where: { orgId: newOrgId } })).toBe(1);
+    } finally {
+      await first.processingRun.deleteMany({ where });
+      await first.ledgerPdfReconciliationRun.deleteMany({ where });
+      await first.organization.deleteMany({ where: { id: { in: organizationIds } } });
+    }
   });
   it("selects only marked partitions, including emptied sources and failures", async () => {
     const current = await first.ledgerPdfPartition.create({

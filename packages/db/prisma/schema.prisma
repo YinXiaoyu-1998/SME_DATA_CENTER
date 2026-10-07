@@ -470,6 +470,7 @@ model PartitionImportJob {
 
   @@unique([orgId, idempotencyKey])
   @@index([status, expiresAt])
+  @@index([finishedAt, status])
   @@index([orgId, uploaderId, createdAt])
   @@map("partition_import_jobs")
 }
@@ -909,6 +910,7 @@ model LedgerArtifactRequest {
   @@unique([orgId, id])
   @@unique([orgId, idempotencyKey], map: "ledger_artifact_request_idempotency_uq")
   @@index([orgId, status, createdAt])
+  @@index([kind, zipExpiresAt])
   @@map("ledger_artifact_requests")
 }
 

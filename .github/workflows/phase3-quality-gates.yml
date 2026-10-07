@@ -156,13 +156,13 @@ jobs:
       - run: npm run readyz:local
       - run: npm run test:phase3:golden
       - run: npm run test:phase3:perf
-      - name: Verify ledger coverage batching against real MySQL
+      - name: Verify ledger coverage batching and scheduling against real MySQL
         env:
           DATABASE_URL: mysql://smedc:smedc_local_password@127.0.0.1:3307/smedc_ledger_test
         run: |
           docker exec smedc-mysql sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u "$MYSQL_USER" -e "CREATE DATABASE IF NOT EXISTS smedc_ledger_test"'
           npm run db:migrate:deploy
-          RUN_LEDGER_PRISMA_INTEGRATION=1 npm test -- packages/ledger-archive/src/source-reader.prisma.integration.test.ts
+          RUN_LEDGER_PRISMA_INTEGRATION=1 npm test -- --no-file-parallelism packages/ledger-archive/src/source-reader.prisma.integration.test.ts packages/ledger-archive/src/reconciliation.prisma.integration.test.ts
       - run: COMPOSE_PROJECT_NAME=sme_data_center_ci MYSQL_PORT=3307 npm run test:integration
 
   external-provider-smoke-gated:

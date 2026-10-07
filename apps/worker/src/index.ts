@@ -36,6 +36,7 @@ export async function main(): Promise<void> {
     }
   });
 
+  let shutdownFailure: PromiseRejectedResult | undefined;
   try {
     await ledgerRuntime.maintain();
     await partitionImporter.maintain({ storage });
@@ -56,10 +57,14 @@ export async function main(): Promise<void> {
   } finally {
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
-    await repository.disconnect?.();
-    await partitionImporter.disconnect();
-    await ledgerRuntime.disconnect();
+    const closed = await Promise.allSettled([
+      repository.disconnect?.(),
+      partitionImporter.disconnect(),
+      ledgerRuntime.disconnect()
+    ]);
+    shutdownFailure = closed.find((result) => result.status === "rejected");
   }
+  if (shutdownFailure) throw shutdownFailure.reason;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
