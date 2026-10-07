@@ -407,6 +407,72 @@ describe("partition importer", () => {
       })
     );
   });
+
+  it("coalesces slow maintenance and drains it before disconnecting", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
+    let releaseDeletion!: () => void;
+    let deletionStarted!: () => void;
+    const deleting = new Promise<void>((resolve) => {
+      deletionStarted = resolve;
+    });
+    const deletionGate = new Promise<void>((resolve) => {
+      releaseDeletion = resolve;
+    });
+    const deleteObject = vi.fn(async () => {
+      deletionStarted();
+      await deletionGate;
+    });
+    const disconnect = vi.fn(async () => undefined);
+    const importer = createPartitionImporter({
+      repository: repositoryStub({
+        listExpiredUploads: async () => [],
+        listDueGarbage: async () => [{ id: "garbage", objectKey: "synthetic/due.csv" }],
+        deleteGarbage: async () => undefined,
+        deleteTerminalJobs: async () => 0,
+        disconnect
+      }),
+      limits: limits(root)
+    });
+    const storage = { deleteObject } as unknown as LocalFileSystemStorageAdapter;
+    const first = importer.maintain({ storage });
+    await deleting;
+    const second = importer.maintain({ storage });
+    const stopped = importer.disconnect();
+    try {
+      await Promise.resolve();
+      expect(disconnect).not.toHaveBeenCalled();
+      releaseDeletion();
+      await Promise.all([first, second, stopped]);
+      expect(deleteObject).toHaveBeenCalledExactlyOnceWith("synthetic/due.csv");
+      expect(disconnect).toHaveBeenCalledOnce();
+      await importer.maintain({ storage });
+      expect(deleteObject).toHaveBeenCalledOnce();
+    } finally {
+      releaseDeletion();
+      await Promise.allSettled([first, second, stopped]);
+    }
+  });
+
+  it("allows the next maintenance cycle after a failed lookup", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
+    const listDueGarbage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Synthetic database unavailable"))
+      .mockResolvedValue([]);
+    const deleteTerminalJobs = vi.fn(async () => 0);
+    const importer = createPartitionImporter({
+      repository: repositoryStub({
+        listExpiredUploads: async () => [],
+        listDueGarbage,
+        deleteTerminalJobs
+      }),
+      limits: limits(root)
+    });
+    const storage = new LocalFileSystemStorageAdapter({ root });
+    await expect(importer.maintain({ storage })).rejects.toThrow("Synthetic database unavailable");
+    await importer.maintain({ storage });
+    expect(deleteTerminalJobs).toHaveBeenCalledOnce();
+  });
 });
 
 function businessCsv(dates: string[]): Buffer {

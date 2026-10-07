@@ -358,7 +358,7 @@ describe("bundle durable lease and expiration boundaries", () => {
     );
     expect(tx.ledgerArtifactRequest.updateMany).toHaveBeenCalledWith({
       where: { id: "r", zipObjectKey: "expired.zip", zipExpiresAt: { lte: now } },
-      data: { zipObjectKey: null }
+      data: { zipObjectKey: null, zipExpiresAt: null }
     });
   });
 });
