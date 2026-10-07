@@ -4,6 +4,14 @@ This file tracks required variables and external services. Do not store secret v
 
 ## Local Development
 
+API and worker database adapters share one connection pool per process and normalized
+connection URL. Defaults are `connectionLimit=10`, `minimumIdle=0`, and `idleTimeout=60`
+(seconds); explicit MariaDB driver query parameters in `DATABASE_URL` override them.
+Clients retain independent transactions and release their pool ownership on disconnect;
+the final owner closes the pool. Distinct databases, credentials, or connection options
+never share a pool. Idle connections can drain to zero, but the worker still claims jobs
+every `WORKER_POLL_INTERVAL_MS` (default 1000 ms), so this does not enable RDS auto-pause.
+
 | Variable                   |                        Required | Example / Default                                         |     Secret? | Used By                | Notes                                                                                                                                |
 | -------------------------- | ------------------------------: | --------------------------------------------------------- | ----------: | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `DATABASE_URL`             |                             Yes | `mysql://smedc:smedc_local_password@localhost:3306/smedc` |         Yes | API, worker, Prisma    | Local-only example is in `.env.example`; replace for personal environments.                                                          |

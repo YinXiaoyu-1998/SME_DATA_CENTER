@@ -18,6 +18,12 @@ API、worker 和 release-ops 使用同一目标企业所在的 `DATABASE_URL`、
 - `LEDGER_PDF_SCRATCH_ROOT=/var/lib/smedc/ledger-pdf`：worker 独占临时目录；Compose 挂载 `/opt/smedc/ledger-pdf`，主机目录必须允许镜像的非 root node 用户写入。
 - `LEDGER_PDF_RENDER_CONCURRENCY=1`：单 worker 进程串行转换。多副本各有独立转换队列，应按主机 CPU/内存容量部署。
 
+worker 启动时执行维护检查，之后每分钟的本地 tick 只执行到期任务：每日对账按配置时刻
+检查，并每小时补查漏跑或新增组织；PDF/导入临时目录每 15 分钟清理；过期 ZIP、上传会话
+和存储垃圾每 5 分钟检查；超过保留期的导入任务记录每小时检查。满额批次在下一次 tick
+继续清理，失败不推迟重试期限。租约保护、过期下载拒绝和关闭前等待维护完成均保留。
+该调度不修改 `WORKER_POLL_INTERVAL_MS=1000` 的任务领取间隔，也不承诺数据库自动休眠。
+
 仅 worker 镜像包含 LibreOffice Calc、Noto CJK 字体、Poppler、ExcelJS 和 Sharp；API/release-ops 不安装 Office 和渲染依赖。AMD64 CI 在实际 worker 镜像里执行合成中文多页、长文本和检疫照片转换验证。不要用依赖扫描豁免替代转换验证。
 
 ## CLI：所有操作限单企业

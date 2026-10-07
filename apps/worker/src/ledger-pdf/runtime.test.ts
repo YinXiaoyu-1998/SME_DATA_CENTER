@@ -21,10 +21,8 @@ vi.mock("./processor.js", () => ({
     disconnect: mocks.generatorDisconnect
   })
 }));
-vi.mock("./reconciliation.js", () => ({
-  readLedgerReconciliationConfig: (env: NodeJS.ProcessEnv) => ({
-    enabled: env["LEDGER_PDF_RECONCILE_ENABLED"] === "true"
-  }),
+vi.mock("./reconciliation.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   createLedgerReconciliationWorker: mocks.reconcileFactory
 }));
 vi.mock("./bundle.js", () => ({
@@ -65,11 +63,102 @@ it("registers all handlers with the trusted prefix and expires ZIPs when reconci
     "ledger_pdf_bundle"
   ]);
   expect(mocks.reconcileFactory).toHaveBeenCalledWith(
-    expect.objectContaining({ objectKeyPrefix: "tenant/runtime/", config: { enabled: false } })
+    expect.objectContaining({
+      objectKeyPrefix: "tenant/runtime/",
+      config: { enabled: false, time: "03:00", timeZone: "Asia/Shanghai" }
+    })
   );
   await runtime.maintain();
   expect(mocks.expiry).toHaveBeenCalledWith(expect.anything(), clock);
   await runtime.disconnect();
+});
+
+it("checks ZIP expiry and scratch less often while honoring the daily time and catch-up checks", async () => {
+  let clock = new Date("2026-10-07T01:59:00Z"); // 09:59 Shanghai
+  const runtime = createLedgerWorkerRuntime({
+    storage: {} as StorageAdapter,
+    scratchRoot: "/synthetic",
+    env: {
+      DATABASE_URL: "mysql://localhost/ledger_test",
+      LEDGER_PDF_RECONCILE_ENABLED: "true",
+      LEDGER_PDF_RECONCILE_TIME: "10:00"
+    },
+    now: () => clock
+  });
+  try {
+    await runtime.maintain(); // Startup checks for a missed schedule.
+    clock = new Date("2026-10-07T01:59:30Z");
+    await runtime.maintain();
+    expect(mocks.daily).toHaveBeenCalledTimes(1);
+    expect(mocks.expiry).toHaveBeenCalledTimes(1);
+    expect(mocks.scratch).toHaveBeenCalledTimes(1);
+
+    clock = new Date("2026-10-07T02:00:00Z");
+    await runtime.maintain();
+    expect(mocks.daily).toHaveBeenCalledTimes(2);
+    expect(mocks.expiry).toHaveBeenCalledTimes(1);
+    expect(mocks.scratch).toHaveBeenCalledTimes(1);
+
+    clock = new Date("2026-10-07T02:04:00Z");
+    await runtime.maintain();
+    expect(mocks.expiry).toHaveBeenCalledTimes(2);
+    expect(mocks.scratch).toHaveBeenCalledTimes(1);
+    clock = new Date("2026-10-07T02:14:00Z");
+    await runtime.maintain();
+    expect(mocks.scratch).toHaveBeenCalledTimes(2);
+    expect(mocks.daily).toHaveBeenCalledTimes(2);
+
+    clock = new Date("2026-10-07T03:00:00Z");
+    await runtime.maintain();
+    expect(mocks.daily).toHaveBeenCalledTimes(3);
+    clock = new Date("2026-10-09T04:00:00Z"); // Resume after a missed day.
+    await runtime.maintain();
+    expect(mocks.daily).toHaveBeenCalledTimes(4);
+  } finally {
+    await runtime.disconnect();
+  }
+});
+
+it("retries failed maintenance at the next tick without rerunning successful tasks", async () => {
+  let clock = new Date("2026-10-07T02:00:00Z");
+  mocks.expiry.mockRejectedValueOnce(new Error("synthetic expiry failure"));
+  const runtime = createLedgerWorkerRuntime({
+    storage: {} as StorageAdapter,
+    scratchRoot: "/synthetic",
+    env: { DATABASE_URL: "mysql://localhost/ledger_test" },
+    now: () => clock
+  });
+  try {
+    await expect(runtime.maintain()).rejects.toThrow("synthetic expiry failure");
+    clock = new Date("2026-10-07T02:01:00Z");
+    await runtime.maintain();
+    expect(mocks.expiry).toHaveBeenCalledTimes(2);
+    expect(mocks.scratch).toHaveBeenCalledTimes(1);
+  } finally {
+    await runtime.disconnect();
+  }
+});
+
+it("drains full ZIP expiry batches on subsequent ticks before entering the idle interval", async () => {
+  let clock = new Date("2026-10-07T02:00:00Z");
+  mocks.expiry.mockResolvedValueOnce(200).mockResolvedValueOnce(1).mockResolvedValue(0);
+  const runtime = createLedgerWorkerRuntime({
+    storage: {} as StorageAdapter,
+    scratchRoot: "/synthetic",
+    env: { DATABASE_URL: "mysql://localhost/ledger_test" },
+    now: () => clock
+  });
+  try {
+    await runtime.maintain();
+    clock = new Date("2026-10-07T02:01:00Z");
+    await runtime.maintain();
+    expect(mocks.expiry).toHaveBeenCalledTimes(2);
+    clock = new Date("2026-10-07T02:02:00Z");
+    await runtime.maintain();
+    expect(mocks.expiry).toHaveBeenCalledTimes(2);
+  } finally {
+    await runtime.disconnect();
+  }
 });
 it("coalesces timer cycles and waits for every maintenance operation before disconnect after failure", async () => {
   let finish!: () => void;

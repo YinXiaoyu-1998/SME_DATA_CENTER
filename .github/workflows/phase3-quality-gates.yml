@@ -152,6 +152,8 @@ jobs:
       - run: npm run db:generate
       - run: npx prisma migrate reset --force --config packages/db/prisma.config.ts
       - run: npm run db:seed
+      - name: Verify shared database pool lifecycle and protocol
+        run: RUN_DATABASE_PROTOCOL_INTEGRATION=1 npm test -- packages/db/src/adapter-pool.integration.test.ts packages/db/src/adapter.integration.test.ts
       - run: npm run qdrant:init
       - run: npm run readyz:local
       - run: npm run test:phase3:golden

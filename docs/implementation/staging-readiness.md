@@ -23,6 +23,11 @@ scheduling candidate read returned zero organizations with one SELECT, so no per
 transaction is needed for this already-scheduled workload. These are query-plan observations,
 not elapsed-time or throughput measurements. The probe created no staging data or files.
 
+CloudMonitor collection was restored through the SWAS API on 2026-10-07. The agent
+reports `running`, its system service is active and enabled at boot, and new memory
+and disk samples were verified at 17:52 Asia/Shanghai. API health remained normal and
+application containers were not restarted. Alert notification rules are still outstanding.
+
 ## Earlier rollout evidence (2026-10-05)
 
 Earlier synchronization state: ledger archive and release synchronization
