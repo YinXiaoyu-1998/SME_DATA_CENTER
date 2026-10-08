@@ -24,6 +24,7 @@ const releaseArtifacts = [
   "official-manual-acceptance",
   "auth-operator",
   "staging-upload-domain-cleanup",
+  "partition-store-cleanup",
   "evidence-reindex"
 ] as const;
 
@@ -39,6 +40,7 @@ describe("release build", () => {
       "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
       "auth-operator": "apps/api/src/auth/operator-cli.ts",
       "staging-upload-domain-cleanup": "scripts/staging-upload-domain-cleanup.ts",
+      "partition-store-cleanup": "scripts/partition-store-cleanup.ts",
       "evidence-reindex": "scripts/reindex-evidence.ts"
     });
 
@@ -69,6 +71,7 @@ describe("release build", () => {
         "official-manual-acceptance",
         "auth-operator",
         "staging-upload-domain-cleanup",
+        "partition-store-cleanup",
         "evidence-reindex"
       ] as const) {
         execFileSync(

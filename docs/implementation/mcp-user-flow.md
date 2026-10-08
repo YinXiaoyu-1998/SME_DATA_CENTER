@@ -148,6 +148,17 @@ action.
 - `smedc_list_skills` returns directory metadata only. Do not execute an entry, generate a
   report, or turn SMEDC into a direct employee-facing AI service.
 
+## Filtered Partition Range Flow (Release Gated)
+
+Keep the installed pin at `0.7.1`. Filtered coverage/manifests require independently verified
+published Launcher `0.8.0` plus matching service deployment. Use the same enterprise/store
+scope for coverage and `download_structured_partitions` with inclusive YYYYMMDD dates.
+`storeNameContains` contains 1–20 NFC/trim literal case-sensitive substrings, OR within the
+array and AND with authorization and other selectors. Check MCP errors and the returned store
+scope; failures never imply no data. Release shared scratch only after its last consumer.
+See [the API contract](./api-contract.md#filtered-partition-range-extracts) and
+[core skill](../../skills/smedc-mcp/SKILL.md#filtered-partition-range-downloads-release-gated).
+
 ## Current Release Boundary
 
 The code implements OAuth Device Authorization, opaque access tokens, rotating durable credentials,

@@ -42,6 +42,7 @@
     "auth:operator": "tsx apps/api/src/auth/operator-cli.ts",
     "mcp:launcher": "npm --workspace smedc-mcp-launcher run --silent start --",
     "purge-data": "tsx scripts/purge-data.ts",
+    "staging:cleanup-store": "tsx scripts/partition-store-cleanup.ts",
     "staging:cleanup-upload-domain": "tsx scripts/staging-upload-domain-cleanup.ts",
     "qdrant:init": "tsx scripts/readiness.ts init-qdrant",
     "evidence:reindex": "tsx scripts/reindex-evidence.ts",

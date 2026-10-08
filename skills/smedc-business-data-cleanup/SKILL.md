@@ -60,3 +60,48 @@ secrets.
 Record only safe facts in the handoff: counts, table categories, non-secret resource names, and
 whether the deletion was hard-delete. Never print passwords, DSNs, tokens, signed URLs, raw
 headers, private keys, or full customer document contents.
+
+## Exact store partition mode
+
+Use the separate release-ops `partition-store-cleanup.js` entrypoint for an explicitly
+confirmed organization, enterprise, and store scope. It supports only current `business` and
+`dishes` partitions . Keep VIP, dish catalogs, delivery,
+shared supplier data, source import jobs/runs (including mixed-store imports), accounts and
+sessions. This operator action is never an employee MCP tool.
+
+Create a private preview file in a durable operator-mounted directory:
+
+```sh
+node dist/release/partition-store-cleanup.js --target staging --org-id '<confirmed-org-id>' \
+  --enterprise '<enterprise-name>' --datasets business,dishes \
+  --store-name-contains '["<literal-store-fragment>"]' --inventory /private/store-preview.json
+```
+
+Use either `--store-names '["<exact-store-name>"]'` or `--store-name-contains '["<literal-fragment>"]'`.
+Contains terms are NFC/trimmed, case-sensitive literal OR matches, not SQL wildcards. Optional
+`--start-date YYYY-MM-DD` and `--end-date YYYY-MM-DD` narrow the range. No store predicate, empty
+matches, ambiguous enterprise identity, or unrecognized organization are accepted. The CLI
+requires the exact staging RDS identity and approved Beijing OSS bucket/endpoint/prefix.
+
+Review the 0600 file containing scope, partition IDs, store keys/names, dates, checksums,
+object keys, confidentiality and preserved counts. It refuses to overwrite an existing preview.
+Do not post the full file into chats or logs. Real deletion requires separate explicit human
+confirmation of this organization and preview fingerprint; implementation or release approval
+alone does not authorize cleanup.
+
+```sh
+node dist/release/partition-store-cleanup.js --execute --target staging \
+  --org-id '<confirmed-org-id>' --inventory /private/store-preview.json --confirm '<fingerprint>'
+```
+
+Execution rechecks the inventory under Serializable locks. Changed targets abort the whole
+transaction. Directory deletion and exact-key garbage registration commit together. Source jobs/runs remain. Existing garbage collection retries
+external deletion; the execute summary reports `externalCleanupPending: true` and must not be
+reported as complete physical removal. Verify target directory absence, exact source
+object removal, retained stores/accounts, and service health before declaring completion. Treat
+remaining garbage/errors or active late upload candidates as pending; never use prefix deletion.
+
+After an additive download schema has been deployed, rolling code back does not reverse its
+migration. The range-only cleanup checks for retained download owners without requiring their
+generated model and fails closed before any external deletion. Drain requests, workers and
+late-write candidates through a compatible ZIP release before rollback; do not bypass the guard.

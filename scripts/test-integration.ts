@@ -28,6 +28,11 @@ import {
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
+import { LAUNCHER_VERSION } from "../apps/mcp-launcher/src/oauth-client.js";
+import {
+  createOwnedIntegrationDatabase,
+  integrationDatabasePlan
+} from "./test-integration-support.js";
 
 const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
@@ -93,6 +98,8 @@ interface McpToolEnvelope {
 
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
+// Reject nonlocal or driver-override connections before any local setup/mutation.
+integrationDatabasePlan(process.env["DATABASE_URL"] ?? DEFAULT_DATABASE_URL(mysqlPort), mysqlPort);
 const integrationPort = optionalEnv("HUB_INTEGRATION_PORT") ?? String(await findAvailablePort());
 const apiUrl = `http://127.0.0.1:${integrationPort}`;
 const integrationRoot = path.join(rootDir, ".data", "integration");
@@ -127,18 +134,31 @@ const integrationEnv: NodeJS.ProcessEnv = {
 };
 
 let apiProcess: ReturnType<typeof spawn> | null = null;
+let ownedDatabase: Awaited<ReturnType<typeof createOwnedIntegrationDatabase>> | undefined;
+let integrationFailed = false;
 const officialSessionCleanup: Array<() => Promise<void>> = [];
 
 try {
   await prepareLocalWorkspace();
   await run("docker", ["compose", "up", "-d", "mysql", "qdrant"], { env: integrationEnv });
   await waitForMysqlHealth();
+  ownedDatabase = await createOwnedIntegrationDatabase(integrationEnv["DATABASE_URL"]!, mysqlPort);
+  integrationEnv["DATABASE_URL"] = ownedDatabase.databaseUrl;
   await run("npm", ["run", "db:generate"], { env: integrationEnv });
-  await run(
+  await run("npm", ["run", "db:migrate:deploy"], { env: integrationEnv });
+  // These opt-in Prisma regressions are not covered by the procedural scenario or npm test.
+  const prismaRegressions = await run(
     "npx",
-    ["prisma", "migrate", "reset", "--force", "--config", "packages/db/prisma.config.ts"],
-    { env: integrationEnv }
+    [
+      "vitest",
+      "run",
+      "--no-file-parallelism",
+      "packages/db/src/structured-partitions.prisma.integration.test.ts",
+      "scripts/test-integration-support.test.ts"
+    ],
+    { env: { ...integrationEnv, RUN_PARTITION_PRISMA_INTEGRATION: "1" } }
   );
+  process.stdout.write(prismaRegressions.stdout);
   await run("npm", ["run", "db:seed"], { env: integrationEnv });
   const identitySetup = new PrismaClient({
     adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)
@@ -512,6 +532,7 @@ try {
           "partition_worker_atomic_publish",
           "partition_exact_replay",
           "partition_manifest_local_download",
+          "partition_prisma_repository_regressions",
           "legacy_business_dishes_row_import_rejected",
           "delivery_supplier_query_authorization",
           "phase3_evidence_upload_worker_status_search",
@@ -527,10 +548,23 @@ try {
       2
     )
   );
+} catch (error) {
+  integrationFailed = true;
+  throw error;
 } finally {
   await Promise.allSettled(officialSessionCleanup.splice(0).map((cleanup) => cleanup()));
   if (apiProcess) {
     await stopApi(apiProcess);
+  }
+  if (ownedDatabase) {
+    try {
+      await ownedDatabase.cleanup();
+    } catch {
+      console.error(
+        JSON.stringify({ event: "integration_schema_cleanup_failed", schema: ownedDatabase.schema })
+      );
+      if (!integrationFailed) process.exitCode = 1;
+    }
   }
 }
 

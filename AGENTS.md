@@ -10,6 +10,7 @@
 
 - For small changes, default to one agent, focused tests, one review, and one final full gate. Before materially expanding agents, test scope, documentation, PR/release boundaries, or implementation size, explain why and ask the human.
 - Use subagents only for independent workstreams with non-overlapping ownership. Agents that modify files need an isolated branch/worktree; read-only reviewers do not.
+- When using subagent-driven development, group related subtasks into coherent implementation batches and review each completed batch. For one coherent change, prefer one consolidated review after implementation rather than separate reviews for every small task. Run focused tests and implementer self-review per task. An earlier separate review requires a concrete blocking risk and an explained reason; it is not the default.
 - Update `docs/implementation/progress.md` only for durable milestones, merged releases, blockers, recovery audits, and final readiness. Record a handoff only when ownership actually transfers; never use progress or handoff files as transcripts.
 - Keep design and implementation plans concise and decision-focused. Do not commit execution logs, scratch ledgers, review transcripts, or other process-only artifacts unless explicitly requested.
 

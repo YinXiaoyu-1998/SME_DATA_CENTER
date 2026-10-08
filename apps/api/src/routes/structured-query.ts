@@ -8,7 +8,10 @@ import {
   createStructuredCursor,
   compilePublicStructuredQuery,
   getPublicStructuredRegistry,
-  PHASE3_ERROR_CODES
+  PHASE3_ERROR_CODES,
+  PartitionContractError,
+  normalizeEnterpriseIdentity,
+  parsePartitionStoreNameContains
 } from "@smedc/domain";
 import type { RequestAuth } from "../request-auth.js";
 import type { StructuredCoverageRepository } from "../structured-coverage.js";
@@ -82,6 +85,7 @@ export function registerStructuredQueryRoutes(
 
   app.get<{
     Params: { dataset: string };
+    Querystring: { enterpriseName?: unknown; storeNameContains?: unknown };
   }>("/v1/structured/datasets/:dataset/coverage", async (request, reply) => {
     const authenticated = await dependencies.auth.authenticate(request, reply);
 
@@ -103,10 +107,41 @@ export function registerStructuredQueryRoutes(
       const registry =
         STRUCTURED_DATASET_REGISTRIES[dataset as keyof typeof STRUCTURED_DATASET_REGISTRIES];
       if (registry.accessMode === "partition_extract") {
+        let enterpriseKey: string | undefined;
+        if (request.query.enterpriseName !== undefined) {
+          if (typeof request.query.enterpriseName !== "string") {
+            throw new StructuredQueryValidationError(
+              PHASE3_ERROR_CODES.invalidQuery,
+              "enterpriseName must be a string."
+            );
+          }
+          enterpriseKey = normalizeEnterpriseIdentity(request.query.enterpriseName).enterpriseKey;
+        }
+        let storeNameContains: string[] | undefined;
+        if (request.query.storeNameContains !== undefined) {
+          if (typeof request.query.storeNameContains !== "string") {
+            throw new StructuredQueryValidationError(
+              PHASE3_ERROR_CODES.invalidQuery,
+              "storeNameContains must be one JSON-encoded array."
+            );
+          }
+          let value: unknown;
+          try {
+            value = JSON.parse(request.query.storeNameContains);
+          } catch {
+            throw new StructuredQueryValidationError(
+              PHASE3_ERROR_CODES.invalidQuery,
+              "storeNameContains must be one JSON-encoded array."
+            );
+          }
+          storeNameContains = parsePartitionStoreNameContains(value);
+        }
         const coverage = await dependencies.structuredPartitions().listCoverage?.({
           orgId: employee.orgId,
           clearance: employee.clearance,
-          dataset: dataset as "business" | "dishes"
+          dataset: dataset as "business" | "dishes",
+          ...(enterpriseKey !== undefined ? { enterpriseKey } : {}),
+          ...(storeNameContains ? { storeNameContains } : {})
         });
         if (!coverage) throw new Error("Partition coverage repository is not configured.");
         return {
@@ -122,6 +157,15 @@ export function registerStructuredQueryRoutes(
           }))
         };
       }
+      if (
+        request.query.enterpriseName !== undefined ||
+        request.query.storeNameContains !== undefined
+      ) {
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.invalidQuery,
+          "enterpriseName and storeNameContains coverage scope are supported only for business/dishes."
+        );
+      }
       const compiled = compileStructuredCoverageQuery({
         orgId: employee.orgId,
         employee: {
@@ -133,6 +177,9 @@ export function registerStructuredQueryRoutes(
 
       return await dependencies.structuredCoverage().list(compiled);
     } catch (error) {
+      if (error instanceof PartitionContractError) {
+        return reply.code(400).send(phase3ErrorResponse(request, error.code, error.message));
+      }
       if (error instanceof StructuredQueryValidationError) {
         return reply
           .code(400)

@@ -254,6 +254,38 @@ to split, rewrite, convert, or Base64-encode it.
   presigned links. The calling analysis workflow owns the returned scratch directory and must
   delete that exact directory in `finally`; it must not delete broader temp or report directories.
 
+## Filtered Partition Range Downloads (Release Gated)
+
+The installed pin remains published `0.7.1`. Filtered coverage and range downloads require
+Launcher `0.8.0` or newer to be published and independently verified, matching filtered range
+service deployment, and an official skill with a verified exact pin. Branch code and recommended
+version metadata alone do not establish availability. Discover the connected host's tools.
+
+For `business` and `dishes`, coverage accepts `dataset`, optional `enterpriseName`, and optional
+`storeNameContains`. Apply the same enterprise/store scope to coverage and every download.
+`storeNameContains` is 1–20 NFC-normalized, trimmed strings, each 1–255 characters: literal,
+case-sensitive substring matching, OR within the array, AND with merchant IDs and backend
+authorization. Empty arrays and blank entries are invalid. Use service-returned `storeIds`;
+never guess merchant IDs or silently exclude stores. Coverage and manifests describe only
+currently readable matching partitions, not completeness or hidden stores.
+
+Call `download_structured_partitions` with `dataset`, exact `enterpriseName`, inclusive
+`startDate`/`endDate` in `YYYYMMDD`, optional `storeIds` (at most 10,000) and `storeNameContains`.
+Check MCP `isError`; failures never imply no data. Use the returned `localDirectory`, counts
+and `files[]`; signed URLs remain internal. Preserve exact row/byte totals and reject a returned
+store outside the requested literals. Narrow/split failed date batches and remove their failed
+parent before analysis. If one day still fails, request a narrower store scope.
+
+API requests and stalled transfers have 30-second bounds; downloads have a 240-second invocation
+budget. A rejected access token refreshes once. Cancellation stops transfer retries. Multipart
+uploads retain their progressing-upload duration; failed/cancelled uploads attempt session
+cleanup through a separate bounded request.
+
+The consuming workflow owns scratch cleanup. Shared downloads remain until the last consumer
+releases them through its shared index; never delete another consumer's directory. Service data
+cleanup is operator-only, including for admins. Do not run operator cleanup or dataset repair
+from this skill.
+
 ## Dish Catalog Snapshot Uploads
 
 Use this path only when `list_structured_datasets` reports `dish_catalog` as available. It is a

@@ -114,3 +114,43 @@ describe("structured partition repository boundaries", () => {
     );
   });
 });
+
+it("binds literal store-name scope together with authorization and manifest constraints", async () => {
+  const queryRaw = vi.fn<(query: Prisma.Sql) => Promise<unknown[]>>(async () => []);
+  const prisma = {
+    $queryRaw: queryRaw,
+    structuredPartition: { findMany: vi.fn(async () => []) }
+  } as unknown as PrismaClient;
+  const repository = createPrismaStructuredPartitionRepository({ prisma });
+  await repository.listReadableManifestRows({
+    orgId: "org_1",
+    clearance: 1,
+    dataset: "business",
+    enterpriseKey: "synthetic",
+    startDate: "2026-09-07",
+    endDate: "2026-09-13",
+    storeIds: ["001"],
+    storeNameContains: ["麦家小馆", "A%_\\"],
+    maxPartitions: 2
+  });
+  expect(queryRaw).toHaveBeenCalledOnce();
+  const sql = queryRaw.mock.calls[0]![0] as Prisma.Sql;
+  expect(sql.sql).toContain("org_id = ?");
+  expect(sql.sql).toContain("confidentiality_level <= ?");
+  expect(sql.sql).toContain("merchant_id IN (?)");
+  expect(sql.sql).toContain("LOCATE(CAST(? AS BINARY), CAST(store_name AS BINARY)) > 0");
+  expect(sql.sql).toContain(" OR ");
+  expect(sql.sql).not.toContain("麦家小馆");
+  expect(sql.values).toEqual([
+    "org_1",
+    1,
+    "business",
+    "synthetic",
+    new Date("2026-09-07T00:00:00Z"),
+    new Date("2026-09-13T00:00:00Z"),
+    "001",
+    "麦家小馆",
+    "A%_\\",
+    3
+  ]);
+});

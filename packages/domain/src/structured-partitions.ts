@@ -3,6 +3,7 @@ export const PARTITION_DATASETS = ["business", "dishes"] as const;
 export type PartitionDatasetName = (typeof PARTITION_DATASETS)[number];
 
 export const PARTITION_ERROR_CODES = {
+  invalidStoreNameFilter: "INVALID_PARTITION_STORE_NAME_FILTER",
   uploadSessionRequired: "PARTITION_UPLOAD_SESSION_REQUIRED",
   uploadExpired: "PARTITION_UPLOAD_EXPIRED",
   uploadIncomplete: "PARTITION_UPLOAD_INCOMPLETE",
@@ -23,6 +24,7 @@ export interface PartitionManifestRequest {
   startDate: string;
   endDate: string;
   storeIds?: string[];
+  storeNameContains?: string[];
 }
 
 export interface PartitionManifestEntry {

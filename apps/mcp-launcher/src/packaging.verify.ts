@@ -62,6 +62,7 @@ describe("published launcher artifact", () => {
       publishConfig?: { access?: string };
     };
     expect(manifest.dependencies).not.toHaveProperty("@smedc/mcp-contract");
+    expect(manifest.dependencies).not.toHaveProperty("yauzl");
     expect(manifest).toMatchObject({
       license: "MIT",
       bin: { "smedc-mcp-launcher": "dist/index.js" },
@@ -121,7 +122,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.7.1");
+    expect(manifest.version).toBe("0.8.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -146,8 +147,14 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.7.1");
+      expect(client.getServerVersion()?.version).toBe("0.8.0");
       const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name)).not.toContain(
+        "prepare_structured_partition_download"
+      );
+      expect(tools.tools.map((tool) => tool.name)).not.toContain(
+        "get_structured_partition_download_status"
+      );
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           "smedc_login",
@@ -155,6 +162,7 @@ describe("published launcher artifact", () => {
           "smedc_auth_status",
           "smedc_get_current_user",
           "describe_structured_dataset_coverage",
+          "download_structured_partitions",
           "describe_ledger_pdf_coverage",
           "get_ledger_pdf_request_status",
           "prepare_ledger_pdf_download",

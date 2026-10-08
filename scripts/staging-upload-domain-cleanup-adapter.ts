@@ -1,3 +1,4 @@
+import { assertNoRetainedPartitionDownloads } from "./partition-store-cleanup-support.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 import { createStorageAdapter, type StorageAdapter } from "@smedc/storage";
@@ -79,6 +80,7 @@ export function createStagingUploadDomainCleanupAdapter(
       await runtime.prisma.$disconnect();
     },
     async collectInventory() {
+      await assertNoRetainedPartitionDownloads(runtime.prisma);
       const documents = await runtime.prisma.document.findMany({
         select: { id: true, storageObjectKey: true }
       });
