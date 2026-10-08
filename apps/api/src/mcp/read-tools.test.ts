@@ -566,3 +566,16 @@ it("delegates ledger PDF reads and signed ZIP issuance without local output", as
   expect(handlers).not.toHaveProperty("refresh_ledger_pdfs");
   expect(handlers.prepare_ledger_pdf_download).toBeUndefined();
 });
+
+it("encodes coverage store-name scope as one JSON query parameter", async () => {
+  const { calls, handlers } = createCapturingDelegate();
+  await handlers.describe_structured_dataset_coverage?.(
+    { dataset: "business", enterpriseName: "Synthetic", storeNameContains: ["麦家小馆", "A%_\\"] },
+    {} as never
+  );
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.query).toEqual({
+    enterpriseName: "Synthetic",
+    storeNameContains: JSON.stringify(["麦家小馆", "A%_\\"])
+  });
+});

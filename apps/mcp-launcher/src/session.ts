@@ -64,6 +64,17 @@ export class LauncherSession {
     }
   }
 
+  async refreshAccessToken(): Promise<string> {
+    const release = await this.acquireRecordLock();
+    try {
+      this.#accessToken = null;
+      this.#accessTokenExpiresAt = 0;
+      return await this.ensureAccessTokenLocked();
+    } finally {
+      await release();
+    }
+  }
+
   private async waitForPendingLogin(): Promise<void> {
     if (this.#accessToken !== null && this.#accessTokenExpiresAt > Date.now() + 60_000) return;
     if (this.#waitingForLogin !== null) {

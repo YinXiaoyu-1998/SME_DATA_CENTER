@@ -362,7 +362,8 @@ describe("structured partition routes", () => {
         dataset: "business",
         enterpriseName: "Synthetic",
         startDate: "2026-09-07",
-        endDate: "2026-09-13"
+        endDate: "2026-09-13",
+        storeNameContains: [" 麦家小馆 "]
       }
     });
     expect(response.statusCode).toBe(200);
@@ -371,7 +372,8 @@ describe("structured partition routes", () => {
         orgId: "org_1",
         clearance: 1,
         enterpriseKey: "synthetic",
-        maxPartitions: 10_000
+        maxPartitions: 10_000,
+        storeNameContains: ["麦家小馆"]
       })
     );
     expect(response.json()).toMatchObject({
@@ -597,3 +599,36 @@ function repositoryStub(
     ...overrides
   } as StructuredPartitionRepository;
 }
+
+it("rejects empty store-name scope before reading or signing partitions", async () => {
+  const app = Fastify();
+  const partitions = vi.fn(() => {
+    throw new Error("invalid scope must not read");
+  });
+  registerStructuredPartitionRoutes(app, {
+    ...unusedAudit,
+    auth,
+    partitions,
+    storage: () => {
+      throw new Error("invalid scope must not sign");
+    },
+    runtimeLimits: loadApiRuntimeLimits({})
+  });
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/structured/partition-manifests",
+      payload: {
+        dataset: "business",
+        enterpriseName: "Synthetic",
+        startDate: "2026-09-07",
+        endDate: "2026-09-13",
+        storeNameContains: []
+      }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(partitions).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});

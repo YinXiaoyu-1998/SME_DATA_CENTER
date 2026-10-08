@@ -315,7 +315,12 @@ describe("structured query routes", () => {
     dependencies.structuredPartitions = () =>
       ({
         listCoverage: async (input: { orgId: string; clearance: number }) => {
-          expect(input).toMatchObject({ orgId: "default-org", clearance: 3 });
+          expect(input).toMatchObject({
+            orgId: "default-org",
+            clearance: 3,
+            enterpriseKey: "synthetic",
+            storeNameContains: ["麦家小馆", "A%_\\"]
+          });
           return {
             dataset: "dishes" as const,
             enterprises: [
@@ -335,7 +340,12 @@ describe("structured query routes", () => {
     app = createApp(dependencies);
     const response = await app.inject({
       method: "GET",
-      url: "/v1/structured/datasets/dishes/coverage",
+      url:
+        "/v1/structured/datasets/dishes/coverage?" +
+        new URLSearchParams({
+          enterpriseName: "Synthetic",
+          storeNameContains: JSON.stringify([" 麦家小馆 ", "A%_\\"])
+        }),
       headers: { authorization: "Bearer valid" }
     });
     expect(response.json()).toEqual({
@@ -353,4 +363,41 @@ describe("structured query routes", () => {
       ]
     });
   });
+});
+
+it.each(["[]", '[" "]', "bad-json", '"store"'])(
+  "rejects invalid coverage scope %s",
+  async (scope) => {
+    const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
+    const scopeApp = createApp(dependencies);
+    const response = await scopeApp.inject({
+      method: "GET",
+      url:
+        "/v1/structured/datasets/business/coverage?" +
+        new URLSearchParams({ storeNameContains: scope }),
+      headers: { authorization: "Bearer valid" }
+    });
+    expect(response.statusCode).toBe(400);
+    await scopeApp.close();
+  }
+);
+
+it("rejects partition-only scope on row-query coverage", async () => {
+  const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
+  const scopeApp = createApp(dependencies);
+  try {
+    const response = await scopeApp.inject({
+      method: "GET",
+      url:
+        "/v1/structured/datasets/vip/coverage?" +
+        new URLSearchParams({
+          enterpriseName: "Synthetic",
+          storeNameContains: JSON.stringify(["麦家小馆"])
+        }),
+      headers: { authorization: "Bearer valid" }
+    });
+    expect(response.statusCode).toBe(400);
+  } finally {
+    await scopeApp.close();
+  }
 });

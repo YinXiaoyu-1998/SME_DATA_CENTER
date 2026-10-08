@@ -9,6 +9,7 @@ import { buildStagingUploadDomainCleanupPlan } from "./staging-upload-domain-cle
 describe("repo-contained staging upload-domain cleanup adapter", () => {
   it("enumerates and deletes only exact DB, OSS, and Qdrant targets through injected providers", async () => {
     const prisma = {
+      $queryRaw: vi.fn(async () => [{ present: 0n }]),
       $disconnect: vi.fn(async () => undefined),
       document: {
         findMany: vi.fn(async () => [{ id: "doc-1", storageObjectKey: "uploads/doc-1" }]),
@@ -261,4 +262,21 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     );
     expect(() => assertStagingCleanupRuntimeTargets({})).toThrow("DATABASE_URL and QDRANT_URL");
   });
+});
+
+it("rollback guard rejects retained owners before external mutation", async () => {
+  const query = vi
+    .fn()
+    .mockResolvedValueOnce([{ present: 1n }])
+    .mockResolvedValueOnce([{ retained: 1n }]);
+  const storage = { deleteObject: vi.fn(), statObject: vi.fn() };
+  const qdrant = { deletePoints: vi.fn(), countPoints: vi.fn() };
+  const adapter = createStagingUploadDomainCleanupAdapter(
+    {},
+    { prisma: { $queryRaw: query } as unknown as PrismaClient, storage, qdrant }
+  );
+  await expect(adapter.collectInventory()).rejects.toThrow("compatible release");
+  expect(query).toHaveBeenCalledTimes(2);
+  expect(storage.deleteObject).not.toHaveBeenCalled();
+  expect(qdrant.deletePoints).not.toHaveBeenCalled();
 });

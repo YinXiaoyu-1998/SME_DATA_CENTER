@@ -10,7 +10,8 @@ import {
   PARTITION_ERROR_CODES,
   canEmployeeAccessDocument,
   isPartitionDataset,
-  normalizeEnterpriseIdentity
+  normalizeEnterpriseIdentity,
+  parsePartitionStoreNameContains
 } from "@smedc/domain";
 import {
   createPartitionStagingObjectKey,
@@ -46,6 +47,7 @@ interface ManifestBody {
   startDate?: string;
   endDate?: string;
   storeIds?: string[];
+  storeNameContains?: string[];
 }
 
 export function registerStructuredPartitionRoutes(
@@ -326,6 +328,7 @@ export function registerStructuredPartitionRoutes(
       startDate: parsed.value.startDate,
       endDate: parsed.value.endDate,
       storeIds: parsed.value.storeIds,
+      storeNameContains: parsed.value.storeNameContains,
       maxPartitions: dependencies.runtimeLimits.partitionManifestMaxPartitions
     });
     if (rows.length > dependencies.runtimeLimits.partitionManifestMaxPartitions)
@@ -503,6 +506,15 @@ function parseManifestBody(body: unknown) {
       return invalid("INVALID_PARTITION_MANIFEST", "storeIds must contain non-empty merchant IDs.");
     normalizedStoreIds = [...new Set(storeIds.map((value: string) => value.trim()))];
   }
+  let storeNameContains: string[] | undefined;
+  try {
+    storeNameContains = parsePartitionStoreNameContains(body.storeNameContains);
+  } catch {
+    return invalid(
+      PARTITION_ERROR_CODES.invalidStoreNameFilter,
+      "storeNameContains must contain 1–20 non-empty strings of at most 255 characters."
+    );
+  }
   return {
     ok: true as const,
     value: {
@@ -510,7 +522,8 @@ function parseManifestBody(body: unknown) {
       ...enterprise,
       startDate,
       endDate,
-      ...(normalizedStoreIds ? { storeIds: normalizedStoreIds } : {})
+      ...(normalizedStoreIds ? { storeIds: normalizedStoreIds } : {}),
+      ...(storeNameContains ? { storeNameContains } : {})
     }
   };
 }

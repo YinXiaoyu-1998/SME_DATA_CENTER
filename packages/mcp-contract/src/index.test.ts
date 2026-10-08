@@ -652,7 +652,7 @@ describe("SMEDC MCP contract", () => {
     }
   });
 
-  it("defines a strict dataset-only coverage input contract", () => {
+  it("defines strict coverage input with optional partition scope", () => {
     const coverage = contractsByName.get(
       "describe_structured_dataset_coverage" as SmedcMcpToolName
     );
@@ -660,14 +660,17 @@ describe("SMEDC MCP contract", () => {
     expect(coverage?.inputSchema.parse({ dataset: "business" })).toEqual({
       dataset: "business"
     });
-    expect(Object.keys(coverage?.inputShape ?? {})).toEqual(["dataset"]);
-    expect(coverage?.inputFields).toEqual([
-      {
-        name: "dataset",
-        required: true,
-        description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
-      }
+    expect(Object.keys(coverage?.inputShape ?? {})).toEqual([
+      "dataset",
+      "enterpriseName",
+      "storeNameContains"
+    ]);
+    expect(
+      coverage?.inputFields.map((field) => ({ name: field.name, required: field.required }))
+    ).toEqual([
+      { name: "dataset", required: true },
+      { name: "enterpriseName", required: false },
+      { name: "storeNameContains", required: false }
     ]);
     expect(coverage?.description).toContain("/v1/structured/datasets/:dataset/coverage");
     expect(coverage?.resultShape).toEqual([
@@ -1345,16 +1348,6 @@ describe("ledger PDF contracts", () => {
       expect(z.toJSONSchema(schema!).additionalProperties).toBe(false);
     }
   );
-  it("requires explicit stores and idempotency for ZIP preparation", () => {
-    for (const name of ["prepare_ledger_pdf_download"] as const) {
-      expect(safeParseTool(name, { dates: ["2026-01-01"], idempotencyKey: "key" }).success).toBe(
-        false
-      );
-      expect(safeParseTool(name, { storeNames: ["店"], dates: ["2026-01-01"] }).success).toBe(
-        false
-      );
-    }
-  });
   it.each([
     ["LEDGER_PDF_NOT_ENABLED", false],
     ["LEDGER_DETAIL_DISABLED", false],
@@ -1374,4 +1367,32 @@ describe("ledger PDF contracts", () => {
       )
     ).toEqual({ error: { code, message: "Unavailable.", requestId: "req_pdf", retryable } });
   });
+});
+
+it.each(["download_structured_partitions", "describe_structured_dataset_coverage"] as const)(
+  "validates and normalizes literal store-name scope for %s",
+  (name) => {
+    const schema = contractsByName.get(name)!.inputSchema;
+    expect(
+      schema.parse({
+        ...validInputs[name],
+        enterpriseName: "Synthetic",
+        storeNameContains: [" 麦家小馆 ", "A%_\\"]
+      })
+    ).toMatchObject({ storeNameContains: ["麦家小馆", "A%_\\"] });
+    expect(schema.safeParse({ ...validInputs[name], storeNameContains: [] }).success).toBe(false);
+    expect(schema.safeParse({ ...validInputs[name], storeNameContains: [" "] }).success).toBe(
+      false
+    );
+  }
+);
+
+it("exposes only range partition downloads", () => {
+  expect(SMEDC_MCP_TOOL_NAMES).not.toContain("prepare_structured_partition_download");
+  expect(SMEDC_MCP_TOOL_NAMES).not.toContain("get_structured_partition_download_status");
+  expect(
+    contractsByName
+      .get("download_structured_partitions")!
+      .inputSchema.safeParse({ requestId: "pd_1" }).success
+  ).toBe(false);
 });

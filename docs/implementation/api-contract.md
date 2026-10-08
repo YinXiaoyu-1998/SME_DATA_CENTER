@@ -151,6 +151,18 @@ MCP and launcher clients must never expose credentials, tokens, organization IDs
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
 query shape, filters, limit, and retrieval configuration.
 
+### Filtered partition range extracts
+
+Filtered coverage and range downloads require independently verified published Launcher `0.8.0`
+and matching service deployment. Installation pins remain `0.7.1` until release verification.
+For business/dishes, coverage takes optional `enterpriseName` and `storeNameContains`; manifests
+accept dataset, enterpriseName, inclusive ISO startDate/endDate, optional storeIds (at most
+10,000) and storeNameContains. Terms are 1–20 NFC/trim literal case-sensitive substrings of
+1–255 characters, OR within the array and AND with authorization and other scope. Blank/empty
+filters and filters on other datasets fail. Counts reflect only readable matching partitions.
+MCP date selectors use compact YYYYMMDD. The launcher returns validated local extracts and
+keeps signing URLs internal. Failed downloads never imply no data. Service cleanup is operator-only.
+
 ### Evidence search response
 
 `POST /v1/evidence/search` and `search_document_evidence` return authorized chunks in `results[]`

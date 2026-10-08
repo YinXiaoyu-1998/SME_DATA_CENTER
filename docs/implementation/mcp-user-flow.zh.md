@@ -127,6 +127,17 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
 - `smedc_list_skills` 只返回目录元数据。不得执行条目、生成报告，或把 SMEDC 变成
   员工直接对话的 AI 服务。
 
+## Filtered Partition Range Flow (Release Gated)
+
+Keep the installed pin at `0.7.1`. Filtered coverage/manifests require independently verified
+published Launcher `0.8.0` plus matching service deployment. Use the same enterprise/store
+scope for coverage and `download_structured_partitions` with inclusive YYYYMMDD dates.
+`storeNameContains` contains 1–20 NFC/trim literal case-sensitive substrings, OR within the
+array and AND with authorization and other selectors. Check MCP errors and the returned store
+scope; failures never imply no data. Release shared scratch only after its last consumer.
+See [the API contract](./api-contract.md#filtered-partition-range-extracts) and
+[core skill](../../skills/smedc-mcp/SKILL.md#filtered-partition-range-downloads-release-gated).
+
 ## 当前发布边界
 
 代码已经实现 OAuth Device Authorization、不透明 access token、轮换 durable credential、桌面

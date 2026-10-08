@@ -664,3 +664,18 @@ function serialLock(): LauncherLock {
     }
   };
 }
+
+it("replaces an unexpired rejected access token using the retained refresh credential", async () => {
+  const tokenClient = tokenClientReturning({
+    accessToken: "replacement-access",
+    refreshToken: "replacement-refresh"
+  });
+  const secureStore = memoryStore(null);
+  const session = new LauncherSession({ origin, secureStore, tokenClient, lock: serialLock() });
+  await session.establish("rejected-access", "retained-refresh", Date.now() + 600_000);
+  expect(await session.ensureAccessToken()).toBe("rejected-access");
+  expect(await session.refreshAccessToken()).toBe("replacement-access");
+  expect(tokenClient.refresh).toHaveBeenCalledExactlyOnceWith("retained-refresh");
+  expect(await session.ensureAccessToken()).toBe("replacement-access");
+  expect(await secureStore.get()).toContain("replacement-refresh");
+});
