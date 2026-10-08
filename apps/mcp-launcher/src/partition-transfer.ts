@@ -99,6 +99,7 @@ export async function downloadPartitionDataset(input: {
   startDate: string;
   endDate: string;
   storeIds?: string[];
+  storeNameContains?: string[];
 }): Promise<unknown> {
   const root = path.join(os.tmpdir(), "smedc-partition-extracts");
   await cleanupStaleExtractDirectories(root);
@@ -147,7 +148,8 @@ async function requestManifest(
       enterpriseName: input.enterpriseName,
       startDate: compactDateToIso(input.startDate),
       endDate: compactDateToIso(input.endDate),
-      storeIds: input.storeIds
+      storeIds: input.storeIds,
+      storeNameContains: input.storeNameContains
     }
   })) as RemoteManifest;
 }

@@ -145,7 +145,18 @@ function routeForReadOnlyTool(
     case "describe_structured_dataset_coverage":
       return {
         method: "GET",
-        path: `/v1/structured/datasets/${encodeURIComponent(String(input["dataset"]))}/coverage`
+        path: `/v1/structured/datasets/${encodeURIComponent(String(input["dataset"]))}/coverage`,
+        ...(input["enterpriseName"] !== undefined || input["storeNameContains"] !== undefined
+          ? {
+              query: {
+                enterpriseName: optionalString(input["enterpriseName"]),
+                storeNameContains:
+                  input["storeNameContains"] !== undefined
+                    ? JSON.stringify(input["storeNameContains"])
+                    : undefined
+              }
+            }
+          : {})
       };
     case "query_quarantine_certificates":
       return {
@@ -184,7 +195,8 @@ function routeForReadOnlyTool(
           enterpriseName: input["enterpriseName"],
           startDate: compactDateToIso(String(input["startDate"])),
           endDate: compactDateToIso(String(input["endDate"])),
-          storeIds: input["storeIds"]
+          storeIds: input["storeIds"],
+          storeNameContains: input["storeNameContains"]
         }
       };
   }

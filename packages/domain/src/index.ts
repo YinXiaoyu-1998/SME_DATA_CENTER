@@ -153,3 +153,5 @@ export {
 } from "./structured-coverage.js";
 
 export { getPublicStructuredRegistry } from "./structured-ledger-policy.js";
+
+export { parsePartitionStoreNameContains } from "./partition-store-filter.js";

@@ -419,6 +419,7 @@ async function proxyPartitionDownload(
           startDate: string;
           endDate: string;
           storeIds?: string[];
+          storeNameContains?: string[];
         })
       })) as Record<string, unknown>
     );

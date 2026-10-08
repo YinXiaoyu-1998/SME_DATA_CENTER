@@ -161,9 +161,27 @@ const searchDocumentEvidenceInputSchema = z
 
 const listStructuredDatasetsInputSchema = z.object({}).strict();
 
+const partitionStoreNameContainsSchema = z
+  .array(
+    z
+      .string()
+      .transform((value) => value.normalize("NFC").trim())
+      .pipe(z.string().min(1).max(255))
+  )
+  .min(1)
+  .max(20)
+  .optional();
+
 const describeStructuredDatasetCoverageInputSchema = z
   .object({
-    dataset: structuredDataset
+    dataset: structuredDataset,
+    enterpriseName: z
+      .string()
+      .trim()
+      .min(1)
+      .max(PUBLIC_INPUT_LIMITS.enterpriseNameChars)
+      .optional(),
+    storeNameContains: partitionStoreNameContainsSchema
   })
   .strict();
 
@@ -179,7 +197,8 @@ const downloadStructuredPartitionsInputSchema = z
     enterpriseName: z.string().min(1).max(PUBLIC_INPUT_LIMITS.enterpriseNameChars),
     startDate: z.string().regex(/^\d{8}$/),
     endDate: z.string().regex(/^\d{8}$/),
-    storeIds: z.array(z.string().min(1).max(255)).max(10_000).optional()
+    storeIds: z.array(z.string().min(1).max(255)).max(10_000).optional(),
+    storeNameContains: partitionStoreNameContainsSchema
   })
   .strict();
 
@@ -736,6 +755,17 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         required: true,
         description:
           "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
+      },
+      {
+        name: "enterpriseName",
+        required: false,
+        description: "Optional enterprise/source scope for business/dishes partition coverage."
+      },
+      {
+        name: "storeNameContains",
+        required: false,
+        description:
+          "Optional business/dishes scope: 1–20 NFC/trim literal case-sensitive store-name substrings, OR within the array and AND with enterprise scope and authorization."
       }
     ],
     resultShape: [
@@ -800,7 +830,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       { name: "enterpriseName", required: true, description: "Enterprise/source name." },
       { name: "startDate", required: true, description: "Inclusive YYYYMMDD start." },
       { name: "endDate", required: true, description: "Inclusive YYYYMMDD end." },
-      { name: "storeIds", required: false, description: "Optional merchant IDs." }
+      { name: "storeIds", required: false, description: "Optional merchant IDs." },
+      {
+        name: "storeNameContains",
+        required: false,
+        description:
+          "1–20 NFC/trim store-name substrings (at most 255 characters each), literal and case-sensitive, OR within the array and AND with merchant IDs and authorization."
+      }
     ],
     resultShape: ["localDirectory", "dataset", "partitionCount", "totalRowCount", "files[]"]
   }),

@@ -159,12 +159,15 @@ export interface StructuredPartitionRepository {
     startDate: string;
     endDate: string;
     storeIds?: string[];
+    storeNameContains?: string[];
     maxPartitions: number;
   }): Promise<PartitionManifestRow[]>;
   listCoverage?(input: {
     orgId: string;
     clearance: number;
     dataset: "business" | "dishes";
+    enterpriseKey?: string;
+    storeNameContains?: string[];
   }): Promise<PartitionDatasetCoverage>;
   enqueueGarbage(objectKey: string, reason: string): Promise<void>;
   listDueGarbage(now: Date, limit: number): Promise<Array<{ id: string; objectKey: string }>>;
@@ -473,6 +476,18 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async listReadableManifestRows(input) {
+      if (input.storeNameContains !== undefined) {
+        return prisma.$queryRaw<PartitionManifestRow[]>(Prisma.sql`
+          SELECT business_date AS businessDate, merchant_id AS merchantId, store_name AS storeName,
+            row_count AS rowCount, byte_size AS byteSize, checksum_sha256 AS checksumSha256, object_key AS objectKey
+          FROM structured_partitions WHERE ${readablePartitionScope(input)}
+            AND business_date >= ${parseBusinessDate(input.startDate)}
+            AND business_date <= ${parseBusinessDate(input.endDate)}
+            ${input.storeIds?.length ? Prisma.sql`AND merchant_id IN (${Prisma.join(input.storeIds)})` : Prisma.empty}
+            AND ${literalStoreNameScope(input.storeNameContains)}
+          ORDER BY business_date ASC, store_key ASC LIMIT ${input.maxPartitions + 1}
+        `);
+      }
       const rows = await prisma.structuredPartition.findMany({
         where: {
           orgId: input.orgId,
@@ -501,10 +516,46 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async listCoverage(input) {
+      if (input.storeNameContains !== undefined) {
+        const where = Prisma.sql`${readablePartitionScope(input)} AND ${literalStoreNameScope(input.storeNameContains)}`;
+        const [enterprises, stores] = await Promise.all([
+          prisma.$queryRaw<
+            Array<{
+              enterpriseKey: string;
+              enterpriseName: string;
+              startDate: Date;
+              endDate: Date;
+              partitionCount: bigint;
+              totalRowCount: Prisma.Decimal;
+            }>
+          >(Prisma.sql`SELECT enterprise_key AS enterpriseKey, MAX(enterprise_name) AS enterpriseName,
+            MIN(business_date) AS startDate, MAX(business_date) AS endDate,
+            COUNT(*) AS partitionCount, SUM(row_count) AS totalRowCount
+            FROM structured_partitions WHERE ${where} GROUP BY enterprise_key ORDER BY enterprise_key ASC`),
+          prisma.$queryRaw<
+            Array<{ enterpriseKey: string; storeId: string | null; storeName: string }>
+          >(
+            Prisma.sql`SELECT enterprise_key AS enterpriseKey, MAX(merchant_id) AS storeId, MAX(store_name) AS storeName
+              FROM structured_partitions WHERE ${where} GROUP BY enterprise_key, store_key ORDER BY enterprise_key ASC, store_key ASC`
+          )
+        ]);
+        return {
+          dataset: input.dataset,
+          enterprises: enterprises.map((enterprise) => ({
+            ...enterprise,
+            partitionCount: Number(enterprise.partitionCount),
+            totalRowCount: BigInt(enterprise.totalRowCount.toString()),
+            stores: stores
+              .filter((store) => store.enterpriseKey === enterprise.enterpriseKey)
+              .map(({ storeId, storeName }) => ({ storeId, storeName }))
+          }))
+        };
+      }
       const where = {
         orgId: input.orgId,
         dataset: input.dataset as PartitionDataset,
-        confidentialityLevel: { lte: input.clearance }
+        confidentialityLevel: { lte: input.clearance },
+        ...(input.enterpriseKey !== undefined ? { enterpriseKey: input.enterpriseKey } : {})
       };
       const [enterpriseRows, storeRows] = await Promise.all([
         prisma.structuredPartition.groupBy({
@@ -693,4 +744,26 @@ function createId(prefix: string): string {
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+export function readablePartitionScope(input: {
+  orgId: string;
+  clearance: number;
+  dataset: "business" | "dishes";
+  enterpriseKey?: string;
+}): Prisma.Sql {
+  return Prisma.sql`org_id = ${input.orgId} AND confidentiality_level <= ${input.clearance} AND dataset = ${input.dataset}
+    ${input.enterpriseKey !== undefined ? Prisma.sql`AND enterprise_key = ${input.enterpriseKey}` : Prisma.empty}`;
+}
+
+export function literalStoreNameScope(terms: string[]): Prisma.Sql {
+  // LOCATE has no wildcard syntax; binary operands make case and accents literal regardless of table collation.
+  if (terms.length === 0)
+    throw new StructuredPartitionRepositoryError("INVALID_PARTITION_STORE_NAME_FILTER");
+  return Prisma.sql`(${Prisma.join(
+    terms.map(
+      (term) => Prisma.sql`LOCATE(CAST(${term} AS BINARY), CAST(store_name AS BINARY)) > 0`
+    ),
+    " OR "
+  )})`;
 }

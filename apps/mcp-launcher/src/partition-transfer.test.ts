@@ -115,7 +115,7 @@ describe("launcher partition transfer", () => {
     const bytes = Buffer.from("header\nvalue\n");
     const source = path.join(root, "partition.csv");
     await writeFile(source, bytes);
-    const fetchImplementation = vi.fn(async () =>
+    const fetchImplementation = vi.fn<typeof fetch>(async () =>
       Response.json({
         dataset: "dishes",
         enterpriseName: "Synthetic",
@@ -136,14 +136,18 @@ describe("launcher partition transfer", () => {
           }
         ]
       })
-    ) as unknown as typeof fetch;
+    );
     const result = (await downloadPartitionDataset({
       context: context(fetchImplementation),
       dataset: "dishes",
       enterpriseName: "Synthetic",
       startDate: "20260907",
-      endDate: "20260913"
+      endDate: "20260913",
+      storeNameContains: ["麦家小馆"]
     })) as { localDirectory: string; files: string[] };
+    expect(JSON.parse(String(fetchImplementation.mock.calls[0]![1]?.body))).toMatchObject({
+      storeNameContains: ["麦家小馆"]
+    });
     expect(result.files).toHaveLength(1);
     const localManifest = await readFile(path.join(result.localDirectory, "manifest.json"), "utf8");
     expect(localManifest).not.toContain("presignedDownloadUrl");
