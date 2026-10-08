@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
   auditLog: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  partitionDownloadRequest: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   processingRun: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   ledgerPdfReconciliationTarget: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   ledgerArtifactRequestItem: { deleteMany: vi.fn(async () => ({ count: 0 })) },
@@ -165,6 +166,13 @@ describe("purge-data database target resolution", () => {
         prisma.importBatch.deleteMany.mock.invocationCallOrder[0]!
       );
     }
+    expect(prisma.processingRun.deleteMany).toHaveBeenCalledWith({
+      where: { OR: expect.arrayContaining([{ partitionDownloadRequestId: { not: null } }]) }
+    });
+    expect(prisma.partitionDownloadRequest.deleteMany).toHaveBeenCalledWith({});
+    expect(prisma.processingRun.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.partitionDownloadRequest.deleteMany.mock.invocationCallOrder[0]!
+    );
     expect(prisma.importWindowClaim.deleteMany).toHaveBeenCalledWith({});
     expect(prisma.importBatch.deleteMany).toHaveBeenCalledWith({});
     expect(prisma.structuredPartition.deleteMany).toHaveBeenCalledWith({});

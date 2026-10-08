@@ -4,11 +4,13 @@ import {
   assertStagingCleanupRuntimeTargets,
   createStagingUploadDomainCleanupAdapter
 } from "./staging-upload-domain-cleanup-adapter.js";
+import { runStagingUploadDomainCleanup } from "./staging-upload-domain-cleanup.js";
 import { buildStagingUploadDomainCleanupPlan } from "./staging-upload-domain-cleanup-support.js";
 
 describe("repo-contained staging upload-domain cleanup adapter", () => {
   it("enumerates and deletes only exact DB, OSS, and Qdrant targets through injected providers", async () => {
     const prisma = {
+      partitionDownloadRequest: { count: vi.fn(async () => 0) },
       $disconnect: vi.fn(async () => undefined),
       document: {
         findMany: vi.fn(async () => [{ id: "doc-1", storageObjectKey: "uploads/doc-1" }]),
@@ -262,3 +264,30 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
     expect(() => assertStagingCleanupRuntimeTargets({})).toThrow("DATABASE_URL and QDRANT_URL");
   });
 });
+
+it.each(["--dry-run", "--execute"])(
+  "overall cleanup %s refuses download requests before external mutations",
+  async (mode) => {
+    const count = vi.fn(async () => 1);
+    const storage = { deleteObject: vi.fn(), statObject: vi.fn() };
+    const qdrant = { deletePoints: vi.fn(), countPoints: vi.fn() };
+    const adapter = createStagingUploadDomainCleanupAdapter(
+      {},
+      {
+        prisma: { partitionDownloadRequest: { count } } as unknown as PrismaClient,
+        storage,
+        qdrant
+      }
+    );
+    await expect(
+      runStagingUploadDomainCleanup({
+        argv: [mode, "--target", "staging", "--confirm", "delete-upload-domain"],
+        adapter,
+        log: vi.fn()
+      })
+    ).rejects.toThrow("compatible release");
+    expect(count).toHaveBeenCalledWith(); // Existing overall mode has whole-database scope.
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(qdrant.deletePoints).not.toHaveBeenCalled();
+  }
+);

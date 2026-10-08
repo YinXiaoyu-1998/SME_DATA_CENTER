@@ -209,7 +209,7 @@ export function createPrismaPartitionDownloadRepository(
   const transaction = <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) =>
     retryIdempotentDatabaseOperation(() =>
       prisma.$transaction(fn, {
-        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         timeout: options.transactionTimeoutMs ?? 30000
       })
     );
@@ -261,62 +261,13 @@ export function createPrismaPartitionDownloadRepository(
       byteSize: String(row.byteSize)
     }));
   }
-  // All paths that touch an existing request lock its processing run first, then request.
-  // GC protects candidate objects through this same run's live lease.
-  async function lockRequest(tx: Prisma.TransactionClient, requestId: string, orgId: string) {
-    await tx.$queryRaw(
-      Prisma.sql`SELECT id FROM processing_runs WHERE partition_download_request_id=${requestId} AND org_id=${orgId} FOR UPDATE`
-    );
-    await tx.$queryRaw(
-      Prisma.sql`SELECT id FROM partition_download_requests WHERE id=${requestId} AND org_id=${orgId} FOR UPDATE`
-    );
-    return tx.partitionDownloadRequest.findFirst({ where: { id: requestId, orgId } });
-  }
-  function downloadOwner(orgId: string, requestId: string): Prisma.ProcessingRunWhereInput {
-    return {
-      orgId,
-      partitionDownloadRequestId: requestId,
-      jobType: "structured_partition_bundle",
-      documentId: null,
-      partitionImportJobId: null,
-      ledgerArtifactRequestId: null,
-      ledgerArtifactRequestItemId: null,
-      ledgerPdfReconciliationRunId: null
-    };
-  }
-  async function terminate(
-    tx: Prisma.TransactionClient,
-    row: PartitionDownloadRequest,
-    status: "failed" | "expired",
-    code: string
-  ) {
-    if (row.objectKey) await enqueueStorageGarbage(tx, { objectKey: row.objectKey, reason: code });
-    await tx.processingRun.updateMany({
-      where: {
-        ...downloadOwner(row.orgId, row.id),
-        status: { in: ["queued", "running", "retry_scheduled"] }
-      },
-      data: {
-        status: "failed",
-        errorCode: code,
-        errorSummary: code,
-        lockedBy: null,
-        lockedUntil: null,
-        finishedAt: now()
-      }
-    });
-    return tx.partitionDownloadRequest.update({
-      where: { id: row.id },
-      data: { status, errorCode: code, objectKey: null, byteSize: null, checksumSha256: null }
-    });
-  }
   async function expireRow(
     tx: Prisma.TransactionClient,
     row: PartitionDownloadRequest,
     clock: Date
   ) {
     return row.status !== "expired" && row.expiresAt <= clock
-      ? terminate(tx, row, "expired", "PARTITION_DOWNLOAD_EXPIRED")
+      ? terminate(tx, row, "expired", "PARTITION_DOWNLOAD_EXPIRED", now())
       : row;
   }
   async function checkCurrent(
@@ -334,7 +285,7 @@ export function createPrismaPartitionDownloadRepository(
       snapshot.limits.partitionDownloadMaxPartitions
     );
     if (partitionDownloadFingerprint(current) !== row.manifestFingerprint)
-      return terminate(tx, row, "failed", "PARTITION_DOWNLOAD_STALE");
+      return terminate(tx, row, "failed", "PARTITION_DOWNLOAD_STALE", now());
     return row;
   }
   class LeaseLost extends Error {}
@@ -453,7 +404,7 @@ export function createPrismaPartitionDownloadRepository(
           employee = await authority(tx, actor);
         } catch (cause) {
           if (!(cause instanceof PartitionDownloadRepositoryError)) throw cause;
-          await terminate(tx, row, "failed", cause.code);
+          await terminate(tx, row, "failed", cause.code, now());
           return cause;
         }
         return publicStatus(await checkCurrent(tx, row, employee));
@@ -470,7 +421,7 @@ export function createPrismaPartitionDownloadRepository(
           employee = await authority(tx, actor);
         } catch (cause) {
           if (!(cause instanceof PartitionDownloadRepositoryError)) throw cause;
-          await terminate(tx, row, "failed", cause.code);
+          await terminate(tx, row, "failed", cause.code, now());
           return cause;
         }
         return internal(await checkCurrent(tx, row, employee), employee);
@@ -487,7 +438,7 @@ export function createPrismaPartitionDownloadRepository(
           employee = await authority(tx, { id: row.requesterId, orgId: row.orgId });
         } catch (cause) {
           if (!(cause instanceof PartitionDownloadRepositoryError)) throw cause;
-          await terminate(tx, row, "failed", cause.code);
+          await terminate(tx, row, "failed", cause.code, now());
           return false;
         }
         row = await checkCurrent(tx, row, employee);
@@ -525,7 +476,7 @@ export function createPrismaPartitionDownloadRepository(
         ].includes(errorCode)
           ? errorCode
           : "PARTITION_DOWNLOAD_FAILED";
-        await terminate(tx, row, "failed", safe);
+        await terminate(tx, row, "failed", safe, now());
         return true;
       });
     },
@@ -553,7 +504,7 @@ export function createPrismaPartitionDownloadRepository(
           employee = await authority(tx, { id: row.requesterId, orgId: row.orgId });
         } catch (cause) {
           if (!(cause instanceof PartitionDownloadRepositoryError)) throw cause;
-          await terminate(tx, row, "failed", cause.code);
+          await terminate(tx, row, "failed", cause.code, now());
           return false;
         }
         row = await checkCurrent(tx, row, employee);
@@ -642,4 +593,98 @@ export function createPrismaPartitionDownloadRepository(
     }
   };
   return repository;
+}
+
+// All paths that touch an existing request lock its processing run first, then request.
+// GC protects candidate objects through this same run's live lease.
+async function lockRequest(tx: Prisma.TransactionClient, requestId: string, orgId: string) {
+  await tx.$queryRaw(
+    Prisma.sql`SELECT id FROM processing_runs WHERE partition_download_request_id=${requestId} AND org_id=${orgId} FOR UPDATE`
+  );
+  await tx.$queryRaw(
+    Prisma.sql`SELECT id FROM partition_download_requests WHERE id=${requestId} AND org_id=${orgId} FOR UPDATE`
+  );
+  return tx.partitionDownloadRequest.findFirst({ where: { id: requestId, orgId } });
+}
+function downloadOwner(orgId: string, requestId: string): Prisma.ProcessingRunWhereInput {
+  return {
+    orgId,
+    partitionDownloadRequestId: requestId,
+    jobType: "structured_partition_bundle",
+    documentId: null,
+    partitionImportJobId: null,
+    ledgerArtifactRequestId: null,
+    ledgerArtifactRequestItemId: null,
+    ledgerPdfReconciliationRunId: null
+  };
+}
+async function terminate(
+  tx: Prisma.TransactionClient,
+  row: PartitionDownloadRequest,
+  status: "failed" | "expired",
+  code: string,
+  clock: Date = new Date()
+) {
+  if (row.objectKey) await enqueueStorageGarbage(tx, { objectKey: row.objectKey, reason: code });
+  await tx.processingRun.updateMany({
+    where: {
+      ...downloadOwner(row.orgId, row.id),
+      status: { in: ["queued", "running", "retry_scheduled"] }
+    },
+    data: {
+      status: "failed",
+      errorCode: code,
+      errorSummary: code,
+      lockedBy: null,
+      lockedUntil: null,
+      finishedAt: clock
+    }
+  });
+  return tx.partitionDownloadRequest.update({
+    where: { id: row.id },
+    data: { status, errorCode: code, objectKey: null, byteSize: null, checksumSha256: null }
+  });
+}
+
+/** Operator-only: caller owns a Serializable transaction and locks the organization first.
+ * Lock order is run -> request -> source, matching worker publication. Never delete owners.
+ */
+export async function invalidatePartitionDownloadsForPartitions(
+  tx: Prisma.TransactionClient,
+  input: { orgId: string; partitionIds: string[] }
+): Promise<{ invalidatedRequestCount: number; objectKeys: string[] }> {
+  const ids = new Set(input.partitionIds);
+  // Lock owner runs before Serializable request reads acquire shared row locks.
+  await tx.$queryRaw(
+    Prisma.sql`SELECT id FROM processing_runs WHERE org_id=${input.orgId} AND partition_download_request_id IS NOT NULL ORDER BY id FOR UPDATE`
+  );
+  const candidates = await tx.partitionDownloadRequest.findMany({
+    where: { orgId: input.orgId },
+    orderBy: { id: "asc" }
+  });
+  const objectKeys = new Set<string>();
+  let invalidatedRequestCount = 0;
+  for (const candidate of candidates) {
+    const manifest = candidate.manifest as unknown as PartitionDownloadEntry[];
+    if (!manifest.some((entry) => ids.has(entry.id))) continue;
+    const row = await lockRequest(tx, candidate.id, input.orgId);
+    if (!row) continue;
+    if (row.objectKey) objectKeys.add(row.objectKey);
+    const runs = await tx.processingRun.findMany({
+      where: downloadOwner(input.orgId, row.id),
+      select: { id: true }
+    });
+    const garbage = await tx.storageGarbage.findMany({
+      where: { processingRunId: { in: runs.map((run) => run.id) } }
+    });
+    for (const item of garbage) objectKeys.add(item.objectKey);
+    // Candidate tombstones retain repeatDeletion and their owner, fencing late writes.
+    await tx.storageGarbage.updateMany({
+      where: { id: { in: garbage.map((item) => item.id) } },
+      data: { availableAt: new Date(), lastErrorCode: null }
+    });
+    await terminate(tx, row, "failed", "PARTITION_DOWNLOAD_STALE");
+    invalidatedRequestCount++;
+  }
+  return { invalidatedRequestCount, objectKeys: [...objectKeys].sort() };
 }

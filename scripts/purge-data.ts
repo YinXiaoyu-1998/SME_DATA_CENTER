@@ -155,12 +155,14 @@ async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeR
         where: {
           OR: [
             { partitionImportJobId: { not: null } },
+            { partitionDownloadRequestId: { not: null } },
             { ledgerArtifactRequestItemId: { not: null } },
             { ledgerArtifactRequestId: { not: null } },
             { ledgerPdfReconciliationRunId: { not: null } }
           ]
         }
       });
+      await tx.partitionDownloadRequest.deleteMany({});
       await tx.ledgerPdfReconciliationTarget.deleteMany({});
       await tx.ledgerArtifactRequestItem.deleteMany({});
       // Retry requests have a restrictive self-reference; detach before bulk teardown.

@@ -79,6 +79,12 @@ export function createStagingUploadDomainCleanupAdapter(
       await runtime.prisma.$disconnect();
     },
     async collectInventory() {
+      // Existing overall mode inventories the whole database, so this guard uses that same scope.
+      if (await runtime.prisma.partitionDownloadRequest.count()) {
+        throw new Error(
+          "Overall cleanup requires a compatible release with download-request cleanup support; use the exact-store operator CLI for scoped partition cleanup."
+        );
+      }
       const documents = await runtime.prisma.document.findMany({
         select: { id: true, storageObjectKey: true }
       });

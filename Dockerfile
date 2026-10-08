@@ -114,6 +114,7 @@ COPY --from=build --chown=node:node /app/dist/release/staging-smoke.js ./dist/re
 COPY --from=build --chown=node:node /app/dist/release/official-manual-acceptance.js ./dist/release/official-manual-acceptance.js
 COPY --from=build --chown=node:node /app/dist/release/auth-operator.js ./dist/release/auth-operator.js
 COPY --from=build --chown=node:node /app/dist/release/staging-upload-domain-cleanup.js ./dist/release/staging-upload-domain-cleanup.js
+COPY --from=build --chown=node:node /app/dist/release/partition-store-cleanup.js ./dist/release/partition-store-cleanup.js
 COPY --from=build --chown=node:node /app/dist/release/evidence-reindex.js ./dist/release/evidence-reindex.js
 COPY --from=build --chown=node:node /app/dist/release/ledger-pdf.js ./dist/release/ledger-pdf.js
 COPY --chown=node:node fixtures/evidence/kitchen-sop.md ./fixtures/evidence/kitchen-sop.md

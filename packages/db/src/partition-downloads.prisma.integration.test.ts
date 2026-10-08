@@ -3,13 +3,16 @@ import { Readable } from "node:stream";
 import type { StorageAdapter } from "@smedc/storage";
 import { createPrismaProcessingWorkerRepository } from "../../../apps/worker/src/worker.js";
 import { buildPartitionDownload } from "../../../apps/worker/src/partition-download/processor.js";
-import { PrismaClient } from "@prisma/client";
+import { createStoreCleanupRepository } from "../../../scripts/partition-store-cleanup-support.js";
+import { createPrismaStructuredPartitionRepository } from "./structured-partitions.js";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDatabaseAdapter } from "./adapter.js";
 import { loadPartitionDownloadLimits } from "@smedc/domain";
 import { createPrismaPartitionDownloadRepository } from "./partition-downloads.js";
 const suite = process.env["RUN_PARTITION_PRISMA_INTEGRATION"] === "1" ? describe : describe.skip;
 const orgId = "download_test_org";
+const otherCleanupOrgId = "download_cleanup_other_org";
 const actor = { id: "download_employee", orgId, clearance: 3, disabled: false };
 const scope = {
   dataset: "business" as const,
@@ -25,6 +28,7 @@ suite("partition download persistence", () => {
   const repository = createPrismaPartitionDownloadRepository({ prisma });
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic" } });
+    await prisma.organization.create({ data: { id: otherCleanupOrgId, name: "Other Synthetic" } });
     await prisma.employee.create({
       data: {
         id: actor.id,
@@ -65,6 +69,7 @@ suite("partition download persistence", () => {
         ]
       }
     });
+    await prisma.auditLog.deleteMany({ where: { orgId } });
     await prisma.processingRun.deleteMany({ where: { orgId } });
     await prisma.partitionDownloadRequest.deleteMany({ where: { orgId } });
     await prisma.structuredPartition.deleteMany({ where: { orgId } });
@@ -82,12 +87,15 @@ suite("partition download persistence", () => {
         ]
       }
     });
+    await prisma.auditLog.deleteMany({ where: { orgId } });
     await prisma.processingRun.deleteMany({ where: { orgId } });
     await prisma.partitionDownloadRequest.deleteMany({ where: { orgId } });
     await prisma.structuredPartition.deleteMany({ where: { orgId } });
     await prisma.partitionImportJob.deleteMany({ where: { orgId } });
     await prisma.employee.deleteMany({ where: { orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
+    await prisma.structuredPartition.deleteMany({ where: { orgId: otherCleanupOrgId } });
+    await prisma.organization.delete({ where: { id: otherCleanupOrgId } });
     await prisma.$disconnect();
   });
   async function partitions(count = 1, bytes = 10n) {
@@ -547,6 +555,298 @@ suite("partition download persistence", () => {
     expect(await repository.prepare(actor, scope, "new-clearance")).toMatchObject({
       status: "succeeded",
       partitionCount: 0
+    });
+  });
+  const cleanup = createStoreCleanupRepository(prisma);
+  const cleanupScope = {
+    orgId,
+    enterpriseName: "Synthetic",
+    datasets: ["business" as const],
+    storeNames: ["Store 0"]
+  };
+  it("rejects missing/empty scopes, changed inventory, and cross-organization previews atomically", async () => {
+    await partitions();
+    await expect(
+      cleanup.buildStoreCleanupInventory({ ...cleanupScope, storeNames: [] })
+    ).rejects.toThrow();
+    await expect(
+      cleanup.buildStoreCleanupInventory({ ...cleanupScope, storeNames: ["missing"] })
+    ).rejects.toThrow("EMPTY_MATCH");
+    await expect(
+      cleanup.buildStoreCleanupInventory({ ...cleanupScope, orgId: "other" })
+    ).rejects.toThrow("ORGANIZATION_NOT_FOUND");
+    const inventory = await cleanup.buildStoreCleanupInventory(cleanupScope);
+    const request = await repository.prepare(actor, scope, "cleanup-changed");
+    await expect(
+      cleanup.executeStoreCleanup({
+        inventory: { ...inventory, scope: { ...inventory.scope, orgId: "other" } },
+        expectedFingerprint: inventory.fingerprint
+      })
+    ).rejects.toThrow("FINGERPRINT_MISMATCH");
+    await prisma.structuredPartition.updateMany({
+      where: { orgId },
+      data: { confidentialityLevel: 3 }
+    });
+    await expect(
+      cleanup.executeStoreCleanup({ inventory, expectedFingerprint: inventory.fingerprint })
+    ).rejects.toThrow("FINGERPRINT_MISMATCH");
+    // Invalidation performed before recheck rolls back with the stale preview.
+    expect(
+      await prisma.partitionDownloadRequest.findUniqueOrThrow({ where: { id: request.requestId } })
+    ).toMatchObject({ status: "queued" });
+    expect(
+      await prisma.storageGarbage.count({ where: { objectKey: { startsWith: "download-test/" } } })
+    ).toBe(0);
+    expect(await prisma.structuredPartition.count({ where: { orgId } })).toBe(1);
+  });
+  it("deletes only exact partitions, preserves mixed source jobs/runs/accounts, and reclaims late candidate writes idempotently", async () => {
+    await partitions(2);
+    const sourceRun = await prisma.processingRun.create({
+      data: {
+        orgId,
+        partitionImportJobId: "download_source",
+        jobKey: "retained-source",
+        jobType: "structured_partition_import"
+      }
+    });
+    const job = await prisma.partitionImportJob.findUniqueOrThrow({
+      where: { id: "download_source" }
+    });
+    await prisma.structuredPartition.update({
+      where: { id: "download_part_1" },
+      data: { storeName: "麦家保留门店" }
+    });
+    const retained = await prisma.structuredPartition.findUniqueOrThrow({
+      where: { id: "download_part_1" }
+    });
+    const otherOrgPartition = await prisma.structuredPartition.create({
+      data: {
+        ...retained,
+        id: "download_other_partition",
+        orgId: otherCleanupOrgId,
+        storeName: "Store 0",
+        objectKey: "download-test/other-org"
+      }
+    });
+    const employee = await prisma.employee.findUniqueOrThrow({ where: { id: actor.id } });
+    const inventory = await cleanup.buildStoreCleanupInventory(cleanupScope);
+    expect(inventory.preserved).toEqual({ partitions: 1, importJobs: 1, employees: 1 });
+    expect(inventory.targets.map((row) => row.id)).toEqual(["download_part_0"]);
+    const request = await repository.prepare(actor, scope, "cleanup-candidate");
+    const lease = await leaseFor(request.requestId);
+    const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/late.zip`;
+    await repository.registerCandidate(lease, objectKey);
+    const result = await cleanup.executeStoreCleanup({
+      inventory,
+      expectedFingerprint: inventory.fingerprint
+    });
+    expect(result).toEqual({
+      deletedPartitionCount: 1,
+      invalidatedRequestCount: 1,
+      garbageObjectCount: 2,
+      externalCleanupPending: true
+    });
+    expect(
+      await prisma.structuredPartition.findUnique({ where: { id: "download_part_0" } })
+    ).toBeNull();
+    expect(
+      await prisma.structuredPartition.findUniqueOrThrow({ where: { id: retained.id } })
+    ).toEqual(retained);
+    expect(
+      await prisma.structuredPartition.findUniqueOrThrow({ where: { id: otherOrgPartition.id } })
+    ).toEqual(otherOrgPartition);
+    expect(await prisma.partitionImportJob.findUniqueOrThrow({ where: { id: job.id } })).toEqual(
+      job
+    );
+    expect(await prisma.processingRun.findUniqueOrThrow({ where: { id: sourceRun.id } })).toEqual(
+      sourceRun
+    );
+    expect(await prisma.employee.findUniqueOrThrow({ where: { id: employee.id } })).toEqual(
+      employee
+    );
+    expect(
+      await repository.publish(lease, {
+        objectKey,
+        byteSize: 1n,
+        checksumSha256: "a".repeat(64),
+        expiresAt: request.expiresAt
+      })
+    ).toBe(false);
+    expect(
+      await prisma.storageGarbage.findMany({
+        select: { objectKey: true },
+        orderBy: { objectKey: "asc" }
+      })
+    ).toEqual([{ objectKey: "download-test/source-0" }, { objectKey }]);
+    const gc = createPrismaStructuredPartitionRepository({ prisma });
+    const objects = new Set(["download-test/source-0", "download-test/source-1", objectKey]);
+    for (let round = 0; round < 2; round++) {
+      for (const item of await gc.listDueGarbage(new Date(Date.now() + round * 86400001), 100)) {
+        objects.delete(item.objectKey);
+        await gc.deleteGarbage(item.id);
+      }
+      expect(objects.has("download-test/source-1")).toBe(true);
+      expect(objects.has(objectKey)).toBe(false);
+      if (!round) objects.add(objectKey); // A paused upload completes after the first GC pass.
+    }
+    expect(await prisma.storageGarbage.findFirst({ where: { objectKey } })).toMatchObject({
+      repeatDeletion: true
+    });
+    expect(await prisma.auditLog.findFirst({ where: { orgId } })).toMatchObject({
+      action: "partition.store_cleanup",
+      metadata: { deletedPartitionCount: 1, externalCleanupPending: true }
+    });
+  });
+
+  // Pause a real transaction after its source-lock query, without replacing any SQL behavior.
+  function pausedClient(marker: string) {
+    let release!: () => void;
+    let reached!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let paused = false;
+    const client = new Proxy(prisma, {
+      get(target, key) {
+        if (key !== "$transaction") return Reflect.get(target, key);
+        return (fn: (tx: Prisma.TransactionClient) => Promise<unknown>, options: unknown) =>
+          target.$transaction(
+            async (tx) =>
+              fn(
+                new Proxy(tx, {
+                  get(t, k) {
+                    if (k !== "$queryRaw") return Reflect.get(t, k);
+                    return async (sql: Prisma.Sql) => {
+                      const result = await t.$queryRaw(sql);
+                      if (!paused && sql.sql.includes(marker)) {
+                        paused = true;
+                        reached();
+                        await gate;
+                      }
+                      return result;
+                    };
+                  }
+                })
+              ),
+            options as Parameters<PrismaClient["$transaction"]>[1]
+          );
+      }
+    });
+    return { client, entered, release };
+  }
+  async function waitForSourceLockWait() {
+    for (let i = 0; i < 200; i++) {
+      const rows = await prisma.$queryRaw<{ n: bigint }[]>(
+        Prisma.sql`SELECT COUNT(*) AS n FROM performance_schema.data_lock_waits w JOIN performance_schema.data_locks l ON w.REQUESTING_ENGINE_LOCK_ID=l.ENGINE_LOCK_ID WHERE l.OBJECT_SCHEMA=DATABASE() AND l.OBJECT_NAME IN ('structured_partitions', 'processing_runs')`
+      );
+      if (Number(rows[0]!.n) > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error("Expected real MySQL lock wait");
+  }
+  it.each(["cleanup-first", "publish-first"])(
+    "serializes actual cleanup/publication race: %s",
+    async (order) => {
+      await partitions();
+      const inventory = await cleanup.buildStoreCleanupInventory(cleanupScope);
+      const request = await repository.prepare(actor, scope, "cleanup-race");
+      const lease = await leaseFor(request.requestId);
+      const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/race.zip`;
+      await repository.registerCandidate(lease, objectKey);
+      const artifact = {
+        objectKey,
+        byteSize: 1n,
+        checksumSha256: "a".repeat(64),
+        expiresAt: request.expiresAt
+      };
+      const barrier = pausedClient(
+        order === "cleanup-first" ? "enterprise_key AS enterpriseKey" : "merchant_id AS merchantId"
+      );
+      const first =
+        order === "cleanup-first"
+          ? createStoreCleanupRepository(barrier.client).executeStoreCleanup({
+              inventory,
+              expectedFingerprint: inventory.fingerprint
+            })
+          : createPrismaPartitionDownloadRepository({ prisma: barrier.client }).publish(
+              lease,
+              artifact
+            );
+      await barrier.entered;
+      const second =
+        order === "cleanup-first"
+          ? repository.publish(lease, artifact)
+          : cleanup.executeStoreCleanup({ inventory, expectedFingerprint: inventory.fingerprint });
+      try {
+        await waitForSourceLockWait();
+      } finally {
+        barrier.release();
+        await Promise.allSettled([first, second]);
+      }
+      const results = await Promise.all([first, second]);
+      expect(results[order === "cleanup-first" ? 1 : 0]).toBe(order === "publish-first");
+      expect(
+        await prisma.partitionDownloadRequest.findUniqueOrThrow({
+          where: { id: request.requestId }
+        })
+      ).toMatchObject({ status: "failed", errorCode: "PARTITION_DOWNLOAD_STALE", objectKey: null });
+      expect(await prisma.structuredPartition.count({ where: { orgId } })).toBe(0);
+      expect(await prisma.storageGarbage.findFirst({ where: { objectKey } })).not.toBeNull();
+    }
+  );
+  it("Serializable download publication blocks matching source insertion until validation commits", async () => {
+    await partitions();
+    const request = await repository.prepare(actor, scope, "insert-race");
+    const lease = await leaseFor(request.requestId);
+    const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/insert.zip`;
+    await repository.registerCandidate(lease, objectKey);
+    const barrier = pausedClient("merchant_id AS merchantId");
+    const publication = createPrismaPartitionDownloadRepository({ prisma: barrier.client }).publish(
+      lease,
+      { objectKey, byteSize: 1n, checksumSha256: "a".repeat(64), expiresAt: request.expiresAt }
+    );
+    await barrier.entered;
+    await prisma.partitionImportJob.update({
+      where: { id: "download_source" },
+      data: { status: "processing" }
+    });
+    const source = createPrismaStructuredPartitionRepository({ prisma });
+    const insertion = source.publishSourceAtomically({
+      orgId,
+      jobId: "download_source",
+      totalRowCount: 1n,
+      candidates: [
+        {
+          id: "download_added",
+          orgId,
+          enterpriseKey: "synthetic",
+          enterpriseName: "Synthetic",
+          dataset: "business",
+          storeKey: "extra",
+          merchantId: "extra",
+          storeName: "Store extra",
+          businessDate: "2026-10-01",
+          objectKey: "download-test/extra",
+          checksumSha256: "b".repeat(64),
+          rowCount: 1n,
+          byteSize: 1n,
+          confidentialityLevel: 2
+        }
+      ]
+    });
+    try {
+      await waitForSourceLockWait();
+    } finally {
+      barrier.release();
+      await Promise.allSettled([publication, insertion]);
+    }
+    expect(await publication).toBe(true);
+    await insertion;
+    await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
+      code: "PARTITION_DOWNLOAD_STALE"
     });
   });
 });
