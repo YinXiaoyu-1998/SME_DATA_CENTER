@@ -1,9 +1,11 @@
+import { loadPartitionDownloadLimits } from "@smedc/domain";
 import { describe, expect, it } from "vitest";
 import { loadWorkerRuntimeLimits } from "./runtime-limits.js";
 
 describe("worker runtime limits", () => {
   it("uses the documented defaults", () => {
     expect(loadWorkerRuntimeLimits({})).toEqual({
+      ...loadPartitionDownloadLimits({}),
       maxDocumentChars: 5_000_000,
       maxChunksPerDocument: 5_000,
       structuredImportBatchInsertSize: 500,
@@ -50,6 +52,7 @@ describe("worker runtime limits", () => {
         PARTITION_IMPORT_JOB_RETENTION_DAYS: "15"
       })
     ).toEqual({
+      ...loadPartitionDownloadLimits({}),
       maxDocumentChars: 1,
       maxChunksPerDocument: 2,
       structuredImportBatchInsertSize: 8,
@@ -99,4 +102,14 @@ describe("worker runtime limits", () => {
       loadWorkerRuntimeLimits({ WORKER_RETRY_BASE_MS: "1001", WORKER_RETRY_MAX_MS: "1000" })
     ).toThrow("WORKER_RETRY_BASE_MS must be less than or equal to WORKER_RETRY_MAX_MS.");
   });
+});
+
+it("wires bounded bundle settings into runtime config", () => {
+  expect(
+    loadWorkerRuntimeLimits({ PARTITION_DOWNLOAD_MAX_PARTITIONS: "750" })
+      .partitionDownloadMaxPartitions
+  ).toBe(750);
+  expect(() => loadWorkerRuntimeLimits({ PARTITION_DOWNLOAD_MAX_ACTIVE_PER_ORG: "65" })).toThrow(
+    "PARTITION_DOWNLOAD_MAX_ACTIVE_PER_ORG"
+  );
 });

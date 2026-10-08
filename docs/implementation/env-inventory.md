@@ -85,39 +85,45 @@ Task 3 implements the env-backed provider factory with `LLM_PROVIDER=fake` as th
 
 ### Runtime Limits
 
-| Variable                                   | Required | Example / Default               | Secret? | Used By      | Notes                                                                             |
-| ------------------------------------------ | -------: | ------------------------------- | ------: | ------------ | --------------------------------------------------------------------------------- |
-| `MAX_UPLOAD_BYTES`                         |       No | `52428800`                      |      No | API          | Multipart and MCP decoded-upload file-size guard (50 MiB).                        |
-| `MAX_STRUCTURED_IMPORT_ROWS`               |       No | `100000`                        |      No | API          | Enforced structured ingestion row limit before storage/DB publication.            |
-| `MAX_XLSX_SHEETS`                          |       No | `20`                            |      No | API          | Enforced XLSX sheet-count limit during ZIP/workbook preflight.                    |
-| `MAX_STRUCTURED_CELL_CHARS`                |       No | `32767`                         |      No | API          | Enforced structured scalar/cell character limit during ingestion.                 |
-| `MAX_XLSX_UNCOMPRESSED_BYTES`              |       No | `209715200`                     |      No | API          | Enforced XLSX total uncompressed-size limit during ZIP preflight.                 |
-| `MAX_XLSX_ZIP_ENTRIES`                     |       No | `10000`                         |      No | API          | Enforced XLSX ZIP central-directory entry-count limit.                            |
-| `MAX_XLSX_COMPRESSION_RATIO`               |       No | `100`                           |      No | API          | Enforced XLSX per-entry compression-ratio limit.                                  |
-| `SMEDC_CALAMINE_READER_PATH`               |       No | `smedc-calamine-reader`         |      No | Worker       | Optional local/developer override for the packaged business/dishes XLSX reader.   |
-| `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`      |       No | `500`                           |      No | API + worker | Atomic structured row insert batch size.                                          |
-| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS` |       No | `120000`                        |      No | API + worker | Prisma transaction timeout for atomic XLSX/CSV imports.                           |
-| `MCP_MAX_CONCURRENT_REQUESTS`              |       No | `8`                             |      No | API `/mcp`   | Bounded concurrent Streamable HTTP MCP requests.                                  |
-| `MAX_DOCUMENT_CHARS`                       |       No | `5000000`                       |      No | worker       | Enforced evidence parser character limit before index publication.                |
-| `MAX_CHUNKS_PER_DOCUMENT`                  |       No | `5000`                          |      No | worker       | Enforced evidence chunk-count limit before index publication.                     |
-| `WORKER_CONCURRENCY`                       |       No | `2`                             |      No | worker       | Enforced bounded worker pool size for the dev loop.                               |
-| `WORKER_LEASE_SECONDS`                     |       No | `120`                           |      No | worker       | Enforced database lease duration for claim/heartbeat/complete/fail.               |
-| `WORKER_POLL_INTERVAL_MS`                  |       No | `1000`                          |      No | worker       | Poll interval (minimum `100` ms).                                                 |
-| `WORKER_MAX_ATTEMPTS`                      |       No | `3`                             |      No | worker       | Enforced transient retry cap.                                                     |
-| `WORKER_RETRY_BASE_MS`                     |       No | `1000`                          |      No | worker       | Enforced exponential retry base delay; cannot exceed retry maximum.               |
-| `WORKER_RETRY_MAX_MS`                      |       No | `60000`                         |      No | worker       | Enforced exponential retry maximum delay.                                         |
-| `PARTITION_IMPORT_MAX_SOURCE_BYTES`        |       No | `2147483648`                    |      No | API + worker | Maximum business/dishes source object size (2 GiB).                               |
-| `PARTITION_IMPORT_MAX_ROWS`                |       No | `5000000`                       |      No | worker       | Maximum source rows accepted by one partition import.                             |
-| `PARTITION_IMPORT_MAX_PARTITIONS`          |       No | `10000`                         |      No | worker       | Maximum store-day partitions produced by one source.                              |
-| `PARTITION_IMPORT_MAX_CANONICAL_BYTES`     |       No | `8589934592`                    |      No | worker       | Maximum total canonical CSV bytes produced by one source.                         |
-| `PARTITION_IMPORT_WORK_DIR`                |       No | `/var/lib/smedc/partition-work` |      No | worker       | Worker-local temporary extraction directory; contents are removed after each job. |
-| `PARTITION_IMPORT_MIN_FREE_BYTES`          |       No | `12884901888`                   |      No | worker       | Minimum free disk required before partition processing starts.                    |
-| `PARTITION_IMPORT_OBJECT_CONCURRENCY`      |       No | `6`                             |      No | worker       | Concurrent canonical partition PUT + HEAD pipelines; accepted range `1`–`8`.      |
-| `PARTITION_IMPORT_JOB_RETENTION_DAYS`      |       No | `30`                            |      No | worker       | Retention for terminal job/status records.                                        |
-| `PARTITION_UPLOAD_PART_BYTES`              |       No | `16777216`                      |      No | API          | Multipart upload part size (16 MiB; never below 5 MiB).                           |
-| `PARTITION_UPLOAD_SESSION_TTL_SECONDS`     |       No | `86400`                         |      No | API          | Lifetime of an unfinished multipart upload session.                               |
-| `PARTITION_MANIFEST_MAX_PARTITIONS`        |       No | `10000`                         |      No | API          | Maximum authorized partitions returned in one manifest.                           |
-| `PARTITION_MANIFEST_URL_TTL_SECONDS`       |       No | `900`                           |      No | API          | Lifetime of generated partition download URLs.                                    |
+| Variable                                      | Required | Example / Default               | Secret? | Used By      | Notes                                                                                   |
+| --------------------------------------------- | -------: | ------------------------------- | ------: | ------------ | --------------------------------------------------------------------------------------- |
+| `MAX_UPLOAD_BYTES`                            |       No | `52428800`                      |      No | API          | Multipart and MCP decoded-upload file-size guard (50 MiB).                              |
+| `MAX_STRUCTURED_IMPORT_ROWS`                  |       No | `100000`                        |      No | API          | Enforced structured ingestion row limit before storage/DB publication.                  |
+| `MAX_XLSX_SHEETS`                             |       No | `20`                            |      No | API          | Enforced XLSX sheet-count limit during ZIP/workbook preflight.                          |
+| `MAX_STRUCTURED_CELL_CHARS`                   |       No | `32767`                         |      No | API          | Enforced structured scalar/cell character limit during ingestion.                       |
+| `MAX_XLSX_UNCOMPRESSED_BYTES`                 |       No | `209715200`                     |      No | API          | Enforced XLSX total uncompressed-size limit during ZIP preflight.                       |
+| `MAX_XLSX_ZIP_ENTRIES`                        |       No | `10000`                         |      No | API          | Enforced XLSX ZIP central-directory entry-count limit.                                  |
+| `MAX_XLSX_COMPRESSION_RATIO`                  |       No | `100`                           |      No | API          | Enforced XLSX per-entry compression-ratio limit.                                        |
+| `SMEDC_CALAMINE_READER_PATH`                  |       No | `smedc-calamine-reader`         |      No | Worker       | Optional local/developer override for the packaged business/dishes XLSX reader.         |
+| `STRUCTURED_IMPORT_BATCH_INSERT_SIZE`         |       No | `500`                           |      No | API + worker | Atomic structured row insert batch size.                                                |
+| `STRUCTURED_IMPORT_TRANSACTION_TIMEOUT_MS`    |       No | `120000`                        |      No | API + worker | Prisma transaction timeout for atomic XLSX/CSV imports.                                 |
+| `MCP_MAX_CONCURRENT_REQUESTS`                 |       No | `8`                             |      No | API `/mcp`   | Bounded concurrent Streamable HTTP MCP requests.                                        |
+| `MAX_DOCUMENT_CHARS`                          |       No | `5000000`                       |      No | worker       | Enforced evidence parser character limit before index publication.                      |
+| `MAX_CHUNKS_PER_DOCUMENT`                     |       No | `5000`                          |      No | worker       | Enforced evidence chunk-count limit before index publication.                           |
+| `WORKER_CONCURRENCY`                          |       No | `2`                             |      No | worker       | Enforced bounded worker pool size for the dev loop.                                     |
+| `WORKER_LEASE_SECONDS`                        |       No | `120`                           |      No | worker       | Enforced database lease duration for claim/heartbeat/complete/fail.                     |
+| `WORKER_POLL_INTERVAL_MS`                     |       No | `1000`                          |      No | worker       | Poll interval (minimum `100` ms).                                                       |
+| `WORKER_MAX_ATTEMPTS`                         |       No | `3`                             |      No | worker       | Enforced transient retry cap.                                                           |
+| `WORKER_RETRY_BASE_MS`                        |       No | `1000`                          |      No | worker       | Enforced exponential retry base delay; cannot exceed retry maximum.                     |
+| `WORKER_RETRY_MAX_MS`                         |       No | `60000`                         |      No | worker       | Enforced exponential retry maximum delay.                                               |
+| `PARTITION_IMPORT_MAX_SOURCE_BYTES`           |       No | `2147483648`                    |      No | API + worker | Maximum business/dishes source object size (2 GiB).                                     |
+| `PARTITION_IMPORT_MAX_ROWS`                   |       No | `5000000`                       |      No | worker       | Maximum source rows accepted by one partition import.                                   |
+| `PARTITION_IMPORT_MAX_PARTITIONS`             |       No | `10000`                         |      No | worker       | Maximum store-day partitions produced by one source.                                    |
+| `PARTITION_IMPORT_MAX_CANONICAL_BYTES`        |       No | `8589934592`                    |      No | worker       | Maximum total canonical CSV bytes produced by one source.                               |
+| `PARTITION_IMPORT_WORK_DIR`                   |       No | `/var/lib/smedc/partition-work` |      No | worker       | Worker-local temporary extraction directory; contents are removed after each job.       |
+| `PARTITION_IMPORT_MIN_FREE_BYTES`             |       No | `12884901888`                   |      No | worker       | Minimum free disk required before partition processing starts.                          |
+| `PARTITION_IMPORT_OBJECT_CONCURRENCY`         |       No | `6`                             |      No | worker       | Concurrent canonical partition PUT + HEAD pipelines; accepted range `1`–`8`.            |
+| `PARTITION_IMPORT_JOB_RETENTION_DAYS`         |       No | `30`                            |      No | worker       | Retention for terminal job/status records.                                              |
+| `PARTITION_UPLOAD_PART_BYTES`                 |       No | `16777216`                      |      No | API          | Multipart upload part size (16 MiB; never below 5 MiB).                                 |
+| `PARTITION_UPLOAD_SESSION_TTL_SECONDS`        |       No | `86400`                         |      No | API          | Lifetime of an unfinished multipart upload session.                                     |
+| `PARTITION_MANIFEST_MAX_PARTITIONS`           |       No | `10000`                         |      No | API          | Maximum authorized partitions returned in one manifest.                                 |
+| `PARTITION_MANIFEST_URL_TTL_SECONDS`          |       No | `900`                           |      No | API          | Lifetime of generated partition download URLs.                                          |
+| `PARTITION_DOWNLOAD_MAX_PARTITIONS`           |       No | `500`                           |      No | API + worker | Maximum partitions per bundle; upper bound 2000.                                        |
+| `PARTITION_DOWNLOAD_MAX_BYTES`                |       No | `268435456`                     |      No | API + worker | Maximum total source CSV bytes per bundle; upper bound 1073741824.                      |
+| `PARTITION_DOWNLOAD_MAX_ACTIVE_PER_ORG`       |       No | `16`                            |      No | API + worker | Maximum active bundle requests per organization; upper bound 64.                        |
+| `PARTITION_DOWNLOAD_MAX_ACTIVE_PER_REQUESTER` |       No | `4`                             |      No | API + worker | Maximum active bundle requests per requester; upper bound 16.                           |
+| `PARTITION_DOWNLOAD_RETENTION_SECONDS`        |       No | `86400`                         |      No | API + worker | Bundle/request lifetime; upper bound 86400 seconds.                                     |
+| `PARTITION_DOWNLOAD_URL_TTL_SECONDS`          |       No | `900`                           |      No | API + worker | Signed URL lifetime, also capped by remaining bundle lifetime; upper bound 900 seconds. |
 
 Field registry and retrieval config details are versioned config/DB seed data, not env secrets.
 

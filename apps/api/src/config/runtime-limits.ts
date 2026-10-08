@@ -1,6 +1,7 @@
+import { loadPartitionDownloadLimits, type PartitionDownloadLimits } from "@smedc/domain";
 import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@smedc/domain";
 
-export interface ApiRuntimeLimits {
+export interface ApiRuntimeLimits extends PartitionDownloadLimits {
   ledgerPdfDeliveryEnabled: boolean;
   maxUploadBytes: number;
   mcpMaxConcurrentRequests: number;
@@ -21,6 +22,7 @@ export interface ApiRuntimeLimits {
 
 export function loadApiRuntimeLimits(env: NodeJS.ProcessEnv): ApiRuntimeLimits {
   return {
+    ...loadPartitionDownloadLimits(env),
     ledgerPdfDeliveryEnabled: loadLedgerPdfDeliveryEnabled(env),
     maxUploadBytes: parsePositiveSafeInteger(env, "MAX_UPLOAD_BYTES", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes

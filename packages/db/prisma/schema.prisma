@@ -57,6 +57,7 @@ enum ProcessingJobType {
   evidence_document_index
   structured_import
   structured_partition_import
+  structured_partition_bundle
   ledger_pdf_generate
   ledger_pdf_bundle
   ledger_pdf_reconcile
@@ -161,6 +162,7 @@ model Organization {
   documentIndexes        DocumentIndex[]
   importBatches          ImportBatch[]
   importClaims           ImportWindowClaim[]
+  partitionDownloads     PartitionDownloadRequest[]
   partitionImportJobs    PartitionImportJob[]
   structuredPartitions   StructuredPartition[]
   vipRows                VipRow[]
@@ -200,6 +202,7 @@ model Employee {
   deviceAuthorizations DeviceAuthorization[]
   oauthTokens          OAuthAccessToken[]
   authEvents           AuthSecurityEvent[]
+  partitionDownloads   PartitionDownloadRequest[]
   partitionImports     PartitionImportJob[]
   ledgerArtifactRequests LedgerArtifactRequest[]
 
@@ -258,6 +261,8 @@ model ProcessingRun {
   orgId                String              @map("org_id") @db.VarChar(64)
   documentId           String?             @map("document_id") @db.VarChar(32)
   partitionImportJobId String?             @unique @map("partition_import_job_id") @db.VarChar(32)
+  partitionDownloadRequestId String? @unique @map("partition_download_request_id") @db.VarChar(32)
+  partitionDownloadRequest PartitionDownloadRequest? @relation(fields: [orgId, partitionDownloadRequestId], references: [orgId, id], onDelete: Restrict)
   jobKey               String              @unique @map("job_key") @db.VarChar(255)
   status               ProcessingRunStatus @default(queued)
   jobType              ProcessingJobType   @map("job_type")
@@ -285,6 +290,7 @@ model ProcessingRun {
   document             Document?           @relation(fields: [documentId], references: [id], onDelete: Cascade)
   partitionImportJob   PartitionImportJob? @relation(fields: [partitionImportJobId], references: [id], onDelete: Cascade)
 
+  @@unique([orgId, partitionDownloadRequestId], map: "processing_run_partition_download_uq")
   @@unique([orgId, ledgerArtifactRequestItemId], map: "processing_run_ledger_item_uq")
   @@unique([orgId, ledgerArtifactRequestId], map: "processing_run_ledger_request_uq")
   @@unique([orgId, ledgerPdfReconciliationRunId], map: "processing_run_ledger_reconcile_uq")
@@ -995,4 +1001,44 @@ model LedgerPdfReconciliationTarget {
   @@unique([reconciliationRunId, requestItemId], map: "ledger_reconciliation_target_uq")
   @@index([orgId, requestItemId])
   @@map("ledger_pdf_reconciliation_targets")
+}
+
+enum PartitionDownloadStatus {
+  queued
+  running
+  succeeded
+  failed
+  expired
+}
+
+model PartitionDownloadRequest {
+  id                      String                  @id @default(cuid()) @db.VarChar(32)
+  orgId                   String                  @map("org_id") @db.VarChar(64)
+  requesterId             String                  @map("requester_id") @db.VarChar(32)
+  idempotencyKey          String                  @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint      String                  @map("request_fingerprint") @db.Char(64)
+  scope                   Json
+  manifest                Json
+  manifestFingerprint     String                  @map("manifest_fingerprint") @db.Char(64)
+  limits                  Json
+  status                  PartitionDownloadStatus @default(queued)
+  partitionCount          Int                     @map("partition_count") @db.UnsignedInt
+  completedPartitionCount Int                     @default(0) @map("completed_partition_count") @db.UnsignedInt
+  totalRowCount           BigInt                  @map("total_row_count") @db.UnsignedBigInt
+  totalByteSize           BigInt                  @map("total_byte_size") @db.UnsignedBigInt
+  objectKey               String?                 @map("object_key") @db.VarChar(1024)
+  byteSize                BigInt?                 @map("byte_size") @db.UnsignedBigInt
+  checksumSha256          String?                 @map("checksum_sha256") @db.Char(64)
+  errorCode               String?                 @map("error_code") @db.VarChar(128)
+  expiresAt               DateTime                @map("expires_at")
+  createdAt               DateTime                @default(now()) @map("created_at")
+  updatedAt               DateTime                @updatedAt @map("updated_at")
+  organization            Organization            @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  requester               Employee                @relation(fields: [orgId, requesterId], references: [orgId, id], onDelete: Restrict)
+  processingRun           ProcessingRun?
+  @@unique([orgId, id])
+  @@unique([orgId, requesterId, idempotencyKey], map: "partition_download_idempotency_uq")
+  @@index([orgId, status, requesterId])
+  @@index([status, expiresAt])
+  @@map("partition_download_requests")
 }

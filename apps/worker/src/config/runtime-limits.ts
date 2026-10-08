@@ -1,6 +1,7 @@
+import { loadPartitionDownloadLimits, type PartitionDownloadLimits } from "@smedc/domain";
 import { PHASE3_RUNTIME_LIMIT_DEFAULTS, parsePositiveSafeInteger } from "@smedc/domain";
 
-export interface WorkerRuntimeLimits {
+export interface WorkerRuntimeLimits extends PartitionDownloadLimits {
   maxDocumentChars: number;
   maxChunksPerDocument: number;
   structuredImportBatchInsertSize: number;
@@ -25,6 +26,7 @@ export interface WorkerRuntimeLimits {
 
 export function loadWorkerRuntimeLimits(env: NodeJS.ProcessEnv): WorkerRuntimeLimits {
   const limits = {
+    ...loadPartitionDownloadLimits(env),
     maxDocumentChars: parsePositiveSafeInteger(env, "MAX_DOCUMENT_CHARS", {
       defaultValue: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxDocumentChars
     }),
