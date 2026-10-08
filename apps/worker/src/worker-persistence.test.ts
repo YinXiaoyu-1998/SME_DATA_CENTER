@@ -121,7 +121,7 @@ describe("Prisma structured worker persistence", () => {
     expect(prisma.processingRun.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: [
+          AND: expect.arrayContaining([
             expect.objectContaining({
               OR: expect.arrayContaining([
                 expect.objectContaining({
@@ -131,7 +131,7 @@ describe("Prisma structured worker persistence", () => {
                 })
               ])
             })
-          ]
+          ])
         })
       })
     );

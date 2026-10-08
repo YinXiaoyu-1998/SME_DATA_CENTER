@@ -1,3 +1,4 @@
+import { createPrismaPartitionDownloadRepository } from "@smedc/db";
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsFromRows,
@@ -41,6 +42,7 @@ export interface ClaimedProcessingRun {
   retryCount: number;
   attemptNumber: number;
   jobType: string;
+  partitionDownloadRequestId?: string | null;
   ledgerArtifactRequestItemId?: string | null;
   ledgerArtifactRequestId?: string | null;
   ledgerPdfReconciliationRunId?: string | null;
@@ -224,6 +226,13 @@ function isLedgerJob(jobType: string): jobType is LedgerWorkerJobType {
 export interface RunWorkerLoopInput {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
+  partitionDownloadJob?: {
+    process(input: {
+      run: ClaimedProcessingRun;
+      storage: StorageAdapter;
+      signal?: AbortSignal;
+    }): Promise<"succeeded" | "superseded" | "failed">;
+  };
   ledgerJobs?: LedgerWorkerJobs;
   evidenceIndexer?: EvidenceIndexer;
   partitionImporter?: {
@@ -251,6 +260,7 @@ export interface RunWorkerLoopInput {
 export async function runWorkerOnce(input: {
   repository: ProcessingWorkerRepository;
   storage: StorageAdapter;
+  partitionDownloadJob?: RunWorkerLoopInput["partitionDownloadJob"];
   ledgerJobs?: LedgerWorkerJobs;
   evidenceIndexer?: EvidenceIndexer;
   partitionImporter?: RunWorkerLoopInput["partitionImporter"];
@@ -295,6 +305,29 @@ export async function runWorkerOnce(input: {
   });
 
   try {
+    if (run.jobType === "structured_partition_bundle") {
+      if (!input.partitionDownloadJob)
+        throw new ProcessingError(
+          PROCESSING_ERROR_CODES.unsupportedProcessingJobType,
+          "Partition download handler is not configured.",
+          false
+        );
+      const outcome = await input.partitionDownloadJob.process({
+        run,
+        storage: input.storage,
+        signal: abortController.signal
+      });
+      return {
+        processed: true,
+        documentId: run.id,
+        status:
+          outcome === "failed"
+            ? "processing_failed"
+            : outcome === "superseded"
+              ? "retry_scheduled"
+              : "active"
+      };
+    }
     if (isLedgerJob(run.jobType)) {
       const handler = input.ledgerJobs?.[run.jobType];
       if (!handler)
@@ -525,6 +558,7 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
             repository: input.repository,
             storage: input.storage,
             evidenceIndexer: input.evidenceIndexer,
+            partitionDownloadJob: input.partitionDownloadJob,
             ledgerJobs: input.ledgerJobs,
             signal: input.signal,
             partitionImporter: input.partitionImporter,
@@ -578,6 +612,7 @@ export function createPrismaProcessingWorkerRepository(
         const run = await tx.processingRun.findFirst({
           where: {
             AND: [
+              downloadOwnerWhere(),
               {
                 OR: [
                   {
@@ -593,11 +628,20 @@ export function createPrismaProcessingWorkerRepository(
                     ledgerPdfReconciliationRun: { status: { in: ["queued", "running"] } }
                   },
                   {
+                    jobType: "structured_partition_bundle",
+                    partitionDownloadRequest: {
+                      status: { in: ["queued", "running"] },
+                      expiresAt: { gt: input.now }
+                    }
+                  },
+                  {
                     jobType: "structured_partition_import",
                     partitionImportJob: { status: { in: ["queued", "processing"] } }
                   },
                   {
-                    jobType: { not: "structured_partition_import" },
+                    jobType: {
+                      notIn: ["structured_partition_import", "structured_partition_bundle"]
+                    },
                     document: {
                       status: {
                         in: [DocumentStatus.pending_processing, DocumentStatus.processing]
@@ -653,6 +697,7 @@ export function createPrismaProcessingWorkerRepository(
 
         const claimed = await tx.processingRun.updateMany({
           where: {
+            ...downloadOwnerWhere(),
             id: run.id,
             status: run.status,
             attemptNumber: run.attemptNumber,
@@ -808,7 +853,7 @@ export function createPrismaProcessingWorkerRepository(
     },
     async heartbeatProcessingRun(input) {
       const result = await prisma.processingRun.updateMany({
-        where: activeLeaseWhere(input),
+        where: activeLeaseWhere(input, true),
         data: {
           lockedUntil: addSeconds(input.now, input.leaseSeconds),
           lastHeartbeatAt: input.now
@@ -818,7 +863,7 @@ export function createPrismaProcessingWorkerRepository(
     },
     async completePartitionProcessing(input) {
       const result = await prisma.processingRun.updateMany({
-        where: activeLeaseWhere(input),
+        where: { ...activeLeaseWhere(input), jobType: "structured_partition_import" },
         data: {
           status: ProcessingRunStatus.succeeded,
           lockedBy: null,
@@ -1190,11 +1235,29 @@ export function createPrismaProcessingWorkerRepository(
       });
     },
     async failProcessingRun(input) {
+      const owner = await prisma.processingRun.findUniqueOrThrow({ where: { id: input.runId } });
+      if (owner.jobType === "structured_partition_bundle" && !input.willRetry) {
+        if (
+          !owner.partitionDownloadRequestId ||
+          !(await createPrismaPartitionDownloadRepository({ prisma }).fail(
+            {
+              runId: owner.id,
+              orgId: owner.orgId,
+              requestId: owner.partitionDownloadRequestId,
+              workerId: input.workerId,
+              attemptNumber: input.attemptNumber
+            },
+            input.errorCode
+          ))
+        )
+          throw new ProcessingLeaseLostError(input.runId);
+        return;
+      }
       await prisma.$transaction(async (tx) => {
         const candidate = await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } });
         if (isLedgerJob(candidate.jobType)) await lockLedgerSourceMutation(tx, candidate.orgId);
         const claimed = await tx.processingRun.updateMany({
-          where: activeLeaseWhere(input),
+          where: activeLeaseWhere(input, true),
           data: {
             status: input.willRetry
               ? ProcessingRunStatus.retry_scheduled
@@ -1218,6 +1281,8 @@ export function createPrismaProcessingWorkerRepository(
             id: input.runId
           }
         });
+
+        if (run.jobType === "structured_partition_bundle") return;
 
         if (isLedgerJob(run.jobType)) {
           if (run.ledgerArtifactRequestItemId) {
@@ -1481,11 +1546,13 @@ function toProcessingError(error: unknown, jobType?: string): ProcessingError {
   const code =
     jobType && isLedgerJob(jobType)
       ? "LEDGER_JOB_FAILED"
-      : jobType === "structured_partition_import"
-        ? PROCESSING_ERROR_CODES.partitionImportFailed
-        : jobType === "structured_import"
-          ? PROCESSING_ERROR_CODES.structuredImportFailed
-          : PROCESSING_ERROR_CODES.evidenceIndexingFailed;
+      : jobType === "structured_partition_bundle"
+        ? "PARTITION_DOWNLOAD_FAILED"
+        : jobType === "structured_partition_import"
+          ? PROCESSING_ERROR_CODES.partitionImportFailed
+          : jobType === "structured_import"
+            ? PROCESSING_ERROR_CODES.structuredImportFailed
+            : PROCESSING_ERROR_CODES.evidenceIndexingFailed;
   return new ProcessingError(
     code,
     error instanceof Error ? error.message : "Processing failed.",
@@ -1508,6 +1575,7 @@ function toClaimedProcessingRun(
     retryCount: run.retryCount,
     attemptNumber: run.attemptNumber,
     jobType: run.jobType,
+    partitionDownloadRequestId: run.partitionDownloadRequestId,
     ledgerArtifactRequestItemId: run.ledgerArtifactRequestItemId,
     ledgerArtifactRequestId: run.ledgerArtifactRequestId,
     ledgerPdfReconciliationRunId: run.ledgerPdfReconciliationRunId,
@@ -1683,13 +1751,35 @@ async function waitForNextPoll(pollIntervalMs: number, signal: AbortSignal | und
   }
 }
 
-function activeLeaseWhere(input: {
-  runId: string;
-  workerId: string;
-  attemptNumber: number;
-  now: Date;
-}) {
+/** A download owner can never borrow another job's claim, heartbeat or terminal path. */
+function downloadOwnerWhere(): Prisma.ProcessingRunWhereInput {
   return {
+    OR: [
+      { jobType: { not: "structured_partition_bundle" }, partitionDownloadRequestId: null },
+      {
+        jobType: "structured_partition_bundle",
+        partitionDownloadRequestId: { not: null },
+        documentId: null,
+        partitionImportJobId: null,
+        ledgerArtifactRequestItemId: null,
+        ledgerArtifactRequestId: null,
+        ledgerPdfReconciliationRunId: null
+      }
+    ]
+  };
+}
+function activeLeaseWhere(
+  input: {
+    runId: string;
+    workerId: string;
+    attemptNumber: number;
+    now: Date;
+  },
+  allowDownload = false
+) {
+  return {
+    ...downloadOwnerWhere(),
+    ...(allowDownload ? {} : { jobType: { not: "structured_partition_bundle" as const } }),
     id: input.runId,
     status: ProcessingRunStatus.running,
     lockedBy: input.workerId,

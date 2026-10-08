@@ -16,6 +16,7 @@ import { registerEvidenceRoutes } from "./routes/evidence.js";
 import { registerStructuredImportRoutes } from "./routes/structured-import/routes.js";
 import { registerQuarantineCertificateRoutes } from "./routes/quarantine-certificates.js";
 import { registerSourceDocumentRoutes } from "./routes/source-documents.js";
+import { registerPartitionDownloadRoutes } from "./routes/structured-partitions/downloads.js";
 import { registerStructuredPartitionRoutes } from "./routes/structured-partitions/routes.js";
 
 export type { ApiServerOptions } from "./app-context.js";
@@ -135,6 +136,14 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     storage,
     partitions: context.structuredPartitions,
     runtimeLimits
+  });
+
+  registerPartitionDownloadRoutes(app, {
+    auth: requestAuth,
+    downloads: context.partitionDownloads,
+    audit: context.partitionDownloadAudit,
+    storage,
+    createBusinessRequestAudit
   });
 
   registerQuarantineCertificateRoutes(app, {

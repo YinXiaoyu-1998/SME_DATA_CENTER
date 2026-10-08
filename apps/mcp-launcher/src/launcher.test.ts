@@ -277,7 +277,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.8.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.8.1");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -887,6 +887,102 @@ describe("launcher evidence search proxy", () => {
   });
 });
 
+describe("public partition preparation handlers", () => {
+  const prepare = {
+    dataset: "business",
+    enterpriseName: "Synthetic",
+    startDate: "20261001",
+    endDate: "20261002",
+    idempotencyKey: "stable-retry"
+  };
+  it.each(["prepare_structured_partition_download", "get_structured_partition_download_status"])(
+    "%s refreshes once and preserves the exact request",
+    async (name) => {
+      const auth = {
+        ...fakeAuth(),
+        refreshAccessToken: vi.fn(async () => "replacement-secret"),
+        invalidate: vi.fn(async () => {})
+      };
+      const calls: RequestInit[] = [];
+      const remote = vi.fn<typeof fetch>(async (_url, init) => {
+        calls.push(init!);
+        return calls.length === 1
+          ? new Response(null, { status: 401 })
+          : Response.json({ requestId: "pd_1", status: "queued" });
+      });
+      const handler = createLauncherToolHandler(
+        name,
+        createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+      );
+      const result = await handler(name.startsWith("prepare") ? prepare : { requestId: "pd_1" });
+      expect(result.isError).not.toBe(true);
+      expect(body(result)).toMatchObject({ requestId: "pd_1", status: "queued" });
+      expect(auth.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(auth.invalidate).not.toHaveBeenCalled();
+      expect(calls[0]!.body).toEqual(calls[1]!.body);
+      expect(new Headers(calls[1]!.headers).get("authorization")).toBe("Bearer replacement-secret");
+      if (name.startsWith("prepare"))
+        expect(JSON.parse(String(calls[1]!.body))).toMatchObject({
+          ...prepare,
+          startDate: "2026-10-01",
+          endDate: "2026-10-02"
+        });
+    }
+  );
+  it("repeated 401 stops after one refresh and invalidates rejected authentication", async () => {
+    const auth = {
+      ...fakeAuth(),
+      refreshAccessToken: vi.fn(async () => "replacement-secret"),
+      invalidate: vi.fn(async () => {})
+    };
+    const remote = vi.fn<typeof fetch>(async () => new Response(null, { status: 401 }));
+    const handler = createLauncherToolHandler(
+      "prepare_structured_partition_download",
+      createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+    );
+    expect(body(await handler(prepare))).toMatchObject({
+      error: { code: "AUTHENTICATION_REQUIRED" }
+    });
+    expect(remote).toHaveBeenCalledTimes(2);
+    expect(auth.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(auth.invalidate).toHaveBeenCalledTimes(1);
+  });
+  it.each(["cancel", "deadline"])(
+    "%s bounds a pending refresh without another API request",
+    async (mode) => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      let refreshing!: () => void;
+      const started = new Promise<void>((resolve) => {
+        refreshing = resolve;
+      });
+      const auth = {
+        ...fakeAuth(),
+        refreshAccessToken: vi.fn(() => {
+          refreshing();
+          return new Promise<string>(() => {});
+        })
+      };
+      const remote = vi.fn<typeof fetch>(async () => new Response(null, { status: 401 }));
+      const handler = createLauncherToolHandler(
+        "get_structured_partition_download_status",
+        createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+      );
+      try {
+        const result = handler({ requestId: "pd_1" }, { signal: controller.signal });
+        await started;
+        if (mode === "cancel") controller.abort();
+        else await vi.advanceTimersByTimeAsync(30_000);
+        expect((await result).isError).toBe(true);
+        expect(remote).toHaveBeenCalledTimes(1);
+        expect(auth.refreshAccessToken).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+});
+
 function fakeAuth(
   options: {
     authenticated?: boolean;
@@ -1032,6 +1128,58 @@ it("advertises PDF side effects and validates scope before contacting service", 
     });
     expect(crossOrganization.isError).toBe(true);
     expect(remote).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+it("passes SDK cancellation into requestId bundle transfers and rejects mixed scope", async () => {
+  const bundle = await import("./partition-bundle.js");
+  let observedSignal: AbortSignal | undefined;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const transfer = vi
+    .spyOn(bundle, "downloadPartitionBundle")
+    .mockImplementation(async ({ context }) => {
+      observedSignal = context.signal;
+      started();
+      return new Promise((_resolve, reject) =>
+        context.signal!.addEventListener("abort", () => reject(context.signal!.reason), {
+          once: true
+        })
+      );
+    });
+  const server = new McpServer({ name: "bundle-cancellation", version: "1.0.0" });
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({ config, auth: fakeAuth({ authenticated: true }) })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "bundle-cancellation-client", version: "1.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const mixed = await client.callTool({
+      name: "download_structured_partitions",
+      arguments: { requestId: "pd_1", dataset: "business" }
+    });
+    expect(mixed.isError).toBe(true);
+    expect(transfer).not.toHaveBeenCalled();
+    const controller = new AbortController();
+    const pending = client.callTool(
+      { name: "download_structured_partitions", arguments: { requestId: "pd_1" } },
+      undefined,
+      { signal: controller.signal }
+    );
+    const rejection = expect(pending).rejects.toThrow();
+    await ready;
+    expect(transfer.mock.calls[0]![0].requestId).toBe("pd_1");
+    controller.abort();
+    await rejection;
+    await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
   } finally {
     await client.close();
     await server.close();

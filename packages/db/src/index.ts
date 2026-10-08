@@ -8,3 +8,5 @@ export {
 export * from "./structured-partitions.js";
 
 export * from "./storage-garbage.js";
+
+export * from "./partition-downloads.js";

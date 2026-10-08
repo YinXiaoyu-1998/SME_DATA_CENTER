@@ -109,3 +109,13 @@ late-write candidates through a compatible ZIP release before rollback; do not b
 Expired requests retain their durable rows in the current ZIP release. Draining active tasks
 does not remove those rows: cleanup remains blocked for retained owners after code rollback
 until a compatible release supports their cleanup. Do not manually delete foreign-key owners.
+
+## Optional bundle cleanup lifecycle
+
+With the ZIP release, exact-store cleanup also invalidates affected derived bundles atomically.
+Old workers are fenced, and registered unfinished uploads retain repeated-deletion tombstones
+for late writes. Verify package-object removal and keep active late candidates pending.
+The overall staging-upload-domain cleanup refuses any retained download requests before
+external deletion. Drain requests and candidates through a compatible ZIP release before
+rolling back code; additive migrations remain applied and must never be reversed. Previously
+issued URLs may remain usable until their capped TTL (at most 15 minutes) expires.

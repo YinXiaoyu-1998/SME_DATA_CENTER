@@ -20,7 +20,11 @@ import {
 import type { LauncherRuntimeConfig } from "./config.js";
 import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
+import { downloadPartitionBundle } from "./partition-bundle.js";
 import {
+  apiJson,
+  abortable,
+  transferDeadline,
   downloadPartitionDataset,
   uploadPartitionDataset,
   type PartitionTransferContext
@@ -51,6 +55,8 @@ export type LauncherBusinessToolName =
   | "get_evidence_document_status"
   | "get_import_status"
   | "get_partition_import_status"
+  | "prepare_structured_partition_download"
+  | "get_structured_partition_download_status"
   | "download_structured_partitions"
   | "describe_ledger_pdf_coverage"
   | "get_ledger_pdf_request_status"
@@ -267,6 +273,12 @@ export function createLauncherToolHandler(
   if (toolName === "smedc_login") return (input) => login(input, dependencies);
   if (toolName === "smedc_logout") return (input) => logout(input, dependencies);
   if (toolName === "smedc_auth_status") return (input) => status(input, dependencies);
+  if (
+    toolName === "prepare_structured_partition_download" ||
+    toolName === "get_structured_partition_download_status"
+  )
+    return (input, extra) =>
+      proxyPartitionPreparation(toolName, input, dependencies, extra?.signal);
   if (toolName === "download_structured_partitions")
     return (input, extra) => proxyPartitionDownload(input, dependencies, extra?.signal);
   if (LOCAL_PATH_UPLOAD_TOOL_NAMES.has(toolName as LauncherBusinessToolName))
@@ -411,6 +423,44 @@ async function proxyPartitionUpload(
   }
 }
 
+async function proxyPartitionPreparation(
+  toolName: "prepare_structured_partition_download" | "get_structured_partition_download_status",
+  input: unknown,
+  dependencies: LauncherToolDependencies,
+  signal?: AbortSignal
+): Promise<LauncherToolResult> {
+  const contract = SMEDC_MCP_TOOL_CONTRACTS.find((candidate) => candidate.name === toolName)!;
+  const parsed = contract.inputSchema.safeParse(input);
+  if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
+  const deadline = transferDeadline(signal, 30_000);
+  try {
+    const token = await abortable(dependencies.auth.accessToken(), deadline.signal);
+    const context = partitionTransferContext(dependencies, token, deadline.signal);
+    const value = parsed.data as { requestId?: string; startDate?: string; endDate?: string };
+    const iso = (date: string) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+    const result =
+      toolName === "prepare_structured_partition_download"
+        ? await apiJson(context, "/v1/structured/partition-downloads", {
+            method: "POST",
+            body: { ...parsed.data, startDate: iso(value.startDate!), endDate: iso(value.endDate!) }
+          })
+        : await apiJson(
+            context,
+            `/v1/structured/partition-downloads/${encodeURIComponent(value.requestId!)}`,
+            { method: "GET" }
+          );
+    return sanitizeRemoteToolResult(
+      jsonToolResult(result as Record<string, unknown>),
+      context.accessToken
+    );
+  } catch (error) {
+    if (mapMcpError(error).code === "AUTHENTICATION_REQUIRED") await dependencies.auth.invalidate();
+    return partitionTransferError(error);
+  } finally {
+    deadline.dispose();
+  }
+}
+
 async function proxyPartitionDownload(
   input: unknown,
   dependencies: LauncherToolDependencies,
@@ -424,8 +474,12 @@ async function proxyPartitionDownload(
   try {
     const accessToken = await dependencies.auth.accessToken();
     const context = partitionTransferContext(dependencies, accessToken, signal);
-    const value = parsed.data as Omit<Parameters<typeof downloadPartitionDataset>[0], "context">;
-    const result = await downloadPartitionDataset({ context, ...value });
+    const value = parsed.data as
+      { requestId: string } | Omit<Parameters<typeof downloadPartitionDataset>[0], "context">;
+    const result =
+      "requestId" in value
+        ? await downloadPartitionBundle({ context, requestId: value.requestId })
+        : await downloadPartitionDataset({ context, ...value });
     return jsonToolResult(result as Record<string, unknown>);
   } catch (error) {
     return partitionTransferError(error);

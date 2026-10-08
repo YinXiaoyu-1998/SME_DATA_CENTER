@@ -28,7 +28,9 @@ import {
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
+import { LAUNCHER_VERSION } from "../apps/mcp-launcher/src/oauth-client.js";
 import {
+  comparePartitionDownloads,
   createOwnedIntegrationDatabase,
   integrationDatabasePlan
 } from "./test-integration-support.js";
@@ -153,6 +155,7 @@ try {
       "run",
       "--no-file-parallelism",
       "packages/db/src/structured-partitions.prisma.integration.test.ts",
+      "packages/db/src/partition-downloads.prisma.integration.test.ts",
       "scripts/test-integration-support.test.ts"
     ],
     { env: { ...integrationEnv, RUN_PARTITION_PRISMA_INTEGRATION: "1" } }
@@ -381,51 +384,31 @@ try {
     "An exact source replay should reuse the published job without re-uploading."
   );
 
-  const partitionDownloadResult = await createLauncherToolHandler(
-    "download_structured_partitions",
-    employeeLauncherDependencies
-  )({
-    dataset: "dishes",
-    enterpriseName: "Integration Partitions",
-    startDate: "20260701",
-    endDate: "20260703"
+  const partitionComparison = await comparePartitionDownloads({
+    context: {
+      serviceUrl: apiUrl,
+      accessToken: employeeAccessToken,
+      launcherVersion: LAUNCHER_VERSION,
+      fetchImplementation: fetch
+    },
+    scope: {
+      dataset: "dishes",
+      enterpriseName: "Integration Partitions",
+      startDate: "2026-07-01",
+      endDate: "2026-07-03"
+    },
+    amountColumn: "菜品总收入",
+    expected: { partitionCount: 3, rowCount: 3, amountCents: 8500 },
+    build: async () => {
+      const result = parseJson<WorkerResponse>(
+        (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+      );
+      assert(
+        result.processed && result.status === "active",
+        "Worker must publish the comparison ZIP."
+      );
+    }
   });
-  assert(
-    !partitionDownloadResult.isError,
-    `Partition launcher download failed: ${JSON.stringify(partitionDownloadResult)}`
-  );
-  const partitionDownload = JSON.parse(partitionDownloadResult.content[0]?.text ?? "null") as {
-    localDirectory: string;
-    partitionCount: number;
-    totalRowCount: number;
-    files: string[];
-  };
-  assert(
-    partitionDownload.partitionCount === 3 &&
-      partitionDownload.totalRowCount === 3 &&
-      partitionDownload.files.length === 3,
-    "Launcher should materialize the complete authorized manifest locally."
-  );
-  const localManifest = await readFile(
-    path.join(partitionDownload.localDirectory, "manifest.json"),
-    "utf8"
-  );
-  assert(
-    !localManifest.includes("presignedDownloadUrl") &&
-      !localManifest.includes("structured-partitions/"),
-    "The local manifest must not persist signed URLs or OSS object keys."
-  );
-  for (const fileName of partitionDownload.files) {
-    const partitionCsv = await readFile(
-      path.join(partitionDownload.localDirectory, fileName),
-      "utf8"
-    );
-    assert(
-      partitionCsv.startsWith("下单时间,门店,") && partitionCsv.trim().split("\n").length === 2,
-      "Each downloaded partition must contain one canonical header and one source row."
-    );
-  }
-  await rm(partitionDownload.localDirectory, { recursive: true, force: true });
 
   const evidencePath = path.join(integrationRoot, "phase3-evidence.md");
   const longEvidenceParagraph =
@@ -520,6 +503,7 @@ try {
         evidenceDocumentId: evidenceUpload.document.documentId,
         apiUrl,
         mysqlPort,
+        partitionComparison,
         proved: [
           "seed",
           "official_session_authentication",
@@ -531,6 +515,7 @@ try {
           "partition_worker_atomic_publish",
           "partition_exact_replay",
           "partition_manifest_local_download",
+          "partition_zip_same_csv_hashes_counts_aggregate_and_request_counts",
           "partition_prisma_repository_regressions",
           "legacy_business_dishes_row_import_rejected",
           "delivery_supplier_query_authorization",

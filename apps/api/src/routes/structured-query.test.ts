@@ -46,6 +46,8 @@ function context(
     storage: unexpectedDependency,
     structuredImports: unexpectedDependency,
     structuredPartitions: unexpectedDependency,
+    partitionDownloads: unexpectedDependency,
+    partitionDownloadAudit: unexpectedDependency,
     structuredQueries: () => repository,
     structuredCoverage: () => coverageRepository,
     skills: unexpectedDependency,

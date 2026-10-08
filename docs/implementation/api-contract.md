@@ -89,33 +89,36 @@ employee-callable upload boundary.
 
 ## Public HTTP surface
 
-| Method         | Path                                               | Purpose                                                                           |
-| -------------- | -------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `GET`          | `/healthz`                                         | Liveness                                                                          |
-| `GET`          | `/.well-known/oauth-authorization-server`          | OAuth discovery and launcher compatibility metadata                               |
-| `GET` / `POST` | `/oauth/*`                                         | Browser authorization, token, and revoke flows                                    |
-| `GET` / `POST` | `/auth/password/setup/*`                           | Password setup/reset bootstrap and form                                           |
-| `POST`         | `/mcp`                                             | Authenticated Streamable HTTP MCP                                                 |
-| `GET`          | `/me`                                              | Current user: display name, email, role, clearance                                |
-| `GET`          | `/skills`                                          | Approved skill-directory metadata                                                 |
-| `POST`         | `/v1/documents/evidence`                           | Upload MD/TXT/DOCX evidence                                                       |
-| `GET`          | `/v1/documents/evidence/:documentId/status`        | Uploader-visible evidence processing status                                       |
-| `POST`         | `/v1/evidence/search`                              | Search readable evidence chunks                                                   |
-| `POST`         | `/v1/documents/quarantine-certificates`            | Upload one JPG/JPEG/PNG certificate                                               |
-| `POST`         | `/v1/quarantine-certificates/query`                | Query readable certificates by receipt IDs                                        |
-| `POST`         | `/v1/quarantine-certificates/archive`              | Owner archive by source ID or admin-only PAO archive                              |
-| `POST`         | `/v1/source-documents/:documentId/download-url`    | Issue a readable source-file download URL                                         |
-| `POST`         | `/v1/structured/imports`                           | Upload row-query datasets (`vip`, catalogs, ledgers); rejects `business`/`dishes` |
-| `GET`          | `/v1/structured/imports/:importBatchId`            | Readable structured-import status                                                 |
-| `POST`         | `/v1/structured/partition-uploads`                 | Create a multipart `business`/`dishes` upload session                             |
-| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`    | Get a bounded page of multipart part URLs                                         |
-| `POST`         | `/v1/structured/partition-uploads/:jobId/complete` | Verify and queue a completed source upload                                        |
-| `DELETE`       | `/v1/structured/partition-uploads/:jobId`          | Abort an unfinished source upload                                                 |
-| `GET`          | `/v1/structured/partition-imports/:jobId`          | Read partition import status                                                      |
-| `POST`         | `/v1/structured/partition-manifests`               | Resolve an authorized date/store manifest                                         |
-| `GET`          | `/v1/structured/datasets`                          | Dataset schema discovery                                                          |
-| `POST`         | `/v1/structured/query`                             | Controlled, readable structured query                                             |
-| `GET`          | `/v1/structured/datasets/:dataset/coverage`        | Readable source coverage                                                          |
+| Method         | Path                                                | Purpose                                                                           |
+| -------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `GET`          | `/healthz`                                          | Liveness                                                                          |
+| `GET`          | `/.well-known/oauth-authorization-server`           | OAuth discovery and launcher compatibility metadata                               |
+| `GET` / `POST` | `/oauth/*`                                          | Browser authorization, token, and revoke flows                                    |
+| `GET` / `POST` | `/auth/password/setup/*`                            | Password setup/reset bootstrap and form                                           |
+| `POST`         | `/mcp`                                              | Authenticated Streamable HTTP MCP                                                 |
+| `GET`          | `/me`                                               | Current user: display name, email, role, clearance                                |
+| `GET`          | `/skills`                                           | Approved skill-directory metadata                                                 |
+| `POST`         | `/v1/documents/evidence`                            | Upload MD/TXT/DOCX evidence                                                       |
+| `GET`          | `/v1/documents/evidence/:documentId/status`         | Uploader-visible evidence processing status                                       |
+| `POST`         | `/v1/evidence/search`                               | Search readable evidence chunks                                                   |
+| `POST`         | `/v1/documents/quarantine-certificates`             | Upload one JPG/JPEG/PNG certificate                                               |
+| `POST`         | `/v1/quarantine-certificates/query`                 | Query readable certificates by receipt IDs                                        |
+| `POST`         | `/v1/quarantine-certificates/archive`               | Owner archive by source ID or admin-only PAO archive                              |
+| `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                         |
+| `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, catalogs, ledgers); rejects `business`/`dishes` |
+| `GET`          | `/v1/structured/imports/:importBatchId`             | Readable structured-import status                                                 |
+| `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart `business`/`dishes` upload session                             |
+| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                         |
+| `POST`         | `/v1/structured/partition-uploads/:jobId/complete`  | Verify and queue a completed source upload                                        |
+| `DELETE`       | `/v1/structured/partition-uploads/:jobId`           | Abort an unfinished source upload                                                 |
+| `GET`          | `/v1/structured/partition-imports/:jobId`           | Read partition import status                                                      |
+| `POST`         | `/v1/structured/partition-manifests`                | Resolve an authorized date/store manifest                                         |
+| `POST`         | `/v1/structured/partition-downloads`                | Prepare an authorized bounded partition ZIP                                       |
+| `GET`          | `/v1/structured/partition-downloads/:requestId`     | Read authorized packaging status                                                  |
+| `POST`         | `/v1/structured/partition-downloads/:requestId/url` | Sign a succeeded nonempty ZIP; empty success has no URL                           |
+| `GET`          | `/v1/structured/datasets`                           | Dataset schema discovery                                                          |
+| `POST`         | `/v1/structured/query`                              | Controlled, readable structured query                                             |
+| `GET`          | `/v1/structured/datasets/:dataset/coverage`         | Readable source coverage                                                          |
 
 `GET /labels` and `GET /audit` are not registered. `GET /readyz` accepts loopback only.
 
@@ -151,17 +154,42 @@ MCP and launcher clients must never expose credentials, tokens, organization IDs
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
 query shape, filters, limit, and retrieval configuration.
 
-### Filtered partition range extracts
+### Filtered partition extracts and asynchronous bundles
 
-Filtered coverage and range downloads require independently verified published Launcher `0.8.0`
-and matching service deployment. Installation pins remain `0.7.1` until release verification.
-For business/dishes, coverage takes optional `enterpriseName` and `storeNameContains`; manifests
-accept dataset, enterpriseName, inclusive ISO startDate/endDate, optional storeIds (at most
-10,000) and storeNameContains. Terms are 1–20 NFC/trim literal case-sensitive substrings of
-1–255 characters, OR within the array and AND with authorization and other scope. Blank/empty
-filters and filters on other datasets fail. Counts reflect only readable matching partitions.
-MCP date selectors use compact YYYYMMDD. The launcher returns validated local extracts and
-keeps signing URLs internal. Failed downloads never imply no data. Service cleanup is operator-only.
+Filtered ranges require published, independently verified Launcher `0.8.0` or newer and
+matching filtered-range service deployment. Optional bundles require verified published
+Launcher `0.8.1` or newer and known matching ZIP service deployment. Range is the default;
+tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
+plans in range mode; do not bypass authentication, integrity or source-scope failures. Existing official installation pins remain `0.7.1` until that
+release is verified; this contract is not evidence of live availability.
+
+For `business`/`dishes`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
+inclusive ISO `startDate`/`endDate`, optional `storeIds` and `storeNameContains`. Coverage accepts
+`dataset` plus optional `enterpriseName` and `storeNameContains`. The latter is 1–20 NFC/trim
+literals of 1–255 characters: case-sensitive substring OR, AND with IDs, scope and backend
+authorization. Invalid empty arrays/blank items fail. Filters on other datasets are rejected.
+Coverage counts/store/date bounds and manifest totals describe only readable matching partitions.
+
+Prepare additionally requires `idempotencyKey` (1–128 characters, no surrounding whitespace);
+optional prepare `storeIds` contains 1–2000 IDs. Exact replay returns the same request;
+changed scope with the same key returns `IDEMPOTENCY_CONFLICT` (409). Status reports `requestId`,
+`status` (`queued`, `running`, `succeeded`, `failed`, `expired`), `partitionCount`,
+`completedPartitionCount`, `totalRowCount`, `totalByteSize`, `retryAfterSeconds`, `errorCode`,
+`expiresAt`. Row/byte totals are decimal strings. Wait `retryAfterSeconds` before polling pending
+states. Defaults: 500 partitions, 256 MiB raw bytes, 24-hour retention, 16 active requests per
+organization and 4 per requester; URL TTL is at most 15 minutes. Every endpoint rechecks requester,
+organization, clearance and current source authorization; source revisions invalidate stale ZIPs.
+
+MCP selectors use compact `YYYYMMDD`. `prepare_structured_partition_download` mirrors prepare;
+`get_structured_partition_download_status` takes only `requestId`. After success,
+`download_structured_partitions` takes only `requestId`, mutually exclusive with every selector,
+and does not wait for packaging. Its alternate range form takes dataset/enterprise/dates and
+optional store filters (legacy range `storeIds` maximum 10,000). The launcher verifies ZIP/manifest
+and CSV checksums/counts, consumes signed links internally and returns local files. Zero-partition
+success has no ZIP URL and creates a valid empty local extract. Check MCP `isError` and terminal
+status; failures never become empty results. Not-ready (409) resumes polling; active-limit (429)
+waits; size-limit (413) narrows the scope; stale (409)/expired (410) requires fresh preparation.
+Cleanup of service data remains operator-only, outside employee MCP, including admin accounts.
 
 ### Evidence search response
 

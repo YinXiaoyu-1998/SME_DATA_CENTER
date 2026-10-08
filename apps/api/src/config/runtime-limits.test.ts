@@ -1,9 +1,11 @@
+import { loadPartitionDownloadLimits } from "@smedc/domain";
 import { describe, expect, it } from "vitest";
 import { loadApiRuntimeLimits } from "./runtime-limits.js";
 
 describe("API runtime limits", () => {
   it("uses the documented defaults", () => {
     expect(loadApiRuntimeLimits({})).toEqual({
+      ...loadPartitionDownloadLimits({}),
       ledgerPdfDeliveryEnabled: false,
       maxUploadBytes: 52_428_800,
       mcpMaxConcurrentRequests: 8,
@@ -43,6 +45,7 @@ describe("API runtime limits", () => {
         PARTITION_MANIFEST_URL_TTL_SECONDS: "13"
       })
     ).toEqual({
+      ...loadPartitionDownloadLimits({}),
       ledgerPdfDeliveryEnabled: false,
       maxUploadBytes: 1,
       mcpMaxConcurrentRequests: 2,
@@ -87,4 +90,14 @@ describe("ledger PDF delivery switch", () => {
       "LEDGER_PDF_DELIVERY_ENABLED must be true or false."
     );
   });
+});
+
+it("wires bounded bundle settings into runtime config", () => {
+  expect(
+    loadApiRuntimeLimits({ PARTITION_DOWNLOAD_MAX_PARTITIONS: "750" })
+      .partitionDownloadMaxPartitions
+  ).toBe(750);
+  expect(() => loadApiRuntimeLimits({ PARTITION_DOWNLOAD_MAX_ACTIVE_PER_ORG: "65" })).toThrow(
+    "PARTITION_DOWNLOAD_MAX_ACTIVE_PER_ORG"
+  );
 });

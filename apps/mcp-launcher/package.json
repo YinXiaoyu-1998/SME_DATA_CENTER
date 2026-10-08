@@ -1,6 +1,6 @@
 {
   "name": "smedc-mcp-launcher",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Official desktop stdio MCP launcher for SMEDC",
   "license": "MIT",
   "repository": {
@@ -42,7 +42,8 @@
     "oauth4webapi": "^3.8.6",
     "open": "^11.0.0",
     "semver": "^7.8.5",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "yauzl": "3.4.0"
   },
   "devDependencies": {
     "@types/semver": "^7.7.1",
