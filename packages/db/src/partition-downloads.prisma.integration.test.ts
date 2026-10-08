@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
+import type { StorageAdapter } from "@smedc/storage";
+import { createPrismaProcessingWorkerRepository } from "../../../apps/worker/src/worker.js";
+import { buildPartitionDownload } from "../../../apps/worker/src/partition-download/processor.js";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDatabaseAdapter } from "./adapter.js";
@@ -106,6 +111,149 @@ suite("partition download persistence", () => {
       }))
     });
   }
+  it("worker lease reclaim fences old uploads and publishes with the new exclusive owner", async () => {
+    const body = Buffer.from("store,total\nSynthetic,1\n");
+    await partitions(1, BigInt(body.length));
+    await prisma.structuredPartition.updateMany({
+      where: { orgId },
+      data: { checksumSha256: createHash("sha256").update(body).digest("hex") }
+    });
+    const request = await repository.prepare(actor, scope, "worker-reclaim");
+    const worker = createPrismaProcessingWorkerRepository(process.env["DATABASE_URL"]!);
+    try {
+      await prisma.processingRun.updateMany({
+        where: { orgId, partitionDownloadRequestId: request.requestId },
+        data: { partitionImportJobId: "download_source" }
+      });
+      expect(
+        await worker.claimNextProcessingRun({
+          workerId: "mixed",
+          leaseSeconds: 60,
+          now: new Date()
+        })
+      ).toBeNull();
+      await prisma.processingRun.updateMany({
+        where: { orgId, partitionDownloadRequestId: request.requestId },
+        data: { partitionImportJobId: null }
+      });
+      const old = (await worker.claimNextProcessingRun({
+        workerId: "old",
+        leaseSeconds: 60,
+        now: new Date()
+      }))!;
+      expect(old.partitionDownloadRequestId).toBe(request.requestId);
+      const oldLease = {
+        runId: old.id,
+        orgId,
+        requestId: request.requestId,
+        workerId: "old",
+        attemptNumber: old.attemptNumber
+      };
+      expect(await repository.markRunning(oldLease)).toBeTruthy();
+      await repository.recordProgress(oldLease, 1);
+      const orphan = `partition-downloads/${orgId}/${request.requestId}/1/orphan.zip`;
+      await repository.registerCandidate(oldLease, orphan);
+      await prisma.processingRun.update({
+        where: { id: old.id },
+        data: { lockedUntil: new Date(Date.now() - 1000) }
+      });
+      const fresh = (await worker.claimNextProcessingRun({
+        workerId: "new",
+        leaseSeconds: 60,
+        now: new Date()
+      }))!;
+      expect(fresh.attemptNumber).toBe(2);
+      expect(
+        await worker.heartbeatProcessingRun!({
+          runId: old.id,
+          workerId: "old",
+          attemptNumber: 1,
+          leaseSeconds: 60,
+          now: new Date()
+        })
+      ).toBe(false);
+      expect(
+        await repository.publish(oldLease, {
+          objectKey: orphan,
+          byteSize: 1n,
+          checksumSha256: "a".repeat(64),
+          expiresAt: request.expiresAt
+        })
+      ).toBe(false);
+      // Mixed ownership cannot heartbeat, retry, terminate, or complete via generic paths.
+      await prisma.processingRun.update({
+        where: { id: old.id },
+        data: { partitionImportJobId: "download_source" }
+      });
+      expect(
+        await worker.heartbeatProcessingRun!({
+          runId: fresh.id,
+          workerId: "new",
+          attemptNumber: 2,
+          leaseSeconds: 60,
+          now: new Date()
+        })
+      ).toBe(false);
+      for (const willRetry of [true, false])
+        await expect(
+          worker.failProcessingRun({
+            runId: fresh.id,
+            documentId: fresh.id,
+            workerId: "new",
+            attemptNumber: 2,
+            now: new Date(),
+            willRetry,
+            nextAvailableAt: new Date(),
+            errorCode: "TEST",
+            errorSummary: "synthetic"
+          })
+        ).rejects.toThrow("no longer leased");
+      await expect(
+        worker.completePartitionProcessing!({
+          runId: fresh.id,
+          workerId: "new",
+          attemptNumber: 2,
+          now: new Date()
+        })
+      ).rejects.toThrow("no longer leased");
+      await prisma.processingRun.update({
+        where: { id: old.id },
+        data: { partitionImportJobId: null }
+      });
+      const storage = {
+        getObjectStream: async () => Readable.from([body]),
+        putObjectAtKey: async (input: {
+          body: Readable;
+          key: string;
+          contentLength: number;
+          checksumSha256: string;
+        }) => {
+          for await (const chunk of input.body) void chunk;
+          return { key: input.key, size: input.contentLength, hash: input.checksumSha256 };
+        }
+      } as unknown as StorageAdapter;
+      expect(
+        await buildPartitionDownload({
+          requestId: request.requestId,
+          lease: { ...oldLease, workerId: "new", attemptNumber: 2 },
+          repository,
+          storage
+        })
+      ).toBe("succeeded");
+      expect(await repository.read(actor, request.requestId)).toMatchObject({
+        status: "succeeded",
+        completedPartitionCount: 1
+      });
+      expect(
+        await prisma.processingRun.findUniqueOrThrow({ where: { id: fresh.id } })
+      ).toMatchObject({ status: "succeeded", lockedBy: null });
+      expect(await prisma.storageGarbage.findFirst({ where: { objectKey: orphan } })).toMatchObject(
+        { repeatDeletion: true }
+      );
+    } finally {
+      await worker.disconnect!();
+    }
+  });
   it("deduplicates concurrent same-key requests and rejects changed input", async () => {
     await partitions();
     const requests = await Promise.all(

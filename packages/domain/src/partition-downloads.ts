@@ -32,3 +32,25 @@ export function loadPartitionDownloadLimits(env: RuntimeLimitEnv): PartitionDown
     partitionDownloadUrlTtlSeconds: bounded("PARTITION_DOWNLOAD_URL_TTL_SECONDS", 900, 900)
   };
 }
+
+/** Public extract metadata. Counts and byte sizes use base-10 strings to preserve precision. */
+export interface PartitionDownloadManifest {
+  version: 1;
+  dataset: "business" | "dishes";
+  enterpriseName: string;
+  startDate: string;
+  endDate: string;
+  filter: { storeIds?: string[]; storeNameContains?: string[] };
+  partitionCount: number;
+  totalRowCount: string;
+  files: PartitionDownloadManifestFile[];
+}
+export interface PartitionDownloadManifestFile {
+  fileName: string;
+  businessDate: string;
+  storeId: string | null;
+  storeName: string;
+  rowCount: string;
+  byteSize: string;
+  checksumSha256: string;
+}
