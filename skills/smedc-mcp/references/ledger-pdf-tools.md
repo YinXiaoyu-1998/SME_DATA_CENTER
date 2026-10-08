@@ -1,7 +1,7 @@
 # Ledger PDF MCP Contracts
 
-Launcher **0.7.1 is published and independently verified**. The approved installation pin is
-`smedc-mcp-launcher@0.7.1`; install or update only through the core Skill's approved flow. Business MCP calls have a 45-second launcher deadline; connection and profile checks retain 30 seconds.
+Launcher **0.8.1 is published and independently verified**. The approved installation pin is
+`smedc-mcp-launcher@0.8.1`; install or update only through the core Skill's approved flow. Business MCP calls have a 45-second launcher deadline; connection and profile checks retain 30 seconds.
 These four tools also require service archive delivery enabled. Discover tools through the host
 MCP integration. If absent, verify the installed launcher version; if the service returns
 `LEDGER_PDF_NOT_ENABLED`, report archive delivery as unavailable until the service rollout is
