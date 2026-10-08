@@ -1,6 +1,7 @@
 name: Publish MCP launcher
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
