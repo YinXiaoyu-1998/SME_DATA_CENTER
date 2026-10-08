@@ -111,6 +111,52 @@ describe("launcher partition transfer", () => {
     }
   });
 
+  it("retains upload bytes while the HTTPS transport waits to consume the body", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "launcher-partition-"));
+    const source = path.join(root, "source.csv");
+    const expected = Buffer.alloc(8034, 7);
+    await writeFile(source, expected);
+    const uploaded: Buffer[] = [];
+    const remote = vi.fn<typeof fetch>(async (request, init) => {
+      if (init?.method === "PUT") {
+        // A new HTTPS connection can be pending before fetch pulls its body.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        for await (const chunk of init.body as unknown as AsyncIterable<Buffer>) {
+          uploaded.push(chunk);
+        }
+        const received = Buffer.concat(uploaded);
+        expect(received.length).toBe(expected.length);
+        expect(createHash("sha256").update(received).digest("hex")).toBe(
+          createHash("sha256").update(expected).digest("hex")
+        );
+        expect(init.headers).toMatchObject({ "content-length": String(expected.length) });
+        return new Response(null, { headers: { etag: "complete-part" } });
+      }
+      if (String(request).endsWith("/complete")) return Response.json({ status: "queued" });
+      return Response.json({
+        partitionImportJobId: "delayed-https",
+        status: "uploading",
+        partSize: 8388608,
+        parts: [{ partNumber: 1, uploadUrl: "https://storage.example/part" }],
+        nextAfterPartNumber: null
+      });
+    });
+    const result = await uploadPartitionDataset({
+      context: context(remote),
+      filePath: source,
+      name: "source.csv",
+      mediaType: "text/csv",
+      dataset: "business",
+      enterpriseName: "Synthetic",
+      startDate: "20261001",
+      endDate: "20261002",
+      idempotencyKey: "delayed-https"
+    });
+    expect(result).toMatchObject({ status: "queued" });
+    expect(remote.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+    expect(remote.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+  });
+
   it("uses a fresh bounded cleanup signal after caller cancellation", async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "launcher-partition-"));
     const source = path.join(root, "source.csv");
