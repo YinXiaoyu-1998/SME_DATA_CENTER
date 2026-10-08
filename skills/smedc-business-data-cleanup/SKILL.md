@@ -65,7 +65,7 @@ headers, private keys, or full customer document contents.
 
 Use the separate release-ops `partition-store-cleanup.js` entrypoint for an explicitly
 confirmed organization, enterprise, and store scope. It supports only current `business` and
-`dishes` partitions . Keep VIP, dish catalogs, delivery,
+`dishes` partitions. Keep VIP, dish catalogs, delivery,
 shared supplier data, source import jobs/runs (including mixed-store imports), accounts and
 sessions. This operator action is never an employee MCP tool.
 
@@ -105,3 +105,7 @@ After an additive download schema has been deployed, rolling code back does not 
 migration. The range-only cleanup checks for retained download owners without requiring their
 generated model and fails closed before any external deletion. Drain requests, workers and
 late-write candidates through a compatible ZIP release before rollback; do not bypass the guard.
+
+Expired requests retain their durable rows in the current ZIP release. Draining active tasks
+does not remove those rows: cleanup remains blocked for retained owners after code rollback
+until a compatible release supports their cleanup. Do not manually delete foreign-key owners.
