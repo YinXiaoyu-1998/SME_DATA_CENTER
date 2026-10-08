@@ -28,7 +28,6 @@ import {
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
-import { LAUNCHER_VERSION } from "../apps/mcp-launcher/src/oauth-client.js";
 import {
   createOwnedIntegrationDatabase,
   integrationDatabasePlan
