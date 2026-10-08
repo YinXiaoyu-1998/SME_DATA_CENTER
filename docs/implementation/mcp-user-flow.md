@@ -148,6 +148,23 @@ action.
 - `smedc_list_skills` returns directory metadata only. Do not execute an entry, generate a
   report, or turn SMEDC into a direct employee-facing AI service.
 
+## Filtered Partition Download Flow (Release Gated)
+
+Keep the installed pin at `0.7.1`. Filtered coverage/manifests and async bundle tools require
+published, independently verified Launcher `0.8.0` or newer plus matching server deployment;
+branch code does not make the flow available. Follow the verified official skill's pin.
+For business/dishes, use the same `enterpriseName`/`storeNameContains` scope in coverage and
+prepare. Names are 1–20 NFC/trim literal case-sensitive substrings, OR within the array and AND
+with authorization and other selectors. Prepare with compact inclusive `YYYYMMDD` dates and an
+exact-replay `idempotencyKey`; poll status with only `requestId` after `retryAfterSeconds`.
+Check `isError` and `queued`/`running`/`succeeded`/`failed`/`expired`. Only success may download
+with only `requestId`, no selectors; that call does not wait for packaging. Zero success has no
+ZIP URL and a valid empty local extract. Failures never imply no data. Keep signed URLs internal,
+validate the returned store scope, and release shared scratch only after the last consumer.
+Service cleanup is operator-only, including for admins. Exact inputs, limits and errors are in
+[api-contract.md](./api-contract.md#filtered-partition-extracts-and-asynchronous-bundles) and the
+[core skill](../../skills/smedc-mcp/SKILL.md#filtered-partition-bundle-downloads-release-gated).
+
 ## Current Release Boundary
 
 The code implements OAuth Device Authorization, opaque access tokens, rotating durable credentials,

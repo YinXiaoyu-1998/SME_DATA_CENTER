@@ -254,6 +254,55 @@ to split, rewrite, convert, or Base64-encode it.
   presigned links. The calling analysis workflow owns the returned scratch directory and must
   delete that exact directory in `finally`; it must not delete broader temp or report directories.
 
+## Filtered Partition Bundle Downloads (Release Gated)
+
+The installed pin remains published `0.7.1`. The new filters and prepare/status/requestId
+flow below require Launcher `0.8.0` or newer to be published and independently verified,
+matching server endpoints to be deployed, and a verified official skill with an updated exact
+pin. Branch code or server recommended-version metadata alone does not authorize upgrading.
+Until then use the existing published range download contract; do not send new arguments or
+invent missing tools. Discover the connected host's tools before invoking this flow.
+
+For `business` and `dishes`, coverage accepts `dataset`, optional `enterpriseName`, and optional
+`storeNameContains`. Apply the same enterprise/store scope to coverage and every download.
+`storeNameContains` is 1–20 NFC-normalized, trimmed strings, each 1–255 characters: literal,
+case-sensitive substring matching, OR within the array, AND with merchant IDs and backend
+authorization. Empty arrays and blank entries are invalid. Use service-returned `storeIds`;
+never guess merchant IDs or silently exclude stores. Filtered coverage and manifests describe
+only currently readable matching partitions, not completeness or hidden stores.
+
+1. Call `prepare_structured_partition_download` with `dataset` (`business` or `dishes`), exact
+   `enterpriseName`, inclusive `startDate`/`endDate` in `YYYYMMDD`, and `idempotencyKey`
+   (1–128 characters, no surrounding whitespace). Optional inputs are `storeIds` (1–2000 IDs)
+   and `storeNameContains`. Reuse a key only for the exact same scope; a changed scope needs
+   another key. Keep the returned `requestId`, `status`, counts and `retryAfterSeconds`.
+2. While `queued` or `running`, wait the returned `retryAfterSeconds`, then call
+   `get_structured_partition_download_status` with only `requestId`. It also reports
+   `completedPartitionCount`, `totalRowCount`, `totalByteSize`, `errorCode` and `expiresAt`.
+   Check MCP `isError` as well as the status. `failed` and `expired` are terminal failures;
+   neither pending nor failed responses mean no data. Do not continue into analysis on failure.
+3. Only after `succeeded`, call `download_structured_partitions` with only `requestId`.
+   It cannot be combined with any dataset/date/store selector and does not wait for packaging.
+   The alternate range form requires `dataset`, `enterpriseName`, `startDate`, `endDate`, with
+   optional `storeIds` (at most 10,000) and `storeNameContains`. The launcher consumes ZIP URLs
+   internally and verifies local files; return/use `localDirectory`, counts and `files[]`, never
+   signing URLs. Row/byte totals may be decimal strings; preserve their precision. Successful zero results have no ZIP URL and yield a valid empty local extract.
+
+Default bundle limits are 500 partitions and 256 MiB raw bytes, with 24-hour retention and
+signing URLs valid for at most 15 minutes. Active packaging limits default to 16 per organization
+and 4 per requester. For `PARTITION_DOWNLOAD_ACTIVE_LIMIT_EXCEEDED`, wait before retrying;
+for `PARTITION_DOWNLOAD_NOT_READY`, resume status polling. For timeout or
+`PARTITION_DOWNLOAD_LIMIT_EXCEEDED`, narrow/split the date window and replace the failed batch;
+never include both a failed parent and its replacement children. If one day still exceeds the
+limit, ask for a narrower store scope. For forbidden/not-found results, do not infer hidden data;
+for stale/expired requests, prepare a fresh authorized scope with a new key. Preserve a local
+scope check: a returned store outside the requested literals is an error, never silently filtered.
+
+The consuming workflow owns scratch cleanup. Shared downloads remain until the last consumer
+releases them through its shared index; never directly delete another consumer's directory.
+Service data cleanup is operator-only and is not an employee MCP tool, including for admins.
+Do not run operator cleanup commands or dataset repair from this base skill.
+
 ## Dish Catalog Snapshot Uploads
 
 Use this path only when `list_structured_datasets` reports `dish_catalog` as available. It is a
