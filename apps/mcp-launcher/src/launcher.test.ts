@@ -887,6 +887,102 @@ describe("launcher evidence search proxy", () => {
   });
 });
 
+describe("public partition preparation handlers", () => {
+  const prepare = {
+    dataset: "business",
+    enterpriseName: "Synthetic",
+    startDate: "20261001",
+    endDate: "20261002",
+    idempotencyKey: "stable-retry"
+  };
+  it.each(["prepare_structured_partition_download", "get_structured_partition_download_status"])(
+    "%s refreshes once and preserves the exact request",
+    async (name) => {
+      const auth = {
+        ...fakeAuth(),
+        refreshAccessToken: vi.fn(async () => "replacement-secret"),
+        invalidate: vi.fn(async () => {})
+      };
+      const calls: RequestInit[] = [];
+      const remote = vi.fn<typeof fetch>(async (_url, init) => {
+        calls.push(init!);
+        return calls.length === 1
+          ? new Response(null, { status: 401 })
+          : Response.json({ requestId: "pd_1", status: "queued" });
+      });
+      const handler = createLauncherToolHandler(
+        name,
+        createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+      );
+      const result = await handler(name.startsWith("prepare") ? prepare : { requestId: "pd_1" });
+      expect(result.isError).not.toBe(true);
+      expect(body(result)).toMatchObject({ requestId: "pd_1", status: "queued" });
+      expect(auth.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(auth.invalidate).not.toHaveBeenCalled();
+      expect(calls[0]!.body).toEqual(calls[1]!.body);
+      expect(new Headers(calls[1]!.headers).get("authorization")).toBe("Bearer replacement-secret");
+      if (name.startsWith("prepare"))
+        expect(JSON.parse(String(calls[1]!.body))).toMatchObject({
+          ...prepare,
+          startDate: "2026-10-01",
+          endDate: "2026-10-02"
+        });
+    }
+  );
+  it("repeated 401 stops after one refresh and invalidates rejected authentication", async () => {
+    const auth = {
+      ...fakeAuth(),
+      refreshAccessToken: vi.fn(async () => "replacement-secret"),
+      invalidate: vi.fn(async () => {})
+    };
+    const remote = vi.fn<typeof fetch>(async () => new Response(null, { status: 401 }));
+    const handler = createLauncherToolHandler(
+      "prepare_structured_partition_download",
+      createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+    );
+    expect(body(await handler(prepare))).toMatchObject({
+      error: { code: "AUTHENTICATION_REQUIRED" }
+    });
+    expect(remote).toHaveBeenCalledTimes(2);
+    expect(auth.refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(auth.invalidate).toHaveBeenCalledTimes(1);
+  });
+  it.each(["cancel", "deadline"])(
+    "%s bounds a pending refresh without another API request",
+    async (mode) => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      let refreshing!: () => void;
+      const started = new Promise<void>((resolve) => {
+        refreshing = resolve;
+      });
+      const auth = {
+        ...fakeAuth(),
+        refreshAccessToken: vi.fn(() => {
+          refreshing();
+          return new Promise<string>(() => {});
+        })
+      };
+      const remote = vi.fn<typeof fetch>(async () => new Response(null, { status: 401 }));
+      const handler = createLauncherToolHandler(
+        "get_structured_partition_download_status",
+        createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+      );
+      try {
+        const result = handler({ requestId: "pd_1" }, { signal: controller.signal });
+        await started;
+        if (mode === "cancel") controller.abort();
+        else await vi.advanceTimersByTimeAsync(30_000);
+        expect((await result).isError).toBe(true);
+        expect(remote).toHaveBeenCalledTimes(1);
+        expect(auth.refreshAccessToken).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+});
+
 function fakeAuth(
   options: {
     authenticated?: boolean;

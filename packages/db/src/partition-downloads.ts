@@ -79,6 +79,12 @@ export interface PartitionDownloadRepository {
   ): Promise<PartitionDownloadStatus>;
   read(actor: DownloadActor, requestId: string): Promise<PartitionDownloadStatus>;
   validateCurrent(actor: DownloadActor, requestId: string): Promise<CurrentPartitionDownload>;
+  /** Execute capability creation while source, request and authority locks remain held. */
+  issueCurrent<T>(
+    actor: DownloadActor,
+    requestId: string,
+    issue: (current: CurrentPartitionDownload) => Promise<T>
+  ): Promise<T>;
   markRunning(lease: PartitionDownloadLease): Promise<CurrentPartitionDownload | false>;
   recordProgress(lease: PartitionDownloadLease, completedPartitionCount: number): Promise<boolean>;
   fail(lease: PartitionDownloadLease, errorCode: string): Promise<boolean>;
@@ -412,7 +418,10 @@ export function createPrismaPartitionDownloadRepository(
       if (result instanceof PartitionDownloadRepositoryError) throw result;
       return result;
     },
-    async validateCurrent(actor, requestId) {
+    validateCurrent(actor, requestId) {
+      return repository.issueCurrent(actor, requestId, async (current) => current);
+    },
+    async issueCurrent(actor, requestId, issue) {
       const result = await transaction(async (tx) => {
         const row = await lockRequest(tx, requestId, actor.orgId);
         if (!row || row.requesterId !== actor.id) throw error("PARTITION_DOWNLOAD_NOT_FOUND");
@@ -424,11 +433,12 @@ export function createPrismaPartitionDownloadRepository(
           await terminate(tx, row, "failed", cause.code, now());
           return cause;
         }
-        return internal(await checkCurrent(tx, row, employee), employee);
+        const current = internal(await checkCurrent(tx, row, employee), employee);
+        if (["failed", "expired"].includes(current.request.status))
+          return error(current.request.errorCode ?? "PARTITION_DOWNLOAD_FAILED");
+        return issue(current);
       });
       if (result instanceof PartitionDownloadRepositoryError) throw result;
-      if (["failed", "expired"].includes(result.request.status))
-        throw error(result.request.errorCode ?? "PARTITION_DOWNLOAD_FAILED");
       return result;
     },
     markRunning(lease) {

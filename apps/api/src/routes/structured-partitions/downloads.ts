@@ -202,64 +202,70 @@ export function registerPartitionDownloadRoutes(
             if (action === "status")
               result = publicStatus(await dependencies.downloads().read(actor, targetId));
             else {
-              const current = await dependencies.downloads().validateCurrent(actor, targetId);
-              if (current.request.status !== "succeeded") rejected("PARTITION_DOWNLOAD_NOT_READY");
-              const expiresAt = new Date(
-                Math.min(
-                  current.request.expiresAt.getTime(),
-                  current.artifact?.expiresAt.getTime() ?? Infinity
-                )
-              );
-              const now = dependencies.now?.() ?? new Date();
-              if (expiresAt <= now) rejected("PARTITION_DOWNLOAD_EXPIRED");
-              const { scope, limits, request: status } = current;
-              const metadata = {
-                requestId: status.requestId,
-                status: "succeeded" as const,
-                scope: {
-                  dataset: scope.dataset,
-                  enterpriseName: scope.enterpriseName,
-                  startDate: scope.startDate,
-                  endDate: scope.endDate,
-                  ...(scope.storeIds ? { storeIds: scope.storeIds } : {}),
-                  ...(scope.storeNameContains ? { storeNameContains: scope.storeNameContains } : {})
-                },
-                partitionCount: status.partitionCount,
-                totalRowCount: status.totalRowCount,
-                totalByteSize: status.totalByteSize,
-                expiresAt: expiresAt.toISOString(),
-                archiveBounds: {
-                  maxRawByteSize: String(limits.partitionDownloadMaxBytes),
-                  maxManifestByteSize: 8 * 1024 * 1024,
-                  maxZipByteSize: String(
-                    BigInt(limits.partitionDownloadMaxBytes) +
-                      8n * 1024n * 1024n +
-                      BigInt(status.partitionCount + 1) * 512n +
-                      4096n
-                  )
-                }
-              };
-              if (status.partitionCount === 0) result = { ...metadata, partitionCount: 0 };
-              else {
-                const artifact = current.artifact;
-                if (!artifact) rejected("PARTITION_DOWNLOAD_NOT_READY");
-                const ttl = Math.min(
-                  900,
-                  limits.partitionDownloadUrlTtlSeconds,
-                  Math.floor((expiresAt.getTime() - now.getTime()) / 1000)
-                );
-                if (ttl < 1) rejected("PARTITION_DOWNLOAD_EXPIRED");
-                const downloadUrl = await dependencies
-                  .storage()
-                  .createDownloadUrl(artifact.objectKey, { expiresInSeconds: ttl });
-                result = {
-                  ...metadata,
-                  downloadUrl,
-                  byteSize: artifact.byteSize.toString(),
-                  checksumSha256: artifact.checksumSha256,
-                  urlExpiresAt: new Date(now.getTime() + ttl * 1000).toISOString()
-                };
-              }
+              result = await dependencies
+                .downloads()
+                .issueCurrent(actor, targetId, async (current) => {
+                  if (current.request.status !== "succeeded")
+                    rejected("PARTITION_DOWNLOAD_NOT_READY");
+                  const expiresAt = new Date(
+                    Math.min(
+                      current.request.expiresAt.getTime(),
+                      current.artifact?.expiresAt.getTime() ?? Infinity
+                    )
+                  );
+                  const now = dependencies.now?.() ?? new Date();
+                  if (expiresAt <= now) rejected("PARTITION_DOWNLOAD_EXPIRED");
+                  const { scope, limits, request: status } = current;
+                  const metadata = {
+                    requestId: status.requestId,
+                    status: "succeeded" as const,
+                    scope: {
+                      dataset: scope.dataset,
+                      enterpriseName: scope.enterpriseName,
+                      startDate: scope.startDate,
+                      endDate: scope.endDate,
+                      ...(scope.storeIds ? { storeIds: scope.storeIds } : {}),
+                      ...(scope.storeNameContains
+                        ? { storeNameContains: scope.storeNameContains }
+                        : {})
+                    },
+                    partitionCount: status.partitionCount,
+                    totalRowCount: status.totalRowCount,
+                    totalByteSize: status.totalByteSize,
+                    expiresAt: expiresAt.toISOString(),
+                    archiveBounds: {
+                      maxRawByteSize: String(limits.partitionDownloadMaxBytes),
+                      maxManifestByteSize: 8 * 1024 * 1024,
+                      maxZipByteSize: String(
+                        BigInt(limits.partitionDownloadMaxBytes) +
+                          8n * 1024n * 1024n +
+                          BigInt(status.partitionCount + 1) * 512n +
+                          4096n
+                      )
+                    }
+                  };
+                  if (status.partitionCount === 0) return { ...metadata, partitionCount: 0 };
+                  else {
+                    const artifact = current.artifact;
+                    if (!artifact) rejected("PARTITION_DOWNLOAD_NOT_READY");
+                    const ttl = Math.min(
+                      900,
+                      limits.partitionDownloadUrlTtlSeconds,
+                      Math.floor((expiresAt.getTime() - now.getTime()) / 1000)
+                    );
+                    if (ttl < 1) rejected("PARTITION_DOWNLOAD_EXPIRED");
+                    const downloadUrl = await dependencies
+                      .storage()
+                      .createDownloadUrl(artifact.objectKey, { expiresInSeconds: ttl });
+                    return {
+                      ...metadata,
+                      downloadUrl,
+                      byteSize: artifact.byteSize.toString(),
+                      checksumSha256: artifact.checksumSha256,
+                      urlExpiresAt: new Date(now.getTime() + ttl * 1000).toISOString()
+                    };
+                  }
+                });
             }
           }
           await record("succeeded");

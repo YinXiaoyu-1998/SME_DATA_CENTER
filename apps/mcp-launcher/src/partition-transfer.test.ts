@@ -65,6 +65,93 @@ describe("launcher partition transfer", () => {
     expect(JSON.stringify(result)).not.toContain("uploadUrl");
   });
 
+  it("allows a progressing multipart upload beyond the download-only 240 second budget", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "launcher-partition-"));
+    const source = path.join(root, "source.csv");
+    await writeFile(source, Buffer.alloc(13, 7));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const began = Date.now();
+    let part = 0;
+    const remote = vi.fn<typeof fetch>(async (request, init) => {
+      if (init?.method === "PUT") {
+        for await (const chunk of init.body as unknown as AsyncIterable<Buffer>) {
+          expect(chunk).toHaveLength(1);
+          await vi.advanceTimersByTimeAsync(20_000);
+        }
+        return new Response(null, { headers: { etag: `part-${part}` } });
+      }
+      if (String(request).endsWith("/complete")) return Response.json({ status: "queued" });
+      part++;
+      return Response.json({
+        partitionImportJobId: "progress",
+        status: "uploading",
+        partSize: 1,
+        parts: [{ partNumber: part, uploadUrl: "https://storage.example/part" }],
+        nextAfterPartNumber: part === 13 ? null : part
+      });
+    });
+    try {
+      expect(
+        await uploadPartitionDataset({
+          context: context(remote),
+          filePath: source,
+          name: "source.csv",
+          mediaType: "text/csv",
+          dataset: "business",
+          enterpriseName: "Synthetic",
+          startDate: "20261001",
+          endDate: "20261002",
+          idempotencyKey: "progress"
+        })
+      ).toMatchObject({ status: "queued" });
+      expect(Date.now() - began).toBeGreaterThan(240_000);
+      expect(remote.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses a fresh bounded cleanup signal after caller cancellation", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "launcher-partition-"));
+    const source = path.join(root, "source.csv");
+    await writeFile(source, "x");
+    const caller = new AbortController();
+    let cleanupSignal: AbortSignal | null | undefined;
+    const remote = vi.fn<typeof fetch>(async (_request, init) => {
+      if (init?.method === "PUT") {
+        caller.abort(new Error("cancelled"));
+        throw caller.signal.reason;
+      }
+      if (init?.method === "DELETE") {
+        cleanupSignal = init.signal;
+        return Response.json({});
+      }
+      return Response.json({
+        partitionImportJobId: "cancel",
+        status: "uploading",
+        partSize: 1,
+        parts: [{ partNumber: 1, uploadUrl: "https://storage.example/part" }],
+        nextAfterPartNumber: null
+      });
+    });
+    await expect(
+      uploadPartitionDataset({
+        context: { ...context(remote), signal: caller.signal },
+        filePath: source,
+        name: "source.csv",
+        mediaType: "text/csv",
+        dataset: "business",
+        enterpriseName: "Synthetic",
+        startDate: "20261001",
+        endDate: "20261002",
+        idempotencyKey: "cancel"
+      })
+    ).rejects.toThrow("cancelled");
+    expect(cleanupSignal).toBeInstanceOf(AbortSignal);
+    expect(cleanupSignal!.aborted).toBe(false);
+    expect(remote.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(1);
+  });
+
   it("aborts the server session when a multipart transfer cannot complete", async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "launcher-partition-"));
     const source = path.join(root, "source.csv");

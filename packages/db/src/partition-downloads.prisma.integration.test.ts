@@ -1,3 +1,6 @@
+import Fastify from "fastify";
+import { registerPartitionDownloadRoutes } from "../../../apps/api/src/routes/structured-partitions/downloads.js";
+import type { RequestAuth } from "../../../apps/api/src/request-auth.js";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import type { StorageAdapter } from "@smedc/storage";
@@ -6,7 +9,7 @@ import { buildPartitionDownload } from "../../../apps/worker/src/partition-downl
 import { createStoreCleanupRepository } from "../../../scripts/partition-store-cleanup-support.js";
 import { createPrismaStructuredPartitionRepository } from "./structured-partitions.js";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseAdapter } from "./adapter.js";
 import { loadPartitionDownloadLimits } from "@smedc/domain";
 import { createPrismaPartitionDownloadRepository } from "./partition-downloads.js";
@@ -347,6 +350,9 @@ suite("partition download persistence", () => {
         status: "failed",
         errorCode: "PARTITION_DOWNLOAD_STALE"
       });
+      const renewed = await repository.prepare(actor, scope, `${change}-new-generation`);
+      expect(renewed.requestId).not.toBe(request.requestId);
+      expect(renewed.status).toBe(change === "deleted" ? "succeeded" : "queued");
     }
   );
   it("reloads employee authority instead of trusting the supplied actor", async () => {
@@ -416,6 +422,71 @@ suite("partition download persistence", () => {
         await prisma.storageGarbage.findUniqueOrThrow({ where: { id: garbage.id } })
       ).availableAt.getTime()
     ).toBeLessThanOrEqual(Date.now());
+  });
+  it("rolls back run, request and garbage writes when the clock crosses the lease at callback completion", async () => {
+    await partitions();
+    const request = await repository.prepare(actor, scope, "clock-crossing");
+    const lease = await leaseFor(request.requestId);
+    const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/clock.zip`;
+    await repository.registerCandidate(lease, objectKey);
+    const before = {
+      run: await prisma.processingRun.findUniqueOrThrow({ where: { id: lease.runId } }),
+      request: await prisma.partitionDownloadRequest.findUniqueOrThrow({
+        where: { id: request.requestId }
+      }),
+      garbage: await prisma.storageGarbage.findMany({ where: { objectKey } })
+    };
+    let clock = new Date();
+    let crossed = false;
+    const client = new Proxy(prisma, {
+      get(target, key) {
+        if (key !== "$transaction") return Reflect.get(target, key);
+        return (fn: (tx: Prisma.TransactionClient) => Promise<unknown>, options: unknown) =>
+          target.$transaction(
+            async (tx) => {
+              const result = await fn(
+                new Proxy(tx, {
+                  get(t, k) {
+                    if (k !== "storageGarbage") return Reflect.get(t, k);
+                    return new Proxy(t.storageGarbage, {
+                      get(garbage, operation) {
+                        if (operation !== "upsert") return Reflect.get(garbage, operation);
+                        return async (args: Parameters<typeof garbage.upsert>[0]) => {
+                          const row = await garbage.upsert(args);
+                          if (row.reason === "partition_download_expired") {
+                            clock = new Date(before.run.lockedUntil!.getTime() + 1);
+                            crossed = true;
+                          }
+                          return row;
+                        };
+                      }
+                    });
+                  }
+                })
+              );
+              return result;
+            },
+            options as Parameters<PrismaClient["$transaction"]>[1]
+          );
+      }
+    });
+    const fenced = createPrismaPartitionDownloadRepository({ prisma: client, now: () => clock });
+    expect(
+      await fenced.publish(lease, {
+        objectKey,
+        byteSize: 1n,
+        checksumSha256: "a".repeat(64),
+        expiresAt: request.expiresAt
+      })
+    ).toBe(false);
+    expect(crossed).toBe(true);
+    expect(await prisma.processingRun.findUniqueOrThrow({ where: { id: lease.runId } })).toEqual(
+      before.run
+    );
+    expect(
+      await prisma.partitionDownloadRequest.findUniqueOrThrow({ where: { id: request.requestId } })
+    ).toEqual(before.request);
+    expect(await prisma.storageGarbage.findMany({ where: { objectKey } })).toEqual(before.garbage);
   });
   it("rejects mixed processing owners and expired leases", async () => {
     await partitions();
@@ -740,13 +811,133 @@ suite("partition download persistence", () => {
   async function waitForSourceLockWait() {
     for (let i = 0; i < 200; i++) {
       const rows = await prisma.$queryRaw<{ n: bigint }[]>(
-        Prisma.sql`SELECT COUNT(*) AS n FROM performance_schema.data_lock_waits w JOIN performance_schema.data_locks l ON w.REQUESTING_ENGINE_LOCK_ID=l.ENGINE_LOCK_ID WHERE l.OBJECT_SCHEMA=DATABASE() AND l.OBJECT_NAME IN ('structured_partitions', 'processing_runs')`
+        Prisma.sql`SELECT COUNT(*) AS n FROM performance_schema.data_lock_waits w JOIN performance_schema.data_locks l ON w.REQUESTING_ENGINE_LOCK_ID=l.ENGINE_LOCK_ID WHERE l.OBJECT_SCHEMA=DATABASE() AND l.OBJECT_NAME IN ('structured_partitions', 'processing_runs', 'employees')`
       );
       if (Number(rows[0]!.n) > 0) return;
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
     throw new Error("Expected real MySQL lock wait");
   }
+  function urlApp(
+    downloads = repository,
+    sign = vi.fn(async () => "https://synthetic.invalid/signed")
+  ) {
+    const app = Fastify();
+    registerPartitionDownloadRoutes(app, {
+      auth: { authenticate: async () => true, employee: () => actor } as unknown as RequestAuth,
+      downloads: () => downloads,
+      storage: () => ({ createDownloadUrl: sign }) as unknown as StorageAdapter,
+      audit: () => ({ append: async () => {} }),
+      createBusinessRequestAudit: () => ({
+        requestId: "race",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api",
+        launcherVersion: null
+      })
+    });
+    return app;
+  }
+  async function publishedRequest() {
+    const request = await repository.prepare(actor, scope, "issuance-race");
+    const lease = await leaseFor(request.requestId);
+    const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/url.zip`;
+    await repository.registerCandidate(lease, objectKey);
+    expect(
+      await repository.publish(lease, {
+        objectKey,
+        byteSize: 1n,
+        checksumSha256: "a".repeat(64),
+        expiresAt: request.expiresAt
+      })
+    ).toBe(true);
+    return request;
+  }
+  it.each(["cleanup", "source", "authority"])(
+    "HTTP URL signing holds validation locks against concurrent %s mutation",
+    async (mutation) => {
+      await partitions();
+      const inventory = await cleanup.buildStoreCleanupInventory(cleanupScope);
+      const request = await publishedRequest();
+      let entered!: () => void;
+      let release!: () => void;
+      const signing = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const sign = vi.fn(async () => {
+        entered();
+        await gate;
+        return "https://synthetic.invalid/signed";
+      });
+      const app = urlApp(repository, sign);
+      const issue = () =>
+        app.inject({
+          method: "POST",
+          url: `/v1/structured/partition-downloads/${request.requestId}/url`
+        });
+      const response = issue();
+      await signing;
+      const write =
+        mutation === "cleanup"
+          ? cleanup.executeStoreCleanup({ inventory, expectedFingerprint: inventory.fingerprint })
+          : mutation === "source"
+            ? prisma.structuredPartition
+                .update({
+                  where: { id: "download_part_0" },
+                  data: { checksumSha256: "b".repeat(64) }
+                })
+                .then((row) => row)
+            : prisma.employee
+                .update({ where: { id: actor.id }, data: { disabled: true } })
+                .then((row) => row);
+      try {
+        await waitForSourceLockWait();
+      } finally {
+        release();
+        await Promise.allSettled([response, write]);
+      }
+      try {
+        expect((await response).statusCode).toBe(200);
+        await write;
+        expect((await issue()).statusCode).toBe(mutation === "authority" ? 403 : 409);
+        expect(sign).toHaveBeenCalledTimes(1);
+      } finally {
+        await app.close();
+      }
+    }
+  );
+  it("HTTP URL issuance waits for an in-flight cleanup and never signs its invalidated object", async () => {
+    await partitions();
+    const inventory = await cleanup.buildStoreCleanupInventory(cleanupScope);
+    const request = await publishedRequest();
+    const barrier = pausedClient("enterprise_key AS enterpriseKey");
+    const cleaning = createStoreCleanupRepository(barrier.client).executeStoreCleanup({
+      inventory,
+      expectedFingerprint: inventory.fingerprint
+    });
+    await barrier.entered;
+    const sign = vi.fn(async () => "https://synthetic.invalid/signed");
+    const app = urlApp(repository, sign);
+    const response = app.inject({
+      method: "POST",
+      url: `/v1/structured/partition-downloads/${request.requestId}/url`
+    });
+    try {
+      await waitForSourceLockWait();
+    } finally {
+      barrier.release();
+      await Promise.allSettled([cleaning, response]);
+    }
+    try {
+      await cleaning;
+      expect((await response).statusCode).toBe(409);
+      expect(sign).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
   it.each(["cleanup-first", "publish-first"])(
     "serializes actual cleanup/publication race: %s",
     async (order) => {

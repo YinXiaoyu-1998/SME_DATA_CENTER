@@ -298,6 +298,13 @@ limit, ask for a narrower store scope. For forbidden/not-found results, do not i
 for stale/expired requests, prepare a fresh authorized scope with a new key. Preserve a local
 scope check: a returned store outside the requested literals is an error, never silently filtered.
 
+In this gated workflow, prepare/status API calls have a 30-second deadline and refresh a
+rejected access token once while retaining the preparation key. Repeated authentication failure
+requires the normal sign-in recovery. Downloads have a 240-second invocation budget; multipart
+uploads retain their progressing-upload duration, with 30-second API and transfer-stall bounds.
+Cancellation stops transfer retries; failed/cancelled uploads attempt session cleanup using a
+separate bounded request.
+
 The consuming workflow owns scratch cleanup. Shared downloads remain until the last consumer
 releases them through its shared index; never directly delete another consumer's directory.
 Service data cleanup is operator-only and is not an employee MCP tool, including for admins.

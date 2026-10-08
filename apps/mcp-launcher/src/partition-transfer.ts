@@ -31,9 +31,9 @@ export interface PartitionTransferContext {
 export function uploadPartitionDataset(
   input: Parameters<typeof uploadPartitionDatasetInternal>[0]
 ): Promise<unknown> {
-  return boundedInvocation(input.context, (context) =>
-    uploadPartitionDatasetInternal({ ...input, context })
-  );
+  // Upload duration remains unbounded while progressing; API/stall deadlines and
+  // caller cancellation still bound each operation.
+  return uploadPartitionDatasetInternal(input);
 }
 
 export function downloadPartitionDataset(
@@ -114,8 +114,10 @@ async function uploadPartitionDatasetInternal(input: {
       { method: "POST", body: { parts: completed.sort((a, b) => a.partNumber - b.partNumber) } }
     );
   } catch (error) {
+    const cleanupContext = { ...input.context };
+    delete cleanupContext.signal;
     await apiJson(
-      input.context,
+      cleanupContext,
       `/v1/structured/partition-uploads/${encodeURIComponent(session.partitionImportJobId)}`,
       { method: "DELETE" }
     ).catch(() => undefined);

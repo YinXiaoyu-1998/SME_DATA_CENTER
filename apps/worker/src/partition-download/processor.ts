@@ -28,12 +28,18 @@ export function partitionDownloadFileName(
   return `${dataset}_${entry.businessDate.replaceAll("-", "")}_${digest}.csv`;
 }
 export class PartitionDownloadBuildFailed extends Error {}
-const safeCodes = new Set([
+export class PartitionDownloadRetryableError extends Error {
+  readonly code = "PARTITION_DOWNLOAD_FAILED";
+  readonly retryable = true;
+  constructor() {
+    super("PARTITION_DOWNLOAD_FAILED");
+  }
+}
+const deterministicCodes = new Set([
   "PARTITION_DOWNLOAD_STALE",
   "PARTITION_DOWNLOAD_FORBIDDEN",
   "PARTITION_DOWNLOAD_LIMIT_EXCEEDED",
-  "PARTITION_DOWNLOAD_SOURCE_INVALID",
-  "PARTITION_DOWNLOAD_FAILED"
+  "PARTITION_DOWNLOAD_SOURCE_INVALID"
 ]);
 export async function buildPartitionDownload(input: {
   requestId: string;
@@ -218,10 +224,11 @@ export async function buildPartitionDownload(input: {
   } catch (cause) {
     if (cause instanceof Error && cause.message === "PARTITION_DOWNLOAD_LEASE_LOST")
       return "superseded";
-    const code =
-      cause instanceof Error && safeCodes.has(cause.message)
-        ? cause.message
-        : "PARTITION_DOWNLOAD_FAILED";
+    // Unknown I/O/storage/deadline failures belong to the fenced worker retry
+    // lifecycle. Only deterministic validation and authorization failures finalize here.
+    if (!(cause instanceof Error && deterministicCodes.has(cause.message)))
+      throw new PartitionDownloadRetryableError();
+    const code = cause.message;
     if (!(await input.repository.fail(input.lease, code))) return "superseded";
     // Repository already finalized the run; the runtime maps this safe error to a failed result.
     throw new PartitionDownloadBuildFailed(code);

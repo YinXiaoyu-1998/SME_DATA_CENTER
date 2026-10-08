@@ -77,6 +77,8 @@ function setup(overrides: Partial<PartitionDownloadRepository> = {}, employee = 
     prepare: vi.fn(async () => status()),
     read: vi.fn(async () => status()),
     validateCurrent: vi.fn(async () => current()),
+    issueCurrent: async (actor, requestId, issue) =>
+      issue(await repository.validateCurrent(actor, requestId)),
     markRunning: unused,
     recordProgress: unused,
     fail: unused,

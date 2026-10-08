@@ -133,16 +133,33 @@ describe("partition ZIP worker", () => {
     });
     await expect(buildPartitionDownload(f.input)).rejects.toThrow("PARTITION_DOWNLOAD_FAILED");
     expect(f.repository.publish).not.toHaveBeenCalled();
+    expect(f.repository.fail).not.toHaveBeenCalled();
   });
-  it.each(["lease lost", "revoked", "scope changed"])(
-    "does not publish when %s fences completion",
-    async () => {
-      const f = fixture();
-      vi.mocked(f.repository.publish).mockResolvedValue(false);
-      expect(await buildPartitionDownload(f.input)).toBe("superseded");
-      expect(f.repository.fail).not.toHaveBeenCalled();
-    }
-  );
+  it("keeps an interrupted source response retryable without finalizing the request", async () => {
+    const f = fixture();
+    vi.mocked(f.storage.getObjectStream).mockResolvedValue(
+      Readable.from(
+        (async function* () {
+          yield body.subarray(0, 4);
+          throw new Error("synthetic interrupted response");
+        })()
+      )
+    );
+    await expect(buildPartitionDownload(f.input)).rejects.toMatchObject({
+      code: "PARTITION_DOWNLOAD_FAILED",
+      retryable: true
+    });
+    expect(f.repository.fail).not.toHaveBeenCalled();
+    expect(f.storage.putObjectAtKey).not.toHaveBeenCalled();
+  });
+  // Prisma tests cover stale publication and expired/reclaimed leases; revoked
+  // authority is covered by URL validation. This proves only the false-return reaction.
+  it("does not finalize when publication is fenced", async () => {
+    const f = fixture();
+    vi.mocked(f.repository.publish).mockResolvedValue(false);
+    expect(await buildPartitionDownload(f.input)).toBe("superseded");
+    expect(f.repository.fail).not.toHaveBeenCalled();
+  });
   it("skips ZIP for already succeeded empty scopes", async () => {
     const f = fixture();
     vi.mocked(f.repository.markRunning).mockResolvedValue(false);
