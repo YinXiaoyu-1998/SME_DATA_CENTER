@@ -6,10 +6,14 @@ never accepted through command arguments, environment variables, or MCP tool inp
 
 Commands: `serve`, `self-check`, `logout`, and `--version`.
 
-Release target: `smedc-mcp-launcher@0.8.1` (`smedc-mcp-launcher --version` reports `0.8.1`).
+Release target: `smedc-mcp-launcher@0.8.2` (`smedc-mcp-launcher --version` reports `0.8.2`).
 
 Business tool calls wait up to 45 seconds for the remote result. Connection handshakes
 and profile lookups keep their existing 30-second deadlines.
+Version 0.8.2 fixes multipart uploads on new HTTPS connections by counting progress only
+when the transport consumes file bytes. Progressing uploads keep their existing unbounded
+duration and 30-second stall deadline.
+
 Version 0.8.1 adds prepared partition downloads. Use `prepare_structured_partition_download`,
 then `get_structured_partition_download_status`, then `download_structured_partitions`
 with only the succeeded `requestId`. The launcher verifies the ZIP and each CSV against
@@ -64,4 +68,4 @@ An older service may reject the new tools or return `LEDGER_PDF_NOT_ENABLED` (50
 `LEDGER_PDF_NOT_READY`, wait for scheduled service generation, then recheck coverage;
 `LEDGER_PDF_BUNDLE_STALE` requires a new preparation request. Existing validation,
 permission, and idempotency errors retain their service semantics. The release target
-above does not indicate that 0.8.1 has been published.
+above does not indicate that 0.8.2 has been published.

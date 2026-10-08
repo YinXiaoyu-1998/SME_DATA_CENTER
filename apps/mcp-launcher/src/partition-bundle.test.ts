@@ -79,7 +79,7 @@ function context(fetchImplementation: typeof fetch) {
   return {
     serviceUrl: "https://api.example",
     accessToken: "old",
-    launcherVersion: "0.8.1",
+    launcherVersion: "0.8.2",
     fetchImplementation
   };
 }

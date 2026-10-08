@@ -347,10 +347,17 @@ async function uploadPart(
   const end = Math.min(totalSize, start + partSize) - 1;
   const idle = transferDeadline(context.signal, 30_000);
   const source = createReadStream(filePath, { start, end });
-  source.on("data", () => idle.reset());
+  const progressSource = (async function* () {
+    for await (const chunk of source) {
+      idle.reset();
+      yield chunk;
+    }
+  })();
   try {
     if (url.startsWith("file://")) {
-      await pipeline(source, createWriteStream(fileURLToPath(url)), { signal: idle.signal });
+      await pipeline(progressSource, createWriteStream(fileURLToPath(url)), {
+        signal: idle.signal
+      });
       return `local-${partNumber}`;
     }
     const response = await fetchResponse(
@@ -360,7 +367,7 @@ async function uploadPart(
         method: "PUT",
         signal: idle.signal,
         headers: { "content-length": String(end - start + 1) },
-        body: source as unknown as BodyInit,
+        body: progressSource as unknown as BodyInit,
         duplex: "half"
       } as RequestInit & { duplex: "half" },
       idle.signal
