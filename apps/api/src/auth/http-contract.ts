@@ -15,7 +15,7 @@ export interface OAuthAuthorizationServerMetadata {
   token_endpoint_auth_methods_supported: ["none"];
   smedc_launcher_package: "smedc-mcp-launcher";
   smedc_launcher_minimum_version: "0.6.0";
-  smedc_launcher_recommended_version: "0.8.1";
+  smedc_launcher_recommended_version: "0.8.2";
 }
 
 export function hostOnlyCookie(name: string, value: string, maxAgeSeconds: number): string {
@@ -78,7 +78,7 @@ export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMet
     token_endpoint_auth_methods_supported: ["none"],
     smedc_launcher_package: "smedc-mcp-launcher",
     smedc_launcher_minimum_version: "0.6.0",
-    smedc_launcher_recommended_version: "0.8.1"
+    smedc_launcher_recommended_version: "0.8.2"
   };
 }
 

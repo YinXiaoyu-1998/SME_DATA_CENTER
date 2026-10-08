@@ -104,7 +104,7 @@ describe("official OAuth and password routes", () => {
       issuer: "https://api.smedatacenter.xyz",
       smedc_launcher_package: "smedc-mcp-launcher",
       smedc_launcher_minimum_version: "0.6.0",
-      smedc_launcher_recommended_version: "0.8.1"
+      smedc_launcher_recommended_version: "0.8.2"
     });
     expect(response.json()).not.toHaveProperty("authorization_endpoint");
   });
