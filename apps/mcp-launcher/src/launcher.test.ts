@@ -277,7 +277,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.7.1");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.8.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1032,6 +1032,58 @@ it("advertises PDF side effects and validates scope before contacting service", 
     });
     expect(crossOrganization.isError).toBe(true);
     expect(remote).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+it("passes SDK cancellation into requestId bundle transfers and rejects mixed scope", async () => {
+  const bundle = await import("./partition-bundle.js");
+  let observedSignal: AbortSignal | undefined;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const transfer = vi
+    .spyOn(bundle, "downloadPartitionBundle")
+    .mockImplementation(async ({ context }) => {
+      observedSignal = context.signal;
+      started();
+      return new Promise((_resolve, reject) =>
+        context.signal!.addEventListener("abort", () => reject(context.signal!.reason), {
+          once: true
+        })
+      );
+    });
+  const server = new McpServer({ name: "bundle-cancellation", version: "1.0.0" });
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({ config, auth: fakeAuth({ authenticated: true }) })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "bundle-cancellation-client", version: "1.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const mixed = await client.callTool({
+      name: "download_structured_partitions",
+      arguments: { requestId: "pd_1", dataset: "business" }
+    });
+    expect(mixed.isError).toBe(true);
+    expect(transfer).not.toHaveBeenCalled();
+    const controller = new AbortController();
+    const pending = client.callTool(
+      { name: "download_structured_partitions", arguments: { requestId: "pd_1" } },
+      undefined,
+      { signal: controller.signal }
+    );
+    const rejection = expect(pending).rejects.toThrow();
+    await ready;
+    expect(transfer.mock.calls[0]![0].requestId).toBe("pd_1");
+    controller.abort();
+    await rejection;
+    await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
   } finally {
     await client.close();
     await server.close();

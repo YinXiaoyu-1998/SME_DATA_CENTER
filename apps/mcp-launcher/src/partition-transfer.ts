@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 const UPLOAD_CONCURRENCY = 4;
@@ -16,9 +16,35 @@ export interface PartitionTransferContext {
   accessToken: string;
   launcherVersion: string;
   fetchImplementation: typeof fetch;
+  signal?: AbortSignal;
+  refreshAccessToken?: () => Promise<string>;
+  diagnostic?: (event: {
+    stage: "manifest" | "transfer" | "validation";
+    elapsedMs: number;
+    bytes?: number;
+    files?: number;
+    retry?: number;
+    failed?: boolean;
+  }) => void;
 }
 
-export async function uploadPartitionDataset(input: {
+export function uploadPartitionDataset(
+  input: Parameters<typeof uploadPartitionDatasetInternal>[0]
+): Promise<unknown> {
+  return boundedInvocation(input.context, (context) =>
+    uploadPartitionDatasetInternal({ ...input, context })
+  );
+}
+
+export function downloadPartitionDataset(
+  input: Parameters<typeof downloadPartitionDatasetInternal>[0]
+): Promise<unknown> {
+  return boundedInvocation(input.context, (context) =>
+    downloadPartitionDatasetInternal({ ...input, context })
+  );
+}
+
+async function uploadPartitionDatasetInternal(input: {
   context: PartitionTransferContext;
   filePath: string;
   name: string;
@@ -32,7 +58,7 @@ export async function uploadPartitionDataset(input: {
 }): Promise<unknown> {
   const before = await stat(input.filePath);
   if (!before.isFile()) throw new Error("Local partition upload source is not a regular file.");
-  const checksum = await hashFile(input.filePath);
+  const checksum = await hashFile(input.filePath, input.context.signal);
   const session = (await apiJson(input.context, "/v1/structured/partition-uploads", {
     method: "POST",
     body: {
@@ -53,19 +79,24 @@ export async function uploadPartitionDataset(input: {
     const completed: Array<{ partNumber: number; etag: string }> = [];
     let page: UploadSession = session;
     while (true) {
-      const results = await mapConcurrent(page.parts, UPLOAD_CONCURRENCY, async (part) => ({
-        partNumber: part.partNumber,
-        etag: await retryTransfer(() =>
-          uploadPart(
-            input.context.fetchImplementation,
-            part.uploadUrl,
-            input.filePath,
-            part.partNumber,
-            page.partSize,
-            before.size
+      const results = await mapConcurrent(
+        input.context,
+        page.parts,
+        UPLOAD_CONCURRENCY,
+        async (part, context) => ({
+          partNumber: part.partNumber,
+          etag: await retryTransfer(context, () =>
+            uploadPart(
+              context,
+              part.uploadUrl,
+              input.filePath,
+              part.partNumber,
+              page.partSize,
+              before.size
+            )
           )
-        )
-      }));
+        })
+      );
       completed.push(...results);
       if (page.nextAfterPartNumber === null) break;
       page = (await apiJson(
@@ -92,7 +123,7 @@ export async function uploadPartitionDataset(input: {
   }
 }
 
-export async function downloadPartitionDataset(input: {
+async function downloadPartitionDatasetInternal(input: {
   context: PartitionTransferContext;
   dataset: "business" | "dishes";
   enterpriseName: string;
@@ -109,19 +140,21 @@ export async function downloadPartitionDataset(input: {
     let manifest = await requestManifest(input);
     let files;
     try {
-      files = await downloadManifest(input.context.fetchImplementation, directory, manifest);
+      files = await downloadManifest(input.context, directory, manifest);
     } catch (error) {
       if (!(error instanceof PartitionDownloadError) || error.status !== 403) throw error;
       await rm(directory, { recursive: true, force: true });
       await mkdir(directory, { recursive: true });
       manifest = await requestManifest(input);
-      files = await downloadManifest(input.context.fetchImplementation, directory, manifest);
+      files = await downloadManifest(input.context, directory, manifest);
     }
+    input.context.signal?.throwIfAborted();
     await writeFile(
       path.join(directory, "manifest.json"),
       `${JSON.stringify({ dataset: manifest.dataset, enterpriseName: manifest.enterpriseName, startDate: manifest.startDate, endDate: manifest.endDate, partitionCount: manifest.partitionCount, totalRowCount: manifest.totalRowCount, files }, null, 2)}\n`,
-      "utf8"
+      { encoding: "utf8", signal: input.context.signal }
     );
+    input.context.signal?.throwIfAborted();
     return {
       localDirectory: directory,
       dataset: manifest.dataset,
@@ -155,33 +188,38 @@ async function requestManifest(
 }
 
 async function downloadManifest(
-  fetchImplementation: typeof fetch,
+  context: PartitionTransferContext,
   directory: string,
   manifest: RemoteManifest
 ) {
-  return mapConcurrent(manifest.partitions, DOWNLOAD_CONCURRENCY, async (partition) => {
-    const storeDigest = createHash("sha256")
-      .update(`${partition.storeId ?? "name"}:${partition.storeName}`)
-      .digest("hex")
-      .slice(0, 16);
-    const fileName = `${manifest.dataset}_${partition.businessDate.replaceAll("-", "")}_${storeDigest}.csv`;
-    await downloadVerified(
-      fetchImplementation,
-      partition.presignedDownloadUrl,
-      path.join(directory, fileName),
-      Number(partition.byteSize),
-      partition.checksumSha256
-    );
-    return {
-      fileName,
-      businessDate: partition.businessDate,
-      storeId: partition.storeId,
-      storeName: partition.storeName,
-      rowCount: partition.rowCount,
-      byteSize: partition.byteSize,
-      checksumSha256: partition.checksumSha256
-    };
-  });
+  return mapConcurrent(
+    context,
+    manifest.partitions,
+    DOWNLOAD_CONCURRENCY,
+    async (partition, context) => {
+      const storeDigest = createHash("sha256")
+        .update(`${partition.storeId ?? "name"}:${partition.storeName}`)
+        .digest("hex")
+        .slice(0, 16);
+      const fileName = `${manifest.dataset}_${partition.businessDate.replaceAll("-", "")}_${storeDigest}.csv`;
+      await downloadVerified(
+        context,
+        partition.presignedDownloadUrl,
+        path.join(directory, fileName),
+        Number(partition.byteSize),
+        partition.checksumSha256
+      );
+      return {
+        fileName,
+        businessDate: partition.businessDate,
+        storeId: partition.storeId,
+        storeName: partition.storeName,
+        rowCount: partition.rowCount,
+        byteSize: partition.byteSize,
+        checksumSha256: partition.checksumSha256
+      };
+    }
+  );
 }
 
 export async function cleanupStaleExtractDirectories(
@@ -234,32 +272,69 @@ interface RemoteManifest {
   }>;
 }
 
-async function apiJson(
+export async function apiJson(
   context: PartitionTransferContext,
   pathname: string,
   input: { method: "GET" | "POST" | "DELETE"; body?: unknown }
 ): Promise<unknown> {
-  const response = await context.fetchImplementation(new URL(pathname, `${context.serviceUrl}/`), {
-    method: input.method,
-    headers: {
-      authorization: `Bearer ${context.accessToken}`,
-      "x-smedc-launcher-version": context.launcherVersion,
-      ...(input.body ? { "content-type": "application/json" } : {})
-    },
-    ...(input.body ? { body: JSON.stringify(input.body) } : {})
-  });
-  const text = await response.text();
-  const body = text ? (JSON.parse(text) as unknown) : {};
-  if (!response.ok)
-    throw Object.assign(new Error(`SMEDC request failed with ${response.status}.`), {
-      code: String(response.status),
-      body
-    });
-  return body;
+  const deadline = transferDeadline(context.signal, 30_000);
+  const started = Date.now();
+  try {
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetchResponse(
+        context,
+        new URL(pathname, `${context.serviceUrl}/`),
+        {
+          method: input.method,
+          signal: deadline.signal,
+          headers: {
+            authorization: `Bearer ${context.accessToken}`,
+            "x-smedc-launcher-version": context.launcherVersion,
+            ...(input.body ? { "content-type": "application/json" } : {})
+          },
+          ...(input.body ? { body: JSON.stringify(input.body) } : {})
+        },
+        deadline.signal
+      );
+      if (response.status === 401 && attempt === 0 && context.refreshAccessToken) {
+        await response.body?.cancel();
+        const token = await abortable(context.refreshAccessToken(), deadline.signal);
+        if (token === context.accessToken)
+          throw new Error("Access token refresh did not replace rejected credentials.");
+        context.accessToken = token;
+        continue;
+      }
+      const reader = response.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      try {
+        while (reader) {
+          const chunk = await abortable(reader.read(), deadline.signal);
+          if (chunk.done) break;
+          bytes += chunk.value.byteLength;
+          if (bytes > 8388608) throw new Error("SMEDC metadata exceeds its size limit.");
+          chunks.push(chunk.value);
+        }
+      } finally {
+        void reader?.cancel().catch(() => undefined);
+      }
+      const text = Buffer.concat(chunks).toString("utf8");
+      const body = text ? (JSON.parse(text) as unknown) : {};
+      if (!response.ok)
+        throw Object.assign(new Error(`SMEDC request failed with ${response.status}.`), {
+          code: String(response.status),
+          body
+        });
+      context.diagnostic?.({ stage: "manifest", elapsedMs: Date.now() - started });
+      return body;
+    }
+  } finally {
+    deadline.dispose();
+  }
 }
 
 async function uploadPart(
-  fetchImplementation: typeof fetch,
+  context: PartitionTransferContext,
   url: string,
   filePath: string,
   partNumber: number,
@@ -268,43 +343,95 @@ async function uploadPart(
 ): Promise<string> {
   const start = (partNumber - 1) * partSize;
   const end = Math.min(totalSize, start + partSize) - 1;
-  if (url.startsWith("file://")) {
-    await pipeline(
-      createReadStream(filePath, { start, end }),
-      createWriteStream(fileURLToPath(url))
+  const idle = transferDeadline(context.signal, 30_000);
+  const source = createReadStream(filePath, { start, end });
+  source.on("data", () => idle.reset());
+  try {
+    if (url.startsWith("file://")) {
+      await pipeline(source, createWriteStream(fileURLToPath(url)), { signal: idle.signal });
+      return `local-${partNumber}`;
+    }
+    const response = await fetchResponse(
+      context,
+      url,
+      {
+        method: "PUT",
+        signal: idle.signal,
+        headers: { "content-length": String(end - start + 1) },
+        body: source as unknown as BodyInit,
+        duplex: "half"
+      } as RequestInit & { duplex: "half" },
+      idle.signal
     );
-    return `local-${partNumber}`;
+    await response.body?.cancel();
+    if (!response.ok) throw new PartitionDownloadError(response.status);
+    const etag = response.headers.get("etag");
+    if (!etag) throw new Error(`Partition upload part ${partNumber} did not return an ETag.`);
+    return etag;
+  } finally {
+    source.destroy();
+    idle.dispose();
   }
-  const response = await fetchImplementation(url, {
-    method: "PUT",
-    headers: { "content-length": String(end - start + 1) },
-    body: createReadStream(filePath, { start, end }) as unknown as BodyInit,
-    duplex: "half"
-  } as RequestInit & { duplex: "half" });
-  if (!response.ok)
-    throw new Error(`Partition upload part ${partNumber} failed with ${response.status}.`);
-  const etag = response.headers.get("etag");
-  if (!etag) throw new Error(`Partition upload part ${partNumber} did not return an ETag.`);
-  return etag;
 }
 
-async function downloadVerified(
-  fetchImplementation: typeof fetch,
+export async function downloadVerified(
+  context: PartitionTransferContext,
   url: string,
   target: string,
   expectedSize: number,
   expectedHash: string
 ): Promise<void> {
-  if (url.startsWith("file://"))
-    await pipeline(createReadStream(fileURLToPath(url)), createWriteStream(target));
-  else {
-    const response = await fetchImplementation(url);
-    if (!response.ok || !response.body) throw new PartitionDownloadError(response.status);
-    await pipeline(Readable.fromWeb(response.body as never), createWriteStream(target));
-  }
-  const actual = await stat(target);
-  if (actual.size !== expectedSize || (await hashFile(target)) !== expectedHash)
-    throw new Error("Downloaded partition size or checksum did not match its manifest.");
+  if (
+    !Number.isSafeInteger(expectedSize) ||
+    expectedSize < 0 ||
+    !/^[a-f0-9]{64}$/.test(expectedHash)
+  )
+    throw new Error("Invalid download size or checksum.");
+  await retryTransfer(context, async () => {
+    const started = Date.now();
+    const idle = transferDeadline(context.signal, 30_000);
+    let source: Readable | undefined;
+    try {
+      if (url.startsWith("file://")) source = createReadStream(fileURLToPath(url));
+      else {
+        const response = await fetchResponse(context, url, { signal: idle.signal }, idle.signal);
+        if (!response.ok || !response.body) {
+          await response.body?.cancel();
+          throw new PartitionDownloadError(response.status);
+        }
+        source = Readable.fromWeb(response.body as never);
+      }
+      let size = 0;
+      const hash = createHash("sha256");
+      const verify = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          idle.reset();
+          size += chunk.length;
+          if (size > expectedSize) {
+            callback(new Error("Downloaded partition size exceeded its manifest."));
+            return;
+          }
+          hash.update(chunk);
+          callback(null, chunk);
+        }
+      });
+      await pipeline(source, verify, createWriteStream(target), { signal: idle.signal });
+      if (size !== expectedSize || hash.digest("hex") !== expectedHash)
+        throw new Error("Downloaded partition size or checksum did not match its manifest.");
+      context.diagnostic?.({
+        stage: "transfer",
+        elapsedMs: Date.now() - started,
+        bytes: size,
+        files: 1
+      });
+    } catch (error) {
+      if (idle.signal.aborted) throw idle.signal.reason;
+      throw error;
+    } finally {
+      source?.destroy();
+      idle.dispose();
+    }
+  });
 }
 
 class PartitionDownloadError extends Error {
@@ -314,45 +441,143 @@ class PartitionDownloadError extends Error {
   }
 }
 
-async function hashFile(filePath: string): Promise<string> {
+async function hashFile(filePath: string, signal?: AbortSignal): Promise<string> {
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  for await (const chunk of createReadStream(filePath, { signal })) hash.update(chunk);
   return hash.digest("hex");
 }
 
 async function mapConcurrent<T, R>(
+  context: PartitionTransferContext,
   items: T[],
   concurrency: number,
-  worker: (item: T) => Promise<R>
+  worker: (item: T, context: PartitionTransferContext) => Promise<R>
 ): Promise<R[]> {
+  const controller = new AbortController();
+  const signal = context.signal
+    ? AbortSignal.any([context.signal, controller.signal])
+    : controller.signal;
   const results = new Array<R>(items.length);
   let cursor = 0;
-  const workers = await Promise.allSettled(
+  let failure: unknown;
+  await Promise.allSettled(
     Array.from({ length: Math.min(concurrency, items.length) }, async () => {
       while (cursor < items.length) {
+        signal.throwIfAborted();
         const index = cursor++;
-        results[index] = await worker(items[index]!);
+        try {
+          results[index] = await worker(items[index]!, { ...context, signal });
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            failure = error;
+            controller.abort(error);
+          }
+          throw error;
+        }
       }
     })
   );
-  const failed = workers.find(
-    (result): result is PromiseRejectedResult => result.status === "rejected"
-  );
-  if (failed) throw failed.reason;
+  if (failure) throw failure;
+  signal.throwIfAborted();
   return results;
 }
 
-async function retryTransfer<T>(operation: () => Promise<T>): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+async function retryTransfer<T>(
+  context: PartitionTransferContext,
+  operation: () => Promise<T>
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    context.signal?.throwIfAborted();
     try {
       return await operation();
     } catch (error) {
-      lastError = error;
-      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+      context.signal?.throwIfAborted();
+      const transient =
+        error instanceof PartitionDownloadError
+          ? error.status >= 500 && error.status <= 599
+          : error instanceof TypeError ||
+            (error instanceof Error &&
+              "code" in error &&
+              ["ECONNRESET", "ETIMEDOUT", "EPIPE"].includes(String(error.code)));
+      if (attempt >= 2 || !transient) throw error;
+      context.diagnostic?.({ stage: "transfer", elapsedMs: 0, retry: attempt + 1 });
+      await new Promise<void>((resolve, reject) => {
+        const aborted = () => {
+          clearTimeout(timer);
+          reject(context.signal?.reason);
+        };
+        const timer = setTimeout(
+          () => {
+            context.signal?.removeEventListener("abort", aborted);
+            resolve();
+          },
+          250 * (attempt + 1)
+        );
+        context.signal?.addEventListener("abort", aborted, { once: true });
+      });
     }
   }
-  throw lastError;
+}
+
+export async function boundedInvocation<T>(
+  context: PartitionTransferContext,
+  operation: (context: PartitionTransferContext) => Promise<T>
+): Promise<T> {
+  const deadline = transferDeadline(context.signal, 240_000);
+  try {
+    return await operation({ ...context, signal: deadline.signal });
+  } finally {
+    deadline.dispose();
+  }
+}
+
+export function transferDeadline(parent: AbortSignal | undefined, milliseconds: number) {
+  const controller = new AbortController();
+  const signal = parent ? AbortSignal.any([parent, controller.signal]) : controller.signal;
+  let timer: ReturnType<typeof setTimeout>;
+  const reset = () => {
+    clearTimeout(timer);
+    timer = setTimeout(
+      () =>
+        controller.abort(new DOMException("Partition transfer deadline exceeded.", "TimeoutError")),
+      milliseconds
+    );
+    timer.unref?.();
+  };
+  reset();
+  return { signal, reset, dispose: () => clearTimeout(timer) };
+}
+
+async function fetchResponse(
+  context: PartitionTransferContext,
+  url: string | URL,
+  init: RequestInit,
+  signal: AbortSignal
+): Promise<Response> {
+  signal.throwIfAborted();
+  const pending = context.fetchImplementation(url, init);
+  try {
+    return await abortable(pending, signal);
+  } catch (error) {
+    // Cancellation can win just as fetch resolves, before a stream owns the body.
+    // Dispose even a late response so that no transfer continues after cleanup.
+    void pending.then(
+      (response) => {
+        void response.body?.cancel().catch(() => undefined);
+      },
+      () => undefined
+    );
+    throw error;
+  }
+}
+
+export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const aborted = () => reject(signal.reason);
+    signal.addEventListener("abort", aborted, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", aborted));
+  });
 }
 
 function compactDateToIso(value: string): string {

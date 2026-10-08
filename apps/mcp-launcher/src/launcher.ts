@@ -20,7 +20,12 @@ import {
 import type { LauncherRuntimeConfig } from "./config.js";
 import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
-import { downloadPartitionDataset, uploadPartitionDataset } from "./partition-transfer.js";
+import { downloadPartitionBundle } from "./partition-bundle.js";
+import {
+  downloadPartitionDataset,
+  uploadPartitionDataset,
+  type PartitionTransferContext
+} from "./partition-transfer.js";
 import { createCrossProcessLock, createKeychainCredentialStore } from "./runtime.js";
 import { LauncherSession, LauncherTypedError } from "./session.js";
 import { parseCurrentUserProfileResponse, type CachedUserProfile } from "./user-profile.js";
@@ -47,6 +52,8 @@ export type LauncherBusinessToolName =
   | "get_evidence_document_status"
   | "get_import_status"
   | "get_partition_import_status"
+  | "prepare_structured_partition_download"
+  | "get_structured_partition_download_status"
   | "download_structured_partitions"
   | "describe_ledger_pdf_coverage"
   | "get_ledger_pdf_request_status"
@@ -87,6 +94,7 @@ export interface LauncherAuthentication {
   logout(): Promise<{ remoteRevocationConfirmed: boolean; localCredentialRemoved: boolean }>;
   status(): Promise<{ authenticated: boolean }>;
   accessToken(): Promise<string>;
+  refreshAccessToken?(): Promise<string>;
   profile(): Promise<CachedUserProfile>;
   invalidate(): Promise<void>;
   selfCheck(): Promise<LauncherSelfCheck>;
@@ -137,7 +145,7 @@ export interface LauncherToolRegistrar {
       inputSchema: z.ZodRawShape | z.ZodObject<z.ZodRawShape>;
       annotations?: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean };
     },
-    handler: (input: unknown) => Promise<LauncherToolResult>
+    handler: (input: unknown, extra?: { signal?: AbortSignal }) => Promise<LauncherToolResult>
   ): void;
 }
 
@@ -184,7 +192,7 @@ export function registerLauncherTools(
     string,
     {
       inputSchema: z.ZodObject<z.ZodRawShape>;
-      handler: (input: unknown) => Promise<LauncherToolResult>;
+      handler: (input: unknown, extra?: { signal?: AbortSignal }) => Promise<LauncherToolResult>;
     }
   >();
   const registerTool: LauncherToolRegistrar["registerTool"] = (name, options, handler) => {
@@ -222,7 +230,7 @@ export function registerLauncherTools(
   // McpServer's default tools/call handler validates tool arguments before calling
   // the registered callback. Own this request boundary so upload authorization
   // happens first, while SDK tools/list retains the full advertised schemas.
-  registrar.server?.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+  registrar.server?.setRequestHandler(CallToolRequestSchema, async ({ params }, extra) => {
     try {
       const tool = registered.get(params.name);
       if (!tool) throw new McpError(ErrorCode.InvalidParams, `Tool ${params.name} not found`);
@@ -242,9 +250,10 @@ export function registerLauncherTools(
         ? await proxyLocalPathUpload(
             params.name as LauncherBusinessToolName,
             parsed.data,
-            dependencies
+            dependencies,
+            extra.signal
           )
-        : await tool.handler(parsed.data);
+        : await tool.handler(parsed.data, extra);
     } catch (error) {
       return {
         content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
@@ -257,26 +266,29 @@ export function registerLauncherTools(
 export function createLauncherToolHandler(
   toolName: string,
   dependencies: LauncherToolDependencies
-): (input: unknown) => Promise<LauncherToolResult> {
+): (input: unknown, extra?: { signal?: AbortSignal }) => Promise<LauncherToolResult> {
   if (toolName === "smedc_login") return (input) => login(input, dependencies);
   if (toolName === "smedc_logout") return (input) => logout(input, dependencies);
   if (toolName === "smedc_auth_status") return (input) => status(input, dependencies);
   if (toolName === "download_structured_partitions")
-    return (input) => proxyPartitionDownload(input, dependencies);
+    return (input, extra) => proxyPartitionDownload(input, dependencies, extra?.signal);
   if (LOCAL_PATH_UPLOAD_TOOL_NAMES.has(toolName as LauncherBusinessToolName))
-    return (input) => preflightUpload(toolName as LauncherBusinessToolName, input, dependencies);
+    return (input, extra) =>
+      preflightUpload(toolName as LauncherBusinessToolName, input, dependencies, extra?.signal);
   if ((SMEDC_MCP_TOOL_NAMES as readonly string[]).includes(toolName))
-    return (input) => proxy(toolName as LauncherBusinessToolName, input, dependencies);
+    return (input, extra) =>
+      proxy(toolName as LauncherBusinessToolName, input, dependencies, extra?.signal);
   return async () => toolNotFoundResult(toolName);
 }
 
 async function preflightUpload(
   toolName: LauncherBusinessToolName,
   input: unknown,
-  dependencies: LauncherToolDependencies
+  dependencies: LauncherToolDependencies,
+  signal?: AbortSignal
 ): Promise<LauncherToolResult> {
   const denial = await uploadAuthorizationError(dependencies);
-  return denial ?? proxyLocalPathUpload(toolName, input, dependencies);
+  return denial ?? proxyLocalPathUpload(toolName, input, dependencies, signal);
 }
 
 async function uploadAuthorizationError(
@@ -302,12 +314,13 @@ async function uploadAuthorizationError(
 async function proxyLocalPathUpload(
   toolName: LauncherBusinessToolName,
   input: unknown,
-  dependencies: LauncherToolDependencies
+  dependencies: LauncherToolDependencies,
+  signal?: AbortSignal
 ): Promise<LauncherToolResult> {
   const file = uploadFileFromInput(input);
 
   if (file === undefined || file.encoding !== "path") {
-    return proxy(toolName, input, dependencies);
+    return proxy(toolName, input, dependencies, signal);
   }
 
   const parsed = launcherUploadFileInputSchema.safeParse(file);
@@ -332,7 +345,8 @@ async function proxyLocalPathUpload(
         ...structuredInput,
         file: pathFile
       },
-      dependencies
+      dependencies,
+      signal
     );
   }
   const read = await readLocalUploadFile(pathFile);
@@ -351,12 +365,13 @@ async function proxyLocalPathUpload(
     }
   };
 
-  return proxy(toolName, convertedInput, dependencies);
+  return proxy(toolName, convertedInput, dependencies, signal);
 }
 
 async function proxyPartitionUpload(
   input: Record<string, unknown>,
-  dependencies: LauncherToolDependencies
+  dependencies: LauncherToolDependencies,
+  signal?: AbortSignal
 ): Promise<LauncherToolResult> {
   const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
     (candidate) => candidate.name === "upload_structured_dataset"
@@ -382,7 +397,7 @@ async function proxyPartitionUpload(
     const accessToken = await dependencies.auth.accessToken();
     return jsonToolResult(
       (await uploadPartitionDataset({
-        context: partitionTransferContext(dependencies, accessToken),
+        context: partitionTransferContext(dependencies, accessToken, signal),
         filePath: value.file.filePath,
         name: value.file.name,
         mediaType: value.file.mediaType,
@@ -401,7 +416,8 @@ async function proxyPartitionUpload(
 
 async function proxyPartitionDownload(
   input: unknown,
-  dependencies: LauncherToolDependencies
+  dependencies: LauncherToolDependencies,
+  signal?: AbortSignal
 ): Promise<LauncherToolResult> {
   const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
     (candidate) => candidate.name === "download_structured_partitions"
@@ -410,30 +426,36 @@ async function proxyPartitionDownload(
   if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
   try {
     const accessToken = await dependencies.auth.accessToken();
-    return jsonToolResult(
-      (await downloadPartitionDataset({
-        context: partitionTransferContext(dependencies, accessToken),
-        ...(parsed.data as {
-          dataset: "business" | "dishes";
-          enterpriseName: string;
-          startDate: string;
-          endDate: string;
-          storeIds?: string[];
-          storeNameContains?: string[];
-        })
-      })) as Record<string, unknown>
-    );
+    const context = partitionTransferContext(dependencies, accessToken, signal);
+    const value = parsed.data as
+      { requestId: string } | Omit<Parameters<typeof downloadPartitionDataset>[0], "context">;
+    const result =
+      "requestId" in value
+        ? await downloadPartitionBundle({ context, requestId: value.requestId })
+        : await downloadPartitionDataset({ context, ...value });
+    return jsonToolResult(result as Record<string, unknown>);
   } catch (error) {
     return partitionTransferError(error);
   }
 }
 
-function partitionTransferContext(dependencies: LauncherToolDependencies, accessToken: string) {
+function partitionTransferContext(
+  dependencies: LauncherToolDependencies,
+  accessToken: string,
+  signal?: AbortSignal
+) {
   return {
     serviceUrl: dependencies.config.serviceUrl,
     accessToken,
     launcherVersion: LAUNCHER_VERSION,
-    fetchImplementation: dependencies.fetchImplementation
+    fetchImplementation: dependencies.fetchImplementation,
+    signal,
+    refreshAccessToken: dependencies.auth.refreshAccessToken?.bind(dependencies.auth),
+    diagnostic: (event: Parameters<NonNullable<PartitionTransferContext["diagnostic"]>>[0]) => {
+      process.stderr.write(
+        `${JSON.stringify({ event: "partition-transfer", stage: event.stage, elapsedMs: event.elapsedMs, bytes: event.bytes, files: event.files, retry: event.retry, failed: event.failed })}\n`
+      );
+    }
   };
 }
 
@@ -513,6 +535,7 @@ export function createOfficialLauncherAuthentication(
         return fetchCurrentUserProfile(origin, token, fetchImplementation);
       }),
     invalidate: () => session.invalidate(),
+    refreshAccessToken: () => session.refreshAccessToken(),
     selfCheck: async () => {
       let secureStoreAvailable = false;
       let authenticated = false;
@@ -689,7 +712,8 @@ async function status(
 async function proxy(
   toolName: LauncherBusinessToolName,
   input: unknown,
-  dependencies: LauncherToolDependencies
+  dependencies: LauncherToolDependencies,
+  signal?: AbortSignal
 ): Promise<LauncherToolResult> {
   try {
     const accessToken = await dependencies.auth.accessToken();
@@ -707,14 +731,14 @@ async function proxy(
       }
     );
     try {
-      await client.connect(transport, { timeout: REMOTE_MCP_TIMEOUT_MS });
+      await client.connect(transport, { timeout: REMOTE_MCP_TIMEOUT_MS, signal });
       const remoteResult = await client.callTool(
         {
           name: toolName,
           arguments: input as Record<string, unknown>
         },
         undefined,
-        { timeout: REMOTE_MCP_TOOL_TIMEOUT_MS }
+        { timeout: REMOTE_MCP_TOOL_TIMEOUT_MS, signal }
       );
       return sanitizeRemoteToolResult(remoteResult, accessToken);
     } finally {

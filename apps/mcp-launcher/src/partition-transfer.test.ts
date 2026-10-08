@@ -213,3 +213,195 @@ function context(fetchImplementation: typeof fetch) {
     fetchImplementation
   };
 }
+
+describe("partition transfer deadlines and credentials", () => {
+  afterEach(() => vi.useRealTimers());
+  it("forces one replacement token and rebuilds the rejected authorization header", async () => {
+    const { apiJson } = await import("./partition-transfer.js");
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) =>
+      new Headers(init?.headers).get("authorization") === "Bearer secret"
+        ? new Response(null, { status: 401 })
+        : Response.json({ ok: true })
+    );
+    const refreshAccessToken = vi.fn(async () => "replacement");
+    await expect(
+      apiJson({ ...context(fetcher), refreshAccessToken }, "/manifest", { method: "POST" })
+    ).resolves.toEqual({ ok: true });
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(new Headers(fetcher.mock.calls[1]![1]?.headers).get("authorization")).toBe(
+      "Bearer replacement"
+    );
+  });
+  it("rejects a cached rejected token and never refreshes twice", async () => {
+    const { apiJson } = await import("./partition-transfer.js");
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(null, { status: 401 }));
+    const refreshAccessToken = vi.fn(async () => "secret");
+    await expect(
+      apiJson({ ...context(fetcher), refreshAccessToken }, "/manifest", { method: "POST" })
+    ).rejects.toThrow("did not replace");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it.each(["headers", "body"])("ends stalled API %s at 30 seconds", async (kind) => {
+    const { apiJson } = await import("./partition-transfer.js");
+    vi.useFakeTimers({
+      toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"]
+    });
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      kind === "headers"
+        ? new Promise<Response>(() => {})
+        : new Response(new ReadableStream({ start() {} }))
+    );
+    const result = apiJson(context(fetcher), "/manifest", { method: "POST" });
+    const rejected = expect(result).rejects.toThrow("deadline");
+    await vi.advanceTimersByTimeAsync(30_000);
+    await rejected;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it.each(["headers", "body"])(
+    "ends stalled transfer %s at 30 seconds without retry",
+    async (kind) => {
+      const { downloadVerified } = await import("./partition-transfer.js");
+      const root = await mkdtemp(path.join(os.tmpdir(), "transfer-timeout-"));
+      vi.useFakeTimers({
+        toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"]
+      });
+      const fetcher = vi.fn<typeof fetch>(async () =>
+        kind === "headers"
+          ? new Promise<Response>(() => {})
+          : new Response(new ReadableStream({ start() {} }))
+      );
+      const result = downloadVerified(
+        context(fetcher),
+        "https://storage.example/file",
+        path.join(root, "out"),
+        1,
+        "0".repeat(64)
+      );
+      const rejected = expect(result).rejects.toThrow("deadline");
+      await vi.advanceTimersByTimeAsync(30_000);
+      await rejected;
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await rm(root, { recursive: true, force: true });
+    }
+  );
+  it("caps progressing transfers at the 240-second invocation budget", async () => {
+    const { boundedInvocation, downloadVerified } = await import("./partition-transfer.js");
+    const root = await mkdtemp(path.join(os.tmpdir(), "transfer-budget-"));
+    vi.useFakeTimers({
+      toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"]
+    });
+    let timer: ReturnType<typeof setInterval>;
+    const fetcher = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              timer = setInterval(() => controller.enqueue(Buffer.from("x")), 20_000);
+            },
+            cancel() {
+              clearInterval(timer);
+            }
+          })
+        )
+    );
+    const result = boundedInvocation(context(fetcher), (context) =>
+      downloadVerified(
+        context,
+        "https://storage.example/file",
+        path.join(root, "out"),
+        100,
+        "0".repeat(64)
+      )
+    );
+    const rejected = expect(result).rejects.toThrow("deadline");
+    for (let i = 0; i < 12; i++) {
+      await vi.advanceTimersByTimeAsync(20_000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    await rejected;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await rm(root, { recursive: true, force: true });
+  });
+  it("retries 503 exactly three attempts and stops cancellation during backoff", async () => {
+    const { downloadVerified } = await import("./partition-transfer.js");
+    vi.useFakeTimers({
+      toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"]
+    });
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(null, { status: 503 }));
+    const result = downloadVerified(
+      context(fetcher),
+      "https://storage.example/file",
+      "/unused",
+      0,
+      "0".repeat(64)
+    );
+    const rejected = expect(result).rejects.toThrow("503");
+    await vi.advanceTimersByTimeAsync(750);
+    await rejected;
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    fetcher.mockClear();
+    const controller = new AbortController();
+    const canceled = downloadVerified(
+      { ...context(fetcher), signal: controller.signal },
+      "https://storage.example/file",
+      "/unused",
+      0,
+      "0".repeat(64)
+    );
+    const canceledAssertion = expect(canceled).rejects.toThrow("cancelled");
+    await vi.advanceTimersByTimeAsync(100);
+    controller.abort(new Error("cancelled"));
+    await vi.advanceTimersByTimeAsync(1000);
+    await canceledAssertion;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});
+
+it("cancels sibling legacy downloads after the first validation failure", async () => {
+  const before = await import("node:fs/promises")
+    .then((fs) => fs.readdir(path.join(os.tmpdir(), "smedc-partition-extracts")))
+    .catch((): string[] => []);
+  let siblingSignal: AbortSignal | null | undefined;
+  const cancelled = vi.fn();
+  const bytes = Buffer.from("x");
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+    if (String(url).includes("partition-manifests"))
+      return Response.json({
+        dataset: "business",
+        enterpriseName: "Synthetic",
+        startDate: "2026-09-07",
+        endDate: "2026-09-07",
+        partitionCount: 2,
+        totalRowCount: 2,
+        partitions: ["bad", "stalled"].map((storeId) => ({
+          businessDate: "2026-09-07",
+          storeId,
+          storeName: storeId,
+          rowCount: 1,
+          byteSize: 1,
+          checksumSha256: "0".repeat(64),
+          presignedDownloadUrl: `https://storage.example/${storeId}`
+        }))
+      });
+    if (String(url).endsWith("/bad")) return new Response(bytes);
+    siblingSignal = init?.signal;
+    return new Response(new ReadableStream({ cancel: cancelled }));
+  });
+  await expect(
+    downloadPartitionDataset({
+      context: context(fetcher),
+      dataset: "business",
+      enterpriseName: "Synthetic",
+      startDate: "20260907",
+      endDate: "20260907"
+    })
+  ).rejects.toThrow("checksum");
+  expect(siblingSignal?.aborted).toBe(true);
+  expect(cancelled).toHaveBeenCalledOnce();
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  const after = await import("node:fs/promises").then((fs) =>
+    fs.readdir(path.join(os.tmpdir(), "smedc-partition-extracts"))
+  );
+  expect(after.filter((directory) => !before.includes(directory))).toEqual([]);
+});
