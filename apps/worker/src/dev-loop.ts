@@ -1,3 +1,4 @@
+import { createPartitionDownloadRuntime } from "./partition-download/runtime.js";
 import { createLedgerWorkerRuntime } from "./ledger-pdf/runtime.js";
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
@@ -24,6 +25,7 @@ export async function main(): Promise<void> {
     storage,
     scratchRoot: runtimeLimits.ledgerPdfScratchRoot
   });
+  const partitionDownloads = createPartitionDownloadRuntime({ storage, limits: runtimeLimits });
   const partitionImporter = createPartitionImporter({
     limits: partitionImportLimitsFromRuntime(runtimeLimits),
     onTimingEvent(event) {
@@ -38,18 +40,21 @@ export async function main(): Promise<void> {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   const maintenanceTimer = setInterval(() => {
+    void partitionDownloads.maintain().catch(console.error);
     void ledgerRuntime.maintain().catch(console.error);
     void partitionImporter.maintain({ storage }).catch(console.error);
   }, 60_000);
 
   let shutdownFailure: PromiseRejectedResult | undefined;
   try {
+    await partitionDownloads.maintain();
     await ledgerRuntime.maintain();
     await partitionImporter.maintain({ storage });
     await runWorkerLoop({
       repository,
       storage,
       evidenceIndexer,
+      partitionDownloadJob: partitionDownloads.job,
       ledgerJobs: ledgerRuntime.jobs,
       partitionImporter,
       structuredImportBatchInsertSize: runtimeLimits.structuredImportBatchInsertSize,
@@ -76,7 +81,8 @@ export async function main(): Promise<void> {
     const closed = await Promise.allSettled([
       repository.disconnect?.(),
       partitionImporter.disconnect(),
-      ledgerRuntime.disconnect()
+      ledgerRuntime.disconnect(),
+      partitionDownloads.disconnect()
     ]);
     shutdownFailure = closed.find((result) => result.status === "rejected");
   }

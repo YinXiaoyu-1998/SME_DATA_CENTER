@@ -5,7 +5,15 @@ import {
 } from "@smedc/ledger-archive/delivery";
 import { randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { createDatabaseAdapter } from "@smedc/db";
+import {
+  createDatabaseAdapter,
+  createPrismaPartitionDownloadRepository,
+  type PartitionDownloadRepository
+} from "@smedc/db";
+import {
+  createPrismaPartitionDownloadAuditRepository,
+  type PartitionDownloadAuditRepository
+} from "./routes/structured-partitions/downloads.js";
 import { PrismaClient } from "@prisma/client";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 import { loadApiRuntimeLimits, type ApiRuntimeLimits } from "./config/runtime-limits.js";
@@ -64,6 +72,8 @@ export interface ApiServerOptions {
   documentRepository?: DocumentCatalogRepository;
   structuredImportRepository?: StructuredImportRepository;
   structuredPartitionRepository?: StructuredPartitionRepository;
+  partitionDownloadRepository?: PartitionDownloadRepository;
+  partitionDownloadAuditRepository?: PartitionDownloadAuditRepository;
   skillRepository?: SkillDirectoryRepository;
   structuredQueryRepository?: StructuredQueryRepository;
   structuredCoverageRepository?: StructuredCoverageRepository;
@@ -104,6 +114,8 @@ export interface ApiServerContext {
   storage: () => StorageAdapter;
   structuredImports: () => StructuredImportRepository;
   structuredPartitions: () => StructuredPartitionRepository;
+  partitionDownloads: () => PartitionDownloadRepository;
+  partitionDownloadAudit: () => PartitionDownloadAuditRepository;
   structuredQueries: () => StructuredQueryRepository;
   structuredCoverage: () => StructuredCoverageRepository;
   quarantineCertificates: () => QuarantineCertificateRepository;
@@ -132,6 +144,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let documentRepository = options.documentRepository;
   let structuredImportRepository = options.structuredImportRepository;
   let structuredPartitionRepository = options.structuredPartitionRepository;
+  let partitionDownloadRepository = options.partitionDownloadRepository;
+  let partitionDownloadAuditRepository = options.partitionDownloadAuditRepository;
   let skillRepository = options.skillRepository;
   let structuredQueryRepository = options.structuredQueryRepository;
   let structuredCoverageRepository = options.structuredCoverageRepository;
@@ -231,6 +245,21 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return structuredPartitionRepository;
   }
 
+  function partitionDownloads(): PartitionDownloadRepository {
+    partitionDownloadRepository ??= createPrismaPartitionDownloadRepository({
+      databaseUrl: environment["DATABASE_URL"],
+      limits: runtimeLimits,
+      transactionTimeoutMs: runtimeLimits.structuredImportTransactionTimeoutMs
+    });
+    return partitionDownloadRepository;
+  }
+  function partitionDownloadAudit(): PartitionDownloadAuditRepository {
+    partitionDownloadAuditRepository ??= createPrismaPartitionDownloadAuditRepository(
+      environment["DATABASE_URL"]
+    );
+    return partitionDownloadAuditRepository;
+  }
+
   function structuredQueries(): StructuredQueryRepository {
     structuredQueryRepository ??= createPrismaStructuredQueryRepository();
     return structuredQueryRepository;
@@ -288,6 +317,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     await documentRepository?.disconnect?.();
     await structuredImportRepository?.disconnect?.();
     await structuredPartitionRepository?.disconnect?.();
+    await partitionDownloadRepository?.disconnect();
+    await partitionDownloadAuditRepository?.disconnect?.();
     await skillRepository?.disconnect?.();
     await structuredQueryRepository?.disconnect?.();
     await structuredCoverageRepository?.disconnect?.();
@@ -314,6 +345,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     storage,
     structuredImports,
     structuredPartitions,
+    partitionDownloads,
+    partitionDownloadAudit,
     structuredQueries,
     structuredCoverage,
     quarantineCertificates,

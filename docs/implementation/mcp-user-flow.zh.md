@@ -127,16 +127,22 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
 - `smedc_list_skills` 只返回目录元数据。不得执行条目、生成报告，或把 SMEDC 变成
   员工直接对话的 AI 服务。
 
-## Filtered Partition Range Flow (Release Gated)
+## 门店过滤与异步分区下载（待发布）
 
-Keep the installed pin at `0.7.1`. Filtered coverage/manifests require independently verified
-published Launcher `0.8.0` plus matching service deployment. Use the same enterprise/store
-scope for coverage and `download_structured_partitions` with inclusive YYYYMMDD dates.
-`storeNameContains` contains 1–20 NFC/trim literal case-sensitive substrings, OR within the
-array and AND with authorization and other selectors. Check MCP errors and the returned store
-scope; failures never imply no data. Release shared scratch only after its last consumer.
-See [the API contract](./api-contract.md#filtered-partition-range-extracts) and
-[core skill](../../skills/smedc-mcp/SKILL.md#filtered-partition-range-downloads-release-gated).
+Range is the default. Bundle mode is optional and requires a known matching ZIP service;
+tools/list is insufficient. If ZIP is removed, regenerate saved plans with range downloads.
+
+安装 pin 保持 `0.7.1`。新过滤/prepare/status/requestId 流程必须等待 Launcher `0.8.1` 或更新版本（过滤范围下载为 `0.8.0`）
+发布并独立验证、配套服务部署以及正式 Skill pin 更新；分支代码不代表可用。
+business/dishes 的 coverage 与 prepare 使用相同 `enterpriseName`/`storeNameContains` 范围。
+后者为 1–20 个 NFC/trim、每项 1–255 字符的字面、区分大小写子串；数组内 OR，与授权及其他条件 AND。
+prepare 使用含首尾日期的 `YYYYMMDD` 和仅精确重放复用的 `idempotencyKey`；按 `retryAfterSeconds`
+等待后，仅用 `requestId` 查询 status。检查 `isError` 及 queued/running/succeeded/failed/expired；
+仅 succeeded 后才仅用 `requestId` 下载，不能混合任何选择器，下载调用不会等待打包。
+零分区成功没有 ZIP URL，但产生有效空本地 extract；失败不能当成无数据。签名链接留在 Launcher 内部，
+校验返回门店范围，共享临时目录等最后消费者释放。服务数据清理只属于操作员，不属于员工 MCP（含 admin）。
+精确参数、限额和错误处理参见 [API 契约](./api-contract.md#filtered-partition-extracts-and-asynchronous-bundles)
+和 [基础 Skill](../../skills/smedc-mcp/SKILL.md#filtered-partition-bundle-downloads-release-gated)。
 
 ## 当前发布边界
 

@@ -70,6 +70,8 @@ describe("read-only MCP tool handlers", () => {
       "get_import_status",
       "get_partition_import_status",
       "download_structured_partitions",
+      "prepare_structured_partition_download",
+      "get_structured_partition_download_status",
       "describe_ledger_pdf_coverage",
       "get_ledger_pdf_request_status",
       "get_ledger_pdf_download_url"
@@ -578,4 +580,78 @@ it("encodes coverage store-name scope as one JSON query parameter", async () => 
     enterpriseName: "Synthetic",
     storeNameContains: JSON.stringify(["麦家小馆", "A%_\\"])
   });
+});
+
+it("maps partition preparation, status and requestId download through authenticated delegation", async () => {
+  const requestAudit = { ...audit, launcherVersion: "0.8.1" };
+  const { calls, handlers } = createCapturingDelegate("employee-token", requestAudit);
+  const dynamic = handlers as Record<
+    string,
+    (input: unknown, context: unknown) => Promise<unknown>
+  >;
+  const mcpContext = { audit: requestAudit };
+  expect(dynamic["prepare_structured_partition_download"]).toBeTypeOf("function");
+  expect(dynamic["get_structured_partition_download_status"]).toBeTypeOf("function");
+  await dynamic["prepare_structured_partition_download"]!(
+    {
+      dataset: "business",
+      enterpriseName: "Synthetic",
+      startDate: "20261001",
+      endDate: "20261002",
+      storeNameContains: [" A "],
+      idempotencyKey: "idem-1"
+    },
+    mcpContext
+  );
+  await dynamic["get_structured_partition_download_status"]!({ requestId: "pd/1" }, mcpContext);
+  await dynamic["download_structured_partitions"]!({ requestId: "pd/1" }, mcpContext);
+  expect(calls.map(({ method, url, payload }) => ({ method, url, payload }))).toEqual([
+    {
+      method: "POST",
+      url: "/v1/structured/partition-downloads",
+      payload: {
+        dataset: "business",
+        enterpriseName: "Synthetic",
+        startDate: "2026-10-01",
+        endDate: "2026-10-02",
+        storeNameContains: ["A"],
+        idempotencyKey: "idem-1"
+      }
+    },
+    { method: "GET", url: "/v1/structured/partition-downloads/pd%2F1", payload: undefined },
+    { method: "POST", url: "/v1/structured/partition-downloads/pd%2F1/url", payload: undefined }
+  ]);
+  expect(calls.every((call) => call.headers.authorization === "Bearer employee-token")).toBe(true);
+  const before = calls.length;
+  await dynamic["download_structured_partitions"]!(
+    { requestId: "pd_1", dataset: "business" },
+    mcpContext
+  );
+  expect(calls).toHaveLength(before);
+});
+
+it("uses the current call audit context and requires launcher 0.8.1 for prepared-download tools", async () => {
+  const { calls, handlers } = createCapturingDelegate();
+  const currentAudit = {
+    ...audit,
+    requestId: "req_current_call",
+    launcherVersion: "0.8.1",
+    sourceIp: "198.51.100.45"
+  };
+  await handlers.get_structured_partition_download_status?.({ requestId: "pd_1" }, {
+    audit: currentAudit
+  } as never);
+  expect(calls[0]).toMatchObject({
+    headers: { "x-request-id": "req_current_call", "x-smedc-launcher-version": "0.8.1" },
+    remoteAddress: currentAudit.sourceIp
+  });
+  const old = { audit: { ...currentAudit, launcherVersion: "0.7.9" } };
+  const result = await handlers.download_structured_partitions?.(
+    { requestId: "pd_1" },
+    old as never
+  );
+  expect(parseToolResult(result!)).toMatchObject({
+    error: { code: "LAUNCHER_UPGRADE_REQUIRED", requestId: "req_current_call" }
+  });
+  expect(calls).toHaveLength(1);
 });

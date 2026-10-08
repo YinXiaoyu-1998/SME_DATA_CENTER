@@ -105,3 +105,13 @@ After an additive download schema has been deployed, rolling code back does not 
 migration. The range-only cleanup checks for retained download owners without requiring their
 generated model and fails closed before any external deletion. Drain requests, workers and
 late-write candidates through a compatible ZIP release before rollback; do not bypass the guard.
+
+## Optional bundle cleanup lifecycle
+
+With the ZIP release, exact-store cleanup also invalidates affected derived bundles atomically.
+Old workers are fenced, and registered unfinished uploads retain repeated-deletion tombstones
+for late writes. Verify package-object removal and keep active late candidates pending.
+The overall staging-upload-domain cleanup refuses any retained download requests before
+external deletion. Drain requests and candidates through a compatible ZIP release before
+rolling back code; additive migrations remain applied and must never be reversed. Previously
+issued URLs may remain usable until their capped TTL (at most 15 minutes) expires.

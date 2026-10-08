@@ -191,16 +191,64 @@ const partitionImportStatusInputSchema = z
   })
   .strict();
 
-const downloadStructuredPartitionsInputSchema = z
+const partitionDownloadRequestId = z
+  .string()
+  .min(1)
+  .max(128)
+  .refine((value) => !hasAsciiControlCharacter(value))
+  .describe(
+    "Prepared partition download request ID. In download_structured_partitions, provide only this field and no range selectors; the request must have succeeded."
+  );
+const partitionDownloadScopeShape = {
+  dataset: z.enum(["business", "dishes"]),
+  enterpriseName: z.string().min(1).max(PUBLIC_INPUT_LIMITS.enterpriseNameChars),
+  startDate: z.string().regex(/^\d{8}$/),
+  endDate: z.string().regex(/^\d{8}$/),
+  storeIds: z.array(z.string().min(1).max(255)).max(10_000).optional(),
+  storeNameContains: partitionStoreNameContainsSchema
+};
+const preparePartitionDownloadInputSchema = z
   .object({
-    dataset: z.enum(["business", "dishes"]),
-    enterpriseName: z.string().min(1).max(PUBLIC_INPUT_LIMITS.enterpriseNameChars),
-    startDate: z.string().regex(/^\d{8}$/),
-    endDate: z.string().regex(/^\d{8}$/),
-    storeIds: z.array(z.string().min(1).max(255)).max(10_000).optional(),
-    storeNameContains: partitionStoreNameContainsSchema
+    ...partitionDownloadScopeShape,
+    storeIds: z.array(z.string().min(1).max(255)).min(1).max(2000).optional(),
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(128)
+      .refine((value) => value === value.trim() && value.trim().length > 0)
   })
   .strict();
+const partitionDownloadStatusInputSchema = z
+  .object({ requestId: partitionDownloadRequestId })
+  .strict();
+const downloadStructuredPartitionsInputSchema = z
+  .object({
+    requestId: partitionDownloadRequestId.optional(),
+    dataset: partitionDownloadScopeShape.dataset.optional(),
+    enterpriseName: partitionDownloadScopeShape.enterpriseName.optional(),
+    startDate: partitionDownloadScopeShape.startDate.optional(),
+    endDate: partitionDownloadScopeShape.endDate.optional(),
+    storeIds: partitionDownloadScopeShape.storeIds,
+    storeNameContains: partitionDownloadScopeShape.storeNameContains
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.requestId !== undefined) {
+      if (Object.keys(input).some((key) => key !== "requestId"))
+        context.addIssue({
+          code: "custom",
+          message: "requestId cannot be combined with range selectors."
+        });
+    } else if (!input.dataset || !input.enterpriseName || !input.startDate || !input.endDate) {
+      context.addIssue({
+        code: "custom",
+        message: "Provide requestId or a complete dataset, enterpriseName and date range."
+      });
+    }
+  })
+  .describe(
+    "Provide either only requestId for a completed ZIP, or dataset, enterpriseName and a complete YYYYMMDD date range with optional store filters. These selectors are mutually exclusive."
+  );
 
 const aggregateAlias = z.string().min(1);
 const countAggregateInputSchema = z
@@ -579,6 +627,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_import_status",
   "get_partition_import_status",
   "download_structured_partitions",
+  "prepare_structured_partition_download",
+  "get_structured_partition_download_status",
   "describe_ledger_pdf_coverage",
   "get_ledger_pdf_request_status",
   "prepare_ledger_pdf_download",
@@ -826,10 +876,16 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       "Download authorized business/dishes daily store partitions into a launcher-managed local directory.",
     inputSchema: downloadStructuredPartitionsInputSchema,
     inputFields: [
-      { name: "dataset", required: true, description: "business or dishes." },
-      { name: "enterpriseName", required: true, description: "Enterprise/source name." },
-      { name: "startDate", required: true, description: "Inclusive YYYYMMDD start." },
-      { name: "endDate", required: true, description: "Inclusive YYYYMMDD end." },
+      {
+        name: "requestId",
+        required: false,
+        description:
+          "Succeeded prepared request ID; mutually exclusive with all range selectors. Does not wait for packaging."
+      },
+      { name: "dataset", required: false, description: "business or dishes." },
+      { name: "enterpriseName", required: false, description: "Enterprise/source name." },
+      { name: "startDate", required: false, description: "Inclusive YYYYMMDD start." },
+      { name: "endDate", required: false, description: "Inclusive YYYYMMDD end." },
       { name: "storeIds", required: false, description: "Optional merchant IDs." },
       {
         name: "storeNameContains",
@@ -839,6 +895,62 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       }
     ],
     resultShape: ["localDirectory", "dataset", "partitionCount", "totalRowCount", "files[]"]
+  }),
+  defineToolContract({
+    name: "prepare_structured_partition_download",
+    title: "Prepare structured partition download",
+    description:
+      "Queue an authorized business/dishes partition ZIP for a date/store scope. Reuse the same idempotencyKey for retries; poll status and download by requestId once succeeded.",
+    inputSchema: preparePartitionDownloadInputSchema,
+    inputFields: [
+      { name: "dataset", required: true, description: "business or dishes." },
+      { name: "enterpriseName", required: true, description: "Enterprise/source name." },
+      { name: "startDate", required: true, description: "Inclusive YYYYMMDD start." },
+      { name: "endDate", required: true, description: "Inclusive YYYYMMDD end." },
+      { name: "storeIds", required: false, description: "Optional 1–2000 merchant IDs." },
+      {
+        name: "storeNameContains",
+        required: false,
+        description:
+          "Optional 1–20 literal case-sensitive NFC/trim store-name substrings; OR within array, AND with other scope/authorization."
+      },
+      {
+        name: "idempotencyKey",
+        required: true,
+        description: "Client retry key, at most 128 characters without surrounding whitespace."
+      }
+    ],
+    resultShape: [
+      "requestId",
+      "status",
+      "partitionCount",
+      "totalRowCount",
+      "totalByteSize",
+      "retryAfterSeconds"
+    ],
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "get_structured_partition_download_status",
+    title: "Get structured partition download status",
+    description:
+      "Read the current authorized request status and completed partition count; pending states never include download URLs.",
+    inputSchema: partitionDownloadStatusInputSchema,
+    inputFields: [
+      { name: "requestId", required: true, description: "Prepared partition download request ID." }
+    ],
+    resultShape: [
+      "requestId",
+      "status",
+      "partitionCount",
+      "completedPartitionCount",
+      "totalRowCount",
+      "totalByteSize",
+      "retryAfterSeconds",
+      "errorCode",
+      "expiresAt"
+    ],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   defineToolContract({
     name: "upload_evidence_document",

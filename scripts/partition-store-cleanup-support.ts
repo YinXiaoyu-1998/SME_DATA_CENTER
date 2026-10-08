@@ -1,8 +1,9 @@
-import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
   enqueueStorageGarbage,
+  invalidatePartitionDownloadsForPartitions,
   literalStoreNameScope,
+  partitionDownloadFingerprint,
   retryIdempotentDatabaseOperation
 } from "@smedc/db";
 import { parsePartitionStoreNameContains } from "@smedc/domain";
@@ -163,24 +164,6 @@ export function parseStoreCleanupArgs(argv: string[]) {
   return { execute, values };
 }
 
-/** Additive migrations may remain after code rollback; refuse retained owners without importing their model. */
-export async function assertNoRetainedPartitionDownloads(
-  prisma: Pick<PrismaClient, "$queryRaw">,
-  orgId?: string
-) {
-  const tables = await prisma.$queryRaw<{ present: bigint }[]>(
-    Prisma.sql`SELECT COUNT(*) AS present FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'partition_download_requests'`
-  );
-  if (Number(tables[0]?.present ?? 0) === 0) return;
-  const rows = await prisma.$queryRaw<{ retained: bigint }[]>(
-    Prisma.sql`SELECT COUNT(*) AS retained FROM partition_download_requests ${orgId ? Prisma.sql`WHERE org_id = ${orgId}` : Prisma.empty}`
-  );
-  if (Number(rows[0]?.retained ?? 0) > 0)
-    throw new Error(
-      "Cleanup requires a compatible release to drain retained partition downloads before rollback."
-    );
-}
-
 /** No environment bypass in the CLI; injecting a client here permits isolated synthetic tests. */
 export function createStoreCleanupRepository(prisma: PrismaClient) {
   const transaction = <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) =>
@@ -233,15 +216,12 @@ export function createStoreCleanupRepository(prisma: PrismaClient) {
     }));
   }
   const fingerprint = (scope: StoreCleanupScope, rows: StoreCleanupTarget[]) =>
-    createHash("sha256")
-      .update(JSON.stringify({ version: 1, scope, targets: rows }))
-      .digest("hex");
+    partitionDownloadFingerprint({ version: 1, scope, targets: rows });
   return {
     async buildStoreCleanupInventory(input: StoreCleanupScope): Promise<StoreCleanupInventory> {
       const scope = normalizeStoreCleanupScope(input);
       return transaction(async (tx) => {
         await lockOrg(tx, scope.orgId);
-        await assertNoRetainedPartitionDownloads(tx, scope.orgId);
         const rows = await targets(tx, scope, true);
         const preserved = {
           partitions: await tx.structuredPartition.count({
@@ -275,14 +255,18 @@ export function createStoreCleanupRepository(prisma: PrismaClient) {
         failure("STORE_CLEANUP_FINGERPRINT_MISMATCH");
       return transaction(async (tx) => {
         await lockOrg(tx, scope.orgId);
-        await assertNoRetainedPartitionDownloads(tx, scope.orgId);
+        // Lock download owners before sources. Organization lock prevents new prepare requests.
+        const affected = await invalidatePartitionDownloadsForPartitions(tx, {
+          orgId: scope.orgId,
+          partitionIds: inventory.targets.map((row) => row.id)
+        });
         const current = await targets(tx, scope, true);
         if (fingerprint(scope, current) !== expectedFingerprint)
           failure("STORE_CLEANUP_FINGERPRINT_MISMATCH");
         const deleted = await tx.structuredPartition.deleteMany({
           where: { orgId: scope.orgId, id: { in: current.map((row) => row.id) } }
         });
-        const objectKeys = new Set<string>();
+        const objectKeys = new Set(affected.objectKeys);
         for (const row of current) {
           // Protect any remaining current reference, even if future schemas permit shared objects.
           if (await tx.structuredPartition.count({ where: { objectKey: row.objectKey } })) continue;
@@ -301,6 +285,7 @@ export function createStoreCleanupRepository(prisma: PrismaClient) {
             clientSource: "release-ops",
             metadata: {
               deletedPartitionCount: deleted.count,
+              invalidatedRequestCount: affected.invalidatedRequestCount,
               garbageObjectCount: objectKeys.size,
               externalCleanupPending: true
             }
@@ -308,6 +293,7 @@ export function createStoreCleanupRepository(prisma: PrismaClient) {
         });
         return {
           deletedPartitionCount: deleted.count,
+          invalidatedRequestCount: affected.invalidatedRequestCount,
           garbageObjectCount: objectKeys.size,
           externalCleanupPending: true as const
         };
