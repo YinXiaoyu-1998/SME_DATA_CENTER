@@ -1,8 +1,8 @@
 # Official User Installation, Login, and Session Design
 
-Status: `smedc-mcp-launcher@0.8.1` is published and independently verified, both Skill repositories
+Status: `smedc-mcp-launcher@0.8.2` is published and independently verified, both Skill repositories
 use their final SMEDC names, and npm Trusted Publisher is configured. This release recommends
-0.8.1 and keeps the minimum at 0.6.0. Archive delivery remains gated by service rollout. The
+0.8.2 and keeps the minimum at 0.6.0. Archive delivery remains gated by service rollout. The
 existing Device Authorization, web i18n, and legacy-auth removal passed focused public verification.
 
 Last updated: 2026-10-08
@@ -235,7 +235,7 @@ mandatory design constraint.
 - Old implementation and design documents never take precedence over this accepted decision log.
   Retain old material only when it accurately describes current code or useful history, and mark it
   accordingly; delete or supersede conflicting recommendations.
-- The repo-local and standalone skills pin the currently published launcher 0.8.1 and its Device
+- The repo-local and standalone skills pin the currently published launcher 0.8.2 and its Device
   Authorization behavior. Each new launcher version must be published and independently verified before those
   pins or the server recommendation are advanced.
 
@@ -581,13 +581,13 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Current launcher release status: `smedc-mcp-launcher@0.8.1` is public and independently verified,
+Current launcher release status: `smedc-mcp-launcher@0.8.2` is public and independently verified,
 the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and npm
 Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
 stage-publish-only permission. This synchronization keeps the minimum at 0.6.0 and recommends
-the published 0.8.1 release; both Skill pins use 0.8.1. Archive delivery remains gated by the
+the published 0.8.2 release; both Skill pins use 0.8.2. Archive delivery remains gated by the
 service rollout.
-Launcher 0.8.1 allows 45 seconds for business MCP calls while connection and profile checks retain
+Launcher 0.8.2 allows 45 seconds for business MCP calls while connection and profile checks retain
 30 seconds; existing installations must complete the normal authorized update flow to use it.
 Npm provenance remains unavailable because the source repository is private
 and is not an approval gate.
@@ -873,10 +873,10 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 The official beta installation, Device Authorization login, token/session, secure-store and
 memory-only custody, skill orchestration, recovery, password, audit, and hard-cutover behavior are
-implemented. Launcher 0.8.1 is public, independently verified, and supported on macOS, Windows, and
+implemented. Launcher 0.8.2 is public, independently verified, and supported on macOS, Windows, and
 Linux. Native macOS/Windows secure-store acceptance and the headless Linux login-to-business-tool
 loop have passed; the release workflow also exercises the installed package with no display on
-Ubuntu. This synchronization keeps the minimum at 0.6.0 and recommends 0.8.1. The four ledger
+Ubuntu. This synchronization keeps the minimum at 0.6.0 and recommends 0.8.2. The four ledger
 PDF download tools are packaged; archive delivery depends on the service rollout. The service automatically
 updates affected PDFs; employees cannot trigger generation through MCP/HTTP. The earlier i18n
 and legacy-auth cleanup passed focused public acceptance. The full user-visible workflow was
