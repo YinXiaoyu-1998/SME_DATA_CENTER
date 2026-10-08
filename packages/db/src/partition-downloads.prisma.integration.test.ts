@@ -277,6 +277,36 @@ suite("partition download persistence", () => {
     expect(await repository.recordProgress(lease, 1)).toBe(false);
     expect(await repository.fail(lease, "PARTITION_DOWNLOAD_FAILED")).toBe(false);
   });
+  it.each(["mixed owner", "wrong job type"])(
+    "leaves %s runs and leases untouched during status invalidation and expiry",
+    async (invalidOwner) => {
+      await partitions();
+      const request = await repository.prepare(actor, scope, "terminal-owner");
+      const lease = await leaseFor(request.requestId);
+      const original = await prisma.processingRun.update({
+        where: { id: lease.runId },
+        data:
+          invalidOwner === "mixed owner"
+            ? { partitionImportJobId: "download_source" }
+            : { jobType: "structured_import" }
+      });
+      await prisma.structuredPartition.updateMany({
+        where: { orgId },
+        data: { storeName: "Changed" }
+      });
+      expect(await repository.read(actor, request.requestId)).toMatchObject({
+        status: "failed",
+        errorCode: "PARTITION_DOWNLOAD_STALE"
+      });
+      expect(await prisma.processingRun.findUniqueOrThrow({ where: { id: lease.runId } })).toEqual(
+        original
+      );
+      expect(await repository.expire(request.expiresAt)).toBe(1);
+      expect(await prisma.processingRun.findUniqueOrThrow({ where: { id: lease.runId } })).toEqual(
+        original
+      );
+    }
+  );
   it("refuses changed-scope publication and preserves candidate cleanup", async () => {
     await partitions();
     const request = await repository.prepare(actor, scope, "stale-publish");

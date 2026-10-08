@@ -272,6 +272,18 @@ export function createPrismaPartitionDownloadRepository(
     );
     return tx.partitionDownloadRequest.findFirst({ where: { id: requestId, orgId } });
   }
+  function downloadOwner(orgId: string, requestId: string): Prisma.ProcessingRunWhereInput {
+    return {
+      orgId,
+      partitionDownloadRequestId: requestId,
+      jobType: "structured_partition_bundle",
+      documentId: null,
+      partitionImportJobId: null,
+      ledgerArtifactRequestId: null,
+      ledgerArtifactRequestItemId: null,
+      ledgerPdfReconciliationRunId: null
+    };
+  }
   async function terminate(
     tx: Prisma.TransactionClient,
     row: PartitionDownloadRequest,
@@ -281,7 +293,7 @@ export function createPrismaPartitionDownloadRepository(
     if (row.objectKey) await enqueueStorageGarbage(tx, { objectKey: row.objectKey, reason: code });
     await tx.processingRun.updateMany({
       where: {
-        partitionDownloadRequestId: row.id,
+        ...downloadOwner(row.orgId, row.id),
         status: { in: ["queued", "running", "retry_scheduled"] }
       },
       data: {
@@ -335,14 +347,7 @@ export function createPrismaPartitionDownloadRepository(
       const run = await tx.processingRun.findFirst({
         where: {
           id: lease.runId,
-          orgId: lease.orgId,
-          partitionDownloadRequestId: lease.requestId,
-          jobType: "structured_partition_bundle",
-          documentId: null,
-          partitionImportJobId: null,
-          ledgerArtifactRequestId: null,
-          ledgerArtifactRequestItemId: null,
-          ledgerPdfReconciliationRunId: null,
+          ...downloadOwner(lease.orgId, lease.requestId),
           status: "running",
           lockedBy: lease.workerId,
           attemptNumber: lease.attemptNumber,
