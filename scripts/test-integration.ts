@@ -28,6 +28,12 @@ import {
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
+import { LAUNCHER_VERSION } from "../apps/mcp-launcher/src/oauth-client.js";
+import {
+  comparePartitionDownloads,
+  createOwnedIntegrationDatabase,
+  integrationDatabasePlan
+} from "./test-integration-support.js";
 
 const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
@@ -93,6 +99,8 @@ interface McpToolEnvelope {
 
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
+// Reject nonlocal or driver-override connections before any local setup/mutation.
+integrationDatabasePlan(process.env["DATABASE_URL"] ?? DEFAULT_DATABASE_URL(mysqlPort), mysqlPort);
 const integrationPort = optionalEnv("HUB_INTEGRATION_PORT") ?? String(await findAvailablePort());
 const apiUrl = `http://127.0.0.1:${integrationPort}`;
 const integrationRoot = path.join(rootDir, ".data", "integration");
@@ -127,18 +135,32 @@ const integrationEnv: NodeJS.ProcessEnv = {
 };
 
 let apiProcess: ReturnType<typeof spawn> | null = null;
+let ownedDatabase: Awaited<ReturnType<typeof createOwnedIntegrationDatabase>> | undefined;
+let integrationFailed = false;
 const officialSessionCleanup: Array<() => Promise<void>> = [];
 
 try {
   await prepareLocalWorkspace();
   await run("docker", ["compose", "up", "-d", "mysql", "qdrant"], { env: integrationEnv });
   await waitForMysqlHealth();
+  ownedDatabase = await createOwnedIntegrationDatabase(integrationEnv["DATABASE_URL"]!, mysqlPort);
+  integrationEnv["DATABASE_URL"] = ownedDatabase.databaseUrl;
   await run("npm", ["run", "db:generate"], { env: integrationEnv });
-  await run(
+  await run("npm", ["run", "db:migrate:deploy"], { env: integrationEnv });
+  // These opt-in Prisma regressions are not covered by the procedural scenario or npm test.
+  const prismaRegressions = await run(
     "npx",
-    ["prisma", "migrate", "reset", "--force", "--config", "packages/db/prisma.config.ts"],
-    { env: integrationEnv }
+    [
+      "vitest",
+      "run",
+      "--no-file-parallelism",
+      "packages/db/src/structured-partitions.prisma.integration.test.ts",
+      "packages/db/src/partition-downloads.prisma.integration.test.ts",
+      "scripts/test-integration-support.test.ts"
+    ],
+    { env: { ...integrationEnv, RUN_PARTITION_PRISMA_INTEGRATION: "1" } }
   );
+  process.stdout.write(prismaRegressions.stdout);
   await run("npm", ["run", "db:seed"], { env: integrationEnv });
   const identitySetup = new PrismaClient({
     adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)
@@ -362,51 +384,31 @@ try {
     "An exact source replay should reuse the published job without re-uploading."
   );
 
-  const partitionDownloadResult = await createLauncherToolHandler(
-    "download_structured_partitions",
-    employeeLauncherDependencies
-  )({
-    dataset: "dishes",
-    enterpriseName: "Integration Partitions",
-    startDate: "20260701",
-    endDate: "20260703"
+  const partitionComparison = await comparePartitionDownloads({
+    context: {
+      serviceUrl: apiUrl,
+      accessToken: employeeAccessToken,
+      launcherVersion: LAUNCHER_VERSION,
+      fetchImplementation: fetch
+    },
+    scope: {
+      dataset: "dishes",
+      enterpriseName: "Integration Partitions",
+      startDate: "2026-07-01",
+      endDate: "2026-07-03"
+    },
+    amountColumn: "菜品总收入",
+    expected: { partitionCount: 3, rowCount: 3, amountCents: 8500 },
+    build: async () => {
+      const result = parseJson<WorkerResponse>(
+        (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+      );
+      assert(
+        result.processed && result.status === "active",
+        "Worker must publish the comparison ZIP."
+      );
+    }
   });
-  assert(
-    !partitionDownloadResult.isError,
-    `Partition launcher download failed: ${JSON.stringify(partitionDownloadResult)}`
-  );
-  const partitionDownload = JSON.parse(partitionDownloadResult.content[0]?.text ?? "null") as {
-    localDirectory: string;
-    partitionCount: number;
-    totalRowCount: number;
-    files: string[];
-  };
-  assert(
-    partitionDownload.partitionCount === 3 &&
-      partitionDownload.totalRowCount === 3 &&
-      partitionDownload.files.length === 3,
-    "Launcher should materialize the complete authorized manifest locally."
-  );
-  const localManifest = await readFile(
-    path.join(partitionDownload.localDirectory, "manifest.json"),
-    "utf8"
-  );
-  assert(
-    !localManifest.includes("presignedDownloadUrl") &&
-      !localManifest.includes("structured-partitions/"),
-    "The local manifest must not persist signed URLs or OSS object keys."
-  );
-  for (const fileName of partitionDownload.files) {
-    const partitionCsv = await readFile(
-      path.join(partitionDownload.localDirectory, fileName),
-      "utf8"
-    );
-    assert(
-      partitionCsv.startsWith("下单时间,门店,") && partitionCsv.trim().split("\n").length === 2,
-      "Each downloaded partition must contain one canonical header and one source row."
-    );
-  }
-  await rm(partitionDownload.localDirectory, { recursive: true, force: true });
 
   const evidencePath = path.join(integrationRoot, "phase3-evidence.md");
   const longEvidenceParagraph =
@@ -501,6 +503,7 @@ try {
         evidenceDocumentId: evidenceUpload.document.documentId,
         apiUrl,
         mysqlPort,
+        partitionComparison,
         proved: [
           "seed",
           "official_session_authentication",
@@ -512,6 +515,8 @@ try {
           "partition_worker_atomic_publish",
           "partition_exact_replay",
           "partition_manifest_local_download",
+          "partition_zip_same_csv_hashes_counts_aggregate_and_request_counts",
+          "partition_prisma_repository_regressions",
           "legacy_business_dishes_row_import_rejected",
           "delivery_supplier_query_authorization",
           "phase3_evidence_upload_worker_status_search",
@@ -527,10 +532,23 @@ try {
       2
     )
   );
+} catch (error) {
+  integrationFailed = true;
+  throw error;
 } finally {
   await Promise.allSettled(officialSessionCleanup.splice(0).map((cleanup) => cleanup()));
   if (apiProcess) {
     await stopApi(apiProcess);
+  }
+  if (ownedDatabase) {
+    try {
+      await ownedDatabase.cleanup();
+    } catch {
+      console.error(
+        JSON.stringify({ event: "integration_schema_cleanup_failed", schema: ownedDatabase.schema })
+      );
+      if (!integrationFailed) process.exitCode = 1;
+    }
   }
 }
 
