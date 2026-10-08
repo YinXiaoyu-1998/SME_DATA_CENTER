@@ -55,6 +55,12 @@ function minimalContext(
     structuredPartitions: () => {
       throw new Error("not used");
     },
+    partitionDownloads: () => {
+      throw new Error("not used");
+    },
+    partitionDownloadAudit: () => {
+      throw new Error("not used");
+    },
     structuredQueries: () => {
       throw new Error("not used");
     },

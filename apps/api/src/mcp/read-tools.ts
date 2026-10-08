@@ -29,6 +29,8 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "get_import_status",
   "get_partition_import_status",
   "download_structured_partitions",
+  "prepare_structured_partition_download",
+  "get_structured_partition_download_status",
   "describe_ledger_pdf_coverage",
   "get_ledger_pdf_request_status",
   "get_ledger_pdf_download_url"
@@ -61,6 +63,22 @@ export function createReadOnlyMcpToolHandlers(context: ApiDelegationContext): Sm
             { requestId: mcpContext.audit.requestId }
           );
         }
+        if (
+          (toolName === "prepare_structured_partition_download" ||
+            toolName === "get_structured_partition_download_status" ||
+            (toolName === "download_structured_partitions" &&
+              typeof input === "object" &&
+              input !== null &&
+              "requestId" in input)) &&
+          !launcherVersionAtLeast(mcpContext.audit.launcherVersion, "0.8.0")
+        ) {
+          return errorToolResult(
+            "LAUNCHER_UPGRADE_REQUIRED",
+            "Update the SMEDC launcher before using prepared partition downloads.",
+            undefined,
+            { requestId: mcpContext.audit.requestId }
+          );
+        }
         const parsed = READ_ONLY_TOOL_CONTRACTS[toolName].inputSchema.safeParse(input);
 
         if (!parsed.success) {
@@ -70,6 +88,7 @@ export function createReadOnlyMcpToolHandlers(context: ApiDelegationContext): Sm
         return delegateJsonApiRequest(
           {
             ...context,
+            audit: mcpContext.audit ?? context.audit,
             abortSignal: mcpContext.abortSignal ?? context.abortSignal
           },
           routeForReadOnlyTool(toolName, parsed.data)
@@ -186,7 +205,31 @@ function routeForReadOnlyTool(
         method: "GET",
         path: `/v1/structured/partition-imports/${encodeURIComponent(String(input["partitionImportJobId"]))}`
       };
+    case "get_structured_partition_download_status":
+      return {
+        method: "GET",
+        path: `/v1/structured/partition-downloads/${encodeURIComponent(String(input["requestId"]))}`
+      };
+    case "prepare_structured_partition_download":
+      return {
+        method: "POST",
+        path: "/v1/structured/partition-downloads",
+        body: {
+          dataset: input["dataset"],
+          enterpriseName: input["enterpriseName"],
+          startDate: compactDateToIso(String(input["startDate"])),
+          endDate: compactDateToIso(String(input["endDate"])),
+          storeIds: input["storeIds"],
+          storeNameContains: input["storeNameContains"],
+          idempotencyKey: input["idempotencyKey"]
+        }
+      };
     case "download_structured_partitions":
+      if (input["requestId"] !== undefined)
+        return {
+          method: "POST",
+          path: `/v1/structured/partition-downloads/${encodeURIComponent(String(input["requestId"]))}/url`
+        };
       return {
         method: "POST",
         path: "/v1/structured/partition-manifests",

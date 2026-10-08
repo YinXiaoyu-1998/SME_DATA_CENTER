@@ -52,7 +52,12 @@ it("marks only the existing upload contracts admin-only without changing their s
     createHash("sha256")
       .update(
         JSON.stringify(
-          SMEDC_MCP_TOOL_CONTRACTS.slice(0, 16)
+          SMEDC_MCP_TOOL_CONTRACTS.filter(
+            (tool) =>
+              tool.name !== "prepare_structured_partition_download" &&
+              tool.name !== "get_structured_partition_download_status"
+          )
+            .slice(0, 16)
             .filter((tool) => !tool.name.startsWith("upload_"))
             .map((tool) => [tool.name, tool.description])
         )
@@ -136,6 +141,14 @@ const validInputs = {
   get_evidence_document_status: { documentId: "doc_1" },
   get_import_status: { importBatchId: "imp_1" },
   get_partition_import_status: { partitionImportJobId: "pjob_1" },
+  prepare_structured_partition_download: {
+    dataset: "business",
+    enterpriseName: "Synthetic",
+    startDate: "20261001",
+    endDate: "20261002",
+    idempotencyKey: "idem-1"
+  },
+  get_structured_partition_download_status: { requestId: "pd_1" },
   describe_ledger_pdf_coverage: { dates: ["2026-10-04"] },
   get_ledger_pdf_request_status: { requestId: "request-1", cursor: "opaque-cursor" },
   prepare_ledger_pdf_download: {
@@ -455,6 +468,27 @@ const invalidInputCases = [
       }
     ]
   },
+  {
+    tool: "prepare_structured_partition_download",
+    cases: [
+      { label: "missing range", input: {} },
+      {
+        label: "mixed selector",
+        input: { ...validInputs.prepare_structured_partition_download, requestId: "pd_1" }
+      },
+      {
+        label: "padded retry key",
+        input: { ...validInputs.prepare_structured_partition_download, idempotencyKey: " padded " }
+      }
+    ]
+  },
+  {
+    tool: "get_structured_partition_download_status",
+    cases: [
+      { label: "missing request", input: {} },
+      { label: "empty request", input: { requestId: "" } }
+    ]
+  },
   ...(
     [
       "describe_ledger_pdf_coverage",
@@ -493,6 +527,8 @@ describe("SMEDC MCP contract", () => {
       "get_import_status",
       "get_partition_import_status",
       "download_structured_partitions",
+      "prepare_structured_partition_download",
+      "get_structured_partition_download_status",
       "describe_ledger_pdf_coverage",
       "get_ledger_pdf_request_status",
       "prepare_ledger_pdf_download",
@@ -1396,3 +1432,17 @@ it.each(["download_structured_partitions", "describe_structured_dataset_coverage
     );
   }
 );
+
+it("registers prepare/status tools and accepts only mutually exclusive download selectors", () => {
+  const byName = new Map<string, (typeof SMEDC_MCP_TOOL_CONTRACTS)[number]>(
+    SMEDC_MCP_TOOL_CONTRACTS.map((tool) => [tool.name, tool])
+  );
+  expect(byName.has("prepare_structured_partition_download")).toBe(true);
+  expect(byName.has("get_structured_partition_download_status")).toBe(true);
+  const download = byName.get("download_structured_partitions")!.inputSchema;
+  expect(download.safeParse({ requestId: "pd_1" }).success).toBe(true);
+  expect(
+    download.safeParse({ ...validInputs.download_structured_partitions, requestId: "pd_1" }).success
+  ).toBe(false);
+  expect(download.safeParse({ requestId: "pd_1", storeNameContains: ["A"] }).success).toBe(false);
+});

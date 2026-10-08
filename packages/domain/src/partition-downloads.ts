@@ -54,3 +54,44 @@ export interface PartitionDownloadManifestFile {
   byteSize: string;
   checksumSha256: string;
 }
+
+/** Sanitized authorized scope; internal enterprise keys and partition entries are excluded. */
+export interface PublicPartitionDownloadScope {
+  dataset: "business" | "dishes";
+  enterpriseName: string;
+  startDate: string;
+  endDate: string;
+  storeIds?: string[];
+  storeNameContains?: string[];
+}
+export interface PublicPartitionDownloadStatus {
+  requestId: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "expired";
+  partitionCount: number;
+  completedPartitionCount: number;
+  totalRowCount: string;
+  totalByteSize: string;
+  retryAfterSeconds: number;
+  errorCode: string | null;
+  expiresAt: string;
+}
+export interface PartitionDownloadUrlMetadata {
+  requestId: string;
+  status: "succeeded";
+  scope: PublicPartitionDownloadScope;
+  partitionCount: number;
+  totalRowCount: string;
+  totalByteSize: string;
+  expiresAt: string;
+  archiveBounds: {
+    maxRawByteSize: string;
+    maxManifestByteSize: number;
+    maxZipByteSize: string;
+  };
+}
+/** Empty success has metadata only; nonempty success also has a signed ZIP artifact. */
+export type PartitionDownloadUrlResponse = PartitionDownloadUrlMetadata &
+  (
+    | { partitionCount: 0 }
+    | { downloadUrl: string; byteSize: string; checksumSha256: string; urlExpiresAt: string }
+  );
