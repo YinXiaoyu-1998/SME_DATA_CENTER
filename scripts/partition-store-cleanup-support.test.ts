@@ -37,11 +37,19 @@ describe("exact store operator cleanup guard", () => {
       AWS_ENDPOINT: "https://oss-cn-beijing.aliyuncs.com"
     };
     expect(() => assertStoreCleanupRuntime(env)).not.toThrow();
+    for (const prefix of ["smedc", "smedc/", "/smedc//", " smedc/ ", "", " "])
+      expect(() => assertStoreCleanupRuntime({ ...env, AWS_S3_PREFIX: prefix })).not.toThrow();
     for (const bad of [
       { ...env, DATABASE_URL: "mysql://root@127.0.0.1:3307/smedc" },
       { ...env, DATABASE_URL: `mysql://smedc_app@other:3306/smedc` },
       { ...env, STORAGE_DRIVER: "local" },
       { ...env, AWS_S3_BUCKET: "other" },
+      { ...env, AWS_REGION: "other" },
+      { ...env, AWS_ENDPOINT: "https://other.example.invalid" },
+      { ...env, AWS_S3_PREFIX: "other/" },
+      { ...env, AWS_S3_PREFIX: "smedc/archive/" },
+      { ...env, AWS_S3_PREFIX: "smedc/../" },
+      { ...env, AWS_S3_PREFIX: "/" },
       { ...env, DATABASE_URL: `${env.DATABASE_URL}?host=other` }
     ])
       expect(() => assertStoreCleanupRuntime(bad)).toThrow("STORE_CLEANUP_RUNTIME_MISMATCH");

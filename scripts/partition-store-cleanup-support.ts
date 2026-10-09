@@ -118,7 +118,7 @@ export function assertStoreCleanupRuntime(env: NodeJS.ProcessEnv): void {
         "https://oss-cn-beijing.aliyuncs.com",
         "https://oss-cn-beijing-internal.aliyuncs.com"
       ].includes(env["AWS_ENDPOINT"] ?? "") ||
-      (env["AWS_S3_PREFIX"] ?? "smedc/") !== "smedc/"
+      (env["AWS_S3_PREFIX"]?.trim() || "smedc").replace(/^\/+|\/+$/g, "") !== "smedc"
     )
       failure("STORE_CLEANUP_RUNTIME_MISMATCH");
   } catch {
