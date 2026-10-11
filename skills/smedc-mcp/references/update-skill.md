@@ -70,7 +70,7 @@ listing is not an update failure when Git/HTTPS and the installation path are av
 This revision approves exactly `smedc-mcp-launcher@0.8.2`. Its upload tools stay visible but
 require an active admin. Preserve the `UPLOAD_ADMIN_REQUIRED` nonretryable handling and the
 before-file-access role check when refreshing guidance; an update never grants upload permission
-or changes an account's clearance. Future revisions must supply their own verified exact pin.
+or changes an account's clearance. Candidate 0.9.0 permission tools need separate publication and verification before this pin changes. Future revisions must supply their own verified exact pin.
 
 For a skill-only request, finish after the skill refresh and report the launcher separately as
 unchanged. If the employee also requested a launcher update, use the exact version approved in

@@ -17,7 +17,11 @@ export const MCP_LOCAL_FILE_PATH_MAX_LENGTH = 4096;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
-const structuredDataset = z.enum(STRUCTURED_DATASETS).describe("Phase 3 structured dataset name.");
+const structuredDataset = z
+  .enum(STRUCTURED_DATASETS)
+  .describe(
+    "Phase 3 structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog."
+  );
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
   z.number(),
@@ -31,8 +35,70 @@ const confidentialityLevel = z
   .max(3)
   .optional()
   .describe(
-    "Optional explicit document confidentiality level from 0 through 3; omission is level 0."
+    "Legacy upload level from 0 through 3. After business authorization is enabled, fixed categories use the server category level; this parameter cannot override it."
   );
+const permissionId = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine((v) => v.trim().length > 0);
+const permissionVersion = z
+  .string()
+  .regex(/^\d+$/)
+  .describe("Current server authorizationVersion; stale writes fail without partial changes.");
+const exactBusinessName = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine((v) => v.trim().length > 0);
+const historicalSupplementReason = z
+  .string()
+  .min(1)
+  .max(2048)
+  .refine((v) => v.trim().length > 0)
+  .optional()
+  .describe(
+    "Explicit historical supplementation reason, when applicable; never infer missing attributes."
+  );
+const businessScope = z
+  .object({
+    enterpriseKey: permissionId,
+    ownership: z.enum(["group", "store"]),
+    storeName: exactBusinessName.optional(),
+    dimensions: z.record(permissionId, permissionId)
+  })
+  .strict()
+  .superRefine((scope, context) => {
+    if ((scope.ownership === "store") !== (scope.storeName !== undefined))
+      context.addIssue({
+        code: "custom",
+        message: "Store ownership requires exactly one exact storeName; group ownership has none."
+      });
+  });
+const businessScopes = z.array(businessScope).min(1).max(1000);
+const permissionSelection = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("all") }).strict(),
+  z.object({ kind: z.literal("fixed"), values: z.array(permissionId).min(1).max(10000) }).strict()
+]);
+const permissionGrant = z
+  .object({
+    id: permissionId,
+    orgId: permissionId,
+    enterpriseKey: permissionId,
+    categoryIds: z.array(permissionId).min(1).max(1000),
+    ownership: z.enum(["group", "store"]),
+    stores: permissionSelection.optional(),
+    dimensions: z.record(permissionId, permissionSelection)
+  })
+  .strict()
+  .superRefine((grant, context) => {
+    if ((grant.ownership === "store") !== (grant.stores !== undefined))
+      context.addIssue({
+        code: "custom",
+        message: "Store grants require stores; group grants have none."
+      });
+  });
+
 const evidenceFilterId = z.string().min(1).max(PUBLIC_INPUT_LIMITS.evidenceFilterIdChars);
 const structuredFilter: z.ZodType<unknown> = z.lazy(() =>
   z.union([
@@ -351,7 +417,8 @@ const uploadStructuredDatasetInputSchema = z
       .min(1)
       .max(PUBLIC_INPUT_LIMITS.idempotencyKeyChars)
       .describe("Client-generated retry/idempotency key."),
-    confidentialityLevel
+    confidentialityLevel,
+    historicalSupplementReason
   })
   .strict()
   .superRefine((input, context) => {
@@ -423,7 +490,17 @@ const uploadEvidenceDocumentInputSchema = z
       .max(PUBLIC_INPUT_LIMITS.sourceSystemChars)
       .optional()
       .describe("Optional source system."),
-    confidentialityLevel
+    confidentialityLevel: z
+      .number()
+      .int()
+      .min(0)
+      .max(3)
+      .describe("Explicit evidence file level, 0 through 3; required."),
+    categoryId: permissionId.describe("Existing evidence business category ID."),
+    scopes: businessScopes.describe(
+      "Complete explicit enterprise, ownership, exact store and dimension scope items."
+    ),
+    historicalSupplementReason
   })
   .strict();
 
@@ -450,7 +527,10 @@ const uploadQuarantineCertificateInputSchema = z
       .min(1)
       .max(PUBLIC_INPUT_LIMITS.idempotencyKeyChars)
       .describe("Client-generated retry/idempotency key."),
-    confidentialityLevel
+    enterpriseName: z.string().min(1).max(128),
+    storeName: exactBusinessName.describe("One exact store name, preserved without trimming."),
+    confidentialityLevel,
+    historicalSupplementReason
   })
   .strict();
 
@@ -610,6 +690,136 @@ function validateLedgerPdfDateSelection(
     });
 }
 
+export const PERMISSION_MCP_INPUT_SCHEMAS = {
+  get_my_permissions: z.object({}).strict(),
+  list_account_permissions: z.object({}).strict(),
+  get_account_permissions: z.object({ employeeId: permissionId }).strict(),
+  update_account_permissions: z
+    .object({
+      employeeId: permissionId,
+      expectedVersion: permissionVersion,
+      clearance: z.number().int().min(0).max(3),
+      grants: z.array(permissionGrant).max(1000)
+    })
+    .strict(),
+  list_business_categories: z.object({}).strict(),
+  create_evidence_category: z
+    .object({
+      id: permissionId,
+      name: exactBusinessName,
+      expectedVersion: permissionVersion,
+      ownerships: z
+        .array(z.enum(["group", "store"]))
+        .min(1)
+        .max(2),
+      requiredDimensionIds: z.array(permissionId).max(1000),
+      retired: z.boolean().optional()
+    })
+    .strict(),
+  update_business_category: z
+    .object({
+      categoryId: permissionId,
+      name: exactBusinessName,
+      expectedVersion: permissionVersion,
+      confidentialityLevel: z.number().int().min(0).max(3).optional(),
+      ownerships: z
+        .array(z.enum(["group", "store"]))
+        .min(1)
+        .max(2)
+        .optional(),
+      requiredDimensionIds: z.array(permissionId).max(1000).optional(),
+      retired: z.boolean().optional()
+    })
+    .strict()
+    .superRefine((v, context) => {
+      if (
+        v.confidentialityLevel !== undefined
+          ? v.ownerships !== undefined || v.requiredDimensionIds !== undefined
+          : !v.ownerships || !v.requiredDimensionIds
+      )
+        context.addIssue({
+          code: "custom",
+          message:
+            "Supply only confidentialityLevel for a fixed category, or ownerships and requiredDimensionIds for evidence."
+        });
+    }),
+  list_business_dimensions: z.object({}).strict(),
+  create_business_dimension: z
+    .object({
+      id: permissionId,
+      name: exactBusinessName,
+      expectedVersion: permissionVersion,
+      retired: z.boolean().optional()
+    })
+    .strict(),
+  update_business_dimension: z
+    .object({
+      dimensionId: permissionId,
+      name: exactBusinessName,
+      expectedVersion: permissionVersion,
+      retired: z.boolean().optional()
+    })
+    .strict(),
+  create_business_dimension_value: z
+    .object({
+      dimensionId: permissionId,
+      id: permissionId,
+      name: exactBusinessName,
+      expectedVersion: permissionVersion,
+      retired: z.boolean().optional()
+    })
+    .strict(),
+  update_business_dimension_value: z
+    .object({
+      dimensionId: permissionId,
+      valueId: permissionId,
+      name: exactBusinessName,
+      expectedVersion: permissionVersion,
+      retired: z.boolean().optional()
+    })
+    .strict(),
+  list_business_stores: z.object({}).strict(),
+  update_business_store: z
+    .object({
+      enterpriseKey: permissionId,
+      name: exactBusinessName,
+      expectedVersion: permissionVersion,
+      retired: z.boolean().optional()
+    })
+    .strict(),
+  update_evidence_document_attributes: z
+    .object({
+      documentId: permissionId,
+      expectedVersion: permissionVersion,
+      categoryId: permissionId,
+      fileConfidentialityLevel: z.number().int().min(0).max(3),
+      scopes: businessScopes,
+      historicalSupplementReason
+    })
+    .strict(),
+  get_evidence_document_management_status: z.object({ documentId: permissionId }).strict(),
+  prepare_authorization_cutover: z.object({}).strict(),
+  activate_authorization_cutover: z
+    .object({ expectedVersion: permissionVersion, confirm: z.literal(true) })
+    .strict(),
+  suspend_authorization_reads: z
+    .object({ expectedVersion: permissionVersion, confirm: z.literal(true) })
+    .strict()
+} as const;
+export const PERMISSION_MCP_TOOL_NAMES = Object.keys(PERMISSION_MCP_INPUT_SCHEMAS) as Array<
+  keyof typeof PERMISSION_MCP_INPUT_SCHEMAS
+>;
+const permissionReadNames = new Set([
+  "get_my_permissions",
+  "list_account_permissions",
+  "get_account_permissions",
+  "list_business_categories",
+  "list_business_dimensions",
+  "list_business_stores",
+  "get_evidence_document_management_status",
+  "prepare_authorization_cutover"
+]);
+
 export const SMEDC_MCP_TOOL_NAMES = [
   "smedc_get_current_user",
   "smedc_list_skills",
@@ -632,7 +842,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "describe_ledger_pdf_coverage",
   "get_ledger_pdf_request_status",
   "prepare_ledger_pdf_download",
-  "get_ledger_pdf_download_url"
+  "get_ledger_pdf_download_url",
+  ...PERMISSION_MCP_TOOL_NAMES
 ] as const;
 
 export type SmedcMcpToolName = (typeof SMEDC_MCP_TOOL_NAMES)[number];
@@ -830,30 +1041,11 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     description:
       "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
-    inputFields: [
-      {
-        name: "file",
-        required: true,
-        description:
-          "Original upload file payload. Registry metadata is not a reason to synthesize a replacement file unless the user explicitly asked for local conversion."
-      },
-      {
-        name: "dataset",
-        required: true,
-        description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
-      },
-      { name: "enterpriseName", required: true, description: "Enterprise/source name." },
-      { name: "startDate", required: false, description: "YYYYMMDD business window start." },
-      { name: "endDate", required: false, description: "YYYYMMDD business window end." },
-      { name: "snapshotDate", required: false, description: "YYYYMMDD catalog snapshot date." },
-      { name: "idempotencyKey", required: true, description: "Retry/idempotency key." },
-      {
-        name: "confidentialityLevel",
-        required: false,
-        description: "Explicit 0-3 level; omission is 0."
-      }
-    ],
+    inputFields: Object.entries(uploadStructuredDatasetInputSchema.shape).map(([name, schema]) => ({
+      name,
+      required: !schema.isOptional(),
+      description: schema.description ?? name
+    })),
     resultShape: [
       "business/dishes: partitionImportJobId, status, partitionCount, totalRowCount, error",
       "other datasets: document, processing, importBatch"
@@ -958,16 +1150,11 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     description:
       "Upload MD/TXT/DOCX evidence by calling authenticated multipart POST /v1/documents/evidence. Requires the admin role.",
     inputSchema: uploadEvidenceDocumentInputSchema,
-    inputFields: [
-      { name: "file", required: true, description: "Base64 upload file payload." },
-      { name: "title", required: true, description: "Evidence source title." },
-      { name: "sourceSystem", required: false, description: "Optional source system." },
-      {
-        name: "confidentialityLevel",
-        required: false,
-        description: "Explicit 0-3 level; omission is 0."
-      }
-    ],
+    inputFields: Object.entries(uploadEvidenceDocumentInputSchema.shape).map(([name, schema]) => ({
+      name,
+      required: !schema.isOptional(),
+      description: schema.description ?? name
+    })),
     resultShape: ["document", "processing", "documentIndex"]
   }),
   defineToolContract({
@@ -976,16 +1163,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     description:
       "Upload one JPG/PNG quarantine certificate linked to a receipt ID by calling authenticated multipart POST /v1/documents/quarantine-certificates. Requires the admin role.",
     inputSchema: uploadQuarantineCertificateInputSchema,
-    inputFields: [
-      { name: "file", required: true, description: "Base64 upload image payload." },
-      { name: "receiptId", required: true, description: "Receipt ID linked to this image." },
-      { name: "idempotencyKey", required: true, description: "Retry/idempotency key." },
-      {
-        name: "confidentialityLevel",
-        required: false,
-        description: "Explicit 0-3 level; omission is 0."
-      }
-    ],
+    inputFields: Object.entries(uploadQuarantineCertificateInputSchema.shape).map(
+      ([name, schema]) => ({
+        name,
+        required: !schema.isOptional(),
+        description: schema.description ?? name
+      })
+    ),
     resultShape: [
       "sourceDocumentId",
       "receiptId",
@@ -1111,6 +1295,36 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     inputFields: [{ name: "requestId", required: true, description: "Ready ZIP request ID." }],
     resultShape: ["requestId", "downloadUrl", "expiresAt"],
     annotations: ledgerPdfReadAnnotations
+  }),
+  ...PERMISSION_MCP_TOOL_NAMES.map((name) => {
+    const inputSchema = PERMISSION_MCP_INPUT_SCHEMAS[name];
+    return defineToolContract({
+      name,
+      title: name.replaceAll("_", " "),
+      description:
+        name === "get_my_permissions"
+          ? "Read the current server permission card on every call. This is not cached by the launcher; it never grants content access by itself."
+          : `${name.replaceAll("_", " ")}. Requires a current active same-organization administrator. Uses the authenticated server permission service; writes require expectedVersion. Status and configuration responses contain no download links.`,
+      inputSchema,
+      inputFields: Object.entries(inputSchema.shape).map(([field, schema]) => ({
+        name: field,
+        required: !schema.isOptional(),
+        description: schema.description ?? field
+      })),
+      resultShape:
+        name === "get_my_permissions" || name === "get_account_permissions"
+          ? [
+              "current server authorization snapshot: employee, version, mode, clearance, grants, category rules"
+            ]
+          : name === "prepare_authorization_cutover"
+            ? ["authorizationVersion, ready, missing configuration and resource attributes"]
+            : ["server configuration or safe management status; no content links"],
+      annotations: {
+        readOnlyHint: permissionReadNames.has(name),
+        destructiveHint: !permissionReadNames.has(name),
+        idempotentHint: permissionReadNames.has(name)
+      }
+    });
   })
 ] as const satisfies readonly SmedcMcpToolContract[];
 

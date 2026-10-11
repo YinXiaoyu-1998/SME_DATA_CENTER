@@ -55,6 +55,7 @@ async function uploadPartitionDatasetInternal(input: {
   endDate: string;
   idempotencyKey: string;
   confidentialityLevel?: number;
+  historicalSupplementReason?: string;
 }): Promise<unknown> {
   const before = await stat(input.filePath);
   if (!before.isFile()) throw new Error("Local partition upload source is not a regular file.");
@@ -71,7 +72,8 @@ async function uploadPartitionDatasetInternal(input: {
       sourceByteSize: before.size,
       sourceChecksumSha256: checksum,
       idempotencyKey: input.idempotencyKey,
-      confidentialityLevel: input.confidentialityLevel
+      confidentialityLevel: input.confidentialityLevel,
+      historicalSupplementReason: input.historicalSupplementReason
     }
   })) as UploadSession;
   if (session.status !== "uploading") return session;

@@ -122,7 +122,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.8.2");
+    expect(manifest.version).toBe("0.9.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -148,7 +148,7 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.8.2");
+      expect(client.getServerVersion()?.version).toBe("0.9.0");
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -163,7 +163,16 @@ describe("published launcher artifact", () => {
           "describe_ledger_pdf_coverage",
           "get_ledger_pdf_request_status",
           "prepare_ledger_pdf_download",
-          "get_ledger_pdf_download_url"
+          "get_ledger_pdf_download_url",
+          "get_my_permissions",
+          "get_account_permissions",
+          "update_account_permissions",
+          "list_business_categories",
+          "update_business_category",
+          "update_evidence_document_attributes",
+          "prepare_authorization_cutover",
+          "activate_authorization_cutover",
+          "suspend_authorization_reads"
         ])
       );
       expect(tools.tools.map((tool) => tool.name)).not.toContain("refresh_ledger_pdfs");

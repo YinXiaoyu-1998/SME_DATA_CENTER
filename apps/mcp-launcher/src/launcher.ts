@@ -11,6 +11,7 @@ import {
   FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
   SMEDC_MCP_TOOL_CONTRACTS,
   SMEDC_MCP_TOOL_NAMES,
+  PERMISSION_MCP_TOOL_NAMES,
   errorToolResult,
   jsonToolResult,
   launcherUploadFileInputSchema,
@@ -39,6 +40,7 @@ export const LAUNCHER_BOOTSTRAP_TOOL_NAMES = [
   "smedc_auth_status"
 ] as const;
 export type LauncherBootstrapToolName = (typeof LAUNCHER_BOOTSTRAP_TOOL_NAMES)[number];
+// Keep the public declaration self-contained: the packaged launcher has no workspace dependencies.
 export type LauncherBusinessToolName =
   | "smedc_get_current_user"
   | "smedc_list_skills"
@@ -55,14 +57,35 @@ export type LauncherBusinessToolName =
   | "get_evidence_document_status"
   | "get_import_status"
   | "get_partition_import_status"
+  | "download_structured_partitions"
   | "prepare_structured_partition_download"
   | "get_structured_partition_download_status"
-  | "download_structured_partitions"
   | "describe_ledger_pdf_coverage"
   | "get_ledger_pdf_request_status"
   | "prepare_ledger_pdf_download"
-  | "get_ledger_pdf_download_url";
+  | "get_ledger_pdf_download_url"
+  | "get_my_permissions"
+  | "list_account_permissions"
+  | "get_account_permissions"
+  | "update_account_permissions"
+  | "list_business_categories"
+  | "create_evidence_category"
+  | "update_business_category"
+  | "list_business_dimensions"
+  | "create_business_dimension"
+  | "update_business_dimension"
+  | "create_business_dimension_value"
+  | "update_business_dimension_value"
+  | "list_business_stores"
+  | "update_business_store"
+  | "update_evidence_document_attributes"
+  | "get_evidence_document_management_status"
+  | "prepare_authorization_cutover"
+  | "activate_authorization_cutover"
+  | "suspend_authorization_reads";
 export type LauncherToolName = LauncherBootstrapToolName | LauncherBusinessToolName;
+
+const PERMISSION_TOOL_NAMES = new Set<string>(PERMISSION_MCP_TOOL_NAMES);
 
 const LEDGER_PDF_TOOL_NAMES = new Set<LauncherBusinessToolName>([
   "describe_ledger_pdf_coverage",
@@ -223,7 +246,7 @@ export function registerLauncherTools(
         annotations: tool.annotations,
         inputSchema: LOCAL_PATH_UPLOAD_TOOL_NAMES.has(tool.name)
           ? launcherUploadToolInputShape(tool)
-          : LEDGER_PDF_TOOL_NAMES.has(tool.name)
+          : LEDGER_PDF_TOOL_NAMES.has(tool.name) || PERMISSION_TOOL_NAMES.has(tool.name)
             ? tool.inputSchema
             : tool.inputShape
       },
@@ -395,6 +418,7 @@ async function proxyPartitionUpload(
     endDate: string;
     idempotencyKey: string;
     confidentialityLevel?: number;
+    historicalSupplementReason?: string;
   };
   if (!value.startDate || !value.endDate) {
     return errorToolResult(
@@ -415,7 +439,8 @@ async function proxyPartitionUpload(
         startDate: value.startDate,
         endDate: value.endDate,
         idempotencyKey: value.idempotencyKey,
-        confidentialityLevel: value.confidentialityLevel
+        confidentialityLevel: value.confidentialityLevel,
+        historicalSupplementReason: value.historicalSupplementReason
       })) as Record<string, unknown>
     );
   } catch (error) {

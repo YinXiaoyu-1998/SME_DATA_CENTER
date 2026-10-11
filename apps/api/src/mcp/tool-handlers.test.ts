@@ -84,6 +84,8 @@ function validEvidenceInput() {
       contentBase64: Buffer.from("# Evidence\n", "utf8").toString("base64")
     },
     title: "Evidence",
+    categoryId: "memo",
+    scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
     confidentialityLevel: 0
   };
 }

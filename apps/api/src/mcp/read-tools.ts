@@ -33,7 +33,15 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "get_structured_partition_download_status",
   "describe_ledger_pdf_coverage",
   "get_ledger_pdf_request_status",
-  "get_ledger_pdf_download_url"
+  "get_ledger_pdf_download_url",
+  "get_my_permissions",
+  "list_account_permissions",
+  "get_account_permissions",
+  "list_business_categories",
+  "list_business_dimensions",
+  "list_business_stores",
+  "get_evidence_document_management_status",
+  "prepare_authorization_cutover"
 ] as const satisfies readonly SmedcMcpToolName[];
 
 type ReadOnlyMcpToolName = (typeof READ_ONLY_MCP_TOOL_NAMES)[number];
@@ -103,6 +111,28 @@ function routeForReadOnlyTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "get_my_permissions":
+      return { method: "GET", path: `/v1/permissions/me` };
+    case "list_account_permissions":
+      return { method: "GET", path: `/v1/admin/permissions/accounts` };
+    case "get_account_permissions":
+      return {
+        method: "GET",
+        path: `/v1/admin/permissions/accounts/${encodeURIComponent(String(input["employeeId"]))}`
+      };
+    case "list_business_categories":
+      return { method: "GET", path: `/v1/admin/permissions/categories` };
+    case "list_business_dimensions":
+      return { method: "GET", path: `/v1/admin/permissions/dimensions` };
+    case "list_business_stores":
+      return { method: "GET", path: `/v1/admin/permissions/stores` };
+    case "get_evidence_document_management_status":
+      return {
+        method: "GET",
+        path: `/v1/admin/documents/evidence/${encodeURIComponent(String(input["documentId"]))}/status`
+      };
+    case "prepare_authorization_cutover":
+      return { method: "GET", path: `/v1/admin/permissions/cutover` };
     case "describe_ledger_pdf_coverage":
       return { method: "POST", path: "/v1/ledger-pdfs/coverage", body: input };
     case "get_ledger_pdf_request_status":

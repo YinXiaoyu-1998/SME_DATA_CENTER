@@ -27,6 +27,7 @@ import {
 } from "../apps/api/src/auth/http-contract.js";
 import { createPrismaAuthCoreRepository } from "../apps/api/src/auth/prisma-auth-repository.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
+import { createBusinessAuthorizationRepository } from "@smedc/db";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { LAUNCHER_VERSION } from "../apps/mcp-launcher/src/oauth-client.js";
 import {
@@ -35,6 +36,10 @@ import {
   integrationDatabasePlan
 } from "./test-integration-support.js";
 
+const INTEGRATION_EVIDENCE_CATEGORY_ID = "integration-evidence";
+const INTEGRATION_EVIDENCE_SCOPES = [
+  { enterpriseKey: "integration-evidence-enterprise", ownership: "group" as const, dimensions: {} }
+];
 const DEFAULT_MYSQL_PORT = "3307";
 const DEFAULT_DATABASE_URL = (mysqlPort: string) =>
   `mysql://smedc:smedc_local_password@localhost:${mysqlPort}/smedc`;
@@ -178,6 +183,10 @@ integrationRun: try {
             : businessAuthorizationOnly
               ? ["apps/api/src/business-authorization-cutover.prisma.integration.test.ts"]
               : [
+                  "apps/api/src/structured-query.prisma.integration.test.ts",
+                  "packages/ledger-archive/src/publication.prisma.integration.test.ts",
+                  "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
+                  "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
                   "packages/db/src/structured-partitions.prisma.integration.test.ts",
                   "packages/db/src/partition-downloads.prisma.integration.test.ts",
                   "scripts/test-integration-support.test.ts"
@@ -204,6 +213,23 @@ integrationRun: try {
     adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)
   });
   try {
+    const state = await identitySetup.businessAuthorizationState.upsert({
+      where: { orgId: "default-org" },
+      create: { orgId: "default-org" },
+      update: {}
+    });
+    await createBusinessAuthorizationRepository({ prisma: identitySetup }).configureCategory({
+      orgId: "default-org",
+      actorId: "emp_admin",
+      expectedVersion: state.version.toString(),
+      id: INTEGRATION_EVIDENCE_CATEGORY_ID,
+      name: "Synthetic integration evidence",
+      kind: "evidence",
+      confidentialityLevel: null,
+      ownerships: ["group"],
+      requiredDimensionIds: [],
+      createOnly: true
+    });
     await identitySetup.employee.update({ where: { id: "emp_admin" }, data: { clearance: 0 } });
     await identitySetup.employee.update({
       where: { id: "emp_baoli_employee" },
@@ -349,6 +375,16 @@ integrationRun: try {
       "query_structured_dataset",
       employeeLauncherDependencies
     )({ dataset: fixture.dataset, aggregates: [{ op: "count", as: "row_count" }] });
+    if (fixture.dataset === "delivery_ledger") {
+      const denied = JSON.parse(queried.content[0]?.text ?? "null") as {
+        error?: { code?: string };
+      };
+      assert(
+        queried.isError && denied.error?.code === "LEDGER_DETAIL_DISABLED",
+        "Raw ledger aggregation must remain unavailable through the official launcher."
+      );
+      continue;
+    }
     const result = JSON.parse(queried.content[0]?.text ?? "null") as {
       rows: Array<{ row_count: number }>;
     };
@@ -461,6 +497,8 @@ integrationRun: try {
   evidenceForm.append("title", "Integration Phase 3 差评处理 SOP");
   evidenceForm.append("sourceSystem", "integration_smoke");
   evidenceForm.append("confidentialityLevel", "0");
+  evidenceForm.append("categoryId", INTEGRATION_EVIDENCE_CATEGORY_ID);
+  evidenceForm.append("scopes", JSON.stringify(INTEGRATION_EVIDENCE_SCOPES));
   const evidenceUpload = await apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
     method: "POST",
     headers: adminAuth,
@@ -658,6 +696,8 @@ async function assertAdminUploadClearanceOrthogonality(
   form.append("title", "Integration confidential SOP");
   form.append("sourceSystem", "integration_high_clearance");
   form.append("confidentialityLevel", "2");
+  form.append("categoryId", INTEGRATION_EVIDENCE_CATEGORY_ID);
+  form.append("scopes", JSON.stringify(INTEGRATION_EVIDENCE_SCOPES));
   const upload = await apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
     method: "POST",
     headers: adminAuth,
@@ -671,7 +711,7 @@ async function assertAdminUploadClearanceOrthogonality(
     "Worker must activate admin-c0's level-2 upload."
   );
   const id = upload.document.documentId;
-  const deniedStatus = await fetch(`${apiUrl}/v1/documents/evidence/${id}/status`, {
+  const ownerProgress = await fetch(`${apiUrl}/v1/documents/evidence/${id}/status`, {
     headers: adminAuth
   });
   const deniedDownload = await fetch(`${apiUrl}/v1/source-documents/${id}/download-url`, {
@@ -679,8 +719,13 @@ async function assertAdminUploadClearanceOrthogonality(
     headers: adminAuth
   });
   assert(
-    deniedStatus.status === 404 && deniedDownload.status === 404,
-    "Admin c0 must not bypass ordinary high-level status/download authorization."
+    ownerProgress.status === 200 && deniedDownload.status === 404,
+    "Uploader progress must remain available without granting a high-level original download."
+  );
+  const safeProgress = (await ownerProgress.json()) as { document: Record<string, unknown> };
+  assert(
+    !("title" in safeProgress.document) && !("downloadUrl" in safeProgress.document),
+    "Owner progress must not include protected metadata or links."
   );
   const query = JSON.stringify({ query: "折扣口令", filters: { documentIds: [id] }, limit: 5 });
   const deniedSearch = await apiJson<EvidenceSearchResponse>("/v1/evidence/search", {
@@ -1431,6 +1476,8 @@ async function uploadAuditEvidence(
   form.append("title", input.title);
   form.append("sourceSystem", input.sourceSystem);
   form.append("confidentialityLevel", "0");
+  form.append("categoryId", INTEGRATION_EVIDENCE_CATEGORY_ID);
+  form.append("scopes", JSON.stringify(INTEGRATION_EVIDENCE_SCOPES));
   return apiJson<EvidenceUploadResponse>("/v1/documents/evidence", {
     method: "POST",
     headers: {
@@ -1479,6 +1526,8 @@ async function uploadAuditEvidenceThroughMcp(
             ).toString("base64")
           },
           title: input.title,
+          categoryId: INTEGRATION_EVIDENCE_CATEGORY_ID,
+          scopes: INTEGRATION_EVIDENCE_SCOPES,
           sourceSystem: input.sourceSystem,
           confidentialityLevel: 0
         }
@@ -1624,6 +1673,11 @@ async function cleanupAuditProvenanceRun(
       });
     }
     if (documentIds.length > 0) {
+      await tx.businessResource.deleteMany({
+        where: {
+          OR: [{ documentId: { in: documentIds } }, { sourceDocumentId: { in: documentIds } }]
+        }
+      });
       await tx.document.deleteMany({ where: { id: { in: documentIds } } });
     }
   });

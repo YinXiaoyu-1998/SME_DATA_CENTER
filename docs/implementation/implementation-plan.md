@@ -1,6 +1,6 @@
 # 企业资料中枢 Implementation Plan
 
-Last updated: 2026-09-22
+Last updated: 2026-10-11
 
 ## Product Boundary
 
@@ -20,6 +20,17 @@ The active public product surface is Phase 3-only:
 2. Structured datasets: `upload_structured_dataset` → strict MySQL import → `get_import_status` / `list_structured_datasets` / `query_structured_dataset`.
 
 The old ordinary document upload/search/detail/download/archive public surface has been removed. The internal documents catalog remains as source-file, confidentiality, status, storage, processing, and audit infrastructure.
+
+## Business Authorization Implementation Boundary
+
+The current feature implements [the approved business authorization design](business-related-authorization-design.md)
+and [atomic cutover preparation](business-authorization-cutover.md). Fixed-category levels and complete
+business grants replace document-only clearance after explicit tenant activation. Evidence requires
+explicit per-file category/scope/level; photos require one exact store. Admin configuration does not
+imply content access. MCP mirrors controlled HTTP operations and reads current server permissions.
+Launcher `0.9.0` is an unpublished candidate; recommendation and both Skill installation pins stay
+`0.8.2` until authorized publication and independent verification. Real-tenant configuration,
+activation, merge, publication and staging deployment remain separate human boundaries.
 
 ## Phase Summary
 
@@ -79,9 +90,9 @@ Active MCP tools:
 
 Done criteria:
 
-- upload stores the source file and its immutable confidentiality level;
+- upload stores the source file and explicit evidence category, complete scopes and file level;
 - worker indexes into Qdrant with versioned retrieval config;
-- status exposes document/index readiness to its uploader; ordinary visibility otherwise follows organization and clearance;
+- status exposes safe progress to its uploader; ordinary metadata requires complete current business read access; a separate current-admin management status has no content links;
 - search returns evidence chunks and metadata for visible active ready documents only;
 - inaccessible documents do not leak title, filename, chunk text, row count, or existence.
 
@@ -106,7 +117,7 @@ Required behavior:
 - metadata is policy-specific: window datasets use `startDate`/`endDate`, `dish_catalog` uses
   `snapshotDate`, `delivery_ledger` derives the receipt ID/date and rejects user-supplied dates,
   and `supplier_catalog` uses no dates; all uploads also carry enterprise identity/name, an
-  idempotency key, and optional confidentiality level;
+  idempotency key, and a legacy optional upload level that cannot override the enabled fixed category level;
 - file name is not trusted for business logic;
 - XLSX sheet selection is dataset-specific: `delivery_ledger` selects exactly one recognized visible
   receipt sheet and ignores instructions/hidden sheets; `supplier_catalog` imports exactly one
@@ -166,7 +177,7 @@ Done criteria:
 ### Phase 3 Hardening Baselines
 
 - Organization scope is derived only from the authenticated employee record.
-- Ordinary document visibility uses one shared policy: disabled accounts are denied; active same-organization employees, including admins, need clearance at least equal to the document confidentiality level. Admin-only PAOs are separately declared and may operate across confidentiality levels without granting ordinary read access.
+- Ordinary visibility uses current same-organization grants for the category and every actual scope plus sufficient clearance; fixed levels are category configuration and evidence levels are per-file. Disabled accounts are denied and admins have no ordinary read bypass. Admin-only PAOs are separately declared and may operate across confidentiality levels without granting ordinary read access.
 - Structured imports use reservation-first idempotency and deterministic storage keys.
 - Evidence search uses signed opaque cursor pagination; each page reruns retrieval and authorization.
 - Worker processing uses database leases, heartbeat, retry classification, and bounded worker concurrency.
@@ -238,7 +249,7 @@ Done criteria:
 - MCP tool list contains only current tools;
 - old tool names are covered by negative tests only;
 - no active `hub documents` command remains;
-- local MCP smoke covers login, clearance-bound structured import/status/query, and evidence upload/status/search.
+- local MCP smoke covers login, structured import/status/query and explicit evidence upload/status/search; focused authorization tests and owned Prisma regressions verify the enabled model.
 
 ### Task C: Docs / Skills Cleanup
 
