@@ -36,6 +36,7 @@ function document(id: string, level = 0, kind = "structured") {
     archivedAt: null,
     checksumSha256: hash,
     documentKind: kind,
+    businessResources: [],
     importBatch: { orgId: "org", status: "applied", archivedAt: null, dataset: "delivery_ledger" },
     quarantineCertificate: { orgId: "org" }
   };
@@ -43,7 +44,10 @@ function document(id: string, level = 0, kind = "structured") {
 function fixture() {
   const query = vi.fn(async () => [key]);
   const tx = {
-    $queryRaw: vi.fn(async () => [{ total: 1n, hidden: 0n }]),
+    $queryRaw: vi.fn(async () => []),
+    businessAuthorizationState: { findUnique: vi.fn(async () => null) },
+    businessCategory: { findMany: vi.fn(async () => []) },
+    businessGrant: { findMany: vi.fn(async () => []) },
     employee: { findFirst: vi.fn(async () => employee) },
     $queryRawUnsafe: vi.fn(async () => []),
     document: {
@@ -80,6 +84,10 @@ function fixture() {
   };
   tx.document.findMany = prisma.document.findMany;
   tx.employee.findFirst = prisma.employee.findFirst;
+  Object.assign(tx.employee, {
+    findUnique: (...args: unknown[]) =>
+      (tx.employee.findFirst as (...args: unknown[]) => unknown)(...args)
+  });
   const storage = {
     headObject: vi.fn(async () => ({ state: "found", size: 10, hash }))
   } as unknown as StorageAdapter;
@@ -229,7 +237,7 @@ describe("Prisma delivery current data boundaries", () => {
       )[0]?.status
     ).toBe("ready");
     expect(readLedgerSourceMetadata).toHaveBeenCalledWith(f.tx, key);
-    expect(f.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(f.tx.$queryRaw).not.toHaveBeenCalled();
     expect(f.storage.headObject).toHaveBeenCalledWith("existing.pdf");
     vi.mocked(f.prisma.document.findMany).mockResolvedValue([
       { ...document("ledger"), status: "archived" }
@@ -262,9 +270,7 @@ describe("Prisma delivery current data boundaries", () => {
       rowCount: 1,
       sources: [ledger]
     });
-    f.tx.$queryRaw
-      .mockResolvedValueOnce([{ total: 1n, hidden: 0n }])
-      .mockResolvedValueOnce([{ supplierName: "Supplier" }] as never);
+    f.tx.$queryRaw.mockResolvedValueOnce([{ supplierName: "Supplier" }] as never);
     f.tx.$queryRawUnsafe
       .mockResolvedValueOnce([{ id: "batch", source_document_id: "supplier" }] as never)
       .mockResolvedValueOnce([

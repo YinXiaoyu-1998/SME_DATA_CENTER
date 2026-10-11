@@ -1,3 +1,4 @@
+import { persistLedgerPdfRequirement } from "./pdf-authorization.js";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { enqueueStorageGarbage, storageGarbageKeyHash } from "@smedc/db";
 import { createPrismaLedgerArtifactAccess } from "./access.js";
@@ -189,6 +190,19 @@ export function createPrismaLedgerPublicationArchive({
                 throw new LedgerPublicationError("LEDGER_PDF_INVALID", false);
               await tx.storageGarbage.delete({ where: { id: garbage.id } });
             }
+            const productLevel = await persistLedgerPdfRequirement(
+              tx,
+              {
+                orgId: run.orgId,
+                storeName: partition.storeName,
+                purchaseDate: partition.purchaseDate.toISOString().slice(0, 10)
+              },
+              partition.id,
+              input.sources,
+              input.candidate !== null
+            );
+            if (!(await access.sourcesAreCurrent({ orgId: run.orgId, sources: input.sources, tx })))
+              throw new LedgerPublicationError("LEDGER_SOURCE_CHANGED", true);
             await tx.ledgerPdfPartition.update({
               where: { id: partition.id },
               data: {
@@ -200,10 +214,9 @@ export function createPrismaLedgerPublicationArchive({
                 byteSize: input.candidate ? BigInt(input.candidate.byteSize) : null,
                 rowCount: input.rowCount,
                 certificateCount: input.certificateCount,
-                confidentialityLevel: Math.max(
-                  0,
-                  ...input.sources.map((source) => source.confidentialityLevel)
-                ),
+                confidentialityLevel:
+                  productLevel ??
+                  Math.max(0, ...input.sources.map((source) => source.confidentialityLevel)),
                 templateVersion: "food-purchase-ledger-cn-v2",
                 generatedAt: now(),
                 errorCode: null
@@ -215,7 +228,10 @@ export function createPrismaLedgerPublicationArchive({
             if (input.sources.length)
               await tx.ledgerPdfSource.createMany({
                 data: input.sources.map((source) => ({
-                  ...source,
+                  sourceDocumentId: source.sourceDocumentId,
+                  kind: source.kind,
+                  confidentialityLevel: source.confidentialityLevel,
+                  checksumSha256: source.checksumSha256,
                   orgId: run.orgId,
                   partitionId: partition.id
                 }))

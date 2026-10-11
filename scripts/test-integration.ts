@@ -99,7 +99,9 @@ interface McpToolEnvelope {
 
 const businessAuthorizationOnly = process.argv.includes("--business-authorization-only");
 const structuredReadsOnly = process.argv.includes("--structured-reads-only");
-const focusedAuthorization = businessAuthorizationOnly || structuredReadsOnly;
+const ledgerAuthorizationOnly = process.argv.includes("--ledger-authorization-only");
+const focusedAuthorization =
+  businessAuthorizationOnly || structuredReadsOnly || ledgerAuthorizationOnly;
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
 // Reject nonlocal or driver-override connections before any local setup/mutation.
@@ -160,22 +162,28 @@ integrationRun: try {
       "vitest",
       "run",
       "--no-file-parallelism",
-      ...(structuredReadsOnly
-        ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
-        : businessAuthorizationOnly
-          ? []
-          : [
-              "packages/db/src/structured-partitions.prisma.integration.test.ts",
-              "packages/db/src/partition-downloads.prisma.integration.test.ts",
-              "scripts/test-integration-support.test.ts"
-            ]),
-      ...(!structuredReadsOnly
+      ...(ledgerAuthorizationOnly
+        ? [
+            "packages/ledger-archive/src/publication.prisma.integration.test.ts",
+            "packages/ledger-archive/src/source-reader.prisma.integration.test.ts"
+          ]
+        : structuredReadsOnly
+          ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
+          : businessAuthorizationOnly
+            ? []
+            : [
+                "packages/db/src/structured-partitions.prisma.integration.test.ts",
+                "packages/db/src/partition-downloads.prisma.integration.test.ts",
+                "scripts/test-integration-support.test.ts"
+              ]),
+      ...(!structuredReadsOnly && !ledgerAuthorizationOnly
         ? ["packages/db/src/business-authorization.prisma.integration.test.ts"]
         : [])
     ],
     {
       env: {
         ...integrationEnv,
+        RUN_LEDGER_PRISMA_INTEGRATION: "1",
         RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION: "1",
         RUN_PARTITION_PRISMA_INTEGRATION: "1",
         RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION: "1"

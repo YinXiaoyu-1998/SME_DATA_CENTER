@@ -1,12 +1,13 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
+import type { AuthorizationSnapshot } from "@smedc/domain";
+import { canReadLedgerPdf, currentLedgerAuthorization } from "./pdf-authorization.js";
 import type { StorageAdapter } from "@smedc/storage";
 import { createPrismaLedgerArtifactAccess } from "./access.js";
 import { createPrismaLedgerArchiveRepository } from "./repository.js";
 import { reduceLedgerRequestStatus } from "./service.js";
 import { ledgerScopeDates, parseLedgerScope, LEDGER_SCOPE_MAX_PARTITIONS } from "./scope.js";
 import { ledgerStoreNameHash } from "./keys.js";
-import { readableLedgerPartitionHints } from "./changes.js";
 import {
   readLedgerSourceMetadata,
   readReadableLedgerSourceMetadataBatch,
@@ -31,6 +32,7 @@ export type LedgerDeliveryEmployee = {
   clearance: number;
   disabled: boolean;
   role: "admin" | "employee";
+  authorization?: AuthorizationSnapshot;
 };
 export type LedgerCoverageScope = Omit<LedgerScope, "storeNames"> & { storeNames?: string[] };
 export type LedgerPdfFact = {
@@ -126,7 +128,13 @@ export function ledgerBundleEntriesEqual(a: LedgerBundleEntry[], b: LedgerBundle
       e.objectKey,
       e.checksumSha256,
       e.byteSize,
-      e.sources.map((s) => [s.sourceDocumentId, s.kind, s.confidentialityLevel, s.checksumSha256])
+      e.sources.map((s) => [
+        s.sourceDocumentId,
+        s.kind,
+        s.checksumSha256,
+        s.contentVersion ?? null,
+        s.businessContentVersion ?? null
+      ])
     ]);
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
@@ -256,6 +264,7 @@ export function createLedgerPdfDelivery({
             orgId: current.orgId,
             employeeId: current.id,
             clearance: current.clearance,
+            authorizationVersion: current.authorization?.authorizationVersion,
             scope: input.scope
           },
           input.cursor
@@ -457,7 +466,8 @@ export function createPrismaLedgerDeliveryRepository({
       ? {
           ...employee,
           role: current.role,
-          clearance: Math.min(employee.clearance, current.clearance)
+          clearance: current.clearance,
+          authorization: await currentLedgerAuthorization(prisma, employee.id, employee.orgId)
         }
       : null;
   }
@@ -467,8 +477,6 @@ export function createPrismaLedgerDeliveryRepository({
     employee: LedgerDeliveryEmployee,
     preloaded?: LedgerSourceMetadata
   ): Promise<LedgerPdfFact | null> {
-    if (!preloaded && !(await readableLedgerPartitionHints(tx, employee.id, [key])).length)
-      return null;
     const metadata = preloaded ?? (await readLedgerSourceMetadata(tx, key));
     if (!metadata.rowCount) return null;
     const partition = await tx.ledgerPdfPartition.findUnique({
@@ -483,6 +491,19 @@ export function createPrismaLedgerDeliveryRepository({
     });
     if (partition && partition.storeName !== key.storeName)
       return fail("LEDGER_STORE_HASH_COLLISION");
+    const authorization =
+      employee.authorization ?? (await currentLedgerAuthorization(tx, employee.id, key.orgId));
+    if (
+      !(await canReadLedgerPdf(
+        tx,
+        authorization,
+        key,
+        metadata.sources,
+        partition?.id,
+        partition?.confidentialityLevel
+      ))
+    )
+      return null;
     let sources = metadata.sources;
     const ready =
       partition &&
@@ -551,7 +572,14 @@ export function createPrismaLedgerDeliveryRepository({
     }
     // Bind checks to the same metadata transaction while checking the live account separately.
     if (
-      !(await access.canReadLedgerArtifact({ employee, orgId: key.orgId, sources })) ||
+      !(await canReadLedgerPdf(
+        tx,
+        authorization,
+        key,
+        sources,
+        partition?.id,
+        partition?.confidentialityLevel
+      )) ||
       !(await access.sourcesAreCurrent({ orgId: key.orgId, sources, tx }))
     )
       return null;
@@ -591,6 +619,11 @@ export function createPrismaLedgerDeliveryRepository({
   return {
     currentEmployee,
     async facts(employee, scope) {
+      if (!employee.authorization) {
+        const current = await currentEmployee(employee);
+        if (!current) return [];
+        employee = current;
+      }
       const dates = ledgerScopeDates(
         parseLedgerScope({ ...scope, storeNames: scope.storeNames ?? ["__date_validation__"] })
       );

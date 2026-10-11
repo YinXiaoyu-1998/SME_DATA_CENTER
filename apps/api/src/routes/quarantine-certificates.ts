@@ -372,6 +372,7 @@ export function registerQuarantineCertificateRoutes(
     const certificates = await dependencies.quarantineCertificates().queryVisibleByReceiptIds({
       orgId: employee.orgId,
       employee,
+      authorization: await dependencies.auth.authorization(request),
       receiptIds
     });
     const certificatesByReceiptId = new Map<string, ReturnType<typeof certificateResponse>[]>();

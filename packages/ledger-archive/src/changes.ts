@@ -1,3 +1,5 @@
+import { canReadLedgerPdf, currentLedgerAuthorization } from "./pdf-authorization.js";
+import { readLedgerSourceMetadata } from "./source-reader.js";
 import { Prisma } from "@prisma/client";
 import { ledgerStoreNameHash } from "./keys.js";
 import { assertLedgerDate } from "./scope.js";
@@ -116,35 +118,14 @@ export async function readableLedgerPartitionHints(
   keys: LedgerPartitionKey[]
 ): Promise<LedgerPartitionKey[]> {
   if (!keys.length) return [];
-  const employee = await tx.employee.findFirst({
-    where: { id: employeeId, orgId: keys[0]!.orgId }
-  });
-  if (!employee || employee.disabled) return [];
+  const snapshot = await currentLedgerAuthorization(tx, employeeId, keys[0]!.orgId);
+  if (snapshot.disabled) return [];
   const visible: LedgerPartitionKey[] = [];
   for (const key of keys) {
-    if (key.orgId !== employee.orgId) continue;
-    const [result] = await tx.$queryRaw<{ hidden: bigint; total: bigint }[]>(Prisma.sql`
-      SELECT COUNT(*) AS total, SUM(level > ${employee.clearance}) AS hidden FROM (
-        SELECT d.confidentiality_level AS level FROM delivery_ledger_rows r
-          JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
-          JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id
-        WHERE r.org_id = ${key.orgId} AND d.status = 'active' AND d.archived_at IS NULL AND b.status = 'applied' AND b.archived_at IS NULL
-          AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) AS BINARY) = CAST(${key.storeName} AS BINARY)
-          AND JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) = ${key.purchaseDate}
-        UNION ALL
-        SELECT cd.confidentiality_level AS level FROM quarantine_certificates q
-          JOIN documents cd ON cd.id = q.source_document_id AND cd.org_id = q.org_id
-        WHERE q.org_id = ${key.orgId} AND cd.status = 'active' AND cd.archived_at IS NULL AND EXISTS (
-          SELECT 1 FROM delivery_ledger_rows r JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
-            JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id
-          WHERE r.org_id = ${key.orgId} AND d.status = 'active' AND d.archived_at IS NULL AND b.status = 'applied' AND b.archived_at IS NULL
-            AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) AS BINARY) = CAST(${key.storeName} AS BINARY)
-            AND JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) = ${key.purchaseDate}
-            AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) = CAST(q.receipt_id AS BINARY)
-        )
-      ) dependencies
-    `);
-    if (result && Number(result.total) > 0 && Number(result.hidden ?? 0) === 0) visible.push(key);
+    if (key.orgId !== snapshot.orgId) continue;
+    const metadata = await readLedgerSourceMetadata(tx, key);
+    if (metadata.rowCount && (await canReadLedgerPdf(tx, snapshot, key, metadata.sources)))
+      visible.push(key);
   }
   return visible;
 }

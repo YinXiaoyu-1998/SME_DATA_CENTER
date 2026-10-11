@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
+import { legacyPermissionService } from "../business-authorization.test-support.js";
 import { buildApiServer } from "../server.js";
 import {
   accessTokenFor,
@@ -56,6 +57,13 @@ describe("quarantine certificate routes", () => {
         throw new Error("multipart parser must not run");
       });
       app = buildApiServer({
+        businessAuthorizationService: legacyPermissionService([
+          adminEmployee,
+          baoliEmployee,
+          suzhouEmployee,
+          lowClearanceAdminEmployee,
+          clearanceZeroAdminEmployee
+        ]),
         employeeRepository: createRepository([baoliEmployee]),
         documentRepository,
         quarantineCertificateRepository,
@@ -149,6 +157,13 @@ describe("quarantine certificate routes", () => {
     const storageAdapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
 
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        lowClearanceAdminEmployee,
+        clearanceZeroAdminEmployee
+      ]),
       employeeRepository: createRepository(employees),
       documentRepository,
       quarantineCertificateRepository,

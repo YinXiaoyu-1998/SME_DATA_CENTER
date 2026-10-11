@@ -16,7 +16,11 @@ const enabled = process.env["RUN_LEDGER_PRISMA_INTEGRATION"] === "1";
 const databaseUrl = process.env["DATABASE_URL"] ?? "";
 if (enabled) {
   const url = new URL(databaseUrl);
-  if (!["localhost", "127.0.0.1"].includes(url.hostname) || !url.pathname.includes("ledger_test"))
+  if (
+    !["localhost", "127.0.0.1"].includes(url.hostname) ||
+    (!url.pathname.includes("ledger_test") &&
+      !/^\/smedc_integration_[a-f0-9]{32}$/.test(url.pathname))
+  )
     throw new Error("Local synthetic ledger_test database required");
 }
 (enabled ? describe : describe.skip)("ledger snapshots and source mutation transactions", () => {
@@ -79,6 +83,10 @@ if (enabled) {
     await prisma.deliveryLedgerRow.deleteMany({ where });
     await prisma.supplierCatalogRow.deleteMany({ where });
     await prisma.importBatch.deleteMany({ where });
+    await prisma.businessResource.deleteMany({ where });
+    await prisma.businessCategory.deleteMany({ where });
+    await prisma.businessStore.deleteMany({ where });
+    await prisma.businessAuthorizationState.deleteMany({ where });
     await prisma.document.deleteMany({ where });
     await prisma.employee.deleteMany({ where });
     await prisma.organization.delete({ where: { id: orgId } });
@@ -222,6 +230,7 @@ if (enabled) {
     expect(second.rows[0]?.purchase_quantity).toBe("1.234567890123456789");
     expect(
       await createPrismaLedgerArtifactAccess({ prisma }).canReadLedgerArtifact({
+        key,
         orgId,
         employee: low,
         sources: second.sources
@@ -253,6 +262,7 @@ if (enabled) {
     expect((await reader.readLedgerSnapshot(key)).dataRevision).toBe(4);
     expect(
       await createPrismaLedgerArtifactAccess({ prisma }).canReadLedgerArtifact({
+        key,
         orgId,
         employee: actor,
         sources: first.sources
@@ -489,6 +499,7 @@ if (enabled) {
     });
     expect(
       await createPrismaLedgerArtifactAccess({ prisma }).canReadLedgerArtifact({
+        key,
         orgId,
         employee: actor,
         sources: enriched.sources
@@ -551,7 +562,16 @@ if (enabled) {
         }
       });
       await prisma.ledgerPdfSource.createMany({
-        data: snapshot.sources.map((source) => ({ orgId, partitionId: published.id, ...source }))
+        data: snapshot.sources.map(
+          ({ sourceDocumentId, kind, confidentialityLevel, checksumSha256 }) => ({
+            orgId,
+            partitionId: published.id,
+            sourceDocumentId,
+            kind,
+            confidentialityLevel,
+            checksumSha256
+          })
+        )
       });
     }
     let sourceScans = 0;

@@ -79,6 +79,12 @@ describe("authorized ledger PDF delivery", () => {
         );
       return value;
     }
+    expect(
+      ledgerBundleEntriesEqual(
+        [entry()],
+        [{ ...entry(), sources: [{ ...entry().sources[0]!, confidentialityLevel: 3 }] }]
+      )
+    ).toBe(true);
     const f = fixture();
     const entries = [1, 2, 3].map((i) => entry(`2026-10-0${i}`));
     const manifest = parseLedgerBundleManifest(
@@ -94,7 +100,7 @@ describe("authorized ledger PDF delivery", () => {
       { ...entry(), objectKey: "other" },
       { ...entry(), checksumSha256: "d".repeat(64) },
       { ...entry(), byteSize: 11 },
-      ...["sourceDocumentId", "kind", "confidentialityLevel", "checksumSha256"].map((field) => ({
+      ...["sourceDocumentId", "kind", "checksumSha256"].map((field) => ({
         ...entry(),
         sources: [{ ...entry().sources[0]!, [field]: "changed" }]
       }))

@@ -1,6 +1,8 @@
 import {
   persistPhotoReadRequirement,
   requireCurrentUploadAdmin,
+  createBusinessAuthorizationRepository,
+  toResourceReadRequirement,
   bindHistoricalSupplementIntent
 } from "@smedc/db";
 import {
@@ -23,6 +25,8 @@ import {
 import {
   AUDIT_ACTIONS,
   canEmployeeAccessDocument,
+  canReadResource,
+  type AuthorizationSnapshot,
   type AuthenticatedEmployee
 } from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
@@ -69,6 +73,7 @@ export interface CreateQuarantineCertificateInput {
 }
 
 export interface QueryQuarantineCertificatesInput {
+  authorization?: AuthorizationSnapshot;
   orgId: string;
   employee: AuthenticatedEmployee;
   receiptIds: string[];
@@ -339,9 +344,47 @@ export function createPrismaQuarantineCertificateRepository(
         orderBy: [{ createdAt: "desc" }, { sourceDocumentId: "desc" }]
       });
 
-      return certificates
-        .map(toCertificateRecord)
-        .filter((certificate) => canSeeCertificate(input.employee, certificate));
+      const snapshot =
+        input.authorization ??
+        (await createBusinessAuthorizationRepository({ prisma }).loadAuthorizationSnapshot(
+          input.employee.id,
+          input.orgId
+        ));
+      if (snapshot.disabled || snapshot.orgId !== input.orgId) return [];
+      const visible: QuarantineCertificateRecord[] = [];
+      for (const certificate of certificates) {
+        if (snapshot.mode === "legacy" || snapshot.mode === "preparing") {
+          if (
+            canSeeCertificate(
+              { ...input.employee, clearance: snapshot.clearance },
+              toCertificateRecord(certificate)
+            )
+          )
+            visible.push(toCertificateRecord(certificate));
+        } else {
+          const resources = await prisma.businessResource.findMany({
+            where: {
+              orgId: input.orgId,
+              documentId: certificate.sourceDocumentId,
+              kind: "quarantine_certificate"
+            },
+            include: { scopes: { include: { dimensions: true } } }
+          });
+          const requirements = resources.map((resource) => ({
+            ...toResourceReadRequirement(resource),
+            valid:
+              resource.valid &&
+              certificate.sourceDocument.status === "active" &&
+              !certificate.sourceDocument.archivedAt
+          }));
+          if (
+            requirements.length &&
+            requirements.every((requirement) => canReadResource(snapshot, requirement).allowed)
+          )
+            visible.push(toCertificateRecord(certificate));
+        }
+      }
+      return visible;
     },
     async archiveBySourceDocumentId(input) {
       const certificate = await prisma.quarantineCertificate.findUnique({

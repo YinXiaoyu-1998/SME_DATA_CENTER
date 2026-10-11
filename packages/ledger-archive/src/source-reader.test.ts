@@ -14,6 +14,7 @@ const payload = {
 };
 function fixture() {
   const tx = {
+    businessAuthorizationState: { findUnique: vi.fn().mockResolvedValue(null) },
     $queryRaw: vi
       .fn()
       .mockResolvedValueOnce([{ count: 1n }])
@@ -93,6 +94,17 @@ describe("complete ledger source snapshot", () => {
     expect(snapshot.rows[0]?.supplier_unit_address).toBeNull();
     expect(snapshot.sources.map((source) => source.kind)).toEqual(["ledger"]);
   });
+  it("refuses generation when a required source dimension has no conversion rule", async () => {
+    const f = fixture();
+    f.tx.businessAuthorizationState.findUnique.mockResolvedValue({ mode: "enabled" } as never);
+    Object.assign(f.tx, {
+      businessCategory: {
+        findMany: vi.fn().mockResolvedValue([{ dimensions: [{ dimensionId: "project" }] }])
+      }
+    });
+    await expect(f.reader.readLedgerSnapshot(key)).rejects.toThrow("RESOURCE_ATTRIBUTES_NOT_READY");
+    expect(f.tx.$queryRaw).not.toHaveBeenCalled();
+  });
   it("checks row and photo limits before materializing business rows or photo references", async () => {
     const { reader, tx } = fixture();
     tx.$queryRaw.mockReset().mockResolvedValueOnce([{ count: 10001n }]);
@@ -158,6 +170,44 @@ describe("bounded ledger source metadata", () => {
     expect(sql).not.toContain("supplier_catalog");
     expect(sql).toContain("COUNT(*)");
     expect(sql).toContain("LIMIT");
+  });
+  it("keeps the fingerprint stable when only a source confidentiality level changes", async () => {
+    async function fingerprint(level: number) {
+      const tx = {
+        $queryRaw: vi
+          .fn()
+          .mockResolvedValueOnce([{ count: 1n }])
+          .mockResolvedValueOnce([
+            {
+              sourceDocumentId: "ledger",
+              batchId: "batch",
+              rowCount: 1n,
+              confidentialityLevel: level,
+              checksumSha256: checksum
+            }
+          ])
+          .mockResolvedValueOnce([
+            {
+              sourceDocumentId: "photo",
+              receiptId: "R1",
+              storageObjectKey: "photo.png",
+              checksumSha256: checksum,
+              contentType: "image/png",
+              byteSize: 10n,
+              uploadedAt: new Date("2026-10-04"),
+              confidentialityLevel: level
+            }
+          ])
+      };
+      return (
+        await createPrismaLedgerSourceReader({
+          prisma: {
+            $transaction: async (fn: (tx: unknown) => unknown) => fn(tx)
+          } as unknown as PrismaClient
+        }).readLedgerSourceMetadata(key)
+      ).sourceFingerprint;
+    }
+    expect(await fingerprint(0)).toBe(await fingerprint(3));
   });
   it("rejects over-limit rows before loading even source metadata", async () => {
     const tx = { $queryRaw: vi.fn().mockResolvedValue([{ count: 10_001n }]) };

@@ -7,20 +7,32 @@ import {
   enqueueStorageGarbage,
   listDueStorageGarbage,
   storageGarbageKeyHash,
-  createPrismaStructuredPartitionRepository
+  createPrismaStructuredPartitionRepository,
+  createBusinessAuthorizationRepository,
+  getSourceReadRequirements,
+  toResourceReadRequirement,
+  persistResourceAttributes
 } from "@smedc/db";
 import {
   createPrismaProcessingWorkerRepository,
   ProcessingLeaseLostError,
   runWorkerOnce
 } from "../../../apps/worker/src/worker.js";
+import { canReadResource } from "@smedc/domain";
+import { createPrismaLedgerDeliveryRepository } from "./delivery.js";
+import { createPrismaLedgerSourceReader } from "./source-reader.js";
+import { ledgerNeedsRepair } from "./reconciliation.js";
 import { createPrismaLedgerArchiveRepository } from "./repository.js";
 import { createPrismaLedgerPublicationArchive, type PublishLedgerPdfInput } from "./publication.js";
 const enabled = process.env["RUN_LEDGER_PRISMA_INTEGRATION"] === "1";
 const databaseUrl = process.env["DATABASE_URL"] ?? "";
 if (enabled) {
   const url = new URL(databaseUrl);
-  if (!["localhost", "127.0.0.1"].includes(url.hostname) || !url.pathname.includes("ledger_test"))
+  if (
+    !["localhost", "127.0.0.1"].includes(url.hostname) ||
+    (!url.pathname.includes("ledger_test") &&
+      !/^\/smedc_integration_[a-f0-9]{32}$/.test(url.pathname))
+  )
     throw new Error("Local synthetic ledger_test required");
 }
 (enabled ? describe : describe.skip)("fenced ledger publication and exact garbage", () => {
@@ -83,9 +95,16 @@ if (enabled) {
     await prisma.ledgerArtifactRequestItem.deleteMany({ where: { orgId } });
     await prisma.ledgerArtifactRequest.deleteMany({ where: { orgId } });
     await prisma.ledgerPdfPartition.deleteMany({ where: { orgId } });
+    await prisma.businessGrant.deleteMany({ where: { orgId } });
+    await prisma.businessResource.deleteMany({ where: { orgId } });
+    await prisma.businessCategory.deleteMany({ where: { orgId } });
+    await prisma.businessStore.deleteMany({ where: { orgId } });
+    await prisma.deliveryLedgerRow.deleteMany({ where: { orgId } });
+    await prisma.quarantineCertificate.deleteMany({ where: { orgId } });
     await prisma.importBatch.deleteMany({ where: { orgId } });
     await prisma.document.deleteMany({ where: { orgId } });
     await prisma.employee.deleteMany({ where: { orgId } });
+    await prisma.businessAuthorizationState.deleteMany({ where: { orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
     await Promise.all([
       prisma.$disconnect(),
@@ -384,5 +403,269 @@ if (enabled) {
       status: "running",
       attemptNumber: 2
     });
+  });
+  it("keeps single-store PDF grants independent and invalidates business photo changes", async () => {
+    const source = await prisma.document.findUniqueOrThrow({ where: { id: sourceId } });
+    const batch = await prisma.importBatch.findUniqueOrThrow({
+      where: { sourceDocumentId: sourceId }
+    });
+    const reader = createPrismaLedgerSourceReader({ prisma });
+    const key = { orgId, storeName: "Product", purchaseDate: date };
+    await prisma.document.update({
+      where: { id: sourceId },
+      data: { sourceMetadata: { enterpriseKey: "enterprise" }, confidentialityLevel: 3 }
+    });
+    await prisma.businessCategory.createMany({
+      data: ["delivery_ledger", "quarantine_certificate", "ledger_pdf", "supplier_catalog"].map(
+        (name) => ({
+          orgId,
+          id: name,
+          key: name,
+          name,
+          kind: "fixed",
+          confidentialityLevel: name === "ledger_pdf" ? 0 : 3,
+          allowStore: name !== "supplier_catalog",
+          allowGroup: name === "supplier_catalog"
+        })
+      )
+    });
+    await prisma.businessStore.createMany({
+      data: ["Product", "Other"].map((name) => ({ orgId, enterpriseKey: "enterprise", name }))
+    });
+    const scope = {
+      enterpriseKey: "enterprise",
+      ownership: "store" as const,
+      storeName: key.storeName,
+      dimensions: {}
+    };
+    await prisma.$transaction((tx) =>
+      persistResourceAttributes(tx, {
+        orgId,
+        id: "ledger-fragment",
+        kind: "source_fragment",
+        resourceKey: sourceId,
+        categoryId: "delivery_ledger",
+        valid: true,
+        sourceDocumentId: sourceId,
+        scopes: [scope]
+      })
+    );
+    await prisma.deliveryLedgerRow.create({
+      data: {
+        orgId,
+        sourceDocumentId: sourceId,
+        importBatchId: batch.id,
+        sourceRowNumber: 1,
+        payload: {
+          receipt_id: "R-P",
+          store_name: key.storeName,
+          purchase_date: date,
+          item_name: "Rice",
+          purchase_quantity: "1",
+          purchase_amount: "2"
+        }
+      }
+    });
+    const owner = await prisma.employee.create({
+      data: {
+        orgId,
+        email: `${orgId}-pdf@example.invalid`,
+        displayName: "PDF owner",
+        role: "employee",
+        clearance: 0
+      }
+    });
+    await prisma.businessGrant.create({
+      data: {
+        orgId,
+        id: "pdf-grant",
+        employeeId: owner.id,
+        enterpriseKey: "enterprise",
+        ownership: "store",
+        allStores: false
+      }
+    });
+    await prisma.businessGrantCategory.create({
+      data: { orgId, grantId: "pdf-grant", categoryId: "ledger_pdf" }
+    });
+    await prisma.businessGrantStore.create({
+      data: { orgId, grantId: "pdf-grant", enterpriseKey: "enterprise", storeName: key.storeName }
+    });
+    const photoId = randomUUID().replaceAll("-", "");
+    await prisma.document.create({
+      data: {
+        id: photoId,
+        orgId,
+        uploaderId: source.uploaderId,
+        title: "Synthetic photo",
+        documentType: "raw_material",
+        documentKind: "quarantine_certificate",
+        status: "active",
+        fileType: "png",
+        storageObjectKey: "synthetic-photo.png",
+        checksumSha256: sourceChecksum,
+        byteSize: 10n,
+        contentType: "image/png",
+        confidentialityLevel: 3
+      }
+    });
+    await prisma.quarantineCertificate.create({
+      data: {
+        orgId,
+        sourceDocumentId: photoId,
+        receiptId: "R-P",
+        idempotencyKey: "photo-p",
+        requestFingerprint: sourceChecksum
+      }
+    });
+    const photoAttributes = {
+      orgId,
+      id: "photo-resource",
+      kind: "quarantine_certificate" as const,
+      resourceKey: photoId,
+      documentId: photoId,
+      categoryId: "quarantine_certificate",
+      valid: true,
+      scopes: [scope]
+    };
+    await prisma.$transaction((tx) => persistResourceAttributes(tx, photoAttributes));
+    await prisma.businessAuthorizationState.update({ where: { orgId }, data: { mode: "enabled" } });
+    const snapshot = await reader.readLedgerSnapshot(key);
+    expect(snapshot.certificates.map((photo) => photo.sourceDocumentId)).toEqual([photoId]);
+    const reserved = await reserve(key.storeName);
+    await publication.publishLedgerPdf({
+      ...reserved.input,
+      sources: snapshot.sources,
+      sourceFingerprint: snapshot.sourceFingerprint,
+      certificateCount: 1,
+      candidate: { ...reserved.input.candidate!, pageCount: 2 }
+    });
+    const requirement = await prisma.businessResource.findUniqueOrThrow({
+      where: {
+        orgId_kind_resourceKey: {
+          orgId,
+          kind: "ledger_pdf",
+          resourceKey: reserved.item.partitionId
+        }
+      },
+      include: { scopes: true }
+    });
+    expect(requirement).toMatchObject({
+      categoryId: "ledger_pdf",
+      valid: true,
+      scopes: [{ storeName: key.storeName, enterpriseKey: "enterprise" }]
+    });
+    const authorization = await createBusinessAuthorizationRepository({
+      prisma
+    }).loadAuthorizationSnapshot(owner.id, orgId);
+    expect(
+      (await getSourceReadRequirements(prisma, sourceId, orgId)).every(
+        (value) => canReadResource(authorization, value).allowed
+      )
+    ).toBe(false);
+    const photoResource = await prisma.businessResource.findUniqueOrThrow({
+      where: { orgId_id: { orgId, id: photoAttributes.id } },
+      include: { scopes: { include: { dimensions: true } } }
+    });
+    expect(canReadResource(authorization, toResourceReadRequirement(photoResource)).allowed).toBe(
+      false
+    );
+    const delivery = createPrismaLedgerDeliveryRepository({
+      prisma,
+      storage: {
+        headObject: async () => ({
+          state: "found",
+          size: 10,
+          hash: reserved.input.candidate!.checksumSha256
+        })
+      } as unknown as StorageAdapter
+    });
+    const requestedScope = { storeNames: [key.storeName], dates: [date] };
+    expect((await delivery.facts(owner, requestedScope))[0]?.status).toBe("ready");
+    await prisma.document.update({ where: { id: photoId }, data: { confidentialityLevel: 0 } });
+    await prisma.businessCategory.update({
+      where: { orgId_id: { orgId, id: "quarantine_certificate" } },
+      data: { confidentialityLevel: 0 }
+    });
+    expect((await reader.readLedgerSourceMetadata(key)).sourceFingerprint).toBe(
+      snapshot.sourceFingerprint
+    );
+    expect((await delivery.facts(owner, requestedScope))[0]?.status).toBe("ready");
+    await prisma.$transaction((tx) =>
+      persistResourceAttributes(tx, {
+        ...photoAttributes,
+        scopes: [{ ...scope, storeName: "Other" }]
+      })
+    );
+    const changed = await reader.readLedgerSourceMetadata(key);
+    expect(changed.sourceFingerprint).not.toBe(snapshot.sourceFingerprint);
+    const pointer = await prisma.ledgerPdfPartition.findUniqueOrThrow({
+      where: { id: reserved.item.partitionId }
+    });
+    expect(ledgerNeedsRepair(pointer, changed)).toBe(true);
+    expect((await delivery.facts(owner, requestedScope))[0]?.status).toBe("stale");
+    const rejected = await reserve(key.storeName);
+    await expect(
+      publication.publishLedgerPdf({
+        ...rejected.input,
+        sources: snapshot.sources,
+        sourceFingerprint: snapshot.sourceFingerprint,
+        certificateCount: 1,
+        candidate: { ...rejected.input.candidate!, pageCount: 2 }
+      })
+    ).rejects.toThrow("LEDGER_SOURCE_CHANGED");
+    expect((await delivery.facts(owner, requestedScope))[0]?.status).toBe("stale");
+    await prisma.document.update({
+      where: { id: photoId },
+      data: { status: "archived", archivedAt: new Date() }
+    });
+    const withoutPhoto = await reader.readLedgerSnapshot(key);
+    expect(withoutPhoto.certificates).toEqual([]);
+    const repaired = await reserve(key.storeName);
+    await publication.publishLedgerPdf({
+      ...repaired.input,
+      sources: withoutPhoto.sources,
+      sourceFingerprint: withoutPhoto.sourceFingerprint
+    });
+    expect((await delivery.facts(owner, requestedScope))[0]?.status).toBe("ready");
+    const replacementId = randomUUID().replaceAll("-", "");
+    await prisma.document.create({
+      data: {
+        id: replacementId,
+        orgId,
+        uploaderId: source.uploaderId,
+        title: "Replacement photo",
+        documentType: "raw_material",
+        documentKind: "quarantine_certificate",
+        status: "active",
+        fileType: "png",
+        storageObjectKey: "synthetic-new-photo.png",
+        checksumSha256: sourceChecksum,
+        byteSize: 10n,
+        contentType: "image/png",
+        confidentialityLevel: 3
+      }
+    });
+    await prisma.quarantineCertificate.create({
+      data: {
+        orgId,
+        sourceDocumentId: replacementId,
+        receiptId: "R-P",
+        idempotencyKey: "photo-replacement",
+        requestFingerprint: sourceChecksum
+      }
+    });
+    await prisma.$transaction((tx) =>
+      persistResourceAttributes(tx, {
+        ...photoAttributes,
+        id: "replacement-photo-resource",
+        resourceKey: replacementId,
+        documentId: replacementId
+      })
+    );
+    expect(
+      (await reader.readLedgerSnapshot(key)).certificates.map((photo) => photo.sourceDocumentId)
+    ).toEqual([replacementId]);
+    expect((await delivery.facts(owner, requestedScope))[0]?.status).toBe("stale");
   });
 });

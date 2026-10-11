@@ -12,6 +12,8 @@ export type LedgerSourceRef = {
   sourceDocumentId: string;
   kind: "ledger" | "supplier" | "certificate";
   confidentialityLevel: number;
+  contentVersion?: number;
+  businessContentVersion?: string;
   checksumSha256: string;
 };
 export type LedgerPrintRow = {
