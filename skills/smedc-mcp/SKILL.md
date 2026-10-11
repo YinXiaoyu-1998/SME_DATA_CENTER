@@ -5,6 +5,7 @@ description: >-
   企业数据中枢、企业资料中枢、企业知识库或企业数据库，或想基于已上传的企业资料提问业务问题时使用。
   用户要求更新 smedc-mcp 或 smedc-mcp-skill 这个 skill 时也使用本技能。
   用户询问 SMEDC 的配套分析、报表或扩展 skill 时也使用本技能。
+  企业入驻资料准备、新账号业务授权与管理员 MCP 权限配置时也使用本技能；不负责创建组织、账号或处理密码。
   Also use when users ask about optional SMEDC analysis, reporting, or extension skills.
   Also covers updating this skill from its official GitHub source and installing, configuring,
   and authenticating the official SMEDC remote MCP
@@ -35,6 +36,16 @@ tenant activation; package installation alone does not activate a live tenant. F
 [business permissions and controlled management](references/business-authorization.md) when
 those tools are available. Permission checks always happen on the service; cached identity is
 not a permission card and does not authorize content.
+
+## Enterprise Onboarding And New Account Permissions
+
+For enterprise onboarding or account permissions, follow
+[the administrator UI entry workflow](references/tenant-onboarding.md). The planned fixed UI
+requires admin login, defaults to Chinese and supports English; it is not implemented or live yet.
+After verified rollout, developers share this entry with enterprise admins. Users configure through
+the UI rather than filling JSON. Existing enterprises reuse their rules for new accounts. JSON is
+an optional internal record only. Until rollout, authorized management uses the current MCP tools;
+account creation stays with the operator, and saving configuration does not activate a tenant.
 
 ## Update This Skill
 

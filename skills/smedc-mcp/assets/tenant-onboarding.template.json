@@ -1,0 +1,83 @@
+{
+  "formType": "smedc-tenant-onboarding",
+  "templateVersion": 1,
+  "requestType": null,
+  "enterprise": {
+    "name": null,
+    "enterpriseKey": null,
+    "organizationId": null,
+    "confirmIdentity": null
+  },
+  "levels": {
+    "business": {
+      "label": "经营数据",
+      "confidentialityLevel": null
+    },
+    "dishes": {
+      "label": "菜品销售数据",
+      "confidentialityLevel": null
+    },
+    "vip": {
+      "label": "会员数据",
+      "confidentialityLevel": null
+    },
+    "dish_catalog": {
+      "label": "菜品基础目录",
+      "confidentialityLevel": null
+    },
+    "supplier_catalog": {
+      "label": "供应商名单",
+      "confidentialityLevel": null
+    },
+    "delivery_ledger": {
+      "label": "原始配送台账（内部生成材料）",
+      "confidentialityLevel": null
+    },
+    "quarantine_certificate": {
+      "label": "检疫证明照片",
+      "confidentialityLevel": null
+    },
+    "ledger_pdf": {
+      "label": "台账 PDF",
+      "confidentialityLevel": null
+    }
+  },
+  "stores": {
+    "confirmExactNames": null,
+    "names": []
+  },
+  "accounts": [
+    {
+      "employeeId": null,
+      "displayName": null,
+      "email": null,
+      "role": null,
+      "clearance": null,
+      "storeReadAccess": {
+        "business": null,
+        "dishes": null,
+        "quarantine_certificate": null,
+        "ledger_pdf": null
+      },
+      "groupReadAccess": {
+        "vip": null,
+        "dish_catalog": null,
+        "supplier_catalog": null
+      },
+      "evidenceReadAccess": [],
+      "notes": ""
+    }
+  ],
+  "additionalBusinessRestrictions": {
+    "confirmNoAdditionalRestrictions": null,
+    "requirements": []
+  },
+  "evidenceCategories": [],
+  "evidenceDocuments": [],
+  "historicalData": {
+    "hasExistingData": null,
+    "confirmAllExistingDataBelongsToEnterprise": null,
+    "exceptions": []
+  },
+  "notes": ""
+}

@@ -19,6 +19,16 @@ management status and versioned preparation/activation. These transport fields r
 0.9.0 and the matching service rollout. A Skill-only refresh does not upgrade an older installed
 launcher. Publication does not authorize tenant activation or establish live tenant readiness.
 
+## Enterprise Onboarding Prerequisite
+
+Use [the enterprise/account onboarding flow](tenant-onboarding.md) before business handoff.
+The planned primary entry is a fixed administrator UI plus admin login, defaulting to Chinese with
+English switching like the password/login pages. Developers share the verified UI URL after rollout;
+the page is design-only and not live yet. Each new enterprise confirms category levels and explicit
+account grants; existing enterprises reuse their rules for new accounts. JSON is internal only,
+never required from customers. Account creation, login and saved configuration do not activate
+business authorization.
+
 ## Upload Role And Launcher Profile
 
 Only active `admin` accounts may upload evidence, structured datasets (including Delivery Ledger),

@@ -1,9 +1,16 @@
 # Beta User Onboarding Runbook
 
-Last updated: 2026-09-24
+Last updated: 2026-10-11
 
 This runbook is for the first controlled macOS + Codex beta pilot. It is an operator checklist, not
 an employee-facing product page.
+
+For every new enterprise or new account, follow [the administrator UI onboarding flow](tenant-onboarding.md).
+Its fixed entry plus admin login is planned, not live; after rollout developers share the verified
+URL with administrators. It defaults to Chinese with English switching. Until then authorized
+configuration uses existing MCP tools; users are not required to fill JSON. This pilot checklist
+retains its fixture-only boundary and does not authorize real-data backfills or tenant activation.
+Existing enterprise rules are reused for additional accounts.
 
 A one-time setup link may be sent directly to the human in the current private human-agent
 conversation. Never place it in a public or shared chat, git, PR, issue, file, configuration,
@@ -18,7 +25,7 @@ Use this runbook only for:
 
 - macOS + Codex;
 - the official SMEDC skill;
-- `smedc-mcp-launcher@0.6.0`;
+- `smedc-mcp-launcher@0.9.0`;
 - browser password setup and Device Authorization login;
 - fixture or explicitly approved non-sensitive data.
 
@@ -29,24 +36,24 @@ email, and production admin UI are out of scope for the first pilot.
 
 Before creating an account, collect:
 
-| Field            | Required | Notes                                                                                   |
-| ---------------- | -------: | --------------------------------------------------------------------------------------- |
-| beta email       |      yes | user-facing login identifier                                                            |
-| display name     |      yes | visible only for operator clarity and audit readability                                 |
-| organization     |      yes | existing organization id; current seeded staging default is `default-org`               |
-| role             |      yes | explicit `employee` or `admin`; no default                                              |
-| clearance        |      yes | explicit integer `0` through `3`; no default                                            |
-| first-run data   |      yes | policy choice; fixture or approved non-sensitive document only; see data table below    |
-| support owner    |      yes | person who can reset password, revoke access, and coordinate cleanup                    |
-| success criteria |      yes | normally: install, login, upload, search, logout/reset; see success-criteria note below |
+| Field            | Required | Notes                                                                                                     |
+| ---------------- | -------: | --------------------------------------------------------------------------------------------------------- |
+| beta email       |      yes | user-facing login identifier                                                                              |
+| display name     |      yes | visible only for operator clarity and audit readability                                                   |
+| organization     |      yes | verified existing organization id; `default-org` is for QA, never an implicit customer tenant             |
+| role             |      yes | explicit `employee` or `admin`; no default                                                                |
+| clearance        |      yes | enterprise-confirmed integer `0` through `3`; operator requires it for employees; admin CLI defaults to 3 |
+| first-run data   |      yes | policy choice; fixture or approved non-sensitive document only; see data table below                      |
+| support owner    |      yes | person who can reset password, revoke access, and coordinate cleanup                                      |
+| success criteria |      yes | normally: install, login, upload, search, logout/reset; see success-criteria note below                   |
 
 ### Organization Values
 
 `organization` is not a closed enum in the schema; it is an existing `Organization.id`.
 
-For the current staging beta pilot, use `default-org` unless the pilot intentionally creates and
-validates a new organization. Do not invent an organization id in the onboarding
-command: the operator CLI fails if the organization does not already exist.
+For a synthetic staging QA pilot, `default-org` is the seeded QA organization. A real enterprise
+must use its separately verified organization. Do not invent an organization id in the onboarding
+command: the operator CLI fails if the organization does not already exist and does not create it.
 
 ### Role Values
 
@@ -73,11 +80,14 @@ for partition create/parts/complete, owner abort, and older-launcher backend saf
 
 ### Confidentiality Clearance
 
-Every document and employee belongs to exactly one organization. Ordinary reads require that same
-organization and `employee.clearance >= document.confidentialityLevel`; both are integers from `0`
-through `3`. Role is independent. Existing accounts migrate to clearance `3`; new accounts must
-receive an explicit clearance from the onboarding operator. The service has no labels, store scope,
-or personal-document tags.
+Every document and employee belongs to exactly one organization. Role is independent of ordinary
+read grants. In `enabled` mode, reads require matching enterprise/category/ownership/store/dimension
+grants and sufficient clearance. Fixed categories use the current category level; evidence uses
+the declared file level. `legacy` / `preparing` retain the previous organization/clearance read
+model until separately confirmed activation. All levels are integers 0–3. New employees require
+explicit clearance; new admins default to 3, but onboarding still requires an enterprise-confirmed choice.
+There are no labels or personal-document tags. Empty initial grants are valid and grant no
+business reads after activation; administrator role does not imply all-category access.
 
 ### First-Run Data Values
 
@@ -134,7 +144,8 @@ Use the documented `.env`/Keychain/runtime secret locations. Never echo or copy 
 
 ## Create The Beta Account
 
-Create the employee and one-time password setup link:
+After approving the concrete account-creation inputs, create the employee and one-time password
+setup link. This command does not activate business authorization:
 
 ```sh
 docker compose --profile release --env-file /opt/smedc/runtime.env \
@@ -149,6 +160,9 @@ docker compose --profile release --env-file /opt/smedc/runtime.env \
 
 Rules:
 
+- the command initializes missing fixed categories with unset levels and no implicit grants;
+- optional `--initial-grants` accepts actual approved grants referencing existing directory IDs,
+  not the intake JSON; otherwise grants are empty;
 - the command prints a one-time browser setup link;
 - the setup link itself is valid for 24 hours;
 - after the employee opens the setup link, the password setup form session is valid for 10 minutes;
@@ -169,7 +183,7 @@ The employee should ask their agent naturally, for example:
 
 The agent must follow `skills/smedc-mcp/SKILL.md`:
 
-- install `smedc-mcp-launcher@0.6.0` into the current-user versioned directory;
+- install `smedc-mcp-launcher@0.9.0` into the current-user versioned directory;
 - configure a local stdio MCP entry named `smedc`;
 - set only `SMEDC_BASE_URL=https://api.smedatacenter.xyz`;
 - call `smedc_login` if authentication is required;
@@ -211,8 +225,11 @@ Use a fixture or approved non-sensitive file and an active admin account. The pr
 Acceptance checks:
 
 - an admin's agent reads exact file bytes and uploads through MCP; a known employee must be denied before file reading or transformation;
-- an omitted upload confidentiality level is stored as `0`, and an explicit level is an integer
-  from `0` through `3`;
+- evidence metadata declares an existing evidence `categoryId`, nonempty complete `scopes`,
+  and an explicit integer `confidentialityLevel` from `0` through `3`; these upload declarations
+  are required even before tenant activation;
+- a ready preparation report and explicit admin confirmation precede new-model handoff; a
+  legacy pilot must be described as legacy rather than as verified category/store isolation;
 - evidence document status eventually becomes ready/active;
 - a new task can search for the uploaded content through MCP;
 - no cross-organization or above-clearance data is exposed.
