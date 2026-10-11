@@ -1449,6 +1449,120 @@ describe("HTTP and official MCP business authorization parity", () => {
       ).payload
     );
   }
+  it("separates import owner progress from complete current metadata through HTTP and MCP", async () => {
+    const fixture = permissionFixture();
+    const imports = fakeStructuredImportRepository();
+    const batch = (await imports.findImportBatch(employee.orgId, "imp_status"))!;
+    const scopes = ["precise-enterprise", "second-enterprise"].map((enterpriseKey) => ({
+      enterpriseKey,
+      ownership: "group" as const,
+      dimensions: {}
+    }));
+    Object.assign(batch, {
+      uploaderId: adminEmployee.id,
+      dataset: "vip",
+      status: "applied",
+      sourceDocumentStatus: "active",
+      sourceSheetSummary: [{ name: "private sheet" }],
+      validationErrors: [{ message: "private receipt 123", row: 2 }],
+      validationErrorCount: 1,
+      readRequirements: [{ orgId: employee.orgId, categoryId: "vip", valid: true, scopes }]
+    });
+    const app = buildMcpTestServer({
+      businessAuthorizationService: fixture.service,
+      structuredImportRepository: imports
+    });
+    try {
+      const read = async (identity = employee) => {
+        const http = await app.inject({
+          method: "GET",
+          url: "/v1/structured/imports/imp_status",
+          headers: { authorization: `Bearer ${await accessToken(identity)}` }
+        });
+        const mcp = await call(app, "get_import_status", { importBatchId: "imp_status" }, identity);
+        if (http.statusCode === 200) expect(mcp.payload).toEqual(http.json());
+        else expect(mcp.payload).toMatchObject(http.json());
+        expect(mcp.result.isError).toBe(http.statusCode !== 200);
+        return http;
+      };
+      // One authorized retained scope cannot grant metadata for the entire A/B source.
+      expect((await read()).statusCode).toBe(404);
+      fixture.snapshot.grants.push({
+        ...fixture.snapshot.grants[0]!,
+        id: "second",
+        enterpriseKey: "second-enterprise"
+      });
+      expect((await read()).json()).toMatchObject({
+        importBatch: { totalRowCount: 2, sourceSheetSummary: [{ name: "private sheet" }] }
+      });
+      fixture.snapshot.categories[0]!.confidentialityLevel = 2;
+      expect((await read()).statusCode).toBe(404);
+      fixture.snapshot.categories[0]!.confidentialityLevel = 1;
+      fixture.snapshot.grants = [];
+      expect((await read()).statusCode).toBe(404);
+      fixture.snapshot.role = "admin";
+      expect((await read()).statusCode).toBe(404);
+
+      // Uploader progress remains safe even above clearance, while paused or after archive.
+      batch.sourceDocumentConfidentialityLevel = 3;
+      fixture.snapshot.clearance = 0;
+      const safe = {
+        document: { documentId: "doc_structured", documentKind: "structured", status: "active" },
+        processing: { processingRunId: "run_status", status: "queued" },
+        importBatch: {
+          importBatchId: "imp_status",
+          sourceDocumentId: "doc_structured",
+          status: "applied",
+          hasValidationErrors: true
+        }
+      };
+      expect((await read(adminEmployee)).json()).toEqual(safe);
+      fixture.snapshot.mode = "suspended";
+      expect((await read()).statusCode).toBe(404);
+      expect((await read(adminEmployee)).json()).toEqual(safe);
+      fixture.snapshot.disabled = true;
+      expect((await read(adminEmployee)).statusCode).toBe(403);
+      fixture.snapshot.disabled = false;
+      fixture.snapshot.mode = "enabled";
+      expect((await read({ ...adminEmployee, orgId: "foreign-org" })).statusCode).toBe(404);
+      Object.assign(batch, {
+        status: "archived",
+        sourceDocumentStatus: "archived",
+        readRequirements: [{ orgId: employee.orgId, categoryId: "vip", valid: false, scopes }]
+      });
+      fixture.snapshot.clearance = 3;
+      fixture.snapshot.grants = scopes.map((scope, i) => ({
+        id: String(i),
+        orgId: employee.orgId,
+        enterpriseKey: scope.enterpriseKey,
+        categoryIds: ["vip"],
+        ownership: "group",
+        dimensions: {}
+      }));
+      expect((await read()).statusCode).toBe(404);
+      expect((await read(adminEmployee)).json()).toMatchObject({
+        importBatch: { status: "archived", hasValidationErrors: true }
+      });
+      Object.assign(batch, {
+        dataset: "delivery_ledger",
+        status: "applied",
+        sourceDocumentStatus: "active",
+        readRequirements: [{ orgId: employee.orgId, categoryId: "vip", valid: true, scopes }]
+      });
+      expect((await read()).statusCode).toBe(404);
+      expect((await read(adminEmployee)).json()).toEqual(safe);
+      batch.dataset = "vip";
+      // Only legacy/preparing preserve the explicitly old ordinary-metadata rule.
+      batch.sourceDocumentConfidentialityLevel = 0;
+      fixture.snapshot.grants = [];
+      for (const mode of ["legacy", "preparing"] as const) {
+        fixture.snapshot.mode = mode;
+        expect((await read()).json()).toMatchObject({ importBatch: { totalRowCount: 2 } });
+      }
+    } finally {
+      await app.close();
+    }
+  });
   it("delegates the same current grant predicate and rejects suspended reads identically", async () => {
     const fixture = permissionFixture();
     const compiled: Array<Parameters<StructuredQueryRepository["execute"]>[0]> = [];

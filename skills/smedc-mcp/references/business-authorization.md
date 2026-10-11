@@ -116,6 +116,12 @@ not restore legacy access; report the result and refer recovery to its administr
 - A permission change during packaging alone does not fail construction. The owner may see safe
   progress; a succeeded job can still be denied a fresh link by current permissions. Status and
   management responses contain no content links. Do not report status success as download access.
+- `get_import_status` gives an active uploader safe document/import/processing IDs and statuses plus
+  `hasValidationErrors`, even without content grants/clearance or during read suspension. It omits
+  original filenames, storage keys, sheet/validation details, business dates, receipt IDs and row
+  counts. Ordinary full metadata requires all current retained-source scopes and category clearance
+  in enabled mode; raw receipt metadata has no ordinary enabled read. Disabled accounts cannot
+  self-check progress. A validation flag alone is not a detailed error or authority to read a source.
 - Link issuance checks all captured current scopes and source lifecycle. Photo replacement/archive
   makes old PDFs stale for new links until service regeneration; existing links retain their TTL.
   The employee agent cannot trigger rendering or repair stale manifests.

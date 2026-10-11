@@ -217,6 +217,7 @@ export function createInMemoryStructuredImportRepository(
       return {
         ...batch,
         sourceDocumentConfidentialityLevel: sourceDocument?.confidentialityLevel ?? 0,
+        uploaderId: sourceDocument?.uploaderId,
         status: sourceDocument?.status === "archived" ? "archived" : batch.status,
         queryableRowCount,
         sourceDocumentStatus: sourceDocument?.status ?? "processing_failed",

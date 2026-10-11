@@ -11,6 +11,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { databaseErrorDetails, type DatabaseRetryEvent } from "@smedc/db";
 import {
   PHASE3_ERROR_CODES,
+  AUTH_ERROR_CODES,
+  canReadResource,
   canEmployeeAccessDocument,
   getStructuredRegistry
 } from "@smedc/domain";
@@ -30,6 +32,7 @@ import {
   createStructuredImportDocumentId,
   hasStructuredImportCode,
   responseForReservedImport,
+  structuredImportProgressResponse,
   structuredImportConflictMessage,
   structuredImportFingerprint,
   timingDurationMs,
@@ -503,28 +506,53 @@ export function registerStructuredImportRoutes(
       }
 
       const employee = dependencies.auth.employee(request);
+      let snapshot;
+      try {
+        snapshot = await dependencies.auth.authorization(request);
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "AUTHORIZATION_ADMIN_REQUIRED")
+          throw error;
+        return reply
+          .code(403)
+          .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
+      }
+      if (snapshot.disabled)
+        return reply
+          .code(403)
+          .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
       const importBatch = await dependencies
         .structuredImports()
-        .findImportBatch(employee.orgId, request.params.importBatchId);
+        .findImportBatch(snapshot.orgId, request.params.importBatchId);
 
       if (
         !importBatch ||
-        !canEmployeeAccessDocument({
-          employee: {
-            disabled: employee.disabled,
-            clearance: employee.clearance
-          },
-          document: {
-            confidentialityLevel: importBatch.sourceDocumentConfidentialityLevel
-          }
-        })
+        snapshot.orgId !== employee.orgId ||
+        snapshot.employeeId !== employee.id ||
+        importBatch.orgId !== snapshot.orgId
       ) {
         return reply
           .code(404)
           .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
       }
 
-      return responseForReservedImport(importBatch);
+      const readable =
+        snapshot.mode === "enabled"
+          ? importBatch.dataset !== "delivery_ledger" &&
+            !!importBatch.readRequirements?.length &&
+            importBatch.readRequirements.every(
+              (requirement) => canReadResource(snapshot, requirement).allowed
+            )
+          : (snapshot.mode === "legacy" || snapshot.mode === "preparing") &&
+            canEmployeeAccessDocument({
+              employee: snapshot,
+              document: { confidentialityLevel: importBatch.sourceDocumentConfidentialityLevel }
+            });
+      if (readable) return responseForReservedImport(importBatch);
+      if (importBatch.uploaderId === snapshot.employeeId)
+        return structuredImportProgressResponse(importBatch);
+      return reply
+        .code(404)
+        .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
     }
   );
 }

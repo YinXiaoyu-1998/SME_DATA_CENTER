@@ -375,6 +375,26 @@ export function responseForReservedImport(importBatch: StructuredImportBatchReco
   });
 }
 
+export function structuredImportProgressResponse(importBatch: StructuredImportBatchRecord) {
+  return {
+    document: {
+      documentId: importBatch.sourceDocumentId,
+      documentKind: "structured",
+      status: importBatch.sourceDocumentStatus
+    },
+    processing: {
+      processingRunId: importBatch.processingRunId,
+      status: importBatch.processingStatus
+    },
+    importBatch: {
+      importBatchId: importBatch.id,
+      sourceDocumentId: importBatch.sourceDocumentId,
+      status: importBatch.status,
+      hasValidationErrors: importBatch.validationErrorCount > 0
+    }
+  };
+}
+
 export function timingDurationMs(started: number): number {
   return Number((performance.now() - started).toFixed(3));
 }

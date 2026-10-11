@@ -115,7 +115,7 @@ employee-callable upload boundary.
 | `POST`         | `/v1/quarantine-certificates/archive`               | Owner archive by source ID or admin-only PAO archive                              |
 | `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                         |
 | `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, catalogs, ledgers); rejects `business`/`dishes` |
-| `GET`          | `/v1/structured/imports/:importBatchId`             | Readable structured-import status                                                 |
+| `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                     |
 | `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart `business`/`dishes` upload session                             |
 | `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                         |
 | `POST`         | `/v1/structured/partition-uploads/:jobId/complete`  | Verify and queue a completed source upload                                        |
@@ -130,6 +130,17 @@ employee-callable upload boundary.
 | `GET`          | `/v1/structured/datasets/:dataset/coverage`         | Readable source coverage                                                          |
 
 `GET /labels` and `GET /audit` are not registered. `GET /readyz` accepts loopback only.
+
+Structured import status loads the current valid same-organization account snapshot. An uploader
+without ordinary metadata access receives only document/import/processing IDs and statuses plus
+`importBatch.hasValidationErrors`; this safe progress is independent of content grants/clearance
+and remains available while reads are suspended. It includes no storage key, original filename,
+sheet/validation details, date/receipt metadata, row counts or links. Disabled accounts are denied.
+In `enabled` mode ordinary full metadata requires every retained source requirement, including
+current lifecycle, complete scopes and category clearance; raw delivery-receipt metadata remains
+unavailable. `legacy`/`preparing` explicitly retain the existing upload-clearance metadata rule;
+`suspended` never uses that rule. There is no implicit admin content bypass or new management API.
+`get_import_status` delegates to this same server boundary with unchanged input parameters.
 
 ## Upload fields and limits
 

@@ -1,7 +1,9 @@
 import {
   persistStructuredSourceReadRequirements,
   requireCurrentUploadAdmin,
-  bindHistoricalSupplementIntent
+  bindHistoricalSupplementIntent,
+  getSourceReadRequirements,
+  ResourceAttributesError
 } from "@smedc/db";
 import {
   lockLedgerSourceMutation,
@@ -32,6 +34,7 @@ import type {
   DocumentStatusName,
   ImportBatchStatusName,
   Phase3FileType,
+  ResourceReadRequirement,
   StructuredDatasetName
 } from "@smedc/domain";
 import { AUDIT_ACTIONS, getStructuredRegistry } from "@smedc/domain";
@@ -63,6 +66,8 @@ export interface StructuredImportBatchRecord {
   orgId: string;
   sourceDocumentId: string;
   sourceDocumentConfidentialityLevel: number;
+  uploaderId?: string;
+  readRequirements?: ResourceReadRequirement[];
   dataset: StructuredDatasetName;
   status: ImportBatchStatusName;
   startDate: string | null;
@@ -171,6 +176,7 @@ const importBatchInclude = {
       storageObjectKey: true,
       originalFileName: true,
       confidentialityLevel: true,
+      uploaderId: true,
       processingRuns: {
         where: { jobType: ProcessingJobType.structured_import },
         orderBy: { createdAt: "desc" },
@@ -419,7 +425,16 @@ export function createPrismaStructuredImportRepository(options: {
         include: importBatchInclude
       });
 
-      return batch ? recordWithPartitions(batch) : null;
+      if (!batch) return null;
+      let readRequirements: ResourceReadRequirement[] = [];
+      try {
+        // This helper checks current document lifecycle and every retained parsed scope.
+        readRequirements = await getSourceReadRequirements(prisma, batch.sourceDocumentId, orgId);
+      } catch (error) {
+        if (!(error instanceof ResourceAttributesError)) throw error;
+        // Unpublished or incomplete sources still have owner progress, never ordinary metadata.
+      }
+      return { ...(await recordWithPartitions(batch)), readRequirements };
     },
     async reserveStructuredImport(input) {
       if (getStructuredRegistry(input.dataset).accessMode !== "row_query") {
@@ -891,6 +906,7 @@ function toImportBatchRecord(
     orgId: batch.orgId,
     sourceDocumentId: batch.sourceDocumentId,
     sourceDocumentConfidentialityLevel: batch.sourceDocument.confidentialityLevel,
+    uploaderId: batch.sourceDocument.uploaderId,
     dataset: batch.dataset,
     status: archived ? "archived" : batch.status,
     startDate: formatDateWindowDate(batch.startDate),

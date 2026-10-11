@@ -11,6 +11,7 @@ import { structuredImportFingerprint } from "./workflow.js";
 import { ResourceAttributesError } from "@smedc/db";
 import { buildApiServer } from "../../server.js";
 import type { StructuredImportRepository } from "../../structured-imports.js";
+import { legacyPermissionService } from "../../business-authorization.test-support.js";
 import {
   adminEmployee,
   baoliEmployee,
@@ -177,6 +178,7 @@ describe("structured imports", () => {
     };
 
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService(employees),
       employeeRepository: createRepository(employees),
       documentRepository,
       structuredImportRepository,
@@ -1091,7 +1093,7 @@ describe("structured imports", () => {
     expect(storagePutCalls()).toBe(2);
   });
 
-  it("returns import status only to same-org callers within source-document clearance", async () => {
+  it("preserves legacy import metadata clearance and same-organization boundaries", async () => {
     const { app } = await buildStructuredImportTestServer([
       adminEmployee,
       baoliEmployee,
