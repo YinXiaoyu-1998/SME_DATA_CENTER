@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { legacyAuthorization } from "./business-authorization.test-support.js";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildRetrievalConfigSeed,
   loadActiveRetrievalConfig,
@@ -148,15 +149,7 @@ describe("evidence search service", () => {
         { key: "documentId", match: { any: ["doc_active"] } }
       ])
     );
-    expect(request.body.prefetch[0]?.filter).toMatchObject({
-      min_should: {
-        conditions: [
-          { key: "confidentialityLevel", range: { lte: 3 } },
-          { is_empty: { key: "confidentialityLevel" } }
-        ],
-        min_count: 1
-      }
-    });
+    expect(request.body.prefetch[0]?.filter).not.toHaveProperty("min_should");
     expect(candidates).toEqual([
       {
         chunkId: "chk_active",
@@ -541,6 +534,19 @@ describe("evidence search service", () => {
       now: new Date("2026-07-20T00:00:00.000Z")
     };
 
+    const authorization = {
+      ...legacyAuthorization(employee),
+      mode: "enabled" as const,
+      authorizationVersion: "1"
+    };
+    const versioned = await service.searchEvidence({ ...baseInput, authorization });
+    await expect(
+      service.searchEvidence({
+        ...baseInput,
+        authorization: { ...authorization, authorizationVersion: "2" },
+        cursor: versioned.page.nextCursor
+      })
+    ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
     const firstPage = await service.searchEvidence(baseInput);
     expect(firstPage.results.map((result) => result.chunkId)).toEqual(["chk_1", "chk_2"]);
     expect(firstPage.page.hasMore).toBe(true);
@@ -856,6 +862,7 @@ describe("evidence MySQL revalidation", () => {
       },
       document: {
         title: "客户反馈处理 SOP.md",
+        contentVersion: 2,
         fileType: "md",
         confidentialityLevel: 0
       },
@@ -879,9 +886,15 @@ describe("evidence MySQL revalidation", () => {
 
     return {
       calls,
-      revalidator: new PrismaEvidenceRevalidator(
-        prisma as ConstructorParameters<typeof PrismaEvidenceRevalidator>[0]
-      )
+      revalidator: {
+        revalidate: (input: Parameters<EvidenceRevalidator["revalidate"]>[0]) =>
+          new PrismaEvidenceRevalidator(
+            prisma as ConstructorParameters<typeof PrismaEvidenceRevalidator>[0]
+          ).revalidate({
+            ...input,
+            authorization: input.authorization ?? legacyAuthorization(input.employee)
+          })
+      }
     };
   }
 
@@ -905,7 +918,8 @@ describe("evidence MySQL revalidation", () => {
           document: {
             orgId: "default-org",
             status: "active",
-            documentKind: "evidence"
+            documentKind: "evidence",
+            archivedAt: null
           },
           documentIndex: {
             status: "ready"
@@ -931,6 +945,7 @@ describe("evidence MySQL revalidation", () => {
     const suzhouOnlyChunk = evidenceChunk({
       document: {
         title: "客户反馈处理 SOP.md",
+        contentVersion: 2,
         fileType: "md",
         confidentialityLevel: 3
       }
@@ -973,6 +988,10 @@ describe("evidence MySQL revalidation", () => {
       evidenceChunk({ qdrantPointId: "point_wrong_chunk", chunkId: "chk_active" }),
       evidenceChunk({ qdrantPointId: "point_wrong_content", contentVersion: 2 }),
       evidenceChunk({
+        qdrantPointId: "point_old_index",
+        document: { title: "Replaced", contentVersion: 3, fileType: "md", confidentialityLevel: 0 }
+      }),
+      evidenceChunk({
         qdrantPointId: "point_wrong_config",
         retrievalConfigVersion: "phase3.retrieval.v1"
       }),
@@ -986,6 +1005,7 @@ describe("evidence MySQL revalidation", () => {
         evidenceCandidate({ qdrantPointId: "point_wrong_document", documentId: "doc_stale" }),
         evidenceCandidate({ qdrantPointId: "point_wrong_chunk", chunkId: "chk_stale" }),
         evidenceCandidate({ qdrantPointId: "point_wrong_content", contentVersion: 3 }),
+        evidenceCandidate({ qdrantPointId: "point_old_index" }),
         evidenceCandidate({
           qdrantPointId: "point_wrong_config",
           retrievalConfigVersion: "phase3.retrieval.v0"
@@ -999,6 +1019,139 @@ describe("evidence MySQL revalidation", () => {
     });
 
     expect(result.map((candidate) => candidate.qdrantPointId)).toEqual(["point_active"]);
+  });
+
+  it("keeps shared B/C document text out of rerank and citations when only B is granted", async () => {
+    const authorization = {
+      orgId: "default-org",
+      employeeId: baoliEmployee.id,
+      role: "employee" as const,
+      clearance: 3,
+      disabled: false,
+      mode: "enabled" as const,
+      authorizationVersion: "1",
+      categories: [
+        {
+          id: "knowledge",
+          kind: "evidence" as const,
+          confidentialityLevel: null,
+          ownerships: ["store" as const],
+          requiredDimensionIds: []
+        }
+      ],
+      grants: [
+        {
+          id: "B",
+          orgId: "default-org",
+          enterpriseKey: "enterprise",
+          categoryIds: ["knowledge"],
+          ownership: "store" as const,
+          stores: { kind: "fixed" as const, values: ["B"] },
+          dimensions: {}
+        }
+      ]
+    };
+    const resource = (documentId: string, names: string[]) => ({
+      id: `resource-${documentId}`,
+      orgId: "default-org",
+      documentId,
+      sourceDocumentId: null,
+      kind: "evidence",
+      resourceKey: documentId,
+      categoryId: "knowledge",
+      fileConfidentialityLevel: 0,
+      valid: true,
+      contentVersion: 1n,
+      authorizationVersion: 1n,
+      scopes: names.map((storeName) => ({
+        enterpriseKey: "enterprise",
+        ownership: "store",
+        storeName,
+        dimensions: []
+      }))
+    });
+    const shared = evidenceChunk({
+      chunkText: "B paragraph shared with C: restricted",
+      document: {
+        title: "B/C",
+        contentVersion: 2,
+        fileType: "md",
+        confidentialityLevel: 0,
+        businessResources: [resource("doc_active", ["B", "C"])]
+      }
+    });
+    const allowedResource = resource("doc_B", ["B"]);
+    const allowed = evidenceChunk({
+      qdrantPointId: "point_B",
+      documentId: "doc_B",
+      chunkId: "chk_B",
+      chunkText: "B authorized paragraph",
+      document: {
+        title: "B",
+        contentVersion: 2,
+        fileType: "md",
+        confidentialityLevel: 0,
+        businessResources: [allowedResource]
+      }
+    });
+    const { revalidator } = createRevalidator([shared, allowed]);
+    const rerank = vi.fn(async () => ({ scores: [] }));
+    const config = loadActiveRetrievalConfig(
+      buildRetrievalConfigSeed({
+        retrievalConfigVersion: "phase3.retrieval.v1",
+        qdrantCollection: "synthetic",
+        llmProvider: "fake",
+        embeddingDimension: 4,
+        embeddingModel: "fake",
+        rerankEnabled: true,
+        rerankModel: "fake"
+      }),
+      "phase3.retrieval.v1"
+    );
+    const service = createEvidenceSearchService({
+      retrievalConfig: config,
+      qdrantSearcher: {
+        hybridSearch: async () => [
+          evidenceCandidate(),
+          evidenceCandidate({ qdrantPointId: "point_B", documentId: "doc_B", chunkId: "chk_B" })
+        ]
+      },
+      revalidator,
+      rerankProvider: { metadata: { version: "synthetic" }, rerank }
+    });
+    const base = {
+      orgId: "default-org",
+      employee: baoliEmployee,
+      authorization,
+      query: "B",
+      filters: { fileTypes: [], documentIds: [] },
+      limit: 1,
+      cursor: null,
+      cursorSecret: "synthetic",
+      audit: {
+        requestId: "synthetic",
+        sourceIp: "127.0.0.1",
+        clientSource: "http_api" as const,
+        launcherVersion: null
+      }
+    };
+    const result = await service.searchEvidence(base);
+    expect(rerank).toHaveBeenCalledWith({
+      query: "B",
+      documents: [{ id: "chk_B", text: "B authorized paragraph" }]
+    });
+    expect(result.results.map((item) => [item.documentId, item.chunkId])).toEqual([
+      ["doc_B", "chk_B"]
+    ]);
+    allowedResource.fileConfidentialityLevel = 3;
+    rerank.mockClear();
+    const low = await service.searchEvidence({
+      ...base,
+      authorization: { ...authorization, clearance: 0 },
+      employee: { ...baoliEmployee, clearance: 0 }
+    });
+    expect(low.results).toEqual([]);
+    expect(rerank).not.toHaveBeenCalled();
   });
 });
 

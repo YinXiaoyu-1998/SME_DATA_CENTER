@@ -1,7 +1,8 @@
 import {
   createBusinessAuthorizationRepository,
   getSourceReadRequirements,
-  createDatabaseAdapter
+  createDatabaseAdapter,
+  toResourceReadRequirement
 } from "@smedc/db";
 import { DocumentStatus, Prisma, PrismaClient } from "@prisma/client";
 import { AUDIT_ACTIONS, canReadResource, type StructuredDatasetName } from "@smedc/domain";
@@ -72,20 +73,9 @@ export function createPrismaSourceDocumentRepository(
               : await prisma.businessResource
                   .findMany({
                     where: { orgId: input.orgId, documentId: document.id },
-                    select: { id: true }
+                    include: { scopes: { include: { dimensions: true } } }
                   })
-                  .then(async (resources) =>
-                    (
-                      await Promise.all(
-                        resources.map((resource) =>
-                          permissions.getResourceReadRequirement(resource.id, input.orgId)
-                        )
-                      )
-                    ).filter(
-                      (requirement): requirement is NonNullable<typeof requirement> =>
-                        requirement !== null
-                    )
-                  );
+                  .then((resources) => resources.map(toResourceReadRequirement));
           if (
             document.status === "active" &&
             requirements.length &&

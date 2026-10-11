@@ -1,3 +1,4 @@
+import { legacyPermissionService } from "../business-authorization.test-support.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -40,6 +41,12 @@ describe("evidence routes", () => {
         throw new Error("multipart parser must not run");
       });
       app = buildApiServer({
+        businessAuthorizationService: legacyPermissionService([
+          adminEmployee,
+          baoliEmployee,
+          suzhouEmployee,
+          orgBAdminEmployee
+        ]),
         employeeRepository: createRepository([baoliEmployee]),
         documentRepository,
         storageAdapter: {
@@ -112,6 +119,12 @@ describe("evidence routes", () => {
     const documentRepository = createDocumentRepository();
     const storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-evidence-upload-"));
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter: new LocalFileSystemStorageAdapter({ root: storageRoot }),
@@ -194,6 +207,12 @@ describe("evidence routes", () => {
     const documentRepository = createDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter,
@@ -238,6 +257,12 @@ describe("evidence routes", () => {
     const documentRepository = createDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter,
@@ -284,6 +309,12 @@ describe("evidence routes", () => {
     const documentRepository = createDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter,
@@ -336,6 +367,12 @@ describe("evidence routes", () => {
     const documentRepository = createDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter,
@@ -442,7 +479,7 @@ describe("evidence routes", () => {
       documentType: "management_knowledge",
       documentKind: "evidence",
       fileType: "md",
-      confidentialityLevel: 0,
+      confidentialityLevel: 3,
       processingRunStatus: "succeeded",
       documentIndexStatus: "ready",
       documentIndexRetrievalConfigVersion: "phase3.retrieval.v2-bm25",
@@ -456,6 +493,12 @@ describe("evidence routes", () => {
       checksumSha256: "hash"
     });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee, baoliEmployee, suzhouEmployee]),
       documentRepository,
       cursorSigningSecret: jwtSecret,
@@ -472,7 +515,7 @@ describe("evidence routes", () => {
     });
     const adminResponse = await app.inject({
       method: "GET",
-      url: "/v1/documents/evidence/doc_evidence_status/status",
+      url: "/v1/admin/documents/evidence/doc_evidence_status/status",
       headers: {
         authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
       }
@@ -502,7 +545,28 @@ describe("evidence routes", () => {
       }
     });
     expect(adminResponse.statusCode).toBe(200);
+    expect(adminResponse.json().document.title).toBe("客户反馈处理 SOP");
+    expect(uploaderResponse.json().document).not.toHaveProperty("title");
+    expect(uploaderResponse.json().document).not.toHaveProperty("originalFileName");
     expect(otherEmployeeResponse.statusCode).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/v1/documents/evidence/doc_evidence_status/status",
+          headers: { authorization: `Bearer ${await accessTokenFor(adminEmployee)}` }
+        })
+      ).statusCode
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/v1/admin/documents/evidence/doc_evidence_status/status",
+          headers: { authorization: `Bearer ${await accessTokenFor(baoliEmployee)}` }
+        })
+      ).statusCode
+    ).toBe(403);
   });
 
   it("searches evidence chunks without returning natural-language answers", async () => {
@@ -523,6 +587,12 @@ describe("evidence routes", () => {
       warnings: []
     }));
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
       sourceDocumentDownloadIssuer: { issueMany },
@@ -609,6 +679,12 @@ describe("evidence routes", () => {
   it("returns an explicit unavailable source and warning after an authorization race", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
       sourceDocumentDownloadIssuer: {
@@ -659,6 +735,12 @@ describe("evidence routes", () => {
   it("treats a forged public delegation proof as ordinary HTTP provenance", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
       sourceDocumentDownloadIssuer: {
@@ -716,6 +798,12 @@ describe("evidence routes", () => {
   it("rejects null and over-limit evidence search inputs before retrieval", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
       cursorSigningSecret: jwtSecret,
@@ -759,6 +847,12 @@ describe("evidence routes", () => {
 
   it("does not expose unexpected evidence provider failures", async () => {
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository: {
         async searchEvidence() {
@@ -794,6 +888,12 @@ describe("evidence routes", () => {
     const documentRepository = createOrganizationContextDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([orgBAdminEmployee]),
       documentRepository,
       storageAdapter,
@@ -838,6 +938,12 @@ describe("evidence routes", () => {
 
   it("rejects evidence uploads in unsupported formats", async () => {
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository: createDocumentRepository(),
       storageAdapter: new LocalFileSystemStorageAdapter({
@@ -881,5 +987,41 @@ describe("evidence routes", () => {
         message: "Evidence documents must be .md, .txt, or .docx files."
       }
     });
+  });
+  it("never issues automatic source links for empty authorized search results", async () => {
+    const fixture = createEvidenceSearchRepository();
+    const issueMany = vi.fn();
+    const permissions = legacyPermissionService(adminEmployee);
+    const snapshot = {
+      ...(await permissions.current(adminEmployee)),
+      mode: "enabled" as const,
+      authorizationVersion: "current-9"
+    };
+    permissions.current = async () => snapshot;
+    app = buildApiServer({
+      businessAuthorizationService: permissions,
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository: {
+        searchEvidence: async (input) => {
+          expect(input.authorization).toBe(snapshot);
+          const result = await fixture.searchEvidence(input);
+          return { ...result, results: [] };
+        }
+      },
+      sourceDocumentDownloadIssuer: { issueMany },
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: { authorization: `Bearer ${await accessTokenFor(adminEmployee)}` },
+      payload: { query: "restricted B/C" }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toEqual([]);
+    expect(response.json().sources).toEqual([]);
+    expect(issueMany).not.toHaveBeenCalled();
   });
 });

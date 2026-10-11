@@ -1,5 +1,9 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { createDatabaseAdapter } from "@smedc/db";
+import {
+  createBusinessAuthorizationRepository,
+  toResourceReadRequirement,
+  createDatabaseAdapter
+} from "@smedc/db";
 import { DocumentIndexStatus, DocumentKind, DocumentStatus, PrismaClient } from "@prisma/client";
 import {
   QDRANT_BM25_VECTOR_NAME,
@@ -9,6 +13,8 @@ import {
   buildRetrievalConfigSeed,
   buildQdrantBm25Document,
   canEmployeeAccessDocument,
+  canReadResource,
+  type AuthorizationSnapshot,
   loadActiveRetrievalConfig,
   toEvidenceSearchRetrievalMetadata,
   type AuthenticatedEmployee,
@@ -25,6 +31,7 @@ export interface EvidenceSearchFilters {
 }
 
 export interface EvidenceSearchInput {
+  authorization?: AuthorizationSnapshot;
   orgId: string;
   employee: AuthenticatedEmployee;
   query: string;
@@ -101,6 +108,7 @@ export interface EvidenceRevalidator {
     orgId: string;
     employee: AuthenticatedEmployee;
     candidates: QdrantEvidenceCandidate[];
+    authorization?: AuthorizationSnapshot;
     filters: EvidenceSearchFilters;
   }): Promise<RevalidatedEvidenceCandidate[]>;
 }
@@ -119,9 +127,9 @@ interface EmbeddingProvider {
   embedTexts(texts: readonly string[]): Promise<number[][]>;
 }
 
-const EVIDENCE_CURSOR_VERSION = 1;
+const EVIDENCE_CURSOR_VERSION = 2;
 const EVIDENCE_CURSOR_TTL_SECONDS = 900;
-const EVIDENCE_CURSOR_DOMAIN = "evidence-cursor:v1";
+const EVIDENCE_CURSOR_DOMAIN = "evidence-cursor:v2";
 const EVIDENCE_CANDIDATE_WINDOW = 200;
 
 interface QdrantQueryPoint {
@@ -157,6 +165,7 @@ export function createEvidenceSearchService(input: {
         orgId: searchInput.orgId,
         employee: searchInput.employee,
         candidates,
+        authorization: searchInput.authorization,
         filters: searchInput.filters
       });
       const rerankScores =
@@ -269,6 +278,8 @@ interface EvidenceCursorScopePayload {
   orgId: string;
   employeeId: string;
   clearance: number;
+  authorizationVersion: string | null;
+  authorizationMode: AuthorizationSnapshot["mode"] | null;
   query: string;
   filters: EvidenceSearchFilters;
   limit: number;
@@ -279,7 +290,9 @@ function evidenceCursorScope(input: EvidenceSearchInput, retrievalConfigVersion:
   const payload: EvidenceCursorScopePayload = {
     orgId: input.orgId,
     employeeId: input.employee.id,
-    clearance: input.employee.clearance,
+    clearance: input.authorization?.clearance ?? input.employee.clearance,
+    authorizationVersion: input.authorization?.authorizationVersion ?? null,
+    authorizationMode: input.authorization?.mode ?? null,
     query: input.query,
     filters: {
       fileTypes: [...input.filters.fileTypes].sort(),
@@ -308,6 +321,8 @@ function createEvidenceCursor(input: {
     orgId: input.scope.orgId,
     employeeId: input.scope.employeeId,
     clearance: input.scope.clearance,
+    authorizationVersion: input.scope.authorizationVersion,
+    authorizationMode: input.scope.authorizationMode,
     query: input.scope.query,
     filters: input.scope.filters,
     limit: input.scope.limit,
@@ -441,7 +456,15 @@ export function createPrismaEvidenceSearchRepository(): EvidenceSearchRepository
 
   return {
     async searchEvidence(input) {
-      return service.searchEvidence(input);
+      return service.searchEvidence({
+        ...input,
+        authorization:
+          input.authorization ??
+          (await createBusinessAuthorizationRepository({ prisma }).loadAuthorizationSnapshot(
+            input.employee.id,
+            input.orgId
+          ))
+      });
     },
     async disconnect() {
       await prisma.$disconnect();
@@ -552,12 +575,25 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
     orgId: string;
     employee: AuthenticatedEmployee;
     candidates: QdrantEvidenceCandidate[];
+    authorization?: AuthorizationSnapshot;
     filters: EvidenceSearchFilters;
   }): Promise<RevalidatedEvidenceCandidate[]> {
     if (input.employee.disabled || input.candidates.length === 0) {
       return [];
     }
 
+    const authorization =
+      input.authorization ??
+      (await createBusinessAuthorizationRepository({
+        prisma: this.prisma
+      }).loadAuthorizationSnapshot(input.employee.id, input.orgId));
+    if (
+      authorization.disabled ||
+      authorization.orgId !== input.orgId ||
+      authorization.employeeId !== input.employee.id ||
+      authorization.mode === "suspended"
+    )
+      return [];
     const candidateByPointId = new Map(
       input.candidates.map((candidate) => [candidate.qdrantPointId, candidate])
     );
@@ -570,14 +606,22 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
         document: {
           orgId: input.orgId,
           status: DocumentStatus.active,
-          documentKind: DocumentKind.evidence
+          documentKind: DocumentKind.evidence,
+          archivedAt: null
         },
         documentIndex: {
           status: DocumentIndexStatus.ready
         }
       },
       include: {
-        document: true,
+        document: {
+          include: {
+            businessResources: {
+              where: { kind: "evidence" },
+              include: { scopes: { include: { dimensions: true } } }
+            }
+          }
+        },
         documentIndex: true
       }
     });
@@ -595,25 +639,25 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
         chunk.documentId !== candidate.documentId ||
         chunk.chunkId !== candidate.chunkId ||
         chunk.contentVersion !== candidate.contentVersion ||
+        chunk.document.contentVersion !== candidate.contentVersion ||
         chunk.retrievalConfigVersion !== candidate.retrievalConfigVersion ||
         chunk.documentIndex.contentVersion !== candidate.contentVersion
       ) {
         continue;
       }
 
-      if (
-        !canEmployeeAccessDocument({
-          employee: {
-            disabled: input.employee.disabled,
-            clearance: input.employee.clearance
-          },
-          document: {
-            confidentialityLevel: chunk.document.confidentialityLevel
-          }
-        })
-      ) {
-        continue;
-      }
+      const readable =
+        authorization.mode === "enabled"
+          ? chunk.document.businessResources.length > 0 &&
+            chunk.document.businessResources.every(
+              (resource) =>
+                canReadResource(authorization, toResourceReadRequirement(resource)).allowed
+            )
+          : canEmployeeAccessDocument({
+              employee: authorization,
+              document: { confidentialityLevel: chunk.document.confidentialityLevel }
+            });
+      if (!readable) continue;
 
       if (
         input.filters.documentIds.length > 0 &&
@@ -958,23 +1002,8 @@ function qdrantPayloadFilter(
     });
   }
 
-  return {
-    must,
-    // Existing vectors predate the immutable payload field and correspond to
-    // database documents migrated to level 0. They are admitted only as
-    // candidates; PrismaEvidenceRevalidator remains the authority before
-    // reranking and response construction.
-    min_should: {
-      conditions: [
-        {
-          key: "confidentialityLevel",
-          range: { lte: input.employee.clearance }
-        },
-        { is_empty: { key: "confidentialityLevel" } }
-      ],
-      min_count: 1
-    }
-  };
+  // Payload permission values can lag both tightening and relaxation. They never filter candidates.
+  return { must };
 }
 
 function qdrantPointToCandidate(

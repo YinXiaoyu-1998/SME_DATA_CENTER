@@ -1,3 +1,4 @@
+import { legacyPermissionService } from "./business-authorization.test-support.js";
 import { beforeEach, describe, expect, it, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { compileStructuredQuery, type AuthenticatedEmployee } from "@smedc/domain";
@@ -87,6 +88,7 @@ describe("structured dataset discovery", () => {
 
   it("lists registry-backed datasets and effective query limits for authenticated callers", async () => {
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
@@ -128,23 +130,7 @@ describe("structured dataset discovery", () => {
     const ledger = response
       .json()
       .datasets.find((dataset: { dataset: string }) => dataset.dataset === "delivery_ledger");
-    expect(ledger?.presentation).toEqual({
-      id: "food-purchase-ledger-cn-v2",
-      title: "食品经营单位进货台帐",
-      columns: [
-        { canonicalName: "receipt_id", displayName: "收货单号" },
-        { canonicalName: "item_name", displayName: "食品名称" },
-        { canonicalName: "specification", displayName: "规格" },
-        { canonicalName: "purchase_quantity", displayName: "进货数量" },
-        { canonicalName: "purchase_amount", displayName: "进货金额" },
-        { canonicalName: "production_date_or_batch", displayName: "生产日期或生产批号" },
-        { canonicalName: "shelf_life", displayName: "保质期" },
-        { canonicalName: "supplier_name", displayName: "供货单位名称" },
-        { canonicalName: "supplier_unit_address", displayName: "供货单位地址" },
-        { canonicalName: "supplier_contact_phone", displayName: "供货单位联系方式" },
-        { canonicalName: "purchase_date", displayName: "进货日期" }
-      ]
-    });
+    expect(ledger).toBeUndefined();
   });
 });
 
@@ -182,6 +168,7 @@ describe("structured query API", () => {
       hasMore: true
     });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -236,6 +223,7 @@ describe("structured query API", () => {
   it("rejects invalid controlled-query input before repository execution", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -269,6 +257,7 @@ describe("structured query API", () => {
   it("rejects structured string scalars larger than an imported cell", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -305,6 +294,7 @@ describe("structured query API", () => {
   it("executes the level-zero scope for a clearance-zero employee", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([clearanceZeroEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -332,6 +322,7 @@ describe("structured query API", () => {
   it("returns an empty 200 response when no authorized rows are visible", async () => {
     const structuredQueryRepository = createStructuredRepository({ rows: [], hasMore: false });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -370,6 +361,7 @@ describe("structured query API", () => {
       hasMore: false
     });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -410,7 +402,7 @@ describe("structured query API", () => {
     expect(JSON.stringify(response.json())).not.toMatch(/analysis|trend|summary|insight/i);
   });
 
-  it("returns the food-purchase ledger presentation for delivery-ledger detail queries", async () => {
+  it("rejects public delivery-ledger detail queries", async () => {
     const structuredQueryRepository = createStructuredRepository({
       rows: [
         {
@@ -421,6 +413,7 @@ describe("structured query API", () => {
       hasMore: false
     });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -441,36 +434,18 @@ describe("structured query API", () => {
       }
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      dataset: "delivery_ledger",
-      mode: "detail",
-      presentation: {
-        id: "food-purchase-ledger-cn-v2",
-        title: "食品经营单位进货台帐"
-      }
-    });
-    expect(response.json().presentation.columns).toEqual([
-      { canonicalName: "receipt_id", displayName: "收货单号" },
-      { canonicalName: "item_name", displayName: "食品名称" },
-      { canonicalName: "specification", displayName: "规格" },
-      { canonicalName: "purchase_quantity", displayName: "进货数量" },
-      { canonicalName: "purchase_amount", displayName: "进货金额" },
-      { canonicalName: "production_date_or_batch", displayName: "生产日期或生产批号" },
-      { canonicalName: "shelf_life", displayName: "保质期" },
-      { canonicalName: "supplier_name", displayName: "供货单位名称" },
-      { canonicalName: "supplier_unit_address", displayName: "供货单位地址" },
-      { canonicalName: "supplier_contact_phone", displayName: "供货单位联系方式" },
-      { canonicalName: "purchase_date", displayName: "进货日期" }
-    ]);
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.code).toBe("LEDGER_DETAIL_DISABLED");
+    expect(structuredQueryRepository.calls).toHaveLength(0);
   });
 
-  it("omits presentation metadata from aggregate query results", async () => {
+  it("rejects public delivery-ledger aggregate queries", async () => {
     const structuredQueryRepository = createStructuredRepository({
       rows: [{ supplier_name: "Supplier A", rows: 2 }],
       hasMore: false
     });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -492,13 +467,9 @@ describe("structured query API", () => {
       }
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      dataset: "delivery_ledger",
-      mode: "aggregate",
-      rows: [{ supplier_name: "Supplier A", rows: 2 }],
-      nextCursor: null
-    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.code).toBe("LEDGER_DETAIL_DISABLED");
+    expect(structuredQueryRepository.calls).toHaveLength(0);
   });
 
   it("preserves the enriched generic aggregate query body through the HTTP route", async () => {
@@ -516,6 +487,7 @@ describe("structured query API", () => {
       hasMore: false
     });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,
@@ -590,6 +562,7 @@ describe("structured query API", () => {
       hasMore: true
     });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([baoliEmployee, clearanceZeroEmployee]),
       employeeRepository: createRepository([baoliEmployee]),
       structuredQueryRepository,
       cursorSigningSecret: jwtSecret,

@@ -5,6 +5,7 @@ import {
   type AuthorizationSnapshot
 } from "@smedc/domain";
 import {
+  createBusinessAuthorizationRepository,
   compileStructuredReadScope,
   createPrismaStructuredPartitionRepository,
   getSourceReadRequirements
@@ -405,5 +406,134 @@ describeIntegration("Prisma confidentiality persistence", () => {
       })
     ).toEqual([]);
     await originals.disconnect?.();
+  });
+  it("updates whole evidence attributes atomically without changing content or requiring reindex", async () => {
+    const permissions = createBusinessAuthorizationRepository({ prisma });
+    const documentId = "evidence-permissions-source";
+    await prisma.businessCategory.create({
+      data: {
+        orgId,
+        id: "memo",
+        name: "Memo",
+        kind: "evidence",
+        allowGroup: false,
+        allowStore: true
+      }
+    });
+    await prisma.businessStore.create({ data: { orgId, enterpriseKey: "enterprise", name: "C" } });
+    await prisma.document.create({
+      data: {
+        id: documentId,
+        orgId,
+        uploaderId: "cq-clearance-3",
+        title: "B/C common memo",
+        documentType: "management_knowledge",
+        documentKind: "evidence",
+        fileType: "md",
+        status: "active",
+        confidentialityLevel: 0,
+        storageObjectKey: "synthetic/memo.md"
+      }
+    });
+    const scopes = ["B", "C"].map((storeName) => ({
+      enterpriseKey: "enterprise",
+      ownership: "store" as const,
+      storeName,
+      dimensions: {}
+    }));
+    const context = async () => ({
+      orgId,
+      actorId: "cq-clearance-3",
+      expectedVersion: (await permissions.loadAuthorizationSnapshot("cq-clearance-3", orgId))
+        .authorizationVersion
+    });
+    await permissions.configureEvidenceDocument({
+      ...(await context()),
+      documentId,
+      categoryId: "memo",
+      fileConfidentialityLevel: 0,
+      scopes
+    });
+    await prisma.businessGrant.create({
+      data: {
+        orgId,
+        id: "memo-B",
+        employeeId: "cq-clearance-0",
+        enterpriseKey: "enterprise",
+        ownership: "store"
+      }
+    });
+    await prisma.businessGrantCategory.create({
+      data: { orgId, grantId: "memo-B", categoryId: "memo" }
+    });
+    await prisma.businessGrantStore.create({
+      data: { orgId, grantId: "memo-B", enterpriseKey: "enterprise", storeName: "B" }
+    });
+    const source = createPrismaSourceDocumentRepository(databaseUrl);
+    const actor = {
+      id: "cq-clearance-0",
+      orgId,
+      role: "employee" as const,
+      clearance: 0,
+      disabled: false,
+      organizationName: "Synthetic",
+      displayName: "Synthetic",
+      email: "synthetic@example.invalid"
+    };
+    const resourceWhere = {
+      orgId_kind_resourceKey: { orgId, kind: "evidence" as const, resourceKey: documentId }
+    };
+    const before = await prisma.businessResource.findUniqueOrThrow({ where: resourceWhere });
+    const documentBefore = await prisma.document.findUniqueOrThrow({ where: { id: documentId } });
+    expect(
+      await source.findDownloadableSourceDocuments({
+        orgId,
+        employee: actor,
+        sourceDocumentIds: [documentId]
+      })
+    ).toEqual([]);
+    await permissions.configureEvidenceDocument({
+      ...(await context()),
+      documentId,
+      categoryId: "memo",
+      fileConfidentialityLevel: 3,
+      scopes: [scopes[0]!]
+    });
+    const after = await prisma.businessResource.findUniqueOrThrow({ where: resourceWhere });
+    const documentAfter = await prisma.document.findUniqueOrThrow({ where: { id: documentId } });
+    expect(after.contentVersion).toBe(before.contentVersion);
+    expect(after.authorizationVersion).toBe(before.authorizationVersion + 1n);
+    expect(documentAfter.contentVersion).toBe(documentBefore.contentVersion);
+    expect(documentAfter.confidentialityLevel).toBe(3);
+    expect(
+      await source.findDownloadableSourceDocuments({
+        orgId,
+        employee: actor,
+        sourceDocumentIds: [documentId]
+      })
+    ).toEqual([]);
+    expect(
+      await prisma.businessAuthorizationAudit.findMany({
+        where: { orgId, targetId: documentId, action: "document.attributes.configure" }
+      })
+    ).toHaveLength(2);
+    await permissions.configureEvidenceDocument({
+      ...(await context()),
+      documentId,
+      categoryId: "memo",
+      fileConfidentialityLevel: 0,
+      scopes: [scopes[0]!]
+    });
+    expect(
+      await source.findDownloadableSourceDocuments({
+        orgId,
+        employee: actor,
+        sourceDocumentIds: [documentId]
+      })
+    ).toMatchObject([{ sourceDocumentId: documentId }]);
+    expect(
+      (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).contentVersion
+    ).toBe(documentBefore.contentVersion);
+    await source.disconnect?.();
   });
 });

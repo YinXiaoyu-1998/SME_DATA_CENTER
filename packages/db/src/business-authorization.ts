@@ -73,7 +73,7 @@ function categoryRule(
     requiredDimensionIds: row.dimensions.map((d) => d.dimensionId).sort()
   };
 }
-function resourceRequirement(row: ResourceRow): ResourceReadRequirement {
+export function toResourceReadRequirement(row: ResourceRow): ResourceReadRequirement {
   return {
     orgId: row.orgId,
     categoryId: row.categoryId,
@@ -390,7 +390,7 @@ export async function persistResourceAttributes(
     input.kind === "source_fragment" &&
     (before.categoryId !== input.categoryId ||
       before.valid !== input.valid ||
-      !preservesSourceTuples(resourceRequirement(before).scopes, input.scopes))
+      !preservesSourceTuples(toResourceReadRequirement(before).scopes, input.scopes))
   )
     throw new Error("SOURCE_REQUIREMENTS_IMMUTABLE");
   await requireCurrentDirectoryEligibility(tx, {
@@ -404,7 +404,7 @@ export async function persistResourceAttributes(
       before.categoryId === input.categoryId &&
       before.valid === input.valid &&
       isDeepStrictEqual(
-        canonicalScopes(resourceRequirement(before).scopes),
+        canonicalScopes(toResourceReadRequirement(before).scopes),
         canonicalScopes(input.scopes)
       ),
     historicalSupplement: options.historicalSupplement,
@@ -415,8 +415,9 @@ export async function persistResourceAttributes(
     (before.valid !== input.valid ||
       // Source enrichment only adds required authorization metadata; source content and association stay intact.
       (input.kind !== "source_fragment" &&
+        input.kind !== "evidence" &&
         !isDeepStrictEqual(
-          canonicalScopes(resourceRequirement(before).scopes),
+          canonicalScopes(toResourceReadRequirement(before).scopes),
           canonicalScopes(input.scopes)
         )));
   const data = {
@@ -602,7 +603,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
       where: { orgId },
       include: resourcesInclude
     });
-    return rows.map((row) => ({ id: row.id, requirement: resourceRequirement(row) }));
+    return rows.map((row) => ({ id: row.id, requirement: toResourceReadRequirement(row) }));
   }
   async function writeGrants(
     tx: Tx,
@@ -684,7 +685,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
           existing.categoryId === input.categoryId &&
           existing.valid === valid &&
           isDeepStrictEqual(
-            canonicalScopes(resourceRequirement(existing).scopes),
+            canonicalScopes(toResourceReadRequirement(existing).scopes),
             canonicalScopes(input.scopes)
           );
         const metadata =
@@ -702,6 +703,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         await tx.document.update({
           where: { id: document.id },
           data: {
+            confidentialityLevel: input.fileConfidentialityLevel,
             sourceMetadata: {
               ...metadata,
               historicalSupplement: retainedIntent
@@ -736,7 +738,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         where: { orgId_id: { orgId, id } },
         include: resourcesInclude
       });
-      return row ? resourceRequirement(row) : null;
+      return row ? toResourceReadRequirement(row) : null;
     },
     async getSourceReadRequirements(
       sourceDocumentId: string,
@@ -748,7 +750,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         include: resourcesInclude
       });
       if (rows.length === 0) throw new Error("SOURCE_AUTHORIZATION_NOT_READY");
-      return rows.map(resourceRequirement);
+      return rows.map(toResourceReadRequirement);
     },
     defineDimension(
       input: AuthorizationWriteContext & {

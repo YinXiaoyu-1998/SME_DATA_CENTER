@@ -1,9 +1,10 @@
 import {
   persistEvidenceReadRequirement,
   requireCurrentUploadAdmin,
-  bindHistoricalSupplementIntent
+  bindHistoricalSupplementIntent,
+  toResourceReadRequirement
 } from "@smedc/db";
-import type { BusinessScopeItem } from "@smedc/domain";
+import type { BusinessScopeItem, ResourceReadRequirement } from "@smedc/domain";
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsForDocument,
@@ -57,6 +58,7 @@ export interface CreateUploadedDocumentInput {
 }
 
 export interface DocumentStatusRecord {
+  readRequirements?: ResourceReadRequirement[];
   affectedLedgerPartitions?: LedgerPartitionKey[];
   id: string;
   orgId: string;
@@ -109,6 +111,10 @@ export interface DocumentCatalogRepository {
 }
 
 const documentStatusInclude = {
+  businessResources: {
+    where: { kind: "evidence" },
+    include: { scopes: { include: { dimensions: true } } }
+  },
   processingRuns: {
     orderBy: {
       createdAt: "asc"
@@ -359,6 +365,10 @@ function toDocumentStatusRecord(
   document: Prisma.DocumentGetPayload<{ include: typeof documentStatusInclude }>
 ): DocumentStatusRecord {
   return {
+    readRequirements: document.businessResources.map((resource) => ({
+      ...toResourceReadRequirement(resource),
+      valid: resource.valid && document.status === DocumentStatus.active && !document.archivedAt
+    })),
     id: document.id,
     orgId: document.orgId,
     uploaderId: document.uploaderId,

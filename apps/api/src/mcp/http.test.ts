@@ -1,3 +1,4 @@
+import { legacyPermissionService } from "../business-authorization.test-support.js";
 import Fastify, { type FastifyInstance } from "fastify";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -73,6 +74,7 @@ function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepositor
 
 function buildMcpTestServer(overrides: Partial<Parameters<typeof buildApiServer>[0]> = {}) {
   return buildApiServer({
+    businessAuthorizationService: legacyPermissionService([employee, adminEmployee]),
     employeeRepository: createRepository([employee, adminEmployee]),
     cursorSigningSecret: jwtSecret,
     authenticateAccessToken: authenticateTestAccessToken,

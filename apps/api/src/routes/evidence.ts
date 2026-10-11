@@ -13,6 +13,7 @@ import {
   PHASE3_ERROR_CODES,
   PUBLIC_INPUT_LIMITS,
   isAllowedFileTypeForDocumentKind,
+  canReadResource,
   type Phase3FileType
 } from "@smedc/domain";
 import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documents.js";
@@ -497,37 +498,50 @@ export function registerEvidenceRoutes(
     }
   });
 
-  app.get<{ Params: { documentId: string } }>(
-    "/v1/documents/evidence/:documentId/status",
-    async (request, reply) => {
-      const authenticated = await dependencies.auth.authenticate(request, reply);
-
-      if (!authenticated) {
-        return;
+  for (const management of [false, true])
+    app.get<{ Params: { documentId: string } }>(
+      management
+        ? "/v1/admin/documents/evidence/:documentId/status"
+        : "/v1/documents/evidence/:documentId/status",
+      async (request, reply) => {
+        if (!(await dependencies.auth.authenticate(request, reply))) return;
+        const snapshot = await dependencies.auth.authorization(request);
+        if (management && snapshot.role !== "admin")
+          return reply
+            .code(403)
+            .send(
+              errorResponse("AUTHORIZATION_ADMIN_REQUIRED", "A current administrator is required.")
+            );
+        const document = await dependencies
+          .documents()
+          .findEvidenceDocumentStatus(snapshot.orgId, request.params.documentId);
+        if (!document)
+          return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+        const readable =
+          snapshot.mode === "enabled" &&
+          !!document.readRequirements?.length &&
+          document.readRequirements.every(
+            (requirement) =>
+              canReadResource(snapshot, {
+                ...requirement,
+                valid: requirement.valid && document.status === "active"
+              }).allowed
+          );
+        if (management || readable)
+          return evidenceStatusResponse(
+            document,
+            dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
+          );
+        if (document.uploaderId !== snapshot.employeeId)
+          return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+        return evidenceUploadResponse(
+          document,
+          document.documentIndexRetrievalConfigVersion ??
+            dependencies.retrievalConfigVersion ??
+            DEFAULT_RETRIEVAL_CONFIG_VERSION
+        );
       }
-
-      const employee = dependencies.auth.employee(request);
-      const document = await dependencies
-        .documents()
-        .findEvidenceDocumentStatus(employee.orgId, request.params.documentId);
-
-      if (!document) {
-        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-      }
-
-      if (
-        employee.role !== "admin" &&
-        (document.uploaderId !== employee.id || employee.clearance < document.confidentialityLevel)
-      ) {
-        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-      }
-
-      return evidenceStatusResponse(
-        document,
-        dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
-      );
-    }
-  );
+    );
 
   app.post<{ Body: EvidenceSearchBody }>("/v1/evidence/search", async (request, reply) => {
     const authenticated = await dependencies.auth.authenticate(request, reply);
@@ -549,6 +563,7 @@ export function registerEvidenceRoutes(
       result = await dependencies.evidence().searchEvidence({
         orgId: employee.orgId,
         employee,
+        authorization: await dependencies.auth.authorization(request),
         query,
         filters,
         limit,
