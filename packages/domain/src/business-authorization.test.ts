@@ -70,9 +70,13 @@ const allowed = (s = snapshot(), r = resource()) => canReadResource(s, r).allowe
 
 describe("business authorization", () => {
   it("requires_one_complete_grant_per_scope_item", () => {
-    expect(
-      allowed(snapshot([grant({ categoryIds: ["vip"] }), grant({ stores: fixed("B") })]))
-    ).toBe(false);
+    const splitCategoryAndScope = snapshot([
+      grant({ categoryIds: ["memo"] }),
+      grant({ id: "other", stores: fixed("B") })
+    ]);
+    for (const entry of splitCategoryAndScope.grants)
+      expect(validateBusinessGrant(entry, splitCategoryAndScope.categories)).toEqual([]);
+    expect(allowed(splitCategoryAndScope)).toBe(false);
     const s = snapshot([
       grant(),
       grant({ id: "two", stores: fixed("B"), dimensions: { project: fixed("Y") } })

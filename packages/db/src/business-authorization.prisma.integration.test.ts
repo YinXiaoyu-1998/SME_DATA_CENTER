@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canReadResource, type BusinessGrant } from "@smedc/domain";
+import { canReadResource, validateBusinessGrant, type BusinessGrant } from "@smedc/domain";
 import { createDatabaseAdapter } from "./adapter.js";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
 import { compileAuthorizedScope } from "./business-authorization-sql.js";
@@ -183,8 +183,15 @@ suite("business authorization Prisma foundation", () => {
     );
     expect(actual.map((row) => row.id).sort()).toEqual(expected);
     expect(expected).toEqual(["AX", "BY", "shared", "vip"]);
+    const splitCategoryAndScope = {
+      ...snapshot,
+      grants: [{ ...snapshot.grants[0]!, categoryIds: ["memo"] }, snapshot.grants[1]!]
+    };
+    for (const entry of splitCategoryAndScope.grants)
+      expect(validateBusinessGrant(entry, splitCategoryAndScope.categories)).toEqual([]);
     // Same rows, representative refusal boundaries; SQL must never turn a denial into an empty-scope grant.
     for (const candidate of [
+      splitCategoryAndScope,
       { ...snapshot, disabled: true },
       { ...snapshot, orgId: "other" },
       { ...snapshot, mode: "preparing" as const },
@@ -463,5 +470,118 @@ suite("business authorization Prisma foundation", () => {
         }
       })
     ).rejects.toThrow();
+  });
+  it("explicitly enriches retained source tuples for a newly required dimension without narrowing or content changes", async () => {
+    const sourceDocumentId = `${orgId}_source`;
+    const before = await prisma.businessResource.findUniqueOrThrow({
+      where: { orgId_id: { orgId, id: "fragment" } }
+    });
+    const original = (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!;
+    expect(
+      canReadResource(await repository.loadAuthorizationSnapshot(actorId, orgId), original).allowed
+    ).toBe(true);
+    await write(repository.defineDimension({ ...context(), id: "region", name: "Region" }));
+    for (const id of ["North", "South"])
+      await write(
+        repository.defineDimensionValue({ ...context(), dimensionId: "region", id, name: id })
+      );
+    await write(
+      repository.configureCategory({
+        ...context(),
+        id: "sales",
+        key: "business",
+        name: "Sales",
+        kind: "fixed",
+        confidentialityLevel: 1,
+        ownerships: ["store"],
+        requiredDimensionIds: ["project", "region"]
+      })
+    );
+    let snapshot = await repository.loadAuthorizationSnapshot(actorId, orgId);
+    expect(
+      canReadResource(
+        snapshot,
+        (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!
+      ).allowed
+    ).toBe(false);
+    await write(
+      repository.replaceGrants({
+        ...context(),
+        employeeId: actorId,
+        grants: [
+          {
+            ...snapshot.grants[0]!,
+            dimensions: { project: { kind: "all" }, region: { kind: "all" } }
+          }
+        ]
+      })
+    );
+    snapshot = await repository.loadAuthorizationSnapshot(actorId, orgId);
+    const missing = compileAuthorizedScope(snapshot, "resource");
+    expect(canReadResource(snapshot, original).allowed).toBe(false);
+    expect(
+      await prisma.$queryRawUnsafe(
+        `SELECT r.id FROM business_resources r WHERE r.id = 'fragment' AND ${missing.sql}`,
+        ...missing.params
+      )
+    ).toEqual([]);
+    const enriched = original.scopes.map((scope) => ({
+      ...scope,
+      dimensions: { ...scope.dimensions, region: scope.storeName === "A" ? "North" : "South" }
+    }));
+    const input = {
+      ...context(),
+      id: "fragment",
+      kind: "source_fragment" as const,
+      resourceKey: "original-successful-parse",
+      sourceDocumentId,
+      categoryId: "sales",
+      valid: true,
+      scopes: enriched
+    };
+    await write(repository.putResource(input));
+    const after = await prisma.businessResource.findUniqueOrThrow({
+      where: { orgId_id: { orgId, id: "fragment" } }
+    });
+    expect(after.contentVersion).toBe(before.contentVersion);
+    expect(after.authorizationVersion).toBe(before.authorizationVersion + 1n);
+    const requirement = (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!;
+    expect(requirement.scopes).toEqual(expect.arrayContaining(enriched));
+    expect(requirement.scopes).toHaveLength(original.scopes.length);
+    snapshot = await repository.loadAuthorizationSnapshot(actorId, orgId);
+    expect(canReadResource(snapshot, requirement).allowed).toBe(true);
+    const compiled = compileAuthorizedScope(snapshot, "resource");
+    const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT r.id FROM business_resources r WHERE ${compiled.sql}`,
+      ...compiled.params
+    );
+    const requirements = await repository.listResourceReadRequirements(orgId);
+    expect(rows.map((row) => row.id).sort()).toEqual(
+      requirements
+        .filter((row) => canReadResource(snapshot, row.requirement).allowed)
+        .map((row) => row.id)
+        .sort()
+    );
+    for (const scopes of [
+      [enriched[0]!],
+      [enriched[0]!, enriched[0]!],
+      enriched.map((scope, index) =>
+        index === 0 ? { ...scope, dimensions: { ...scope.dimensions, project: "Y" } } : scope
+      ),
+      enriched.map((scope, index) => (index === 0 ? { ...scope, storeName: "a" } : scope)),
+      [...enriched, enriched[0]!]
+    ])
+      await expect(repository.putResource({ ...input, ...context(), scopes })).rejects.toThrow(
+        "SOURCE_REQUIREMENTS_IMMUTABLE"
+      );
+    await expect(repository.putResource({ ...input, ...context(), valid: false })).rejects.toThrow(
+      "SOURCE_REQUIREMENTS_IMMUTABLE"
+    );
+    expect((await repository.loadAuthorizationSnapshot(actorId, orgId)).authorizationVersion).toBe(
+      version
+    );
+    expect(
+      (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!.scopes
+    ).toEqual(expect.arrayContaining(enriched));
   });
 });

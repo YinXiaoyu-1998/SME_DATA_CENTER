@@ -95,6 +95,26 @@ function canonicalScopes(scopes: ResourceReadRequirement["scopes"]): string[] {
     )
     .sort();
 }
+function preservesSourceTuples(
+  previous: ResourceReadRequirement["scopes"],
+  enriched: ResourceReadRequirement["scopes"]
+): boolean {
+  if (previous.length !== enriched.length) return false;
+  // Match occurrences, not independent dimension sets: no tuple may disappear or be duplicated.
+  const unmatched = [...enriched];
+  return previous.every((scope) => {
+    const index = unmatched.findIndex(
+      (candidate) =>
+        candidate.enterpriseKey === scope.enterpriseKey &&
+        candidate.ownership === scope.ownership &&
+        candidate.storeName === scope.storeName &&
+        Object.entries(scope.dimensions).every(([id, value]) => candidate.dimensions[id] === value)
+    );
+    if (index < 0) return false;
+    unmatched.splice(index, 1);
+    return true;
+  });
+}
 export function createBusinessAuthorizationRepository({ prisma }: { prisma: PrismaClient }) {
   async function loadAuthorizationSnapshot(
     employeeId: string,
@@ -509,19 +529,18 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
           input.kind === "source_fragment" &&
           (before.categoryId !== input.categoryId ||
             before.valid !== input.valid ||
-            !isDeepStrictEqual(
-              canonicalScopes(resourceRequirement(before).scopes),
-              canonicalScopes(input.scopes)
-            ))
+            !preservesSourceTuples(resourceRequirement(before).scopes, input.scopes))
         )
           throw new Error("SOURCE_REQUIREMENTS_IMMUTABLE");
         const contentChanged =
           before &&
           (before.valid !== input.valid ||
-            !isDeepStrictEqual(
-              canonicalScopes(resourceRequirement(before).scopes),
-              canonicalScopes(input.scopes)
-            ));
+            // Source enrichment only adds required authorization metadata; source content and association stay intact.
+            (input.kind !== "source_fragment" &&
+              !isDeepStrictEqual(
+                canonicalScopes(resourceRequirement(before).scopes),
+                canonicalScopes(input.scopes)
+              )));
         const data = {
           categoryId: input.categoryId,
           valid: input.valid,
