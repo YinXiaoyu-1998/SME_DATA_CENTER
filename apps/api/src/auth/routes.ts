@@ -1,3 +1,8 @@
+import {
+  BROWSER_SESSION_COOKIE,
+  BROWSER_SESSION_SECONDS,
+  type BrowserSessions
+} from "./browser-session.js";
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
@@ -64,6 +69,7 @@ type OfficialAuthCore = Pick<
 export interface OfficialAuthRoutesOptions {
   auth: OfficialAuthCore;
   publicOrigin: string;
+  browserSessions?: BrowserSessions;
 }
 
 interface FormBody {
@@ -240,8 +246,30 @@ export function registerOfficialAuthRoutes(
         })
       );
     }
+    const cookies = [clearCookie(DEVICE_VERIFY_COOKIE)];
+    if (options.browserSessions) {
+      const browserSecret = await options.browserSessions.issue(
+        result,
+        cookieValue(request.headers.cookie, BROWSER_SESSION_COOKIE),
+        audit
+      );
+      if (!browserSecret) {
+        return sendHtml(
+          reply.code(401).header("set-cookie", cookies),
+          renderSafeMessagePage({
+            nonce: nonce(),
+            title: { zh: "请重新登录", en: "Please sign in again" },
+            message: {
+              zh: "登录状态已变化，请返回 Agent 重新登录。",
+              en: "Your sign-in status changed. Return to your agent and sign in again."
+            }
+          })
+        );
+      }
+      cookies.push(hostOnlyCookie(BROWSER_SESSION_COOKIE, browserSecret, BROWSER_SESSION_SECONDS));
+    }
     return sendHtml(
-      reply.header("set-cookie", clearCookie(DEVICE_VERIFY_COOKIE)),
+      reply.header("set-cookie", cookies.length === 1 ? cookies[0]! : cookies),
       renderSafeMessagePage({
         nonce: nonce(),
         title: { zh: "登录完成", en: "Sign-in complete" },

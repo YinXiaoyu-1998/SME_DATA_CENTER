@@ -293,7 +293,8 @@ describe("AuthCore", () => {
       ok: true,
       identityId: "identity-1",
       employeeId: "employee-1",
-      orgId: "org-1"
+      orgId: "org-1",
+      credentialFingerprint: hashOpaqueSecret(passwordHash)
     });
     expect(repository.resetCalls).toBe(1);
     expect(repository.securityEvents).toContainEqual(

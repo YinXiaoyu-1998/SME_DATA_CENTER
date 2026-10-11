@@ -23,7 +23,8 @@ function authFake() {
       ok: true as const,
       identityId: "identity_1",
       employeeId: "employee_1",
-      orgId: "org_1"
+      orgId: "org_1",
+      credentialFingerprint: "a".repeat(64)
     })),
     issueDeviceAuthorization: vi.fn(async () => ({
       deviceCode: "eh_dc_devicecode",
