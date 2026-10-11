@@ -9,17 +9,14 @@ import JSZip from "jszip";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { enqueueStorageGarbage, storageGarbageKeyHash } from "@smedc/db";
 import type { StorageAdapter } from "@smedc/storage";
-import { createPrismaLedgerArtifactAccess } from "@smedc/ledger-archive";
 import {
-  createPrismaLedgerDeliveryRepository,
+  ledgerBundleContentCurrent,
   ledgerBundleEntriesEqual,
   capturedLedgerBundleEntries,
   parseLedgerBundleManifest,
-  readyCapturedLedgerBundleEntries,
   type LedgerBundleEntry,
   type LedgerBundleLease,
-  type LedgerBundleRecord,
-  type LedgerDeliveryEmployee
+  type LedgerBundleRecord
 } from "@smedc/ledger-archive/delivery";
 
 export interface LedgerBundleArchive {
@@ -253,16 +250,30 @@ export function createPrismaLedgerBundleArchive({
   storage: StorageAdapter;
   now?: () => Date;
 }): LedgerBundleArchive {
-  const delivery = createPrismaLedgerDeliveryRepository({ prisma, storage });
   async function selectBundle(record: LedgerBundleRecord) {
-    const employee = await prisma.employee.findFirst({
-      where: { id: record.employeeId, orgId: record.orgId, disabled: false }
-    });
-    if (!employee) error("LEDGER_PDF_UNAVAILABLE");
-    return readyCapturedLedgerBundleEntries(
-      await delivery.facts(employee as LedgerDeliveryEmployee, record.manifest.scope),
-      record.manifest.entries
-    );
+    const entries = record.manifest.entries;
+    if (
+      !(await prisma.$transaction((tx) => ledgerBundleContentCurrent(tx, record.orgId, entries), {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: 30000
+      }))
+    )
+      error("LEDGER_PDF_BUNDLE_STALE");
+    for (let index = 0; index < entries.length; index += 4) {
+      const checks = await Promise.allSettled(
+        entries.slice(index, index + 4).map(async (entry) => {
+          const object = await storage.headObject(entry.objectKey);
+          if (
+            object.state !== "found" ||
+            object.size !== entry.byteSize ||
+            object.hash !== entry.checksumSha256
+          )
+            error("LEDGER_PDF_BUNDLE_STALE");
+        })
+      );
+      for (const check of checks) if (check.status === "rejected") throw check.reason;
+    }
+    return entries;
   }
   async function fenced<T>(
     lease: LedgerBundleLease,
@@ -331,55 +342,7 @@ export function createPrismaLedgerBundleArchive({
         await tx.$queryRaw(
           Prisma.sql`SELECT id FROM organizations WHERE id=${record.orgId} FOR UPDATE`
         );
-        await tx.$queryRaw(
-          Prisma.sql`SELECT id FROM employees WHERE id=${record.employeeId} AND org_id=${record.orgId} FOR UPDATE`
-        );
-        const employee = await tx.employee.findFirst({
-          where: { id: record.employeeId, orgId: record.orgId, disabled: false }
-        });
-        if (!employee) return false;
-        const dependencies = [
-          ...new Map(
-            entries
-              .flatMap((entry) => entry.sources)
-              .map((source) => [JSON.stringify(source), source])
-          ).values()
-        ];
-        if (dependencies.some((source) => source.confidentialityLevel > employee.clearance))
-          return false;
-        if (
-          !(await createPrismaLedgerArtifactAccess({ prisma: tx }).sourcesAreCurrent({
-            orgId: record.orgId,
-            sources: dependencies,
-            tx
-          }))
-        )
-          return false;
-        const partitionIds = entries.map((entry) => entry.partitionId);
-        await tx.$queryRaw(
-          Prisma.sql`SELECT id FROM ledger_pdf_partitions WHERE org_id=${record.orgId} AND id IN (${Prisma.join(partitionIds)}) ORDER BY id FOR UPDATE`
-        );
-        const pointers = await tx.ledgerPdfPartition.findMany({
-          where: { orgId: record.orgId, id: { in: partitionIds } }
-        });
-        const byId = new Map(pointers.map((pointer) => [pointer.id, pointer]));
-        for (const entry of entries) {
-          const pointer = byId.get(entry.partitionId);
-          if (
-            !pointer ||
-            pointer.orgId !== entry.key.orgId ||
-            pointer.storeName !== entry.key.storeName ||
-            pointer.purchaseDate.toISOString().slice(0, 10) !== entry.key.purchaseDate ||
-            pointer.currentObjectKey !== entry.objectKey ||
-            pointer.publishedGeneration !== entry.generation ||
-            pointer.dataRevision !== entry.dataRevision ||
-            pointer.publishedDataRevision !== entry.dataRevision ||
-            pointer.publishedSourceFingerprint !== entry.sourceFingerprint ||
-            pointer.checksumSha256 !== entry.checksumSha256 ||
-            Number(pointer.byteSize) !== entry.byteSize
-          )
-            return false;
-        }
+        if (!(await ledgerBundleContentCurrent(tx, record.orgId, entries))) return false;
         if (
           !(await tx.processingRun.findFirst({
             where: {
@@ -396,7 +359,6 @@ export function createPrismaLedgerBundleArchive({
           where: { id: record.requestId },
           data: {
             status: "succeeded",
-            scope: { ...record.manifest, entries } as unknown as Prisma.InputJsonValue,
             zipObjectKey: key,
             zipExpiresAt: expiresAt,
             errorCode: null

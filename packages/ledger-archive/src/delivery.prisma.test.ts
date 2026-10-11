@@ -137,8 +137,7 @@ describe("Prisma delivery current data boundaries", () => {
     };
     f.prisma.ledgerArtifactRequest.findFirst.mockResolvedValue(request);
     expect(await f.repository.request(employee, "empty")).toMatchObject({
-      allowEmptyRequest: true,
-      visibleEmptyKeys: []
+      allowEmptyRequest: true
     });
     expect(
       await f.repository.request({ ...employee, id: "admin", role: "admin" }, "empty")
@@ -170,19 +169,21 @@ describe("Prisma delivery current data boundaries", () => {
       ]
     });
     expect(await f.repository.request(employee, "empty")).toMatchObject({
-      visibleEmptyKeys: [key]
+      items: [{ key, status: "empty" }]
     });
     expect(
       await f.repository.request({ ...employee, id: "admin", role: "admin" }, "empty")
-    ).toMatchObject({ visibleEmptyKeys: [] });
+    ).toMatchObject({ items: [{ key, status: "empty" }] });
     vi.mocked(readLedgerSourceMetadata).mockResolvedValue({
       sourceFingerprint: hash,
       rowCount: 1,
       sources: [photo]
     });
-    expect(await f.repository.request(employee, "empty")).toMatchObject({ visibleEmptyKeys: [] });
+    expect(await f.repository.request(employee, "empty")).toMatchObject({
+      items: [{ key, status: "empty" }]
+    });
   });
-  it("looks up replacements only for a readable item and an owner-authorized employee request", async () => {
+  it("looks up only owner-authorized replacement requests independently of source visibility", async () => {
     const f = fixture();
     const item = {
       partitionId: "p",
@@ -222,9 +223,9 @@ describe("Prisma delivery current data boundaries", () => {
       sources: [ledger, photo]
     });
     expect(await f.repository.request(employee, "old")).toMatchObject({
-      items: [{ latestRequest: null }]
+      items: [{ latestRequest: { requestId: "replacement", status: "queued" } }]
     });
-    expect(f.prisma.ledgerArtifactRequestItem.findFirst).toHaveBeenCalledTimes(1);
+    expect(f.prisma.ledgerArtifactRequestItem.findFirst).toHaveBeenCalledTimes(2);
   });
   it("checks current account plus every published dependency without loading business payloads", async () => {
     const f = fixture();
@@ -262,6 +263,24 @@ describe("Prisma delivery current data boundaries", () => {
       await f.repository.facts(employee, { storeNames: [key.storeName], dates: [key.purchaseDate] })
     ).toEqual([]);
     expect(f.storage.headObject).not.toHaveBeenCalled();
+  });
+  it("rejects an explicit complete scope when an existing PDF is not authorized", async () => {
+    const f = fixture();
+    vi.mocked(readLedgerSourceMetadata).mockResolvedValue({
+      rowCount: 1,
+      sourceFingerprint: hash,
+      sources: [ledger, photo]
+    });
+    expect(
+      await f.repository.facts(employee, { storeNames: [key.storeName], dates: [key.purchaseDate] })
+    ).toEqual([]);
+    await expect(
+      f.repository.facts(
+        employee,
+        { storeNames: [key.storeName], dates: [key.purchaseDate] },
+        { requireComplete: true }
+      )
+    ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");
   });
   it("pending authorization includes a supplier only when the current catalog actually supplies a unique value", async () => {
     const f = fixture();
@@ -324,6 +343,42 @@ describe("Prisma delivery current data boundaries", () => {
         })
       )[0]?.status
     ).toBe("missing");
+  });
+  it("rechecks current account permissions for all captured PDFs at acceptance", async () => {
+    const f = fixture();
+    const create = vi.fn();
+    Object.assign(f.tx, { ledgerArtifactRequest: { findUnique: vi.fn(async () => null), create } });
+    const entry = {
+      key,
+      partitionId: "p",
+      generation: 1,
+      dataRevision: 1,
+      sourceFingerprint: hash,
+      objectKey: "existing.pdf",
+      checksumSha256: hash,
+      byteSize: 10,
+      sources: [ledger, photo]
+    };
+    await expect(
+      f.repository.reserveBundle({
+        employee: { ...employee, clearance: 3 },
+        manifest: {
+          version: 1,
+          scope: { storeNames: [key.storeName], dates: [key.purchaseDate] },
+          entries: [entry]
+        },
+        idempotencyKey: "current",
+        fingerprint: "current"
+      })
+    ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");
+    expect(create).not.toHaveBeenCalled();
+  });
+  it("uses the account state in the current authorization snapshot for task management", async () => {
+    const f = fixture();
+    f.prisma.employee.findFirst
+      .mockResolvedValueOnce(employee)
+      .mockResolvedValueOnce({ ...employee, disabled: true });
+    expect(await f.repository.currentEmployee(employee)).toBeNull();
   });
   it("reserves one bundle per opaque key and rejects collisions across actor or scope", async () => {
     const f = fixture();

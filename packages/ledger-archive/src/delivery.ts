@@ -65,7 +65,12 @@ export type LedgerBundleRecord = {
 };
 export interface LedgerDeliveryRepository {
   currentEmployee(employee: LedgerDeliveryEmployee): Promise<LedgerDeliveryEmployee | null>;
-  facts(employee: LedgerDeliveryEmployee, scope: LedgerCoverageScope): Promise<LedgerPdfFact[]>;
+  facts(
+    employee: LedgerDeliveryEmployee,
+    scope: LedgerCoverageScope,
+    options?: { requireComplete?: boolean }
+  ): Promise<LedgerPdfFact[]>;
+  auditDenied?(employee: LedgerDeliveryEmployee, requestId: string, code: string): Promise<void>;
   reserveBundle(input: {
     employee: LedgerDeliveryEmployee;
     manifest: LedgerBundleManifest;
@@ -138,7 +143,7 @@ export function ledgerBundleEntriesEqual(a: LedgerBundleEntry[], b: LedgerBundle
     ]);
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
-/** The captured identities are immutable; only their published generations may advance. */
+/** Both identity and content references are immutable after acceptance. */
 export function capturedLedgerBundleEntries(
   entries: LedgerBundleEntry[],
   captured: LedgerBundleEntry[]
@@ -149,7 +154,8 @@ export function capturedLedgerBundleEntries(
     const current = byKey.get(partitionIdentity(original.key));
     if (!current || current.partitionId !== original.partitionId)
       return fail("LEDGER_PDF_UNAVAILABLE");
-    return current;
+    if (!ledgerBundleEntriesEqual([current], [original])) return fail("LEDGER_PDF_BUNDLE_STALE");
+    return original;
   });
 }
 export function readyCapturedLedgerBundleEntries(
@@ -278,7 +284,9 @@ export function createLedgerPdfDelivery({
     }) {
       const current = await employee(input.employee);
       const scope = parseLedgerScope(input.scope);
-      const entries = readyLedgerBundleEntries(await repository.facts(current, scope));
+      const entries = readyLedgerBundleEntries(
+        await repository.facts(current, scope, { requireComplete: true })
+      );
       return repository.reserveBundle({
         employee: current,
         manifest: { version: 1, scope, entries },
@@ -290,20 +298,7 @@ export function createLedgerPdfDelivery({
       const current = await employee(input.employee);
       const request = await repository.request(current, input.requestId);
       if (!request) return fail("LEDGER_PDF_UNAVAILABLE");
-      const facts = await repository.facts(current, request.scope);
-      const visible = new Set(
-        [...facts.map((f) => f.key), ...(request.visibleEmptyKeys ?? [])].map(partitionIdentity)
-      );
-      const items = request.items.filter((item) => visible.has(partitionIdentity(item.key)));
-      if (request.kind === "refresh" && !items.length && !request.allowEmptyRequest)
-        return fail("LEDGER_PDF_UNAVAILABLE");
-      const bundleFacts = request.bundle
-        ? request.bundle.manifest.entries.map((e) => {
-            const fact = facts.find((f) => partitionIdentity(f.key) === partitionIdentity(e.key));
-            if (!fact) return fail("LEDGER_PDF_UNAVAILABLE");
-            return fact;
-          })
-        : facts;
+      const items = request.items;
       const partitions: {
         storeName: string;
         purchaseDate: string;
@@ -312,7 +307,11 @@ export function createLedgerPdfDelivery({
         latestRequest?: LedgerRequestRef;
       }[] =
         request.kind === "download"
-          ? bundleFacts.map(publicFact)
+          ? (request.bundle?.manifest.entries ?? []).map((e) => ({
+              storeName: e.key.storeName,
+              purchaseDate: e.key.purchaseDate,
+              status: request.status
+            }))
           : items.map((i) => ({
               storeName: i.key.storeName,
               purchaseDate: i.key.purchaseDate,
@@ -342,52 +341,58 @@ export function createLedgerPdfDelivery({
       };
     },
     async issueLedgerBundleUrl(input: { employee: LedgerDeliveryEmployee; requestId: string }) {
-      const current = await employee(input.employee);
-      const request = await repository.request(current, input.requestId);
-      const bundle = request?.bundle;
-      if (!bundle) return fail("LEDGER_PDF_UNAVAILABLE");
-      if (
-        bundle.status !== "succeeded" ||
-        !bundle.zipObjectKey ||
-        !bundle.zipExpiresAt ||
-        bundle.zipExpiresAt <= now()
-      )
-        return fail(
-          bundle.status === "succeeded" ||
-            (bundle.status === "failed" && bundle.errorCode === "LEDGER_PDF_BUNDLE_STALE")
-            ? "LEDGER_PDF_BUNDLE_STALE"
-            : "LEDGER_PDF_NOT_READY"
+      try {
+        const current = await employee(input.employee);
+        const request = await repository.request(current, input.requestId);
+        const bundle = request?.bundle;
+        if (!bundle) return fail("LEDGER_PDF_UNAVAILABLE");
+        if (
+          bundle.status !== "succeeded" ||
+          !bundle.zipObjectKey ||
+          !bundle.zipExpiresAt ||
+          bundle.zipExpiresAt <= now()
+        )
+          return fail(
+            bundle.status === "succeeded" ||
+              (bundle.status === "failed" && bundle.errorCode === "LEDGER_PDF_BUNDLE_STALE")
+              ? "LEDGER_PDF_BUNDLE_STALE"
+              : "LEDGER_PDF_NOT_READY"
+          );
+        const facts = await repository.facts(current, bundle.manifest.scope);
+        if (!facts.length) return fail("LEDGER_PDF_UNAVAILABLE");
+        const entries = readyCapturedLedgerBundleEntries(facts, bundle.manifest.entries);
+        if (!ledgerBundleEntriesEqual(entries, bundle.manifest.entries))
+          return fail("LEDGER_PDF_BUNDLE_STALE");
+        if ((await storage.headObject(bundle.zipObjectKey)).state !== "found")
+          return fail("LEDGER_PDF_BUNDLE_STALE");
+        const expiresInSeconds = Math.min(
+          900,
+          Math.floor((bundle.zipExpiresAt.getTime() - now().getTime()) / 1000)
         );
-      const facts = await repository.facts(current, bundle.manifest.scope);
-      if (!facts.length) return fail("LEDGER_PDF_UNAVAILABLE");
-      const entries = readyCapturedLedgerBundleEntries(facts, bundle.manifest.entries);
-      if (!ledgerBundleEntriesEqual(entries, bundle.manifest.entries))
-        return fail("LEDGER_PDF_BUNDLE_STALE");
-      if ((await storage.headObject(bundle.zipObjectKey)).state !== "found")
-        return fail("LEDGER_PDF_BUNDLE_STALE");
-      const expiresInSeconds = Math.min(
-        900,
-        Math.floor((bundle.zipExpiresAt.getTime() - now().getTime()) / 1000)
-      );
-      if (expiresInSeconds < 1) return fail("LEDGER_PDF_BUNDLE_STALE");
-      const downloadUrl = await storage.createDownloadUrl(bundle.zipObjectKey, {
-        expiresInSeconds,
-        downloadFileName: "台账.zip"
-      });
-      // Recheck after signing so concurrent account/source changes cannot issue a new usable response.
-      const fresh = await employee(current);
-      const freshFacts = await repository.facts(fresh, bundle.manifest.scope);
-      if (!freshFacts.length) return fail("LEDGER_PDF_UNAVAILABLE");
-      const latest = readyCapturedLedgerBundleEntries(freshFacts, bundle.manifest.entries);
-      if (!ledgerBundleEntriesEqual(latest, bundle.manifest.entries))
-        return fail("LEDGER_PDF_BUNDLE_STALE");
-      return {
-        requestId: input.requestId,
-        downloadUrl,
-        expiresAt: new Date(
-          Math.min(now().getTime() + expiresInSeconds * 1000, bundle.zipExpiresAt.getTime())
-        ).toISOString()
-      };
+        if (expiresInSeconds < 1) return fail("LEDGER_PDF_BUNDLE_STALE");
+        const downloadUrl = await storage.createDownloadUrl(bundle.zipObjectKey, {
+          expiresInSeconds,
+          downloadFileName: "台账.zip"
+        });
+        // Recheck after signing so concurrent account/source changes cannot issue a new usable response.
+        const fresh = await employee(current);
+        const freshFacts = await repository.facts(fresh, bundle.manifest.scope);
+        if (!freshFacts.length) return fail("LEDGER_PDF_UNAVAILABLE");
+        const latest = readyCapturedLedgerBundleEntries(freshFacts, bundle.manifest.entries);
+        if (!ledgerBundleEntriesEqual(latest, bundle.manifest.entries))
+          return fail("LEDGER_PDF_BUNDLE_STALE");
+        return {
+          requestId: input.requestId,
+          downloadUrl,
+          expiresAt: new Date(
+            Math.min(now().getTime() + expiresInSeconds * 1000, bundle.zipExpiresAt.getTime())
+          ).toISOString()
+        };
+      } catch (cause) {
+        if (cause instanceof LedgerDeliveryError && cause.code === "LEDGER_PDF_UNAVAILABLE")
+          await repository.auditDenied?.(input.employee, input.requestId, cause.code);
+        throw cause;
+      }
     }
   };
 }
@@ -446,6 +451,63 @@ export function parseLedgerBundleManifest(value: Prisma.JsonValue): LedgerBundle
   return { version: 1, scope, entries };
 }
 
+/** Internal worker check: fixed IDs and content, independent of requester grants. */
+export async function ledgerBundleContentCurrent(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  entries: LedgerBundleEntry[]
+): Promise<boolean> {
+  if (!entries.length || entries.some((e) => e.key.orgId !== orgId)) return false;
+  await tx.$queryRaw(
+    Prisma.sql`SELECT org_id FROM business_authorization_states WHERE org_id=${orgId} FOR SHARE`
+  );
+  const ids = entries.map((e) => e.partitionId);
+  await tx.$queryRaw(
+    Prisma.sql`SELECT id FROM ledger_pdf_partitions WHERE org_id=${orgId} AND id IN (${Prisma.join(ids)}) ORDER BY id FOR SHARE`
+  );
+  const pointers = await tx.ledgerPdfPartition.findMany({ where: { orgId, id: { in: ids } } });
+  const byId = new Map(pointers.map((p) => [p.id, p]));
+  for (const entry of entries) {
+    const p = byId.get(entry.partitionId);
+    if (
+      !p ||
+      p.orgId !== entry.key.orgId ||
+      p.storeName !== entry.key.storeName ||
+      p.purchaseDate.toISOString().slice(0, 10) !== entry.key.purchaseDate ||
+      p.currentObjectKey !== entry.objectKey ||
+      p.publishedGeneration !== entry.generation ||
+      p.dataRevision !== entry.dataRevision ||
+      p.publishedDataRevision !== entry.dataRevision ||
+      p.publishedSourceFingerprint !== entry.sourceFingerprint ||
+      p.checksumSha256 !== entry.checksumSha256 ||
+      Number(p.byteSize) !== entry.byteSize
+    )
+      return false;
+    const metadata = await readLedgerSourceMetadata(tx, entry.key);
+    if (metadata.sourceFingerprint !== entry.sourceFingerprint) return false;
+  }
+  return createPrismaLedgerArtifactAccess({ prisma: tx }).sourcesAreCurrent({
+    orgId,
+    sources: [
+      ...new Map(
+        entries
+          .flatMap((e) => e.sources)
+          .map((source) => [
+            JSON.stringify([
+              source.sourceDocumentId,
+              source.kind,
+              source.checksumSha256,
+              source.contentVersion,
+              source.businessContentVersion
+            ]),
+            source
+          ])
+      ).values()
+    ],
+    tx
+  });
+}
+
 export function createPrismaLedgerDeliveryRepository({
   prisma,
   storage,
@@ -462,14 +524,17 @@ export function createPrismaLedgerDeliveryRepository({
     const current = await prisma.employee.findFirst({
       where: { id: employee.id, orgId: employee.orgId, disabled: false }
     });
-    return current
-      ? {
+    if (!current) return null;
+    const authorization = await currentLedgerAuthorization(prisma, employee.id, employee.orgId);
+    return authorization.disabled
+      ? null
+      : {
           ...employee,
-          role: current.role,
-          clearance: current.clearance,
-          authorization: await currentLedgerAuthorization(prisma, employee.id, employee.orgId)
-        }
-      : null;
+          role: authorization.role,
+          clearance: authorization.clearance,
+          disabled: authorization.disabled,
+          authorization
+        };
   }
   async function readFact(
     tx: Prisma.TransactionClient,
@@ -618,7 +683,20 @@ export function createPrismaLedgerDeliveryRepository({
   }
   return {
     currentEmployee,
-    async facts(employee, scope) {
+    async auditDenied(employee, requestId, code) {
+      await prisma.auditLog.create({
+        data: {
+          orgId: employee.orgId,
+          actorEmployeeId: employee.id,
+          action: "ledger_pdf_download.url_denied",
+          targetType: "ledger_artifact_request",
+          targetId: requestId,
+          result: "denied",
+          metadata: { code }
+        }
+      });
+    },
+    async facts(employee, scope, options) {
       if (!employee.authorization) {
         const current = await currentEmployee(employee);
         if (!current) return [];
@@ -660,6 +738,8 @@ export function createPrismaLedgerDeliveryRepository({
             },
             { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000 }
           );
+          if (options?.requireComplete && results.filter(Boolean).length !== batch.length)
+            return fail("LEDGER_PDF_UNAVAILABLE");
           for (const fact of results) if (fact) facts.push(fact);
           if (facts.length > LEDGER_SCOPE_MAX_PARTITIONS)
             return fail("LEDGER_SCOPE_LIMIT_EXCEEDED");
@@ -680,6 +760,28 @@ export function createPrismaLedgerDeliveryRepository({
           if (existing.requestFingerprint !== fingerprint)
             return fail("LEDGER_IDEMPOTENCY_CONFLICT");
           return { requestId: existing.id, status: existing.status };
+        }
+        // Permission mutations serialize on this state row; recheck every captured PDF at acceptance.
+        await tx.$queryRaw(
+          Prisma.sql`SELECT org_id FROM business_authorization_states WHERE org_id=${employee.orgId} FOR SHARE`
+        );
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM employees WHERE org_id=${employee.orgId} AND id=${employee.id} FOR SHARE`
+        );
+        const authorization = await currentLedgerAuthorization(tx, employee.id, employee.orgId);
+        if (authorization.disabled) return fail("LEDGER_PDF_UNAVAILABLE");
+        for (const entry of manifest.entries) {
+          if (
+            entry.key.orgId !== employee.orgId ||
+            !(await canReadLedgerPdf(
+              tx,
+              authorization,
+              entry.key,
+              entry.sources,
+              entry.partitionId
+            ))
+          )
+            return fail("LEDGER_PDF_UNAVAILABLE");
         }
         const request = await tx.ledgerArtifactRequest.create({
           data: {
@@ -718,7 +820,6 @@ export function createPrismaLedgerDeliveryRepository({
       const manifest =
         request.kind === "download" ? parseLedgerBundleManifest(request.scope) : null;
       const scope = manifest?.scope ?? parseLedgerScope(request.scope);
-      const visibleEmptyKeys: LedgerPartitionKey[] = [];
       const items = [];
       for (const i of request.items) {
         const key = {
@@ -726,36 +827,8 @@ export function createPrismaLedgerDeliveryRepository({
           storeName: i.partition.storeName,
           purchaseDate: i.partition.purchaseDate.toISOString().slice(0, 10)
         };
-        if (i.status === "empty" && request.actorEmployeeId === employee.id) {
-          const empty = await prisma.$transaction(
-            async (tx) => {
-              const metadata = await readLedgerSourceMetadata(tx, key);
-              const pointer = await tx.ledgerPdfPartition.findUnique({
-                where: { id: i.partitionId },
-                include: { sources: true }
-              });
-              return (
-                metadata.rowCount === 0 &&
-                metadata.sources.length === 0 &&
-                pointer &&
-                pointer.rowCount === 0 &&
-                pointer.currentObjectKey === null &&
-                pointer.sources.length === 0 &&
-                pointer.publishedGeneration !== null &&
-                pointer.publishedGeneration >= i.generation &&
-                pointer.publishedDataRevision === pointer.dataRevision &&
-                pointer.publishedSourceFingerprint === metadata.sourceFingerprint
-              );
-            },
-            { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000 }
-          );
-          if (empty) visibleEmptyKeys.push(key);
-        }
         let latestRequest: LedgerRequestRef | null = null;
-        if (
-          i.status === "superseded" &&
-          (await prisma.$transaction((tx) => readFact(tx, key, employee)))
-        ) {
+        if (i.status === "superseded") {
           const latest = await prisma.ledgerArtifactRequestItem.findFirst({
             where: {
               orgId: employee.orgId,
@@ -781,7 +854,6 @@ export function createPrismaLedgerDeliveryRepository({
           request.kind === "refresh" &&
           request.actorEmployeeId === employee.id &&
           request.items.length === 0,
-        visibleEmptyKeys,
         status: request.status,
         scope,
         items,

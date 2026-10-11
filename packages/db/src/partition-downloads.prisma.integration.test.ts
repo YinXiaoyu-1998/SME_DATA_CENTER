@@ -63,7 +63,15 @@ suite("partition download persistence", () => {
       }
     });
   });
+  async function clearAuthorization() {
+    await prisma.businessResource.deleteMany({ where: { orgId } });
+    await prisma.businessGrant.deleteMany({ where: { orgId } });
+    await prisma.businessStore.deleteMany({ where: { orgId } });
+    await prisma.businessCategory.deleteMany({ where: { orgId } });
+    await prisma.businessAuthorizationState.deleteMany({ where: { orgId } });
+  }
   beforeEach(async () => {
+    await clearAuthorization();
     await prisma.storageGarbage.deleteMany({
       where: {
         OR: [
@@ -82,6 +90,7 @@ suite("partition download persistence", () => {
     });
   });
   afterAll(async () => {
+    await clearAuthorization();
     await prisma.storageGarbage.deleteMany({
       where: {
         OR: [
@@ -122,6 +131,161 @@ suite("partition download persistence", () => {
       }))
     });
   }
+  it("fixes A/B at submission, completes after B revocation, and authorizes the whole manifest only at link issuance", async () => {
+    await partitions(3);
+    await prisma.businessAuthorizationState.create({ data: { orgId, mode: "enabled" } });
+    await prisma.businessCategory.create({
+      data: {
+        orgId,
+        id: "download-business",
+        key: "business",
+        name: "Business",
+        kind: "fixed",
+        confidentialityLevel: 2,
+        allowStore: true,
+        allowGroup: false
+      }
+    });
+    await prisma.businessGrant.create({
+      data: {
+        orgId,
+        id: "download-grant",
+        employeeId: actor.id,
+        enterpriseKey: "synthetic",
+        ownership: "store",
+        categories: { create: { categoryId: "download-business" } }
+      }
+    });
+    for (let i = 0; i < 3; i++) {
+      await prisma.businessStore.create({
+        data: { orgId, enterpriseKey: "synthetic", name: `Store ${i}` }
+      });
+      await prisma.businessResource.create({
+        data: {
+          orgId,
+          id: `download-resource-${i}`,
+          kind: "structured",
+          resourceKey: `partition:download_part_${i}`,
+          categoryId: "download-business",
+          valid: true,
+          scopes: {
+            create: {
+              id: `download-scope-${i}`,
+              enterpriseKey: "synthetic",
+              ownership: "store",
+              storeName: `Store ${i}`
+            }
+          }
+        }
+      });
+    }
+    const grantStore = (i: number) =>
+      prisma.businessGrantStore.create({
+        data: {
+          orgId,
+          grantId: "download-grant",
+          enterpriseKey: "synthetic",
+          storeName: `Store ${i}`
+        }
+      });
+    await grantStore(0);
+    await grantStore(1);
+    const request = await repository.prepare(actor, scope, "fixed-a-b");
+    expect(request).toMatchObject({ partitionCount: 2, status: "queued" });
+    const before = (
+      await prisma.partitionDownloadRequest.findUniqueOrThrow({ where: { id: request.requestId } })
+    ).manifest;
+    expect(before).toMatchObject({
+      version: 1,
+      entries: [{ id: "download_part_0" }, { id: "download_part_1" }]
+    });
+    await prisma.businessGrantStore.delete({
+      where: { orgId_grantId_storeName: { orgId, grantId: "download-grant", storeName: "Store 1" } }
+    });
+    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 0 } });
+    await prisma.structuredPartition.updateMany({
+      where: { orgId },
+      data: { confidentialityLevel: 3 }
+    });
+    const lease = await leaseFor(request.requestId);
+    expect(await repository.markRunning(lease)).toMatchObject({
+      request: { status: "running" },
+      manifest: [{ id: "download_part_0" }, { id: "download_part_1" }]
+    });
+    const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/fixed.zip`;
+    await repository.registerCandidate(lease, objectKey);
+    expect(
+      await repository.publish(lease, {
+        objectKey,
+        byteSize: 100n,
+        checksumSha256: "b".repeat(64),
+        expiresAt: request.expiresAt
+      })
+    ).toBe(true);
+    expect(await repository.read(actor, request.requestId)).toMatchObject({ status: "succeeded" });
+    await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
+      code: "PARTITION_DOWNLOAD_FORBIDDEN"
+    });
+    expect(await repository.read(actor, request.requestId)).toMatchObject({ status: "succeeded" });
+    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 3 } });
+    const deniedAudit = vi.fn(async () => {});
+    const app = urlApp(repository, vi.fn(), deniedAudit);
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/v1/structured/partition-downloads/${request.requestId}/url`
+      });
+      expect(response.statusCode).toBe(403);
+      expect(deniedAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "url",
+          result: "denied",
+          errorCode: "PARTITION_DOWNLOAD_FORBIDDEN"
+        })
+      );
+    } finally {
+      await app.close();
+    }
+    await grantStore(1);
+    await grantStore(2);
+    expect((await repository.validateCurrent(actor, request.requestId)).manifest).toHaveLength(2);
+    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 0 } });
+    await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
+      code: "PARTITION_DOWNLOAD_FORBIDDEN"
+    });
+    expect(await repository.read(actor, request.requestId)).toMatchObject({ status: "succeeded" });
+    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 3 } });
+    expect((await repository.validateCurrent(actor, request.requestId)).request.status).toBe(
+      "succeeded"
+    );
+    expect(
+      (
+        await prisma.partitionDownloadRequest.findUniqueOrThrow({
+          where: { id: request.requestId }
+        })
+      ).manifest
+    ).toEqual(before);
+    await prisma.employee.create({
+      data: {
+        id: "download-other-admin",
+        orgId,
+        email: "other-admin@example.invalid",
+        displayName: "Other",
+        role: "admin",
+        clearance: 3
+      }
+    });
+    try {
+      await expect(
+        repository.read({ ...actor, id: "download-other-admin" }, request.requestId)
+      ).rejects.toMatchObject({ code: "PARTITION_DOWNLOAD_NOT_FOUND" });
+      await expect(
+        repository.validateCurrent({ ...actor, id: "download-other-admin" }, request.requestId)
+      ).rejects.toMatchObject({ code: "PARTITION_DOWNLOAD_NOT_FOUND" });
+    } finally {
+      await prisma.employee.delete({ where: { id: "download-other-admin" } });
+    }
+  });
   it("worker lease reclaim fences old uploads and publishes with the new exclusive owner", async () => {
     const body = Buffer.from("store,total\nSynthetic,1\n");
     await partitions(1, BigInt(body.length));
@@ -321,8 +485,8 @@ suite("partition download persistence", () => {
     expect(await prisma.partitionDownloadRequest.count({ where: { orgId } })).toBe(1);
     expect((await repository.prepare(actor, scope, "fresh")).requestId).not.toBe(request.requestId);
   });
-  it.each(["added", "deleted", "metadata"])(
-    "detects %s partitions in the full scope",
+  it.each(["deleted", "metadata"])(
+    "refuses changed %s content without rewriting task status",
     async (change) => {
       await partitions();
       const request = await repository.prepare(actor, scope, change);
@@ -346,9 +510,9 @@ suite("partition download persistence", () => {
       await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
         code: "PARTITION_DOWNLOAD_STALE"
       });
-      expect(await repository.prepare(actor, scope, change)).toMatchObject({
-        status: "failed",
-        errorCode: "PARTITION_DOWNLOAD_STALE"
+      expect(await repository.read(actor, request.requestId)).toMatchObject({
+        status: "queued",
+        errorCode: null
       });
       const renewed = await repository.prepare(actor, scope, `${change}-new-generation`);
       expect(renewed.requestId).not.toBe(request.requestId);
@@ -505,7 +669,7 @@ suite("partition download persistence", () => {
     expect(await repository.fail(lease, "PARTITION_DOWNLOAD_FAILED")).toBe(false);
   });
   it.each(["mixed owner", "wrong job type"])(
-    "leaves %s runs and leases untouched during status invalidation and expiry",
+    "leaves %s runs and leases untouched during status reads and expiry",
     async (invalidOwner) => {
       await partitions();
       const request = await repository.prepare(actor, scope, "terminal-owner");
@@ -522,8 +686,8 @@ suite("partition download persistence", () => {
         data: { storeName: "Changed" }
       });
       expect(await repository.read(actor, request.requestId)).toMatchObject({
-        status: "failed",
-        errorCode: "PARTITION_DOWNLOAD_STALE"
+        status: "queued",
+        errorCode: null
       });
       expect(await prisma.processingRun.findUniqueOrThrow({ where: { id: lease.runId } })).toEqual(
         original
@@ -534,7 +698,7 @@ suite("partition download persistence", () => {
       );
     }
   );
-  it("refuses changed-scope publication and preserves candidate cleanup", async () => {
+  it("refuses changed-content publication and preserves candidate cleanup", async () => {
     await partitions();
     const request = await repository.prepare(actor, scope, "stale-publish");
     const lease = await leaseFor(request.requestId);
@@ -542,7 +706,7 @@ suite("partition download persistence", () => {
     await repository.registerCandidate(lease, objectKey);
     await prisma.structuredPartition.updateMany({
       where: { orgId },
-      data: { confidentialityLevel: 3 }
+      data: { checksumSha256: "c".repeat(64) }
     });
     expect(
       await repository.publish(lease, {
@@ -594,7 +758,7 @@ suite("partition download persistence", () => {
       await prisma.organization.delete({ where: { id: otherOrg } });
     }
   });
-  it("reclaims a published bundle when requester access is revoked", async () => {
+  it("denies a disabled requester without changing a succeeded bundle", async () => {
     await partitions();
     const request = await repository.prepare(actor, scope, "revoke");
     const lease = await leaseFor(request.requestId);
@@ -612,17 +776,18 @@ suite("partition download persistence", () => {
     });
     expect(
       await prisma.partitionDownloadRequest.findUniqueOrThrow({ where: { id: request.requestId } })
-    ).toMatchObject({ status: "failed", objectKey: null });
+    ).toMatchObject({ status: "succeeded", objectKey });
     const garbage = await prisma.storageGarbage.findFirstOrThrow({ where: { objectKey } });
-    expect(garbage.availableAt.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(garbage.availableAt).toEqual(request.expiresAt);
   });
-  it("invalidates a snapshot after current clearance is lowered", async () => {
+  it("denies a new link after current clearance is lowered without failing the task", async () => {
     await partitions();
     const request = await repository.prepare(actor, scope, "clearance");
     await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 0 } });
     await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
-      code: "PARTITION_DOWNLOAD_STALE"
+      code: "PARTITION_DOWNLOAD_FORBIDDEN"
     });
+    expect(await repository.read(actor, request.requestId)).toMatchObject({ status: "queued" });
     expect(await repository.prepare(actor, scope, "new-clearance")).toMatchObject({
       status: "succeeded",
       partitionCount: 0
@@ -820,14 +985,15 @@ suite("partition download persistence", () => {
   }
   function urlApp(
     downloads = repository,
-    sign = vi.fn(async () => "https://synthetic.invalid/signed")
+    sign = vi.fn(async () => "https://synthetic.invalid/signed"),
+    auditAppend: (...args: unknown[]) => Promise<void> = async () => {}
   ) {
     const app = Fastify();
     registerPartitionDownloadRoutes(app, {
       auth: { authenticate: async () => true, employee: () => actor } as unknown as RequestAuth,
       downloads: () => downloads,
       storage: () => ({ createDownloadUrl: sign }) as unknown as StorageAdapter,
-      audit: () => ({ append: async () => {} }),
+      audit: () => ({ append: auditAppend }),
       createBusinessRequestAudit: () => ({
         requestId: "race",
         sourceIp: "127.0.0.1",
@@ -954,7 +1120,9 @@ suite("partition download persistence", () => {
         expiresAt: request.expiresAt
       };
       const barrier = pausedClient(
-        order === "cleanup-first" ? "enterprise_key AS enterpriseKey" : "merchant_id AS merchantId"
+        order === "cleanup-first"
+          ? "enterprise_key AS enterpriseKey"
+          : "SELECT id FROM structured_partitions"
       );
       const first =
         order === "cleanup-first"
@@ -988,13 +1156,13 @@ suite("partition download persistence", () => {
       expect(await prisma.storageGarbage.findFirst({ where: { objectKey } })).not.toBeNull();
     }
   );
-  it("Serializable download publication blocks matching source insertion until validation commits", async () => {
+  it("publication and later source additions preserve the fixed manifest", async () => {
     await partitions();
     const request = await repository.prepare(actor, scope, "insert-race");
     const lease = await leaseFor(request.requestId);
     const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/insert.zip`;
     await repository.registerCandidate(lease, objectKey);
-    const barrier = pausedClient("merchant_id AS merchantId");
+    const barrier = pausedClient("SELECT id FROM structured_partitions");
     const publication = createPrismaPartitionDownloadRepository({ prisma: barrier.client }).publish(
       lease,
       { objectKey, byteSize: 1n, checksumSha256: "a".repeat(64), expiresAt: request.expiresAt }
@@ -1029,15 +1197,13 @@ suite("partition download persistence", () => {
       ]
     });
     try {
-      await waitForSourceLockWait();
+      await insertion;
     } finally {
       barrier.release();
       await Promise.allSettled([publication, insertion]);
     }
     expect(await publication).toBe(true);
     await insertion;
-    await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
-      code: "PARTITION_DOWNLOAD_STALE"
-    });
+    expect((await repository.validateCurrent(actor, request.requestId)).manifest).toHaveLength(1);
   });
 });
