@@ -1,3 +1,5 @@
+import { ResourceAttributesError } from "@smedc/db";
+import { normalizeEnterpriseIdentity } from "@smedc/domain";
 import { createHash, randomBytes } from "node:crypto";
 import {
   authorizeFileUpload,
@@ -25,6 +27,10 @@ import type { StorageAdapter } from "@smedc/storage";
 import { readMultipartFile, type MultipartPart } from "../http/multipart.js";
 
 interface ParsedQuarantineUpload {
+  enterpriseName?: string;
+  storeName?: string;
+  enterpriseFieldCount: number;
+  storeFieldCount: number;
   files: Array<{
     fileName: string;
     contentType?: string;
@@ -52,6 +58,8 @@ function createDocumentId(): string {
 async function parseUpload(request: FastifyRequest): Promise<ParsedQuarantineUpload> {
   const upload: ParsedQuarantineUpload = {
     files: [],
+    enterpriseFieldCount: 0,
+    storeFieldCount: 0,
     confidentialityLevelFieldCount: 0
   };
   const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
@@ -70,6 +78,17 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedQuarantineUpl
 
     const value = typeof part.value === "string" ? part.value.trim() : "";
     if (!value) continue;
+
+    if (part.fieldname === "enterpriseName" || part.fieldname === "enterprise_name") {
+      upload.enterpriseFieldCount += 1;
+      upload.enterpriseName = value;
+      continue;
+    }
+    if (part.fieldname === "storeName") {
+      upload.storeFieldCount += 1;
+      upload.storeName = typeof part.value === "string" ? part.value : "";
+      continue;
+    }
 
     if (part.fieldname === "receiptId") {
       upload.receiptId = value;
@@ -239,9 +258,26 @@ export function registerQuarantineCertificateRoutes(
       );
     }
 
+    if (
+      !upload.enterpriseName ||
+      upload.enterpriseName.length > 128 ||
+      upload.enterpriseFieldCount !== 1 ||
+      !upload.storeName?.trim() ||
+      upload.storeName.length > 255 ||
+      upload.storeFieldCount !== 1
+    )
+      return validationError(
+        reply,
+        "RESOURCE_SINGLE_STORE_REQUIRED",
+        "A photo requires one explicit enterprise and store name."
+      );
+    const enterpriseKey = normalizeEnterpriseIdentity(upload.enterpriseName).enterpriseKey;
+
     const fileHash = createHash("sha256").update(file.body).digest("hex");
     const requestFingerprint = quarantineCertificateFingerprint({
       receiptId: normalizedReceiptId,
+      enterpriseKey,
+      storeName: upload.storeName,
       confidentialityLevel,
       fileHash
     });
@@ -279,6 +315,8 @@ export function registerQuarantineCertificateRoutes(
         sourceDocumentId,
         title: `检疫证明 ${normalizedReceiptId} - ${file.fileName}`,
         receiptId: normalizedReceiptId,
+        enterpriseKey,
+        storeName: upload.storeName,
         idempotencyKey: upload.idempotencyKey,
         requestFingerprint,
         fileType,
@@ -294,6 +332,12 @@ export function registerQuarantineCertificateRoutes(
       return reply.code(201).send(certificateResponse(certificate));
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
+      if (error instanceof ResourceAttributesError)
+        return validationError(
+          reply,
+          error.code,
+          "Photo business attributes are not ready or do not match the receipt store."
+        );
       if (error instanceof QuarantineCertificateError) {
         return reply.code(409).send(errorResponse(error.code, error.message));
       }

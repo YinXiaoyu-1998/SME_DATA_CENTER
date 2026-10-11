@@ -15,7 +15,9 @@ const prisma = vi.hoisted(() => ({
   dishCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   deliveryLedgerRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   supplierCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
-  document: { findFirst: vi.fn(), update: vi.fn() },
+  businessAuthorizationState: { upsert: vi.fn() },
+  businessCategory: { findUnique: vi.fn() },
+  document: { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), update: vi.fn() },
   auditLog: { create: vi.fn() },
   ledgerPdfPartition: { upsert: vi.fn() },
   $queryRaw: vi.fn(),
@@ -45,6 +47,14 @@ import { createPrismaProcessingWorkerRepository } from "./worker.js";
 describe("Prisma structured worker persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.businessAuthorizationState.upsert.mockResolvedValue({ mode: "legacy", version: 1n });
+    prisma.businessCategory.findUnique.mockResolvedValue({
+      id: "fixed:catalog",
+      kind: "fixed",
+      confidentialityLevel: null,
+      dimensions: []
+    });
+    prisma.document.findFirstOrThrow.mockResolvedValue({ sourceMetadata: null });
     prisma.$queryRaw.mockResolvedValue([{ id: "org_1" }]);
     prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
       callback(prisma)

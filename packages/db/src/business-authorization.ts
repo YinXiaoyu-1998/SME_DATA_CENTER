@@ -177,6 +177,115 @@ export async function persistBusinessGrants(
     }
   }
 }
+export async function persistResourceAttributes(
+  tx: Tx,
+  input: Omit<ResourceAuthorizationWrite, "actorId" | "expectedVersion">
+) {
+  const category = await tx.businessCategory.findUniqueOrThrow({
+    where: { orgId_id: { orgId: input.orgId, id: input.categoryId } },
+    include: categoriesInclude
+  });
+  const rule = categoryRule(category);
+  if (
+    (input.kind === "evidence") !== (rule.kind === "evidence") ||
+    (input.kind === "quarantine_certificate" && category.key !== "quarantine_certificate") ||
+    (input.kind === "ledger_pdf" && category.key !== "ledger_pdf")
+  )
+    throw new Error("RESOURCE_CATEGORY_KIND_MISMATCH");
+  if (
+    input.scopes.length === 0 ||
+    input.scopes.some((scope) => !validateBusinessScope(scope, rule)) ||
+    (rule.kind === "evidence"
+      ? !isBusinessClearance(input.fileConfidentialityLevel)
+      : input.fileConfidentialityLevel != null)
+  )
+    throw new Error("RESOURCE_ATTRIBUTES_NOT_READY");
+  if (input.kind === "quarantine_certificate" || input.kind === "ledger_pdf")
+    if (input.scopes.length !== 1 || input.scopes[0]!.ownership !== "store")
+      throw new Error("RESOURCE_SINGLE_STORE_REQUIRED");
+  const where = { orgId_id: { orgId: input.orgId, id: input.id } };
+  const before = await tx.businessResource.findUnique({ where, include: resourcesInclude });
+  if (
+    before &&
+    (before.kind !== input.kind ||
+      before.resourceKey !== input.resourceKey ||
+      before.documentId !== (input.documentId ?? null) ||
+      before.sourceDocumentId !== (input.sourceDocumentId ?? null))
+  )
+    throw new Error("RESOURCE_IDENTITY_IMMUTABLE");
+  if (input.sourceDocumentId && input.kind !== "source_fragment")
+    throw new Error("SOURCE_FRAGMENT_REQUIRED");
+  if (input.kind === "source_fragment" && !input.sourceDocumentId)
+    throw new Error("SOURCE_DOCUMENT_REQUIRED");
+  if (
+    before &&
+    input.kind === "source_fragment" &&
+    (before.categoryId !== input.categoryId ||
+      before.valid !== input.valid ||
+      !preservesSourceTuples(resourceRequirement(before).scopes, input.scopes))
+  )
+    throw new Error("SOURCE_REQUIREMENTS_IMMUTABLE");
+  const contentChanged =
+    before &&
+    (before.valid !== input.valid ||
+      // Source enrichment only adds required authorization metadata; source content and association stay intact.
+      (input.kind !== "source_fragment" &&
+        !isDeepStrictEqual(
+          canonicalScopes(resourceRequirement(before).scopes),
+          canonicalScopes(input.scopes)
+        )));
+  const data = {
+    categoryId: input.categoryId,
+    valid: input.valid,
+    fileConfidentialityLevel: input.fileConfidentialityLevel ?? null
+  };
+  await tx.businessResource.upsert({
+    where,
+    create: {
+      orgId: input.orgId,
+      id: input.id,
+      kind: input.kind,
+      resourceKey: input.resourceKey,
+      documentId: input.documentId ?? null,
+      sourceDocumentId: input.sourceDocumentId ?? null,
+      ...data
+    },
+    update: {
+      ...data,
+      authorizationVersion: { increment: 1 },
+      ...(contentChanged ? { contentVersion: { increment: 1 } } : {})
+    }
+  });
+  await tx.businessResourceScope.deleteMany({
+    where: { orgId: input.orgId, resourceId: input.id }
+  });
+  for (const scope of input.scopes) {
+    const id = randomUUID().replaceAll("-", "");
+    await tx.businessResourceScope.create({
+      data: {
+        orgId: input.orgId,
+        resourceId: input.id,
+        id,
+        enterpriseKey: scope.enterpriseKey,
+        ownership: scope.ownership,
+        storeName: scope.storeName ?? null
+      }
+    });
+    await tx.businessScopeDimension.createMany({
+      data: Object.entries(scope.dimensions).map(([dimensionId, valueId]) => ({
+        orgId: input.orgId,
+        resourceId: input.id,
+        scopeId: id,
+        dimensionId,
+        valueId
+      }))
+    });
+  }
+  return {
+    before,
+    after: await tx.businessResource.findUniqueOrThrow({ where, include: resourcesInclude })
+  };
+}
 export function createBusinessAuthorizationRepository({ prisma }: { prisma: PrismaClient }) {
   async function loadAuthorizationSnapshot(
     employeeId: string,
@@ -317,112 +426,6 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
     const snapshot = await loadAuthorizationSnapshot(input.employeeId, input.orgId, tx);
     await persistBusinessGrants(tx, input, snapshot.categories);
   }
-  async function writeResource(tx: Tx, input: ResourceAuthorizationWrite) {
-    const category = await tx.businessCategory.findUniqueOrThrow({
-      where: { orgId_id: { orgId: input.orgId, id: input.categoryId } },
-      include: categoriesInclude
-    });
-    const rule = categoryRule(category);
-    if (
-      (input.kind === "evidence") !== (rule.kind === "evidence") ||
-      (input.kind === "quarantine_certificate" && category.key !== "quarantine_certificate") ||
-      (input.kind === "ledger_pdf" && category.key !== "ledger_pdf")
-    )
-      throw new Error("RESOURCE_CATEGORY_KIND_MISMATCH");
-    if (
-      input.scopes.length === 0 ||
-      input.scopes.some((scope) => !validateBusinessScope(scope, rule)) ||
-      (rule.kind === "evidence"
-        ? !isBusinessClearance(input.fileConfidentialityLevel)
-        : input.fileConfidentialityLevel != null)
-    )
-      throw new Error("RESOURCE_ATTRIBUTES_NOT_READY");
-    if (input.kind === "quarantine_certificate" || input.kind === "ledger_pdf")
-      if (input.scopes.length !== 1 || input.scopes[0]!.ownership !== "store")
-        throw new Error("RESOURCE_SINGLE_STORE_REQUIRED");
-    const where = { orgId_id: { orgId: input.orgId, id: input.id } };
-    const before = await tx.businessResource.findUnique({ where, include: resourcesInclude });
-    if (
-      before &&
-      (before.kind !== input.kind ||
-        before.resourceKey !== input.resourceKey ||
-        before.documentId !== (input.documentId ?? null) ||
-        before.sourceDocumentId !== (input.sourceDocumentId ?? null))
-    )
-      throw new Error("RESOURCE_IDENTITY_IMMUTABLE");
-    if (input.sourceDocumentId && input.kind !== "source_fragment")
-      throw new Error("SOURCE_FRAGMENT_REQUIRED");
-    if (input.kind === "source_fragment" && !input.sourceDocumentId)
-      throw new Error("SOURCE_DOCUMENT_REQUIRED");
-    if (
-      before &&
-      input.kind === "source_fragment" &&
-      (before.categoryId !== input.categoryId ||
-        before.valid !== input.valid ||
-        !preservesSourceTuples(resourceRequirement(before).scopes, input.scopes))
-    )
-      throw new Error("SOURCE_REQUIREMENTS_IMMUTABLE");
-    const contentChanged =
-      before &&
-      (before.valid !== input.valid ||
-        // Source enrichment only adds required authorization metadata; source content and association stay intact.
-        (input.kind !== "source_fragment" &&
-          !isDeepStrictEqual(
-            canonicalScopes(resourceRequirement(before).scopes),
-            canonicalScopes(input.scopes)
-          )));
-    const data = {
-      categoryId: input.categoryId,
-      valid: input.valid,
-      fileConfidentialityLevel: input.fileConfidentialityLevel ?? null
-    };
-    await tx.businessResource.upsert({
-      where,
-      create: {
-        orgId: input.orgId,
-        id: input.id,
-        kind: input.kind,
-        resourceKey: input.resourceKey,
-        documentId: input.documentId ?? null,
-        sourceDocumentId: input.sourceDocumentId ?? null,
-        ...data
-      },
-      update: {
-        ...data,
-        authorizationVersion: { increment: 1 },
-        ...(contentChanged ? { contentVersion: { increment: 1 } } : {})
-      }
-    });
-    await tx.businessResourceScope.deleteMany({
-      where: { orgId: input.orgId, resourceId: input.id }
-    });
-    for (const scope of input.scopes) {
-      const id = randomUUID().replaceAll("-", "");
-      await tx.businessResourceScope.create({
-        data: {
-          orgId: input.orgId,
-          resourceId: input.id,
-          id,
-          enterpriseKey: scope.enterpriseKey,
-          ownership: scope.ownership,
-          storeName: scope.storeName ?? null
-        }
-      });
-      await tx.businessScopeDimension.createMany({
-        data: Object.entries(scope.dimensions).map(([dimensionId, valueId]) => ({
-          orgId: input.orgId,
-          resourceId: input.id,
-          scopeId: id,
-          dimensionId,
-          valueId
-        }))
-      });
-    }
-    return {
-      before,
-      after: await tx.businessResource.findUniqueOrThrow({ where, include: resourcesInclude })
-    };
-  }
   return {
     async listAccounts(orgId: string, actorId: string) {
       return prisma.$transaction(async (tx) => {
@@ -482,7 +485,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         const existing = await tx.businessResource.findFirst({
           where: { orgId: input.orgId, documentId: input.documentId, kind: "evidence" }
         });
-        return writeResource(tx, {
+        return persistResourceAttributes(tx, {
           ...input,
           id: existing?.id ?? randomUUID().replaceAll("-", ""),
           kind: "evidence",
@@ -700,7 +703,9 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
       });
     },
     putResource(input: ResourceAuthorizationWrite) {
-      return mutate(input, "resource.configure", input.id, (tx) => writeResource(tx, input));
+      return mutate(input, "resource.configure", input.id, (tx) =>
+        persistResourceAttributes(tx, input)
+      );
     }
   };
 }

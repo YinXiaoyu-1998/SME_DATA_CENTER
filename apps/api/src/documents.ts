@@ -1,3 +1,5 @@
+import { persistEvidenceReadRequirement, requireCurrentUploadAdmin } from "@smedc/db";
+import type { BusinessScopeItem } from "@smedc/domain";
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsForDocument,
@@ -27,6 +29,8 @@ import { AUDIT_ACTIONS } from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface CreateUploadedDocumentInput {
+  businessCategoryId?: string;
+  businessScopes?: BusinessScopeItem[];
   id: string;
   orgId: string;
   title: string;
@@ -146,6 +150,7 @@ export function createPrismaDocumentCatalogRepository(
   return {
     async createUploadedDocument(input) {
       const document = await prisma.$transaction(async (tx) => {
+        await requireCurrentUploadAdmin(tx, input.orgId, input.uploaderId);
         const createdDocument = await tx.document.create({
           data: {
             id: input.id,
@@ -178,6 +183,16 @@ export function createPrismaDocumentCatalogRepository(
           },
           include: documentStatusInclude
         });
+
+        if (input.documentKind === "evidence")
+          await persistEvidenceReadRequirement(tx, {
+            orgId: input.orgId,
+            documentId: input.id,
+            categoryId: input.businessCategoryId,
+            scopes: input.businessScopes,
+            fileConfidentialityLevel: input.confidentialityLevel,
+            valid: false
+          });
 
         await tx.auditLog.create({
           data: {

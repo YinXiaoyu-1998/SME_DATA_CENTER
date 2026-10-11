@@ -1,3 +1,4 @@
+import { normalizeEnterpriseIdentity } from "@smedc/domain";
 import { createHash } from "node:crypto";
 import {
   authorizeFileUpload,
@@ -358,6 +359,7 @@ export function registerStructuredImportRoutes(
             actorEmployeeId: employee.id,
             documentId: candidateDocumentId,
             dataset,
+            enterpriseKey: normalizeEnterpriseIdentity(enterpriseName).enterpriseKey,
             fileType,
             startDate,
             endDate,

@@ -1,3 +1,5 @@
+import { ResourceAttributesError } from "@smedc/db";
+import type { BusinessScopeItem } from "@smedc/domain";
 import { randomBytes } from "node:crypto";
 import {
   authorizeFileUpload,
@@ -28,6 +30,10 @@ import type { StorageAdapter } from "@smedc/storage";
 import { readMultipartFile, type MultipartPart } from "../http/multipart.js";
 
 interface ParsedUpload {
+  businessCategoryId?: string;
+  businessScopes?: unknown;
+  businessCategoryFieldCount: number;
+  businessScopesFieldCount: number;
   file?: {
     fileName: string;
     contentType?: string;
@@ -87,7 +93,11 @@ function fileTypeFromFilename(fileName: string): Phase3FileType | null {
 }
 
 async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
-  const upload: ParsedUpload = { confidentialityLevelFieldCount: 0 };
+  const upload: ParsedUpload = {
+    confidentialityLevelFieldCount: 0,
+    businessCategoryFieldCount: 0,
+    businessScopesFieldCount: 0
+  };
 
   const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
 
@@ -110,6 +120,17 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
     if (part.fieldname === "confidentialityLevel") {
       upload.confidentialityLevelFieldCount += 1;
       upload.confidentialityLevel = value;
+      continue;
+    }
+
+    if (part.fieldname === "categoryId") {
+      upload.businessCategoryFieldCount += 1;
+      upload.businessCategoryId = value;
+      continue;
+    }
+    if (part.fieldname === "scopes") {
+      upload.businessScopesFieldCount += 1;
+      upload.businessScopes = JSON.parse(value);
       continue;
     }
 
@@ -254,7 +275,7 @@ function validateEvidenceSearchBody(value: unknown): EvidenceSearchValidation {
 }
 
 function parseConfidentialityLevel(upload: ParsedUpload): number | null {
-  if (upload.confidentialityLevelFieldCount === 0) return 0;
+  if (upload.confidentialityLevelFieldCount === 0) return null;
   if (
     upload.confidentialityLevelFieldCount !== 1 ||
     !/^[0-3]$/.test(upload.confidentialityLevel ?? "")
@@ -388,6 +409,32 @@ export function registerEvidenceRoutes(
       );
     }
 
+    if (
+      !upload.businessCategoryId ||
+      upload.businessCategoryFieldCount !== 1 ||
+      upload.businessScopesFieldCount !== 1 ||
+      !Array.isArray(upload.businessScopes) ||
+      !upload.businessScopes.length ||
+      !upload.businessScopes.every(
+        (scope) =>
+          isRecord(scope) &&
+          typeof scope.enterpriseKey === "string" &&
+          !!scope.enterpriseKey &&
+          (scope.ownership === "group"
+            ? scope.storeName === undefined
+            : scope.ownership === "store" &&
+              typeof scope.storeName === "string" &&
+              !!scope.storeName.trim()) &&
+          isRecord(scope.dimensions) &&
+          Object.values(scope.dimensions).every((value) => typeof value === "string" && !!value)
+      )
+    )
+      return validationError(
+        reply,
+        "RESOURCE_ATTRIBUTES_NOT_READY",
+        "Evidence requires an existing category and complete explicit business scopes."
+      );
+
     const audit = dependencies.createBusinessRequestAudit(request);
     const orgId = employee.orgId;
     const documentId = createDocumentId();
@@ -417,6 +464,8 @@ export function registerEvidenceRoutes(
         sourceSystem: upload.sourceSystem || null,
         sourceTime: null,
         confidentialityLevel,
+        businessCategoryId: upload.businessCategoryId,
+        businessScopes: upload.businessScopes as BusinessScopeItem[],
         processingJobType: "evidence_document_index",
         audit
       });
@@ -431,6 +480,8 @@ export function registerEvidenceRoutes(
         );
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
+      if (error instanceof ResourceAttributesError)
+        return validationError(reply, error.code, "Evidence business attributes are not ready.");
       request.log.error({ err: error, documentId }, "evidence document catalog write failed");
       return reply
         .code(500)

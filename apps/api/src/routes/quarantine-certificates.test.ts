@@ -164,6 +164,8 @@ describe("quarantine certificate routes", () => {
   async function uploadCertificate(
     server: FastifyInstance,
     input: {
+      enterpriseName?: string;
+      storeName?: string;
       receiptId?: string;
       idempotencyKey?: string;
       confidentialityLevel?: number;
@@ -180,6 +182,8 @@ describe("quarantine certificate routes", () => {
         contentType: input.contentType ?? "image/png",
         value: input.body ?? pngBytes
       },
+      { name: "enterpriseName", value: input.enterpriseName ?? "Synthetic enterprise" },
+      { name: "storeName", value: input.storeName ?? "Synthetic store" },
       { name: "receiptId", value: input.receiptId ?? " sh2608250117 " },
       { name: "confidentialityLevel", value: String(input.confidentialityLevel ?? 0) },
       { name: "idempotencyKey", value: input.idempotencyKey ?? "idem-quarantine-1" }
@@ -223,6 +227,16 @@ describe("quarantine certificate routes", () => {
       payload: body
     });
   }
+
+  it("rejects a photo without an explicit enterprise and exact store before persisting it", async () => {
+    const { app, documentRepository } = await buildQuarantineTestServer();
+    for (const attributes of [{ enterpriseName: "" }, { storeName: " " }]) {
+      const response = await uploadCertificate(app, attributes);
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe("RESOURCE_SINGLE_STORE_REQUIRED");
+    }
+    expect(documentRepository.documents).toHaveLength(0);
+  });
 
   it("uploads one image synchronously and exact idempotent replay returns the same certificate", async () => {
     const { app, documentRepository } = await buildQuarantineTestServer();

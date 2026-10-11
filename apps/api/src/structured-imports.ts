@@ -1,3 +1,4 @@
+import { persistStructuredSourceReadRequirements, requireCurrentUploadAdmin } from "@smedc/db";
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsFromRows,
@@ -79,6 +80,7 @@ export interface StructuredImportBatchRecord {
 }
 
 export interface ReserveStructuredImportInput {
+  enterpriseKey?: string;
   onDatabaseRetry?: (event: DatabaseRetryEvent) => void;
   orgId: string;
   actorEmployeeId: string;
@@ -425,6 +427,7 @@ export function createPrismaStructuredImportRepository(options: {
         try {
           const batch = await prisma.$transaction(
             async (tx) => {
+              await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
               await tx.document.create({
                 data: {
                   id: input.documentId,
@@ -442,6 +445,7 @@ export function createPrismaStructuredImportRepository(options: {
                   uploaderId: input.actorEmployeeId,
                   sourceSystem: "structured_import",
                   sourceMetadata: {
+                    ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
                     dataset: input.dataset,
                     startDate: input.startDate,
                     endDate: input.endDate,
@@ -546,6 +550,14 @@ export function createPrismaStructuredImportRepository(options: {
             if (!existing) throw new Error("Reserved import batch was not found.");
             if (existing.status === ImportBatchStatus.applied)
               return recordWithPartitions(existing, tx);
+            await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+            await persistStructuredSourceReadRequirements(tx, {
+              orgId: input.orgId,
+              sourceDocumentId: existing.sourceDocumentId,
+              dataset: existing.dataset,
+              rows: input.rows,
+              workerId: "synchronous_import"
+            });
 
             const baseTiming = {
               importBatchId: input.importBatchId,

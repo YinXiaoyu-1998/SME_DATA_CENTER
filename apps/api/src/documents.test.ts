@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
   employee: { findFirst: vi.fn() },
+  businessAuthorizationState: { upsert: vi.fn() },
   auditLog: {
     create: vi.fn(),
     findMany: vi.fn()
@@ -70,6 +71,7 @@ function documentRecord() {
 describe("Prisma document catalog audit provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.businessAuthorizationState.upsert.mockResolvedValue({ mode: "legacy", version: 1n });
     prisma.employee.findFirst.mockResolvedValue({ id: "emp_1" });
     prisma.$queryRaw.mockResolvedValue([{ id: "org_1" }]);
     prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>

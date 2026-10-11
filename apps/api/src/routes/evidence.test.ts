@@ -129,6 +129,11 @@ describe("evidence routes", () => {
         value: Buffer.from("# 差评处理\n\n先联系客户，再登记处置结果。", "utf8")
       },
       { name: "title", value: "客户反馈处理 SOP" },
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
       { name: "confidentialityLevel", value: "0" }
     ]);
 
@@ -183,6 +188,50 @@ describe("evidence routes", () => {
     }
   });
 
+  it("requires explicit evidence category, complete scopes and file level before storage", async () => {
+    const documentRepository = createDocumentRepository();
+    const storageAdapter = createOrganizationContextStorageAdapter();
+    app = buildApiServer({
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository,
+      storageAdapter,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const validAttributes = [
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
+      { name: "confidentialityLevel", value: "0" }
+    ];
+    for (const missing of ["categoryId", "scopes", "confidentialityLevel"]) {
+      const multipart = createMultipartPayload([
+        {
+          name: "file",
+          fileName: "sop.md",
+          contentType: "text/markdown",
+          value: Buffer.from("SOP")
+        },
+        ...validAttributes.filter((field) => field.name !== missing)
+      ]);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/documents/evidence",
+        headers: {
+          authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+          "content-type": multipart.contentType
+        },
+        payload: multipart.body
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(storageAdapter.putInputs).toHaveLength(0);
+    expect(documentRepository.documents).toHaveLength(0);
+  });
+
   it("accepts evidence metadata exactly at the public string boundaries", async () => {
     const documentRepository = createDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
@@ -203,6 +252,11 @@ describe("evidence routes", () => {
       },
       { name: "title", value: "t".repeat(512) },
       { name: "sourceSystem", value: "s".repeat(255) },
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
       { name: "confidentialityLevel", value: "0" }
     ]);
 
@@ -297,6 +351,13 @@ describe("evidence routes", () => {
           value: Buffer.from("123456789", "utf8")
         },
         { name: "title", value: "SOP" },
+        { name: "categoryId", value: "evidence:sop" },
+        {
+          name: "scopes",
+          value: JSON.stringify([
+            { enterpriseKey: "synthetic", ownership: "group", dimensions: {} }
+          ])
+        },
         { name: "confidentialityLevel", value: "0" }
       ]),
       createMultipartPayload([
@@ -313,6 +374,13 @@ describe("evidence routes", () => {
           value: Buffer.from("second", "utf8")
         },
         { name: "title", value: "SOP" },
+        { name: "categoryId", value: "evidence:sop" },
+        {
+          name: "scopes",
+          value: JSON.stringify([
+            { enterpriseKey: "synthetic", ownership: "group", dimensions: {} }
+          ])
+        },
         { name: "confidentialityLevel", value: "0" }
       ]),
       createMultipartPayload([
@@ -323,6 +391,13 @@ describe("evidence routes", () => {
           value: Buffer.from("content", "utf8")
         },
         { name: "title", value: "SOP" },
+        { name: "categoryId", value: "evidence:sop" },
+        {
+          name: "scopes",
+          value: JSON.stringify([
+            { enterpriseKey: "synthetic", ownership: "group", dimensions: {} }
+          ])
+        },
         { name: "confidentialityLevel", value: "0" },
         ...Array.from({ length: 59 }, (_, index) => ({
           name: `compatibility_${index}`,
@@ -355,7 +430,7 @@ describe("evidence routes", () => {
     expect(documentRepository.documents).toHaveLength(0);
   });
 
-  it("returns evidence indexing status only to the uploader", async () => {
+  it("returns evidence indexing status to the uploader and current same-organization admin", async () => {
     const documentRepository = createDocumentRepository();
     documentRepository.documents.push({
       id: "doc_evidence_status",
@@ -424,7 +499,7 @@ describe("evidence routes", () => {
         retrievalConfigVersion: "phase3.retrieval.v2-bm25"
       }
     });
-    expect(adminResponse.statusCode).toBe(404);
+    expect(adminResponse.statusCode).toBe(200);
     expect(otherEmployeeResponse.statusCode).toBe(404);
   });
 
@@ -733,6 +808,11 @@ describe("evidence routes", () => {
         value: Buffer.from("org B evidence", "utf8")
       },
       { name: "title", value: "Org B SOP" },
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
       { name: "confidentialityLevel", value: "0" }
     ]);
 
@@ -774,6 +854,11 @@ describe("evidence routes", () => {
         value: Buffer.from("%PDF-1.4 fake evidence", "utf8")
       },
       { name: "title", value: "PDF 不是支持的证据格式" },
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
       { name: "confidentialityLevel", value: "0" }
     ]);
 

@@ -1,3 +1,8 @@
+import {
+  lockAuthorizationPublication,
+  persistPartitionReadRequirement,
+  requireCurrentUploadAdmin
+} from "./source-read-requirements.js";
 import { enqueueStorageGarbage, listDueStorageGarbage } from "./storage-garbage.js";
 import { randomBytes } from "node:crypto";
 import { createDatabaseAdapter } from "./adapter.js";
@@ -266,27 +271,30 @@ export function createPrismaStructuredPartitionRepository(
       if (existing)
         return existingReservation(existing, input.requestFingerprint, input.uploaderId);
       try {
-        const created = await prisma.partitionImportJob.create({
-          data: {
-            id: input.id ?? createId("pjob"),
-            orgId: input.orgId,
-            uploaderId: input.uploaderId,
-            dataset: input.dataset as PartitionDataset,
-            enterpriseKey: input.enterpriseKey,
-            enterpriseName: input.enterpriseName,
-            confidentialityLevel: input.confidentialityLevel,
-            idempotencyKey: input.idempotencyKey,
-            requestFingerprint: input.requestFingerprint,
-            originalFileName: input.originalFileName,
-            mediaType: input.mediaType,
-            sourceByteSize: input.sourceByteSize,
-            sourceChecksumSha256: input.sourceChecksumSha256,
-            sourceStartDate: parseBusinessDate(input.sourceStartDate),
-            sourceEndDate: parseBusinessDate(input.sourceEndDate),
-            expiresAt: input.expiresAt,
-            temporaryObjectKey: input.temporaryObjectKey,
-            multipartUploadId: input.multipartUploadId
-          }
+        const created = await prisma.$transaction(async (tx) => {
+          await requireCurrentUploadAdmin(tx, input.orgId, input.uploaderId);
+          return tx.partitionImportJob.create({
+            data: {
+              id: input.id ?? createId("pjob"),
+              orgId: input.orgId,
+              uploaderId: input.uploaderId,
+              dataset: input.dataset as PartitionDataset,
+              enterpriseKey: input.enterpriseKey,
+              enterpriseName: input.enterpriseName,
+              confidentialityLevel: input.confidentialityLevel,
+              idempotencyKey: input.idempotencyKey,
+              requestFingerprint: input.requestFingerprint,
+              originalFileName: input.originalFileName,
+              mediaType: input.mediaType,
+              sourceByteSize: input.sourceByteSize,
+              sourceChecksumSha256: input.sourceChecksumSha256,
+              sourceStartDate: parseBusinessDate(input.sourceStartDate),
+              sourceEndDate: parseBusinessDate(input.sourceEndDate),
+              expiresAt: input.expiresAt,
+              temporaryObjectKey: input.temporaryObjectKey,
+              multipartUploadId: input.multipartUploadId
+            }
+          });
         });
         return { state: "created", job: toJobRecord(created) };
       } catch (error) {
@@ -417,6 +425,9 @@ export function createPrismaStructuredPartitionRepository(
                 status: PartitionImportJobStatus.processing
               }
             });
+            const authorizationState = await lockAuthorizationPublication(tx, input.orgId);
+            if (!input.candidates.length || input.totalRowCount <= 0n)
+              throw new StructuredPartitionRepositoryError("PARTITION_INVALID_SOURCE");
             const garbage = new Set<string>();
             for (const candidate of sorted) {
               const identity = partitionIdentityWhere(candidate);
@@ -446,6 +457,28 @@ export function createPrismaStructuredPartitionRepository(
                   where: { id: current!.id },
                   data: { ...partitionMetadata(candidate, job.id), objectKey: candidate.objectKey }
                 });
+              }
+              {
+                const persisted = await tx.structuredPartition.findUniqueOrThrow({
+                  where: {
+                    orgId_enterpriseKey_dataset_storeKey_businessDate: {
+                      ...identity,
+                      dataset: identity.dataset as PartitionDataset
+                    }
+                  }
+                });
+                await persistPartitionReadRequirement(
+                  tx,
+                  {
+                    orgId: input.orgId,
+                    partitionId: persisted.id,
+                    dataset: persisted.dataset,
+                    enterpriseKey: persisted.enterpriseKey,
+                    storeName: persisted.storeName,
+                    workerId: job.id
+                  },
+                  authorizationState
+                );
               }
             }
             for (const objectKey of garbage) {

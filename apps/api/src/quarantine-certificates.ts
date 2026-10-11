@@ -1,3 +1,4 @@
+import { persistPhotoReadRequirement, requireCurrentUploadAdmin } from "@smedc/db";
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsForReceipt,
@@ -43,6 +44,8 @@ export interface QuarantineCertificateRecord {
 }
 
 export interface CreateQuarantineCertificateInput {
+  enterpriseKey?: string;
+  storeName?: string;
   orgId: string;
   actorEmployeeId: string;
   sourceDocumentId: string;
@@ -125,11 +128,15 @@ export function quarantineCertificateFingerprint(input: {
   receiptId: string;
   confidentialityLevel: number;
   fileHash: string;
+  enterpriseKey?: string;
+  storeName?: string;
 }): string {
   return createHash("sha256")
     .update(
       JSON.stringify({
         receiptId: input.receiptId,
+        ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
+        ...(input.storeName ? { storeName: input.storeName } : {}),
         confidentialityLevel: input.confidentialityLevel,
         fileHash: input.fileHash
       })
@@ -180,6 +187,7 @@ export function createPrismaQuarantineCertificateRepository(
         const certificate = await retryIdempotentDatabaseOperation(() =>
           prisma.$transaction(async (tx) => {
             await lockLedgerSourceMutation(tx, input.orgId);
+            await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
             await tx.document.create({
               data: {
                 id: input.sourceDocumentId,
@@ -197,7 +205,12 @@ export function createPrismaQuarantineCertificateRepository(
                 checksumSha256: input.checksumSha256,
                 uploaderId: input.actorEmployeeId,
                 sourceSystem: null,
-                sourceTime: null
+                sourceTime: null,
+                sourceMetadata: {
+                  receiptId: input.receiptId,
+                  ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
+                  ...(input.storeName ? { storeName: input.storeName } : {})
+                }
               }
             });
 
@@ -211,6 +224,8 @@ export function createPrismaQuarantineCertificateRepository(
               },
               include: certificateInclude
             });
+
+            await persistPhotoReadRequirement(tx, input);
 
             const affectedLedgerPartitions = await ledgerPartitionsForReceipt(
               tx,

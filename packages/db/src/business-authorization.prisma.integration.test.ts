@@ -5,6 +5,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canReadResource, validateBusinessGrant, type BusinessGrant } from "@smedc/domain";
 import { createDatabaseAdapter } from "./adapter.js";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
+import {
+  getSourceReadRequirements,
+  persistStructuredSourceReadRequirements,
+  persistPartitionReadRequirement,
+  persistPhotoReadRequirement,
+  persistEvidenceReadRequirement,
+  activateEvidenceReadRequirement,
+  lockAuthorizationPublication
+} from "./source-read-requirements.js";
 import { compileAuthorizedScope } from "./business-authorization-sql.js";
 
 const run = process.env["RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION"] === "1";
@@ -691,5 +700,343 @@ suite("business authorization Prisma foundation", () => {
     expect((await repository.loadAuthorizationSnapshot(actorId, orgId)).authorizationVersion).toBe(
       beforeVersion
     );
+  });
+});
+
+suite("authoritative publication and original lineage", () => {
+  const prisma = new PrismaClient({ adapter: createDatabaseAdapter(url) });
+  const publicationOrg = `pub_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  const admin = `${publicationOrg}_admin`;
+  let counter = 0;
+  const nextId = () => `${publicationOrg}_${++counter}`;
+  const documentData = (
+    id: string,
+    documentKind: "structured" | "quarantine_certificate" | "evidence" = "structured"
+  ) => ({
+    id,
+    orgId: publicationOrg,
+    uploaderId: admin,
+    title: "Synthetic publication",
+    documentType: "structured_dataset" as const,
+    documentKind,
+    status: "processing" as const,
+    storageObjectKey: `synthetic/${id}`,
+    sourceMetadata: { enterpriseKey: "enterprise" }
+  });
+  beforeAll(async () => {
+    await prisma.organization.create({
+      data: { id: publicationOrg, name: "Synthetic publication" }
+    });
+    await prisma.employee.create({
+      data: {
+        id: admin,
+        orgId: publicationOrg,
+        email: `${publicationOrg}@example.invalid`,
+        displayName: "Admin",
+        role: "admin",
+        clearance: 0
+      }
+    });
+    await prisma.businessAuthorizationState.create({
+      data: { orgId: publicationOrg, mode: "enabled" }
+    });
+    for (const [key, group] of [
+      ["business", false],
+      ["vip", true],
+      ["delivery_ledger", false],
+      ["quarantine_certificate", false]
+    ] as const)
+      await prisma.businessCategory.create({
+        data: {
+          orgId: publicationOrg,
+          id: key,
+          key,
+          name: key,
+          kind: "fixed",
+          confidentialityLevel: 2,
+          allowGroup: group,
+          allowStore: !group
+        }
+      });
+  });
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("publishes all parsed source scopes with the document, keeps originals independent of current resources and resolves the current category level", async () => {
+    const sourceDocumentId = nextId();
+    await prisma.$transaction(async (tx) => {
+      await tx.document.create({ data: documentData(sourceDocumentId) });
+      await persistStructuredSourceReadRequirements(tx, {
+        orgId: publicationOrg,
+        sourceDocumentId,
+        dataset: "business",
+        workerId: "internal-worker",
+        rows: ["A", "B", "A"].map((store_name) => ({ payload: { store_name } }))
+      });
+      await tx.document.update({ where: { id: sourceDocumentId }, data: { status: "active" } });
+    });
+    const requirements = await getSourceReadRequirements(prisma, sourceDocumentId, publicationOrg);
+    expect(requirements).toEqual([
+      {
+        orgId: publicationOrg,
+        categoryId: "business",
+        valid: true,
+        scopes: expect.arrayContaining(
+          ["A", "B"].map((storeName) => ({
+            enterpriseKey: "enterprise",
+            ownership: "store",
+            storeName,
+            dimensions: {}
+          }))
+        )
+      }
+    ]);
+    expect(requirements[0]?.scopes).toHaveLength(2);
+    await prisma.$transaction(async (tx) => {
+      const state = await lockAuthorizationPublication(tx, publicationOrg);
+      await persistPartitionReadRequirement(
+        tx,
+        {
+          orgId: publicationOrg,
+          partitionId: "current-A",
+          dataset: "business",
+          enterpriseKey: "enterprise",
+          storeName: "A",
+          workerId: "partition-worker"
+        },
+        state
+      );
+    });
+    expect(await getSourceReadRequirements(prisma, sourceDocumentId, publicationOrg)).toEqual(
+      requirements
+    );
+    const repository = createBusinessAuthorizationRepository({ prisma });
+    const snapshot = await repository.loadAuthorizationSnapshot(admin, publicationOrg);
+    expect(canReadResource(snapshot, requirements[0]!).allowed).toBe(false);
+    // Category authority stays a live reference; the original stores no copied upload level.
+    await prisma.businessCategory.update({
+      where: { orgId_id: { orgId: publicationOrg, id: "business" } },
+      data: { confidentialityLevel: 3 }
+    });
+    expect(
+      (await repository.loadAuthorizationSnapshot(admin, publicationOrg)).categories.find(
+        (c) => c.id === "business"
+      )?.confidentialityLevel
+    ).toBe(3);
+    expect(await getSourceReadRequirements(prisma, sourceDocumentId, publicationOrg)).toEqual(
+      requirements
+    );
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { orgId: publicationOrg, action: "resource.authorization.published" }
+    });
+    expect(audit.actorEmployeeId).toBeNull();
+    expect(audit.clientSource).toBe("worker");
+    await prisma.document.update({
+      where: { id: sourceDocumentId },
+      data: { status: "archived", archivedAt: new Date() }
+    });
+    expect(
+      (await getSourceReadRequirements(prisma, sourceDocumentId, publicationOrg))[0]?.valid
+    ).toBe(false);
+  });
+
+  it("rejects incomplete or zero parsed publication and rolls back documents, scopes, stores and audit writes", async () => {
+    for (const [dataset, rows, error] of [
+      ["business", [], "SOURCE_HAS_NO_PARSED_ROWS"],
+      ["business", [{ payload: { store_name: "" } }], "RESOURCE_ATTRIBUTES_NOT_READY"],
+      ["dishes", [{ payload: { store_name: "Fresh" } }], "RESOURCE_CATEGORY_NOT_CONFIGURED"]
+    ] as const) {
+      const sourceDocumentId = nextId();
+      const before = await prisma.businessAuthorizationState.findUniqueOrThrow({
+        where: { orgId: publicationOrg }
+      });
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await tx.document.create({ data: documentData(sourceDocumentId) });
+          await persistStructuredSourceReadRequirements(tx, {
+            orgId: publicationOrg,
+            sourceDocumentId,
+            dataset,
+            rows,
+            workerId: "internal-worker"
+          });
+        })
+      ).rejects.toThrow(error);
+      expect(await prisma.document.findUnique({ where: { id: sourceDocumentId } })).toBeNull();
+      expect(
+        await prisma.businessResource.count({ where: { orgId: publicationOrg, sourceDocumentId } })
+      ).toBe(0);
+      expect(
+        (
+          await prisma.businessAuthorizationState.findUniqueOrThrow({
+            where: { orgId: publicationOrg }
+          })
+        ).version
+      ).toBe(before.version);
+    }
+    expect(
+      await prisma.businessStore.count({ where: { orgId: publicationOrg, name: "Fresh" } })
+    ).toBe(0);
+    const failedSource = nextId();
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.document.create({ data: documentData(failedSource) });
+        await persistStructuredSourceReadRequirements(tx, {
+          orgId: publicationOrg,
+          sourceDocumentId: failedSource,
+          dataset: "business",
+          rows: [{ payload: { store_name: "Rollback store" } }],
+          workerId: "internal-worker"
+        });
+        throw new Error("later row persistence failure");
+      })
+    ).rejects.toThrow("later row persistence failure");
+    expect(
+      await prisma.businessResource.count({
+        where: { orgId: publicationOrg, sourceDocumentId: failedSource }
+      })
+    ).toBe(0);
+    expect(
+      await prisma.businessStore.count({ where: { orgId: publicationOrg, name: "Rollback store" } })
+    ).toBe(0);
+    expect(await prisma.document.findUnique({ where: { id: failedSource } })).toBeNull();
+  });
+
+  it("publishes membership as group-owned even when parsed rows contain multiple store labels", async () => {
+    const sourceDocumentId = nextId();
+    await prisma.$transaction(async (tx) => {
+      await tx.document.create({ data: documentData(sourceDocumentId) });
+      await persistStructuredSourceReadRequirements(tx, {
+        orgId: publicationOrg,
+        sourceDocumentId,
+        dataset: "vip",
+        workerId: "internal-worker",
+        rows: ["A", "B"].map((store_name) => ({ payload: { store_name } }))
+      });
+      await tx.document.update({ where: { id: sourceDocumentId }, data: { status: "active" } });
+    });
+    expect(
+      (await getSourceReadRequirements(prisma, sourceDocumentId, publicationOrg))[0]?.scopes
+    ).toEqual([{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }]);
+  });
+
+  it("allows an explicitly scoped photo before its ledger, rejects a later ledger for another store, and preserves the photo", async () => {
+    const photoId = nextId();
+    const receiptId = `receipt-${photoId}`;
+    await prisma.$transaction(async (tx) => {
+      await tx.document.create({
+        data: { ...documentData(photoId, "quarantine_certificate"), status: "active" }
+      });
+      await tx.quarantineCertificate.create({
+        data: {
+          orgId: publicationOrg,
+          sourceDocumentId: photoId,
+          receiptId,
+          idempotencyKey: photoId,
+          requestFingerprint: "synthetic"
+        }
+      });
+      await persistPhotoReadRequirement(tx, {
+        orgId: publicationOrg,
+        sourceDocumentId: photoId,
+        enterpriseKey: "enterprise",
+        storeName: "Photo A",
+        receiptId
+      });
+    });
+    const badLedger = nextId();
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.document.create({ data: documentData(badLedger) });
+        await persistStructuredSourceReadRequirements(tx, {
+          orgId: publicationOrg,
+          sourceDocumentId: badLedger,
+          dataset: "delivery_ledger",
+          workerId: "internal-worker",
+          rows: [{ payload: { store_name: "Ledger B", receipt_id: receiptId } }]
+        });
+      })
+    ).rejects.toThrow("CERTIFICATE_STORE_MISMATCH");
+    expect(await prisma.document.findUnique({ where: { id: badLedger } })).toBeNull();
+    expect(
+      await prisma.quarantineCertificate.count({
+        where: { orgId: publicationOrg, sourceDocumentId: photoId }
+      })
+    ).toBe(1);
+    const goodLedger = nextId();
+    await prisma.$transaction(async (tx) => {
+      await tx.document.create({ data: documentData(goodLedger) });
+      await persistStructuredSourceReadRequirements(tx, {
+        orgId: publicationOrg,
+        sourceDocumentId: goodLedger,
+        dataset: "delivery_ledger",
+        workerId: "internal-worker",
+        rows: [{ payload: { store_name: "Photo A", receipt_id: receiptId } }]
+      });
+      await tx.document.update({ where: { id: goodLedger }, data: { status: "active" } });
+    });
+    expect(
+      (await getSourceReadRequirements(prisma, goodLedger, publicationOrg))[0]?.scopes[0]?.storeName
+    ).toBe("Photo A");
+  });
+  it("requires an existing evidence category and activates only its complete explicit file attributes", async () => {
+    const failed = nextId();
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.document.create({ data: documentData(failed, "evidence") });
+        await persistEvidenceReadRequirement(tx, {
+          orgId: publicationOrg,
+          documentId: failed,
+          categoryId: "not-created",
+          scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
+          fileConfidentialityLevel: 3,
+          valid: false
+        });
+      })
+    ).rejects.toThrow("RESOURCE_CATEGORY_NOT_CONFIGURED");
+    expect(
+      await prisma.businessCategory.findUnique({
+        where: { orgId_id: { orgId: publicationOrg, id: "not-created" } }
+      })
+    ).toBeNull();
+    expect(await prisma.document.findUnique({ where: { id: failed } })).toBeNull();
+    await prisma.businessCategory.create({
+      data: {
+        orgId: publicationOrg,
+        id: "memo",
+        name: "Memo",
+        kind: "evidence",
+        allowGroup: true,
+        allowStore: false
+      }
+    });
+    const doc = nextId();
+    await prisma.$transaction(async (tx) => {
+      await tx.document.create({ data: documentData(doc, "evidence") });
+      await persistEvidenceReadRequirement(tx, {
+        orgId: publicationOrg,
+        documentId: doc,
+        categoryId: "memo",
+        scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
+        fileConfidentialityLevel: 3,
+        valid: false
+      });
+    });
+    const where = {
+      orgId_kind_resourceKey: { orgId: publicationOrg, kind: "evidence" as const, resourceKey: doc }
+    };
+    expect(await prisma.businessResource.findUniqueOrThrow({ where })).toMatchObject({
+      valid: false,
+      fileConfidentialityLevel: 3
+    });
+    await prisma.$transaction(async (tx) => {
+      await activateEvidenceReadRequirement(tx, publicationOrg, doc);
+      await tx.document.update({ where: { id: doc }, data: { status: "active" } });
+    });
+    expect(await prisma.businessResource.findUniqueOrThrow({ where })).toMatchObject({
+      valid: true,
+      fileConfidentialityLevel: 3
+    });
   });
 });
