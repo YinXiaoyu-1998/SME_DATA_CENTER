@@ -6,6 +6,10 @@ import { canReadResource, validateBusinessGrant, type BusinessGrant } from "@sme
 import { createDatabaseAdapter } from "./adapter.js";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
 import {
+  createPrismaStructuredPartitionRepository,
+  type PartitionCandidate
+} from "./structured-partitions.js";
+import {
   getSourceReadRequirements,
   persistStructuredSourceReadRequirements,
   persistPartitionReadRequirement,
@@ -38,6 +42,12 @@ const fixed = (...values: string[]) => ({ kind: "fixed" as const, values });
 suite("business authorization Prisma foundation", () => {
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(url) });
   const repository = createBusinessAuthorizationRepository({ prisma });
+  // These foundation fixtures deliberately retain a retired store's pre-existing history.
+  const historicalResource = (input: Parameters<typeof repository.putResource>[0]) =>
+    repository.putResource({
+      ...input,
+      historicalSupplementReason: "Synthetic existing historical fixture"
+    });
   let version = "0";
   const context = () => ({ orgId, actorId, expectedVersion: version });
   async function write<T extends { authorizationVersion: string }>(
@@ -167,7 +177,7 @@ suite("business authorization Prisma foundation", () => {
       ["memo", "memo", [scopes("A", "X")], 3]
     ] as const)
       await write(
-        repository.putResource({
+        historicalResource({
           ...context(),
           id: key,
           kind: categoryId === "memo" ? "evidence" : "structured",
@@ -288,7 +298,7 @@ suite("business authorization Prisma foundation", () => {
     ).rejects.toThrow("AUTHORIZATION_VERSION_CONFLICT");
     expect((await prisma.employee.findUniqueOrThrow({ where: { id: actorId } })).clearance).toBe(2);
     await write(
-      repository.putResource({
+      historicalResource({
         ...context(),
         id: "memo",
         kind: "evidence",
@@ -396,7 +406,7 @@ suite("business authorization Prisma foundation", () => {
       dimensions: { project: "X" }
     }));
     await write(
-      repository.putResource({
+      historicalResource({
         ...context(),
         id: "fragment",
         kind: "source_fragment",
@@ -411,7 +421,7 @@ suite("business authorization Prisma foundation", () => {
       where: { orgId_id: { orgId, id: "shared" } }
     });
     await write(
-      repository.putResource({
+      historicalResource({
         ...context(),
         id: "shared",
         kind: "structured",
@@ -429,7 +439,7 @@ suite("business authorization Prisma foundation", () => {
       (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!.scopes
     ).toHaveLength(2);
     await expect(
-      repository.putResource({
+      historicalResource({
         ...context(),
         id: "fragment",
         kind: "source_fragment",
@@ -444,7 +454,7 @@ suite("business authorization Prisma foundation", () => {
       "SOURCE_AUTHORIZATION_NOT_READY"
     );
     await expect(
-      repository.putResource({
+      historicalResource({
         ...context(),
         id: "wrong-kind",
         kind: "evidence",
@@ -549,7 +559,7 @@ suite("business authorization Prisma foundation", () => {
       valid: true,
       scopes: enriched
     };
-    await write(repository.putResource(input));
+    await write(historicalResource(input));
     const after = await prisma.businessResource.findUniqueOrThrow({
       where: { orgId_id: { orgId, id: "fragment" } }
     });
@@ -581,10 +591,10 @@ suite("business authorization Prisma foundation", () => {
       enriched.map((scope, index) => (index === 0 ? { ...scope, storeName: "a" } : scope)),
       [...enriched, enriched[0]!]
     ])
-      await expect(repository.putResource({ ...input, ...context(), scopes })).rejects.toThrow(
+      await expect(historicalResource({ ...input, ...context(), scopes })).rejects.toThrow(
         "SOURCE_REQUIREMENTS_IMMUTABLE"
       );
-    await expect(repository.putResource({ ...input, ...context(), valid: false })).rejects.toThrow(
+    await expect(historicalResource({ ...input, ...context(), valid: false })).rejects.toThrow(
       "SOURCE_REQUIREMENTS_IMMUTABLE"
     );
     expect((await repository.loadAuthorizationSnapshot(actorId, orgId)).authorizationVersion).toBe(
@@ -1039,4 +1049,245 @@ suite("authoritative publication and original lineage", () => {
       fileConfidentialityLevel: 3
     });
   });
+  it("preserves retired history, rejects ordinary replacement and activation, and audits explicit historical data correction", async () => {
+    const permissions = createBusinessAuthorizationRepository({ prisma });
+    const partitions = createPrismaStructuredPartitionRepository({ prisma });
+    const date = "2026-08-19";
+    const storeName = "Historical exact store";
+    const reserve = async (reason?: string) => {
+      const jobId = nextId();
+      const temporaryObjectKey = `synthetic/${jobId}/source`;
+      await partitions.reserveUpload({
+        id: jobId,
+        orgId: publicationOrg,
+        uploaderId: admin,
+        dataset: "business",
+        enterpriseKey: "enterprise",
+        enterpriseName: "Synthetic",
+        confidentialityLevel: 0,
+        idempotencyKey: jobId,
+        requestFingerprint: "a".repeat(64),
+        originalFileName: "historical.csv",
+        mediaType: "text/csv",
+        sourceByteSize: 100n,
+        sourceChecksumSha256: "a".repeat(64),
+        sourceStartDate: date,
+        sourceEndDate: date,
+        expiresAt: new Date(Date.now() + 60_000),
+        temporaryObjectKey,
+        multipartUploadId: jobId,
+        historicalSupplementReason: reason
+      });
+      await partitions.queueCompletedUpload({ orgId: publicationOrg, jobId, temporaryObjectKey });
+      expect(await partitions.markJobProcessing(publicationOrg, jobId)).toBe(true);
+      return jobId;
+    };
+    const candidate = (id: string): PartitionCandidate => ({
+      id,
+      orgId: publicationOrg,
+      enterpriseKey: "enterprise",
+      enterpriseName: "Synthetic",
+      dataset: "business",
+      storeKey: "historical-store",
+      storeName,
+      merchantId: null,
+      businessDate: date,
+      objectKey: `synthetic/${id}/partition`,
+      rowCount: 1n,
+      byteSize: 10n,
+      checksumSha256: id.padEnd(64, "0"),
+      confidentialityLevel: 0
+    });
+    const publish = (jobId: string, value: PartitionCandidate) =>
+      partitions.publishSourceAtomically({
+        orgId: publicationOrg,
+        jobId,
+        totalRowCount: 1n,
+        candidates: [value]
+      });
+    const original = candidate(nextId());
+    await publish(await reserve(), original);
+    const pending = nextId();
+    await prisma.$transaction(async (tx) => {
+      await tx.document.create({ data: documentData(pending, "evidence") });
+      await persistEvidenceReadRequirement(tx, {
+        orgId: publicationOrg,
+        documentId: pending,
+        categoryId: "memo",
+        scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
+        fileConfidentialityLevel: 2,
+        valid: false
+      });
+    });
+    const currentContext = async () => ({
+      orgId: publicationOrg,
+      actorId: admin,
+      expectedVersion: (await permissions.loadAuthorizationSnapshot(admin, publicationOrg))
+        .authorizationVersion
+    });
+    await permissions.configureAccount({
+      ...(await currentContext()),
+      employeeId: admin,
+      clearance: 3,
+      grants: [
+        {
+          id: "historical-reader",
+          orgId: publicationOrg,
+          enterpriseKey: "enterprise",
+          categoryIds: ["business"],
+          ownership: "store",
+          stores: fixed(storeName),
+          dimensions: {}
+        }
+      ]
+    });
+    const resource = await prisma.businessResource.findUniqueOrThrow({
+      where: {
+        orgId_kind_resourceKey: {
+          orgId: publicationOrg,
+          kind: "structured",
+          resourceKey: `partition:${original.id}`
+        }
+      }
+    });
+    const requirement = await permissions.getResourceReadRequirement(resource.id, publicationOrg);
+    expect(
+      canReadResource(
+        await permissions.loadAuthorizationSnapshot(admin, publicationOrg),
+        requirement!
+      ).allowed
+    ).toBe(true);
+    await permissions.configureCategory({
+      ...(await currentContext()),
+      id: "business",
+      key: "business",
+      name: "business",
+      kind: "fixed",
+      confidentialityLevel: 3,
+      ownerships: ["store"],
+      requiredDimensionIds: [],
+      retired: true
+    });
+    await permissions.putStore({
+      ...(await currentContext()),
+      enterpriseKey: "enterprise",
+      name: storeName,
+      retired: true
+    });
+    await permissions.configureCategory({
+      ...(await currentContext()),
+      id: "memo",
+      name: "Memo",
+      kind: "evidence",
+      confidentialityLevel: null,
+      ownerships: ["group"],
+      requiredDimensionIds: [],
+      retired: true
+    });
+    const snapshot = await permissions.loadAuthorizationSnapshot(admin, publicationOrg);
+    expect(canReadResource(snapshot, requirement!).allowed).toBe(true);
+    const rejectedJob = await reserve();
+    await expect(publish(rejectedJob, candidate(nextId()))).rejects.toThrow(
+      "RESOURCE_DIRECTORY_RETIRED"
+    );
+    expect(
+      await prisma.structuredPartition.findUniqueOrThrow({ where: { id: original.id } })
+    ).toMatchObject({ objectKey: original.objectKey, checksumSha256: original.checksumSha256 });
+    expect(
+      (await permissions.loadAuthorizationSnapshot(admin, publicationOrg)).authorizationVersion
+    ).toBe(snapshot.authorizationVersion);
+    await expect(
+      prisma.$transaction((tx) => activateEvidenceReadRequirement(tx, publicationOrg, pending))
+    ).rejects.toThrow("RESOURCE_DIRECTORY_RETIRED");
+    expect(
+      (await permissions.loadAuthorizationSnapshot(admin, publicationOrg)).authorizationVersion
+    ).toBe(snapshot.authorizationVersion);
+    expect(
+      await prisma.businessResource.findUniqueOrThrow({
+        where: {
+          orgId_kind_resourceKey: { orgId: publicationOrg, kind: "evidence", resourceKey: pending }
+        }
+      })
+    ).toMatchObject({ valid: false });
+    const refusedEvidence = nextId();
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.document.create({ data: documentData(refusedEvidence, "evidence") });
+        await persistEvidenceReadRequirement(tx, {
+          orgId: publicationOrg,
+          documentId: refusedEvidence,
+          categoryId: "memo",
+          scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
+          fileConfidentialityLevel: 2,
+          valid: false
+        });
+      })
+    ).rejects.toThrow("RESOURCE_DIRECTORY_RETIRED");
+    expect(await prisma.document.findUnique({ where: { id: refusedEvidence } })).toBeNull();
+    // Editing the existing file's clearance retains exactly its retired references.
+    await permissions.configureEvidenceDocument({
+      ...(await currentContext()),
+      documentId: pending,
+      categoryId: "memo",
+      scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
+      fileConfidentialityLevel: 3
+    });
+    const reason = "Correct an explicitly requested historical business day";
+    const correctionJob = await reserve(reason);
+    const correction = candidate(nextId());
+    await publish(correctionJob, correction);
+    expect(
+      await prisma.structuredPartition.findUniqueOrThrow({ where: { id: original.id } })
+    ).toMatchObject({ objectKey: correction.objectKey, checksumSha256: correction.checksumSha256 });
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        orgId: publicationOrg,
+        targetId: resource.id,
+        action: "resource.historical_supplement.authorized"
+      }
+    });
+    expect(audit).toMatchObject({
+      actorEmployeeId: admin,
+      clientSource: "admin",
+      result: "succeeded"
+    });
+    expect(audit.metadata).toMatchObject({
+      historicalSupplement: { actorEmployeeId: admin, reason },
+      businessDates: [date],
+      retired: expect.arrayContaining([
+        { kind: "category", identity: ["business"] },
+        { kind: "store", identity: ["enterprise", storeName] }
+      ])
+    });
+    expect(
+      await prisma.businessCategory.findUniqueOrThrow({
+        where: { orgId_id: { orgId: publicationOrg, id: "business" } }
+      })
+    ).toMatchObject({ retired: true, name: "business" });
+    expect(
+      await prisma.businessStore.findUniqueOrThrow({
+        where: {
+          orgId_enterpriseKey_name: {
+            orgId: publicationOrg,
+            enterpriseKey: "enterprise",
+            name: storeName
+          }
+        }
+      })
+    ).toMatchObject({ retired: true, name: storeName });
+    const revokedJob = await reserve(reason);
+    await prisma.employee.update({ where: { id: admin }, data: { role: "employee" } });
+    const beforeRevoked = (await permissions.loadAuthorizationSnapshot(admin, publicationOrg))
+      .authorizationVersion;
+    await expect(publish(revokedJob, candidate(nextId()))).rejects.toThrow(
+      "AUTHORIZATION_ADMIN_REQUIRED"
+    );
+    expect(
+      (await permissions.loadAuthorizationSnapshot(admin, publicationOrg)).authorizationVersion
+    ).toBe(beforeRevoked);
+    expect(
+      await prisma.structuredPartition.findUniqueOrThrow({ where: { id: original.id } })
+    ).toMatchObject({ objectKey: correction.objectKey });
+    await prisma.employee.update({ where: { id: admin }, data: { role: "admin" } });
+  }, 15_000);
 });

@@ -1,4 +1,8 @@
-import { persistStructuredSourceReadRequirements, requireCurrentUploadAdmin } from "@smedc/db";
+import {
+  persistStructuredSourceReadRequirements,
+  requireCurrentUploadAdmin,
+  bindHistoricalSupplementIntent
+} from "@smedc/db";
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsFromRows,
@@ -80,6 +84,7 @@ export interface StructuredImportBatchRecord {
 }
 
 export interface ReserveStructuredImportInput {
+  historicalSupplementReason?: string;
   enterpriseKey?: string;
   onDatabaseRetry?: (event: DatabaseRetryEvent) => void;
   orgId: string;
@@ -428,6 +433,13 @@ export function createPrismaStructuredImportRepository(options: {
           const batch = await prisma.$transaction(
             async (tx) => {
               await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+              const historicalSupplement = await bindHistoricalSupplementIntent(
+                tx,
+                input.orgId,
+                input.actorEmployeeId,
+                input.historicalSupplementReason,
+                [input.startDate, input.endDate].filter((date): date is string => !!date)
+              );
               await tx.document.create({
                 data: {
                   id: input.documentId,
@@ -446,6 +458,9 @@ export function createPrismaStructuredImportRepository(options: {
                   sourceSystem: "structured_import",
                   sourceMetadata: {
                     ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
+                    ...(historicalSupplement
+                      ? { historicalSupplement: { ...historicalSupplement } }
+                      : {}),
                     dataset: input.dataset,
                     startDate: input.startDate,
                     endDate: input.endDate,
@@ -508,7 +523,10 @@ export function createPrismaStructuredImportRepository(options: {
                       ? { naturalKey: input.naturalKey }
                       : {}),
                     rowCount: input.totalRowCount,
-                    sourceDocumentId: input.documentId
+                    sourceDocumentId: input.documentId,
+                    ...(historicalSupplement
+                      ? { historicalSupplement: { ...historicalSupplement } }
+                      : {})
                   },
                   requestId: input.audit.requestId,
                   clientIp: input.audit.sourceIp,

@@ -29,6 +29,7 @@ export interface ResourceAuthorizationWrite
   resourceKey: string;
   documentId?: string;
   sourceDocumentId?: string;
+  historicalSupplementReason?: string;
 }
 // Fixed categories are developer-registered; evidence categories cannot impersonate them.
 const fixedCategoryOwnership: Record<string, "group" | "store"> = {
@@ -177,9 +178,175 @@ export async function persistBusinessGrants(
     }
   }
 }
+export class ResourceAttributesError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+  }
+}
+export interface HistoricalSupplementIntent {
+  actorEmployeeId: string;
+  reason: string;
+}
+export function readHistoricalSupplementIntent(
+  value: unknown
+): HistoricalSupplementIntent | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !("actorEmployeeId" in value) ||
+    !("reason" in value) ||
+    typeof value.actorEmployeeId !== "string" ||
+    typeof value.reason !== "string"
+  )
+    throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
+  return { actorEmployeeId: value.actorEmployeeId, reason: value.reason };
+}
+export async function bindHistoricalSupplementIntent(
+  tx: Tx,
+  orgId: string,
+  actorEmployeeId: string,
+  reason?: string,
+  businessDates: readonly string[] = []
+): Promise<HistoricalSupplementIntent | undefined> {
+  if (reason === undefined) return undefined;
+  const intent = { actorEmployeeId, reason: reason.trim() };
+  await validateHistoricalSupplement(tx, orgId, intent, businessDates);
+  return intent;
+}
+async function validateHistoricalSupplement(
+  tx: Tx,
+  orgId: string,
+  intent: HistoricalSupplementIntent,
+  businessDates: readonly string[],
+  currentRead = false
+) {
+  if (!intent.reason.trim() || intent.reason.length > 2048)
+    throw new ResourceAttributesError("RESOURCE_HISTORICAL_REASON_REQUIRED");
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+  if (
+    businessDates
+      .map(normalizeHistoricalBusinessDate)
+      .some(
+        (date) =>
+          !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+          !Number.isFinite(Date.parse(`${date}T00:00:00Z`)) ||
+          new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date ||
+          date > today
+      )
+  )
+    throw new ResourceAttributesError("RESOURCE_HISTORICAL_DATE_INVALID");
+  const actor = currentRead
+    ? (
+        await tx.$queryRaw<{ id: string }[]>(
+          Prisma.sql`SELECT id FROM employees WHERE org_id = ${orgId} AND id = ${intent.actorEmployeeId} AND role = 'admin' AND disabled = false FOR SHARE`
+        )
+      )[0]
+    : await tx.employee.findFirst({
+        where: { orgId, id: intent.actorEmployeeId, role: "admin", disabled: false },
+        select: { id: true }
+      });
+  if (!actor) throw new ResourceAttributesError("AUTHORIZATION_ADMIN_REQUIRED");
+}
+function normalizeHistoricalBusinessDate(date: string): string {
+  // Structured upload windows use YYYYMMDD; parsed rows and partitions use YYYY-MM-DD.
+  return /^\d{8}$/.test(date)
+    ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`
+    : date;
+}
+export async function requireCurrentDirectoryEligibility(
+  tx: Tx,
+  input: {
+    orgId: string;
+    categoryId: string;
+    scopes: ResourceReadRequirement["scopes"];
+    targetId: string;
+    preserveExistingReferences?: boolean;
+    historicalSupplement?: HistoricalSupplementIntent;
+    businessDates?: readonly string[];
+  }
+) {
+  if (input.historicalSupplement)
+    await validateHistoricalSupplement(
+      tx,
+      input.orgId,
+      input.historicalSupplement,
+      input.businessDates ?? [],
+      true
+    );
+  const retired: { kind: string; identity: string[] }[] = [];
+  // Locking reads observe the current directory even if the surrounding transaction read business rows before its version lock.
+  const category = (
+    await tx.$queryRaw<{ retired: boolean }[]>(
+      Prisma.sql`SELECT retired FROM business_categories WHERE org_id = ${input.orgId} AND id = ${input.categoryId} FOR SHARE`
+    )
+  )[0];
+  if (!category) throw new ResourceAttributesError("RESOURCE_CATEGORY_NOT_CONFIGURED");
+  if (category.retired) retired.push({ kind: "category", identity: [input.categoryId] });
+  const requiredDimensions = await tx.$queryRaw<{ dimensionId: string }[]>(
+    Prisma.sql`SELECT dimension_id AS dimensionId FROM business_category_dimensions WHERE org_id = ${input.orgId} AND category_id = ${input.categoryId} FOR SHARE`
+  );
+  for (const scope of input.scopes) {
+    if (requiredDimensions.some(({ dimensionId }) => !scope.dimensions[dimensionId]))
+      throw new ResourceAttributesError("RESOURCE_ATTRIBUTES_NOT_READY");
+    if (scope.ownership === "store") {
+      const store = (
+        await tx.$queryRaw<{ retired: boolean }[]>(
+          Prisma.sql`SELECT retired FROM business_stores WHERE org_id = ${input.orgId} AND enterprise_key = ${scope.enterpriseKey} AND name = ${scope.storeName!} FOR SHARE`
+        )
+      )[0];
+      if (store?.retired)
+        retired.push({ kind: "store", identity: [scope.enterpriseKey, scope.storeName!] });
+    }
+    for (const [dimensionId, valueId] of Object.entries(scope.dimensions)) {
+      const dimension = (
+        await tx.$queryRaw<{ retired: boolean }[]>(
+          Prisma.sql`SELECT retired FROM business_dimensions WHERE org_id = ${input.orgId} AND id = ${dimensionId} FOR SHARE`
+        )
+      )[0];
+      const value = (
+        await tx.$queryRaw<{ retired: boolean }[]>(
+          Prisma.sql`SELECT retired FROM business_dimension_values WHERE org_id = ${input.orgId} AND dimension_id = ${dimensionId} AND id = ${valueId} FOR SHARE`
+        )
+      )[0];
+      if (!dimension || !value) throw new ResourceAttributesError("RESOURCE_ATTRIBUTES_NOT_READY");
+      if (dimension.retired) retired.push({ kind: "dimension", identity: [dimensionId] });
+      if (value.retired) retired.push({ kind: "value", identity: [dimensionId, valueId] });
+    }
+  }
+  if (retired.length && !input.preserveExistingReferences && !input.historicalSupplement)
+    throw new ResourceAttributesError("RESOURCE_DIRECTORY_RETIRED");
+  if (input.historicalSupplement)
+    await tx.auditLog.create({
+      data: {
+        orgId: input.orgId,
+        actorEmployeeId: input.historicalSupplement.actorEmployeeId,
+        action: "resource.historical_supplement.authorized",
+        targetType: "business_resource",
+        targetId: input.targetId,
+        result: "succeeded",
+        clientSource: "admin",
+        metadata: {
+          historicalSupplement: input.historicalSupplement as unknown as Prisma.InputJsonValue,
+          retired,
+          businessDates: (input.businessDates ?? []).map(normalizeHistoricalBusinessDate)
+        }
+      }
+    });
+}
 export async function persistResourceAttributes(
   tx: Tx,
-  input: Omit<ResourceAuthorizationWrite, "actorId" | "expectedVersion">
+  input: Omit<ResourceAuthorizationWrite, "actorId" | "expectedVersion">,
+  options: {
+    publication?: boolean;
+    historicalSupplement?: HistoricalSupplementIntent;
+    businessDates?: readonly string[];
+  } = {}
 ) {
   const category = await tx.businessCategory.findUniqueOrThrow({
     where: { orgId_id: { orgId: input.orgId, id: input.categoryId } },
@@ -225,6 +392,23 @@ export async function persistResourceAttributes(
       !preservesSourceTuples(resourceRequirement(before).scopes, input.scopes))
   )
     throw new Error("SOURCE_REQUIREMENTS_IMMUTABLE");
+  await requireCurrentDirectoryEligibility(tx, {
+    orgId: input.orgId,
+    categoryId: input.categoryId,
+    scopes: input.scopes,
+    targetId: input.id,
+    preserveExistingReferences:
+      !options.publication &&
+      !!before &&
+      before.categoryId === input.categoryId &&
+      before.valid === input.valid &&
+      isDeepStrictEqual(
+        canonicalScopes(resourceRequirement(before).scopes),
+        canonicalScopes(input.scopes)
+      ),
+    historicalSupplement: options.historicalSupplement,
+    businessDates: options.businessDates
+  });
   const contentChanged =
     before &&
     (before.valid !== input.valid ||
@@ -475,6 +659,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         categoryId: string;
         fileConfidentialityLevel: number;
         scopes: ResourceReadRequirement["scopes"];
+        historicalSupplementReason?: string;
       }
     ) {
       return mutate(input, "document.attributes.configure", input.documentId, async (tx) => {
@@ -485,13 +670,38 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         const existing = await tx.businessResource.findFirst({
           where: { orgId: input.orgId, documentId: input.documentId, kind: "evidence" }
         });
-        return persistResourceAttributes(tx, {
-          ...input,
-          id: existing?.id ?? randomUUID().replaceAll("-", ""),
-          kind: "evidence",
-          resourceKey: input.documentId,
-          valid: document.status === "active" && !document.archivedAt
+        const historicalSupplement = await bindHistoricalSupplementIntent(
+          tx,
+          input.orgId,
+          input.actorId,
+          input.historicalSupplementReason
+        );
+        await tx.document.update({
+          where: { id: document.id },
+          data: {
+            sourceMetadata: {
+              ...(document.sourceMetadata &&
+              typeof document.sourceMetadata === "object" &&
+              !Array.isArray(document.sourceMetadata)
+                ? document.sourceMetadata
+                : {}),
+              historicalSupplement: historicalSupplement
+                ? (historicalSupplement as unknown as Prisma.InputJsonValue)
+                : null
+            }
+          }
         });
+        return persistResourceAttributes(
+          tx,
+          {
+            ...input,
+            id: existing?.id ?? randomUUID().replaceAll("-", ""),
+            kind: "evidence",
+            resourceKey: input.documentId,
+            valid: document.status === "active" && !document.archivedAt
+          },
+          { historicalSupplement }
+        );
       });
     },
     initializeOrganization: (orgId: string) =>
@@ -703,9 +913,15 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
       });
     },
     putResource(input: ResourceAuthorizationWrite) {
-      return mutate(input, "resource.configure", input.id, (tx) =>
-        persistResourceAttributes(tx, input)
-      );
+      return mutate(input, "resource.configure", input.id, async (tx) => {
+        const historicalSupplement = await bindHistoricalSupplementIntent(
+          tx,
+          input.orgId,
+          input.actorId,
+          input.historicalSupplementReason
+        );
+        return persistResourceAttributes(tx, input, { historicalSupplement });
+      });
     }
   };
 }

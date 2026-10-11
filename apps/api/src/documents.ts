@@ -1,4 +1,8 @@
-import { persistEvidenceReadRequirement, requireCurrentUploadAdmin } from "@smedc/db";
+import {
+  persistEvidenceReadRequirement,
+  requireCurrentUploadAdmin,
+  bindHistoricalSupplementIntent
+} from "@smedc/db";
 import type { BusinessScopeItem } from "@smedc/domain";
 import {
   lockLedgerSourceMutation,
@@ -29,6 +33,7 @@ import { AUDIT_ACTIONS } from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface CreateUploadedDocumentInput {
+  historicalSupplementReason?: string;
   businessCategoryId?: string;
   businessScopes?: BusinessScopeItem[];
   id: string;
@@ -151,6 +156,12 @@ export function createPrismaDocumentCatalogRepository(
     async createUploadedDocument(input) {
       const document = await prisma.$transaction(async (tx) => {
         await requireCurrentUploadAdmin(tx, input.orgId, input.uploaderId);
+        const historicalSupplement = await bindHistoricalSupplementIntent(
+          tx,
+          input.orgId,
+          input.uploaderId,
+          input.historicalSupplementReason
+        );
         const createdDocument = await tx.document.create({
           data: {
             id: input.id,
@@ -169,6 +180,9 @@ export function createPrismaDocumentCatalogRepository(
             uploaderId: input.uploaderId,
             sourceSystem: input.sourceSystem,
             sourceTime: input.sourceTime,
+            sourceMetadata: historicalSupplement
+              ? { historicalSupplement: { ...historicalSupplement } }
+              : undefined,
             processingRuns: {
               create: {
                 orgId: input.orgId,
@@ -191,7 +205,8 @@ export function createPrismaDocumentCatalogRepository(
             categoryId: input.businessCategoryId,
             scopes: input.businessScopes,
             fileConfidentialityLevel: input.confidentialityLevel,
-            valid: false
+            valid: false,
+            historicalSupplement
           });
 
         await tx.auditLog.create({

@@ -1,4 +1,9 @@
 import {
+  bindHistoricalSupplementIntent,
+  readHistoricalSupplementIntent,
+  ResourceAttributesError
+} from "./business-authorization.js";
+import {
   lockAuthorizationPublication,
   persistPartitionReadRequirement,
   requireCurrentUploadAdmin
@@ -115,6 +120,7 @@ export interface PartitionImportJobRecord {
 
 export interface StructuredPartitionRepository {
   reserveUpload(input: {
+    historicalSupplementReason?: string;
     id?: string;
     orgId: string;
     uploaderId: string;
@@ -273,7 +279,14 @@ export function createPrismaStructuredPartitionRepository(
       try {
         const created = await prisma.$transaction(async (tx) => {
           await requireCurrentUploadAdmin(tx, input.orgId, input.uploaderId);
-          return tx.partitionImportJob.create({
+          const historicalSupplement = await bindHistoricalSupplementIntent(
+            tx,
+            input.orgId,
+            input.uploaderId,
+            input.historicalSupplementReason,
+            [input.sourceStartDate, input.sourceEndDate]
+          );
+          const job = await tx.partitionImportJob.create({
             data: {
               id: input.id ?? createId("pjob"),
               orgId: input.orgId,
@@ -295,6 +308,20 @@ export function createPrismaStructuredPartitionRepository(
               multipartUploadId: input.multipartUploadId
             }
           });
+          if (historicalSupplement)
+            await tx.auditLog.create({
+              data: {
+                orgId: input.orgId,
+                actorEmployeeId: input.uploaderId,
+                action: "partition.historical_supplement.requested",
+                targetType: "partition_import_job",
+                targetId: job.id,
+                result: "succeeded",
+                clientSource: "admin",
+                metadata: { historicalSupplement: { ...historicalSupplement } }
+              }
+            });
+          return job;
         });
         return { state: "created", job: toJobRecord(created) };
       } catch (error) {
@@ -426,6 +453,28 @@ export function createPrismaStructuredPartitionRepository(
               }
             });
             const authorizationState = await lockAuthorizationPublication(tx, input.orgId);
+            const historicalRequest = await tx.auditLog.findFirst({
+              where: {
+                orgId: input.orgId,
+                targetType: "partition_import_job",
+                targetId: job.id,
+                action: "partition.historical_supplement.requested",
+                result: "succeeded"
+              },
+              orderBy: { createdAt: "asc" }
+            });
+            const metadata = historicalRequest?.metadata;
+            const historicalSupplement = readHistoricalSupplementIntent(
+              metadata && typeof metadata === "object" && !Array.isArray(metadata)
+                ? metadata["historicalSupplement"]
+                : undefined
+            );
+            if (
+              historicalSupplement &&
+              (historicalSupplement.actorEmployeeId !== job.uploaderId ||
+                historicalRequest?.actorEmployeeId !== job.uploaderId)
+            )
+              throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
             if (!input.candidates.length || input.totalRowCount <= 0n)
               throw new StructuredPartitionRepositoryError("PARTITION_INVALID_SOURCE");
             const garbage = new Set<string>();
@@ -475,7 +524,9 @@ export function createPrismaStructuredPartitionRepository(
                     dataset: persisted.dataset,
                     enterpriseKey: persisted.enterpriseKey,
                     storeName: persisted.storeName,
-                    workerId: job.id
+                    workerId: job.id,
+                    businessDate: persisted.businessDate.toISOString().slice(0, 10),
+                    historicalSupplement
                   },
                   authorizationState
                 );

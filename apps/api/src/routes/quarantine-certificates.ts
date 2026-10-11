@@ -27,6 +27,7 @@ import type { StorageAdapter } from "@smedc/storage";
 import { readMultipartFile, type MultipartPart } from "../http/multipart.js";
 
 interface ParsedQuarantineUpload {
+  historicalSupplementReason?: string;
   enterpriseName?: string;
   storeName?: string;
   enterpriseFieldCount: number;
@@ -77,6 +78,12 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedQuarantineUpl
     }
 
     const value = typeof part.value === "string" ? part.value.trim() : "";
+    if (part.fieldname === "historicalSupplementReason") {
+      if (upload.historicalSupplementReason !== undefined || !value || value.length > 2048)
+        throw new ResourceAttributesError("RESOURCE_HISTORICAL_REASON_REQUIRED");
+      upload.historicalSupplementReason = value;
+      continue;
+    }
     if (!value) continue;
 
     if (part.fieldname === "enterpriseName" || part.fieldname === "enterprise_name") {
@@ -276,6 +283,7 @@ export function registerQuarantineCertificateRoutes(
     const fileHash = createHash("sha256").update(file.body).digest("hex");
     const requestFingerprint = quarantineCertificateFingerprint({
       receiptId: normalizedReceiptId,
+      historicalSupplementReason: upload.historicalSupplementReason,
       enterpriseKey,
       storeName: upload.storeName,
       confidentialityLevel,
@@ -315,6 +323,7 @@ export function registerQuarantineCertificateRoutes(
         sourceDocumentId,
         title: `检疫证明 ${normalizedReceiptId} - ${file.fileName}`,
         receiptId: normalizedReceiptId,
+        historicalSupplementReason: upload.historicalSupplementReason,
         enterpriseKey,
         storeName: upload.storeName,
         idempotencyKey: upload.idempotencyKey,

@@ -1,4 +1,8 @@
-import { persistPhotoReadRequirement, requireCurrentUploadAdmin } from "@smedc/db";
+import {
+  persistPhotoReadRequirement,
+  requireCurrentUploadAdmin,
+  bindHistoricalSupplementIntent
+} from "@smedc/db";
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsForReceipt,
@@ -44,6 +48,7 @@ export interface QuarantineCertificateRecord {
 }
 
 export interface CreateQuarantineCertificateInput {
+  historicalSupplementReason?: string;
   enterpriseKey?: string;
   storeName?: string;
   orgId: string;
@@ -128,6 +133,7 @@ export function quarantineCertificateFingerprint(input: {
   receiptId: string;
   confidentialityLevel: number;
   fileHash: string;
+  historicalSupplementReason?: string;
   enterpriseKey?: string;
   storeName?: string;
 }): string {
@@ -135,6 +141,9 @@ export function quarantineCertificateFingerprint(input: {
     .update(
       JSON.stringify({
         receiptId: input.receiptId,
+        ...(input.historicalSupplementReason !== undefined
+          ? { historicalSupplementReason: input.historicalSupplementReason }
+          : {}),
         ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
         ...(input.storeName ? { storeName: input.storeName } : {}),
         confidentialityLevel: input.confidentialityLevel,
@@ -188,6 +197,12 @@ export function createPrismaQuarantineCertificateRepository(
           prisma.$transaction(async (tx) => {
             await lockLedgerSourceMutation(tx, input.orgId);
             await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+            const historicalSupplement = await bindHistoricalSupplementIntent(
+              tx,
+              input.orgId,
+              input.actorEmployeeId,
+              input.historicalSupplementReason
+            );
             await tx.document.create({
               data: {
                 id: input.sourceDocumentId,
@@ -208,6 +223,9 @@ export function createPrismaQuarantineCertificateRepository(
                 sourceTime: null,
                 sourceMetadata: {
                   receiptId: input.receiptId,
+                  ...(historicalSupplement
+                    ? { historicalSupplement: { ...historicalSupplement } }
+                    : {}),
                   ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
                   ...(input.storeName ? { storeName: input.storeName } : {})
                 }
@@ -225,7 +243,7 @@ export function createPrismaQuarantineCertificateRepository(
               include: certificateInclude
             });
 
-            await persistPhotoReadRequirement(tx, input);
+            await persistPhotoReadRequirement(tx, { ...input, historicalSupplement });
 
             const affectedLedgerPartitions = await ledgerPartitionsForReceipt(
               tx,

@@ -8,6 +8,7 @@ import type { AuthenticatedEmployee } from "@smedc/domain";
 import { AUDIT_ACTIONS, getStructuredRegistry } from "@smedc/domain";
 import { LocalFileSystemStorageAdapter, type StorageAdapter } from "@smedc/storage";
 import { structuredImportFingerprint } from "./workflow.js";
+import { ResourceAttributesError } from "@smedc/db";
 import { buildApiServer } from "../../server.js";
 import type { StructuredImportRepository } from "../../structured-imports.js";
 import {
@@ -215,6 +216,48 @@ describe("structured imports", () => {
       payload: multipartBody.body
     });
   }
+
+  it("forwards explicit historical intent and returns reservation validation errors before storage", async () => {
+    const { app, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer();
+    const reserve = vi
+      .spyOn(structuredImportRepository, "reserveStructuredImport")
+      .mockRejectedValueOnce(new ResourceAttributesError("RESOURCE_HISTORICAL_DATE_INVALID"));
+    const multipart = createMultipartPayload([
+      { name: "dataset", value: "vip" },
+      { name: "enterprise_name", value: "Synthetic" },
+      { name: "startDate", value: "20260819" },
+      { name: "endDate", value: "20260819" },
+      { name: "confidentialityLevel", value: "0" },
+      { name: "idempotencyKey", value: "historical-intent" },
+      { name: "historicalSupplementReason", value: "  Historical member correction  " },
+      {
+        name: "file",
+        fileName: "vip.csv",
+        contentType: "text/csv",
+        value: Buffer.from("synthetic\nrow\n")
+      }
+    ]);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/structured/imports",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+        "content-type": multipart.contentType
+      },
+      payload: multipart.body
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: { code: "RESOURCE_HISTORICAL_DATE_INVALID" } });
+    expect(reserve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorEmployeeId: adminEmployee.id,
+        historicalSupplementReason: "Historical member correction",
+        startDate: "20260819"
+      })
+    );
+    expect(storagePutCalls()).toBe(0);
+  });
 
   function deliveryReceiptCsv(
     input: {

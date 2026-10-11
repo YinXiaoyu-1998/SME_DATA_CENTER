@@ -8,7 +8,13 @@ import {
   type ResourceReadRequirement,
   type StructuredDatasetName
 } from "@smedc/domain";
-import { persistResourceAttributes } from "./business-authorization.js";
+import {
+  persistResourceAttributes,
+  ResourceAttributesError,
+  requireCurrentDirectoryEligibility,
+  readHistoricalSupplementIntent,
+  type HistoricalSupplementIntent
+} from "./business-authorization.js";
 
 type Tx = Prisma.TransactionClient;
 type Reader = Tx | PrismaClient;
@@ -25,11 +31,6 @@ const fixedOwnership: Record<
   quarantine_certificate: "store",
   ledger_pdf: "store"
 };
-export class ResourceAttributesError extends Error {
-  constructor(readonly code: string) {
-    super(code);
-  }
-}
 function fail(code: string): never {
   throw new ResourceAttributesError(code);
 }
@@ -177,6 +178,24 @@ async function auditPublication(
     }
   });
 }
+function publicationBusinessDates(
+  rows: readonly { payload: Record<string, unknown> }[],
+  metadata: Record<string, unknown>
+): string[] {
+  return [
+    ...new Set(
+      [
+        metadata["startDate"],
+        metadata["endDate"],
+        ...rows.flatMap(({ payload }) => [
+          payload["business_date"],
+          payload["snapshot_date"],
+          payload["purchase_date"]
+        ])
+      ].filter((value): value is string => typeof value === "string" && !!value)
+    )
+  ];
+}
 export async function persistStructuredSourceReadRequirements(
   tx: Tx,
   input: {
@@ -200,6 +219,10 @@ export async function persistStructuredSourceReadRequirements(
     select: { sourceMetadata: true }
   });
   const enterpriseKey = input.enterpriseKey ?? record(document.sourceMetadata)["enterpriseKey"];
+  const historicalSupplement = readHistoricalSupplementIntent(
+    record(document.sourceMetadata)["historicalSupplement"]
+  );
+  const businessDates = publicationBusinessDates(input.rows, record(document.sourceMetadata));
   const { category, rule } = await fixedCategory(tx, input.orgId, input.dataset, state.mode);
   if (!input.rows.length) fail("SOURCE_HAS_NO_PARSED_ROWS");
   let scopes: BusinessScopeItem[] = [];
@@ -212,7 +235,7 @@ export async function persistStructuredSourceReadRequirements(
   } catch (error) {
     if (state.mode === "enabled" || !(error instanceof ResourceAttributesError)) throw error;
   }
-  requirePublicationAttributes(state.mode, rule, scopes);
+  requirePublicationAttributes(historicalSupplement ? "enabled" : state.mode, rule, scopes);
   await tx.document.update({
     where: { id: input.sourceDocumentId },
     data: {
@@ -231,8 +254,18 @@ export async function persistStructuredSourceReadRequirements(
     !rule ||
     !scopes.length ||
     scopes.some((scope) => !validateBusinessScope(scope, rule))
-  )
+  ) {
+    if (category)
+      await requireCurrentDirectoryEligibility(tx, {
+        orgId: input.orgId,
+        categoryId: category.id,
+        scopes,
+        targetId: input.sourceDocumentId,
+        historicalSupplement,
+        businessDates
+      });
     return;
+  }
   if (input.dataset === "delivery_ledger")
     await validateReceiptPhotoStore(
       tx,
@@ -252,13 +285,17 @@ export async function persistStructuredSourceReadRequirements(
     valid: true,
     scopes
   };
-  const result = await persistResourceAttributes(tx, {
-    ...requirement,
-    id: existing?.id ?? randomUUID().replaceAll("-", ""),
-    kind: "source_fragment",
-    resourceKey,
-    sourceDocumentId: input.sourceDocumentId
-  });
+  const result = await persistResourceAttributes(
+    tx,
+    {
+      ...requirement,
+      id: existing?.id ?? randomUUID().replaceAll("-", ""),
+      kind: "source_fragment",
+      resourceKey,
+      sourceDocumentId: input.sourceDocumentId
+    },
+    { publication: true, historicalSupplement, businessDates }
+  );
   await auditPublication(tx, input.orgId, result.after.id, input.workerId, requirement);
 }
 export async function persistPartitionReadRequirement(
@@ -270,6 +307,8 @@ export async function persistPartitionReadRequirement(
     enterpriseKey: string;
     storeName: string;
     workerId: string;
+    historicalSupplement?: HistoricalSupplementIntent;
+    businessDate?: string;
   },
   state: Awaited<ReturnType<typeof lockAuthorizationPublication>>
 ) {
@@ -284,14 +323,24 @@ export async function persistPartitionReadRequirement(
         }
       ]
     : [];
-  requirePublicationAttributes(state.mode, rule, scopes);
+  requirePublicationAttributes(input.historicalSupplement ? "enabled" : state.mode, rule, scopes);
   if (
     !category ||
     !rule ||
     !scopes.length ||
     scopes.some((scope) => !validateBusinessScope(scope, rule))
-  )
+  ) {
+    if (category)
+      await requireCurrentDirectoryEligibility(tx, {
+        orgId: input.orgId,
+        categoryId: category.id,
+        scopes,
+        targetId: input.partitionId,
+        historicalSupplement: input.historicalSupplement,
+        businessDates: input.businessDate ? [input.businessDate] : []
+      });
     return;
+  }
   await registerStores(tx, input.orgId, scopes);
   const resourceKey = `partition:${input.partitionId}`;
   const existing = await tx.businessResource.findUnique({
@@ -303,12 +352,20 @@ export async function persistPartitionReadRequirement(
     valid: true,
     scopes
   };
-  const result = await persistResourceAttributes(tx, {
-    ...requirement,
-    id: existing?.id ?? randomUUID().replaceAll("-", ""),
-    kind: "structured",
-    resourceKey
-  });
+  const result = await persistResourceAttributes(
+    tx,
+    {
+      ...requirement,
+      id: existing?.id ?? randomUUID().replaceAll("-", ""),
+      kind: "structured",
+      resourceKey
+    },
+    {
+      publication: true,
+      historicalSupplement: input.historicalSupplement,
+      businessDates: input.businessDate ? [input.businessDate] : []
+    }
+  );
   await auditPublication(tx, input.orgId, result.after.id, input.workerId, requirement);
 }
 export async function persistEvidenceReadRequirement(
@@ -320,6 +377,7 @@ export async function persistEvidenceReadRequirement(
     scopes?: BusinessScopeItem[];
     fileConfidentialityLevel: number;
     valid: boolean;
+    historicalSupplement?: HistoricalSupplementIntent;
   }
 ) {
   const state = await lockAuthorizationPublication(tx, input.orgId);
@@ -331,8 +389,7 @@ export async function persistEvidenceReadRequirement(
     where: { orgId_id: { orgId: input.orgId, id: input.categoryId } },
     include: { dimensions: true }
   });
-  if (!category || category.kind !== "evidence" || category.retired)
-    fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
+  if (!category || category.kind !== "evidence") fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
   const rule: BusinessCategoryRule = {
     id: category.id,
     kind: "evidence",
@@ -359,14 +416,18 @@ export async function persistEvidenceReadRequirement(
       }
     }
   });
-  return persistResourceAttributes(tx, {
-    ...input,
-    id: existing?.id ?? randomUUID().replaceAll("-", ""),
-    kind: "evidence",
-    resourceKey: input.documentId,
-    categoryId: input.categoryId,
-    scopes: input.scopes
-  });
+  return persistResourceAttributes(
+    tx,
+    {
+      ...input,
+      id: existing?.id ?? randomUUID().replaceAll("-", ""),
+      kind: "evidence",
+      resourceKey: input.documentId,
+      categoryId: input.categoryId,
+      scopes: input.scopes
+    },
+    { publication: true, historicalSupplement: input.historicalSupplement }
+  );
 }
 export async function activateEvidenceReadRequirement(tx: Tx, orgId: string, documentId: string) {
   const state = await lockAuthorizationPublication(tx, orgId);
@@ -397,12 +458,33 @@ export async function activateEvidenceReadRequirement(tx: Tx, orgId: string, doc
     ...(scope.storeName !== null ? { storeName: scope.storeName } : {}),
     dimensions: Object.fromEntries(scope.dimensions.map((d) => [d.dimensionId, d.valueId]))
   }));
+  const document = await tx.document.findFirst({
+    where: {
+      orgId,
+      id: documentId,
+      documentKind: "evidence",
+      archivedAt: null,
+      status: { not: "archived" }
+    },
+    select: { sourceMetadata: true }
+  });
+  if (!document) fail("RESOURCE_INVALID");
+  const historicalSupplement = readHistoricalSupplementIntent(
+    record(document.sourceMetadata)["historicalSupplement"]
+  );
   requirePublicationAttributes(
-    state.mode,
+    historicalSupplement ? "enabled" : state.mode,
     rule,
     scopes,
     resource.fileConfidentialityLevel ?? undefined
   );
+  await requireCurrentDirectoryEligibility(tx, {
+    orgId,
+    categoryId: resource.categoryId,
+    scopes,
+    targetId: resource.id,
+    historicalSupplement
+  });
   await tx.businessResource.update({
     where: { orgId_id: { orgId, id: resource.id } },
     data: { valid: true, authorizationVersion: { increment: 1 } }
@@ -463,6 +545,7 @@ export async function persistPhotoReadRequirement(
     enterpriseKey?: string;
     storeName?: string;
     receiptId: string;
+    historicalSupplement?: HistoricalSupplementIntent;
   }
 ) {
   const state = await lockAuthorizationPublication(tx, input.orgId);
@@ -483,14 +566,23 @@ export async function persistPhotoReadRequirement(
           }
         ]
       : [];
-  requirePublicationAttributes(state.mode, rule, scopes);
+  requirePublicationAttributes(input.historicalSupplement ? "enabled" : state.mode, rule, scopes);
   if (
     !category ||
     !rule ||
     !scopes.length ||
     scopes.some((scope) => !validateBusinessScope(scope, rule))
-  )
+  ) {
+    if (category)
+      await requireCurrentDirectoryEligibility(tx, {
+        orgId: input.orgId,
+        categoryId: category.id,
+        scopes,
+        targetId: input.sourceDocumentId,
+        historicalSupplement: input.historicalSupplement
+      });
     return;
+  }
   const ledgerRows = await tx.deliveryLedgerRow.findMany({
     where: {
       orgId: input.orgId,
@@ -511,16 +603,27 @@ export async function persistPhotoReadRequirement(
       fail("CERTIFICATE_STORE_MISMATCH");
   }
   await registerStores(tx, input.orgId, scopes);
-  return persistResourceAttributes(tx, {
-    orgId: input.orgId,
-    id: randomUUID().replaceAll("-", ""),
-    kind: "quarantine_certificate",
-    resourceKey: input.sourceDocumentId,
-    documentId: input.sourceDocumentId,
-    categoryId: category.id,
-    valid: true,
-    scopes
-  });
+  return persistResourceAttributes(
+    tx,
+    {
+      orgId: input.orgId,
+      id: randomUUID().replaceAll("-", ""),
+      kind: "quarantine_certificate",
+      resourceKey: input.sourceDocumentId,
+      documentId: input.sourceDocumentId,
+      categoryId: category.id,
+      valid: true,
+      scopes
+    },
+    {
+      publication: true,
+      historicalSupplement: input.historicalSupplement,
+      businessDates: publicationBusinessDates(
+        ledgerRows.map((row) => ({ payload: record(row.payload) })),
+        {}
+      )
+    }
+  );
 }
 export async function getSourceReadRequirements(
   reader: Reader,

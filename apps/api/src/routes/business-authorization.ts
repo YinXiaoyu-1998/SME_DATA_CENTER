@@ -270,7 +270,10 @@ export function registerBusinessAuthorizationRoutes(
         !text(body["expectedVersion"]) ||
         !text(body["categoryId"]) ||
         !isBusinessClearance(body["fileConfidentialityLevel"]) ||
-        !Array.isArray(body["scopes"])
+        !Array.isArray(body["scopes"]) ||
+        (body["historicalSupplementReason"] !== undefined &&
+          (!text(body["historicalSupplementReason"]) ||
+            body["historicalSupplementReason"].length > 2048))
       )
         return invalid(reply);
       const category = actor.categories.find(
@@ -293,7 +296,10 @@ export function registerBusinessAuthorizationRoutes(
         documentId: params["documentId"]!,
         categoryId: body["categoryId"],
         fileConfidentialityLevel: body["fileConfidentialityLevel"],
-        scopes: body["scopes"] as BusinessScopeItem[]
+        scopes: body["scopes"] as BusinessScopeItem[],
+        ...(typeof body["historicalSupplementReason"] === "string"
+          ? { historicalSupplementReason: body["historicalSupplementReason"] }
+          : {})
       });
     }
   );

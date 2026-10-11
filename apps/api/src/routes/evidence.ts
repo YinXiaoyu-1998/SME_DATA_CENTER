@@ -30,6 +30,7 @@ import type { StorageAdapter } from "@smedc/storage";
 import { readMultipartFile, type MultipartPart } from "../http/multipart.js";
 
 interface ParsedUpload {
+  historicalSupplementReason?: string;
   businessCategoryId?: string;
   businessScopes?: unknown;
   businessCategoryFieldCount: number;
@@ -116,6 +117,12 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
     }
 
     const value = typeof part.value === "string" ? part.value.trim() : "";
+    if (part.fieldname === "historicalSupplementReason") {
+      if (upload.historicalSupplementReason !== undefined || !value || value.length > 2048)
+        throw new ResourceAttributesError("RESOURCE_HISTORICAL_REASON_REQUIRED");
+      upload.historicalSupplementReason = value;
+      continue;
+    }
 
     if (part.fieldname === "confidentialityLevel") {
       upload.confidentialityLevelFieldCount += 1;
@@ -464,6 +471,7 @@ export function registerEvidenceRoutes(
         sourceSystem: upload.sourceSystem || null,
         sourceTime: null,
         confidentialityLevel,
+        historicalSupplementReason: upload.historicalSupplementReason,
         businessCategoryId: upload.businessCategoryId,
         businessScopes: upload.businessScopes as BusinessScopeItem[],
         processingJobType: "evidence_document_index",

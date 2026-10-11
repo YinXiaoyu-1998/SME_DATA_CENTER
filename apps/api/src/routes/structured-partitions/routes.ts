@@ -1,3 +1,4 @@
+import { ResourceAttributesError } from "@smedc/db";
 import { createHash, randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { RequestAuditContext } from "../../request-audit-context.js";
@@ -29,6 +30,7 @@ import {
 const PART_URL_PAGE_SIZE = 100;
 
 interface CreateUploadBody {
+  historicalSupplementReason?: string;
   dataset?: string;
   enterpriseName?: string;
   startDate?: string;
@@ -90,6 +92,7 @@ export function registerStructuredPartitionRoutes(
         const fingerprint = createHash("sha256").update(JSON.stringify(parsed.value)).digest("hex");
         const reserved = await dependencies.partitions().reserveUpload({
           id: jobId,
+          historicalSupplementReason: parsed.value.historicalSupplementReason,
           orgId: employee.orgId,
           uploaderId: employee.id,
           dataset: parsed.value.dataset,
@@ -137,6 +140,12 @@ export function registerStructuredPartitionRoutes(
         await storage
           .abortMultipartUpload({ key: objectKey, uploadId: createdMultipart.uploadId })
           .catch(() => undefined);
+        if (error instanceof ResourceAttributesError)
+          return validationError(
+            reply,
+            error.code,
+            "Historical supplementation requires current admin approval and valid dates."
+          );
         if (error instanceof StructuredPartitionRepositoryError) {
           return reply.code(409).send(errorResponse(error.code, error.message));
         }
@@ -473,6 +482,16 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
       "INVALID_CONFIDENTIALITY_LEVEL",
       "confidentialityLevel must be an integer from 0 through 3."
     );
+  if (
+    body.historicalSupplementReason !== undefined &&
+    (typeof body.historicalSupplementReason !== "string" ||
+      !body.historicalSupplementReason.trim() ||
+      body.historicalSupplementReason.length > 2048)
+  )
+    return invalid(
+      "RESOURCE_HISTORICAL_REASON_REQUIRED",
+      "Historical supplementation requires a nonempty reason."
+    );
   return {
     ok: true as const,
     value: {
@@ -486,6 +505,9 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
       sourceChecksumSha256,
       idempotencyKey: idempotencyKey.trim(),
       confidentialityLevel,
+      ...(typeof body.historicalSupplementReason === "string"
+        ? { historicalSupplementReason: body.historicalSupplementReason.trim() }
+        : {}),
       startDate,
       endDate
     }

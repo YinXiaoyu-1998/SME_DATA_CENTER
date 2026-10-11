@@ -155,6 +155,7 @@ describe("structured partition routes", () => {
     const finishJob = vi.fn(async () => {});
     const repository = repositoryStub({
       reserveUpload: async (input) => {
+        expect(input.historicalSupplementReason).toBe("Historical business correction");
         job = {
           id: input.id!,
           orgId: input.orgId,
@@ -207,7 +208,8 @@ describe("structured partition routes", () => {
         mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         sourceByteSize: 20_000_000,
         sourceChecksumSha256: "a".repeat(64),
-        idempotencyKey: "idem-1"
+        idempotencyKey: "idem-1",
+        historicalSupplementReason: "  Historical business correction  "
       }
     });
     expect(response.statusCode).toBe(201);

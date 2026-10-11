@@ -1,3 +1,4 @@
+import { ResourceAttributesError } from "@smedc/db";
 import { normalizeEnterpriseIdentity } from "@smedc/domain";
 import { createHash } from "node:crypto";
 import {
@@ -80,6 +81,12 @@ async function parseStructuredImportUpload(
     }
 
     const value = typeof part.value === "string" ? part.value.trim() : "";
+    if (part.fieldname === "historicalSupplementReason") {
+      if (upload.historicalSupplementReason !== undefined || !value || value.length > 2048)
+        throw new ResourceAttributesError("RESOURCE_HISTORICAL_REASON_REQUIRED");
+      upload.historicalSupplementReason = value;
+      continue;
+    }
 
     if (part.fieldname === "confidentialityLevel") {
       upload.confidentialityLevelFieldCount += 1;
@@ -331,6 +338,7 @@ export function registerStructuredImportRoutes(
       fileType
     });
     const requestFingerprint = structuredImportFingerprint({
+      historicalSupplementReason: upload.historicalSupplementReason,
       dataset,
       enterpriseName,
       ...(registry.metadataPolicy === "snapshot"
@@ -360,6 +368,7 @@ export function registerStructuredImportRoutes(
             documentId: candidateDocumentId,
             dataset,
             enterpriseKey: normalizeEnterpriseIdentity(enterpriseName).enterpriseKey,
+            historicalSupplementReason: upload.historicalSupplementReason,
             fileType,
             startDate,
             endDate,
@@ -392,6 +401,12 @@ export function registerStructuredImportRoutes(
       );
     } catch (error) {
       logTiming("upload.total", importRequestStarted, { outcome: "reservation_failed" });
+      if (error instanceof ResourceAttributesError)
+        return validationError(
+          reply,
+          error.code,
+          "Historical supplementation requires current admin approval and valid dates."
+        );
       if (error instanceof StructuredImportError || hasStructuredImportCode(error)) {
         return reply
           .code(409)

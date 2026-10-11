@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { requireCurrentDirectoryEligibility } from "./business-authorization.js";
 import {
   getSourceReadRequirements,
   deriveStructuredSourceScopes,
@@ -128,4 +129,103 @@ it("reads complete source requirements in one client transaction without opening
   expect(requirements[0]?.scopes.map((scope) => scope.storeName)).toEqual(["A", "B"]);
   expect(client.$transaction).toHaveBeenCalledTimes(1);
   expect(tx.$transaction).not.toHaveBeenCalled();
+});
+
+describe("current directory eligibility", () => {
+  function fixture() {
+    const directory = {
+      category: false,
+      store: false,
+      dimension: false,
+      value: false,
+      adminActive: true
+    };
+    const tx = {
+      businessCategory: { findUnique: vi.fn(async () => ({ retired: directory.category })) },
+      businessStore: { findUnique: vi.fn(async () => ({ retired: directory.store })) },
+      businessDimension: { findUnique: vi.fn(async () => ({ retired: directory.dimension })) },
+      businessDimensionValue: { findUnique: vi.fn(async () => ({ retired: directory.value })) },
+      employee: { findFirst: vi.fn(async () => ({ id: "admin" })) },
+      auditLog: { create: vi.fn(async () => ({})) },
+      $queryRaw: vi.fn(async (query: { strings: readonly string[] }) => {
+        const sql = query.strings.join("");
+        if (sql.includes("FROM employees")) return directory.adminActive ? [{ id: "admin" }] : [];
+        if (sql.includes("FROM business_category_dimensions")) return [];
+        const kind = sql.includes("FROM business_categories")
+          ? "category"
+          : sql.includes("FROM business_stores")
+            ? "store"
+            : sql.includes("FROM business_dimension_values")
+              ? "value"
+              : "dimension";
+        return [{ retired: directory[kind] }];
+      })
+    };
+    const input = {
+      orgId: "org",
+      categoryId: "business",
+      targetId: "source",
+      scopes: [
+        {
+          enterpriseKey: "enterprise",
+          ownership: "store" as const,
+          storeName: "Exact A ",
+          dimensions: { project: "X" }
+        }
+      ]
+    };
+    return { directory, tx, input };
+  }
+  it("rejects ordinary selection of retired categories, exact stores, dimensions and values", async () => {
+    for (const kind of ["category", "store", "dimension", "value"] as const) {
+      const { directory, tx, input } = fixture();
+      directory[kind] = true;
+      await expect(requireCurrentDirectoryEligibility(tx as never, input)).rejects.toThrow(
+        "RESOURCE_DIRECTORY_RETIRED"
+      );
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    }
+  });
+  it("admits an explicit current-admin reason, records it, and rejects blank reason or future business dates", async () => {
+    const { directory, tx, input } = fixture();
+    directory.store = true;
+    const historicalSupplement = {
+      actorEmployeeId: "admin",
+      reason: "Repair the historical August receipt"
+    };
+    await requireCurrentDirectoryEligibility(tx as never, {
+      ...input,
+      historicalSupplement,
+      businessDates: ["20260819"]
+    });
+    expect(
+      tx.$queryRaw.mock.calls.some(([query]) => query.strings.join("").includes("FROM employees"))
+    ).toBe(true);
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorEmployeeId: "admin",
+          metadata: expect.objectContaining({ historicalSupplement, businessDates: ["2026-08-19"] })
+        })
+      })
+    );
+    await expect(
+      requireCurrentDirectoryEligibility(tx as never, {
+        ...input,
+        historicalSupplement: { ...historicalSupplement, reason: " " }
+      })
+    ).rejects.toThrow("RESOURCE_HISTORICAL_REASON_REQUIRED");
+    await expect(
+      requireCurrentDirectoryEligibility(tx as never, {
+        ...input,
+        historicalSupplement,
+        businessDates: ["9999-01-01"]
+      })
+    ).rejects.toThrow("RESOURCE_HISTORICAL_DATE_INVALID");
+    directory.adminActive = false;
+    await expect(
+      requireCurrentDirectoryEligibility(tx as never, { ...input, historicalSupplement })
+    ).rejects.toThrow("AUTHORIZATION_ADMIN_REQUIRED");
+    expect(directory.store).toBe(true);
+  });
 });

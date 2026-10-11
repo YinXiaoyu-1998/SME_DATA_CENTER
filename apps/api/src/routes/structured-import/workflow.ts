@@ -14,6 +14,7 @@ import type { StructuredImportBatchRecord } from "../../structured-imports.js";
 const MAX_CANONICAL_FILE_NAME_CHARS = 200;
 
 export interface ParsedStructuredImportUpload {
+  historicalSupplementReason?: string;
   file?: {
     fileName: string;
     contentType?: string;
@@ -265,6 +266,7 @@ export function canonicalStructuredImportFileName(input: {
 }
 
 export function structuredImportFingerprint(input: {
+  historicalSupplementReason?: string;
   dataset: StructuredDatasetName;
   enterpriseName: string;
   startDate?: string | null;
@@ -278,6 +280,9 @@ export function structuredImportFingerprint(input: {
   const semanticInput = {
     dataset: input.dataset,
     enterpriseName: input.enterpriseName,
+    ...(input.historicalSupplementReason !== undefined
+      ? { historicalSupplementReason: input.historicalSupplementReason }
+      : {}),
     ...(registry.metadataPolicy === "snapshot"
       ? { snapshotDate: input.snapshotDate }
       : registry.metadataPolicy === "derived_receipt"

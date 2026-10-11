@@ -129,6 +129,7 @@ describe("evidence routes", () => {
         value: Buffer.from("# 差评处理\n\n先联系客户，再登记处置结果。", "utf8")
       },
       { name: "title", value: "客户反馈处理 SOP" },
+      { name: "historicalSupplementReason", value: "  Historical SOP correction  " },
       { name: "categoryId", value: "evidence:sop" },
       {
         name: "scopes",
@@ -176,6 +177,7 @@ describe("evidence routes", () => {
         status: "queued"
       });
       expect(documentRepository.uploadInputs[0]).toMatchObject({
+        historicalSupplementReason: "Historical SOP correction",
         audit: {
           requestId: "req_http_1",
           sourceIp: "198.51.100.8",
