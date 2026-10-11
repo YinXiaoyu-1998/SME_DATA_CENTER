@@ -1,3 +1,4 @@
+import { registerAdminPermissionsRoutes } from "./admin-permissions/routes.js";
 import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
@@ -93,6 +94,14 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       publicOrigin,
       browserSessions: context.browserSessions
     });
+    if (context.browserSessions && context.permissionsUiMetadata)
+      registerAdminPermissionsRoutes(app, {
+        auth: context.authCore,
+        browserSessions: context.browserSessions,
+        publicOrigin,
+        permissions: context.permissions,
+        metadata: () => context.permissionsUiMetadata!
+      });
     void context.authCore.pruneSecurityEvents().catch((error: unknown) => {
       app.log.error({ err: error }, "Failed to prune expired authentication security events.");
     });

@@ -18,6 +18,10 @@ import {
   createPrismaPartitionDownloadAuditRepository,
   type PartitionDownloadAuditRepository
 } from "./routes/structured-partitions/downloads.js";
+import {
+  createPrismaPermissionsUiMetadata,
+  type PermissionsUiMetadata
+} from "./admin-permissions/metadata.js";
 import { BrowserSessions } from "./auth/browser-session.js";
 import { createPrismaBrowserSessionRepository } from "./auth/prisma-browser-session.js";
 import { PrismaClient } from "@prisma/client";
@@ -92,6 +96,7 @@ export interface ApiServerOptions {
   storageAdapter?: StorageAdapter;
   authCore?: AuthCore;
   browserSessions?: BrowserSessions;
+  permissionsUiMetadata?: PermissionsUiMetadata;
   authenticateAccessToken?: (
     token: string,
     audit: AuthRequestAudit
@@ -113,6 +118,7 @@ export interface ApiServerContext {
   readinessCheck: () => Promise<ReadinessReport>;
   authCore: AuthCore | undefined;
   browserSessions?: BrowserSessions;
+  permissionsUiMetadata?: PermissionsUiMetadata;
   authenticateOfficialAccessToken: (
     token: string,
     request: FastifyRequest
@@ -181,6 +187,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let authPrisma: PrismaClient | undefined;
   let authCore = options.authCore;
   let browserSessions = options.browserSessions;
+  let permissionsUiMetadata = options.permissionsUiMetadata;
   let closed = false;
 
   if (!authCore && !options.authenticateAccessToken) {
@@ -191,6 +198,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     authPrisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
     authCore = new AuthCore(createPrismaAuthCoreRepository(authPrisma));
     browserSessions = new BrowserSessions(createPrismaBrowserSessionRepository(authPrisma));
+    permissionsUiMetadata = createPrismaPermissionsUiMetadata(authPrisma);
   }
 
   function authenticationClientSource(request: FastifyRequest) {
@@ -359,6 +367,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     readinessCheck,
     authCore,
     browserSessions,
+    permissionsUiMetadata,
     authenticateOfficialAccessToken,
     authenticationClientSource,
     createBusinessRequestAudit(request) {
