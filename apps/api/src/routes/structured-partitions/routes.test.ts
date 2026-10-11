@@ -1,3 +1,4 @@
+import { legacyAuthorization } from "../../business-authorization.test-support.js";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -26,6 +27,7 @@ const employee = {
 };
 const auth = {
   authenticate: vi.fn(async () => true),
+  authorization: async () => legacyAuthorization(employee),
   employee: vi.fn(() => employee)
 } as unknown as RequestAuth;
 

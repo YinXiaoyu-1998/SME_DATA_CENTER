@@ -9,6 +9,7 @@ export interface BusinessScopeItem {
 }
 export interface BusinessCategoryRule {
   id: string;
+  key?: string;
   kind: "fixed" | "evidence";
   confidentialityLevel: number | null;
   ownerships: BusinessOwnership[];

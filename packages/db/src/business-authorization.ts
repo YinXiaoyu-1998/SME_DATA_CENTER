@@ -63,6 +63,7 @@ function categoryRule(
 ): BusinessCategoryRule {
   return {
     id: row.id,
+    ...(row.key ? { key: row.key } : {}),
     kind: row.kind,
     confidentialityLevel: row.confidentialityLevel,
     ownerships: [

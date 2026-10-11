@@ -86,3 +86,23 @@ export function compileAuthorizedScope(
     params
   };
 }
+
+/** Only registered server targets can choose correlation columns. */
+export function compileStructuredReadScope(
+  snapshot: AuthorizationSnapshot,
+  target: "row" | "coverage" | "partition",
+  dataset: string
+): AuthorizedScopeSql {
+  if (!["row", "coverage", "partition"].includes(target))
+    throw new Error("UNKNOWN_AUTHORIZATION_TARGET");
+  const compiled = compileAuthorizedScope(snapshot, "resource");
+  const predicate = compiled.sql.replaceAll("r.", "ar.");
+  const correlation =
+    target === "partition"
+      ? "ar.kind = 'structured' AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('partition:', structured_partitions.id) AS BINARY)"
+      : `ar.kind = 'source_fragment' AND ar.source_document_id = ${target === "row" ? "r" : "ib"}.source_document_id`;
+  return {
+    sql: `EXISTS (SELECT 1 FROM business_resources ar JOIN business_categories ac ON ac.org_id = ar.org_id AND ac.id = ar.category_id WHERE ${correlation} AND CAST(ac.\`key\` AS BINARY) = CAST(? AS BINARY) AND (${predicate}))`,
+    params: [dataset, ...compiled.params]
+  };
+}

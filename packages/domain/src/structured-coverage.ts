@@ -45,6 +45,7 @@ export function compileStructuredCoverageQuery(input: {
   orgId: string;
   employee: StructuredQueryEmployeeScope;
   dataset: StructuredDatasetName;
+  businessAuthorization?: { sql: string; params: Array<string | number> };
 }): StructuredCompiledCoverageQuery {
   const registry = getStructuredRegistry(input.dataset);
   const authorizationScope = {
@@ -82,8 +83,13 @@ export function compileStructuredCoverageQuery(input: {
     "AND d.archived_at IS NULL"
   ];
 
-  clauses.push("AND d.confidentiality_level <= ?");
-  params.push(input.employee.clearance);
+  if (input.businessAuthorization) {
+    clauses.push(`AND (${input.businessAuthorization.sql})`);
+    params.push(...input.businessAuthorization.params);
+  } else {
+    clauses.push("AND d.confidentiality_level <= ?");
+    params.push(input.employee.clearance);
+  }
 
   return {
     dataset: registry.dataset,

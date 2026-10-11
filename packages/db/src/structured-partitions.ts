@@ -1,3 +1,5 @@
+import type { AuthorizationSnapshot } from "@smedc/domain";
+import { compileStructuredReadScope } from "./business-authorization-sql.js";
 import {
   bindHistoricalSupplementIntent,
   readHistoricalSupplementIntent,
@@ -166,6 +168,7 @@ export interface StructuredPartitionRepository {
   listReadableManifestRows(input: {
     orgId: string;
     clearance: number;
+    authorization?: AuthorizationSnapshot;
     dataset: "business" | "dishes";
     enterpriseKey: string;
     startDate: string;
@@ -177,6 +180,7 @@ export interface StructuredPartitionRepository {
   listCoverage?(input: {
     orgId: string;
     clearance: number;
+    authorization?: AuthorizationSnapshot;
     dataset: "business" | "dishes";
     enterpriseKey?: string;
     storeNameContains?: string[];
@@ -568,7 +572,11 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async listReadableManifestRows(input) {
-      if (input.storeNameContains !== undefined) {
+      if (
+        input.storeNameContains !== undefined ||
+        input.authorization?.mode === "enabled" ||
+        input.authorization?.mode === "suspended"
+      ) {
         return prisma.$queryRaw<PartitionManifestRow[]>(Prisma.sql`
           SELECT business_date AS businessDate, merchant_id AS merchantId, store_name AS storeName,
             row_count AS rowCount, byte_size AS byteSize, checksum_sha256 AS checksumSha256, object_key AS objectKey
@@ -576,7 +584,7 @@ export function createPrismaStructuredPartitionRepository(
             AND business_date >= ${parseBusinessDate(input.startDate)}
             AND business_date <= ${parseBusinessDate(input.endDate)}
             ${input.storeIds?.length ? Prisma.sql`AND merchant_id IN (${Prisma.join(input.storeIds)})` : Prisma.empty}
-            AND ${literalStoreNameScope(input.storeNameContains)}
+            ${input.storeNameContains ? Prisma.sql`AND ${literalStoreNameScope(input.storeNameContains)}` : Prisma.empty}
           ORDER BY business_date ASC, store_key ASC LIMIT ${input.maxPartitions + 1}
         `);
       }
@@ -608,8 +616,12 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async listCoverage(input) {
-      if (input.storeNameContains !== undefined) {
-        const where = Prisma.sql`${readablePartitionScope(input)} AND ${literalStoreNameScope(input.storeNameContains)}`;
+      if (
+        input.storeNameContains !== undefined ||
+        input.authorization?.mode === "enabled" ||
+        input.authorization?.mode === "suspended"
+      ) {
+        const where = Prisma.sql`${readablePartitionScope(input)} ${input.storeNameContains ? Prisma.sql`AND ${literalStoreNameScope(input.storeNameContains)}` : Prisma.empty}`;
         const [enterprises, stores] = await Promise.all([
           prisma.$queryRaw<
             Array<{
@@ -841,10 +853,19 @@ function isUniqueConstraintError(error: unknown): boolean {
 export function readablePartitionScope(input: {
   orgId: string;
   clearance: number;
+  authorization?: AuthorizationSnapshot;
   dataset: "business" | "dishes";
   enterpriseKey?: string;
 }): Prisma.Sql {
-  return Prisma.sql`org_id = ${input.orgId} AND confidentiality_level <= ${input.clearance} AND dataset = ${input.dataset}
+  const authorization = input.authorization;
+  const permission =
+    authorization && (authorization.mode === "enabled" || authorization.mode === "suspended")
+      ? compileStructuredReadScope(authorization, "partition", input.dataset)
+      : null;
+  const scope = permission
+    ? Prisma.sql(permission.sql.split("?"), ...permission.params)
+    : Prisma.sql`confidentiality_level <= ${input.clearance}`;
+  return Prisma.sql`org_id = ${input.orgId} AND ${scope} AND dataset = ${input.dataset}
     ${input.enterpriseKey !== undefined ? Prisma.sql`AND enterprise_key = ${input.enterpriseKey}` : Prisma.empty}`;
 }
 

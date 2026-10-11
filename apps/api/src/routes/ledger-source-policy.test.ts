@@ -108,8 +108,8 @@ describe("public ledger source download policy", () => {
     expect((await download("vip", "admin")).statusCode).toBe(200);
     expect(sign.mock.calls.map(([key]) => key)).toEqual(["synthetic/vip"]);
   });
-  it("preserves ledger original download when disabled", async () => {
+  it("blocks ledger original download even when disabled", async () => {
     build(false);
-    expect((await download("ledger_pending", "admin")).statusCode).toBe(200);
+    expect((await download("ledger_pending", "admin")).statusCode).toBe(404);
   });
 });

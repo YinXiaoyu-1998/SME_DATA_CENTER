@@ -348,6 +348,7 @@ export function registerStructuredPartitionRoutes(
     const rows = await dependencies.partitions().listReadableManifestRows({
       orgId: employee.orgId,
       clearance: employee.clearance,
+      authorization: await dependencies.auth.authorization(request),
       dataset: parsed.value.dataset,
       enterpriseKey: parsed.value.enterpriseKey,
       startDate: parsed.value.startDate,

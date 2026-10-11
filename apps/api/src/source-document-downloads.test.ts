@@ -48,16 +48,17 @@ describe("source document download issuer", () => {
         result.sources.map((source) => [source.sourceDocumentId, source.downloadStatus])
       ).toEqual([
         ["ledger", "unavailable"],
-        ["catalog", "available"],
-        ["certificate", "available"]
+        ["catalog", reason === "explicit_request" ? "unavailable" : "available"],
+        ["certificate", reason === "explicit_request" ? "unavailable" : "available"]
       ]);
-      expect(createDownloadUrl.mock.calls.map(([key]) => key)).toEqual([
-        "org/org_1/catalog",
-        "org/org_1/certificate"
-      ]);
-      expect(recorded).toEqual([
-        expect.objectContaining({ sourceDocumentIds: ["catalog", "certificate"] })
-      ]);
+      expect(createDownloadUrl.mock.calls.map(([key]) => key)).toEqual(
+        reason === "explicit_request" ? [] : ["org/org_1/catalog", "org/org_1/certificate"]
+      );
+      expect(recorded).toEqual(
+        reason === "explicit_request"
+          ? []
+          : [expect.objectContaining({ sourceDocumentIds: ["catalog", "certificate"] })]
+      );
     }
   );
 
@@ -75,7 +76,7 @@ describe("source document download issuer", () => {
     expect(createDownloadUrl).not.toHaveBeenCalled();
   });
 
-  it("preserves original ledger download issuance when disabled", async () => {
+  it("blocks original ledger download issuance even when disabled", async () => {
     const issuer = createSourceDocumentDownloadIssuer({
       repository: fakeRepository({
         ledger: { ...record("ledger", "ledger.xlsx"), importDataset: "delivery_ledger" }
@@ -83,7 +84,7 @@ describe("source document download issuer", () => {
       storage: fakeStorage(async () => "https://download.test/ledger")
     });
     expect((await issuer.issueMany(baseInput(["ledger"]))).sources[0]?.downloadStatus).toBe(
-      "available"
+      "unavailable"
     );
   });
 
@@ -291,3 +292,25 @@ function fakeStorage(createDownloadUrl: StorageAdapter["createDownloadUrl"]): St
     async deleteObject() {}
   };
 }
+
+it("preflights every explicit object before signing any URL", async () => {
+  const sign = vi.fn(async () => "https://download.test/synthetic");
+  const storage = fakeStorage(sign);
+  storage.statObject = vi.fn(async (key) => {
+    if (key.endsWith("/missing")) throw new Error("missing");
+    return { key, size: 1, hash: "synthetic", contentType: "text/plain" };
+  });
+  const issuer = createSourceDocumentDownloadIssuer({
+    repository: fakeRepository({
+      good: record("good", "good.md"),
+      missing: record("missing", "missing.md")
+    }),
+    storage
+  });
+  const result = await issuer.issueMany({
+    ...baseInput(["good", "missing"]),
+    reason: "explicit_request"
+  });
+  expect(result.sources.every((source) => source.downloadStatus === "unavailable")).toBe(true);
+  expect(sign).not.toHaveBeenCalled();
+});

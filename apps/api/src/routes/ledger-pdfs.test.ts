@@ -1,3 +1,4 @@
+import { legacyAuthorization } from "../business-authorization.test-support.js";
 import { describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
 import { buildApiServer } from "../server.js";
@@ -39,6 +40,7 @@ function fixture(enabled = true, role: "employee" | "admin" = "employee") {
     ledgerPdfDeliveryEnabled: enabled,
     delivery: () => delivery,
     auth: {
+      authorization: async () => legacyAuthorization(employee),
       authenticate: async (request, reply) => {
         if (request.headers.authorization !== "Bearer synthetic") {
           reply.code(401).send({ error: { code: "UNAUTHENTICATED" } });

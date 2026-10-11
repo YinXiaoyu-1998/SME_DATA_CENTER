@@ -1,6 +1,10 @@
-import { createDatabaseAdapter } from "@smedc/db";
+import {
+  createBusinessAuthorizationRepository,
+  getSourceReadRequirements,
+  createDatabaseAdapter
+} from "@smedc/db";
 import { DocumentStatus, Prisma, PrismaClient } from "@prisma/client";
-import { AUDIT_ACTIONS, type StructuredDatasetName } from "@smedc/domain";
+import { AUDIT_ACTIONS, canReadResource, type StructuredDatasetName } from "@smedc/domain";
 import type { SourceDocumentDownloadRepository } from "./source-document-downloads.js";
 
 export const SOURCE_DOCUMENT_DOWNLOAD_EXPIRES_SECONDS = 24 * 60 * 60;
@@ -40,17 +44,59 @@ export function createPrismaSourceDocumentRepository(
   return {
     async findDownloadableSourceDocuments(input) {
       if (input.employee.disabled || input.sourceDocumentIds.length === 0) return [];
+      const permissions = createBusinessAuthorizationRepository({ prisma });
+      const snapshot = await permissions.loadAuthorizationSnapshot(input.employee.id, input.orgId);
+      if (snapshot.disabled || snapshot.mode === "suspended") return [];
+      const modern = snapshot.mode === "enabled";
       const documents = await prisma.document.findMany({
         where: {
           id: { in: [...new Set(input.sourceDocumentIds)].slice(0, 50) },
           orgId: input.orgId,
           archivedAt: null,
           status: { in: [...downloadableStatuses] as DocumentStatus[] },
-          confidentialityLevel: { lte: input.employee.clearance }
+          ...(!modern ? { confidentialityLevel: { lte: snapshot.clearance } } : {})
         },
         include: documentInclude
       });
-      return documents.map(toSourceDocumentRecord);
+      const readable = [];
+      for (const document of documents) {
+        if (document.importBatch?.dataset === "delivery_ledger") continue;
+        if (!modern) {
+          readable.push(document);
+          continue;
+        }
+        try {
+          const requirements =
+            document.documentKind === "structured"
+              ? await getSourceReadRequirements(prisma, document.id, input.orgId)
+              : await prisma.businessResource
+                  .findMany({
+                    where: { orgId: input.orgId, documentId: document.id },
+                    select: { id: true }
+                  })
+                  .then(async (resources) =>
+                    (
+                      await Promise.all(
+                        resources.map((resource) =>
+                          permissions.getResourceReadRequirement(resource.id, input.orgId)
+                        )
+                      )
+                    ).filter(
+                      (requirement): requirement is NonNullable<typeof requirement> =>
+                        requirement !== null
+                    )
+                  );
+          if (
+            document.status === "active" &&
+            requirements.length &&
+            requirements.every((requirement) => canReadResource(snapshot, requirement).allowed)
+          )
+            readable.push(document);
+        } catch {
+          /* An unresolved lineage cannot grant original access. */
+        }
+      }
+      return readable.map(toSourceDocumentRecord);
     },
     async recordDownloadsIssued(input) {
       await prisma.auditLog.createMany({

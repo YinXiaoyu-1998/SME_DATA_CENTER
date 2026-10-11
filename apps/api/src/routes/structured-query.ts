@@ -1,3 +1,4 @@
+import { compileStructuredReadScope } from "@smedc/db";
 import type { FastifyInstance } from "fastify";
 import {
   STRUCTURED_DATASET_REGISTRIES,
@@ -41,11 +42,11 @@ function structuredFieldResponse(
   };
 }
 
-function structuredDatasetRegistryResponse(ledgerPdfDeliveryEnabled = false) {
+function structuredDatasetRegistryResponse() {
   return {
     limits: STRUCTURED_QUERY_LIMITS,
     datasets: Object.values(STRUCTURED_DATASET_REGISTRIES).map((original) => {
-      const registry = getPublicStructuredRegistry(original.dataset, ledgerPdfDeliveryEnabled);
+      const registry = getPublicStructuredRegistry(original.dataset);
       return {
         dataset: registry.dataset,
         accessMode: registry.accessMode,
@@ -80,7 +81,21 @@ export function registerStructuredQueryRoutes(
       return;
     }
 
-    return structuredDatasetRegistryResponse(dependencies.ledgerPdfDeliveryEnabled);
+    const snapshot = await dependencies.auth.authorization(request);
+    const response = structuredDatasetRegistryResponse();
+    response.datasets = response.datasets.filter(
+      (dataset) =>
+        dataset.dataset !== "delivery_ledger" &&
+        (snapshot.mode === "legacy" ||
+          snapshot.mode === "preparing" ||
+          (snapshot.mode === "enabled" &&
+            snapshot.categories.some(
+              (category) =>
+                category.key === dataset.dataset &&
+                snapshot.grants.some((grant) => grant.categoryIds.includes(category.id))
+            )))
+    );
+    return response;
   });
 
   app.get<{
@@ -104,6 +119,12 @@ export function registerStructuredQueryRoutes(
       }
 
       const employee = dependencies.auth.employee(request);
+      const snapshot = await dependencies.auth.authorization(request);
+      if (dataset === "delivery_ledger")
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.ledgerDetailDisabled,
+          "Ledger coverage is disabled. Use archived PDF APIs."
+        );
       const registry =
         STRUCTURED_DATASET_REGISTRIES[dataset as keyof typeof STRUCTURED_DATASET_REGISTRIES];
       if (registry.accessMode === "partition_extract") {
@@ -138,7 +159,8 @@ export function registerStructuredQueryRoutes(
         }
         const coverage = await dependencies.structuredPartitions().listCoverage?.({
           orgId: employee.orgId,
-          clearance: employee.clearance,
+          clearance: snapshot.clearance,
+          authorization: snapshot,
           dataset: dataset as "business" | "dishes",
           ...(enterpriseKey !== undefined ? { enterpriseKey } : {}),
           ...(storeNameContains ? { storeNameContains } : {})
@@ -172,7 +194,10 @@ export function registerStructuredQueryRoutes(
           id: employee.id,
           clearance: employee.clearance
         },
-        dataset: dataset as (typeof STRUCTURED_DATASETS)[number]
+        dataset: dataset as (typeof STRUCTURED_DATASETS)[number],
+        ...(snapshot.mode === "enabled" || snapshot.mode === "suspended"
+          ? { businessAuthorization: compileStructuredReadScope(snapshot, "coverage", dataset) }
+          : {})
       });
 
       return await dependencies.structuredCoverage().list(compiled);
@@ -182,7 +207,7 @@ export function registerStructuredQueryRoutes(
       }
       if (error instanceof StructuredQueryValidationError) {
         return reply
-          .code(400)
+          .code(error.code === PHASE3_ERROR_CODES.ledgerDetailDisabled ? 403 : 400)
           .send(phase3ErrorResponse(request, error.code, error.message, error.details));
       }
 
@@ -200,6 +225,13 @@ export function registerStructuredQueryRoutes(
     const employee = dependencies.auth.employee(request);
 
     try {
+      const dataset = (request.body as { dataset?: string } | null)?.dataset;
+      if (dataset === "delivery_ledger")
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.ledgerDetailDisabled,
+          "Ledger reads are disabled. Use the archived PDF APIs for ledger documents."
+        );
+      const snapshot = await dependencies.auth.authorization(request);
       const compiled = compilePublicStructuredQuery({
         orgId: employee.orgId,
         employee: {
@@ -208,7 +240,15 @@ export function registerStructuredQueryRoutes(
         },
         query: request.body,
         cursorSecret: dependencies.cursorSigningSecret,
-        ledgerPdfDeliveryEnabled: dependencies.ledgerPdfDeliveryEnabled
+        ledgerPdfDeliveryEnabled: dependencies.ledgerPdfDeliveryEnabled,
+        ...(snapshot.mode === "enabled" || snapshot.mode === "suspended"
+          ? {
+              businessAuthorization: {
+                version: snapshot.authorizationVersion,
+                ...compileStructuredReadScope(snapshot, "row", dataset ?? "")
+              }
+            }
+          : {})
       });
       const result = await dependencies.structuredQueries().execute(compiled);
       const nextCursor = result.hasMore

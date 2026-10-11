@@ -1,3 +1,4 @@
+import { legacyAuthorization } from "../../business-authorization.test-support.js";
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -90,7 +91,11 @@ function setup(overrides: Partial<PartitionDownloadRepository> = {}, employee = 
   };
   const audit = { append: vi.fn(async () => {}) };
   const sign = vi.fn(async () => "https://synthetic.invalid/signed");
-  const auth = { authenticate: vi.fn(async () => true), employee: () => employee } as RequestAuth;
+  const auth = {
+    authorization: async () => legacyAuthorization(employee),
+    authenticate: vi.fn(async () => true),
+    employee: () => employee
+  } as RequestAuth;
   const app = Fastify();
   registerPartitionDownloadRoutes(app, {
     auth,

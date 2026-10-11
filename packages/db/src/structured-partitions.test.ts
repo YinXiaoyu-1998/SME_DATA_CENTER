@@ -52,7 +52,16 @@ describe("structured partition repository boundaries", () => {
         }),
         findUniqueOrThrow: vi.fn(async () => existing)
       };
-      const prisma = { partitionImportJob } as unknown as PrismaClient;
+      const tx = {
+        partitionImportJob,
+        employee: { findFirst: vi.fn(async () => ({ id: "emp_2" })) }
+      };
+      const prisma = {
+        ...tx,
+        $transaction: vi.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
+          callback(tx)
+        )
+      } as unknown as PrismaClient;
       const repository = createPrismaStructuredPartitionRepository({ prisma });
 
       await expect(
