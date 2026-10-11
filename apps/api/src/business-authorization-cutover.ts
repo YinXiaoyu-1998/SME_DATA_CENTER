@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import {
+  FIXED_BUSINESS_CATEGORY_KEYS,
   isBusinessClearance,
   validateBusinessGrant,
   validateBusinessScope,
@@ -7,7 +8,7 @@ import {
   type BusinessGrant,
   type ResourceReadRequirement
 } from "@smedc/domain";
-import { toResourceReadRequirement } from "@smedc/db";
+import { toResourceReadRequirement, toBusinessCategoryRule, loadBusinessGrants } from "@smedc/db";
 import type { BusinessAuthorizationRepository } from "./business-authorization.js";
 
 // Server-owned release registration. A deployed binary must support the complete set to activate.
@@ -23,16 +24,6 @@ export const AUTHORIZATION_READ_ADAPTERS = [
   "ledger_pdf",
   "ledger_download",
   "document_lifecycle"
-] as const;
-const FIXED_CATEGORIES = [
-  "business",
-  "dishes",
-  "vip",
-  "dish_catalog",
-  "supplier_catalog",
-  "delivery_ledger",
-  "quarantine_certificate",
-  "ledger_pdf"
 ] as const;
 export interface CutoverIssue {
   code: string;
@@ -60,7 +51,7 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
   const add = (code: string, targetId: string) => missing.push({ code, targetId });
   for (const adapter of AUTHORIZATION_READ_ADAPTERS)
     if (!adapters.includes(adapter)) add("READ_ADAPTER_NOT_READY", adapter);
-  for (const key of FIXED_CATEGORIES) {
+  for (const key of FIXED_BUSINESS_CATEGORY_KEYS) {
     const rule = inventory.categories.find((c) => c.kind === "fixed" && c.key === key);
     if (!rule || !isBusinessClearance(rule.confidentialityLevel))
       add("FIXED_CATEGORY_CLEARANCE_REQUIRED", key);
@@ -186,19 +177,10 @@ export function createAuthorizationCutoverService(
       where: { orgId },
       include: { values: true }
     });
+    const grants = await loadBusinessGrants(tx, orgId);
     return inspectCutoverInventory(
       {
-        categories: categoryRows.map((c) => ({
-          id: c.id,
-          ...(c.key ? { key: c.key } : {}),
-          kind: c.kind,
-          confidentialityLevel: c.confidentialityLevel,
-          ownerships: [
-            ...(c.allowGroup ? ["group" as const] : []),
-            ...(c.allowStore ? ["store" as const] : [])
-          ],
-          requiredDimensionIds: c.dimensions.map((d) => d.dimensionId)
-        })),
+        categories: categoryRows.map(toBusinessCategoryRule),
         resources: resources.map((r) => ({ ...r, requirement: toResourceReadRequirement(r) })),
         documents: documents.map((d) => ({
           id: d.id,
@@ -214,12 +196,7 @@ export function createAuthorizationCutoverService(
             select: { id: true }
           })
         ).map((p) => p.id),
-        accounts: await Promise.all(
-          accounts.map(async (a) => ({
-            id: a.id,
-            grants: (await repository.loadAuthorizationSnapshot(a.id, orgId, tx)).grants
-          }))
-        ),
+        accounts: accounts.map((a) => ({ id: a.id, grants: grants.get(a.id) ?? [] })),
         stores: await tx.businessStore.findMany({
           where: { orgId },
           select: { enterpriseKey: true, name: true }

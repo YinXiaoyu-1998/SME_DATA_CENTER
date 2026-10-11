@@ -1,8 +1,15 @@
+import { readFile } from "node:fs/promises";
+import Fastify from "fastify";
+import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
+import { createBusinessAuthorizationService } from "./business-authorization.js";
+import type { RequestAuth } from "./request-auth.js";
+import { createPrismaAuthOperatorRepository } from "./auth/prisma-auth-operator-repository.js";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canReadResource } from "@smedc/domain";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { canReadResource, FIXED_BUSINESS_CATEGORY_OWNERSHIP } from "@smedc/domain";
 import {
+  initializeFixedBusinessCategories,
   createDatabaseAdapter,
   createBusinessAuthorizationRepository,
   lockAuthorizationPublication,
@@ -27,23 +34,159 @@ if (run) {
     throw new Error("Cutover tests require a runner-owned loopback integration database");
 }
 const suite = run ? describe : describe.skip;
-const orgId = `cut_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-const actorId = `${orgId}_admin`;
-const ownership = {
-  business: "store",
-  dishes: "store",
-  vip: "group",
-  dish_catalog: "group",
-  supplier_catalog: "group",
-  delivery_ledger: "store",
-  quarantine_certificate: "store",
-  ledger_pdf: "store"
-} as const;
+let orgId: string;
+let actorId: string;
+const ownership = FIXED_BUSINESS_CATEGORY_OWNERSHIP;
+suite("fixed category bootstrap through supported administration", () => {
+  const prisma = new PrismaClient({ adapter: createDatabaseAdapter(url) });
+  afterAll(() => prisma.$disconnect());
+  it("migrates existing tenants without overwriting choices, then configures and activates using HTTP", async () => {
+    const orgId = `init_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    const actorId = `${orgId}_admin`;
+    await prisma.organization.create({ data: { id: orgId, name: "Synthetic existing tenant" } });
+    await prisma.employee.create({
+      data: {
+        id: actorId,
+        orgId,
+        email: `${actorId}@example.invalid`,
+        displayName: "Admin",
+        role: "admin",
+        clearance: 3
+      }
+    });
+    await prisma.businessAuthorizationState.create({ data: { orgId, version: 5n } });
+    const existing = await prisma.businessCategory.create({
+      data: {
+        orgId,
+        id: "existing-pdf-id",
+        key: "ledger_pdf",
+        name: "Existing PDF name",
+        kind: "fixed",
+        confidentialityLevel: 2,
+        allowGroup: false,
+        allowStore: true,
+        retired: true
+      }
+    });
+    // Exercise the shipped migration against populated tables (the runner initially migrates an empty schema).
+    const migration = await readFile(
+      new URL(
+        "../../../packages/db/prisma/migrations/20261011110000_initialize_fixed_business_categories/migration.sql",
+        import.meta.url
+      ),
+      "utf8"
+    );
+    for (const sql of migration.split(";").filter((statement) => statement.trim()))
+      await prisma.$executeRawUnsafe(sql);
+    const repository = createBusinessAuthorizationRepository({ prisma });
+    const migrated = await repository.listCategories(orgId);
+    expect(migrated.map((c) => [c.key, c.allowGroup ? "group" : "store"]).sort()).toEqual(
+      Object.entries(ownership).sort()
+    );
+    expect(migrated.find((c) => c.key === "ledger_pdf")).toMatchObject(existing);
+    expect(
+      migrated.filter((c) => c.key !== "ledger_pdf").every((c) => c.confidentialityLevel === null)
+    ).toBe(true);
+    expect(await prisma.businessGrant.count({ where: { orgId } })).toBe(0);
+    expect(await prisma.businessAuthorizationState.findUnique({ where: { orgId } })).toMatchObject({
+      mode: "legacy",
+      version: 6n
+    });
+    await prisma.$transaction(async (tx) => {
+      await lockAuthorizationPublication(tx, orgId);
+      expect((await initializeFixedBusinessCategories(tx, orgId)).count).toBe(0);
+    });
+    expect(await repository.listCategories(orgId)).toEqual(migrated);
+    const app = Fastify();
+    registerBusinessAuthorizationRoutes(app, {
+      auth: {
+        authenticate: async () => true,
+        employee: () => ({ id: actorId, orgId })
+      } as unknown as RequestAuth,
+      permissions: () => createBusinessAuthorizationService(repository)
+    });
+    try {
+      const before = await repository.loadAuthorizationSnapshot(actorId, orgId);
+      const listed = (await app.inject({ url: "/v1/admin/permissions/categories" })).json();
+      const report = (await app.inject({ url: "/v1/admin/permissions/cutover" })).json();
+      expect(report.ready).toBe(false);
+      expect(report.missing).toHaveLength(7);
+      expect(await repository.loadAuthorizationSnapshot(actorId, orgId)).toEqual(before);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/v1/admin/permissions/cutover/activate",
+            payload: { expectedVersion: report.authorizationVersion, confirm: true }
+          })
+        ).statusCode
+      ).toBe(409);
+      let version = listed.authorizationVersion;
+      for (const category of migrated) {
+        const result = await app.inject({
+          method: "PATCH",
+          url: `/v1/admin/permissions/categories/${category.id}`,
+          payload: { expectedVersion: version, name: category.name, confidentialityLevel: 1 }
+        });
+        expect(result.statusCode).toBe(200);
+        version = result.json().authorizationVersion;
+      }
+      expect((await app.inject({ url: "/v1/admin/permissions/cutover" })).json()).toMatchObject({
+        ready: true,
+        authorizationVersion: version
+      });
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/v1/admin/permissions/cutover/activate",
+            payload: { expectedVersion: version, confirm: true }
+          })
+        ).statusCode
+      ).toBe(200);
+      expect((await repository.loadAuthorizationSnapshot(actorId, orgId)).mode).toBe("enabled");
+      expect(await prisma.businessGrant.count({ where: { orgId } })).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+  it("initializes a post-migration tenant during account onboarding without levels, grants or activation", async () => {
+    const orgId = `new_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    await prisma.organization.create({ data: { id: orgId, name: "Synthetic new tenant" } });
+    const operator = createPrismaAuthOperatorRepository(prisma);
+    const input = {
+      orgId,
+      normalizedEmail: `${orgId}@example.invalid`,
+      displayName: "Admin",
+      role: "admin" as const,
+      clearance: 3,
+      grantTokenHash: "synthetic-bootstrap-hash",
+      grantExpiresAt: new Date(Date.now() + 60000),
+      now: new Date()
+    };
+    const account = await operator.onboard(input);
+    const repository = createBusinessAuthorizationRepository({ prisma });
+    const categories = await repository.listCategories(orgId);
+    expect(categories.map((c) => c.key).sort()).toEqual(Object.keys(ownership).sort());
+    expect(categories.every((c) => c.confidentialityLevel === null)).toBe(true);
+    expect(await repository.loadAuthorizationSnapshot(account.employeeId, orgId)).toMatchObject({
+      mode: "legacy",
+      grants: []
+    });
+    await operator.onboard({
+      ...input,
+      normalizedEmail: `${orgId}_second@example.invalid`,
+      grantTokenHash: "synthetic-bootstrap-second-hash"
+    });
+    expect(await repository.listCategories(orgId)).toEqual(categories);
+  });
+});
+
 suite("atomic tenant authorization cutover", () => {
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(url) });
   const repository = createBusinessAuthorizationRepository({ prisma });
   const service = createAuthorizationCutoverService(repository);
-  const actor = { orgId, employeeId: actorId };
+  let actor: { orgId: string; employeeId: string };
   const snapshot = () => repository.loadAuthorizationSnapshot(actorId, orgId);
   const context = async () => ({
     orgId,
@@ -59,7 +202,10 @@ suite("atomic tenant authorization cutover", () => {
     ownerships: [ownership[key]],
     requiredDimensionIds: []
   });
-  beforeAll(async () => {
+  beforeEach(async () => {
+    orgId = `cut_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    actorId = `${orgId}_admin`;
+    actor = { orgId, employeeId: actorId };
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic cutover" } });
     await prisma.employee.create({
       data: {
@@ -71,18 +217,18 @@ suite("atomic tenant authorization cutover", () => {
         clearance: 3
       }
     });
-    await repository.initializeOrganization(orgId);
+    await prisma.businessAuthorizationState.create({ data: { orgId } });
     for (const key of Object.keys(ownership) as Array<keyof typeof ownership>)
       await repository.configureCategory({ ...(await context()), ...category(key) });
   });
-  afterAll(async () => {
+  afterEach(async () => {
     await prisma.partitionDownloadRequest.deleteMany({ where: { orgId } });
     await prisma.document.updateMany({
       where: { orgId, documentKind: "evidence" },
       data: { status: "archived", archivedAt: new Date() }
     });
-    await prisma.$disconnect();
   });
+  afterAll(() => prisma.$disconnect());
   it("prepares without writes and refuses incomplete adapter activation with no partial version or mode change", async () => {
     const before = await snapshot();
     expect(await service.prepareAuthorizationCutover(orgId)).toMatchObject({
@@ -241,6 +387,11 @@ suite("atomic tenant authorization cutover", () => {
   });
 
   it("new required dimensions block old documents, originals and grants until explicitly supplemented", async () => {
+    await service.activateAuthorizationCutover(
+      actor,
+      (await snapshot()).authorizationVersion,
+      true
+    );
     const documentId = randomUUID().replaceAll("-", "");
     await repository.configureCategory({
       ...(await context()),
@@ -361,6 +512,11 @@ suite("atomic tenant authorization cutover", () => {
     }
   });
   it("refuses stale source signing receipts and suspends reading without restoring legacy grants", async () => {
+    await service.activateAuthorizationCutover(
+      actor,
+      (await snapshot()).authorizationVersion,
+      true
+    );
     const originals = createPrismaSourceDocumentRepository(url);
     const before = await snapshot();
     await repository.configureAccount({

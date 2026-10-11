@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma, type PrismaClient, type BusinessResourceKind } from "@prisma/client";
 import {
+  FIXED_BUSINESS_CATEGORY_OWNERSHIP,
   isBusinessClearance,
   validateBusinessGrant,
   validateBusinessScope,
@@ -10,6 +11,14 @@ import {
   type BusinessGrant,
   type ResourceReadRequirement
 } from "@smedc/domain";
+
+import {
+  categoriesInclude,
+  resourcesInclude,
+  toBusinessCategoryRule,
+  toResourceReadRequirement,
+  loadBusinessGrants
+} from "./business-authorization-records.js";
 
 export interface AuthorizationWriteContext {
   orgId: string;
@@ -31,61 +40,13 @@ export interface ResourceAuthorizationWrite
   sourceDocumentId?: string;
   historicalSupplementReason?: string;
 }
-// Fixed categories are developer-registered; evidence categories cannot impersonate them.
-const fixedCategoryOwnership: Record<string, "group" | "store"> = {
-  business: "store",
-  dishes: "store",
-  vip: "group",
-  dish_catalog: "group",
-  supplier_catalog: "group",
-  delivery_ledger: "store",
-  quarantine_certificate: "store",
-  ledger_pdf: "store"
-};
 type Tx = Prisma.TransactionClient;
-const categoriesInclude = { dimensions: true } as const;
-const grantsInclude = {
-  categories: true,
-  stores: true,
-  dimensions: { include: { values: true } }
-} as const;
-const resourcesInclude = { scopes: { include: { dimensions: true } } } as const;
-type ResourceRow = Prisma.BusinessResourceGetPayload<{ include: typeof resourcesInclude }>;
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(
     JSON.stringify(value, (_key, item: unknown) =>
       typeof item === "bigint" ? item.toString() : item
     )
   ) as Prisma.InputJsonValue;
-}
-function categoryRule(
-  row: Prisma.BusinessCategoryGetPayload<{ include: typeof categoriesInclude }>
-): BusinessCategoryRule {
-  return {
-    id: row.id,
-    ...(row.key ? { key: row.key } : {}),
-    kind: row.kind,
-    confidentialityLevel: row.confidentialityLevel,
-    ownerships: [
-      ...(row.allowGroup ? ["group" as const] : []),
-      ...(row.allowStore ? ["store" as const] : [])
-    ],
-    requiredDimensionIds: row.dimensions.map((d) => d.dimensionId).sort()
-  };
-}
-export function toResourceReadRequirement(row: ResourceRow): ResourceReadRequirement {
-  return {
-    orgId: row.orgId,
-    categoryId: row.categoryId,
-    valid: row.valid,
-    fileConfidentialityLevel: row.fileConfidentialityLevel,
-    scopes: row.scopes.map((scope) => ({
-      enterpriseKey: scope.enterpriseKey,
-      ownership: scope.ownership,
-      ...(scope.storeName !== null ? { storeName: scope.storeName } : {}),
-      dimensions: Object.fromEntries(scope.dimensions.map((d) => [d.dimensionId, d.valueId]))
-    }))
-  };
 }
 function canonicalScopes(scopes: ResourceReadRequirement["scopes"]): string[] {
   return scopes
@@ -353,7 +314,7 @@ export async function persistResourceAttributes(
     where: { orgId_id: { orgId: input.orgId, id: input.categoryId } },
     include: categoriesInclude
   });
-  const rule = categoryRule(category);
+  const rule = toBusinessCategoryRule(category);
   if (
     (input.kind === "evidence") !== (rule.kind === "evidence") ||
     (input.kind === "quarantine_certificate" && category.key !== "quarantine_certificate") ||
@@ -484,45 +445,25 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
       where: { orgId_id: { orgId, id: employeeId } }
     });
     if (!employee || employee.orgId !== orgId) throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
-    const state = await tx.businessAuthorizationState.findUnique({ where: { orgId } });
-    const categories = (
-      await tx.businessCategory.findMany({ where: { orgId }, include: categoriesInclude })
-    ).map(categoryRule);
-    const rows = await tx.businessGrant.findMany({
-      where: { orgId, employeeId },
-      include: grantsInclude
-    });
     return {
-      orgId,
+      ...(await loadOrganizationAuthorization(tx, orgId)),
       employeeId,
       role: employee.role,
       disabled: employee.disabled,
       clearance: employee.clearance,
+      grants: (await loadBusinessGrants(tx, orgId, employeeId)).get(employeeId) ?? []
+    };
+  }
+  async function loadOrganizationAuthorization(tx: Tx, orgId: string) {
+    const state = await tx.businessAuthorizationState.findUnique({ where: { orgId } });
+    const categories = (
+      await tx.businessCategory.findMany({ where: { orgId }, include: categoriesInclude })
+    ).map(toBusinessCategoryRule);
+    return {
+      orgId,
       mode: state?.mode ?? "legacy",
       authorizationVersion: (state?.version ?? 0n).toString(),
-      categories,
-      grants: rows.map((row) => ({
-        id: row.id,
-        orgId,
-        enterpriseKey: row.enterpriseKey,
-        categoryIds: row.categories.map((c) => c.categoryId),
-        ownership: row.ownership,
-        ...(row.ownership === "store"
-          ? {
-              stores: row.allStores
-                ? { kind: "all" as const }
-                : { kind: "fixed" as const, values: row.stores.map((store) => store.storeName) }
-            }
-          : {}),
-        dimensions: Object.fromEntries(
-          row.dimensions.map((d) => [
-            d.dimensionId,
-            d.allValues
-              ? { kind: "all" as const }
-              : { kind: "fixed" as const, values: d.values.map((value) => value.valueId) }
-          ])
-        )
-      }))
+      categories
     };
   }
   async function mutate<T>(
@@ -601,20 +542,6 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
       throw error;
     }
   }
-  async function listResourceReadRequirements(orgId: string, tx?: Tx) {
-    const rows = await (tx ?? prisma).businessResource.findMany({
-      where: { orgId },
-      include: resourcesInclude
-    });
-    return rows.map((row) => ({ id: row.id, requirement: toResourceReadRequirement(row) }));
-  }
-  async function writeGrants(
-    tx: Tx,
-    input: { orgId: string; employeeId: string; grants: BusinessGrant[] }
-  ) {
-    const snapshot = await loadAuthorizationSnapshot(input.employeeId, input.orgId, tx);
-    await persistBusinessGrants(tx, input, snapshot.categories);
-  }
   return {
     inspectAuthorizationCutover<T>(orgId: string, inspect: (tx: Tx) => Promise<T>) {
       return prisma.$transaction(async (tx) => {
@@ -661,19 +588,29 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
     },
     async listAccounts(orgId: string, actorId: string) {
       return prisma.$transaction(async (tx) => {
-        const actor = await loadAuthorizationSnapshot(actorId, orgId, tx);
-        if (actor.disabled || actor.role !== "admin")
-          throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
         const rows = await tx.employee.findMany({
           where: { orgId },
-          select: { id: true, displayName: true, email: true }
+          select: {
+            id: true,
+            displayName: true,
+            email: true,
+            role: true,
+            disabled: true,
+            clearance: true
+          }
         });
-        return Promise.all(
-          rows.map(async (row) => ({
-            ...row,
-            ...(await loadAuthorizationSnapshot(row.id, orgId, tx))
-          }))
-        );
+        const actor = rows.find((row) => row.id === actorId);
+        if (!actor || actor.disabled || actor.role !== "admin")
+          throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
+        const organization = await loadOrganizationAuthorization(tx, orgId);
+        const grants = await loadBusinessGrants(tx, orgId);
+        return rows.map(({ id, ...account }) => ({
+          ...organization,
+          ...account,
+          id,
+          employeeId: id,
+          grants: grants.get(id) ?? []
+        }));
       });
     },
     listCategories: (orgId: string) =>
@@ -691,7 +628,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
       return mutate(input, "account.permissions.configure", input.employeeId, async (tx) => {
         if (!isBusinessClearance(input.clearance)) throw new Error("INVALID_ACCOUNT_CLEARANCE");
         const before = await loadAuthorizationSnapshot(input.employeeId, input.orgId, tx);
-        await writeGrants(tx, input);
+        await persistBusinessGrants(tx, input, before.categories);
         await tx.employee.update({
           where: { orgId_id: { orgId: input.orgId, id: input.employeeId } },
           data: { clearance: input.clearance }
@@ -772,33 +709,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         );
       });
     },
-    initializeOrganization: (orgId: string) =>
-      prisma.businessAuthorizationState.upsert({ where: { orgId }, create: { orgId }, update: {} }),
     loadAuthorizationSnapshot,
-    listResourceReadRequirements,
-    async getResourceReadRequirement(
-      id: string,
-      orgId: string,
-      tx?: Tx
-    ): Promise<ResourceReadRequirement | null> {
-      const row = await (tx ?? prisma).businessResource.findUnique({
-        where: { orgId_id: { orgId, id } },
-        include: resourcesInclude
-      });
-      return row ? toResourceReadRequirement(row) : null;
-    },
-    async getSourceReadRequirements(
-      sourceDocumentId: string,
-      orgId: string,
-      tx?: Tx
-    ): Promise<ResourceReadRequirement[]> {
-      const rows = await (tx ?? prisma).businessResource.findMany({
-        where: { orgId, sourceDocumentId, kind: "source_fragment" },
-        include: resourcesInclude
-      });
-      if (rows.length === 0) throw new Error("SOURCE_AUTHORIZATION_NOT_READY");
-      return rows.map(toResourceReadRequirement);
-    },
     defineDimension(
       input: AuthorizationWriteContext & {
         id: string;
@@ -877,9 +788,12 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         if (
           input.kind === "fixed" &&
           (!input.key ||
-            !Object.hasOwn(fixedCategoryOwnership, input.key) ||
+            !Object.hasOwn(FIXED_BUSINESS_CATEGORY_OWNERSHIP, input.key) ||
             input.ownerships.length !== 1 ||
-            input.ownerships[0] !== fixedCategoryOwnership[input.key])
+            input.ownerships[0] !==
+              FIXED_BUSINESS_CATEGORY_OWNERSHIP[
+                input.key as keyof typeof FIXED_BUSINESS_CATEGORY_OWNERSHIP
+              ])
         )
           throw new Error("INVALID_FIXED_CATEGORY");
         const where = { orgId_id: { orgId: input.orgId, id: input.id } };
@@ -938,46 +852,6 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
             update: { retired: input.retired ?? before?.retired ?? false }
           })
         };
-      });
-    },
-    updateAccount(
-      input: AuthorizationWriteContext & {
-        employeeId: string;
-        clearance?: number;
-        disabled?: boolean;
-      }
-    ) {
-      return mutate(input, "account.configure", input.employeeId, async (tx) => {
-        if (input.clearance !== undefined && !isBusinessClearance(input.clearance))
-          throw new Error("INVALID_ACCOUNT_CLEARANCE");
-        const where = { orgId_id: { orgId: input.orgId, id: input.employeeId } };
-        const before = await tx.employee.findUniqueOrThrow({ where });
-        const after = await tx.employee.update({
-          where,
-          data: {
-            ...(input.clearance !== undefined ? { clearance: input.clearance } : {}),
-            ...(input.disabled !== undefined ? { disabled: input.disabled } : {})
-          }
-        });
-        return {
-          before: { clearance: before.clearance, disabled: before.disabled },
-          after: { clearance: after.clearance, disabled: after.disabled }
-        };
-      });
-    },
-    replaceGrants(
-      input: AuthorizationWriteContext & { employeeId: string; grants: BusinessGrant[] }
-    ) {
-      return mutate(input, "grants.replace", input.employeeId, async (tx) => {
-        const snapshot = await loadAuthorizationSnapshot(input.employeeId, input.orgId, tx);
-        for (const grant of input.grants)
-          if (
-            grant.orgId !== input.orgId ||
-            validateBusinessGrant(grant, snapshot.categories).length
-          )
-            throw new Error("INVALID_BUSINESS_GRANT");
-        await writeGrants(tx, input);
-        return { before: snapshot.grants, after: input.grants };
       });
     },
     putResource(input: ResourceAuthorizationWrite) {

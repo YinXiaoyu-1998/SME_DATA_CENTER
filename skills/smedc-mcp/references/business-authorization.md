@@ -85,7 +85,13 @@ Only a current active same-organization admin can call these controlled operatio
 | Read-only preparation                                             | `prepare_authorization_cutover {}`                                                                                                                                                             |
 | Explicit activation / read suspension                             | `activate_authorization_cutover` / `suspend_authorization_reads { expectedVersion, confirm: true }`                                                                                            |
 
-Read current directories/configuration before writing. A fixed-category edit accepts only its
+Read current directories/configuration before writing. The service initializes all eight fixed
+categories through deployment migration for existing tenants and account onboarding for new tenants.
+Initialization preserves existing IDs, levels and retirement choices; new levels remain unset and no
+grants or activation are inferred. Use IDs returned by `list_business_categories`, never invent
+`fixed:…` IDs or create an evidence category to replace a missing fixed category. If the service
+still reports a missing fixed category, report incomplete service initialization to its operator.
+Listing and preparation are read-only. A fixed-category edit accepts only its
 `confidentialityLevel` model; evidence edits accept `ownerships` and `requiredDimensionIds` instead.
 Directory mutations optionally accept `retired`; they do not automatically grant access. A grant
 contains `id`, same-organization `orgId`, `enterpriseKey`, `categoryIds`, `ownership`, `dimensions`,

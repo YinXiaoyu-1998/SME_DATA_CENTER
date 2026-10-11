@@ -1,5 +1,9 @@
 import { isBusinessClearance } from "@smedc/domain";
-import { createBusinessAuthorizationRepository, persistBusinessGrants } from "@smedc/db";
+import {
+  createBusinessAuthorizationRepository,
+  persistBusinessGrants,
+  initializeFixedBusinessCategories
+} from "@smedc/db";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AuthOperatorRepository } from "./operator-cli.js";
 
@@ -30,6 +34,7 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
           create: { orgId: input.orgId, version: 1n },
           update: { version: { increment: 1 } }
         });
+        await initializeFixedBusinessCategories(tx, input.orgId);
         const snapshot = await createBusinessAuthorizationRepository({
           prisma
         }).loadAuthorizationSnapshot(employee.id, input.orgId, tx);

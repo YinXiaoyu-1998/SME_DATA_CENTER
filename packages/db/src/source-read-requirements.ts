@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type BusinessAuthorizationMode, type PrismaClient } from "@prisma/client";
 import {
+  FIXED_BUSINESS_CATEGORY_OWNERSHIP,
+  type FixedBusinessCategoryKey,
   isBusinessClearance,
   validateBusinessScope,
   type BusinessCategoryRule,
@@ -13,24 +15,19 @@ import {
   ResourceAttributesError,
   requireCurrentDirectoryEligibility,
   readHistoricalSupplementIntent,
+  type ResourceAuthorizationWrite,
   type HistoricalSupplementIntent
 } from "./business-authorization.js";
 
+import {
+  toBusinessCategoryRule,
+  toResourceReadRequirement,
+  categoriesInclude
+} from "./business-authorization-records.js";
+import { initializeFixedBusinessCategories } from "./fixed-business-categories.js";
+
 type Tx = Prisma.TransactionClient;
 type Reader = Tx | PrismaClient;
-const fixedOwnership: Record<
-  StructuredDatasetName | "quarantine_certificate" | "ledger_pdf",
-  "group" | "store"
-> = {
-  business: "store",
-  dishes: "store",
-  vip: "group",
-  dish_catalog: "group",
-  supplier_catalog: "group",
-  delivery_ledger: "store",
-  quarantine_certificate: "store",
-  ledger_pdf: "store"
-};
 function fail(code: string): never {
   throw new ResourceAttributesError(code);
 }
@@ -46,7 +43,7 @@ export function deriveStructuredSourceScopes(input: {
 }): BusinessScopeItem[] {
   if (!input.rows.length) fail("SOURCE_HAS_NO_PARSED_ROWS");
   if (!input.enterpriseKey) fail("RESOURCE_ATTRIBUTES_NOT_READY");
-  const ownership = fixedOwnership[input.dataset];
+  const ownership = FIXED_BUSINESS_CATEGORY_OWNERSHIP[input.dataset];
   if (!ownership) fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
   if (ownership === "group")
     return [{ enterpriseKey: input.enterpriseKey, ownership, dimensions: {} }];
@@ -106,39 +103,85 @@ export async function requireCurrentUploadAdmin(tx: Tx, orgId: string, employeeI
 async function fixedCategory(
   tx: Tx,
   orgId: string,
-  key: keyof typeof fixedOwnership,
+  key: FixedBusinessCategoryKey,
   mode: BusinessAuthorizationMode
 ) {
-  let category = await tx.businessCategory.findUnique({
-    where: { orgId_key: { orgId, key } },
-    include: { dimensions: true }
-  });
+  const where = { orgId_key: { orgId, key } };
+  let category = await tx.businessCategory.findUnique({ where, include: categoriesInclude });
   if (!category && mode !== "enabled" && mode !== "suspended") {
-    // A trusted parser registration is not an authorization grant or an invented confidentiality level.
-    category = await tx.businessCategory.create({
-      data: {
-        orgId,
-        id: `fixed:${key}`,
-        key,
-        name: key,
-        kind: "fixed",
-        confidentialityLevel: null,
-        allowGroup: fixedOwnership[key] === "group",
-        allowStore: fixedOwnership[key] === "store"
-      },
-      include: { dimensions: true }
-    });
+    await initializeFixedBusinessCategories(tx, orgId);
+    category = await tx.businessCategory.findUnique({ where, include: categoriesInclude });
   }
-  const rule: BusinessCategoryRule | null = category
-    ? {
-        id: category.id,
-        kind: category.kind,
-        confidentialityLevel: category.confidentialityLevel,
-        ownerships: [fixedOwnership[key]],
-        requiredDimensionIds: category.dimensions.map((d) => d.dimensionId)
-      }
-    : null;
-  return { category, rule };
+  return category;
+}
+// Shared fixed-category gate; even incomplete legacy publications must check retired references.
+async function prepareFixedPublication(
+  tx: Tx,
+  input: {
+    orgId: string;
+    category: Awaited<ReturnType<typeof fixedCategory>>;
+    mode: BusinessAuthorizationMode;
+    scopes: BusinessScopeItem[];
+    targetId: string;
+    historicalSupplement?: HistoricalSupplementIntent;
+    businessDates?: readonly string[];
+  }
+) {
+  const rule = input.category ? toBusinessCategoryRule(input.category) : null;
+  requirePublicationAttributes(
+    input.mode,
+    rule,
+    input.scopes,
+    undefined,
+    !!input.historicalSupplement
+  );
+  if (
+    !input.category ||
+    !rule ||
+    !input.scopes.length ||
+    input.scopes.some((scope) => !validateBusinessScope(scope, rule))
+  ) {
+    if (input.category)
+      await requireCurrentDirectoryEligibility(tx, {
+        ...input,
+        categoryId: input.category.id
+      });
+    return null;
+  }
+  return input.category;
+}
+async function persistPublishedResource(
+  tx: Tx,
+  input: Omit<ResourceAuthorizationWrite, "id" | "actorId" | "expectedVersion"> & { id?: string },
+  options: {
+    historicalSupplement?: HistoricalSupplementIntent;
+    businessDates?: readonly string[];
+    workerId?: string;
+  } = {}
+) {
+  await registerStores(tx, input.orgId, input.scopes);
+  const existing = input.id
+    ? null
+    : await tx.businessResource.findUnique({
+        where: {
+          orgId_kind_resourceKey: {
+            orgId: input.orgId,
+            kind: input.kind,
+            resourceKey: input.resourceKey
+          }
+        }
+      });
+  const result = await persistResourceAttributes(
+    tx,
+    {
+      ...input,
+      id: input.id ?? existing?.id ?? randomUUID().replaceAll("-", "")
+    },
+    { ...options, publication: true }
+  );
+  if (options.workerId !== undefined)
+    await auditPublication(tx, input.orgId, result.after.id, options.workerId, input);
+  return result;
 }
 async function registerStores(tx: Tx, orgId: string, scopes: BusinessScopeItem[]) {
   for (const scope of scopes)
@@ -224,7 +267,7 @@ export async function persistStructuredSourceReadRequirements(
     record(document.sourceMetadata)["historicalSupplement"]
   );
   const businessDates = publicationBusinessDates(input.rows, record(document.sourceMetadata));
-  const { category, rule } = await fixedCategory(tx, input.orgId, input.dataset, state.mode);
+  let category = await fixedCategory(tx, input.orgId, input.dataset, state.mode);
   if (!input.rows.length) fail("SOURCE_HAS_NO_PARSED_ROWS");
   let scopes: BusinessScopeItem[] = [];
   try {
@@ -236,7 +279,6 @@ export async function persistStructuredSourceReadRequirements(
   } catch (error) {
     if (state.mode === "enabled" || !(error instanceof ResourceAttributesError)) throw error;
   }
-  requirePublicationAttributes(state.mode, rule, scopes, undefined, !!historicalSupplement);
   await tx.document.update({
     where: { id: input.sourceDocumentId },
     data: {
@@ -250,23 +292,16 @@ export async function persistStructuredSourceReadRequirements(
       } as Prisma.InputJsonValue
     }
   });
-  if (
-    !category ||
-    !rule ||
-    !scopes.length ||
-    scopes.some((scope) => !validateBusinessScope(scope, rule))
-  ) {
-    if (category)
-      await requireCurrentDirectoryEligibility(tx, {
-        orgId: input.orgId,
-        categoryId: category.id,
-        scopes,
-        targetId: input.sourceDocumentId,
-        historicalSupplement,
-        businessDates
-      });
-    return;
-  }
+  category = await prepareFixedPublication(tx, {
+    orgId: input.orgId,
+    category,
+    mode: state.mode,
+    scopes,
+    targetId: input.sourceDocumentId,
+    historicalSupplement,
+    businessDates
+  });
+  if (!category) return;
   if (input.dataset === "delivery_ledger")
     await validateReceiptPhotoStore(
       tx,
@@ -275,30 +310,21 @@ export async function persistStructuredSourceReadRequirements(
       scopes[0]!,
       state.mode === "enabled"
     );
-  await registerStores(tx, input.orgId, scopes);
-  const resourceKey = `${input.sourceDocumentId}:${category.id}`;
-  const existing = await tx.businessResource.findUnique({
-    where: { orgId_kind_resourceKey: { orgId: input.orgId, kind: "source_fragment", resourceKey } }
-  });
-  const requirement: ResourceReadRequirement = {
-    orgId: input.orgId,
-    categoryId: category.id,
-    valid: true,
-    scopes
-  };
-  const result = await persistResourceAttributes(
+  await persistPublishedResource(
     tx,
     {
-      ...requirement,
-      id: existing?.id ?? randomUUID().replaceAll("-", ""),
+      orgId: input.orgId,
+      categoryId: category.id,
+      valid: true,
+      scopes,
       kind: "source_fragment",
-      resourceKey,
+      resourceKey: `${input.sourceDocumentId}:${category.id}`,
       sourceDocumentId: input.sourceDocumentId
     },
-    { publication: true, historicalSupplement, businessDates }
+    { historicalSupplement, businessDates, workerId: input.workerId }
   );
-  await auditPublication(tx, input.orgId, result.after.id, input.workerId, requirement);
 }
+
 export async function persistPartitionReadRequirement(
   tx: Tx,
   input: {
@@ -313,7 +339,7 @@ export async function persistPartitionReadRequirement(
   },
   state: Awaited<ReturnType<typeof lockAuthorizationPublication>>
 ) {
-  const { category, rule } = await fixedCategory(tx, input.orgId, input.dataset, state.mode);
+  let category = await fixedCategory(tx, input.orgId, input.dataset, state.mode);
   const scopes: BusinessScopeItem[] = input.storeName.trim()
     ? [
         {
@@ -324,51 +350,31 @@ export async function persistPartitionReadRequirement(
         }
       ]
     : [];
-  requirePublicationAttributes(state.mode, rule, scopes, undefined, !!input.historicalSupplement);
-  if (
-    !category ||
-    !rule ||
-    !scopes.length ||
-    scopes.some((scope) => !validateBusinessScope(scope, rule))
-  ) {
-    if (category)
-      await requireCurrentDirectoryEligibility(tx, {
-        orgId: input.orgId,
-        categoryId: category.id,
-        scopes,
-        targetId: input.partitionId,
-        historicalSupplement: input.historicalSupplement,
-        businessDates: input.businessDate ? [input.businessDate] : []
-      });
-    return;
-  }
-  await registerStores(tx, input.orgId, scopes);
-  const resourceKey = `partition:${input.partitionId}`;
-  const existing = await tx.businessResource.findUnique({
-    where: { orgId_kind_resourceKey: { orgId: input.orgId, kind: "structured", resourceKey } }
-  });
-  const requirement: ResourceReadRequirement = {
+  const businessDates = input.businessDate ? [input.businessDate] : [];
+  category = await prepareFixedPublication(tx, {
     orgId: input.orgId,
-    categoryId: category.id,
-    valid: true,
-    scopes
-  };
-  const result = await persistResourceAttributes(
+    category,
+    mode: state.mode,
+    scopes,
+    targetId: input.partitionId,
+    historicalSupplement: input.historicalSupplement,
+    businessDates
+  });
+  if (!category) return;
+  await persistPublishedResource(
     tx,
     {
-      ...requirement,
-      id: existing?.id ?? randomUUID().replaceAll("-", ""),
+      orgId: input.orgId,
+      categoryId: category.id,
+      valid: true,
+      scopes,
       kind: "structured",
-      resourceKey
+      resourceKey: `partition:${input.partitionId}`
     },
-    {
-      publication: true,
-      historicalSupplement: input.historicalSupplement,
-      businessDates: input.businessDate ? [input.businessDate] : []
-    }
+    { historicalSupplement: input.historicalSupplement, businessDates, workerId: input.workerId }
   );
-  await auditPublication(tx, input.orgId, result.after.id, input.workerId, requirement);
 }
+
 export async function persistEvidenceReadRequirement(
   tx: Tx,
   input: {
@@ -391,45 +397,26 @@ export async function persistEvidenceReadRequirement(
     include: { dimensions: true }
   });
   if (!category || category.kind !== "evidence") fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
-  const rule: BusinessCategoryRule = {
-    id: category.id,
-    kind: "evidence",
-    confidentialityLevel: null,
-    ownerships: [
-      ...(category.allowGroup ? ["group" as const] : []),
-      ...(category.allowStore ? ["store" as const] : [])
-    ],
-    requiredDimensionIds: category.dimensions.map((d) => d.dimensionId)
-  };
+  const rule = toBusinessCategoryRule(category);
   if (
     !input.scopes.length ||
     !isBusinessClearance(input.fileConfidentialityLevel) ||
     input.scopes.some((scope) => !validateBusinessScope(scope, rule))
   )
     fail("RESOURCE_ATTRIBUTES_NOT_READY");
-  await registerStores(tx, input.orgId, input.scopes);
-  const existing = await tx.businessResource.findUnique({
-    where: {
-      orgId_kind_resourceKey: {
-        orgId: input.orgId,
-        kind: "evidence",
-        resourceKey: input.documentId
-      }
-    }
-  });
-  return persistResourceAttributes(
+  return persistPublishedResource(
     tx,
     {
       ...input,
-      id: existing?.id ?? randomUUID().replaceAll("-", ""),
       kind: "evidence",
       resourceKey: input.documentId,
       categoryId: input.categoryId,
       scopes: input.scopes
     },
-    { publication: true, historicalSupplement: input.historicalSupplement }
+    { historicalSupplement: input.historicalSupplement }
   );
 }
+
 export async function activateEvidenceReadRequirement(tx: Tx, orgId: string, documentId: string) {
   const state = await lockAuthorizationPublication(tx, orgId);
   const resource = await tx.businessResource.findUnique({
@@ -443,22 +430,8 @@ export async function activateEvidenceReadRequirement(tx: Tx, orgId: string, doc
     requirePublicationAttributes(state.mode, null, []);
     return;
   }
-  const rule: BusinessCategoryRule = {
-    id: resource.categoryId,
-    kind: resource.category.kind,
-    confidentialityLevel: resource.category.confidentialityLevel,
-    ownerships: [
-      ...(resource.category.allowGroup ? ["group" as const] : []),
-      ...(resource.category.allowStore ? ["store" as const] : [])
-    ],
-    requiredDimensionIds: resource.category.dimensions.map((d) => d.dimensionId)
-  };
-  const scopes = resource.scopes.map((scope) => ({
-    enterpriseKey: scope.enterpriseKey,
-    ownership: scope.ownership,
-    ...(scope.storeName !== null ? { storeName: scope.storeName } : {}),
-    dimensions: Object.fromEntries(scope.dimensions.map((d) => [d.dimensionId, d.valueId]))
-  }));
+  const rule = toBusinessCategoryRule(resource.category);
+  const { scopes } = toResourceReadRequirement(resource);
   const document = await tx.document.findFirst({
     where: {
       orgId,
@@ -551,12 +524,7 @@ export async function persistPhotoReadRequirement(
   }
 ) {
   const state = await lockAuthorizationPublication(tx, input.orgId);
-  const { category, rule } = await fixedCategory(
-    tx,
-    input.orgId,
-    "quarantine_certificate",
-    state.mode
-  );
+  let category = await fixedCategory(tx, input.orgId, "quarantine_certificate", state.mode);
   const scopes: BusinessScopeItem[] =
     input.enterpriseKey && input.storeName?.trim()
       ? [
@@ -568,23 +536,15 @@ export async function persistPhotoReadRequirement(
           }
         ]
       : [];
-  requirePublicationAttributes(state.mode, rule, scopes, undefined, !!input.historicalSupplement);
-  if (
-    !category ||
-    !rule ||
-    !scopes.length ||
-    scopes.some((scope) => !validateBusinessScope(scope, rule))
-  ) {
-    if (category)
-      await requireCurrentDirectoryEligibility(tx, {
-        orgId: input.orgId,
-        categoryId: category.id,
-        scopes,
-        targetId: input.sourceDocumentId,
-        historicalSupplement: input.historicalSupplement
-      });
-    return;
-  }
+  category = await prepareFixedPublication(tx, {
+    orgId: input.orgId,
+    category,
+    mode: state.mode,
+    scopes,
+    targetId: input.sourceDocumentId,
+    historicalSupplement: input.historicalSupplement
+  });
+  if (!category) return;
   const ledgerRows = await tx.deliveryLedgerRow.findMany({
     where: {
       orgId: input.orgId,
@@ -604,12 +564,12 @@ export async function persistPhotoReadRequirement(
     )
       fail("CERTIFICATE_STORE_MISMATCH");
   }
-  await registerStores(tx, input.orgId, scopes);
-  return persistResourceAttributes(
+  return persistPublishedResource(
     tx,
     {
-      orgId: input.orgId,
+      // Photos are create-only; a duplicate source identity must still fail atomically.
       id: randomUUID().replaceAll("-", ""),
+      orgId: input.orgId,
       kind: "quarantine_certificate",
       resourceKey: input.sourceDocumentId,
       documentId: input.sourceDocumentId,
@@ -618,7 +578,6 @@ export async function persistPhotoReadRequirement(
       scopes
     },
     {
-      publication: true,
       historicalSupplement: input.historicalSupplement,
       businessDates: publicationBusinessDates(
         ledgerRows.map((row) => ({ payload: record(row.payload) })),
@@ -627,6 +586,7 @@ export async function persistPhotoReadRequirement(
     }
   );
 }
+
 export async function getSourceReadRequirements(
   reader: Reader,
   sourceDocumentId: string,
@@ -653,14 +613,7 @@ async function readSourceRequirements(
   if (!document || !resources.length || resources.some((resource) => !resource.scopes.length))
     fail("SOURCE_AUTHORIZATION_NOT_READY");
   return resources.map((resource) => ({
-    orgId,
-    categoryId: resource.categoryId,
-    valid: resource.valid && document.status === "active" && !document.archivedAt,
-    scopes: resource.scopes.map((scope) => ({
-      enterpriseKey: scope.enterpriseKey,
-      ownership: scope.ownership,
-      ...(scope.storeName !== null ? { storeName: scope.storeName } : {}),
-      dimensions: Object.fromEntries(scope.dimensions.map((d) => [d.dimensionId, d.valueId]))
-    }))
+    ...toResourceReadRequirement(resource),
+    valid: resource.valid && document.status === "active" && !document.archivedAt
   }));
 }

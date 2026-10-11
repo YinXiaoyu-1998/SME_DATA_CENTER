@@ -338,6 +338,8 @@ describe("Prisma structured import audit provenance", () => {
     prisma.document.findFirst.mockResolvedValue({ status: "active", archivedAt: null });
     prisma.businessResource.findMany.mockResolvedValue([
       {
+        orgId: "org_1",
+        fileConfidentialityLevel: null,
         categoryId: "vip",
         valid: true,
         scopes: ["A", "B"].map((enterpriseKey) => ({

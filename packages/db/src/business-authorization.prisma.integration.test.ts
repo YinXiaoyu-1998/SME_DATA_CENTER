@@ -2,7 +2,7 @@ import { createPrismaAuthOperatorRepository } from "../../../apps/api/src/auth/p
 import { createPrismaDocumentCatalogRepository } from "../../../apps/api/src/documents.js";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { canReadResource, validateBusinessGrant, type BusinessGrant } from "@smedc/domain";
 import { createDatabaseAdapter } from "./adapter.js";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
@@ -19,6 +19,7 @@ import {
   activateEvidenceReadRequirement,
   lockAuthorizationPublication
 } from "./source-read-requirements.js";
+import { toResourceReadRequirement, resourcesInclude } from "./business-authorization-records.js";
 import { compileAuthorizedScope } from "./business-authorization-sql.js";
 
 const run = process.env["RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION"] === "1";
@@ -36,8 +37,8 @@ if (run) {
       "Business authorization tests require a runner-owned loopback integration database"
     );
 }
-const orgId = `ba_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-const actorId = `${orgId}_actor`;
+let orgId: string;
+let actorId: string;
 const fixed = (...values: string[]) => ({ kind: "fixed" as const, values });
 
 suite("business authorization Prisma foundation", () => {
@@ -58,7 +59,10 @@ suite("business authorization Prisma foundation", () => {
     version = result.authorizationVersion;
     return result;
   }
-  beforeAll(async () => {
+  beforeEach(async () => {
+    orgId = `ba_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    actorId = `${orgId}_actor`;
+    version = "0";
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic Authorization" } });
     await prisma.employee.create({
       data: {
@@ -70,13 +74,7 @@ suite("business authorization Prisma foundation", () => {
         clearance: 2
       }
     });
-    await repository.initializeOrganization(orgId);
-  });
-  afterAll(async () => {
-    // The runner drops the whole owned schema, including these run-scoped relational fixtures.
-    await prisma.$disconnect();
-  });
-  it("persists stable configuration, exact stores, complete grants and SQL/policy parity", async () => {
+    await prisma.businessAuthorizationState.create({ data: { orgId } });
     await write(repository.defineDimension({ ...context(), id: "project", name: "Project" }));
     for (const id of ["X", "Y"])
       await write(
@@ -155,7 +153,9 @@ suite("business authorization Prisma foundation", () => {
         dimensions: {}
       }
     ];
-    await write(repository.replaceGrants({ ...context(), employeeId: actorId, grants }));
+    await write(
+      repository.configureAccount({ clearance: 2, ...context(), employeeId: actorId, grants })
+    );
     const scopes = (storeName: string, project: string) => ({
       enterpriseKey: "enterprise",
       ownership: "store" as const,
@@ -191,8 +191,58 @@ suite("business authorization Prisma foundation", () => {
       );
     // Enable only this synthetic fixture. Enterprise activation API belongs to batch 8.
     await prisma.businessAuthorizationState.update({ where: { orgId }, data: { mode: "enabled" } });
+  });
+  afterEach(async () => {
+    await prisma.document.updateMany({
+      where: { orgId },
+      data: { status: "archived", archivedAt: new Date() }
+    });
+  });
+  afterAll(() => prisma.$disconnect());
+  // Raw fixture inspection for SQL/policy parity; production reads use lifecycle-aware helpers.
+  async function storedRequirements() {
+    return (
+      await prisma.businessResource.findMany({ where: { orgId }, include: resourcesInclude })
+    ).map((row) => ({ id: row.id, requirement: toResourceReadRequirement(row) }));
+  }
+  async function createOriginalFixture() {
+    const sourceDocumentId = `${orgId}_source`;
+    await prisma.document.create({
+      data: {
+        id: sourceDocumentId,
+        orgId,
+        uploaderId: actorId,
+        title: "Synthetic source",
+        documentType: "structured_dataset",
+        documentKind: "structured",
+        status: "active",
+        storageObjectKey: "synthetic/source.csv"
+      }
+    });
+    const scopes = ["A", "B"].map((storeName) => ({
+      enterpriseKey: "enterprise",
+      ownership: "store" as const,
+      storeName,
+      dimensions: { project: "X" }
+    }));
+    await write(
+      historicalResource({
+        ...context(),
+        id: "fragment",
+        kind: "source_fragment",
+        resourceKey: "original-successful-parse",
+        sourceDocumentId,
+        categoryId: "sales",
+        valid: true,
+        scopes
+      })
+    );
+    return { sourceDocumentId, scopes };
+  }
+  it("persists stable configuration, exact stores, complete grants and SQL/policy parity", async () => {
     const snapshot = await repository.loadAuthorizationSnapshot(actorId, orgId);
-    const requirements = await repository.listResourceReadRequirements(orgId);
+    const requirements = await storedRequirements();
+    const grants = snapshot.grants;
     const expected = requirements
       .filter((row) => canReadResource(snapshot, row.requirement).allowed)
       .map((row) => row.id)
@@ -257,7 +307,8 @@ suite("business authorization Prisma foundation", () => {
     );
 
     await write(
-      repository.replaceGrants({
+      repository.configureAccount({
+        clearance: 2,
         ...context(),
         employeeId: actorId,
         grants: [
@@ -288,9 +339,17 @@ suite("business authorization Prisma foundation", () => {
       where: { orgId_id: { orgId, id: "memo" } }
     });
     const oldVersion = version;
-    await write(repository.updateAccount({ ...context(), employeeId: actorId, clearance: 2 }));
+    await write(
+      repository.configureAccount({
+        grants: (await repository.loadAuthorizationSnapshot(actorId, orgId)).grants,
+        ...context(),
+        employeeId: actorId,
+        clearance: 2
+      })
+    );
     await expect(
-      repository.updateAccount({
+      repository.configureAccount({
+        grants: (await repository.loadAuthorizationSnapshot(actorId, orgId)).grants,
         ...context(),
         expectedVersion: oldVersion,
         employeeId: actorId,
@@ -327,7 +386,8 @@ suite("business authorization Prisma foundation", () => {
     ).toBe(Number(version));
     const currentVersion = version;
     await expect(
-      repository.replaceGrants({
+      repository.configureAccount({
+        clearance: 2,
         ...context(),
         employeeId: actorId,
         grants: [
@@ -364,9 +424,21 @@ suite("business authorization Prisma foundation", () => {
         requiredDimensionIds: ["project"]
       })
     );
-    await write(repository.updateAccount({ ...context(), employeeId: actorId, clearance: 1 }));
+    await write(
+      repository.configureAccount({
+        grants: (await repository.loadAuthorizationSnapshot(actorId, orgId)).grants,
+        ...context(),
+        employeeId: actorId,
+        clearance: 1
+      })
+    );
     const current = await repository.loadAuthorizationSnapshot(actorId, orgId);
-    const sales = await repository.getResourceReadRequirement("AX", orgId);
+    const sales = toResourceReadRequirement(
+      await prisma.businessResource.findUniqueOrThrow({
+        where: { orgId_id: { orgId, id: "AX" } },
+        include: resourcesInclude
+      })
+    );
     expect(sales).not.toBeNull();
     expect(canReadResource(current, sales!).allowed).toBe(true);
     expect(
@@ -388,36 +460,7 @@ suite("business authorization Prisma foundation", () => {
     ).toEqual([]);
   });
   it("keeps source fragments complete when current resources change, and retains cross-org foreign keys", async () => {
-    const sourceDocumentId = `${orgId}_source`;
-    await prisma.document.create({
-      data: {
-        id: sourceDocumentId,
-        orgId,
-        uploaderId: actorId,
-        title: "Synthetic source",
-        documentType: "structured_dataset",
-        documentKind: "structured",
-        storageObjectKey: "synthetic/source.csv"
-      }
-    });
-    const scopes = ["A", "B"].map((storeName) => ({
-      enterpriseKey: "enterprise",
-      ownership: "store" as const,
-      storeName,
-      dimensions: { project: "X" }
-    }));
-    await write(
-      historicalResource({
-        ...context(),
-        id: "fragment",
-        kind: "source_fragment",
-        resourceKey: "original-successful-parse",
-        sourceDocumentId,
-        categoryId: "sales",
-        valid: true,
-        scopes
-      })
-    );
+    const { sourceDocumentId, scopes } = await createOriginalFixture();
     const before = await prisma.businessResource.findUniqueOrThrow({
       where: { orgId_id: { orgId, id: "shared" } }
     });
@@ -437,7 +480,7 @@ suite("business authorization Prisma foundation", () => {
     });
     expect(after.contentVersion).toBe(before.contentVersion + 1n);
     expect(
-      (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!.scopes
+      (await getSourceReadRequirements(prisma, sourceDocumentId, orgId))[0]!.scopes
     ).toHaveLength(2);
     await expect(
       historicalResource({
@@ -451,7 +494,7 @@ suite("business authorization Prisma foundation", () => {
         scopes: [scopes[0]!]
       })
     ).rejects.toThrow("SOURCE_REQUIREMENTS_IMMUTABLE");
-    await expect(repository.getSourceReadRequirements("unparsed", orgId)).rejects.toThrow(
+    await expect(getSourceReadRequirements(prisma, "unparsed", orgId)).rejects.toThrow(
       "SOURCE_AUTHORIZATION_NOT_READY"
     );
     await expect(
@@ -479,7 +522,7 @@ suite("business authorization Prisma foundation", () => {
     ).rejects.toThrow("INVALID_FIXED_CATEGORY");
     const other = `${orgId}_other`;
     await prisma.organization.create({ data: { id: other, name: "Other synthetic organization" } });
-    await repository.initializeOrganization(other);
+    await prisma.businessAuthorizationState.create({ data: { orgId: other } });
     await expect(
       prisma.businessGrant.create({
         data: {
@@ -493,11 +536,29 @@ suite("business authorization Prisma foundation", () => {
     ).rejects.toThrow();
   });
   it("explicitly enriches retained source tuples for a newly required dimension without narrowing or content changes", async () => {
-    const sourceDocumentId = `${orgId}_source`;
+    const { sourceDocumentId } = await createOriginalFixture();
+    await write(
+      repository.configureAccount({
+        ...context(),
+        employeeId: actorId,
+        clearance: 2,
+        grants: [
+          {
+            id: "all-sales",
+            orgId,
+            enterpriseKey: "enterprise",
+            categoryIds: ["sales"],
+            ownership: "store",
+            stores: { kind: "all" },
+            dimensions: { project: { kind: "all" } }
+          }
+        ]
+      })
+    );
     const before = await prisma.businessResource.findUniqueOrThrow({
       where: { orgId_id: { orgId, id: "fragment" } }
     });
-    const original = (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!;
+    const original = (await getSourceReadRequirements(prisma, sourceDocumentId, orgId))[0]!;
     expect(
       canReadResource(await repository.loadAuthorizationSnapshot(actorId, orgId), original).allowed
     ).toBe(true);
@@ -522,11 +583,12 @@ suite("business authorization Prisma foundation", () => {
     expect(
       canReadResource(
         snapshot,
-        (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!
+        (await getSourceReadRequirements(prisma, sourceDocumentId, orgId))[0]!
       ).allowed
     ).toBe(false);
     await write(
-      repository.replaceGrants({
+      repository.configureAccount({
+        clearance: 2,
         ...context(),
         employeeId: actorId,
         grants: [
@@ -566,7 +628,7 @@ suite("business authorization Prisma foundation", () => {
     });
     expect(after.contentVersion).toBe(before.contentVersion);
     expect(after.authorizationVersion).toBe(before.authorizationVersion + 1n);
-    const requirement = (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!;
+    const requirement = (await getSourceReadRequirements(prisma, sourceDocumentId, orgId))[0]!;
     expect(requirement.scopes).toEqual(expect.arrayContaining(enriched));
     expect(requirement.scopes).toHaveLength(original.scopes.length);
     snapshot = await repository.loadAuthorizationSnapshot(actorId, orgId);
@@ -576,7 +638,7 @@ suite("business authorization Prisma foundation", () => {
       `SELECT r.id FROM business_resources r WHERE ${compiled.sql}`,
       ...compiled.params
     );
-    const requirements = await repository.listResourceReadRequirements(orgId);
+    const requirements = await storedRequirements();
     expect(rows.map((row) => row.id).sort()).toEqual(
       requirements
         .filter((row) => canReadResource(snapshot, row.requirement).allowed)
@@ -601,9 +663,9 @@ suite("business authorization Prisma foundation", () => {
     expect((await repository.loadAuthorizationSnapshot(actorId, orgId)).authorizationVersion).toBe(
       version
     );
-    expect(
-      (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!.scopes
-    ).toEqual(expect.arrayContaining(enriched));
+    expect((await getSourceReadRequirements(prisma, sourceDocumentId, orgId))[0]!.scopes).toEqual(
+      expect.arrayContaining(enriched)
+    );
   });
   it("atomically configures clearance and complete grants, audits both and rolls back missing scope references", async () => {
     const snapshot = await repository.loadAuthorizationSnapshot(actorId, orgId);
@@ -616,7 +678,7 @@ suite("business authorization Prisma foundation", () => {
         categoryIds: ["sales"],
         ownership: "store",
         stores: fixed("A"),
-        dimensions: { project: fixed("X"), region: fixed("North") }
+        dimensions: { project: fixed("X") }
       }
     ];
     await write(
@@ -662,7 +724,7 @@ suite("business authorization Prisma foundation", () => {
       displayName: "Empty",
       role: "admin" as const,
       clearance: 3,
-      grantTokenHash: "synthetic-hash-empty",
+      grantTokenHash: `${orgId}-synthetic-hash-empty`,
       grantExpiresAt: new Date(Date.now() + 60_000),
       now: new Date()
     };
@@ -678,13 +740,13 @@ suite("business authorization Prisma foundation", () => {
         categoryIds: ["sales"],
         ownership: "store",
         stores: fixed("A"),
-        dimensions: { project: fixed("X"), region: fixed("North") }
+        dimensions: { project: fixed("X") }
       }
     ];
     const second = await operator.onboard({
       ...input,
       normalizedEmail: `${orgId}_explicit@example.invalid`,
-      grantTokenHash: "synthetic-hash-explicit",
+      grantTokenHash: `${orgId}-synthetic-hash-explicit`,
       initialGrants: grants
     });
     expect((await repository.loadAuthorizationSnapshot(second.employeeId, orgId)).grants).toEqual(
@@ -716,8 +778,8 @@ suite("business authorization Prisma foundation", () => {
 
 suite("authoritative publication and original lineage", () => {
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(url) });
-  const publicationOrg = `pub_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-  const admin = `${publicationOrg}_admin`;
+  let publicationOrg: string;
+  let admin: string;
   let counter = 0;
   const nextId = () => `${publicationOrg}_${++counter}`;
   const documentData = (
@@ -734,7 +796,10 @@ suite("authoritative publication and original lineage", () => {
     storageObjectKey: `synthetic/${id}`,
     sourceMetadata: { enterpriseKey: "enterprise" }
   });
-  beforeAll(async () => {
+  beforeEach(async () => {
+    publicationOrg = `pub_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    admin = `${publicationOrg}_admin`;
+    counter = 0;
     await prisma.organization.create({
       data: { id: publicationOrg, name: "Synthetic publication" }
     });
@@ -769,8 +834,18 @@ suite("authoritative publication and original lineage", () => {
           allowStore: !group
         }
       });
+    await prisma.businessCategory.create({
+      data: {
+        orgId: publicationOrg,
+        id: "memo",
+        name: "Memo",
+        kind: "evidence",
+        allowGroup: true,
+        allowStore: false
+      }
+    });
   });
-  afterAll(async () => {
+  afterEach(async () => {
     // Global worker/GC scans must not observe this completed suite's synthetic work.
     await prisma.storageGarbage.deleteMany({
       where: { objectKey: { startsWith: `synthetic/${publicationOrg}_` } }
@@ -780,8 +855,9 @@ suite("authoritative publication and original lineage", () => {
       where: { orgId: publicationOrg, documentKind: "evidence" },
       data: { status: "archived", archivedAt: new Date() }
     });
-    await prisma.$disconnect();
   });
+
+  afterAll(() => prisma.$disconnect());
 
   it("publishes all parsed source scopes with the document, keeps originals independent of current resources and resolves the current category level", async () => {
     const sourceDocumentId = nextId();
@@ -801,6 +877,7 @@ suite("authoritative publication and original lineage", () => {
       {
         orgId: publicationOrg,
         categoryId: "business",
+        fileConfidentialityLevel: null,
         valid: true,
         scopes: expect.arrayContaining(
           ["A", "B"].map((storeName) => ({
@@ -1021,16 +1098,6 @@ suite("authoritative publication and original lineage", () => {
       })
     ).toBeNull();
     expect(await prisma.document.findUnique({ where: { id: failed } })).toBeNull();
-    await prisma.businessCategory.create({
-      data: {
-        orgId: publicationOrg,
-        id: "memo",
-        name: "Memo",
-        kind: "evidence",
-        allowGroup: true,
-        allowStore: false
-      }
-    });
     const doc = nextId();
     await prisma.$transaction(async (tx) => {
       await tx.document.create({ data: documentData(doc, "evidence") });
@@ -1160,7 +1227,12 @@ suite("authoritative publication and original lineage", () => {
         }
       }
     });
-    const requirement = await permissions.getResourceReadRequirement(resource.id, publicationOrg);
+    const requirement = toResourceReadRequirement(
+      await prisma.businessResource.findUniqueOrThrow({
+        where: { orgId_id: { orgId: publicationOrg, id: resource.id } },
+        include: resourcesInclude
+      })
+    );
     expect(
       canReadResource(
         await permissions.loadAuthorizationSnapshot(admin, publicationOrg),
@@ -1338,6 +1410,10 @@ suite("authoritative publication and original lineage", () => {
     return id;
   }
   it("preserves original historical approval across a same-reference clearance PATCH and still rechecks that admin", async () => {
+    await prisma.businessCategory.update({
+      where: { orgId_id: { orgId: publicationOrg, id: "memo" } },
+      data: { retired: true }
+    });
     const permissions = createBusinessAuthorizationRepository({ prisma });
     const reason = "Approved historical memo correction";
     const documentId = await uploadHistoricalEvidence(reason);
@@ -1458,6 +1534,10 @@ suite("authoritative publication and original lineage", () => {
     });
   });
   it("rejects suspended historical publication and activation without changing data, resources, version or audits", async () => {
+    await prisma.businessCategory.update({
+      where: { orgId_id: { orgId: publicationOrg, id: "memo" } },
+      data: { retired: true }
+    });
     const pending = await uploadHistoricalEvidence("Approved before suspension");
     await prisma.businessAuthorizationState.update({
       where: { orgId: publicationOrg },

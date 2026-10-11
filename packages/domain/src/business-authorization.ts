@@ -1,4 +1,19 @@
 export type BusinessOwnership = "group" | "store";
+// Developer-owned registration; tenant configuration supplies levels, never category identity.
+export const FIXED_BUSINESS_CATEGORY_OWNERSHIP = {
+  business: "store",
+  dishes: "store",
+  vip: "group",
+  dish_catalog: "group",
+  supplier_catalog: "group",
+  delivery_ledger: "store",
+  quarantine_certificate: "store",
+  ledger_pdf: "store"
+} as const satisfies Record<string, BusinessOwnership>;
+export type FixedBusinessCategoryKey = keyof typeof FIXED_BUSINESS_CATEGORY_OWNERSHIP;
+export const FIXED_BUSINESS_CATEGORY_KEYS = Object.keys(
+  FIXED_BUSINESS_CATEGORY_OWNERSHIP
+) as FixedBusinessCategoryKey[];
 export type BusinessSelection = { kind: "all" } | { kind: "fixed"; values: string[] };
 export interface BusinessScopeItem {
   enterpriseKey: string;

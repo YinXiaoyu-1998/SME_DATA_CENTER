@@ -114,6 +114,8 @@ it("reads complete source requirements in one client transaction without opening
     businessResource: {
       findMany: vi.fn(async () => [
         {
+          orgId: "org",
+          fileConfidentialityLevel: null,
           categoryId: "business",
           valid: true,
           scopes: [
