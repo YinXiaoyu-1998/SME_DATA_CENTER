@@ -280,11 +280,26 @@ export function registerStructuredPartitionRoutes(
         return reply
           .code(404)
           .send(errorResponse("PARTITION_IMPORT_NOT_FOUND", "Partition import not found."));
-      if (job.status === "uploading" && job.temporaryObjectKey && job.multipartUploadId) {
+      if (job.status !== "uploading")
+        return reply
+          .code(409)
+          .send(
+            errorResponse("UPLOAD_ALREADY_ACCEPTED", "Only an unfinished upload can be cancelled.")
+          );
+      const cancelled = await repository.finishJob({
+        orgId: employee.orgId,
+        jobId: job.id,
+        uploaderId: employee.id,
+        status: "cancelled"
+      });
+      if (cancelled === false)
+        return reply
+          .code(409)
+          .send(errorResponse("UPLOAD_ALREADY_ACCEPTED", "Upload has already been accepted."));
+      if (job.temporaryObjectKey && job.multipartUploadId) {
         await requireMultipartStorage(dependencies.storage())
           .abortMultipartUpload({ key: job.temporaryObjectKey, uploadId: job.multipartUploadId })
           .catch(() => undefined);
-        await repository.finishJob({ orgId: employee.orgId, jobId: job.id, status: "cancelled" });
       }
       return reply.code(204).send();
     }
@@ -301,11 +316,12 @@ export function registerStructuredPartitionRoutes(
         .findJobForStatus(employee.orgId, request.params.jobId);
       if (
         !job ||
-        job.uploaderId !== employee.id ||
-        !canEmployeeAccessDocument({
-          employee,
-          document: { confidentialityLevel: job.confidentialityLevel }
-        })
+        (employee.role !== "admin" &&
+          (job.uploaderId !== employee.id ||
+            !canEmployeeAccessDocument({
+              employee,
+              document: { confidentialityLevel: job.confidentialityLevel }
+            })))
       )
         return reply
           .code(404)

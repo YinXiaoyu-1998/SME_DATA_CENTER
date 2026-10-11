@@ -33,6 +33,9 @@ function context(
   }
 ): ApiServerContext {
   return {
+    permissions: () => {
+      throw new Error("unused");
+    },
     environment: {},
     delegationProof: "proof",
     runtimeLimits: {} as ApiServerContext["runtimeLimits"],

@@ -143,7 +143,8 @@ export interface StructuredPartitionRepository {
     errorCode?: string;
     errorSummary?: string;
     validationErrors?: unknown[];
-  }): Promise<void>;
+    uploaderId?: string;
+  }): Promise<boolean | void>;
   listExpiredUploads(now: Date, limit: number): Promise<ExpiredPartitionUpload[]>;
   publishSourceAtomically(input: {
     orgId: string;
@@ -345,17 +346,23 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async finishJob(input) {
-      await prisma.partitionImportJob.updateMany({
+      const changed = await prisma.partitionImportJob.updateMany({
         where: {
           id: input.jobId,
           orgId: input.orgId,
-          status: {
-            in: [
-              PartitionImportJobStatus.uploading,
-              PartitionImportJobStatus.queued,
-              PartitionImportJobStatus.processing
-            ]
-          }
+          ...(input.uploaderId
+            ? { uploaderId: input.uploaderId, uploader: { orgId: input.orgId, disabled: false } }
+            : {}),
+          status:
+            input.status === "cancelled"
+              ? PartitionImportJobStatus.uploading
+              : {
+                  in: [
+                    PartitionImportJobStatus.uploading,
+                    PartitionImportJobStatus.queued,
+                    PartitionImportJobStatus.processing
+                  ]
+                }
         },
         data: {
           status: input.status as PartitionImportJobStatus,
@@ -365,6 +372,7 @@ export function createPrismaStructuredPartitionRepository(
           finishedAt: new Date()
         }
       });
+      return changed.count === 1;
     },
 
     async listExpiredUploads(now, limit) {

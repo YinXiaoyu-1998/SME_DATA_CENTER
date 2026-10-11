@@ -261,6 +261,7 @@ describe("structured partition routes", () => {
     expect(finishJob).toHaveBeenCalledExactlyOnceWith({
       orgId: employee.orgId,
       jobId: response.json().partitionImportJobId,
+      uploaderId: employee.id,
       status: "cancelled"
     });
     await app.close();
@@ -628,6 +629,72 @@ it("rejects empty store-name scope before reading or signing partitions", async 
     });
     expect(response.statusCode).toBe(400);
     expect(partitions).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});
+
+it.each(["queued", "processing", "published"] as const)(
+  "does not cancel or abort an accepted %s import",
+  async (status) => {
+    const app = Fastify();
+    const abort = vi.fn();
+    const finishJob = vi.fn();
+    registerStructuredPartitionRoutes(app, {
+      auth,
+      runtimeLimits: loadApiRuntimeLimits({}),
+      ...unusedAudit,
+      storage: () => ({ abortMultipartUpload: abort }) as never,
+      partitions: () =>
+        ({
+          findJobForStatus: async () => ({
+            id: "job",
+            uploaderId: employee.id,
+            status,
+            temporaryObjectKey: "temp",
+            multipartUploadId: "upload"
+          }),
+          finishJob
+        }) as unknown as StructuredPartitionRepository
+    });
+    try {
+      expect(
+        (await app.inject({ method: "DELETE", url: "/v1/structured/partition-uploads/job" }))
+          .statusCode
+      ).toBe(409);
+      expect(finishJob).not.toHaveBeenCalled();
+      expect(abort).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  }
+);
+it("does not abort multipart storage when acceptance wins the cancellation race", async () => {
+  const app = Fastify();
+  const abort = vi.fn();
+  registerStructuredPartitionRoutes(app, {
+    auth,
+    runtimeLimits: loadApiRuntimeLimits({}),
+    ...unusedAudit,
+    storage: () => ({ abortMultipartUpload: abort }) as never,
+    partitions: () =>
+      ({
+        findJobForStatus: async () => ({
+          id: "job",
+          uploaderId: employee.id,
+          status: "uploading",
+          temporaryObjectKey: "temp",
+          multipartUploadId: "upload"
+        }),
+        finishJob: async () => false
+      }) as unknown as StructuredPartitionRepository
+  });
+  try {
+    expect(
+      (await app.inject({ method: "DELETE", url: "/v1/structured/partition-uploads/job" }))
+        .statusCode
+    ).toBe(409);
+    expect(abort).not.toHaveBeenCalled();
   } finally {
     await app.close();
   }

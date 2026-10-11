@@ -361,7 +361,7 @@ export function registerQuarantineCertificateRoutes(
     const employee = dependencies.auth.employee(request);
     const audit = dependencies.createBusinessRequestAudit(request);
 
-    if (receiptId) {
+    {
       if (!canPerformPrivilegedAdministrativeOperation(employee, "archiveQuarantineCertificates")) {
         return reply
           .code(403)
@@ -372,6 +372,8 @@ export function registerQuarantineCertificateRoutes(
             )
           );
       }
+    }
+    if (receiptId) {
       const archivedCount = await dependencies.quarantineCertificates().archiveByReceiptId({
         orgId: employee.orgId,
         employee,

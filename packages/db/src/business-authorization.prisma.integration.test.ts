@@ -1,3 +1,4 @@
+import { createPrismaAuthOperatorRepository } from "../../../apps/api/src/auth/prisma-auth-operator-repository.js";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -583,5 +584,112 @@ suite("business authorization Prisma foundation", () => {
     expect(
       (await repository.getSourceReadRequirements(sourceDocumentId, orgId))[0]!.scopes
     ).toEqual(expect.arrayContaining(enriched));
+  });
+  it("atomically configures clearance and complete grants, audits both and rolls back missing scope references", async () => {
+    const snapshot = await repository.loadAuthorizationSnapshot(actorId, orgId);
+    version = snapshot.authorizationVersion;
+    const grants: BusinessGrant[] = [
+      {
+        id: "account_atomic",
+        orgId,
+        enterpriseKey: "enterprise",
+        categoryIds: ["sales"],
+        ownership: "store",
+        stores: fixed("A"),
+        dimensions: { project: fixed("X"), region: fixed("North") }
+      }
+    ];
+    await write(
+      repository.configureAccount({ ...context(), employeeId: actorId, clearance: 0, grants })
+    );
+    const changed = await repository.loadAuthorizationSnapshot(actorId, orgId);
+    expect(changed.clearance).toBe(0);
+    expect(changed.grants).toEqual(grants);
+    const audit = await prisma.businessAuthorizationAudit.findFirstOrThrow({
+      where: {
+        orgId,
+        action: "account.permissions.configure",
+        outcome: "succeeded",
+        version: BigInt(version)
+      }
+    });
+    expect(audit.before).toMatchObject({ clearance: snapshot.clearance, grants: snapshot.grants });
+    expect(audit.after).toEqual({ clearance: 0, grants });
+    await expect(
+      repository.configureAccount({
+        ...context(),
+        employeeId: actorId,
+        clearance: 3,
+        grants: [{ ...grants[0]!, stores: fixed("missing") }]
+      })
+    ).rejects.toThrow();
+    expect(await repository.loadAuthorizationSnapshot(actorId, orgId)).toEqual(changed);
+    await prisma.employee.update({ where: { id: actorId }, data: { role: "employee" } });
+    await expect(
+      repository.configureAccount({ ...context(), employeeId: actorId, clearance: 3, grants: [] })
+    ).rejects.toThrow("AUTHORIZATION_ADMIN_REQUIRED");
+    const demoted = await repository.loadAuthorizationSnapshot(actorId, orgId);
+    expect(demoted.clearance).toBe(0);
+    expect(demoted.grants).toEqual(grants);
+    expect(demoted.authorizationVersion).toBe(version);
+    await prisma.employee.update({ where: { id: actorId }, data: { role: "admin", clearance: 2 } });
+  });
+  it("onboards with empty defaults or explicit grants and audits the transaction without credential data", async () => {
+    const operator = createPrismaAuthOperatorRepository(prisma);
+    const input = {
+      orgId,
+      normalizedEmail: `${orgId}_empty@example.invalid`,
+      displayName: "Empty",
+      role: "admin" as const,
+      clearance: 3,
+      grantTokenHash: "synthetic-hash-empty",
+      grantExpiresAt: new Date(Date.now() + 60_000),
+      now: new Date()
+    };
+    const first = await operator.onboard(input);
+    expect((await repository.loadAuthorizationSnapshot(first.employeeId, orgId)).grants).toEqual(
+      []
+    );
+    const grants: BusinessGrant[] = [
+      {
+        id: "onboard_explicit",
+        orgId,
+        enterpriseKey: "enterprise",
+        categoryIds: ["sales"],
+        ownership: "store",
+        stores: fixed("A"),
+        dimensions: { project: fixed("X"), region: fixed("North") }
+      }
+    ];
+    const second = await operator.onboard({
+      ...input,
+      normalizedEmail: `${orgId}_explicit@example.invalid`,
+      grantTokenHash: "synthetic-hash-explicit",
+      initialGrants: grants
+    });
+    expect((await repository.loadAuthorizationSnapshot(second.employeeId, orgId)).grants).toEqual(
+      grants
+    );
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { targetId: second.employeeId, action: "operator.account.initial_permissions" }
+    });
+    expect(audit.actorEmployeeId).toBeNull();
+    expect(audit.clientSource).toBe("operator_cli");
+    expect(audit.metadata).toMatchObject({ before: null, after: { clearance: 3, grants } });
+    expect(JSON.stringify(audit.metadata)).not.toContain("synthetic-hash");
+    const beforeVersion = (await repository.loadAuthorizationSnapshot(actorId, orgId))
+      .authorizationVersion;
+    const badEmail = `${orgId}_bad@example.invalid`;
+    await expect(
+      operator.onboard({
+        ...input,
+        normalizedEmail: badEmail,
+        initialGrants: [{ ...grants[0]!, id: "bad_onboard", stores: fixed("missing") }]
+      })
+    ).rejects.toThrow();
+    expect(await prisma.employee.findUnique({ where: { email: badEmail } })).toBeNull();
+    expect((await repository.loadAuthorizationSnapshot(actorId, orgId)).authorizationVersion).toBe(
+      beforeVersion
+    );
   });
 });

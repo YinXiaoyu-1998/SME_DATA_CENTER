@@ -316,9 +316,7 @@ export function createPrismaQuarantineCertificateRepository(
         include: certificateInclude
       });
       if (!certificate || certificate.orgId !== input.orgId) return null;
-      const record = toCertificateRecord(certificate);
       if (
-        record.uploaderId !== input.employee.id &&
         !canPerformPrivilegedAdministrativeOperation(
           input.employee,
           "archiveQuarantineCertificates"
@@ -336,6 +334,11 @@ export function createPrismaQuarantineCertificateRepository(
       return retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
+          const actor = await tx.employee.findFirst({
+            where: { id: input.employee.id, orgId: input.orgId, role: "admin", disabled: false },
+            select: { id: true }
+          });
+          if (!actor) return { archivedCount: 0, affectedLedgerPartitions: [] };
           const affectedLedgerPartitions = await ledgerPartitionsForReceipt(
             tx,
             input.orgId,
@@ -383,6 +386,11 @@ export function createPrismaQuarantineCertificateRepository(
       return retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
+          const actor = await tx.employee.findFirst({
+            where: { id: input.employee.id, orgId: input.orgId, role: "admin", disabled: false },
+            select: { id: true }
+          });
+          if (!actor) return { archivedCount: 0, affectedLedgerPartitions: [] };
           const certificates = await tx.quarantineCertificate.findMany({
             where: {
               orgId: input.orgId,

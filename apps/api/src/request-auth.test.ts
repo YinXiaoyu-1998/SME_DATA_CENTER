@@ -25,6 +25,9 @@ function minimalContext(
   authenticateOfficialAccessToken: ApiServerContext["authenticateOfficialAccessToken"]
 ): ApiServerContext {
   return {
+    permissions: () => {
+      throw new Error("unused");
+    },
     environment: {},
     delegationProof: "proof",
     runtimeLimits: {} as ApiServerContext["runtimeLimits"],

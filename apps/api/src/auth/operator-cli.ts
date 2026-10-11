@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { createDatabaseAdapter } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
-import type { EmployeeRoleName } from "@smedc/domain";
+import type { BusinessGrant, EmployeeRoleName } from "@smedc/domain";
 import {
   AUTH_LIFETIMES_MS,
   generateOpaqueSecret,
@@ -18,6 +18,7 @@ export type OperatorCommand =
       displayName: string;
       role: EmployeeRoleName;
       clearance: number;
+      initialGrants?: BusinessGrant[];
     }
   | { kind: "reset-password"; employeeId: string }
   | { kind: "delete-test-account"; email: string; confirmEmail: string };
@@ -29,6 +30,7 @@ export interface AuthOperatorRepository {
     displayName: string;
     role: EmployeeRoleName;
     clearance: number;
+    initialGrants?: BusinessGrant[];
     grantTokenHash: string;
     grantExpiresAt: Date;
     now: Date;
@@ -98,19 +100,36 @@ export function parseOperatorCommand(args: string[]): OperatorCommand {
   if (subcommand === "onboard") {
     const options = parseOptions(
       rest,
-      new Set(["--org-id", "--email", "--display-name", "--role", "--clearance"])
+      new Set([
+        "--org-id",
+        "--email",
+        "--display-name",
+        "--role",
+        "--clearance",
+        "--initial-grants"
+      ])
     );
     const role = required(options, "--role");
     if (!["admin", "employee"].includes(role)) {
       throw new Error("Role must be admin or employee.");
     }
+    const rawGrants = options.get("--initial-grants")?.[0];
+    const initialGrants: unknown = rawGrants === undefined ? undefined : JSON.parse(rawGrants);
+    if (initialGrants !== undefined && !Array.isArray(initialGrants))
+      throw new Error("Initial grants must be a JSON array.");
     return {
       kind: "onboard",
       orgId: required(options, "--org-id"),
       email: required(options, "--email"),
       displayName: required(options, "--display-name"),
       role: role as EmployeeRoleName,
-      clearance: boundedInteger(required(options, "--clearance"), 0, 0, 3)
+      clearance: boundedInteger(
+        role === "admin" ? options.get("--clearance")?.[0] : required(options, "--clearance"),
+        3,
+        0,
+        3
+      ),
+      ...(initialGrants !== undefined ? { initialGrants: initialGrants as BusinessGrant[] } : {})
     };
   }
   if (subcommand === "reset-password") {
@@ -186,6 +205,7 @@ export async function runOperatorCommand(
           displayName: command.displayName,
           role: command.role,
           clearance: command.clearance,
+          ...(command.initialGrants !== undefined ? { initialGrants: command.initialGrants } : {}),
           ...grantInput
         })
       : await dependencies.repository.resetPassword({

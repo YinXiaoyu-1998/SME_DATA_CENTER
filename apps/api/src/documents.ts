@@ -236,6 +236,16 @@ export function createPrismaDocumentCatalogRepository(
       const document = await retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
+          const actor = await tx.employee.findFirst({
+            where: {
+              id: input.actorEmployeeId,
+              orgId: input.orgId,
+              role: "admin",
+              disabled: false
+            },
+            select: { id: true }
+          });
+          if (!actor) return null;
           const existingDocument = await tx.document.findFirst({
             where: {
               id: input.documentId,

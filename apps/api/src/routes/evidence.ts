@@ -457,8 +457,8 @@ export function registerEvidenceRoutes(
       }
 
       if (
-        document.uploaderId !== employee.id ||
-        employee.clearance < document.confidentialityLevel
+        employee.role !== "admin" &&
+        (document.uploaderId !== employee.id || employee.clearance < document.confidentialityLevel)
       ) {
         return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
       }

@@ -19,6 +19,8 @@ export interface AuthorizationWriteContext {
 export interface CategoryWrite extends AuthorizationWriteContext, BusinessCategoryRule {
   key?: string;
   name: string;
+  retired?: boolean;
+  createOnly?: boolean;
 }
 export interface ResourceAuthorizationWrite
   extends AuthorizationWriteContext, ResourceReadRequirement {
@@ -115,6 +117,66 @@ function preservesSourceTuples(
     return true;
   });
 }
+export async function persistBusinessGrants(
+  tx: Tx,
+  input: { orgId: string; employeeId: string; grants: BusinessGrant[] },
+  categories: BusinessCategoryRule[]
+) {
+  for (const grant of input.grants) {
+    if (grant.orgId !== input.orgId || validateBusinessGrant(grant, categories).length)
+      throw new Error("INVALID_BUSINESS_GRANT");
+  }
+  await tx.businessGrant.deleteMany({
+    where: { orgId: input.orgId, employeeId: input.employeeId }
+  });
+  for (const grant of input.grants) {
+    await tx.businessGrant.create({
+      data: {
+        orgId: input.orgId,
+        id: grant.id,
+        employeeId: input.employeeId,
+        enterpriseKey: grant.enterpriseKey,
+        ownership: grant.ownership,
+        allStores: grant.stores?.kind === "all"
+      }
+    });
+    await tx.businessGrantCategory.createMany({
+      data: grant.categoryIds.map((categoryId) => ({
+        orgId: input.orgId,
+        grantId: grant.id,
+        categoryId
+      }))
+    });
+    if (grant.stores?.kind === "fixed")
+      await tx.businessGrantStore.createMany({
+        data: grant.stores.values.map((storeName) => ({
+          orgId: input.orgId,
+          grantId: grant.id,
+          enterpriseKey: grant.enterpriseKey,
+          storeName
+        }))
+      });
+    for (const [dimensionId, selection] of Object.entries(grant.dimensions)) {
+      await tx.businessGrantDimension.create({
+        data: {
+          orgId: input.orgId,
+          grantId: grant.id,
+          dimensionId,
+          allValues: selection.kind === "all"
+        }
+      });
+      if (selection.kind === "fixed")
+        await tx.businessGrantDimensionValue.createMany({
+          data: selection.values.map((valueId) => ({
+            orgId: input.orgId,
+            grantId: grant.id,
+            dimensionId,
+            valueId
+          }))
+        });
+    }
+  }
+}
 export function createBusinessAuthorizationRepository({ prisma }: { prisma: PrismaClient }) {
   async function loadAuthorizationSnapshot(
     employeeId: string,
@@ -178,6 +240,12 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
       throw new Error("AUTHORIZATION_VERSION_CONFLICT");
     try {
       return await prisma.$transaction(async (tx) => {
+        if (context.expectedVersion === "0")
+          await tx.businessAuthorizationState.upsert({
+            where: { orgId: context.orgId },
+            create: { orgId: context.orgId },
+            update: {}
+          });
         const state = await tx.businessAuthorizationState.updateMany({
           where: { orgId: context.orgId, version: BigInt(context.expectedVersion) },
           data: { version: { increment: 1 } }
@@ -242,7 +310,187 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
     });
     return rows.map((row) => ({ id: row.id, requirement: resourceRequirement(row) }));
   }
+  async function writeGrants(
+    tx: Tx,
+    input: { orgId: string; employeeId: string; grants: BusinessGrant[] }
+  ) {
+    const snapshot = await loadAuthorizationSnapshot(input.employeeId, input.orgId, tx);
+    await persistBusinessGrants(tx, input, snapshot.categories);
+  }
+  async function writeResource(tx: Tx, input: ResourceAuthorizationWrite) {
+    const category = await tx.businessCategory.findUniqueOrThrow({
+      where: { orgId_id: { orgId: input.orgId, id: input.categoryId } },
+      include: categoriesInclude
+    });
+    const rule = categoryRule(category);
+    if (
+      (input.kind === "evidence") !== (rule.kind === "evidence") ||
+      (input.kind === "quarantine_certificate" && category.key !== "quarantine_certificate") ||
+      (input.kind === "ledger_pdf" && category.key !== "ledger_pdf")
+    )
+      throw new Error("RESOURCE_CATEGORY_KIND_MISMATCH");
+    if (
+      input.scopes.length === 0 ||
+      input.scopes.some((scope) => !validateBusinessScope(scope, rule)) ||
+      (rule.kind === "evidence"
+        ? !isBusinessClearance(input.fileConfidentialityLevel)
+        : input.fileConfidentialityLevel != null)
+    )
+      throw new Error("RESOURCE_ATTRIBUTES_NOT_READY");
+    if (input.kind === "quarantine_certificate" || input.kind === "ledger_pdf")
+      if (input.scopes.length !== 1 || input.scopes[0]!.ownership !== "store")
+        throw new Error("RESOURCE_SINGLE_STORE_REQUIRED");
+    const where = { orgId_id: { orgId: input.orgId, id: input.id } };
+    const before = await tx.businessResource.findUnique({ where, include: resourcesInclude });
+    if (
+      before &&
+      (before.kind !== input.kind ||
+        before.resourceKey !== input.resourceKey ||
+        before.documentId !== (input.documentId ?? null) ||
+        before.sourceDocumentId !== (input.sourceDocumentId ?? null))
+    )
+      throw new Error("RESOURCE_IDENTITY_IMMUTABLE");
+    if (input.sourceDocumentId && input.kind !== "source_fragment")
+      throw new Error("SOURCE_FRAGMENT_REQUIRED");
+    if (input.kind === "source_fragment" && !input.sourceDocumentId)
+      throw new Error("SOURCE_DOCUMENT_REQUIRED");
+    if (
+      before &&
+      input.kind === "source_fragment" &&
+      (before.categoryId !== input.categoryId ||
+        before.valid !== input.valid ||
+        !preservesSourceTuples(resourceRequirement(before).scopes, input.scopes))
+    )
+      throw new Error("SOURCE_REQUIREMENTS_IMMUTABLE");
+    const contentChanged =
+      before &&
+      (before.valid !== input.valid ||
+        // Source enrichment only adds required authorization metadata; source content and association stay intact.
+        (input.kind !== "source_fragment" &&
+          !isDeepStrictEqual(
+            canonicalScopes(resourceRequirement(before).scopes),
+            canonicalScopes(input.scopes)
+          )));
+    const data = {
+      categoryId: input.categoryId,
+      valid: input.valid,
+      fileConfidentialityLevel: input.fileConfidentialityLevel ?? null
+    };
+    await tx.businessResource.upsert({
+      where,
+      create: {
+        orgId: input.orgId,
+        id: input.id,
+        kind: input.kind,
+        resourceKey: input.resourceKey,
+        documentId: input.documentId ?? null,
+        sourceDocumentId: input.sourceDocumentId ?? null,
+        ...data
+      },
+      update: {
+        ...data,
+        authorizationVersion: { increment: 1 },
+        ...(contentChanged ? { contentVersion: { increment: 1 } } : {})
+      }
+    });
+    await tx.businessResourceScope.deleteMany({
+      where: { orgId: input.orgId, resourceId: input.id }
+    });
+    for (const scope of input.scopes) {
+      const id = randomUUID().replaceAll("-", "");
+      await tx.businessResourceScope.create({
+        data: {
+          orgId: input.orgId,
+          resourceId: input.id,
+          id,
+          enterpriseKey: scope.enterpriseKey,
+          ownership: scope.ownership,
+          storeName: scope.storeName ?? null
+        }
+      });
+      await tx.businessScopeDimension.createMany({
+        data: Object.entries(scope.dimensions).map(([dimensionId, valueId]) => ({
+          orgId: input.orgId,
+          resourceId: input.id,
+          scopeId: id,
+          dimensionId,
+          valueId
+        }))
+      });
+    }
+    return {
+      before,
+      after: await tx.businessResource.findUniqueOrThrow({ where, include: resourcesInclude })
+    };
+  }
   return {
+    async listAccounts(orgId: string, actorId: string) {
+      return prisma.$transaction(async (tx) => {
+        const actor = await loadAuthorizationSnapshot(actorId, orgId, tx);
+        if (actor.disabled || actor.role !== "admin")
+          throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
+        const rows = await tx.employee.findMany({
+          where: { orgId },
+          select: { id: true, displayName: true, email: true }
+        });
+        return Promise.all(
+          rows.map(async (row) => ({
+            ...row,
+            ...(await loadAuthorizationSnapshot(row.id, orgId, tx))
+          }))
+        );
+      });
+    },
+    listCategories: (orgId: string) =>
+      prisma.businessCategory.findMany({ where: { orgId }, include: categoriesInclude }),
+    listDimensions: (orgId: string) =>
+      prisma.businessDimension.findMany({ where: { orgId }, include: { values: true } }),
+    configureAccount(
+      input: AuthorizationWriteContext & {
+        employeeId: string;
+        clearance: number;
+        grants: BusinessGrant[];
+      }
+    ) {
+      return mutate(input, "account.permissions.configure", input.employeeId, async (tx) => {
+        if (!isBusinessClearance(input.clearance)) throw new Error("INVALID_ACCOUNT_CLEARANCE");
+        const before = await loadAuthorizationSnapshot(input.employeeId, input.orgId, tx);
+        await writeGrants(tx, input);
+        await tx.employee.update({
+          where: { orgId_id: { orgId: input.orgId, id: input.employeeId } },
+          data: { clearance: input.clearance }
+        });
+        return {
+          before: { clearance: before.clearance, grants: before.grants },
+          after: { clearance: input.clearance, grants: input.grants }
+        };
+      });
+    },
+    configureEvidenceDocument(
+      input: AuthorizationWriteContext & {
+        documentId: string;
+        categoryId: string;
+        fileConfidentialityLevel: number;
+        scopes: ResourceReadRequirement["scopes"];
+      }
+    ) {
+      return mutate(input, "document.attributes.configure", input.documentId, async (tx) => {
+        const document = await tx.document.findFirst({
+          where: { orgId: input.orgId, id: input.documentId, documentKind: "evidence" }
+        });
+        if (!document) throw new Error("RESOURCE_NOT_FOUND");
+        const existing = await tx.businessResource.findFirst({
+          where: { orgId: input.orgId, documentId: input.documentId, kind: "evidence" }
+        });
+        return writeResource(tx, {
+          ...input,
+          id: existing?.id ?? randomUUID().replaceAll("-", ""),
+          kind: "evidence",
+          resourceKey: input.documentId,
+          valid: document.status === "active" && !document.archivedAt
+        });
+      });
+    },
     initializeOrganization: (orgId: string) =>
       prisma.businessAuthorizationState.upsert({ where: { orgId }, create: { orgId }, update: {} }),
     loadAuthorizationSnapshot,
@@ -271,11 +519,19 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
       return rows.map(resourceRequirement);
     },
     defineDimension(
-      input: AuthorizationWriteContext & { id: string; name: string; retired?: boolean }
+      input: AuthorizationWriteContext & {
+        id: string;
+        name: string;
+        retired?: boolean;
+        createOnly?: boolean;
+        updateOnly?: boolean;
+      }
     ) {
       return mutate(input, "dimension.configure", input.id, async (tx) => {
         const where = { orgId_id: { orgId: input.orgId, id: input.id } };
         const before = await tx.businessDimension.findUnique({ where });
+        if ((input.createOnly && before) || (input.updateOnly && !before))
+          throw new Error("INVALID_DIMENSION_ID");
         const data = { name: input.name, retired: input.retired ?? before?.retired ?? false };
         return {
           before,
@@ -293,6 +549,8 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         dimensionId: string;
         name: string;
         retired?: boolean;
+        createOnly?: boolean;
+        updateOnly?: boolean;
       }
     ) {
       return mutate(
@@ -308,6 +566,8 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
             }
           };
           const before = await tx.businessDimensionValue.findUnique({ where });
+          if ((input.createOnly && before) || (input.updateOnly && !before))
+            throw new Error("INVALID_DIMENSION_VALUE_ID");
           const data = { name: input.name, retired: input.retired ?? before?.retired ?? false };
           return {
             before,
@@ -343,10 +603,12 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
           throw new Error("INVALID_FIXED_CATEGORY");
         const where = { orgId_id: { orgId: input.orgId, id: input.id } };
         const before = await tx.businessCategory.findUnique({ where, include: categoriesInclude });
+        if (input.createOnly && before) throw new Error("CATEGORY_ID_ALREADY_EXISTS");
         if (before && (before.kind !== input.kind || before.key !== (input.key ?? null)))
           throw new Error("CATEGORY_IDENTITY_IMMUTABLE");
         const data = {
           name: input.name,
+          retired: input.retired ?? before?.retired ?? false,
           kind: input.kind,
           key: input.key ?? null,
           confidentialityLevel: input.confidentialityLevel,
@@ -433,166 +695,12 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
             validateBusinessGrant(grant, snapshot.categories).length
           )
             throw new Error("INVALID_BUSINESS_GRANT");
-        await tx.businessGrant.deleteMany({
-          where: { orgId: input.orgId, employeeId: input.employeeId }
-        });
-        for (const grant of input.grants) {
-          await tx.businessGrant.create({
-            data: {
-              orgId: input.orgId,
-              id: grant.id,
-              employeeId: input.employeeId,
-              enterpriseKey: grant.enterpriseKey,
-              ownership: grant.ownership,
-              allStores: grant.stores?.kind === "all"
-            }
-          });
-          await tx.businessGrantCategory.createMany({
-            data: grant.categoryIds.map((categoryId) => ({
-              orgId: input.orgId,
-              grantId: grant.id,
-              categoryId
-            }))
-          });
-          if (grant.stores?.kind === "fixed")
-            await tx.businessGrantStore.createMany({
-              data: grant.stores.values.map((storeName) => ({
-                orgId: input.orgId,
-                grantId: grant.id,
-                enterpriseKey: grant.enterpriseKey,
-                storeName
-              }))
-            });
-          for (const [dimensionId, selection] of Object.entries(grant.dimensions)) {
-            await tx.businessGrantDimension.create({
-              data: {
-                orgId: input.orgId,
-                grantId: grant.id,
-                dimensionId,
-                allValues: selection.kind === "all"
-              }
-            });
-            if (selection.kind === "fixed")
-              await tx.businessGrantDimensionValue.createMany({
-                data: selection.values.map((valueId) => ({
-                  orgId: input.orgId,
-                  grantId: grant.id,
-                  dimensionId,
-                  valueId
-                }))
-              });
-          }
-        }
+        await writeGrants(tx, input);
         return { before: snapshot.grants, after: input.grants };
       });
     },
     putResource(input: ResourceAuthorizationWrite) {
-      return mutate(input, "resource.configure", input.id, async (tx) => {
-        const category = await tx.businessCategory.findUniqueOrThrow({
-          where: { orgId_id: { orgId: input.orgId, id: input.categoryId } },
-          include: categoriesInclude
-        });
-        const rule = categoryRule(category);
-        if (
-          (input.kind === "evidence") !== (rule.kind === "evidence") ||
-          (input.kind === "quarantine_certificate" && category.key !== "quarantine_certificate") ||
-          (input.kind === "ledger_pdf" && category.key !== "ledger_pdf")
-        )
-          throw new Error("RESOURCE_CATEGORY_KIND_MISMATCH");
-        if (
-          input.scopes.length === 0 ||
-          input.scopes.some((scope) => !validateBusinessScope(scope, rule)) ||
-          (rule.kind === "evidence"
-            ? !isBusinessClearance(input.fileConfidentialityLevel)
-            : input.fileConfidentialityLevel != null)
-        )
-          throw new Error("RESOURCE_ATTRIBUTES_NOT_READY");
-        if (input.kind === "quarantine_certificate" || input.kind === "ledger_pdf")
-          if (input.scopes.length !== 1 || input.scopes[0]!.ownership !== "store")
-            throw new Error("RESOURCE_SINGLE_STORE_REQUIRED");
-        const where = { orgId_id: { orgId: input.orgId, id: input.id } };
-        const before = await tx.businessResource.findUnique({ where, include: resourcesInclude });
-        if (
-          before &&
-          (before.kind !== input.kind ||
-            before.resourceKey !== input.resourceKey ||
-            before.documentId !== (input.documentId ?? null) ||
-            before.sourceDocumentId !== (input.sourceDocumentId ?? null))
-        )
-          throw new Error("RESOURCE_IDENTITY_IMMUTABLE");
-        if (input.sourceDocumentId && input.kind !== "source_fragment")
-          throw new Error("SOURCE_FRAGMENT_REQUIRED");
-        if (input.kind === "source_fragment" && !input.sourceDocumentId)
-          throw new Error("SOURCE_DOCUMENT_REQUIRED");
-        if (
-          before &&
-          input.kind === "source_fragment" &&
-          (before.categoryId !== input.categoryId ||
-            before.valid !== input.valid ||
-            !preservesSourceTuples(resourceRequirement(before).scopes, input.scopes))
-        )
-          throw new Error("SOURCE_REQUIREMENTS_IMMUTABLE");
-        const contentChanged =
-          before &&
-          (before.valid !== input.valid ||
-            // Source enrichment only adds required authorization metadata; source content and association stay intact.
-            (input.kind !== "source_fragment" &&
-              !isDeepStrictEqual(
-                canonicalScopes(resourceRequirement(before).scopes),
-                canonicalScopes(input.scopes)
-              )));
-        const data = {
-          categoryId: input.categoryId,
-          valid: input.valid,
-          fileConfidentialityLevel: input.fileConfidentialityLevel ?? null
-        };
-        await tx.businessResource.upsert({
-          where,
-          create: {
-            orgId: input.orgId,
-            id: input.id,
-            kind: input.kind,
-            resourceKey: input.resourceKey,
-            documentId: input.documentId ?? null,
-            sourceDocumentId: input.sourceDocumentId ?? null,
-            ...data
-          },
-          update: {
-            ...data,
-            authorizationVersion: { increment: 1 },
-            ...(contentChanged ? { contentVersion: { increment: 1 } } : {})
-          }
-        });
-        await tx.businessResourceScope.deleteMany({
-          where: { orgId: input.orgId, resourceId: input.id }
-        });
-        for (const scope of input.scopes) {
-          const id = randomUUID().replaceAll("-", "");
-          await tx.businessResourceScope.create({
-            data: {
-              orgId: input.orgId,
-              resourceId: input.id,
-              id,
-              enterpriseKey: scope.enterpriseKey,
-              ownership: scope.ownership,
-              storeName: scope.storeName ?? null
-            }
-          });
-          await tx.businessScopeDimension.createMany({
-            data: Object.entries(scope.dimensions).map(([dimensionId, valueId]) => ({
-              orgId: input.orgId,
-              resourceId: input.id,
-              scopeId: id,
-              dimensionId,
-              valueId
-            }))
-          });
-        }
-        return {
-          before,
-          after: await tx.businessResource.findUniqueOrThrow({ where, include: resourcesInclude })
-        };
-      });
+      return mutate(input, "resource.configure", input.id, (tx) => writeResource(tx, input));
     }
   };
 }

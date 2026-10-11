@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
+  employee: { findFirst: vi.fn() },
   auditLog: {
     create: vi.fn(),
     findMany: vi.fn()
@@ -69,6 +70,7 @@ function documentRecord() {
 describe("Prisma document catalog audit provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.employee.findFirst.mockResolvedValue({ id: "emp_1" });
     prisma.$queryRaw.mockResolvedValue([{ id: "org_1" }]);
     prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
       callback(prisma)
@@ -131,5 +133,18 @@ describe("Prisma document catalog audit provenance", () => {
         }
       });
     }
+  });
+  it("rejects a former uploader whose current role is employee before archival", async () => {
+    prisma.employee.findFirst.mockResolvedValue(null);
+    const repository = createPrismaDocumentCatalogRepository("mysql://test");
+    expect(
+      await repository.archiveDocument({
+        orgId: "org_1",
+        documentId: "doc_1",
+        actorEmployeeId: "emp_1",
+        audit
+      })
+    ).toBeNull();
+    expect(prisma.document.updateMany).not.toHaveBeenCalled();
   });
 });
