@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 describe("permissions browser pages", () => {
@@ -34,5 +35,32 @@ describe("permissions browser pages", () => {
     expect(html).toContain("email or password is incorrect");
     expect(html).toContain("novalidate");
     expect(html).not.toContain("returnTo");
+  });
+  it("uses Chinese for missing, invalid or unavailable preference storage and honors explicit English", async () => {
+    const { renderPermissionsLogin } = await import("./pages.js");
+    const html = renderPermissionsLogin({
+      nonce: "abcdefgh12345678",
+      orgId: "org_a",
+      csrfToken: "csrf"
+    });
+    const script = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)![1]!;
+    for (const preference of [null, "fr", "en", "unavailable"]) {
+      const documentElement = { lang: "" };
+      runInNewContext(script, {
+        document: { documentElement, querySelectorAll: () => [], querySelector: () => null },
+        localStorage: {
+          getItem: () => {
+            if (preference === "unavailable") throw new Error("blocked");
+            return preference;
+          },
+          setItem: () => {
+            if (preference === "unavailable") throw new Error("blocked");
+          }
+        },
+        window: { dispatchEvent: () => {} },
+        CustomEvent: class {}
+      });
+      expect(documentElement.lang).toBe(preference === "en" ? "en" : "zh-CN");
+    }
   });
 });

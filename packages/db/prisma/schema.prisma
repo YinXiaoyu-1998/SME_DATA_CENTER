@@ -152,6 +152,7 @@ enum AuthSecurityOutcome {
 }
 
 model Organization {
+  enterpriseIdentities BusinessEnterpriseIdentity[]
   businessAuthorization BusinessAuthorizationState?
   id                     String                  @id @db.VarChar(64)
   name                   String                  @db.VarChar(255)
@@ -1281,4 +1282,13 @@ model BrowserSession {
   @@index([identityId, revokedAt])
   @@index([expiresAt])
   @@map("browser_sessions")
+}
+
+model BusinessEnterpriseIdentity {
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  enterpriseName String @map("enterprise_name") @db.VarChar(255)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  @@id([orgId, enterpriseKey])
+  @@map("business_enterprise_identities")
 }

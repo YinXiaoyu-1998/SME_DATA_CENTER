@@ -20,7 +20,7 @@ export interface PermissionsUiMetadata {
 export function createPrismaPermissionsUiMetadata(prisma: PrismaClient): PermissionsUiMetadata {
   return {
     async listEnterprises(orgId) {
-      const [stores, grants, scopes, partitions] = await Promise.all([
+      const [stores, grants, scopes, partitions, declarations] = await Promise.all([
         prisma.businessStore.findMany({
           where: { orgId },
           select: { enterpriseKey: true },
@@ -40,6 +40,10 @@ export function createPrismaPermissionsUiMetadata(prisma: PrismaClient): Permiss
           where: { orgId },
           select: { enterpriseKey: true, enterpriseName: true },
           distinct: ["enterpriseKey", "enterpriseName"]
+        }),
+        prisma.businessEnterpriseIdentity.findMany({
+          where: { orgId },
+          select: { enterpriseKey: true, enterpriseName: true }
         })
       ]);
       const names = new Map<string, Set<string>>();
@@ -49,14 +53,18 @@ export function createPrismaPermissionsUiMetadata(prisma: PrismaClient): Permiss
         names.set(row.enterpriseKey, candidates);
       }
       const keys = new Set(
-        [...stores, ...grants, ...scopes, ...partitions].map((row) => row.enterpriseKey)
+        [...stores, ...grants, ...scopes, ...partitions, ...declarations].map(
+          (row) => row.enterpriseKey
+        )
       );
       return [...keys].sort().map((enterpriseKey) => {
         const candidates = names.get(enterpriseKey);
         // A conflicting historical name is not silently merged or guessed.
         return {
           enterpriseKey,
-          enterpriseName: candidates?.size === 1 ? [...candidates][0]! : enterpriseKey
+          enterpriseName:
+            declarations.find((item) => item.enterpriseKey === enterpriseKey)?.enterpriseName ??
+            (candidates?.size === 1 ? [...candidates][0]! : enterpriseKey)
         };
       });
     },

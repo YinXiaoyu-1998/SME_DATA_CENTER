@@ -66,7 +66,7 @@
 
 ## Enterprise Onboarding
 
-- Follow `docs/implementation/tenant-onboarding.md` and `docs/implementation/admin-permissions-ui-design.md`: fixed UI entry + admin login is the primary flow; UI is planned, not live. Developers share the verified URL after rollout. Reuse enterprise rules for new accounts; never require customers to fill JSON.
+- Follow `docs/implementation/tenant-onboarding.md` and `docs/implementation/admin-permissions-ui-design.md`: enterprise-bound UI entry + shared browser sign-in + live server-side tenant/admin checks is the primary flow; UI is implemented in this branch but not deployed. Developers share the verified URL after rollout. Reuse enterprise rules for new accounts; never require customers to fill JSON.
 - Match login/password i18n: `zh-CN` default, `en` switching, preserve explicit valid preference; localize fields, validation, conflicts, confirmations and expiry states. Keep business names unchanged.
 - JSON is internal only; customer records/snapshots stay outside Git. Org/account/role/password operations stay with operators. Saving differs from activation; ready preparation and explicit admin confirmation precede new-model handoff.
 

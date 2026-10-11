@@ -19,7 +19,7 @@ ordinary content access. Retained originals require all parsed resource scopes; 
 not create guessed scopes. Raw delivery-ledger data, aggregates and original links have no public
 MCP read path. Finished PDFs use the independent PDF category and one exact store.
 
-For enterprise onboarding or adding an account, the planned primary entry is the
+For enterprise onboarding or adding an account, the primary entry after verified rollout is the
 [administrator UI workflow](tenant-onboarding.md), with Chinese by default and English switching.
 The UI is not live yet; current authorized management still uses these MCP tools. JSON remains an
 optional internal record, never a required user form.

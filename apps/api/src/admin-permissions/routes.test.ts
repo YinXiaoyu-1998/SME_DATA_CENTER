@@ -145,6 +145,10 @@ async function fixture() {
     listCategories: vi.fn(async () => []),
     listDimensions: vi.fn(async () => []),
     listStores: vi.fn(async () => []),
+    declareEnterpriseIdentity: vi.fn(async () => ({
+      authorizationVersion: "8",
+      value: { enterpriseKey: "示例 小馆 a", enterpriseName: "示例 小馆 A" }
+    })),
     configureAccount: vi.fn(async () => ({ authorizationVersion: "8" })),
     inspectAuthorizationCutover: vi.fn(async () => ({
       authorizationVersion: "7",
@@ -228,6 +232,7 @@ describe("enterprise-bound browser permission management", () => {
       headers: { cookie: sharedCookie }
     });
     expect(permissions.statusCode).toBe(200);
+    expect(permissions.headers["referrer-policy"]).toBe("same-origin");
     expect(permissions.body).toContain("企业甲保密名称");
     expect(permissions.body).not.toContain('name="password"');
     expect(auth.verifyLogin).toHaveBeenCalledTimes(1);
@@ -268,6 +273,14 @@ describe("enterprise-bound browser permission management", () => {
       payload: { expectedVersion: "7", clearance: 3, grants: [] }
     });
     expect(write.statusCode).toBe(403);
+    const declaration = await app.inject({
+      method: "POST",
+      url: "/admin/permissions/org_a/api/enterprises",
+      headers: { cookie: cookie(secretB), origin, "x-csrf-token": csrfTokenForSecret(secretB) },
+      payload: { name: "示例 小馆 A", expectedVersion: "7" }
+    });
+    expect(declaration.statusCode).toBe(403);
+    expect(permissionsRepository.declareEnterpriseIdentity).not.toHaveBeenCalled();
     expect(permissionsRepository.loadAuthorizationSnapshot).not.toHaveBeenCalled();
     expect(permissionsRepository.configureAccount).not.toHaveBeenCalled();
     expect(metadata.listEnterprises).not.toHaveBeenCalled();
@@ -320,6 +333,16 @@ describe("enterprise-bound browser permission management", () => {
       (await app.inject({ url: "/admin/permissions/org_a", headers: { cookie: cookie(secretA) } }))
         .statusCode
     ).toBe(303);
+    const expiredLogout = await app.inject({
+      method: "POST",
+      url: "/admin/permissions/org_a/logout",
+      headers: { cookie: cookie(secretA), origin },
+      payload: {}
+    });
+    expect(expiredLogout.statusCode).toBe(401);
+    expect(expiredLogout.headers["content-type"]).toContain("text/html");
+    expect(expiredLogout.body).toContain("请重新登录");
+    expect(expiredLogout.body).toContain("Sign in again");
   });
   it("requires matching Origin and CSRF for writes, and revokes browser access on logout", async () => {
     const { app, cookie, secretA, permissionsRepository } = await fixture();
@@ -399,5 +422,30 @@ describe("enterprise-bound browser permission management", () => {
       headers: { authorization: "Bearer eh_at_launcher" }
     });
     expect(response.statusCode).toBe(401);
+  });
+  it("persists confirmed names through the versioned permission transaction and reports conflicts", async () => {
+    const { app, cookie, secretA, permissionsRepository } = await fixture();
+    const request = {
+      method: "POST" as const,
+      url: "/admin/permissions/org_a/api/enterprises",
+      headers: { cookie: cookie(secretA), origin, "x-csrf-token": csrfTokenForSecret(secretA) },
+      payload: { name: "示例 小馆 A", expectedVersion: "7" }
+    };
+    expect(
+      (await app.inject({ ...request, headers: { cookie: cookie(secretA), origin } })).statusCode
+    ).toBe(403);
+    const saved = await app.inject(request);
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().value.enterpriseName).toBe("示例 小馆 A");
+    expect(permissionsRepository.declareEnterpriseIdentity).toHaveBeenCalledWith({
+      orgId: "org_a",
+      actorId: "admin_a",
+      name: "示例 小馆 A",
+      expectedVersion: "7"
+    });
+    permissionsRepository.declareEnterpriseIdentity.mockRejectedValueOnce(
+      new Error("AUTHORIZATION_VERSION_CONFLICT")
+    );
+    expect((await app.inject(request)).statusCode).toBe(409);
   });
 });

@@ -21,7 +21,10 @@ import {
 } from "../auth/http-contract.js";
 import { authPageHeaders } from "../auth/pages.js";
 import type { BusinessAuthorizationService } from "../business-authorization.js";
-import { registerBusinessAuthorizationRoutes } from "../routes/business-authorization.js";
+import {
+  registerBusinessAuthorizationRoutes,
+  respondBusinessAuthorizationError
+} from "../routes/business-authorization.js";
 import { createRequestAuditContext } from "../request-audit-context.js";
 import type { PermissionsUiMetadata } from "./metadata.js";
 
@@ -41,6 +44,8 @@ function browserAudit(request: FastifyRequest) {
 function page(reply: FastifyReply, render: (nonce: string) => string) {
   const nonce = randomBytes(18).toString("base64url");
   const headers = authPageHeaders(nonce);
+  // Native same-origin form POSTs need a non-opaque Origin for the strict write check.
+  headers["referrer-policy"] = "same-origin";
   headers["content-security-policy"] += "; connect-src 'self'";
   return reply
     .headers({ ...headers })
@@ -203,7 +208,13 @@ export function registerAdminPermissionsRoutes(
     async (request, reply) => {
       const secret = sharedSecret(request);
       const principal = await principalFor(request);
-      if (!principal) return failure(reply, 401, "BROWSER_SIGN_IN_REQUIRED");
+      if (!principal)
+        return page(
+          reply
+            .code(401)
+            .header("set-cookie", hostOnlyCookie(BROWSER_SESSION_COOKIE, "deleted", 0)),
+          (nonce) => renderPermissionsMessage({ nonce, kind: "expired" })
+        );
       if (
         !matchesTenant(principal, request.params.orgId) ||
         !secret ||
@@ -236,6 +247,26 @@ export function registerAdminPermissionsRoutes(
       enterprises: await options.metadata().listEnterprises(current.orgId)
     };
   });
+  app.post<{ Params: { orgId: string }; Body: { name?: unknown; expectedVersion?: unknown } }>(
+    `${routeBase}/api/enterprises`,
+    async (request, reply) => {
+      try {
+        const current = await actor(request, reply);
+        if (!current) return;
+        const { name, expectedVersion } = request.body ?? {};
+        if (typeof name !== "string" || typeof expectedVersion !== "string")
+          return failure(reply, 400, "INVALID_ENTERPRISE_NAME");
+        return await options.permissions().repository.declareEnterpriseIdentity({
+          orgId: current.orgId,
+          actorId: current.employeeId,
+          expectedVersion,
+          name
+        });
+      } catch (error) {
+        return respondBusinessAuthorizationError(error, reply);
+      }
+    }
+  );
   app.post<{ Params: { orgId: string }; Body: { name?: unknown } }>(
     `${routeBase}/api/enterprises/preview`,
     async (request, reply) => {

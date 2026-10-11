@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
-import { createDatabaseAdapter } from "@smedc/db";
+import { createDatabaseAdapter, createBusinessAuthorizationRepository } from "@smedc/db";
 import { createPrismaPermissionsUiMetadata } from "./metadata.js";
 const enabled = process.env["RUN_AUTH_INTEGRATION"] === "1";
 const url = process.env["DATABASE_URL"] ?? "mysql://unused:unused@127.0.0.1:3307/unused";
@@ -54,6 +54,7 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
     });
   });
   afterAll(async () => {
+    await prisma.businessAuthorizationAudit.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.businessStore.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.document.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.businessAuthorizationState.deleteMany({ where: { orgId: { in: organizations } } });
@@ -106,5 +107,39 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
     expect(
       (await metadata.listDocuments(organizations[0]!, { search: "ui_metadata_foreign" })).documents
     ).toEqual([]);
+  });
+  it("preserves an explicitly confirmed display name across store save and metadata reload", async () => {
+    const repository = createBusinessAuthorizationRepository({ prisma });
+    const context = { orgId: organizations[0]!, actorId: `${organizations[0]}_admin` };
+    const declared = await repository.declareEnterpriseIdentity({
+      ...context,
+      expectedVersion: "0",
+      name: "示例 小馆 A"
+    });
+    expect(declared.value).toMatchObject({
+      enterpriseKey: "示例 小馆 a",
+      enterpriseName: "示例 小馆 A"
+    });
+    await repository.putStore({
+      ...context,
+      expectedVersion: declared.authorizationVersion,
+      enterpriseKey: declared.value.enterpriseKey,
+      name: "精确门店"
+    });
+    const reloaded = createPrismaPermissionsUiMetadata(prisma);
+    expect(await reloaded.listEnterprises(context.orgId)).toContainEqual({
+      enterpriseKey: "示例 小馆 a",
+      enterpriseName: "示例 小馆 A"
+    });
+    expect(await reloaded.listEnterprises(organizations[1]!)).not.toContainEqual(
+      expect.objectContaining({ enterpriseKey: "示例 小馆 a" })
+    );
+    await expect(
+      repository.declareEnterpriseIdentity({
+        ...context,
+        expectedVersion: "2",
+        name: "示例 小馆 a"
+      })
+    ).rejects.toThrow("INVALID_ENTERPRISE_IDENTITY");
   });
 });

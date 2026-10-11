@@ -40,8 +40,8 @@ not a permission card and does not authorize content.
 ## Enterprise Onboarding And New Account Permissions
 
 For enterprise onboarding or account permissions, follow
-[the administrator UI entry workflow](references/tenant-onboarding.md). The planned fixed UI
-requires admin login, defaults to Chinese and supports English; it is not implemented or live yet.
+[the administrator UI entry workflow](references/tenant-onboarding.md). The enterprise-bound UI reuses a valid browser sign-in from official device login;
+it checks current tenant membership and admin role on every page/API, defaults to Chinese and supports English; it is implemented in the companion service branch but not deployed yet.
 After verified rollout, developers share this entry with enterprise admins. Users configure through
 the UI rather than filling JSON. Existing enterprises reuse their rules for new accounts. JSON is
 an optional internal record only. Until rollout, authorized management uses the current MCP tools;

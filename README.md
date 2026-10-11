@@ -309,8 +309,8 @@ npm run format:check
 ## Further Documentation
 
 - `AGENTS.md`: repository rules and common commands.
-- [Enterprise onboarding](docs/implementation/tenant-onboarding.md): planned administrator UI entry, default-Chinese i18n, account setup and controlled activation; JSON is internal only.
-- [Permissions UI design](docs/implementation/admin-permissions-ui-design.md): fixed entry and admin login; design only, not a live page.
+- [Enterprise onboarding](docs/implementation/tenant-onboarding.md): implemented administrator UI entry (not deployed), default-Chinese i18n, account setup and controlled activation; JSON is internal only.
+- [Permissions UI design](docs/implementation/admin-permissions-ui-design.md): enterprise-bound entry and shared browser sign-in; implemented in this branch, not deployed.
 - `docs/implementation/env-inventory.md`: environment and secret inventory.
 - `docs/implementation/server-runtime-prerequisites.md`: Phase 4 staging host provisioning, verification, ACR boundary, and rollback.
 - `docs/implementation/api-contract.md`: API and MCP tool contracts.

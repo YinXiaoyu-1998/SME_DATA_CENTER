@@ -1,3 +1,5 @@
+import { permissionsClientSource } from "./client.js";
+import { permissionsCopy } from "./copy.js";
 export interface LocalizedText {
   zh: string;
   en: string;
@@ -99,6 +101,7 @@ export function renderPermissionsPage(
 ): string {
   return shell(
     { nonce: options.nonce, title: { zh: "权限设置 · SMEDC", en: "Permissions · SMEDC" } },
-    `<main><h1>${localized({ zh: "权限设置", en: "Permissions" })}</h1><p class="identity">${escapeHtml(options.organizationName)} · ${escapeHtml(options.employeeName)}</p><section id="permissions-app" class="panel"><p role="status">${localized({ zh: "正在读取配置…", en: "Loading configuration…" })}</p></section><form method="post" action="/admin/permissions/${escapeHtml(encodeURIComponent(options.orgId))}/logout"><input type="hidden" name="csrfToken" value="${escapeHtml(options.csrfToken)}"><button class="secondary" type="submit">${localized({ zh: "退出网页登录", en: "Sign out of browser" })}</button></form></main>`
+    `<main><h1>${localized({ zh: "权限设置", en: "Permissions" })}</h1><p class="identity">${escapeHtml(options.organizationName)} · ${escapeHtml(options.employeeName)}</p><div id="permission-global-status" role="alert" hidden></div><section id="permissions-app" class="panel"><p role="status">${localized({ zh: "正在读取配置…", en: "Loading configuration…" })}</p></section><form method="post" action="/admin/permissions/${escapeHtml(encodeURIComponent(options.orgId))}/logout"><input type="hidden" name="csrfToken" value="${escapeHtml(options.csrfToken)}"><button class="secondary" type="submit">${localized({ zh: "退出网页登录", en: "Sign out of browser" })}</button></form></main><script nonce="${options.nonce}" type="application/json" id="smedc-ui-config">${JSON.stringify({ orgId: options.orgId, csrfToken: options.csrfToken, copy: permissionsCopy }).replace(/</g, "\\u003c")}</script>`,
+    permissionsClientSource
   );
 }

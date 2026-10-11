@@ -38,7 +38,7 @@ function grantShape(value: unknown): value is BusinessGrant {
       : value["ownership"] === "store" && selection(value["stores"]))
   );
 }
-function respondError(error: unknown, reply: FastifyReply) {
+export function respondBusinessAuthorizationError(error: unknown, reply: FastifyReply) {
   const code = error instanceof Error ? error.message : "";
   if (object(error) && ["P2002", "P2003", "P2025"].includes(String(error["code"])))
     return reply
@@ -127,7 +127,7 @@ export function registerBusinessAuthorizationRoutes(
                 )
               );
         } catch (error) {
-          return respondError(error, reply);
+          return respondBusinessAuthorizationError(error, reply);
         }
       }
     });
