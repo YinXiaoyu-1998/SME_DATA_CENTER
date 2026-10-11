@@ -69,6 +69,68 @@ function fixture() {
   };
 }
 describe("authorized ledger PDF delivery", () => {
+  it("rejects a cutover during signing and keeps the owner's successful task status", async () => {
+    const f = fixture();
+    const authorization = {
+      orgId: "org",
+      employeeId: employee.id,
+      role: "employee" as const,
+      disabled: false,
+      clearance: 1,
+      mode: "legacy" as const,
+      authorizationVersion: "7",
+      categories: [],
+      grants: []
+    };
+    vi.mocked(f.repository.currentEmployee)
+      .mockResolvedValueOnce({ ...employee, authorization })
+      .mockResolvedValue({
+        ...employee,
+        authorization: { ...authorization, mode: "enabled", authorizationVersion: "8" }
+      });
+    vi.mocked(f.repository.request).mockResolvedValue({
+      kind: "download",
+      status: "succeeded",
+      scope,
+      items: [],
+      bundle: {
+        requestId: "download",
+        orgId: "org",
+        employeeId: employee.id,
+        status: "succeeded",
+        manifest: { version: 1, scope, entries: [entry()] },
+        zipObjectKey: "bundle.zip",
+        zipExpiresAt: new Date("2026-10-05"),
+        errorCode: null
+      }
+    });
+    await expect(
+      f.delivery.issueLedgerBundleUrl({ employee, requestId: "download" })
+    ).rejects.toThrow("AUTHORIZATION_VERSION_CONFLICT");
+    expect(await f.delivery.status({ employee, requestId: "download" })).toMatchObject({
+      status: "succeeded"
+    });
+  });
+  it("reports an unknown old manifest as requiring rebuild while preserving successful owner progress", async () => {
+    const f = fixture();
+    vi.mocked(f.repository.request).mockResolvedValue({
+      kind: "download",
+      status: "succeeded",
+      scope,
+      items: [],
+      rebuildRequired: true,
+      bundle: null
+    });
+    expect(await f.delivery.status({ employee, requestId: "old" })).toMatchObject({
+      status: "succeeded",
+      errorCode: "LEDGER_DOWNLOAD_REBUILD_REQUIRED"
+    });
+    await expect(f.delivery.issueLedgerBundleUrl({ employee, requestId: "old" })).rejects.toThrow(
+      "LEDGER_DOWNLOAD_REBUILD_REQUIRED"
+    );
+    expect(f.storage.createDownloadUrl).not.toHaveBeenCalled();
+  });
+
   it("compares known nested manifest values after a MySQL JSON-style key reorder", async () => {
     function reorder(value: unknown): unknown {
       if (Array.isArray(value)) return value.map(reorder);

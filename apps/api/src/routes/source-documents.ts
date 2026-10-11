@@ -31,6 +31,7 @@ export function registerSourceDocumentRoutes(
       const issued = await dependencies.sourceDocumentDownloads().issueMany({
         orgId: employee.orgId,
         employee,
+        authorization: await dependencies.auth.authorization(request),
         requestedSources: [{ sourceDocumentId, documentTitle: null }],
         audit: dependencies.createBusinessRequestAudit(request),
         reason: "explicit_request"

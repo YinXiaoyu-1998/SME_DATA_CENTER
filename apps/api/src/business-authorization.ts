@@ -1,4 +1,5 @@
 import { createDatabaseAdapter, createBusinessAuthorizationRepository } from "@smedc/db";
+import { createAuthorizationCutoverService } from "./business-authorization-cutover.js";
 import { PrismaClient } from "@prisma/client";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 
@@ -12,7 +13,7 @@ export function createBusinessAuthorizationService(repository: BusinessAuthoriza
       throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
     return snapshot;
   }
-  return { repository, current };
+  return { repository, current, ...createAuthorizationCutoverService(repository) };
 }
 export type BusinessAuthorizationService = ReturnType<typeof createBusinessAuthorizationService>;
 export function createPrismaBusinessAuthorizationService(databaseUrl: string) {

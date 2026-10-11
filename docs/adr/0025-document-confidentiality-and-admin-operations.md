@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partially-superseded
 ---
 
 # 资料密级与管理员特权操作
+
+业务范围、类别固定密级、evidence 属性可改、应用内账号权限管理及原件继承规则已由[业务授权设计](../implementation/business-related-authorization-design.md)替代。新规则按[企业准备与原子启用流程](../implementation/business-authorization-cutover.md)生效；准备期保留明确旧模型，启用后不再以本 ADR 旧读取规则兜底。admin 身份不豁免普通正文读取。ADR 0026 的存储边界继续有效。以下保留历史决策上下文。
 
 企业资料中枢以“组织边界 + 0–3 资料密级”取代员工、门店、个人和全员标签的资料访问模型。每个账户在开发者创建时必须明确提供 `admin` 或 `employee` 角色以及 0–3 保密等级；每份资料必须有 0–3 密级，上传未明确提供时为 0。只有 active `admin` 可通过员工侧入口上传新文件，但可上传任意 0–3 密级，包括高于自身读取等级的资料；上传不会赋予后续普通读取权限。普通读取始终先限于同组织，再要求账户保密等级不低于资料密级，并对正文、元数据、检索、结构化行和聚合统一生效。`admin` 是功能身份而非普通读取豁免：任何检查 admin 的功能即为显式的 Privileged Administrative Operation，所有 admin 均可在该功能的既定范围内无视目标密级（包括该功能定义的读取），但这不会扩大其他普通读取接口的范围。
 

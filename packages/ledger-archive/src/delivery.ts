@@ -65,6 +65,7 @@ export type LedgerBundleRecord = {
 };
 export interface LedgerDeliveryRepository {
   currentEmployee(employee: LedgerDeliveryEmployee): Promise<LedgerDeliveryEmployee | null>;
+  commitDownloadIssue?<T>(employee: LedgerDeliveryEmployee, result: T): Promise<T>;
   facts(
     employee: LedgerDeliveryEmployee,
     scope: LedgerCoverageScope,
@@ -92,6 +93,7 @@ export interface LedgerDeliveryRepository {
       errorCode?: string | null;
       latestRequest?: LedgerRequestRef | null;
     }[];
+    rebuildRequired?: boolean;
     bundle: LedgerBundleRecord | null;
   } | null>;
 }
@@ -328,6 +330,7 @@ export function createLedgerPdfDelivery({
       return {
         requestId: input.requestId,
         status,
+        ...(request.rebuildRequired ? { errorCode: "LEDGER_DOWNLOAD_REBUILD_REQUIRED" } : {}),
         ...page(
           partitions,
           {
@@ -345,6 +348,7 @@ export function createLedgerPdfDelivery({
         const current = await employee(input.employee);
         const request = await repository.request(current, input.requestId);
         const bundle = request?.bundle;
+        if (request?.rebuildRequired) return fail("LEDGER_DOWNLOAD_REBUILD_REQUIRED");
         if (!bundle) return fail("LEDGER_PDF_UNAVAILABLE");
         if (
           bundle.status !== "succeeded" ||
@@ -376,18 +380,28 @@ export function createLedgerPdfDelivery({
         });
         // Recheck after signing so concurrent account/source changes cannot issue a new usable response.
         const fresh = await employee(current);
+        if (
+          current.authorization &&
+          (fresh.authorization?.authorizationVersion !==
+            current.authorization.authorizationVersion ||
+            fresh.authorization?.mode !== current.authorization.mode)
+        )
+          return fail("AUTHORIZATION_VERSION_CONFLICT");
         const freshFacts = await repository.facts(fresh, bundle.manifest.scope);
         if (!freshFacts.length) return fail("LEDGER_PDF_UNAVAILABLE");
         const latest = readyCapturedLedgerBundleEntries(freshFacts, bundle.manifest.entries);
         if (!ledgerBundleEntriesEqual(latest, bundle.manifest.entries))
           return fail("LEDGER_PDF_BUNDLE_STALE");
-        return {
+        const result = {
           requestId: input.requestId,
           downloadUrl,
           expiresAt: new Date(
             Math.min(now().getTime() + expiresInSeconds * 1000, bundle.zipExpiresAt.getTime())
           ).toISOString()
         };
+        return repository.commitDownloadIssue
+          ? repository.commitDownloadIssue(current, result)
+          : result;
       } catch (cause) {
         if (cause instanceof LedgerDeliveryError && cause.code === "LEDGER_PDF_UNAVAILABLE")
           await repository.auditDenied?.(input.employee, input.requestId, cause.code);
@@ -683,6 +697,26 @@ export function createPrismaLedgerDeliveryRepository({
   }
   return {
     currentEmployee,
+    async commitDownloadIssue(employee, result) {
+      return prisma.$transaction(async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT org_id FROM business_authorization_states WHERE org_id=${employee.orgId} FOR SHARE`
+        );
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM employees WHERE org_id=${employee.orgId} AND id=${employee.id} FOR SHARE`
+        );
+        const current = await currentLedgerAuthorization(tx, employee.id, employee.orgId);
+        if (
+          current.disabled ||
+          current.mode === "suspended" ||
+          !employee.authorization ||
+          current.mode !== employee.authorization.mode ||
+          current.authorizationVersion !== employee.authorization.authorizationVersion
+        )
+          return fail("AUTHORIZATION_VERSION_CONFLICT");
+        return result;
+      });
+    },
     async auditDenied(employee, requestId, code) {
       await prisma.auditLog.create({
         data: {
@@ -817,9 +851,25 @@ export function createPrismaLedgerDeliveryRepository({
           (employee.role !== "admin" || request.kind === "download"))
       )
         return null;
-      const manifest =
-        request.kind === "download" ? parseLedgerBundleManifest(request.scope) : null;
-      const scope = manifest?.scope ?? parseLedgerScope(request.scope);
+      let manifest: LedgerBundleManifest | null = null;
+      let rebuildRequired = false;
+      if (request.kind === "download") {
+        try {
+          manifest = parseLedgerBundleManifest(request.scope);
+        } catch (error) {
+          if (
+            !(error instanceof LedgerDeliveryError) ||
+            error.code !== "LEDGER_BUNDLE_MANIFEST_INVALID"
+          )
+            throw error;
+          rebuildRequired = true;
+        }
+      }
+      const stored =
+        request.scope && typeof request.scope === "object" && !Array.isArray(request.scope)
+          ? request.scope
+          : {};
+      const scope = manifest?.scope ?? parseLedgerScope(stored["scope"] ?? request.scope);
       const items = [];
       for (const i of request.items) {
         const key = {
@@ -850,6 +900,7 @@ export function createPrismaLedgerDeliveryRepository({
       }
       return {
         kind: request.kind,
+        ...(rebuildRequired ? { rebuildRequired: true } : {}),
         allowEmptyRequest:
           request.kind === "refresh" &&
           request.actorEmployeeId === employee.id &&

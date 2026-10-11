@@ -546,6 +546,9 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
           data: { version: { increment: 1 } }
         });
         if (state.count !== 1) throw new Error("AUTHORIZATION_VERSION_CONFLICT");
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM employees WHERE org_id = ${context.orgId} AND id = ${context.actorId} FOR SHARE`
+        );
         const actor = await tx.employee.findUnique({
           where: { orgId_id: { orgId: context.orgId, id: context.actorId } }
         });
@@ -613,6 +616,49 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
     await persistBusinessGrants(tx, input, snapshot.categories);
   }
   return {
+    inspectAuthorizationCutover<T>(orgId: string, inspect: (tx: Tx) => Promise<T>) {
+      return prisma.$transaction(async (tx) => {
+        const state = await tx.businessAuthorizationState.findUnique({ where: { orgId } });
+        return {
+          authorizationVersion: (state?.version ?? 0n).toString(),
+          mode: state?.mode ?? "legacy",
+          inspection: await inspect(tx)
+        };
+      });
+    },
+    activateAuthorizationCutover(
+      input: AuthorizationWriteContext & { confirm: true },
+      inspect: (tx: Tx) => Promise<{ ready: boolean }>
+    ) {
+      return mutate(input, "authorization.cutover.activate", input.orgId, async (tx) => {
+        const before = await tx.businessAuthorizationState.findUniqueOrThrow({
+          where: { orgId: input.orgId }
+        });
+        if (input.confirm !== true) throw new Error("AUTHORIZATION_CONFIRMATION_REQUIRED");
+        if (before.mode === "suspended") throw new Error("AUTHORIZATION_SUSPENDED");
+        if (!(await inspect(tx)).ready) throw new Error("AUTHORIZATION_CUTOVER_NOT_READY");
+        const after = await tx.businessAuthorizationState.update({
+          where: { orgId: input.orgId },
+          data: { mode: "enabled" }
+        });
+        return { before: { mode: before.mode }, after: { mode: after.mode } };
+      });
+    },
+    suspendAuthorizationReads(input: AuthorizationWriteContext & { confirm: true }) {
+      return mutate(input, "authorization.reads.suspend", input.orgId, async (tx) => {
+        if (input.confirm !== true) throw new Error("AUTHORIZATION_CONFIRMATION_REQUIRED");
+        const before = await tx.businessAuthorizationState.findUniqueOrThrow({
+          where: { orgId: input.orgId }
+        });
+        if (before.mode !== "enabled" && before.mode !== "suspended")
+          throw new Error("AUTHORIZATION_NOT_ENABLED");
+        const after = await tx.businessAuthorizationState.update({
+          where: { orgId: input.orgId },
+          data: { mode: "suspended" }
+        });
+        return { before: { mode: before.mode }, after: { mode: after.mode } };
+      });
+    },
     async listAccounts(orgId: string, actorId: string) {
       return prisma.$transaction(async (tx) => {
         const actor = await loadAuthorizationSnapshot(actorId, orgId, tx);
@@ -632,6 +678,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
     },
     listCategories: (orgId: string) =>
       prisma.businessCategory.findMany({ where: { orgId }, include: categoriesInclude }),
+    listStores: (orgId: string) => prisma.businessStore.findMany({ where: { orgId } }),
     listDimensions: (orgId: string) =>
       prisma.businessDimension.findMany({ where: { orgId }, include: { values: true } }),
     configureAccount(

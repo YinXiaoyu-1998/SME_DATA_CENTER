@@ -1,6 +1,10 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@smedc/domain";
+import {
+  AUTH_ERROR_CODES,
+  type AuthorizationSnapshot,
+  type AuthenticatedEmployee
+} from "@smedc/domain";
 import { createRequestAuth } from "./request-auth.js";
 import type { ApiServerContext } from "./app-context.js";
 
@@ -96,6 +100,54 @@ function minimalContext(
 }
 
 describe("request authentication", () => {
+  it("memoizes mode and permissions together for a request and reloads after a tenant cutover", async () => {
+    const app = Fastify({ logger: false });
+    let loads = 0;
+    const current: AuthorizationSnapshot = {
+      orgId: enabledEmployee.orgId,
+      employeeId: enabledEmployee.id,
+      role: "employee",
+      disabled: false,
+      clearance: 3,
+      mode: "legacy",
+      authorizationVersion: "7",
+      categories: [],
+      grants: []
+    };
+    const context = minimalContext(async () => enabledEmployee);
+    context.permissions = () =>
+      ({
+        current: async () => {
+          loads++;
+          return structuredClone(current);
+        }
+      }) as ReturnType<ApiServerContext["permissions"]>;
+    const auth = createRequestAuth(context);
+    app.get("/protected", async (request, reply) => {
+      if (!(await auth.authenticate(request, reply))) return;
+      const first = await auth.authorization(request);
+      current.mode = "enabled";
+      current.authorizationVersion = "8";
+      const second = await auth.authorization(request);
+      expect(second).toBe(first);
+      return second;
+    });
+    try {
+      const options = { url: "/protected", headers: { authorization: "Bearer token" } };
+      expect((await app.inject(options)).json()).toMatchObject({
+        mode: "legacy",
+        authorizationVersion: "7"
+      });
+      expect((await app.inject(options)).json()).toMatchObject({
+        mode: "enabled",
+        authorizationVersion: "8"
+      });
+      expect(loads).toBe(2);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("binds the authoritative employee to the request after bearer auth succeeds", async () => {
     const app = Fastify({ logger: false });
     const auth = createRequestAuth(

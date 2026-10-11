@@ -103,6 +103,8 @@ export function registerLedgerPdfRoutes(
             "LEDGER_PDF_UNAVAILABLE",
             "LEDGER_PDF_NOT_READY",
             "LEDGER_PDF_BUNDLE_STALE",
+            "LEDGER_DOWNLOAD_REBUILD_REQUIRED",
+            "AUTHORIZATION_VERSION_CONFLICT",
             "LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED"
           ]);
           if (!known.has(code)) {
@@ -116,6 +118,8 @@ export function registerLedgerPdfRoutes(
               ? 404
               : code === "LEDGER_IDEMPOTENCY_CONFLICT" ||
                   code === "LEDGER_PDF_BUNDLE_STALE" ||
+                  code === "LEDGER_DOWNLOAD_REBUILD_REQUIRED" ||
+                  code === "AUTHORIZATION_VERSION_CONFLICT" ||
                   code === "LEDGER_PDF_NOT_READY"
                 ? 409
                 : 400;
@@ -128,7 +132,8 @@ export function registerLedgerPdfRoutes(
                   ? "Ledger PDF request is unavailable."
                   : code === "LEDGER_PDF_NOT_READY"
                     ? "Ledger PDFs are not ready. Wait for the next daily generation."
-                    : code === "LEDGER_PDF_BUNDLE_STALE"
+                    : code === "LEDGER_PDF_BUNDLE_STALE" ||
+                        code === "LEDGER_DOWNLOAD_REBUILD_REQUIRED"
                       ? "Prepare a new ledger PDF download."
                       : "Ledger PDF request was rejected."
               )

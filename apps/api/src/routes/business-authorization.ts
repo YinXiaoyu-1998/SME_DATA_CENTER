@@ -53,6 +53,21 @@ function respondError(error: unknown, reply: FastifyReply) {
     return reply
       .code(409)
       .send(errorResponse(code, "Permission configuration changed. Reload and retry."));
+  if (
+    [
+      "AUTHORIZATION_CUTOVER_NOT_READY",
+      "AUTHORIZATION_SUSPENDED",
+      "AUTHORIZATION_NOT_ENABLED"
+    ].includes(code)
+  )
+    return reply
+      .code(409)
+      .send(
+        errorResponse(
+          code,
+          "Authorization activation is unavailable. Review preparation or pause status."
+        )
+      );
   if (code === "AUTHORIZATION_ADMIN_REQUIRED")
     return reply.code(403).send(errorResponse(code, "A current active administrator is required."));
   if (code === "AUTHORIZATION_ACCOUNT_NOT_FOUND" || code === "RESOURCE_NOT_FOUND")
@@ -110,6 +125,31 @@ export function registerBusinessAuthorizationRoutes(
       }
     });
   }
+  route("GET", "/v1/admin/permissions/cutover", true, async (service, actor) =>
+    service.prepareAuthorizationCutover(actor.orgId)
+  );
+  for (const operation of ["activate", "suspend"] as const)
+    route(
+      "POST",
+      `/v1/admin/permissions/cutover/${operation}`,
+      true,
+      async (service, actor, _params, body, reply) => {
+        if (
+          !text(body["expectedVersion"]) ||
+          body["confirm"] !== true ||
+          Object.keys(body).some((key) => !["expectedVersion", "confirm"].includes(key))
+        )
+          return invalid(reply);
+        return operation === "activate"
+          ? service.activateAuthorizationCutover(actor, body["expectedVersion"], true)
+          : service.repository.suspendAuthorizationReads({
+              orgId: actor.orgId,
+              actorId: actor.employeeId,
+              expectedVersion: body["expectedVersion"],
+              confirm: true
+            });
+      }
+    );
   route("GET", "/v1/permissions/me", false, async (_service, actor) => ({
     ...actor,
     categories: actor.categories.filter((category) =>
@@ -149,6 +189,36 @@ export function registerBusinessAuthorizationRoutes(
         expectedVersion: body["expectedVersion"],
         clearance: body["clearance"],
         grants
+      });
+    }
+  );
+
+  route("GET", "/v1/admin/permissions/stores", true, async (service, actor) => ({
+    authorizationVersion: actor.authorizationVersion,
+    stores: await service.repository.listStores(actor.orgId)
+  }));
+  route(
+    "POST",
+    "/v1/admin/permissions/stores",
+    true,
+    async (service, actor, _params, body, reply) => {
+      if (
+        !text(body["expectedVersion"]) ||
+        !text(body["enterpriseKey"]) ||
+        !text(body["name"]) ||
+        (body["retired"] !== undefined && typeof body["retired"] !== "boolean") ||
+        Object.keys(body).some(
+          (key) => !["expectedVersion", "enterpriseKey", "name", "retired"].includes(key)
+        )
+      )
+        return invalid(reply);
+      return service.repository.putStore({
+        orgId: actor.orgId,
+        actorId: actor.employeeId,
+        expectedVersion: body["expectedVersion"],
+        enterpriseKey: body["enterpriseKey"],
+        name: body["name"],
+        ...(typeof body["retired"] === "boolean" ? { retired: body["retired"] } : {})
       });
     }
   );

@@ -592,6 +592,7 @@ export function registerEvidenceRoutes(
         : await dependencies.sourceDocumentDownloads().issueMany({
             orgId: employee.orgId,
             employee,
+            authorization: await dependencies.auth.authorization(request),
             requestedSources: result.results.map((item) => ({
               sourceDocumentId: item.documentId,
               documentTitle: item.documentTitle

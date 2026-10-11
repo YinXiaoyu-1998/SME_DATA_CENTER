@@ -1,4 +1,4 @@
-import type { AuthenticatedEmployee } from "@smedc/domain";
+import type { AuthorizationSnapshot, AuthenticatedEmployee } from "@smedc/domain";
 import type { StorageAdapter } from "@smedc/storage";
 import type { RequestAuditContext } from "./request-audit-context.js";
 import {
@@ -21,9 +21,11 @@ export interface SourceDocumentDownloadRepository {
   findDownloadableSourceDocuments(input: {
     orgId: string;
     employee: AuthenticatedEmployee;
+    authorization?: AuthorizationSnapshot;
     sourceDocumentIds: readonly string[];
   }): Promise<SourceDocumentRecord[]>;
   recordDownloadsIssued(input: {
+    authorizationVersion?: string;
     orgId: string;
     employee: AuthenticatedEmployee;
     sourceDocumentIds: readonly string[];
@@ -36,6 +38,7 @@ export interface SourceDocumentDownloadIssuer {
   issueMany(input: {
     orgId: string;
     employee: AuthenticatedEmployee;
+    authorization?: AuthorizationSnapshot;
     requestedSources: readonly {
       sourceDocumentId: string;
       documentTitle: string | null;
@@ -64,6 +67,7 @@ export function createSourceDocumentDownloadIssuer(input: {
         : await input.repository.findDownloadableSourceDocuments({
             orgId: request.orgId,
             employee: request.employee,
+            ...(request.authorization ? { authorization: request.authorization } : {}),
             sourceDocumentIds: requestedSources.map((source) => source.sourceDocumentId)
           });
       const authorizedById = new Map(
@@ -143,6 +147,9 @@ export function createSourceDocumentDownloadIssuer(input: {
           await input.repository.recordDownloadsIssued({
             orgId: request.orgId,
             employee: request.employee,
+            ...(authorized[0]?.authorizationVersion !== undefined
+              ? { authorizationVersion: authorized[0].authorizationVersion }
+              : {}),
             sourceDocumentIds: issuedIds,
             audit: request.audit,
             reason: request.reason

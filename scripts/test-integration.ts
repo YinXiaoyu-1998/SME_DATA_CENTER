@@ -176,7 +176,7 @@ integrationRun: try {
           : structuredReadsOnly
             ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
             : businessAuthorizationOnly
-              ? []
+              ? ["apps/api/src/business-authorization-cutover.prisma.integration.test.ts"]
               : [
                   "packages/db/src/structured-partitions.prisma.integration.test.ts",
                   "packages/db/src/partition-downloads.prisma.integration.test.ts",

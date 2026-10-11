@@ -48,6 +48,23 @@ function fixture(role: "admin" | "employee" = "admin") {
       authorizationVersion: "8",
       value: { authorizationVersion: 1n }
     })),
+    inspectAuthorizationCutover: vi.fn(async () => ({
+      authorizationVersion: "7",
+      mode: "legacy",
+      inspection: { ready: true, missing: [], accountsWithoutGrants: [] }
+    })),
+    activateAuthorizationCutover: vi.fn(async () => ({
+      authorizationVersion: "8",
+      value: { mode: "enabled" }
+    })),
+    suspendAuthorizationReads: vi.fn(async () => ({
+      authorizationVersion: "8",
+      value: { mode: "suspended" }
+    })),
+    listStores: vi.fn(async () => [
+      { enterpriseKey: "enterprise", name: "Store A ", retired: false }
+    ]),
+    putStore: vi.fn(async () => ({ authorizationVersion: "8" })),
     listDimensions: vi.fn(async () => [])
   };
   const app = Fastify();
@@ -63,6 +80,93 @@ function fixture(role: "admin" | "employee" = "admin") {
 }
 
 describe("business permission administration", () => {
+  it("requires a current admin and explicit versioned tenant confirmation for activation and safe suspension", async () => {
+    const { app, repository, snapshot } = fixture();
+    try {
+      expect((await app.inject({ url: "/v1/admin/permissions/cutover" })).json()).toMatchObject({
+        ready: true,
+        authorizationVersion: "7"
+      });
+      for (const operation of ["activate", "suspend"]) {
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `/v1/admin/permissions/cutover/${operation}`,
+              payload: { expectedVersion: "7" }
+            })
+          ).statusCode
+        ).toBe(400);
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `/v1/admin/permissions/cutover/${operation}`,
+              payload: { expectedVersion: "7", confirm: true, orgId: "foreign" }
+            })
+          ).statusCode
+        ).toBe(400);
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: `/v1/admin/permissions/cutover/${operation}`,
+              payload: { expectedVersion: "7", confirm: true }
+            })
+          ).statusCode
+        ).toBe(200);
+      }
+      expect(repository.activateAuthorizationCutover).toHaveBeenCalledWith(
+        { orgId: "org", actorId: "actor", expectedVersion: "7", confirm: true },
+        expect.any(Function)
+      );
+      snapshot.role = "employee";
+      expect((await app.inject({ url: "/v1/admin/permissions/cutover" })).statusCode).toBe(403);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/v1/admin/permissions/cutover/activate",
+            payload: { expectedVersion: "7", confirm: true }
+          })
+        ).statusCode
+      ).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
+  it("preserves exact persisted store names in admin directory and controlled versioned maintenance", async () => {
+    const { app, repository } = fixture();
+    try {
+      expect(
+        (await app.inject({ url: "/v1/admin/permissions/stores" })).json().stores[0].name
+      ).toBe("Store A ");
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/v1/admin/permissions/stores",
+            payload: {
+              expectedVersion: "7",
+              enterpriseKey: "enterprise",
+              name: "Store A ",
+              retired: true
+            }
+          })
+        ).statusCode
+      ).toBe(200);
+      expect(repository.putStore).toHaveBeenCalledWith({
+        orgId: "org",
+        actorId: "actor",
+        expectedVersion: "7",
+        enterpriseKey: "enterprise",
+        name: "Store A ",
+        retired: true
+      });
+    } finally {
+      await app.close();
+    }
+  });
   it("allows an admin without content grants to inspect and update another account and self", async () => {
     const { app, repository } = fixture();
     try {

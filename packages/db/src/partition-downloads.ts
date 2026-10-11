@@ -187,15 +187,37 @@ function internal(
 
 /** Accept pre-versioned retained jobs; every new job stores the explicit version. */
 export function parsePartitionDownloadManifest(value: Prisma.JsonValue): PartitionDownloadEntry[] {
-  if (Array.isArray(value)) return value as unknown as PartitionDownloadEntry[];
+  const entries = Array.isArray(value)
+    ? value
+    : value &&
+        typeof value === "object" &&
+        value["version"] === 1 &&
+        Array.isArray(value["entries"])
+      ? value["entries"]
+      : null;
   if (
-    value &&
-    typeof value === "object" &&
-    value["version"] === 1 &&
-    Array.isArray(value["entries"])
+    !entries ||
+    entries.some((raw) => {
+      if (!raw || Array.isArray(raw) || typeof raw !== "object") return true;
+      return (
+        ["id", "storeKey", "storeName", "enterpriseName", "objectKey"].some(
+          (key) => typeof raw[key] !== "string" || !raw[key]
+        ) ||
+        !(raw["merchantId"] === null || typeof raw["merchantId"] === "string") ||
+        typeof raw["businessDate"] !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(raw["businessDate"]) ||
+        typeof raw["checksumSha256"] !== "string" ||
+        !/^[a-f0-9]{64}$/i.test(raw["checksumSha256"]) ||
+        ["byteSize", "rowCount"].some(
+          (key) => typeof raw[key] !== "string" || !/^\d+$/.test(raw[key] as string)
+        )
+      );
+    }) ||
+    new Set(entries.map((entry) => (entry as unknown as PartitionDownloadEntry).id)).size !==
+      entries.length
   )
-    return value["entries"] as unknown as PartitionDownloadEntry[];
-  throw error("PARTITION_DOWNLOAD_STALE");
+    throw error("PARTITION_DOWNLOAD_REBUILD_REQUIRED");
+  return entries as unknown as PartitionDownloadEntry[];
 }
 
 export function createPrismaPartitionDownloadRepository(
@@ -454,6 +476,15 @@ export function createPrismaPartitionDownloadRepository(
         let row = await lockRequest(tx, requestId, actor.orgId);
         if (!row || row.requesterId !== actor.id) throw error("PARTITION_DOWNLOAD_NOT_FOUND");
         const employee = await authority(tx, actor);
+        await tx.$queryRaw(
+          Prisma.sql`SELECT org_id FROM business_authorization_states WHERE org_id=${actor.orgId} FOR SHARE`
+        );
+        const state = await tx.businessAuthorizationState.findUnique({
+          where: { orgId: actor.orgId }
+        });
+        if (state?.mode === "suspended") return error("PARTITION_DOWNLOAD_FORBIDDEN");
+        if (parsePartitionDownloadManifest(row.manifest).length !== row.partitionCount)
+          return error("PARTITION_DOWNLOAD_REBUILD_REQUIRED");
         row = await expireRow(tx, row, now());
         const current = internal(row, employee);
         if (["failed", "expired"].includes(row.status))
