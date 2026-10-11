@@ -10,3 +10,6 @@ export * from "./structured-partitions.js";
 export * from "./storage-garbage.js";
 
 export * from "./partition-downloads.js";
+
+export * from "./business-authorization.js";
+export * from "./business-authorization-sql.js";

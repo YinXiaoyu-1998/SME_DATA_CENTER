@@ -97,6 +97,7 @@ interface McpToolEnvelope {
   };
 }
 
+const businessAuthorizationOnly = process.argv.includes("--business-authorization-only");
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
 // Reject nonlocal or driver-override connections before any local setup/mutation.
@@ -139,10 +140,13 @@ let ownedDatabase: Awaited<ReturnType<typeof createOwnedIntegrationDatabase>> | 
 let integrationFailed = false;
 const officialSessionCleanup: Array<() => Promise<void>> = [];
 
-try {
-  await prepareLocalWorkspace();
-  await run("docker", ["compose", "up", "-d", "mysql", "qdrant"], { env: integrationEnv });
-  await waitForMysqlHealth();
+integrationRun: try {
+  // Focused mode uses an already-running loopback MySQL and the same owned-schema runner.
+  if (!businessAuthorizationOnly) {
+    await prepareLocalWorkspace();
+    await run("docker", ["compose", "up", "-d", "mysql", "qdrant"], { env: integrationEnv });
+    await waitForMysqlHealth();
+  }
   ownedDatabase = await createOwnedIntegrationDatabase(integrationEnv["DATABASE_URL"]!, mysqlPort);
   integrationEnv["DATABASE_URL"] = ownedDatabase.databaseUrl;
   await run("npm", ["run", "db:generate"], { env: integrationEnv });
@@ -154,13 +158,26 @@ try {
       "vitest",
       "run",
       "--no-file-parallelism",
-      "packages/db/src/structured-partitions.prisma.integration.test.ts",
-      "packages/db/src/partition-downloads.prisma.integration.test.ts",
-      "scripts/test-integration-support.test.ts"
+      ...(businessAuthorizationOnly
+        ? []
+        : [
+            "packages/db/src/structured-partitions.prisma.integration.test.ts",
+            "packages/db/src/partition-downloads.prisma.integration.test.ts",
+            "scripts/test-integration-support.test.ts"
+          ]),
+      "packages/db/src/business-authorization.prisma.integration.test.ts"
     ],
-    { env: { ...integrationEnv, RUN_PARTITION_PRISMA_INTEGRATION: "1" } }
+    {
+      env: {
+        ...integrationEnv,
+        RUN_PARTITION_PRISMA_INTEGRATION: "1",
+        RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION: "1"
+      }
+    }
   );
   process.stdout.write(prismaRegressions.stdout);
+  // Exit the scenario through the shared finally cleanup, without starting API/Qdrant.
+  if (businessAuthorizationOnly) break integrationRun;
   await run("npm", ["run", "db:seed"], { env: integrationEnv });
   const identitySetup = new PrismaClient({
     adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)

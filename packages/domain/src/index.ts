@@ -157,3 +157,5 @@ export { getPublicStructuredRegistry } from "./structured-ledger-policy.js";
 export { parsePartitionStoreNameContains } from "./partition-store-filter.js";
 
 export * from "./partition-downloads.js";
+
+export * from "./business-authorization.js";
