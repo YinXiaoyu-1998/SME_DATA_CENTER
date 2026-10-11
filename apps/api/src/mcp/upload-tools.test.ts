@@ -298,7 +298,7 @@ describe("upload MCP tool handlers", () => {
     });
     expect(file?.body.toString("utf8")).toBe("# SOP\nhandle feedback\n");
     expect(textField(fields, "categoryId")).toBe("memo");
-    expect(JSON.parse(textField(fields, "scopes"))).toEqual([
+    expect(JSON.parse(textField(fields, "scopes")!)).toEqual([
       { enterpriseKey: "enterprise", ownership: "group", dimensions: { project: "X" } }
     ]);
     expect(textField(fields, "historicalSupplementReason")).toBe("Explicit historical declaration");

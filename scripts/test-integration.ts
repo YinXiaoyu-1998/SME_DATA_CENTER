@@ -708,7 +708,7 @@ async function assertAdminUploadClearanceOrthogonality(
   );
   assert(
     worker.documentId === upload.document.documentId && worker.status === "active",
-    "Worker must activate admin-c0's level-2 upload."
+    `Worker must activate admin-c0's level-2 upload: ${JSON.stringify(worker)} (expected ${upload.document.documentId}).`
   );
   const id = upload.document.documentId;
   const ownerProgress = await fetch(`${apiUrl}/v1/documents/evidence/${id}/status`, {

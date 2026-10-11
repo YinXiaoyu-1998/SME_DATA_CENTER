@@ -75,7 +75,14 @@ suite("atomic tenant authorization cutover", () => {
     for (const key of Object.keys(ownership) as Array<keyof typeof ownership>)
       await repository.configureCategory({ ...(await context()), ...category(key) });
   });
-  afterAll(() => prisma.$disconnect());
+  afterAll(async () => {
+    await prisma.partitionDownloadRequest.deleteMany({ where: { orgId } });
+    await prisma.document.updateMany({
+      where: { orgId, documentKind: "evidence" },
+      data: { status: "archived", archivedAt: new Date() }
+    });
+    await prisma.$disconnect();
+  });
   it("prepares without writes and refuses incomplete adapter activation with no partial version or mode change", async () => {
     const before = await snapshot();
     expect(await service.prepareAuthorizationCutover(orgId)).toMatchObject({

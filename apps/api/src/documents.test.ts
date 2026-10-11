@@ -64,7 +64,8 @@ function documentRecord() {
     sourceTime: null,
     confidentialityLevel: 0,
     processingRuns: [{ status: "queued" }],
-    indexes: []
+    indexes: [],
+    businessResources: []
   };
 }
 

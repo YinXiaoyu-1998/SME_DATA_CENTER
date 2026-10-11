@@ -26,13 +26,18 @@ suite("structured partition repository", () => {
         orgId,
         email: "partition-repo@example.invalid",
         displayName: "Partition Repo",
-        role: "employee",
+        role: "admin",
         clearance: 3
       }
     });
   });
 
   afterAll(async () => {
+    await prisma.businessAuthorizationAudit.deleteMany({ where: { orgId } });
+    await prisma.businessResource.deleteMany({ where: { orgId } });
+    await prisma.businessStore.deleteMany({ where: { orgId } });
+    await prisma.businessCategory.deleteMany({ where: { orgId } });
+    await prisma.businessAuthorizationState.deleteMany({ where: { orgId } });
     await prisma.auditLog.deleteMany({ where: { orgId } });
     await prisma.processingRun.deleteMany({ where: { orgId } });
     await prisma.structuredPartition.deleteMany({ where: { orgId } });

@@ -121,7 +121,7 @@ describe("request authentication", () => {
           loads++;
           return structuredClone(current);
         }
-      }) as ReturnType<ApiServerContext["permissions"]>;
+      }) as unknown as ReturnType<ApiServerContext["permissions"]>;
     const auth = createRequestAuth(context);
     app.get("/protected", async (request, reply) => {
       if (!(await auth.authenticate(request, reply))) return;

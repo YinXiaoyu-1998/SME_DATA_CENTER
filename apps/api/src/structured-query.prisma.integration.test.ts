@@ -58,6 +58,11 @@ describeIntegration("Prisma confidentiality persistence", () => {
   });
 
   afterAll(async () => {
+    // These metadata-only evidence fixtures have no stored source to reindex.
+    await prisma.document.updateMany({
+      where: { orgId, documentKind: "evidence" },
+      data: { status: "archived", archivedAt: new Date() }
+    });
     await prisma.$disconnect();
   });
 

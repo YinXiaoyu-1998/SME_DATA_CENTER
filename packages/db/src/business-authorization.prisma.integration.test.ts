@@ -771,6 +771,15 @@ suite("authoritative publication and original lineage", () => {
       });
   });
   afterAll(async () => {
+    // Global worker/GC scans must not observe this completed suite's synthetic work.
+    await prisma.storageGarbage.deleteMany({
+      where: { objectKey: { startsWith: `synthetic/${publicationOrg}_` } }
+    });
+    await prisma.processingRun.deleteMany({ where: { orgId: publicationOrg } });
+    await prisma.document.updateMany({
+      where: { orgId: publicationOrg, documentKind: "evidence" },
+      data: { status: "archived", archivedAt: new Date() }
+    });
     await prisma.$disconnect();
   });
 

@@ -623,5 +623,5 @@ if (enabled) {
       []
     );
     await prisma.employee.update({ where: { id: actor.id }, data: { disabled: false } });
-  });
+  }, 15_000);
 });

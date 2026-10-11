@@ -182,16 +182,29 @@ it("cancels a stalled source and removes scratch without uploading", async () =>
   const { join } = await import("node:path");
   const root = await mkdtemp(join(tmpdir(), "partition-abort-test-"));
   const f = fixture();
-  const source = new Readable({ read() {} });
+  let started!: () => void;
+  const sourceStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const source = new Readable({
+    read() {
+      started();
+    }
+  });
   vi.mocked(f.storage.getObjectStream).mockResolvedValue(source);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
-    await expect(
+    const completed = expect(
       buildPartitionDownload({ ...f.input, limits: { scratchRoot: root, deadlineMs: 20 } })
     ).rejects.toThrow("PARTITION_DOWNLOAD_FAILED");
+    await sourceStarted;
+    await vi.advanceTimersByTimeAsync(20);
+    await completed;
     expect(source.destroyed).toBe(true);
     expect(await readdir(root)).toEqual([]);
     expect(f.storage.putObjectAtKey).not.toHaveBeenCalled();
   } finally {
+    vi.useRealTimers();
     await rm(root, { recursive: true, force: true });
   }
 });

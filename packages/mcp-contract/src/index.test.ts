@@ -31,8 +31,10 @@ it("retains server admin-only upload authorization and explains fixed category a
   for (const tool of SMEDC_MCP_TOOL_CONTRACTS.filter((tool) => tool.name.startsWith("upload_")))
     expect(tool.description).toContain("Requires the admin role.");
   expect(
-    contractsByName.get("upload_structured_dataset")?.inputShape["confidentialityLevel"]
-      ?.description
+    (
+      contractsByName.get("upload_structured_dataset")?.inputShape["confidentialityLevel"] as
+        z.ZodType | undefined
+    )?.description
   ).toContain("cannot override");
 });
 
