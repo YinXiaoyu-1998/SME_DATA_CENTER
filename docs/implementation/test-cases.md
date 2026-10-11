@@ -226,7 +226,8 @@ Use synthetic fixtures. Focused contract/HTTP/MCP checks:
 They compare current server SQL predicates and denial behavior, admin self/other complete configuration,
 tenant/version failures, strict controlled schemas, and closed raw-ledger aggregate/original paths.
 Launcher build, installed-package tool/schema checks and dry packing are one release boundary.
-Candidate `0.9.0` is not publication evidence; retain approved `0.8.2` pins pending verification.
+Launcher `0.9.0` is published and independently verified; it is the approved exact pin. Service
+rollout, real-tenant activation and the explicitly requested full manual suite remain separate gates.
 
 The default owned integration runner includes the business authorization foundation and cutover,
 structured-query, partition catalog/download and ledger publication/source-reader Prisma files with

@@ -88,11 +88,11 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The published approved Skill pin and server recommendation remain 0.8.2; minimum compatibility
-remains 0.6.0. Candidate 0.9.0 bundles this authorization contract but is not published or deployed. Older
-launchers are rejected with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This change adds no historical
-migration, OSS URL invalidation, or mid-transfer downgrade handling. Existing attribution and
-read access remain intact. Future scheduled/connector/service identities need a separate design,
+The published, independently verified Skill pin and server recommendation are 0.9.0; minimum
+compatibility remains 0.6.0. Launcher 0.9.0 bundles this authorization contract; matching service
+rollout and explicit tenant activation remain separate. Launchers below the minimum are rejected
+with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This release does not backfill historical
+resource attributes, invalidate existing OSS URLs, or add mid-transfer downgrade handling. Future scheduled/connector/service identities need a separate design,
 not impersonation of an admin Employee Account; workers and operator utilities are outside this
 employee-callable upload boundary.
 
@@ -174,7 +174,7 @@ MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
 authorization mode/version, query shape, filters, limit, and retrieval configuration.
 
-### Current permission and management tools (candidate 0.9.0)
+### Current permission and management tools (Launcher 0.9.0)
 
 All calls use the existing authenticated HTTP delegation. Every write requires the current
 `expectedVersion`; conflicts return `AUTHORIZATION_VERSION_CONFLICT` without partial changes.
@@ -212,8 +212,8 @@ Filtered ranges require published, independently verified Launcher `0.8.0` or ne
 matching filtered-range service deployment. Optional bundles require verified published
 Launcher `0.8.1` or newer and known matching ZIP service deployment. Range is the default;
 tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
-plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin remains `0.8.2`; candidate `0.9.0` needs separate publication and
-verification before recommendation/pin changes. This contract is not evidence of live availability.
+plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.9.0`. This contract is not
+evidence of service deployment or tenant activation.
 
 For `business`/`dishes`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
 inclusive ISO `startDate`/`endDate`, optional `storeIds` and `storeNameContains`. Coverage accepts
