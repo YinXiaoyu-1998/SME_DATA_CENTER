@@ -69,10 +69,11 @@ export function requirePublicationAttributes(
   mode: BusinessAuthorizationMode,
   category: BusinessCategoryRule | null,
   scopes: BusinessScopeItem[],
-  fileLevel?: number
+  fileLevel?: number,
+  requireCompleteAttributes = false
 ): void {
   if (mode === "suspended") fail("AUTHORIZATION_SUSPENDED");
-  if (mode !== "enabled") return;
+  if (mode !== "enabled" && !requireCompleteAttributes) return;
   if (
     !category ||
     (category.kind === "fixed" && !isBusinessClearance(category.confidentialityLevel))
@@ -235,7 +236,7 @@ export async function persistStructuredSourceReadRequirements(
   } catch (error) {
     if (state.mode === "enabled" || !(error instanceof ResourceAttributesError)) throw error;
   }
-  requirePublicationAttributes(historicalSupplement ? "enabled" : state.mode, rule, scopes);
+  requirePublicationAttributes(state.mode, rule, scopes, undefined, !!historicalSupplement);
   await tx.document.update({
     where: { id: input.sourceDocumentId },
     data: {
@@ -323,7 +324,7 @@ export async function persistPartitionReadRequirement(
         }
       ]
     : [];
-  requirePublicationAttributes(input.historicalSupplement ? "enabled" : state.mode, rule, scopes);
+  requirePublicationAttributes(state.mode, rule, scopes, undefined, !!input.historicalSupplement);
   if (
     !category ||
     !rule ||
@@ -382,7 +383,7 @@ export async function persistEvidenceReadRequirement(
 ) {
   const state = await lockAuthorizationPublication(tx, input.orgId);
   if (!input.categoryId || !input.scopes) {
-    requirePublicationAttributes(state.mode, null, []);
+    requirePublicationAttributes(state.mode, null, [], undefined, !!input.historicalSupplement);
     return;
   }
   const category = await tx.businessCategory.findUnique({
@@ -473,10 +474,11 @@ export async function activateEvidenceReadRequirement(tx: Tx, orgId: string, doc
     record(document.sourceMetadata)["historicalSupplement"]
   );
   requirePublicationAttributes(
-    historicalSupplement ? "enabled" : state.mode,
+    state.mode,
     rule,
     scopes,
-    resource.fileConfidentialityLevel ?? undefined
+    resource.fileConfidentialityLevel ?? undefined,
+    !!historicalSupplement
   );
   await requireCurrentDirectoryEligibility(tx, {
     orgId,
@@ -566,7 +568,7 @@ export async function persistPhotoReadRequirement(
           }
         ]
       : [];
-  requirePublicationAttributes(input.historicalSupplement ? "enabled" : state.mode, rule, scopes);
+  requirePublicationAttributes(state.mode, rule, scopes, undefined, !!input.historicalSupplement);
   if (
     !category ||
     !rule ||

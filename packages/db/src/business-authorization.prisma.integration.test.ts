@@ -1,4 +1,5 @@
 import { createPrismaAuthOperatorRepository } from "../../../apps/api/src/auth/prisma-auth-operator-repository.js";
+import { createPrismaDocumentCatalogRepository } from "../../../apps/api/src/documents.js";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -1290,4 +1291,239 @@ suite("authoritative publication and original lineage", () => {
     ).toMatchObject({ objectKey: correction.objectKey });
     await prisma.employee.update({ where: { id: admin }, data: { role: "admin" } });
   }, 15_000);
+  async function uploadHistoricalEvidence(reason: string) {
+    const id = nextId();
+    const catalog = createPrismaDocumentCatalogRepository(url);
+    try {
+      await catalog.createUploadedDocument({
+        id,
+        orgId: publicationOrg,
+        uploaderId: admin,
+        title: "Historical memo",
+        documentType: "structured_dataset",
+        documentKind: "evidence",
+        fileType: "md",
+        status: "pending_processing",
+        storageObjectKey: `synthetic/${id}`,
+        originalFileName: "memo.md",
+        contentType: "text/markdown",
+        byteSize: 10,
+        checksumSha256: "a".repeat(64),
+        sourceSystem: null,
+        sourceTime: null,
+        confidentialityLevel: 2,
+        processingJobType: "evidence_document_index",
+        businessCategoryId: "memo",
+        businessScopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
+        historicalSupplementReason: reason,
+        audit: {
+          requestId: id,
+          sourceIp: "127.0.0.1",
+          clientSource: "http_api",
+          launcherVersion: null
+        }
+      });
+    } finally {
+      await catalog.disconnect?.();
+    }
+    return id;
+  }
+  it("preserves original historical approval across a same-reference clearance PATCH and still rechecks that admin", async () => {
+    const permissions = createBusinessAuthorizationRepository({ prisma });
+    const reason = "Approved historical memo correction";
+    const documentId = await uploadHistoricalEvidence(reason);
+    const editor = nextId();
+    await prisma.employee.create({
+      data: {
+        id: editor,
+        orgId: publicationOrg,
+        email: `${editor}@example.invalid`,
+        displayName: "Permission editor",
+        role: "admin",
+        clearance: 0
+      }
+    });
+    const context = async () => ({
+      orgId: publicationOrg,
+      actorId: editor,
+      expectedVersion: (await permissions.loadAuthorizationSnapshot(editor, publicationOrg))
+        .authorizationVersion
+    });
+    const patch = {
+      documentId,
+      categoryId: "memo",
+      fileConfidentialityLevel: 3,
+      scopes: [{ enterpriseKey: "enterprise", ownership: "group" as const, dimensions: {} }]
+    };
+    await permissions.configureEvidenceDocument({ ...(await context()), ...patch });
+    const intent = { actorEmployeeId: admin, reason };
+    expect(
+      (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
+    ).toMatchObject({ historicalSupplement: intent });
+    const beforeChanged = await permissions.loadAuthorizationSnapshot(editor, publicationOrg);
+    await expect(
+      permissions.configureEvidenceDocument({
+        ...(await context()),
+        ...patch,
+        scopes: [{ enterpriseKey: "different-enterprise", ownership: "group", dimensions: {} }]
+      })
+    ).rejects.toThrow("RESOURCE_DIRECTORY_RETIRED");
+    expect(
+      (await permissions.loadAuthorizationSnapshot(editor, publicationOrg)).authorizationVersion
+    ).toBe(beforeChanged.authorizationVersion);
+    expect(
+      (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
+    ).toMatchObject({ historicalSupplement: intent });
+    await prisma.employee.update({ where: { id: admin }, data: { role: "employee" } });
+    const beforeDenied = await prisma.businessAuthorizationState.findUniqueOrThrow({
+      where: { orgId: publicationOrg }
+    });
+    const auditCount = await prisma.auditLog.count({ where: { orgId: publicationOrg } });
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await activateEvidenceReadRequirement(tx, publicationOrg, documentId);
+        await tx.document.update({ where: { id: documentId }, data: { status: "active" } });
+      })
+    ).rejects.toThrow("AUTHORIZATION_ADMIN_REQUIRED");
+    expect(
+      (
+        await prisma.businessAuthorizationState.findUniqueOrThrow({
+          where: { orgId: publicationOrg }
+        })
+      ).version
+    ).toBe(beforeDenied.version);
+    expect(await prisma.auditLog.count({ where: { orgId: publicationOrg } })).toBe(auditCount);
+    await prisma.employee.update({ where: { id: admin }, data: { role: "admin" } });
+    await prisma.$transaction(async (tx) => {
+      await activateEvidenceReadRequirement(tx, publicationOrg, documentId);
+      await tx.document.update({ where: { id: documentId }, data: { status: "active" } });
+    });
+    expect(
+      await prisma.businessResource.findUniqueOrThrow({
+        where: {
+          orgId_kind_resourceKey: {
+            orgId: publicationOrg,
+            kind: "evidence",
+            resourceKey: documentId
+          }
+        }
+      })
+    ).toMatchObject({ valid: true, fileConfidentialityLevel: 3 });
+    expect(
+      (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
+    ).toMatchObject({ historicalSupplement: intent });
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        orgId: publicationOrg,
+        action: "resource.historical_supplement.authorized",
+        targetId: (
+          await prisma.businessResource.findUniqueOrThrow({
+            where: {
+              orgId_kind_resourceKey: {
+                orgId: publicationOrg,
+                kind: "evidence",
+                resourceKey: documentId
+              }
+            }
+          })
+        ).id
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    expect(audit).toMatchObject({
+      actorEmployeeId: admin,
+      metadata: expect.objectContaining({ historicalSupplement: intent })
+    });
+    await permissions.configureEvidenceDocument({
+      ...(await context()),
+      ...patch,
+      historicalSupplementReason: "New explicit approval by the permission editor"
+    });
+    expect(
+      (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
+    ).toMatchObject({
+      historicalSupplement: {
+        actorEmployeeId: editor,
+        reason: "New explicit approval by the permission editor"
+      }
+    });
+  });
+  it("rejects suspended historical publication and activation without changing data, resources, version or audits", async () => {
+    const pending = await uploadHistoricalEvidence("Approved before suspension");
+    await prisma.businessAuthorizationState.update({
+      where: { orgId: publicationOrg },
+      data: { mode: "suspended" }
+    });
+    const before = await prisma.businessAuthorizationState.findUniqueOrThrow({
+      where: { orgId: publicationOrg }
+    });
+    const resources = await prisma.businessResource.findMany({
+      where: { orgId: publicationOrg },
+      orderBy: { id: "asc" }
+    });
+    const partitions = await prisma.structuredPartition.findMany({
+      where: { orgId: publicationOrg }
+    });
+    const audits = await prisma.auditLog.count({ where: { orgId: publicationOrg } });
+    const sourceDocumentId = nextId();
+    try {
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await tx.document.create({
+            data: {
+              ...documentData(sourceDocumentId),
+              sourceMetadata: {
+                enterpriseKey: "enterprise",
+                startDate: "20260819",
+                endDate: "20260819",
+                historicalSupplement: { actorEmployeeId: admin, reason: "Approved historical data" }
+              }
+            }
+          });
+          await persistStructuredSourceReadRequirements(tx, {
+            orgId: publicationOrg,
+            sourceDocumentId,
+            dataset: "business",
+            rows: [
+              { payload: { store_name: "Historical exact store", business_date: "2026-08-19" } }
+            ],
+            workerId: "internal-worker"
+          });
+          await tx.document.update({ where: { id: sourceDocumentId }, data: { status: "active" } });
+        })
+      ).rejects.toThrow("AUTHORIZATION_SUSPENDED");
+      expect(await prisma.document.findUnique({ where: { id: sourceDocumentId } })).toBeNull();
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await activateEvidenceReadRequirement(tx, publicationOrg, pending);
+          await tx.document.update({ where: { id: pending }, data: { status: "active" } });
+        })
+      ).rejects.toThrow("AUTHORIZATION_SUSPENDED");
+      expect(await prisma.document.findUniqueOrThrow({ where: { id: pending } })).toMatchObject({
+        status: "pending_processing"
+      });
+      expect(
+        await prisma.businessResource.findMany({
+          where: { orgId: publicationOrg },
+          orderBy: { id: "asc" }
+        })
+      ).toEqual(resources);
+      expect(
+        await prisma.structuredPartition.findMany({ where: { orgId: publicationOrg } })
+      ).toEqual(partitions);
+      expect(
+        (
+          await prisma.businessAuthorizationState.findUniqueOrThrow({
+            where: { orgId: publicationOrg }
+          })
+        ).version
+      ).toBe(before.version);
+      expect(await prisma.auditLog.count({ where: { orgId: publicationOrg } })).toBe(audits);
+    } finally {
+      await prisma.businessAuthorizationState.update({
+        where: { orgId: publicationOrg },
+        data: { mode: "enabled" }
+      });
+    }
+  });
 });

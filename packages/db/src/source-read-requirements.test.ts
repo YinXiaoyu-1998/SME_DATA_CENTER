@@ -96,6 +96,12 @@ describe("authoritative successful source scopes", () => {
     expect(() => requirePublicationAttributes("suspended", null, scopes)).toThrow(
       "AUTHORIZATION_SUSPENDED"
     );
+    expect(() => requirePublicationAttributes("legacy", null, scopes, undefined, true)).toThrow(
+      "RESOURCE_CATEGORY_NOT_CONFIGURED"
+    );
+    expect(() => requirePublicationAttributes("suspended", null, scopes, undefined, true)).toThrow(
+      "AUTHORIZATION_SUSPENDED"
+    );
   });
 });
 

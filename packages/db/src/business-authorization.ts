@@ -668,7 +668,8 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         });
         if (!document) throw new Error("RESOURCE_NOT_FOUND");
         const existing = await tx.businessResource.findFirst({
-          where: { orgId: input.orgId, documentId: input.documentId, kind: "evidence" }
+          where: { orgId: input.orgId, documentId: input.documentId, kind: "evidence" },
+          include: resourcesInclude
         });
         const historicalSupplement = await bindHistoricalSupplementIntent(
           tx,
@@ -676,17 +677,34 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
           input.actorId,
           input.historicalSupplementReason
         );
+        const valid = document.status === "active" && !document.archivedAt;
+        const unchangedReferences =
+          !!existing &&
+          existing.categoryId === input.categoryId &&
+          existing.valid === valid &&
+          isDeepStrictEqual(
+            canonicalScopes(resourceRequirement(existing).scopes),
+            canonicalScopes(input.scopes)
+          );
+        const metadata =
+          document.sourceMetadata &&
+          typeof document.sourceMetadata === "object" &&
+          !Array.isArray(document.sourceMetadata)
+            ? document.sourceMetadata
+            : {};
+        // Retain a pending approval without using it to authorize a different selection.
+        const retainedIntent =
+          historicalSupplement ??
+          (unchangedReferences
+            ? readHistoricalSupplementIntent(metadata["historicalSupplement"])
+            : undefined);
         await tx.document.update({
           where: { id: document.id },
           data: {
             sourceMetadata: {
-              ...(document.sourceMetadata &&
-              typeof document.sourceMetadata === "object" &&
-              !Array.isArray(document.sourceMetadata)
-                ? document.sourceMetadata
-                : {}),
-              historicalSupplement: historicalSupplement
-                ? (historicalSupplement as unknown as Prisma.InputJsonValue)
+              ...metadata,
+              historicalSupplement: retainedIntent
+                ? (retainedIntent as unknown as Prisma.InputJsonValue)
                 : null
             }
           }
@@ -698,7 +716,7 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
             id: existing?.id ?? randomUUID().replaceAll("-", ""),
             kind: "evidence",
             resourceKey: input.documentId,
-            valid: document.status === "active" && !document.archivedAt
+            valid
           },
           { historicalSupplement }
         );
