@@ -24,6 +24,22 @@ export async function currentLedgerAuthorization(
     ? repository.loadAuthorizationSnapshot(employeeId, orgId)
     : repository.loadAuthorizationSnapshot(employeeId, orgId, reader);
 }
+/** Only the registered category/store conversion exists; required dimensions need a new rule. */
+export async function assertRegisteredLedgerConversion(
+  reader: Reader,
+  orgId: string
+): Promise<void> {
+  const categories = await reader.businessCategory.findMany({
+    where: {
+      orgId,
+      key: { in: ["delivery_ledger", "supplier_catalog", "quarantine_certificate", "ledger_pdf"] }
+    },
+    include: { dimensions: true }
+  });
+  if (categories.some((category) => category.dimensions.length))
+    throw new Error("RESOURCE_ATTRIBUTES_NOT_READY");
+}
+
 /** The registered conversion preserves the exact store; additional required dimensions fail closed. */
 export async function ledgerPdfReadRequirement(
   reader: Reader,
@@ -125,6 +141,7 @@ export async function persistLedgerPdfRequirement(
     });
     return null;
   }
+  if (state.mode === "enabled") await assertRegisteredLedgerConversion(tx, key.orgId);
   // Regeneration uses the registered source-to-product conversion, never the caller's grants.
   const requirement = await ledgerPdfReadRequirement(tx, key, sources);
   if (!requirement) {

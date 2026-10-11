@@ -9,6 +9,7 @@ import {
 import { extname } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
+  AUTH_ERROR_CODES,
   DEFAULT_RETRIEVAL_CONFIG_VERSION,
   PHASE3_ERROR_CODES,
   PUBLIC_INPUT_LIMITS,
@@ -506,6 +507,12 @@ export function registerEvidenceRoutes(
       async (request, reply) => {
         if (!(await dependencies.auth.authenticate(request, reply))) return;
         const snapshot = await dependencies.auth.authorization(request);
+        if (snapshot.disabled)
+          return reply
+            .code(403)
+            .send(
+              errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled.")
+            );
         if (management && snapshot.role !== "admin")
           return reply
             .code(403)

@@ -1,4 +1,7 @@
-import { legacyPermissionService } from "../business-authorization.test-support.js";
+import {
+  legacyAuthorization,
+  legacyPermissionService
+} from "../business-authorization.test-support.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -568,6 +571,61 @@ describe("evidence routes", () => {
       ).statusCode
     ).toBe(403);
   });
+
+  it.each([false, true])(
+    "rejects an account disabled between authentication and evidence status snapshot (management: %s)",
+    async (management) => {
+      const actor = management ? adminEmployee : baoliEmployee;
+      const documents = createDocumentRepository();
+      documents.documents.push({
+        id: "disabled-status",
+        orgId: actor.orgId,
+        uploaderId: baoliEmployee.id,
+        title: "Private status metadata",
+        documentType: "management_knowledge",
+        documentKind: "evidence",
+        fileType: "md",
+        confidentialityLevel: 3,
+        status: "active",
+        processingRunStatus: "succeeded",
+        documentIndexStatus: "ready",
+        documentIndexRetrievalConfigVersion: "phase3.retrieval.v2-bm25",
+        sourceSystem: "manual",
+        sourceTime: null,
+        storageObjectKey: "synthetic/status.md",
+        originalFileName: "status.md",
+        contentType: "text/markdown",
+        byteSize: 10,
+        checksumSha256: "a".repeat(64)
+      });
+      const findStatus = vi.spyOn(documents, "findEvidenceDocumentStatus");
+      const permissions = legacyPermissionService(actor);
+      permissions.current = vi.fn(async (authenticated) => {
+        expect(authenticated).toMatchObject({ id: actor.id, orgId: actor.orgId, disabled: false });
+        return legacyAuthorization({ ...actor, disabled: true });
+      });
+      const authenticateAccessToken = vi.fn(authenticateTestAccessToken);
+      app = buildApiServer({
+        businessAuthorizationService: permissions,
+        employeeRepository: createRepository([actor]),
+        documentRepository: documents,
+        cursorSigningSecret: jwtSecret,
+        authenticateAccessToken,
+        logger: false
+      });
+      const response = await app.inject({
+        method: "GET",
+        url: `${management ? "/v1/admin" : "/v1"}/documents/evidence/disabled-status/status`,
+        headers: { authorization: `Bearer ${await accessTokenFor(actor)}` }
+      });
+      expect(authenticateAccessToken).toHaveBeenCalledTimes(1);
+      expect(permissions.current).toHaveBeenCalledTimes(1);
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ error: { code: "EMPLOYEE_DISABLED" } });
+      expect(findStatus).not.toHaveBeenCalled();
+      expect(JSON.stringify(response.json())).not.toContain("Private status metadata");
+    }
+  );
 
   it("searches evidence chunks without returning natural-language answers", async () => {
     const evidenceRepository = createEvidenceSearchRepository();

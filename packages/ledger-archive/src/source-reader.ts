@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { canReadLedgerPdf, currentLedgerAuthorization } from "./pdf-authorization.js";
+import {
+  assertRegisteredLedgerConversion,
+  canReadLedgerPdf,
+  currentLedgerAuthorization
+} from "./pdf-authorization.js";
 import { ledgerStoreNameHash } from "./keys.js";
 import { assertLedgerDate } from "./scope.js";
 import {
@@ -343,24 +347,7 @@ export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClien
             where: { orgId: key.orgId }
           });
           if (state?.mode === "suspended") throw new Error("AUTHORIZATION_SUSPENDED");
-          if (state?.mode === "enabled") {
-            const categories = await tx.businessCategory.findMany({
-              where: {
-                orgId: key.orgId,
-                key: {
-                  in: [
-                    "delivery_ledger",
-                    "supplier_catalog",
-                    "quarantine_certificate",
-                    "ledger_pdf"
-                  ]
-                }
-              },
-              include: { dimensions: true }
-            });
-            if (categories.some((category) => category.dimensions.length))
-              throw new Error("RESOURCE_ATTRIBUTES_NOT_READY");
-          }
+          if (state?.mode === "enabled") await assertRegisteredLedgerConversion(tx, key.orgId);
           const filter = factFilter(key);
           const from = factFrom();
           const [count] = await tx.$queryRaw<{ count: bigint }[]>(

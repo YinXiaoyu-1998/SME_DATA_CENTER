@@ -90,6 +90,7 @@ if (enabled) {
   afterAll(async () => {
     await prisma.storageGarbage.deleteMany({ where: { objectKey: { in: garbageKeys } } });
     await prisma.auditLog.deleteMany({ where: { orgId } });
+    await prisma.businessAuthorizationAudit.deleteMany({ where: { orgId } });
     await prisma.processingRun.deleteMany({ where: { orgId } });
     await prisma.ledgerPdfSource.deleteMany({ where: { orgId } });
     await prisma.ledgerArtifactRequestItem.deleteMany({ where: { orgId } });
@@ -581,6 +582,84 @@ if (enabled) {
       } as unknown as StorageAdapter
     });
     const requestedScope = { storeNames: [key.storeName], dates: [date] };
+    expect((await delivery.facts(owner, requestedScope))[0]?.status).toBe("ready");
+    // This candidate represents the completed render from the dimension-free snapshot above.
+    const late = await reserve(key.storeName);
+    const renderedCandidate = {
+      ...late.input,
+      sources: snapshot.sources,
+      sourceFingerprint: snapshot.sourceFingerprint,
+      certificateCount: 1,
+      candidate: { ...late.input.candidate!, pageCount: 2 }
+    };
+    const permissions = createBusinessAuthorizationRepository({ prisma });
+    const currentVersion = async () =>
+      (
+        await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })
+      ).version.toString();
+    const dimensionId = "unregistered-source-dimension";
+    await permissions.defineDimension({
+      orgId,
+      actorId: source.uploaderId,
+      expectedVersion: await currentVersion(),
+      id: dimensionId,
+      name: "Unregistered source dimension"
+    });
+    const category = {
+      orgId,
+      actorId: source.uploaderId,
+      id: "delivery_ledger",
+      key: "delivery_ledger",
+      name: "delivery_ledger",
+      kind: "fixed" as const,
+      confidentialityLevel: 3,
+      ownerships: ["store" as const]
+    };
+    await permissions.configureCategory({
+      ...category,
+      expectedVersion: await currentVersion(),
+      requiredDimensionIds: [dimensionId]
+    });
+    try {
+      const publicationState = () =>
+        Promise.all([
+          prisma.ledgerPdfPartition.findUniqueOrThrow({
+            where: { id: late.item.partitionId },
+            include: { sources: true }
+          }),
+          prisma.businessResource.findUniqueOrThrow({
+            where: { orgId_id: { orgId, id: requirement.id } },
+            include: { scopes: { include: { dimensions: true } } }
+          }),
+          prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } }),
+          prisma.processingRun.findUniqueOrThrow({ where: { id: late.run.id } }),
+          prisma.ledgerArtifactRequestItem.findUniqueOrThrow({ where: { id: late.item.id } }),
+          prisma.ledgerArtifactRequest.findUniqueOrThrow({ where: { id: late.item.requestId } }),
+          prisma.auditLog.findMany({ where: { orgId }, orderBy: { id: "asc" } }),
+          prisma.businessAuthorizationAudit.findMany({ where: { orgId }, orderBy: { id: "asc" } }),
+          prisma.storageGarbage.findMany({
+            where: {
+              objectKey: {
+                in: [reserved.input.candidate!.objectKey, late.input.candidate!.objectKey]
+              }
+            },
+            orderBy: { id: "asc" }
+          })
+        ]);
+      const before = await publicationState();
+      expect(before[0]).toMatchObject({ currentObjectKey: reserved.input.candidate!.objectKey });
+      await expect(publication.publishLedgerPdf(renderedCandidate)).rejects.toThrow(
+        "RESOURCE_ATTRIBUTES_NOT_READY"
+      );
+      expect(await publicationState()).toEqual(before);
+    } finally {
+      await permissions.configureCategory({
+        ...category,
+        expectedVersion: await currentVersion(),
+        requiredDimensionIds: []
+      });
+      await prisma.businessDimension.delete({ where: { orgId_id: { orgId, id: dimensionId } } });
+    }
     expect((await delivery.facts(owner, requestedScope))[0]?.status).toBe("ready");
     await prisma.document.update({ where: { id: photoId }, data: { confidentialityLevel: 0 } });
     await prisma.businessCategory.update({
