@@ -1,3 +1,4 @@
+import { registerAdminPermissionsRoutes } from "./admin-permissions/routes.js";
 import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
@@ -88,7 +89,19 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     if (!publicOrigin) {
       throw new Error("SMEDC_PUBLIC_ORIGIN is required for official authentication.");
     }
-    registerOfficialAuthRoutes(app, { auth: context.authCore, publicOrigin });
+    registerOfficialAuthRoutes(app, {
+      auth: context.authCore,
+      publicOrigin,
+      browserSessions: context.browserSessions
+    });
+    if (context.browserSessions && context.permissionsUiMetadata)
+      registerAdminPermissionsRoutes(app, {
+        auth: context.authCore,
+        browserSessions: context.browserSessions,
+        publicOrigin,
+        permissions: context.permissions,
+        metadata: () => context.permissionsUiMetadata!
+      });
     void context.authCore.pruneSecurityEvents().catch((error: unknown) => {
       app.log.error({ err: error }, "Failed to prune expired authentication security events.");
     });

@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient, type BusinessResourceKind } from "@prisma/cl
 import {
   FIXED_BUSINESS_CATEGORY_OWNERSHIP,
   isBusinessClearance,
+  normalizeEnterpriseIdentity,
   validateBusinessGrant,
   validateBusinessScope,
   type AuthorizationSnapshot,
@@ -828,6 +829,28 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         return {
           before,
           after: await tx.businessCategory.findUniqueOrThrow({ where, include: categoriesInclude })
+        };
+      });
+    },
+    declareEnterpriseIdentity(input: AuthorizationWriteContext & { name: string }) {
+      return mutate(input, "enterprise.identity.declare", "business-enterprise", async (tx) => {
+        if (!input.name.trim() || input.name.length > 255)
+          throw new Error("INVALID_ENTERPRISE_IDENTITY");
+        const normalized = normalizeEnterpriseIdentity(input.name);
+        if (normalized.enterpriseKey.length > 128) throw new Error("INVALID_ENTERPRISE_IDENTITY");
+        const where = {
+          orgId_enterpriseKey: { orgId: input.orgId, enterpriseKey: normalized.enterpriseKey }
+        };
+        const before = await tx.businessEnterpriseIdentity.findUnique({ where });
+        if (before && before.enterpriseName !== normalized.enterpriseName)
+          throw new Error("INVALID_ENTERPRISE_IDENTITY");
+        return {
+          before,
+          after: await tx.businessEnterpriseIdentity.upsert({
+            where,
+            create: { orgId: input.orgId, ...normalized },
+            update: {}
+          })
         };
       });
     },

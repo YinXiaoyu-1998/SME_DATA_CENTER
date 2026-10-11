@@ -230,7 +230,13 @@ export class AuthCore {
     audit: AuthRequestAudit
   ): Promise<
     | { ok: false; reason: "invalid_credentials" }
-    | { ok: true; identityId: string; employeeId: string; orgId: string }
+    | {
+        ok: true;
+        identityId: string;
+        employeeId: string;
+        orgId: string;
+        credentialFingerprint: string;
+      }
   > {
     const identity = await this.repository.findLoginIdentityByEmail(normalizeLoginEmail(email));
     const now = this.now();
@@ -311,7 +317,8 @@ export class AuthCore {
       ok: true,
       identityId: identity.id,
       employeeId: identity.employeeId,
-      orgId: identity.orgId
+      orgId: identity.orgId,
+      credentialFingerprint: hashOpaqueSecret(identity.passwordHash)
     };
   }
 

@@ -64,6 +64,12 @@
 - Copy `.env.example` to `.env` for local development. Required variables are in `docs/implementation/env-inventory.md`; never commit `.env`.
 - End-to-end, readiness, staging, or provider claims must load the real local `.env` provider configuration. CI and routine tests may use deterministic fake providers.
 
+## Enterprise Onboarding
+
+- Follow `docs/implementation/tenant-onboarding.md` and `docs/implementation/admin-permissions-ui-design.md`: enterprise-bound UI entry + shared browser sign-in + live server-side tenant/admin checks is the primary flow; UI is implemented in this branch but not deployed. Developers share the verified URL after rollout. Reuse enterprise rules for new accounts; never require customers to fill JSON.
+- Match login/password i18n: `zh-CN` default, `en` switching, preserve explicit valid preference; localize fields, validation, conflicts, confirmations and expiry states. Keep business names unchanged.
+- JSON is internal only; customer records/snapshots stay outside Git. Org/account/role/password operations stay with operators. Saving differs from activation; ready preparation and explicit admin confirmation precede new-model handoff.
+
 ## Employee Client
 
 - Follow `docs/implementation/official-user-install-and-login.md`. Real or user-owned account passwords remain out of scope; synthetic manual-test credentials follow the official acceptance instructions above.

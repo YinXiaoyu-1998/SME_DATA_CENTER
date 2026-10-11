@@ -152,6 +152,7 @@ enum AuthSecurityOutcome {
 }
 
 model Organization {
+  enterpriseIdentities BusinessEnterpriseIdentity[]
   businessAuthorization BusinessAuthorizationState?
   id                     String                  @id @db.VarChar(64)
   name                   String                  @db.VarChar(255)
@@ -668,6 +669,7 @@ model LoginIdentity {
   employee             Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   setupGrants          PasswordSetupGrant[]
   setupSessions        PasswordSetupSession[]
+  browserSessions      BrowserSession[]
   authSessions         AuthSession[]
   accessTokens         OAuthAccessToken[]
   deviceAuthorizations DeviceAuthorization[]
@@ -1263,4 +1265,30 @@ model BusinessAuthorizationAudit {
   actor Employee @relation(fields: [orgId, actorId], references: [orgId, id], onDelete: Restrict)
   @@index([orgId, version])
   @@map("business_authorization_audits")
+}
+
+/// First-party browser identity only; never accepts launcher credentials.
+model BrowserSession {
+  id String @id @default(cuid()) @db.VarChar(32)
+  identityId String @map("identity_id") @db.VarChar(32)
+  employeeId String @map("employee_id") @db.VarChar(32)
+  orgId String @map("org_id") @db.VarChar(64)
+  secretHash String @unique @map("secret_hash") @db.Char(64)
+  credentialFingerprint String @map("credential_fingerprint") @db.Char(64)
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  identity LoginIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  @@index([identityId, revokedAt])
+  @@index([expiresAt])
+  @@map("browser_sessions")
+}
+
+model BusinessEnterpriseIdentity {
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  enterpriseName String @map("enterprise_name") @db.VarChar(255)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  @@id([orgId, enterpriseKey])
+  @@map("business_enterprise_identities")
 }

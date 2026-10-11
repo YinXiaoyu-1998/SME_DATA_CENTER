@@ -19,6 +19,16 @@ management status and versioned preparation/activation. These transport fields r
 0.9.0 and the matching service rollout. A Skill-only refresh does not upgrade an older installed
 launcher. Publication does not authorize tenant activation or establish live tenant readiness.
 
+## Enterprise Onboarding Prerequisite
+
+Use [the enterprise/account onboarding flow](tenant-onboarding.md) before business handoff.
+The planned primary entry is a enterprise-bound administrator UI with shared browser sign-in, defaulting to Chinese with
+English switching like the password/login pages. Developers share the verified UI URL after rollout;
+the page is design-only and not live yet. Each new enterprise confirms category levels and explicit
+account grants; existing enterprises reuse their rules for new accounts. JSON is internal only,
+never required from customers. Account creation, login and saved configuration do not activate
+business authorization.
+
 ## Upload Role And Launcher Profile
 
 Only active `admin` accounts may upload evidence, structured datasets (including Delivery Ledger),
@@ -278,7 +288,7 @@ mandatory design constraint.
 | 2026-07-23 | Deferred                  | Beta has no employee-facing or admin-UI account disable/reactivate/delete lifecycle; an emergency developer CLI operation may be added, while hard-delete semantics are explicitly outside this design                                                                                                                                                            |
 | 2026-07-23 | Superseded                | The 0.1.x launcher used Authorization Code + PKCE with a system browser and exact IPv4 loopback callback; that compatibility path was removed in the 0.6.0 hard cut                                                                                                                                                                                               |
 | 2026-07-23 | Confirmed                 | Login, password setup, and safe error pages are server-rendered by the existing Fastify API on its current HTTPS origin; beta adds no frontend framework, container, domain, or admin-web implementation                                                                                                                                                          |
-| 2026-07-23 | Confirmed                 | The browser keeps no durable login session; clearing or closing it after code handoff has no effect, while incomplete flows simply restart and durable MCP access belongs only to the launcher                                                                                                                                                                    |
+| 2026-07-23 | Confirmed                 | The browser keeps no durable launcher credential; the permissions UI adds a separate 30-minute browser identity session, while durable MCP access belongs only to the launcher                                                                                                                                                                                    |
 | 2026-07-24 | Confirmed                 | SMEDC's token endpoint issues a 10-minute bearer access token kept only in launcher memory; the launcher renews it automatically from the durable session, including after a launcher restart                                                                                                                                                                     |
 | 2026-07-24 | Confirmed                 | Access tokens are opaque 256-bit-or-stronger random bearer strings; MySQL stores only their hashes and authoritative expiry, revocation, session, and Employee Account association                                                                                                                                                                                |
 | 2026-07-24 | Confirmed                 | A launcher durable session has one absolute 30-day lifetime from browser password login, no separate inactivity timeout, and cannot be extended by token renewal                                                                                                                                                                                                  |
@@ -463,17 +473,25 @@ Current staging runs one Fastify API container behind nginx and TLS at
 
 The Device Authorization verification page renders the successful-login state. Pages use plain
 server-rendered HTML with no React/Next.js bundle, client-side authentication state, external script/CDN, separate
-frontend container, new domain, or `apps/admin-web` implementation. They require strict security
+frontend container or new domain. The permissions UI is presented by `apps/admin-web` and served
+by the same API process. Its same-origin native forms use `Referrer-Policy: same-origin` so strict
+Origin plus CSRF checks accept legitimate form submissions without sending referrers off-site. They require strict security
 headers, CSRF and device-verification checks, form-level tests, accessibility basics, and
 neutral styling. Login pages keep the normal same-origin form target and add only
 `form-action 'self'`. Existing Docker, nginx, TLS, and deployment topology remains unchanged.
 
 ## Accepted Browser Session Behavior
 
-The browser has no durable SSO session. It receives only a short-lived, `Secure`, `HttpOnly`,
-`SameSite=Lax` device-verification cookie that expires after 10 minutes and is deleted on
-completion. Once Device Authorization completes, closing the page or clearing all
-browser cookies has no effect on continued MCP use.
+The browser never receives a launcher durable credential. The short-lived device-verification
+cookie still expires after 10 minutes and is deleted on completion. Successful official password
+login additionally issues a separate `Secure`, `HttpOnly`, `SameSite=Lax`, host-only browser
+identity cookie with a 30-minute absolute lifetime. The service stores only its hash and rechecks
+current identity, organization, role and enabled status on every permissions request. The same
+browser/profile can open its enterprise-bound permissions UI without a second login while this
+session is valid; another browser, incognito profile or expired session must sign in. Password
+reset and identity revocation invalidate it. Signing out of the permissions UI revokes only the
+browser session. Closing the page or clearing browser cookies does not revoke continued MCP use.
+This browser addition is implemented in this branch but is not deployed yet.
 
 Closing or clearing the browser before code handoff leaves no authenticated launcher session; the
 launcher safely starts a new browser flow when needed. A revoked, removed, or missing launcher

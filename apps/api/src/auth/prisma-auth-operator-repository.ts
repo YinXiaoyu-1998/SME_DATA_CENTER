@@ -125,6 +125,10 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
         await tx.$queryRaw(
           Prisma.sql`SELECT id FROM login_identities WHERE id = ${identity.id} FOR UPDATE`
         );
+        await tx.browserSession.updateMany({
+          where: { identityId: identity.id, revokedAt: null },
+          data: { revokedAt: input.now }
+        });
         await tx.passwordSetupSession.updateMany({
           where: {
             identityId: identity.id,

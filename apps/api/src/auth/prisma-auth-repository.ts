@@ -299,6 +299,10 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             cooldownUntil: null
           }
         });
+        await tx.browserSession.updateMany({
+          where: { identityId: setupSession.identityId, revokedAt: null },
+          data: { revokedAt: input.now }
+        });
         const sessions = await tx.authSession.findMany({
           where: { identityId: setupSession.identityId, status: "active" },
           select: { id: true }
@@ -817,6 +821,13 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
 
     async revokeIdentitySessions(identityId, reason, now) {
       return prisma.$transaction(async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM login_identities WHERE id = ${identityId} FOR UPDATE`
+        );
+        await tx.browserSession.updateMany({
+          where: { identityId, revokedAt: null },
+          data: { revokedAt: now }
+        });
         const sessions = await tx.authSession.findMany({
           where: { identityId, status: "active" },
           select: { id: true }

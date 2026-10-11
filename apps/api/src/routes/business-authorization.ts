@@ -38,7 +38,7 @@ function grantShape(value: unknown): value is BusinessGrant {
       : value["ownership"] === "store" && selection(value["stores"]))
   );
 }
-function respondError(error: unknown, reply: FastifyReply) {
+export function respondBusinessAuthorizationError(error: unknown, reply: FastifyReply) {
   const code = error instanceof Error ? error.message : "";
   if (object(error) && ["P2002", "P2003", "P2025"].includes(String(error["code"])))
     return reply
@@ -82,8 +82,15 @@ function respondError(error: unknown, reply: FastifyReply) {
 }
 export function registerBusinessAuthorizationRoutes(
   app: FastifyInstance,
-  dependencies: { auth: RequestAuth; permissions: () => BusinessAuthorizationService }
+  dependencies: {
+    auth: Pick<RequestAuth, "authenticate" | "employee">;
+    permissions: () => BusinessAuthorizationService;
+    adminBase?: string;
+    selfPath?: string;
+  }
 ) {
+  const adminBase = dependencies.adminBase ?? "/v1/admin/permissions";
+  const selfPath = dependencies.selfPath ?? "/v1/permissions/me";
   type Body = Record<string, unknown>;
   const invalid = (reply: FastifyReply) =>
     reply
@@ -120,18 +127,18 @@ export function registerBusinessAuthorizationRoutes(
                 )
               );
         } catch (error) {
-          return respondError(error, reply);
+          return respondBusinessAuthorizationError(error, reply);
         }
       }
     });
   }
-  route("GET", "/v1/admin/permissions/cutover", true, async (service, actor) =>
+  route("GET", `${adminBase}/cutover`, true, async (service, actor) =>
     service.prepareAuthorizationCutover(actor.orgId)
   );
   for (const operation of ["activate", "suspend"] as const)
     route(
       "POST",
-      `/v1/admin/permissions/cutover/${operation}`,
+      `${adminBase}/cutover/${operation}`,
       true,
       async (service, actor, _params, body, reply) => {
         if (
@@ -150,21 +157,21 @@ export function registerBusinessAuthorizationRoutes(
             });
       }
     );
-  route("GET", "/v1/permissions/me", false, async (_service, actor) => ({
+  route("GET", selfPath, false, async (_service, actor) => ({
     ...actor,
     categories: actor.categories.filter((category) =>
       actor.grants.some((grant) => grant.categoryIds.includes(category.id))
     )
   }));
-  route("GET", "/v1/admin/permissions/accounts", true, async (service, actor) => ({
+  route("GET", `${adminBase}/accounts`, true, async (service, actor) => ({
     accounts: await service.repository.listAccounts(actor.orgId, actor.employeeId)
   }));
-  route("GET", "/v1/admin/permissions/accounts/:employeeId", true, async (service, actor, params) =>
+  route("GET", `${adminBase}/accounts/:employeeId`, true, async (service, actor, params) =>
     service.repository.loadAuthorizationSnapshot(params["employeeId"]!, actor.orgId)
   );
   route(
     "PATCH",
-    "/v1/admin/permissions/accounts/:employeeId",
+    `${adminBase}/accounts/:employeeId`,
     true,
     async (service, actor, params, body, reply) => {
       if (
@@ -193,37 +200,32 @@ export function registerBusinessAuthorizationRoutes(
     }
   );
 
-  route("GET", "/v1/admin/permissions/stores", true, async (service, actor) => ({
+  route("GET", `${adminBase}/stores`, true, async (service, actor) => ({
     authorizationVersion: actor.authorizationVersion,
     stores: await service.repository.listStores(actor.orgId)
   }));
-  route(
-    "POST",
-    "/v1/admin/permissions/stores",
-    true,
-    async (service, actor, _params, body, reply) => {
-      if (
-        !text(body["expectedVersion"]) ||
-        !text(body["enterpriseKey"]) ||
-        !text(body["name"]) ||
-        (body["retired"] !== undefined && typeof body["retired"] !== "boolean") ||
-        Object.keys(body).some(
-          (key) => !["expectedVersion", "enterpriseKey", "name", "retired"].includes(key)
-        )
+  route("POST", `${adminBase}/stores`, true, async (service, actor, _params, body, reply) => {
+    if (
+      !text(body["expectedVersion"]) ||
+      !text(body["enterpriseKey"]) ||
+      !text(body["name"]) ||
+      (body["retired"] !== undefined && typeof body["retired"] !== "boolean") ||
+      Object.keys(body).some(
+        (key) => !["expectedVersion", "enterpriseKey", "name", "retired"].includes(key)
       )
-        return invalid(reply);
-      return service.repository.putStore({
-        orgId: actor.orgId,
-        actorId: actor.employeeId,
-        expectedVersion: body["expectedVersion"],
-        enterpriseKey: body["enterpriseKey"],
-        name: body["name"],
-        ...(typeof body["retired"] === "boolean" ? { retired: body["retired"] } : {})
-      });
-    }
-  );
+    )
+      return invalid(reply);
+    return service.repository.putStore({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body["expectedVersion"],
+      enterpriseKey: body["enterpriseKey"],
+      name: body["name"],
+      ...(typeof body["retired"] === "boolean" ? { retired: body["retired"] } : {})
+    });
+  });
   for (const directory of ["categories", "dimensions"] as const) {
-    const base = `/v1/admin/permissions/${directory}`;
+    const base = `${adminBase}/${directory}`;
     route("GET", base, true, async (service, actor) => ({
       authorizationVersion: actor.authorizationVersion,
       [directory]:
@@ -307,7 +309,7 @@ export function registerBusinessAuthorizationRoutes(
   for (const method of ["POST", "PATCH"] as const)
     route(
       method,
-      `/v1/admin/permissions/dimensions/:dimensionId/values${method === "PATCH" ? "/:id" : ""}`,
+      `${adminBase}/dimensions/:dimensionId/values${method === "PATCH" ? "/:id" : ""}`,
       true,
       async (service, actor, params, body, reply) => {
         const id = method === "POST" ? body["id"] : params["id"];
@@ -333,7 +335,7 @@ export function registerBusinessAuthorizationRoutes(
     );
   route(
     "PATCH",
-    "/v1/admin/permissions/documents/:documentId",
+    `${adminBase}/documents/:documentId`,
     true,
     async (service, actor, params, body, reply) => {
       if (
