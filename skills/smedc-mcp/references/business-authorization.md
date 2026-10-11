@@ -1,6 +1,6 @@
 # Current business permissions and controlled management
 
-The approved install pin is still `smedc-mcp-launcher@0.8.2`. Candidate `0.9.0` is unpublished.
+The approved install pin is `smedc-mcp-launcher@0.9.0`, published and independently verified.
 Use the capabilities below only after the matching service and approved launcher release are
 available; tool discovery alone does not prove deployment or tenant activation. Do not change
 installation pins from server metadata or install npm `latest`.
@@ -21,9 +21,9 @@ MCP read path. Finished PDFs use the independent PDF category and one exact stor
 
 ## Upload inputs
 
-These new transport fields need the matching launcher/service release described above. The
-approved 0.8.2 launcher does not gain them from a Skill refresh. If unavailable, report the pending
-coordinated release; never bypass through direct HTTP or install unpublished 0.9.0.
+These transport fields are bundled in approved launcher 0.9.0 and need the matching service
+rollout. A Skill refresh does not upgrade an older installed launcher. If unavailable, follow the
+approved launcher update procedure and report service rollout gaps; never bypass through direct HTTP.
 
 - `upload_evidence_document`: `file`, `title`, explicit integer `confidentialityLevel` 0–3,
   `categoryId`, and nonempty `scopes`; optional `sourceSystem` and

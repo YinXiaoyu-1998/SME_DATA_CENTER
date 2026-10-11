@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { config as loadDotenv } from "dotenv";
-import { createDatabaseAdapter } from "@smedc/db";
+import { createDatabaseAdapter, lockAuthorizationPublication } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
 import { createStorageAdapter } from "@smedc/storage";
 import { AuthCore } from "../apps/api/src/auth/auth-core.js";
@@ -48,8 +49,6 @@ async function main() {
 
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
   const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
-  await cleanupStagingFixtureDocuments(prisma);
-
   const identity = await prisma.loginIdentity.findFirst({
     where: { employeeId: "emp_admin", disabled: false },
     select: { id: true, employeeId: true, orgId: true }
@@ -58,6 +57,19 @@ async function main() {
     await prisma.$disconnect();
     throw new Error("Synthetic staging admin LoginIdentity is missing.");
   }
+  if (identity.orgId !== "default-org") {
+    await prisma.$disconnect();
+    throw new Error("Staging smoke requires the seeded synthetic QA organization.");
+  }
+  const state = await prisma.businessAuthorizationState.findUnique({
+    where: { orgId: identity.orgId }
+  });
+  if (state?.mode !== "legacy") {
+    await prisma.$disconnect();
+    throw new Error("Staging smoke must not change an activated QA tenant.");
+  }
+  await cleanupStagingFixtureDocuments(prisma, identity.orgId);
+  const categoryId = `staging-smoke-${randomUUID()}`;
   const session = await auth.createSession({
     identityId: identity.id,
     employeeId: identity.employeeId,
@@ -69,10 +81,37 @@ async function main() {
   let logoutFailure: unknown;
 
   try {
-    const uploads = await Promise.all([
-      uploadFixture(apiUrl, headers, "fixtures/evidence/kitchen-sop.md", "Staging Kitchen SOP"),
-      uploadFixture(apiUrl, headers, "fixtures/evidence/shift-notes.txt", "Staging Shift Notes")
-    ]);
+    await prisma.$transaction(async (tx) => {
+      const state = await lockAuthorizationPublication(tx, identity.orgId);
+      if (state.mode !== "legacy")
+        throw new Error("Staging smoke must not change an activated QA tenant.");
+      await tx.businessCategory.create({
+        data: {
+          orgId: identity.orgId,
+          id: categoryId,
+          name: "Staging fixture smoke",
+          kind: "evidence",
+          allowGroup: true,
+          allowStore: false
+        }
+      });
+    });
+    const uploads = [
+      await uploadFixture(
+        apiUrl,
+        headers,
+        "fixtures/evidence/kitchen-sop.md",
+        "Staging Kitchen SOP",
+        categoryId
+      ),
+      await uploadFixture(
+        apiUrl,
+        headers,
+        "fixtures/evidence/shift-notes.txt",
+        "Staging Shift Notes",
+        categoryId
+      )
+    ];
 
     await Promise.all(
       uploads.map((upload) => waitForIndexed(apiUrl, headers, upload.document.documentId))
@@ -119,7 +158,8 @@ async function main() {
   }
 
   try {
-    await cleanupStagingFixtureDocuments(prisma);
+    await cleanupStagingFixtureDocuments(prisma, identity.orgId);
+    await prisma.businessCategory.deleteMany({ where: { orgId: identity.orgId, id: categoryId } });
   } catch (error) {
     cleanupFailure = error;
   }
@@ -151,11 +191,12 @@ async function main() {
   }
 }
 
-async function uploadFixture(
+export async function uploadFixture(
   apiUrl: string,
   headers: Record<string, string>,
   fixturePath: string,
-  title: string
+  title: string,
+  categoryId: string
 ): Promise<EvidenceUploadResponse> {
   const body = await readFile(join(process.cwd(), fixturePath));
   const form = new FormData();
@@ -163,6 +204,13 @@ async function uploadFixture(
   form.append("title", title);
   form.append("sourceSystem", STAGING_FIXTURE_SOURCE_SYSTEM);
   form.append("confidentialityLevel", "0");
+  form.append("categoryId", categoryId);
+  form.append(
+    "scopes",
+    JSON.stringify([
+      { enterpriseKey: STAGING_FIXTURE_SOURCE_SYSTEM, ownership: "group", dimensions: {} }
+    ])
+  );
 
   const upload = await apiJson<EvidenceUploadResponse>(apiUrl, "/v1/documents/evidence", {
     method: "POST",
@@ -179,9 +227,10 @@ async function uploadFixture(
   return upload;
 }
 
-async function cleanupStagingFixtureDocuments(prisma: PrismaClient): Promise<void> {
+async function cleanupStagingFixtureDocuments(prisma: PrismaClient, orgId: string): Promise<void> {
   const documents = await prisma.document.findMany({
     where: {
+      orgId,
       sourceSystem: STAGING_FIXTURE_SOURCE_SYSTEM
     },
     select: {
@@ -217,13 +266,17 @@ async function cleanupStagingFixtureDocuments(prisma: PrismaClient): Promise<voi
     await storage.deleteObject(document.storageObjectKey);
   }
 
-  await prisma.document.deleteMany({
-    where: {
-      id: {
-        in: documents.map((document) => document.id)
-      },
-      sourceSystem: STAGING_FIXTURE_SOURCE_SYSTEM
-    }
+  const documentIds = documents.map((document) => document.id);
+  await prisma.$transaction(async (tx) => {
+    await tx.businessResource.deleteMany({
+      where: {
+        orgId,
+        OR: [{ documentId: { in: documentIds } }, { sourceDocumentId: { in: documentIds } }]
+      }
+    });
+    await tx.document.deleteMany({
+      where: { orgId, id: { in: documentIds }, sourceSystem: STAGING_FIXTURE_SOURCE_SYSTEM }
+    });
   });
 }
 

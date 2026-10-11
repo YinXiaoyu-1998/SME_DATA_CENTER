@@ -28,9 +28,9 @@ and [atomic cutover preparation](business-authorization-cutover.md). Fixed-categ
 business grants replace document-only clearance after explicit tenant activation. Evidence requires
 explicit per-file category/scope/level; photos require one exact store. Admin configuration does not
 imply content access. MCP mirrors controlled HTTP operations and reads current server permissions.
-Launcher `0.9.0` is an unpublished candidate; recommendation and both Skill installation pins stay
-`0.8.2` until authorized publication and independent verification. Real-tenant configuration,
-activation, merge, publication and staging deployment remain separate human boundaries.
+Launcher `0.9.0` is published and independently verified; recommendation and both Skill installation
+pins use `0.9.0`, with minimum compatibility unchanged at `0.6.0`. Service deployment does not
+authorize real-tenant configuration, historical backfill or activation; these remain separate human boundaries.
 
 ## Phase Summary
 

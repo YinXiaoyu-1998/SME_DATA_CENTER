@@ -1,9 +1,9 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-10-08
+Last updated: 2026-10-11
 
 This procedure tests official staging with macOS Codex and the published
-`smedc-mcp-launcher@0.8.2`. It does not revive the deleted local email-login flow or
+`smedc-mcp-launcher@0.9.0`. It does not revive the deleted local email-login flow or
 `/auth/dev-login`. Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md`,
 and `test-cases.md` before running it. Beta onboarding uses
 [the operator runbook](beta-user-onboarding-runbook.md).
@@ -41,7 +41,7 @@ session mode does not inherit macOS Keychain persistence.
 
 ```sh
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.8.2/node_modules/.bin/smedc-mcp-launcher" self-check
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.9.0/node_modules/.bin/smedc-mcp-launcher" self-check
 ```
 
 Expect `secureStore.available=true`, reachable/compatible server metadata and an `ok` MCP
