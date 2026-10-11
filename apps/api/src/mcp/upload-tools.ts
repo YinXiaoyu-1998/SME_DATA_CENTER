@@ -16,6 +16,7 @@ import {
   getStructuredRegistry,
   isPartitionDataset,
   type FileUploadSurface,
+  type BusinessScopeItem,
   type StructuredDatasetName
 } from "@smedc/domain";
 
@@ -37,20 +38,27 @@ interface UploadStructuredDatasetInput {
   snapshotDate?: string;
   idempotencyKey: string;
   confidentialityLevel?: number;
+  historicalSupplementReason?: string;
 }
 
 interface UploadEvidenceDocumentInput {
+  categoryId: string;
+  scopes: BusinessScopeItem[];
   file: InlineUploadFile;
   title: string;
   sourceSystem?: string;
-  confidentialityLevel?: number;
+  confidentialityLevel: number;
+  historicalSupplementReason?: string;
 }
 
 interface UploadQuarantineCertificateInput {
+  enterpriseName: string;
+  storeName: string;
   file: InlineUploadFile;
   receiptId: string;
   idempotencyKey: string;
   confidentialityLevel?: number;
+  historicalSupplementReason?: string;
 }
 
 export interface UploadApiDelegationContext {
@@ -180,6 +188,12 @@ async function uploadStructuredDataset(
   ];
   appendStructuredMetadataParts(parts, uploadInput);
   appendConfidentialityLevelPart(parts, uploadInput.confidentialityLevel);
+  if (uploadInput.historicalSupplementReason)
+    parts.push({
+      type: "field",
+      name: "historicalSupplementReason",
+      value: uploadInput.historicalSupplementReason
+    });
   const multipart = createMultipartBody(parts);
 
   return delegateMultipartRequest(options.delegate, delegation, {
@@ -248,13 +262,21 @@ async function uploadEvidenceDocument(
       contentType: uploadInput.file.mediaType,
       body: decodedFile.body
     },
-    { type: "field", name: "title", value: uploadInput.title }
+    { type: "field", name: "title", value: uploadInput.title },
+    { type: "field", name: "categoryId", value: uploadInput.categoryId },
+    { type: "field", name: "scopes", value: JSON.stringify(uploadInput.scopes) }
   ];
 
   if (uploadInput.sourceSystem) {
     parts.push({ type: "field", name: "sourceSystem", value: uploadInput.sourceSystem });
   }
   appendConfidentialityLevelPart(parts, uploadInput.confidentialityLevel);
+  if (uploadInput.historicalSupplementReason)
+    parts.push({
+      type: "field",
+      name: "historicalSupplementReason",
+      value: uploadInput.historicalSupplementReason
+    });
 
   return delegateMultipartRequest(options.delegate, delegation, {
     url: "/v1/documents/evidence",
@@ -303,9 +325,17 @@ async function uploadQuarantineCertificate(
       body: decodedFile.body
     },
     { type: "field", name: "receiptId", value: uploadInput.receiptId },
+    { type: "field", name: "enterpriseName", value: uploadInput.enterpriseName },
+    { type: "field", name: "storeName", value: uploadInput.storeName },
     { type: "field", name: "idempotencyKey", value: uploadInput.idempotencyKey }
   ];
   appendConfidentialityLevelPart(parts, uploadInput.confidentialityLevel);
+  if (uploadInput.historicalSupplementReason)
+    parts.push({
+      type: "field",
+      name: "historicalSupplementReason",
+      value: uploadInput.historicalSupplementReason
+    });
 
   return delegateMultipartRequest(options.delegate, delegation, {
     url: "/v1/documents/quarantine-certificates",

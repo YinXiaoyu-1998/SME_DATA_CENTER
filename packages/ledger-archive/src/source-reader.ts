@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
+import {
+  assertRegisteredLedgerConversion,
+  canReadLedgerPdf,
+  currentLedgerAuthorization
+} from "./pdf-authorization.js";
 import { ledgerStoreNameHash } from "./keys.js";
 import { assertLedgerDate } from "./scope.js";
 import {
@@ -51,6 +56,19 @@ function factFrom() {
   return Prisma.sql`delivery_ledger_rows r JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
     JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id`;
 }
+function photoStoreFilter(
+  key: LedgerPartitionKey,
+  storeName = Prisma.sql`${key.storeName}`,
+  sourceDocumentId = Prisma.raw("r.source_document_id")
+) {
+  return Prisma.sql`AND (NOT EXISTS (SELECT 1 FROM business_authorization_states ast WHERE ast.org_id = ${key.orgId} AND ast.mode IN ('enabled', 'suspended'))
+    OR EXISTS (SELECT 1 FROM business_resources pr JOIN business_resource_scopes ps ON ps.org_id = pr.org_id AND ps.resource_id = pr.id
+      WHERE pr.org_id = q.org_id AND pr.document_id = q.source_document_id AND pr.kind = 'quarantine_certificate' AND pr.valid = 1
+        AND ps.ownership = 'store' AND CAST(ps.store_name AS BINARY) = CAST(${storeName} AS BINARY)
+        AND EXISTS (SELECT 1 FROM business_resources lr JOIN business_resource_scopes ls ON ls.org_id = lr.org_id AND ls.resource_id = lr.id
+          WHERE lr.org_id = q.org_id AND lr.source_document_id = ${sourceDocumentId} AND lr.kind = 'source_fragment' AND lr.valid = 1
+            AND CAST(ls.enterprise_key AS BINARY) = CAST(ps.enterprise_key AS BINARY) AND CAST(ls.store_name AS BINARY) = CAST(ps.store_name AS BINARY))))`;
+}
 type Fact = {
   id: string;
   payload: Prisma.JsonValue;
@@ -60,6 +78,7 @@ type Fact = {
   importBatchId: string;
   checksumSha256: string;
   confidentialityLevel: number;
+  contentVersion?: number;
 };
 type Photo = {
   sourceDocumentId: string;
@@ -70,6 +89,8 @@ type Photo = {
   byteSize: bigint;
   uploadedAt: Date;
   confidentialityLevel: number;
+  contentVersion?: number;
+  businessContentVersion?: string;
 };
 
 type LedgerMetadataRow = {
@@ -78,6 +99,7 @@ type LedgerMetadataRow = {
   rowCount: bigint;
   checksumSha256: string;
   confidentialityLevel: number;
+  contentVersion?: number;
 };
 
 export type LedgerSourceMetadata = {
@@ -101,19 +123,20 @@ export async function readLedgerSourceMetadata(
   const ledger = await tx.$queryRaw<LedgerMetadataRow[]>(Prisma.sql`
     SELECT r.source_document_id AS sourceDocumentId, r.import_batch_id AS batchId,
       COUNT(*) AS rowCount, d.checksum_sha256 AS checksumSha256,
-      d.confidentiality_level AS confidentialityLevel
+      d.confidentiality_level AS confidentialityLevel, d.content_version AS contentVersion
     FROM ${from} WHERE ${filter}
-    GROUP BY r.source_document_id, r.import_batch_id, d.checksum_sha256, d.confidentiality_level
+    GROUP BY r.source_document_id, r.import_batch_id, d.checksum_sha256, d.confidentiality_level, d.content_version
     LIMIT ${LEDGER_SNAPSHOT_LIMITS.rows + 1}`);
   const photos = await tx.$queryRaw<Photo[]>(Prisma.sql`
     SELECT q.source_document_id AS sourceDocumentId, q.receipt_id AS receiptId,
       cd.storage_object_key AS storageObjectKey, cd.checksum_sha256 AS checksumSha256,
       cd.content_type AS contentType, cd.byte_size AS byteSize, q.created_at AS uploadedAt,
-      cd.confidentiality_level AS confidentialityLevel
+      cd.confidentiality_level AS confidentialityLevel, cd.content_version AS contentVersion,
+      (SELECT CAST(pr.content_version AS CHAR) FROM business_resources pr WHERE pr.org_id = q.org_id AND pr.document_id = q.source_document_id AND pr.kind = 'quarantine_certificate' LIMIT 1) AS businessContentVersion
     FROM quarantine_certificates q JOIN documents cd ON cd.id = q.source_document_id AND cd.org_id = q.org_id
     WHERE q.org_id = ${key.orgId} AND cd.status = 'active' AND cd.archived_at IS NULL
       AND EXISTS (SELECT 1 FROM ${from} WHERE ${filter}
-        AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) = CAST(q.receipt_id AS BINARY))
+        AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) = CAST(q.receipt_id AS BINARY) ${photoStoreFilter(key)})
     ORDER BY CAST(q.receipt_id AS BINARY), q.created_at, q.source_document_id
     LIMIT ${LEDGER_SNAPSHOT_LIMITS.certificates + 1}`);
   return ledgerSourceMetadata(rowCount, ledger, photos);
@@ -143,7 +166,8 @@ function ledgerSourceMetadata(
       contentType: photo.contentType,
       byteSize: Number(photo.byteSize),
       uploadedAt: photo.uploadedAt.toISOString(),
-      confidentialityLevel: photo.confidentialityLevel
+      contentVersion: photo.contentVersion ?? 1,
+      businessContentVersion: photo.businessContentVersion ?? "1"
     };
   });
   if (bytes > BigInt(LEDGER_SNAPSHOT_LIMITS.certificateBytes))
@@ -154,7 +178,7 @@ function ledgerSourceMetadata(
         source: {
           sourceDocumentId: entry.sourceDocumentId,
           kind: "ledger",
-          confidentialityLevel: entry.confidentialityLevel,
+          contentVersion: entry.contentVersion ?? 1,
           checksumSha256: sourceChecksum(entry.checksumSha256)
         },
         batchId: entry.batchId,
@@ -166,11 +190,19 @@ function ledgerSourceMetadata(
   return {
     rowCount,
     sources: [
-      ...fingerprintMetadata.ledger.map((entry) => ({ ...entry.source, kind: "ledger" as const })),
+      ...ledger.map((entry) => ({
+        sourceDocumentId: entry.sourceDocumentId,
+        kind: "ledger" as const,
+        confidentialityLevel: entry.confidentialityLevel,
+        contentVersion: entry.contentVersion ?? 1,
+        checksumSha256: sourceChecksum(entry.checksumSha256)
+      })),
       ...photos.map((photo) => ({
         sourceDocumentId: photo.sourceDocumentId,
         kind: "certificate" as const,
         confidentialityLevel: photo.confidentialityLevel,
+        contentVersion: photo.contentVersion ?? 1,
+        businessContentVersion: photo.businessContentVersion ?? "1",
         checksumSha256: sourceChecksum(photo.checksumSha256)
       }))
     ],
@@ -182,10 +214,16 @@ function ledgerSourceMetadata(
 
 export const LEDGER_METADATA_BATCH_SIZE = 20;
 
-/** A bounded snapshot of readable partitions; hidden metadata is never decoded. */
+/** A bounded metadata snapshot filtered by the finished PDF requirements. */
 export async function readReadableLedgerSourceMetadataBatch(
   tx: Prisma.TransactionClient,
-  employee: { id: string; orgId: string; clearance: number; disabled: boolean },
+  employee: {
+    id: string;
+    orgId: string;
+    clearance: number;
+    disabled: boolean;
+    authorization?: import("@smedc/domain").AuthorizationSnapshot;
+  },
   keys: LedgerPartitionKey[]
 ): Promise<Map<LedgerPartitionKey, LedgerSourceMetadata>> {
   const result = new Map<LedgerPartitionKey, LedgerSourceMetadata>();
@@ -196,11 +234,10 @@ export async function readReadableLedgerSourceMetadataBatch(
   )
     throw new Error("LEDGER_PARTITION_KEY_INVALID");
   keys.forEach((key) => assertLedgerDate(key.purchaseDate));
-  const current = await tx.employee.findFirst({
-    where: { id: employee.id, orgId: employee.orgId, disabled: false }
-  });
-  if (!current) return result;
-  const clearance = Math.min(employee.clearance, current.clearance);
+  const snapshot =
+    employee.authorization ?? (await currentLedgerAuthorization(tx, employee.id, employee.orgId));
+  if (snapshot.disabled || snapshot.mode === "suspended") return result;
+  const clearance = snapshot.clearance;
   function from(batch: LedgerPartitionKey[]) {
     const requested = Prisma.join(
       batch.map(
@@ -217,7 +254,7 @@ export async function readReadableLedgerSourceMetadataBatch(
   }
   const active = Prisma.sql`d.status = 'active' AND d.archived_at IS NULL AND b.status = 'applied' AND b.archived_at IS NULL`;
   function receipts(batch: LedgerPartitionKey[]) {
-    return Prisma.sql`SELECT DISTINCT k.partitionIndex,
+    return Prisma.sql`SELECT DISTINCT k.partitionIndex, k.storeName, r.source_document_id AS sourceDocumentId,
       CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) AS receiptId
       FROM ${from(batch)} WHERE ${active}`;
   }
@@ -236,12 +273,12 @@ export async function readReadableLedgerSourceMetadataBatch(
         WHERE cd.status = 'active' AND cd.archived_at IS NULL
     ) dependencies GROUP BY partitionIndex`);
   const counts = new Map(stats.map((stat) => [Number(stat.partitionIndex), Number(stat.rowCount)]));
-  const visible = keys.filter((_, index) =>
+  let visible = keys.filter((_, index) =>
     stats.some(
       (stat) =>
         Number(stat.partitionIndex) === index &&
         Number(stat.rowCount) > 0 &&
-        Number(stat.hidden) === 0
+        (snapshot.mode === "enabled" || Number(stat.hidden) === 0)
     )
   );
   if (!visible.length) return result;
@@ -251,16 +288,32 @@ export async function readReadableLedgerSourceMetadataBatch(
   }
   const ledger = await tx.$queryRaw<(LedgerMetadataRow & { partitionIndex: number })[]>(Prisma.sql`
     SELECT k.partitionIndex, r.source_document_id AS sourceDocumentId, r.import_batch_id AS batchId,
-      COUNT(*) AS rowCount, d.checksum_sha256 AS checksumSha256, d.confidentiality_level AS confidentialityLevel
+      COUNT(*) AS rowCount, d.checksum_sha256 AS checksumSha256, d.confidentiality_level AS confidentialityLevel, d.content_version AS contentVersion
     FROM ${from(visible)} WHERE ${active}
-    GROUP BY k.partitionIndex, r.source_document_id, r.import_batch_id, d.checksum_sha256, d.confidentiality_level
+    GROUP BY k.partitionIndex, r.source_document_id, r.import_batch_id, d.checksum_sha256, d.confidentiality_level, d.content_version
     LIMIT ${visible.length * (LEDGER_SNAPSHOT_LIMITS.rows + 1)}`);
+  if (snapshot.mode === "enabled") {
+    const allowed: LedgerPartitionKey[] = [];
+    for (const key of visible) {
+      const sources = ledger
+        .filter((row) => Number(row.partitionIndex) === keys.indexOf(key))
+        .map((row) => ({
+          sourceDocumentId: row.sourceDocumentId,
+          kind: "ledger" as const,
+          confidentialityLevel: row.confidentialityLevel,
+          checksumSha256: row.checksumSha256
+        }));
+      if (await canReadLedgerPdf(tx, snapshot, key, sources)) allowed.push(key);
+    }
+    visible = allowed;
+    if (!visible.length) return result;
+  }
   const photos = await tx.$queryRaw<(Photo & { partitionIndex: number })[]>(Prisma.sql`
-    SELECT receipts.partitionIndex, q.source_document_id AS sourceDocumentId, q.receipt_id AS receiptId,
+    SELECT DISTINCT receipts.partitionIndex, q.source_document_id AS sourceDocumentId, q.receipt_id AS receiptId,
       cd.storage_object_key AS storageObjectKey, cd.checksum_sha256 AS checksumSha256,
       cd.content_type AS contentType, cd.byte_size AS byteSize, q.created_at AS uploadedAt,
-      cd.confidentiality_level AS confidentialityLevel
-    FROM ${photoFrom(visible)} WHERE cd.status = 'active' AND cd.archived_at IS NULL
+      cd.confidentiality_level AS confidentialityLevel, cd.content_version AS contentVersion, (SELECT CAST(pr.content_version AS CHAR) FROM business_resources pr WHERE pr.org_id=q.org_id AND pr.document_id=q.source_document_id AND pr.kind='quarantine_certificate' LIMIT 1) AS businessContentVersion
+    FROM ${photoFrom(visible)} WHERE cd.status = 'active' AND cd.archived_at IS NULL ${photoStoreFilter(keys[0]!, Prisma.raw("receipts.storeName"), Prisma.raw("receipts.sourceDocumentId"))}
     ORDER BY receipts.partitionIndex, CAST(q.receipt_id AS BINARY), q.created_at, q.source_document_id
     LIMIT ${visible.length * (LEDGER_SNAPSHOT_LIMITS.certificates + 1)}`);
   for (const key of visible) {
@@ -290,6 +343,11 @@ export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClien
       if (!key.orgId || !key.storeName) throw new Error("LEDGER_PARTITION_KEY_INVALID");
       return prisma.$transaction(
         async (tx) => {
+          const state = await tx.businessAuthorizationState.findUnique({
+            where: { orgId: key.orgId }
+          });
+          if (state?.mode === "suspended") throw new Error("AUTHORIZATION_SUSPENDED");
+          if (state?.mode === "enabled") await assertRegisteredLedgerConversion(tx, key.orgId);
           const filter = factFilter(key);
           const from = factFrom();
           const [count] = await tx.$queryRaw<{ count: bigint }[]>(
@@ -299,7 +357,7 @@ export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClien
             throw new Error("LEDGER_ROW_LIMIT_EXCEEDED");
           const certificateFilter = Prisma.sql`q.org_id = ${key.orgId} AND cd.status = 'active' AND cd.archived_at IS NULL
           AND EXISTS (SELECT 1 FROM ${from} WHERE ${filter}
-            AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) = CAST(q.receipt_id AS BINARY))`;
+            AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) = CAST(q.receipt_id AS BINARY) ${photoStoreFilter(key)})`;
           const [photoStats] = await tx.$queryRaw<
             { count: bigint; bytes: Prisma.Decimal | null; invalid: bigint | null }[]
           >(Prisma.sql`
@@ -318,12 +376,13 @@ export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClien
           const facts = await tx.$queryRaw<Fact[]>(Prisma.sql`
           SELECT r.id, r.payload, r.source_sheet_index AS sourceSheetIndex, r.source_row_number AS sourceRowNumber,
             r.source_document_id AS sourceDocumentId, r.import_batch_id AS importBatchId, d.checksum_sha256 AS checksumSha256,
-            d.confidentiality_level AS confidentialityLevel FROM ${from} WHERE ${filter}
+            d.confidentiality_level AS confidentialityLevel, d.content_version AS contentVersion FROM ${from} WHERE ${filter}
           ORDER BY CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY), r.source_sheet_index, r.source_row_number, r.source_document_id, r.id`);
           const photos = await tx.$queryRaw<Photo[]>(Prisma.sql`
           SELECT q.source_document_id AS sourceDocumentId, q.receipt_id AS receiptId, cd.storage_object_key AS storageObjectKey,
             cd.checksum_sha256 AS checksumSha256, cd.content_type AS contentType, cd.byte_size AS byteSize,
-            q.created_at AS uploadedAt, cd.confidentiality_level AS confidentialityLevel
+            q.created_at AS uploadedAt, cd.confidentiality_level AS confidentialityLevel, cd.content_version AS contentVersion,
+      (SELECT CAST(pr.content_version AS CHAR) FROM business_resources pr WHERE pr.org_id = q.org_id AND pr.document_id = q.source_document_id AND pr.kind = 'quarantine_certificate' LIMIT 1) AS businessContentVersion
           FROM quarantine_certificates q JOIN documents cd ON cd.id = q.source_document_id AND cd.org_id = q.org_id WHERE ${certificateFilter}
           ORDER BY CAST(q.receipt_id AS BINARY), q.created_at, q.source_document_id`);
           const rows: LedgerPrintRow[] = facts.map((fact) => {
@@ -357,6 +416,7 @@ export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClien
                   sourceDocumentId: fact.sourceDocumentId,
                   kind: "ledger",
                   confidentialityLevel: fact.confidentialityLevel,
+                  contentVersion: fact.contentVersion ?? 1,
                   checksumSha256: sourceChecksum(fact.checksumSha256)
                 },
                 batchId: fact.importBatchId,
@@ -380,16 +440,29 @@ export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClien
               sourceDocumentId: photo.sourceDocumentId,
               kind: "certificate" as const,
               confidentialityLevel: photo.confidentialityLevel,
+              contentVersion: photo.contentVersion ?? 1,
+              businessContentVersion: photo.businessContentVersion ?? "1",
               checksumSha256: sourceChecksum(photo.checksumSha256)
             }))
           );
           const fingerprintMetadata = {
-            ledger: [...ledgerMetadata.values()].sort((a, b) =>
-              a.source.sourceDocumentId.localeCompare(b.source.sourceDocumentId)
-            ),
+            ledger: [...ledgerMetadata.values()]
+              .map((entry) => ({
+                ...entry,
+                source: {
+                  sourceDocumentId: entry.source.sourceDocumentId,
+                  kind: entry.source.kind,
+                  contentVersion:
+                    facts.find((fact) => fact.sourceDocumentId === entry.source.sourceDocumentId)
+                      ?.contentVersion ?? 1,
+                  checksumSha256: entry.source.checksumSha256
+                }
+              }))
+              .sort((a, b) => a.source.sourceDocumentId.localeCompare(b.source.sourceDocumentId)),
             certificates: certificates.map((certificate, index) => ({
               ...certificate,
-              confidentialityLevel: photos[index]!.confidentialityLevel
+              contentVersion: photos[index]!.contentVersion ?? 1,
+              businessContentVersion: photos[index]!.businessContentVersion ?? "1"
             }))
           };
           const sourceFingerprint = createHash("sha256")

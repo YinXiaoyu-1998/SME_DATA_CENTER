@@ -16,9 +16,15 @@ const prisma = vi.hoisted(() => ({
     deleteMany: vi.fn()
   },
   document: {
+    findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     create: vi.fn(),
     update: vi.fn()
   },
+  businessResource: { findMany: vi.fn() },
+  employee: { findFirst: vi.fn() },
+  businessAuthorizationState: { upsert: vi.fn() },
+  businessCategory: { findUnique: vi.fn() },
   vipRow: {
     deleteMany: vi.fn()
   },
@@ -97,6 +103,7 @@ function importBatchRecord(
       storageObjectKey: "org/org_1/documents/doc_1/original/data.csv",
       originalFileName: "data.csv",
       confidentialityLevel: 0,
+      uploaderId: "emp_uploader",
       processingRuns
     }
   };
@@ -269,6 +276,30 @@ function useStatefulReservationPrisma(
 describe("Prisma structured import audit provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.employee.findFirst.mockImplementation(
+      async ({
+        where
+      }: {
+        where: { orgId: string; id: string; disabled: boolean; role: string };
+      }) =>
+        where.orgId === "org_1" &&
+        ["emp_1", "emp_2"].includes(where.id) &&
+        where.disabled === false &&
+        where.role === "admin"
+          ? { id: where.id }
+          : null
+    );
+    // Existing audit fixtures represent legacy imports without declared business source attributes.
+    prisma.businessAuthorizationState.upsert.mockResolvedValue({ mode: "legacy", version: 1n });
+    prisma.document.findFirstOrThrow.mockResolvedValue({ sourceMetadata: {} });
+    prisma.businessCategory.findUnique.mockImplementation(
+      async ({ where }: { where: { orgId_key: { key: string } } }) => ({
+        id: `fixed:${where.orgId_key.key}`,
+        kind: "fixed",
+        confidentialityLevel: null,
+        dimensions: []
+      })
+    );
     prisma.$queryRaw.mockResolvedValue([{ id: "org_1" }]);
     prisma.importBatch.findUnique.mockResolvedValue(null);
     prisma.importWindowClaim.findUnique.mockResolvedValue(null);
@@ -295,6 +326,53 @@ describe("Prisma structured import audit provenance", () => {
     prisma.supplierCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.processingRun.create.mockResolvedValue({});
     prisma.$executeRaw.mockResolvedValue(1);
+  });
+
+  it("loads every retained source scope and current lifecycle for import metadata authorization", async () => {
+    const repository = createPrismaStructuredImportRepository({
+      databaseUrl: "mysql://test",
+      transactionTimeoutMs: 1_000,
+      batchInsertSize: 100
+    });
+    prisma.importBatch.findFirst.mockResolvedValue(importBatchRecord("applied"));
+    prisma.document.findFirst.mockResolvedValue({ status: "active", archivedAt: null });
+    prisma.businessResource.findMany.mockResolvedValue([
+      {
+        orgId: "org_1",
+        fileConfidentialityLevel: null,
+        categoryId: "vip",
+        valid: true,
+        scopes: ["A", "B"].map((enterpriseKey) => ({
+          enterpriseKey,
+          ownership: "group",
+          storeName: null,
+          dimensions: []
+        }))
+      }
+    ]);
+    const active = await repository.findImportBatch("org_1", "imp_1");
+    expect(active).toMatchObject({
+      uploaderId: "emp_uploader",
+      readRequirements: [
+        {
+          orgId: "org_1",
+          categoryId: "vip",
+          valid: true,
+          scopes: [{ enterpriseKey: "A" }, { enterpriseKey: "B" }]
+        }
+      ]
+    });
+    expect(prisma.businessResource.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orgId: "org_1", sourceDocumentId: "doc_1", kind: "source_fragment" }
+      })
+    );
+    prisma.document.findFirst.mockResolvedValue({ status: "archived", archivedAt: new Date() });
+    expect((await repository.findImportBatch("org_1", "imp_1"))?.readRequirements?.[0]?.valid).toBe(
+      false
+    );
+    prisma.businessResource.findMany.mockResolvedValue([]);
+    expect((await repository.findImportBatch("org_1", "imp_1"))?.readRequirements).toEqual([]);
   });
 
   it("persists the complete audit context when reserving a structured import", async () => {

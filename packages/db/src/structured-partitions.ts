@@ -1,3 +1,15 @@
+import type { AuthorizationSnapshot } from "@smedc/domain";
+import { compileStructuredReadScope } from "./business-authorization-sql.js";
+import {
+  bindHistoricalSupplementIntent,
+  readHistoricalSupplementIntent,
+  ResourceAttributesError
+} from "./business-authorization.js";
+import {
+  lockAuthorizationPublication,
+  persistPartitionReadRequirement,
+  requireCurrentUploadAdmin
+} from "./source-read-requirements.js";
 import { enqueueStorageGarbage, listDueStorageGarbage } from "./storage-garbage.js";
 import { randomBytes } from "node:crypto";
 import { createDatabaseAdapter } from "./adapter.js";
@@ -110,6 +122,7 @@ export interface PartitionImportJobRecord {
 
 export interface StructuredPartitionRepository {
   reserveUpload(input: {
+    historicalSupplementReason?: string;
     id?: string;
     orgId: string;
     uploaderId: string;
@@ -143,7 +156,8 @@ export interface StructuredPartitionRepository {
     errorCode?: string;
     errorSummary?: string;
     validationErrors?: unknown[];
-  }): Promise<void>;
+    uploaderId?: string;
+  }): Promise<boolean | void>;
   listExpiredUploads(now: Date, limit: number): Promise<ExpiredPartitionUpload[]>;
   publishSourceAtomically(input: {
     orgId: string;
@@ -154,6 +168,7 @@ export interface StructuredPartitionRepository {
   listReadableManifestRows(input: {
     orgId: string;
     clearance: number;
+    authorization?: AuthorizationSnapshot;
     dataset: "business" | "dishes";
     enterpriseKey: string;
     startDate: string;
@@ -165,6 +180,7 @@ export interface StructuredPartitionRepository {
   listCoverage?(input: {
     orgId: string;
     clearance: number;
+    authorization?: AuthorizationSnapshot;
     dataset: "business" | "dishes";
     enterpriseKey?: string;
     storeNameContains?: string[];
@@ -265,27 +281,51 @@ export function createPrismaStructuredPartitionRepository(
       if (existing)
         return existingReservation(existing, input.requestFingerprint, input.uploaderId);
       try {
-        const created = await prisma.partitionImportJob.create({
-          data: {
-            id: input.id ?? createId("pjob"),
-            orgId: input.orgId,
-            uploaderId: input.uploaderId,
-            dataset: input.dataset as PartitionDataset,
-            enterpriseKey: input.enterpriseKey,
-            enterpriseName: input.enterpriseName,
-            confidentialityLevel: input.confidentialityLevel,
-            idempotencyKey: input.idempotencyKey,
-            requestFingerprint: input.requestFingerprint,
-            originalFileName: input.originalFileName,
-            mediaType: input.mediaType,
-            sourceByteSize: input.sourceByteSize,
-            sourceChecksumSha256: input.sourceChecksumSha256,
-            sourceStartDate: parseBusinessDate(input.sourceStartDate),
-            sourceEndDate: parseBusinessDate(input.sourceEndDate),
-            expiresAt: input.expiresAt,
-            temporaryObjectKey: input.temporaryObjectKey,
-            multipartUploadId: input.multipartUploadId
-          }
+        const created = await prisma.$transaction(async (tx) => {
+          await requireCurrentUploadAdmin(tx, input.orgId, input.uploaderId);
+          const historicalSupplement = await bindHistoricalSupplementIntent(
+            tx,
+            input.orgId,
+            input.uploaderId,
+            input.historicalSupplementReason,
+            [input.sourceStartDate, input.sourceEndDate]
+          );
+          const job = await tx.partitionImportJob.create({
+            data: {
+              id: input.id ?? createId("pjob"),
+              orgId: input.orgId,
+              uploaderId: input.uploaderId,
+              dataset: input.dataset as PartitionDataset,
+              enterpriseKey: input.enterpriseKey,
+              enterpriseName: input.enterpriseName,
+              confidentialityLevel: input.confidentialityLevel,
+              idempotencyKey: input.idempotencyKey,
+              requestFingerprint: input.requestFingerprint,
+              originalFileName: input.originalFileName,
+              mediaType: input.mediaType,
+              sourceByteSize: input.sourceByteSize,
+              sourceChecksumSha256: input.sourceChecksumSha256,
+              sourceStartDate: parseBusinessDate(input.sourceStartDate),
+              sourceEndDate: parseBusinessDate(input.sourceEndDate),
+              expiresAt: input.expiresAt,
+              temporaryObjectKey: input.temporaryObjectKey,
+              multipartUploadId: input.multipartUploadId
+            }
+          });
+          if (historicalSupplement)
+            await tx.auditLog.create({
+              data: {
+                orgId: input.orgId,
+                actorEmployeeId: input.uploaderId,
+                action: "partition.historical_supplement.requested",
+                targetType: "partition_import_job",
+                targetId: job.id,
+                result: "succeeded",
+                clientSource: "admin",
+                metadata: { historicalSupplement: { ...historicalSupplement } }
+              }
+            });
+          return job;
         });
         return { state: "created", job: toJobRecord(created) };
       } catch (error) {
@@ -345,17 +385,23 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async finishJob(input) {
-      await prisma.partitionImportJob.updateMany({
+      const changed = await prisma.partitionImportJob.updateMany({
         where: {
           id: input.jobId,
           orgId: input.orgId,
-          status: {
-            in: [
-              PartitionImportJobStatus.uploading,
-              PartitionImportJobStatus.queued,
-              PartitionImportJobStatus.processing
-            ]
-          }
+          ...(input.uploaderId
+            ? { uploaderId: input.uploaderId, uploader: { orgId: input.orgId, disabled: false } }
+            : {}),
+          status:
+            input.status === "cancelled"
+              ? PartitionImportJobStatus.uploading
+              : {
+                  in: [
+                    PartitionImportJobStatus.uploading,
+                    PartitionImportJobStatus.queued,
+                    PartitionImportJobStatus.processing
+                  ]
+                }
         },
         data: {
           status: input.status as PartitionImportJobStatus,
@@ -365,6 +411,7 @@ export function createPrismaStructuredPartitionRepository(
           finishedAt: new Date()
         }
       });
+      return changed.count === 1;
     },
 
     async listExpiredUploads(now, limit) {
@@ -409,6 +456,31 @@ export function createPrismaStructuredPartitionRepository(
                 status: PartitionImportJobStatus.processing
               }
             });
+            const authorizationState = await lockAuthorizationPublication(tx, input.orgId);
+            const historicalRequest = await tx.auditLog.findFirst({
+              where: {
+                orgId: input.orgId,
+                targetType: "partition_import_job",
+                targetId: job.id,
+                action: "partition.historical_supplement.requested",
+                result: "succeeded"
+              },
+              orderBy: { createdAt: "asc" }
+            });
+            const metadata = historicalRequest?.metadata;
+            const historicalSupplement = readHistoricalSupplementIntent(
+              metadata && typeof metadata === "object" && !Array.isArray(metadata)
+                ? metadata["historicalSupplement"]
+                : undefined
+            );
+            if (
+              historicalSupplement &&
+              (historicalSupplement.actorEmployeeId !== job.uploaderId ||
+                historicalRequest?.actorEmployeeId !== job.uploaderId)
+            )
+              throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
+            if (!input.candidates.length || input.totalRowCount <= 0n)
+              throw new StructuredPartitionRepositoryError("PARTITION_INVALID_SOURCE");
             const garbage = new Set<string>();
             for (const candidate of sorted) {
               const identity = partitionIdentityWhere(candidate);
@@ -438,6 +510,30 @@ export function createPrismaStructuredPartitionRepository(
                   where: { id: current!.id },
                   data: { ...partitionMetadata(candidate, job.id), objectKey: candidate.objectKey }
                 });
+              }
+              {
+                const persisted = await tx.structuredPartition.findUniqueOrThrow({
+                  where: {
+                    orgId_enterpriseKey_dataset_storeKey_businessDate: {
+                      ...identity,
+                      dataset: identity.dataset as PartitionDataset
+                    }
+                  }
+                });
+                await persistPartitionReadRequirement(
+                  tx,
+                  {
+                    orgId: input.orgId,
+                    partitionId: persisted.id,
+                    dataset: persisted.dataset,
+                    enterpriseKey: persisted.enterpriseKey,
+                    storeName: persisted.storeName,
+                    workerId: job.id,
+                    businessDate: persisted.businessDate.toISOString().slice(0, 10),
+                    historicalSupplement
+                  },
+                  authorizationState
+                );
               }
             }
             for (const objectKey of garbage) {
@@ -476,7 +572,11 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async listReadableManifestRows(input) {
-      if (input.storeNameContains !== undefined) {
+      if (
+        input.storeNameContains !== undefined ||
+        input.authorization?.mode === "enabled" ||
+        input.authorization?.mode === "suspended"
+      ) {
         return prisma.$queryRaw<PartitionManifestRow[]>(Prisma.sql`
           SELECT business_date AS businessDate, merchant_id AS merchantId, store_name AS storeName,
             row_count AS rowCount, byte_size AS byteSize, checksum_sha256 AS checksumSha256, object_key AS objectKey
@@ -484,7 +584,7 @@ export function createPrismaStructuredPartitionRepository(
             AND business_date >= ${parseBusinessDate(input.startDate)}
             AND business_date <= ${parseBusinessDate(input.endDate)}
             ${input.storeIds?.length ? Prisma.sql`AND merchant_id IN (${Prisma.join(input.storeIds)})` : Prisma.empty}
-            AND ${literalStoreNameScope(input.storeNameContains)}
+            ${input.storeNameContains ? Prisma.sql`AND ${literalStoreNameScope(input.storeNameContains)}` : Prisma.empty}
           ORDER BY business_date ASC, store_key ASC LIMIT ${input.maxPartitions + 1}
         `);
       }
@@ -516,8 +616,12 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async listCoverage(input) {
-      if (input.storeNameContains !== undefined) {
-        const where = Prisma.sql`${readablePartitionScope(input)} AND ${literalStoreNameScope(input.storeNameContains)}`;
+      if (
+        input.storeNameContains !== undefined ||
+        input.authorization?.mode === "enabled" ||
+        input.authorization?.mode === "suspended"
+      ) {
+        const where = Prisma.sql`${readablePartitionScope(input)} ${input.storeNameContains ? Prisma.sql`AND ${literalStoreNameScope(input.storeNameContains)}` : Prisma.empty}`;
         const [enterprises, stores] = await Promise.all([
           prisma.$queryRaw<
             Array<{
@@ -749,10 +853,19 @@ function isUniqueConstraintError(error: unknown): boolean {
 export function readablePartitionScope(input: {
   orgId: string;
   clearance: number;
+  authorization?: AuthorizationSnapshot;
   dataset: "business" | "dishes";
   enterpriseKey?: string;
 }): Prisma.Sql {
-  return Prisma.sql`org_id = ${input.orgId} AND confidentiality_level <= ${input.clearance} AND dataset = ${input.dataset}
+  const authorization = input.authorization;
+  const permission =
+    authorization && (authorization.mode === "enabled" || authorization.mode === "suspended")
+      ? compileStructuredReadScope(authorization, "partition", input.dataset)
+      : null;
+  const scope = permission
+    ? Prisma.sql(permission.sql.split("?"), ...permission.params)
+    : Prisma.sql`confidentiality_level <= ${input.clearance}`;
+  return Prisma.sql`org_id = ${input.orgId} AND ${scope} AND dataset = ${input.dataset}
     ${input.enterpriseKey !== undefined ? Prisma.sql`AND enterprise_key = ${input.enterpriseKey}` : Prisma.empty}`;
 }
 

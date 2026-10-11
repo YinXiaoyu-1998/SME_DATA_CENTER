@@ -3,6 +3,19 @@ import { createPrismaSourceDocumentRepository } from "./source-documents.js";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 
 const prisma = vi.hoisted(() => ({ document: { findMany: vi.fn() }, $disconnect: vi.fn() }));
+vi.mock("@smedc/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@smedc/db")>()),
+  createBusinessAuthorizationRepository: () => ({
+    loadAuthorizationSnapshot: async () => ({
+      employeeId: "synthetic",
+      orgId: "org_synthetic",
+      clearance: 1,
+      mode: "legacy",
+      authorizationVersion: "7",
+      disabled: false
+    })
+  })
+}));
 vi.mock("@prisma/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@prisma/client")>()),
   PrismaClient: class {
@@ -20,7 +33,7 @@ const employee = {
 
 describe("source document classification", () => {
   afterEach(() => vi.clearAllMocks());
-  it("loads ledger ImportBatch classification regardless of application state with org/clearance checks", async () => {
+  it("excludes raw ledger originals after loading classification with current org/clearance checks", async () => {
     prisma.document.findMany.mockImplementation(async (query) => {
       expect(query.where).toMatchObject({
         orgId: "org_synthetic",
@@ -50,10 +63,7 @@ describe("source document classification", () => {
       employee,
       sourceDocumentIds: ["ledger"]
     });
-    expect(records[0]).toMatchObject({
-      sourceDocumentId: "ledger",
-      importDataset: "delivery_ledger"
-    });
+    expect(records).toEqual([]);
     await repository.disconnect?.();
   });
 });

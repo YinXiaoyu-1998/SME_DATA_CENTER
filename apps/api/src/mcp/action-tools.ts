@@ -13,7 +13,18 @@ import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js
 
 export const ACTION_MCP_TOOL_NAMES = [
   "archive_quarantine_certificates",
-  "prepare_ledger_pdf_download"
+  "prepare_ledger_pdf_download",
+  "update_account_permissions",
+  "create_evidence_category",
+  "update_business_category",
+  "create_business_dimension",
+  "update_business_dimension",
+  "create_business_dimension_value",
+  "update_business_dimension_value",
+  "update_business_store",
+  "update_evidence_document_attributes",
+  "activate_authorization_cutover",
+  "suspend_authorization_reads"
 ] as const satisfies readonly SmedcMcpToolName[];
 
 type ActionMcpToolName = (typeof ACTION_MCP_TOOL_NAMES)[number];
@@ -38,6 +49,7 @@ export function createActionMcpToolHandlers(context: ApiDelegationContext): Smed
         return delegateJsonApiRequest(
           {
             ...context,
+            audit: mcpContext.audit ?? context.audit,
             abortSignal: mcpContext.abortSignal ?? context.abortSignal
           },
           routeForActionTool(toolName, parsed.data)
@@ -52,6 +64,84 @@ function routeForActionTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "update_account_permissions":
+      return {
+        method: "PATCH",
+        path: `/v1/admin/permissions/accounts/${encodeURIComponent(String(input["employeeId"]))}`,
+        body: Object.fromEntries(
+          Object.entries(input).filter(([key]) => !["employeeId"].includes(key))
+        )
+      };
+    case "create_evidence_category":
+      return {
+        method: "POST",
+        path: `/v1/admin/permissions/categories`,
+        body: input
+      };
+    case "update_business_category":
+      return {
+        method: "PATCH",
+        path: `/v1/admin/permissions/categories/${encodeURIComponent(String(input["categoryId"]))}`,
+        body: Object.fromEntries(
+          Object.entries(input).filter(([key]) => !["categoryId"].includes(key))
+        )
+      };
+    case "create_business_dimension":
+      return {
+        method: "POST",
+        path: `/v1/admin/permissions/dimensions`,
+        body: input
+      };
+    case "update_business_dimension":
+      return {
+        method: "PATCH",
+        path: `/v1/admin/permissions/dimensions/${encodeURIComponent(String(input["dimensionId"]))}`,
+        body: Object.fromEntries(
+          Object.entries(input).filter(([key]) => !["dimensionId"].includes(key))
+        )
+      };
+    case "create_business_dimension_value":
+      return {
+        method: "POST",
+        path: `/v1/admin/permissions/dimensions/${encodeURIComponent(String(input["dimensionId"]))}/values`,
+        body: Object.fromEntries(
+          Object.entries(input).filter(([key]) => !["dimensionId"].includes(key))
+        )
+      };
+    case "update_business_dimension_value":
+      return {
+        method: "PATCH",
+        path: `/v1/admin/permissions/dimensions/${encodeURIComponent(String(input["dimensionId"]))}/values/${encodeURIComponent(String(input["valueId"]))}`,
+        body: Object.fromEntries(
+          Object.entries(input).filter(([key]) => !["dimensionId", "valueId"].includes(key))
+        )
+      };
+    case "update_business_store":
+      return {
+        method: "POST",
+        path: `/v1/admin/permissions/stores`,
+        body: input
+      };
+    case "update_evidence_document_attributes":
+      return {
+        method: "PATCH",
+        path: `/v1/admin/permissions/documents/${encodeURIComponent(String(input["documentId"]))}`,
+        body: Object.fromEntries(
+          Object.entries(input).filter(([key]) => !["documentId"].includes(key))
+        )
+      };
+    case "activate_authorization_cutover":
+      return {
+        method: "POST",
+        path: `/v1/admin/permissions/cutover/activate`,
+        body: input
+      };
+    case "suspend_authorization_reads":
+      return {
+        method: "POST",
+        path: `/v1/admin/permissions/cutover/suspend`,
+        body: input
+      };
     case "prepare_ledger_pdf_download":
       return { method: "POST", path: "/v1/ledger-pdfs/downloads", body: input };
     case "archive_quarantine_certificates":

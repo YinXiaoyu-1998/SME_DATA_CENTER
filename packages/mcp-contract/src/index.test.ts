@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import { STRUCTURED_QUERY_LIMITS } from "@smedc/domain";
 import {
@@ -26,44 +25,17 @@ const contractsByName = new Map(
   SMEDC_MCP_TOOL_CONTRACTS.map((contract) => [contract.name, contract])
 );
 
-it("marks only the existing upload contracts admin-only without changing their schemas", () => {
+it("retains server admin-only upload authorization and explains fixed category authority", () => {
   expect(FILE_UPLOAD_ADMIN_REQUIRED_CODE).toBe("UPLOAD_ADMIN_REQUIRED");
   expect(FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE).toBe("File upload requires the admin role.");
-  const uploads = SMEDC_MCP_TOOL_CONTRACTS.filter((tool) => tool.name.startsWith("upload_"));
-  expect(uploads.map((tool) => tool.name)).toEqual([
-    "upload_structured_dataset",
-    "upload_evidence_document",
-    "upload_quarantine_certificate"
-  ]);
-  // Release compatibility fingerprints captured from the pre-change public contracts.
+  for (const tool of SMEDC_MCP_TOOL_CONTRACTS.filter((tool) => tool.name.startsWith("upload_")))
+    expect(tool.description).toContain("Requires the admin role.");
   expect(
-    uploads.map((tool) =>
-      createHash("sha256")
-        .update(JSON.stringify(z.toJSONSchema(tool.inputSchema)))
-        .digest("hex")
-    )
-  ).toEqual([
-    "11c800833e21cd941035dcc5c3e0d038338f244754947699868beaa94a85727c",
-    "c0f9fcfeaad06bf464a5fdff0a67f510fa0838b328bd9486add970b4a4714aad",
-    "41228c8beb97b8fab72e83301e87334180b37ee2d516f804116c767d4e00e9cb"
-  ]);
-  for (const tool of uploads) expect(tool.description).toContain("Requires the admin role.");
-  expect(
-    createHash("sha256")
-      .update(
-        JSON.stringify(
-          SMEDC_MCP_TOOL_CONTRACTS.filter(
-            (tool) =>
-              tool.name !== "prepare_structured_partition_download" &&
-              tool.name !== "get_structured_partition_download_status"
-          )
-            .slice(0, 16)
-            .filter((tool) => !tool.name.startsWith("upload_"))
-            .map((tool) => [tool.name, tool.description])
-        )
-      )
-      .digest("hex")
-  ).toBe("1170cf08029144775da774da11f9d29fa0ceb44a9e04d5ff8e5f630f0d6f8c60");
+    (
+      contractsByName.get("upload_structured_dataset")?.inputShape["confidentialityLevel"] as
+        z.ZodType | undefined
+    )?.description
+  ).toContain("cannot override");
 });
 
 const validInputs = {
@@ -110,6 +82,8 @@ const validInputs = {
     confidentialityLevel: 0
   },
   upload_evidence_document: {
+    categoryId: "memo",
+    scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
     file: {
       name: "sop.md",
       mediaType: "text/markdown",
@@ -121,6 +95,8 @@ const validInputs = {
     confidentialityLevel: 0
   },
   upload_quarantine_certificate: {
+    enterpriseName: "Enterprise",
+    storeName: "Store A ",
     file: {
       name: "quarantine.png",
       mediaType: "image/png",
@@ -163,7 +139,58 @@ const validInputs = {
     enterpriseName: "Synthetic",
     startDate: "20260701",
     endDate: "20260731"
-  }
+  },
+  get_my_permissions: {},
+  list_account_permissions: {},
+  get_account_permissions: { employeeId: "actor" },
+  update_account_permissions: {
+    employeeId: "actor",
+    expectedVersion: "7",
+    clearance: 2,
+    grants: []
+  },
+  list_business_categories: {},
+  create_evidence_category: {
+    id: "memo",
+    name: "Memo",
+    expectedVersion: "7",
+    ownerships: ["group"],
+    requiredDimensionIds: []
+  },
+  update_business_category: {
+    categoryId: "business",
+    name: "Business",
+    expectedVersion: "7",
+    confidentialityLevel: 1
+  },
+  list_business_dimensions: {},
+  create_business_dimension: { id: "region", name: "Region", expectedVersion: "7" },
+  update_business_dimension: { dimensionId: "region", name: "Region", expectedVersion: "7" },
+  create_business_dimension_value: {
+    dimensionId: "region",
+    id: "east",
+    name: "East",
+    expectedVersion: "7"
+  },
+  update_business_dimension_value: {
+    dimensionId: "region",
+    valueId: "east",
+    name: "East",
+    expectedVersion: "7"
+  },
+  list_business_stores: {},
+  update_business_store: { enterpriseKey: "enterprise", name: "Store A ", expectedVersion: "7" },
+  update_evidence_document_attributes: {
+    documentId: "doc",
+    expectedVersion: "7",
+    categoryId: "memo",
+    fileConfidentialityLevel: 1,
+    scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }]
+  },
+  get_evidence_document_management_status: { documentId: "doc" },
+  prepare_authorization_cutover: {},
+  activate_authorization_cutover: { expectedVersion: "7", confirm: true },
+  suspend_authorization_reads: { expectedVersion: "7", confirm: true }
 } satisfies Record<SmedcMcpToolName, Record<string, unknown>>;
 
 const invalidInputCases = [
@@ -502,6 +529,32 @@ const invalidInputCases = [
       { label: "missing required selectors", input: {} },
       { label: "organization selector", input: { ...validInputs[tool], orgId: "other-org" } }
     ]
+  })),
+  ...(
+    [
+      "get_my_permissions",
+      "list_account_permissions",
+      "get_account_permissions",
+      "update_account_permissions",
+      "list_business_categories",
+      "create_evidence_category",
+      "update_business_category",
+      "list_business_dimensions",
+      "create_business_dimension",
+      "update_business_dimension",
+      "create_business_dimension_value",
+      "update_business_dimension_value",
+      "list_business_stores",
+      "update_business_store",
+      "update_evidence_document_attributes",
+      "get_evidence_document_management_status",
+      "prepare_authorization_cutover",
+      "activate_authorization_cutover",
+      "suspend_authorization_reads"
+    ] as const
+  ).map((tool) => ({
+    tool,
+    cases: [{ label: "organization selector", input: { ...validInputs[tool], orgId: "other-org" } }]
   }))
 ] satisfies Array<{
   tool: SmedcMcpToolName;
@@ -532,7 +585,26 @@ describe("SMEDC MCP contract", () => {
       "describe_ledger_pdf_coverage",
       "get_ledger_pdf_request_status",
       "prepare_ledger_pdf_download",
-      "get_ledger_pdf_download_url"
+      "get_ledger_pdf_download_url",
+      "get_my_permissions",
+      "list_account_permissions",
+      "get_account_permissions",
+      "update_account_permissions",
+      "list_business_categories",
+      "create_evidence_category",
+      "update_business_category",
+      "list_business_dimensions",
+      "create_business_dimension",
+      "update_business_dimension",
+      "create_business_dimension_value",
+      "update_business_dimension_value",
+      "list_business_stores",
+      "update_business_store",
+      "update_evidence_document_attributes",
+      "get_evidence_document_management_status",
+      "prepare_authorization_cutover",
+      "activate_authorization_cutover",
+      "suspend_authorization_reads"
     ]);
     expect(
       SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
@@ -1445,4 +1517,99 @@ it("registers prepare/status tools and accepts only mutually exclusive download 
     download.safeParse({ ...validInputs.download_structured_partitions, requestId: "pd_1" }).success
   ).toBe(false);
   expect(download.safeParse({ requestId: "pd_1", storeNameContains: ["A"] }).success).toBe(false);
+});
+
+describe("current business authorization contracts", () => {
+  it("exposes server-controlled permission administration instead of arbitrary API or SQL dispatch", () => {
+    const names = [
+      "get_my_permissions",
+      "list_account_permissions",
+      "get_account_permissions",
+      "update_account_permissions",
+      "list_business_categories",
+      "create_evidence_category",
+      "update_business_category",
+      "list_business_dimensions",
+      "create_business_dimension",
+      "update_business_dimension",
+      "create_business_dimension_value",
+      "update_business_dimension_value",
+      "list_business_stores",
+      "update_business_store",
+      "update_evidence_document_attributes",
+      "get_evidence_document_management_status",
+      "prepare_authorization_cutover",
+      "activate_authorization_cutover",
+      "suspend_authorization_reads"
+    ];
+    expect(SMEDC_MCP_TOOL_NAMES).toEqual(expect.arrayContaining(names));
+    for (const name of names) {
+      const contract = SMEDC_MCP_TOOL_CONTRACTS.find((c) => String(c.name) === name)!;
+      expect(
+        contract.inputSchema.safeParse({ api: "/anything", sql: "SELECT *", orgId: "foreign" })
+          .success
+      ).toBe(false);
+    }
+  });
+  it("requires explicit evidence business attributes and an exact single store for photos", () => {
+    const evidence = contractsByName.get("upload_evidence_document")!;
+    const complete = {
+      ...validInputs.upload_evidence_document,
+      categoryId: "memo",
+      scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }]
+    };
+    expect(evidence.inputSchema.safeParse(complete).success).toBe(true);
+    expect(
+      evidence.inputSchema.safeParse({ ...complete, confidentialityLevel: undefined }).success
+    ).toBe(false);
+    const photo = contractsByName.get("upload_quarantine_certificate")!;
+    expect(
+      photo.inputSchema.safeParse({
+        ...validInputs.upload_quarantine_certificate,
+        enterpriseName: "Enterprise",
+        storeName: "Store A "
+      }).success
+    ).toBe(true);
+    expect(
+      photo.inputSchema.safeParse({
+        ...validInputs.upload_quarantine_certificate,
+        storeNames: ["A", "B"]
+      }).success
+    ).toBe(false);
+  });
+});
+
+it("validates complete actual evidence dimension values and controlled fixed-category edits", () => {
+  const evidence = contractsByName.get("upload_evidence_document")!.inputSchema;
+  const scope = {
+    enterpriseKey: "enterprise",
+    ownership: "store",
+    storeName: "Store A ",
+    dimensions: { project: "X" }
+  };
+  expect(
+    evidence.safeParse({ ...validInputs.upload_evidence_document, scopes: [scope] }).success
+  ).toBe(true);
+  expect(
+    evidence.safeParse({
+      ...validInputs.upload_evidence_document,
+      scopes: [{ ...scope, dimensions: { project: ["X", "Y"] } }]
+    }).success
+  ).toBe(false);
+  const category = contractsByName.get("update_business_category")!.inputSchema;
+  expect(
+    category.safeParse({
+      ...validInputs.update_business_category,
+      ownerships: ["store"],
+      requiredDimensionIds: []
+    }).success
+  ).toBe(false);
+  expect(
+    category.safeParse({
+      ...validInputs.update_business_category,
+      confidentialityLevel: undefined,
+      ownerships: ["group"],
+      requiredDimensionIds: ["project"]
+    }).success
+  ).toBe(true);
 });

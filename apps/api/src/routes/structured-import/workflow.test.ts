@@ -30,6 +30,12 @@ describe("structured import workflow metadata", () => {
 
     expect(structuredImportFingerprint(input)).toBe(expectedFingerprint);
     expect(
+      structuredImportFingerprint({
+        ...input,
+        historicalSupplementReason: "Historical catalog correction"
+      })
+    ).not.toBe(expectedFingerprint);
+    expect(
       canonicalStructuredImportFileName({
         dataset: "dish_catalog",
         enterpriseName: "Synthetic",

@@ -1,3 +1,4 @@
+import { legacyPermissionService } from "../business-authorization.test-support.js";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { PHASE3_ERROR_CODES, type AuthenticatedEmployee } from "@smedc/domain";
@@ -33,6 +34,7 @@ function context(
   }
 ): ApiServerContext {
   return {
+    permissions: () => legacyPermissionService(employee),
     environment: {},
     delegationProof: "proof",
     runtimeLimits: {} as ApiServerContext["runtimeLimits"],
@@ -104,23 +106,7 @@ describe("structured query routes", () => {
     const ledger = present
       .json()
       .datasets.find((dataset: { dataset: string }) => dataset.dataset === "delivery_ledger");
-    expect(ledger?.presentation).toEqual({
-      id: "food-purchase-ledger-cn-v2",
-      title: "食品经营单位进货台帐",
-      columns: [
-        { canonicalName: "receipt_id", displayName: "收货单号" },
-        { canonicalName: "item_name", displayName: "食品名称" },
-        { canonicalName: "specification", displayName: "规格" },
-        { canonicalName: "purchase_quantity", displayName: "进货数量" },
-        { canonicalName: "purchase_amount", displayName: "进货金额" },
-        { canonicalName: "production_date_or_batch", displayName: "生产日期或生产批号" },
-        { canonicalName: "shelf_life", displayName: "保质期" },
-        { canonicalName: "supplier_name", displayName: "供货单位名称" },
-        { canonicalName: "supplier_unit_address", displayName: "供货单位地址" },
-        { canonicalName: "supplier_contact_phone", displayName: "供货单位联系方式" },
-        { canonicalName: "purchase_date", displayName: "进货日期" }
-      ]
-    });
+    expect(ledger).toBeUndefined();
   });
 
   it("executes compiled structured queries and preserves Phase 3 error envelopes", async () => {
@@ -181,7 +167,7 @@ describe("structured query routes", () => {
     });
   });
 
-  it("returns the ledger presentation profile for delivery-ledger detail queries only", async () => {
+  it("rejects raw ledger detail and aggregates", async () => {
     const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
     app = createApp(dependencies);
 
@@ -207,30 +193,9 @@ describe("structured query routes", () => {
       }
     });
 
-    expect(detail.statusCode).toBe(200);
-    expect(detail.json()).toMatchObject({
-      dataset: "delivery_ledger",
-      mode: "detail",
-      presentation: {
-        id: "food-purchase-ledger-cn-v2",
-        title: "食品经营单位进货台帐"
-      }
-    });
-    expect(detail.json().presentation.columns).toEqual([
-      { canonicalName: "receipt_id", displayName: "收货单号" },
-      { canonicalName: "item_name", displayName: "食品名称" },
-      { canonicalName: "specification", displayName: "规格" },
-      { canonicalName: "purchase_quantity", displayName: "进货数量" },
-      { canonicalName: "purchase_amount", displayName: "进货金额" },
-      { canonicalName: "production_date_or_batch", displayName: "生产日期或生产批号" },
-      { canonicalName: "shelf_life", displayName: "保质期" },
-      { canonicalName: "supplier_name", displayName: "供货单位名称" },
-      { canonicalName: "supplier_unit_address", displayName: "供货单位地址" },
-      { canonicalName: "supplier_contact_phone", displayName: "供货单位联系方式" },
-      { canonicalName: "purchase_date", displayName: "进货日期" }
-    ]);
-    expect(aggregate.statusCode).toBe(200);
-    expect(aggregate.json()).not.toHaveProperty("presentation");
+    expect(detail.statusCode).toBe(403);
+    expect(aggregate.statusCode).toBe(403);
+    expect(detail.json().error.code).toBe("LEDGER_DETAIL_DISABLED");
   });
 
   it("serves dataset coverage through the same authenticated structured route shell", async () => {
@@ -401,5 +366,78 @@ it("rejects partition-only scope on row-query coverage", async () => {
     expect(response.statusCode).toBe(400);
   } finally {
     await scopeApp.close();
+  }
+});
+
+it("uses current granted category rules and rejects cursors after authorization changes", async () => {
+  let version = "1";
+  const compiledQueries: Parameters<StructuredQueryRepository["execute"]>[0][] = [];
+  const dependencies = context({
+    execute: async (compiled) => {
+      compiledQueries.push(compiled);
+      return { rows: [{ member_id: "synthetic" }], hasMore: true };
+    }
+  });
+  const service = legacyPermissionService(employee);
+  service.current = async () => ({
+    orgId: employee.orgId,
+    employeeId: employee.id,
+    role: "employee",
+    disabled: false,
+    clearance: 0,
+    mode: "enabled",
+    authorizationVersion: version,
+    categories: [
+      {
+        id: "custom-vip-id",
+        key: "vip",
+        kind: "fixed",
+        confidentialityLevel: 0,
+        ownerships: ["group"],
+        requiredDimensionIds: []
+      }
+    ],
+    grants: [
+      {
+        id: "grant",
+        orgId: employee.orgId,
+        enterpriseKey: "precise-enterprise",
+        categoryIds: ["custom-vip-id"],
+        ownership: "group",
+        dimensions: {}
+      }
+    ]
+  });
+  dependencies.permissions = () => service;
+  const app = createApp(dependencies);
+  try {
+    const headers = { authorization: "Bearer valid" };
+    const discovery = await app.inject({ method: "GET", url: "/v1/structured/datasets", headers });
+    expect(
+      discovery.json().datasets.map((dataset: { dataset: string }) => dataset.dataset)
+    ).toEqual(["vip"]);
+    const query = { dataset: "vip", select: ["member_id"], page: { limit: 1 } };
+    const first = await app.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers,
+      payload: query
+    });
+    expect(first.statusCode).toBe(200);
+    expect(compiledQueries[0]!.sql).toContain("EXISTS (SELECT 1 FROM business_resources");
+    expect(compiledQueries[0]!.sql).not.toContain("d.confidentiality_level <= ?");
+    expect(compiledQueries[0]!.sql).not.toContain("precise-enterprise");
+    expect(compiledQueries[0]!.params).toContain("precise-enterprise");
+    version = "2";
+    const next = await app.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers,
+      payload: { ...query, page: { limit: 1, cursor: first.json().nextCursor } }
+    });
+    expect(next.json().error.code).toBe("INVALID_CURSOR");
+    expect(compiledQueries).toHaveLength(1);
+  } finally {
+    await app.close();
   }
 });

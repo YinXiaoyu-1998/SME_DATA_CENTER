@@ -120,6 +120,7 @@ describe("evidence indexer", () => {
     expect(result.chunks[0]?.qdrantPointId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
     );
+    expect(points.every((point) => !("confidentialityLevel" in point.payload))).toBe(true);
     expect(points).toHaveLength(1);
     const firstPoint = points[0];
     expect(firstPoint).toBeDefined();

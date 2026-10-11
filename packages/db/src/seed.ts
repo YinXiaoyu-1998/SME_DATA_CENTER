@@ -1,6 +1,9 @@
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { EmployeeRole, PrismaClient, SkillEntryStatus } from "@prisma/client";
 
+import { initializeFixedBusinessCategories } from "./fixed-business-categories.js";
+import { lockAuthorizationPublication } from "./source-read-requirements.js";
+
 const adapter = new PrismaMariaDb(process.env["DATABASE_URL"] ?? "");
 const prisma = new PrismaClient({ adapter });
 
@@ -71,6 +74,11 @@ async function main() {
     where: { id: org.id },
     create: org,
     update: { name: org.name }
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await lockAuthorizationPublication(tx, org.id);
+    await initializeFixedBusinessCategories(tx, org.id);
   });
 
   for (const employee of employees) {

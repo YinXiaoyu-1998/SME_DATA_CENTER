@@ -6,7 +6,17 @@ never accepted through command arguments, environment variables, or MCP tool inp
 
 Commands: `serve`, `self-check`, `logout`, and `--version`.
 
-Release target: `smedc-mcp-launcher@0.8.2` (`smedc-mcp-launcher --version` reports `0.8.2`).
+Release candidate: `smedc-mcp-launcher@0.9.0` (`--version` reports `0.9.0`).
+This candidate is not published or approved for installation. The approved Skill pin and server
+recommendation remain `0.8.2` until authorized publication and independent verification.
+
+Candidate 0.9.0 bundles current permission cards and controlled same-organization admin tools,
+versioned category/dimension/store/evidence configuration, and explicit cutover preparation,
+activation and read suspension. `get_my_permissions` always reads current server state; grants
+are never cached locally. Evidence uploads require a category, complete business scope items and
+an explicit file level. Photo uploads require one enterprise and one exact store. Fixed-category
+levels come from current server configuration when enabled; old upload levels cannot override them.
+No tool accepts arbitrary API paths or SQL. These tools require the matching service rollout.
 
 Business tool calls wait up to 45 seconds for the remote result. Connection handshakes
 and profile lookups keep their existing 30-second deadlines.
@@ -68,4 +78,4 @@ An older service may reject the new tools or return `LEDGER_PDF_NOT_ENABLED` (50
 `LEDGER_PDF_NOT_READY`, wait for scheduled service generation, then recheck coverage;
 `LEDGER_PDF_BUNDLE_STALE` requires a new preparation request. Existing validation,
 permission, and idempotency errors retain their service semantics. The release target
-above does not indicate that 0.8.2 has been published.
+above does not indicate that 0.9.0 has been published.

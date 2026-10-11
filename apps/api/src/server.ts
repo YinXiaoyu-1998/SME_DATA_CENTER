@@ -1,3 +1,4 @@
+import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import { DEFAULT_RETRIEVAL_CONFIG_VERSION } from "@smedc/domain";
@@ -102,6 +103,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     pruneTimer.unref();
     app.addHook("onClose", async () => clearInterval(pruneTimer));
   }
+
+  registerBusinessAuthorizationRoutes(app, { auth: requestAuth, permissions: context.permissions });
 
   registerSystemRoutes(app, { auth: requestAuth, readinessCheck });
   registerLedgerPdfRoutes(app, {

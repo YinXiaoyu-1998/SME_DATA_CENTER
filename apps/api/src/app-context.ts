@@ -1,4 +1,8 @@
 import {
+  createPrismaBusinessAuthorizationService,
+  type BusinessAuthorizationService
+} from "./business-authorization.js";
+import {
   createLedgerPdfDelivery,
   createPrismaLedgerDeliveryRepository,
   type LedgerPdfDelivery
@@ -67,6 +71,7 @@ import {
 } from "./request-audit-context.js";
 
 export interface ApiServerOptions {
+  businessAuthorizationService?: BusinessAuthorizationService & { disconnect?(): Promise<void> };
   ledgerPdfDelivery?: LedgerPdfDelivery;
   employeeRepository?: EmployeeRepository;
   documentRepository?: DocumentCatalogRepository;
@@ -97,6 +102,7 @@ export interface ApiServerOptions {
 }
 
 export interface ApiServerContext {
+  permissions: () => BusinessAuthorizationService;
   environment: NodeJS.ProcessEnv;
   delegationProof: string;
   runtimeLimits: ApiRuntimeLimits;
@@ -137,6 +143,15 @@ function requireCursorSigningSecret(environment: NodeJS.ProcessEnv): string {
 
 export function createApiServerContext(options: ApiServerOptions = {}): ApiServerContext {
   const environment = options.runtimeEnv ?? process.env;
+  let permissionService = options.businessAuthorizationService;
+  function permissions() {
+    if (!permissionService) {
+      const url = environment["DATABASE_URL"];
+      if (!url) throw new Error("DATABASE_URL is required for business permissions.");
+      permissionService = createPrismaBusinessAuthorizationService(url);
+    }
+    return permissionService;
+  }
   const delegationProof = options.internalDelegationProof ?? randomBytes(32).toString("base64url");
   const legacyEmployeeRepository = options.employeeRepository;
   let ledgerPdfDelivery = options.ledgerPdfDelivery;
@@ -312,6 +327,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     }
     closed = true;
     await legacyEmployeeRepository?.disconnect?.();
+    await permissionService?.disconnect?.();
     await authPrisma?.$disconnect();
     await ledgerPrisma?.$disconnect();
     await documentRepository?.disconnect?.();
@@ -329,6 +345,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   }
 
   return {
+    permissions,
     environment,
     delegationProof,
     runtimeLimits,

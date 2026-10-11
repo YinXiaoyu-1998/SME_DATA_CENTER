@@ -74,6 +74,25 @@ describe("auth operator CLI", () => {
     ).toThrow("Unknown option");
   });
 
+  it("defaults new admins to level 3, requires employee clearance, and forwards only explicit initial grants", () => {
+    const args = [
+      "onboard",
+      "--org-id",
+      "org",
+      "--email",
+      "new@example.invalid",
+      "--display-name",
+      "New",
+      "--role"
+    ];
+    expect(parseOperatorCommand([...args, "admin"])).toMatchObject({ clearance: 3 });
+    expect(parseOperatorCommand([...args, "admin"])).not.toHaveProperty("initialGrants");
+    expect(() => parseOperatorCommand([...args, "employee"])).toThrow("--clearance");
+    expect(parseOperatorCommand([...args, "admin", "--initial-grants", "[]"])).toMatchObject({
+      initialGrants: []
+    });
+  });
+
   it("atomically onboards with normalized email and prints the setup link once", async () => {
     const repository = new MemoryOperatorRepository();
     const stdout: string[] = [];

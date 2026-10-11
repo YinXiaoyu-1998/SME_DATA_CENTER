@@ -277,7 +277,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.8.2");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.9.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -652,6 +652,8 @@ describe("launcher local path upload proxy", () => {
       filePath: "/tmp/sop.md"
     },
     title: "Baoli Roujiamo SOP",
+    categoryId: "memo",
+    scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
     sourceSystem: "manual_acceptance_probe",
     confidentialityLevel: 0
   });
@@ -664,6 +666,8 @@ describe("launcher local path upload proxy", () => {
     },
     receiptId: "SH2608250117",
     idempotencyKey: "quarantine-upload-key",
+    enterpriseName: "Enterprise",
+    storeName: "Store A ",
     confidentialityLevel: 0
   });
 
@@ -1180,6 +1184,45 @@ it("passes SDK cancellation into requestId bundle transfers and rejects mixed sc
     controller.abort();
     await rejection;
     await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+it("retains strict permission schemas and fixed/evidence refinements at the launcher MCP boundary", async () => {
+  const server = new McpServer({ name: "permission-schema", version: "1.0.0" });
+  const remote = vi.fn<typeof fetch>(async () => {
+    throw new Error("must not forward invalid input");
+  });
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({ config, auth: fakeAuth(), fetchImplementation: remote })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: "permission-client", version: "1.0.0" });
+  await client.connect(clientTransport);
+  try {
+    for (const [name, args] of [
+      ["get_my_permissions", { orgId: "foreign" }],
+      [
+        "update_business_category",
+        {
+          categoryId: "business",
+          name: "Business",
+          expectedVersion: "7",
+          confidentialityLevel: 1,
+          ownerships: ["store"],
+          requiredDimensionIds: []
+        }
+      ],
+      ["activate_authorization_cutover", { expectedVersion: "7", confirm: false }]
+    ] as const) {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError).toBe(true);
+    }
+    expect(remote).not.toHaveBeenCalled();
   } finally {
     await client.close();
     await server.close();

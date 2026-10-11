@@ -1,3 +1,5 @@
+import { ResourceAttributesError } from "@smedc/db";
+import type { BusinessScopeItem } from "@smedc/domain";
 import { randomBytes } from "node:crypto";
 import {
   authorizeFileUpload,
@@ -7,10 +9,12 @@ import {
 import { extname } from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
+  AUTH_ERROR_CODES,
   DEFAULT_RETRIEVAL_CONFIG_VERSION,
   PHASE3_ERROR_CODES,
   PUBLIC_INPUT_LIMITS,
   isAllowedFileTypeForDocumentKind,
+  canReadResource,
   type Phase3FileType
 } from "@smedc/domain";
 import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documents.js";
@@ -28,6 +32,11 @@ import type { StorageAdapter } from "@smedc/storage";
 import { readMultipartFile, type MultipartPart } from "../http/multipart.js";
 
 interface ParsedUpload {
+  historicalSupplementReason?: string;
+  businessCategoryId?: string;
+  businessScopes?: unknown;
+  businessCategoryFieldCount: number;
+  businessScopesFieldCount: number;
   file?: {
     fileName: string;
     contentType?: string;
@@ -87,7 +96,11 @@ function fileTypeFromFilename(fileName: string): Phase3FileType | null {
 }
 
 async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
-  const upload: ParsedUpload = { confidentialityLevelFieldCount: 0 };
+  const upload: ParsedUpload = {
+    confidentialityLevelFieldCount: 0,
+    businessCategoryFieldCount: 0,
+    businessScopesFieldCount: 0
+  };
 
   const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
 
@@ -106,10 +119,27 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedUpload> {
     }
 
     const value = typeof part.value === "string" ? part.value.trim() : "";
+    if (part.fieldname === "historicalSupplementReason") {
+      if (upload.historicalSupplementReason !== undefined || !value || value.length > 2048)
+        throw new ResourceAttributesError("RESOURCE_HISTORICAL_REASON_REQUIRED");
+      upload.historicalSupplementReason = value;
+      continue;
+    }
 
     if (part.fieldname === "confidentialityLevel") {
       upload.confidentialityLevelFieldCount += 1;
       upload.confidentialityLevel = value;
+      continue;
+    }
+
+    if (part.fieldname === "categoryId") {
+      upload.businessCategoryFieldCount += 1;
+      upload.businessCategoryId = value;
+      continue;
+    }
+    if (part.fieldname === "scopes") {
+      upload.businessScopesFieldCount += 1;
+      upload.businessScopes = JSON.parse(value);
       continue;
     }
 
@@ -254,7 +284,7 @@ function validateEvidenceSearchBody(value: unknown): EvidenceSearchValidation {
 }
 
 function parseConfidentialityLevel(upload: ParsedUpload): number | null {
-  if (upload.confidentialityLevelFieldCount === 0) return 0;
+  if (upload.confidentialityLevelFieldCount === 0) return null;
   if (
     upload.confidentialityLevelFieldCount !== 1 ||
     !/^[0-3]$/.test(upload.confidentialityLevel ?? "")
@@ -388,6 +418,32 @@ export function registerEvidenceRoutes(
       );
     }
 
+    if (
+      !upload.businessCategoryId ||
+      upload.businessCategoryFieldCount !== 1 ||
+      upload.businessScopesFieldCount !== 1 ||
+      !Array.isArray(upload.businessScopes) ||
+      !upload.businessScopes.length ||
+      !upload.businessScopes.every(
+        (scope) =>
+          isRecord(scope) &&
+          typeof scope.enterpriseKey === "string" &&
+          !!scope.enterpriseKey &&
+          (scope.ownership === "group"
+            ? scope.storeName === undefined
+            : scope.ownership === "store" &&
+              typeof scope.storeName === "string" &&
+              !!scope.storeName.trim()) &&
+          isRecord(scope.dimensions) &&
+          Object.values(scope.dimensions).every((value) => typeof value === "string" && !!value)
+      )
+    )
+      return validationError(
+        reply,
+        "RESOURCE_ATTRIBUTES_NOT_READY",
+        "Evidence requires an existing category and complete explicit business scopes."
+      );
+
     const audit = dependencies.createBusinessRequestAudit(request);
     const orgId = employee.orgId;
     const documentId = createDocumentId();
@@ -417,6 +473,9 @@ export function registerEvidenceRoutes(
         sourceSystem: upload.sourceSystem || null,
         sourceTime: null,
         confidentialityLevel,
+        historicalSupplementReason: upload.historicalSupplementReason,
+        businessCategoryId: upload.businessCategoryId,
+        businessScopes: upload.businessScopes as BusinessScopeItem[],
         processingJobType: "evidence_document_index",
         audit
       });
@@ -431,6 +490,8 @@ export function registerEvidenceRoutes(
         );
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
+      if (error instanceof ResourceAttributesError)
+        return validationError(reply, error.code, "Evidence business attributes are not ready.");
       request.log.error({ err: error, documentId }, "evidence document catalog write failed");
       return reply
         .code(500)
@@ -438,37 +499,56 @@ export function registerEvidenceRoutes(
     }
   });
 
-  app.get<{ Params: { documentId: string } }>(
-    "/v1/documents/evidence/:documentId/status",
-    async (request, reply) => {
-      const authenticated = await dependencies.auth.authenticate(request, reply);
-
-      if (!authenticated) {
-        return;
+  for (const management of [false, true])
+    app.get<{ Params: { documentId: string } }>(
+      management
+        ? "/v1/admin/documents/evidence/:documentId/status"
+        : "/v1/documents/evidence/:documentId/status",
+      async (request, reply) => {
+        if (!(await dependencies.auth.authenticate(request, reply))) return;
+        const snapshot = await dependencies.auth.authorization(request);
+        if (snapshot.disabled)
+          return reply
+            .code(403)
+            .send(
+              errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled.")
+            );
+        if (management && snapshot.role !== "admin")
+          return reply
+            .code(403)
+            .send(
+              errorResponse("AUTHORIZATION_ADMIN_REQUIRED", "A current administrator is required.")
+            );
+        const document = await dependencies
+          .documents()
+          .findEvidenceDocumentStatus(snapshot.orgId, request.params.documentId);
+        if (!document)
+          return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+        const readable =
+          snapshot.mode === "enabled" &&
+          !!document.readRequirements?.length &&
+          document.readRequirements.every(
+            (requirement) =>
+              canReadResource(snapshot, {
+                ...requirement,
+                valid: requirement.valid && document.status === "active"
+              }).allowed
+          );
+        if (management || readable)
+          return evidenceStatusResponse(
+            document,
+            dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
+          );
+        if (document.uploaderId !== snapshot.employeeId)
+          return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
+        return evidenceUploadResponse(
+          document,
+          document.documentIndexRetrievalConfigVersion ??
+            dependencies.retrievalConfigVersion ??
+            DEFAULT_RETRIEVAL_CONFIG_VERSION
+        );
       }
-
-      const employee = dependencies.auth.employee(request);
-      const document = await dependencies
-        .documents()
-        .findEvidenceDocumentStatus(employee.orgId, request.params.documentId);
-
-      if (!document) {
-        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-      }
-
-      if (
-        document.uploaderId !== employee.id ||
-        employee.clearance < document.confidentialityLevel
-      ) {
-        return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
-      }
-
-      return evidenceStatusResponse(
-        document,
-        dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
-      );
-    }
-  );
+    );
 
   app.post<{ Body: EvidenceSearchBody }>("/v1/evidence/search", async (request, reply) => {
     const authenticated = await dependencies.auth.authenticate(request, reply);
@@ -490,6 +570,7 @@ export function registerEvidenceRoutes(
       result = await dependencies.evidence().searchEvidence({
         orgId: employee.orgId,
         employee,
+        authorization: await dependencies.auth.authorization(request),
         query,
         filters,
         limit,
@@ -511,6 +592,7 @@ export function registerEvidenceRoutes(
         : await dependencies.sourceDocumentDownloads().issueMany({
             orgId: employee.orgId,
             employee,
+            authorization: await dependencies.auth.authorization(request),
             requestedSources: result.results.map((item) => ({
               sourceDocumentId: item.documentId,
               documentTitle: item.documentTitle

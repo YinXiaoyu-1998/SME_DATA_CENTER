@@ -106,6 +106,10 @@ const safeErrors: Record<string, { status: number; message: string }> = {
     message: "Partition download request was not found."
   },
   PARTITION_DOWNLOAD_FORBIDDEN: { status: 403, message: "Partition download is not authorized." },
+  PARTITION_DOWNLOAD_REBUILD_REQUIRED: {
+    status: 409,
+    message: "The original complete manifest cannot be proved; prepare a new download request."
+  },
   PARTITION_DOWNLOAD_STALE: {
     status: 409,
     message: "Partitions changed; prepare a new download request."

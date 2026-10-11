@@ -1,3 +1,7 @@
+import {
+  persistStructuredSourceReadRequirements,
+  activateEvidenceReadRequirement
+} from "@smedc/db";
 import { createPrismaPartitionDownloadRepository } from "@smedc/db";
 import {
   lockLedgerSourceMutation,
@@ -933,6 +937,10 @@ export function createPrismaProcessingWorkerRepository(
           }
         });
 
+        if (document.orgId !== run.orgId || document.status === "archived" || document.archivedAt)
+          throw new Error("RESOURCE_INVALID");
+        await activateEvidenceReadRequirement(tx, run.orgId, input.documentId);
+
         const documentIndex = await tx.documentIndex.upsert({
           where: {
             documentId_retrievalConfigId_contentVersion: {
@@ -1078,6 +1086,14 @@ export function createPrismaProcessingWorkerRepository(
         });
         if (!batch)
           throw new Error(`Structured import batch ${input.importBatchId} cannot complete.`);
+
+        await persistStructuredSourceReadRequirements(tx, {
+          orgId: run.orgId,
+          sourceDocumentId: input.documentId,
+          dataset: batch.dataset,
+          rows: input.result.rows,
+          workerId: input.workerId
+        });
 
         if (batch.dataset === ImportDataset.vip) {
           await tx.vipRow.deleteMany({ where: { importBatchId: batch.id } });

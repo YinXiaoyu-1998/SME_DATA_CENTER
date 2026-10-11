@@ -74,7 +74,15 @@ describe("read-only MCP tool handlers", () => {
       "get_structured_partition_download_status",
       "describe_ledger_pdf_coverage",
       "get_ledger_pdf_request_status",
-      "get_ledger_pdf_download_url"
+      "get_ledger_pdf_download_url",
+      "get_my_permissions",
+      "list_account_permissions",
+      "get_account_permissions",
+      "list_business_categories",
+      "list_business_dimensions",
+      "list_business_stores",
+      "get_evidence_document_management_status",
+      "prepare_authorization_cutover"
     ]);
     expect(Object.keys(createCapturingDelegate().handlers).sort()).toEqual(
       [...READ_ONLY_MCP_TOOL_NAMES].sort()
@@ -655,3 +663,43 @@ it("uses the current call audit context and requires launcher 0.8.1 for prepared
   });
   expect(calls).toHaveLength(1);
 });
+
+it.each([
+  ["get_my_permissions", "/v1/permissions/me", {}],
+  ["list_account_permissions", "/v1/admin/permissions/accounts", {}],
+  [
+    "get_account_permissions",
+    "/v1/admin/permissions/accounts/employee%2F1",
+    { employeeId: "employee/1" }
+  ],
+  ["list_business_categories", "/v1/admin/permissions/categories", {}],
+  ["list_business_dimensions", "/v1/admin/permissions/dimensions", {}],
+  ["list_business_stores", "/v1/admin/permissions/stores", {}],
+  [
+    "get_evidence_document_management_status",
+    "/v1/admin/documents/evidence/doc%2F1/status",
+    { documentId: "doc/1" }
+  ],
+  ["prepare_authorization_cutover", "/v1/admin/permissions/cutover", {}]
+] as const)(
+  "%s forwards each fresh request to its authenticated HTTP route",
+  async (name, url, input) => {
+    const { calls, handlers } = createCapturingDelegate();
+    for (let i = 0; i < 2; i++)
+      expect((await handlers[name]?.(input, { audit } as never))?.isError).toBe(false);
+    expect(calls).toHaveLength(2);
+    expect(
+      calls.every(
+        (call) =>
+          call.method === "GET" &&
+          call.url === url &&
+          call.headers.authorization === "Bearer employee-token"
+      )
+    ).toBe(true);
+    expect(
+      (await handlers[name]?.({ ...input, orgId: "foreign", api: "/anything" }, { audit } as never))
+        ?.isError
+    ).toBe(true);
+    expect(calls).toHaveLength(2);
+  }
+);

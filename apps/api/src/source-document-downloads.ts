@@ -1,4 +1,4 @@
-import type { AuthenticatedEmployee } from "@smedc/domain";
+import type { AuthorizationSnapshot, AuthenticatedEmployee } from "@smedc/domain";
 import type { StorageAdapter } from "@smedc/storage";
 import type { RequestAuditContext } from "./request-audit-context.js";
 import {
@@ -21,9 +21,11 @@ export interface SourceDocumentDownloadRepository {
   findDownloadableSourceDocuments(input: {
     orgId: string;
     employee: AuthenticatedEmployee;
+    authorization?: AuthorizationSnapshot;
     sourceDocumentIds: readonly string[];
   }): Promise<SourceDocumentRecord[]>;
   recordDownloadsIssued(input: {
+    authorizationVersion?: string;
     orgId: string;
     employee: AuthenticatedEmployee;
     sourceDocumentIds: readonly string[];
@@ -36,6 +38,7 @@ export interface SourceDocumentDownloadIssuer {
   issueMany(input: {
     orgId: string;
     employee: AuthenticatedEmployee;
+    authorization?: AuthorizationSnapshot;
     requestedSources: readonly {
       sourceDocumentId: string;
       documentTitle: string | null;
@@ -64,22 +67,44 @@ export function createSourceDocumentDownloadIssuer(input: {
         : await input.repository.findDownloadableSourceDocuments({
             orgId: request.orgId,
             employee: request.employee,
+            ...(request.authorization ? { authorization: request.authorization } : {}),
             sourceDocumentIds: requestedSources.map((source) => source.sourceDocumentId)
           });
       const authorizedById = new Map(
         authorized
           .filter(
             (document) =>
-              (!input.ledgerPdfDeliveryEnabled ||
-                (document.importDataset !== undefined &&
-                  document.importDataset !== "delivery_ledger")) &&
+              document.importDataset !== undefined &&
+              document.importDataset !== "delivery_ledger" &&
               (request.reason !== "evidence_search_auto" || document.status === "active")
           )
           .map((document) => [document.sourceDocumentId, document])
       );
+      if (
+        request.reason === "explicit_request" &&
+        requestedSources.some((source) => !authorizedById.has(source.sourceDocumentId))
+      )
+        return {
+          sources: requestedSources.map(unavailableSource),
+          warnings: ["SOURCE_DOWNLOAD_URL_UNAVAILABLE"]
+        };
       const expiresAt = new Date(
         (input.now?.() ?? new Date()).getTime() + SOURCE_DOCUMENT_DOWNLOAD_EXPIRES_SECONDS * 1000
       ).toISOString();
+      if (request.reason === "explicit_request") {
+        const preflight = await Promise.allSettled(
+          requestedSources.map((requested) =>
+            input.storage.statObject(
+              authorizedById.get(requested.sourceDocumentId)!.storageObjectKey
+            )
+          )
+        );
+        if (preflight.some((result) => result.status === "rejected"))
+          return {
+            sources: requestedSources.map(unavailableSource),
+            warnings: ["SOURCE_DOWNLOAD_URL_UNAVAILABLE"]
+          };
+      }
       const settled = await Promise.allSettled(
         requestedSources.map(async (requested): Promise<EvidenceSourceDownload> => {
           const document = authorizedById.get(requested.sourceDocumentId);
@@ -105,6 +130,14 @@ export function createSourceDocumentDownloadIssuer(input: {
       const sources = settled.map((result, index) =>
         result.status === "fulfilled" ? result.value : unavailableSource(requestedSources[index]!)
       );
+      if (
+        request.reason === "explicit_request" &&
+        sources.some((source) => source.downloadStatus !== "available")
+      )
+        return {
+          sources: requestedSources.map(unavailableSource),
+          warnings: ["SOURCE_DOWNLOAD_URL_UNAVAILABLE"]
+        };
       const issuedIds = sources
         .filter((source) => source.downloadStatus === "available")
         .map((source) => source.sourceDocumentId);
@@ -114,6 +147,9 @@ export function createSourceDocumentDownloadIssuer(input: {
           await input.repository.recordDownloadsIssued({
             orgId: request.orgId,
             employee: request.employee,
+            ...(authorized[0]?.authorizationVersion !== undefined
+              ? { authorizationVersion: authorized[0].authorizationVersion }
+              : {}),
             sourceDocumentIds: issuedIds,
             audit: request.audit,
             reason: request.reason

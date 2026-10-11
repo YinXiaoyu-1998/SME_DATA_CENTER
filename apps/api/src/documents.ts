@@ -1,4 +1,11 @@
 import {
+  persistEvidenceReadRequirement,
+  requireCurrentUploadAdmin,
+  bindHistoricalSupplementIntent,
+  toResourceReadRequirement
+} from "@smedc/db";
+import type { BusinessScopeItem, ResourceReadRequirement } from "@smedc/domain";
+import {
   lockLedgerSourceMutation,
   ledgerPartitionsForDocument,
   readableLedgerPartitionHints,
@@ -27,6 +34,9 @@ import { AUDIT_ACTIONS } from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface CreateUploadedDocumentInput {
+  historicalSupplementReason?: string;
+  businessCategoryId?: string;
+  businessScopes?: BusinessScopeItem[];
   id: string;
   orgId: string;
   title: string;
@@ -48,6 +58,7 @@ export interface CreateUploadedDocumentInput {
 }
 
 export interface DocumentStatusRecord {
+  readRequirements?: ResourceReadRequirement[];
   affectedLedgerPartitions?: LedgerPartitionKey[];
   id: string;
   orgId: string;
@@ -100,6 +111,10 @@ export interface DocumentCatalogRepository {
 }
 
 const documentStatusInclude = {
+  businessResources: {
+    where: { kind: "evidence" },
+    include: { scopes: { include: { dimensions: true } } }
+  },
   processingRuns: {
     orderBy: {
       createdAt: "asc"
@@ -146,6 +161,13 @@ export function createPrismaDocumentCatalogRepository(
   return {
     async createUploadedDocument(input) {
       const document = await prisma.$transaction(async (tx) => {
+        await requireCurrentUploadAdmin(tx, input.orgId, input.uploaderId);
+        const historicalSupplement = await bindHistoricalSupplementIntent(
+          tx,
+          input.orgId,
+          input.uploaderId,
+          input.historicalSupplementReason
+        );
         const createdDocument = await tx.document.create({
           data: {
             id: input.id,
@@ -164,6 +186,9 @@ export function createPrismaDocumentCatalogRepository(
             uploaderId: input.uploaderId,
             sourceSystem: input.sourceSystem,
             sourceTime: input.sourceTime,
+            sourceMetadata: historicalSupplement
+              ? { historicalSupplement: { ...historicalSupplement } }
+              : undefined,
             processingRuns: {
               create: {
                 orgId: input.orgId,
@@ -178,6 +203,17 @@ export function createPrismaDocumentCatalogRepository(
           },
           include: documentStatusInclude
         });
+
+        if (input.documentKind === "evidence")
+          await persistEvidenceReadRequirement(tx, {
+            orgId: input.orgId,
+            documentId: input.id,
+            categoryId: input.businessCategoryId,
+            scopes: input.businessScopes,
+            fileConfidentialityLevel: input.confidentialityLevel,
+            valid: false,
+            historicalSupplement
+          });
 
         await tx.auditLog.create({
           data: {
@@ -236,6 +272,16 @@ export function createPrismaDocumentCatalogRepository(
       const document = await retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
+          const actor = await tx.employee.findFirst({
+            where: {
+              id: input.actorEmployeeId,
+              orgId: input.orgId,
+              role: "admin",
+              disabled: false
+            },
+            select: { id: true }
+          });
+          if (!actor) return null;
           const existingDocument = await tx.document.findFirst({
             where: {
               id: input.documentId,
@@ -319,6 +365,10 @@ function toDocumentStatusRecord(
   document: Prisma.DocumentGetPayload<{ include: typeof documentStatusInclude }>
 ): DocumentStatusRecord {
   return {
+    readRequirements: document.businessResources.map((resource) => ({
+      ...toResourceReadRequirement(resource),
+      valid: resource.valid && document.status === DocumentStatus.active && !document.archivedAt
+    })),
     id: document.id,
     orgId: document.orgId,
     uploaderId: document.uploaderId,

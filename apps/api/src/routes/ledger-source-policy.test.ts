@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 import type { StorageAdapter } from "@smedc/storage";
 import { buildApiServer } from "../server.js";
+import { legacyPermissionService } from "../business-authorization.test-support.js";
 import type { SourceDocumentRecord } from "../source-documents.js";
 
 const employee: AuthenticatedEmployee = {
@@ -68,6 +69,7 @@ describe("public ledger source download policy", () => {
       }
     };
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService(employee),
       runtimeEnv: { LEDGER_PDF_DELIVERY_ENABLED: String(enabled) },
       cursorSigningSecret: "synthetic",
       logger: false,
@@ -108,8 +110,8 @@ describe("public ledger source download policy", () => {
     expect((await download("vip", "admin")).statusCode).toBe(200);
     expect(sign.mock.calls.map(([key]) => key)).toEqual(["synthetic/vip"]);
   });
-  it("preserves ledger original download when disabled", async () => {
+  it("blocks ledger original download even when disabled", async () => {
     build(false);
-    expect((await download("ledger_pending", "admin")).statusCode).toBe(200);
+    expect((await download("ledger_pending", "admin")).statusCode).toBe(404);
   });
 });

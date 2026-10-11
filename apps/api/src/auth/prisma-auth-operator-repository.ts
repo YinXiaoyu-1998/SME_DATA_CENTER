@@ -1,3 +1,9 @@
+import { isBusinessClearance } from "@smedc/domain";
+import {
+  createBusinessAuthorizationRepository,
+  persistBusinessGrants,
+  initializeFixedBusinessCategories
+} from "@smedc/db";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AuthOperatorRepository } from "./operator-cli.js";
 
@@ -5,6 +11,7 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
   return {
     async onboard(input) {
       return prisma.$transaction(async (tx) => {
+        if (!isBusinessClearance(input.clearance)) throw new Error("INVALID_ACCOUNT_CLEARANCE");
         const organization = await tx.organization.findUnique({
           where: { id: input.orgId },
           select: { id: true }
@@ -21,6 +28,39 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
             clearance: input.clearance
           },
           select: { id: true }
+        });
+        const state = await tx.businessAuthorizationState.upsert({
+          where: { orgId: input.orgId },
+          create: { orgId: input.orgId, version: 1n },
+          update: { version: { increment: 1 } }
+        });
+        await initializeFixedBusinessCategories(tx, input.orgId);
+        const snapshot = await createBusinessAuthorizationRepository({
+          prisma
+        }).loadAuthorizationSnapshot(employee.id, input.orgId, tx);
+        await persistBusinessGrants(
+          tx,
+          { orgId: input.orgId, employeeId: employee.id, grants: input.initialGrants ?? [] },
+          snapshot.categories
+        );
+        await tx.auditLog.create({
+          data: {
+            orgId: input.orgId,
+            actorEmployeeId: null,
+            action: "operator.account.initial_permissions",
+            targetType: "employee",
+            targetId: employee.id,
+            result: "succeeded",
+            clientSource: "operator_cli",
+            metadata: {
+              before: null,
+              after: {
+                clearance: input.clearance,
+                grants: JSON.parse(JSON.stringify(input.initialGrants ?? []))
+              },
+              authorizationVersion: state.version.toString()
+            }
+          }
         });
         const identity = await tx.loginIdentity.create({
           data: {

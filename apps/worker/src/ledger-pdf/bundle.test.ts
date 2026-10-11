@@ -1,3 +1,8 @@
+import { readLedgerSourceMetadata } from "../../../../packages/ledger-archive/src/source-reader.js";
+vi.mock("../../../../packages/ledger-archive/src/source-reader.js", async (original) => ({
+  ...(await original<typeof import("../../../../packages/ledger-archive/src/source-reader.js")>()),
+  readLedgerSourceMetadata: vi.fn()
+}));
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import JSZip from "jszip";
@@ -128,7 +133,7 @@ describe("streaming existing ledger PDF ZIP", () => {
     await f.run();
     expect(f.storage.putObjectAtKey).not.toHaveBeenCalled();
   });
-  it("reselects and retries if old object 404s during replacement", async () => {
+  it("refuses a replacement generation outside the fixed manifest", async () => {
     const f = fixture();
     f.record.manifest.entries = [entry(1)];
     let selected = 0;
@@ -137,11 +142,9 @@ describe("streaming existing ledger PDF ZIP", () => {
     );
     vi.mocked(f.storage.getObjectStream).mockRejectedValueOnce(new Error("404 object missing"));
     expect(await f.run()).toBe("completed");
-    expect(f.archive.completeBundle).toHaveBeenCalledWith(
-      expect.objectContaining({ entries: [entry(1, 2)] })
-    );
-    expect(f.archive.registerCandidate).toHaveBeenCalledTimes(2);
-    expect(f.objects.size).toBe(1);
+    expect(f.archive.completeBundle).not.toHaveBeenCalled();
+    expect(f.archive.failBundle).toHaveBeenCalled();
+    expect(f.objects.size).toBe(0);
   });
   it("rejects an unchanged missing or corrupted PDF without publishing partial output", async () => {
     const f = fixture();
@@ -228,6 +231,9 @@ describe("streaming existing ledger PDF ZIP", () => {
 describe("bundle durable lease and expiration boundaries", () => {
   it("publishes the captured current pointers despite a newer requested rebuild, and rejects lost identities or changed data", async () => {
     const f = fixture();
+    f.record.manifest.entries.forEach((e) => {
+      e.sources[0]!.confidentialityLevel = 3;
+    });
     const pointers = f.record.manifest.entries.map((e) => ({
       id: e.partitionId,
       orgId: e.key.orgId,
@@ -244,14 +250,14 @@ describe("bundle durable lease and expiration boundaries", () => {
     }));
     const tx = {
       $queryRaw: vi.fn(async () => []),
-      employee: { findFirst: vi.fn(async () => ({ clearance: 0 })) },
+      employee: { findFirst: vi.fn(async () => ({ clearance: 0, disabled: true })) },
       document: {
         findMany: vi.fn(async () => [
           {
             id: "source",
             status: "active",
             archivedAt: null,
-            confidentialityLevel: 0,
+            confidentialityLevel: 3,
             checksumSha256: "b".repeat(64),
             documentKind: "structured",
             importBatch: {
@@ -282,7 +288,21 @@ describe("bundle durable lease and expiration boundaries", () => {
       entries: f.record.manifest.entries,
       expiresAt: new Date("2026-10-05")
     };
+    vi.mocked(readLedgerSourceMetadata).mockResolvedValue({
+      rowCount: 1,
+      sourceFingerprint: "a".repeat(64),
+      sources: f.record.manifest.entries[0]!.sources
+    });
+    Object.assign(f.storage, {
+      headObject: vi.fn(async () => ({
+        state: "found",
+        size: pdf.length,
+        hash: createHash("sha256").update(pdf).digest("hex")
+      }))
+    });
+    expect(await archive.selectBundle(f.record)).toEqual(f.record.manifest.entries);
     expect(await archive.completeBundle(input)).toBe(true);
+    expect(tx.employee.findFirst).not.toHaveBeenCalled();
     expect(tx.ledgerArtifactRequest.update).toHaveBeenCalledTimes(1);
     pointers[0]!.dataRevision++;
     expect(await archive.completeBundle(input)).toBe(false);

@@ -27,6 +27,16 @@ origin, package, tag, or version. In particular, never install npm `latest` and 
 the launcher update itself. This pin governs launcher installation, not fetching a newer official
 copy of this skill; after a skill refresh, read the newly verified copy for its current pin.
 
+## Business Permission Tools And Release Boundary
+
+The approved installation pin above remains `0.8.2`. Candidate `0.9.0` is not published or
+approved for installation. The following current business-permission contract requires the
+matching released launcher and service; do not install a candidate or claim a live tenant has
+activated it merely because this document describes it. Follow
+[business permissions and controlled management](references/business-authorization.md) when
+those tools are available. Permission checks always happen on the service; cached identity is
+not a permission card and does not authorize content.
+
 ## Update This Skill
 
 The canonical skill name is `smedc-mcp`; `smedc-mcp-skill` is its repository
@@ -86,8 +96,9 @@ this base skill. Keep the core boundary below and route only the matching employ
   Docker, worker, cloud resources, or deployment.
 - Do not create reports, dashboards, or final business conclusions. Return only tool-visible
   records, statuses, and evidence within the employee's backend-authorized scope.
-- Do not provide an organization ID. The service derives organization and confidentiality access
-  from the authenticated Employee Account; never infer hidden data from a forbidden/not-found result.
+- Do not provide a tenant override selector. The service derives organization and business access
+  from the authenticated account; a required grant `orgId` uses only the server-returned organization.
+  Never infer hidden data from a forbidden/not-found result.
 - When an operating-system secure store is available, the launcher stores its durable credential
   only there. On a host without one, it keeps the credential in launcher-process memory only and
   requires a fresh login after restart. Never put credentials in configuration, environment
@@ -151,14 +162,24 @@ after this denial, change clearance, switch transport, or attempt to bypass it. 
 denial creates no backend audit; a backend denial best-effort records `file_upload.denied`.
 
 Clearance is not upload permission. Employees at clearance 3 still cannot upload. Admins may
-explicitly classify files at levels 0–3, including above their own clearance; omitted levels remain 0. This does not grant ordinary read access. Status, manifest, search, query, and download retain
-their existing organization, owner, and clearance rules. Partition create/parts/complete require
+upload evidence with an explicit level 0–3, category and complete scopes, including above their own clearance. Fixed-category uploads use the current category level after activation; an old upload level cannot change it. This does not grant ordinary read access. Status, manifest, search, query, and download use current server business authorization; uploader progress is separate from content access. Partition create/parts/complete require
 admin; owner abort remains allowed. Launchers older than 0.6.0 are unsupported and receive
 `LAUNCHER_UPGRADE_REQUIRED`; the backend remains authoritative for every accepted request.
 
 Upload original files and report service validation errors. This skill does not provide
 dataset-specific transformations. Future service identities require a separate design; they must
 not impersonate an admin Employee Account.
+
+These new evidence/photo transport fields require the matching launcher/service release for
+candidate 0.9.0. The approved 0.8.2 launcher does not acquire them through a Skill-only update.
+If the connected approved tools lack the fields, report the pending coordinated release; do not
+switch to direct HTTP, strip required attributes or install the unpublished candidate.
+
+Evidence upload inputs include `categoryId`, nonempty `scopes`, and explicit
+`confidentialityLevel`. Each scope's `dimensions` maps dimension IDs to single value IDs;
+store scopes also require an exact `storeName`. Photos require one `enterpriseName` and one exact
+`storeName`. Optional `historicalSupplementReason` records explicit historical supplementation;
+it does not authorize guessing or converting missing data. See the business permission reference.
 
 ## Request Limits
 
@@ -171,8 +192,8 @@ Keep tool input within the public service contract:
 - an evidence title is at most 512 characters and `sourceSystem` is at most 255 characters;
 - structured `enterpriseName` and `idempotencyKey` are each at most 255 characters;
 - receipt IDs and quarantine-certificate `idempotencyKey` values are each at most 255 characters;
-- `confidentialityLevel`, when supplied, is an integer from `0` through `3`; omit it to use the
-  service default of `0`;
+- evidence `confidentialityLevel` is required and is an integer from `0` through `3`; fixed-category
+  uploads may retain a legacy level field but cannot override enabled category configuration;
 - an evidence question is at most 4,000 characters; each evidence filter ID is at most 64
   characters, with at most 100 IDs in each filter group;
 - an opaque cursor is at most 4,096 characters, and each structured-query string filter value is
@@ -235,14 +256,14 @@ to split, rewrite, convert, or Base64-encode it.
 
 - Use `file.encoding:"path"` with an absolute path, `dataset`, `enterpriseName`, inclusive
   `startDate` and `endDate` in `YYYYMMDD`, and a stable `idempotencyKey`. Optionally supply
-  `confidentialityLevel`; otherwise the service uses `0`.
+  a legacy `confidentialityLevel`; enabled category configuration is authoritative.
 - The launcher streams the file through bounded multipart upload. The source may be up to the
   service's current 2 GiB limit; the model and MCP request never contain the file bytes or storage
   upload URLs.
 - The service validates the complete source and publishes all daily store partitions atomically.
   If any row or partition fails, nothing from that source replaces live data. On success, matching
   organization + enterprise + dataset + store + date partitions replace prior content, including
-  its confidentiality level.
+  the category authorization metadata.
 - Keep `partitionImportJobId` and follow the partition status polling rules above. Do not query or
   download from a job until its status is `published`.
 - `query_structured_dataset` is not available for these datasets and returns
@@ -354,7 +375,7 @@ complete, append-only menu snapshot rather than a sales/business date-window dat
 
 - Call `upload_structured_dataset` with `dataset: "dish_catalog"`, `snapshotDate: "YYYYMMDD"`,
   `enterpriseName`, a stable `idempotencyKey`, and the CSV/XLSX file. Optionally include an
-  explicit `confidentialityLevel`; otherwise it is `0`. Do not include `startDate` or `endDate`.
+  legacy `confidentialityLevel`; enabled category configuration is authoritative. Do not include `startDate` or `endDate`.
 - Treat the uploaded file as the full directory for that date. Do not split it into CSV parts,
   upload only changed rows, use the service to merge it with another file, or describe a partial
   file as a complete catalog.
@@ -384,18 +405,10 @@ or `snapshotDate`.
   normalized receipt ID is the organization-scoped natural idempotency key, so different content
   for the same receipt returns `RECEIPT_ID_CONFLICT` rather than an overwrite. Do not edit or replace
   existing receipts.
-- Before constructing a delivery-ledger query, inspect discovery. When service archive delivery is
-  enabled, detail queries and original ledger CSV/XLSX source signing are disabled, including for
-  admins. Only store/date aggregates remain: `count` without a field,
-  `countDistinct(receipt_id)`, and `sum(purchase_amount)`; filters/groups use only `store_name`
-  and `purchase_date`. Respect the returned `queryModes` and `allowedAggregates`. Other datasets
-  retain their existing query and source-download behavior. Read
-  [ledger PDF tool contracts](references/ledger-pdf-tools.md) for archive tool parameters and errors.
-- When discovery still permits delivery detail, use the `list_structured_datasets` registry's
-  `canonicalName`,
-  `sourceColumn`, and `aliases` instead of guessing English field names. Paper-ledger terms such as
-  `进货数量`, `进货金额`, and `供货单位名称` are aliases for the matching fields; resolve them to
-  `purchase_quantity`, `purchase_amount`, and `supplier_name` before querying.
+- Raw `delivery_ledger` details, aggregates, coverage and original CSV/XLSX links are unavailable,
+  including for admins and older clients. Use the finished PDF workflow only; do not try old
+  aggregate selectors or feature flags. Read
+  [ledger PDF tool contracts](references/ledger-pdf-tools.md) for archive parameters and errors.
 - `supplier_catalog` is the current supplier snapshot used for delivery-ledger enrichment. Upload
   the provided supplier catalog file as-is; do not rewrite it locally to match registry metadata.
   The service validates required and optional columns after upload. The latest successfully applied
@@ -426,8 +439,8 @@ linked to delivery-ledger receipt IDs. The service does not inspect whether the 
 looks like a certificate.
 
 - Upload with `upload_quarantine_certificate`: provide one JPG/JPEG/PNG file, one `receiptId`, and
-  one stable `idempotencyKey`. Optionally include an explicit `confidentialityLevel`; otherwise it
-  is `0`. Use `file.encoding:"path"` when possible. If the employee gives several photos for the
+  one stable `idempotencyKey`, one explicit `enterpriseName` and one exact `storeName`. Optional
+  legacy `confidentialityLevel` cannot override the enabled photo category level. Use `file.encoding:"path"` when possible. If the employee gives several photos for the
   same receipt, call the tool once per photo.
 - `receiptId` is the public business key for both delivery ledgers and certificates. The service
   trims and uppercases it. Do not call it `receiptNumber`, do not treat it as a count, and do not
@@ -436,8 +449,8 @@ looks like a certificate.
   per requested receipt ID, each with zero or more certificates. An empty group means no visible
   matching certificate; do not infer whether a hidden one exists.
 - Archive with `archive_quarantine_certificates`. Use `sourceDocumentId` for a single visible
-  certificate. Only admins may archive by `receiptId`, which archives all visible certificates
-  under that receipt ID.
+  certificate. Published certificate archive requires a current admin; historical employee uploaders cannot archive
+  published certificates. Owner cleanup is limited to unfinished uploads.
 - For eligible originals, call `get_source_document_download_url` with a visible
   `sourceDocumentId`. The result is a 24-hour attachment link; return the link to the employee
   rather than fetching or proxying the file bytes yourself. When archive delivery is enabled,
@@ -826,9 +839,10 @@ For structured-table questions:
 
 For authorized service tools:
 
-- Default an upload to confidentiality level `0` when the employee does not explicitly provide a
-  level. Never infer or elevate the level from filenames, content, source context, or apparent
-  document lineage. If the employee explicitly supplies `0`–`3`, pass it unchanged.
+- Evidence needs an explicitly supplied level, category and complete business scopes. Ask for
+  missing declarations; never infer them from filenames, content or lineage. Fixed-category
+  uploads use server category configuration when enabled; do not promise that a legacy upload
+  level changes the current category level.
 - Prefer `file.encoding:"path"` uploads with the file's absolute local path; the launcher reads
   exact bytes mechanically. Use `file.encoding:"base64"` only for small inline payloads. Do not
   alter business content, schema, headers, or row meaning unless the employee explicitly asks for a
@@ -836,12 +850,12 @@ For authorized service tools:
 - Follow Upload Completion And Status Polling after every `202` upload; never start a worker.
 - Quarantine-certificate uploads are synchronous `201` operations, not background imports. Call
   `upload_quarantine_certificate` once per JPG/PNG image with exactly one `receiptId`, one
-  idempotency key, and declared confidentiality level. A receipt ID may have zero, one, or multiple
+  idempotency key, enterprise and exact store. A receipt ID may have zero, one, or multiple
   certificates; one certificate upload request contains only one image.
 - Reuse a structured-import idempotency key only for the exact same file and metadata. Treat an
   import-status 404 as "not visible or missing" and do not infer hidden metadata.
 - Reuse a quarantine-certificate idempotency key only for the exact same image bytes, receipt ID,
-  and declared confidentiality level. Use `query_quarantine_certificates` with explicit `receiptIds`; never try to
+  enterprise, exact store and supplied metadata. Use `query_quarantine_certificates` with explicit `receiptIds`; never try to
   query all quarantine certificates. Use `get_source_document_download_url` with a returned
   `sourceDocumentId` when the employee asks to download or view the original source file.
 - Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged

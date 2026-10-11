@@ -5,6 +5,7 @@ import {
   parsePartitionStoreNameContains,
   type PartitionDownloadLimits
 } from "@smedc/domain";
+import { createBusinessAuthorizationRepository } from "./business-authorization.js";
 import { createDatabaseAdapter } from "./adapter.js";
 import { retryIdempotentDatabaseOperation } from "./retry.js";
 import { literalStoreNameScope, readablePartitionScope } from "./structured-partitions.js";
@@ -170,7 +171,7 @@ function internal(
     request: publicStatus(row),
     requester,
     scope: row.scope as unknown as PartitionDownloadScope,
-    manifest: row.manifest as unknown as PartitionDownloadEntry[],
+    manifest: parsePartitionDownloadManifest(row.manifest),
     limits: row.limits as unknown as PartitionDownloadLimits,
     artifact:
       row.objectKey && row.byteSize !== null && row.checksumSha256
@@ -182,6 +183,41 @@ function internal(
           }
         : null
   };
+}
+
+/** Accept pre-versioned retained jobs; every new job stores the explicit version. */
+export function parsePartitionDownloadManifest(value: Prisma.JsonValue): PartitionDownloadEntry[] {
+  const entries = Array.isArray(value)
+    ? value
+    : value &&
+        typeof value === "object" &&
+        value["version"] === 1 &&
+        Array.isArray(value["entries"])
+      ? value["entries"]
+      : null;
+  if (
+    !entries ||
+    entries.some((raw) => {
+      if (!raw || Array.isArray(raw) || typeof raw !== "object") return true;
+      return (
+        ["id", "storeKey", "storeName", "enterpriseName", "objectKey"].some(
+          (key) => typeof raw[key] !== "string" || !raw[key]
+        ) ||
+        !(raw["merchantId"] === null || typeof raw["merchantId"] === "string") ||
+        typeof raw["businessDate"] !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(raw["businessDate"]) ||
+        typeof raw["checksumSha256"] !== "string" ||
+        !/^[a-f0-9]{64}$/i.test(raw["checksumSha256"]) ||
+        ["byteSize", "rowCount"].some(
+          (key) => typeof raw[key] !== "string" || !/^\d+$/.test(raw[key] as string)
+        )
+      );
+    }) ||
+    new Set(entries.map((entry) => (entry as unknown as PartitionDownloadEntry).id)).size !==
+      entries.length
+  )
+    throw error("PARTITION_DOWNLOAD_REBUILD_REQUIRED");
+  return entries as unknown as PartitionDownloadEntry[];
 }
 
 export function createPrismaPartitionDownloadRepository(
@@ -239,8 +275,12 @@ export function createPrismaPartitionDownloadRepository(
     tx: Prisma.TransactionClient,
     actor: DownloadActor,
     scope: PartitionDownloadScope,
-    maximum: number
+    maximum: number,
+    capturedIds?: string[]
   ): Promise<PartitionDownloadEntry[]> {
+    const authorization = await createBusinessAuthorizationRepository({
+      prisma: tx as PrismaClient
+    }).loadAuthorizationSnapshot(actor.id, actor.orgId, tx);
     const rows = await tx.$queryRaw<
       Array<
         Omit<PartitionDownloadEntry, "businessDate" | "rowCount" | "byteSize"> & {
@@ -254,7 +294,8 @@ export function createPrismaPartitionDownloadRepository(
       enterprise_name AS enterpriseName, business_date AS businessDate, object_key AS objectKey,
       checksum_sha256 AS checksumSha256, byte_size AS byteSize, row_count AS rowCount,
       confidentiality_level AS confidentialityLevel FROM structured_partitions
-      WHERE ${readablePartitionScope({ orgId: actor.orgId, clearance: actor.clearance, dataset: scope.dataset, enterpriseKey: scope.enterpriseKey })}
+      WHERE ${readablePartitionScope({ orgId: actor.orgId, clearance: actor.clearance, dataset: scope.dataset, enterpriseKey: scope.enterpriseKey, authorization })}
+      ${capturedIds ? Prisma.sql`AND id IN (${Prisma.join(capturedIds)})` : Prisma.empty}
       AND business_date >= ${new Date(scope.startDate)} AND business_date <= ${new Date(scope.endDate)}
       ${scope.storeIds ? Prisma.sql`AND merchant_id IN (${Prisma.join(scope.storeIds)})` : Prisma.empty}
       ${scope.storeNameContains ? Prisma.sql`AND ${literalStoreNameScope(scope.storeNameContains)}` : Prisma.empty}
@@ -276,23 +317,41 @@ export function createPrismaPartitionDownloadRepository(
       ? terminate(tx, row, "expired", "PARTITION_DOWNLOAD_EXPIRED", now())
       : row;
   }
-  async function checkCurrent(
-    tx: Prisma.TransactionClient,
-    row: PartitionDownloadRequest,
-    employee: DownloadActor
-  ): Promise<PartitionDownloadRequest> {
-    row = await expireRow(tx, row, now());
-    if (row.status === "failed" || row.status === "expired") return row;
-    const snapshot = internal(row, employee);
-    const current = await manifest(
-      tx,
-      employee,
-      snapshot.scope,
-      snapshot.limits.partitionDownloadMaxPartitions
+  async function contentCurrent(tx: Prisma.TransactionClient, row: PartitionDownloadRequest) {
+    const entries = parsePartitionDownloadManifest(row.manifest);
+    if (!entries.length) return true;
+    const scope = row.scope as unknown as PartitionDownloadScope;
+    await tx.$queryRaw(
+      Prisma.sql`SELECT id FROM structured_partitions WHERE org_id=${row.orgId} AND id IN (${Prisma.join(entries.map((e) => e.id))}) ORDER BY id FOR SHARE`
     );
-    if (partitionDownloadFingerprint(current) !== row.manifestFingerprint)
-      return terminate(tx, row, "failed", "PARTITION_DOWNLOAD_STALE", now());
-    return row;
+    const current = await tx.structuredPartition.findMany({
+      where: { orgId: row.orgId, id: { in: entries.map((e) => e.id) } }
+    });
+    const byId = new Map(current.map((p) => [p.id, p]));
+    return entries.every((e) => {
+      const p = byId.get(e.id);
+      return (
+        p &&
+        p.dataset === scope.dataset &&
+        p.enterpriseKey === scope.enterpriseKey &&
+        p.storeKey === e.storeKey &&
+        p.storeName === e.storeName &&
+        p.merchantId === e.merchantId &&
+        p.enterpriseName === e.enterpriseName &&
+        p.businessDate.toISOString().slice(0, 10) === e.businessDate &&
+        p.objectKey === e.objectKey &&
+        p.checksumSha256 === e.checksumSha256 &&
+        p.byteSize.toString() === e.byteSize &&
+        p.rowCount.toString() === e.rowCount
+      );
+    });
+  }
+  async function checkContent(tx: Prisma.TransactionClient, row: PartitionDownloadRequest) {
+    row = await expireRow(tx, row, now());
+    if (!active.includes(row.status as (typeof active)[number])) return row;
+    return (await contentCurrent(tx, row))
+      ? row
+      : terminate(tx, row, "failed", "PARTITION_DOWNLOAD_STALE", now());
   }
   class LeaseLost extends Error {}
   async function fenced<T>(
@@ -379,7 +438,7 @@ export function createPrismaPartitionDownloadRepository(
             idempotencyKey,
             requestFingerprint: fingerprint,
             scope: scope as unknown as Prisma.InputJsonValue,
-            manifest: entries as unknown as Prisma.InputJsonValue,
+            manifest: { version: 1, entries } as unknown as Prisma.InputJsonValue,
             manifestFingerprint: partitionDownloadFingerprint(entries),
             limits: limits as unknown as Prisma.InputJsonValue,
             status: entries.length ? "queued" : "succeeded",
@@ -402,40 +461,46 @@ export function createPrismaPartitionDownloadRepository(
       });
     },
     async read(actor, requestId) {
-      const result = await transaction(async (tx) => {
+      return transaction(async (tx) => {
         const row = await lockRequest(tx, requestId, actor.orgId);
         if (!row || row.requesterId !== actor.id) throw error("PARTITION_DOWNLOAD_NOT_FOUND");
-        let employee: DownloadActor;
-        try {
-          employee = await authority(tx, actor);
-        } catch (cause) {
-          if (!(cause instanceof PartitionDownloadRepositoryError)) throw cause;
-          await terminate(tx, row, "failed", cause.code, now());
-          return cause;
-        }
-        return publicStatus(await checkCurrent(tx, row, employee));
+        await authority(tx, actor);
+        return publicStatus(await expireRow(tx, row, now()));
       });
-      if (result instanceof PartitionDownloadRepositoryError) throw result;
-      return result;
     },
     validateCurrent(actor, requestId) {
       return repository.issueCurrent(actor, requestId, async (current) => current);
     },
     async issueCurrent(actor, requestId, issue) {
       const result = await transaction(async (tx) => {
-        const row = await lockRequest(tx, requestId, actor.orgId);
+        let row = await lockRequest(tx, requestId, actor.orgId);
         if (!row || row.requesterId !== actor.id) throw error("PARTITION_DOWNLOAD_NOT_FOUND");
-        let employee: DownloadActor;
-        try {
-          employee = await authority(tx, actor);
-        } catch (cause) {
-          if (!(cause instanceof PartitionDownloadRepositoryError)) throw cause;
-          await terminate(tx, row, "failed", cause.code, now());
-          return cause;
+        const employee = await authority(tx, actor);
+        await tx.$queryRaw(
+          Prisma.sql`SELECT org_id FROM business_authorization_states WHERE org_id=${actor.orgId} FOR SHARE`
+        );
+        const state = await tx.businessAuthorizationState.findUnique({
+          where: { orgId: actor.orgId }
+        });
+        if (state?.mode === "suspended") return error("PARTITION_DOWNLOAD_FORBIDDEN");
+        if (parsePartitionDownloadManifest(row.manifest).length !== row.partitionCount)
+          return error("PARTITION_DOWNLOAD_REBUILD_REQUIRED");
+        row = await expireRow(tx, row, now());
+        const current = internal(row, employee);
+        if (["failed", "expired"].includes(row.status))
+          return error(row.errorCode ?? "PARTITION_DOWNLOAD_FAILED");
+        if (!(await contentCurrent(tx, row))) return error("PARTITION_DOWNLOAD_STALE");
+        if (current.manifest.length) {
+          const readable = await manifest(
+            tx,
+            employee,
+            current.scope,
+            current.limits.partitionDownloadMaxPartitions,
+            current.manifest.map((e) => e.id)
+          );
+          if (readable.length !== current.manifest.length)
+            return error("PARTITION_DOWNLOAD_FORBIDDEN");
         }
-        const current = internal(await checkCurrent(tx, row, employee), employee);
-        if (["failed", "expired"].includes(current.request.status))
-          return error(current.request.errorCode ?? "PARTITION_DOWNLOAD_FAILED");
         return issue(current);
       });
       if (result instanceof PartitionDownloadRepositoryError) throw result;
@@ -443,21 +508,18 @@ export function createPrismaPartitionDownloadRepository(
     },
     markRunning(lease) {
       return fenced(lease, async (tx, row) => {
-        let employee: DownloadActor;
-        try {
-          employee = await authority(tx, { id: row.requesterId, orgId: row.orgId });
-        } catch (cause) {
-          if (!(cause instanceof PartitionDownloadRepositoryError)) throw cause;
-          await terminate(tx, row, "failed", cause.code, now());
-          return false;
-        }
-        row = await checkCurrent(tx, row, employee);
+        row = await checkContent(tx, row);
         if (!active.includes(row.status as (typeof active)[number])) return false;
         row = await tx.partitionDownloadRequest.update({
           where: { id: row.id },
           data: { status: "running" }
         });
-        return internal(row, employee);
+        return internal(row, {
+          id: row.requesterId,
+          orgId: row.orgId,
+          clearance: 0,
+          disabled: false
+        });
       });
     },
     recordProgress(lease, completedPartitionCount) {
@@ -509,15 +571,7 @@ export function createPrismaPartitionDownloadRepository(
     },
     publish(lease, artifact) {
       return fenced(lease, async (tx, row) => {
-        let employee: DownloadActor;
-        try {
-          employee = await authority(tx, { id: row.requesterId, orgId: row.orgId });
-        } catch (cause) {
-          if (!(cause instanceof PartitionDownloadRepositoryError)) throw cause;
-          await terminate(tx, row, "failed", cause.code, now());
-          return false;
-        }
-        row = await checkCurrent(tx, row, employee);
+        row = await checkContent(tx, row);
         if (!active.includes(row.status as (typeof active)[number])) return false;
         if (
           !artifact.objectKey.startsWith(
@@ -675,7 +729,7 @@ export async function invalidatePartitionDownloadsForPartitions(
   const objectKeys = new Set<string>();
   let invalidatedRequestCount = 0;
   for (const candidate of candidates) {
-    const manifest = candidate.manifest as unknown as PartitionDownloadEntry[];
+    const manifest = parsePartitionDownloadManifest(candidate.manifest);
     if (!manifest.some((entry) => ids.has(entry.id))) continue;
     const row = await lockRequest(tx, candidate.id, input.orgId);
     if (!row) continue;

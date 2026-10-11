@@ -1,3 +1,7 @@
+import {
+  legacyAuthorization,
+  legacyPermissionService
+} from "../business-authorization.test-support.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -40,6 +44,12 @@ describe("evidence routes", () => {
         throw new Error("multipart parser must not run");
       });
       app = buildApiServer({
+        businessAuthorizationService: legacyPermissionService([
+          adminEmployee,
+          baoliEmployee,
+          suzhouEmployee,
+          orgBAdminEmployee
+        ]),
         employeeRepository: createRepository([baoliEmployee]),
         documentRepository,
         storageAdapter: {
@@ -112,6 +122,12 @@ describe("evidence routes", () => {
     const documentRepository = createDocumentRepository();
     const storageRoot = await mkdtemp(path.join(os.tmpdir(), "smedc-evidence-upload-"));
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter: new LocalFileSystemStorageAdapter({ root: storageRoot }),
@@ -129,6 +145,12 @@ describe("evidence routes", () => {
         value: Buffer.from("# 差评处理\n\n先联系客户，再登记处置结果。", "utf8")
       },
       { name: "title", value: "客户反馈处理 SOP" },
+      { name: "historicalSupplementReason", value: "  Historical SOP correction  " },
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
       { name: "confidentialityLevel", value: "0" }
     ]);
 
@@ -171,6 +193,7 @@ describe("evidence routes", () => {
         status: "queued"
       });
       expect(documentRepository.uploadInputs[0]).toMatchObject({
+        historicalSupplementReason: "Historical SOP correction",
         audit: {
           requestId: "req_http_1",
           sourceIp: "198.51.100.8",
@@ -183,10 +206,66 @@ describe("evidence routes", () => {
     }
   });
 
+  it("requires explicit evidence category, complete scopes and file level before storage", async () => {
+    const documentRepository = createDocumentRepository();
+    const storageAdapter = createOrganizationContextStorageAdapter();
+    app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
+      employeeRepository: createRepository([adminEmployee]),
+      documentRepository,
+      storageAdapter,
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const validAttributes = [
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
+      { name: "confidentialityLevel", value: "0" }
+    ];
+    for (const missing of ["categoryId", "scopes", "confidentialityLevel"]) {
+      const multipart = createMultipartPayload([
+        {
+          name: "file",
+          fileName: "sop.md",
+          contentType: "text/markdown",
+          value: Buffer.from("SOP")
+        },
+        ...validAttributes.filter((field) => field.name !== missing)
+      ]);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/documents/evidence",
+        headers: {
+          authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+          "content-type": multipart.contentType
+        },
+        payload: multipart.body
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(storageAdapter.putInputs).toHaveLength(0);
+    expect(documentRepository.documents).toHaveLength(0);
+  });
+
   it("accepts evidence metadata exactly at the public string boundaries", async () => {
     const documentRepository = createDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter,
@@ -203,6 +282,11 @@ describe("evidence routes", () => {
       },
       { name: "title", value: "t".repeat(512) },
       { name: "sourceSystem", value: "s".repeat(255) },
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
       { name: "confidentialityLevel", value: "0" }
     ]);
 
@@ -228,6 +312,12 @@ describe("evidence routes", () => {
     const documentRepository = createDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter,
@@ -280,6 +370,12 @@ describe("evidence routes", () => {
     const documentRepository = createDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository,
       storageAdapter,
@@ -297,6 +393,13 @@ describe("evidence routes", () => {
           value: Buffer.from("123456789", "utf8")
         },
         { name: "title", value: "SOP" },
+        { name: "categoryId", value: "evidence:sop" },
+        {
+          name: "scopes",
+          value: JSON.stringify([
+            { enterpriseKey: "synthetic", ownership: "group", dimensions: {} }
+          ])
+        },
         { name: "confidentialityLevel", value: "0" }
       ]),
       createMultipartPayload([
@@ -313,6 +416,13 @@ describe("evidence routes", () => {
           value: Buffer.from("second", "utf8")
         },
         { name: "title", value: "SOP" },
+        { name: "categoryId", value: "evidence:sop" },
+        {
+          name: "scopes",
+          value: JSON.stringify([
+            { enterpriseKey: "synthetic", ownership: "group", dimensions: {} }
+          ])
+        },
         { name: "confidentialityLevel", value: "0" }
       ]),
       createMultipartPayload([
@@ -323,6 +433,13 @@ describe("evidence routes", () => {
           value: Buffer.from("content", "utf8")
         },
         { name: "title", value: "SOP" },
+        { name: "categoryId", value: "evidence:sop" },
+        {
+          name: "scopes",
+          value: JSON.stringify([
+            { enterpriseKey: "synthetic", ownership: "group", dimensions: {} }
+          ])
+        },
         { name: "confidentialityLevel", value: "0" },
         ...Array.from({ length: 59 }, (_, index) => ({
           name: `compatibility_${index}`,
@@ -355,7 +472,7 @@ describe("evidence routes", () => {
     expect(documentRepository.documents).toHaveLength(0);
   });
 
-  it("returns evidence indexing status only to the uploader", async () => {
+  it("returns evidence indexing status to the uploader and current same-organization admin", async () => {
     const documentRepository = createDocumentRepository();
     documentRepository.documents.push({
       id: "doc_evidence_status",
@@ -365,7 +482,7 @@ describe("evidence routes", () => {
       documentType: "management_knowledge",
       documentKind: "evidence",
       fileType: "md",
-      confidentialityLevel: 0,
+      confidentialityLevel: 3,
       processingRunStatus: "succeeded",
       documentIndexStatus: "ready",
       documentIndexRetrievalConfigVersion: "phase3.retrieval.v2-bm25",
@@ -379,6 +496,12 @@ describe("evidence routes", () => {
       checksumSha256: "hash"
     });
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee, baoliEmployee, suzhouEmployee]),
       documentRepository,
       cursorSigningSecret: jwtSecret,
@@ -395,7 +518,7 @@ describe("evidence routes", () => {
     });
     const adminResponse = await app.inject({
       method: "GET",
-      url: "/v1/documents/evidence/doc_evidence_status/status",
+      url: "/v1/admin/documents/evidence/doc_evidence_status/status",
       headers: {
         authorization: `Bearer ${await accessTokenFor(adminEmployee)}`
       }
@@ -424,9 +547,85 @@ describe("evidence routes", () => {
         retrievalConfigVersion: "phase3.retrieval.v2-bm25"
       }
     });
-    expect(adminResponse.statusCode).toBe(404);
+    expect(adminResponse.statusCode).toBe(200);
+    expect(adminResponse.json().document.title).toBe("客户反馈处理 SOP");
+    expect(uploaderResponse.json().document).not.toHaveProperty("title");
+    expect(uploaderResponse.json().document).not.toHaveProperty("originalFileName");
     expect(otherEmployeeResponse.statusCode).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/v1/documents/evidence/doc_evidence_status/status",
+          headers: { authorization: `Bearer ${await accessTokenFor(adminEmployee)}` }
+        })
+      ).statusCode
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/v1/admin/documents/evidence/doc_evidence_status/status",
+          headers: { authorization: `Bearer ${await accessTokenFor(baoliEmployee)}` }
+        })
+      ).statusCode
+    ).toBe(403);
   });
+
+  it.each([false, true])(
+    "rejects an account disabled between authentication and evidence status snapshot (management: %s)",
+    async (management) => {
+      const actor = management ? adminEmployee : baoliEmployee;
+      const documents = createDocumentRepository();
+      documents.documents.push({
+        id: "disabled-status",
+        orgId: actor.orgId,
+        uploaderId: baoliEmployee.id,
+        title: "Private status metadata",
+        documentType: "management_knowledge",
+        documentKind: "evidence",
+        fileType: "md",
+        confidentialityLevel: 3,
+        status: "active",
+        processingRunStatus: "succeeded",
+        documentIndexStatus: "ready",
+        documentIndexRetrievalConfigVersion: "phase3.retrieval.v2-bm25",
+        sourceSystem: "manual",
+        sourceTime: null,
+        storageObjectKey: "synthetic/status.md",
+        originalFileName: "status.md",
+        contentType: "text/markdown",
+        byteSize: 10,
+        checksumSha256: "a".repeat(64)
+      });
+      const findStatus = vi.spyOn(documents, "findEvidenceDocumentStatus");
+      const permissions = legacyPermissionService(actor);
+      permissions.current = vi.fn(async (authenticated) => {
+        expect(authenticated).toMatchObject({ id: actor.id, orgId: actor.orgId, disabled: false });
+        return legacyAuthorization({ ...actor, disabled: true });
+      });
+      const authenticateAccessToken = vi.fn(authenticateTestAccessToken);
+      app = buildApiServer({
+        businessAuthorizationService: permissions,
+        employeeRepository: createRepository([actor]),
+        documentRepository: documents,
+        cursorSigningSecret: jwtSecret,
+        authenticateAccessToken,
+        logger: false
+      });
+      const response = await app.inject({
+        method: "GET",
+        url: `${management ? "/v1/admin" : "/v1"}/documents/evidence/disabled-status/status`,
+        headers: { authorization: `Bearer ${await accessTokenFor(actor)}` }
+      });
+      expect(authenticateAccessToken).toHaveBeenCalledTimes(1);
+      expect(permissions.current).toHaveBeenCalledTimes(1);
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ error: { code: "EMPLOYEE_DISABLED" } });
+      expect(findStatus).not.toHaveBeenCalled();
+      expect(JSON.stringify(response.json())).not.toContain("Private status metadata");
+    }
+  );
 
   it("searches evidence chunks without returning natural-language answers", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
@@ -446,6 +645,12 @@ describe("evidence routes", () => {
       warnings: []
     }));
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
       sourceDocumentDownloadIssuer: { issueMany },
@@ -532,6 +737,12 @@ describe("evidence routes", () => {
   it("returns an explicit unavailable source and warning after an authorization race", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
       sourceDocumentDownloadIssuer: {
@@ -582,6 +793,12 @@ describe("evidence routes", () => {
   it("treats a forged public delegation proof as ordinary HTTP provenance", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
       sourceDocumentDownloadIssuer: {
@@ -639,6 +856,12 @@ describe("evidence routes", () => {
   it("rejects null and over-limit evidence search inputs before retrieval", async () => {
     const evidenceRepository = createEvidenceSearchRepository();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository,
       cursorSigningSecret: jwtSecret,
@@ -682,6 +905,12 @@ describe("evidence routes", () => {
 
   it("does not expose unexpected evidence provider failures", async () => {
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       evidenceRepository: {
         async searchEvidence() {
@@ -717,6 +946,12 @@ describe("evidence routes", () => {
     const documentRepository = createOrganizationContextDocumentRepository();
     const storageAdapter = createOrganizationContextStorageAdapter();
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([orgBAdminEmployee]),
       documentRepository,
       storageAdapter,
@@ -733,6 +968,11 @@ describe("evidence routes", () => {
         value: Buffer.from("org B evidence", "utf8")
       },
       { name: "title", value: "Org B SOP" },
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
       { name: "confidentialityLevel", value: "0" }
     ]);
 
@@ -756,6 +996,12 @@ describe("evidence routes", () => {
 
   it("rejects evidence uploads in unsupported formats", async () => {
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        orgBAdminEmployee
+      ]),
       employeeRepository: createRepository([adminEmployee]),
       documentRepository: createDocumentRepository(),
       storageAdapter: new LocalFileSystemStorageAdapter({
@@ -774,6 +1020,11 @@ describe("evidence routes", () => {
         value: Buffer.from("%PDF-1.4 fake evidence", "utf8")
       },
       { name: "title", value: "PDF 不是支持的证据格式" },
+      { name: "categoryId", value: "evidence:sop" },
+      {
+        name: "scopes",
+        value: JSON.stringify([{ enterpriseKey: "synthetic", ownership: "group", dimensions: {} }])
+      },
       { name: "confidentialityLevel", value: "0" }
     ]);
 
@@ -794,5 +1045,41 @@ describe("evidence routes", () => {
         message: "Evidence documents must be .md, .txt, or .docx files."
       }
     });
+  });
+  it("never issues automatic source links for empty authorized search results", async () => {
+    const fixture = createEvidenceSearchRepository();
+    const issueMany = vi.fn();
+    const permissions = legacyPermissionService(adminEmployee);
+    const snapshot = {
+      ...(await permissions.current(adminEmployee)),
+      mode: "enabled" as const,
+      authorizationVersion: "current-9"
+    };
+    permissions.current = async () => snapshot;
+    app = buildApiServer({
+      businessAuthorizationService: permissions,
+      employeeRepository: createRepository([adminEmployee]),
+      evidenceRepository: {
+        searchEvidence: async (input) => {
+          expect(input.authorization).toBe(snapshot);
+          const result = await fixture.searchEvidence(input);
+          return { ...result, results: [] };
+        }
+      },
+      sourceDocumentDownloadIssuer: { issueMany },
+      cursorSigningSecret: jwtSecret,
+      authenticateAccessToken: authenticateTestAccessToken,
+      logger: false
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/search",
+      headers: { authorization: `Bearer ${await accessTokenFor(adminEmployee)}` },
+      payload: { query: "restricted B/C" }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toEqual([]);
+    expect(response.json().sources).toEqual([]);
+    expect(issueMany).not.toHaveBeenCalled();
   });
 });

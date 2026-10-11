@@ -1,8 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import {
-  getPublicStructuredRegistry,
-  PUBLIC_LEDGER_SCOPE_FIELDS
-} from "./structured-ledger-policy.js";
+import { getPublicStructuredRegistry } from "./structured-ledger-policy.js";
 import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 import { PHASE3_ERROR_CODES, type Phase3ErrorCode } from "./retrieval-contracts.js";
 import {
@@ -73,6 +70,7 @@ interface CompileStructuredQueryInput {
   query: unknown;
   cursorSecret: string;
   now?: Date;
+  businessAuthorization?: { version: string; sql: string; params: Array<string | number> };
 }
 
 interface NormalizedQuery {
@@ -169,61 +167,13 @@ export function compilePublicStructuredQuery(
   input: CompileStructuredQueryInput & { ledgerPdfDeliveryEnabled?: boolean }
 ): StructuredCompiledQuery {
   const query = normalizeQuery(input.query);
-  if (input.ledgerPdfDeliveryEnabled && query.dataset === "delivery_ledger") {
-    validatePublicLedgerQuery(query);
-  }
-  return compileNormalizedQuery(
-    input,
-    query,
-    getPublicStructuredRegistry(query.dataset, input.ledgerPdfDeliveryEnabled)
-  );
-}
-
-function validatePublicLedgerQuery(query: NormalizedQuery): void {
-  if (query.aggregates.length === 0 && query.groupBy.length === 0) {
+  if (query.dataset === "delivery_ledger") {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.ledgerDetailDisabled,
-      "Ledger detail is disabled. Use the archived PDF APIs for ledger documents.",
-      { dataset: "delivery_ledger" }
+      "Ledger reads are disabled. Use the archived PDF APIs for ledger documents."
     );
   }
-  if (query.aggregates.length === 0) {
-    throw new StructuredQueryValidationError(
-      PHASE3_ERROR_CODES.invalidAggregation,
-      "Ledger queries require at least one aggregate."
-    );
-  }
-  for (const aggregate of query.aggregates) {
-    const allowed =
-      (aggregate.op === "count" && aggregate.field === undefined) ||
-      (aggregate.op === "countDistinct" && aggregate.field === "receipt_id") ||
-      (aggregate.op === "sum" && aggregate.field === "purchase_amount");
-    if (!allowed) {
-      throw new StructuredQueryValidationError(
-        PHASE3_ERROR_CODES.invalidAggregation,
-        "Ledger aggregation is not supported."
-      );
-    }
-  }
-  for (const field of query.groupBy) requirePublicLedgerScopeField(field);
-  validatePublicLedgerFilter(query.filter);
-}
-
-function requirePublicLedgerScopeField(field: string): void {
-  if (!PUBLIC_LEDGER_SCOPE_FIELDS.has(field)) {
-    throw new StructuredQueryValidationError(
-      PHASE3_ERROR_CODES.unsupportedCapability,
-      "Ledger grouping and filters support only store_name and purchase_date."
-    );
-  }
-}
-
-function validatePublicLedgerFilter(filter: FilterNode | null): void {
-  if (!filter) return;
-  if ("and" in filter) filter.and.forEach(validatePublicLedgerFilter);
-  else if ("or" in filter) filter.or.forEach(validatePublicLedgerFilter);
-  else if ("not" in filter) validatePublicLedgerFilter(filter.not);
-  else requirePublicLedgerScopeField(filter.field);
+  return compileNormalizedQuery(input, query, getPublicStructuredRegistry(query.dataset));
 }
 
 function compileNormalizedQuery(
@@ -251,6 +201,9 @@ function compileNormalizedQuery(
     orgId: input.orgId,
     employeeId: input.employee.id ?? null,
     clearance: input.employee.clearance,
+    ...(input.businessAuthorization
+      ? { authorizationVersion: input.businessAuthorization.version }
+      : {}),
     query: { ...query, page: { limit: query.page.limit, cursor: null } }
   });
   const offset = query.page.cursor
@@ -276,7 +229,8 @@ function compileNormalizedQuery(
   const from = baseFromAndWhere({
     registry,
     employee: input.employee,
-    orgId: input.orgId
+    orgId: input.orgId,
+    businessAuthorization: input.businessAuthorization
   });
   const filter = query.filter ? compileFilter(query.filter, fields) : null;
   const whereSql = filter ? `${from.sql} AND (${filter.sql})` : from.sql;
@@ -1140,6 +1094,7 @@ function baseFromAndWhere(input: {
   registry: StructuredDatasetRegistry;
   employee: StructuredQueryEmployeeScope;
   orgId: string;
+  businessAuthorization?: CompileStructuredQueryInput["businessAuthorization"];
 }): SqlFragment {
   const params: Array<string | number> = [
     input.orgId,
@@ -1164,8 +1119,13 @@ function baseFromAndWhere(input: {
     "AND d.archived_at IS NULL"
   ];
 
-  clauses.push("AND d.confidentiality_level <= ?");
-  params.push(input.employee.clearance);
+  if (input.businessAuthorization) {
+    clauses.push(`AND (${input.businessAuthorization.sql})`);
+    params.push(...input.businessAuthorization.params);
+  } else {
+    clauses.push("AND d.confidentiality_level <= ?");
+    params.push(input.employee.clearance);
+  }
 
   return {
     sql: clauses.join(" "),

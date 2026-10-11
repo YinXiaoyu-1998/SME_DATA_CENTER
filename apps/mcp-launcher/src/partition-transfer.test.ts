@@ -57,8 +57,12 @@ describe("launcher partition transfer", () => {
       enterpriseName: "Synthetic",
       startDate: "20260907",
       endDate: "20260913",
-      idempotencyKey: "idem"
+      idempotencyKey: "idem",
+      historicalSupplementReason: "Explicit historical source"
     });
+    expect(
+      JSON.parse(String(vi.mocked(fetchImplementation).mock.calls[0]?.[1]?.body))
+    ).toMatchObject({ historicalSupplementReason: "Explicit historical source" });
     expect(result).toMatchObject({ partitionImportJobId: "pjob_1", status: "queued" });
     await expect(readFile(partOne)).resolves.toHaveLength(16);
     await expect(readFile(partTwo)).resolves.toHaveLength(4);

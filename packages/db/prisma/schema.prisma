@@ -152,6 +152,7 @@ enum AuthSecurityOutcome {
 }
 
 model Organization {
+  businessAuthorization BusinessAuthorizationState?
   id                     String                  @id @db.VarChar(64)
   name                   String                  @db.VarChar(255)
   createdAt              DateTime                @default(now()) @map("created_at")
@@ -185,6 +186,8 @@ model Organization {
 }
 
 model Employee {
+  businessGrants BusinessGrant[]
+  businessAuthorizationAudits BusinessAuthorizationAudit[]
   id                   String                @id @default(cuid()) @db.VarChar(32)
   orgId                String                @map("org_id") @db.VarChar(64)
   email                String                @unique @db.VarChar(320)
@@ -212,6 +215,8 @@ model Employee {
 }
 
 model Document {
+  businessResources BusinessResource[] @relation("BusinessResourceDocument")
+  businessSourceRequirements BusinessResource[] @relation("BusinessResourceSource")
   id                    String                 @id @default(cuid()) @db.VarChar(32)
   orgId                 String                 @map("org_id") @db.VarChar(64)
   title                 String                 @db.VarChar(512)
@@ -1041,4 +1046,221 @@ model PartitionDownloadRequest {
   @@index([orgId, status, requesterId])
   @@index([status, expiresAt])
   @@map("partition_download_requests")
+}
+
+// Additive foundation only: existing readers remain on the old model until atomic activation.
+enum BusinessAuthorizationMode {
+  legacy
+  preparing
+  enabled
+  suspended
+}
+enum BusinessOwnership {
+  group
+  store
+}
+enum BusinessCategoryKind {
+  fixed
+  evidence
+}
+enum BusinessResourceKind {
+  evidence
+  structured
+  quarantine_certificate
+  ledger_pdf
+  source_fragment
+}
+model BusinessAuthorizationState {
+  orgId String @id @map("org_id") @db.VarChar(64)
+  mode BusinessAuthorizationMode @default(legacy)
+  version BigInt @default(0) @db.UnsignedBigInt
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  categories BusinessCategory[]
+  dimensions BusinessDimension[]
+  stores BusinessStore[]
+  grants BusinessGrant[]
+  resources BusinessResource[]
+  audits BusinessAuthorizationAudit[]
+  @@map("business_authorization_states")
+}
+model BusinessCategory {
+  orgId String @map("org_id") @db.VarChar(64)
+  id String @db.VarChar(64)
+  key String? @db.VarChar(64)
+  name String @db.VarChar(255)
+  kind BusinessCategoryKind
+  confidentialityLevel Int? @map("confidentiality_level") @db.UnsignedTinyInt
+  allowGroup Boolean @map("allow_group")
+  allowStore Boolean @map("allow_store")
+  retired Boolean @default(false)
+  state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
+  dimensions BusinessCategoryDimension[]
+  grants BusinessGrantCategory[]
+  resources BusinessResource[]
+  @@id([orgId, id])
+  @@unique([orgId, key])
+  @@map("business_categories")
+}
+model BusinessDimension {
+  orgId String @map("org_id") @db.VarChar(64)
+  id String @db.VarChar(64)
+  name String @db.VarChar(255)
+  retired Boolean @default(false)
+  state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
+  values BusinessDimensionValue[]
+  categories BusinessCategoryDimension[]
+  grants BusinessGrantDimension[]
+  @@id([orgId, id])
+  @@map("business_dimensions")
+}
+model BusinessDimensionValue {
+  orgId String @map("org_id") @db.VarChar(64)
+  dimensionId String @map("dimension_id") @db.VarChar(64)
+  id String @db.VarChar(64)
+  name String @db.VarChar(255)
+  retired Boolean @default(false)
+  dimension BusinessDimension @relation(fields: [orgId, dimensionId], references: [orgId, id], onDelete: Restrict)
+  grantValues BusinessGrantDimensionValue[]
+  scopeValues BusinessScopeDimension[]
+  @@id([orgId, dimensionId, id])
+  @@map("business_dimension_values")
+}
+model BusinessCategoryDimension {
+  orgId String @map("org_id") @db.VarChar(64)
+  categoryId String @map("category_id") @db.VarChar(64)
+  dimensionId String @map("dimension_id") @db.VarChar(64)
+  category BusinessCategory @relation(fields: [orgId, categoryId], references: [orgId, id], onDelete: Restrict)
+  dimension BusinessDimension @relation(fields: [orgId, dimensionId], references: [orgId, id], onDelete: Restrict)
+  @@id([orgId, categoryId, dimensionId])
+  @@map("business_category_dimensions")
+}
+model BusinessStore {
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  name String @db.VarChar(255)
+  retired Boolean @default(false)
+  state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
+  grants BusinessGrantStore[]
+  scopes BusinessResourceScope[]
+  @@id([orgId, enterpriseKey, name])
+  @@map("business_stores")
+}
+model BusinessGrant {
+  orgId String @map("org_id") @db.VarChar(64)
+  id String @db.VarChar(64)
+  employeeId String @map("employee_id") @db.VarChar(32)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  ownership BusinessOwnership
+  allStores Boolean @default(false) @map("all_stores")
+  state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
+  employee Employee @relation(fields: [orgId, employeeId], references: [orgId, id], onDelete: Restrict)
+  categories BusinessGrantCategory[]
+  stores BusinessGrantStore[]
+  dimensions BusinessGrantDimension[]
+  @@id([orgId, id])
+  @@unique([orgId, id, enterpriseKey], map: "business_grant_enterprise_uq")
+  @@index([orgId, employeeId])
+  @@map("business_grants")
+}
+model BusinessGrantCategory {
+  orgId String @map("org_id") @db.VarChar(64)
+  grantId String @map("grant_id") @db.VarChar(64)
+  categoryId String @map("category_id") @db.VarChar(64)
+  grant BusinessGrant @relation(fields: [orgId, grantId], references: [orgId, id], onDelete: Cascade)
+  category BusinessCategory @relation(fields: [orgId, categoryId], references: [orgId, id], onDelete: Restrict)
+  @@id([orgId, grantId, categoryId])
+  @@map("business_grant_categories")
+}
+model BusinessGrantStore {
+  orgId String @map("org_id") @db.VarChar(64)
+  grantId String @map("grant_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  storeName String @map("store_name") @db.VarChar(255)
+  grant BusinessGrant @relation(fields: [orgId, grantId, enterpriseKey], references: [orgId, id, enterpriseKey], onDelete: Cascade)
+  store BusinessStore @relation(fields: [orgId, enterpriseKey, storeName], references: [orgId, enterpriseKey, name], onDelete: Restrict)
+  @@id([orgId, grantId, storeName])
+  @@map("business_grant_stores")
+}
+model BusinessGrantDimension {
+  orgId String @map("org_id") @db.VarChar(64)
+  grantId String @map("grant_id") @db.VarChar(64)
+  dimensionId String @map("dimension_id") @db.VarChar(64)
+  allValues Boolean @map("all_values")
+  grant BusinessGrant @relation(fields: [orgId, grantId], references: [orgId, id], onDelete: Cascade)
+  dimension BusinessDimension @relation(fields: [orgId, dimensionId], references: [orgId, id], onDelete: Restrict)
+  values BusinessGrantDimensionValue[]
+  @@id([orgId, grantId, dimensionId])
+  @@map("business_grant_dimensions")
+}
+model BusinessGrantDimensionValue {
+  orgId String @map("org_id") @db.VarChar(64)
+  grantId String @map("grant_id") @db.VarChar(64)
+  dimensionId String @map("dimension_id") @db.VarChar(64)
+  valueId String @map("value_id") @db.VarChar(64)
+  selection BusinessGrantDimension @relation(fields: [orgId, grantId, dimensionId], references: [orgId, grantId, dimensionId], onDelete: Cascade)
+  value BusinessDimensionValue @relation(fields: [orgId, dimensionId, valueId], references: [orgId, dimensionId, id], onDelete: Restrict)
+  @@id([orgId, grantId, dimensionId, valueId])
+  @@map("business_grant_dimension_values")
+}
+model BusinessResource {
+  orgId String @map("org_id") @db.VarChar(64)
+  id String @db.VarChar(64)
+  kind BusinessResourceKind
+  resourceKey String @map("resource_key") @db.VarChar(191)
+  categoryId String @map("category_id") @db.VarChar(64)
+  valid Boolean @default(false)
+  fileConfidentialityLevel Int? @map("file_confidentiality_level") @db.UnsignedTinyInt
+  contentVersion BigInt @default(1) @map("content_version") @db.UnsignedBigInt
+  authorizationVersion BigInt @default(1) @map("authorization_version") @db.UnsignedBigInt
+  documentId String? @map("document_id") @db.VarChar(32)
+  sourceDocumentId String? @map("source_document_id") @db.VarChar(32)
+  state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
+  category BusinessCategory @relation(fields: [orgId, categoryId], references: [orgId, id], onDelete: Restrict)
+  document Document? @relation("BusinessResourceDocument", fields: [orgId, documentId], references: [orgId, id], onDelete: Restrict)
+  sourceDocument Document? @relation("BusinessResourceSource", fields: [orgId, sourceDocumentId], references: [orgId, id], onDelete: Restrict)
+  scopes BusinessResourceScope[]
+  @@id([orgId, id])
+  @@unique([orgId, kind, resourceKey], map: "business_resource_identity_uq")
+  @@index([orgId, sourceDocumentId])
+  @@map("business_resources")
+}
+model BusinessResourceScope {
+  orgId String @map("org_id") @db.VarChar(64)
+  resourceId String @map("resource_id") @db.VarChar(64)
+  id String @db.VarChar(32)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  ownership BusinessOwnership
+  storeName String? @map("store_name") @db.VarChar(255)
+  resource BusinessResource @relation(fields: [orgId, resourceId], references: [orgId, id], onDelete: Cascade)
+  store BusinessStore? @relation(fields: [orgId, enterpriseKey, storeName], references: [orgId, enterpriseKey, name], onDelete: Restrict)
+  dimensions BusinessScopeDimension[]
+  @@id([orgId, resourceId, id])
+  @@map("business_resource_scopes")
+}
+model BusinessScopeDimension {
+  orgId String @map("org_id") @db.VarChar(64)
+  resourceId String @map("resource_id") @db.VarChar(64)
+  scopeId String @map("scope_id") @db.VarChar(32)
+  dimensionId String @map("dimension_id") @db.VarChar(64)
+  valueId String @map("value_id") @db.VarChar(64)
+  scope BusinessResourceScope @relation(fields: [orgId, resourceId, scopeId], references: [orgId, resourceId, id], onDelete: Cascade)
+  value BusinessDimensionValue @relation(fields: [orgId, dimensionId, valueId], references: [orgId, dimensionId, id], onDelete: Restrict)
+  @@id([orgId, resourceId, scopeId, dimensionId])
+  @@map("business_scope_dimensions")
+}
+model BusinessAuthorizationAudit {
+  id String @id @default(cuid()) @db.VarChar(32)
+  orgId String @map("org_id") @db.VarChar(64)
+  actorId String @map("actor_id") @db.VarChar(32)
+  action String @db.VarChar(64)
+  targetId String @map("target_id") @db.VarChar(255)
+  before Json
+  after Json
+  outcome String @db.VarChar(32)
+  version BigInt @db.UnsignedBigInt
+  createdAt DateTime @default(now()) @map("created_at")
+  state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
+  actor Employee @relation(fields: [orgId, actorId], references: [orgId, id], onDelete: Restrict)
+  @@index([orgId, version])
+  @@map("business_authorization_audits")
 }

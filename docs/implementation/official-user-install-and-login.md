@@ -7,10 +7,22 @@ existing Device Authorization, web i18n, and legacy-auth removal passed focused 
 
 Last updated: 2026-10-08
 
+## Pending Business Authorization Release
+
+Launcher `0.9.0` is an unpublished implementation candidate for current permission cards and
+controlled admin configuration. The approved installation pin and server recommendation remain
+`0.8.2` until authorized publication and independent verification. Grants are never stored in the
+launcher profile. The matching service enforces current category/scope/clearance rules after
+explicit tenant activation; admin role or upload ownership does not grant ordinary content reads.
+See [the current API/MCP contract](api-contract.md) for explicit evidence/photo metadata, safe
+management status and versioned preparation/activation. The new evidence/photo transport fields require the matching launcher/service release; a
+Skill-only refresh does not add them to approved 0.8.2. These notes do not authorize release or
+activation, and do not establish live availability.
+
 ## Upload Role And Launcher Profile
 
 Only active `admin` accounts may upload evidence, structured datasets (including Delivery Ledger),
-and quarantine certificates. Clearance controls ordinary reads and never grants upload permission.
+and quarantine certificates. Current category/scope grants and sufficient clearance control ordinary reads; clearance never grants upload permission.
 An admin may explicitly classify an upload above their clearance without gaining later read access.
 The upload tools remain statically visible and marked admin-only.
 
@@ -145,7 +157,7 @@ only as historical rationale and is not a compatibility constraint or current ru
 - SMEDC maps the verifier's stable login subject to exactly one Employee Account.
 - The Employee Account remains the sole business authorization subject and owns organization,
   role, clearance, disabled state, and audit attribution. Role does not grant ordinary document
-  reads; same-organization clearance does.
+  reads; the current same-organization category/scope rules and sufficient clearance do.
 - Disabling an Employee Account must immediately block business access even if an identity
   token has not naturally expired. Normal offboarding also disables the Login Identity and revokes
   its sessions.

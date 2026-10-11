@@ -1,3 +1,4 @@
+import { legacyPermissionService } from "../business-authorization.test-support.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -70,6 +71,7 @@ describe("source document download routes", () => {
       storageAdapter,
       cursorSigningSecret: jwtSecret,
       authenticateAccessToken: authenticateTestAccessToken,
+      businessAuthorizationService: legacyPermissionService([adminEmployee, baoliEmployee]),
       logger: false
     });
 
@@ -85,6 +87,8 @@ describe("source document download routes", () => {
         value: pngBytes
       },
       { name: "receiptId", value: "SH2608250117" },
+      { name: "enterpriseName", value: "Synthetic Enterprise" },
+      { name: "storeName", value: "Synthetic Store" },
       { name: "confidentialityLevel", value: "0" },
       { name: "idempotencyKey", value: "idem-download" }
     ]);

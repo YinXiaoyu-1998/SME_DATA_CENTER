@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { AuthenticatedEmployee } from "@smedc/domain";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
+import { legacyPermissionService } from "../business-authorization.test-support.js";
 import { buildApiServer } from "../server.js";
 import {
   accessTokenFor,
@@ -56,6 +57,13 @@ describe("quarantine certificate routes", () => {
         throw new Error("multipart parser must not run");
       });
       app = buildApiServer({
+        businessAuthorizationService: legacyPermissionService([
+          adminEmployee,
+          baoliEmployee,
+          suzhouEmployee,
+          lowClearanceAdminEmployee,
+          clearanceZeroAdminEmployee
+        ]),
         employeeRepository: createRepository([baoliEmployee]),
         documentRepository,
         quarantineCertificateRepository,
@@ -149,6 +157,13 @@ describe("quarantine certificate routes", () => {
     const storageAdapter = new LocalFileSystemStorageAdapter({ root: storageRoot });
 
     app = buildApiServer({
+      businessAuthorizationService: legacyPermissionService([
+        adminEmployee,
+        baoliEmployee,
+        suzhouEmployee,
+        lowClearanceAdminEmployee,
+        clearanceZeroAdminEmployee
+      ]),
       employeeRepository: createRepository(employees),
       documentRepository,
       quarantineCertificateRepository,
@@ -164,6 +179,8 @@ describe("quarantine certificate routes", () => {
   async function uploadCertificate(
     server: FastifyInstance,
     input: {
+      enterpriseName?: string;
+      storeName?: string;
       receiptId?: string;
       idempotencyKey?: string;
       confidentialityLevel?: number;
@@ -180,6 +197,8 @@ describe("quarantine certificate routes", () => {
         contentType: input.contentType ?? "image/png",
         value: input.body ?? pngBytes
       },
+      { name: "enterpriseName", value: input.enterpriseName ?? "Synthetic enterprise" },
+      { name: "storeName", value: input.storeName ?? "Synthetic store" },
       { name: "receiptId", value: input.receiptId ?? " sh2608250117 " },
       { name: "confidentialityLevel", value: String(input.confidentialityLevel ?? 0) },
       { name: "idempotencyKey", value: input.idempotencyKey ?? "idem-quarantine-1" }
@@ -223,6 +242,16 @@ describe("quarantine certificate routes", () => {
       payload: body
     });
   }
+
+  it("rejects a photo without an explicit enterprise and exact store before persisting it", async () => {
+    const { app, documentRepository } = await buildQuarantineTestServer();
+    for (const attributes of [{ enterpriseName: "" }, { storeName: " " }]) {
+      const response = await uploadCertificate(app, attributes);
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe("RESOURCE_SINGLE_STORE_REQUIRED");
+    }
+    expect(documentRepository.documents).toHaveLength(0);
+  });
 
   it("uploads one image synchronously and exact idempotent replay returns the same certificate", async () => {
     const { app, documentRepository } = await buildQuarantineTestServer();
@@ -341,7 +370,7 @@ describe("quarantine certificate routes", () => {
     expect(documentRepository.documents[0]?.confidentialityLevel).toBe(3);
   });
 
-  it("archives by source document for the uploader and by receipt ID for admins only", async () => {
+  it("requires current admin for source and receipt archives after uploader demotion", async () => {
     const formerUploader: AuthenticatedEmployee = { ...baoliEmployee, role: "admin" };
     const { app } = await buildQuarantineTestServer([adminEmployee, formerUploader]);
     const first = await uploadCertificate(
@@ -363,11 +392,10 @@ describe("quarantine certificate routes", () => {
       adminEmployee
     );
 
-    expect(bySource.statusCode).toBe(200);
-    expect(bySource.json()).toEqual({ archivedCount: 1, affectedLedgerPartitions: [] });
+    expect(bySource.statusCode).toBe(403);
     expect(employeeBulk.statusCode).toBe(403);
     expect(adminBulk.statusCode).toBe(200);
-    expect(adminBulk.json()).toEqual({ archivedCount: 1, affectedLedgerPartitions: [] });
+    expect(adminBulk.json()).toEqual({ archivedCount: 2, affectedLedgerPartitions: [] });
     expect(repeatAdminBulk.json()).toEqual({ archivedCount: 0, affectedLedgerPartitions: [] });
     expect((await queryCertificates(app, ["SH2608250117"])).json()).toEqual({
       results: [{ receiptId: "SH2608250117", certificates: [] }]

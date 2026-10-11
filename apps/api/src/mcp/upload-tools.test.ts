@@ -76,6 +76,9 @@ function validEvidenceInput(overrides: Record<string, unknown> = {}) {
     file: inlineFile("customer-feedback-sop.md", "text/markdown", "# SOP\nhandle feedback\n"),
     title: "Customer feedback SOP",
     sourceSystem: "manual",
+    categoryId: "memo",
+    scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: { project: "X" } }],
+    historicalSupplementReason: "Explicit historical declaration",
     confidentialityLevel: 0,
     ...overrides
   };
@@ -101,6 +104,8 @@ function validQuarantineInput(overrides: Record<string, unknown> = {}) {
       "image/png",
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
     ),
+    enterpriseName: "Enterprise",
+    storeName: "Store A ",
     receiptId: "SH2608250117",
     idempotencyKey: "quarantine-upload-key",
     confidentialityLevel: 0,
@@ -292,6 +297,11 @@ describe("upload MCP tool handlers", () => {
       contentType: "text/markdown"
     });
     expect(file?.body.toString("utf8")).toBe("# SOP\nhandle feedback\n");
+    expect(textField(fields, "categoryId")).toBe("memo");
+    expect(JSON.parse(textField(fields, "scopes")!)).toEqual([
+      { enterpriseKey: "enterprise", ownership: "group", dimensions: { project: "X" } }
+    ]);
+    expect(textField(fields, "historicalSupplementReason")).toBe("Explicit historical declaration");
     expect(textField(fields, "title")).toBe("Customer feedback SOP");
     expect(textField(fields, "sourceSystem")).toBe("manual");
     expect(textField(fields, "confidentialityLevel")).toBe("0");
@@ -375,6 +385,8 @@ describe("upload MCP tool handlers", () => {
       filename: "quarantine.png",
       contentType: "image/png"
     });
+    expect(textField(fields, "enterpriseName")).toBe("Enterprise");
+    expect(textField(fields, "storeName")).toBe("Store A ");
     expect(textField(fields, "receiptId")).toBe("SH2608250117");
     expect(textField(fields, "idempotencyKey")).toBe("quarantine-upload-key");
     expect(textField(fields, "confidentialityLevel")).toBe("0");

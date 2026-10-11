@@ -1,4 +1,11 @@
 import {
+  persistPhotoReadRequirement,
+  requireCurrentUploadAdmin,
+  createBusinessAuthorizationRepository,
+  toResourceReadRequirement,
+  bindHistoricalSupplementIntent
+} from "@smedc/db";
+import {
   lockLedgerSourceMutation,
   ledgerPartitionsForReceipt,
   readableLedgerPartitionHints,
@@ -18,6 +25,8 @@ import {
 import {
   AUDIT_ACTIONS,
   canEmployeeAccessDocument,
+  canReadResource,
+  type AuthorizationSnapshot,
   type AuthenticatedEmployee
 } from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
@@ -43,6 +52,9 @@ export interface QuarantineCertificateRecord {
 }
 
 export interface CreateQuarantineCertificateInput {
+  historicalSupplementReason?: string;
+  enterpriseKey?: string;
+  storeName?: string;
   orgId: string;
   actorEmployeeId: string;
   sourceDocumentId: string;
@@ -61,6 +73,7 @@ export interface CreateQuarantineCertificateInput {
 }
 
 export interface QueryQuarantineCertificatesInput {
+  authorization?: AuthorizationSnapshot;
   orgId: string;
   employee: AuthenticatedEmployee;
   receiptIds: string[];
@@ -125,11 +138,19 @@ export function quarantineCertificateFingerprint(input: {
   receiptId: string;
   confidentialityLevel: number;
   fileHash: string;
+  historicalSupplementReason?: string;
+  enterpriseKey?: string;
+  storeName?: string;
 }): string {
   return createHash("sha256")
     .update(
       JSON.stringify({
         receiptId: input.receiptId,
+        ...(input.historicalSupplementReason !== undefined
+          ? { historicalSupplementReason: input.historicalSupplementReason }
+          : {}),
+        ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
+        ...(input.storeName ? { storeName: input.storeName } : {}),
         confidentialityLevel: input.confidentialityLevel,
         fileHash: input.fileHash
       })
@@ -180,6 +201,13 @@ export function createPrismaQuarantineCertificateRepository(
         const certificate = await retryIdempotentDatabaseOperation(() =>
           prisma.$transaction(async (tx) => {
             await lockLedgerSourceMutation(tx, input.orgId);
+            await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+            const historicalSupplement = await bindHistoricalSupplementIntent(
+              tx,
+              input.orgId,
+              input.actorEmployeeId,
+              input.historicalSupplementReason
+            );
             await tx.document.create({
               data: {
                 id: input.sourceDocumentId,
@@ -197,7 +225,15 @@ export function createPrismaQuarantineCertificateRepository(
                 checksumSha256: input.checksumSha256,
                 uploaderId: input.actorEmployeeId,
                 sourceSystem: null,
-                sourceTime: null
+                sourceTime: null,
+                sourceMetadata: {
+                  receiptId: input.receiptId,
+                  ...(historicalSupplement
+                    ? { historicalSupplement: { ...historicalSupplement } }
+                    : {}),
+                  ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
+                  ...(input.storeName ? { storeName: input.storeName } : {})
+                }
               }
             });
 
@@ -211,6 +247,8 @@ export function createPrismaQuarantineCertificateRepository(
               },
               include: certificateInclude
             });
+
+            await persistPhotoReadRequirement(tx, { ...input, historicalSupplement });
 
             const affectedLedgerPartitions = await ledgerPartitionsForReceipt(
               tx,
@@ -306,9 +344,47 @@ export function createPrismaQuarantineCertificateRepository(
         orderBy: [{ createdAt: "desc" }, { sourceDocumentId: "desc" }]
       });
 
-      return certificates
-        .map(toCertificateRecord)
-        .filter((certificate) => canSeeCertificate(input.employee, certificate));
+      const snapshot =
+        input.authorization ??
+        (await createBusinessAuthorizationRepository({ prisma }).loadAuthorizationSnapshot(
+          input.employee.id,
+          input.orgId
+        ));
+      if (snapshot.disabled || snapshot.orgId !== input.orgId) return [];
+      const visible: QuarantineCertificateRecord[] = [];
+      for (const certificate of certificates) {
+        if (snapshot.mode === "legacy" || snapshot.mode === "preparing") {
+          if (
+            canSeeCertificate(
+              { ...input.employee, clearance: snapshot.clearance },
+              toCertificateRecord(certificate)
+            )
+          )
+            visible.push(toCertificateRecord(certificate));
+        } else {
+          const resources = await prisma.businessResource.findMany({
+            where: {
+              orgId: input.orgId,
+              documentId: certificate.sourceDocumentId,
+              kind: "quarantine_certificate"
+            },
+            include: { scopes: { include: { dimensions: true } } }
+          });
+          const requirements = resources.map((resource) => ({
+            ...toResourceReadRequirement(resource),
+            valid:
+              resource.valid &&
+              certificate.sourceDocument.status === "active" &&
+              !certificate.sourceDocument.archivedAt
+          }));
+          if (
+            requirements.length &&
+            requirements.every((requirement) => canReadResource(snapshot, requirement).allowed)
+          )
+            visible.push(toCertificateRecord(certificate));
+        }
+      }
+      return visible;
     },
     async archiveBySourceDocumentId(input) {
       const certificate = await prisma.quarantineCertificate.findUnique({
@@ -316,9 +392,7 @@ export function createPrismaQuarantineCertificateRepository(
         include: certificateInclude
       });
       if (!certificate || certificate.orgId !== input.orgId) return null;
-      const record = toCertificateRecord(certificate);
       if (
-        record.uploaderId !== input.employee.id &&
         !canPerformPrivilegedAdministrativeOperation(
           input.employee,
           "archiveQuarantineCertificates"
@@ -336,6 +410,11 @@ export function createPrismaQuarantineCertificateRepository(
       return retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
+          const actor = await tx.employee.findFirst({
+            where: { id: input.employee.id, orgId: input.orgId, role: "admin", disabled: false },
+            select: { id: true }
+          });
+          if (!actor) return { archivedCount: 0, affectedLedgerPartitions: [] };
           const affectedLedgerPartitions = await ledgerPartitionsForReceipt(
             tx,
             input.orgId,
@@ -383,6 +462,11 @@ export function createPrismaQuarantineCertificateRepository(
       return retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
+          const actor = await tx.employee.findFirst({
+            where: { id: input.employee.id, orgId: input.orgId, role: "admin", disabled: false },
+            select: { id: true }
+          });
+          if (!actor) return { archivedCount: 0, affectedLedgerPartitions: [] };
           const certificates = await tx.quarantineCertificate.findMany({
             where: {
               orgId: input.orgId,

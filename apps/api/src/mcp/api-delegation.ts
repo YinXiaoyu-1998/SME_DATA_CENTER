@@ -6,7 +6,7 @@ import {
 } from "@smedc/mcp-contract";
 import type { RequestAuditContext } from "../request-audit-context.js";
 
-export type ApiDelegationMethod = "GET" | "POST";
+export type ApiDelegationMethod = "GET" | "POST" | "PATCH";
 
 export interface ApiDelegationInjectRequest {
   method: ApiDelegationMethod;

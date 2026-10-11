@@ -1,3 +1,4 @@
+import { ResourceAttributesError } from "@smedc/db";
 import { createHash, randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { RequestAuditContext } from "../../request-audit-context.js";
@@ -29,6 +30,7 @@ import {
 const PART_URL_PAGE_SIZE = 100;
 
 interface CreateUploadBody {
+  historicalSupplementReason?: string;
   dataset?: string;
   enterpriseName?: string;
   startDate?: string;
@@ -90,6 +92,7 @@ export function registerStructuredPartitionRoutes(
         const fingerprint = createHash("sha256").update(JSON.stringify(parsed.value)).digest("hex");
         const reserved = await dependencies.partitions().reserveUpload({
           id: jobId,
+          historicalSupplementReason: parsed.value.historicalSupplementReason,
           orgId: employee.orgId,
           uploaderId: employee.id,
           dataset: parsed.value.dataset,
@@ -137,6 +140,12 @@ export function registerStructuredPartitionRoutes(
         await storage
           .abortMultipartUpload({ key: objectKey, uploadId: createdMultipart.uploadId })
           .catch(() => undefined);
+        if (error instanceof ResourceAttributesError)
+          return validationError(
+            reply,
+            error.code,
+            "Historical supplementation requires current admin approval and valid dates."
+          );
         if (error instanceof StructuredPartitionRepositoryError) {
           return reply.code(409).send(errorResponse(error.code, error.message));
         }
@@ -280,11 +289,26 @@ export function registerStructuredPartitionRoutes(
         return reply
           .code(404)
           .send(errorResponse("PARTITION_IMPORT_NOT_FOUND", "Partition import not found."));
-      if (job.status === "uploading" && job.temporaryObjectKey && job.multipartUploadId) {
+      if (job.status !== "uploading")
+        return reply
+          .code(409)
+          .send(
+            errorResponse("UPLOAD_ALREADY_ACCEPTED", "Only an unfinished upload can be cancelled.")
+          );
+      const cancelled = await repository.finishJob({
+        orgId: employee.orgId,
+        jobId: job.id,
+        uploaderId: employee.id,
+        status: "cancelled"
+      });
+      if (cancelled === false)
+        return reply
+          .code(409)
+          .send(errorResponse("UPLOAD_ALREADY_ACCEPTED", "Upload has already been accepted."));
+      if (job.temporaryObjectKey && job.multipartUploadId) {
         await requireMultipartStorage(dependencies.storage())
           .abortMultipartUpload({ key: job.temporaryObjectKey, uploadId: job.multipartUploadId })
           .catch(() => undefined);
-        await repository.finishJob({ orgId: employee.orgId, jobId: job.id, status: "cancelled" });
       }
       return reply.code(204).send();
     }
@@ -301,11 +325,12 @@ export function registerStructuredPartitionRoutes(
         .findJobForStatus(employee.orgId, request.params.jobId);
       if (
         !job ||
-        job.uploaderId !== employee.id ||
-        !canEmployeeAccessDocument({
-          employee,
-          document: { confidentialityLevel: job.confidentialityLevel }
-        })
+        (employee.role !== "admin" &&
+          (job.uploaderId !== employee.id ||
+            !canEmployeeAccessDocument({
+              employee,
+              document: { confidentialityLevel: job.confidentialityLevel }
+            })))
       )
         return reply
           .code(404)
@@ -323,6 +348,7 @@ export function registerStructuredPartitionRoutes(
     const rows = await dependencies.partitions().listReadableManifestRows({
       orgId: employee.orgId,
       clearance: employee.clearance,
+      authorization: await dependencies.auth.authorization(request),
       dataset: parsed.value.dataset,
       enterpriseKey: parsed.value.enterpriseKey,
       startDate: parsed.value.startDate,
@@ -457,6 +483,16 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
       "INVALID_CONFIDENTIALITY_LEVEL",
       "confidentialityLevel must be an integer from 0 through 3."
     );
+  if (
+    body.historicalSupplementReason !== undefined &&
+    (typeof body.historicalSupplementReason !== "string" ||
+      !body.historicalSupplementReason.trim() ||
+      body.historicalSupplementReason.length > 2048)
+  )
+    return invalid(
+      "RESOURCE_HISTORICAL_REASON_REQUIRED",
+      "Historical supplementation requires a nonempty reason."
+    );
   return {
     ok: true as const,
     value: {
@@ -470,6 +506,9 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
       sourceChecksumSha256,
       idempotencyKey: idempotencyKey.trim(),
       confidentialityLevel,
+      ...(typeof body.historicalSupplementReason === "string"
+        ? { historicalSupplementReason: body.historicalSupplementReason.trim() }
+        : {}),
       startDate,
       endDate
     }

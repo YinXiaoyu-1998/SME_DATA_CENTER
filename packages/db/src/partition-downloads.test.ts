@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parsePartitionDownloadManifest,
   canonicalizePartitionDownloadScope,
   partitionDownloadFingerprint,
   assertPartitionDownloadSize
@@ -12,6 +13,32 @@ const scope = {
   endDate: "2026-10-08"
 };
 describe("partition download snapshots", () => {
+  it("retains provable pre-versioned complete manifests and requires unknown legacy jobs to be rebuilt", () => {
+    const entry = {
+      id: "p",
+      storeKey: "physical-key",
+      storeName: "Store A",
+      merchantId: null,
+      enterpriseName: "Enterprise",
+      businessDate: "2026-10-01",
+      objectKey: "synthetic/p.csv",
+      checksumSha256: "a".repeat(64),
+      byteSize: "1",
+      rowCount: "1",
+      confidentialityLevel: 1
+    };
+    expect(parsePartitionDownloadManifest([entry])).toEqual([entry]);
+    expect(parsePartitionDownloadManifest({ version: 1, entries: [entry] })).toEqual([entry]);
+    expect(() => parsePartitionDownloadManifest([{ id: "p" }])).toThrow(
+      "PARTITION_DOWNLOAD_REBUILD_REQUIRED"
+    );
+    expect(() => parsePartitionDownloadManifest([entry, entry])).toThrow(
+      "PARTITION_DOWNLOAD_REBUILD_REQUIRED"
+    );
+    expect(() => parsePartitionDownloadManifest({ scope: "unknown" })).toThrow(
+      "PARTITION_DOWNLOAD_REBUILD_REQUIRED"
+    );
+  });
   it("canonicalizes unordered OR filters and store IDs", () => {
     const a = canonicalizePartitionDownloadScope({
       ...scope,

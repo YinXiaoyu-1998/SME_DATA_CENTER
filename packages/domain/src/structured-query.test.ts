@@ -67,3 +67,35 @@ describe("structured query compiler", () => {
     expect(result.sql).toContain("confidentiality_level <= ?");
   });
 });
+
+it("binds current authorization versions into cursors and replaces upload clearance", async () => {
+  const { createStructuredCursor } = await import("./structured-query.js");
+  const query = { dataset: "vip", select: ["member_id"], page: { limit: 1 } };
+  const base = {
+    orgId: "org",
+    employee: { id: "emp", clearance: 3 },
+    cursorSecret: "secret",
+    query,
+    businessAuthorization: {
+      version: "v1",
+      sql: "EXISTS (SELECT 1 WHERE ? = ?)",
+      params: ["A", "A"]
+    }
+  };
+  const compiled = compileStructuredQuery(base);
+  expect(compiled.sql).toContain(base.businessAuthorization.sql);
+  expect(compiled.sql).not.toContain("d.confidentiality_level <= ?");
+  expect(compiled.params).toContain("A");
+  const cursor = createStructuredCursor({
+    offset: 1,
+    shapeHash: compiled.shapeHash,
+    secret: "secret"
+  });
+  expect(() =>
+    compileStructuredQuery({
+      ...base,
+      query: { ...query, page: { limit: 1, cursor } },
+      businessAuthorization: { ...base.businessAuthorization, version: "v2" }
+    })
+  ).toThrowError(expect.objectContaining({ code: "INVALID_CURSOR" }));
+});

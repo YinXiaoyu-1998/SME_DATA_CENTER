@@ -1,3 +1,4 @@
+import { legacyPermissionService } from "../business-authorization.test-support.js";
 import Fastify, { type FastifyInstance } from "fastify";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -5,8 +6,19 @@ import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { createSmedcHttpMcpServer } from "./server.js";
 import type { InjectOptions, InjectPayload, Response as InjectResponse } from "light-my-request";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AuthenticatedEmployee } from "@smedc/domain";
+import type { AuthenticatedEmployee, AuthorizationSnapshot } from "@smedc/domain";
 import { SMEDC_MCP_TOOL_NAMES, type McpErrorBody } from "@smedc/mcp-contract";
+import {
+  createBusinessAuthorizationService,
+  type BusinessAuthorizationRepository
+} from "../business-authorization.js";
+import { createSourceDocumentDownloadIssuer } from "../source-document-downloads.js";
+import type { StorageAdapter } from "@smedc/storage";
+import {
+  createDocumentRepository,
+  createOrganizationContextStorageAdapter,
+  createMultipartPayload
+} from "../test-support/api-server-fixtures.js";
 import { buildApiServer } from "../server.js";
 import type { EmployeeRepository } from "../employees.js";
 import type { DocumentCatalogRepository, DocumentStatusRecord } from "../documents.js";
@@ -73,6 +85,7 @@ function createRepository(employees: AuthenticatedEmployee[]): EmployeeRepositor
 
 function buildMcpTestServer(overrides: Partial<Parameters<typeof buildApiServer>[0]> = {}) {
   return buildApiServer({
+    businessAuthorizationService: legacyPermissionService([employee, adminEmployee]),
     employeeRepository: createRepository([employee, adminEmployee]),
     cursorSigningSecret: jwtSecret,
     authenticateAccessToken: authenticateTestAccessToken,
@@ -512,6 +525,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
               contentBase64: "IyBFdmlkZW5jZQo="
             },
             title: "Evidence",
+            categoryId: "memo",
+            scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }],
             confidentialityLevel: 0
           }
         }
@@ -1361,5 +1376,440 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       clientSource: "mcp_launcher",
       launcherVersion: "0.1.0"
     });
+  });
+});
+
+describe("HTTP and official MCP business authorization parity", () => {
+  function permissionFixture() {
+    const snapshot: AuthorizationSnapshot = {
+      orgId: employee.orgId,
+      employeeId: employee.id,
+      role: "employee",
+      disabled: false,
+      mode: "enabled",
+      authorizationVersion: "7",
+      clearance: 1,
+      categories: [
+        {
+          id: "vip",
+          kind: "fixed",
+          key: "vip",
+          confidentialityLevel: 1,
+          ownerships: ["group"],
+          requiredDimensionIds: []
+        }
+      ],
+      grants: [
+        {
+          id: "grant",
+          orgId: employee.orgId,
+          enterpriseKey: "precise-enterprise",
+          categoryIds: ["vip"],
+          ownership: "group",
+          dimensions: {}
+        }
+      ]
+    };
+    const repository = {
+      loadAuthorizationSnapshot: vi.fn(async (id: string, orgId: string) => {
+        if (id === "foreign") throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
+        return { ...snapshot, employeeId: id, orgId };
+      }),
+      listAccounts: vi.fn(async () => [
+        { employeeId: employee.id, clearance: 1, grants: snapshot.grants }
+      ]),
+      configureAccount: vi.fn(async (input: { expectedVersion: string }) => {
+        if (input.expectedVersion !== snapshot.authorizationVersion)
+          throw new Error("AUTHORIZATION_VERSION_CONFLICT");
+        return { authorizationVersion: "8" };
+      })
+    };
+    return {
+      snapshot,
+      repository,
+      service: createBusinessAuthorizationService(
+        repository as unknown as BusinessAuthorizationRepository
+      )
+    };
+  }
+  async function call(
+    app: FastifyInstance,
+    name: string,
+    args: Record<string, unknown> = {},
+    identity = employee
+  ) {
+    return parseToolPayload(
+      (
+        await postMcp(
+          app,
+          { jsonrpc: "2.0", id: 91, method: "tools/call", params: { name, arguments: args } },
+          { "mcp-protocol-version": "2025-11-25", "x-smedc-launcher-version": "0.9.0" },
+          { employee: identity }
+        )
+      ).payload
+    );
+  }
+  it("separates import owner progress from complete current metadata through HTTP and MCP", async () => {
+    const fixture = permissionFixture();
+    const imports = fakeStructuredImportRepository();
+    const batch = (await imports.findImportBatch(employee.orgId, "imp_status"))!;
+    const scopes = ["precise-enterprise", "second-enterprise"].map((enterpriseKey) => ({
+      enterpriseKey,
+      ownership: "group" as const,
+      dimensions: {}
+    }));
+    Object.assign(batch, {
+      uploaderId: adminEmployee.id,
+      dataset: "vip",
+      status: "applied",
+      sourceDocumentStatus: "active",
+      sourceSheetSummary: [{ name: "private sheet" }],
+      validationErrors: [{ message: "private receipt 123", row: 2 }],
+      validationErrorCount: 1,
+      readRequirements: [{ orgId: employee.orgId, categoryId: "vip", valid: true, scopes }]
+    });
+    const app = buildMcpTestServer({
+      businessAuthorizationService: fixture.service,
+      structuredImportRepository: imports
+    });
+    try {
+      const read = async (identity = employee) => {
+        const http = await app.inject({
+          method: "GET",
+          url: "/v1/structured/imports/imp_status",
+          headers: { authorization: `Bearer ${await accessToken(identity)}` }
+        });
+        const mcp = await call(app, "get_import_status", { importBatchId: "imp_status" }, identity);
+        if (http.statusCode === 200) expect(mcp.payload).toEqual(http.json());
+        else expect(mcp.payload).toMatchObject(http.json());
+        expect(mcp.result.isError).toBe(http.statusCode !== 200);
+        return http;
+      };
+      // One authorized retained scope cannot grant metadata for the entire A/B source.
+      expect((await read()).statusCode).toBe(404);
+      fixture.snapshot.grants.push({
+        ...fixture.snapshot.grants[0]!,
+        id: "second",
+        enterpriseKey: "second-enterprise"
+      });
+      expect((await read()).json()).toMatchObject({
+        importBatch: { totalRowCount: 2, sourceSheetSummary: [{ name: "private sheet" }] }
+      });
+      fixture.snapshot.categories[0]!.confidentialityLevel = 2;
+      expect((await read()).statusCode).toBe(404);
+      fixture.snapshot.categories[0]!.confidentialityLevel = 1;
+      fixture.snapshot.grants = [];
+      expect((await read()).statusCode).toBe(404);
+      fixture.snapshot.role = "admin";
+      expect((await read()).statusCode).toBe(404);
+
+      // Uploader progress remains safe even above clearance, while paused or after archive.
+      batch.sourceDocumentConfidentialityLevel = 3;
+      fixture.snapshot.clearance = 0;
+      const safe = {
+        document: { documentId: "doc_structured", documentKind: "structured", status: "active" },
+        processing: { processingRunId: "run_status", status: "queued" },
+        importBatch: {
+          importBatchId: "imp_status",
+          sourceDocumentId: "doc_structured",
+          status: "applied",
+          hasValidationErrors: true
+        }
+      };
+      expect((await read(adminEmployee)).json()).toEqual(safe);
+      fixture.snapshot.mode = "suspended";
+      expect((await read()).statusCode).toBe(404);
+      expect((await read(adminEmployee)).json()).toEqual(safe);
+      fixture.snapshot.disabled = true;
+      expect((await read(adminEmployee)).statusCode).toBe(403);
+      fixture.snapshot.disabled = false;
+      fixture.snapshot.mode = "enabled";
+      expect((await read({ ...adminEmployee, orgId: "foreign-org" })).statusCode).toBe(404);
+      Object.assign(batch, {
+        status: "archived",
+        sourceDocumentStatus: "archived",
+        readRequirements: [{ orgId: employee.orgId, categoryId: "vip", valid: false, scopes }]
+      });
+      fixture.snapshot.clearance = 3;
+      fixture.snapshot.grants = scopes.map((scope, i) => ({
+        id: String(i),
+        orgId: employee.orgId,
+        enterpriseKey: scope.enterpriseKey,
+        categoryIds: ["vip"],
+        ownership: "group",
+        dimensions: {}
+      }));
+      expect((await read()).statusCode).toBe(404);
+      expect((await read(adminEmployee)).json()).toMatchObject({
+        importBatch: { status: "archived", hasValidationErrors: true }
+      });
+      Object.assign(batch, {
+        dataset: "delivery_ledger",
+        status: "applied",
+        sourceDocumentStatus: "active",
+        readRequirements: [{ orgId: employee.orgId, categoryId: "vip", valid: true, scopes }]
+      });
+      expect((await read()).statusCode).toBe(404);
+      expect((await read(adminEmployee)).json()).toEqual(safe);
+      batch.dataset = "vip";
+      // Only legacy/preparing preserve the explicitly old ordinary-metadata rule.
+      batch.sourceDocumentConfidentialityLevel = 0;
+      fixture.snapshot.grants = [];
+      for (const mode of ["legacy", "preparing"] as const) {
+        fixture.snapshot.mode = mode;
+        expect((await read()).json()).toMatchObject({ importBatch: { totalRowCount: 2 } });
+      }
+    } finally {
+      await app.close();
+    }
+  });
+  it("delegates the same current grant predicate and rejects suspended reads identically", async () => {
+    const fixture = permissionFixture();
+    const compiled: Array<Parameters<StructuredQueryRepository["execute"]>[0]> = [];
+    const app = buildMcpTestServer({
+      businessAuthorizationService: fixture.service,
+      structuredQueryRepository: {
+        execute: async (query) => {
+          compiled.push(query);
+          return {
+            rows: query.sql.includes("(0 = 1)") ? [] : [{ member_id: "synthetic" }],
+            hasMore: false
+          };
+        }
+      }
+    });
+    try {
+      const query = { dataset: "vip", select: ["member_id"] };
+      const headers = { authorization: `Bearer ${await accessToken()}` };
+      const http = await app.inject({
+        method: "POST",
+        url: "/v1/structured/query",
+        headers,
+        payload: query
+      });
+      const mcp = await call(app, "query_structured_dataset", query);
+      expect(http.statusCode).toBe(200);
+      expect(mcp.payload).toEqual(http.json());
+      expect(compiled).toHaveLength(2);
+      expect(compiled[0]!.sql).toBe(compiled[1]!.sql);
+      expect(compiled[0]!.params).toEqual(compiled[1]!.params);
+      expect(compiled[0]!.sql).toContain("EXISTS (SELECT 1 FROM business_resources");
+      expect(compiled[0]!.params).toContain("precise-enterprise");
+      fixture.snapshot.mode = "suspended";
+      const denied = await app.inject({
+        method: "POST",
+        url: "/v1/structured/query",
+        headers,
+        payload: query
+      });
+      const deniedMcp = await call(app, "query_structured_dataset", query);
+      expect(denied.json().rows).toEqual([]);
+      expect(deniedMcp.payload).toEqual(denied.json());
+      expect(compiled).toHaveLength(4);
+      expect(compiled[2]!.sql).toContain("(0 = 1)");
+      expect(compiled[3]!.sql).toBe(compiled[2]!.sql);
+    } finally {
+      await app.close();
+    }
+  });
+  it("reads full admin self/other configuration live and applies current role, tenant and version checks", async () => {
+    const fixture = permissionFixture();
+    fixture.snapshot.role = "admin";
+    fixture.snapshot.categories.push({
+      id: "ungranted",
+      kind: "evidence",
+      confidentialityLevel: null,
+      ownerships: ["group"],
+      requiredDimensionIds: []
+    });
+    const app = buildMcpTestServer({
+      businessAuthorizationService: fixture.service,
+      documentRepository: fakeDocumentRepository()
+    });
+    try {
+      const headers = { authorization: `Bearer ${await accessToken(adminEmployee)}` };
+      for (const employeeId of [adminEmployee.id, employee.id]) {
+        const http = await app.inject({
+          url: `/v1/admin/permissions/accounts/${employeeId}`,
+          headers
+        });
+        const mcp = await call(app, "get_account_permissions", { employeeId }, adminEmployee);
+        expect(mcp.payload).toEqual(http.json());
+        expect(http.json().categories).toHaveLength(2);
+        expect(JSON.stringify(mcp.payload)).not.toContain("downloadUrl");
+      }
+      const card = await call(app, "get_my_permissions", {}, adminEmployee);
+      expect(card.payload).toMatchObject({
+        authorizationVersion: "7",
+        categories: [expect.objectContaining({ id: "vip" })]
+      });
+      expect((card.payload as { categories: unknown[] }).categories).toHaveLength(1);
+      const management = await call(
+        app,
+        "get_evidence_document_management_status",
+        { documentId: "doc_evidence_status" },
+        adminEmployee
+      );
+      expect(management.result?.isError).toBe(false);
+      expect(JSON.stringify(management.payload)).not.toContain("downloadUrl");
+      const ordinary = await call(
+        app,
+        "get_evidence_document_status",
+        { documentId: "doc_evidence_status" },
+        adminEmployee
+      );
+      expect(ordinary.payload).toMatchObject({ error: { code: "DOCUMENT_NOT_FOUND" } });
+      const foreign = await call(
+        app,
+        "get_account_permissions",
+        { employeeId: "foreign" },
+        adminEmployee
+      );
+      expect(foreign.payload).toMatchObject({ error: { code: "AUTHORIZATION_ACCOUNT_NOT_FOUND" } });
+      const args = { employeeId: employee.id, expectedVersion: "6", clearance: 1, grants: [] };
+      const conflict = await call(app, "update_account_permissions", args, adminEmployee);
+      expect(conflict.payload).toMatchObject({ error: { code: "AUTHORIZATION_VERSION_CONFLICT" } });
+      fixture.snapshot.role = "employee";
+      const denied = await app.inject({
+        url: `/v1/admin/permissions/accounts/${employee.id}`,
+        headers
+      });
+      const deniedMcp = await call(
+        app,
+        "get_account_permissions",
+        { employeeId: employee.id },
+        adminEmployee
+      );
+      expect(denied.statusCode).toBe(403);
+      expect(deniedMcp.payload).toMatchObject({ error: { code: denied.json().error.code } });
+      fixture.snapshot.authorizationVersion = "8";
+      expect((await call(app, "get_my_permissions")).payload).toMatchObject({
+        authorizationVersion: "8",
+        role: "employee"
+      });
+    } finally {
+      await app.close();
+    }
+  });
+  it("uses the real HTTP multipart boundary for explicit MCP evidence attributes", async () => {
+    const fixture = permissionFixture();
+    fixture.snapshot.role = "admin";
+    const documents = createDocumentRepository();
+    const app = buildMcpTestServer({
+      businessAuthorizationService: fixture.service,
+      documentRepository: documents,
+      storageAdapter: createOrganizationContextStorageAdapter()
+    });
+    try {
+      const attrs = {
+        title: "Synthetic procedure",
+        categoryId: "memo",
+        scopes: [
+          {
+            enterpriseKey: "enterprise",
+            ownership: "store",
+            storeName: "Store A ",
+            dimensions: { project: "X" }
+          }
+        ],
+        confidentialityLevel: 2,
+        historicalSupplementReason: "Explicit historical declaration"
+      };
+      const body = Buffer.from("# Synthetic procedure\n");
+      const file = {
+        name: "procedure.md",
+        mediaType: "text/markdown",
+        encoding: "base64",
+        contentBase64: body.toString("base64")
+      };
+      const mcp = await call(app, "upload_evidence_document", { file, ...attrs }, adminEmployee);
+      expect(mcp.result?.isError).toBe(false);
+      const multipart = createMultipartPayload([
+        { name: "file", fileName: file.name, contentType: file.mediaType, value: body },
+        { name: "title", value: attrs.title },
+        { name: "categoryId", value: attrs.categoryId },
+        { name: "scopes", value: JSON.stringify(attrs.scopes) },
+        { name: "confidentialityLevel", value: "2" },
+        { name: "historicalSupplementReason", value: attrs.historicalSupplementReason }
+      ]);
+      const http = await app.inject({
+        method: "POST",
+        url: "/v1/documents/evidence",
+        headers: {
+          authorization: `Bearer ${await accessToken(adminEmployee)}`,
+          "content-type": multipart.contentType
+        },
+        payload: multipart.body
+      });
+      expect(http.statusCode).toBe(202);
+      expect(documents.uploadInputs).toHaveLength(2);
+      for (const input of documents.uploadInputs)
+        expect(input).toMatchObject({
+          uploaderId: adminEmployee.id,
+          orgId: adminEmployee.orgId,
+          businessCategoryId: attrs.categoryId,
+          businessScopes: attrs.scopes,
+          confidentialityLevel: 2,
+          historicalSupplementReason: attrs.historicalSupplementReason
+        });
+      expect(JSON.stringify(mcp.payload)).not.toContain("downloadUrl");
+    } finally {
+      await app.close();
+    }
+  });
+  it("has no MCP bypass for raw ledger aggregation or original links", async () => {
+    const fixture = permissionFixture();
+    const sign = vi.fn();
+    const issueMany = createSourceDocumentDownloadIssuer({
+      repository: {
+        findDownloadableSourceDocuments: async () => [
+          {
+            sourceDocumentId: "ledger",
+            orgId: employee.orgId,
+            status: "active",
+            storageObjectKey: "private/ledger",
+            originalFileName: "ledger.xlsx",
+            contentType: "application/octet-stream",
+            byteSize: 10,
+            confidentialityLevel: 0,
+            importDataset: "delivery_ledger"
+          }
+        ],
+        recordDownloadsIssued: vi.fn()
+      },
+      storage: { createDownloadUrl: sign } as unknown as StorageAdapter
+    }).issueMany;
+    const app = buildMcpTestServer({
+      businessAuthorizationService: fixture.service,
+      sourceDocumentDownloadIssuer: { issueMany }
+    });
+    try {
+      const headers = { authorization: `Bearer ${await accessToken()}` };
+      const query = { dataset: "delivery_ledger", aggregates: [{ op: "count" }] };
+      const http = await app.inject({
+        method: "POST",
+        url: "/v1/structured/query",
+        headers,
+        payload: query
+      });
+      expect(http.statusCode).toBe(403);
+      expect((await call(app, "query_structured_dataset", query)).payload).toMatchObject({
+        error: { code: "LEDGER_DETAIL_DISABLED" }
+      });
+      const original = await app.inject({
+        method: "POST",
+        url: "/v1/source-documents/ledger/download-url",
+        headers
+      });
+      expect(original.statusCode).toBe(404);
+      const mcp = await call(app, "get_source_document_download_url", {
+        sourceDocumentId: "ledger"
+      });
+      expect(mcp.payload).toMatchObject({ error: { code: original.json().error.code } });
+      expect(JSON.stringify(mcp.payload)).not.toContain("private/ledger");
+      expect(sign).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
   });
 });

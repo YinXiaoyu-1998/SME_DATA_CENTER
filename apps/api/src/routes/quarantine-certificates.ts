@@ -1,3 +1,5 @@
+import { ResourceAttributesError } from "@smedc/db";
+import { normalizeEnterpriseIdentity } from "@smedc/domain";
 import { createHash, randomBytes } from "node:crypto";
 import {
   authorizeFileUpload,
@@ -25,6 +27,11 @@ import type { StorageAdapter } from "@smedc/storage";
 import { readMultipartFile, type MultipartPart } from "../http/multipart.js";
 
 interface ParsedQuarantineUpload {
+  historicalSupplementReason?: string;
+  enterpriseName?: string;
+  storeName?: string;
+  enterpriseFieldCount: number;
+  storeFieldCount: number;
   files: Array<{
     fileName: string;
     contentType?: string;
@@ -52,6 +59,8 @@ function createDocumentId(): string {
 async function parseUpload(request: FastifyRequest): Promise<ParsedQuarantineUpload> {
   const upload: ParsedQuarantineUpload = {
     files: [],
+    enterpriseFieldCount: 0,
+    storeFieldCount: 0,
     confidentialityLevelFieldCount: 0
   };
   const multipartRequest = request as unknown as { parts(): AsyncIterable<MultipartPart> };
@@ -69,7 +78,24 @@ async function parseUpload(request: FastifyRequest): Promise<ParsedQuarantineUpl
     }
 
     const value = typeof part.value === "string" ? part.value.trim() : "";
+    if (part.fieldname === "historicalSupplementReason") {
+      if (upload.historicalSupplementReason !== undefined || !value || value.length > 2048)
+        throw new ResourceAttributesError("RESOURCE_HISTORICAL_REASON_REQUIRED");
+      upload.historicalSupplementReason = value;
+      continue;
+    }
     if (!value) continue;
+
+    if (part.fieldname === "enterpriseName" || part.fieldname === "enterprise_name") {
+      upload.enterpriseFieldCount += 1;
+      upload.enterpriseName = value;
+      continue;
+    }
+    if (part.fieldname === "storeName") {
+      upload.storeFieldCount += 1;
+      upload.storeName = typeof part.value === "string" ? part.value : "";
+      continue;
+    }
 
     if (part.fieldname === "receiptId") {
       upload.receiptId = value;
@@ -239,9 +265,27 @@ export function registerQuarantineCertificateRoutes(
       );
     }
 
+    if (
+      !upload.enterpriseName ||
+      upload.enterpriseName.length > 128 ||
+      upload.enterpriseFieldCount !== 1 ||
+      !upload.storeName?.trim() ||
+      upload.storeName.length > 255 ||
+      upload.storeFieldCount !== 1
+    )
+      return validationError(
+        reply,
+        "RESOURCE_SINGLE_STORE_REQUIRED",
+        "A photo requires one explicit enterprise and store name."
+      );
+    const enterpriseKey = normalizeEnterpriseIdentity(upload.enterpriseName).enterpriseKey;
+
     const fileHash = createHash("sha256").update(file.body).digest("hex");
     const requestFingerprint = quarantineCertificateFingerprint({
       receiptId: normalizedReceiptId,
+      historicalSupplementReason: upload.historicalSupplementReason,
+      enterpriseKey,
+      storeName: upload.storeName,
       confidentialityLevel,
       fileHash
     });
@@ -279,6 +323,9 @@ export function registerQuarantineCertificateRoutes(
         sourceDocumentId,
         title: `检疫证明 ${normalizedReceiptId} - ${file.fileName}`,
         receiptId: normalizedReceiptId,
+        historicalSupplementReason: upload.historicalSupplementReason,
+        enterpriseKey,
+        storeName: upload.storeName,
         idempotencyKey: upload.idempotencyKey,
         requestFingerprint,
         fileType,
@@ -294,6 +341,12 @@ export function registerQuarantineCertificateRoutes(
       return reply.code(201).send(certificateResponse(certificate));
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
+      if (error instanceof ResourceAttributesError)
+        return validationError(
+          reply,
+          error.code,
+          "Photo business attributes are not ready or do not match the receipt store."
+        );
       if (error instanceof QuarantineCertificateError) {
         return reply.code(409).send(errorResponse(error.code, error.message));
       }
@@ -319,6 +372,7 @@ export function registerQuarantineCertificateRoutes(
     const certificates = await dependencies.quarantineCertificates().queryVisibleByReceiptIds({
       orgId: employee.orgId,
       employee,
+      authorization: await dependencies.auth.authorization(request),
       receiptIds
     });
     const certificatesByReceiptId = new Map<string, ReturnType<typeof certificateResponse>[]>();
@@ -361,7 +415,7 @@ export function registerQuarantineCertificateRoutes(
     const employee = dependencies.auth.employee(request);
     const audit = dependencies.createBusinessRequestAudit(request);
 
-    if (receiptId) {
+    {
       if (!canPerformPrivilegedAdministrativeOperation(employee, "archiveQuarantineCertificates")) {
         return reply
           .code(403)
@@ -372,6 +426,8 @@ export function registerQuarantineCertificateRoutes(
             )
           );
       }
+    }
+    if (receiptId) {
       const archivedCount = await dependencies.quarantineCertificates().archiveByReceiptId({
         orgId: employee.orgId,
         employee,

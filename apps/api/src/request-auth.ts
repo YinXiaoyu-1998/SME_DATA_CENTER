@@ -1,5 +1,9 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { AUTH_ERROR_CODES, type AuthenticatedEmployee } from "@smedc/domain";
+import {
+  AUTH_ERROR_CODES,
+  type AuthorizationSnapshot,
+  type AuthenticatedEmployee
+} from "@smedc/domain";
 import type { ApiServerContext } from "./app-context.js";
 import { errorResponse } from "./request-errors.js";
 
@@ -54,8 +58,17 @@ export function createRequestAuth(context: ApiServerContext) {
     }
   }
 
+  const snapshots = new WeakMap<FastifyRequest, Promise<AuthorizationSnapshot>>();
   return {
     authenticate,
+    authorization(request: FastifyRequest): Promise<AuthorizationSnapshot> {
+      let snapshot = snapshots.get(request);
+      if (!snapshot) {
+        snapshot = context.permissions().current((request as AuthenticatedRequest).employee);
+        snapshots.set(request, snapshot);
+      }
+      return snapshot;
+    },
     employee(request: FastifyRequest): AuthenticatedEmployee {
       return (request as AuthenticatedRequest).employee;
     }
