@@ -110,7 +110,11 @@ suite("fixed category bootstrap through supported administration", () => {
       const listed = (await app.inject({ url: "/v1/admin/permissions/categories" })).json();
       const report = (await app.inject({ url: "/v1/admin/permissions/cutover" })).json();
       expect(report.ready).toBe(false);
-      expect(report.missing).toHaveLength(7);
+      expect(report.missing).toHaveLength(6);
+      expect(report.missing).not.toContainEqual({
+        code: "FIXED_CATEGORY_CLEARANCE_REQUIRED",
+        targetId: "delivery_ledger"
+      });
       expect(await repository.loadAuthorizationSnapshot(actorId, orgId)).toEqual(before);
       expect(
         (
@@ -122,7 +126,7 @@ suite("fixed category bootstrap through supported administration", () => {
         ).statusCode
       ).toBe(409);
       let version = listed.authorizationVersion;
-      for (const category of migrated) {
+      for (const category of migrated.filter((category) => category.key !== "delivery_ledger")) {
         const result = await app.inject({
           method: "PATCH",
           url: `/v1/admin/permissions/categories/${category.id}`,
@@ -145,6 +149,11 @@ suite("fixed category bootstrap through supported administration", () => {
         ).statusCode
       ).toBe(200);
       expect((await repository.loadAuthorizationSnapshot(actorId, orgId)).mode).toBe("enabled");
+      expect(
+        (await repository.listCategories(orgId)).find(
+          (category) => category.key === "delivery_ledger"
+        )?.confidentialityLevel
+      ).toBeNull();
       expect(await prisma.businessGrant.count({ where: { orgId } })).toBe(0);
     } finally {
       await app.close();

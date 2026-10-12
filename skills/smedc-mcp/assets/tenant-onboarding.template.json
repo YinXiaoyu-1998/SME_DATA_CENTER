@@ -1,6 +1,6 @@
 {
   "formType": "smedc-tenant-onboarding",
-  "templateVersion": 1,
+  "templateVersion": 2,
   "requestType": null,
   "enterprise": {
     "name": null,
@@ -27,10 +27,6 @@
     },
     "supplier_catalog": {
       "label": "供应商名单",
-      "confidentialityLevel": null
-    },
-    "delivery_ledger": {
-      "label": "原始配送台账（内部生成材料）",
       "confidentialityLevel": null
     },
     "quarantine_certificate": {
