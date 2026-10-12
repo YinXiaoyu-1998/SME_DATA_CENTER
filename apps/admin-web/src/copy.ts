@@ -81,12 +81,12 @@ export const permissionsCopy = {
     en: "Every level from 0 to 3 requires an explicit business grant. Level 0 is not public; administrators also need grants for ordinary reads."
   },
   fixedHelp: {
-    zh: "八个固定类别各自配置密级，未配置项不会自动设为 0。",
-    en: "Configure each of the eight fixed category levels. Unset levels are never defaulted to 0."
+    zh: "七个可读取的固定类别各自配置密级，未配置项不会自动设为 0。",
+    en: "Configure each of the seven readable fixed category levels. Unset levels are never defaulted to 0."
   },
   internalLedger: {
-    zh: "原始配送台账仅供内部使用；设置密级不会开放原始明细、汇总或原件读取。",
-    en: "Raw delivery ledgers remain internal. Setting a level does not enable reading their rows, summaries or originals."
+    zh: "原始配送台账仅供内部处理，不提供原始明细、汇总或原件读取。",
+    en: "Raw delivery ledgers remain internal and do not expose rows, summaries or originals."
   },
   business: { zh: "营业数据", en: "Business data" },
   dishes: { zh: "菜品销售", en: "Dish sales" },
@@ -236,6 +236,10 @@ export const permissionsCopy = {
     en: "An empty enterprise can be configured and activated first. With no real documents, only configuration readiness can be claimed."
   },
   version: { zh: "配置版本", en: "Configuration version" },
+  INTERNAL_CATEGORY_REQUIRED: {
+    zh: "内部资料类别尚未初始化，请联系运维。",
+    en: "An internal data category has not been initialized. Contact your operator."
+  },
   FIXED_CATEGORY_CLEARANCE_REQUIRED: {
     zh: "请配置固定类别密级",
     en: "Configure the fixed category level"

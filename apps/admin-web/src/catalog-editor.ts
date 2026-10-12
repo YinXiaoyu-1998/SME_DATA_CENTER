@@ -6,11 +6,10 @@ function selectedDimensionChoices(selected = []) {
 }
 function renderCategories(section) {
   section.append(heading("categories"), pair("fixedHelp", "p"), pair("levelHelp", "p"));
-  for (const category of state.categories.filter(category => category.kind === "fixed")) {
+  for (const category of state.categories.filter(category => category.kind === "fixed" && category.key !== "delivery_ledger")) {
     const { form, message } = formWithStatus(); form.className = "subpanel";
     form.append(heading(categoryLabel(category), "h3"));
     const level = levels(category.confidentialityLevel ?? ""); form.append(field("level", level));
-    if (category.key === "delivery_ledger") form.append(pair("internalLedger", "p"));
     let baseline = { name: category.name, confidentialityLevel: category.confidentialityLevel, retired: category.retired };
     onSubmit(form, message, async () => {
       if (level.value === "") { status(message, "required", true); return; }

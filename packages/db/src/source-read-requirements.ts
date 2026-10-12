@@ -73,7 +73,9 @@ export function requirePublicationAttributes(
   if (mode !== "enabled" && !requireCompleteAttributes) return;
   if (
     !category ||
-    (category.kind === "fixed" && !isBusinessClearance(category.confidentialityLevel))
+    (category.kind === "fixed" &&
+      category.key !== "delivery_ledger" &&
+      !isBusinessClearance(category.confidentialityLevel))
   )
     fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
   if (

@@ -1000,6 +1000,47 @@ suite("authoritative publication and original lineage", () => {
     expect(await prisma.document.findUnique({ where: { id: failedSource } })).toBeNull();
   });
 
+  it("publishes an enabled tenant's internal receipt with an unset level and complete original lineage", async () => {
+    await prisma.businessCategory.update({
+      where: { orgId_id: { orgId: publicationOrg, id: "delivery_ledger" } },
+      data: { confidentialityLevel: null }
+    });
+    const sourceDocumentId = nextId();
+    await prisma.$transaction(async (tx) => {
+      await tx.document.create({ data: documentData(sourceDocumentId) });
+      await persistStructuredSourceReadRequirements(tx, {
+        orgId: publicationOrg,
+        sourceDocumentId,
+        dataset: "delivery_ledger",
+        workerId: "internal-worker",
+        rows: [{ payload: { receipt_id: "INTERNAL-R-1", store_name: "Exact A " } }]
+      });
+      await tx.document.update({ where: { id: sourceDocumentId }, data: { status: "active" } });
+    });
+    expect(await getSourceReadRequirements(prisma, sourceDocumentId, publicationOrg)).toMatchObject(
+      [
+        {
+          orgId: publicationOrg,
+          categoryId: "delivery_ledger",
+          valid: true,
+          scopes: [
+            {
+              enterpriseKey: "enterprise",
+              ownership: "store",
+              storeName: "Exact A ",
+              dimensions: {}
+            }
+          ]
+        }
+      ]
+    );
+    expect(
+      await prisma.businessCategory.findUniqueOrThrow({
+        where: { orgId_id: { orgId: publicationOrg, id: "delivery_ledger" } }
+      })
+    ).toMatchObject({ confidentialityLevel: null });
+  });
+
   it("publishes membership as group-owned even when parsed rows contain multiple store labels", async () => {
     const sourceDocumentId = nextId();
     await prisma.$transaction(async (tx) => {

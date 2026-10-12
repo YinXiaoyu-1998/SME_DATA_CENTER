@@ -424,7 +424,7 @@ if (enabled) {
           key: name,
           name,
           kind: "fixed",
-          confidentialityLevel: name === "ledger_pdf" ? 0 : 3,
+          confidentialityLevel: name === "delivery_ledger" ? null : name === "ledger_pdf" ? 0 : 3,
           allowStore: name !== "supplier_catalog",
           allowGroup: name === "supplier_catalog"
         })

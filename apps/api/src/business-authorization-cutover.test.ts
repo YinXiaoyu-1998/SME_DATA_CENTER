@@ -53,6 +53,26 @@ describe("tenant authorization preparation", () => {
       AUTHORIZATION_READ_ADAPTERS.length
     );
   });
+  it("activates with an unset internal ledger level but still requires the PDF level and internal category identity", () => {
+    const data = inventory();
+    const ledger = data.categories.find((category) => category.key === "delivery_ledger")!;
+    ledger.confidentialityLevel = null;
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).ready).toBe(true);
+    expect(ledger.confidentialityLevel).toBeNull();
+
+    const pdf = data.categories.find((category) => category.key === "ledger_pdf")!;
+    pdf.confidentialityLevel = null;
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).missing).toContainEqual({
+      code: "FIXED_CATEGORY_CLEARANCE_REQUIRED",
+      targetId: "ledger_pdf"
+    });
+    pdf.confidentialityLevel = 2;
+    data.categories = data.categories.filter((category) => category.key !== "delivery_ledger");
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS)).toMatchObject({
+      ready: false,
+      missing: [{ code: "INTERNAL_CATEGORY_REQUIRED", targetId: "delivery_ledger" }]
+    });
+  });
   it("reports old documents, missing original lineage, partitions and PDFs instead of inferring attributes", () => {
     const data = inventory();
     data.documents = [

@@ -96,6 +96,15 @@ Initialization preserves existing IDs, levels and retirement choices; new levels
 grants or activation are inferred. Use IDs returned by `list_business_categories`, never invent
 `fixed:…` IDs or create an evidence category to replace a missing fixed category. If the service
 still reports a missing fixed category, report incomplete service initialization to its operator.
+Only the seven readable fixed categories need administrator-declared levels. `delivery_ledger`
+retains its internal category identity and complete enterprise/store/source associations, without
+an administrator level or ordinary read grant. `ledger_pdf` keeps its own level and grants;
+existing stored internal levels are preserved and never open raw-ledger reads.
+This separation requires the matching service rollout. If preparation still requests a
+`delivery_ledger` level, report the service-version mismatch to the operator; do not fill 0/3,
+delete the internal category, or bypass the gate. `INTERNAL_CATEGORY_REQUIRED` means service
+initialization is incomplete, not that the administrator must choose a ledger level.
+
 Listing and preparation are read-only. A fixed-category edit accepts only its
 `confidentialityLevel` model; evidence edits accept `ownerships` and `requiredDimensionIds` instead.
 Directory mutations optionally accept `retired`; they do not automatically grant access. A grant

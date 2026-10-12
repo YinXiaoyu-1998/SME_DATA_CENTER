@@ -61,6 +61,38 @@ describe("authoritative successful source scopes", () => {
       })
     ).toThrow("RESOURCE_SINGLE_STORE_REQUIRED");
   });
+  it("admits internal ledger publication without a level while retaining scope, suspension and PDF level checks", () => {
+    const ledger = {
+      id: "internal-ledger",
+      key: "delivery_ledger",
+      kind: "fixed" as const,
+      confidentialityLevel: null,
+      ownerships: ["store" as const],
+      requiredDimensionIds: []
+    };
+    const scopes = [
+      {
+        enterpriseKey: "enterprise",
+        ownership: "store" as const,
+        storeName: "Exact A ",
+        dimensions: {}
+      }
+    ];
+    expect(() => requirePublicationAttributes("enabled", ledger, scopes)).not.toThrow();
+    expect(ledger.confidentialityLevel).toBeNull();
+    expect(() => requirePublicationAttributes("enabled", ledger, [])).toThrow(
+      "RESOURCE_ATTRIBUTES_NOT_READY"
+    );
+    expect(() =>
+      requirePublicationAttributes("enabled", ledger, [{ ...scopes[0]!, storeName: "" }])
+    ).toThrow("RESOURCE_ATTRIBUTES_NOT_READY");
+    expect(() => requirePublicationAttributes("suspended", ledger, scopes)).toThrow(
+      "AUTHORIZATION_SUSPENDED"
+    );
+    expect(() =>
+      requirePublicationAttributes("enabled", { ...ledger, key: "ledger_pdf" }, scopes)
+    ).toThrow("RESOURCE_CATEGORY_NOT_CONFIGURED");
+  });
   it("requires complete current configured attributes in enabled mode, with explicit legacy separation", () => {
     const scopes = [{ enterpriseKey: "enterprise", ownership: "group" as const, dimensions: {} }];
     expect(() => requirePublicationAttributes("enabled", null, scopes)).toThrow(

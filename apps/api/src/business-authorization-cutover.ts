@@ -53,6 +53,10 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
     if (!adapters.includes(adapter)) add("READ_ADAPTER_NOT_READY", adapter);
   for (const key of FIXED_BUSINESS_CATEGORY_KEYS) {
     const rule = inventory.categories.find((c) => c.kind === "fixed" && c.key === key);
+    if (key === "delivery_ledger") {
+      if (!rule) add("INTERNAL_CATEGORY_REQUIRED", key);
+      continue;
+    }
     if (!rule || !isBusinessClearance(rule.confidentialityLevel))
       add("FIXED_CATEGORY_CLEARANCE_REQUIRED", key);
   }
