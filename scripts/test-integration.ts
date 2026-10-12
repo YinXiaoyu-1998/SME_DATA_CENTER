@@ -192,7 +192,10 @@ integrationRun: try {
                   "scripts/test-integration-support.test.ts"
                 ]),
       ...(!structuredReadsOnly && !ledgerAuthorizationOnly && !partitionDownloadsOnly
-        ? ["packages/db/src/business-authorization.prisma.integration.test.ts"]
+        ? [
+            "packages/db/src/business-authorization.prisma.integration.test.ts",
+            "apps/api/src/permissions-operator/cli.prisma.integration.test.ts"
+          ]
         : [])
     ],
     {
@@ -201,7 +204,8 @@ integrationRun: try {
         RUN_LEDGER_PRISMA_INTEGRATION: "1",
         RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION: "1",
         RUN_PARTITION_PRISMA_INTEGRATION: "1",
-        RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION: "1"
+        RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION: "1",
+        RUN_PERMISSIONS_OPERATOR_PRISMA_INTEGRATION: "1"
       }
     }
   );

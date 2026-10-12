@@ -112,6 +112,7 @@ COPY --chown=node:node packages/db/prisma ./packages/db/prisma
 COPY --from=build --chown=node:node /app/dist/release/readiness.js ./dist/release/readiness.js
 COPY --from=build --chown=node:node /app/dist/release/staging-smoke.js ./dist/release/staging-smoke.js
 COPY --from=build --chown=node:node /app/dist/release/official-manual-acceptance.js ./dist/release/official-manual-acceptance.js
+COPY --from=build --chown=node:node /app/dist/release/permissions-operator.js ./dist/release/permissions-operator.js
 COPY --from=build --chown=node:node /app/dist/release/auth-operator.js ./dist/release/auth-operator.js
 COPY --from=build --chown=node:node /app/dist/release/staging-upload-domain-cleanup.js ./dist/release/staging-upload-domain-cleanup.js
 COPY --from=build --chown=node:node /app/dist/release/partition-store-cleanup.js ./dist/release/partition-store-cleanup.js

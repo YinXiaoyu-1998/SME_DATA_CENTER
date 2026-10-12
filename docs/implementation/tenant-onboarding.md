@@ -2,7 +2,7 @@
 
 目标用户入口为“企业专属固定入口＋共享网页登录状态＋服务端严格校验企业身份”，页面体验与登录／密码页一致，默认中文并支持 English。开发者开通企业与管理员后，把企业专属固定 URL 发给管理员；管理员本人在 UI 维护业务规则，不需要填写 JSON。
 
-**当前状态：权限 UI 已在本分支实现并完成本地验证，尚未部署上线。** 路径是官方服务同源 `/admin/permissions/:orgId`，不能提前作为可用链接交付；上线要求和实现边界见[正式设计](admin-permissions-ui-design.md)。本流程不声称已改线上租户模式。
+权限 UI 路径是官方服务同源 `/admin/permissions/:orgId`。每次交付前确认目标环境已获准部署并完成验证；上线要求和实现边界见[正式设计](admin-permissions-ui-design.md)。页面可用不代表已改线上租户模式。
 
 ## 入驻次序
 
@@ -22,9 +22,11 @@
 - 保存与激活分离：legacy／preparing 继续旧读取规则，enabled 才执行新规则，suspended 不恢复 legacy。
 - 历史来源关系缺项单列，不从可见数据猜测，也不把入驻附带当成部署、回填或启用授权。
 
-## 过渡期与内部格式
+## 开发者代办与内部格式
 
-UI 上线前，实际管理仍由获准管理员使用[现有 MCP 管理工具](../../skills/smedc-mcp/references/business-authorization.md#admin-tools)，先读当前配置与版本、核对具体差异，再执行获准操作；不把手填 JSON 作为用户门槛。
+管理员可明确要求开发者通过[内部权限 CLI](internal-permissions-cli.md)代为维护类别、门店、条件、账号授权及文档属性；此能力与权限 UI 长期并存。开发者使用受控服务器权限，指定当前有效的本企业管理员、请求引用及版本，并保留代办审计。
+
+获准管理员或 agent 也可使用[现有 MCP 管理工具](../../skills/smedc-mcp/references/business-authorization.md#admin-tools)，先读当前配置与版本、核对具体差异，再执行获准操作；不把手填 JSON 作为用户门槛。
 
 双归属 Skill 分发[入口约定](../../skills/smedc-mcp/references/tenant-onboarding.md)，默认引导 UI 并明确上线状态；只有开发／运维或 agent 明确需要内部记录时，才使用[内部 JSON 模板](../../skills/smedc-mcp/assets/tenant-onboarding.template.json)及其[字段约定](../../skills/smedc-mcp/references/tenant-onboarding-json.md)。该格式不是公开批量导入／导出合同。
 

@@ -66,6 +66,9 @@ describe("runtime image contracts", () => {
     expect(dockerfile).toContain("FROM runtime-base AS release-ops");
     expect(releaseOpsDockerfile).toContain("dist/release/official-manual-acceptance.js");
     expect(releaseOpsDockerfile).toContain("dist/release/auth-operator.js");
+    expect(releaseOpsDockerfile).toContain("dist/release/permissions-operator.js");
+    for (const stage of ["api", "worker"])
+      expect(dockerStage(stage)).not.toContain("permissions-operator.js");
     expect(releaseOpsDockerfile).toContain("dist/release/staging-upload-domain-cleanup.js");
     expect(releaseOpsDockerfile).toContain("dist/release/partition-store-cleanup.js");
     expect(releaseOpsDockerfile).toContain("dist/release/evidence-reindex.js");

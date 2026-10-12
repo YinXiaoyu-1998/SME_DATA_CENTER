@@ -39,6 +39,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:release": "tsup --config tsup.release.config.ts",
     "api:dev": "tsx apps/api/src/index.ts",
+    "permissions:operator": "tsx apps/api/src/permissions-operator/cli.ts",
     "auth:operator": "tsx apps/api/src/auth/operator-cli.ts",
     "mcp:launcher": "npm --workspace smedc-mcp-launcher run --silent start --",
     "purge-data": "tsx scripts/purge-data.ts",
