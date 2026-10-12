@@ -118,6 +118,7 @@ COPY --from=build --chown=node:node /app/dist/release/staging-upload-domain-clea
 COPY --from=build --chown=node:node /app/dist/release/partition-store-cleanup.js ./dist/release/partition-store-cleanup.js
 COPY --from=build --chown=node:node /app/dist/release/evidence-reindex.js ./dist/release/evidence-reindex.js
 COPY --from=build --chown=node:node /app/dist/release/ledger-pdf.js ./dist/release/ledger-pdf.js
+COPY --from=build --chown=node:node /app/dist/release/ledger-shelf-life.js ./dist/release/ledger-shelf-life.js
 COPY --chown=node:node fixtures/evidence/kitchen-sop.md ./fixtures/evidence/kitchen-sop.md
 COPY --chown=node:node fixtures/evidence/shift-notes.txt ./fixtures/evidence/shift-notes.txt
 

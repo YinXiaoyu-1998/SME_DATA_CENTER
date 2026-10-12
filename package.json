@@ -57,7 +57,8 @@
     "db:migrate": "prisma migrate dev --config packages/db/prisma.config.ts",
     "db:migrate:deploy": "prisma migrate deploy --config packages/db/prisma.config.ts",
     "db:seed": "prisma db seed --config packages/db/prisma.config.ts",
-    "ledger:pdf": "tsx scripts/ledger-pdf.ts"
+    "ledger:pdf": "tsx scripts/ledger-pdf.ts",
+    "ledger:shelf-life": "tsx scripts/ledger-shelf-life.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
