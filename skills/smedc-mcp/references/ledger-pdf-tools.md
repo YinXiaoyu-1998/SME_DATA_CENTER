@@ -76,8 +76,9 @@ published partition PDF, not a client-side filtered subset.
 - Preserve ordinary validation, authentication, authorization, and idempotency errors. A safe
   unavailable result is not proof that no ledger exists.
 
-When archive delivery is enabled, `delivery_ledger` detail and original CSV/XLSX signing are
-closed for every role. Supported aggregates are exactly `count` (no field),
-`countDistinct` on `receipt_id`, and `sum` on `purchase_amount`, scoped/grouped by `store_name`
-and `purchase_date`. Other datasets are unaffected. This reference defines MCP use only; the
+Raw `delivery_ledger` details, aggregates, source coverage and original CSV/XLSX signing are
+closed for every role. The readable dataset catalog omits it; this does not disable admin uploads.
+Use the connected `upload_structured_dataset` contract for original receipt uploads,
+`get_import_status` for application status, and `describe_ledger_pdf_coverage` for authorized PDF
+readiness. Other datasets are unaffected. This reference defines MCP use only; the
 optional `smedc-delivery-ledger` companion owns upload/photo/scheduled-readiness/download coordination.

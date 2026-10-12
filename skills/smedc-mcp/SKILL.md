@@ -126,8 +126,14 @@ discover them by hand.
   It does not safely invent contracts for service tools added later. Discover the available tools
   from the connected host; if the server requires a tool absent from that list, update to the exact
   launcher version approved by this skill before retrying.
-- Call `list_structured_datasets` before using any structured dataset; use `dish_catalog`,
-  `delivery_ledger`, or `supplier_catalog` only when discovery advertises it and its fields.
+- Call `list_structured_datasets` before structured queries or source coverage checks. This is a
+  readable-dataset catalog, not an upload allowlist. Use only advertised datasets, fields, and
+  capabilities for reads; absence from this catalog does not establish that upload is unavailable.
+- For an authorized admin upload, check the connected host's `upload_structured_dataset` input
+  contract for the dataset, then submit the original file and follow its import status. In particular,
+  `delivery_ledger` remains an upload dataset even though its raw reads are disabled and it is absent
+  from `list_structured_datasets`. The backend still validates role, enterprise, file and metadata;
+  do not bypass a returned denial or missing upload contract.
 - In structured dataset discovery, `canonicalName` is the queryable field name. `sourceColumn` and
   `aliases` are not accepted directly by `query_structured_dataset`; use them to map the user's
   wording or source-table headers to `canonicalName`, and to choose friendly table headers when
@@ -380,8 +386,8 @@ Do not run operator cleanup commands or dataset repair from this base skill.
 
 ## Dish Catalog Snapshot Uploads
 
-Use this path only when `list_structured_datasets` reports `dish_catalog` as available. It is a
-complete, append-only menu snapshot rather than a sales/business date-window dataset.
+Use the admin upload contract for `dish_catalog`; readable discovery is not an upload prerequisite.
+It is a complete, append-only menu snapshot rather than a sales/business date-window dataset.
 
 - Call `upload_structured_dataset` with `dataset: "dish_catalog"`, `snapshotDate: "YYYYMMDD"`,
   `enterpriseName`, a stable `idempotencyKey`, and the CSV/XLSX file. Optionally include an
@@ -403,7 +409,8 @@ complete, append-only menu snapshot rather than a sales/business date-window dat
 
 ## Delivery Ledgers And Supplier Catalogs
 
-For `delivery_ledger` and `supplier_catalog`, call `upload_structured_dataset` with `file`,
+For an authorized admin upload, select `delivery_ledger` or `supplier_catalog` from the connected
+upload tool contract, independently of readable discovery. Call `upload_structured_dataset` with `file`,
 `enterpriseName` and `idempotencyKey`. Optionally include an explicit `confidentialityLevel`.
 Do not send `startDate`, `endDate`,
 or `snapshotDate`.
@@ -433,14 +440,6 @@ or `snapshotDate`.
   Keep user-facing replies about availability, not internal scheduling: “系统会自动更新台账，完成后即可下载；是否就绪以查询结果为准。”
   Do not infer a fixed run time or promise completion within 24 hours; only give a completion window
   when the service explicitly provides one. Link expiry and ZIP retention are separate limits.
-- Only when discovery still permits delivery detail, `supplier_contact_phone` and
-  `supplier_unit_address` are selectable dynamic fields only; they cannot filter, sort, group, or aggregate. They may be `null` when no
-  current catalog is available or visible, no exact match exists, the source value is blank, or the
-  supplier name is ambiguous. Enrichment never changes the authorized ledger page or falls back to
-  an older catalog.
-- Before archive delivery is enabled, select `source_document_id` on permitted detail-row queries
-  when the employee needs the original uploaded receipt file. This field is not returned by default
-  and cannot filter, sort, group, or aggregate.
 
 ## Quarantine Certificates And Source Downloads
 
