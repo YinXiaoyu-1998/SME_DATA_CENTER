@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { createDatabaseAdapter } from "@smedc/db";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   parsePermissionsOperatorArgs,
   planPermissionChange,
@@ -34,6 +34,7 @@ suite("internal permissions operator with Prisma", () => {
   let foreignOrgId: string;
   let foreignAdminId: string;
   let version: string;
+  const fixtureOrgIds: string[] = [];
   const scopeArgs = () => ["--org-id", orgId, "--requested-by-admin-id", adminId];
   const applyArgs = (
     operation: PermissionOperation,
@@ -75,6 +76,7 @@ suite("internal permissions operator with Prisma", () => {
   beforeEach(async () => {
     const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
     orgId = `operator_${suffix}`;
+    fixtureOrgIds.push(orgId);
     adminId = `${suffix}_admin`;
     employeeId = `${suffix}_employee`;
     documentId = `${suffix}_document`;
@@ -129,7 +131,29 @@ suite("internal permissions operator with Prisma", () => {
       }
     });
   });
-  afterAll(() => prisma.$disconnect());
+  afterEach(async () => {
+    await prisma.document.updateMany({
+      where: { orgId },
+      data: { status: "archived", archivedAt: new Date() }
+    });
+  });
+  afterAll(async () => {
+    try {
+      // Subsequent shared-schema scenarios enqueue every active evidence document for reindex.
+      expect(
+        await prisma.document.count({
+          where: {
+            orgId: { in: fixtureOrgIds },
+            documentKind: "evidence",
+            status: "active",
+            archivedAt: null
+          }
+        })
+      ).toBe(0);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
 
   it("previews without writes, then configures exact scopes and records both audit identities atomically", async () => {
     const preview = await invoke(applyArgs("enterprise.declare", false), {
