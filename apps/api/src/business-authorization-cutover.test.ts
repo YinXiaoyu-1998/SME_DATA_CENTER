@@ -73,6 +73,56 @@ describe("tenant authorization preparation", () => {
       missing: [{ code: "INTERNAL_CATEGORY_REQUIRED", targetId: "delivery_ledger" }]
     });
   });
+  it("inspects a tenant-sized inventory within the activation transaction budget", () => {
+    const data = inventory();
+    data.categories.find((category) => category.key === "business")!.ownerships = ["store"];
+    data.stores = [{ enterpriseKey: "enterprise", name: "A " }];
+    for (let i = 0; i < 14000; i++) {
+      data.partitions.push(`p${i}`);
+      data.resources.push({
+        id: `r${i}`,
+        kind: "structured",
+        resourceKey: `partition:p${i}`,
+        documentId: null,
+        sourceDocumentId: null,
+        requirement: {
+          orgId: "tenant",
+          categoryId: "business",
+          valid: true,
+          scopes: [
+            { enterpriseKey: "enterprise", ownership: "store", storeName: "A ", dimensions: {} }
+          ]
+        }
+      });
+    }
+    for (let i = 0; i < 5000; i++) {
+      data.documents.push({ id: `d${i}`, kind: "structured", dataset: "business" });
+      data.resources.push({
+        id: `s${i}`,
+        kind: "source_fragment",
+        resourceKey: `source:${i}`,
+        documentId: null,
+        sourceDocumentId: `d${i}`,
+        requirement: {
+          orgId: "tenant",
+          categoryId: "business",
+          valid: true,
+          scopes: [
+            { enterpriseKey: "enterprise", ownership: "store", storeName: "A ", dimensions: {} }
+          ]
+        }
+      });
+    }
+    const started = performance.now();
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).ready).toBe(true);
+    expect(performance.now() - started).toBeLessThan(2000);
+    // Exact store names still matter after indexing.
+    data.stores[0]!.name = "A";
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).missing).toContainEqual({
+      code: "EXACT_STORE_REFERENCE_REQUIRED",
+      targetId: "r0"
+    });
+  }, 60000);
   it("reports old documents, missing original lineage, partitions and PDFs instead of inferring attributes", () => {
     const data = inventory();
     data.documents = [

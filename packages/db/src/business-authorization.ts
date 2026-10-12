@@ -524,45 +524,56 @@ export function createBusinessAuthorizationRepository({
     context: AuthorizationWriteContext,
     action: string,
     targetId: string,
-    operation: (tx: Tx) => Promise<{ before: unknown; after: T }>
+    operation: (tx: Tx, assertWithinDeadline: () => void) => Promise<{ before: unknown; after: T }>
   ): Promise<{ authorizationVersion: string; value: T }> {
     if (!/^(0|[1-9]\d*)$/.test(context.expectedVersion))
       throw new Error("AUTHORIZATION_VERSION_CONFLICT");
+    const timeout = 5000;
+    // Start conservatively before acquisition so synchronous inspection cannot outrun
+    // the driver's timer and send a write on a connection that has already rolled back.
+    const deadline = performance.now() + timeout;
+    const assertWithinDeadline = () => {
+      if (performance.now() >= deadline) throw new Error("AUTHORIZATION_TRANSACTION_EXPIRED");
+    };
     try {
-      return await prisma.$transaction(async (tx) => {
-        if (context.expectedVersion === "0")
-          await tx.businessAuthorizationState.upsert({
-            where: { orgId: context.orgId },
-            create: { orgId: context.orgId },
-            update: {}
+      return await prisma.$transaction(
+        async (tx) => {
+          if (context.expectedVersion === "0")
+            await tx.businessAuthorizationState.upsert({
+              where: { orgId: context.orgId },
+              create: { orgId: context.orgId },
+              update: {}
+            });
+          const state = await tx.businessAuthorizationState.updateMany({
+            where: { orgId: context.orgId, version: BigInt(context.expectedVersion) },
+            data: { version: { increment: 1 } }
           });
-        const state = await tx.businessAuthorizationState.updateMany({
-          where: { orgId: context.orgId, version: BigInt(context.expectedVersion) },
-          data: { version: { increment: 1 } }
-        });
-        if (state.count !== 1) throw new Error("AUTHORIZATION_VERSION_CONFLICT");
-        await tx.$queryRaw(
-          Prisma.sql`SELECT id FROM employees WHERE org_id = ${context.orgId} AND id = ${context.actorId} FOR SHARE`
-        );
-        const actor = await tx.employee.findUnique({
-          where: { orgId_id: { orgId: context.orgId, id: context.actorId } }
-        });
-        if (!actor || actor.orgId !== context.orgId || actor.disabled || actor.role !== "admin")
-          throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
-        const { before, after } = await operation(tx);
-        const version = BigInt(context.expectedVersion) + 1n;
-        await writeAudit(tx, {
-          orgId: context.orgId,
-          actorId: context.actorId,
-          action,
-          targetId,
-          before: before === null ? Prisma.JsonNull : json(before),
-          after: after === null ? Prisma.JsonNull : json(after),
-          outcome: "succeeded",
-          version
-        });
-        return { authorizationVersion: version.toString(), value: after };
-      });
+          if (state.count !== 1) throw new Error("AUTHORIZATION_VERSION_CONFLICT");
+          await tx.$queryRaw(
+            Prisma.sql`SELECT id FROM employees WHERE org_id = ${context.orgId} AND id = ${context.actorId} FOR SHARE`
+          );
+          const actor = await tx.employee.findUnique({
+            where: { orgId_id: { orgId: context.orgId, id: context.actorId } }
+          });
+          if (!actor || actor.orgId !== context.orgId || actor.disabled || actor.role !== "admin")
+            throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
+          const { before, after } = await operation(tx, assertWithinDeadline);
+          assertWithinDeadline();
+          const version = BigInt(context.expectedVersion) + 1n;
+          await writeAudit(tx, {
+            orgId: context.orgId,
+            actorId: context.actorId,
+            action,
+            targetId,
+            before: before === null ? Prisma.JsonNull : json(before),
+            after: after === null ? Prisma.JsonNull : json(after),
+            outcome: "succeeded",
+            version
+          });
+          return { authorizationVersion: version.toString(), value: after };
+        },
+        { timeout }
+      );
     } catch (error) {
       // The rejected mutation has rolled back. Record its result without advancing the version.
       // Do not copy driver messages or attempted resource data into the audit.
@@ -609,19 +620,25 @@ export function createBusinessAuthorizationRepository({
       input: AuthorizationWriteContext & { confirm: true },
       inspect: (tx: Tx) => Promise<{ ready: boolean }>
     ) {
-      return mutate(input, "authorization.cutover.activate", input.orgId, async (tx) => {
-        const before = await tx.businessAuthorizationState.findUniqueOrThrow({
-          where: { orgId: input.orgId }
-        });
-        if (input.confirm !== true) throw new Error("AUTHORIZATION_CONFIRMATION_REQUIRED");
-        if (before.mode === "suspended") throw new Error("AUTHORIZATION_SUSPENDED");
-        if (!(await inspect(tx)).ready) throw new Error("AUTHORIZATION_CUTOVER_NOT_READY");
-        const after = await tx.businessAuthorizationState.update({
-          where: { orgId: input.orgId },
-          data: { mode: "enabled" }
-        });
-        return { before: { mode: before.mode }, after: { mode: after.mode } };
-      });
+      return mutate(
+        input,
+        "authorization.cutover.activate",
+        input.orgId,
+        async (tx, assertWithinDeadline) => {
+          const before = await tx.businessAuthorizationState.findUniqueOrThrow({
+            where: { orgId: input.orgId }
+          });
+          if (input.confirm !== true) throw new Error("AUTHORIZATION_CONFIRMATION_REQUIRED");
+          if (before.mode === "suspended") throw new Error("AUTHORIZATION_SUSPENDED");
+          if (!(await inspect(tx)).ready) throw new Error("AUTHORIZATION_CUTOVER_NOT_READY");
+          assertWithinDeadline();
+          const after = await tx.businessAuthorizationState.update({
+            where: { orgId: input.orgId },
+            data: { mode: "enabled" }
+          });
+          return { before: { mode: before.mode }, after: { mode: after.mode } };
+        }
+      );
     },
     suspendAuthorizationReads(input: AuthorizationWriteContext & { confirm: true }) {
       return mutate(input, "authorization.reads.suspend", input.orgId, async (tx) => {
