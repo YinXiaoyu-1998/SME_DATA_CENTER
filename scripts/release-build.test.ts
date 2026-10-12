@@ -23,6 +23,7 @@ const releaseArtifacts = [
   "staging-smoke",
   "official-manual-acceptance",
   "auth-operator",
+  "permissions-operator",
   "staging-upload-domain-cleanup",
   "partition-store-cleanup",
   "evidence-reindex"
@@ -38,6 +39,7 @@ describe("release build", () => {
       readiness: "scripts/readiness.ts",
       "staging-smoke": "scripts/staging-smoke.ts",
       "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
+      "permissions-operator": "apps/api/src/permissions-operator/cli.ts",
       "auth-operator": "apps/api/src/auth/operator-cli.ts",
       "staging-upload-domain-cleanup": "scripts/staging-upload-domain-cleanup.ts",
       "partition-store-cleanup": "scripts/partition-store-cleanup.ts",
@@ -70,6 +72,7 @@ describe("release build", () => {
         "staging-smoke",
         "official-manual-acceptance",
         "auth-operator",
+        "permissions-operator",
         "staging-upload-domain-cleanup",
         "partition-store-cleanup",
         "evidence-reindex"
@@ -81,6 +84,13 @@ describe("release build", () => {
         );
       }
 
+      const permissionsHelp = execFileSync(
+        process.execPath,
+        ["dist/release/permissions-operator.js", "--help"],
+        { cwd: cleanRoot, encoding: "utf8" }
+      );
+      expect(permissionsHelp).toContain("Apply previews by default");
+      expect(permissionsHelp).toContain("--requested-by-admin-id");
       const help = execFileSync(process.execPath, ["dist/release/ledger-pdf.js", "--help"], {
         cwd: cleanRoot,
         encoding: "utf8"

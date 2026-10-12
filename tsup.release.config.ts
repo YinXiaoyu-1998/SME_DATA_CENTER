@@ -8,6 +8,7 @@ export const releaseEntries = {
   readiness: "scripts/readiness.ts",
   "staging-smoke": "scripts/staging-smoke.ts",
   "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
+  "permissions-operator": "apps/api/src/permissions-operator/cli.ts",
   "auth-operator": "apps/api/src/auth/operator-cli.ts",
   "staging-upload-domain-cleanup": "scripts/staging-upload-domain-cleanup.ts",
   "partition-store-cleanup": "scripts/partition-store-cleanup.ts",

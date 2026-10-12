@@ -89,3 +89,92 @@ describe("transaction-local account permission listing", () => {
     expect(tx.businessGrant.findMany).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("operator permission attribution", () => {
+  const operatorAudit = {
+    operatorId: "developer",
+    requestReference: "request-1",
+    reason: "Admin requested change"
+  };
+  function fixture(conflict = false) {
+    const actor = { id: "admin", orgId: "org", role: "admin", disabled: false };
+    const businessAudit = { create: vi.fn(async () => ({ id: "change-audit" })) };
+    const operatorLog = { create: vi.fn(async () => ({})) };
+    const tx = {
+      $queryRaw: vi.fn(async () => []),
+      employee: { findUnique: vi.fn(async () => actor) },
+      businessAuthorizationState: {
+        updateMany: vi.fn(async () => ({ count: conflict ? 0 : 1 })),
+        findUnique: vi.fn(async () => ({ version: 7n }))
+      },
+      businessStore: {
+        findUnique: vi.fn(async () => null),
+        upsert: vi.fn(async () => ({ name: "A ", retired: true }))
+      },
+      businessAuthorizationAudit: businessAudit,
+      auditLog: operatorLog
+    };
+    const prisma = {
+      ...tx,
+      $transaction: vi.fn(async (operation: (client: typeof tx) => unknown) => operation(tx))
+    };
+    const repository = createBusinessAuthorizationRepository({
+      prisma: prisma as unknown as PrismaClient,
+      operatorAudit
+    });
+    return { repository, businessAudit, operatorLog, tx };
+  }
+  it("records the requesting admin and actual operator in correlated audits", async () => {
+    const { repository, businessAudit, operatorLog } = fixture();
+    await repository.putStore({
+      orgId: "org",
+      actorId: "admin",
+      expectedVersion: "7",
+      enterpriseKey: "enterprise",
+      name: "A ",
+      retired: true
+    });
+    expect(businessAudit.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: "admin",
+          action: "operator.store.configure",
+          outcome: "succeeded",
+          version: 8n
+        })
+      })
+    );
+    expect(operatorLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorEmployeeId: null,
+        clientSource: "operator_cli",
+        targetId: "change-audit",
+        metadata: expect.objectContaining({
+          operator: operatorAudit,
+          requestedByAdminId: "admin",
+          targetId: "A "
+        })
+      })
+    });
+  });
+  it("records rejected writes without changing the store or exposing attempted attributes", async () => {
+    const { repository, operatorLog, tx } = fixture(true);
+    await expect(
+      repository.putStore({
+        orgId: "org",
+        actorId: "admin",
+        expectedVersion: "6",
+        enterpriseKey: "enterprise",
+        name: "A ",
+        retired: true
+      })
+    ).rejects.toThrow("AUTHORIZATION_VERSION_CONFLICT");
+    expect(tx.businessStore.upsert).not.toHaveBeenCalled();
+    expect(operatorLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        result: "denied",
+        metadata: expect.objectContaining({ operator: operatorAudit, requestedByAdminId: "admin" })
+      })
+    });
+  });
+});

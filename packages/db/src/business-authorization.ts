@@ -434,7 +434,60 @@ export async function persistResourceAttributes(
     after: await tx.businessResource.findUniqueOrThrow({ where, include: resourcesInclude })
   };
 }
-export function createBusinessAuthorizationRepository({ prisma }: { prisma: PrismaClient }) {
+export interface PermissionOperatorAudit {
+  operatorId: string;
+  requestReference: string;
+  reason: string;
+}
+export function createBusinessAuthorizationRepository({
+  prisma,
+  operatorAudit
+}: {
+  prisma: PrismaClient;
+  operatorAudit?: PermissionOperatorAudit;
+}) {
+  // Only a trusted operator process supplies this factory option; HTTP bodies never select it.
+  const operator = operatorAudit ? { ...operatorAudit } : undefined;
+  if (
+    operator &&
+    ([operator.operatorId, operator.requestReference, operator.reason].some(
+      (value) =>
+        typeof value !== "string" ||
+        !value.trim() ||
+        [...value].some((character) => character.charCodeAt(0) < 32)
+    ) ||
+      operator.operatorId.length > 128 ||
+      operator.requestReference.length > 256 ||
+      operator.reason.length > 2048)
+  )
+    throw new Error("INVALID_OPERATOR_AUDIT_CONTEXT");
+  async function writeAudit(
+    client: Pick<Tx, "businessAuthorizationAudit" | "auditLog">,
+    data: Prisma.BusinessAuthorizationAuditUncheckedCreateInput
+  ) {
+    const audit = await client.businessAuthorizationAudit.create({
+      data: { ...data, action: operator ? `operator.${data.action}` : data.action }
+    });
+    if (operator)
+      await client.auditLog.create({
+        data: {
+          orgId: data.orgId,
+          actorEmployeeId: null,
+          action: "permissions.operator.change",
+          targetType: "business_authorization_audit",
+          targetId: audit.id,
+          result: data.outcome,
+          clientSource: "operator_cli",
+          metadata: json({
+            operator,
+            requestedByAdminId: data.actorId,
+            operation: data.action,
+            targetId: data.targetId,
+            authorizationVersion: data.version
+          })
+        }
+      });
+  }
   async function loadAuthorizationSnapshot(
     employeeId: string,
     orgId: string,
@@ -498,17 +551,15 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
           throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
         const { before, after } = await operation(tx);
         const version = BigInt(context.expectedVersion) + 1n;
-        await tx.businessAuthorizationAudit.create({
-          data: {
-            orgId: context.orgId,
-            actorId: context.actorId,
-            action,
-            targetId,
-            before: before === null ? Prisma.JsonNull : json(before),
-            after: after === null ? Prisma.JsonNull : json(after),
-            outcome: "succeeded",
-            version
-          }
+        await writeAudit(tx, {
+          orgId: context.orgId,
+          actorId: context.actorId,
+          action,
+          targetId,
+          before: before === null ? Prisma.JsonNull : json(before),
+          after: after === null ? Prisma.JsonNull : json(after),
+          outcome: "succeeded",
+          version
         });
         return { authorizationVersion: version.toString(), value: after };
       });
@@ -522,23 +573,23 @@ export function createBusinessAuthorizationRepository({ prisma }: { prisma: Pris
         where: { orgId: context.orgId }
       });
       if (actor?.orgId === context.orgId && state) {
-        await prisma.businessAuthorizationAudit.create({
-          data: {
-            orgId: context.orgId,
-            actorId: actor.id,
-            action,
-            targetId,
-            before: Prisma.JsonNull,
-            after: {
-              code:
-                error instanceof Error && error.message === "AUTHORIZATION_VERSION_CONFLICT"
-                  ? "AUTHORIZATION_VERSION_CONFLICT"
-                  : "WRITE_REJECTED"
-            },
-            outcome: "denied",
-            version: state.version
-          }
-        });
+        const deniedAudit: Prisma.BusinessAuthorizationAuditUncheckedCreateInput = {
+          orgId: context.orgId,
+          actorId: actor.id,
+          action,
+          targetId,
+          before: Prisma.JsonNull,
+          after: {
+            code:
+              error instanceof Error && error.message === "AUTHORIZATION_VERSION_CONFLICT"
+                ? "AUTHORIZATION_VERSION_CONFLICT"
+                : "WRITE_REJECTED"
+          },
+          outcome: "denied",
+          version: state.version
+        };
+        if (operator) await prisma.$transaction((tx) => writeAudit(tx, deniedAudit));
+        else await writeAudit(prisma, deniedAudit);
       }
       throw error;
     }
