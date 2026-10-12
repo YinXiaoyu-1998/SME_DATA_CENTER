@@ -254,6 +254,30 @@ suite("atomic tenant authorization cutover", () => {
     ).rejects.toThrow("AUTHORIZATION_CUTOVER_NOT_READY");
     expect(await snapshot()).toEqual(before);
   });
+  it("does not enable or advance the version when synchronous inspection outlives its transaction", async () => {
+    const before = await snapshot();
+    await expect(
+      repository.activateAuthorizationCutover({ ...(await context()), confirm: true }, async () => {
+        // Reproduce CPU-heavy inspection starving Prisma's transaction timeout callback.
+        const until = performance.now() + 5500;
+        while (performance.now() < until) {
+          /* synchronous inspection */
+        }
+        return { ready: true };
+      })
+    ).rejects.toThrow();
+    expect(await snapshot()).toEqual(before);
+    expect(
+      await prisma.businessAuthorizationAudit.count({
+        where: { orgId, action: "authorization.cutover.activate", outcome: "succeeded" }
+      })
+    ).toBe(0);
+    expect(
+      await prisma.businessAuthorizationAudit.count({
+        where: { orgId, action: "authorization.cutover.activate", outcome: "denied" }
+      })
+    ).toBe(1);
+  }, 15000);
   it("rejects prepared versions after category, grant and import publication changes", async () => {
     let prepared = await service.prepareAuthorizationCutover(orgId);
     await repository.configureCategory({

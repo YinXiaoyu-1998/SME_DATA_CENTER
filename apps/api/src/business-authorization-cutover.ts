@@ -47,6 +47,33 @@ export interface CutoverInventory {
   dimensions: Array<{ id: string; valueIds: string[] }>;
 }
 export function inspectCutoverInventory(inventory: CutoverInventory, adapters: readonly string[]) {
+  // Build indexes once: real tenants have many more partitions than categories.
+  const categories = new Map(inventory.categories.map((category) => [category.id, category]));
+  const dimensions = new Map(
+    inventory.dimensions.map((dimension) => [dimension.id, new Set(dimension.valueIds)])
+  );
+  const stores = new Set(
+    inventory.stores.map((store) => JSON.stringify([store.enterpriseKey, store.name]))
+  );
+  const sourceFragments = new Map<string, CutoverInventory["resources"]>();
+  const documentResources = new Map<string, CutoverInventory["resources"]>();
+  const partitions = new Set<string>();
+  const pdfs = new Set<string>();
+  for (const resource of inventory.resources) {
+    if (resource.kind === "source_fragment" && resource.sourceDocumentId !== null) {
+      const matches = sourceFragments.get(resource.sourceDocumentId) ?? [];
+      matches.push(resource);
+      sourceFragments.set(resource.sourceDocumentId, matches);
+    }
+    if (resource.documentId !== null) {
+      const key = JSON.stringify([resource.kind, resource.documentId]);
+      const matches = documentResources.get(key) ?? [];
+      matches.push(resource);
+      documentResources.set(key, matches);
+    }
+    if (resource.kind === "structured") partitions.add(resource.resourceKey);
+    if (resource.kind === "ledger_pdf") pdfs.add(resource.resourceKey);
+  }
   const missing: CutoverIssue[] = [];
   const add = (code: string, targetId: string) => missing.push({ code, targetId });
   for (const adapter of AUTHORIZATION_READ_ADAPTERS)
@@ -62,11 +89,10 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
   }
   for (const category of inventory.categories)
     for (const dimension of category.requiredDimensionIds)
-      if (!inventory.dimensions.some((d) => d.id === dimension))
-        add("DIMENSION_NOT_READY", category.id);
+      if (!dimensions.has(dimension)) add("DIMENSION_NOT_READY", category.id);
   for (const resource of inventory.resources) {
     const requirement = resource.requirement;
-    const category = inventory.categories.find((c) => c.id === requirement.categoryId);
+    const category = categories.get(requirement.categoryId);
     if (
       !category ||
       !requirement.scopes.length ||
@@ -89,30 +115,22 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
     for (const scope of requirement.scopes) {
       if (
         scope.ownership === "store" &&
-        !inventory.stores.some(
-          (store) => store.enterpriseKey === scope.enterpriseKey && store.name === scope.storeName
-        )
+        !stores.has(JSON.stringify([scope.enterpriseKey, scope.storeName]))
       )
         add("EXACT_STORE_REFERENCE_REQUIRED", resource.id);
       for (const [id, value] of Object.entries(scope.dimensions))
-        if (!inventory.dimensions.some((d) => d.id === id && d.valueIds.includes(value)))
-          add("DIMENSION_VALUE_REQUIRED", resource.id);
+        if (!dimensions.get(id)?.has(value)) add("DIMENSION_VALUE_REQUIRED", resource.id);
     }
   }
   for (const document of inventory.documents) {
-    const matches = inventory.resources.filter((r) =>
-      document.kind === "structured"
-        ? r.kind === "source_fragment" && r.sourceDocumentId === document.id
-        : r.documentId === document.id && r.kind === document.kind
-    );
+    const matches =
+      (document.kind === "structured"
+        ? sourceFragments.get(document.id)
+        : documentResources.get(JSON.stringify([document.kind, document.id]))) ?? [];
     if (
       !matches.length ||
       (document.kind === "structured" &&
-        matches.some(
-          (r) =>
-            inventory.categories.find((c) => c.id === r.requirement.categoryId)?.key !==
-            document.dataset
-        ))
+        matches.some((r) => categories.get(r.requirement.categoryId)?.key !== document.dataset))
     )
       add(
         document.kind === "structured" ? "SOURCE_LINEAGE_REQUIRED" : "DOCUMENT_ATTRIBUTES_REQUIRED",
@@ -120,37 +138,22 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
       );
   }
   for (const id of inventory.partitions)
-    if (
-      !inventory.resources.some(
-        (r) => r.kind === "structured" && r.resourceKey === `partition:${id}`
-      )
-    )
-      add("PARTITION_ATTRIBUTES_REQUIRED", id);
-  for (const id of inventory.pdfs)
-    if (!inventory.resources.some((r) => r.kind === "ledger_pdf" && r.resourceKey === id))
-      add("PDF_ATTRIBUTES_REQUIRED", id);
+    if (!partitions.has(`partition:${id}`)) add("PARTITION_ATTRIBUTES_REQUIRED", id);
+  for (const id of inventory.pdfs) if (!pdfs.has(id)) add("PDF_ATTRIBUTES_REQUIRED", id);
   for (const account of inventory.accounts)
     for (const grant of account.grants) {
       if (validateBusinessGrant(grant, inventory.categories).length)
         add("GRANT_CONFIGURATION_REQUIRED", `${account.id}/${grant.id}`);
       if (
         grant.stores?.kind === "fixed" &&
-        grant.stores.values.some(
-          (name) =>
-            !inventory.stores.some(
-              (s) => s.enterpriseKey === grant.enterpriseKey && s.name === name
-            )
-        )
+        grant.stores.values.some((name) => !stores.has(JSON.stringify([grant.enterpriseKey, name])))
       )
         add("EXACT_STORE_REFERENCE_REQUIRED", `${account.id}/${grant.id}`);
       for (const [id, selection] of Object.entries(grant.dimensions))
-        if (
-          !inventory.dimensions.some(
-            (d) =>
-              d.id === id &&
-              (selection.kind === "all" || selection.values.every((v) => d.valueIds.includes(v)))
-          )
-        )
+        if (!(
+          dimensions.has(id) &&
+          (selection.kind === "all" || selection.values.every((v) => dimensions.get(id)!.has(v)))
+        ))
           add("GRANT_DIMENSION_REQUIRED", `${account.id}/${grant.id}`);
     }
   return {
