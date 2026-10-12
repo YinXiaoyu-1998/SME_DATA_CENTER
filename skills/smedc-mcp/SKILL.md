@@ -607,28 +607,46 @@ the local launcher owns browser login and credential storage.
 
 ### Codex
 
-Use the verified Codex CLI MCP registry. On macOS, prefer `codex` from `PATH`; when it is absent,
-use the bundled `/Applications/ChatGPT.app/Contents/Resources/codex` fallback. On Windows, resolve
-`codex.exe` from `PATH`. On Linux, resolve `codex` from `PATH`. Stop if the applicable verified
-binary does not exist.
+Use a Codex CLI that can read the invoking host's current configuration. Check its version and
+`mcp list --json` before mutation. A `codex` found in `PATH` can be older than the desktop app
+and reject newer configuration fields; do not delete those fields or downgrade the app to make
+it work. For macOS desktop, inspect the owning app's bundled CLI when the PATH CLI is absent or
+incompatible. Known layouts include
+`/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`
+and the older `/Applications/ChatGPT.app/Contents/Resources/codex`; verify the actual executable,
+not just its expected path. On Windows/Linux, use the installed host's compatible supported CLI.
+If no compatible CLI is available, report that focused blocker without changing working settings.
 
 Before the first mutation, inspect with `codex mcp list --json` and
 `codex mcp get smedc --json`. Back up `~/.codex/config.toml` (Windows:
-`%USERPROFILE%\.codex\config.toml`) to a timestamped sibling file when it exists. If the existing
+`%USERPROFILE%\.codex\config.toml`) to a restricted recovery file outside skill discovery roots.
+Inspect configuration locally; expose only non-secret SMEDC facts. If the existing
 entry already matches the exact command, `serve` argument, and sole BASE_URL environment value, do
 not rewrite that entry; still complete reconnection and cleanup when updating.
 
 For macOS add/repair:
 
 ```sh
-CODEX_BIN="$(command -v codex 2>/dev/null || true)"
-if [ -z "$CODEX_BIN" ] && [ -x "/Applications/ChatGPT.app/Contents/Resources/codex" ]; then
-  CODEX_BIN="/Applications/ChatGPT.app/Contents/Resources/codex"
+CODEX_BIN=""
+for SMEDC_CODEX_CANDIDATE in \
+  "$(command -v codex 2>/dev/null || true)" \
+  "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex" \
+  "/Applications/ChatGPT.app/Contents/Resources/codex"; do
+  if [ -x "$SMEDC_CODEX_CANDIDATE" ] && "$SMEDC_CODEX_CANDIDATE" mcp list --json >/dev/null 2>&1; then
+    CODEX_BIN="$SMEDC_CODEX_CANDIDATE"
+    break
+  fi
+done
+if [ -z "$CODEX_BIN" ]; then
+  printf '%s\n' 'No compatible Codex CLI found; configuration unchanged.' >&2
+  exit 1
 fi
-test -n "$CODEX_BIN"
 CODEX_CONFIG="$HOME/.codex/config.toml"
+SMEDC_CODEX_BACKUP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/smedc-codex-config.XXXXXX")"
+chmod 700 "$SMEDC_CODEX_BACKUP_DIR"
 if [ -f "$CODEX_CONFIG" ]; then
-  cp -p "$CODEX_CONFIG" "$CODEX_CONFIG.smedc.bak.$(date +%Y%m%d%H%M%S)"
+  cp -p "$CODEX_CONFIG" "$SMEDC_CODEX_BACKUP_DIR/config.toml.before"
+  chmod 600 "$SMEDC_CODEX_BACKUP_DIR/config.toml.before"
 fi
 "$CODEX_BIN" mcp list --json
 "$CODEX_BIN" mcp get smedc --json
@@ -706,9 +724,12 @@ for a present mismatched entry, run:
 
 After add/repair, run the platform self-check above, restart/reload Codex, run
 `codex mcp list --json` and `codex mcp get smedc --json`, and confirm the discovered tools.
-For updates, also prove the connected launcher version and
-complete old-process/file cleanup; `list`/`get` and self-check alone are insufficient.
-If add fails after removal, restore the timestamped backup and report the focused failure. For
+Compare unrelated settings against the backup even after a successful CLI write. Follow
+[host reload and resumption](references/upgrade-cleanup.md#host-reload-and-resumption) if
+reconnection needs employee action. For updates, also prove the connected launcher version and
+complete old-process/file cleanup; `list`/`get`, a new chat and self-check alone are insufficient.
+If add fails after removal, recover the affected SMEDC settings from the backup without
+overwriting concurrent unrelated edits, and report the focused failure. For
 per-agent removal, back up first, run `codex mcp remove smedc`, then verify
 `codex mcp list --json` no longer contains it and `codex mcp get smedc --json` reports it
 absent.

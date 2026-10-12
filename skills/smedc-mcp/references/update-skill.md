@@ -55,7 +55,11 @@ part of an already authorized launcher update. Do not run it during unrelated bu
    backup remains because the update is incomplete, state its location outside discovery roots
    and the outstanding action. Do not retain obsolete discoverable backups as fallback skills.
 6. Reload the host's skill list if supported; otherwise explain that a restart or new task may
-   be needed. Confirm the host actually loads the verified path/revision and no obsolete copy
+   be needed for skill instructions. This does not prove that an existing MCP connection was
+   replaced. For a combined skill/launcher update, follow the
+   [host reload and resumption steps](upgrade-cleanup.md#host-reload-and-resumption), including
+   a concrete restart instruction and a non-secret continuation record when required.
+   Confirm the host actually loads the verified path/revision and no obsolete copy
    shadows it, then finish backup/duplicate cleanup. Distinguish verified files on disk from
    confirmed loading by the running host; if the latter is unverified, report pending reload,
    not a completed update. Only remove historical backups with verified SMEDC-only contents and

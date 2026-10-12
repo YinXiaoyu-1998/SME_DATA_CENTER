@@ -62,6 +62,10 @@ and then replay them blindly. Use each in-scope host's supported MCP configurati
 retain one effective `smedc` stdio entry with the new absolute path, `serve`, and the sole
 `SMEDC_BASE_URL` value. Remove verified duplicate/legacy SMEDC entries, including shadowing
 overrides and remote/npx alternatives. Preserve all unrelated entries and settings.
+Compare parsed configuration before and after the change, excluding only the intended SMEDC
+entry. A host CLI can rewrite unrelated settings even when `mcp add` succeeds. If it does,
+restore only the settings it changed from the restricted backup, preserve concurrent edits,
+and verify the comparison again before reconnecting. Never print configuration secrets.
 
 Stop/disconnect the affected MCP connection through its owning host, then reload/reconnect it.
 If only a host restart is supported, restart that host. Changing a config file, running
@@ -84,6 +88,28 @@ give the employee the exact host restart action and the remaining verification s
 upgrade **pending restart and verification**. Resume at the inventory checks after restart;
 do not claim success or discard recovery files prematurely.
 
+### Host Reload And Resumption
+
+Use a reconnect operation exposed by the owning host only when it is available to this session.
+An API mentioned in documentation is not evidence that the running host exposes it. If the
+supported operation is unavailable or denied, stop that route; do not probe private IPC sockets,
+start a separate agent server as proof, bypass a UI denial, or repeatedly terminate shared runtimes.
+Installing the launcher and editing its entry cannot refresh a tool catalog already loaded by a host.
+
+For Codex desktop without an accessible reconnect operation, tell the employee to finish active
+SMEDC transfers, fully quit Codex (`Cmd+Q` on macOS; Exit/Quit on other platforms), reopen it, and
+return to this chat with “继续验证 SMEDC 升级”. Closing a window may leave its runtime running.
+A new chat may refresh skill instructions, but does not by itself prove MCP reconnection.
+Offer a new chat only if the host needs one to reload skills or the original chat cannot resume;
+it must run the same native-connection verification before claiming completion.
+
+Before yielding, leave a short, non-secret continuation record: host and approved version,
+official skill revision and installed path, completed checks, remaining verification/cleanup,
+and exact recovery-file paths outside discovery roots. Do not include configuration contents,
+credentials or business records. After restart, inspect the current state first rather than
+reinstalling, rewriting the entry, or repeating login. Continue the original user request after
+verification, then remove old files and recovery material under step 5.
+
 ## 4. Prove The Host Uses The New Version
 
 Re-read effective MCP configuration and inspect the newly connected host's native tool list.
@@ -97,6 +123,12 @@ Call `smedc_auth_status` through the new native connection. Follow normal browse
 required; never access the secure store directly. If native tools are unavailable, the connection
 cannot be correlated, or a host still uses an old launcher, report **verification incomplete**.
 Do not describe a standalone self-check as host verification.
+
+When the original request concerns account access and `get_my_permissions` is available, call it
+through that new connection for a fresh card. Report its mode, clearance and explicit scope;
+`legacy` means the saved business grants are not yet the active read model. An upgrade neither
+activates a tenant nor authorizes permission edits. Do not substitute cached identity or earlier
+browser observations for this check.
 
 ## 5. Remove Superseded Files
 
