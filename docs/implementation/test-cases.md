@@ -109,7 +109,7 @@ npm run test:official-manual
 
 The runner uses the installed `smedc-mcp-launcher@0.9.0`. Its default profile requires the
 run's synthetic admin c0. The explicit `--reuse-session=<expected-email>` profile verifies the
-selected existing admin without logging out or changing role/clearance. The current runner still expects a forbidden raw-ledger aggregate and needs alignment before it can prove the current contract; see the official manual guide's current runner limitation. Its intended smoke scope includes real MCP
+selected existing admin without logging out or changing role/clearance. The runner now verifies the exact raw-ledger aggregate denial. Its evidence-fixture category/scope configuration remains a separate prerequisite; see the official manual guide's current runner limitation. Its intended smoke scope includes real MCP
 evidence readiness/search, run-unique receipt XLSX upload, dishes partition
 publication/download, invalid-source rejection, unchanged prior partitions, and exact cleanup.
 

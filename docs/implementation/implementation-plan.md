@@ -37,7 +37,7 @@
 
 ## 当前待修复项
 
-官方人工验收运行器仍期待已关闭的原台账汇总成功，不能证明最新业务契约；运行器及场景需另行对齐。当前说明见 [正式验收限制](official-manual-acceptance.md#current-runner-limitation)。这不授权恢复旧读取路径或执行完整验收。
+官方人工验收运行器已改为核对原台账汇总的精确拒绝码；完整验收仍需补齐证据夹具的显式类别及完整 scopes。当前说明见 [正式验收限制](official-manual-acceptance.md#current-runner-limitation)。这不授权恢复旧读取路径或执行完整验收。
 
 ## 验证与发布
 

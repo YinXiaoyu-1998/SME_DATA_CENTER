@@ -10,9 +10,11 @@ and `test-cases.md` before running it. Beta onboarding uses
 
 ## Current runner limitation
 
-The acceptance contract below reflects current category/scope authorization and PDF-only ledger delivery. The checked-in `scripts/official-manual-acceptance.ts` still requests a raw delivery-ledger aggregate and expects success; its evidence/fixture setup also needs verification against the current explicit business attributes. Therefore `npm run test:official-manual` is not yet a valid proof of the complete current contract. Align the runner and scenario expectations in a separate code change before claiming full acceptance. Do not restore the closed API or weaken authorization to make this older assertion pass.
+The runner now requires raw-ledger aggregation to return an MCP tool error with code `LEDGER_DETAIL_DISABLED`, and reports `deliveryLedgerAggregateDenied: true` only after that check. Unexpected success, authentication/permission errors and transport failures do not pass this boundary. Local regression tests cover these outcomes; the user-visible receipt-summary scenario expects refusal and the separate PDF delivery path.
 
-This documentation update does not execute the workflow, alter accounts or backfill data. A future explicitly requested run must first resolve this runner gap, then use the scoped human/browser and cleanup rules below.
+A separate fixture prerequisite remains: `uploadEvidenceFixtures` does not yet supply required `categoryId` and complete `scopes`. The full runner therefore still needs explicit, authorized evidence-fixture configuration before a complete current-contract acceptance run; do not infer attributes or change tenant grants to bypass this gap.
+
+This change does not execute the workflow, alter accounts or backfill data. A future explicitly requested full run must first resolve the fixture prerequisite, then follow the human/browser and cleanup rules below.
 
 ## Choose the requested profile
 

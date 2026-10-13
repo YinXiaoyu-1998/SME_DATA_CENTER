@@ -10,7 +10,7 @@ SME_DATA_CENTER / SMEDC manual acceptance flow.
 
 ## Current runner limitation
 
-Before any requested full run, read the current limitation in `docs/implementation/official-manual-acceptance.md`: the controller runner still expects raw-ledger aggregation that the current API denies. Align runner/fixture expectations before claiming full acceptance; do not relax the service contract. This is a known implementation gap, not permission to execute acceptance during documentation work.
+Before any requested full run, read `docs/implementation/official-manual-acceptance.md`: the runner now requires the exact raw-ledger denial, but evidence-fixture uploads still need explicit category/scopes configuration. Resolve that separate prerequisite before full acceptance; do not infer attributes or relax authorization. Fixing the runner does not authorize executing the official workflow.
 
 ## Current Acceptance Boundary
 
