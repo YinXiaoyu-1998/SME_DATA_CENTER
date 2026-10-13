@@ -1,5 +1,7 @@
 # 用可撤销 Beta 访问令牌开放远端 MCP
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 **Status**: Withdrawn on 2026-07-23
 
 This proposal was never accepted and must not be implemented. The product direction now requires an

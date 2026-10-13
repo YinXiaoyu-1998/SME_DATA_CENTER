@@ -1,7 +1,6 @@
 # Staging Server Runtime Prerequisites
 
-This runbook prepares the Alibaba Cloud staging server for later Phase 4
-container deployment. It does not deploy the application or store secrets.
+This runbook prepares a new or recovered Alibaba Cloud staging host for the current container runtime. It does not deploy the application or store secrets.
 
 ## Install
 
@@ -53,9 +52,7 @@ The API and worker targets are lean, non-root, long-running images. The
 migrations, and compiled staging smoke work before its container is removed.
 Do not start it as a persistent service.
 
-All three targets are scanned under the dependency risk policy. New high or
-critical findings and any unregistered moderate finding block CI. The current
-ExcelJS read-only XLSX exception has a mandatory review date of `2027-01-31`.
+All three targets are scanned under the current dependency risk policy. Quality CI reports audit findings while other gates remain blocking; staging deployment and launcher publication keep their own enforcement. See dependency-risk-register.md and config/dependency-risk-acceptance.json; there are currently no accepted exceptions.
 
 ## Verify
 

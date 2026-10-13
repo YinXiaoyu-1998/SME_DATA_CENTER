@@ -1,14 +1,12 @@
 # Beta User Onboarding Runbook
 
-Last updated: 2026-10-11
+Last updated: 2026-10-13
 
 This runbook is for the first controlled macOS + Codex beta pilot. It is an operator checklist, not
 an employee-facing product page.
 
 For every new enterprise or new account, follow [the administrator UI onboarding flow](tenant-onboarding.md).
-Its enterprise-bound entry plus shared browser sign-in is implemented in this branch, not deployed; after rollout developers share the verified
-URL with administrators. It defaults to Chinese with English switching. Until then authorized
-configuration uses existing MCP tools; users are not required to fill JSON. This pilot checklist
+Its enterprise-bound entry and shared browser sign-in are implemented in the current service. Developers verify the target URL before sharing it with administrators. It defaults to Chinese with English switching. Explicitly requested MCP configuration uses the same server boundaries; users do not fill JSON. This pilot checklist
 retains its fixture-only boundary and does not authorize real-data backfills or tenant activation.
 Existing enterprise rules are reused for additional accounts.
 
@@ -30,7 +28,7 @@ Use this runbook only for:
 - fixture or explicitly approved non-sensitive data.
 
 Windows, OpenClaw, real customer-confidential data, self-service registration, MFA, password-reset
-email, and production admin UI are out of scope for the first pilot.
+email, and broad multi-tenant rollout are outside this bounded pilot.
 
 ## Information To Collect
 

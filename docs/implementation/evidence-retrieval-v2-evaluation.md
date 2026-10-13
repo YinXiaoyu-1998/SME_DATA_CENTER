@@ -1,5 +1,7 @@
 # Evidence Retrieval V2 Evaluation
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 This document records the deliberately small before-and-after check approved for Evidence
 Retrieval V2. Raw reports stay under `.data/evaluation/` during a run and are not committed.
 Broader relevance tuning remains a QA follow-up rather than an implementation gate.

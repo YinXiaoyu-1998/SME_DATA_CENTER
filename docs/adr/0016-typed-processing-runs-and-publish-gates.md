@@ -1,5 +1,7 @@
 # Phase 3 使用类型化 ProcessingRun 和发布门禁
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 Phase 3 引入重型异步处理：MD/TXT/DOCX 解析、切块、embedding、Qdrant upsert、词法索引；CSV/XLSX 校验和 MySQL 原子导入；ImportBatch 日期窗口声明；外部模型调用；归档/标签变更后的索引修复。仅靠 `Document.status` 无法清楚表达这些任务的类型、幂等、锁、重试、失败和发布门禁。
 
 **Decision**: Phase 3 使用类型化 `ProcessingRun` 和 DB-backed lease 处理后台任务。Baseline job types 包括 `evidence_document_index`、`structured_import_validate`、`structured_import_apply` 和 `index_repair_or_delete`。每个 job 有稳定 dedup/idempotency key、attempt/backoff、`lockedBy`/`lockedUntil`、`availableAt`、`lastHeartbeatAt`、error code、metrics 和明确 publish gate。文档只有完整 evidence index ready 后才 active；结构化导入只有 rows/metadata/claim/audit 全部提交后才 applied/queryable。

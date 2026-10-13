@@ -1,5 +1,7 @@
 # Phase 3 HTTP API 是权威契约，MCP 是薄适配层
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 Phase 3 新增证据检索、结构化 schema discovery、受控结构化查询、结构化上传和导入状态查询。员工智能体会通过 MCP 使用这些能力，但企业资料中枢不能因此出现第二套权限、查询校验、存储访问或业务分析实现。
 
 **Decision**: HTTP API 是 Phase 3 唯一权威后端契约。MCP 仅作为 employee-owned agents 的薄适配层，调用同一套 HTTP API，透传稳定错误码和响应结构。MCP 不直接访问 MySQL、Qdrant、OSS、模型 provider，不复制授权逻辑，不实现独立 structured query compiler，不暴露 worker/admin/operator 控制，不生成最终自然语言答案。

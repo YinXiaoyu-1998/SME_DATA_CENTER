@@ -1,5 +1,7 @@
 # 企业资料中枢 Agent Handoffs
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 ## 2026-07-14 - codex/add-maijia-xlsx-fixtures - Maijia structured XLSX fixtures
 
 - Scope: Added two user-approved non-sensitive real-business Maijia workbook fixtures under `fixtures/structured/`, each truncated to the first 1000 worksheet rows while preserving sheet names and workbook cell content. Added a short test-case note documenting their fixture purpose.

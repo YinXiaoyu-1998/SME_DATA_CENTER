@@ -4,5 +4,7 @@
 
 - Use existing design/runbook/ADR entrypoints instead of duplicating operational instructions. Local `AGENTS.md` files hold decisions, invariants, commands and links; shared rules have one canonical owner.
 - Distinguish approved design, implemented code, published launcher, deployed service and accepted real-tenant cutover. Do not infer one from another or promote stale status text to current fact.
-- Before changing domain language or permission behavior, compare `CONTEXT.md`, relevant ADRs, the current implementation plan and applicable approved design. Identify historical/superseded statements explicitly.
+- Ordinary documentation records only current effective behavior or final decisions. When a new document supersedes an old version, consolidate unique still-valid requirements into the current owner, delete the old version and repair references; do not append contradictory amendments or keep stale copies.
+- Preserve history only in explicitly historical records: progress, handoffs, ADRs, decision interviews, dated evaluations and history logs. Label them as historical and route operational readers to `docs/README.md`. Never present a historical decision as current authority.
+- Keep `CONTEXT.md` as the single current domain glossary. Verify code, approved decisions and release evidence before updating status; an unimplemented final decision must be marked unimplemented, and deployment does not imply tenant activation.
 - Validate links and referenced commands; update connected contract/usage documents when public behavior changes. Writing documentation alone does not authorize running the documented operation.

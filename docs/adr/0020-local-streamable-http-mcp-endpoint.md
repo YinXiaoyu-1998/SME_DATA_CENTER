@@ -1,5 +1,7 @@
 # 本地 MCP 采用无状态 Streamable HTTP Endpoint
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 **Status**: Accepted and implemented for the Phase 3 local boundary
 
 Enterprise Hub 过去只提供本地 stdio MCP adapter。本决策将其迁移为本地 Streamable HTTP endpoint；Phase 3 实现本身不包含 Phase 4 的远端部署、TLS、正式用户登录或服务运维。ADR 0021 的远端 beta token 提案已撤回；正式安装和登录设计见 `docs/implementation/official-user-install-and-login.md`。
