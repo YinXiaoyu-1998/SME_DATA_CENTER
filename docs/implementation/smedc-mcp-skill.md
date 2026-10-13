@@ -1,114 +1,30 @@
-# SMEDC MCP Skill Scope And Review Checklist
+# MCP Skill 维护契约
 
-This document records the companion skill scope and review checklist for `skills/smedc-mcp/SKILL.md`.
+`skills/smedc-mcp/` 与独立仓库 `YinXiaoyu-1998/smedc-mcp-skill` 的分发目录必须逐字节同步。Skill 只指导员工自有 agent 使用官方 launcher/MCP；它不包含服务部署、数据库读取、凭据管理或业务报告执行器。
 
-## Skill Location
+## 当前安装与版本
 
-- Skill name: `smedc-mcp`
-- Skill file: `skills/smedc-mcp/SKILL.md`
-- UI metadata: `skills/smedc-mcp/agents/openai.yaml`
+批准安装 pin 为 `smedc-mcp-launcher@0.9.0`，服务推荐 0.9.0、最低兼容 0.6.0。精确安装路径、宿主配置、更新清理和诊断字段只在 [SKILL.md](../../skills/smedc-mcp/SKILL.md) 及其 references 维护，本文不复制整套步骤。
 
-The skill is repo-local and dual-homed with the standalone
-`YinXiaoyu-1998/smedc-mcp-skill` repository. The complete distributed skill directories, including references, must remain
-byte-identical. The standalone repository is the distributable copy; this repository's copy is the
-product-side source of synchronized guidance.
+- Node.js 22+，支持 macOS/Windows/Linux 当前用户安装；不自动安装 latest 或由 launcher 自更新。
+- 修改前备份宿主 MCP 配置，只修复 SMEDC 条目并保留其他集成；无法确定安全配置方式时报告具体阻塞。
+- Device Authorization 的密码和协议 token 不进入 agent/model。无可用安全存储的宿主使用内存会话；不可将凭据写入普通文件。
+- 当前账号/权限向服务查询，不从缓存或配置推断。认证恢复最多重试原操作一次；权限拒绝不能触发登录循环。
 
-## Required Behavior
+## 业务指导边界
 
-The skill teaches an employee-owned agent how to safely use 企业资料中枢 through the official remote
-MCP launcher. It must keep 企业资料中枢 as a service/tool layer, not an employee-facing AI agent,
-report generator, dashboard service, or skill execution platform.
+- 当前有效 admin 才能上传；在本地读取文件前执行角色预检，服务端仍为授权主体。
+- 原件按确切字节交付。经营/菜品的大文件使用 launcher 路径上传；数据修复属于服务或独立 workflow Skill。
+- Evidence 明确类别、完整范围和逐文件等级；照片明确企业和单门店；固定类别使用服务端当前密级。缺失值不推断。
+- 异步上传/打包只能按返回 ID 轮询；queued、pending 和失败不能当成完成或无数据。幂等键仅精确重放复用。
+- 经营/菜品分析使用受权分区下载；其他可读取数据集按 schema 的 canonicalName 查询。台账只通过 PDF 交付，员工不触发生成。
+- 原件、片段、后台任务和下载链接遵守 [API 契约](api-contract.md) 的当前授权边界；不要保留旧规则的替代放行路径。
+- 企业入驻默认引导已验证的企业专属 UI，内部 JSON 不作为客户门槛。账号/密码/真实回填仍留在运维边界。
+- 退出、移除单宿主集成和完全卸载分别处理，不删除服务账号、业务数据、Node/npm 或其他 MCP 配置。
+- Skill 目录只发现元数据，不在 SMEDC 服务内执行 Skill 或生成答案。
 
-The official target profile must be actionable enough for an agent to:
+## 变更和验证
 
-1. Verify Node.js 22 or newer plus npm, then install only
-   `smedc-mcp-launcher@0.6.0` with `npm install --prefix ... --save-exact` in the approved
-   macOS/Windows/Linux current-user versioned directory; never install `latest` or self-update.
-   Linux uses `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.6.0/` and resolves it
-   to an absolute MCP command path.
-2. Back up and idempotently configure the invoking agent's local **stdio** entry. Full old-version
-   cleanup additionally migrates safely discoverable current-user SMEDC integrations, removes
-   duplicate entries, and stops obsolete processes before deleting old installations. Codex uses
-   its verified `mcp list`/`get`/`add`/`remove` CLI and bundled macOS binary fallback; OpenClaw uses
-   `mcp add`/`set` and `mcp doctor --probe`, not direct remote OAuth storage. Linux examples use
-   the same stdio tuple and never configure a remote OAuth store.
-3. Use `smedc_auth_status`, `smedc_login`, `smedc_logout`, and the
-   zero-input `smedc_get_current_user`; account lookup returns only the authenticated
-   employee's display name, email, role, clearance, and organization name, while login never exposes passwords, tokens, device
-   codes, headers, or secure-store records to the agent/model.
-4. Treat browser cancellation, `authentication_required`, `service_unavailable`, `forbidden`, and
-   `launcher_upgrade_required` as distinct typed outcomes. Retry the original operation exactly
-   once after successful browser login.
-5. Resolve upload role before local file access. Only active admins upload; known employees must
-   not read or transform the file. Tools remain visible. Direct HTTP upload endpoints return
-   HTTP `403`; MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result.
-   Both carry `UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and
-   `retryable: false`, which must not cause re-login or retry.
-   Clearance is independent: admins may explicitly upload above their clearance without a read
-   bypass. Upload original files, report service validation errors, and poll status without starting
-   a worker; use only API-visible records and never supply an organization ID. There are no labels.
-6. Reuse structured-import idempotency keys only for exact file/metadata replay; treat
-   inaccessible import-status 404s as non-enumerating not-found results; use evidence cursors
-   only as opaque same-query continuations.
-7. Support per-agent removal, shared logout, and complete uninstall without deleting Node.js/npm,
-   Employee Accounts, service data, or unrelated MCP configuration.
-8. Invoke the exact platform launcher path with only `SMEDC_BASE_URL`: `serve` for stdio,
-   `self-check` for safe machine-readable version/origin/store/compatibility/connectivity status,
-   and `logout` for safe local-deletion/remote-revocation status.
-9. Treat Linux `secureStore.available:false` as supported memory-only custody, surface the
-   first-party Device Authorization link when `openedBrowser:false`, and require a fresh login after
-   launcher or host restart rather than writing a credential to an ordinary file.
+MCP 行为/契约/使用指导变更遵守 [共享发布规则](../../packages/mcp-contract/AGENTS.md)：同批更新服务端与 launcher 契约、测试和双归属 Skill；先发布并独立验证运行包，再更新推荐元数据和安装 pin。纯文档校正不修改运行时版本。
 
-10. Complete `references/upgrade-cleanup.md` on upgrades: refresh the official skill, verify the
-    approved package, reconnect hosts and prove the running version, then remove superseded
-    installations and temporary backups. A self-check alone is not host-version evidence. Report
-    pending restarts, inaccessible integrations, or remaining old versions as incomplete.
-
-## Profile Boundaries
-
-| Profile                   | Requirement                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `official-remote`         | The only employee-facing guidance: pinned launcher, `https://api.smedatacenter.xyz`, Device Authorization, and typed recovery. |
-| `pre-cutover-development` | Historical current-code detail belongs in implementation/testing docs, never in the official skill.                            |
-
-## Safety Review Checklist
-
-- [x] Skill name is exactly `smedc-mcp`.
-- [x] Skill includes only the official remote employee profile.
-- [x] Skill pins `smedc-mcp-launcher@0.6.0`, rejects `latest`, and never directs launcher self-update.
-- [x] Admin-only guidance includes Delivery Ledger, static discovery, local preflight without a backend audit, best-effort backend `file_upload.denied`, and the partition owner-abort exception.
-- [x] Skill contains no real tokens, passwords, customer data, endpoint secrets, or service-account material.
-- [x] Skill says MCP tools must use the HTTP API and inherit API authorization.
-- [x] Skill forbids direct DB/storage reads for data access.
-- [x] Skill forbids agent-visible passwords, raw bearer tokens, authorization codes, session files, or token persistence.
-- [x] Skill forbids claiming inaccessible documents exist.
-- [x] Skill forbids client-supplied org scope.
-- [x] Skill uses the self-scoped current-user tool without employee selectors, internal IDs, labels, or credentials.
-- [x] Skill explains import exact replay and non-enumerating import-status 404 behavior.
-- [x] Skill explains evidence cursor continuation and `INVALID_CURSOR`/`CURSOR_EXPIRED` handling.
-- [x] Skill forbids executing Skill Directory entries.
-- [x] Skill forbids report/dashboard generation and direct employee-facing AI behavior.
-- [x] Skill requires exact client-side file-byte reads and forbids retyping, normalizing, translating, or reconstructing upload payloads.
-- [x] Skill requires explicit human authorization before uploading real company documents or customer exports.
-- [x] Skill separates per-agent removal, shared logout, and complete uninstall.
-- [x] Skill provides macOS, Windows, and Linux install/config/self-check/logout paths and explains
-      Linux secure-store versus memory-only session behavior.
-- [x] Removed dev-login/JWT behavior is not presented as a current or compatible path.
-
-## Validation
-
-Required checks:
-
-```sh
-python3 /Users/xiaoyuyin/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/smedc-mcp
-npm run format:check
-git diff --check
-```
-
-Recommended local confidence check:
-
-```sh
-MYSQL_PORT=3307 npm run test:mcp
-```
-
-`npm run test:mcp` proves the MCP behavior that the meta skill describes; the skill itself does not add MCP tool behavior.
+检查 Skill frontmatter、当前命令/字段、引用、双仓库文件字节一致性，以及现有 `scripts/smedc-companion-skill.test.ts` 和 `scripts/official-user-install-and-login.test.ts`。格式检查和 git diff --check 必须通过。测试 Skill 描述的运行行为使用既有 MCP 集成入口，不把 Skill 文本当作新增工具实现。

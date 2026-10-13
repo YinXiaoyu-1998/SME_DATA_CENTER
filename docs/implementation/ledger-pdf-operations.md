@@ -1,10 +1,10 @@
-# 台账 PDF 运维与首次切换
+# 台账 PDF 当前运维
 
 台账以企业、精确门店名称和进货日期为一个分区。源收货单、台账行、供应商资料和检疫照片保留；刷新只替换派生 PDF 的当前指针，旧 PDF 和过期 ZIP 由已知对象键垃圾队列清理。无台账行的分区不生成空白 PDF。运行命令的系统或运维身份不会伪造员工账户。
 
-员工 MCP 和 HTTP 均不提供 PDF 生成入口，管理员同样不能触发。导入 applied、补单或照片变化只更新对应门店/日期 revision；服务端每日北京时间 03:00 巡检先筛选未发布、源版本变化或有错误的分区，再检查并生成 PDF。同一分区当天多次变化合并处理。上传成功不等于 PDF 已完成；尚未就绪时说明等待下一轮任务完成，禁止通过重复准备 ZIP 触发生成。运维 CLI 保留首次回填及恢复能力。
+员工 MCP 和 HTTP 均不提供 PDF 生成入口，管理员同样不能触发。导入 applied、补单或照片变化只更新对应门店/日期 revision；服务端按配置的每日北京时间巡检（默认 03:00）先筛选未发布、源版本变化或有错误的分区，再检查并生成 PDF。同一分区当天多次变化合并处理。上传成功不等于 PDF 已完成；尚未就绪时说明等待下一轮任务完成，禁止通过重复准备 ZIP 触发生成。运维 CLI 保留首次回填及恢复能力。
 
-公共请求状态仅返回当前可读分区；失败项可带安全 `errorCode`，未知内部错误统一为 `LEDGER_GENERATION_FAILED`。`latestRequest` 仅在替代请求属于当前员工且该分区仍可读时返回，其 `status` 为该分区的替代项状态。请求所有者可以看到初始无分区请求的终态与当前已发布的 `empty` 项；隐藏分区仍按不可用处理。纯主动重绘失败且源版本、依赖授权与对象元数据未变化时，已有 PDF 继续可用。HEAD 缺少规定的 SHA-256 元数据视为异常。
+公共任务状态由当前有效本人读取安全进度，不附正文或下载链接；领取新链接才检查当前完整权限。失败项可带安全 `errorCode`，未知内部错误统一为 `LEDGER_GENERATION_FAILED`。`latestRequest` 仅在替代请求属于当前员工且该分区仍可读时返回，其 `status` 为该分区的替代项状态。请求所有者可以看到初始无分区请求的终态与当前已发布的 `empty` 项；隐藏分区仍按不可用处理。纯主动重绘失败且源内容版本与对象元数据未变化时，已有 PDF 继续可用。HEAD 缺少规定的 SHA-256 元数据视为异常。
 
 ZIP 固定包含准备时捕获的精确门店/日期分区；可选取这些分区的新一代 PDF，权限变化不能把子集标为完整成功。普通中文门店名保留可读，路径特殊字符可逆转义。文件名为 `食品经营单位进货台帐_<门店>_<YYYY-MM-DD>.pdf`，检疫照片编号在每张收货单内从 1 开始。
 
@@ -12,7 +12,7 @@ ZIP 固定包含准备时捕获的精确门店/日期分区；可选取这些分
 
 API、worker 和 release-ops 使用同一目标企业所在的 `DATABASE_URL`、存储配置与真实 OSS `AWS_S3_PREFIX`。命令先输出不含凭证的 host/database/企业环境信息。不要在命令、日志或版本库里放数据库密码和 OSS 密钥。CLI 对远程数据库默认拒绝，明确检查目标后才使用 `--allow-remote`。
 
-- `LEDGER_PDF_DELIVERY_ENABLED=false`：新公共 HTTP/MCP 入口默认关闭；开启后 Delivery Ledger 行明细查询和原始台账文件签发同时关闭，汇总继续可用。
+- `LEDGER_PDF_DELIVERY_ENABLED=false`：新公共 HTTP/MCP 入口默认关闭；开启后提供获准 PDF 交付；原始台账行、汇总、覆盖和原件始终对员工关闭，不由此开关恢复。
 - `LEDGER_PDF_RECONCILE_ENABLED=false`：首次回填期间关闭每日巡检；正式交付后须开启，它是新增和变化 PDF 的常规生成入口。
 - `LEDGER_PDF_RECONCILE_TIME=03:00`：固定 `Asia/Shanghai` 时区，可配置每日时刻。
 - `LEDGER_PDF_SCRATCH_ROOT=/var/lib/smedc/ledger-pdf`：worker 独占临时目录；Compose 挂载 `/opt/smedc/ledger-pdf`，主机目录必须允许镜像的非 root node 用户写入。
@@ -57,7 +57,7 @@ Dry-run 不写数据库、不上传、不渲染。`refresh` dry-run 检查所选
 
 Worker 启动时与每分钟维护时安排每日任务、清理已结束 lease 的临时目录并登记过期 ZIP。长维护周期不重叠；关机等待进行中的维护完成后断开数据库。心跳丢失或退出信号中止转换，过期租约由后续 worker 重新认领。生成与 ZIP handler 自行完成带 attempt/owner 的 fenced 状态修改，通用 worker 不重复完成任务。
 
-巡检持久化企业/每日日期去重与分页游标，恢复最早未结束的扫描，每页最多 200 个候选分区、HEAD 并发 4。候选条件为 `publishedDataRevision` 为空、不等于 `dataRevision`，或 `errorCode` 非空；来源变更与 revision 更新在同一事务中提交。成功发布使版本一致并清除错误，下次巡检不再读取该分区来源或 HEAD 对象；空分区也会发布 empty 状态。失败和生成期间的新变更保留待更新状态。每日巡检不再检查未标记历史分区的对象丢失或漏标记变更，恢复使用运维 CLI。供应商普通资料变更不会使历史 PDF 自动刷新，实际重新生成使用当时的可读供应商目录。
+巡检持久化企业/每日日期去重与分页游标，恢复最早未结束的扫描，每页最多 200 个候选分区、HEAD 并发 4。候选条件为 `publishedDataRevision` 为空、不等于 `dataRevision`，或 `errorCode` 非空；来源变更与 revision 更新在同一事务中提交。成功发布使版本一致并清除错误，下次巡检不再读取该分区来源或 HEAD 对象；空分区也会发布 empty 状态。失败和生成期间的新变更保留待更新状态。每日巡检不再检查未标记历史分区的对象丢失或漏标记变更，恢复使用运维 CLI。供应商普通资料变更不会使历史 PDF 自动刷新，实际重新生成按注册来源转换契约使用当前供应商目录。
 
 巡检服务的 `getReconciliationStatus(runId)` 分别返回 `scanCompleted` 和 `repairsCompleted`；扫描结束只代表发现过程结束。结合 `repairPending`、`repairFailedCount`、`repairSupersededCount` 和 `repairedCount` 判断修复结果，后来的无关手工成功不会覆盖本次巡检失败。存储 403、超时或限流是巡检错误，不当成对象丢失盲目重建。
 
@@ -66,8 +66,8 @@ ZIP 最多 5000 PDF、1 GiB、10 分钟，保存 24 小时；签名 URL 为 15 �
 ## 发布与首次真实回填顺序
 
 1. 完成集中 review、最终质量门禁及 worker 镜像转换检查。明确新增 Prisma archive/reconciliation/exact-key garbage 迁移、挂载、配置和人工输入。通过正式 `main` gates 与 GitHub `staging` Environment 部署后台及 CLI，两个开关保持关闭。PR 不部署；回滚恢复镜像，不回退迁移。
-2. 获得 launcher 发布授权后，发布并独立验证 0.7.0，再更新服务推荐版本、两处基础 Skill pin 和 companion Skill。未发布时现有 Skill 的 0.6.0 pin 保持有效，不抢先推荐未验证版本。
-3. 只在明确授权的企业内运行全量 dry-run，人工确认环境、企业、门店/日期范围和预计分区数后执行同一 CLI。缺失历史源数据、依赖扫描或转换验证未通过时保留旧路径。
+2. 使用已发布且独立验证的批准 launcher pin（当前 0.9.0）和匹配服务；后续契约变更仍先验证发布包，再同步推荐元数据及双归属 Skill。
+3. 只在明确授权的企业内运行全量 dry-run，人工确认环境、企业、门店/日期范围和预计分区数后执行同一 CLI。缺失历史源数据、依赖扫描或转换验证未通过时停止交付，不恢复原台账读取入口。
 4. 核对 PDF 的 11 列内容、照片、实际分区覆盖和失败重试结果后，通过正式配置部署先开启 `LEDGER_PDF_RECONCILE_ENABLED=true`，确认日常调度正常，再开启 `LEDGER_PDF_DELIVERY_ENABLED=true`；同次配置部署也可同时开启。正式交付不能长期关闭每日生成。
 5. 上线验收只验证本次合成样例和获授权回填结果。发布授权不包含全套官方人工验收，也不授权其他企业回填。仅耐久发布里程碑更新 progress。
 

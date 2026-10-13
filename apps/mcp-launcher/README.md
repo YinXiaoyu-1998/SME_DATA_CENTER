@@ -1,81 +1,31 @@
 # SMEDC MCP Launcher
 
-Official stdio MCP launcher for SMEDC. It reads only `SMEDC_BASE_URL`, which must
-be a canonical HTTPS origin. Browser sign-in uses OAuth Device Authorization; credentials are
-never accepted through command arguments, environment variables, or MCP tool inputs.
+Official stdio MCP launcher. The approved public package is `smedc-mcp-launcher@0.9.0`; the service recommends 0.9.0 and requires at least 0.6.0. Release/target deployment evidence is maintained in the repository's `docs/implementation/staging-readiness.md`.
 
-Commands: `serve`, `self-check`, `logout`, and `--version`.
+## Installation and identity
 
-Release candidate: `smedc-mcp-launcher@0.9.0` (`--version` reports `0.9.0`).
-This candidate is not published or approved for installation. The approved Skill pin and server
-recommendation remain `0.8.2` until authorized publication and independent verification.
+Use the dual-homed `smedc-mcp` Skill for exact current-user installation, host configuration, login, recovery and removal. Supported OS platforms are macOS, Windows and Linux with Node.js 22+. Never install an implicit npm `latest` or make the launcher self-update.
 
-Candidate 0.9.0 bundles current permission cards and controlled same-organization admin tools,
-versioned category/dimension/store/evidence configuration, and explicit cutover preparation,
-activation and read suspension. `get_my_permissions` always reads current server state; grants
-are never cached locally. Evidence uploads require a category, complete business scope items and
-an explicit file level. Photo uploads require one enterprise and one exact store. Fixed-category
-levels come from current server configuration when enabled; old upload levels cannot override them.
-No tool accepts arbitrary API paths or SQL. These tools require the matching service rollout.
+The only service configuration is `SMEDC_BASE_URL`, a canonical HTTPS origin. Commands are `serve`, `self-check`, `logout` and `--version`. Credentials are never accepted through arguments, environment variables or MCP input.
 
-Business tool calls wait up to 45 seconds for the remote result. Connection handshakes
-and profile lookups keep their existing 30-second deadlines.
-Version 0.8.2 fixes multipart uploads on new HTTPS connections by counting progress only
-when the transport consumes file bytes. Progressing uploads keep their existing unbounded
-duration and 30-second stall deadline.
+Login uses OAuth Device Authorization. The employee authenticates and confirms the agent instance on the first-party page; protocol credentials remain inside the launcher. An available OS secure store protects the durable credential. A headless host without one uses memory-only custody and requires login after process restart; a denied/broken desktop store is not a reason to write secrets to ordinary files.
 
-Version 0.8.1 adds prepared partition downloads. Use `prepare_structured_partition_download`,
-then `get_structured_partition_download_status`, then `download_structured_partitions`
-with only the succeeded `requestId`. The launcher verifies the ZIP and each CSV against
-authenticated scope metadata and returns a local extract directory and safe file summary.
-Legacy date-range extracts remain supported. API requests and stalled transfers stop after
-30 seconds; an invocation has a 240-second budget. Transient network/5xx failures retry
-at most three whole-file attempts with 250/500 ms backoff. MCP cancellation stops transfer
-and removes incomplete local output. Completed extracts retain the Python manifest layout.
+## Current tool behavior
 
-All three file-upload tools remain discoverable and require the admin role. The launcher
-rejects cached employee-role uploads before reading a local file or processing upload input.
-For a newly established session without a cached profile, it first queries authenticated `/me` and securely caches
-only display name, email, role, clearance, and organization name with the credential. Profile
-lookup failures stop the upload. Logout clears the cached profile. The service remains the
-authority for upload authorization, including when a local cache has been modified.
+- Permission cards and admin configuration use current server state. Grants are not cached. Writes carry the current expected version; conflicts require rereading state.
+- Active admins upload. Cached profiles provide an early denial before local file access; the service remains authoritative. The cache holds display name, email, role, clearance and organization name only. Current-user lookup reads live state.
+- Evidence uploads require explicit category, complete scopes and file level. Photos require one enterprise and exact store. Fixed-category uploads cannot override enabled server category levels with a legacy level field.
+- Business/dishes local file paths use launcher-owned multipart transport. Status is polled by job ID; accepted uploads are not completed processing.
+- Range partition download is the default. Optional prepared ZIP download uses prepare, status and then a succeeded requestId, with no selectors mixed into that final call. Confirm matching service support; tools/list alone is insufficient. Verify scope, ZIP/CSV integrity and safe paths before returning local extracts. Internal signed partition URLs never reach the agent.
+- Ledger tools expose coverage, preparation, request status and URL issuance. They do not generate PDFs; changed/missing outputs wait for the configured daily service job. PDF delivery is independently enabled on the target service.
+- No tool accepts arbitrary API paths or SQL. Account/tenant authorization, safe status views and content access remain distinct server contracts.
 
-The `serve` command exposes the authenticated `smedc_get_current_user` tool so an
-employee can confirm the current SMEDC display name, email, and role without exposing
-credentials or accepting a selector for another account.
-This tool always reads the live service profile; `smedc_auth_status` does not reveal the cache.
+Business MCP calls have a 45-second deadline; connection/profile calls have 30 seconds. Downloads enforce request/stall limits, a 240-second invocation budget and bounded whole-file retries; cancellation removes incomplete output. Multipart progress counts transport-consumed bytes, with a 30-second stall deadline while progressing transfers may continue.
 
-`self-check` writes one safe JSON object with `ok`, `launcherVersion`, `serviceOrigin`, `platform`,
-`secureStore`, `server`, and `mcp` fields. `logout` always attempts local cleanup and writes
-`remoteRevocationConfirmed` and `localCredentialRemoved` booleans. Neither command writes
-credential contents.
+## Diagnostics and logout
 
-This public package has no npm provenance because the source repository is private.
+`self-check` returns safe version/origin/platform/store/server/MCP status and never logs in or reveals a credential. `smedc_get_current_user` returns only the current user's display identity and role/clearance/organization name; `smedc_auth_status` does not expose cached identity.
 
-Ledger PDF tools in 0.7.0:
+`logout` attempts remote family revocation and local credential deletion, reporting `remoteRevocationConfirmed` and `localCredentialRemoved`. Removing one host's MCP entry is distinct from logout or complete uninstall.
 
-- `describe_ledger_pdf_coverage`: select real `YYYY-MM-DD` dates or an inclusive
-  `startDate`/`endDate` range, with optional exact `storeNames` and opaque `cursor`.
-  Pages contain at most 200 facts.
-- `prepare_ledger_pdf_download`: submit explicit stores/dates and `idempotencyKey`
-  to bundle existing authorized PDFs. Missing or stale PDFs await the service's daily
-  03:00 Asia/Shanghai generation; employee agents cannot trigger generation.
-- `get_ledger_pdf_request_status`: poll the returned `requestId` to terminal status;
-  optional `cursor` reads the next page. A queued 202 response is not completion.
-- `get_ledger_pdf_download_url`: after ZIP readiness, exchange `requestId` for a
-  service-signed short-lived ZIP URL. The service reauthorizes each issuance.
-
-Public scopes accept at most 50 exact stores, 366 dates, and 5,000 actual partitions
-counted by the service. They reject organization selectors and render/download flags.
-The launcher returns service JSON and signed links; it does not generate ledger files
-or return base64 PDF contents. Coverage, status, and link issuance have read-only
-annotations; ZIP preparation advertises idempotent side effects. Uploads and photo
-changes record changed dates for scheduled generation; they do not generate PDFs immediately.
-
-This version requires a coordinated service rollout for the ledger PDF endpoints.
-An older service may reject the new tools or return `LEDGER_PDF_NOT_ENABLED` (503).
-`LEDGER_DETAIL_DISABLED` directs clients to the PDF workflow. For
-`LEDGER_PDF_NOT_READY`, wait for scheduled service generation, then recheck coverage;
-`LEDGER_PDF_BUNDLE_STALE` requires a new preparation request. Existing validation,
-permission, and idempotency errors retain their service semantics. The release target
-above does not indicate that 0.9.0 has been published.
+The package is published through npm Trusted Publisher from a private source repository; npm provenance is unavailable. Source, API schemas and full usage guidance remain in the product repository and official Skill; this README does not authorize publishing, deployment or tenant activation.

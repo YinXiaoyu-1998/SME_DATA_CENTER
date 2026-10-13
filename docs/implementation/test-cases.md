@@ -1,12 +1,12 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-10-07
+Last updated: 2026-10-13
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
 ## Admin-only upload regression boundary
 
-Launcher recommendation is 0.7.1; minimum compatibility remains 0.6.0. Run the HTTP upload
+Launcher recommendation is 0.9.0; minimum compatibility remains 0.6.0. Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
 prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
@@ -107,15 +107,15 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-The runner uses the installed `smedc-mcp-launcher@0.7.1`. Its default profile requires the
+The runner uses the installed `smedc-mcp-launcher@0.9.0`. Its default profile requires the
 run's synthetic admin c0. The explicit `--reuse-session=<expected-email>` profile verifies the
-selected existing admin without logging out or changing role/clearance. It covers real MCP
-evidence readiness/search, run-unique receipt XLSX upload and allowed aggregates, dishes partition
+selected existing admin without logging out or changing role/clearance. The runner now verifies the exact raw-ledger aggregate denial. Its evidence-fixture category/scope configuration remains a separate prerequisite; see the official manual guide's current runner limitation. Its intended smoke scope includes real MCP
+evidence readiness/search, run-unique receipt XLSX upload, dishes partition
 publication/download, invalid-source rejection, unchanged prior partitions, and exact cleanup.
 
 The complete user-visible business suite also covers VIP, business partitions, dish/supplier
 catalogs, receipt CSV, quarantine query/download/archive, and server PDF coverage/download. Archive
-delivery no longer permits receipt detail rows or agent-maintained statutory CSVs. New receipts
+delivery does not permit raw receipt rows, aggregates, coverage, originals or agent-maintained statutory CSVs. New receipts
 wait for the configured daily generation; use a ready authorized partition for successful download.
 
 Natural chat prompts contain only the ordinary request and necessary business inputs. Do not add
@@ -134,13 +134,13 @@ markers; it never selects all data uploaded by that existing employee, and prese
 
 ## Confidentiality And Privileged Admin Operation Cases
 
-| Case                              | Test / command                                                                                                                                                                                                                             | Expected                                                                                                                                                                    |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Explicit account attributes       | `npm test -- apps/api/src/auth/operator-cli.test.ts apps/api/src/auth/http-contract.test.ts apps/api/src/mcp/read-tools.test.ts`                                                                                                           | Onboarding requires a role of `admin` or `employee` and 0–3 clearance; current-user returns role and clearance but no internal ID or credential.                            |
-| Default and explicit upload level | `npm test -- apps/api/src/routes/evidence.test.ts apps/api/src/routes/structured-import/structured-import.test.ts apps/api/src/routes/quarantine-certificates.test.ts`                                                                     | Evidence requires explicit 0–3 level/category/scopes; fixed-category uploads cannot override current configured levels; photo uploads require one enterprise/store.         |
-| Ordinary read boundary            | `npm test -- apps/api/src/evidence.test.ts apps/api/src/routes/evidence.test.ts apps/api/src/routes/structured-import/structured-import.test.ts apps/api/src/routes/structured-query.test.ts apps/api/src/routes/source-documents.test.ts` | Active same-org employee needs complete current category/scope grants and sufficient clearance; role/owner does not bypass content access; safe owner progress is separate. |
-| Admin archive PAO                 | `npm test -- apps/api/src/routes/quarantine-certificates.test.ts apps/api/src/mcp/action-tools.test.ts`                                                                                                                                    | Only active admin can archive by receipt ID above clearance; an employee cannot; the PAO returns `archivedCount` and does not grant normal read capability.                 |
-| Removed legacy model              | `rg -n -e labelIds -e labelKeys -e employeeLabels -e documentLabels -e manager apps packages scripts skills docs --glob '!docs/implementation/progress.md'`                                                                                | Former label/audit employee APIs remain absent; current exact-store business grants are covered by the new authorization tests.                                             |
+| Case                              | Test / command                                                                                                                                                                                                                             | Expected                                                                                                                                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explicit account attributes       | `npm test -- apps/api/src/auth/operator-cli.test.ts apps/api/src/auth/http-contract.test.ts apps/api/src/mcp/read-tools.test.ts`                                                                                                           | Onboarding requires admin/employee role; employee clearance is explicit 0–3 and a newly created admin defaults to 3 unless supplied; current-user returns role and clearance but no internal ID or credential. |
+| Default and explicit upload level | `npm test -- apps/api/src/routes/evidence.test.ts apps/api/src/routes/structured-import/structured-import.test.ts apps/api/src/routes/quarantine-certificates.test.ts`                                                                     | Evidence requires explicit 0–3 level/category/scopes; fixed-category uploads cannot override current configured levels; photo uploads require one enterprise/store.                                            |
+| Ordinary read boundary            | `npm test -- apps/api/src/evidence.test.ts apps/api/src/routes/evidence.test.ts apps/api/src/routes/structured-import/structured-import.test.ts apps/api/src/routes/structured-query.test.ts apps/api/src/routes/source-documents.test.ts` | Active same-org employee needs complete current category/scope grants and sufficient clearance; role/owner does not bypass content access; safe owner progress is separate.                                    |
+| Admin archive PAO                 | `npm test -- apps/api/src/routes/quarantine-certificates.test.ts apps/api/src/mcp/action-tools.test.ts`                                                                                                                                    | Only active admin can archive by receipt ID above clearance; an employee cannot; the PAO returns `archivedCount` and does not grant normal read capability.                                                    |
+| Removed legacy model              | `rg -n -e labelIds -e labelKeys -e employeeLabels -e documentLabels -e manager apps packages scripts skills docs --glob '!docs/implementation/progress.md'`                                                                                | Former label/audit employee APIs remain absent; current exact-store business grants are covered by the new authorization tests.                                                                                |
 
 ## Official Identity, OAuth, And Launcher Cases
 

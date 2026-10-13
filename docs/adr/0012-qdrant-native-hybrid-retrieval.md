@@ -1,5 +1,7 @@
 # 使用 Qdrant native hybrid 作为 Phase 3 词法检索默认方案
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 Phase 3 的 MD/TXT/DOCX 证据检索需要 dense vector + lexical/keyword + rerank。系统已选择 Qdrant 作为默认向量数据库；仍需决定词法索引放在 Qdrant sparse/native hybrid、OpenSearch/Meilisearch、MySQL full-text，还是 in-process BM25。
 
 **Decision**: Phase 3 默认使用 Qdrant sparse vectors / native hybrid retrieval 保存词法索引，与 dense embedding、chunk text 和 payload metadata 使用同一检索存储和 chunk ids。MySQL 仍是权威 metadata/权限/状态数据库，不承担 chunk 级全文检索；in-process BM25 不作为生产基线。

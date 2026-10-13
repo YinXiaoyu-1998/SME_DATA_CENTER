@@ -1,5 +1,7 @@
 # Business/Dishes Partition Benchmark — 2026-09-15
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 ## Purpose
 
 Validate the hard-migrated `business` and `dishes` workflow at realistic scale through ordinary

@@ -1,5 +1,7 @@
 # 设备码登录成为唯一官方登录流程
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 **Status**: implemented in launcher 0.2.0; amended 2026-09-26 to remove the superseded flow
 
 桌面 launcher 原本依赖 Authorization Code + PKCE + loopback 回调，只适用于有本机浏览器的

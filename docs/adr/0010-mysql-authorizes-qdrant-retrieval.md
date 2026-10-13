@@ -1,5 +1,7 @@
 # MySQL 授权并复核 Qdrant 检索结果
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 Phase 3 使用 Qdrant 保存 MD/TXT/DOCX 的 chunk text、embedding 和检索 metadata。Qdrant payload 可以包含 `orgId`、`documentId`、标签快照、状态快照和版本信息，但这些信息可能因为资料归档、标签变更、员工禁用、内容替换或异步重建索引而变旧。
 
 **Decision**: MySQL 是文档状态和权限的权威来源。Qdrant payload filters 只用于缩小检索空间，不作为授权真相源。证据检索必须先从 MySQL 解析调用方身份、员工状态、active 文档范围和标签权限，再带着窄化 filter 查询 Qdrant；所有 Qdrant 命中的 chunk 返回前必须再次用 MySQL 校验来源 document 仍 active、调用方仍有权限、版本仍匹配。

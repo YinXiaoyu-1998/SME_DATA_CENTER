@@ -60,7 +60,7 @@ These variables are required or introduced by the new Phase 3 retrieval/data fou
 | `QDRANT_TIMEOUT_MS`          |                          No | `5000`                  |      No | API, worker        | Client timeout.                                                                     |
 | `RETRIEVAL_CONFIG_VERSION`   |             Yes for Phase 3 | `phase3.retrieval.v1`   |      No | API, worker        | Expected active retrieval config version; details live in versioned config/DB seed. |
 
-Local Compose pins `qdrant/qdrant:v1.15.4` and stores data in the local `qdrant_data` volume. Later Phase 4 staging/prod work should self-host Qdrant OSS on approved infrastructure unless a compliant managed Qdrant option is explicitly validated. For Alibaba Cloud deployment, mirror the pinned Qdrant image into an approved account-owned ACR or internal artifact registry before relying on it in staging/prod; do not deploy with `latest` or depend on ad-hoc public image pulls.
+Local Compose pins `qdrant/qdrant:v1.19.1` and stores data in the local `qdrant_data` volume. Staging uses the approved self-hosted Qdrant runtime; a different managed service requires explicit validation. For Alibaba Cloud deployment, mirror the pinned Qdrant image into an approved account-owned ACR or internal artifact registry before relying on it in staging/prod; do not deploy with `latest` or depend on ad-hoc public image pulls.
 
 ### Model Provider For Embedding And Rerank
 
@@ -79,9 +79,9 @@ Phase 3 baseline uses the existing `.env` names as the supported control surface
 | `DASHSCOPE_API_BASE_URL`             |                                                          Yes for DashScope rerank | `https://dashscope.aliyuncs.com/api/v1`                                              |                           No | API, worker            | Base URL for DashScope-native rerank endpoint.                                                                             |
 | `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED` |                                                    Yes when real provider enabled | `false` locally, `true` when approved                                                |                           No | API, worker, readiness | Real embedding/rerank calls must fail readiness/startup unless acknowledged.                                               |
 
-Optional clearer aliases may be added later (`EMBEDDING_*`, `RERANK_*`), but Phase 3 must continue to support the existing names above.
+Use the documented environment names; do not assume unimplemented aliases.
 
-Task 3 implements the env-backed provider factory with `LLM_PROVIDER=fake` as the local/CI default and `LLM_PROVIDER=openai-compatible` as the real external embedding path. DashScope-native rerank is selected independently with `RERANK_PROVIDER=dashscope`; it calls `/services/rerank/text-rerank/text-rerank` under `DASHSCOPE_API_BASE_URL`. The 2026-07-17 local smoke used synthetic text to verify `text-embedding-v4` returns 1024-dimensional embeddings through the compatible embeddings endpoint and `qwen3.7-text-rerank` returns `output.results[].index/relevance_score` through the DashScope-native rerank endpoint. Real embedding and rerank adapter calls require `EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true`; otherwise the provider call is blocked before any injected or global fetch executes. Unit tests use injected fetch and never call external networks.
+The env-backed provider factory uses LLM_PROVIDER=fake for local/CI and openai-compatible for real embedding. DashScope rerank uses RERANK_PROVIDER=dashscope and the documented native endpoint. Real embedding/rerank calls require EXTERNAL_MODEL_EGRESS_ACKNOWLEDGED=true before any network fetch. Unit tests use injected fetch, not external networks.
 
 ### Runtime Limits
 
@@ -221,20 +221,17 @@ must happen once in the console if they do not already exist. That one-time setu
 the current staging namespace. Agents should continue with Keychain-backed `docker login`,
 fixed-tag push/pull verification, and runtime deployment automation.
 
-The dependency risk policy applies to repository production dependencies and
-all runtime image targets. New high/critical findings or unregistered moderate
-findings block CI. The registered ExcelJS read-only XLSX exception is reviewed
-no later than `2027-01-31`.
+The current dependency policy and workflow-specific enforcement are defined in [dependency-risk-register.md](dependency-risk-register.md). The machine policy has no accepted exceptions; do not carry forward retired ExcelJS/uuid waivers.
 
 ## Ledger PDF archive
 
-| Variable                        | Default                     | Consumer | Purpose                                                                               |
-| ------------------------------- | --------------------------- | -------- | ------------------------------------------------------------------------------------- |
-| `LEDGER_PDF_DELIVERY_ENABLED`   | `false`                     | API/MCP  | Enable archived PDF delivery and simultaneously close ledger detail/original download |
-| `LEDGER_PDF_RECONCILE_ENABLED`  | `false`                     | Worker   | Schedule durable daily scans after authorized backfill                                |
-| `LEDGER_PDF_RECONCILE_TIME`     | `03:00`                     | Worker   | Daily HH:mm in fixed Asia/Shanghai timezone                                           |
-| `LEDGER_PDF_SCRATCH_ROOT`       | `/var/lib/smedc/ledger-pdf` | Worker   | Writable non-root scratch mount; lease-scoped cleanup                                 |
-| `LEDGER_PDF_RENDER_CONCURRENCY` | `1`                         | Worker   | Enforced single conversion per worker process                                         |
+| Variable                        | Default                     | Consumer | Purpose                                                                      |
+| ------------------------------- | --------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `LEDGER_PDF_DELIVERY_ENABLED`   | `false`                     | API/MCP  | Enable authorized PDF delivery; raw ledger reads remain closed independently |
+| `LEDGER_PDF_RECONCILE_ENABLED`  | `false`                     | Worker   | Schedule durable daily scans after authorized backfill                       |
+| `LEDGER_PDF_RECONCILE_TIME`     | `03:00`                     | Worker   | Daily HH:mm in fixed Asia/Shanghai timezone                                  |
+| `LEDGER_PDF_SCRATCH_ROOT`       | `/var/lib/smedc/ledger-pdf` | Worker   | Writable non-root scratch mount; lease-scoped cleanup                        |
+| `LEDGER_PDF_RENDER_CONCURRENCY` | `1`                         | Worker   | Enforced single conversion per worker process                                |
 
 Archive factories use the configured OSS physical key prefix. ZIP expiration
 maintenance runs independently of reconciliation/delivery flags. The CLI uses

@@ -1,8 +1,8 @@
 # SMEDC
 
-SMEDC is a company knowledge service for employee-owned agents, MCP clients, APIs, and a minimal admin surface. It stores source document catalog metadata, original files, local processing state, confidentiality-level permissions, audit logs, structured datasets, and evidence retrieval metadata.
+SMEDC is a company knowledge service for employee-owned agents, MCP clients, APIs, and a minimal admin surface. It stores source document catalog metadata, original files, local processing state, current category/scope/clearance authorization, audit logs, structured datasets, and evidence retrieval metadata.
 
-SMEDC is not an employee-facing AI agent, report generator, dashboard service, or skill execution platform. Authorization and permission filtering belong on the backend for every non-health endpoint. The public product surface is Phase 3-only: evidence upload/search and structured import/query.
+SMEDC is not an employee-facing AI agent, report generator, dashboard service, or skill execution platform. Authorization and permission filtering belong on the backend for every non-health endpoint. The public surface includes evidence retrieval, structured imports and partition downloads, authorized row queries, quarantine certificates, ledger PDF delivery and permission administration.
 
 For the full Chinese local development guide, see [README.zh.md](./README.zh.md).
 
@@ -180,13 +180,11 @@ certificates. Employee uploads at every clearance receive HTTP `403` from direct
 MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result. Both carry
 `UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and `retryable: false`.
 Tools stay visible; launcher 0.9.0 preflights the role
-before reading a file, while the backend remains authoritative for accepted requests. Clearance
-continues to govern ordinary reads independently. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
+before reading a file, while the backend remains authoritative for accepted requests. Current category/scope grants and sufficient clearance jointly govern ordinary reads. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
 Launcher 0.9.0 exposes the four ledger PDF download tools and no employee PDF generation tool.
 Archive delivery is gated by the service rollout; until enabled, report `LEDGER_PDF_NOT_ENABLED`.
 The service automatically updates affected daily PDFs; uploads reaching `applied`
-do not mean PDF completion. The earlier 0.6.0 staging release verified Device Authorization-only
-metadata, legacy-auth removal, and Chinese-first browser pages with a Chinese/English switch.
+do not mean PDF completion. Current release/deployment evidence is maintained in [staging readiness](docs/implementation/staging-readiness.md); tenant activation is separate.
 
 ## Official MCP Launcher
 
@@ -308,9 +306,11 @@ npm run format:check
 
 ## Further Documentation
 
+Start with the [current documentation index](docs/README.md); it separates current contracts from historical records.
+
 - `AGENTS.md`: repository rules and common commands.
-- [Enterprise onboarding](docs/implementation/tenant-onboarding.md): implemented administrator UI entry (not deployed), default-Chinese i18n, account setup and controlled activation; JSON is internal only.
-- [Permissions UI design](docs/implementation/admin-permissions-ui-design.md): enterprise-bound entry and shared browser sign-in; implemented in this branch, not deployed.
+- [Enterprise onboarding](docs/implementation/tenant-onboarding.md): current administrator UI entry, default-Chinese i18n, account setup and controlled activation; JSON is internal only.
+- [Permissions UI design](docs/implementation/admin-permissions-ui-design.md): enterprise-bound entry and shared browser sign-in; implemented in the current service; verify the target URL before handoff.
 - `docs/implementation/env-inventory.md`: environment and secret inventory.
 - `docs/implementation/server-runtime-prerequisites.md`: Phase 4 staging host provisioning, verification, ACR boundary, and rollback.
 - `docs/implementation/api-contract.md`: API and MCP tool contracts.

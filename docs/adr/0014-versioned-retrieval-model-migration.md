@@ -1,5 +1,7 @@
 # 版本化管理 embedding 与 rerank 模型迁移
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 Phase 3 使用外部 API 生成 embeddings，并可使用外部 rerank 模型。模型供应商、模型名、base URL 和密钥由环境配置控制。如果直接修改配置并让新 query embedding 查询旧向量，检索质量会不可预测；embedding 维度变化甚至无法在同一向量字段中兼容。
 
 **Decision**: embedding 和 rerank 仍通过 env/secret 配置保持实现简洁，但运行时必须将这些值解析为版本化 retrieval config。每个索引 chunk、DocumentIndex 和检索请求都必须记录 provider、model、dimension、version/config hash、chunker version、lexical version 和 retrieval config version。Embedding 模型变化需要构建并行索引或新 Qdrant collection，经过 golden evaluation 后显式 promote；旧索引保留一段 rollback window。Rerank 模型变化不需要重建向量，但仍需版本化配置、评估、显式 promote 和可独立 rollback。

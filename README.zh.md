@@ -102,15 +102,14 @@ npm run worker:once
 ## 正式员工 MCP
 
 正式员工路径是通过固定版本的本机 stdio launcher
-`smedc-mcp-launcher@0.5.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
+`smedc-mcp-launcher@0.9.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
 `skills/smedc-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载
 权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `smedc_login`、
 `smedc_logout`、`smedc_auth_status` 和仅查询当前身份的
 `smedc_get_current_user`，且绝不操作服务基础设施。
 
-`smedc-mcp-launcher@0.5.0` 已公开发布并通过独立验证，原生 macOS/Windows launcher
-验收已通过。staging 仍冻结在硬切前最后一个已知良好版本，待最终同步分支合并并明确部署后，
-再执行聚焦的硬切 QA 验收。
+`smedc-mcp-launcher@0.9.0` 已公开发布并通过独立验证，原生 macOS/Windows launcher
+包验证已有记录。当前服务部署与公开推荐证据见 [staging 状态](docs/implementation/staging-readiness.md)；特定客户端完整验收及真实租户激活分别核对。
 
 ## MCP 服务与本地开发边界
 
@@ -170,7 +169,9 @@ sheet）会被忽略并在状态中留下安全摘要。隐藏且匹配的 sheet
 和受控查询中的 `snapshot_date` 查询历史；服务不会选择当前/最新目录、生成 diff，或推断新增、删除、
 下架等跨快照状态。
 
-## 当前 MCP Tools
+## 常用 MCP Tools
+
+完整工具与管理能力见 [API/MCP 契约](docs/implementation/api-contract.md)。
 
 | Tool                             | 用途                                            |
 | -------------------------------- | ----------------------------------------------- |
@@ -188,25 +189,13 @@ sheet）会被忽略并在状态中留下安全摘要。隐藏且匹配的 sheet
 | `download_structured_partitions` | 下载授权 business/dishes 分区到本地目录         |
 | `query_structured_dataset`       | 查询 row-query 数据集；拒绝 business/dishes     |
 
-## 本地 MCP 人工验证
+## MCP 验证
 
-可重复的完整步骤见 `docs/implementation/local-agent-test.md`。在本仓库的 Codex task 中可以直接说：
+本地自动化使用 `MYSQL_PORT=3307 npm run test:integration` 和 `MYSQL_PORT=3307 npm run test:mcp`，通过内部正式 session fixture 验证 API/worker/MCP，不添加测试登录端点。
 
-```text
-你来替我执行一遍 SME_DATA_CENTER 的手动测试。
-```
+完整官方人工验收只有在明确请求时，按 [正式验收手册](docs/implementation/official-manual-acceptance.md) 及 repo-local `smedc-manual-test` 执行，使用正式 staging、指定 launcher 和人工完成的浏览器凭据输入。不能把本地自动化成功当作正式客户端验收。
 
-Codex 会使用 repo-local `smedc-manual-test` skill 重置专用本地测试数据、启动 API/worker，并创建独立的用户可见 Codex tasks 保存上传、冷启动检索、权限隔离和结构化查询记录。报告和脱敏日志保存在 ignored `.data/manual-tests/<runId>/`。
-
-员工侧 task 只会收到场景清单里的自然语言原文。英文测试边界、MCP 专业术语、标签/幂等细节、查询形态和预期答案都留在控制器侧，不会混进可见用户话术。
-
-手工执行的核心路径：
-
-1. 调用 `smedc_login`，只在浏览器中完成登录。
-2. 未明确指定时，以默认密级 `0` 上传。
-3. 用 `upload_evidence_document` 上传 MD/TXT/DOCX，随后用 `get_evidence_document_status` 等待 index ready，再用 `search_document_evidence` 检索。
-4. 用 `upload_structured_dataset` 原样上传 `dishes` 或 `business` CSV/XLSX，随后用 `get_partition_import_status` 等待发布，并用 `download_structured_partitions` 验证授权分区下载；不得手工切块或直查 MySQL 明细。
-5. 用密级不足或不同组织的账户搜索同一内容，确认没有数据、文件名、行数或存在性泄漏。
+聚焦验收应核对当前有效 admin 上传、explicit evidence 类别/完整范围/文件级别、处理终态、当前业务授权的允许与拒绝，以及经营分区的本地下载。真实资料和租户激活各自授权；不要通过默认密级、提升角色或重传掩盖缺项。
 
 ## npm scripts
 
@@ -261,7 +250,7 @@ npm run purge-data -- --files-only
 npm run purge-data -- --all
 ```
 
-`purge-data` 只允许清理 local `localhost` / `127.0.0.1` 且数据库名为 `smedc` 的开发库。它会清理文档源文件记录、处理/索引/标签/审计派生数据和本地测试 storage；不会提交或暴露 secrets。
+`purge-data` 只允许清理 local `localhost` / `127.0.0.1` 且数据库名为 `smedc` 的开发库。它会清理文档源文件记录、处理/索引/审计派生数据和本地测试 storage；不会提交或暴露 secrets。
 
 ## 常见问题
 
@@ -292,6 +281,8 @@ MYSQL_PORT=3307 npm run runtime:compose:up
 这是预期权限隔离。agent 只能说当前身份没有可见匹配结果，不能泄露隐藏资源存在性。
 
 ## 相关文档
+
+以 [当前文档入口](docs/README.md) 为导航，历史记录不作为现行操作规则。
 
 - `AGENTS.md`
 - `docs/implementation/api-contract.md`

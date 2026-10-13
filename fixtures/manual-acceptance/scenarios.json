@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-07.v6",
+  "version": "2026-10-13.v7",
   "accounts": {
     "employee-low": {
       "role": "employee",
@@ -168,7 +168,7 @@
         }
       ],
       "account": "employee-high",
-      "title": "收货汇总查询",
+      "title": "原始收货汇总拒绝",
       "existingSession": "run"
     },
     {

@@ -1,27 +1,12 @@
 # SMEDC MCP User Flow
 
-> **Release note:** `smedc-mcp-launcher@0.7.0` is publicly published and independently
-> verified. It is the pinned distribution with ledger PDF download tools. Archive delivery
-> remains gated by service rollout; generation runs daily at 03:00 Asia/Shanghai, and employee
-> MCP/HTTP cannot trigger it.
-> macOS, Windows, and Linux are supported launcher-installation platforms. Native macOS/Windows
-> package acceptance and the headless Linux loop pass; automated Ubuntu package acceptance is part
-> of the release workflow. User-visible OpenClaw and support-class-C phone/browser acceptance remain
-> additional release evidence, not a statement that Linux installation is unsupported. There is no
-> development-login or JWT compatibility path.
-
-Last updated: 2026-10-04
-
-This document describes the employee-facing trust boundary, not a service-operations runbook. The
-authoritative agent runbook is the dual-homed `smedc-mcp` skill. The official remote origin
-is `https://api.smedatacenter.xyz`; the only approved launcher distribution is
-`smedc-mcp-launcher@0.7.0`.
+Updated: 2026-10-13. Use the published approved `smedc-mcp-launcher@0.9.0` and the dual-homed Skill. Minimum server compatibility remains 0.6.0. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
 
 ## Upload Authorization
 
 Only active admins upload evidence, structured datasets (including Delivery Ledger), or quarantine
 certificates. Upload tools remain visible and marked admin-only. For a known employee role, the
-agent must not read or transform the local file; launcher 0.7.0 preflights before file access.
+agent must not read or transform the local file; the approved launcher preflights before file access.
 Direct HTTP upload endpoints return HTTP `403`. MCP JSON-RPC transport returns HTTP `200`
 with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
 `File upload requires the admin role.`, and `retryable: false`: explain the admin requirement
@@ -29,7 +14,7 @@ without re-login, retry, or a clearance workaround.
 Local prevention produces no backend audit; backend denial best-effort records `file_upload.denied`.
 An admin may explicitly classify above their clearance, but ordinary read/status/search/query/download
 rules still apply. Partition create/parts/complete require admin; owner abort remains allowed.
-The minimum launcher version is 0.6.0 and the recommended version is 0.7.0; older launchers receive an upgrade error. See the
+The minimum launcher version is 0.6.0 and the recommended version is 0.9.0; older launchers receive an upgrade error. See the
 [endpoint matrix](api-contract.md#file-upload-capability) for surfaces and the future service-identity non-goal.
 
 ## Participants And Credential Boundary
@@ -120,10 +105,7 @@ action.
 - For “which account is logged in?” questions, call zero-input
   `smedc_get_current_user`; return only its display name, email, role, and clearance. Do not infer
   identity from local configuration or accept an employee selector.
-- At upload, set `confidentialityLevel` only when the employee explicitly supplies one; otherwise
-  omit it and the service records level `0`. It is an integer from `0` through `3`, not a label.
-  Never infer or raise it from a filename, document content, or provenance. Do not supply an
-  organization ID.
+- Evidence uploads require an explicit category, complete scopes and file level. Photos require an enterprise and exact store. Enabled fixed categories use the current server category level, which a legacy upload level cannot override. Never infer missing attributes or supply a caller-selected organization.
 - Read only a user-selected or explicitly assigned file's exact bytes. Prefer the launcher's
   `file.encoding="path"` input with an absolute local path; use inline base64 only for small files.
   Never reconstruct, normalize, translate, or retype the content.
@@ -137,25 +119,23 @@ action.
   or re-upload instead of polling.
 - Reuse a structured-import idempotency key only for exact replay. Treat an import-status 404 as
   not visible or missing, without inferring a hidden batch.
-- For structured queries, discover the dataset registry first, send only `canonicalName` field
+- For supported row-query datasets, discover the dataset registry first, send only `canonicalName` field
   values, and use source columns or aliases only to understand the user's wording or label result
   columns.
 - `describe_structured_dataset_coverage` reports currently readable applied source windows or
-  snapshots for one dataset. It is source coverage, not a completeness guarantee or automatic
+  snapshots/current partitions for one dataset. It is source coverage, not a completeness guarantee or automatic
   answer-quality verdict; the agent decides whether to query, narrow, or ask a clarification.
 - Treat evidence cursors as opaque same-query continuations. On `INVALID_CURSOR`, restart without
   it. On `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more.
 - `smedc_list_skills` returns directory metadata only. Do not execute an entry, generate a
   report, or turn SMEDC into a direct employee-facing AI service.
 
-## Filtered Partition Download Flow (Release Gated)
+## Filtered Partition Download Flow
 
 Range is the default. Bundle mode is optional and requires a known matching ZIP service;
 tools/list is insufficient. If ZIP is removed, regenerate saved plans with range downloads.
 
-Keep the installed pin at `0.7.1`. Filtered coverage/manifests and async bundle tools require
-published, independently verified Launcher `0.8.0` for filtered ranges and `0.8.1` for optional bundles plus matching server deployment;
-branch code does not make the flow available. Follow the verified official skill's pin.
+Use approved launcher 0.9.0 with the matching deployed service. Verify optional ZIP support before selecting bundle mode.
 For business/dishes, use the same `enterpriseName`/`storeNameContains` scope in coverage and
 prepare. Names are 1–20 NFC/trim literal case-sensitive substrings, OR within the array and AND
 with authorization and other selectors. Prepare with compact inclusive `YYYYMMDD` dates and an
@@ -166,15 +146,10 @@ ZIP URL and a valid empty local extract. Failures never imply no data. Keep sign
 validate the returned store scope, and release shared scratch only after the last consumer.
 Service cleanup is operator-only, including for admins. Exact inputs, limits and errors are in
 [api-contract.md](./api-contract.md#filtered-partition-extracts-and-asynchronous-bundles) and the
-[core skill](../../skills/smedc-mcp/SKILL.md#filtered-partition-bundle-downloads-release-gated).
+[core skill](../../skills/smedc-mcp/SKILL.md#optional-partition-bundle-downloads-release-gated).
 
 ## Current Release Boundary
 
-The code implements OAuth Device Authorization, opaque access tokens, rotating durable credentials,
-desktop secure-store and headless memory-only custody, public HTTPS `/mcp`, and the pinned launcher.
-The staging migration, official-session fixture smoke, native macOS/Windows package acceptance, and
-headless Linux login-to-business-tool loop have passed. The release workflow additionally installs
-and loads the package on headless Ubuntu. Full user-visible OpenClaw and support-class-C
-phone/browser acceptance remains separate end-to-end evidence. Authorization Code + PKCE,
-loopback callbacks, `/auth/dev-login`, JWT, and local email-login tools have all been removed and
-must remain absent.
+Current contracts and defaults are in [API/MCP](api-contract.md) and [official login](official-user-install-and-login.md). MacOS, Windows and Linux installation are supported; a particular host or phone-controlled product requires its own acceptance evidence. Only verified target URLs are handed to administrators.
+
+Business/dishes use partition download for local analysis, not generic row queries. Ledger delivery uses PDFs, not raw ledger rows, aggregates or source downloads. The server's configured daily schedule generates PDFs; employee tools only observe and prepare delivery. Development email/JWT, Authorization Code and loopback callback login paths are absent.

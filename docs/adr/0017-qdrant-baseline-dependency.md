@@ -1,5 +1,7 @@
 # Phase 3 将 Qdrant 作为 baseline 依赖和 readiness gate
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 Phase 3 的证据检索路径包括 MD/TXT/DOCX 解析、切块、embedding、词法索引、Qdrant upsert、hybrid retrieval、rerank 和 MySQL 权限复核。若本地、CI 或 staging 只使用 mock，就无法证明核心检索闭环可用，也无法发现 collection schema、dense/sparse config、payload filter、stale payload、index version 和 upsert/search/delete 行为问题。
 
 **Decision**: Qdrant 是 Phase 3 baseline 运行依赖。Local `docker compose` / MVP bootup 应包含真实 Qdrant。CI 可以分层：单元测试可 mock，但 merge-gating 集成测试必须使用真实 Qdrant 与真实 MySQL，模型 provider 默认可用 deterministic fake。Staging/prod-like 环境必须使用真实 Qdrant，并把 Qdrant connectivity、required collections、dense/sparse configuration、collection health、active retrieval config/index version、upsert/search/delete smoke 和 MySQL metadata/index consistency 纳入 readiness gate。
