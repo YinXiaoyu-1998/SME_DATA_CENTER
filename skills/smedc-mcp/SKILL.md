@@ -421,7 +421,9 @@ or `snapshotDate`.
   than in the item table. Do not generate a normalized CSV with repeated receipt metadata. The
   normalized receipt ID is the organization-scoped natural idempotency key, so different content
   for the same receipt returns `RECEIPT_ID_CONFLICT` rather than an overwrite. Do not edit or replace
-  existing receipts.
+  existing receipts. The service fills shelf life on new receipt imports from the enterprise's
+  catalog by exact item name; unmatched items stay empty. Later catalog changes leave existing
+  receipts unchanged. Shelf-life catalog upload is not currently exposed.
 - Raw `delivery_ledger` details, aggregates, coverage and original CSV/XLSX links are unavailable,
   including for admins and older clients. Use the finished PDF workflow only; do not try old
   aggregate selectors or feature flags. Read

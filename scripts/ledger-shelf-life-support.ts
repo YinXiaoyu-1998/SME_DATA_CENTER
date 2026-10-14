@@ -1,3 +1,4 @@
+import { parseShelfLifeEntries, ShelfLifeValidationError } from "@smedc/domain";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
   ledgerPartitionsFromRows,
@@ -20,36 +21,16 @@ Names match exactly, including case, width and whitespace. Duplicate conflicting
 names are rejected. No XLSX layout or time unit is assumed; shelfLife is stored as given.
 Output: totalRows, matchedRows, changedRows, updatedRows and affectedPartitions.
 Execute atomically updates values, records before/after audits and bumps PDF revisions.
-No PDF jobs are submitted. Subsequent PDF inspection handles regeneration.
+No PDF jobs are submitted. Scheduled reconciliation handles regeneration.
 `;
 
 export function parseShelfLifeMappings(input: unknown): ShelfLifeMapping[] {
-  if (!Array.isArray(input) || input.length === 0 || input.length > 10000)
-    throw new LedgerCliUsageError("Input must be an array of 1-10000 itemName/shelfLife pairs.");
-  const values = new Map<string, string>();
-  for (const entry of input) {
-    if (
-      !entry ||
-      typeof entry !== "object" ||
-      typeof entry.itemName !== "string" ||
-      !entry.itemName.trim() ||
-      entry.itemName.length > 512 ||
-      typeof entry.shelfLife !== "string" ||
-      !entry.shelfLife.trim() ||
-      entry.shelfLife.length > 255 ||
-      Object.keys(entry).some((key) => key !== "itemName" && key !== "shelfLife")
-    )
-      throw new LedgerCliUsageError(
-        "Each pair requires only nonempty itemName and shelfLife strings (max 512/255 characters)."
-      );
-    const previous = values.get(entry.itemName);
-    if (previous !== undefined && previous !== entry.shelfLife)
-      throw new LedgerCliUsageError(
-        "Input contains conflicting shelf lives for an identical item name."
-      );
-    values.set(entry.itemName, entry.shelfLife);
+  try {
+    return parseShelfLifeEntries(input);
+  } catch (error) {
+    if (error instanceof ShelfLifeValidationError) throw new LedgerCliUsageError(error.message);
+    throw error;
   }
-  return [...values].map(([itemName, shelfLife]) => ({ itemName, shelfLife }));
 }
 
 export function parseShelfLifeArgs(argv: readonly string[]): ShelfLifeCommand {

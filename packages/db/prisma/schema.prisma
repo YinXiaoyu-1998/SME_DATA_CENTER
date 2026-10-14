@@ -170,6 +170,7 @@ model Organization {
   vipRows                VipRow[]
   dishCatalogRows        DishCatalogRow[]
   deliveryLedgerRows     DeliveryLedgerRow[]
+  shelfLifeCatalogEntries ShelfLifeCatalogEntry[]
   supplierCatalogRows    SupplierCatalogRow[]
   quarantineCertificates QuarantineCertificate[]
   auditLogs              AuditLog[]
@@ -568,6 +569,19 @@ model DishCatalogRow {
   @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "dish_catalog_rows_batch_sheet_row_uq")
   @@index([orgId, importBatchId])
   @@map("dish_catalog_rows")
+}
+
+model ShelfLifeCatalogEntry {
+  id        String       @id @default(cuid()) @db.VarChar(64)
+  orgId     String       @map("org_id") @db.VarChar(64)
+  itemName  String       @map("item_name") @db.VarChar(512)
+  shelfLife String       @map("shelf_life") @db.VarChar(255)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+
+  @@unique([orgId, itemName])
+  @@map("shelf_life_catalog_entries")
 }
 
 model DeliveryLedgerRow {

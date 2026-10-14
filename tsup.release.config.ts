@@ -6,6 +6,7 @@ export const releaseEntries = {
   "ledger-pdf-render-check": "apps/worker/src/ledger-pdf/renderer.integration.ts",
   "ledger-pdf": "scripts/ledger-pdf.ts",
   "ledger-shelf-life": "scripts/ledger-shelf-life.ts",
+  "shelf-life-catalog": "scripts/shelf-life-catalog.ts",
   readiness: "scripts/readiness.ts",
   "staging-smoke": "scripts/staging-smoke.ts",
   "official-manual-acceptance": "scripts/official-manual-acceptance.ts",

@@ -20,6 +20,7 @@ const releaseArtifacts = [
   "ledger-pdf-render-check",
   "ledger-pdf",
   "ledger-shelf-life",
+  "shelf-life-catalog",
   "readiness",
   "staging-smoke",
   "official-manual-acceptance",
@@ -38,6 +39,7 @@ describe("release build", () => {
       "ledger-pdf-render-check": "apps/worker/src/ledger-pdf/renderer.integration.ts",
       "ledger-pdf": "scripts/ledger-pdf.ts",
       "ledger-shelf-life": "scripts/ledger-shelf-life.ts",
+      "shelf-life-catalog": "scripts/shelf-life-catalog.ts",
       readiness: "scripts/readiness.ts",
       "staging-smoke": "scripts/staging-smoke.ts",
       "official-manual-acceptance": "scripts/official-manual-acceptance.ts",
@@ -109,6 +111,13 @@ describe("release build", () => {
       );
       expect(shelfLifeHelp).toContain("--org-name");
       expect(shelfLifeHelp).toContain("updatedRows");
+      const catalogHelp = execFileSync(
+        process.execPath,
+        ["dist/release/shelf-life-catalog.js", "--help"],
+        { cwd: cleanRoot, encoding: "utf8" }
+      );
+      expect(catalogHelp).toContain("物品名,保质期");
+      expect(catalogHelp).toContain("--operator");
       expect(readFileSync(join(cleanReleaseDir, "ledger-pdf.js"), "utf8")).not.toMatch(
         /from ["'](?:exceljs|pdf-lib)["']/
       );
