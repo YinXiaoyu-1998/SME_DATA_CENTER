@@ -6,6 +6,7 @@ export const FIXED_BUSINESS_CATEGORY_OWNERSHIP = {
   vip: "group",
   dish_catalog: "group",
   supplier_catalog: "group",
+  cost_cards: "group",
   delivery_ledger: "store",
   quarantine_certificate: "store",
   ledger_pdf: "store"

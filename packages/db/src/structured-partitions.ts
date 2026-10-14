@@ -10,7 +10,11 @@ import {
   persistPartitionReadRequirement,
   requireCurrentUploadAdmin
 } from "./source-read-requirements.js";
-import { enqueueStorageGarbage, listDueStorageGarbage } from "./storage-garbage.js";
+import {
+  canDeleteStorageGarbage,
+  enqueueStorageGarbage,
+  listDueStorageGarbage
+} from "./storage-garbage.js";
 import { randomBytes } from "node:crypto";
 import { createDatabaseAdapter } from "./adapter.js";
 import { retryIdempotentDatabaseOperation } from "./retry.js";
@@ -187,6 +191,7 @@ export interface StructuredPartitionRepository {
   }): Promise<PartitionDatasetCoverage>;
   enqueueGarbage(objectKey: string, reason: string): Promise<void>;
   listDueGarbage(now: Date, limit: number): Promise<Array<{ id: string; objectKey: string }>>;
+  canDeleteGarbage?(input: { id: string; objectKey: string; now: Date }): Promise<boolean>;
   deleteGarbage(id: string): Promise<void>;
   markObjectDeleted(objectKey: string): Promise<void>;
   postponeGarbage(id: string, errorCode: string, availableAt: Date): Promise<void>;
@@ -703,6 +708,10 @@ export function createPrismaStructuredPartitionRepository(
 
     async listDueGarbage(now, limit) {
       return listDueStorageGarbage(prisma, now, limit);
+    },
+
+    async canDeleteGarbage(input) {
+      return canDeleteStorageGarbage(prisma, input);
     },
 
     async deleteGarbage(id) {

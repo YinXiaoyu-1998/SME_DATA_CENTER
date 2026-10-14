@@ -41,6 +41,23 @@ export async function listDueStorageGarbage(
     LEFT JOIN processing_runs r ON r.id = g.processing_run_id
     WHERE g.available_at <= ${now}
       AND (r.id IS NULL OR r.status <> 'running' OR r.locked_until IS NULL OR r.locked_until <= ${now})
+      AND NOT EXISTS (SELECT 1 FROM cost_cards c WHERE BINARY c.object_key = BINARY g.object_key)
     ORDER BY g.available_at, g.id LIMIT ${limit}
   `);
+}
+
+/** Re-read immediately before deleting; list results are not deletion capabilities. */
+export async function canDeleteStorageGarbage(
+  tx: Pick<Prisma.TransactionClient, "$queryRaw">,
+  input: { id: string; objectKey: string; now: Date }
+): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT g.id FROM storage_garbage g
+    LEFT JOIN processing_runs r ON r.id = g.processing_run_id
+    WHERE g.id = ${input.id} AND BINARY g.object_key = BINARY ${input.objectKey}
+      AND g.available_at <= ${input.now}
+      AND (r.id IS NULL OR r.status <> 'running' OR r.locked_until IS NULL OR r.locked_until <= ${input.now})
+      AND NOT EXISTS (SELECT 1 FROM cost_cards c WHERE BINARY c.object_key = BINARY g.object_key)
+  `);
+  return rows.length === 1;
 }

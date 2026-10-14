@@ -20,6 +20,7 @@ import {
   toResourceReadRequirement,
   loadBusinessGrants
 } from "./business-authorization-records.js";
+import { initializeFixedBusinessCategories } from "./fixed-business-categories.js";
 
 export interface AuthorizationWriteContext {
   orgId: string;
@@ -606,6 +607,16 @@ export function createBusinessAuthorizationRepository({
     }
   }
   return {
+    initializeFixedCategories(input: AuthorizationWriteContext) {
+      return mutate(input, "categories.initialize", input.orgId, async (tx) => {
+        const before = await tx.businessCategory.findMany({
+          where: { orgId: input.orgId },
+          select: { id: true, key: true }
+        });
+        const result = await initializeFixedBusinessCategories(tx, input.orgId);
+        return { before, after: { createdCount: result.count } };
+      });
+    },
     inspectAuthorizationCutover<T>(orgId: string, inspect: (tx: Tx) => Promise<T>) {
       return prisma.$transaction(async (tx) => {
         const state = await tx.businessAuthorizationState.findUnique({ where: { orgId } });

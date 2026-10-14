@@ -351,6 +351,11 @@ export function createPartitionImporter(input: {
           const garbage = await repository.listDueGarbage(now, 100);
           for (const item of garbage) {
             try {
+              if (
+                repository.canDeleteGarbage &&
+                !(await repository.canDeleteGarbage({ ...item, now }))
+              )
+                continue;
               await storage.deleteObject(item.objectKey);
               await repository.deleteGarbage(item.id);
             } catch (error) {

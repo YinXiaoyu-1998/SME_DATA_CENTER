@@ -408,6 +408,29 @@ describe("partition importer", () => {
     );
   });
 
+  it("rechecks GC permission immediately before deleting a listed object", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
+    const storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });
+    const deleted = vi.spyOn(storage, "deleteObject");
+    const guard = vi.fn(async ({ id }: { id: string }) => id === "retired");
+    const repository = repositoryStub({
+      listExpiredUploads: async () => [],
+      listDueGarbage: async () => [
+        { id: "current", objectKey: "cost-cards/current.csv" },
+        { id: "retired", objectKey: "cost-cards/retired.csv" }
+      ],
+      canDeleteGarbage: guard,
+      deleteGarbage: async () => undefined,
+      deleteTerminalJobs: async () => 0
+    });
+    const importer = createPartitionImporter({ limits: limits(root), repository });
+    const now = new Date("2026-10-14T00:00:00Z");
+    await importer.maintain({ storage, now });
+    expect(guard).toHaveBeenCalledTimes(2);
+    expect(deleted).toHaveBeenCalledExactlyOnceWith("cost-cards/retired.csv");
+    await importer.disconnect();
+  });
+
   it("cleans newly due garbage after five minutes and retains hourly job and scratch schedules", async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
     const storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });
