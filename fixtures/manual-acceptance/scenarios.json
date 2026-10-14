@@ -383,5 +383,95 @@
   "profiles": {
     "account-lifecycle": "Use declared synthetic accounts plus browser lifecycle steps.",
     "existing-session": "Use the current admin for business cases; skip tasks marked identity_excluded and all account lifecycle steps."
+  },
+  "candidateCostCards": {
+    "releaseGate": "Unpublished candidate 0.10.0: run only after separate launcher/service/tenant verification and explicit changed-workflow authorization. Not part of the current 0.9.0 full suite.",
+    "fixture": "structured/cost-cards-known-values.csv",
+    "tasks": [
+      {
+        "id": "cost-card-upload",
+        "title": "成本卡原件上传",
+        "freshContext": true,
+        "account": "admin",
+        "turns": [
+          {
+            "id": "cost-card-upload",
+            "prompt": "把 {enterpriseName} 的成本卡上传到 SMEDC：{costCardsFile}。"
+          }
+        ]
+      },
+      {
+        "id": "cost-card-find",
+        "title": "同名成本卡查找",
+        "freshContext": true,
+        "account": "admin",
+        "turns": [
+          {
+            "id": "cost-card-find",
+            "prompt": "{enterpriseName} 的合成同名锅有哪些规格？"
+          }
+        ]
+      },
+      {
+        "id": "cost-card-local-details",
+        "title": "成本卡用料核对",
+        "freshContext": true,
+        "account": "admin",
+        "turns": [
+          {
+            "id": "cost-card-local-details",
+            "prompt": "帮我比较 {enterpriseName} 的合成同名锅小锅和大锅各套配方的物品用量与适用门店。"
+          }
+        ]
+      },
+      {
+        "id": "cost-card-after-original-archive",
+        "title": "原件归档独立性",
+        "freshContext": true,
+        "account": "admin",
+        "turns": [
+          {
+            "id": "cost-card-after-original-archive",
+            "prompt": "再查一下 {enterpriseName} 的合成同名锅各个规格的成本卡用料。"
+          }
+        ]
+      },
+      {
+        "id": "cost-card-archive",
+        "title": "单卡归档",
+        "freshContext": true,
+        "account": "admin",
+        "turns": [
+          {
+            "id": "cost-card-archive",
+            "prompt": "请把 {enterpriseName} 的合成同名锅小锅那张成本卡归档。"
+          }
+        ]
+      },
+      {
+        "id": "cost-card-after-archive",
+        "title": "单卡归档后查找",
+        "freshContext": true,
+        "account": "admin",
+        "turns": [
+          {
+            "id": "cost-card-after-archive",
+            "prompt": "{enterpriseName} 的合成同名锅现在还有哪些规格的成本卡可查？"
+          }
+        ]
+      },
+      {
+        "id": "cost-card-restore",
+        "title": "新上传恢复成本卡",
+        "freshContext": true,
+        "account": "admin",
+        "turns": [
+          {
+            "id": "cost-card-restore",
+            "prompt": "重新把这份 {enterpriseName} 的成本卡上传到 SMEDC：{costCardsFile}。"
+          }
+        ]
+      }
+    ]
   }
 }

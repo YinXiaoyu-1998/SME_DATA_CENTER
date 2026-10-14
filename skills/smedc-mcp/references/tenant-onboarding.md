@@ -28,3 +28,13 @@
 用户明确选择 MCP 管理时仍可使用现有工具，不强制跳转 UI。仅在明确需要内部记录时读取[内部 JSON 约定](tenant-onboarding-json.md)；内部记录不作为用户交付要求，也不授权后台导入或真实租户切换。
 
 七类密级流程要求服务端已部署原始台账内部类别免密级修正；若准备报告仍要求 `delivery_ledger` 密级，报告服务尚未对齐，不自动填 0／3 或删除内部类别。
+
+## Cost cards (candidate)
+
+The cost-card category is release gated; see [cost cards](cost-cards.md). For an already enabled
+enterprise, the current admin explicitly initializes missing fixed categories through the
+controlled versioned write, then configures `cost_cards` level and enterprise group grants.
+Initialization is idempotent, leaves old configuration/mode intact, and grants no default read
+access. Recipe stores do not define permissions. Do not infer tenant readiness from discovery
+or silently initialize through ordinary reads. No real configuration changes are authorized by
+this guidance update.

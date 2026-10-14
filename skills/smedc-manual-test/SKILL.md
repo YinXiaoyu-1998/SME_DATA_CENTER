@@ -206,3 +206,32 @@ Manual staging uploads must not accumulate.
 - Do not report "beta-ready" unless the browser login, launcher persistence, business tools,
   quarantine/source-download coverage when in scope, and cleanup have actually run.
 - When Windows/OpenClaw are skipped by scope, say so explicitly.
+
+## Cost-card changed workflow (unpublished candidate)
+
+Cost-card acceptance is separately release gated for candidate 0.10.0; do not run it with the
+current published 0.9.0 suite or install a candidate into the user runtime. No official run is
+authorized by updating this Skill. After separate publication/service/tenant verification and an
+explicit changed-workflow request, use `candidateCostCards` in the existing scenario manifest and
+`structured/cost-cards-known-values.csv`: three same-name cards, two specifications under one SPU,
+a reused SKU under another SPU, standard/exception rows, leading-zero codes and exact/null/zero values.
+
+Use directory lookup → complete per-card CSV download → local 38-column checks through
+`readCostCardAcceptanceCsv` in existing support. Preserve each card's revision/sourceDocumentId/
+importBatchId and verify byte/schema/identity/count integrity and same-name filename separation.
+Do not request server-side item/recipe/store aggregates. Read units and exception semantics as
+source values; do not invent a final store recipe. Clean only that download directory in finally.
+
+The controller separately archives a synthetic original through the approved operator path;
+ordinary directory and CSV reads must still succeed. Current same-org admin archives one resolved
+card, which disappears from lookup/download; a fresh identical upload restores it, while old
+idempotency replay does not. Do not invent an original-archive MCP tool or infer admin read rights.
+Test permissions/category initialization with one small synthetic enabled enterprise; no default
+new-category grants, old-category changes or tenant reactivation. Record explicit-ID denial,
+manifest signing race/whole-batch expiry retry and publication-summary truncation/current-read
+boundaries through existing focused runtime tests; do not add a broad manual permission matrix.
+
+Run-scoped cleanup inventories current/archived card object keys plus StorageGarbage candidates,
+removes cost_card resources and directory before restrictive source batches/documents, preserves
+unrelated group cards/config/accounts and verifies exact keys/counts. Full suite, real cleanup,
+staging and tenant actions always retain their separate authorization boundaries.

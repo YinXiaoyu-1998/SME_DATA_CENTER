@@ -235,3 +235,34 @@ their opt-in flags enabled. A skipped Prisma file is not acceptance proof. The d
 acceptance cases are covered across domain, API, DB, worker and MCP tests; run their focused suites
 during implementation and the final repository gates once after consolidated review. Do not run the
 full official manual workflow, real-tenant backfills or activation as part of these automated checks.
+
+## Cost-card changed-workflow cases (candidate, synthetic only)
+
+Cost-card checks target unpublished candidate 0.10.0; no full official suite, staging deployment,
+real imports/cleanup or tenant changes are authorized by implementation. Use small synthetic
+cards with 35-column originals, two same-name specifications, the same SKU under another SPU,
+standard/exception source text, exact decimals, leading-zero codes, nullable/zero/repeated items.
+
+- Upload → directory detail query/pagination → full per-card 38-column CSV download → local
+  item/recipe/store/decimal checks. Names/SQL wildcard characters are literal, candidates are
+  disambiguated by enterprise/source/SPU/SKU/specification. No server-side detail aggregation.
+- Missing columns, hidden/damaged candidate sheets, format errors and repeated public-field
+  conflicts reject the whole file with source locations. Explicit null overwrites; no partial cards.
+- Equal content writes no directory/object; changed cards replace whole CSV, omitted cards stay;
+  summaries belong to that commit, exact counts with bounded/truncated changes and current access.
+- Source-original archive leaves directory/download readable; single-card archive hides that card;
+  a fresh identical upload restores it while replaying the old successful request does not.
+- Group category grants/level control reads independently of admin management, upload ownership,
+  applicable stores and source-original access. Already enabled tenant initialization registers a
+  missing category without default grants or old-category/mode changes; ordinary GET never writes.
+- Manifest pins each card's revision/source/batch/file metadata; explicit-ID selection is all-or-error.
+  Signing races reject all; expired-link retry discards the whole first attempt and redownloads once.
+  Verify same-name files cannot collide and success/failure/cancellation cleanup is scoped.
+- Exact-key cleanup inventories current/archived card CSVs, run-owned candidates/garbage and
+  cost_card permission resources before source/batch deletion; local-store cleanup preserves group cards.
+
+Task7 focused checks: standalone test_smedc_skill_contract.py; companion validate_all_skills.py and
+existing analysis unittest suite; SMEDC scripts/smedc-companion-skill.test.ts,
+scripts/official-user-install-and-login.test.ts, scripts/purge-data.test.ts and
+scripts/staging-upload-domain-cleanup.test.ts plus affected adapter/support checks. Manual fixture
+support checks validate synthetic scenarios only; they do not execute official acceptance.

@@ -23,6 +23,8 @@ export interface StagingUploadDomainCleanupAdapter {
   deleteImportWindowClaims(ids: string[]): Promise<void>;
   deletePartitionImportJobs(ids: string[]): Promise<void>;
   deleteStructuredPartitions(ids: string[]): Promise<void>;
+  deleteCostCardResources(ids: string[]): Promise<void>;
+  deleteCostCards(ids: string[]): Promise<void>;
   deleteStorageGarbage(ids: string[]): Promise<void>;
   deleteQuarantineCertificates(ids: string[]): Promise<void>;
   deleteVipRows(ids: string[]): Promise<void>;
@@ -72,6 +74,8 @@ export async function runStagingUploadDomainCleanup(
   await input.adapter.deleteDocumentIndexes(plan.documentIndexIds);
   await input.adapter.deleteImportWindowClaims(plan.importWindowClaimIds);
   await input.adapter.deleteStructuredPartitions(plan.structuredPartitionIds);
+  await input.adapter.deleteCostCardResources(plan.costCardResourceIds);
+  await input.adapter.deleteCostCards(plan.costCardIds);
   await input.adapter.deleteStorageGarbage(plan.storageGarbageIds);
   await input.adapter.deleteQuarantineCertificates(plan.quarantineCertificateIds);
   await input.adapter.deletePartitionImportJobs(plan.partitionImportJobIds);

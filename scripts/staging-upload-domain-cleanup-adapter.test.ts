@@ -68,8 +68,18 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         deleteMany: vi.fn(async () => ({})),
         count: vi.fn(async () => 0)
       },
+      costCard: {
+        findMany: vi.fn(async () => [{ id: "card-1", objectKey: "cost-cards/current.csv" }]),
+        deleteMany: vi.fn(async () => ({})),
+        count: vi.fn(async () => 0)
+      },
+      businessResource: {
+        findMany: vi.fn(async () => [{ id: "resource-1" }]),
+        deleteMany: vi.fn(async () => ({})),
+        count: vi.fn(async () => 0)
+      },
       storageGarbage: {
-        findMany: vi.fn(async () => []),
+        findMany: vi.fn(async () => [{ id: "garbage-1", objectKey: "cost-cards/candidate.csv" }]),
         deleteMany: vi.fn(async () => ({})),
         count: vi.fn(async () => 0)
       },
@@ -108,12 +118,27 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       quarantineCertificateIds: ["certificate-1"],
       vipRowIds: ["vip-1"],
       dishCatalogRowIds: ["catalog-1"],
-      storageObjectKeys: ["uploads/doc-1"],
+      costCardIds: ["card-1"],
+      costCardResourceIds: ["resource-1"],
+      storageObjectKeys: ["uploads/doc-1", "cost-cards/current.csv", "cost-cards/candidate.csv"],
       qdrantPoints: [{ collection: "evidence", pointId: "point-1" }]
     });
     await adapter.deleteQdrantPoints(inventory.qdrantPoints);
     await adapter.deleteOssObjects(inventory.storageObjectKeys);
     await adapter.deleteQuarantineCertificates(inventory.quarantineCertificateIds);
+    await adapter.deleteCostCardResources(inventory.costCardResourceIds);
+    await adapter.deleteCostCards(inventory.costCardIds);
+    expect(prisma.costCard.findMany).toHaveBeenCalledWith({
+      select: { id: true, objectKey: true }
+    });
+    expect(prisma.businessResource.findMany).toHaveBeenCalledWith({
+      where: { kind: "cost_card" },
+      select: { id: true }
+    });
+    expect(prisma.businessResource.deleteMany).toHaveBeenCalledWith({
+      where: { kind: "cost_card", id: { in: ["resource-1"] } }
+    });
+    expect(prisma.costCard.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["card-1"] } } });
     await adapter.deleteDocuments(inventory.documentIds);
     expect(qdrant.deletePoints).toHaveBeenCalledWith(inventory.qdrantPoints);
     expect(storage.deleteObject).toHaveBeenCalledWith("uploads/doc-1");
@@ -151,6 +176,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       importWindowClaim: emptyCount,
       partitionImportJob: emptyCount,
       structuredPartition: emptyCount,
+      costCard: emptyCount,
+      businessResource: emptyCount,
       storageGarbage: emptyCount,
       quarantineCertificate: emptyCount,
       vipRow: emptyCount,
@@ -179,6 +206,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         importWindowClaimIds: [],
         structuredPartitionIds: [],
         partitionImportJobIds: [],
+        costCardIds: [],
+        costCardResourceIds: [],
         storageGarbageIds: [],
         quarantineCertificateIds: [],
         vipRowIds: [],

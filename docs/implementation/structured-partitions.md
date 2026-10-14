@@ -52,3 +52,10 @@ Launcher 消费内部链接、核验下载文件/清单的身份、checksum、�
 - 上传/下载公共路径：API 结构化分区测试、launcher multipart/partition-bundle 测试和 MCP smoke。
 - 性能比较使用同一 fixture/workload；[历史基准](dishes-business-partition-benchmark-2026-09-15.md) 只作为当时测量证据。
 - 真实数据清理、回填或存储迁移需独立授权；过去 QA 数据删除批准不能用于新环境或真实客户资料。
+
+## Independent cost-card storage boundary
+
+This document remains the business/dishes store-date partition contract. Cost cards use an
+independent directory and one complete CSV per card; they do not enter these partition/date APIs.
+See the [candidate cost-card contract](api-contract.md#cost-cards-unpublished-candidate) and
+[employee workflow](../../skills/smedc-mcp/references/cost-cards.md).

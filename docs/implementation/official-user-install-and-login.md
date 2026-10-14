@@ -735,3 +735,13 @@ Current source implements the installation, Device Authorization, token/session,
 Use [staging readiness](staging-readiness.md) for the latest verified deployment/public metadata and [beta readiness](beta-access-readiness.md) for remaining human inputs and acceptance limits. A package, login or deployment check alone does not prove a particular tenant's business permissions or every client host.
 
 There is no development email-login endpoint, JWT compatibility, Authorization Code/loopback flow, password grant or employee credential file. Deterministic tests use internal official-session fixtures; they do not expose an alternate runtime login endpoint.
+
+## Cost-card candidate release boundary
+
+Cost-card directory/CSV tools target unpublished candidate `0.10.0`. The approved install pin
+and recommendation above remain 0.9.0. Do not install the candidate, promote server metadata or
+infer readiness from static tool discovery. Publish and independently verify the launcher, verify
+matching service deployment and explicit cost_cards category configuration before employee use.
+The addition does not change device login, secure-store/session behavior or upload role preflight.
+See [cost-card usage](../../skills/smedc-mcp/references/cost-cards.md) for 35-column original uploads,
+38-column local CSV delivery, per-card provenance, current authorization and finally cleanup.

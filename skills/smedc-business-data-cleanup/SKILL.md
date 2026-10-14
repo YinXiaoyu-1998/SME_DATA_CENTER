@@ -15,14 +15,15 @@ and preserved, then execute only within that confirmed scope.
 Business data includes uploaded source documents, evidence chunks and Qdrant points, document
 indexes, processing runs, import batches, import-window claims, partition import jobs
 (`partition_import_jobs`), published structured partitions (`structured_partitions`), deferred
-object cleanup records (`storage_garbage`), row-backed datasets (`vip_rows`, `dish_catalog_rows`,
+object cleanup records (`storage_garbage`), the current/archived cost-card directory
+(`cost_cards`) and its `cost_card` BusinessResource records (cascading scopes/dimensions), row-backed datasets (`vip_rows`, `dish_catalog_rows`,
 `delivery_ledger_rows`, `supplier_catalog_rows`), quarantine certificates, document-label links,
 and business audit logs for document/import/quarantine actions. Business and dishes datasets live
 in structured partitions, not legacy row tables.
 
 The object inventory must include every exact database-recorded key: source document
 `storageObjectKey`, partition-job `temporaryObjectKey` temporary source objects, structured-partition
-`objectKey` derived partition objects, and storage-garbage `objectKey` cleanup targets. Never infer
+`objectKey` derived partition objects, cost-card `objectKey` current CSVs (including archived cards), and storage-garbage `objectKey` cleanup targets. Never infer
 keys from filenames or delete a broad prefix in place of this inventory.
 
 Preserve identity and configuration data unless the user separately asks to remove it:
@@ -37,23 +38,23 @@ secrets.
 2. Resolve the target (`orgId`, employee email, or employee id) through read-only queries. Never
    infer `default-org` unless the user named it or the surrounding task clearly identifies it.
 3. Run a dry-run inventory that counts every business table above, enumerates exact document IDs,
-   import batch IDs, partition job IDs, structured partition IDs, storage-garbage IDs, all four
-   object-key sources, and Qdrant collection/point IDs, and separately counts preserved
+   import batch IDs, partition job IDs, structured partition IDs, storage-garbage IDs, all exact
+   object-key sources, including current/archived cost-card CSVs and run-owned candidate CSVs in storage garbage, and Qdrant collection/point IDs, and separately counts preserved
    identity/config tables.
 4. For staging, execute from the staging server's `release-ops` runtime or an equivalent
    fail-closed operator runtime that proves it is connected to the approved staging RDS/Qdrant/OSS
    environment. Do not use local `.env` values to mutate staging.
 5. Delete external artifacts by exact DB-recorded target first: Qdrant points by collection/id,
-   then source, temporary, derived-partition, and storage-garbage OSS objects by their inventoried
+   then source, temporary, derived-partition, current/archived cost-card CSV, and storage-garbage/candidate OSS objects by their inventoried
    keys. If there are no document records, it is acceptable to verify Qdrant by `orgId` payload,
    but do not blindly delete OSS prefixes without an object inventory.
 6. Delete database rows in current dependency order: business audit logs, document-label links,
-   processing runs, chunks, indexes, import-window claims, structured partitions, storage-garbage
+   processing runs, chunks, indexes, import-window claims, structured partitions, cost_card resources (scopes/dimensions cascade), cost_cards directory, storage-garbage
    rows, quarantine certificates, partition import jobs, row-backed dataset rows, import batches,
    then documents. Use the repository cleanup implementation as the authority if the schema or
    dependency order has changed.
 7. Verify every business count is zero for the target, including `structured_partitions`,
-   `partition_import_jobs`, and `storage_garbage`; verify Qdrant target count is zero and every
+   `partition_import_jobs`, `cost_cards`, its cost_card content resources, and `storage_garbage`; verify Qdrant target count is zero and every
    inventoried source/temporary/derived/garbage OSS key is gone; confirm preserved identity/config
    counts remain present and staging health still passes.
 
@@ -66,7 +67,7 @@ headers, private keys, or full customer document contents.
 Use the separate release-ops `partition-store-cleanup.js` entrypoint for an explicitly
 confirmed organization, enterprise, and store scope. It supports only current `business` and
 `dishes` partitions. Keep VIP, dish catalogs, delivery,
-shared supplier data, source import jobs/runs (including mixed-store imports), accounts and
+shared supplier data, group-level cost cards and their CSVs/resources, source import jobs/runs (including mixed-store imports), accounts and
 sessions. This operator action is never an employee MCP tool.
 
 Create a private preview file in a durable operator-mounted directory:
@@ -119,3 +120,20 @@ The overall staging-upload-domain cleanup refuses any retained download requests
 external deletion. Drain requests and candidates through a compatible ZIP release before
 rolling back code; additive migrations remain applied and must never be reversed. Previously
 issued URLs may remain usable until their capped TTL (at most 15 minutes) expires.
+
+## Cost-card cleanup boundary (candidate)
+
+Cost-card support is an unpublished candidate capability; updating this Skill does not authorize
+real cleanup, tenant changes or candidate installation. Whole upload-domain cleanup inventories
+source originals and per-card CSVs separately: CostCard IDs/objectKey (including archived cards),
+cost_card content resources, and StorageGarbage exact keys for replaced/run-owned candidate CSVs.
+Delete cost_card resources and their cascading scopes/dimensions plus the single cost_cards
+directory before restrictive source ImportBatch/Document dependencies. Preserve category levels,
+employee grants and authorization audit/configuration. Local purge removes the same directory
+and content resources before sources; its existing local .data storage targets contain CSVs.
+Never derive keys from dish names, SPU/SKU or prefixes. Current/archived references and active task
+candidates are protected by ordinary GC; replaced objects have at least a 24-hour grace. An
+explicit whole-domain purge is a separately authorized destructive action, not ordinary GC.
+Drain active uploads before destructive cleanup; local-store partition cleanup never selects
+group-level cards, regardless of recipe applicable-store text. Verify inventoried keys and
+resource/directory counts, not only source-document counts.

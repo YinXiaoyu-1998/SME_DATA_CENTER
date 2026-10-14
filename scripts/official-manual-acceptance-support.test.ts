@@ -1,6 +1,10 @@
+import { readFile } from "node:fs/promises";
+import { parse as parseCsv } from "csv-parse/sync";
+import { COST_CARD_UPLOAD_SCHEMA, PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@smedc/domain";
 import { describe, expect, it } from "vitest";
 import {
   assertCleanupCountsAreZero,
+  readCostCardAcceptanceCsv,
   assertStagingRuntimeDatabaseTarget,
   createStructuredWindow,
   deleteStorageObjects,
@@ -279,6 +283,8 @@ describe("official manual acceptance cleanup", () => {
         importBatches: 0,
         structuredPartitions: 0,
         partitionImportJobs: 0,
+        costCards: 0,
+        costCardResources: 0,
         storageGarbage: 0,
         vipRows: 0,
         dishCatalogRows: 0,
@@ -290,5 +296,88 @@ describe("official manual acceptance cleanup", () => {
         storageObjects: 0
       })
     ).toThrow("deliveryLedgerRows=3");
+  });
+});
+
+describe("cost-card changed-workflow local CSV oracle", () => {
+  const headers = [
+    ...COST_CARD_UPLOAD_SCHEMA.map((field) => field.sourceColumn),
+    "source_sheet_index",
+    "source_sheet_name",
+    "source_row_number"
+  ];
+  const values: Record<string, string> = {
+    菜品SPU编码: "0001",
+    菜品SKU编码: "0012",
+    售卖价: "36.123456",
+    物品编码: "0007",
+    净料量: "0.000001",
+    source_sheet_index: "0",
+    source_sheet_name: "合成页",
+    source_row_number: "2"
+  };
+  const row = headers.map((header) => values[header] ?? "");
+  const csv = `${headers.join(",")}\n${row.join(",")}\n`;
+  it("retains all 38 fields, exact decimals, leading-zero codes and source locations", () => {
+    const rows = readCostCardAcceptanceCsv(csv, { spuId: "0001", skuId: "0012" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      菜品SPU编码: "0001",
+      菜品SKU编码: "0012",
+      售卖价: "36.123456",
+      物品编码: "0007",
+      净料量: "0.000001",
+      source_sheet_name: "合成页",
+      source_row_number: "2"
+    });
+  });
+  it("rejects a source upload template and mixed card identities", () => {
+    expect(() =>
+      readCostCardAcceptanceCsv("菜品SPU编码,菜品SKU编码\n0001,0012\n", {
+        spuId: "0001",
+        skuId: "0012"
+      })
+    ).toThrow("38-column");
+    expect(() => readCostCardAcceptanceCsv(csv, { spuId: "0002", skuId: "0012" })).toThrow(
+      "identity"
+    );
+  });
+  it("keeps the candidate fixture small, complete and separate from current published scenarios", async () => {
+    const source = await readFile(
+      "fixtures/manual-acceptance/structured/cost-cards-known-values.csv",
+      "utf8"
+    );
+    const records = parseCsv(source, { columns: true, skip_empty_lines: true }) as Record<
+      string,
+      string
+    >[];
+    expect(Object.keys(records[0]!)).toEqual(
+      COST_CARD_UPLOAD_SCHEMA.map((field) => field.sourceColumn)
+    );
+    expect(records).toHaveLength(6);
+    expect(new Set(records.map((r) => `${r["菜品SPU编码"]}:${r["菜品SKU编码"]}`)).size).toBe(3);
+    expect(new Set(records.map((r) => r["菜品名称"])).size).toBe(1);
+    expect(records.filter((r) => r["净料量"] === "0")).toHaveLength(3);
+    const { parseCostCardFile, groupCostCardRows } =
+      await import("../packages/structured-ingestion/src/cost-cards.js");
+    const raw = await parseCostCardFile({
+      dataset: "cost_cards",
+      fileName: "cost-cards-known-values.csv",
+      fileType: "csv",
+      content: Buffer.from(source),
+      limits: PHASE3_RUNTIME_LIMIT_DEFAULTS
+    });
+    expect(raw.validationErrors).toEqual([]);
+    const grouped = groupCostCardRows(raw.rows, { enterpriseKey: "synthetic-enterprise" });
+    expect(grouped.validationErrors).toEqual([]);
+    expect(grouped.inputCardCount).toBe(3);
+    expect(grouped.inputItemRowCount).toBe(6);
+    const scenarios = JSON.parse(
+      await readFile("fixtures/manual-acceptance/scenarios.json", "utf8")
+    );
+    expect(scenarios.candidateCostCards.releaseGate).toContain("Unpublished candidate 0.10.0");
+    expect(scenarios.candidateCostCards.tasks.map((task: { id: string }) => task.id)).toContain(
+      "cost-card-after-original-archive"
+    );
   });
 });

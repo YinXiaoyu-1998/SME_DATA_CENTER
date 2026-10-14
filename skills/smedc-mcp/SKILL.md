@@ -37,6 +37,13 @@ tenant activation; package installation alone does not activate a live tenant. F
 those tools are available. Permission checks always happen on the service; cached identity is
 not a permission card and does not authorize content.
 
+## Cost Cards (Candidate, Release Gated)
+
+For cost-card original uploads, directory lookup, same-name disambiguation, local CSV
+analysis, archive/restore and cleanup, read [cost cards](references/cost-cards.md).
+The cost-card contract targets candidate `0.10.0`, not a published or approved install.
+Keep the verified installation pin above; tool discovery alone does not establish readiness.
+
 ## Enterprise Onboarding And New Account Permissions
 
 For enterprise onboarding or account permissions, follow

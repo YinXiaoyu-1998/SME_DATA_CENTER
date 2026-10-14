@@ -16,6 +16,7 @@ describe("exact store operator cleanup guard", () => {
     for (const bad of [
       { ...scope, orgId: "" },
       { ...scope, datasets: ["vip"] },
+      { ...scope, datasets: ["cost_cards"] },
       { ...scope, storeNames: undefined },
       { ...scope, storeNames: [] },
       { ...scope, storeNames: [" "] },

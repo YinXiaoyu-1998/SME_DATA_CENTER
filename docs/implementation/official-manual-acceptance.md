@@ -223,3 +223,41 @@ assertion or a prepared plan without real launcher/MCP calls is not acceptance e
 Headless support-class-C acceptance separately proves no-display link delivery, human completion
 on another device, memory-only credentials, successful business use, and loss of authentication
 after process restart. It uses a fresh synthetic account and cleans it afterward.
+
+## Cost-card changed-workflow candidate
+
+This section targets unpublished candidate 0.10.0, not the currently approved 0.9.0 acceptance.
+Do not execute it, install a candidate, configure real tenants or deploy staging based on this
+document update. After independent package verification, matching service rollout, explicit
+synthetic category configuration and a separately requested changed-workflow acceptance, use
+`candidateCostCards` in `fixtures/manual-acceptance/scenarios.json`. It is deliberately outside
+current `tasks[]`. The fixture `structured/cost-cards-known-values.csv` contains three same-name
+cards (same SPU/two specs and same SKU/different SPU), six item rows, standard/exception source text,
+exact 36.123456 price, 0.000001/0 quantity and leading-zero SPU/SKU/item codes; no customer data.
+
+Controller sequence and oracles:
+
+1. Track synthetic original/import/card IDs and exact identity; upload the 35-column original
+   unchanged. Directory lookup returns all three authorized cards without merging by name/SKU.
+2. Download by resolved card IDs, retain each revision/sourceDocumentId/importBatchId in the safe
+   manifest, read each 38-column CSV locally with `readCostCardAcceptanceCsv`, check exact field
+   values/source locations and both recipe types. Names/specifications must not collide on disk.
+   Server queries stay directory-only; source IDs confer no original-read permission.
+3. In a separate controller operation, archive only the synthetic original via the approved
+   operator boundary. There is no new original-archive employee MCP tool. Re-read directory/CSV:
+   active cards remain readable. Do not change category grants to force the result.
+4. Archive the resolved small-spec card as current same-org admin; lookup hides it and explicit-ID
+   download fails as a whole. A new identical original upload with a fresh key restores it;
+   replaying the earlier successful idempotency request does not. Keep the other cards unchanged.
+5. Verify summary counts belong to that publication and current access, and keep download/failure
+   temporary cleanup in finally. Unit/exception assumptions stay unresolved unless explicit source
+   evidence establishes them; no unique final recipe or profit report is expected.
+6. Cleanup only run-owned source/card/candidate keys and permission resources before source
+   batches/documents. Drain active runs; preserve unrelated cards and all category/grant config.
+   An original count of zero alone is insufficient: verify card/resource/garbage/key absence.
+
+Use small focused automated tests for malformed/hidden candidate pages, signing races, one
+whole-batch expiry retry, current permissions and exact decimal behavior. Updating fixtures or
+support does not resolve the separate evidence-category prerequisite for the full official runner,
+prove live service readiness, or authorize the full suite. Historical acceptance reports remain
+historical; record final readiness once after all coordinated gates.

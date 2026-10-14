@@ -20,6 +20,8 @@ export interface StagingUploadDomainCleanupInventory {
   importWindowClaimIds: string[];
   partitionImportJobIds: string[];
   structuredPartitionIds: string[];
+  costCardIds: string[];
+  costCardResourceIds: string[];
   storageGarbageIds: string[];
   quarantineCertificateIds: string[];
   vipRowIds: string[];
@@ -40,6 +42,8 @@ export interface StagingUploadDomainCleanupPlan {
   importWindowClaimIds: string[];
   partitionImportJobIds: string[];
   structuredPartitionIds: string[];
+  costCardIds: string[];
+  costCardResourceIds: string[];
   storageGarbageIds: string[];
   quarantineCertificateIds: string[];
   vipRowIds: string[];
@@ -66,6 +70,8 @@ export interface StagingUploadDomainCleanupSafeLog {
     importWindowClaims: number;
     partitionImportJobs: number;
     structuredPartitions: number;
+    costCards: number;
+    costCardResources: number;
     storageGarbage: number;
     quarantineCertificates: number;
     vipRows: number;
@@ -95,6 +101,8 @@ export const UPLOAD_DOMAIN_DELETION_TARGETS = [
   "ImportWindowClaim",
   "PartitionImportJob",
   "StructuredPartition",
+  "CostCard BusinessResource (cascading scopes/dimensions)",
+  "CostCard",
   "StorageGarbage",
   "QuarantineCertificate",
   "VipRow",
@@ -157,6 +165,8 @@ export function buildStagingUploadDomainCleanupPlan(input: {
   const importWindowClaimIds = sortIds(input.inventory.importWindowClaimIds);
   const partitionImportJobIds = sortIds(input.inventory.partitionImportJobIds);
   const structuredPartitionIds = sortIds(input.inventory.structuredPartitionIds);
+  const costCardIds = sortIds(input.inventory.costCardIds);
+  const costCardResourceIds = sortIds(input.inventory.costCardResourceIds);
   const storageGarbageIds = sortIds(input.inventory.storageGarbageIds);
   const quarantineCertificateIds = sortIds(input.inventory.quarantineCertificateIds);
   const vipRowIds = sortIds(input.inventory.vipRowIds);
@@ -176,6 +186,8 @@ export function buildStagingUploadDomainCleanupPlan(input: {
     importWindowClaimIds,
     partitionImportJobIds,
     structuredPartitionIds,
+    costCardIds,
+    costCardResourceIds,
     storageGarbageIds,
     quarantineCertificateIds,
     vipRowIds,
@@ -198,6 +210,8 @@ export function buildStagingUploadDomainCleanupPlan(input: {
         importWindowClaims: importWindowClaimIds.length,
         partitionImportJobs: partitionImportJobIds.length,
         structuredPartitions: structuredPartitionIds.length,
+        costCards: costCardIds.length,
+        costCardResources: costCardResourceIds.length,
         storageGarbage: storageGarbageIds.length,
         quarantineCertificates: quarantineCertificateIds.length,
         vipRows: vipRowIds.length,
@@ -233,6 +247,8 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
   validateUniqueNonEmpty(inventory.importWindowClaimIds, "import-window claim ID");
   validateUniqueNonEmpty(inventory.partitionImportJobIds, "partition import job ID");
   validateUniqueNonEmpty(inventory.structuredPartitionIds, "structured partition ID");
+  validateUniqueNonEmpty(inventory.costCardIds, "cost card ID");
+  validateUniqueNonEmpty(inventory.costCardResourceIds, "cost card resource ID");
   validateUniqueNonEmpty(inventory.storageGarbageIds, "storage garbage ID");
   validateUniqueNonEmpty(inventory.quarantineCertificateIds, "quarantine certificate ID");
   validateUniqueNonEmpty(inventory.vipRowIds, "VIP row ID");

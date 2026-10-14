@@ -539,6 +539,30 @@ export async function callJson<T>(
   return { ...parsed, isError: Boolean(result.isError) } as T;
 }
 
+/** Run-scoped inventory: archived cards are retained targets, never selected by uploader alone. */
+export async function collectCostCardAcceptanceCleanupTargets(
+  prisma: PrismaClient,
+  scope: { orgId: string; sourceDocumentIds: string[] }
+) {
+  const costCards = await prisma.costCard.findMany({
+    where: { orgId: scope.orgId, sourceDocumentId: { in: scope.sourceDocumentIds } },
+    select: { id: true, objectKey: true }
+  });
+  const resources = await prisma.businessResource.findMany({
+    where: {
+      orgId: scope.orgId,
+      kind: "cost_card",
+      sourceDocumentId: { in: scope.sourceDocumentIds }
+    },
+    select: { id: true }
+  });
+  return {
+    costCards,
+    costCardIds: costCards.map((card) => card.id),
+    costCardResourceIds: resources.map((resource) => resource.id)
+  };
+}
+
 export async function cleanupRun(
   prisma: PrismaClient,
   run: ReturnType<typeof runConfig>
@@ -615,6 +639,11 @@ export async function cleanupRun(
   // Archive cleanup stays within the run's synthetic documents and employees.
   // Refuse a shared derived partition/request rather than deleting another run's data.
   const ownedDocumentIds = documents.map((document) => document.id);
+  const { costCards, costCardIds, costCardResourceIds } =
+    await collectCostCardAcceptanceCleanupTargets(prisma, {
+      orgId: run.orgId,
+      sourceDocumentIds: ownedDocumentIds
+    });
   const receiptRows = await prisma.deliveryLedgerRow.findMany({
     where: { sourceDocumentId: { in: ownedDocumentIds } },
     select: { orgId: true, payload: true }
@@ -714,6 +743,7 @@ export async function cleanupRun(
       processingRun: {
         OR: [
           { id: { in: ledgerJobs.map((job) => job.id) } },
+          { documentId: { in: ownedDocumentIds } },
           { partitionImportJobId: { in: partitionJobIds } }
         ]
       }
@@ -731,7 +761,8 @@ export async function cleanupRun(
     ...partitionJobs
       .map((job) => job.temporaryObjectKey)
       .filter((key): key is string => Boolean(key)),
-    ...partitions.map((partition) => partition.objectKey)
+    ...partitions.map((partition) => partition.objectKey),
+    ...costCards.map((card) => card.objectKey)
   ];
   await deleteQdrantPoints(qdrantPointIds);
   await deleteStorageObjects(storage, [...new Set(storageObjectKeys)]);
@@ -776,6 +807,10 @@ export async function cleanupRun(
       });
       await tx.partitionImportJob.deleteMany({ where: { id: { in: partitionJobIds } } });
     }
+    await tx.businessResource.deleteMany({
+      where: { orgId: run.orgId, kind: "cost_card", id: { in: costCardResourceIds } }
+    });
+    await tx.costCard.deleteMany({ where: { orgId: run.orgId, id: { in: costCardIds } } });
     if (importBatchIds.length > 0) {
       await tx.vipRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.dishCatalogRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
@@ -800,6 +835,8 @@ export async function cleanupRun(
     partitionJobIds,
     qdrantPointIds,
     storageObjectKeys,
+    costCardIds,
+    costCardResourceIds,
     uploaderEmployeeIds
   });
   const ledgerResidue = await Promise.all([
@@ -881,6 +918,8 @@ async function verifyCleanup(
     partitionJobIds: string[];
     qdrantPointIds: string[];
     storageObjectKeys: string[];
+    costCardIds: string[];
+    costCardResourceIds: string[];
     uploaderEmployeeIds: string[];
   }
 ): Promise<void> {
@@ -900,6 +939,8 @@ async function verifyCleanup(
     importBatches,
     partitionImportJobs,
     structuredPartitions,
+    costCards,
+    costCardResources,
     storageGarbage,
     vipRows,
     dishCatalogRows,
@@ -923,6 +964,14 @@ async function verifyCleanup(
     ),
     countByIds(deleted.partitionJobIds, (ids) =>
       prisma.structuredPartition.count({ where: { publishedByJobId: { in: ids } } })
+    ),
+    countByIds(deleted.costCardIds, (ids) =>
+      prisma.costCard.count({ where: { orgId: run.orgId, id: { in: ids } } })
+    ),
+    countByIds(deleted.costCardResourceIds, (ids) =>
+      prisma.businessResource.count({
+        where: { orgId: run.orgId, kind: "cost_card", id: { in: ids } }
+      })
     ),
     countByIds(deleted.storageObjectKeys, (keys) =>
       prisma.storageGarbage.count({ where: { objectKey: { in: keys } } })
@@ -953,6 +1002,8 @@ async function verifyCleanup(
     importBatches,
     partitionImportJobs,
     structuredPartitions,
+    costCards,
+    costCardResources,
     storageGarbage,
     vipRows,
     dishCatalogRows,

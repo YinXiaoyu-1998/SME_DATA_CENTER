@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { callJson, cleanupRun, runConfig } from "./official-manual-acceptance.js";
+import {
+  callJson,
+  cleanupRun,
+  collectCostCardAcceptanceCleanupTargets,
+  runConfig
+} from "./official-manual-acceptance.js";
 
 describe("official acceptance expected MCP denial", () => {
   const query = {
@@ -90,4 +95,33 @@ it("rejects another uploader's explicit cleanup IDs before deleting any data", a
     "Cleanup IDs do not belong to the selected QA account"
   );
   expect(findDocuments).not.toHaveBeenCalled();
+});
+
+it("inventories only the run's exact source cards/resources, including archived cards", async () => {
+  const costCards = [
+    { id: "card-active", objectKey: "cost-cards/active.csv" },
+    { id: "card-archived", objectKey: "cost-cards/archived.csv" }
+  ];
+  const prisma = {
+    costCard: { findMany: vi.fn(async () => costCards) },
+    businessResource: { findMany: vi.fn(async () => [{ id: "resource-1" }]) }
+  };
+  await expect(
+    collectCostCardAcceptanceCleanupTargets(prisma as unknown as PrismaClient, {
+      orgId: "synthetic-org",
+      sourceDocumentIds: ["run-doc"]
+    })
+  ).resolves.toEqual({
+    costCards,
+    costCardIds: ["card-active", "card-archived"],
+    costCardResourceIds: ["resource-1"]
+  });
+  expect(prisma.costCard.findMany).toHaveBeenCalledWith({
+    where: { orgId: "synthetic-org", sourceDocumentId: { in: ["run-doc"] } },
+    select: { id: true, objectKey: true }
+  });
+  expect(prisma.businessResource.findMany).toHaveBeenCalledWith({
+    where: { orgId: "synthetic-org", kind: "cost_card", sourceDocumentId: { in: ["run-doc"] } },
+    select: { id: true }
+  });
 });

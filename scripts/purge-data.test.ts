@@ -18,6 +18,8 @@ const prisma = vi.hoisted(() => ({
   supplierCatalogRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   quarantineCertificate: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   structuredPartition: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  costCard: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  businessResource: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   storageGarbage: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   partitionImportJob: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   vipRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
@@ -172,6 +174,16 @@ describe("purge-data database target resolution", () => {
     expect(prisma.partitionDownloadRequest.deleteMany).toHaveBeenCalledWith({});
     expect(prisma.processingRun.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
       prisma.partitionDownloadRequest.deleteMany.mock.invocationCallOrder[0]!
+    );
+    expect(prisma.businessResource.deleteMany).toHaveBeenCalledWith({
+      where: { kind: "cost_card" }
+    });
+    expect(prisma.costCard.deleteMany).toHaveBeenCalledWith({});
+    expect(prisma.businessResource.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.costCard.deleteMany.mock.invocationCallOrder[0]!
+    );
+    expect(prisma.costCard.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.importBatch.deleteMany.mock.invocationCallOrder[0]!
     );
     expect(prisma.importWindowClaim.deleteMany).toHaveBeenCalledWith({});
     expect(prisma.importBatch.deleteMany).toHaveBeenCalledWith({});

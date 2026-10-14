@@ -171,6 +171,9 @@ async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeR
       await tx.ledgerPdfSource.deleteMany({});
       await tx.ledgerPdfPartition.deleteMany({});
       await tx.ledgerPdfReconciliationRun.deleteMany({});
+      // Content resources reference originals; preserve category/grant configuration.
+      await tx.businessResource.deleteMany({ where: { kind: "cost_card" } });
+      await tx.costCard.deleteMany({});
       await tx.structuredPartition.deleteMany({});
       await tx.storageGarbage.deleteMany({});
       await tx.partitionImportJob.deleteMany({});
