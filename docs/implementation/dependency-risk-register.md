@@ -1,48 +1,13 @@
-# Dependency risk register
+# 当前依赖风险策略
 
-## Quality gate scope
+## 质量门禁
 
-The Phase 3 quality workflow reports third-party vulnerability advisories without blocking
-PRs or main quality runs, regardless of severity. Production JavaScript dependencies are
-scanned with `npm audit --omit=dev`; runtime images are scanned with Trivy against the OS
-package layer using `--ignore-unfixed`. All three runtime images are checked even when an
-earlier image has findings. Audit findings or scan errors remain visible in step logs,
-warnings, and the job summary, but only the two audit steps allow failure. Dependency
-installation, image builds, tests, typecheck, lint, and formatting remain blocking.
+质量工作流对生产 JavaScript 依赖执行 npm audit，对 API、worker、release-ops 镜像执行 Trivy OS 扫描。告警或扫描错误仍显示在日志和摘要中；质量工作流仅两个 audit 步骤允许失败，安装、构建、测试、类型、lint、格式仍阻断。
 
-This is a quality-workflow policy. Direct `npm run audit:production` / `audit:report`,
-launcher publishing, and staging deployment retain their existing enforcement. To restore
-blocking quality audits, remove `continue-on-error` from the two audit steps.
+直接执行 `npm run audit:production` / `audit:report`、launcher 发布和 staging 部署继续使用各自已实现的风险门禁，不继承质量工作流的 continue-on-error 设置。判断阻断范围以当前 workflow/脚本为准。
 
-The entries below are historical; active exceptions are defined solely in
-`config/dependency-risk-acceptance.json`.
+## 当前例外
 
-## ExcelJS read-only XLSX exception
+唯一机器权威是 [dependency-risk-acceptance.json](../../config/dependency-risk-acceptance.json)。当前 `exceptions` 和 `moderates` 均为空，没有有效的 ExcelJS 或 uuid 豁免；不得引用旧评审日期放行新扫描结果。
 
-The `exceljs-read-only-xlsx-2026-07` exception is narrowly limited to the current
-ExcelJS dependency chain and the two listed advisories. It applies to repository
-production dependencies, the API image, and the release-operations image; it does
-not apply to the worker image. It expires on 2027-01-31 and is owned by Enterprise
-Hub maintainers.
-
-The affected path imports authenticated XLSX uploads for structured-file use. The
-import path enforces a 50 MiB decoded cap and ZIP entry, expansion, path, and
-duplicate limits, plus sheet, row, and cell limits. This is not blanket acceptance
-of ExcelJS or ZIP parsing: new advisories, packages, components, critical findings,
-or a missed review deadline fail the policy.
-
-Replacement is deferred while the protected import path remains stable and the
-dependency graph is upgraded in a dedicated change. An upstream fix, a change to
-the authenticated upload threat model, any related security incident, or new
-ExcelJS/ZIP advisory triggers early review. `read-excel-file` is the leading
-replacement candidate.
-
-## Retained image moderate
-
-| Vulnerability         | Package | Components                       | Impact                                                                                                                                                                       | Mitigation                                                                                                                                                | Owner             | Review date |
-| --------------------- | ------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----------- |
-| `GHSA-w5hq-g745-h8pq` | `uuid`  | `api-image`, `release-ops-image` | The affected UUID v3/v5/v6 buffer handling is installed only through the read-only ExcelJS dependency chain. SMEDC does not call those APIs or provide their output buffers. | Keep XLSX ingestion authenticated and bounded, avoid the affected UUID APIs, and replace or upgrade the ExcelJS chain when a compatible fix is available. | SMEDC maintainers | 2027-01-31  |
-
-The worker image does not contain this dependency chain. Any additional moderate,
-high, or critical image finding remains unaccepted until it receives its own exact
-policy entry and risk review.
+新增例外须明确 advisory/package/component、影响、缓解、负责人和到期/复核条件，并通过独立评审进入政策文件。风险状态会随扫描数据变化，本文件不承诺持续零漏洞。历史修复和扫描结论留在 progress 或发布记录。

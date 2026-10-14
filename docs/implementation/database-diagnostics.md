@@ -19,16 +19,6 @@ Enabling the statement cache is insufficient: replaying the actual overlapping
 relation queries still failed with the cache enabled. Do not replace this fix
 with a smaller connection pool or unrestricted retries.
 
-The real MCP comparison used an isolated synthetic organization and 50-item CSV
-receipts. The deployed baseline failed 6 of 36 uploads; the candidate passed all
-36 at request concurrency 1, 2 and 4. Four simultaneous replays of one additional
-receipt resolved to one import/job. All 37 candidate imports applied exactly
-1,850 rows: mean registration-to-apply 1.84 seconds, median 1.77 seconds, maximum
-3.01 seconds. Test records, identity/session and 70 original objects were removed.
-The candidate ran in a disposable release-ops process against real RDS/OSS and
-the running staging worker; this is pre-merge verification, not a production
-release of the fix.
-
 The read-only regression can run against either database:
 
 ```bash
@@ -38,9 +28,8 @@ RUN_DATABASE_PROTOCOL_INTEGRATION=1 npx vitest run packages/db/src/adapter.integ
 
 ## Logs and RDS settings
 
-Verified staging instance: `rm-2ze2m5q387ydb9724`, Beijing. The following settings
-are active: `slow_query_log=ON`, `long_query_time=1`, `log_error_verbosity=3`.
-`innodb_print_all_deadlocks=ON` was enabled without restarting RDS on 2026-09-03.
+Approved staging instance: `rm-2ze2m5q387ydb9724`, Beijing. Verify current settings before diagnosis; the configured troubleshooting baseline is: `slow_query_log=ON`, `long_query_time=1`, `log_error_verbosity=3`.
+Include `innodb_print_all_deadlocks=ON` when inspecting the approved diagnostics baseline.
 `performance_schema` remains disabled; enabling it requires an RDS restart and
 is not necessary for this protocol fix. No paid SQL-audit service was enabled.
 
@@ -48,7 +37,7 @@ Collect a bounded time window (UTC, not local Beijing time):
 
 ```bash
 bash scripts/rds-diagnostics.sh rm-2ze2m5q387ydb9724 \
-  2026-09-03T02:00Z 2026-09-03T03:00Z
+  <UTC-window-start> <UTC-window-end>
 ```
 
 The script reports current locks/log settings, counts and the first 100 error/

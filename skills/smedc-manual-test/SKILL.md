@@ -8,6 +8,10 @@ description: Run or update the official SME_DATA_CENTER SMEDC manual acceptance 
 Use this skill when the user asks to execute, rerun, validate, diagnose, or improve the
 SME_DATA_CENTER / SMEDC manual acceptance flow.
 
+## Current runner limitation
+
+Before any requested full run, read `docs/implementation/official-manual-acceptance.md`: the runner now requires the exact raw-ledger denial, but evidence-fixture uploads still need explicit category/scopes configuration. Resolve that separate prerequisite before full acceptance; do not infer attributes or relax authorization. Fixing the runner does not authorize executing the official workflow.
+
 ## Current Acceptance Boundary
 
 The active flow is **official staging + macOS Codex + browser auth + published launcher**.
@@ -28,7 +32,7 @@ setup links to the human. The controller must not open setup links or type test 
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
-Use launcher `smedc-mcp-launcher@0.7.1` and the current scenario manifest; account assignments
+Use launcher `smedc-mcp-launcher@0.9.0` and the current scenario manifest; account assignments
 apply to the full lifecycle profile and map to the current account in the existing-session profile. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
@@ -47,7 +51,7 @@ An explicit request to reuse the current login authorizes the complete business 
 creating accounts, switching identities, login, logout, password resets, or account deletion.
 Verify the live MCP identity is the intended active admin. The controller verifies its organization membership without exposing internal IDs to employee chats. Run every applicable business task
 in `fixtures/manual-acceptance/scenarios.json`, including evidence, row queries, partitions, receipt
-uploads/aggregates, PDF coverage/download, and quarantine query/download/archive.
+uploads/raw-read denial, PDF coverage/download, and quarantine query/download/archive.
 
 Keep cross-clearance denial, employee upload denial, above-clearance PAO, and session revocation
 marked **not run: identity switching excluded**. A clearance-3 admin can prove successful reads and
@@ -98,7 +102,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 4. Inspect whether the current manual flow still covers account lifecycle, password setup/reset,
    launcher install/config, durable login, normal MCP business tools, evidence, structured data,
    delivery ledgers, quarantine certificates, source-file download links, logout/reset recovery,
-   cleanup, default/explicit confidentiality levels, ordinary-read clearance boundaries, and every
+   cleanup, explicit evidence levels and attributes, fixed-category levels, current complete business-read boundaries, and every
    named admin PAO. Update docs/scripts if the coverage is stale.
 5. Run normal repository checks proportionate to the change. For documentation-only changes,
    run at least `npm run format:check`. For runner or script changes, run the focused tests plus
@@ -119,7 +123,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
 
    ```sh
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.7.1/node_modules/.bin/smedc-mcp-launcher" self-check
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.9.0/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
 9. For the account-lifecycle profile, ensure the launcher starts logged out and switch among only the synthetic
@@ -137,13 +141,11 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     that task calls `smedc_login` and surfaces the first-party device verification link. The human
     completes browser login with the synthetic password; the controller must not control the
     browser or type the credential.
-12. Subsequent tasks should be separate natural chats for default-level upload, explicitly requested
+12. Subsequent tasks should be separate natural chats for explicitly level-0 evidence upload, explicitly requested
     high-level upload, low/high-clearance search, the low-clearance admin normal-read denial, the
     admin receipt-archive PAO, cold search, prompt-injection
     resistance, structured upload/query, logout/reset/re-login, and any scoped recovery probes.
-    Upload and cold-search use independent chats. With archive delivery enabled, receipt details
-    and original receipt signing are unavailable: verify allowed store/date aggregates and server
-    PDF coverage/download instead of an agent-generated row table or maintained CSV. Newly uploaded
+    Upload and cold-search use independent chats. Raw receipt details, aggregates, coverage and original signing are unavailable regardless of the PDF switch: verify their denial and authorized PDF coverage/download instead of an agent-generated row table or maintained CSV. Newly uploaded
     receipts wait for the configured daily schedule; the employee never triggers PDF generation.
     Use an already-ready authorized partition for the successful ZIP case and record a new receipt's
     pending state separately. Quarantine cases cover upload, explicit-receipt query, source download,

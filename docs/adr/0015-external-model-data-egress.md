@@ -1,5 +1,7 @@
 # 外部 embedding/rerank 模型需要显式数据出境确认
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 Phase 3 倾向使用外部 API 生成 embeddings，并可使用外部 rerank 模型。Embedding indexing 会发送文档 chunk text；检索会发送 query text；rerank 会发送 query text 和候选 chunk text。如果没有明确配置、告知和日志边界，外部模型调用会成为隐式数据出境风险。
 
 **Decision**: 将 embedding/rerank provider 视为显式外部数据处理器。启用前必须由管理员配置 provider/model/base URL/region 等信息，并确认文档 chunks、retrieval queries 和 rerank candidate chunks 可能发送给该 provider。系统默认不发送 raw files、完整文档、用户 secrets、内部 auth headers、员工私有 metadata、无关 org 数据，且不在默认日志、审计、trace、错误或客户端响应中记录原始文本或 provider request/response body。

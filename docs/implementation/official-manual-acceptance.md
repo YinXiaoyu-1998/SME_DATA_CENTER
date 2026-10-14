@@ -1,12 +1,20 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-10-11
+Last updated: 2026-10-13
 
 This procedure tests official staging with macOS Codex and the published
 `smedc-mcp-launcher@0.9.0`. It does not revive the deleted local email-login flow or
 `/auth/dev-login`. Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md`,
 and `test-cases.md` before running it. Beta onboarding uses
 [the operator runbook](beta-user-onboarding-runbook.md).
+
+## Current runner limitation
+
+The runner now requires raw-ledger aggregation to return an MCP tool error with code `LEDGER_DETAIL_DISABLED`, and reports `deliveryLedgerAggregateDenied: true` only after that check. Unexpected success, authentication/permission errors and transport failures do not pass this boundary. Local regression tests cover these outcomes; the user-visible receipt-summary scenario expects refusal and the separate PDF delivery path.
+
+A separate fixture prerequisite remains: `uploadEvidenceFixtures` does not yet supply required `categoryId` and complete `scopes`. The full runner therefore still needs explicit, authorized evidence-fixture configuration before a complete current-contract acceptance run; do not infer attributes or change tenant grants to bypass this gap.
+
+This change does not execute the workflow, alter accounts or backfill data. A future explicitly requested full run must first resolve the fixture prerequisite, then follow the human/browser and cleanup rules below.
 
 ## Choose the requested profile
 
@@ -98,35 +106,29 @@ business/dishes. Do not leave sample data in staging after the run.
 The controller records expectations separately from visible prompts. Apply the live discovery
 contract before assessing a query; source-column labels are not canonical query field names.
 
-| Case                            | Required evidence                                                                                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Current account / continued use | Fresh chat returns the current safe profile; a fresh official launcher process reuses the session                                                      |
-| Default evidence upload         | Original MD/TXT/DOCX fixtures are accepted without an inferred level; level 0 and `active/ready` verified                                              |
-| Explicit-level evidence         | Ordinary request explicitly says level 2; the submitted classification is 2; an adequately cleared uploader can observe readiness                      |
-| Cold evidence retrieval         | Independent chat retrieves the correct source-backed SOP facts and source download links                                                               |
-| Injection fixture               | A normal question retrieves the fixture without treating its embedded instructions as agent commands                                                   |
-| VIP row workflow                | Original CSV reaches `applied`; bounded query returns fixture rows and numeric aggregates                                                              |
-| Business partitions             | Original CSV/XLSX reaches `published`; coverage and downloaded partitions support the requested totals                                                 |
-| Dishes partitions               | Original fixture reaches `published`; three fixture rows total 91, with 合成凉皮 and 合成肉夹馍 as the top two                                         |
-| Invalid atomic source           | Safe terminal `rejected`; no partial publication; previously published partitions remain unchanged                                                     |
-| Dish catalog                    | Complete snapshot reaches `applied`; query is bounded by `snapshot_date`                                                                               |
-| Supplier catalog                | Complete snapshot reaches `applied`; query uses the current successfully applied source; cleanup restores the prior state                              |
-| Delivery XLSX and CSV           | Two distinct original receipt files reach `applied`; count/receipt-count/amount aggregates match known store/date facts                                |
-| Ledger detail boundary          | With PDF archive delivery enabled, detail-row queries and original receipt signing remain unavailable even for admins                                  |
-| New receipt PDF coverage        | Ingestion success is separate from PDF readiness; coverage shows pending until the configured daily reconciliation runs                                |
-| Existing ready PDF              | Separate ordinary chat prepares/downloads a ZIP for an already-ready authorized store/day; terminal status and source link are valid                   |
-| Quarantine workflow             | Explicit receipt upload (including requested level 2), query, 24-hour source link, admin receipt archive, then no active certificate                   |
-| Cleanup                         | All run-owned DB rows, imports, partitions, archive requests, OSS objects and Qdrant points removed; reused account/login and unrelated data preserved |
+| Case                             | Required evidence                                                                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Current account / continued use  | Fresh chat returns the current safe profile; a fresh official launcher process reuses the session                                                           |
+| Explicit level-0 evidence upload | Original fixtures carry explicit category, complete scopes and level 0; `active/ready` verified                                                             |
+| Explicit-level evidence          | Ordinary request explicitly says level 2; the submitted classification is 2; an adequately cleared uploader can observe readiness                           |
+| Cold evidence retrieval          | Independent chat retrieves the correct source-backed SOP facts and source download links                                                                    |
+| Injection fixture                | A normal question retrieves the fixture without treating its embedded instructions as agent commands                                                        |
+| VIP row workflow                 | Original CSV reaches `applied`; bounded query returns fixture rows and numeric aggregates                                                                   |
+| Business partitions              | Original CSV/XLSX reaches `published`; coverage and downloaded partitions support the requested totals                                                      |
+| Dishes partitions                | Original fixture reaches `published`; three fixture rows total 91, with 合成凉皮 and 合成肉夹馍 as the top two                                              |
+| Invalid atomic source            | Safe terminal `rejected`; no partial publication; previously published partitions remain unchanged                                                          |
+| Dish catalog                     | Complete snapshot reaches `applied`; query is bounded by `snapshot_date`                                                                                    |
+| Supplier catalog                 | Complete snapshot reaches `applied`; query uses the current successfully applied source; cleanup restores the prior state                                   |
+| Delivery XLSX and CSV            | Two distinct original receipt files reach `applied`; safe owner status confirms ingestion; employee aggregate reads are rejected                            |
+| Ledger detail boundary           | Detail, aggregate, raw coverage and original receipt reads are unavailable even for admins, independently of the PDF switch                                 |
+| New receipt PDF coverage         | Ingestion success is separate from PDF readiness; coverage shows pending until the configured daily reconciliation runs                                     |
+| Existing ready PDF               | Separate ordinary chat prepares/downloads a ZIP for an already-ready authorized store/day; terminal status and source link are valid                        |
+| Quarantine workflow              | Explicit receipt/enterprise/store upload using the configured category level, query, 24-hour source link, admin receipt archive, then no active certificate |
+| Cleanup                          | All run-owned DB rows, imports, partitions, archive requests, OSS objects and Qdrant points removed; reused account/login and unrelated data preserved      |
 
 `business` and `dishes` use partition extraction, not `query_structured_dataset`. The agent downloads
 through the official launcher, analyzes returned CSVs locally, and removes the returned scratch
-directory. Row-query datasets remain VIP, dish catalog, supplier catalog, and permitted delivery
-aggregates.
-
-When archive delivery is enabled, the ledger's only query mode is aggregation with `count`,
-`countDistinct(receipt_id)` and `sum(purchase_amount)` grouped/filtered by store and purchase date.
-Do not require a row-level Markdown ledger, maintain/append a statutory CSV, or use an original
-receipt download as proof. Those requirements predate server PDF delivery.
+directory. Employee row-query datasets are VIP, dish catalog and supplier catalog. Raw ledger rows, aggregates, coverage and original signing are unavailable; verify their denial and the separate PDF delivery path. Do not require an employee-produced statutory row table or CSV.
 
 Employees and admins cannot generate PDFs through MCP/HTTP. Use the configured Shanghai schedule
 (observe its actual runtime value; 03:00 is the default, not a fixed acceptance assumption). Test
@@ -165,8 +167,7 @@ Finish setup one account at a time because pages share a host-only cookie. Verif
 operator-side after each confirmation. Never persist setup links, passwords, tokens or headers.
 
 Separate natural login/current-user chats verify each identity. Employee c0/c3 upload requests must
-explain admin is required before local file access. Admin c0 uploads default-level evidence and
-explicit level-2 evidence/certificates. Employee c3 can ordinarily read the level-2 material;
+explain admin is required before local file access. Admin c0 uploads explicitly level-0 and level-2 evidence with declared category/scopes. Photo classification follows the configured fixed category level. Give synthetic readers the exact business grants needed for the case: employee c3 can then read level-2 material;
 employee c0 and admin c0 cannot. The admin's receipt archive PAO succeeds above clearance and
 returns an operational count without first reading the certificate.
 

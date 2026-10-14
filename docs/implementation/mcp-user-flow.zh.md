@@ -1,22 +1,12 @@
 # SMEDC MCP 用户流程
 
-> **发布说明：** `smedc-mcp-launcher@0.6.0` 已公开发布并通过独立验证，是资料密级
-> 契约所固定使用的发行包。macOS、Windows 和 Linux 都是正式支持的 launcher 安装平台。
-> 原生 macOS/Windows 包验收和无头 Linux 闭环已通过，发布 workflow 也会验证 Ubuntu 无图形环境。
-> 用户可见的 OpenClaw 与支持类 C 手机/浏览器验收仍是额外发布证据，不表示 Linux 不受支持。
-> 不存在 development login 或 JWT 兼容路径。
-
-最后更新：2026-09-26
-
-本文描述员工侧信任边界，不是服务运维手册。agent 的权威运行手册是双归属的
-`smedc-mcp` skill。正式远程 origin 为 `https://api.smedatacenter.xyz`，唯一批准的
-launcher 发行包为 `smedc-mcp-launcher@0.6.0`。
+更新：2026-10-13。安装已发布的 `smedc-mcp-launcher@0.9.0`，最低服务兼容版本为 0.6.0。以双归属基础 Skill 为安装手册；部署证据见 [staging 状态](staging-readiness.md)，企业激活与特定宿主验收分别核对。本文不是运维手册。
 
 ## 上传权限
 
 仅启用的 `admin` 可上传证据文档、结构化数据（含进货台账 Delivery Ledger）和检疫证明。
 上传工具保持静态可见并标为仅管理员可用；已知为 `employee` 时，agent 不得读取或转换本地文件。
-launcher 0.6.0 在文件访问前检查身份。直接 HTTP 上传端点返回 HTTP `403`；
+批准版本 launcher 在文件访问前检查身份。直接 HTTP 上传端点返回 HTTP `403`；
 MCP JSON-RPC 传输返回 HTTP `200`，工具结果包含 `isError: true`。两者均携带 `UPLOAD_ADMIN_REQUIRED`、
 `File upload requires the admin role.`、`retryable: false`。解释管理员要求即可，不重登、不重试，
 不通过提高 clearance 绕过。仅本地阻止不产生后端审计；后端拒绝尽力记录 `file_upload.denied`。
@@ -107,8 +97,7 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
 
 - 员工询问“当前登录的是哪个账号”时，零参数调用 `smedc_get_current_user`，只返回其
   display name、email、role 和 clearance；不得从本机配置推断身份，也不得接受 employee selector。
-- 上传时，只有员工明确给出密级才设置 `confidentialityLevel`；否则省略并由服务记录为 `0`。它是
-  `0` 到 `3` 的整数，不是标签。不得根据文件名、内容或来源推断或提高密级；不得传入 organization ID。
+- Evidence 上传必须明确类别、完整 scopes 和逐文件密级；照片明确企业及一家精确门店。启用业务授权后，固定类别使用当前服务配置密级，旧上传 level 不能覆盖；不从内容或名称推断缺失属性，不任意指定组织。
 - 只读取用户选择或明确指定文件的精确字节。优先使用 launcher 的 `file.encoding="path"` 和绝对
   本地路径；仅对小文件使用 inline base64。不得重建、规范化、翻译或重输内容。
 - 只能轮询服务状态；不得启动 worker 或操作任何 SMEDC 服务组件。
@@ -118,7 +107,7 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
   处理中、附带 IDs 和稍后查询方式；不得报告失败，也不得用重新上传替代轮询。
 - 只有精确重放时复用 structured-import idempotency key。import-status 404 只能理解为不可见或不存在，
   不得推断隐藏 batch。
-- 结构化查询前先发现 dataset registry，只发送 `canonicalName` 字段；`sourceColumn` 和 aliases 只用于
+- 支持逐行查询的数据集先发现 dataset registry，只发送 `canonicalName` 字段；`sourceColumn` 和 aliases 只用于
   理解员工措辞或展示结果表头。
 - `describe_structured_dataset_coverage` 只报告当前员工可读取的已应用 source window 或 snapshot。
   它不是完整性保证，也不会自动判断查询答案是否充分；agent 需要自行决定查询、收窄范围或追问。
@@ -127,13 +116,12 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
 - `smedc_list_skills` 只返回目录元数据。不得执行条目、生成报告，或把 SMEDC 变成
   员工直接对话的 AI 服务。
 
-## 门店过滤与异步分区下载（待发布）
+## 门店过滤与异步分区下载
 
 Range is the default. Bundle mode is optional and requires a known matching ZIP service;
 tools/list is insufficient. If ZIP is removed, regenerate saved plans with range downloads.
 
-安装 pin 保持 `0.7.1`。新过滤/prepare/status/requestId 流程必须等待 Launcher `0.8.1` 或更新版本（过滤范围下载为 `0.8.0`）
-发布并独立验证、配套服务部署以及正式 Skill pin 更新；分支代码不代表可用。
+使用批准的 launcher 0.9.0 及匹配服务；选择可选 ZIP 前仍须确认目标服务可用。
 business/dishes 的 coverage 与 prepare 使用相同 `enterpriseName`/`storeNameContains` 范围。
 后者为 1–20 个 NFC/trim、每项 1–255 字符的字面、区分大小写子串；数组内 OR，与授权及其他条件 AND。
 prepare 使用含首尾日期的 `YYYYMMDD` 和仅精确重放复用的 `idempotencyKey`；按 `retryAfterSeconds`
@@ -142,13 +130,10 @@ prepare 使用含首尾日期的 `YYYYMMDD` 和仅精确重放复用的 `idempot
 零分区成功没有 ZIP URL，但产生有效空本地 extract；失败不能当成无数据。签名链接留在 Launcher 内部，
 校验返回门店范围，共享临时目录等最后消费者释放。服务数据清理只属于操作员，不属于员工 MCP（含 admin）。
 精确参数、限额和错误处理参见 [API 契约](./api-contract.md#filtered-partition-extracts-and-asynchronous-bundles)
-和 [基础 Skill](../../skills/smedc-mcp/SKILL.md#filtered-partition-bundle-downloads-release-gated)。
+和 [基础 Skill](../../skills/smedc-mcp/SKILL.md#optional-partition-bundle-downloads-release-gated)。
 
 ## 当前发布边界
 
-代码已经实现 OAuth Device Authorization、不透明 access token、轮换 durable credential、桌面
-安全存储与无头内存态保管、公开 HTTPS `/mcp` 和固定版本 launcher。staging migration、正式
-session fixture smoke、原生 macOS/Windows 包验收和无头 Linux 登录到业务工具闭环已通过，发布
-workflow 还会在无图形 Ubuntu 上安装并加载发行包；用户可见的 OpenClaw 与支持类 C
-手机/浏览器验收仍是独立的端到端证据。Authorization Code + PKCE、loopback 回调、
-`/auth/dev-login`、JWT 和本地邮箱登录工具均已删除，必须持续保持不存在。
+当前合同与默认值见 [API/MCP](api-contract.md) 和 [正式登录](official-user-install-and-login.md)。macOS、Windows、Linux 支持安装；特定宿主和手机遥控产品需各自验收。只向管理员交付经过核对的目标企业入口。
+
+经营/菜品通过分区下载后本地分析，不提供通用行查询。员工台账交付只使用 PDF，不开放原始行、汇总或原件。PDF 按服务配置的每日时刻生成，员工工具只查询和准备交付。开发邮箱/JWT、Authorization Code 和 loopback 回调登录路径均不存在。

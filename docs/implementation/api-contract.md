@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-10-11
+Last updated: 2026-10-13
 
 ## Authorization model
 
@@ -80,7 +80,7 @@ employee owner. Status, manifest, read, search, query, and download are not made
 current server business authorization and safe owner-progress rules apply. Admin upload above the admin's
 clearance does not make later ordinary reads succeed.
 
-Upload tools remain statically visible and marked admin-only. Launcher 0.6.0 rejects a known
+Upload tools remain statically visible and marked admin-only. The approved launcher rejects a known
 employee profile before reading/transforming a local file; unknown profiles are lazily resolved.
 The cached profile is exactly `displayName`, `email`, `role`, `clearance`, `organizationName`;
 `smedc_get_current_user` continues to read live server state. A local denial creates no backend
@@ -112,7 +112,7 @@ employee-callable upload boundary.
 | `POST`         | `/v1/evidence/search`                               | Search readable evidence chunks                                                   |
 | `POST`         | `/v1/documents/quarantine-certificates`             | Upload one JPG/JPEG/PNG certificate                                               |
 | `POST`         | `/v1/quarantine-certificates/query`                 | Query readable certificates by receipt IDs                                        |
-| `POST`         | `/v1/quarantine-certificates/archive`               | Owner archive by source ID or admin-only PAO archive                              |
+| `POST`         | `/v1/quarantine-certificates/archive`               | Current-admin archive by source ID or receipt ID                                  |
 | `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                         |
 | `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, catalogs, ledgers); rejects `business`/`dishes` |
 | `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                     |
@@ -165,10 +165,7 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-`business`/`dishes` upload, partition-import status, and local partition download require official
-launcher `0.4.0` or newer. Older or missing launcher versions receive
-`LAUNCHER_UPGRADE_REQUIRED`; in particular, the service never returns partition presigned URLs
-through an older launcher's generic MCP proxy.
+The approved launcher 0.9.0 owns business/dishes upload and partition transfer. Global compatibility requires at least 0.6.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
@@ -208,9 +205,7 @@ inside activation. Real-tenant configuration and activation require separate hum
 
 ### Filtered partition extracts and asynchronous bundles
 
-Filtered ranges require published, independently verified Launcher `0.8.0` or newer and
-matching filtered-range service deployment. Optional bundles require verified published
-Launcher `0.8.1` or newer and known matching ZIP service deployment. Range is the default;
+The approved launcher 0.9.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
 tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
 plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.9.0`. This contract is not
 evidence of service deployment or tenant activation.
@@ -262,13 +257,6 @@ extra download-tool call. The explicit source-download endpoint/tool remains ava
 an expired URL and for structured rows or quarantine certificates whose source was not returned by
 evidence search.
 
-## Migration and retrieval payloads
-
-Historical ADR 0025 migration (partly superseded by the business authorization design) mapped legacy `manager` accounts to `admin`, assigns existing accounts
-clearance `3`, assigns existing documents level `0`, and deletes legacy label tables/data. Existing
-Qdrant vectors without a confidentiality payload are treated as level-0 candidates only; the
-database revalidator checks the authoritative document level before reranking or response output.
-
 ## Archived Delivery Ledger PDFs
 
 `LEDGER_PDF_DELIVERY_ENABLED` defaults to false. All four endpoints authenticate the
@@ -295,8 +283,7 @@ regardless of the old feature flag or client version. Finished archived PDFs are
 read path. Other datasets keep their registered read behavior. Read operations never render on demand.
 
 Employee-facing MCP and HTTP have no PDF generation endpoint, including for admins.
-Applied imports and photo changes only update partition revisions. Daily 03:00
-Asia/Shanghai reconciliation generates changed/missing partitions and skips healthy
+Applied imports and photo changes only update partition revisions. Daily reconciliation at the configured Asia/Shanghai time (03:00 by default) generates changed/missing partitions and skips healthy
 PDFs. Before that run completes, current coverage may be pending/stale/missing and
 ZIP preparation returns `LEDGER_PDF_NOT_READY`; report the scheduled wait. Internal
 operator CLI refresh/backfill remains available outside the employee API.

@@ -1,5 +1,7 @@
 # 证据检索资料必须等完整索引就绪后才 active
 
+> 历史记录：保留当时的决定、修订或验证证据，不表示当前运行状态，也不是执行授权。当前契约与操作入口见 [文档索引](../README.md)。旧文件名与版本仅为历史引用。
+
 Phase 3 将 MD/TXT/DOCX 从简单关键词搜索升级为 hybrid evidence retrieval。证据检索承诺依赖解析、结构/语义切块、embedding、Qdrant 向量索引、词法索引、rerank metadata 和 MySQL 版本记录。若源资料在索引未完成时进入检索 active，调用方智能体会遇到部分可见、漏召回或排序质量不一致的问题。
 
 **Decision**: MD/TXT/DOCX 源 `Document` 只有在源文件持久化、MySQL metadata、审计、解析、切块、embedding、Qdrant upsert、词法索引和版本化索引记录全部成功后，才能成为证据检索可见的 active 资料。向量索引或词法索引任一路失败时，资料不能进入证据检索。

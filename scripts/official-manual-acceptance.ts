@@ -245,7 +245,7 @@ async function runAcceptance(
     if (deliveryCompletion.importBatch.status !== "applied") {
       throw new Error("Delivery Ledger XLSX row import did not apply.");
     }
-    const deliverySummary = await callJson<{ rows: Array<Record<string, unknown>> }>(
+    await callJson(
       client,
       "query_structured_dataset",
       {
@@ -255,13 +255,9 @@ async function runAcceptance(
           { op: "count", as: "rows" },
           { op: "sum", field: "purchase_amount", as: "amount" }
         ]
-      }
+      },
+      "LEDGER_DETAIL_DISABLED"
     );
-    if (
-      Number(deliverySummary.rows[0]?.["rows"]) !== 2 ||
-      Number(deliverySummary.rows[0]?.["amount"]) !== 42.5
-    )
-      throw new Error("Delivery ledger aggregate did not match the run receipt.");
     await waitForEvidenceReady(client, defaultEvidenceUpload.document.documentId);
     if (currentUser.user.clearance >= 2)
       await waitForEvidenceReady(client, explicitLevelEvidenceUpload.document.documentId);
@@ -423,6 +419,7 @@ async function runAcceptance(
         ? "existing-session business smoke; identity-switch and auth cases excluded"
         : "admin-positive-smoke; full three-account acceptance uses separate visible scenario tasks",
       deliveryImportBatchId: deliveryUpload.importBatch.importBatchId,
+      deliveryLedgerAggregateDenied: true,
       defaultConfidentialityLevel: 0,
       explicitConfidentialityLevel: 2,
       evidenceDocuments: [
@@ -515,10 +512,11 @@ async function pollPartitionImportStatus(
   );
 }
 
-async function callJson<T>(
+export async function callJson<T>(
   client: Client,
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  expectedErrorCode?: string
 ): Promise<T> {
   const result = await client.callTool({ name, arguments: args }, undefined, {
     timeout: name === "upload_structured_dataset" ? 30 * 60_000 : 60_000
@@ -529,7 +527,13 @@ async function callJson<T>(
     throw new Error(`${name} returned no text content.`);
   }
   const parsed = JSON.parse(text) as T & { isError?: boolean; error?: unknown };
-  if (result.isError) {
+  if (expectedErrorCode) {
+    const error = parsed?.error;
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    if (result.isError !== true || code !== expectedErrorCode) {
+      throw new Error(`${name} expected MCP error ${expectedErrorCode}.`);
+    }
+  } else if (result.isError) {
     throw new Error(`${name} failed: ${JSON.stringify(redactObject(parsed))}`);
   }
   return { ...parsed, isError: Boolean(result.isError) } as T;
