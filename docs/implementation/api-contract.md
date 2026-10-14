@@ -350,7 +350,12 @@ permissions/archive remain independent. Missing new category in an already enabl
 registered idempotently only through controlled current-admin versioned initialization; level starts
 null and grants empty, old categories/mode stay intact, GET/query never writes configuration.
 
-Publication status is bound to the committed batch, rechecked against current content access.
-Exact inserted/updated/unchanged/restored counts cover all input cards; changed-field details cap
+Cost-card `POST /v1/structured/imports` always returns HTTP 202 safe progress, including exact
+idempotency replay; it exposes neither publicationSummary nor raw storage keys. Only
+`GET /v1/structured/imports/:id` for an `applied` batch with current content-read permission returns
+`importBatch.publicationSummary`: `{inputCardCount,inputItemRowCount,counts,changes,changesTruncated}`.
+Readable `sourceSheetSummary` remains an array. Publication status is bound to that committed batch,
+rechecked against current content access. Exact inserted/updated/unchanged/restored counts cover all
+input cards; changed-field details cap
 at 100 entries / 32 KiB with changesTruncated and contain no values/links. Failure/queued is not
 publication success; a later directory cannot recreate an earlier summary.

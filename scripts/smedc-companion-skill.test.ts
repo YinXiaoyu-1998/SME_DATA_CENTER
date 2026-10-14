@@ -36,7 +36,11 @@ describe("SMEDC companion skill guidance", () => {
       "server-side detail filtering or aggregation",
       "matched_product_name",
       "cost_cards",
-      "24 hours"
+      "24 hours",
+      "safe asynchronous",
+      "Only an `applied` batch",
+      "importBatch.publicationSummary",
+      "readable `sourceSheetSummary` remains an array"
     ])
       expect(guide).toContain(invariant);
   });

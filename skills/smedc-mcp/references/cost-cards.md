@@ -33,7 +33,11 @@ Originals and import batches remain retained. A new successful upload restores a
 including identical content; replaying an old successful idempotency key does not restore it.
 Use a fresh key for a genuinely new upload, never to disguise a failed validation.
 
-Follow the returned upload/status identifiers. A queued response is not publication success.
+Follow the returned upload/status identifiers. Upload and exact replay return safe asynchronous
+progress only, without `publicationSummary` or raw storage keys; an accepted/queued response is
+not publication success. Only an `applied` batch with current content-read permission exposes
+`importBatch.publicationSummary` in import status. It contains `inputCardCount`, `inputItemRowCount`,
+`counts`, `changes`, `changesTruncated`; readable `sourceSheetSummary` remains an array.
 The publication summary belongs to that committed batch: `inserted`, `updated`, `unchanged`,
 `restored` counts are exact; `changes` is bounded by 100 entries / 32 KiB and
 `changesTruncated` marks omitted details. It contains field names, not old/new values or links.
