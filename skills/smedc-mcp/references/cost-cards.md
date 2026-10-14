@@ -12,8 +12,10 @@ available before use; discovery alone cannot establish deployment or tenant acti
 
 Use the existing `upload_structured_dataset` original-file transport with `dataset: "cost_cards"`,
 exact `enterpriseName` and `idempotencyKey`, after the active-admin role preflight.
-Accept XLSX or UTF-8 CSV with all 35 registered business columns. Do not supply business
-start/end dates or a catalog snapshot date. Keep SPU/SKU/item codes as strings, including
+Supply the unchanged original through `file: {name, mediaType, encoding: "path", filePath}` with
+an absolute local `filePath`. Do not add `confidentialityLevel`, date/snapshot fields or split the
+file; the configured category supplies its level. Accept XLSX or UTF-8 CSV with all 35 registered
+business columns. Keep SPU/SKU/item codes as strings, including
 leading zeroes. The service owns normalization and validation; the agent does not repair,
 split, discard exception sheets, infer missing columns or rewrite the original.
 
@@ -33,8 +35,10 @@ Originals and import batches remain retained. A new successful upload restores a
 including identical content; replaying an old successful idempotency key does not restore it.
 Use a fresh key for a genuinely new upload, never to disguise a failed validation.
 
-Follow the returned upload/status identifiers. Upload and exact replay return safe asynchronous
-progress only, without `publicationSummary` or raw storage keys; an accepted/queued response is
+Keep the returned `importBatchId` and use `get_import_status({importBatchId})`, not partition-import
+status. The outer response is `{document, processing, importBatch}`; follow the core Skill's
+bounded polling schedule until `importBatch.status` is `applied`, `failed` or `rejected`.
+Upload and exact replay return safe asynchronous progress only, without `publicationSummary` or raw storage keys; an accepted/queued response is
 not publication success. Only an `applied` batch with current content-read permission exposes
 `importBatch.publicationSummary` in import status. It contains `inputCardCount`, `inputItemRowCount`,
 `counts`, `changes`, `changesTruncated`; readable `sourceSheetSummary` remains an array.
@@ -42,7 +46,11 @@ The publication summary belongs to that committed batch: `inserted`, `updated`, 
 `restored` counts are exact; `changes` is bounded by 100 entries / 32 KiB and
 `changesTruncated` marks omitted details. It contains field names, not old/new values or links.
 Status rechecks current content-read permission; an admin uploader may not see content counts
-or changes after loss of access. Do not reconstruct that batch's summary from today's directory.
+or changes after loss of access. Authorized current readers of failed/rejected batches receive
+returned validation locations and ignored-sheet/source-summary arrays; an owner without content
+read permission receives safe progress/errorCode only. Revoked access returns 404; do not infer
+hidden counts or bypass the denial. No status response grants original-file read access or exposes
+raw storage keys. Do not reconstruct that batch's summary from today's directory.
 
 ## Find cards before reading details
 
@@ -95,10 +103,14 @@ A condition-based zero-card result is a successful empty manifest, not evidence 
 
 The launcher consumes short-lived signed URLs internally, validates full card/file counts,
 identity/schema/bytes/SHA-256 and safe local paths, then returns local files and safe metadata.
-Stable card-ID filenames prevent same-name/specification files overwriting each other.
-The safe `manifest.json` contains `expiresAt`, `cardCount`, `totalItemRowCount` and per-card
-`costCardId`, `revision`, enterprise/source/SPU/SKU/names, `schemaVersion`, `itemRowCount`,
-`byteSize`, `checksumSha256`, `sourceDocumentId`, `importBatchId`; internal URLs are removed.
+The exact result is `{localDirectory, dataset: "cost_cards", cardCount, totalItemRowCount, files}`;
+`files` contains only CSV basenames `cost_card_<costCardId>.csv`. These stable filenames prevent
+same-name/specification files overwriting each other. `manifest.json` is inside `localDirectory`.
+It contains `expiresAt`, `cardCount`, `totalItemRowCount`, `cards`; every card entry retains
+`costCardId`, string `revision`, `enterpriseName`, `sourceNamespace`, `spuId`, `skuId`, `dishName`,
+`specificationName`, `schemaVersion`, `itemRowCount`, `byteSize`, `checksumSha256`,
+`sourceDocumentId`, `importBatchId`, plus `fileName`. Only the internal `presignedDownloadUrl`
+is removed. Zero cards returns `files: []` and a valid empty local manifest.
 The two source IDs belong to each card, never one shared batch source. They provide provenance,
 not permission to fetch the original. Do not put CSV bodies, base64 or signed URLs into model context.
 
@@ -133,13 +145,13 @@ ownership do not grant directory/CSV content access. Legacy/preparing/suspended 
 fall back to old file rules for this dataset. Source originals have independent read/archive
 rules; archiving an original leaves active card directory/CSV access unchanged.
 
-Card archive is a current same-organization admin operation; use only the approved discovered
-archive tool and its exact `costCardId`. It hides that card from ordinary directory/CSV access,
+Card archive is a current same-organization admin operation; the candidate tool is
+`archive_cost_card({costCardId})`. It hides that card from ordinary directory/CSV access,
 preserves its identity and current object, and does not archive the original. A new upload can
 restore it as described above. Archive accepts only the exact `costCardId`, with no business
 payload, and returns `{costCardId, archived: true, revision}` with a string revision. It is not
-hard deletion. The exact MCP archive tool exposure still requires the coordinated launcher gate;
-do not bypass through HTTP if the approved launcher lacks it.
+hard deletion. Both new tools require the coordinated candidate publication/service/tenant gate;
+do not bypass through HTTP if the approved launcher lacks them.
 
 Existing enabled enterprises must also configure the new category: use the controlled current
 admin configuration initialization write to idempotently register missing `cost_cards`, then set

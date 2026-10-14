@@ -387,3 +387,22 @@ Origin and `x-csrf-token`, plus the shared browser session and same organization
 GET remains read-only. UI “补齐资料类别 / Add missing categories” requires saving or resolving
 unsaved drafts first; missing cost_cards starts with null level and no grants. The operator must
 then explicitly configure its level and authorized group scope; no autoactivation or real migration.
+
+### Candidate launcher delivery and status envelope
+
+`download_cost_cards` uses the flat selectors above and returns
+`{localDirectory,dataset:"cost_cards",cardCount,totalItemRowCount,files}`. `files` contains only
+`cost_card_<costCardId>.csv` basenames. `localDirectory/manifest.json` contains
+`{expiresAt,cardCount,totalItemRowCount,cards}`; each card preserves all frozen domain manifest
+fields except presignedDownloadUrl, and adds fileName. revision remains a string and each card
+retains its own sourceDocumentId/importBatchId. Zero cards still creates a valid empty local
+manifest with files=[]. URLs/CSV bytes are not returned to the model. `archive_cost_card` takes
+`{costCardId}` and returns `{costCardId,archived:true,revision:string}`.
+
+Original cost-card uploads use the existing absolute local file path transport, exact enterpriseName
+and idempotencyKey, without dates/snapshot/confidentiality override. Follow `get_import_status` with
+`{importBatchId}`, not partition-import polling. Its outer envelope is `{document,processing,importBatch}`;
+applied currently readable batches receive publicationSummary verbatim. Failed/rejected current
+readers can receive validation locations and ignored/source-summary arrays; owner-only access
+receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
+read permission is exposed. These are unpublished candidate interfaces; approved pins remain unchanged.

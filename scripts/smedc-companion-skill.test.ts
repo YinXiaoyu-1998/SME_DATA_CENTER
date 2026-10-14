@@ -45,7 +45,12 @@ describe("SMEDC companion skill guidance", () => {
       "selection is flat",
       "retryable 409",
       "value.createdCount",
-      "saving or resolving unsaved drafts"
+      "saving or resolving unsaved drafts",
+      "get_import_status({importBatchId})",
+      "cost_card_<costCardId>.csv",
+      "archive_cost_card({costCardId})",
+      "plus `fileName`",
+      "Revoked access returns 404"
     ])
       expect(guide).toContain(invariant);
   });

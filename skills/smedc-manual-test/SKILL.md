@@ -243,3 +243,13 @@ only currently readable active directory cards and groups sources by sourceDocum
 For a separately authorized synthetic enabled enterprise, exercise “补齐资料类别 / Add missing categories”
 after saving/resolving drafts, current version and same-origin/CSRF checks; GET never initializes.
 MCP exposure/publication remains a separate launcher gate; do not bypass missing tools with HTTP.
+
+Final candidate tool/output oracle: upload the unchanged absolute local file with enterpriseName
+and idempotencyKey, no date/confidentiality override; poll get_import_status({importBatchId}) with
+outer document/processing/importBatch. Download returns localDirectory/dataset/cardCount/
+totalItemRowCount/files, CSV basenames cost_card_<costCardId>.csv; manifest.json is inside that
+directory and each URL-free entry adds fileName while retaining string revision and its own
+sourceDocumentId/importBatchId. Zero cards has files=[] plus an empty manifest. Use
+archive_cost_card({costCardId}) for the resolved card and verify archived:true/string revision.
+Authorized failed/rejected readers see returned locations/ignored arrays; owner-only status is safe
+progress/errorCode and revoked access is 404, with no raw storage key or original-read entitlement.

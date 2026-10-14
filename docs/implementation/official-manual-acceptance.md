@@ -270,3 +270,14 @@ sourceDocumentId/importBatchId 分组保留来源计数，原件归档不影响�
 通过候选“补齐资料类别 / Add missing categories”按钮受控补齐，先处理草稿，以当前版本
 和 same Origin／CSRF 写入；验证新 cost_cards 为 null 密级、无 grants、原配置／模式不变。
 该步骤限已明确授权的合成租户，不能据此更改真实企业。
+
+最终候选工具核对：成本卡上传使用原始绝对本地文件＋enterpriseName／idempotencyKey，不传日期、
+快照或 confidentialityLevel；用 get_import_status({importBatchId}) 轮询外层
+{document,processing,importBatch}。download_cost_cards 返回 localDirectory、dataset=cost_cards、
+cardCount、totalItemRowCount、files（仅 cost_card_<costCardId>.csv basename）。目录内 manifest.json
+每条保留全部 domain 字段（去 presignedDownloadUrl，增加 fileName），逐卡 string revision／
+sourceDocumentId／importBatchId 不丢失。零卡仍有空 files 和有效 manifest。归档调用
+archive_cost_card({costCardId})，核对 archived=true 和 string revision。失败／拒绝批次的当前
+读者可得源定位与 ignored/source-summary 数组；owner-only 只得安全进度／errorCode，撤权返回404。
+原始 storage key、正文链接与原件读取权均不能由状态／来源 ID 泄漏。上述只验证未发布候选，
+不更改当前安装 pin 或宣称正式人工验收已执行。
