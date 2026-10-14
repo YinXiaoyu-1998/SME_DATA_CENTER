@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   COST_CARD_CSV_SCHEMA_VERSION,
   loadPartitionDownloadLimits,
+  normalizeEnterpriseIdentity,
   parsePositiveSafeInteger,
   type CostCardManifest,
   type CostCardManifestEntry,
@@ -163,7 +164,7 @@ function validateManifest(
   let bytes = 0;
   for (const entry of manifest.cards) {
     const identity = JSON.stringify([
-      entry.enterpriseName,
+      normalizeEnterpriseIdentity(entry.enterpriseName).enterpriseKey,
       entry.sourceNamespace,
       entry.spuId,
       entry.skuId
@@ -194,7 +195,9 @@ function validateManifest(
 
 function matchesSelection(entry: CostCardManifestEntry, selection: CostCardSelection): boolean {
   return (
-    (selection.enterpriseName === undefined || selection.enterpriseName === entry.enterpriseName) &&
+    (selection.enterpriseName === undefined ||
+      normalizeEnterpriseIdentity(selection.enterpriseName).enterpriseKey ===
+        normalizeEnterpriseIdentity(entry.enterpriseName).enterpriseKey) &&
     (selection.costCardIds === undefined || selection.costCardIds.includes(entry.costCardId)) &&
     (selection.spuIds === undefined || selection.spuIds.includes(entry.spuId)) &&
     (selection.skuIds === undefined || selection.skuIds.includes(entry.skuId)) &&

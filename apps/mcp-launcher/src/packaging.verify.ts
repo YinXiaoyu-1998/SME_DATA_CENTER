@@ -122,7 +122,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.9.0");
+    expect(manifest.version).toBe("0.10.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -148,7 +148,7 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.9.0");
+      expect(client.getServerVersion()?.version).toBe("0.10.0");
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -160,6 +160,8 @@ describe("published launcher artifact", () => {
           "prepare_structured_partition_download",
           "get_structured_partition_download_status",
           "download_structured_partitions",
+          "download_cost_cards",
+          "archive_cost_card",
           "describe_ledger_pdf_coverage",
           "get_ledger_pdf_request_status",
           "prepare_ledger_pdf_download",
@@ -215,7 +217,12 @@ describe("published launcher artifact", () => {
         type: "object",
         properties: {
           dataset: {
-            enum: expect.arrayContaining(["dish_catalog", "delivery_ledger", "supplier_catalog"])
+            enum: expect.arrayContaining([
+              "dish_catalog",
+              "delivery_ledger",
+              "supplier_catalog",
+              "cost_cards"
+            ])
           },
           snapshotDate: { type: "string" }
         }

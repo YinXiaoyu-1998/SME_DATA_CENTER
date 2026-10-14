@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -277,7 +278,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.9.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.10.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1222,6 +1223,217 @@ it("retains strict permission schemas and fixed/evidence refinements at the laun
       const result = await client.callTool({ name, arguments: args });
       expect(result.isError).toBe(true);
     }
+    expect(remote).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+it("downloads cost cards through the real manifest HTTP path without exposing internal URLs", async () => {
+  const bytes = "synthetic cost csv";
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const remote: typeof fetch = async (url, init) => {
+    calls.push({
+      url: String(url),
+      body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined
+    });
+    if (String(url).endsWith("/v1/cost-cards/manifest"))
+      return Response.json({
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        cardCount: 1,
+        totalItemRowCount: 1,
+        cards: [
+          {
+            costCardId: "cc_a",
+            revision: "9007199254740993",
+            enterpriseName: "Synthetic",
+            sourceNamespace: "meituan",
+            spuId: "spu",
+            skuId: "sku",
+            dishName: "菜",
+            specificationName: null,
+            schemaVersion: 1,
+            itemRowCount: 1,
+            byteSize: Buffer.byteLength(bytes),
+            checksumSha256: createHash("sha256").update(bytes).digest("hex"),
+            sourceDocumentId: "doc_a",
+            importBatchId: "batch_a",
+            presignedDownloadUrl: "https://storage.example/card?secret=signature"
+          }
+        ]
+      });
+    return new Response(bytes);
+  };
+  const handler = createLauncherToolHandler(
+    "download_cost_cards",
+    createLauncherToolDependencies({ config, auth: fakeAuth(), fetchImplementation: remote })
+  );
+  const result = await handler({ enterpriseName: "Synthetic", spuIds: ["spu"] });
+  expect(result.isError).toBe(false);
+  const output = body(result) as { localDirectory: string; files: string[] };
+  try {
+    expect(calls[0]).toEqual({
+      url: "https://hub.example.test/v1/cost-cards/manifest",
+      body: { enterpriseName: "Synthetic", spuIds: ["spu"] }
+    });
+    expect(output.files).toEqual(["cost_card_cc_a.csv"]);
+    expect(await readFile(path.join(output.localDirectory, output.files[0]!), "utf8")).toBe(bytes);
+    expect(JSON.stringify(result)).not.toMatch(/signature|storage.example|presignedDownloadUrl/);
+  } finally {
+    await rm(output.localDirectory, { recursive: true, force: true });
+  }
+});
+
+it("retains retryable COST_CARD_CHANGED errors from the manifest API", async () => {
+  const handler = createLauncherToolHandler(
+    "download_cost_cards",
+    createLauncherToolDependencies({
+      config,
+      auth: fakeAuth(),
+      fetchImplementation: async () =>
+        Response.json(
+          {
+            error: {
+              code: "COST_CARD_CHANGED",
+              message: "成本卡已变化，请重新下载",
+              retryable: true,
+              requestId: "cost-request",
+              details: { objectKey: "private" }
+            }
+          },
+          { status: 409 }
+        )
+    })
+  );
+  const result = await handler({});
+  expect(body(result)).toEqual({
+    error: {
+      code: "COST_CARD_CHANGED",
+      message: "成本卡已变化，请重新下载",
+      retryable: true,
+      requestId: "cost-request"
+    }
+  });
+});
+
+it("preserves cost-card archive revisions and publication summaries through MCP", async () => {
+  for (const [name, input, response] of [
+    [
+      "archive_cost_card",
+      { costCardId: "cc_a" },
+      { costCardId: "cc_a", archived: true, revision: "9007199254740993" }
+    ],
+    [
+      "get_import_status",
+      { importBatchId: "batch_a" },
+      {
+        importBatch: {
+          status: "applied",
+          publicationSummary: {
+            inputCardCount: 1,
+            inputItemRowCount: 2,
+            counts: { inserted: 1, updated: 0, unchanged: 0, restored: 0 },
+            changes: [
+              { costCardId: "cc_a", operation: "inserted", changedFields: ["card.created"] }
+            ],
+            changesTruncated: false
+          }
+        }
+      }
+    ]
+  ] as const) {
+    const calls: Array<{ method?: string; params?: unknown }> = [];
+    const handler = createLauncherToolHandler(
+      name,
+      createLauncherToolDependencies({
+        config,
+        auth: fakeAuth(),
+        fetchImplementation: fakeMcpFetch(calls, response)
+      })
+    );
+    expect(body(await handler(input))).toEqual(response);
+    expect(calls.find((call) => call.method === "tools/call")?.params).toEqual({
+      name,
+      arguments: input
+    });
+  }
+});
+
+it("uses the complete original local cost-card file without client-side dates or splitting", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "launcher-cost-original-"));
+  try {
+    const original = "complete synthetic original";
+    const filePath = path.join(root, "cost.csv");
+    await writeFile(filePath, original);
+    const calls: Array<{ method?: string; params?: unknown }> = [];
+    const handler = createLauncherToolHandler(
+      "upload_structured_dataset",
+      createLauncherToolDependencies({
+        config,
+        auth: fakeAuth(),
+        fetchImplementation: fakeMcpFetch(calls, {
+          document: { id: "source" },
+          importBatch: { id: "batch", status: "pending" }
+        })
+      })
+    );
+    const result = await handler({
+      dataset: "cost_cards",
+      enterpriseName: "Synthetic",
+      idempotencyKey: "cost-original",
+      file: { name: "cost.csv", mediaType: "text/csv", encoding: "path", filePath }
+    });
+    expect(result.isError).toBe(false);
+    expect(calls.find((call) => call.method === "tools/call")?.params).toEqual({
+      name: "upload_structured_dataset",
+      arguments: {
+        dataset: "cost_cards",
+        enterpriseName: "Synthetic",
+        idempotencyKey: "cost-original",
+        file: {
+          name: "cost.csv",
+          mediaType: "text/csv",
+          encoding: "base64",
+          contentBase64: Buffer.from(original).toString("base64")
+        }
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain(original);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("advertises strict cost-card selectors and rejects unknown selectors at the SDK boundary", async () => {
+  const remote = vi.fn<typeof fetch>();
+  const server = new McpServer({ name: "cost-contract", version: "0.10.0" });
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({ config, auth: fakeAuth(), fetchImplementation: remote })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "cost-contract-test", version: "1.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const tools = await client.listTools();
+    expect(tools.tools.find((tool) => tool.name === "download_cost_cards")).toMatchObject({
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: { costCardIds: { maxItems: 100 } }
+      }
+    });
+    expect(
+      tools.tools.find((tool) => tool.name === "archive_cost_card")?.annotations
+    ).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true });
+    const result = await client.callTool({
+      name: "download_cost_cards",
+      arguments: { enterpriseName: "Synthetic", storeName: "Hidden" }
+    });
+    expect(result.isError).toBe(true);
     expect(remote).not.toHaveBeenCalled();
   } finally {
     await client.close();

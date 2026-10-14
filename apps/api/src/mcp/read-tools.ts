@@ -1,5 +1,6 @@
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
+  COST_CARD_LAUNCHER_VERSION,
   errorToolResult,
   validationErrorToolResult,
   type SmedcMcpToolContract,
@@ -29,6 +30,7 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "get_import_status",
   "get_partition_import_status",
   "download_structured_partitions",
+  "download_cost_cards",
   "prepare_structured_partition_download",
   "get_structured_partition_download_status",
   "describe_ledger_pdf_coverage",
@@ -57,6 +59,23 @@ export function createReadOnlyMcpToolHandlers(context: ApiDelegationContext): Sm
     READ_ONLY_MCP_TOOL_NAMES.map((toolName) => [
       toolName,
       async (input: unknown, mcpContext: McpRequestContext) => {
+        if (
+          (toolName === "download_cost_cards" ||
+            (["query_structured_dataset", "describe_structured_dataset_coverage"].includes(
+              toolName
+            ) &&
+              (input as { dataset?: unknown } | null)?.dataset === "cost_cards")) &&
+          !launcherVersionAtLeast(
+            mcpContext.audit?.launcherVersion ?? context.audit.launcherVersion,
+            COST_CARD_LAUNCHER_VERSION
+          )
+        )
+          return errorToolResult(
+            "LAUNCHER_UPGRADE_REQUIRED",
+            "Update the SMEDC launcher before using cost cards.",
+            undefined,
+            { requestId: mcpContext.audit?.requestId ?? context.audit.requestId }
+          );
         if (
           ["get_partition_import_status", "download_structured_partitions"].includes(toolName) &&
           !launcherVersionAtLeast(
@@ -111,6 +130,8 @@ function routeForReadOnlyTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "download_cost_cards":
+      return { method: "POST", path: "/v1/cost-cards/manifest", body: input };
     case "get_my_permissions":
       return { method: "GET", path: `/v1/permissions/me` };
     case "list_account_permissions":

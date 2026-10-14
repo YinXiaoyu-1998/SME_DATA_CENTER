@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
+  COST_CARD_LAUNCHER_VERSION,
   apiErrorToolResult,
   errorToolResult,
   jsonToolResult,
@@ -141,6 +142,16 @@ async function uploadStructuredDataset(
     input && typeof input === "object" && "dataset" in input
       ? (input as { dataset?: unknown }).dataset
       : undefined;
+  if (
+    requestedDataset === "cost_cards" &&
+    !launcherVersionAtLeast(context.audit.launcherVersion, COST_CARD_LAUNCHER_VERSION)
+  )
+    return errorToolResult(
+      "LAUNCHER_UPGRADE_REQUIRED",
+      "Update the SMEDC launcher before using cost cards.",
+      undefined,
+      { requestId: context.audit.requestId }
+    );
   if (
     typeof requestedDataset === "string" &&
     isPartitionDataset(requestedDataset) &&

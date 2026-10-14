@@ -428,3 +428,24 @@ describe("cost card local transfer", () => {
     expect((await directories()).filter((entry) => !before.includes(entry))).toEqual([]);
   });
 });
+
+it("matches normalized enterprise identity while preserving literal binary name selectors", async () => {
+  const result = await downloadCostCards({
+    context: context(async () => new Response("synthetic csv")),
+    selection: {
+      enterpriseName: "  SYNTHETIC   GROUP ",
+      dishNameContains: "%_!",
+      specificationName: " 大份 "
+    },
+    fetchManifest: async () =>
+      manifest([
+        card("a", "synthetic csv", {
+          enterpriseName: "Synthetic Group",
+          dishName: "菜%_!",
+          specificationName: " 大份 "
+        })
+      ])
+  });
+  created.push(result.localDirectory);
+  expect(result.cardCount).toBe(1);
+});

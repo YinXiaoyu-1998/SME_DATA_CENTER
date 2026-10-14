@@ -117,6 +117,8 @@ const validInputs = {
   get_evidence_document_status: { documentId: "doc_1" },
   get_import_status: { importBatchId: "imp_1" },
   get_partition_import_status: { partitionImportJobId: "pjob_1" },
+  download_cost_cards: { enterpriseName: "Synthetic" },
+  archive_cost_card: { costCardId: "cc_a" },
   prepare_structured_partition_download: {
     dataset: "business",
     enterpriseName: "Synthetic",
@@ -496,6 +498,20 @@ const invalidInputCases = [
     ]
   },
   {
+    tool: "download_cost_cards",
+    cases: [
+      { label: "empty IDs", input: { costCardIds: [] } },
+      { label: "detail selector", input: { itemName: "盐" } }
+    ]
+  },
+  {
+    tool: "archive_cost_card",
+    cases: [
+      { label: "missing ID", input: {} },
+      { label: "unsafe ID", input: { costCardId: "../a" } }
+    ]
+  },
+  {
     tool: "prepare_structured_partition_download",
     cases: [
       { label: "missing range", input: {} },
@@ -580,6 +596,8 @@ describe("SMEDC MCP contract", () => {
       "get_import_status",
       "get_partition_import_status",
       "download_structured_partitions",
+      "download_cost_cards",
+      "archive_cost_card",
       "prepare_structured_partition_download",
       "get_structured_partition_download_status",
       "describe_ledger_pdf_coverage",
@@ -784,7 +802,8 @@ describe("SMEDC MCP contract", () => {
     expect(coverage?.resultShape).toEqual([
       "dataset",
       "metadataPolicy",
-      "sources[]: readable applied source windows or snapshots"
+      "sources[]: readable applied source windows or snapshots",
+      "cost_cards: accessMode: catalog_query, cardCount, totalItemRowCount, sources[]: { sourceDocumentId, importBatchId, cardCount, totalItemRowCount }"
     ]);
   });
 
@@ -1612,4 +1631,83 @@ it("validates complete actual evidence dimension values and controlled fixed-cat
       requiredDimensionIds: ["project"]
     }).success
   ).toBe(true);
+});
+
+it("defines cost-card selection and archive inputs without server detail selectors", () => {
+  const tools = new Map<string, (typeof SMEDC_MCP_TOOL_CONTRACTS)[number]>(
+    SMEDC_MCP_TOOL_CONTRACTS.map((tool) => [tool.name, tool])
+  );
+  const download = tools.get("download_cost_cards");
+  expect(download).toBeDefined();
+  const selection = {
+    enterpriseName: "Synthetic",
+    costCardIds: ["cc_a"],
+    spuIds: ["spu"],
+    skuIds: ["sku"],
+    dishName: "菜",
+    dishNameContains: "%_!",
+    specificationName: "大份",
+    baseCategoryName: "主食"
+  };
+  expect(download!.inputSchema.parse(selection)).toEqual(selection);
+  for (const extra of [
+    { startDate: "20261014" },
+    { storeIds: ["store"] },
+    { itemName: "盐" },
+    { orgId: "other" }
+  ])
+    expect(download!.inputSchema.safeParse({ ...selection, ...extra }).success).toBe(false);
+  expect(download!.inputSchema.safeParse({ costCardIds: [] }).success).toBe(false);
+  expect(download!.inputSchema.safeParse({ skuIds: Array(101).fill("sku") }).success).toBe(false);
+  const archive = tools.get("archive_cost_card")!;
+  expect(archive.inputSchema.parse({ costCardId: "cc_a" })).toEqual({ costCardId: "cc_a" });
+  expect(archive.inputSchema.safeParse({ costCardId: "../a" }).success).toBe(false);
+  expect(archive.annotations).toEqual({
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true
+  });
+});
+
+it("restricts cost-card MCP queries and coverage to directory fields", () => {
+  const query = contractsByName.get("query_structured_dataset")!.inputSchema;
+  expect(
+    query.parse({
+      dataset: "cost_cards",
+      select: ["dish_name", "sale_price"],
+      filter: { field: "sale_price", op: "gte", value: "12.000001" }
+    })
+  ).toMatchObject({ filter: { value: "12.000001" } });
+  for (const invalid of [
+    { filter: { field: "sale_price", op: "gte", value: 12 } },
+    { select: ["item_name"] },
+    { filter: { field: "recipe_name", op: "eq", value: "default" } },
+    { aggregates: [{ op: "count" }] },
+    { groupBy: ["dish_name"] }
+  ])
+    expect(query.safeParse({ dataset: "cost_cards", ...invalid }).success).toBe(false);
+  const coverage = contractsByName.get("describe_structured_dataset_coverage")!.inputSchema;
+  expect(coverage.safeParse({ dataset: "cost_cards", enterpriseName: "Synthetic" }).success).toBe(
+    true
+  );
+  expect(coverage.safeParse({ dataset: "cost_cards", storeNameContains: ["Store"] }).success).toBe(
+    false
+  );
+});
+
+it("accepts complete original cost-card uploads without dates or classification overrides", () => {
+  const upload = contractsByName.get("upload_structured_dataset")!.inputSchema;
+  const input = {
+    file: validInputs.upload_structured_dataset.file,
+    dataset: "cost_cards",
+    enterpriseName: "Synthetic",
+    idempotencyKey: "cost"
+  };
+  expect(upload.parse(input)).toEqual(input);
+  for (const extra of [
+    { startDate: "20261014" },
+    { snapshotDate: "20261014" },
+    { confidentialityLevel: 1 }
+  ])
+    expect(upload.safeParse({ ...input, ...extra }).success).toBe(false);
 });
