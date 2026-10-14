@@ -5,13 +5,14 @@ export const STRUCTURED_DATASETS = [
   "vip",
   "dish_catalog",
   "delivery_ledger",
-  "supplier_catalog"
+  "supplier_catalog",
+  "cost_cards"
 ] as const;
 
 export type StructuredDatasetName = (typeof STRUCTURED_DATASETS)[number];
 
 export type StructuredFieldType =
-  "string" | "date" | "date_time" | "time_range" | "integer" | "decimal" | "percent";
+  "string" | "date" | "date_time" | "time_range" | "integer" | "decimal" | "percent" | "boolean";
 
 export interface StructuredFieldCapabilities {
   filter: boolean;
@@ -52,9 +53,9 @@ export interface StructuredFieldRegistryEntry {
 
 export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
-  accessMode: "partition_extract" | "row_query";
+  accessMode: "partition_extract" | "row_query" | "catalog_query";
   rowTable?: StructuredRowTableName;
-  sheetPolicy: "strict_all_nonempty" | "import_matching_visible";
+  sheetPolicy: "strict_all_nonempty" | "import_matching_visible" | "cost_card_candidates";
   metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
   datePolicy?: "row_business_date" | "snapshot_metadata";
   fields: StructuredFieldRegistryEntry[];
@@ -902,7 +903,10 @@ export const STRUCTURED_DATASET_REGISTRIES = {
       )
     )
   })
-} as const satisfies Record<StructuredDatasetName, StructuredDatasetRegistry>;
+} as const satisfies Record<
+  Exclude<StructuredDatasetName, "cost_cards">,
+  StructuredDatasetRegistry
+>;
 
 export function getStructuredRegistry(dataset: StructuredDatasetName): StructuredDatasetRegistry;
 export function getStructuredRegistry(dataset: "cost_cards"): CostCardUploadRegistry;
@@ -932,7 +936,7 @@ export const COST_CARD_UPLOAD_REGISTRY: CostCardUploadRegistry = {
     canonicalName: f.canonicalName,
     sourceColumn: f.sourceColumn,
     aliases: f.aliases,
-    type: f.type === "boolean" ? "string" : f.type,
+    type: f.type,
     nullable: f.nullable,
     inputSource: "file",
     sensitivity: "normal",
@@ -1260,7 +1264,8 @@ function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): strin
     },
     dish_catalog: {},
     delivery_ledger: {},
-    supplier_catalog: {}
+    supplier_catalog: {},
+    cost_cards: {}
   };
   return [sourceColumn, ...(aliasesByDataset[dataset][sourceColumn] ?? [])];
 }

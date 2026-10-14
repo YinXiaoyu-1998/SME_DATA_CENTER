@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { Prisma, type CostCard, type PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient, type CostCard } from "@prisma/client";
+import { createDatabaseAdapter } from "./adapter.js";
+import { toResourceReadRequirement } from "./business-authorization-records.js";
 import {
   COST_CARD_CATALOG_BATCH_SIZE,
   COST_CARD_CANONICALIZATION_VERSION,
@@ -19,7 +21,13 @@ import { storageGarbageKeyHash, enqueueStorageGarbage } from "./storage-garbage.
 
 export type CostCardBaseline = Pick<
   CostCard,
-  "id" | "revision" | "contentHash" | "objectKey" | "canonicalizationVersion" | "archivedAt"
+  | "id"
+  | "revision"
+  | "contentHash"
+  | "objectKey"
+  | "canonicalizationVersion"
+  | "csvSchemaVersion"
+  | "archivedAt"
 >;
 export interface PreparedCostCardCandidate {
   id: string;
@@ -89,6 +97,7 @@ export function costCardBaselineMatches(
         a.revision === b.revision &&
         a.contentHash === b.contentHash &&
         a.objectKey === b.objectKey &&
+        a.csvSchemaVersion === b.csvSchemaVersion &&
         a.canonicalizationVersion === b.canonicalizationVersion &&
         a.archivedAt?.getTime() === b.archivedAt?.getTime();
 }
@@ -327,4 +336,69 @@ export async function archiveCostCard(
 }
 export function createCostCardId(): string {
   return randomUUID().replaceAll("-", "");
+}
+
+/** Publication summaries describe the retained batch, independently of original-file display state. */
+export async function getCostCardPublicationReadRequirements(
+  reader: Pick<PrismaClient, "businessResource">,
+  orgId: string,
+  sourceDocumentId: string
+) {
+  const rows = await reader.businessResource.findMany({
+    where: { orgId, sourceDocumentId, kind: "source_fragment", category: { key: "cost_cards" } },
+    include: { scopes: { include: { dimensions: true } } }
+  });
+  return rows.map(toResourceReadRequirement);
+}
+
+export interface CostCardRepository {
+  readBaselines(
+    orgId: string,
+    identities: readonly CostCardIdentity[]
+  ): Promise<Map<string, CostCardBaseline>>;
+  registerCandidate(input: { objectKey: string; processingRunId: string }): Promise<void>;
+  publish(input: CostCardPublishInput): Promise<CostCardPublication>;
+  disconnect?(): Promise<void>;
+}
+export function createPrismaCostCardRepository(client?: PrismaClient): CostCardRepository {
+  const prisma =
+    client ??
+    new PrismaClient({
+      adapter: createDatabaseAdapter(
+        process.env["DATABASE_URL"] ??
+          (() => {
+            throw new Error("DATABASE_URL is required for cost cards.");
+          })()
+      )
+    });
+  return {
+    readBaselines: (orgId, identities) => readCostCardBaselines(prisma, orgId, identities),
+    registerCandidate: (input) =>
+      enqueueStorageGarbage(prisma, { ...input, reason: "cost_card_candidate" }),
+    async publish(input) {
+      try {
+        return await prisma.$transaction((tx) => publishCostCards(tx, input), {
+          isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+          timeout: 120_000
+        });
+      } catch (error) {
+        // A lost commit acknowledgement must not turn an applied publication into failure.
+        const batch = await prisma.importBatch.findFirst({
+          where: {
+            id: input.importBatchId,
+            orgId: input.orgId,
+            sourceDocumentId: input.sourceDocumentId,
+            dataset: "cost_cards",
+            status: "applied"
+          }
+        });
+        if (batch?.publicationSummary)
+          return batch.publicationSummary as unknown as CostCardPublication;
+        throw error;
+      }
+    },
+    async disconnect() {
+      if (!client) await prisma.$disconnect();
+    }
+  };
 }

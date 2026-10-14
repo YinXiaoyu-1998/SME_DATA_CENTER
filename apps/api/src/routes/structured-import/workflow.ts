@@ -69,7 +69,7 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
       ok: false,
       code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
       message:
-        "dataset must be dishes, business, vip, dish_catalog, delivery_ledger, or supplier_catalog."
+        "dataset must be dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, or cost_cards."
     };
   }
 
@@ -290,7 +290,7 @@ export function structuredImportFingerprint(input: {
         : registry.metadataPolicy === "window"
           ? { startDate: input.startDate, endDate: input.endDate }
           : {}),
-    confidentialityLevel: input.confidentialityLevel,
+    ...(input.dataset === "cost_cards" ? {} : { confidentialityLevel: input.confidentialityLevel }),
     fileHash: input.fileHash
   };
 
@@ -411,7 +411,11 @@ export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
     validationErrorsTruncated: importBatch.validationErrorsTruncated,
     totalRowCount: importBatch.totalRowCount,
     appliedRowCount: importBatch.appliedRowCount,
-    queryableRowCount: importBatch.queryableRowCount,
+    ...(importBatch.dataset === "cost_cards"
+      ? importBatch.status === "applied" && importBatch.publicationSummary
+        ? { publicationSummary: importBatch.publicationSummary }
+        : {}
+      : { queryableRowCount: importBatch.queryableRowCount }),
     ...(importBatch.status === "applied" && importBatch.dataset === "delivery_ledger"
       ? { affectedLedgerPartitions: importBatch.affectedLedgerPartitions ?? [] }
       : {})

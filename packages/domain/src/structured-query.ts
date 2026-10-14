@@ -1285,6 +1285,8 @@ function typedFieldExpression(field: StructuredFieldRegistryEntry): string {
   const expression = jsonValueExpression();
 
   switch (field.type) {
+    case "boolean":
+      return `JSON_EXTRACT(r.payload, ?)`;
     case "integer":
     case "decimal":
     case "percent":

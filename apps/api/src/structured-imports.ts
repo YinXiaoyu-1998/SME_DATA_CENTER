@@ -6,6 +6,13 @@ import {
   ResourceAttributesError
 } from "@smedc/db";
 import {
+  lockAuthorizationPublication,
+  requirePublicationAttributes,
+  requireCurrentDirectoryEligibility,
+  toBusinessCategoryRule,
+  getCostCardPublicationReadRequirements
+} from "@smedc/db";
+import {
   lockLedgerSourceMutation,
   ledgerPartitionsFromRows,
   markLedgerPartitionsChanged,
@@ -35,6 +42,7 @@ import type {
   ImportBatchStatusName,
   Phase3FileType,
   ResourceReadRequirement,
+  CostCardPublication,
   StructuredDatasetName
 } from "@smedc/domain";
 import { AUDIT_ACTIONS, getStructuredRegistry } from "@smedc/domain";
@@ -61,6 +69,7 @@ export interface StructuredImportTimingEvent {
 }
 
 export interface StructuredImportBatchRecord {
+  publicationSummary?: CostCardPublication;
   affectedLedgerPartitions?: LedgerPartitionKey[];
   id: string;
   orgId: string;
@@ -91,6 +100,7 @@ export interface StructuredImportBatchRecord {
 export interface ReserveStructuredImportInput {
   historicalSupplementReason?: string;
   enterpriseKey?: string;
+  enterpriseName?: string;
   onDatabaseRetry?: (event: DatabaseRetryEvent) => void;
   orgId: string;
   actorEmployeeId: string;
@@ -429,7 +439,10 @@ export function createPrismaStructuredImportRepository(options: {
       let readRequirements: ResourceReadRequirement[] = [];
       try {
         // This helper checks current document lifecycle and every retained parsed scope.
-        readRequirements = await getSourceReadRequirements(prisma, batch.sourceDocumentId, orgId);
+        readRequirements =
+          batch.dataset === "cost_cards" && batch.status === "applied"
+            ? await getCostCardPublicationReadRequirements(prisma, orgId, batch.sourceDocumentId)
+            : await getSourceReadRequirements(prisma, batch.sourceDocumentId, orgId);
       } catch (error) {
         if (!(error instanceof ResourceAttributesError)) throw error;
         // Unpublished or incomplete sources still have owner progress, never ordinary metadata.
@@ -437,7 +450,10 @@ export function createPrismaStructuredImportRepository(options: {
       return { ...(await recordWithPartitions(batch)), readRequirements };
     },
     async reserveStructuredImport(input) {
-      if (getStructuredRegistry(input.dataset).accessMode !== "row_query") {
+      if (
+        getStructuredRegistry(input.dataset).accessMode !== "row_query" &&
+        input.dataset !== "cost_cards"
+      ) {
         throw new StructuredImportError("DATASET_REQUIRES_PARTITION_EXTRACT");
       }
       return retryIdempotentDatabaseOperation(async () => {
@@ -448,6 +464,44 @@ export function createPrismaStructuredImportRepository(options: {
           const batch = await prisma.$transaction(
             async (tx) => {
               await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+              let confidentialityLevel = input.document.confidentialityLevel;
+              if (input.dataset === "cost_cards") {
+                if (
+                  !input.enterpriseKey ||
+                  !input.enterpriseName ||
+                  input.startDate !== null ||
+                  input.endDate !== null ||
+                  input.naturalKey !== undefined
+                )
+                  throw new StructuredImportError("INVALID_COST_CARD_METADATA");
+                const state = await lockAuthorizationPublication(tx, input.orgId);
+                await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+                if (state.mode !== "enabled")
+                  throw new ResourceAttributesError("AUTHORIZATION_NOT_ENABLED");
+                const category = await tx.businessCategory.findUnique({
+                  where: { orgId_key: { orgId: input.orgId, key: "cost_cards" } },
+                  include: { dimensions: true }
+                });
+                const scopes = [
+                  {
+                    enterpriseKey: input.enterpriseKey,
+                    ownership: "group" as const,
+                    dimensions: {}
+                  }
+                ];
+                requirePublicationAttributes(
+                  state.mode,
+                  category ? toBusinessCategoryRule(category) : null,
+                  scopes
+                );
+                await requireCurrentDirectoryEligibility(tx, {
+                  orgId: input.orgId,
+                  categoryId: category!.id,
+                  scopes,
+                  targetId: input.documentId
+                });
+                confidentialityLevel = category!.confidentialityLevel!;
+              }
               const historicalSupplement = await bindHistoricalSupplementIntent(
                 tx,
                 input.orgId,
@@ -472,6 +526,9 @@ export function createPrismaStructuredImportRepository(options: {
                   uploaderId: input.actorEmployeeId,
                   sourceSystem: "structured_import",
                   sourceMetadata: {
+                    ...(input.dataset === "cost_cards"
+                      ? { enterpriseName: input.enterpriseName! }
+                      : {}),
                     ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {}),
                     ...(historicalSupplement
                       ? { historicalSupplement: { ...historicalSupplement } }
@@ -483,7 +540,7 @@ export function createPrismaStructuredImportRepository(options: {
                       ? { naturalKey: input.naturalKey }
                       : {})
                   },
-                  confidentialityLevel: input.document.confidentialityLevel
+                  confidentialityLevel
                 }
               });
 
@@ -908,7 +965,10 @@ function toImportBatchRecord(
     sourceDocumentConfidentialityLevel: batch.sourceDocument.confidentialityLevel,
     uploaderId: batch.sourceDocument.uploaderId,
     dataset: batch.dataset,
-    status: archived ? "archived" : batch.status,
+    status: archived && batch.dataset !== "cost_cards" ? "archived" : batch.status,
+    ...(batch.dataset === "cost_cards" && batch.status === "applied" && batch.publicationSummary
+      ? { publicationSummary: batch.publicationSummary as unknown as CostCardPublication }
+      : {}),
     startDate: formatDateWindowDate(batch.startDate),
     endDate: formatDateWindowDate(batch.endDate),
     naturalKey: batch.naturalKey,
@@ -918,7 +978,7 @@ function toImportBatchRecord(
     validationErrorsTruncated: batch.validationErrorCount > validationErrors.length,
     totalRowCount: batch.totalRowCount,
     appliedRowCount: batch.appliedRowCount,
-    queryableRowCount: archived ? 0 : batch.appliedRowCount,
+    queryableRowCount: archived || batch.dataset === "cost_cards" ? 0 : batch.appliedRowCount,
     sourceDocumentStatus: batch.sourceDocument.status,
     sourceDocumentFileType: batch.sourceDocument.fileType as Extract<
       Phase3FileType,

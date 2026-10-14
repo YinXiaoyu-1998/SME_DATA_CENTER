@@ -56,6 +56,10 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
     });
   });
   afterAll(async () => {
+    await prisma.processingRun.updateMany({
+      where: { orgId, status: "running" },
+      data: { status: "failed", lockedBy: null, lockedUntil: null }
+    });
     await prisma.$disconnect();
     if (root) await rm(root, { recursive: true, force: true });
   });

@@ -25,7 +25,8 @@ describe("structured field registries", () => {
       "vip",
       "dish_catalog",
       "delivery_ledger",
-      "supplier_catalog"
+      "supplier_catalog",
+      "cost_cards"
     ]);
 
     expect(getStructuredRegistry("delivery_ledger")).toMatchObject({

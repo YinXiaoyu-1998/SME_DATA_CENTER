@@ -28,6 +28,7 @@ import {
   type StructuredIngestionLimits,
   type StructuredParseResult
 } from "@smedc/structured-ingestion";
+import type { createCostCardImporter } from "./cost-card-import.js";
 
 export const PROCESSING_ERROR_CODES = {
   unsupportedFileType: "UNSUPPORTED_FILE_TYPE",
@@ -57,6 +58,8 @@ export interface ClaimedProcessingRun {
   structuredImport?: {
     importBatchId: string;
     dataset: StructuredDatasetName;
+    enterpriseKey?: string;
+    enterpriseName?: string;
     startDate?: string;
     endDate?: string;
   };
@@ -247,6 +250,7 @@ export interface RunWorkerLoopInput {
     }): Promise<"published" | "rejected">;
     cleanupTerminal?(input: { run: ClaimedProcessingRun; storage: StorageAdapter }): Promise<void>;
   };
+  costCardImporter?: ReturnType<typeof createCostCardImporter>;
   structuredIngestionLimits?: StructuredIngestionLimits;
   structuredImportBatchInsertSize?: number;
   workerId?: string;
@@ -269,6 +273,7 @@ export async function runWorkerOnce(input: {
   ledgerJobs?: LedgerWorkerJobs;
   evidenceIndexer?: EvidenceIndexer;
   partitionImporter?: RunWorkerLoopInput["partitionImporter"];
+  costCardImporter?: RunWorkerLoopInput["costCardImporter"];
   structuredIngestionLimits?: StructuredIngestionLimits;
   structuredImportBatchInsertSize?: number;
   workerId?: string;
@@ -424,7 +429,18 @@ export async function runWorkerOnce(input: {
         };
       }
 
-      const content = await readDocumentContent(run.document, input.storage);
+      const costCardSourceLimits =
+        structuredImport.dataset === "cost_cards"
+          ? input.costCardImporter?.sourceLimits
+          : undefined;
+      const content = await readDocumentContent(
+        run.document,
+        input.storage,
+        structuredImport.dataset === "cost_cards"
+          ? (costCardSourceLimits?.maxBytes ?? PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes)
+          : undefined
+      );
+      const ingestionLimits = input.structuredIngestionLimits ?? structuredIngestionLimits();
       const result = await parseStructuredFile({
         dataset: structuredImport.dataset,
         content,
@@ -432,7 +448,15 @@ export async function runWorkerOnce(input: {
         startDate: structuredImport.startDate,
         endDate: structuredImport.endDate,
         fileName: run.document.originalFileName ?? "structured-import",
-        limits: input.structuredIngestionLimits ?? structuredIngestionLimits(),
+        limits: costCardSourceLimits
+          ? {
+              ...ingestionLimits,
+              maxStructuredImportRows: Math.min(
+                ingestionLimits.maxStructuredImportRows,
+                costCardSourceLimits.maxRows
+              )
+            }
+          : ingestionLimits,
         validationMode: "collect"
       });
 
@@ -442,6 +466,32 @@ export async function runWorkerOnce(input: {
           processed: true,
           documentId: run.documentId,
           status: "rejected"
+        };
+      }
+
+      if (structuredImport.dataset === "cost_cards") {
+        if (!input.costCardImporter)
+          throw new ProcessingError(
+            PROCESSING_ERROR_CODES.unsupportedProcessingJobType,
+            "Cost card importer is not configured.",
+            false
+          );
+        const outcome = await input.costCardImporter.process({
+          run,
+          storage: input.storage,
+          result,
+          signal: abortController.signal,
+          now
+        });
+        if (outcome.outcome === "rejected")
+          await input.repository.rejectStructuredImport({
+            ...transition(),
+            result: outcome.result
+          });
+        return {
+          processed: true,
+          documentId: run.documentId,
+          status: outcome.outcome === "published" ? "active" : "rejected"
         };
       }
 
@@ -567,6 +617,7 @@ export async function runWorkerLoop(input: RunWorkerLoopInput): Promise<void> {
             ledgerJobs: input.ledgerJobs,
             signal: input.signal,
             partitionImporter: input.partitionImporter,
+            costCardImporter: input.costCardImporter,
             structuredIngestionLimits: input.structuredIngestionLimits,
             structuredImportBatchInsertSize: input.structuredImportBatchInsertSize,
             workerId,
@@ -809,6 +860,21 @@ export function createPrismaProcessingWorkerRepository(
           structuredImport = {
             importBatchId: batch.id,
             dataset: batch.dataset,
+            ...(batch.dataset === "cost_cards" &&
+            run.document?.sourceMetadata &&
+            typeof run.document.sourceMetadata === "object" &&
+            !Array.isArray(run.document.sourceMetadata)
+              ? {
+                  enterpriseKey:
+                    typeof run.document.sourceMetadata["enterpriseKey"] === "string"
+                      ? run.document.sourceMetadata["enterpriseKey"]
+                      : undefined,
+                  enterpriseName:
+                    typeof run.document.sourceMetadata["enterpriseName"] === "string"
+                      ? run.document.sourceMetadata["enterpriseName"]
+                      : undefined
+                }
+              : {}),
             ...(batch.startDate ? { startDate: formatDateWindow(batch.startDate) } : {}),
             ...(batch.endDate ? { endDate: formatDateWindow(batch.endDate) } : {})
           };
@@ -1478,11 +1544,13 @@ export function createPrismaProcessingWorkerRepository(
 
 async function readDocumentContent(
   document: NonNullable<ClaimedProcessingRun["document"]>,
-  storage: StorageAdapter
+  storage: StorageAdapter,
+  maxBytes?: number
 ): Promise<Buffer> {
   try {
-    return await streamToBuffer(await storage.getObjectStream(document.storageObjectKey));
+    return await streamToBuffer(await storage.getObjectStream(document.storageObjectKey), maxBytes);
   } catch (error) {
+    if (error instanceof ProcessingError) throw error;
     throw new ProcessingError(
       PROCESSING_ERROR_CODES.storageReadFailed,
       error instanceof Error ? error.message : "Unable to read storage object.",
@@ -1491,11 +1559,20 @@ async function readDocumentContent(
   }
 }
 
-async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+async function streamToBuffer(stream: NodeJS.ReadableStream, maxBytes?: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
+  let byteSize = 0;
 
   for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    byteSize += bytes.length;
+    if (maxBytes !== undefined && byteSize > maxBytes)
+      throw new ProcessingError(
+        "COST_CARD_SOURCE_LIMIT_EXCEEDED",
+        "Cost card source exceeds the byte limit.",
+        false
+      );
+    chunks.push(bytes);
   }
 
   return Buffer.concat(chunks);

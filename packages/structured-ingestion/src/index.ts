@@ -133,7 +133,7 @@ export function preflightStructuredFile(input: StructuredFilePreflightInput): vo
 export async function parseStructuredFile(
   input: ParseStructuredFileInput | CostCardFileInput
 ): Promise<StructuredParseResult> {
-  if (input.dataset === "cost_cards") return parseCostCardFile(input);
+  if (input.dataset === "cost_cards") return parseCostCardFile({ ...input, dataset: "cost_cards" });
   const sheetSummary: StructuredSheetSummary[] = [];
   const ignoredSheets: IgnoredStructuredSheet[] = [];
   const rows: StructuredImportRow[] = [];

@@ -174,7 +174,10 @@ integrationRun: try {
       "run",
       "--no-file-parallelism",
       ...(costCardsOnly
-        ? ["packages/db/src/cost-cards.prisma.integration.test.ts"]
+        ? [
+            "packages/db/src/cost-cards.prisma.integration.test.ts",
+            "apps/worker/src/cost-card-import.prisma.integration.test.ts"
+          ]
         : partitionDownloadsOnly
           ? ["packages/db/src/partition-downloads.prisma.integration.test.ts"]
           : ledgerAuthorizationOnly

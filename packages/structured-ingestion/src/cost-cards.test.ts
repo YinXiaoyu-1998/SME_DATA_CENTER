@@ -53,7 +53,10 @@ function row(
   };
 }
 function cells(p: Record<string, unknown>) {
-  return COST_CARD_UPLOAD_SCHEMA.map((f) => p[f.canonicalName] ?? "");
+  return COST_CARD_UPLOAD_SCHEMA.map((f) => {
+    const value = p[f.canonicalName];
+    return typeof value === "boolean" ? value : String(value ?? "");
+  });
 }
 async function workbook(bad?: "missing" | "hidden" | "duplicate" | "unknown") {
   const book = new ExcelJS.Workbook();

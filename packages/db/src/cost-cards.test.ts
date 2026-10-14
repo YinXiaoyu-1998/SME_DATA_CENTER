@@ -8,6 +8,7 @@ describe("cost card publication decisions", () => {
     contentHash: "hash",
     objectKey: "old",
     canonicalizationVersion: 1,
+    csvSchemaVersion: 1,
     archivedAt: null
   };
   it("keeps same content, restores archived cards and fences every baseline field", () => {
