@@ -84,6 +84,37 @@ describe("Prisma structured worker persistence", () => {
     prisma.ledgerPdfPartition.upsert.mockImplementation(async (input) => input.create);
   });
 
+  it("samples the heartbeat lease clock only after its run lock is acquired", async () => {
+    const before = new Date("2026-10-14T00:00:00.000Z");
+    const after = new Date(before.getTime() + 2000);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(before);
+    prisma.$queryRaw.mockImplementationOnce(async () => {
+      vi.setSystemTime(after);
+      return [{ id: "run_1" }];
+    });
+    try {
+      const repository = createPrismaProcessingWorkerRepository("mysql://local/test");
+      expect(
+        await repository.heartbeatProcessingRun!({
+          runId: "run_1",
+          workerId: "worker_1",
+          attemptNumber: 1,
+          leaseSeconds: 60,
+          now: before
+        })
+      ).toBe(true);
+      expect(prisma.processingRun.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ lockedUntil: { gt: after } }),
+          data: { lockedUntil: new Date(after.getTime() + 60000), lastHeartbeatAt: after }
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("claims only matching active evidence reindex jobs without hiding the active document", async () => {
     const activeDocument = {
       id: "doc_evidence",

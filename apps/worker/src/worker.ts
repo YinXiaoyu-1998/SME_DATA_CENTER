@@ -923,14 +923,23 @@ export function createPrismaProcessingWorkerRepository(
       });
     },
     async heartbeatProcessingRun(input) {
-      const result = await prisma.processingRun.updateMany({
-        where: activeLeaseWhere(input, true),
-        data: {
-          lockedUntil: addSeconds(input.now, input.leaseSeconds),
-          lastHeartbeatAt: input.now
-        }
-      });
-      return result.count === 1;
+      return prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw(
+            Prisma.sql`SELECT id FROM processing_runs WHERE id = ${input.runId} FOR UPDATE`
+          );
+          const now = new Date();
+          const result = await tx.processingRun.updateMany({
+            where: activeLeaseWhere({ ...input, now }, true),
+            data: {
+              lockedUntil: addSeconds(now, input.leaseSeconds),
+              lastHeartbeatAt: now
+            }
+          });
+          return result.count === 1;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+      );
     },
     async completePartitionProcessing(input) {
       const result = await prisma.processingRun.updateMany({

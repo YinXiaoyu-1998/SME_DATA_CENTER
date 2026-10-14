@@ -1800,6 +1800,8 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
     "# Lease recovery\n\nOnly the current lease owner may publish.",
     "utf8"
   );
+  const leaseStart = Date.now();
+  const leaseTime = (offset: number) => new Date(leaseStart + offset);
   try {
     const employee = await prisma.employee.findFirst({
       where: { orgId: "default-org", email: "baoli.employee@example.com" }
@@ -1840,20 +1842,20 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
         jobType: ProcessingJobType.evidence_document_index,
         attemptNumber: 0,
         retryCount: 0,
-        availableAt: new Date("2026-07-20T00:00:00.000Z")
+        availableAt: leaseTime(0)
       }
     });
 
     const claimedByA = await repository.claimNextProcessingRun({
       workerId: "worker-a",
       leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:00.000Z")
+      now: leaseTime(0)
     });
     assert(claimedByA?.id === runId, "Worker A must claim the queued run.");
     const claimedByBWhileLeased = await repository.claimNextProcessingRun({
       workerId: "worker-b",
       leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:00.100Z")
+      now: leaseTime(100)
     });
     assert(!claimedByBWhileLeased, "Worker B must not claim an active lease.");
     const heartbeated = await repository.heartbeatProcessingRun?.({
@@ -1861,19 +1863,21 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
       attemptNumber: 1,
       workerId: "worker-a",
       leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:00.500Z")
+      now: leaseTime(500)
     });
     assert(heartbeated === true, "Heartbeat must extend the current lease.");
+    const heartbeatExpiry = (await prisma.processingRun.findUniqueOrThrow({ where: { id: runId } }))
+      .lockedUntil!;
     const claimedBeforeHeartbeatExpiry = await repository.claimNextProcessingRun({
       workerId: "worker-b",
       leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:01.000Z")
+      now: new Date(heartbeatExpiry.getTime() - 1)
     });
     assert(!claimedBeforeHeartbeatExpiry, "Heartbeat must prevent premature lease recovery.");
     const claimedByB = await repository.claimNextProcessingRun({
       workerId: "worker-b",
       leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:01.600Z")
+      now: new Date(heartbeatExpiry.getTime() + 1)
     });
     assert(claimedByB?.id === runId, "Worker B must recover the expired running job.");
 
@@ -1884,7 +1888,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
         attemptNumber: 1,
         documentId,
         workerId: "worker-a",
-        now: new Date("2026-07-20T00:00:01.700Z"),
+        now: new Date(heartbeatExpiry.getTime() + 100),
         result: workerLeaseIndexingResult(),
         chunks: []
       });
@@ -1903,7 +1907,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
       attemptNumber: 2,
       documentId,
       workerId: "worker-b",
-      now: new Date("2026-07-20T00:00:01.700Z"),
+      now: new Date(heartbeatExpiry.getTime() + 100),
       result: workerLeaseIndexingResult(),
       chunks: []
     });
@@ -1914,11 +1918,11 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
         attemptNumber: 1,
         documentId,
         workerId: "worker-a",
-        now: new Date("2026-07-20T00:00:01.800Z"),
+        now: new Date(heartbeatExpiry.getTime() + 200),
         errorCode: "STALE_WORKER",
         errorSummary: "old worker attempted to fail after success",
         willRetry: false,
-        nextAvailableAt: new Date("2026-07-20T00:00:01.800Z")
+        nextAvailableAt: new Date(heartbeatExpiry.getTime() + 200)
       });
     } catch {
       oldWorkerFailRejected = true;

@@ -148,6 +148,10 @@ export async function publishCostCards(
 ): Promise<CostCardPublication> {
   const state = await lockAuthorizationPublication(tx, input.orgId);
   if (state.mode !== "enabled") throw new CostCardPublicationError("AUTHORIZATION_NOT_ENABLED");
+  await tx.$queryRaw(
+    Prisma.sql`SELECT id FROM processing_runs WHERE id = ${input.runId} FOR UPDATE`
+  );
+  const leaseNow = new Date();
   const leased = await tx.processingRun.updateMany({
     where: {
       id: input.runId,
@@ -157,9 +161,9 @@ export async function publishCostCards(
       status: "running",
       lockedBy: input.workerId,
       attemptNumber: input.attemptNumber,
-      lockedUntil: { gt: input.now }
+      lockedUntil: { gt: leaseNow }
     },
-    data: { lastHeartbeatAt: input.now }
+    data: { lastHeartbeatAt: leaseNow }
   });
   if (leased.count !== 1) throw new CostCardPublicationError("PROCESSING_LEASE_LOST");
   await tx.$queryRaw(Prisma.sql`SELECT id FROM organizations WHERE id = ${input.orgId} FOR UPDATE`);

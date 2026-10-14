@@ -711,7 +711,9 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async canDeleteGarbage(input) {
-      return canDeleteStorageGarbage(prisma, input);
+      return prisma.$transaction((tx) => canDeleteStorageGarbage(tx, input), {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
+      });
     },
 
     async deleteGarbage(id) {

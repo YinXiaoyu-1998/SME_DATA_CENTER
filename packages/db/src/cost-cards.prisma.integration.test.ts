@@ -4,13 +4,15 @@ import os from "node:os";
 import path from "node:path";
 import { createReadStream } from "node:fs";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { canReadResource, COST_CARD_UPLOAD_SCHEMA, costCardFromRows } from "@smedc/domain";
 import { exportCostCardCsv } from "@smedc/structured-ingestion";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
+import { createPrismaProcessingWorkerRepository } from "../../../apps/worker/src/worker.js";
 import { createDatabaseAdapter } from "./adapter.js";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
 import { toResourceReadRequirement } from "./business-authorization-records.js";
+import { createPrismaStructuredPartitionRepository } from "./structured-partitions.js";
 import {
   archiveCostCard,
   costCardIdentityKey,
@@ -36,7 +38,7 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
   const actorId = "cost_card_admin";
   let root: string;
   let storage: LocalFileSystemStorageAdapter;
-  const now = new Date("2026-10-14T00:00:00Z");
+  const now = new Date();
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "smedc-cost-cards-"));
     storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });
@@ -132,13 +134,10 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
       where: { objectKey: initial[1]!.objectKey }
     });
     expect(retired.availableAt.getTime()).toBe(now.getTime() + 86400_000);
-    expect(await listDueStorageGarbage(prisma, now, 100)).toEqual([]);
     expect(
-      await canDeleteStorageGarbage(prisma, {
-        ...retired,
-        now: new Date(now.getTime() + 86400_000)
-      })
-    ).toBe(true);
+      (await listDueStorageGarbage(prisma, now, 100)).some((item) => item.id === retired.id)
+    ).toBe(false);
+    expect(await canDelete({ ...retired, now: new Date(now.getTime() + 86400_000) })).toBe(true);
 
     const collision = await prepare([row("unrelated_identity", "sku", "1")]);
     collision.candidates[0]!.id = initial[0]!.id;
@@ -181,9 +180,7 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
     const currentGarbage = await prisma.storageGarbage.findFirstOrThrow({
       where: { objectKey: untouched.objectKey }
     });
-    expect(await canDeleteStorageGarbage(prisma, { ...currentGarbage, now: new Date() })).toBe(
-      false
-    );
+    expect(await canDelete({ ...currentGarbage, now: new Date() })).toBe(false);
     // Old successful request cannot replay publication or restore the archived card.
     await expect(publish(mixed)).rejects.toThrow("PROCESSING_LEASE_LOST");
     const restored = await publish(await prepare([row("spu3", "sku", "4")]));
@@ -214,6 +211,220 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
     expect(await prisma.document.count({ where: { orgId } })).toBeGreaterThan(1);
   });
 
+  it("serializes GC behind in-flight publication after the fenced lease expires", async () => {
+    const input = await prepare([row("gc_forward", "sku", "1")]);
+    const start = new Date();
+    input.now = start;
+    await prisma.processingRun.update({
+      where: { id: input.runId },
+      data: { lockedUntil: new Date(start.getTime() + 1000) }
+    });
+    const candidate = input.candidates[0]!;
+    const garbage = await prisma.storageGarbage.findFirstOrThrow({
+      where: { objectKey: candidate.objectKey! }
+    });
+    const fenced = barrier(),
+      resume = barrier(),
+      gcLockAttempt = barrier(),
+      gcFinished = barrier();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start);
+    const publication = prisma.$transaction(
+      (tx) =>
+        publishCostCards(
+          queryBarrier(tx, (query) => {
+            if (query.sql.includes("FROM organizations")) {
+              fenced.release();
+              return resume.promise;
+            }
+          }),
+          input
+        ),
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 120000 }
+    );
+    let collection: Promise<void> | undefined;
+    try {
+      await fenced.promise;
+      vi.setSystemTime(new Date(start.getTime() + 2000));
+      const gcClient = new Proxy(prisma, {
+        get(target, property) {
+          if (property === "$transaction")
+            return (
+              callback: (tx: Prisma.TransactionClient) => Promise<unknown>,
+              options: unknown
+            ) =>
+              target.$transaction(
+                (tx) =>
+                  callback(
+                    queryBarrier(tx, (query) => {
+                      if (
+                        query.sql.includes("FROM processing_runs") &&
+                        query.sql.includes("FOR UPDATE")
+                      )
+                        gcLockAttempt.release();
+                    })
+                  ),
+                options as { isolationLevel: Prisma.TransactionIsolationLevel }
+              );
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+      });
+      const gc = createPrismaStructuredPartitionRepository({ prisma: gcClient });
+      collection = (async () => {
+        if (
+          await gc.canDeleteGarbage!({
+            id: garbage.id,
+            objectKey: garbage.objectKey,
+            now: new Date()
+          })
+        )
+          await storage.deleteObject(garbage.objectKey);
+        gcFinished.release();
+      })();
+      // Old MVCC guard finishes/deletes; repaired guard reaches the held run lock.
+      await Promise.race([gcFinished.promise, gcLockAttempt.promise]);
+      resume.release();
+      await Promise.all([publication, collection]);
+      const current = await prisma.costCard.findUniqueOrThrow({ where: { id: candidate.id } });
+      expect(current.objectKey).toBe(garbage.objectKey);
+      expect((await storage.headObject(current.objectKey)).state).toBe("found");
+    } finally {
+      resume.release();
+      await publication.catch(() => undefined);
+      await collection?.catch(() => undefined);
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects publication and heartbeat queued behind GC after lease expiry", async () => {
+    const input = await prepare([row("gc_reverse", "sku", "1")]);
+    const start = new Date();
+    input.now = start;
+    const expiry = new Date(start.getTime() + 1000);
+    await prisma.processingRun.update({
+      where: { id: input.runId },
+      data: { lockedUntil: expiry }
+    });
+    const candidate = input.candidates[0]!;
+    const garbage = await prisma.storageGarbage.findFirstOrThrow({
+      where: { objectKey: candidate.objectKey! }
+    });
+    const locked = barrier(),
+      resume = barrier(),
+      publisherWaiting = barrier();
+    const worker = createPrismaProcessingWorkerRepository(process.env["DATABASE_URL"]!);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start);
+    const gcClient = new Proxy(prisma, {
+      get(target, property) {
+        if (property === "$transaction")
+          return (callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: unknown) =>
+            target.$transaction(
+              (tx) =>
+                callback(
+                  queryBarrier(
+                    tx,
+                    () => undefined,
+                    (query) => {
+                      if (
+                        query.sql.includes("FROM storage_garbage") &&
+                        query.sql.includes("FOR UPDATE")
+                      ) {
+                        locked.release();
+                        return resume.promise;
+                      }
+                    }
+                  )
+                ),
+              options as { isolationLevel: Prisma.TransactionIsolationLevel }
+            );
+        const value = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    const gc = createPrismaStructuredPartitionRepository({ prisma: gcClient });
+    const collection = gc.canDeleteGarbage!({ ...garbage, now: start });
+    let publication: Promise<unknown> | undefined;
+    let heartbeat: Promise<boolean> | undefined;
+    try {
+      await locked.promise;
+      publication = prisma
+        .$transaction(
+          (tx) =>
+            publishCostCards(
+              queryBarrier(tx, (query) => {
+                if (query.sql.includes("FROM processing_runs") && query.sql.includes("FOR UPDATE"))
+                  publisherWaiting.release();
+              }),
+              input
+            ),
+          { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+        )
+        .catch((error) => error);
+      heartbeat = worker.heartbeatProcessingRun!({
+        runId: input.runId,
+        attemptNumber: input.attemptNumber,
+        workerId: input.workerId,
+        leaseSeconds: 60,
+        now: start
+      });
+      await publisherWaiting.promise;
+      vi.setSystemTime(new Date(start.getTime() + 2000));
+      resume.release();
+      expect(await collection).toBe(true);
+      await storage.deleteObject(garbage.objectKey);
+      expect(await publication).toMatchObject({ message: "PROCESSING_LEASE_LOST" });
+      expect(await heartbeat).toBe(false);
+      const run = await prisma.processingRun.findUniqueOrThrow({ where: { id: input.runId } });
+      expect(run.lockedUntil).toEqual(expiry);
+      expect(await prisma.costCard.findUnique({ where: { id: candidate.id } })).toBeNull();
+      expect((await storage.headObject(garbage.objectKey)).state).toBe("not_found");
+    } finally {
+      resume.release();
+      await Promise.allSettled([collection, publication, heartbeat]);
+      vi.useRealTimers();
+      await worker.disconnect?.();
+    }
+  });
+
+  it("uses a fresh RC reference read even when its caller already holds an older RR snapshot", async () => {
+    const input = await prepare([row("gc_snapshot", "sku", "1")]);
+    const candidate = input.candidates[0]!;
+    const gc = createPrismaStructuredPartitionRepository({ prisma });
+    await prisma.$transaction(
+      async (oldSnapshot) => {
+        expect(
+          await oldSnapshot.costCard.count({ where: { objectKey: candidate.objectKey! } })
+        ).toBe(0);
+        await publish(input);
+        await archiveCostCardInTransaction(candidate.id);
+        await enqueueStorageGarbage(prisma, {
+          objectKey: candidate.objectKey!,
+          reason: "synthetic_stale_snapshot"
+        });
+        const garbage = await prisma.storageGarbage.findFirstOrThrow({
+          where: { objectKey: candidate.objectKey! }
+        });
+        expect(
+          await oldSnapshot.costCard.count({ where: { objectKey: candidate.objectKey! } })
+        ).toBe(0);
+        expect(await gc.canDeleteGarbage!({ ...garbage, now: new Date() })).toBe(false);
+        expect((await storage.headObject(candidate.objectKey!)).state).toBe("found");
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 120000 }
+    );
+  });
+
+  async function archiveCostCardInTransaction(costCardId: string) {
+    return prisma.$transaction((tx) => archiveCostCard(tx, { orgId, actorId, costCardId }));
+  }
+
+  async function canDelete(input: { id: string; objectKey: string; now: Date }) {
+    return prisma.$transaction((tx) => canDeleteStorageGarbage(tx, input), {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
+    });
+  }
   async function publish(input: CostCardPublishInput) {
     return prisma.$transaction((tx) => publishCostCards(tx, input), {
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
@@ -332,6 +543,33 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
     };
   }
 });
+
+function barrier() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+function queryBarrier(
+  tx: Prisma.TransactionClient,
+  before: (query: Prisma.Sql) => void | Promise<void>,
+  after: (query: Prisma.Sql) => void | Promise<void> = () => undefined
+): Prisma.TransactionClient {
+  return new Proxy(tx, {
+    get(target, property) {
+      if (property === "$queryRaw")
+        return async (query: Prisma.Sql) => {
+          await before(query);
+          const result = await target.$queryRaw(query);
+          await after(query);
+          return result;
+        };
+      const value = Reflect.get(target, property);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
 
 function row(spuId: string, skuId: string, quantity: string) {
   return Object.fromEntries(
