@@ -644,6 +644,8 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       };
     } else if (name === "mergeCell") {
       const range = parseMergeRange(String((tag.attributes as Record<string, string>).ref ?? ""));
+      if (range && state.maxRows !== undefined && range.endRow > state.maxRows)
+        throw validation("XLSX source row limit exceeded.");
       if (range && state.collectMergeRanges) state.mergeRanges.push(range);
     } else if (state.cell) {
       if (name === "f") {
@@ -888,6 +890,7 @@ function worksheetEntryPath(target: string): string {
 export interface XlsxTextOptions {
   /** Used only by exact-decimal datasets; legacy numeric/date rendering is unchanged. */
   preserveNumericText?: boolean;
+  /** Source-coordinate ceiling for sparse row and merged-cell materialization, not item count. */
   maxRows?: number;
 }
 export async function readXlsxRows(

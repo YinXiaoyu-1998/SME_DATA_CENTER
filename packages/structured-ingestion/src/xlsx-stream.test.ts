@@ -224,3 +224,24 @@ test("cost-card raw mode retains true numeric XML and numeric formula caches bef
   const legacy = await readXlsxRows(content, limits);
   expect(legacy[0]!.rows[0]![0]).toBe(String(Number("99999999999999.123456")));
 });
+
+test("source-coordinate safety ceiling also bounds merged ranges", async () => {
+  const { default: JSZip } = await import("jszip");
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet("merges");
+  sheet.getCell("A1").value = "value";
+  sheet.mergeCells("A1:A15");
+  const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer());
+  const entry = zip.file("xl/worksheets/sheet1.xml")!;
+  // Real source rows stay within the bound; only the merge asks the reader to expand past it.
+  zip.file(
+    entry.name,
+    (await entry.async("string")).replace(/<row\b[^>]*>[\s\S]*?<\/row>/g, (row) =>
+      /\br="1"/.test(row) ? row : ""
+    )
+  );
+  const content = await zip.generateAsync({ type: "nodebuffer" });
+  await expect(
+    readXlsxRows(content, limits, { preserveNumericText: true, maxRows: 14 })
+  ).rejects.toThrow("XLSX source row limit exceeded.");
+});

@@ -306,6 +306,29 @@ describe("complete cost card ingestion", () => {
       })
     ).resolves.toMatchObject({ validationErrorCount: 0 });
   });
+  test("blank-separated XLSX item rows retain source coordinates without consuming item limit", async () => {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet("间隔行");
+    sheet.addRow(headers);
+    sheet.getRow(2).values = cells(payload());
+    sheet.getRow(14).values = cells(payload());
+    const input = {
+      dataset: "cost_cards" as const,
+      fileName: "spaced.xlsx",
+      fileType: "xlsx" as const,
+      content: Buffer.from(await book.xlsx.writeBuffer()),
+      limits: { ...limits, maxStructuredImportRows: 2 }
+    };
+    const parsed = await ingestion.parseStructuredFile(input);
+    expect(parsed.rows.map((r) => r.sourceRowNumber)).toEqual([2, 14]);
+    sheet.getRow(16).values = cells(payload());
+    await expect(
+      ingestion.parseStructuredFile({
+        ...input,
+        content: Buffer.from(await book.xlsx.writeBuffer())
+      })
+    ).rejects.toThrow("Cost card item row limit exceeded.");
+  });
   test("blank CSV rows do not consume item limit and preserve source row numbers", async () => {
     const parsed = await ingestion.parseStructuredFile({
       dataset: "cost_cards",

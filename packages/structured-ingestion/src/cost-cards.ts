@@ -95,7 +95,9 @@ export async function parseCostCardFile(input: CostCardFileInput): Promise<Struc
       input.fileType === "xlsx"
         ? await readXlsxRows(input.content, input.limits, {
             preserveNumericText: true,
-            maxRows: rowLimit + 10
+            // Bound sparse row/merge materialization by the XLSX coordinate format,
+            // independently of the item limit enforced after blank rows are ignored.
+            maxRows: 1_048_576
           })
         : [
             {
