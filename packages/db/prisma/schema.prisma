@@ -84,6 +84,7 @@ enum ImportDataset {
   dish_catalog
   delivery_ledger
   supplier_catalog
+  cost_cards
 }
 
 enum ImportBatchStatus {
@@ -166,6 +167,7 @@ model Organization {
   importClaims           ImportWindowClaim[]
   partitionDownloads     PartitionDownloadRequest[]
   partitionImportJobs    PartitionImportJob[]
+  costCards              CostCard[]
   structuredPartitions   StructuredPartition[]
   vipRows                VipRow[]
   dishCatalogRows        DishCatalogRow[]
@@ -245,6 +247,7 @@ model Document {
   processingRuns        ProcessingRun[]
   chunks                DocumentChunk[]
   indexes               DocumentIndex[]
+  costCards             CostCard[]
   importBatch           ImportBatch?
   vipRows               VipRow[]
   dishCatalogRows       DishCatalogRow[]
@@ -392,6 +395,7 @@ model ImportBatch {
   naturalKey           String?              @map("natural_key") @db.VarChar(255)
   appliedAt            DateTime?            @map("applied_at")
   status               ImportBatchStatus    @default(pending)
+  publicationSummary   Json?                @map("publication_summary")
   sourceSheetSummary   Json?                @map("source_sheet_summary")
   validationErrors     Json?                @map("validation_errors")
   validationErrorCount Int                  @default(0) @map("validation_error_count")
@@ -404,12 +408,14 @@ model ImportBatch {
   archivedAt           DateTime?            @map("archived_at")
   organization         Organization         @relation(fields: [orgId], references: [id], onDelete: Restrict)
   sourceDocument       Document             @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  costCards            CostCard[]
   windowClaim          ImportWindowClaim?
   vipRows              VipRow[]
   dishCatalogRows      DishCatalogRow[]
   deliveryLedgerRows   DeliveryLedgerRow[]
   supplierCatalogRows  SupplierCatalogRow[]
 
+  @@unique([orgId, id, sourceDocumentId], map: "uq_import_batches_org_id_document")
   @@unique([orgId, idempotencyKey])
   @@unique([orgId, dataset, naturalKey], map: "import_batches_org_dataset_natural_key_uq")
   @@index([orgId, dataset, status])
@@ -1080,6 +1086,7 @@ enum BusinessCategoryKind {
   evidence
 }
 enum BusinessResourceKind {
+  cost_card
   evidence
   structured
   quarantine_certificate
@@ -1305,4 +1312,43 @@ model BusinessEnterpriseIdentity {
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   @@id([orgId, enterpriseKey])
   @@map("business_enterprise_identities")
+}
+
+model CostCard {
+  id String @id @default(cuid()) @db.VarChar(32)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(191)
+  enterpriseName String @map("enterprise_name") @db.VarChar(255)
+  sourceNamespace String @map("source_namespace") @db.VarChar(128)
+  spuId String @map("spu_id") @db.VarChar(64)
+  skuId String @map("sku_id") @db.VarChar(64)
+  dishName String @map("dish_name") @db.VarChar(512)
+  specificationName String? @map("specification_name") @db.VarChar(255)
+  baseCategoryName String? @map("base_category_name") @db.VarChar(255)
+  salePrice Decimal? @map("sale_price") @db.Decimal(20,6)
+  hasCostCard Boolean @map("has_cost_card")
+  sourceDishDeleted Boolean @map("source_dish_deleted")
+  objectKey String @unique(map: "uq_cost_cards_object") @map("object_key") @db.VarChar(512)
+  checksumSha256 String @map("checksum_sha256") @db.Char(64)
+  byteSize BigInt @map("byte_size") @db.UnsignedBigInt
+  itemRowCount BigInt @map("item_row_count") @db.UnsignedBigInt
+  recipeCount Int @map("recipe_count") @db.UnsignedInt
+  csvSchemaVersion Int @default(1) @map("csv_schema_version") @db.UnsignedSmallInt
+  contentHash String @map("content_hash") @db.Char(64)
+  canonicalizationVersion Int @default(1) @map("canonicalization_version") @db.UnsignedSmallInt
+  sourceDocumentId String @map("source_document_id") @db.VarChar(32)
+  importBatchId String @map("import_batch_id") @db.VarChar(32)
+  revision BigInt @default(1) @db.UnsignedBigInt
+  archivedAt DateTime? @map("archived_at") @db.DateTime(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceDocument Document @relation(fields: [orgId, sourceDocumentId], references: [orgId, id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_cards_source")
+  importBatch ImportBatch @relation(fields: [orgId, importBatchId, sourceDocumentId], references: [orgId, id, sourceDocumentId], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_cards_batch_source")
+  @@unique([orgId, enterpriseKey, sourceNamespace, spuId, skuId], map: "uq_cost_cards_identity")
+  @@index([orgId, enterpriseKey, dishName], map: "idx_cost_cards_name")
+  @@index([orgId, enterpriseKey, sourceNamespace, skuId], map: "idx_cost_cards_sku")
+  @@index([orgId, sourceDocumentId], map: "idx_cost_cards_source")
+  @@index([orgId, importBatchId, sourceDocumentId], map: "idx_cost_cards_batch_source")
+  @@map("cost_cards")
 }
