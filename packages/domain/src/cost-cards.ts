@@ -86,14 +86,14 @@ const COLUMNS = [
   ["物品成本(含税)", "material_cost_tax_included", "recipe", "decimal", true],
   ["其他成本", "other_cost", "recipe", "decimal", true],
   ["目标毛利率", "target_gross_margin_rate", "recipe", "percent", true],
-  ["配方类型", "recipe_type", "recipe", "string", false, 255],
-  ["配方名称", "recipe_name", "recipe", "string", false, 255],
+  ["配方类型", "recipe_type", "recipe", "string", false, 32767],
+  ["配方名称", "recipe_name", "recipe", "string", false, 32767],
   ["合计成本(含税)", "total_cost_tax_included", "recipe", "decimal", true],
   ["成本卡毛利率(含税)", "gross_margin_rate_tax_included", "recipe", "percent", true],
-  ["物品编码", "item_code", "item", "string", false, 64],
-  ["物品名称", "item_name", "item", "string", false, 512],
-  ["规格型号", "item_spec", "item", "string", true, 255],
-  ["成本单位", "cost_unit", "item", "string", false, 255],
+  ["物品编码", "item_code", "item", "string", false, 32767],
+  ["物品名称", "item_name", "item", "string", false, 32767],
+  ["规格型号", "item_spec", "item", "string", true, 32767],
+  ["成本单位", "cost_unit", "item", "string", false, 32767],
   ["净料量", "net_quantity", "item", "decimal", true],
   ["净料率", "yield_rate", "item", "percent", true],
   ["毛料量", "gross_quantity", "item", "decimal", true],
@@ -103,7 +103,7 @@ const COLUMNS = [
   ["是否半成品", "is_semi_finished", "item", "boolean", true],
   ["是否制备", "is_prepared", "item", "boolean", true],
   ["是否辅助单位扣减料", "uses_auxiliary_unit_deduction", "item", "boolean", true],
-  ["基准单位", "base_unit", "item", "string", true, 255],
+  ["基准单位", "base_unit", "item", "string", true, 32767],
   ["基准单位毛料量", "base_gross_quantity", "item", "decimal", true],
   ["替代料", "substitute_material_text", "item", "string", true, 32767],
   ["门店是否可修改", "store_can_modify", "recipe", "boolean", true],
@@ -234,7 +234,7 @@ export function normalizeCostCardValue(field: CostCardUploadField, value: unknow
     return normalizeCostCardDecimal(text, field.type === "percent");
   if (text.length > (field.maxLength ?? 32767))
     throw new Error(`${field.canonicalName} is too long.`);
-  return text;
+  return field.canonicalName === "source_stores_text" ? String(value) : text;
 }
 
 export function costCardStores(text: string | null): string[] {

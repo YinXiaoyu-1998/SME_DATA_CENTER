@@ -197,3 +197,30 @@ describe("xlsx streaming reader", () => {
     );
   });
 });
+
+test("cost-card raw mode retains true numeric XML and numeric formula caches before Number conversion", async () => {
+  const { default: JSZip } = await import("jszip");
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet("numbers");
+  sheet.addRow([1, { formula: "1+1", result: 2 }, 0.82, " 乙店； 甲店 ", 4]);
+  sheet.getCell("C1").numFmt = "0%";
+  const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer());
+  const entry = zip.file("xl/worksheets/sheet1.xml")!;
+  let xml = await entry.async("string");
+  xml = xml
+    .replace("<v>1</v>", "<v>99999999999999.123456</v>")
+    .replace("<v>2</v>", "<v>99999999999999.123456</v>");
+  xml = xml.replace("<v>4</v>", "<v>1.23E-4</v>");
+  zip.file(entry.name, xml);
+  const content = await zip.generateAsync({ type: "nodebuffer" });
+  const exact = await readXlsxRows(content, limits, { preserveNumericText: true });
+  expect(exact[0]!.rows[0]).toEqual([
+    "99999999999999.123456",
+    "99999999999999.123456",
+    "0.82",
+    " 乙店； 甲店 ",
+    "0.000123"
+  ]);
+  const legacy = await readXlsxRows(content, limits);
+  expect(legacy[0]!.rows[0]![0]).toBe(String(Number("99999999999999.123456")));
+});

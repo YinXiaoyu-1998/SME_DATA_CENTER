@@ -17,3 +17,30 @@ describe("partition object keys", () => {
     );
   });
 });
+
+it("cost-card candidate keys are run-owned immutable and reject path segments", async () => {
+  const storage = await import("./object-key.js");
+  const first = storage.createCostCardObjectKey({
+    orgId: "org",
+    runId: "run",
+    attemptNumber: 1,
+    candidateId: "candidate"
+  });
+  expect(first).toBe("cost-cards/org/run/1/candidate.csv");
+  expect(
+    storage.createCostCardObjectKey({
+      orgId: "org",
+      runId: "run",
+      attemptNumber: 2,
+      candidateId: "candidate"
+    })
+  ).not.toBe(first);
+  expect(() =>
+    storage.createCostCardObjectKey({
+      orgId: "../org",
+      runId: "run",
+      attemptNumber: 1,
+      candidateId: "candidate"
+    })
+  ).toThrow(/unsafe/);
+});

@@ -52,3 +52,15 @@ function sanitizeFileName(fileName: string): string {
 
   return safeName || "file";
 }
+
+/** Candidate ID must be fresh for each upload; runs/attempts never overwrite published keys. */
+export function createCostCardObjectKey(input: {
+  orgId: string;
+  runId: string;
+  attemptNumber: number;
+  candidateId: string;
+}): string {
+  if (!Number.isSafeInteger(input.attemptNumber) || input.attemptNumber < 1)
+    throw new Error("attemptNumber must be a positive safe integer.");
+  return `cost-cards/${sanitizeStorageSegment(input.orgId, "orgId")}/${sanitizeStorageSegment(input.runId, "runId")}/${input.attemptNumber}/${sanitizeStorageSegment(input.candidateId, "candidateId")}.csv`;
+}

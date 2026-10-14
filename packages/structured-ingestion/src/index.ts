@@ -1,3 +1,5 @@
+import { parseCostCardFile, type CostCardFileInput } from "./cost-cards.js";
+export * from "./cost-cards.js";
 import { parse as parseCsv } from "csv-parse/sync";
 import { randomUUID } from "node:crypto";
 import {
@@ -129,8 +131,9 @@ export function preflightStructuredFile(input: StructuredFilePreflightInput): vo
 }
 
 export async function parseStructuredFile(
-  input: ParseStructuredFileInput
+  input: ParseStructuredFileInput | CostCardFileInput
 ): Promise<StructuredParseResult> {
+  if (input.dataset === "cost_cards") return parseCostCardFile(input);
   const sheetSummary: StructuredSheetSummary[] = [];
   const ignoredSheets: IgnoredStructuredSheet[] = [];
   const rows: StructuredImportRow[] = [];

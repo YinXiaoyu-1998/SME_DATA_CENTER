@@ -1342,7 +1342,7 @@ model CostCard {
   archivedAt DateTime? @map("archived_at") @db.DateTime(3)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_cards_org")
   sourceDocument Document @relation(fields: [orgId, sourceDocumentId], references: [orgId, id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_cards_source")
   importBatch ImportBatch @relation(fields: [orgId, importBatchId, sourceDocumentId], references: [orgId, id, sourceDocumentId], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_cards_batch_source")
   @@unique([orgId, enterpriseKey, sourceNamespace, spuId, skuId], map: "uq_cost_cards_identity")

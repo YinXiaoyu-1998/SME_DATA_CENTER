@@ -1,6 +1,7 @@
 export { AliyunOssStorageAdapter } from "./aliyun-oss-storage.js";
 export { LocalFileSystemStorageAdapter } from "./local-storage.js";
 export {
+  createCostCardObjectKey,
   createOriginalObjectKey,
   createPartitionObjectKey,
   createPartitionStagingObjectKey
