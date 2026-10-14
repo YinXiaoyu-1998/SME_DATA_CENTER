@@ -108,3 +108,10 @@ expectedVersion、审计、同源 CSRF／Origin 保护。读取配置／GET 不�
 无默认 grant，保留已有类别 ID、级别、账号授权及租户模式。管理员随后用已有类别／集团
 授权界面显式配置；不提供默认全量授权或真实租户自动迁移。配方门店不是权限条件，
 单卡管理和上传不使管理员获得目录／CSV 读取权，管理响应不含正文或签名链接。
+
+候选 UI 的“补齐资料类别 / Add missing categories”按钮先要求保存或处理未保存草稿，再发
+`POST /admin/permissions/:orgId/api/categories/initialize`，携带字符串 expectedVersion、
+`x-csrf-token` 和相同 Origin。对应 bearer 入口为
+`POST /v1/admin/permissions/categories/initialize`；返回字符串 authorizationVersion 与
+`value.createdCount`。当前企业／admin／版本独立校验，GET 保持只读，冲突时重新读取比较，
+不盲目重放。该接口已有 focused route 验证，仍是未发布候选合同，不代表真实企业已补齐。

@@ -40,7 +40,12 @@ describe("SMEDC companion skill guidance", () => {
       "safe asynchronous",
       "Only an `applied` batch",
       "importBatch.publicationSummary",
-      "readable `sourceSheetSummary` remains an array"
+      "readable `sourceSheetSummary` remains an array",
+      'metadataPolicy: "none"',
+      "selection is flat",
+      "retryable 409",
+      "value.createdCount",
+      "saving or resolving unsaved drafts"
     ])
       expect(guide).toContain(invariant);
   });

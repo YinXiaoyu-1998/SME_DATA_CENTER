@@ -40,3 +40,8 @@
 新类别密级初始为 null、没有默认 grant，不改变既有类别／授权／租户模式，也无需重新激活
 已有 enabled 企业。普通 GET／查询不隐式初始化。配方适用门店不形成权限范围；管理权不授予
 目录／CSV 正文读取权。部署、文档更新或类别登记本身不授权真实租户配置、回填或清理。
+
+候选 UI 使用“补齐资料类别 / Add missing categories”，先保存或处理未保存草稿；补齐操作
+提交当前字符串 expectedVersion，返回字符串 authorizationVersion 与 value.createdCount。
+同组织有效管理员、版本、相同 Origin 和 CSRF 保护均适用；GET 只读，冲突先重读比较。
+具体候选 HTTP／浏览器入口见 [API 合同](api-contract.md#tested-candidate-cost-card-endpoints)。

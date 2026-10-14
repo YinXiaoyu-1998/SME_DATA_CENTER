@@ -64,6 +64,10 @@ escaped as data; no synonym or fuzzy identity inference. For the same name, retu
 with enterprise/source/SPU/SKU/specification and preserve ambiguity until the employee's scope
 or evidence identifies a card. Never merge or arbitrarily pick one. Coverage describes the
 current readable directory; source-document archive status does not hide active cards.
+Cost-card coverage uses `accessMode: "catalog_query"`, `metadataPolicy: "none"`, `cardCount`,
+`totalItemRowCount` and `sources[]` grouped by each `sourceDocumentId` + `importBatchId`, with
+per-source card/item-row counts. It includes only currently authorized unarchived directory cards,
+not original input totals. An optional exact `enterpriseName` narrows this readable coverage.
 
 ## Download one complete CSV per card
 
@@ -84,6 +88,10 @@ mean the currently authorized scope. No dates, store selectors, arbitrary API pa
 Explicit IDs must all be active and readable or the entire request fails; condition-based
 selection returns only readable matches, including an explicit zero-card result. Oversized
 selection fails and requires narrower scope; it never silently takes the first N cards.
+The selection is flat, not nested in a `selection` property. Explicit missing/unreadable IDs reject
+the entire request (403); the card-count cap returns 409 without truncating. Changed cards during
+signing return retryable 409, “成本卡已变化，请重新下载”; request a fresh complete download.
+A condition-based zero-card result is a successful empty manifest, not evidence of hidden data.
 
 The launcher consumes short-lived signed URLs internally, validates full card/file counts,
 identity/schema/bytes/SHA-256 and safe local paths, then returns local files and safe metadata.
@@ -128,12 +136,19 @@ rules; archiving an original leaves active card directory/CSV access unchanged.
 Card archive is a current same-organization admin operation; use only the approved discovered
 archive tool and its exact `costCardId`. It hides that card from ordinary directory/CSV access,
 preserves its identity and current object, and does not archive the original. A new upload can
-restore it as described above. Archiving is not hard deletion.
+restore it as described above. Archive accepts only the exact `costCardId`, with no business
+payload, and returns `{costCardId, archived: true, revision}` with a string revision. It is not
+hard deletion. The exact MCP archive tool exposure still requires the coordinated launcher gate;
+do not bypass through HTTP if the approved launcher lacks it.
 
 Existing enabled enterprises must also configure the new category: use the controlled current
 admin configuration initialization write to idempotently register missing `cost_cards`, then set
-its level and explicit group grants through the existing UI/MCP flow. New category starts with
-null level and no default grants; existing categories, grants and tenant mode stay unchanged.
+its level and explicit group grants through the existing UI/MCP flow. In the candidate UI, use
+“补齐资料类别 / Add missing categories” after saving or resolving unsaved drafts. It submits the
+current string `expectedVersion`; success returns string `authorizationVersion` and
+`value.createdCount`. Resolve a version conflict through fresh configuration comparison, never
+blind replay. The browser enforces its same Origin and CSRF token, plus current admin/tenant.
+New category starts with null level and no default grants; existing categories, grants and tenant mode stay unchanged.
 Ordinary GET/query never initializes configuration. Deployment does not authorize real tenant
 changes, backfills or cleanup.
 

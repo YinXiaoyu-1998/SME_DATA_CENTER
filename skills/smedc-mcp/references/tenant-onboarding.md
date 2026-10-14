@@ -23,7 +23,7 @@
 
 用户明确选择 MCP 管理且已获授权时，可用[已发布的管理员 MCP 工具](business-authorization.md#admin-tools)，不要求用户填写 JSON，也不绕过服务端管理授权。先读取现有配置和最新版本、展示具体变化；账号更新是整套 grant 替换，保留未批准删除的条目。跨请求重读版本，冲突先核对，不盲目重试。
 
-服务初始化八个固定类别不等于设置密级、授予 grant 或激活。已有资料缺项用只读准备报告说明；真实回填、账号创建、SQL／SSH／云端操作不属于本 Skill。普通员工不能列出其他账号配置，也不能仅凭企业专属固定 URL 取得管理权限。
+服务初始化固定类别不等于设置密级、授予 grant 或激活。已有资料缺项用只读准备报告说明；真实回填、账号创建、SQL／SSH／云端操作不属于本 Skill。普通员工不能列出其他账号配置，也不能仅凭企业专属固定 URL 取得管理权限。
 
 用户明确选择 MCP 管理时仍可使用现有工具，不强制跳转 UI。仅在明确需要内部记录时读取[内部 JSON 约定](tenant-onboarding-json.md)；内部记录不作为用户交付要求，也不授权后台导入或真实租户切换。
 
@@ -34,6 +34,10 @@
 The cost-card category is release gated; see [cost cards](cost-cards.md). For an already enabled
 enterprise, the current admin explicitly initializes missing fixed categories through the
 controlled versioned write, then configures `cost_cards` level and enterprise group grants.
+Use the candidate UI button “补齐资料类别 / Add missing categories” only after saving or resolving
+unsaved drafts. The write uses current string expectedVersion and returns string
+authorizationVersion plus value.createdCount; a stale version requires rereading/comparison,
+not blind retry. Same-origin/CSRF and current admin/tenant checks apply.
 Initialization is idempotent, leaves old configuration/mode intact, and grants no default read
 access. Recipe stores do not define permissions. Do not infer tenant readiness from discovery
 or silently initialize through ordinary reads. No real configuration changes are authorized by

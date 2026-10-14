@@ -155,6 +155,9 @@ original-file semantics from the core Skill.
 The candidate cost-card flow uses enterprise group-level `cost_cards`, separate from
 recipe applicable stores and source-original access. Existing enabled enterprises use the
 controlled current-admin initialization write to register missing categories idempotently;
-then explicitly set the new category level and grants. Null level/no grants never defaults
-to level zero or full access. Existing categories and mode stay unchanged. See
+then explicitly set the new category level and grants. In the candidate UI, “补齐资料类别 /
+Add missing categories” requires saving or resolving unsaved drafts first. Initialization takes
+current string expectedVersion and returns string authorizationVersion with value.createdCount;
+current admin/tenant, version, same-origin and browser CSRF checks remain mandatory. GET is
+read-only. Null level/no grants never defaults to level zero or full access. Existing categories and mode stay unchanged. See
 [cost-card candidate workflow](cost-cards.md) before upload, lookup, CSV download or archive.

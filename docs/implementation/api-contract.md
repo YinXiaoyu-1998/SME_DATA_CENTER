@@ -359,3 +359,31 @@ rechecked against current content access. Exact inserted/updated/unchanged/resto
 input cards; changed-field details cap
 at 100 entries / 32 KiB with changesTruncated and contain no values/links. Failure/queued is not
 publication success; a later directory cannot recreate an earlier summary.
+
+### Tested candidate cost-card endpoints
+
+These interfaces are candidate contracts with focused route tests, not evidence of launcher
+publication, actual service rollout, real tenant setup or final coordinated acceptance.
+
+| Method | Route                                         | Input / result                                                   |
+| ------ | --------------------------------------------- | ---------------------------------------------------------------- |
+| POST   | `/v1/cost-cards/manifest`                     | Flat CostCardSelection body; authorized manifest                 |
+| POST   | `/v1/cost-cards/:costCardId/archive`          | No body; `{costCardId,archived:true,revision:string}`            |
+| GET    | `/v1/structured/datasets/cost_cards/coverage` | Optional exact enterpriseName query; readable directory coverage |
+
+Manifest explicit missing/unreadable IDs return 403 for the whole request. A selection over the
+card cap returns 409 without truncation. Signing changes return retryable 409 with exact message
+“成本卡已变化，请重新下载”. Condition-based zero-card selection returns an empty successful manifest.
+Coverage returns `{dataset:"cost_cards",accessMode:"catalog_query",metadataPolicy:"none",cardCount,
+totalItemRowCount,sources:[{sourceDocumentId,importBatchId,cardCount,totalItemRowCount}]}`; counts
+include only currently authorized unarchived directory cards. No original-active/input-row proxy
+or hidden-card inference. Source IDs still confer no original-read permission.
+
+Candidate category initialization is `POST /v1/admin/permissions/categories/initialize` with
+`{expectedVersion:string}` and result `{authorizationVersion:string,value:{createdCount:number}}`.
+The current admin/tenant/version-checked write is idempotent and leaves levels/grants/mode intact.
+Browser counterpart `/admin/permissions/:orgId/api/categories/initialize` requires the same
+Origin and `x-csrf-token`, plus the shared browser session and same organization/current admin.
+GET remains read-only. UI “补齐资料类别 / Add missing categories” requires saving or resolving
+unsaved drafts first; missing cost_cards starts with null level and no grants. The operator must
+then explicitly configure its level and authorized group scope; no autoactivation or real migration.

@@ -261,3 +261,12 @@ whole-batch expiry retry, current permissions and exact decimal behavior. Updati
 support does not resolve the separate evidence-category prerequisite for the full official runner,
 prove live service readiness, or authorize the full suite. Historical acceptance reports remain
 historical; record final readiness once after all coordinated gates.
+
+候选接口核对：manifest 为 flat CostCardSelection（非 selection 包裹）；显式缺失／越权 ID
+整次 403、数量超限 409 不截断、签名期间变化为 retryable 409“成本卡已变化，请重新下载”，
+条件零卡是空 manifest。归档端点无业务 body，响应保留 string revision；员工仍走已验证的
+launcher 工具，不为缺少 MCP 接线改用 HTTP。coverage 只统计当前受权未归档目录，按逐卡
+sourceDocumentId/importBatchId 分组保留来源计数，原件归档不影响这份目录统计。新增类别
+通过候选“补齐资料类别 / Add missing categories”按钮受控补齐，先处理草稿，以当前版本
+和 same Origin／CSRF 写入；验证新 cost_cards 为 null 密级、无 grants、原配置／模式不变。
+该步骤限已明确授权的合成租户，不能据此更改真实企业。

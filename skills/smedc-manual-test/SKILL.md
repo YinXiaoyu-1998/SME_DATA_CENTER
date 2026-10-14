@@ -235,3 +235,11 @@ Run-scoped cleanup inventories current/archived card object keys plus StorageGar
 removes cost_card resources and directory before restrictive source batches/documents, preserves
 unrelated group cards/config/accounts and verifies exact keys/counts. Full suite, real cleanup,
 staging and tenant actions always retain their separate authorization boundaries.
+
+Tested candidate route details are in api-contract.md: flat manifest selection; explicit IDs
+all-or-error 403; count cap 409 without truncation; signing change retryable 409 “成本卡已变化，请重新下载”;
+condition zero-card success; archive with no business body and string revision. Coverage counts
+only currently readable active directory cards and groups sources by sourceDocumentId/importBatchId.
+For a separately authorized synthetic enabled enterprise, exercise “补齐资料类别 / Add missing categories”
+after saving/resolving drafts, current version and same-origin/CSRF checks; GET never initializes.
+MCP exposure/publication remains a separate launcher gate; do not bypass missing tools with HTTP.
