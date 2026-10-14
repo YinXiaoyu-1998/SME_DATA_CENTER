@@ -58,6 +58,10 @@ CSV/XLSX 校验有文件、ZIP 条目/解压/压缩比、sheet、行、列、单
 
 原件读取按该文件成功解析出的全部资源要求，不以调用者当前可见子集代替全件范围。源数据普通读取先授权，再筛选、聚合、计数和分页；原始台账内部材料例外不开放。
 
+`delivery_ledger` 新单据发布时，worker 在企业来源变更锁内读取该企业的 `shelf_life_catalog_entries`，按完整 `item_name` 精确匹配，将字符串保质期写入行的 `shelf_life`，未命中为 null。大小写、全半角及首尾空格均不归一化；保质期是发布时快照，更新目录不修改历史台账。目录以 `(org_id,item_name)` 唯一，名称列使用 MySQL binary NO PAD collation。
+
+保质期目录目前仅支持[内部运维 CSV 合并](ledger-pdf-operations.md#企业保质期目录)，无员工上传、HTTP 或 MCP 管理入口。共享 domain 校验和 DB 事务更新独立于 CSV/CLI，未来经授权的企业上传处理器可复用并在同一事务写入员工审计；未提供的品名不会被删除。
+
 business/dishes 的上传/发布/替换规则独立见 [当前经营分区](structured-partitions.md)。
 
 ## Worker 和发布

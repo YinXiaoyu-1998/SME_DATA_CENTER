@@ -14,6 +14,7 @@ const prisma = vi.hoisted(() => ({
   vipRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   dishCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   deliveryLedgerRow: { deleteMany: vi.fn(), createMany: vi.fn() },
+  shelfLifeCatalogEntry: { findMany: vi.fn() },
   supplierCatalogRow: { deleteMany: vi.fn(), createMany: vi.fn() },
   businessAuthorizationState: { upsert: vi.fn() },
   businessCategory: { findUnique: vi.fn() },
@@ -73,6 +74,7 @@ describe("Prisma structured worker persistence", () => {
     prisma.dishCatalogRow.createMany.mockResolvedValue({ count: 1 });
     prisma.deliveryLedgerRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.deliveryLedgerRow.createMany.mockResolvedValue({ count: 1 });
+    prisma.shelfLifeCatalogEntry.findMany.mockResolvedValue([]);
     prisma.supplierCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.supplierCatalogRow.createMany.mockResolvedValue({ count: 1 });
     prisma.vipRow.deleteMany.mockResolvedValue({ count: 0 });
@@ -293,7 +295,8 @@ describe("Prisma structured worker persistence", () => {
             receipt_id: "SH-1",
             item_name: "Rice",
             store_name: "Synthetic",
-            purchase_date: "2026-08-19"
+            purchase_date: "2026-08-19",
+            shelf_life: null
           }
         }
       ]

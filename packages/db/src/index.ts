@@ -1,4 +1,5 @@
 export const dbWorkspaceName = "@smedc/db";
+export * from "./shelf-life-catalog.js";
 export { createDatabaseAdapter } from "./adapter.js";
 export {
   databaseErrorDetails,

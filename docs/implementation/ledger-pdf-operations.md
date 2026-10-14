@@ -53,6 +53,21 @@ node dist/release/ledger-pdf.js retry-failed --org-id ORG --request-id REQUEST -
 
 Dry-run 不写数据库、不上传、不渲染。`refresh` dry-run 检查所选范围全部分区的来源指纹和 OSS HEAD，逐项输出 `needsRepair`，汇总健康、异常和检查失败数量；不依赖每日更新标记，可发现未标记历史对象丢失、源数据变化及无索引台账。检查失败返回非零且不当作对象缺失。`refresh --execute` 保持全量重建所选范围的行为。执行前必须明确企业 scope、目标环境、授权运维 actor 与同一预览范围。相同操作键绑定相同范围，参数变化会冲突。内部枚举中断后用同一 request-key 重启原命令；枚举未完成的请求保持非终态，即使此前页面已全部生成。中断 `--wait` 不取消已提交任务；随后用 `status --wait` 继续。失败/部分失败返回 1，中断等待返回 130。
 
+## 企业保质期目录
+
+先通过正式发布执行 `shelf_life_catalog` 迁移，再使用 release-ops 内 `shelf-life-catalog.js`。不新增环境变量。输入为 UTF-8 CSV（可带 BOM），严格两列 `物品名,保质期`，最多 10000 行、2 MiB，品名/保质期分别最多 512/255 字符。字符串原样保存，不推测单位；相同品名同值去重，同名冲突拒绝全次导入。
+
+```bash
+# 默认预览：核对环境、企业 ID/精确名称和 inserted/updated/unchanged/changes
+node dist/release/shelf-life-catalog.js --org-id ORG --org-name '企业全名' --input /work/catalog.csv --dry-run --allow-remote
+# 同一份文件确认后执行，按品名合并，不删除文件未提供的记录
+node dist/release/shelf-life-catalog.js --org-id ORG --org-name '企业全名' --input /work/catalog.csv --execute --operator 'authorized-operator' --allow-remote
+```
+
+导入目录和 before/after 审计在同一事务；重复执行同值不新增变更或审计。新进货单在发布时自动填入企业目录精确命中值，未命中留空。目录更新不回写历史台账、不增加历史 PDF revision 或提交生成任务。若获授权修复历史，另用 `ledger:shelf-life` JSON 运维入口；不要把两个操作混同。真实 CSV 不得提交版本库，执行后按运行范围清理临时文件。
+
+本地验证：`MYSQL_PORT=3307 RUN_SHELF_LIFE_CATALOG_INTEGRATION=1 npm test -- scripts/shelf-life-catalog.integration.test.ts`，测试自行创建、迁移并删除独立 loopback schema，覆盖企业隔离、原生精确匹配、事务回滚和 worker 发布快照。
+
 ## 停机恢复、巡检与清理
 
 Worker 启动时与每分钟维护时安排每日任务、清理已结束 lease 的临时目录并登记过期 ZIP。长维护周期不重叠；关机等待进行中的维护完成后断开数据库。心跳丢失或退出信号中止转换，过期租约由后续 worker 重新认领。生成与 ZIP handler 自行完成带 attempt/owner 的 fenced 状态修改，通用 worker 不重复完成任务。

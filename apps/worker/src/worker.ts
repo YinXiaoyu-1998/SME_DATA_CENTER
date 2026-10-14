@@ -1,6 +1,7 @@
 import {
   persistStructuredSourceReadRequirements,
-  activateEvidenceReadRequirement
+  activateEvidenceReadRequirement,
+  lookupShelfLives
 } from "@smedc/db";
 import { createPrismaPartitionDownloadRepository } from "@smedc/db";
 import {
@@ -1108,14 +1109,25 @@ export function createPrismaProcessingWorkerRepository(
             input.batchInsertSize
           );
         } else if (batch.dataset === ImportDataset.delivery_ledger) {
-          await tx.deliveryLedgerRow.deleteMany({ where: { importBatchId: batch.id } });
-          await insertStructuredRows(
+          const shelfLives = await lookupShelfLives(
             tx,
-            "delivery_ledger",
-            batch,
-            input.result.rows,
-            input.batchInsertSize
+            run.orgId,
+            input.result.rows.flatMap((row) =>
+              typeof row.payload["item_name"] === "string" ? [row.payload["item_name"]] : []
+            )
           );
+          const rows = input.result.rows.map((row) => ({
+            ...row,
+            payload: {
+              ...row.payload,
+              shelf_life:
+                typeof row.payload["item_name"] === "string"
+                  ? (shelfLives.get(row.payload["item_name"]) ?? null)
+                  : null
+            }
+          }));
+          await tx.deliveryLedgerRow.deleteMany({ where: { importBatchId: batch.id } });
+          await insertStructuredRows(tx, "delivery_ledger", batch, rows, input.batchInsertSize);
         } else if (batch.dataset === ImportDataset.supplier_catalog) {
           await tx.supplierCatalogRow.deleteMany({ where: { importBatchId: batch.id } });
           await insertStructuredRows(

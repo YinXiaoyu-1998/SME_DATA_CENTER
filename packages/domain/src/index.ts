@@ -1,4 +1,5 @@
 export const domainWorkspaceName = "@smedc/domain";
+export * from "./shelf-life.js";
 export {
   FILE_UPLOAD_ADMIN_REQUIRED_CODE,
   FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
