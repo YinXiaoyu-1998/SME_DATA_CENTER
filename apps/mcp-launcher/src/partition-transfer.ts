@@ -8,7 +8,7 @@ import { Readable, Transform } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 const UPLOAD_CONCURRENCY = 4;
-const DOWNLOAD_CONCURRENCY = 6;
+export const DOWNLOAD_CONCURRENCY = 6;
 const EXTRACT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface PartitionTransferContext {
@@ -445,7 +445,7 @@ export async function downloadVerified(
   });
 }
 
-class PartitionDownloadError extends Error {
+export class PartitionDownloadError extends Error {
   constructor(readonly status: number) {
     super(`Partition download failed with ${status}.`);
     this.name = "PartitionDownloadError";
@@ -458,7 +458,7 @@ async function hashFile(filePath: string, signal?: AbortSignal): Promise<string>
   return hash.digest("hex");
 }
 
-async function mapConcurrent<T, R>(
+export async function mapConcurrent<T, R>(
   context: PartitionTransferContext,
   items: T[],
   concurrency: number,
