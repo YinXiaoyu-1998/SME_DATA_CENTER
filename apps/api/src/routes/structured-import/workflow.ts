@@ -348,7 +348,9 @@ function structuredImportResponse(input: {
       documentKind: "structured",
       fileType: input.document.fileType,
       status: input.document.status,
-      storageObjectKey: input.document.storageObjectKey,
+      ...(input.importBatch.dataset === "cost_cards"
+        ? {}
+        : { storageObjectKey: input.document.storageObjectKey }),
       originalFileName: input.document.originalFileName
     },
     processing: {
@@ -390,7 +392,11 @@ export function structuredImportProgressResponse(importBatch: StructuredImportBa
       importBatchId: importBatch.id,
       sourceDocumentId: importBatch.sourceDocumentId,
       status: importBatch.status,
-      hasValidationErrors: importBatch.validationErrorCount > 0
+      hasValidationErrors: importBatch.validationErrorCount > 0,
+      ...(importBatch.dataset === "cost_cards" &&
+      ["failed", "rejected"].includes(importBatch.status)
+        ? { errorCode: importBatch.errorCode ?? null }
+        : {})
     }
   };
 }
@@ -405,6 +411,9 @@ export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
     sourceDocumentId: importBatch.sourceDocumentId,
     dataset: importBatch.dataset,
     status: importBatch.status,
+    ...(importBatch.dataset === "cost_cards" && ["failed", "rejected"].includes(importBatch.status)
+      ? { errorCode: importBatch.errorCode ?? null }
+      : {}),
     sourceSheetSummary: importBatch.sourceSheetSummary,
     validationErrors: importBatch.validationErrors,
     validationErrorCount: importBatch.validationErrorCount,

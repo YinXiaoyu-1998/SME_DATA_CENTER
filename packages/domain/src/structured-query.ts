@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { getPublicStructuredRegistry } from "./structured-ledger-policy.js";
 import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
+import { compileCostCardQuery } from "./cost-card-query.js";
 import { PHASE3_ERROR_CODES, type Phase3ErrorCode } from "./retrieval-contracts.js";
 import {
   STRUCTURED_DATASETS,
@@ -158,6 +159,8 @@ const PAGE_KEYS = new Set(["limit", "cursor"]);
 export function compileStructuredQuery(
   input: CompileStructuredQueryInput
 ): StructuredCompiledQuery {
+  if ((input.query as { dataset?: unknown } | null)?.dataset === "cost_cards")
+    return compileCostCardQuery(input);
   const query = normalizeQuery(input.query);
   return compileNormalizedQuery(input, query, getStructuredRegistry(query.dataset));
 }
@@ -166,6 +169,8 @@ export function compileStructuredQuery(
 export function compilePublicStructuredQuery(
   input: CompileStructuredQueryInput & { ledgerPdfDeliveryEnabled?: boolean }
 ): StructuredCompiledQuery {
+  if ((input.query as { dataset?: unknown } | null)?.dataset === "cost_cards")
+    return compileCostCardQuery(input);
   const query = normalizeQuery(input.query);
   if (query.dataset === "delivery_ledger") {
     throw new StructuredQueryValidationError(
@@ -367,7 +372,10 @@ export function decodeStructuredCursor(input: {
   return { offset: payload.offset };
 }
 
-function normalizeQuery(input: unknown): NormalizedQuery {
+function normalizeQuery(
+  input: unknown,
+  overrideRegistry?: StructuredDatasetRegistry
+): NormalizedQuery {
   const object = requirePlainObject(input, "Query body must be an object.");
   rejectUnknownKeys(object, TOP_LEVEL_KEYS);
 
@@ -383,7 +391,7 @@ function normalizeQuery(input: unknown): NormalizedQuery {
     );
   }
 
-  const registry = getStructuredRegistry(dataset as StructuredDatasetName);
+  const registry = overrideRegistry ?? getStructuredRegistry(dataset as StructuredDatasetName);
   if (registry.accessMode === "partition_extract") {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.datasetRequiresPartitionExtract,
@@ -424,6 +432,23 @@ function normalizeQuery(input: unknown): NormalizedQuery {
     groupBy,
     aggregates
   };
+}
+
+/** Share request/selection/sort/cursor boundaries without imposing row-payload storage. */
+export function normalizeStructuredDirectoryQuery(
+  input: unknown,
+  registry: StructuredDatasetRegistry
+): NormalizedQuery {
+  const query = normalizeQuery(input, registry);
+  if (query.dataset !== registry.dataset || query.groupBy.length || query.aggregates.length)
+    throw new StructuredQueryValidationError(
+      PHASE3_ERROR_CODES.unsupportedCapability,
+      "This dataset supports directory detail queries only."
+    );
+  const fields = new Map(registry.fields.map((field) => [field.canonicalName, field]));
+  validateSelectedFields(query, fields, "detail");
+  validateSort(query, fields, "detail");
+  return query;
 }
 
 function rejectUnknownKeys(object: Record<string, unknown>, allowedKeys: Set<string>) {

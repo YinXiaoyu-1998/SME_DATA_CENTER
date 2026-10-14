@@ -23,7 +23,10 @@ export const AUTHORIZATION_READ_ADAPTERS = [
   "quarantine_certificate",
   "ledger_pdf",
   "ledger_download",
-  "document_lifecycle"
+  "document_lifecycle",
+  "cost_card_catalog",
+  "cost_card_download",
+  "cost_card_lifecycle"
 ] as const;
 export interface CutoverIssue {
   code: string;
@@ -41,6 +44,7 @@ export interface CutoverInventory {
   }>;
   documents: Array<{ id: string; kind: string | null; dataset: string | null }>;
   partitions: string[];
+  costCards: Array<{ id: string; enterpriseKey: string; archived: boolean }>;
   pdfs: string[];
   accounts: Array<{ id: string; grants: BusinessGrant[] }>;
   stores: Array<{ enterpriseKey: string; name: string }>;
@@ -59,6 +63,7 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
   const documentResources = new Map<string, CutoverInventory["resources"]>();
   const partitions = new Set<string>();
   const pdfs = new Set<string>();
+  const costCards = new Map<string, CutoverInventory["resources"][number]>();
   for (const resource of inventory.resources) {
     if (resource.kind === "source_fragment" && resource.sourceDocumentId !== null) {
       const matches = sourceFragments.get(resource.sourceDocumentId) ?? [];
@@ -73,6 +78,7 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
     }
     if (resource.kind === "structured") partitions.add(resource.resourceKey);
     if (resource.kind === "ledger_pdf") pdfs.add(resource.resourceKey);
+    if (resource.kind === "cost_card") costCards.set(resource.resourceKey, resource);
   }
   const missing: CutoverIssue[] = [];
   const add = (code: string, targetId: string) => missing.push({ code, targetId });
@@ -104,6 +110,8 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
       (resource.kind === "evidence" && category?.kind !== "evidence") ||
       (["quarantine_certificate", "ledger_pdf"].includes(resource.kind) &&
         category?.key !== resource.kind) ||
+      (resource.kind === "cost_card" &&
+        (category?.key !== "cost_cards" || category.kind !== "fixed")) ||
       (["structured", "source_fragment"].includes(resource.kind) && category?.kind !== "fixed")
     )
       add("RESOURCE_CATEGORY_MISMATCH", resource.id);
@@ -139,6 +147,18 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
   }
   for (const id of inventory.partitions)
     if (!partitions.has(`partition:${id}`)) add("PARTITION_ATTRIBUTES_REQUIRED", id);
+  for (const card of inventory.costCards) {
+    const resource = costCards.get(`cost-card:${card.id}`);
+    const scope = resource?.requirement.scopes[0];
+    if (
+      !resource ||
+      resource.requirement.scopes.length !== 1 ||
+      scope?.ownership !== "group" ||
+      scope.enterpriseKey !== card.enterpriseKey ||
+      resource.requirement.valid === card.archived
+    )
+      add("COST_CARD_ATTRIBUTES_REQUIRED", card.id);
+  }
   for (const id of inventory.pdfs) if (!pdfs.has(id)) add("PDF_ATTRIBUTES_REQUIRED", id);
   for (const account of inventory.accounts)
     for (const grant of account.grants) {
@@ -197,6 +217,16 @@ export function createAuthorizationCutoverService(
         partitions: (
           await tx.structuredPartition.findMany({ where: { orgId }, select: { id: true } })
         ).map((p) => p.id),
+        costCards: (
+          await tx.costCard.findMany({
+            where: { orgId },
+            select: { id: true, enterpriseKey: true, archivedAt: true }
+          })
+        ).map((card) => ({
+          id: card.id,
+          enterpriseKey: card.enterpriseKey,
+          archived: card.archivedAt !== null
+        })),
         pdfs: (
           await tx.ledgerPdfPartition.findMany({
             where: { orgId, currentObjectKey: { not: null } },

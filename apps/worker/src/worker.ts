@@ -1774,10 +1774,15 @@ async function insertStructuredRows(
   }
 }
 
-function persistedSourceSheetSummary(
+export function persistedSourceSheetSummary(
   dataset: ImportDataset,
   result: Pick<StructuredParseResult, "sheetSummary" | "ignoredSheets">
 ): Prisma.InputJsonValue {
+  if (dataset === ImportDataset.cost_cards)
+    return [
+      ...result.sheetSummary,
+      ...result.ignoredSheets.map((sheet) => ({ ...sheet, status: "ignored" }))
+    ] as unknown as Prisma.InputJsonValue;
   if (dataset !== ImportDataset.dish_catalog) {
     return result.sheetSummary as unknown as Prisma.InputJsonValue;
   }

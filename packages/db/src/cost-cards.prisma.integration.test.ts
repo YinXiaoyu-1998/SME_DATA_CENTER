@@ -140,6 +140,10 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
       })
     ).toBe(true);
 
+    const collision = await prepare([row("unrelated_identity", "sku", "1")]);
+    collision.candidates[0]!.id = initial[0]!.id;
+    await expect(publish(collision)).rejects.toThrow();
+    expect(await prisma.costCard.findUnique({ where: { id: initial[0]!.id } })).toEqual(initial[0]);
     const stale = await prepare([row("spu2", "sku", "5"), row("spu3", "sku", "6")]);
     await publish(await prepare([row("spu2", "sku", "7")]));
     await expect(publish(stale)).rejects.toThrow("COST_CARD_BASELINE_STALE");
@@ -294,7 +298,7 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
       const objectKey =
         costCardOperation(baseline, card.contentHash, card.canonicalizationVersion) === "unchanged"
           ? null
-          : `cost-cards/${orgId}/${runId}/${id}.csv`;
+          : `cost-cards/${orgId}/${runId}/1/${id}.csv`;
       if (objectKey) {
         await enqueueStorageGarbage(prisma, {
           objectKey,

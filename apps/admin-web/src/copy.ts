@@ -81,8 +81,17 @@ export const permissionsCopy = {
     en: "Every level from 0 to 3 requires an explicit business grant. Level 0 is not public; administrators also need grants for ordinary reads."
   },
   fixedHelp: {
-    zh: "七个可读取的固定类别各自配置密级，未配置项不会自动设为 0。",
-    en: "Configure each of the seven readable fixed category levels. Unset levels are never defaulted to 0."
+    zh: "各可读取的固定类别分别配置密级，未配置项不会自动设为 0。",
+    en: "Configure every readable fixed category level. Unset levels are never defaulted to 0."
+  },
+  initializeCategories: { zh: "补齐资料类别", en: "Add missing categories" },
+  initializeCategoriesHelp: {
+    zh: "补齐服务已支持的资料类别。新增类别的密级保持未配置；请随后设置密级和账号授权。",
+    en: "Add supported categories that are missing. New levels stay unset; configure their levels and account grants afterward."
+  },
+  initializeDrafts: {
+    zh: "请先保存或处理未保存的草稿，再补齐资料类别。",
+    en: "Save or resolve unsaved drafts before adding missing categories."
   },
   internalLedger: {
     zh: "原始配送台账仅供内部处理，不提供原始明细、汇总或原件读取。",
@@ -96,6 +105,7 @@ export const permissionsCopy = {
   vip: { zh: "会员资料", en: "Member data" },
   dish_catalog: { zh: "菜品目录", en: "Dish catalog" },
   supplier_catalog: { zh: "供应商目录", en: "Supplier catalog" },
+  cost_cards: { zh: "成本卡", en: "Cost cards" },
   name: { zh: "名称", en: "Name" },
   retired: { zh: "已停用", en: "Retired" },
   retire: {
@@ -264,6 +274,10 @@ export const permissionsCopy = {
   PARTITION_ATTRIBUTES_REQUIRED: {
     zh: "结构化资料属性缺失，请联系运维核对",
     en: "Structured material attributes are missing; contact your operator"
+  },
+  COST_CARD_ATTRIBUTES_REQUIRED: {
+    zh: "成本卡权限属性缺失，请联系运维核对",
+    en: "Cost card permission attributes are missing; contact your operator"
   },
   PDF_ATTRIBUTES_REQUIRED: {
     zh: "台账 PDF 属性缺失，请联系运维核对",

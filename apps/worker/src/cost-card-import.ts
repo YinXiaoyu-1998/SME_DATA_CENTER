@@ -28,7 +28,7 @@ import {
   type CostCardCsvExport,
   type StructuredParseResult
 } from "@smedc/structured-ingestion";
-import type { ClaimedProcessingRun } from "./worker.js";
+import { persistedSourceSheetSummary, type ClaimedProcessingRun } from "./worker.js";
 import type { PartitionImportRuntimeLimits } from "./partition-import.js";
 
 export interface CostCardPrepareInput {
@@ -57,9 +57,11 @@ export async function prepareCostCardPublication(
     input.objectUploadConcurrency > 8
   )
     throw new CostCardPublicationError("COST_CARD_CONCURRENCY_INVALID");
-  const sorted = [...input.exported.cards].sort((a, b) =>
-    costCardIdentityKey(a.identity).localeCompare(costCardIdentityKey(b.identity))
-  );
+  const sorted = [...input.exported.cards].sort((a, b) => {
+    const left = costCardIdentityKey(a.identity),
+      right = costCardIdentityKey(b.identity);
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
   const baselines = await input.repository.readBaselines(
     input.orgId,
     sorted.map((card) => card.identity)
@@ -309,7 +311,7 @@ export function createCostCardImporter(input: {
           workerId: run.lockedBy,
           attemptNumber: run.attemptNumber,
           now: now(),
-          sourceSheetSummary: result.sheetSummary.map((sheet) => ({ ...sheet }))
+          sourceSheetSummary: persistedSourceSheetSummary("cost_cards", result)
         });
         return { outcome: "published" as const, publication };
       } finally {

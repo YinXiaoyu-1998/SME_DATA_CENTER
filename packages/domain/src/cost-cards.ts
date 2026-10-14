@@ -381,3 +381,16 @@ export interface CostCardManifest {
 export type LocalCostCardManifest = Omit<CostCardManifest, "cards"> & {
   cards: Omit<CostCardManifestEntry, "presignedDownloadUrl">[];
 };
+export interface CostCardCoverage {
+  dataset: "cost_cards";
+  accessMode: "catalog_query";
+  metadataPolicy: "none";
+  cardCount: number;
+  totalItemRowCount: number;
+  sources: Array<{
+    sourceDocumentId: string;
+    importBatchId: string;
+    cardCount: number;
+    totalItemRowCount: number;
+  }>;
+}

@@ -96,26 +96,36 @@ suite("cost card API to worker publication", () => {
     const original = csv(firstRows);
     expect((await upload(original, "missing-category")).statusCode).toBe(400);
     expect(await prisma.document.count({ where: { orgId } })).toBe(0);
-    await authorization.initializeFixedCategories({
-      orgId,
-      actorId: adminId,
-      expectedVersion: "1"
+    const initialized = await app.inject({
+      method: "POST",
+      url: "/v1/admin/permissions/categories/initialize",
+      headers: { authorization: `Bearer ${adminId}` },
+      payload: { expectedVersion: "1" }
+    });
+    expect(initialized.statusCode).toBe(200);
+    expect(initialized.json()).toMatchObject({
+      authorizationVersion: "2",
+      value: { createdCount: 9 }
     });
     const category = await prisma.businessCategory.findUniqueOrThrow({
       where: { orgId_key: { orgId, key: "cost_cards" } }
     });
     categoryId = category.id;
     expect((await upload(original, "unconfigured-category")).statusCode).toBe(400);
-    await authorization.configureCategory({
-      ...(await context()),
-      id: categoryId,
-      key: "cost_cards",
-      name: "cost_cards",
-      kind: "fixed",
-      confidentialityLevel: 2,
-      ownerships: ["group"],
-      requiredDimensionIds: []
-    });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/v1/admin/permissions/categories/${categoryId}`,
+          headers: { authorization: `Bearer ${adminId}` },
+          payload: {
+            expectedVersion: (await context()).expectedVersion,
+            name: "cost_cards",
+            confidentialityLevel: 2
+          }
+        })
+      ).statusCode
+    ).toBe(200);
     expect((await upload(original, "employee", employeeId)).statusCode).toBe(403);
     expect(
       (await upload(original, "override", adminId, [{ name: "confidentialityLevel", value: "0" }]))
@@ -125,6 +135,11 @@ suite("cost card API to worker publication", () => {
     expect(accepted.statusCode).toBe(202);
     const firstId = accepted.json().importBatch.importBatchId;
     expect(accepted.json().importBatch).not.toHaveProperty("publicationSummary");
+    await grantEmployee(true);
+    const pending = await status(firstId, employeeId);
+    expect(pending.statusCode).toBe(200);
+    expect(pending.json().importBatch.status).toBe("pending");
+    expect(pending.json().importBatch).not.toHaveProperty("publicationSummary");
     expect(await runImport()).toMatchObject({ status: "active" });
     const first = await prisma.importBatch.findUniqueOrThrow({ where: { id: firstId } });
     expect(first).toMatchObject({ status: "applied", totalRowCount: 3, appliedRowCount: 3 });
@@ -139,9 +154,11 @@ suite("cost card API to worker publication", () => {
     expect((await status(firstId, adminId)).json().importBatch).not.toHaveProperty(
       "publicationSummary"
     );
-    await grantEmployee(true);
     expect((await status(firstId, employeeId)).json().importBatch.publicationSummary).toEqual(
       first.publicationSummary
+    );
+    expect((await status(firstId, employeeId)).json().document).not.toHaveProperty(
+      "storageObjectKey"
     );
     const secondResponse = await upload(csv([row("spu1"), row("spu2")]), "second");
     expect(secondResponse.statusCode).toBe(202);
@@ -200,7 +217,29 @@ suite("cost card API to worker publication", () => {
     });
     expect(invalidBatch.status).toBe("rejected");
     expect(invalidBatch.publicationSummary).toBeNull();
+    const invalidStatus = await status(invalidBatch.id, employeeId);
+    expect(invalidStatus.statusCode).toBe(200);
+    expect(invalidStatus.json().importBatch.validationErrors).toEqual(
+      expect.arrayContaining([expect.objectContaining({ sheetName: "例外", rowNumber: 1 })])
+    );
+    expect(invalidStatus.json().importBatch).not.toHaveProperty("publicationSummary");
+    expect(invalidStatus.json().importBatch.sourceSheetSummary).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "说明", status: "ignored" })])
+    );
+    expect((await status(invalidBatch.id, adminId)).json().importBatch).not.toHaveProperty(
+      "validationErrors"
+    );
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/v1/source-documents/${invalidBatch.sourceDocumentId}/download-url`,
+          headers: { authorization: `Bearer ${employeeId}` }
+        })
+      ).statusCode
+    ).toBe(404);
     await grantEmployee(false);
+    expect((await status(invalidBatch.id, employeeId)).statusCode).toBe(404);
     expect((await status(firstId, employeeId)).statusCode).toBe(404);
     expect((await status(firstId, adminId)).json().importBatch).not.toHaveProperty(
       "publicationSummary"
@@ -228,6 +267,20 @@ suite("cost card API to worker publication", () => {
       publicationSummary: null,
       errorCode: "COST_CARD_BASELINE_STALE"
     });
+    expect((await status(batch.id, adminId)).json().importBatch).toMatchObject({
+      status: "failed",
+      errorCode: "COST_CARD_BASELINE_STALE"
+    });
+    await grantEmployee(true);
+    const failedStatus = await status(batch.id, employeeId);
+    expect(failedStatus.statusCode).toBe(200);
+    expect(failedStatus.json().importBatch).toMatchObject({
+      status: "failed",
+      errorCode: "COST_CARD_BASELINE_STALE"
+    });
+    expect(failedStatus.json().importBatch).not.toHaveProperty("publicationSummary");
+    await grantEmployee(false);
+    expect((await status(batch.id, employeeId)).statusCode).toBe(404);
     const run = await prisma.processingRun.findFirstOrThrow({
       where: { orgId, documentId: batch.sourceDocumentId }
     });
@@ -326,23 +379,25 @@ suite("cost card API to worker publication", () => {
     };
   }
   async function grantEmployee(allowed: boolean) {
-    await authorization.configureAccount({
-      ...(await context()),
-      employeeId,
-      clearance: 2,
-      grants: allowed
-        ? [
-            {
-              id: "cost_card_worker_grant",
-              orgId,
-              enterpriseKey,
-              categoryIds: [categoryId],
-              ownership: "group",
-              dimensions: {}
-            }
-          ]
-        : []
+    const grants = allowed
+      ? [
+          {
+            id: "cost_card_worker_grant",
+            orgId,
+            enterpriseKey,
+            categoryIds: [categoryId],
+            ownership: "group",
+            dimensions: {}
+          }
+        ]
+      : [];
+    const result = await app.inject({
+      method: "PATCH",
+      url: `/v1/admin/permissions/accounts/${employeeId}`,
+      headers: { authorization: `Bearer ${adminId}` },
+      payload: { expectedVersion: (await context()).expectedVersion, clearance: 2, grants }
     });
+    expect(result.statusCode).toBe(200);
   }
   async function upload(
     content: Buffer,
@@ -421,6 +476,7 @@ function csv(rows: Record<string, string>[]) {
 }
 async function badWorkbook() {
   const book = new ExcelJS.Workbook();
+  book.addWorksheet("说明").addRow(["Synthetic instructions"]);
   const headers = COST_CARD_UPLOAD_SCHEMA.map((field) => field.sourceColumn);
   book
     .addWorksheet("标准")

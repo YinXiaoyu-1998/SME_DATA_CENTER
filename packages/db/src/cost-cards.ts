@@ -2,14 +2,25 @@ import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient, type CostCard } from "@prisma/client";
 import { createDatabaseAdapter } from "./adapter.js";
 import { toResourceReadRequirement } from "./business-authorization-records.js";
+import { createBusinessAuthorizationRepository } from "./business-authorization.js";
+import { compileStructuredReadScope } from "./business-authorization-sql.js";
 import {
   COST_CARD_CATALOG_BATCH_SIZE,
   COST_CARD_CANONICALIZATION_VERSION,
   COST_CARD_REPLACED_OBJECT_GRACE_SECONDS,
+  COST_CARD_PUBLICATION_TRANSACTION_TIMEOUT_MS,
   type CostCardFields,
   type CostCardIdentity,
   type CostCardChange,
   type CostCardPublication
+} from "@smedc/domain";
+import {
+  compileCostCardSelection,
+  parseCostCardSelection,
+  isBusinessClearance,
+  type AuthenticatedEmployee,
+  type CostCardSelection,
+  type CostCardCoverage
 } from "@smedc/domain";
 import {
   lockAuthorizationPublication,
@@ -171,10 +182,14 @@ export async function publishCostCards(
   if (
     !keys.length ||
     new Set(keys).size !== keys.length ||
+    new Set(input.candidates.map((candidate) => candidate.id)).size !== input.candidates.length ||
     new Set(objectKeys).size !== objectKeys.length ||
     identities.some((identity) => identity.enterpriseKey !== identities[0]!.enterpriseKey) ||
     input.candidates.some(
-      (candidate) => candidate.baseline && candidate.id !== candidate.baseline.id
+      (candidate) =>
+        (candidate.baseline && candidate.id !== candidate.baseline.id) ||
+        candidate.card.spu_id !== candidate.identity.spuId ||
+        candidate.card.sku_id !== candidate.identity.skuId
     ) ||
     input.inputItemRowCount !==
       input.candidates.reduce((sum, candidate) => sum + candidate.itemRowCount, 0)
@@ -197,7 +212,8 @@ export async function publishCostCards(
     changes: input.changes,
     changesTruncated: input.changesTruncated
   };
-  const writes: Prisma.Sql[] = [];
+  const inserts: Prisma.CostCardCreateManyInput[] = [];
+  const updates: Prisma.CostCardCreateManyInput[] = [];
   for (const candidate of input.candidates) {
     const operation = costCardOperation(
       candidate.baseline,
@@ -207,6 +223,12 @@ export async function publishCostCards(
     publication.counts[operation]++;
     if (operation === "unchanged") continue;
     if (!candidate.objectKey) throw new CostCardPublicationError("COST_CARD_OBJECT_NOT_PREPARED");
+    if (
+      !candidate.objectKey.startsWith(
+        `cost-cards/${input.orgId}/${input.runId}/${input.attemptNumber}/`
+      )
+    )
+      throw new CostCardPublicationError("COST_CARD_OBJECT_NOT_OWNED");
     const ownership = await tx.storageGarbage.findUnique({
       where: { objectKeyHash: storageGarbageKeyHash(candidate.objectKey) }
     });
@@ -219,9 +241,33 @@ export async function publishCostCards(
       throw new CostCardPublicationError("COST_CARD_OBJECT_NOT_OWNED");
     const f = candidate.card;
     const revision = (candidate.baseline?.revision ?? 0n) + 1n;
-    writes.push(
-      Prisma.sql`(${candidate.id}, ${input.orgId}, ${candidate.identity.enterpriseKey}, ${input.enterpriseName}, ${candidate.identity.sourceNamespace}, ${candidate.identity.spuId}, ${candidate.identity.skuId}, ${f.dish_name}, ${f.specification_name}, ${f.base_category_name}, ${f.sale_price}, ${f.has_cost_card}, ${f.source_dish_deleted}, ${candidate.objectKey}, ${candidate.checksumSha256}, ${BigInt(candidate.byteSize)}, ${BigInt(candidate.itemRowCount)}, ${candidate.recipeCount}, ${candidate.schemaVersion}, ${candidate.contentHash}, ${candidate.canonicalizationVersion}, ${input.sourceDocumentId}, ${input.importBatchId}, ${revision}, NULL, ${input.now}, ${input.now})`
-    );
+    const data: Prisma.CostCardCreateManyInput = {
+      id: candidate.id,
+      orgId: input.orgId,
+      ...candidate.identity,
+      enterpriseName: input.enterpriseName,
+      dishName: f.dish_name,
+      specificationName: f.specification_name,
+      baseCategoryName: f.base_category_name,
+      salePrice: f.sale_price,
+      hasCostCard: f.has_cost_card,
+      sourceDishDeleted: f.source_dish_deleted,
+      objectKey: candidate.objectKey,
+      checksumSha256: candidate.checksumSha256,
+      byteSize: BigInt(candidate.byteSize),
+      itemRowCount: BigInt(candidate.itemRowCount),
+      recipeCount: candidate.recipeCount,
+      csvSchemaVersion: candidate.schemaVersion,
+      contentHash: candidate.contentHash,
+      canonicalizationVersion: candidate.canonicalizationVersion,
+      sourceDocumentId: input.sourceDocumentId,
+      importBatchId: input.importBatchId,
+      revision,
+      archivedAt: null,
+      createdAt: input.now,
+      updatedAt: input.now
+    };
+    (candidate.baseline ? updates : inserts).push(data);
     await persistCostCardReadRequirement(
       tx,
       {
@@ -240,10 +286,54 @@ export async function publishCostCards(
         availableAt: new Date(input.now.getTime() + COST_CARD_REPLACED_OBJECT_GRACE_SECONDS * 1000)
       });
   }
-  for (let offset = 0; offset < writes.length; offset += COST_CARD_CATALOG_BATCH_SIZE) {
-    await tx.$executeRaw(Prisma.sql`INSERT INTO cost_cards (id, org_id, enterprise_key, enterprise_name, source_namespace, spu_id, sku_id, dish_name, specification_name, base_category_name, sale_price, has_cost_card, source_dish_deleted, object_key, checksum_sha256, byte_size, item_row_count, recipe_count, csv_schema_version, content_hash, canonicalization_version, source_document_id, import_batch_id, revision, archived_at, created_at, updated_at)
-      VALUES ${Prisma.join(writes.slice(offset, offset + COST_CARD_CATALOG_BATCH_SIZE))}
-      ON DUPLICATE KEY UPDATE enterprise_name=VALUES(enterprise_name), dish_name=VALUES(dish_name), specification_name=VALUES(specification_name), base_category_name=VALUES(base_category_name), sale_price=VALUES(sale_price), has_cost_card=VALUES(has_cost_card), source_dish_deleted=VALUES(source_dish_deleted), object_key=VALUES(object_key), checksum_sha256=VALUES(checksum_sha256), byte_size=VALUES(byte_size), item_row_count=VALUES(item_row_count), recipe_count=VALUES(recipe_count), csv_schema_version=VALUES(csv_schema_version), content_hash=VALUES(content_hash), canonicalization_version=VALUES(canonicalization_version), source_document_id=VALUES(source_document_id), import_batch_id=VALUES(import_batch_id), revision=VALUES(revision), archived_at=NULL, updated_at=VALUES(updated_at)`);
+  // Plain INSERT cannot turn a primary/object-key collision into an unrelated identity update.
+  for (let offset = 0; offset < inserts.length; offset += COST_CARD_CATALOG_BATCH_SIZE)
+    await tx.costCard.createMany({
+      data: inserts.slice(offset, offset + COST_CARD_CATALOG_BATCH_SIZE)
+    });
+  const mutableColumns = [
+    ["enterprise_name", "enterpriseName"],
+    ["dish_name", "dishName"],
+    ["specification_name", "specificationName"],
+    ["base_category_name", "baseCategoryName"],
+    ["sale_price", "salePrice"],
+    ["has_cost_card", "hasCostCard"],
+    ["source_dish_deleted", "sourceDishDeleted"],
+    ["object_key", "objectKey"],
+    ["checksum_sha256", "checksumSha256"],
+    ["byte_size", "byteSize"],
+    ["item_row_count", "itemRowCount"],
+    ["recipe_count", "recipeCount"],
+    ["csv_schema_version", "csvSchemaVersion"],
+    ["content_hash", "contentHash"],
+    ["canonicalization_version", "canonicalizationVersion"],
+    ["source_document_id", "sourceDocumentId"],
+    ["import_batch_id", "importBatchId"],
+    ["revision", "revision"]
+  ] as const;
+  const updateBaselines = new Map(
+    input.candidates.flatMap((candidate) =>
+      candidate.baseline ? [[candidate.id, candidate.baseline] as const] : []
+    )
+  );
+  for (let offset = 0; offset < updates.length; offset += COST_CARD_CATALOG_BATCH_SIZE) {
+    const chunk = updates.slice(offset, offset + COST_CARD_CATALOG_BATCH_SIZE);
+    const assignments = mutableColumns.map(
+      ([column, property]) =>
+        Prisma.sql`${Prisma.raw(column)} = CASE id ${Prisma.join(
+          chunk.map((row) => Prisma.sql`WHEN ${row.id} THEN ${row[property]}`),
+          " "
+        )} END`
+    );
+    const targets = chunk.map((row) => {
+      const baseline = updateBaselines.get(row.id!)!;
+      return Prisma.sql`(id = ${row.id} AND BINARY enterprise_key = BINARY ${row.enterpriseKey} AND BINARY source_namespace = BINARY ${row.sourceNamespace} AND BINARY spu_id = BINARY ${row.spuId} AND BINARY sku_id = BINARY ${row.skuId} AND revision = ${baseline.revision} AND content_hash = ${baseline.contentHash} AND object_key = ${baseline.objectKey} AND canonicalization_version = ${baseline.canonicalizationVersion} AND ${baseline.archivedAt === null ? Prisma.sql`archived_at IS NULL` : Prisma.sql`archived_at = ${baseline.archivedAt}`})`;
+    });
+    const written = await tx.$executeRaw(
+      Prisma.sql`UPDATE cost_cards SET ${Prisma.join(assignments)}, archived_at = NULL, updated_at = ${input.now} WHERE org_id = ${input.orgId} AND (${Prisma.join(targets, " OR ")})`
+    );
+    if (written !== chunk.length)
+      throw new CostCardPublicationError("COST_CARD_BASELINE_STALE", true);
   }
   // Register complete input, including unchanged cards; recipe/item bodies never enter MySQL.
   await persistStructuredSourceReadRequirements(tx, {
@@ -379,7 +469,7 @@ export function createPrismaCostCardRepository(client?: PrismaClient): CostCardR
       try {
         return await prisma.$transaction((tx) => publishCostCards(tx, input), {
           isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-          timeout: 120_000
+          timeout: COST_CARD_PUBLICATION_TRANSACTION_TIMEOUT_MS
         });
       } catch (error) {
         // A lost commit acknowledgement must not turn an applied publication into failure.
@@ -397,6 +487,166 @@ export function createPrismaCostCardRepository(client?: PrismaClient): CostCardR
         throw error;
       }
     },
+    async disconnect() {
+      if (!client) await prisma.$disconnect();
+    }
+  };
+}
+
+export type CostCardReadActor = Pick<AuthenticatedEmployee, "id" | "orgId">;
+export interface CostCardDirectorySnapshot {
+  authorizationVersion: string;
+  cards: CostCard[];
+}
+export interface CostCardDirectoryRepository {
+  readSnapshot(input: {
+    auth: CostCardReadActor;
+    selection: CostCardSelection;
+    maxCards: number;
+  }): Promise<CostCardDirectorySnapshot>;
+  coverage(input: { auth: CostCardReadActor; enterpriseName?: string }): Promise<CostCardCoverage>;
+  archive(input: {
+    auth: CostCardReadActor;
+    costCardId: string;
+  }): Promise<{ costCardId: string; archived: true; revision: string }>;
+  disconnect?(): Promise<void>;
+}
+export function safeCostCardInteger(value: number | bigint | string | Prisma.Decimal): number {
+  const number = Number(value.toString());
+  if (!Number.isSafeInteger(number) || number < 0)
+    throw new CostCardPublicationError("COST_CARD_METADATA_INVALID");
+  return number;
+}
+export function createPrismaCostCardDirectoryRepository(
+  client?: PrismaClient,
+  databaseUrl = process.env["DATABASE_URL"]
+): CostCardDirectoryRepository {
+  const prisma =
+    client ??
+    new PrismaClient({
+      adapter: createDatabaseAdapter(
+        databaseUrl ??
+          (() => {
+            throw new Error("DATABASE_URL is required for cost cards.");
+          })()
+      )
+    });
+  const permissions = createBusinessAuthorizationRepository({ prisma });
+  async function scope(
+    tx: Prisma.TransactionClient,
+    auth: CostCardReadActor,
+    selection: CostCardSelection
+  ) {
+    const snapshot = await permissions.loadAuthorizationSnapshot(auth.id, auth.orgId, tx);
+    const category = snapshot.categories.find(
+      (category) => category.key === "cost_cards" && category.kind === "fixed"
+    );
+    if (
+      snapshot.mode !== "enabled" ||
+      snapshot.disabled ||
+      !category ||
+      !isBusinessClearance(category.confidentialityLevel)
+    )
+      throw new CostCardPublicationError("COST_CARD_ACCESS_DENIED");
+    const authorization = compileStructuredReadScope(snapshot, "cost_card", "cost_cards");
+    const compiled = compileCostCardSelection(selection);
+    return {
+      snapshot,
+      sql: `CAST(c.org_id AS BINARY) = CAST(? AS BINARY) AND c.archived_at IS NULL AND (${authorization.sql}) AND (${compiled.sql})`,
+      params: [auth.orgId, ...authorization.params, ...compiled.params]
+    };
+  }
+  return {
+    readSnapshot(input) {
+      if (!Number.isSafeInteger(input.maxCards) || input.maxCards < 1)
+        throw new CostCardPublicationError("COST_CARD_LIMIT_INVALID");
+      const selection = parseCostCardSelection(input.selection);
+      return prisma.$transaction(
+        async (tx) => {
+          const authorized = await scope(tx, input.auth, selection);
+          const ids = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+            `SELECT c.id FROM cost_cards c WHERE ${authorized.sql} ORDER BY c.id ASC LIMIT ?`,
+            ...authorized.params,
+            input.maxCards + 1
+          );
+          if (ids.length > input.maxCards)
+            throw new CostCardPublicationError("COST_CARD_MANIFEST_TOO_LARGE");
+          if (
+            selection.costCardIds &&
+            selection.costCardIds.some((id) => !ids.some((row) => row.id === id))
+          )
+            throw new CostCardPublicationError("COST_CARD_ACCESS_DENIED");
+          const cards: CostCard[] = [];
+          for (let offset = 0; offset < ids.length; offset += COST_CARD_CATALOG_BATCH_SIZE)
+            cards.push(
+              ...(await tx.costCard.findMany({
+                where: {
+                  orgId: input.auth.orgId,
+                  id: {
+                    in: ids
+                      .slice(offset, offset + COST_CARD_CATALOG_BATCH_SIZE)
+                      .map((row) => row.id)
+                  },
+                  archivedAt: null
+                }
+              }))
+            );
+          cards.sort((a, b) => a.id.localeCompare(b.id));
+          return { authorizationVersion: authorized.snapshot.authorizationVersion, cards };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+      );
+    },
+    coverage(input) {
+      return prisma.$transaction(
+        async (tx) => {
+          const authorized = await scope(
+            tx,
+            input.auth,
+            input.enterpriseName === undefined ? {} : { enterpriseName: input.enterpriseName }
+          );
+          const rows = await tx.$queryRawUnsafe<
+            Array<{
+              sourceDocumentId: string;
+              importBatchId: string;
+              cardCount: bigint;
+              totalItemRowCount: Prisma.Decimal;
+            }>
+          >(
+            `SELECT c.source_document_id AS sourceDocumentId, c.import_batch_id AS importBatchId, COUNT(*) AS cardCount, SUM(c.item_row_count) AS totalItemRowCount FROM cost_cards c WHERE ${authorized.sql} GROUP BY c.source_document_id, c.import_batch_id ORDER BY c.source_document_id, c.import_batch_id`,
+            ...authorized.params
+          );
+          const sources = rows.map((row) => ({
+            ...row,
+            cardCount: safeCostCardInteger(row.cardCount),
+            totalItemRowCount: safeCostCardInteger(row.totalItemRowCount)
+          }));
+          return {
+            dataset: "cost_cards",
+            accessMode: "catalog_query",
+            metadataPolicy: "none",
+            sources,
+            cardCount: safeCostCardInteger(
+              sources.reduce((sum, source) => sum + source.cardCount, 0)
+            ),
+            totalItemRowCount: safeCostCardInteger(
+              sources.reduce((sum, source) => sum + source.totalItemRowCount, 0)
+            )
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+      );
+    },
+    archive: (input) =>
+      prisma.$transaction(
+        (tx) =>
+          archiveCostCard(tx, {
+            orgId: input.auth.orgId,
+            actorId: input.auth.id,
+            costCardId: input.costCardId
+          }),
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+      ),
     async disconnect() {
       if (!client) await prisma.$disconnect();
     }

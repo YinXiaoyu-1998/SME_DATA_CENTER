@@ -21,6 +21,10 @@ function fixture(role: "admin" | "employee" = "admin") {
     grants: []
   };
   const repository = {
+    initializeFixedCategories: vi.fn(async () => ({
+      authorizationVersion: "8",
+      value: { createdCount: 1 }
+    })),
     loadAuthorizationSnapshot: vi.fn(async (id: string, orgId: string) => {
       if (id === "foreign") throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
       return { ...snapshot, employeeId: id, orgId };
@@ -80,6 +84,46 @@ function fixture(role: "admin" | "employee" = "admin") {
 }
 
 describe("business permission administration", () => {
+  it("initializes missing fixed categories only through a current admin versioned write", async () => {
+    const { app, repository, snapshot } = fixture();
+    try {
+      await app.inject({ url: "/v1/admin/permissions/categories" });
+      expect(repository.initializeFixedCategories).not.toHaveBeenCalled();
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/v1/admin/permissions/categories/initialize",
+            payload: { expectedVersion: "7", orgId: "foreign" }
+          })
+        ).statusCode
+      ).toBe(400);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/admin/permissions/categories/initialize",
+        payload: { expectedVersion: "7" }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(repository.initializeFixedCategories).toHaveBeenCalledExactlyOnceWith({
+        orgId: "org",
+        actorId: "actor",
+        expectedVersion: "7"
+      });
+      snapshot.role = "employee";
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/v1/admin/permissions/categories/initialize",
+            payload: { expectedVersion: "8" }
+          })
+        ).statusCode
+      ).toBe(403);
+      expect(repository.initializeFixedCategories).toHaveBeenCalledTimes(1);
+    } finally {
+      await app.close();
+    }
+  });
   it("requires a current admin and explicit versioned tenant confirmation for activation and safe suspension", async () => {
     const { app, repository, snapshot } = fixture();
     try {

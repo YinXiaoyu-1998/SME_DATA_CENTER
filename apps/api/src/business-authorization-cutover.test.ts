@@ -12,7 +12,8 @@ const fixed = [
   "supplier_catalog",
   "delivery_ledger",
   "quarantine_certificate",
-  "ledger_pdf"
+  "ledger_pdf",
+  "cost_cards"
 ];
 function inventory(): CutoverInventory {
   return {
@@ -27,6 +28,7 @@ function inventory(): CutoverInventory {
     resources: [],
     documents: [],
     partitions: [],
+    costCards: [],
     pdfs: [],
     accounts: [{ id: "new", grants: [] }],
     stores: [],
@@ -34,6 +36,36 @@ function inventory(): CutoverInventory {
   };
 }
 describe("tenant authorization preparation", () => {
+  it("recognizes independent cost-card resources and their group identity/lifecycle", () => {
+    const data = inventory();
+    data.costCards = [{ id: "card", enterpriseKey: "enterprise", archived: false }];
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).missing).toContainEqual({
+      code: "COST_CARD_ATTRIBUTES_REQUIRED",
+      targetId: "card"
+    });
+    data.resources.push({
+      id: "resource",
+      kind: "cost_card",
+      resourceKey: "cost-card:card",
+      documentId: null,
+      sourceDocumentId: null,
+      requirement: {
+        orgId: "tenant",
+        categoryId: "cost_cards",
+        valid: true,
+        scopes: [{ enterpriseKey: "enterprise", ownership: "group", dimensions: {} }]
+      }
+    });
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).ready).toBe(true);
+    data.costCards[0]!.archived = true;
+    data.resources[0]!.requirement.valid = false;
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).ready).toBe(true);
+    data.resources[0]!.kind = "structured";
+    expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).missing).toContainEqual({
+      code: "COST_CARD_ATTRIBUTES_REQUIRED",
+      targetId: "card"
+    });
+  });
   it("is read-only, does not invent grants or category clearance and requires every compiled read adapter", () => {
     const data = inventory();
     const original = structuredClone(data);

@@ -204,6 +204,23 @@ export function registerBusinessAuthorizationRoutes(
     authorizationVersion: actor.authorizationVersion,
     stores: await service.repository.listStores(actor.orgId)
   }));
+  route(
+    "POST",
+    `${adminBase}/categories/initialize`,
+    true,
+    async (service, actor, _params, body, reply) => {
+      if (
+        !text(body["expectedVersion"]) ||
+        Object.keys(body).some((key) => key !== "expectedVersion")
+      )
+        return invalid(reply);
+      return service.repository.initializeFixedCategories({
+        orgId: actor.orgId,
+        actorId: actor.employeeId,
+        expectedVersion: body["expectedVersion"]
+      });
+    }
+  );
   route("POST", `${adminBase}/stores`, true, async (service, actor, _params, body, reply) => {
     if (
       !text(body["expectedVersion"]) ||

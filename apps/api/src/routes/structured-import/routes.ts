@@ -262,6 +262,12 @@ export function registerStructuredImportRoutes(
 
     let confidentialityLevel = parseConfidentialityLevel(upload);
     if (dataset === "cost_cards") {
+      if (normalizeEnterpriseIdentity(enterpriseName).enterpriseKey.length > 128)
+        return validationError(
+          reply,
+          "INVALID_COST_CARD_METADATA",
+          "Enterprise identity exceeds the current authorization limit."
+        );
       if (upload.confidentialityLevelFieldCount > 0)
         return validationError(
           reply,
@@ -580,13 +586,36 @@ export function registerStructuredImportRoutes(
           .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
       }
 
+      let readRequirements = importBatch.readRequirements ?? [];
+      // Unpublished errors still belong to the server-accepted enterprise/category.
+      // This status-only scope never grants original-file or directory access.
+      if (
+        importBatch.dataset === "cost_cards" &&
+        ["pending", "validating", "applying", "failed", "rejected"].includes(importBatch.status) &&
+        importBatch.enterpriseKey &&
+        importBatch.enterpriseKey.length <= 128
+      ) {
+        const category = snapshot.categories.find(
+          (category) => category.key === "cost_cards" && category.kind === "fixed"
+        );
+        readRequirements = category
+          ? [
+              {
+                orgId: importBatch.orgId,
+                categoryId: category.id,
+                valid: true,
+                scopes: [
+                  { enterpriseKey: importBatch.enterpriseKey, ownership: "group", dimensions: {} }
+                ]
+              }
+            ]
+          : [];
+      }
       const readable =
         snapshot.mode === "enabled"
           ? importBatch.dataset !== "delivery_ledger" &&
-            !!importBatch.readRequirements?.length &&
-            importBatch.readRequirements.every(
-              (requirement) => canReadResource(snapshot, requirement).allowed
-            )
+            !!readRequirements.length &&
+            readRequirements.every((requirement) => canReadResource(snapshot, requirement).allowed)
           : importBatch.dataset !== "cost_cards" &&
             (snapshot.mode === "legacy" || snapshot.mode === "preparing") &&
             canEmployeeAccessDocument({

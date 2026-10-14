@@ -45,7 +45,7 @@ import type {
   CostCardPublication,
   StructuredDatasetName
 } from "@smedc/domain";
-import { AUDIT_ACTIONS, getStructuredRegistry } from "@smedc/domain";
+import { AUDIT_ACTIONS, getStructuredRegistry, normalizeEnterpriseIdentity } from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface StructuredImportRowInput {
@@ -70,6 +70,8 @@ export interface StructuredImportTimingEvent {
 
 export interface StructuredImportBatchRecord {
   publicationSummary?: CostCardPublication;
+  enterpriseKey?: string;
+  errorCode?: string | null;
   affectedLedgerPartitions?: LedgerPartitionKey[];
   id: string;
   orgId: string;
@@ -187,6 +189,7 @@ const importBatchInclude = {
       originalFileName: true,
       confidentialityLevel: true,
       uploaderId: true,
+      sourceMetadata: true,
       processingRuns: {
         where: { jobType: ProcessingJobType.structured_import },
         orderBy: { createdAt: "desc" },
@@ -469,6 +472,10 @@ export function createPrismaStructuredImportRepository(options: {
                 if (
                   !input.enterpriseKey ||
                   !input.enterpriseName ||
+                  input.enterpriseKey.length > 128 ||
+                  !input.enterpriseName.trim() ||
+                  normalizeEnterpriseIdentity(input.enterpriseName).enterpriseKey !==
+                    input.enterpriseKey ||
                   input.startDate !== null ||
                   input.endDate !== null ||
                   input.naturalKey !== undefined
@@ -957,6 +964,14 @@ function toImportBatchRecord(
   const archived = batch.sourceDocument.status === DocumentStatus.archived;
   const processingRun = batch.sourceDocument.processingRuns[0];
   const validationErrors = arrayJson(batch.validationErrors);
+  const metadata = batch.sourceDocument.sourceMetadata;
+  const enterpriseKey =
+    metadata &&
+    typeof metadata === "object" &&
+    !Array.isArray(metadata) &&
+    typeof metadata["enterpriseKey"] === "string"
+      ? metadata["enterpriseKey"]
+      : undefined;
 
   return {
     id: batch.id,
@@ -965,6 +980,7 @@ function toImportBatchRecord(
     sourceDocumentConfidentialityLevel: batch.sourceDocument.confidentialityLevel,
     uploaderId: batch.sourceDocument.uploaderId,
     dataset: batch.dataset,
+    ...(batch.dataset === "cost_cards" ? { enterpriseKey, errorCode: batch.errorCode } : {}),
     status: archived && batch.dataset !== "cost_cards" ? "archived" : batch.status,
     ...(batch.dataset === "cost_cards" && batch.status === "applied" && batch.publicationSummary
       ? { publicationSummary: batch.publicationSummary as unknown as CostCardPublication }

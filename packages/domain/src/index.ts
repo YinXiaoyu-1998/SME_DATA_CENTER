@@ -1,4 +1,5 @@
 export const domainWorkspaceName = "@smedc/domain";
+export * from "./cost-card-query.js";
 export * from "./shelf-life.js";
 export {
   FILE_UPLOAD_ADMIN_REQUIRED_CODE,

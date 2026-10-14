@@ -11,9 +11,11 @@ import { randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import {
   createDatabaseAdapter,
+  createPrismaCostCardDirectoryRepository,
   createPrismaPartitionDownloadRepository,
   type PartitionDownloadRepository
 } from "@smedc/db";
+import { createCostCardService, type CostCardService } from "./cost-cards.js";
 import {
   createPrismaPartitionDownloadAuditRepository,
   type PartitionDownloadAuditRepository
@@ -77,6 +79,7 @@ import {
 } from "./request-audit-context.js";
 
 export interface ApiServerOptions {
+  costCardService?: CostCardService;
   businessAuthorizationService?: BusinessAuthorizationService & { disconnect?(): Promise<void> };
   ledgerPdfDelivery?: LedgerPdfDelivery;
   employeeRepository?: EmployeeRepository;
@@ -110,6 +113,7 @@ export interface ApiServerOptions {
 }
 
 export interface ApiServerContext {
+  costCards: () => CostCardService;
   permissions: () => BusinessAuthorizationService;
   environment: NodeJS.ProcessEnv;
   delegationProof: string;
@@ -178,6 +182,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let sourceDocumentRepository = options.sourceDocumentRepository;
   let sourceDocumentDownloadIssuer = options.sourceDocumentDownloadIssuer;
   let evidenceRepository = options.evidenceRepository;
+  let costCardService = options.costCardService;
   let uploadAuthorizationAuditRepository = options.uploadAuthorizationAuditRepository;
   let storageAdapter = options.storageAdapter;
   const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
@@ -299,6 +304,16 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return structuredCoverageRepository;
   }
 
+  function costCards(): CostCardService {
+    costCardService ??= createCostCardService({
+      repository: createPrismaCostCardDirectoryRepository(undefined, environment["DATABASE_URL"]),
+      storage: storage(),
+      maxCards: runtimeLimits.partitionManifestMaxPartitions,
+      urlTtlSeconds: runtimeLimits.partitionManifestUrlTtlSeconds
+    });
+    return costCardService;
+  }
+
   function quarantineCertificates(): QuarantineCertificateRepository {
     quarantineCertificateRepository ??= createPrismaQuarantineCertificateRepository();
     return quarantineCertificateRepository;
@@ -355,6 +370,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     await quarantineCertificateRepository?.disconnect?.();
     await sourceDocumentRepository?.disconnect?.();
     await evidenceRepository?.disconnect?.();
+    await costCardService?.disconnect();
     await uploadAuthorizationAuditRepository?.disconnect?.();
   }
 
@@ -382,6 +398,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     partitionDownloadAudit,
     structuredQueries,
     structuredCoverage,
+    costCards,
     quarantineCertificates,
     sourceDocuments,
     sourceDocumentDownloads,

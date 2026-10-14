@@ -320,7 +320,8 @@ export async function persistResourceAttributes(
   if (
     (input.kind === "evidence") !== (rule.kind === "evidence") ||
     (input.kind === "quarantine_certificate" && category.key !== "quarantine_certificate") ||
-    (input.kind === "ledger_pdf" && category.key !== "ledger_pdf")
+    (input.kind === "ledger_pdf" && category.key !== "ledger_pdf") ||
+    (input.kind === "cost_card" && category.key !== "cost_cards")
   )
     throw new Error("RESOURCE_CATEGORY_KIND_MISMATCH");
   if (
@@ -334,6 +335,13 @@ export async function persistResourceAttributes(
   if (input.kind === "quarantine_certificate" || input.kind === "ledger_pdf")
     if (input.scopes.length !== 1 || input.scopes[0]!.ownership !== "store")
       throw new Error("RESOURCE_SINGLE_STORE_REQUIRED");
+  if (
+    input.kind === "cost_card" &&
+    (input.scopes.length !== 1 ||
+      input.scopes[0]!.ownership !== "group" ||
+      input.documentId !== undefined)
+  )
+    throw new Error("RESOURCE_SINGLE_GROUP_REQUIRED");
   const where = { orgId_id: { orgId: input.orgId, id: input.id } };
   const before = await tx.businessResource.findUnique({ where, include: resourcesInclude });
   if (

@@ -128,6 +128,10 @@ async function fixture() {
     rotateDurableCredential: async () => ({ status: "invalid" as const })
   };
   const permissionsRepository = {
+    initializeFixedCategories: vi.fn(async () => ({
+      authorizationVersion: "8",
+      value: { createdCount: 1 }
+    })),
     loadAuthorizationSnapshot: vi.fn(async (employeeId: string, orgId: string) => ({
       orgId,
       employeeId,
@@ -204,6 +208,42 @@ function cookiePair(value: string | string[] | undefined, name: string) {
 }
 
 describe("enterprise-bound browser permission management", () => {
+  it("requires tenant-bound browser CSRF and expectedVersion for fixed-category initialization", async () => {
+    const { app, cookie, secretA, secretB, permissionsRepository } = await fixture();
+    const url = "/admin/permissions/org_a/api/categories/initialize";
+    for (const headers of [
+      { cookie: cookie(secretA), origin },
+      {
+        cookie: cookie(secretA),
+        origin: "https://foreign.example.invalid",
+        "x-csrf-token": csrfTokenForSecret(secretA)
+      },
+      { cookie: cookie(secretB), origin, "x-csrf-token": csrfTokenForSecret(secretB) }
+    ])
+      expect(
+        (await app.inject({ method: "POST", url, headers, payload: { expectedVersion: "7" } }))
+          .statusCode
+      ).toBe(403);
+    expect(permissionsRepository.initializeFixedCategories).not.toHaveBeenCalled();
+    const headers = {
+      cookie: cookie(secretA),
+      origin,
+      "x-csrf-token": csrfTokenForSecret(secretA)
+    };
+    expect((await app.inject({ method: "POST", url, headers, payload: {} })).statusCode).toBe(400);
+    const response = await app.inject({
+      method: "POST",
+      url,
+      headers,
+      payload: { expectedVersion: "7" }
+    });
+    expect(response.json()).toEqual({ authorizationVersion: "8", value: { createdCount: 1 } });
+    expect(permissionsRepository.initializeFixedCategories).toHaveBeenCalledExactlyOnceWith({
+      orgId: "org_a",
+      actorId: "admin_a",
+      expectedVersion: "7"
+    });
+  });
   it("reuses the browser session established by official device login without verifying a second password", async () => {
     const { app, auth } = await fixture();
     const page = await app.inject({ url: "/oauth/device/verify?user_code=ABCDEFGH" });
