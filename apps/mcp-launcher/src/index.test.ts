@@ -22,10 +22,10 @@ describe("launcher CLI entrypoint", () => {
     expect(write).toHaveBeenCalledWith(`${LAUNCHER_VERSION}\n`);
   });
 
-  it("keeps the package, protocol server, and runtime release on 0.10.0", () => {
-    expect(LAUNCHER_VERSION).toBe("0.10.0");
+  it("keeps the package, protocol server, and runtime release on 0.10.1", () => {
+    expect(LAUNCHER_VERSION).toBe("0.10.1");
     expect(MCP_LAUNCHER_SERVER_VERSION).toBe(LAUNCHER_VERSION);
-    expect(COST_CARD_LAUNCHER_VERSION).toBe(LAUNCHER_VERSION);
+    expect(COST_CARD_LAUNCHER_VERSION).toBe("0.10.0");
     expect(
       JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version
     ).toBe(LAUNCHER_VERSION);

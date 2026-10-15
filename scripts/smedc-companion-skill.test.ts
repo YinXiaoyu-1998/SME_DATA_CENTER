@@ -1,4 +1,5 @@
-import { COST_CARD_DIRECTORY_REGISTRY } from "@smedc/domain";
+import { COST_CARD_DIRECTORY_REGISTRY, compileCostCardQuery } from "@smedc/domain";
+import { SMEDC_MCP_TOOL_CONTRACTS } from "@smedc/mcp-contract";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -20,6 +21,19 @@ describe("SMEDC companion skill guidance", () => {
       "utf8"
     );
     expect(skill).toContain("references/cost-cards.md");
+    const example = JSON.parse(guide.match(/```json\n([\s\S]+?)\n```/)?.[1] ?? "null");
+    const query = SMEDC_MCP_TOOL_CONTRACTS.find(
+      (tool) => tool.name === "query_structured_dataset"
+    )!.inputSchema.parse(example);
+    expect(
+      compileCostCardQuery({
+        orgId: "synthetic",
+        employee: { id: "synthetic", clearance: 2 },
+        query,
+        cursorSecret: "synthetic-doc-example",
+        businessAuthorization: { version: "1", sql: "1 = 1", params: [] }
+      }).dataset
+    ).toBe("cost_cards");
     for (const field of COST_CARD_DIRECTORY_REGISTRY.fields)
       expect(guide).toContain(`\`${field.canonicalName}\``);
     for (const invariant of [

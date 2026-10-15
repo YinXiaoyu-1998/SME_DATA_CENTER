@@ -1133,7 +1133,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "download_cost_cards",
     title: "Download complete cost cards",
     description:
-      "Download complete authorized cost-card CSVs into a launcher-managed local directory. Optional selectors combine with AND; array values combine with OR. Names are literal and case-sensitive; same-name specifications remain separate cards. At most one expired-link refresh restarts the whole batch. The local manifest retains each card's identity, revision and source IDs; internal URLs and CSV contents are not tool results. Candidate launcher 0.10.0+, not yet published.",
+      "Download complete authorized cost-card CSVs into a launcher-managed local directory. Optional selectors combine with AND; array values combine with OR. Names are literal and case-sensitive; same-name specifications remain separate cards. At most one expired-link refresh restarts the whole batch. The local manifest retains each card's identity, revision and source IDs; internal URLs and CSV contents are not tool results. Requires launcher 0.10.0+, matching service support and configured tenant permissions.",
     inputSchema: downloadCostCardsInputSchema,
     inputFields: Object.keys(downloadCostCardsInputSchema.shape).map((name) => ({
       name,
@@ -1153,7 +1153,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "archive_cost_card",
     title: "Archive one cost card",
     description:
-      "Archive one cost card through the current same-organization admin API. Admin status does not grant CSV read access. A new original upload may restore it; an old idempotent replay does not. Candidate launcher 0.10.0+, not yet published.",
+      "Archive one cost card through the current same-organization admin API. Admin status does not grant CSV read access. A new original upload may restore it; an old idempotent replay does not. Requires launcher 0.10.0+ and matching service support.",
     inputSchema: archiveCostCardInputSchema,
     inputFields: [{ name: "costCardId", required: true, description: "Exact cost card ID." }],
     resultShape: ["costCardId", "archived: true", "revision: string"],
