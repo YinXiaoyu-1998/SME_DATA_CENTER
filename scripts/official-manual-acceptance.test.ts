@@ -140,6 +140,7 @@ it("resolves null-source card resources by key and historical cost-card source f
     category: { key, kind: "fixed" }
   }));
   const prisma = {
+    processingRun: { findMany: vi.fn().mockResolvedValue([]) },
     costCard: {
       findMany: vi.fn(
         async ({
@@ -192,4 +193,57 @@ it("resolves null-source card resources by key and historical cost-card source f
     "source-current",
     "source-historical"
   ]);
+});
+
+describe("cost-card acceptance garbage inventory", () => {
+  const replaced = "cost-cards/org_a/job-historical/1/old.csv";
+  const candidate = "cost-cards/org_a/job-current/2/candidate.csv";
+  function fixture() {
+    return {
+      costCard: {
+        findMany: vi.fn().mockResolvedValue([{ id: "owned-card", objectKey: "current.csv" }]),
+        count: vi.fn().mockResolvedValue(0)
+      },
+      businessResource: { findMany: vi.fn().mockResolvedValue([]) },
+      processingRun: {
+        findMany: vi.fn().mockResolvedValue([{ id: "job-historical" }, { id: "job-current" }])
+      },
+      storageGarbage: {
+        findMany: vi.fn().mockResolvedValue([
+          { objectKey: replaced, processingRunId: null },
+          { objectKey: candidate, processingRunId: "job-current" },
+          // SQL LIKE may return this neighbor because the organization contains an underscore.
+          { objectKey: "cost-cards/orgXa/job-historical/1/foreign.csv" },
+          { objectKey: "cost-cards/org_a/job-current-other/1/foreign.csv" }
+        ])
+      }
+    };
+  }
+
+  it("includes unlinked replaced CSVs while excluding neighboring organization and job keys", async () => {
+    const prisma = fixture();
+    const targets = await collectCostCardAcceptanceCleanupTargets(
+      prisma as unknown as PrismaClient,
+      {
+        orgId: "org_a",
+        sourceDocumentIds: ["historical", "current"]
+      }
+    );
+    expect(targets).toHaveProperty("costCardGarbageObjectKeys", [replaced, candidate]);
+    expect(prisma.processingRun.findMany).toHaveBeenCalledWith({
+      where: { orgId: "org_a", documentId: { in: ["historical", "current"] } },
+      select: { id: true }
+    });
+  });
+
+  it("refuses a run-owned garbage key still referenced by a card outside the cleanup scope", async () => {
+    const prisma = fixture();
+    prisma.costCard.count.mockResolvedValue(1);
+    await expect(
+      collectCostCardAcceptanceCleanupTargets(prisma as unknown as PrismaClient, {
+        orgId: "org_a",
+        sourceDocumentIds: ["historical", "current"]
+      })
+    ).rejects.toThrow("Official cleanup refuses a shared cost-card object");
+  });
 });
