@@ -2,8 +2,9 @@
 
 Last updated: 2026-10-13
 
-This procedure tests official staging with macOS Codex and the published
-`smedc-mcp-launcher@0.9.0`. It does not revive the deleted local email-login flow or
+The existing full-suite runner baseline tests official staging with macOS Codex and published
+`smedc-mcp-launcher@0.9.0`. The current employee install pin is 0.10.0; its cost-card acceptance
+is separately gated below. It does not revive the deleted local email-login flow or
 `/auth/dev-login`. Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md`,
 and `test-cases.md` before running it. Beta onboarding uses
 [the operator runbook](beta-user-onboarding-runbook.md).
@@ -224,11 +225,11 @@ Headless support-class-C acceptance separately proves no-display link delivery, 
 on another device, memory-only credentials, successful business use, and loss of authentication
 after process restart. It uses a fresh synthetic account and cleans it afterward.
 
-## Cost-card changed-workflow candidate
+## Cost-card changed workflow after launcher publication
 
-This section targets unpublished candidate 0.10.0, not the currently approved 0.9.0 acceptance.
-Do not execute it, install a candidate, configure real tenants or deploy staging based on this
-document update. After independent package verification, matching service rollout, explicit
+This section targets published, independently verified launcher 0.10.0, separately from the
+existing 0.9.0 full-suite runner baseline. This documentation does not authorize execution, user
+installation or real tenant changes. After matching service rollout, explicit
 synthetic category configuration and a separately requested changed-workflow acceptance, use
 `candidateCostCards` in `fixtures/manual-acceptance/scenarios.json`. It is deliberately outside
 current `tasks[]`. The fixture `structured/cost-cards-known-values.csv` contains three same-name
@@ -262,16 +263,16 @@ support does not resolve the separate evidence-category prerequisite for the ful
 prove live service readiness, or authorize the full suite. Historical acceptance reports remain
 historical; record final readiness once after all coordinated gates.
 
-候选接口核对：manifest 为 flat CostCardSelection（非 selection 包裹）；显式缺失／越权 ID
+接口核对：manifest 为 flat CostCardSelection（非 selection 包裹）；显式缺失／越权 ID
 整次 403、数量超限 409 不截断、签名期间变化为 retryable 409“成本卡已变化，请重新下载”，
 条件零卡是空 manifest。归档端点无业务 body，响应保留 string revision；员工仍走已验证的
 launcher 工具，不为缺少 MCP 接线改用 HTTP。coverage 只统计当前受权未归档目录，按逐卡
 sourceDocumentId/importBatchId 分组保留来源计数，原件归档不影响这份目录统计。新增类别
-通过候选“补齐资料类别 / Add missing categories”按钮受控补齐，先处理草稿，以当前版本
+通过“补齐资料类别 / Add missing categories”按钮受控补齐，先处理草稿，以当前版本
 和 same Origin／CSRF 写入；验证新 cost_cards 为 null 密级、无 grants、原配置／模式不变。
 该步骤限已明确授权的合成租户，不能据此更改真实企业。
 
-最终候选工具核对：成本卡上传使用原始绝对本地文件＋enterpriseName／idempotencyKey，不传日期、
+发布工具核对：成本卡上传使用原始绝对本地文件＋enterpriseName／idempotencyKey，不传日期、
 快照或 confidentialityLevel；用 get_import_status({importBatchId}) 轮询外层
 {document,processing,importBatch}。download_cost_cards 返回 localDirectory、dataset=cost_cards、
 cardCount、totalItemRowCount、files（仅 cost_card_<costCardId>.csv basename）。目录内 manifest.json
@@ -279,5 +280,5 @@ cardCount、totalItemRowCount、files（仅 cost_card_<costCardId>.csv basename�
 sourceDocumentId／importBatchId 不丢失。零卡仍有空 files 和有效 manifest。归档调用
 archive_cost_card({costCardId})，核对 archived=true 和 string revision。失败／拒绝批次的当前
 读者可得源定位与 ignored/source-summary 数组；owner-only 只得安全进度／errorCode，撤权返回404。
-原始 storage key、正文链接与原件读取权均不能由状态／来源 ID 泄漏。上述只验证未发布候选，
-不更改当前安装 pin 或宣称正式人工验收已执行。
+原始 storage key、正文链接与原件读取权均不能由状态／来源 ID 泄漏。launcher 发布与独立包验证
+不代表服务上线或正式人工验收已完成。

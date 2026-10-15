@@ -1,6 +1,6 @@
 # Current business permissions and controlled management
 
-The approved install pin is `smedc-mcp-launcher@0.9.0`, published and independently verified.
+The approved install pin is `smedc-mcp-launcher@0.10.0`, published and independently verified.
 Use the capabilities below only after the matching service and approved launcher release are
 available; tool discovery alone does not prove deployment or tenant activation. Do not change
 installation pins from server metadata or install npm `latest`.
@@ -26,7 +26,7 @@ optional internal record, never a required user form.
 
 ## Upload inputs
 
-These transport fields are bundled in approved launcher 0.9.0 and need the matching service
+These transport fields are bundled in approved launcher 0.10.0 and need the matching service
 rollout. A Skill refresh does not upgrade an older installed launcher. If unavailable, follow the
 approved launcher update procedure and report service rollout gaps; never bypass through direct HTTP.
 
@@ -150,14 +150,14 @@ The launcher does not monitor permissions continuously during transfers. Refresh
 server check; it does not create an old-client bypass. Keep ordinary polling, exact idempotency and
 original-file semantics from the core Skill.
 
-## Cost-card category (candidate)
+## Cost-card category
 
-The candidate cost-card flow uses enterprise group-level `cost_cards`, separate from
+The cost-card flow uses enterprise group-level `cost_cards`, separate from
 recipe applicable stores and source-original access. Existing enabled enterprises use the
 controlled current-admin initialization write to register missing categories idempotently;
-then explicitly set the new category level and grants. In the candidate UI, “补齐资料类别 /
+then explicitly set the new category level and grants. In the UI, “补齐资料类别 /
 Add missing categories” requires saving or resolving unsaved drafts first. Initialization takes
 current string expectedVersion and returns string authorizationVersion with value.createdCount;
 current admin/tenant, version, same-origin and browser CSRF checks remain mandatory. GET is
 read-only. Null level/no grants never defaults to level zero or full access. Existing categories and mode stay unchanged. See
-[cost-card candidate workflow](cost-cards.md) before upload, lookup, CSV download or archive.
+[cost-card workflow](cost-cards.md) before upload, lookup, CSV download or archive.

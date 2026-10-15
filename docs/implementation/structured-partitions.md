@@ -57,5 +57,5 @@ Launcher 消费内部链接、核验下载文件/清单的身份、checksum、�
 
 This document remains the business/dishes store-date partition contract. Cost cards use an
 independent directory and one complete CSV per card; they do not enter these partition/date APIs.
-See the [candidate cost-card contract](api-contract.md#cost-cards-unpublished-candidate) and
+See the [cost-card contract](api-contract.md#cost-cards-published-launcher-separate-service-gate) and
 [employee workflow](../../skills/smedc-mcp/references/cost-cards.md).

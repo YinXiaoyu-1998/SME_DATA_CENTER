@@ -1,12 +1,11 @@
 # Cost cards: directory lookup and local CSV analysis
 
-## Candidate boundary
+## Published launcher and service boundary
 
-This contract targets candidate `0.10.0`, not published or approved for installation.
-Keep the core Skill's verified 0.9.0 install pin until independent publication verification
-and an explicit pin update. Do not install a candidate into the employee's runtime.
-The matching service, approved launcher and tenant category configuration must all be
-available before use; discovery alone cannot establish deployment or tenant activation.
+Launcher `0.10.0` is published and independently verified and approved for installation.
+Install or update only through the core Skill's exact pinned procedure. Before cost-card use,
+verify the matching service rollout and explicit tenant category configuration; publication,
+installation and static discovery alone do not establish live service or tenant readiness.
 
 ## Upload the original
 
@@ -145,17 +144,17 @@ ownership do not grant directory/CSV content access. Legacy/preparing/suspended 
 fall back to old file rules for this dataset. Source originals have independent read/archive
 rules; archiving an original leaves active card directory/CSV access unchanged.
 
-Card archive is a current same-organization admin operation; the candidate tool is
+Card archive is a current same-organization admin operation; the tool is
 `archive_cost_card({costCardId})`. It hides that card from ordinary directory/CSV access,
 preserves its identity and current object, and does not archive the original. A new upload can
 restore it as described above. Archive accepts only the exact `costCardId`, with no business
 payload, and returns `{costCardId, archived: true, revision}` with a string revision. It is not
-hard deletion. Both new tools require the coordinated candidate publication/service/tenant gate;
+hard deletion. Both new tools require the matching service rollout and tenant configuration;
 do not bypass through HTTP if the approved launcher lacks them.
 
 Existing enabled enterprises must also configure the new category: use the controlled current
 admin configuration initialization write to idempotently register missing `cost_cards`, then set
-its level and explicit group grants through the existing UI/MCP flow. In the candidate UI, use
+its level and explicit group grants through the existing UI/MCP flow. In the UI, use
 “补齐资料类别 / Add missing categories” after saving or resolving unsaved drafts. It submits the
 current string `expectedVersion`; success returns string `authorizationVersion` and
 `value.createdCount`. Resolve a version conflict through fresh configuration comparison, never

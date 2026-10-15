@@ -54,8 +54,9 @@ RUN npm ci --omit=dev --legacy-peer-deps \
 
 FROM manifests AS release-ops-deps
 
-RUN npm ci --omit=dev --legacy-peer-deps \
+RUN PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x npm ci --omit=dev --legacy-peer-deps \
   --workspace @smedc/release-ops --include-workspace-root=false \
+  && test -x node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x \
   && npm cache clean --force
 
 FROM node:22-bookworm-slim AS runtime-base

@@ -13,7 +13,7 @@ describe("SMEDC companion skill guidance", () => {
     expect(skill).toContain("smedc-delivery-ledger");
     expect(skill).toContain("https://github.com/YinXiaoyu-1998/smedc-companion-skills");
   });
-  it("routes cost-card details to local CSV with candidate release and independent provenance", async () => {
+  it("routes cost-card details to local CSV with published release and independent provenance", async () => {
     const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
     const guide = await readFile(
       path.join(root, "skills/smedc-mcp/references/cost-cards.md"),
@@ -23,8 +23,8 @@ describe("SMEDC companion skill guidance", () => {
     for (const field of COST_CARD_DIRECTORY_REGISTRY.fields)
       expect(guide).toContain(`\`${field.canonicalName}\``);
     for (const invariant of [
-      "candidate `0.10.0`",
-      "not published",
+      "Launcher `0.10.0` is published and independently verified",
+      "matching service rollout",
       "35",
       "38",
       "download_cost_cards",

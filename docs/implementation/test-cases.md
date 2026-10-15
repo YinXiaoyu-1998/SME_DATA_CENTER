@@ -6,7 +6,7 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 
 ## Admin-only upload regression boundary
 
-Launcher recommendation is 0.9.0; minimum compatibility remains 0.6.0. Run the HTTP upload
+Launcher recommendation is 0.10.0; minimum compatibility remains 0.6.0. Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
 prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
@@ -107,7 +107,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-The runner uses the installed `smedc-mcp-launcher@0.9.0`. Its default profile requires the
+The existing full-suite runner baseline uses installed `smedc-mcp-launcher@0.9.0`; this is separate from the current employee install pin 0.10.0. Its default profile requires the
 run's synthetic admin c0. The explicit `--reuse-session=<expected-email>` profile verifies the
 selected existing admin without logging out or changing role/clearance. The runner now verifies the exact raw-ledger aggregate denial. Its evidence-fixture category/scope configuration remains a separate prerequisite; see the official manual guide's current runner limitation. Its intended smoke scope includes real MCP
 evidence readiness/search, run-unique receipt XLSX upload, dishes partition
@@ -226,7 +226,7 @@ Use synthetic fixtures. Focused contract/HTTP/MCP checks:
 They compare current server SQL predicates and denial behavior, admin self/other complete configuration,
 tenant/version failures, strict controlled schemas, and closed raw-ledger aggregate/original paths.
 Launcher build, installed-package tool/schema checks and dry packing are one release boundary.
-Launcher `0.9.0` is published and independently verified; it is the approved exact pin. Service
+Launcher `0.10.0` is published and independently verified; it is the approved exact pin. Service
 rollout, real-tenant activation and the explicitly requested full manual suite remain separate gates.
 
 The default owned integration runner includes the business authorization foundation and cutover,
@@ -236,10 +236,11 @@ acceptance cases are covered across domain, API, DB, worker and MCP tests; run t
 during implementation and the final repository gates once after consolidated review. Do not run the
 full official manual workflow, real-tenant backfills or activation as part of these automated checks.
 
-## Cost-card changed-workflow cases (candidate, synthetic only)
+## Cost-card changed-workflow cases (published launcher, synthetic only)
 
-Cost-card checks target unpublished candidate 0.10.0; no full official suite, staging deployment,
-real imports/cleanup or tenant changes are authorized by implementation. Use small synthetic
+Cost-card checks target published, independently verified launcher 0.10.0. Verify service rollout
+and synthetic tenant configuration separately; publication does not authorize the full official
+suite, real imports/cleanup or real tenant changes. Use small synthetic
 cards with 35-column originals, two same-name specifications, the same SKU under another SPU,
 standard/exception source text, exact decimals, leading-zero codes, nullable/zero/repeated items.
 

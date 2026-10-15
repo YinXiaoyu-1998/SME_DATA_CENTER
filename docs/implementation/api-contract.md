@@ -88,8 +88,8 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The published, independently verified Skill pin and server recommendation are 0.9.0; minimum
-compatibility remains 0.6.0. Launcher 0.9.0 bundles this authorization contract; matching service
+The published, independently verified Skill pin and server recommendation are 0.10.0; minimum
+compatibility remains 0.6.0. Launcher 0.10.0 bundles this authorization contract; matching service
 rollout and explicit tenant activation remain separate. Launchers below the minimum are rejected
 with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This release does not backfill historical
 resource attributes, invalidate existing OSS URLs, or add mid-transfer downgrade handling. Future scheduled/connector/service identities need a separate design,
@@ -165,13 +165,13 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.9.0 owns business/dishes upload and partition transfer. Global compatibility requires at least 0.6.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.10.0 owns business/dishes upload and partition transfer. Global compatibility requires at least 0.6.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
 authorization mode/version, query shape, filters, limit, and retrieval configuration.
 
-### Current permission and management tools (Launcher 0.9.0)
+### Current permission and management tools (Launcher 0.10.0)
 
 All calls use the existing authenticated HTTP delegation. Every write requires the current
 `expectedVersion`; conflicts return `AUTHORIZATION_VERSION_CONFLICT` without partial changes.
@@ -205,9 +205,9 @@ inside activation. Real-tenant configuration and activation require separate hum
 
 ### Filtered partition extracts and asynchronous bundles
 
-The approved launcher 0.9.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
+The approved launcher 0.10.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
 tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
-plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.9.0`. This contract is not
+plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.10.0`. This contract is not
 evidence of service deployment or tenant activation.
 
 For `business`/`dishes`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
@@ -289,12 +289,11 @@ ZIP preparation returns `LEDGER_PDF_NOT_READY`; report the scheduled wait. Inter
 operator CLI refresh/backfill remains available outside the employee API.
 See [ledger-pdf-operations.md](./ledger-pdf-operations.md) for backfill and recovery.
 
-## Cost Cards (Unpublished Candidate)
+## Cost Cards (Published Launcher, Separate Service Gate)
 
-The cost-card contract targets candidate launcher `0.10.0`; it is not published, deployed,
-accepted or approved for installation. Keep the verified 0.9.0 recommendation/pin until
-independent release verification. Matching service rollout and explicit tenant configuration
-are separate gates. See [the usage contract](../../skills/smedc-mcp/references/cost-cards.md).
+Launcher `0.10.0` is published and independently verified and is the approved install pin
+and service recommendation. Cost-card service rollout and explicit tenant configuration remain
+separate gates; publication does not prove live deployment or acceptance. See [the usage contract](../../skills/smedc-mcp/references/cost-cards.md).
 
 `upload_structured_dataset` / `POST /v1/structured/imports` accepts `dataset="cost_cards"`,
 original XLSX or UTF-8 CSV, enterprise name and idempotency key. No date window or snapshot date.
@@ -319,7 +318,7 @@ or same-SKU candidates remain separate; names do not create identity or a sales 
 `sale_price` predicates/output require exact decimal strings or null, JSON numbers are rejected;
 `revision` is a string. Coverage uses current readable cards/sources independent of original archive.
 
-Candidate `POST /v1/cost-cards/manifest` and `download_cost_cards` share optional
+`POST /v1/cost-cards/manifest` and `download_cost_cards` share optional
 `enterpriseName`, `costCardIds`, `spuIds`, `skuIds`, `dishName`, `dishNameContains`,
 `specificationName`, `baseCategoryName`. Fields are AND; nonempty ID/code arrays are OR, maximum
 100 each. No date/store selectors. Explicit IDs are all-or-error; condition selection returns only
@@ -360,10 +359,11 @@ input cards; changed-field details cap
 at 100 entries / 32 KiB with changesTruncated and contain no values/links. Failure/queued is not
 publication success; a later directory cannot recreate an earlier summary.
 
-### Tested candidate cost-card endpoints
+### Cost-card endpoints and rollout boundary
 
-These interfaces are candidate contracts with focused route tests, not evidence of launcher
-publication, actual service rollout, real tenant setup or final coordinated acceptance.
+These interfaces are included in published launcher 0.10.0 and have focused route coverage.
+Verify actual service rollout and tenant configuration separately; package verification alone
+does not establish live acceptance.
 
 | Method | Route                                         | Input / result                                                   |
 | ------ | --------------------------------------------- | ---------------------------------------------------------------- |
@@ -379,7 +379,7 @@ totalItemRowCount,sources:[{sourceDocumentId,importBatchId,cardCount,totalItemRo
 include only currently authorized unarchived directory cards. No original-active/input-row proxy
 or hidden-card inference. Source IDs still confer no original-read permission.
 
-Candidate category initialization is `POST /v1/admin/permissions/categories/initialize` with
+Category initialization is `POST /v1/admin/permissions/categories/initialize` with
 `{expectedVersion:string}` and result `{authorizationVersion:string,value:{createdCount:number}}`.
 The current admin/tenant/version-checked write is idempotent and leaves levels/grants/mode intact.
 Browser counterpart `/admin/permissions/:orgId/api/categories/initialize` requires the same
@@ -388,7 +388,7 @@ GET remains read-only. UI “补齐资料类别 / Add missing categories” requ
 unsaved drafts first; missing cost_cards starts with null level and no grants. The operator must
 then explicitly configure its level and authorized group scope; no autoactivation or real migration.
 
-### Candidate launcher delivery and status envelope
+### Launcher delivery and status envelope
 
 `download_cost_cards` uses the flat selectors above and returns
 `{localDirectory,dataset:"cost_cards",cardCount,totalItemRowCount,files}`. `files` contains only
@@ -405,4 +405,4 @@ and idempotencyKey, without dates/snapshot/confidentiality override. Follow `get
 applied currently readable batches receive publicationSummary verbatim. Failed/rejected current
 readers can receive validation locations and ignored/source-summary arrays; owner-only access
 receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
-read permission is exposed. These are unpublished candidate interfaces; approved pins remain unchanged.
+read permission is exposed. Launcher 0.10.0 is published and independently verified; service rollout and tenant authorization remain separate.

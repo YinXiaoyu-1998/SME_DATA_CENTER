@@ -29,12 +29,12 @@
 
 七类密级流程要求服务端已部署原始台账内部类别免密级修正；若准备报告仍要求 `delivery_ledger` 密级，报告服务尚未对齐，不自动填 0／3 或删除内部类别。
 
-## Cost cards (candidate)
+## Cost cards
 
-The cost-card category is release gated; see [cost cards](cost-cards.md). For an already enabled
+The cost-card category requires matching service rollout and explicit configuration; see [cost cards](cost-cards.md). For an already enabled
 enterprise, the current admin explicitly initializes missing fixed categories through the
 controlled versioned write, then configures `cost_cards` level and enterprise group grants.
-Use the candidate UI button “补齐资料类别 / Add missing categories” only after saving or resolving
+Use the UI button “补齐资料类别 / Add missing categories” only after saving or resolving
 unsaved drafts. The write uses current string expectedVersion and returns string
 authorizationVersion plus value.createdCount; a stale version requires rereading/comparison,
 not blind retry. Same-origin/CSRF and current admin/tenant checks apply.

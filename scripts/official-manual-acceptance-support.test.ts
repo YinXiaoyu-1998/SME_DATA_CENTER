@@ -377,7 +377,7 @@ describe("cost-card changed-workflow local CSV oracle", () => {
     const scenarios = JSON.parse(
       await readFile("fixtures/manual-acceptance/scenarios.json", "utf8")
     );
-    expect(scenarios.candidateCostCards.releaseGate).toContain("Unpublished candidate 0.10.0");
+    expect(scenarios.candidateCostCards.releaseGate).toContain("Published launcher 0.10.0");
     expect(scenarios.candidateCostCards.tasks.map((task: { id: string }) => task.id)).toContain(
       "cost-card-after-original-archive"
     );
