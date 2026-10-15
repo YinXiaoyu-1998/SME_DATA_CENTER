@@ -26,6 +26,7 @@ import {
   type PartitionImportRuntimeLimits
 } from "./partition-import.js";
 import { loadWorkerRuntimeLimits } from "./config/runtime-limits.js";
+import { cleanupRun, runConfig } from "../../../scripts/official-manual-acceptance.js";
 
 const suite = process.env["RUN_COST_CARD_PRISMA_INTEGRATION"] === "1" ? describe : describe.skip;
 suite("cost card API to worker publication", () => {
@@ -244,6 +245,47 @@ suite("cost card API to worker publication", () => {
     expect((await status(firstId, adminId)).json().importBatch).not.toHaveProperty(
       "publicationSummary"
     );
+  });
+
+  it("cleans replaced CSVs without a processing-run link and preserves unrelated cards and files", async () => {
+    const unrelated = await prisma.costCard.findMany({ where: { orgId }, orderBy: { id: "asc" } });
+    const first = await upload(csv([row("cleanup-owned")]), "cleanup-first");
+    expect(first.statusCode).toBe(202);
+    expect(await runImport()).toMatchObject({ status: "active" });
+    const oldCard = await prisma.costCard.findFirstOrThrow({
+      where: { orgId, spuId: "cleanup-owned" }
+    });
+    const second = await upload(
+      csv([row("cleanup-owned", { net_quantity: "0" })]),
+      "cleanup-second"
+    );
+    expect(second.statusCode).toBe(202);
+    expect(await runImport()).toMatchObject({ status: "active" });
+    expect(
+      await prisma.storageGarbage.findFirst({ where: { objectKey: oldCard.objectKey } })
+    ).toMatchObject({ reason: "cost_card_replaced", processingRunId: null });
+    expect((await storage.headObject(oldCard.objectKey)).state).toBe("found");
+    const run = runConfig("cost-cleanup-regression", {
+      reuseSession: `${adminId}@example.invalid`,
+      documentIds: [first.json().document.documentId, second.json().document.documentId],
+      partitionJobIds: []
+    });
+    run.orgId = orgId;
+    run.reusedEmployeeId = adminId;
+    vi.stubEnv("STORAGE_DRIVER", "local");
+    vi.stubEnv("LOCAL_STORAGE_ROOT", path.join(root, "storage"));
+    try {
+      await cleanupRun(prisma, run);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect((await storage.headObject(oldCard.objectKey)).state).toBe("not_found");
+    expect(await prisma.storageGarbage.count({ where: { objectKey: oldCard.objectKey } })).toBe(0);
+    expect(await prisma.costCard.findMany({ where: { orgId }, orderBy: { id: "asc" } })).toEqual(
+      unrelated
+    );
+    for (const card of unrelated)
+      expect((await storage.headObject(card.objectKey)).state).toBe("found");
   });
 
   it("uses finite outer retries with fresh preparation and queued failure cleanup", async () => {

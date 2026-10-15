@@ -566,11 +566,38 @@ export async function collectCostCardAcceptanceCleanupTargets(
     },
     select: { id: true }
   });
+  const processingRuns = await prisma.processingRun.findMany({
+    where: { orgId: scope.orgId, documentId: { in: scope.sourceDocumentIds } },
+    select: { id: true }
+  });
+  // Replaced CSV garbage may have no job relation; its exact owning job prefix remains.
+  const prefixes = processingRuns.map((run) => `cost-cards/${scope.orgId}/${run.id}/`);
+  const garbage = prefixes.length
+    ? await prisma.storageGarbage.findMany({
+        where: { OR: prefixes.map((prefix) => ({ objectKey: { startsWith: prefix } })) },
+        select: { objectKey: true }
+      })
+    : [];
+  // Enforce literal ownership after SQL LIKE matching (organization/job IDs may contain '_').
+  const costCardGarbageObjectKeys = garbage
+    .filter((item) => prefixes.some((prefix) => item.objectKey.startsWith(prefix)))
+    .map((item) => item.objectKey);
+  if (
+    costCardGarbageObjectKeys.length &&
+    (await prisma.costCard.count({
+      where: {
+        objectKey: { in: costCardGarbageObjectKeys },
+        id: { notIn: costCards.map((card) => card.id) }
+      }
+    }))
+  )
+    throw new Error("Official cleanup refuses a shared cost-card object.");
   return {
     costCards,
     costCardIds: costCards.map((card) => card.id),
     costCardResourceIds: resources.map((resource) => resource.id),
-    costCardSourceResourceIds: sourceResources.map((resource) => resource.id)
+    costCardSourceResourceIds: sourceResources.map((resource) => resource.id),
+    costCardGarbageObjectKeys
   };
 }
 
@@ -650,11 +677,16 @@ export async function cleanupRun(
   // Archive cleanup stays within the run's synthetic documents and employees.
   // Refuse a shared derived partition/request rather than deleting another run's data.
   const ownedDocumentIds = documents.map((document) => document.id);
-  const { costCards, costCardIds, costCardResourceIds, costCardSourceResourceIds } =
-    await collectCostCardAcceptanceCleanupTargets(prisma, {
-      orgId: run.orgId,
-      sourceDocumentIds: ownedDocumentIds
-    });
+  const {
+    costCards,
+    costCardIds,
+    costCardResourceIds,
+    costCardSourceResourceIds,
+    costCardGarbageObjectKeys
+  } = await collectCostCardAcceptanceCleanupTargets(prisma, {
+    orgId: run.orgId,
+    sourceDocumentIds: ownedDocumentIds
+  });
   const receiptRows = await prisma.deliveryLedgerRow.findMany({
     where: { sourceDocumentId: { in: ownedDocumentIds } },
     select: { orgId: true, payload: true }
@@ -773,6 +805,7 @@ export async function cleanupRun(
       .map((job) => job.temporaryObjectKey)
       .filter((key): key is string => Boolean(key)),
     ...partitions.map((partition) => partition.objectKey),
+    ...costCardGarbageObjectKeys,
     ...costCards.map((card) => card.objectKey)
   ];
   await deleteQdrantPoints(qdrantPointIds);
