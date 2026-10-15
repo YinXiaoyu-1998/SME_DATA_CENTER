@@ -29,6 +29,8 @@ export interface CleanupCounts {
   structuredPartitions: number;
   costCards: number;
   costCardResources: number;
+  costCardSourceResources: number;
+  costCardResourceScopes: number;
   storageGarbage: number;
   vipRows: number;
   dishCatalogRows: number;

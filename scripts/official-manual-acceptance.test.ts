@@ -97,31 +97,99 @@ it("rejects another uploader's explicit cleanup IDs before deleting any data", a
   expect(findDocuments).not.toHaveBeenCalled();
 });
 
-it("inventories only the run's exact source cards/resources, including archived cards", async () => {
-  const costCards = [
-    { id: "card-active", objectKey: "cost-cards/active.csv" },
-    { id: "card-archived", objectKey: "cost-cards/archived.csv" }
+it("resolves null-source card resources by key and historical cost-card source fragments", async () => {
+  const cards = [
+    {
+      orgId: "org",
+      id: "active",
+      sourceDocumentId: "current",
+      archivedAt: null,
+      objectKey: "active.csv"
+    },
+    {
+      orgId: "org",
+      id: "archived",
+      sourceDocumentId: "current",
+      archivedAt: new Date(),
+      objectKey: "archived.csv"
+    },
+    {
+      orgId: "org",
+      id: "unrelated",
+      sourceDocumentId: "other",
+      archivedAt: null,
+      objectKey: "other.csv"
+    }
   ];
+  const resources = (
+    [
+      ["card-active", "cost_card", "cost-card:active", null, "cost_cards"],
+      ["card-archived", "cost_card", "cost-card:archived", null, "cost_cards"],
+      ["source-current", "source_fragment", "current:cost", "current", "cost_cards"],
+      ["source-historical", "source_fragment", "historical:cost", "historical", "cost_cards"],
+      ["card-other", "cost_card", "cost-card:unrelated", null, "cost_cards"],
+      ["source-other", "source_fragment", "other:cost", "other", "cost_cards"],
+      ["other-category", "source_fragment", "historical:vip", "historical", "vip"]
+    ] as const
+  ).map(([id, kind, resourceKey, sourceDocumentId, key]) => ({
+    orgId: "org",
+    id,
+    kind,
+    resourceKey,
+    sourceDocumentId,
+    category: { key, kind: "fixed" }
+  }));
   const prisma = {
-    costCard: { findMany: vi.fn(async () => costCards) },
-    businessResource: { findMany: vi.fn(async () => [{ id: "resource-1" }]) }
+    costCard: {
+      findMany: vi.fn(
+        async ({
+          where
+        }: {
+          where: { orgId: string; sourceDocumentId: { in: string[] }; archivedAt?: Date | null };
+        }) =>
+          cards.filter(
+            (card) =>
+              card.orgId === where.orgId &&
+              where.sourceDocumentId.in.includes(card.sourceDocumentId) &&
+              (where.archivedAt === undefined || card.archivedAt === where.archivedAt)
+          )
+      )
+    },
+    businessResource: {
+      findMany: vi.fn(
+        async ({
+          where
+        }: {
+          where: {
+            orgId: string;
+            kind: string;
+            resourceKey?: { in: string[] };
+            sourceDocumentId?: { in: (string | null)[] };
+            category?: { key: string; kind: string };
+          };
+        }) =>
+          resources.filter(
+            (resource) =>
+              resource.orgId === where.orgId &&
+              resource.kind === where.kind &&
+              (!where.resourceKey || where.resourceKey.in.includes(resource.resourceKey)) &&
+              (!where.sourceDocumentId ||
+                where.sourceDocumentId.in.includes(resource.sourceDocumentId)) &&
+              (!where.category ||
+                (resource.category.key === where.category.key &&
+                  resource.category.kind === where.category.kind))
+          )
+      )
+    }
   };
-  await expect(
-    collectCostCardAcceptanceCleanupTargets(prisma as unknown as PrismaClient, {
-      orgId: "synthetic-org",
-      sourceDocumentIds: ["run-doc"]
-    })
-  ).resolves.toEqual({
-    costCards,
-    costCardIds: ["card-active", "card-archived"],
-    costCardResourceIds: ["resource-1"]
+  const targets = await collectCostCardAcceptanceCleanupTargets(prisma as unknown as PrismaClient, {
+    orgId: "org",
+    sourceDocumentIds: ["current", "historical"]
   });
-  expect(prisma.costCard.findMany).toHaveBeenCalledWith({
-    where: { orgId: "synthetic-org", sourceDocumentId: { in: ["run-doc"] } },
-    select: { id: true, objectKey: true }
-  });
-  expect(prisma.businessResource.findMany).toHaveBeenCalledWith({
-    where: { orgId: "synthetic-org", kind: "cost_card", sourceDocumentId: { in: ["run-doc"] } },
-    select: { id: true }
-  });
+  expect(targets.costCardIds).toEqual(["active", "archived"]);
+  expect(targets.costCardResourceIds).toEqual(["card-active", "card-archived"]);
+  expect(targets).toHaveProperty("costCardSourceResourceIds", [
+    "source-current",
+    "source-historical"
+  ]);
 });

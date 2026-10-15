@@ -151,6 +151,33 @@ async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeR
       }
     });
     const documents = await prisma.$transaction(async (tx) => {
+      const [plannedCards, plannedSources] = await Promise.all([
+        tx.costCard.findMany({ select: { orgId: true, id: true } }),
+        tx.document.findMany({ select: { orgId: true, id: true } })
+      ]);
+      const [cardResources, sourceResources] = await Promise.all([
+        tx.businessResource.findMany({
+          where: {
+            kind: "cost_card",
+            OR: plannedCards.map((card) => ({
+              orgId: card.orgId,
+              resourceKey: `cost-card:${card.id}`
+            }))
+          },
+          select: { orgId: true, id: true }
+        }),
+        tx.businessResource.findMany({
+          where: {
+            kind: "source_fragment",
+            category: { kind: "fixed", key: "cost_cards" },
+            OR: plannedSources.map((source) => ({
+              orgId: source.orgId,
+              sourceDocumentId: source.id
+            }))
+          },
+          select: { orgId: true, id: true }
+        })
+      ]);
       await tx.processingRun.deleteMany({
         where: {
           OR: [
@@ -172,7 +199,28 @@ async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeR
       await tx.ledgerPdfPartition.deleteMany({});
       await tx.ledgerPdfReconciliationRun.deleteMany({});
       // Content resources reference originals; preserve category/grant configuration.
-      await tx.businessResource.deleteMany({ where: { kind: "cost_card" } });
+      await tx.businessResource.deleteMany({ where: { kind: "cost_card", OR: cardResources } });
+      await tx.businessResource.deleteMany({
+        where: {
+          kind: "source_fragment",
+          category: { kind: "fixed", key: "cost_cards" },
+          OR: sourceResources
+        }
+      });
+      const resourceTargets = [...cardResources, ...sourceResources];
+      const remainingResources = await tx.businessResource.count({
+        where: { OR: resourceTargets }
+      });
+      const remainingScopes = await tx.businessResourceScope.count({
+        where: {
+          OR: resourceTargets.map((resource) => ({
+            orgId: resource.orgId,
+            resourceId: resource.id
+          }))
+        }
+      });
+      if (remainingResources || remainingScopes)
+        throw new Error("Cost-card authorization cleanup left resources or scopes.");
       await tx.costCard.deleteMany({});
       await tx.structuredPartition.deleteMany({});
       await tx.storageGarbage.deleteMany({});

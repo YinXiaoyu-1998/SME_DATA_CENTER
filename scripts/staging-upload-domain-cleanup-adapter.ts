@@ -86,7 +86,7 @@ export function createStagingUploadDomainCleanupAdapter(
         );
       }
       const documents = await runtime.prisma.document.findMany({
-        select: { id: true, storageObjectKey: true }
+        select: { orgId: true, id: true, storageObjectKey: true }
       });
       const documentIds = documents.map((document) => document.id);
       const chunks = await runtime.prisma.documentChunk.findMany({
@@ -117,7 +117,6 @@ export function createStagingUploadDomainCleanupAdapter(
         partitionJobs,
         structuredPartitions,
         costCards,
-        costCardResources,
         storageGarbage,
         quarantineCertificates
       ] = await Promise.all([
@@ -126,15 +125,34 @@ export function createStagingUploadDomainCleanupAdapter(
         }),
         runtime.prisma.structuredPartition.findMany({ select: { id: true, objectKey: true } }),
         // Include archived cards: original archive and card archive are independent.
-        runtime.prisma.costCard.findMany({ select: { id: true, objectKey: true } }),
-        runtime.prisma.businessResource.findMany({
-          where: { kind: "cost_card" },
-          select: { id: true }
-        }),
+        runtime.prisma.costCard.findMany({ select: { orgId: true, id: true, objectKey: true } }),
         runtime.prisma.storageGarbage.findMany({ select: { id: true, objectKey: true } }),
         runtime.prisma.quarantineCertificate.findMany({
           where: { sourceDocumentId: { in: documentIds } },
           select: { id: true }
+        })
+      ]);
+      const [costCardResources, costCardSourceResources] = await Promise.all([
+        runtime.prisma.businessResource.findMany({
+          where: {
+            kind: "cost_card",
+            OR: costCards.map((card) => ({
+              orgId: card.orgId,
+              resourceKey: `cost-card:${card.id}`
+            }))
+          },
+          select: { orgId: true, id: true }
+        }),
+        runtime.prisma.businessResource.findMany({
+          where: {
+            kind: "source_fragment",
+            category: { kind: "fixed", key: "cost_cards" },
+            OR: documents.map((document) => ({
+              orgId: document.orgId,
+              sourceDocumentId: document.id
+            }))
+          },
+          select: { orgId: true, id: true }
         })
       ]);
       const audits = await runtime.prisma.auditLog.findMany({
@@ -174,7 +192,8 @@ export function createStagingUploadDomainCleanupAdapter(
         partitionImportJobIds: partitionJobs.map((row) => row.id),
         structuredPartitionIds: structuredPartitions.map((row) => row.id),
         costCardIds: costCards.map((row) => row.id),
-        costCardResourceIds: [...new Set(costCardResources.map((row) => row.id))],
+        costCardResources,
+        costCardSourceResources,
         storageGarbageIds: storageGarbage.map((row) => row.id),
         quarantineCertificateIds: quarantineCertificates.map((row) => row.id),
         vipRowIds: batches.flatMap((batch) => batch.vipRows.map((row) => row.id)),
@@ -214,7 +233,15 @@ export function createStagingUploadDomainCleanupAdapter(
       void (await runtime.prisma.structuredPartition.deleteMany(ids(values))),
     deleteCostCardResources: async (values) =>
       void (await runtime.prisma.businessResource.deleteMany({
-        where: { kind: "cost_card", id: { in: values } }
+        where: { kind: "cost_card", OR: values }
+      })),
+    deleteCostCardSourceResources: async (values) =>
+      void (await runtime.prisma.businessResource.deleteMany({
+        where: {
+          kind: "source_fragment",
+          category: { kind: "fixed", key: "cost_cards" },
+          OR: values
+        }
       })),
     deleteCostCards: async (values) => void (await runtime.prisma.costCard.deleteMany(ids(values))),
     deleteStorageGarbage: async (values) =>
@@ -239,6 +266,8 @@ export function createStagingUploadDomainCleanupAdapter(
         structuredPartitions,
         costCards,
         costCardResources,
+        costCardSourceResources,
+        costCardResourceScopes,
         storageGarbage,
         quarantineCertificates,
         vipRows,
@@ -256,7 +285,18 @@ export function createStagingUploadDomainCleanupAdapter(
         runtime.prisma.structuredPartition.count(ids(plan.structuredPartitionIds)),
         runtime.prisma.costCard.count(ids(plan.costCardIds)),
         runtime.prisma.businessResource.count({
-          where: { kind: "cost_card", id: { in: plan.costCardResourceIds } }
+          where: { kind: "cost_card", OR: plan.costCardResources }
+        }),
+        runtime.prisma.businessResource.count({
+          where: { kind: "source_fragment", OR: plan.costCardSourceResources }
+        }),
+        runtime.prisma.businessResourceScope.count({
+          where: {
+            OR: [...plan.costCardResources, ...plan.costCardSourceResources].map((resource) => ({
+              orgId: resource.orgId,
+              resourceId: resource.id
+            }))
+          }
         }),
         runtime.prisma.storageGarbage.count(ids(plan.storageGarbageIds)),
         runtime.prisma.quarantineCertificate.count(ids(plan.quarantineCertificateIds)),
@@ -289,6 +329,8 @@ export function createStagingUploadDomainCleanupAdapter(
         structuredPartitions,
         costCards,
         costCardResources,
+        costCardSourceResources,
+        costCardResourceScopes,
         storageGarbage,
         quarantineCertificates,
         vipRows,

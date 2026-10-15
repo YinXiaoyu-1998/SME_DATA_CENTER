@@ -4,13 +4,16 @@ import {
   parseStagingUploadDomainCleanupArgs,
   validateStagingUploadDomainCleanupOptions,
   type QdrantPointTarget,
+  type CostCardCleanupResourceTarget,
   type StagingUploadDomainCleanupInventory,
   type StagingUploadDomainCleanupPlan,
   type StagingUploadDomainCleanupSafeLog
 } from "./staging-upload-domain-cleanup-support.js";
 import { createStagingUploadDomainCleanupAdapter } from "./staging-upload-domain-cleanup-adapter.js";
 
-type PostCleanupCounts = StagingUploadDomainCleanupSafeLog["counts"];
+type PostCleanupCounts = StagingUploadDomainCleanupSafeLog["counts"] & {
+  costCardResourceScopes: number;
+};
 
 export interface StagingUploadDomainCleanupAdapter {
   collectInventory(): Promise<StagingUploadDomainCleanupInventory>;
@@ -23,7 +26,8 @@ export interface StagingUploadDomainCleanupAdapter {
   deleteImportWindowClaims(ids: string[]): Promise<void>;
   deletePartitionImportJobs(ids: string[]): Promise<void>;
   deleteStructuredPartitions(ids: string[]): Promise<void>;
-  deleteCostCardResources(ids: string[]): Promise<void>;
+  deleteCostCardResources(targets: CostCardCleanupResourceTarget[]): Promise<void>;
+  deleteCostCardSourceResources(targets: CostCardCleanupResourceTarget[]): Promise<void>;
   deleteCostCards(ids: string[]): Promise<void>;
   deleteStorageGarbage(ids: string[]): Promise<void>;
   deleteQuarantineCertificates(ids: string[]): Promise<void>;
@@ -74,7 +78,8 @@ export async function runStagingUploadDomainCleanup(
   await input.adapter.deleteDocumentIndexes(plan.documentIndexIds);
   await input.adapter.deleteImportWindowClaims(plan.importWindowClaimIds);
   await input.adapter.deleteStructuredPartitions(plan.structuredPartitionIds);
-  await input.adapter.deleteCostCardResources(plan.costCardResourceIds);
+  await input.adapter.deleteCostCardResources(plan.costCardResources);
+  await input.adapter.deleteCostCardSourceResources(plan.costCardSourceResources);
   await input.adapter.deleteCostCards(plan.costCardIds);
   await input.adapter.deleteStorageGarbage(plan.storageGarbageIds);
   await input.adapter.deleteQuarantineCertificates(plan.quarantineCertificateIds);

@@ -9,12 +9,34 @@ import { buildStagingUploadDomainCleanupPlan } from "./staging-upload-domain-cle
 
 describe("repo-contained staging upload-domain cleanup adapter", () => {
   it("enumerates and deletes only exact DB, OSS, and Qdrant targets through injected providers", async () => {
+    let resources = (
+      [
+        ["org", "resource-1", "cost_card", "cost-card:card-1", null],
+        ["org", "source-resource-1", "source_fragment", "doc-1:cost", "doc-1"],
+        ["other", "resource-1", "cost_card", "cost-card:unrelated", null],
+        ["other", "source-resource-1", "source_fragment", "other:cost", "other-doc"]
+      ] as const
+    ).map(([orgId, id, kind, resourceKey, sourceDocumentId]) => ({
+      orgId,
+      id,
+      kind,
+      resourceKey,
+      sourceDocumentId,
+      category: { key: "cost_cards", kind: "fixed" }
+    }));
+    let scopes = resources.map((resource) => ({ orgId: resource.orgId, resourceId: resource.id }));
     const prisma = {
       partitionDownloadRequest: { count: vi.fn(async () => 0) },
       $disconnect: vi.fn(async () => undefined),
       document: {
-        findMany: vi.fn(async () => [{ id: "doc-1", storageObjectKey: "uploads/doc-1" }]),
-        deleteMany: vi.fn(async () => ({})),
+        findMany: vi.fn(async () => [
+          { orgId: "org", id: "doc-1", storageObjectKey: "uploads/doc-1" }
+        ]),
+        deleteMany: vi.fn(async () => {
+          if (resources.some((resource) => resource.sourceDocumentId === "doc-1"))
+            throw new Error("Restrict: source fragment still references original");
+          return {};
+        }),
         count: vi.fn(async () => 0)
       },
       documentChunk: {
@@ -69,14 +91,87 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         count: vi.fn(async () => 0)
       },
       costCard: {
-        findMany: vi.fn(async () => [{ id: "card-1", objectKey: "cost-cards/current.csv" }]),
+        findMany: vi.fn(async () => [
+          { orgId: "org", id: "card-1", objectKey: "cost-cards/current.csv" }
+        ]),
         deleteMany: vi.fn(async () => ({})),
         count: vi.fn(async () => 0)
       },
       businessResource: {
-        findMany: vi.fn(async () => [{ id: "resource-1" }]),
-        deleteMany: vi.fn(async () => ({})),
-        count: vi.fn(async () => 0)
+        findMany: vi.fn(
+          async ({
+            where
+          }: {
+            where: {
+              kind: string;
+              OR: Array<{ orgId: string; resourceKey?: string; sourceDocumentId?: string }>;
+              category?: { key: string; kind: string };
+            };
+          }) =>
+            resources
+              .filter(
+                (resource) =>
+                  resource.kind === where.kind &&
+                  (!where.category ||
+                    (resource.category.key === where.category.key &&
+                      resource.category.kind === where.category.kind)) &&
+                  where.OR.some(
+                    (target) =>
+                      target.orgId === resource.orgId &&
+                      (target.resourceKey
+                        ? target.resourceKey === resource.resourceKey
+                        : target.sourceDocumentId === resource.sourceDocumentId)
+                  )
+              )
+              .map((resource) => ({ orgId: resource.orgId, id: resource.id }))
+        ),
+        deleteMany: vi.fn(
+          async ({
+            where
+          }: {
+            where: { kind: string; OR: Array<{ orgId: string; id: string }> };
+          }) => {
+            resources = resources.filter(
+              (resource) =>
+                !(
+                  resource.kind === where.kind &&
+                  where.OR.some(
+                    (target) => target.orgId === resource.orgId && target.id === resource.id
+                  )
+                )
+            );
+            scopes = scopes.filter((scope) =>
+              resources.some(
+                (resource) => resource.orgId === scope.orgId && resource.id === scope.resourceId
+              )
+            );
+            return {};
+          }
+        ),
+        count: vi.fn(
+          async ({
+            where
+          }: {
+            where: { kind: string; OR: Array<{ orgId: string; id: string }> };
+          }) =>
+            resources.filter(
+              (resource) =>
+                resource.kind === where.kind &&
+                where.OR.some(
+                  (target) => target.orgId === resource.orgId && target.id === resource.id
+                )
+            ).length
+        )
+      },
+      businessResourceScope: {
+        count: vi.fn(
+          async ({ where }: { where: { OR: Array<{ orgId: string; resourceId: string }> } }) =>
+            scopes.filter((scope) =>
+              where.OR.some(
+                (target) => target.orgId === scope.orgId && target.resourceId === scope.resourceId
+              )
+            ).length
+        )
       },
       storageGarbage: {
         findMany: vi.fn(async () => [{ id: "garbage-1", objectKey: "cost-cards/candidate.csv" }]),
@@ -119,24 +214,26 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       vipRowIds: ["vip-1"],
       dishCatalogRowIds: ["catalog-1"],
       costCardIds: ["card-1"],
-      costCardResourceIds: ["resource-1"],
+      costCardResources: [{ orgId: "org", id: "resource-1" }],
+      costCardSourceResources: [{ orgId: "org", id: "source-resource-1" }],
       storageObjectKeys: ["uploads/doc-1", "cost-cards/current.csv", "cost-cards/candidate.csv"],
       qdrantPoints: [{ collection: "evidence", pointId: "point-1" }]
     });
     await adapter.deleteQdrantPoints(inventory.qdrantPoints);
     await adapter.deleteOssObjects(inventory.storageObjectKeys);
     await adapter.deleteQuarantineCertificates(inventory.quarantineCertificateIds);
-    await adapter.deleteCostCardResources(inventory.costCardResourceIds);
+    await adapter.deleteCostCardResources(inventory.costCardResources);
+    await adapter.deleteCostCardSourceResources(inventory.costCardSourceResources);
     await adapter.deleteCostCards(inventory.costCardIds);
     expect(prisma.costCard.findMany).toHaveBeenCalledWith({
-      select: { id: true, objectKey: true }
+      select: { orgId: true, id: true, objectKey: true }
     });
     expect(prisma.businessResource.findMany).toHaveBeenCalledWith({
-      where: { kind: "cost_card" },
-      select: { id: true }
+      where: { kind: "cost_card", OR: [{ orgId: "org", resourceKey: "cost-card:card-1" }] },
+      select: { orgId: true, id: true }
     });
     expect(prisma.businessResource.deleteMany).toHaveBeenCalledWith({
-      where: { kind: "cost_card", id: { in: ["resource-1"] } }
+      where: { kind: "cost_card", OR: [{ orgId: "org", id: "resource-1" }] }
     });
     expect(prisma.costCard.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["card-1"] } } });
     await adapter.deleteDocuments(inventory.documentIds);
@@ -153,7 +250,20 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
           inventory
         })
       )
-    ).resolves.toMatchObject({ storageObjects: 0 });
+    ).resolves.toMatchObject({
+      storageObjects: 0,
+      costCardResources: 0,
+      costCardSourceResources: 0,
+      costCardResourceScopes: 0
+    });
+    expect(resources.map((resource) => [resource.orgId, resource.id])).toEqual([
+      ["other", "resource-1"],
+      ["other", "source-resource-1"]
+    ]);
+    expect(scopes).toEqual([
+      { orgId: "other", resourceId: "resource-1" },
+      { orgId: "other", resourceId: "source-resource-1" }
+    ]);
     await adapter.close();
     expect(prisma.$disconnect).toHaveBeenCalledOnce();
   });
@@ -178,6 +288,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       structuredPartition: emptyCount,
       costCard: emptyCount,
       businessResource: emptyCount,
+      businessResourceScope: emptyCount,
       storageGarbage: emptyCount,
       quarantineCertificate: emptyCount,
       vipRow: emptyCount,
@@ -207,7 +318,8 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         structuredPartitionIds: [],
         partitionImportJobIds: [],
         costCardIds: [],
-        costCardResourceIds: [],
+        costCardResources: [],
+        costCardSourceResources: [],
         storageGarbageIds: [],
         quarantineCertificateIds: [],
         vipRowIds: [],

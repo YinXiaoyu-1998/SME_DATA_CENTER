@@ -552,6 +552,16 @@ export async function collectCostCardAcceptanceCleanupTargets(
     where: {
       orgId: scope.orgId,
       kind: "cost_card",
+      resourceKey: { in: costCards.map((card) => `cost-card:${card.id}`) }
+    },
+    select: { id: true }
+  });
+  // Historical originals may no longer be the current source of any card.
+  const sourceResources = await prisma.businessResource.findMany({
+    where: {
+      orgId: scope.orgId,
+      kind: "source_fragment",
+      category: { kind: "fixed", key: "cost_cards" },
       sourceDocumentId: { in: scope.sourceDocumentIds }
     },
     select: { id: true }
@@ -559,7 +569,8 @@ export async function collectCostCardAcceptanceCleanupTargets(
   return {
     costCards,
     costCardIds: costCards.map((card) => card.id),
-    costCardResourceIds: resources.map((resource) => resource.id)
+    costCardResourceIds: resources.map((resource) => resource.id),
+    costCardSourceResourceIds: sourceResources.map((resource) => resource.id)
   };
 }
 
@@ -639,7 +650,7 @@ export async function cleanupRun(
   // Archive cleanup stays within the run's synthetic documents and employees.
   // Refuse a shared derived partition/request rather than deleting another run's data.
   const ownedDocumentIds = documents.map((document) => document.id);
-  const { costCards, costCardIds, costCardResourceIds } =
+  const { costCards, costCardIds, costCardResourceIds, costCardSourceResourceIds } =
     await collectCostCardAcceptanceCleanupTargets(prisma, {
       orgId: run.orgId,
       sourceDocumentIds: ownedDocumentIds
@@ -810,6 +821,14 @@ export async function cleanupRun(
     await tx.businessResource.deleteMany({
       where: { orgId: run.orgId, kind: "cost_card", id: { in: costCardResourceIds } }
     });
+    await tx.businessResource.deleteMany({
+      where: {
+        orgId: run.orgId,
+        kind: "source_fragment",
+        category: { kind: "fixed", key: "cost_cards" },
+        id: { in: costCardSourceResourceIds }
+      }
+    });
     await tx.costCard.deleteMany({ where: { orgId: run.orgId, id: { in: costCardIds } } });
     if (importBatchIds.length > 0) {
       await tx.vipRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
@@ -837,6 +856,7 @@ export async function cleanupRun(
     storageObjectKeys,
     costCardIds,
     costCardResourceIds,
+    costCardSourceResourceIds,
     uploaderEmployeeIds
   });
   const ledgerResidue = await Promise.all([
@@ -920,6 +940,7 @@ async function verifyCleanup(
     storageObjectKeys: string[];
     costCardIds: string[];
     costCardResourceIds: string[];
+    costCardSourceResourceIds: string[];
     uploaderEmployeeIds: string[];
   }
 ): Promise<void> {
@@ -941,6 +962,8 @@ async function verifyCleanup(
     structuredPartitions,
     costCards,
     costCardResources,
+    costCardSourceResources,
+    costCardResourceScopes,
     storageGarbage,
     vipRows,
     dishCatalogRows,
@@ -973,6 +996,14 @@ async function verifyCleanup(
         where: { orgId: run.orgId, kind: "cost_card", id: { in: ids } }
       })
     ),
+    countByIds(deleted.costCardSourceResourceIds, (ids) =>
+      prisma.businessResource.count({
+        where: { orgId: run.orgId, kind: "source_fragment", id: { in: ids } }
+      })
+    ),
+    countByIds([...deleted.costCardResourceIds, ...deleted.costCardSourceResourceIds], (ids) =>
+      prisma.businessResourceScope.count({ where: { orgId: run.orgId, resourceId: { in: ids } } })
+    ),
     countByIds(deleted.storageObjectKeys, (keys) =>
       prisma.storageGarbage.count({ where: { objectKey: { in: keys } } })
     ),
@@ -1004,6 +1035,8 @@ async function verifyCleanup(
     structuredPartitions,
     costCards,
     costCardResources,
+    costCardSourceResources,
+    costCardResourceScopes,
     storageGarbage,
     vipRows,
     dishCatalogRows,
