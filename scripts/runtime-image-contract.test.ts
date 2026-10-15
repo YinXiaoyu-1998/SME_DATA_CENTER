@@ -82,6 +82,28 @@ describe("runtime image contracts", () => {
     expect(releaseOpsSection).not.toContain("depends_on:");
   });
 
+  it("vendors the release-ops Prisma engine matching the OpenSSL 3 runtime", () => {
+    const dependencies = dockerStage("release-ops-deps");
+    expect(dependencies).toContain("RUN PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x npm ci");
+    expect(dependencies).toContain(
+      "test -x node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x"
+    );
+    expect(dependencies).not.toContain("ENV PRISMA_CLI_BINARY_TARGETS");
+  });
+
+  it("checks the actual release-ops Prisma CLI in an offline read-only image", () => {
+    const workflow = readFileSync(
+      resolve(workspaceRoot, ".github/workflows/phase3-quality-gates.yml"),
+      "utf8"
+    );
+    const step = workflow
+      .split("- name: Verify release-ops Prisma CLI offline")[1]
+      ?.split("\n      - name:")[0];
+    expect(step).toBeDefined();
+    expect(step).toContain("--network none --read-only --tmpfs /tmp:rw,nosuid,nodev,size=64m");
+    expect(step).toContain("smedc-release-ops:ci node node_modules/prisma/build/index.js version");
+  });
+
   it("passes the public origin to release operations", () => {
     expect(composeService("release-ops")).toContain(
       "SMEDC_PUBLIC_ORIGIN: ${SMEDC_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}"

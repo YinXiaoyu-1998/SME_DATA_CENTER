@@ -73,6 +73,10 @@ jobs:
           docker buildx build --pull --platform linux/amd64 --target api --tag smedc-api:ci --load .
           docker buildx build --pull --platform linux/amd64 --target worker --tag smedc-worker:ci --load .
           docker buildx build --pull --platform linux/amd64 --target release-ops --tag smedc-release-ops:ci --load .
+      - name: Verify release-ops Prisma CLI offline
+        run: |
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,nosuid,nodev,size=64m \
+            smedc-release-ops:ci node node_modules/prisma/build/index.js version
       - name: Verify the packaged Calamine reader against the real fixture
         run: |
           reader_container="$(docker create smedc-worker:ci)"

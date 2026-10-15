@@ -100,18 +100,19 @@
 
 当前实现包含产品 UI、浏览器会话迁移及对应验证；部署证据见 staging-readiness.md。真实租户配置、补齐和激活仍单独授权。
 
-## 成本卡候选类别接入
+## 成本卡类别接入与上线边界
 
-未发布候选成本卡能力增加集团级 `cost_cards` 类别；以上已验证 UI 状态不代表该增量已部署。
+成本卡增加集团级 `cost_cards` 类别，配套 launcher 0.10.0 已发布并独立验证；以上已验证 UI
+状态不代表该增量已在目标服务部署或真实租户已配置。
 现有 enabled 企业也能由当前有效本组织管理员通过初始化写操作幂等补齐缺失类别，沿用
 expectedVersion、审计、同源 CSRF／Origin 保护。读取配置／GET 不写入，新类别级别 null、
 无默认 grant，保留已有类别 ID、级别、账号授权及租户模式。管理员随后用已有类别／集团
 授权界面显式配置；不提供默认全量授权或真实租户自动迁移。配方门店不是权限条件，
 单卡管理和上传不使管理员获得目录／CSV 读取权，管理响应不含正文或签名链接。
 
-候选 UI 的“补齐资料类别 / Add missing categories”按钮先要求保存或处理未保存草稿，再发
+UI 的“补齐资料类别 / Add missing categories”按钮先要求保存或处理未保存草稿，再发
 `POST /admin/permissions/:orgId/api/categories/initialize`，携带字符串 expectedVersion、
 `x-csrf-token` 和相同 Origin。对应 bearer 入口为
 `POST /v1/admin/permissions/categories/initialize`；返回字符串 authorizationVersion 与
 `value.createdCount`。当前企业／admin／版本独立校验，GET 保持只读，冲突时重新读取比较，
-不盲目重放。该接口已有 focused route 验证，仍是未发布候选合同，不代表真实企业已补齐。
+不盲目重放。该接口已有 focused route 验证，launcher 已发布不代表服务部署或真实企业已补齐。

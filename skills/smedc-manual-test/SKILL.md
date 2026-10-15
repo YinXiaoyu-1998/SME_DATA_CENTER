@@ -32,7 +32,7 @@ setup links to the human. The controller must not open setup links or type test 
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
-Use launcher `smedc-mcp-launcher@0.9.0` and the current scenario manifest; account assignments
+The existing full-suite runner baseline uses launcher `smedc-mcp-launcher@0.9.0` and the scenario manifest; account assignments
 apply to the full lifecycle profile and map to the current account in the existing-session profile. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
@@ -207,11 +207,11 @@ Manual staging uploads must not accumulate.
   quarantine/source-download coverage when in scope, and cleanup have actually run.
 - When Windows/OpenClaw are skipped by scope, say so explicitly.
 
-## Cost-card changed workflow (unpublished candidate)
+## Cost-card changed workflow (published launcher, separate acceptance)
 
-Cost-card acceptance is separately release gated for candidate 0.10.0; do not run it with the
-current published 0.9.0 suite or install a candidate into the user runtime. No official run is
-authorized by updating this Skill. After separate publication/service/tenant verification and an
+Cost-card launcher 0.10.0 is published and independently verified. Cost-card acceptance remains
+separate from the existing 0.9.0 full-suite baseline; this update does not authorize a manual run
+or installation into the user runtime. After matching service/tenant verification and an
 explicit changed-workflow request, use `candidateCostCards` in the existing scenario manifest and
 `structured/cost-cards-known-values.csv`: three same-name cards, two specifications under one SPU,
 a reused SKU under another SPU, standard/exception rows, leading-zero codes and exact/null/zero values.
@@ -236,15 +236,15 @@ removes cost_card resources and directory before restrictive source batches/docu
 unrelated group cards/config/accounts and verifies exact keys/counts. Full suite, real cleanup,
 staging and tenant actions always retain their separate authorization boundaries.
 
-Tested candidate route details are in api-contract.md: flat manifest selection; explicit IDs
+Tested route details are in api-contract.md: flat manifest selection; explicit IDs
 all-or-error 403; count cap 409 without truncation; signing change retryable 409 “成本卡已变化，请重新下载”;
 condition zero-card success; archive with no business body and string revision. Coverage counts
 only currently readable active directory cards and groups sources by sourceDocumentId/importBatchId.
 For a separately authorized synthetic enabled enterprise, exercise “补齐资料类别 / Add missing categories”
 after saving/resolving drafts, current version and same-origin/CSRF checks; GET never initializes.
-MCP exposure/publication remains a separate launcher gate; do not bypass missing tools with HTTP.
+Matching service rollout and tenant configuration remain separate gates; do not bypass missing tools with HTTP.
 
-Final candidate tool/output oracle: upload the unchanged absolute local file with enterpriseName
+Published tool/output oracle: upload the unchanged absolute local file with enterpriseName
 and idempotencyKey, no date/confidentiality override; poll get_import_status({importBatchId}) with
 outer document/processing/importBatch. Download returns localDirectory/dataset/cardCount/
 totalItemRowCount/files, CSV basenames cost_card_<costCardId>.csv; manifest.json is inside that

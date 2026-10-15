@@ -1,8 +1,8 @@
 # 成本卡 CSV＋MySQL 目录设计
 
-状态：CSV＋MySQL 目录已形成 feature 分支候选实现；尚未合并、发布、部署或开展真实租户验收。更新：2026-10-15。实现基线：`main@eb7736a`；launcher 候选版本为 `0.10.0`，当前已验证的安装 pins 与服务推荐版本保持原发布值。
+状态：CSV＋MySQL 目录实现已合并 main；launcher `0.10.0` 已公开发布并独立验证。更新：2026-10-15。发布源：`main@0ce5291`；当前安装 pins 与服务推荐版本为 `0.10.0`，最低兼容 `0.6.0`。服务上线另行推进，不代表部署已完成、真实租户已授权或完成真实数据验收。
 
-本文件是成本卡当前设计与候选实现合同，与根目录[术语表](../../CONTEXT.md)采用同一架构。公共接口以[API 契约](api-contract.md)为准；候选实现不代表线上可用。发布后的推荐版本与安装 pins 同步、staging 部署和真实数据导入均需另行授权。
+本文件是成本卡当前设计与实现合同，与根目录[术语表](../../CONTEXT.md)采用同一架构。公共接口以[API 契约](api-contract.md)为准；已发布的 launcher 不代表服务或租户已就绪。服务上线、正式人工验收与真实数据导入分别核对授权和实际证据。
 
 ## 1. 架构与服务边界
 
@@ -195,7 +195,7 @@ discovery和`query_structured_dataset(dataset="cost_cards")`仅公开目录标�
 
 ### 7.2 Manifest与下载
 
-候选`POST /v1/cost-cards/manifest`与MCP `download_cost_cards`采用共享选择器：
+`POST /v1/cost-cards/manifest`与MCP `download_cost_cards`采用共享选择器：
 
 ```ts
 type CostCardSelection = {
@@ -230,7 +230,7 @@ MCP/API/launcher bundled contracts及双份smedc-mcp、受影响companion/manual
 
 ## 8. MySQL目录DDL
 
-只新增CostCard目录及ImportDataset.cost_cards、ImportBatch.publicationSummary、BusinessResourceKind.cost_card；既有对象垃圾队列/来源/权限设施复用。候选实现已包含 [Prisma migration](../../packages/db/prisma/migrations/20261014080000_cost_cards/migration.sql)，并通过真实本地 MySQL 的目录发布、权限、并发和垃圾回收回归；下列 DDL 说明该边界，实际结构以迁移与 [schema](../../packages/db/prisma/schema.prisma) 为准：
+只新增CostCard目录及ImportDataset.cost_cards、ImportBatch.publicationSummary、BusinessResourceKind.cost_card；既有对象垃圾队列/来源/权限设施复用。实现已包含 [Prisma migration](../../packages/db/prisma/migrations/20261014080000_cost_cards/migration.sql)，并通过真实本地 MySQL 的目录发布、权限、并发和垃圾回收回归；下列 DDL 说明该边界，实际结构以迁移与 [schema](../../packages/db/prisma/schema.prisma) 为准：
 
 ```sql
 ALTER TABLE import_batches
@@ -296,7 +296,7 @@ CREATE TABLE cost_cards (
 
 采用CSV权威内容＋可检索目录的代价是每卡一个对象，跨卡明细分析先下载后本地执行；数据库只处理目录和发布元数据。本次增加目录 schema 迁移；无需迁移或兼容旧成本卡业务明细表，也未导入真实企业成本卡。
 
-服务、launcher 和配套 Skills 均以独立 feature 分支交付审阅。launcher `0.10.0` 仅为候选包，本地 tarball 验证不能替代 npm 发布证据；当前主线祖先发布约束仍有效。后续先经授权合并与发布、独立验证 registry 包，再用独立跟进 PR 同步推荐版本及双份 Skill pins；staging、正式人工验收和真实数据导入分别授权。
+服务、launcher 与配套 Skills 已经审阅并合并；launcher `0.10.0` 的 registry 内容、空目录安装、生产依赖审计与 stdio 工具初始化已独立验证。推荐版本与双份 Skill pins 通过发布后同步批次更新至 `0.10.0`。staging 上线由控制器继续核对，正式人工验收、租户授权与真实数据导入分别授权；发布不替代这些证据。
 
 ## 10. 设计依据
 
