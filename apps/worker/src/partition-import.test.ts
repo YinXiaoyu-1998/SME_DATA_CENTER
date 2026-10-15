@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, mkdtemp, mkdir, rm, utimes } from "node:fs/promises";
+import { readdir, mkdtemp, mkdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -480,6 +480,53 @@ describe("partition importer", () => {
       expect(retention).toHaveBeenCalledTimes(1);
       await importer.maintain({ storage, now: atMinute(60) });
       expect(retention).toHaveBeenCalledTimes(2);
+    } finally {
+      await importer.disconnect();
+    }
+  });
+
+  it("cleans abandoned cost-card scratch while preserving recent and unrelated paths", async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "partition-worker-"));
+    const work = path.join(root, "work");
+    await mkdir(work);
+    const now = new Date("2026-10-15T12:00:00Z");
+    const old = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const recent = new Date(now.getTime() - 60 * 60 * 1000);
+    for (const [name, modifiedAt] of [
+      ["cost-abandoned-abc123", old],
+      ["pjob_abandoned-abc123", old],
+      ["cost-recent-abc123", recent],
+      ["cost-boundary-abc123", new Date(now.getTime() - 24 * 60 * 60 * 1000)],
+      ["unrelated", old]
+    ] as const) {
+      const directory = path.join(work, name);
+      await mkdir(path.join(directory, "cost-card-candidates-abc123"), { recursive: true });
+      await writeFile(path.join(directory, "cost-card-candidates-abc123", "card.csv"), "item\n");
+      await utimes(directory, modifiedAt, modifiedAt);
+    }
+    const outside = path.join(root, "outside");
+    await mkdir(outside);
+    await writeFile(path.join(outside, "keep.csv"), "item\n");
+    await utimes(outside, old, old);
+    await symlink(outside, path.join(work, "cost-link"), "dir");
+    const importer = createPartitionImporter({
+      repository: repositoryStub({
+        listExpiredUploads: async () => [],
+        listDueGarbage: async () => [],
+        deleteTerminalJobs: async () => 0
+      }),
+      limits: limits(work)
+    });
+    const storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });
+    try {
+      await importer.maintain({ storage, now });
+      expect((await readdir(work)).sort()).toEqual([
+        "cost-boundary-abc123",
+        "cost-link",
+        "cost-recent-abc123",
+        "unrelated"
+      ]);
+      expect(await readdir(outside)).toEqual(["keep.csv"]);
     } finally {
       await importer.disconnect();
     }

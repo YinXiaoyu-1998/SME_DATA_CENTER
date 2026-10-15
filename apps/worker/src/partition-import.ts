@@ -599,7 +599,10 @@ async function cleanupStaleWorkDirectories(root: string, now: Date): Promise<voi
   }
   await Promise.all(
     entries
-      .filter((entry) => entry.isDirectory() && entry.name.startsWith("pjob_"))
+      .filter(
+        (entry) =>
+          entry.isDirectory() && (entry.name.startsWith("pjob_") || entry.name.startsWith("cost-"))
+      )
       .map(async (entry) => {
         const directory = path.join(root, entry.name);
         if (now.getTime() - (await stat(directory)).mtimeMs > 24 * 60 * 60 * 1000) {
