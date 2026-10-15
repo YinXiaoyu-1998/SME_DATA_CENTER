@@ -209,7 +209,7 @@ Manual staging uploads must not accumulate.
 
 ## Cost-card changed workflow (published launcher, separate acceptance)
 
-Cost-card launcher 0.10.0 is published and independently verified. Cost-card acceptance remains
+Cost-card launcher 0.10.1 is published and independently verified. Cost-card acceptance remains
 separate from the existing 0.9.0 full-suite baseline; this update does not authorize a manual run
 or installation into the user runtime. After matching service/tenant verification and an
 explicit changed-workflow request, use `candidateCostCards` in the existing scenario manifest and

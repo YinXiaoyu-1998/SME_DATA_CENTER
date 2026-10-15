@@ -4,7 +4,7 @@
 
 ## 当前安装与版本
 
-批准安装 pin 为 `smedc-mcp-launcher@0.10.0`，服务推荐 0.10.0、最低兼容 0.6.0。精确安装路径、宿主配置、更新清理和诊断字段只在 [SKILL.md](../../skills/smedc-mcp/SKILL.md) 及其 references 维护，本文不复制整套步骤。
+批准安装 pin 为 `smedc-mcp-launcher@0.10.1`，服务推荐 0.10.1、最低兼容 0.6.0。精确安装路径、宿主配置、更新清理和诊断字段只在 [SKILL.md](../../skills/smedc-mcp/SKILL.md) 及其 references 维护，本文不复制整套步骤。
 
 - Node.js 22+，支持 macOS/Windows/Linux 当前用户安装；不自动安装 latest 或由 launcher 自更新。
 - 修改前备份宿主 MCP 配置，只修复 SMEDC 条目并保留其他集成；无法确定安全配置方式时报告具体阻塞。
@@ -32,8 +32,8 @@ MCP 行为/契约/使用指导变更遵守 [共享发布规则](../../packages/m
 ## 成本卡发布与上线边界
 
 双份 Skill 的 [cost-cards reference](../../skills/smedc-mcp/references/cost-cards.md) 对应已发布并
-独立验证的 0.10.0；基础与 business-analysis companion 的当前安装 pin 均为 0.10.0，服务推荐
-0.10.0、最低兼容 0.6.0。发布与安装不证明服务上线或租户授权就绪，使用前分别核对。同步目录
+独立验证的 0.10.1；基础与 business-analysis companion 的当前安装 pin 均为 0.10.1，服务推荐
+0.10.1、最低兼容 0.6.0。发布与安装不证明服务上线或租户授权就绪，使用前分别核对。同步目录
 需逐文件一致，canonical 用户目录仍为 `/Users/xiaoyuyin/.agents/skills`，安装按员工请求范围执行。
 
 流程为 35 列原件上传 → 受权目录找卡与同名消歧 → download_cost_cards 交付每卡 38 列 CSV／

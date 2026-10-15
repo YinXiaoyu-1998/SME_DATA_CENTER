@@ -123,7 +123,7 @@ issued URLs may remain usable until their capped TTL (at most 15 minutes) expire
 
 ## Cost-card cleanup boundary
 
-Cost-card launcher 0.10.0 is published and independently verified; service rollout is separate.
+Cost-card launcher 0.10.1 is published and independently verified; service rollout is separate.
 Updating this Skill does not authorize real cleanup, tenant changes or user installation. Whole upload-domain cleanup inventories
 source originals and per-card CSVs separately: CostCard IDs/objectKey (including archived cards),
 cost_card content resources, and StorageGarbage exact keys for replaced/run-owned candidate CSVs.

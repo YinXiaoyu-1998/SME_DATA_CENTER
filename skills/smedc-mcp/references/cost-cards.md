@@ -2,7 +2,7 @@
 
 ## Published launcher and service boundary
 
-Launcher `0.10.0` is published and independently verified and approved for installation.
+Launcher `0.10.1` is published and independently verified and approved for installation.
 Install or update only through the core Skill's exact pinned procedure. Before cost-card use,
 verify the matching service rollout and explicit tenant category configuration; publication,
 installation and static discovery alone do not establish live service or tenant readiness.
