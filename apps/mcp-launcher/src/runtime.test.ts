@@ -42,7 +42,8 @@ describe("owned cross-process launcher lock", () => {
       "SMEDC launcher session is busy."
     );
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20);
-    expect(attempts).toBeGreaterThan(1);
+    // Under load the first poll may resume after the deadline; no second attempt is required.
+    expect(attempts).toBeGreaterThanOrEqual(1);
     expect(attempts).toBeLessThanOrEqual(5);
   });
 

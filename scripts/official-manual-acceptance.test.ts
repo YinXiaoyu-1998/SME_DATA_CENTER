@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { callJson, cleanupRun, runConfig } from "./official-manual-acceptance.js";
+import {
+  callJson,
+  cleanupRun,
+  collectCostCardAcceptanceCleanupTargets,
+  runConfig
+} from "./official-manual-acceptance.js";
 
 describe("official acceptance expected MCP denial", () => {
   const query = {
@@ -90,4 +95,101 @@ it("rejects another uploader's explicit cleanup IDs before deleting any data", a
     "Cleanup IDs do not belong to the selected QA account"
   );
   expect(findDocuments).not.toHaveBeenCalled();
+});
+
+it("resolves null-source card resources by key and historical cost-card source fragments", async () => {
+  const cards = [
+    {
+      orgId: "org",
+      id: "active",
+      sourceDocumentId: "current",
+      archivedAt: null,
+      objectKey: "active.csv"
+    },
+    {
+      orgId: "org",
+      id: "archived",
+      sourceDocumentId: "current",
+      archivedAt: new Date(),
+      objectKey: "archived.csv"
+    },
+    {
+      orgId: "org",
+      id: "unrelated",
+      sourceDocumentId: "other",
+      archivedAt: null,
+      objectKey: "other.csv"
+    }
+  ];
+  const resources = (
+    [
+      ["card-active", "cost_card", "cost-card:active", null, "cost_cards"],
+      ["card-archived", "cost_card", "cost-card:archived", null, "cost_cards"],
+      ["source-current", "source_fragment", "current:cost", "current", "cost_cards"],
+      ["source-historical", "source_fragment", "historical:cost", "historical", "cost_cards"],
+      ["card-other", "cost_card", "cost-card:unrelated", null, "cost_cards"],
+      ["source-other", "source_fragment", "other:cost", "other", "cost_cards"],
+      ["other-category", "source_fragment", "historical:vip", "historical", "vip"]
+    ] as const
+  ).map(([id, kind, resourceKey, sourceDocumentId, key]) => ({
+    orgId: "org",
+    id,
+    kind,
+    resourceKey,
+    sourceDocumentId,
+    category: { key, kind: "fixed" }
+  }));
+  const prisma = {
+    costCard: {
+      findMany: vi.fn(
+        async ({
+          where
+        }: {
+          where: { orgId: string; sourceDocumentId: { in: string[] }; archivedAt?: Date | null };
+        }) =>
+          cards.filter(
+            (card) =>
+              card.orgId === where.orgId &&
+              where.sourceDocumentId.in.includes(card.sourceDocumentId) &&
+              (where.archivedAt === undefined || card.archivedAt === where.archivedAt)
+          )
+      )
+    },
+    businessResource: {
+      findMany: vi.fn(
+        async ({
+          where
+        }: {
+          where: {
+            orgId: string;
+            kind: string;
+            resourceKey?: { in: string[] };
+            sourceDocumentId?: { in: (string | null)[] };
+            category?: { key: string; kind: string };
+          };
+        }) =>
+          resources.filter(
+            (resource) =>
+              resource.orgId === where.orgId &&
+              resource.kind === where.kind &&
+              (!where.resourceKey || where.resourceKey.in.includes(resource.resourceKey)) &&
+              (!where.sourceDocumentId ||
+                where.sourceDocumentId.in.includes(resource.sourceDocumentId)) &&
+              (!where.category ||
+                (resource.category.key === where.category.key &&
+                  resource.category.kind === where.category.kind))
+          )
+      )
+    }
+  };
+  const targets = await collectCostCardAcceptanceCleanupTargets(prisma as unknown as PrismaClient, {
+    orgId: "org",
+    sourceDocumentIds: ["current", "historical"]
+  });
+  expect(targets.costCardIds).toEqual(["active", "archived"]);
+  expect(targets.costCardResourceIds).toEqual(["card-active", "card-archived"]);
+  expect(targets).toHaveProperty("costCardSourceResourceIds", [
+    "source-current",
+    "source-historical"
+  ]);
 });

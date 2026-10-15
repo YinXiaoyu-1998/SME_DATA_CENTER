@@ -7,6 +7,7 @@ import {
   STRUCTURED_DATASETS,
   STRUCTURED_QUERY_LIMITS,
   getStructuredRegistry,
+  COST_CARD_DIRECTORY_REGISTRY,
   PHASE3_ERROR_CODES
 } from "@smedc/domain";
 
@@ -15,12 +16,13 @@ export const MCP_UPLOAD_MEDIA_TYPE_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadMediaT
 export const MCP_UPLOAD_MAX_BYTES = PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes;
 export const MCP_LOCAL_FILE_PATH_MAX_LENGTH = 4096;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
+export const COST_CARD_LAUNCHER_VERSION = "0.10.0";
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
 const structuredDataset = z
   .enum(STRUCTURED_DATASETS)
   .describe(
-    "Phase 3 structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog."
+    "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards."
   );
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -249,6 +251,36 @@ const describeStructuredDatasetCoverageInputSchema = z
       .optional(),
     storeNameContains: partitionStoreNameContainsSchema
   })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.dataset === "cost_cards" && input.storeNameContains !== undefined)
+      context.addIssue({
+        code: "custom",
+        path: ["storeNameContains"],
+        message: "Cost-card coverage accepts enterprise scope only."
+      });
+  });
+
+const costCardSelectionText = (max: number) =>
+  z
+    .string()
+    .min(1)
+    .max(max)
+    .refine((value) => value.trim().length > 0);
+const downloadCostCardsInputSchema = z
+  .object({
+    enterpriseName: costCardSelectionText(255).optional(),
+    costCardIds: z.array(costCardSelectionText(32)).min(1).max(100).optional(),
+    spuIds: z.array(costCardSelectionText(64)).min(1).max(100).optional(),
+    skuIds: z.array(costCardSelectionText(64)).min(1).max(100).optional(),
+    dishName: costCardSelectionText(512).optional(),
+    dishNameContains: costCardSelectionText(512).optional(),
+    specificationName: costCardSelectionText(255).optional(),
+    baseCategoryName: costCardSelectionText(255).optional()
+  })
+  .strict();
+const archiveCostCardInputSchema = z
+  .object({ costCardId: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/) })
   .strict();
 
 const partitionImportStatusInputSchema = z
@@ -422,6 +454,12 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
+    if (input.dataset === "cost_cards" && input.confidentialityLevel !== undefined)
+      context.addIssue({
+        code: "custom",
+        path: ["confidentialityLevel"],
+        message: "Cost cards use the configured category level."
+      });
     const metadataPolicy = getStructuredRegistry(input.dataset).metadataPolicy;
 
     switch (metadataPolicy) {
@@ -837,6 +875,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_import_status",
   "get_partition_import_status",
   "download_structured_partitions",
+  "download_cost_cards",
+  "archive_cost_card",
   "prepare_structured_partition_download",
   "get_structured_partition_download_status",
   "describe_ledger_pdf_coverage",
@@ -956,14 +996,14 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "query_structured_dataset",
     title: "Query SMEDC structured dataset",
     description:
-      "Execute a controlled read-only structured query by calling authenticated POST /v1/structured/query.",
+      "Execute a controlled read-only structured query by calling authenticated POST /v1/structured/query. cost_cards supports scalar directory fields only; download complete CSVs for local recipe/item/store analysis. Prices and revisions remain strings.",
     inputSchema: queryStructuredDatasetInputSchema,
     inputFields: [
       {
         name: "dataset",
         required: true,
         description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, or `cost_cards`."
       },
       {
         name: "select",
@@ -1015,12 +1055,12 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         name: "dataset",
         required: true,
         description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, or `supplier_catalog`."
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, or `cost_cards`."
       },
       {
         name: "enterpriseName",
         required: false,
-        description: "Optional enterprise/source scope for business/dishes partition coverage."
+        description: "Optional enterprise/source scope for business/dishes or cost-card coverage."
       },
       {
         name: "storeNameContains",
@@ -1032,14 +1072,15 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     resultShape: [
       "dataset",
       "metadataPolicy",
-      "sources[]: readable applied source windows or snapshots"
+      "sources[]: readable applied source windows or snapshots",
+      "cost_cards: accessMode: catalog_query, cardCount, totalItemRowCount, sources[]: { sourceDocumentId, importBatchId, cardCount, totalItemRowCount }"
     ]
   }),
   defineToolContract({
     name: "upload_structured_dataset",
     title: "Upload SMEDC structured dataset",
     description:
-      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. A 202 queued response requires polling the matching status tool.",
+      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes through partition upload sessions; the remaining datasets use the row-import service. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: Object.entries(uploadStructuredDatasetInputSchema.shape).map(([name, schema]) => ({
       name,
@@ -1087,6 +1128,36 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       }
     ],
     resultShape: ["localDirectory", "dataset", "partitionCount", "totalRowCount", "files[]"]
+  }),
+  defineToolContract({
+    name: "download_cost_cards",
+    title: "Download complete cost cards",
+    description:
+      "Download complete authorized cost-card CSVs into a launcher-managed local directory. Optional selectors combine with AND; array values combine with OR. Names are literal and case-sensitive; same-name specifications remain separate cards. At most one expired-link refresh restarts the whole batch. The local manifest retains each card's identity, revision and source IDs; internal URLs and CSV contents are not tool results. Candidate launcher 0.10.0+, not yet published.",
+    inputSchema: downloadCostCardsInputSchema,
+    inputFields: Object.keys(downloadCostCardsInputSchema.shape).map((name) => ({
+      name,
+      required: false,
+      description: `Optional ${name} selector.`
+    })),
+    resultShape: [
+      "localDirectory",
+      "dataset: cost_cards",
+      "cardCount",
+      "totalItemRowCount",
+      "files[]: card-ID CSV basenames; manifest.json is in localDirectory"
+    ],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "archive_cost_card",
+    title: "Archive one cost card",
+    description:
+      "Archive one cost card through the current same-organization admin API. Admin status does not grant CSV read access. A new original upload may restore it; an old idempotent replay does not. Candidate launcher 0.10.0+, not yet published.",
+    inputSchema: archiveCostCardInputSchema,
+    inputFields: [{ name: "costCardId", required: true, description: "Exact cost card ID." }],
+    resultShape: ["costCardId", "archived: true", "revision: string"],
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
   }),
   defineToolContract({
     name: "prepare_structured_partition_download",
@@ -1233,7 +1304,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_import_status",
     title: "Get SMEDC structured import status",
     description:
-      "Read structured import status and its terminal outcome by calling authenticated GET /v1/structured/imports/:importBatchId.",
+      "Read structured import status and its terminal outcome by calling authenticated GET /v1/structured/imports/:importBatchId. For cost_cards, currently authorized readers receive the exact applied importBatch.publicationSummary (counts, bounded changes and changesTruncated); upload ownership alone exposes only safe progress. Preserve the server response rather than reconstructing results from current cards.",
     inputSchema: importStatusInputSchema,
     inputFields: [
       { name: "importBatchId", required: true, description: "Structured import batch id." }
@@ -1521,6 +1592,9 @@ function defaultApiErrorRetryable(code: string): boolean {
 
 function validateStructuredQueryBounds(
   input: {
+    dataset?: string;
+    select?: string[];
+    sort?: Array<{ field: string }>;
     filter?: unknown;
     page?: { limit?: number };
     groupBy?: string[];
@@ -1528,6 +1602,53 @@ function validateStructuredQueryBounds(
   },
   context: z.RefinementCtx
 ): void {
+  if (input.dataset === "cost_cards") {
+    if (input.groupBy?.length || input.aggregates?.length)
+      context.addIssue({
+        code: "custom",
+        message: "Cost cards support directory queries only; aggregate locally after download."
+      });
+    const fields = new Set(COST_CARD_DIRECTORY_REGISTRY.fields.map((field) => field.canonicalName));
+    const checkField = (field: string) => {
+      if (!fields.has(field))
+        context.addIssue({
+          code: "custom",
+          message: "Only cost-card directory fields may be queried."
+        });
+    };
+    input.select?.forEach(checkField);
+    input.sort?.forEach((item) => checkField(item.field));
+    const checkFilter = (value: unknown, depth = 1): void => {
+      if (
+        !value ||
+        typeof value !== "object" ||
+        depth > MCP_STRUCTURED_QUERY_LIMITS.maxBooleanDepth
+      )
+        return;
+      const node = value as Record<string, unknown>;
+      if (typeof node["field"] === "string") {
+        checkField(node["field"]);
+        const field = COST_CARD_DIRECTORY_REGISTRY.fields.find(
+          (field) => field.canonicalName === node["field"]
+        );
+        if (
+          field?.type === "decimal" &&
+          (Array.isArray(node["value"]) ? node["value"] : [node["value"]]).some(
+            (value: unknown) => value !== null && typeof value !== "string"
+          )
+        )
+          context.addIssue({
+            code: "custom",
+            message: "Cost-card decimal filters require exact decimal strings."
+          });
+      }
+      for (const key of ["and", "or"])
+        if (Array.isArray(node[key]))
+          (node[key] as unknown[]).forEach((child) => checkFilter(child, depth + 1));
+      if (node["not"] !== undefined) checkFilter(node["not"], depth + 1);
+    };
+    checkFilter(input.filter);
+  }
   const isAggregateMode = Boolean(input.groupBy?.length || input.aggregates?.length);
   const maxLimit = isAggregateMode
     ? MCP_STRUCTURED_QUERY_LIMITS.maxAggregateGroups

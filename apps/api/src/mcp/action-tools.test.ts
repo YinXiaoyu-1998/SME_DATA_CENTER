@@ -37,6 +37,7 @@ describe("action MCP tool handlers", () => {
 
     expect(ACTION_MCP_TOOL_NAMES).toEqual([
       "archive_quarantine_certificates",
+      "archive_cost_card",
       "prepare_ledger_pdf_download",
       "update_account_permissions",
       "create_evidence_category",
@@ -215,3 +216,33 @@ it.each([
     expect(calls).toHaveLength(1);
   }
 );
+
+it("delegates cost-card archive without a content body and preserves backend admin denial", async () => {
+  const calls: ApiDelegationInjectRequest[] = [];
+  const handlers = createActionMcpToolHandlers({
+    bearerToken: "employee-token",
+    audit,
+    delegationProof: "proof",
+    inject: async (request) => {
+      calls.push(request);
+      return {
+        statusCode: 403,
+        payload: JSON.stringify({
+          error: {
+            code: "UPLOAD_ADMIN_REQUIRED",
+            message: "A current active administrator is required.",
+            retryable: false
+          }
+        })
+      };
+    }
+  });
+  const candidate = { audit: { ...audit, launcherVersion: "0.10.0" } } as never;
+  const result = await handlers.archive_cost_card?.({ costCardId: "cc_a" }, candidate);
+  expect(calls).toMatchObject([{ method: "POST", url: "/v1/cost-cards/cc_a/archive" }]);
+  expect(calls[0]?.payload).toBeUndefined();
+  expect(JSON.parse(result!.content[0]!.text)).toMatchObject({
+    error: { code: "UPLOAD_ADMIN_REQUIRED", retryable: false }
+  });
+  expect(result?.isError).toBe(true);
+});

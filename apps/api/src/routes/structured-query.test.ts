@@ -52,6 +52,7 @@ function context(
     partitionDownloadAudit: unexpectedDependency,
     structuredQueries: () => repository,
     structuredCoverage: () => coverageRepository,
+    costCards: unexpectedDependency,
     skills: unexpectedDependency,
     ledgerPdfs: () => {
       throw new Error("Unexpected ledger PDF dependency");

@@ -288,3 +288,121 @@ PDFs. Before that run completes, current coverage may be pending/stale/missing a
 ZIP preparation returns `LEDGER_PDF_NOT_READY`; report the scheduled wait. Internal
 operator CLI refresh/backfill remains available outside the employee API.
 See [ledger-pdf-operations.md](./ledger-pdf-operations.md) for backfill and recovery.
+
+## Cost Cards (Unpublished Candidate)
+
+The cost-card contract targets candidate launcher `0.10.0`; it is not published, deployed,
+accepted or approved for installation. Keep the verified 0.9.0 recommendation/pin until
+independent release verification. Matching service rollout and explicit tenant configuration
+are separate gates. See [the usage contract](../../skills/smedc-mcp/references/cost-cards.md).
+
+`upload_structured_dataset` / `POST /v1/structured/imports` accepts `dataset="cost_cards"`,
+original XLSX or UTF-8 CSV, enterprise name and idempotency key. No date window or snapshot date.
+All 35 business columns are required; bad/missing/duplicate headers, hidden/damaged candidate
+recipe sheets, field-format errors and contradictory repeated card/recipe fields reject the
+whole file with combination/recipe/field/sheet/row diagnostics. Explicit null differs from zero.
+SPU/SKU/item codes and exact decimals remain strings. Input limits remain 50 MiB / 100,000 item
+rows and existing per-file partition count/resources; no business/dishes limit expansion.
+
+Organization + enterprise + source namespace + SPU + SKU is the identity. One complete CSV per
+card holds all standard/exception recipes. Changed cards replace atomically after object upload
+and verification; unchanged cards cause no directory write/object replacement, omitted cards stay
+unchanged. Last successful publication wins. Retain originals/batches, not historical current-CSV
+versions. A new successful upload restores an archived card even with identical content; replay of
+an old idempotency request does not. Source configuration/deletion flags do not control lifecycle.
+
+Discovery and `query_structured_dataset(dataset="cost_cards", mode="detail")` expose only
+registered directory fields, authorized before filtering, with stable cursors (50 default / 200
+maximum rows). No server recipe/item/store detail predicates, grouping or aggregation. Name
+contains/starts_with are controlled literal matches, including SQL wildcard characters. Same-name
+or same-SKU candidates remain separate; names do not create identity or a sales foreign key.
+`sale_price` predicates/output require exact decimal strings or null, JSON numbers are rejected;
+`revision` is a string. Coverage uses current readable cards/sources independent of original archive.
+
+Candidate `POST /v1/cost-cards/manifest` and `download_cost_cards` share optional
+`enterpriseName`, `costCardIds`, `spuIds`, `skuIds`, `dishName`, `dishNameContains`,
+`specificationName`, `baseCategoryName`. Fields are AND; nonempty ID/code arrays are OR, maximum
+100 each. No date/store selectors. Explicit IDs are all-or-error; condition selection returns only
+authorized active matches. Limits reject oversized scope without truncation.
+
+Manifest fixes each card's identity, revision, sourceDocumentId, importBatchId, schema, row/byte
+counts, checksum and current immutable pointer. Internal URLs are short-lived (minimum of current
+partition URL setting and 900 seconds) and never enter launcher-visible safe output. After signing,
+a fresh DB read rechecks current authorization/state/revision/source/pointer; any change rejects the
+whole manifest for retry. Download reauthorizes independently of the directory query. Launcher
+verifies the whole selection and saves card-ID files plus URL-free per-card manifest; same names
+cannot overwrite. An expired link permits at most one fresh manifest: remove all failed-attempt
+output, then redownload the entire batch, never splice generations. Failure/cancellation removes
+partial output; agent local analysis uses finally cleanup.
+
+Downloaded CSV is 38 columns (35 business + source_sheet_index/source_sheet_name/source_row_number),
+UTF-8 no BOM, RFC 4180, LF/final newline. It is not the 35-column upload template. Exact non-exponent
+decimals, ratio percentages, true/false and nullable empty fields preserve source meaning.
+`contentHash` is normalized business content; checksum covers exact file bytes. Unit conversion,
+exception-versus-standard semantics and sales association remain local agent decisions based on
+explicit evidence; no inferred final recipe. Replaced objects wait at least 24 hours for cleanup,
+with current/archived references and active task candidates protected; no historical download API.
+
+Current same-org admin manages uploads/archive; ordinary reads require enabled authorization,
+enterprise group-level `cost_cards` grant, configured category level and an active card. Applicable
+stores confer no permission. Admin/upload ownership grants no content access. Source-original
+permissions/archive remain independent. Missing new category in an already enabled enterprise is
+registered idempotently only through controlled current-admin versioned initialization; level starts
+null and grants empty, old categories/mode stay intact, GET/query never writes configuration.
+
+Cost-card `POST /v1/structured/imports` always returns HTTP 202 safe progress, including exact
+idempotency replay; it exposes neither publicationSummary nor raw storage keys. Only
+`GET /v1/structured/imports/:id` for an `applied` batch with current content-read permission returns
+`importBatch.publicationSummary`: `{inputCardCount,inputItemRowCount,counts,changes,changesTruncated}`.
+Readable `sourceSheetSummary` remains an array. Publication status is bound to that committed batch,
+rechecked against current content access. Exact inserted/updated/unchanged/restored counts cover all
+input cards; changed-field details cap
+at 100 entries / 32 KiB with changesTruncated and contain no values/links. Failure/queued is not
+publication success; a later directory cannot recreate an earlier summary.
+
+### Tested candidate cost-card endpoints
+
+These interfaces are candidate contracts with focused route tests, not evidence of launcher
+publication, actual service rollout, real tenant setup or final coordinated acceptance.
+
+| Method | Route                                         | Input / result                                                   |
+| ------ | --------------------------------------------- | ---------------------------------------------------------------- |
+| POST   | `/v1/cost-cards/manifest`                     | Flat CostCardSelection body; authorized manifest                 |
+| POST   | `/v1/cost-cards/:costCardId/archive`          | No body; `{costCardId,archived:true,revision:string}`            |
+| GET    | `/v1/structured/datasets/cost_cards/coverage` | Optional exact enterpriseName query; readable directory coverage |
+
+Manifest explicit missing/unreadable IDs return 403 for the whole request. A selection over the
+card cap returns 409 without truncation. Signing changes return retryable 409 with exact message
+“成本卡已变化，请重新下载”. Condition-based zero-card selection returns an empty successful manifest.
+Coverage returns `{dataset:"cost_cards",accessMode:"catalog_query",metadataPolicy:"none",cardCount,
+totalItemRowCount,sources:[{sourceDocumentId,importBatchId,cardCount,totalItemRowCount}]}`; counts
+include only currently authorized unarchived directory cards. No original-active/input-row proxy
+or hidden-card inference. Source IDs still confer no original-read permission.
+
+Candidate category initialization is `POST /v1/admin/permissions/categories/initialize` with
+`{expectedVersion:string}` and result `{authorizationVersion:string,value:{createdCount:number}}`.
+The current admin/tenant/version-checked write is idempotent and leaves levels/grants/mode intact.
+Browser counterpart `/admin/permissions/:orgId/api/categories/initialize` requires the same
+Origin and `x-csrf-token`, plus the shared browser session and same organization/current admin.
+GET remains read-only. UI “补齐资料类别 / Add missing categories” requires saving or resolving
+unsaved drafts first; missing cost_cards starts with null level and no grants. The operator must
+then explicitly configure its level and authorized group scope; no autoactivation or real migration.
+
+### Candidate launcher delivery and status envelope
+
+`download_cost_cards` uses the flat selectors above and returns
+`{localDirectory,dataset:"cost_cards",cardCount,totalItemRowCount,files}`. `files` contains only
+`cost_card_<costCardId>.csv` basenames. `localDirectory/manifest.json` contains
+`{expiresAt,cardCount,totalItemRowCount,cards}`; each card preserves all frozen domain manifest
+fields except presignedDownloadUrl, and adds fileName. revision remains a string and each card
+retains its own sourceDocumentId/importBatchId. Zero cards still creates a valid empty local
+manifest with files=[]. URLs/CSV bytes are not returned to the model. `archive_cost_card` takes
+`{costCardId}` and returns `{costCardId,archived:true,revision:string}`.
+
+Original cost-card uploads use the existing absolute local file path transport, exact enterpriseName
+and idempotencyKey, without dates/snapshot/confidentiality override. Follow `get_import_status` with
+`{importBatchId}`, not partition-import polling. Its outer envelope is `{document,processing,importBatch}`;
+applied currently readable batches receive publicationSummary verbatim. Failed/rejected current
+readers can receive validation locations and ignored/source-summary arrays; owner-only access
+receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
+read permission is exposed. These are unpublished candidate interfaces; approved pins remain unchanged.

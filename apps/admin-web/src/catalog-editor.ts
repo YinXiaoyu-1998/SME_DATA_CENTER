@@ -1,3 +1,4 @@
+import { FIXED_BUSINESS_CATEGORY_KEYS } from "@smedc/domain";
 export const catalogEditorSource = String.raw`
 function selectedDimensionChoices(selected = []) {
   const choices = state.dimensions.map(dimension => ({ value: dimension.id, label: itemLabel(dimension), disabled: dimension.retired }));
@@ -6,6 +7,23 @@ function selectedDimensionChoices(selected = []) {
 }
 function renderCategories(section) {
   section.append(heading("categories"), pair("fixedHelp", "p"), pair("levelHelp", "p"));
+  if (${JSON.stringify(FIXED_BUSINESS_CATEGORY_KEYS)}.some(key => !state.categories.some(category => category.kind === "fixed" && category.key === key))) {
+    const message = el("p", { hidden: true, role: "status" });
+    section.append(pair("initializeCategoriesHelp", "p"), button("initializeCategories", async () => {
+      if (hasDirty()) { status(message, "initializeDrafts", true); return; }
+      if (frozen || conflicted || saving) return;
+      const expectedVersion = state.version;
+      if (!await confirmDialog("initializeCategories", copy.initializeCategoriesHelp)) return;
+      if (frozen || conflicted || saving || hasDirty()) return;
+      saving = true; updateButtons();
+      try {
+        const result = await request("/categories/initialize", "POST", { expectedVersion });
+        state.version = result.authorizationVersion; updateBadge();
+        applyBundle(await fetchBundle());
+      } catch (error) { showError(error, message); }
+      finally { saving = false; updateButtons(); }
+    }, "secondary", true), message);
+  }
   for (const category of state.categories.filter(category => category.kind === "fixed" && category.key !== "delivery_ledger")) {
     const { form, message } = formWithStatus(); form.className = "subpanel";
     form.append(heading(categoryLabel(category), "h3"));

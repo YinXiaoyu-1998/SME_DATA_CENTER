@@ -31,3 +31,17 @@
 双归属 Skill 分发[入口约定](../../skills/smedc-mcp/references/tenant-onboarding.md)，默认引导 UI 并明确上线状态；只有开发／运维或 agent 明确需要内部记录时，才使用[内部 JSON 模板](../../skills/smedc-mcp/assets/tenant-onboarding.template.json)及其[字段约定](../../skills/smedc-mcp/references/tenant-onboarding-json.md)。该格式不是公开批量导入／导出合同。
 
 仅空白内部模板进入版本控制。真实企业填写结果、账号标识、目录快照、客户资料和回填清单留在受控私有位置，不进入仓库、Skill、PR 或公开日志；凭据与一次性设置链接完全不进入记录。
+
+## 成本卡新类别（未发布候选）
+
+成本卡候选能力需要独立发布／部署验证；不包含在以上已部署七类的就绪声明中。新企业及
+已有 enabled 企业都须明确配置企业集团级 `cost_cards`。当前有效管理员通过现有带版本锁／
+审计的初始化写入口幂等补齐缺失固定类别，再在原 UI／MCP 入口设置密级与明确 grant。
+新类别密级初始为 null、没有默认 grant，不改变既有类别／授权／租户模式，也无需重新激活
+已有 enabled 企业。普通 GET／查询不隐式初始化。配方适用门店不形成权限范围；管理权不授予
+目录／CSV 正文读取权。部署、文档更新或类别登记本身不授权真实租户配置、回填或清理。
+
+候选 UI 使用“补齐资料类别 / Add missing categories”，先保存或处理未保存草稿；补齐操作
+提交当前字符串 expectedVersion，返回字符串 authorizationVersion 与 value.createdCount。
+同组织有效管理员、版本、相同 Origin 和 CSRF 保护均适用；GET 只读，冲突先重读比较。
+具体候选 HTTP／浏览器入口见 [API 合同](api-contract.md#tested-candidate-cost-card-endpoints)。

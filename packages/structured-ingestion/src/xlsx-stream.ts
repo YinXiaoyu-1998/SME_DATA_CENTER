@@ -56,10 +56,10 @@ function validation(message: string): Error {
   return new Error(message);
 }
 
-function checkedCellText(text: string, limits: XlsxReadLimits): string {
+function checkedCellText(text: string, limits: XlsxReadLimits, preserveWhitespace = false): string {
   if (text.length > limits.maxStructuredCellChars)
     throw validation("Structured cell length limit exceeded.");
-  return text.trim();
+  return preserveWhitespace ? text : text.trim();
 }
 
 /** Mirrors ExcelJS `isDateFmt`: quoted and bracketed sections are ignored first. */
@@ -521,6 +521,8 @@ interface SheetParseState {
   onRow?: (rowNumber: number, cells: string[]) => void;
   mergeMasters: Map<MergeRange, string>;
   collectMergeRanges: boolean;
+  preserveNumericText?: boolean;
+  maxRows?: number;
 }
 
 function createSheetState(
@@ -556,6 +558,29 @@ function numericFormat(cell: CellContext, styles: StyleTable): string | undefine
   return styles.numFmtCodes.get(numFmtId) ?? DEFAULT_NUM_FORMATS[numFmtId];
 }
 
+/** Expand OOXML scientific notation without converting the decimal mantissa to Number. */
+function exactNumericText(raw: string): string {
+  if (!/[eE]/.test(raw)) return raw;
+  const match = /^([+-]?)(\d*)(?:\.(\d*))?[eE]([+-]?\d+)$/.exec(raw);
+  if (!match || !(match[2] || match[3])) throw validation("Unsupported XLSX numeric value.");
+  let exponent = BigInt(match[4]!);
+  if (exponent < -1000n || exponent > 1000n)
+    throw validation("XLSX numeric exponent limit exceeded.");
+  let integer = match[2] || "0",
+    fraction = match[3] || "";
+  while (exponent > 0n) {
+    integer += fraction[0] ?? "0";
+    fraction = fraction.slice(1);
+    exponent--;
+  }
+  while (exponent < 0n) {
+    fraction = (integer.slice(-1) || "0") + fraction;
+    integer = integer.slice(0, -1) || "0";
+    exponent++;
+  }
+  return `${match[1]}${integer}${fraction ? `.${fraction}` : ""}`;
+}
+
 function resolveCell(state: SheetParseState): string {
   const cell = state.cell;
   if (!cell) return "";
@@ -573,9 +598,10 @@ function resolveCell(state: SheetParseState): string {
   if (type === "e") throw validation("Unsupported XLSX cell value.");
   if (cell.formula) {
     if (raw === "") throw validation("Unevaluated XLSX formula is not supported.");
-    return String(Number(raw));
+    return state.preserveNumericText ? exactNumericText(raw) : String(Number(raw));
   }
   if (raw === "") return "";
+  if (state.preserveNumericText) return exactNumericText(raw);
   const numFmt = numericFormat(cell, state.styles);
   if (numFmt !== undefined && isDateFmt(numFmt)) {
     const date = numToDate(Number(raw));
@@ -592,6 +618,13 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       const declared = attributes.r === undefined ? NaN : Number(attributes.r);
       state.sequentialRow += 1;
       state.currentRowNumber = Number.isFinite(declared) ? declared : state.sequentialRow;
+      if (
+        state.maxRows !== undefined &&
+        (!Number.isSafeInteger(state.currentRowNumber) ||
+          state.currentRowNumber < 1 ||
+          state.currentRowNumber > state.maxRows)
+      )
+        throw validation("XLSX source row limit exceeded.");
       if (state.currentRowNumber > state.maxRow) state.maxRow = state.currentRowNumber;
       state.rowCells = new Map();
       state.rowWidth = 0;
@@ -611,6 +644,8 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       };
     } else if (name === "mergeCell") {
       const range = parseMergeRange(String((tag.attributes as Record<string, string>).ref ?? ""));
+      if (range && state.maxRows !== undefined && range.endRow > state.maxRows)
+        throw validation("XLSX source row limit exceeded.");
       if (range && state.collectMergeRanges) state.mergeRanges.push(range);
     } else if (state.cell) {
       if (name === "f") {
@@ -643,7 +678,10 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       } else if (name === "v" && state.cell.collecting === "value") {
         state.cell.collecting = "none";
       } else if (name === "c") {
-        state.rowCells.set(state.nextColumn, checkedCellText(resolveCell(state), state.limits));
+        state.rowCells.set(
+          state.nextColumn,
+          checkedCellText(resolveCell(state), state.limits, state.preserveNumericText)
+        );
         if (state.nextColumn + 1 > state.rowWidth) state.rowWidth = state.nextColumn + 1;
         state.cell = undefined;
       }
@@ -704,10 +742,13 @@ function parseSheetStream(
   stream: any,
   shared: string[],
   styles: StyleTable,
-  limits: XlsxReadLimits
+  limits: XlsxReadLimits,
+  options: XlsxTextOptions = {}
 ): Promise<string[][]> {
   return new Promise((resolve, reject) => {
     const state = createSheetState(shared, styles, limits);
+    state.preserveNumericText = options.preserveNumericText;
+    state.maxRows = options.maxRows;
     const parser = sax.parser(true, {
       trim: false,
       normalize: false,
@@ -846,9 +887,16 @@ function worksheetEntryPath(target: string): string {
   throw validation("Malformed XLSX workbook XML.");
 }
 
+export interface XlsxTextOptions {
+  /** Used only by exact-decimal datasets; legacy numeric/date rendering is unchanged. */
+  preserveNumericText?: boolean;
+  /** Source-coordinate ceiling for sparse row and merged-cell materialization, not item count. */
+  maxRows?: number;
+}
 export async function readXlsxRows(
   content: Buffer,
-  limits: XlsxReadLimits
+  limits: XlsxReadLimits,
+  options: XlsxTextOptions = {}
 ): Promise<XlsxSheetRows[]> {
   const structuralEntries = await readWantedZipEntries(
     content,
@@ -886,7 +934,7 @@ export async function readXlsxRows(
   const handlers = new Map<string, (stream: any) => Promise<void>>();
   for (const entry of sheetEntries) {
     handlers.set(entry, async (stream) => {
-      sheetRows.set(entry, await parseSheetStream(stream, shared, styles, limits));
+      sheetRows.set(entry, await parseSheetStream(stream, shared, styles, limits, options));
     });
   }
   await readWantedZipEntries(content, limits, new Set(sheetEntries), handlers);

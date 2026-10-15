@@ -6,6 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getParseErrorMessage } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import { CallToolRequestSchema, ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import type { CostCardManifest } from "@smedc/domain";
 import {
   FILE_UPLOAD_ADMIN_REQUIRED_CODE,
   FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
@@ -13,6 +14,7 @@ import {
   SMEDC_MCP_TOOL_NAMES,
   PERMISSION_MCP_TOOL_NAMES,
   errorToolResult,
+  apiErrorToolResult,
   jsonToolResult,
   launcherUploadFileInputSchema,
   toolNotFoundResult,
@@ -22,6 +24,7 @@ import type { LauncherRuntimeConfig } from "./config.js";
 import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
 import { downloadPartitionBundle } from "./partition-bundle.js";
+import { downloadCostCards } from "./cost-card-transfer.js";
 import {
   apiJson,
   abortable,
@@ -58,6 +61,8 @@ export type LauncherBusinessToolName =
   | "get_import_status"
   | "get_partition_import_status"
   | "download_structured_partitions"
+  | "download_cost_cards"
+  | "archive_cost_card"
   | "prepare_structured_partition_download"
   | "get_structured_partition_download_status"
   | "describe_ledger_pdf_coverage"
@@ -246,7 +251,14 @@ export function registerLauncherTools(
         annotations: tool.annotations,
         inputSchema: LOCAL_PATH_UPLOAD_TOOL_NAMES.has(tool.name)
           ? launcherUploadToolInputShape(tool)
-          : LEDGER_PDF_TOOL_NAMES.has(tool.name) || PERMISSION_TOOL_NAMES.has(tool.name)
+          : LEDGER_PDF_TOOL_NAMES.has(tool.name) ||
+              PERMISSION_TOOL_NAMES.has(tool.name) ||
+              [
+                "download_cost_cards",
+                "archive_cost_card",
+                "query_structured_dataset",
+                "describe_structured_dataset_coverage"
+              ].includes(tool.name)
             ? tool.inputSchema
             : tool.inputShape
       },
@@ -304,6 +316,8 @@ export function createLauncherToolHandler(
       proxyPartitionPreparation(toolName, input, dependencies, extra?.signal);
   if (toolName === "download_structured_partitions")
     return (input, extra) => proxyPartitionDownload(input, dependencies, extra?.signal);
+  if (toolName === "download_cost_cards")
+    return (input, extra) => proxyCostCardDownload(input, dependencies, extra?.signal);
   if (LOCAL_PATH_UPLOAD_TOOL_NAMES.has(toolName as LauncherBusinessToolName))
     return (input, extra) =>
       preflightUpload(toolName as LauncherBusinessToolName, input, dependencies, extra?.signal);
@@ -511,6 +525,38 @@ async function proxyPartitionDownload(
   }
 }
 
+async function proxyCostCardDownload(
+  input: unknown,
+  dependencies: LauncherToolDependencies,
+  signal?: AbortSignal
+): Promise<LauncherToolResult> {
+  const contract = SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === "download_cost_cards")!;
+  const parsed = contract.inputSchema.safeParse(input);
+  if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
+  try {
+    const authDeadline = transferDeadline(signal, 30_000);
+    let accessToken: string;
+    try {
+      accessToken = await abortable(dependencies.auth.accessToken(), authDeadline.signal);
+    } finally {
+      authDeadline.dispose();
+    }
+    const result = await downloadCostCards({
+      context: partitionTransferContext(dependencies, accessToken, signal),
+      selection: parsed.data,
+      fetchManifest: async (context, selection) =>
+        (await apiJson(context, "/v1/cost-cards/manifest", {
+          method: "POST",
+          body: selection
+        })) as CostCardManifest
+    });
+    return jsonToolResult(result);
+  } catch (error) {
+    if (mapMcpError(error).code === "AUTHENTICATION_REQUIRED") await dependencies.auth.invalidate();
+    return partitionTransferError(error);
+  }
+}
+
 function partitionTransferContext(
   dependencies: LauncherToolDependencies,
   accessToken: string,
@@ -535,7 +581,7 @@ function partitionTransferError(error: unknown): LauncherToolResult {
   if (typeof error === "object" && error !== null && "body" in error) {
     const body = (error as { body?: { error?: { code?: string; message?: string } } }).body;
     if (body?.error?.code) {
-      return errorToolResult(body.error.code, body.error.message ?? "Partition transfer failed.");
+      return apiErrorToolResult(body);
     }
   }
   return typedToolError(mapMcpError(error));

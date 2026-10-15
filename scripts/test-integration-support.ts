@@ -4,6 +4,9 @@ import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { PrismaClient } from "@prisma/client";
+import ExcelJS from "exceljs";
+import JSZip from "jszip";
+import { COST_CARD_UPLOAD_SCHEMA } from "@smedc/domain";
 import { createDatabaseAdapter } from "@smedc/db";
 import { downloadPartitionBundle } from "../apps/mcp-launcher/src/partition-bundle.js";
 import {
@@ -11,6 +14,112 @@ import {
   downloadPartitionDataset,
   type PartitionTransferContext
 } from "../apps/mcp-launcher/src/partition-transfer.js";
+
+/** Small original export: numeric XML, decimal text, percentage styles and duplicate rows. */
+export async function createCostCardIntegrationFixture() {
+  const standard: Record<string, string> = {
+    spu_id: "0001",
+    sku_id: "0012",
+    dish_name: "合成精度锅",
+    base_category_name: "合成测试",
+    production_quantity: "1.25",
+    sale_price: "99999999999999.123456",
+    specification_name: "小锅",
+    has_cost_card: "true",
+    material_cost_tax_included: "12.345678",
+    other_cost: "0",
+    target_gross_margin_rate: "0.823456",
+    recipe_type: "全局（标准配方）",
+    recipe_name: "合成标准",
+    total_cost_tax_included: "12.345678",
+    gross_margin_rate_tax_included: "0.912345",
+    item_code: "0007",
+    item_name: "合成盐",
+    item_spec: "合成规格",
+    cost_unit: "kg",
+    net_quantity: "99999999999999.000001",
+    yield_rate: "0.823456",
+    gross_quantity: "0.000001",
+    consumption_unit_price_tax_included: "99999999999999.123456",
+    consumption_amount_tax_included: "0.000001",
+    is_main_material: "true",
+    is_semi_finished: "false",
+    is_prepared: "true",
+    uses_auxiliary_unit_deduction: "false",
+    base_unit: "克",
+    base_gross_quantity: "0",
+    substitute_material_text: "合成替代",
+    store_can_modify: "false",
+    source_dish_deleted: "false",
+    remark: "合成备注,含逗号\n第二行",
+    source_stores_text: ""
+  };
+  const rows = [
+    { spu_id: "0001", sku_id: "0012", specification_name: "小锅" },
+    { spu_id: "0001", sku_id: "0013", specification_name: "大锅" },
+    { spu_id: "0002", sku_id: "0012", specification_name: "独立SPU" }
+  ].flatMap((identity) => {
+    const row: Record<string, string> = { ...standard, ...identity };
+    return [
+      row,
+      { ...row },
+      {
+        ...row,
+        recipe_type: "特定（例外配方）",
+        recipe_name: "合成例外",
+        net_quantity: "0",
+        source_stores_text: "合成甲店；合成乙店"
+      }
+    ];
+  });
+  const headers = COST_CARD_UPLOAD_SCHEMA.map((field) => field.sourceColumn);
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet("成本卡合成");
+  sheet.addRow(headers);
+  rows.forEach((row) => {
+    const excelRow = sheet.addRow(
+      COST_CARD_UPLOAD_SCHEMA.map((field) => row[field.canonicalName]!)
+    );
+    excelRow.getCell(6).value = 1;
+    excelRow.getCell(21).value = 1;
+    excelRow.getCell(21).numFmt = "0.0000%";
+    excelRow.getCell(23).value = 1;
+    excelRow.getCell(11).value = "82.3456%";
+    excelRow.getCell(15).value = "91.2345%";
+  });
+  const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer());
+  const entry = zip.file("xl/worksheets/sheet1.xml")!;
+  let xml = await entry.async("string");
+  rows.forEach((row, index) => {
+    for (const [column, value] of [
+      ["F", row.sale_price],
+      ["U", row.yield_rate],
+      ["W", row.consumption_unit_price_tax_included]
+    ]) {
+      xml = xml.replace(
+        new RegExp(`(<c r="${column}${index + 2}"[^>]*><v>)[^<]+(</v>)`),
+        `$1${value}$2`
+      );
+    }
+  });
+  zip.file(entry.name, xml);
+  const csvCell = (value: string) =>
+    /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+  const csv =
+    [
+      headers,
+      ...rows.map((row) => COST_CARD_UPLOAD_SCHEMA.map((field) => row[field.canonicalName]!))
+    ]
+      .map((row) => row.map(csvCell).join(","))
+      .join("\n") + "\n";
+  return {
+    xlsx: await zip.generateAsync({ type: "nodebuffer" }),
+    csv: Buffer.from(csv),
+    rows,
+    headers,
+    sheetName: sheet.name
+  };
+}
 
 export function integrationDatabasePlan(baseUrl: string, mysqlPort: string) {
   let base: URL;

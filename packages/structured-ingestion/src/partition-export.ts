@@ -448,7 +448,7 @@ function canonicalDecimal(value: string): string {
   return negative && normalized !== "0" ? `-${normalized}` : normalized;
 }
 
-function csvCell(value: string): string {
+export function csvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
 
@@ -510,7 +510,7 @@ interface BufferedFileHandle {
   byteLength: number;
 }
 
-class BoundedFileWriterPool {
+export class BoundedFileWriterPool {
   private readonly handles = new Map<string, BufferedFileHandle>();
   elapsedMs = 0;
   flushCount = 0;

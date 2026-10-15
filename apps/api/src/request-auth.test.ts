@@ -74,6 +74,9 @@ function minimalContext(
     structuredCoverage: () => {
       throw new Error("not used");
     },
+    costCards: () => {
+      throw new Error("not used");
+    },
     skills: () => {
       throw new Error("not used");
     },

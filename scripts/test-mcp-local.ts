@@ -9,7 +9,8 @@ interface CommandResult {
 }
 
 const rootDir = process.cwd();
-export const EXPECTED_MCP_LAUNCHER_VERSION = "0.9.0";
+// This smoke executes the workspace candidate. Published installation pins are separate.
+export const EXPECTED_MCP_LAUNCHER_VERSION = "0.10.0";
 
 async function main(): Promise<void> {
   try {
@@ -22,6 +23,9 @@ async function main(): Promise<void> {
       "packages/mcp-contract/src/index.test.ts",
       "apps/api/src/mcp/upload-tools.test.ts",
       "apps/api/src/mcp/read-tools.test.ts",
+      "apps/api/src/mcp/action-tools.test.ts",
+      "apps/mcp-launcher/src/cost-card-transfer.test.ts",
+      "apps/api/src/routes/cost-cards.test.ts",
       "apps/api/src/routes/ledger-pdfs.test.ts"
     ]);
 
@@ -35,6 +39,7 @@ async function main(): Promise<void> {
             "launcher_stdio_to_http_proxy",
             "mcp_current_authenticated_user",
             "mcp_partition_import_and_download_contracts",
+            "mcp_cost_card_directory_download_archive_contracts",
             "mcp_delivery_supplier_contract_and_delegation",
             "mcp_ledger_pdf_tools_and_authenticated_routes"
           ]
@@ -107,7 +112,7 @@ async function assertRootLauncherScript(): Promise<void> {
 export function assertLauncherVersionOutput(stdout: string): void {
   assert(
     stdout.trim() === EXPECTED_MCP_LAUNCHER_VERSION,
-    `mcp:launcher should invoke the official launcher CLI at ${EXPECTED_MCP_LAUNCHER_VERSION}.`
+    `mcp:launcher should invoke the local launcher candidate at ${EXPECTED_MCP_LAUNCHER_VERSION}.`
   );
 }
 

@@ -1,3 +1,5 @@
+import { parse as parseCsv } from "csv-parse/sync";
+import { COST_CARD_UPLOAD_SCHEMA } from "@smedc/domain";
 import { createHash } from "node:crypto";
 
 import { isStagingRuntimeDatabaseUrl } from "./staging-runtime-targets.js";
@@ -25,6 +27,10 @@ export interface CleanupCounts {
   importBatches: number;
   partitionImportJobs: number;
   structuredPartitions: number;
+  costCards: number;
+  costCardResources: number;
+  costCardSourceResources: number;
+  costCardResourceScopes: number;
   storageGarbage: number;
   vipRows: number;
   dishCatalogRows: number;
@@ -242,4 +248,34 @@ function isoWeek(date: Date): number {
   thursday.setUTCDate(thursday.getUTCDate() + 4 - day);
   const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
   return Math.ceil(((thursday.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}
+
+/** Local changed-workflow oracle; never uploads data or invokes the official suite. */
+export function readCostCardAcceptanceCsv(
+  content: string,
+  identity: { spuId: string; skuId: string }
+): Record<string, string>[] {
+  const expectedHeaders = [
+    ...COST_CARD_UPLOAD_SCHEMA.map((field) => field.sourceColumn),
+    "source_sheet_index",
+    "source_sheet_name",
+    "source_row_number"
+  ];
+  const records: string[][] = parseCsv(content, { skip_empty_lines: true });
+  const headers = records.shift();
+  if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders) || !records.length)
+    throw new Error("Expected a complete 38-column cost-card CSV.");
+  return records.map((values) => {
+    if (values.length !== expectedHeaders.length) throw new Error("Incomplete cost-card CSV row.");
+    const row = Object.fromEntries(expectedHeaders.map((name, index) => [name, values[index]!]));
+    if (row["菜品SPU编码"] !== identity.spuId || row["菜品SKU编码"] !== identity.skuId)
+      throw new Error("Cost-card CSV identity mismatch.");
+    if (
+      !/^\d+$/.test(row["source_sheet_index"]!) ||
+      !row["source_sheet_name"] ||
+      !/^[1-9]\d*$/.test(row["source_row_number"]!)
+    )
+      throw new Error("Cost-card CSV lacks source locations.");
+    return row;
+  });
 }

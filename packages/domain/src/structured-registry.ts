@@ -1,16 +1,18 @@
+import { COST_CARD_UPLOAD_SCHEMA } from "./cost-cards.js";
 export const STRUCTURED_DATASETS = [
   "dishes",
   "business",
   "vip",
   "dish_catalog",
   "delivery_ledger",
-  "supplier_catalog"
+  "supplier_catalog",
+  "cost_cards"
 ] as const;
 
 export type StructuredDatasetName = (typeof STRUCTURED_DATASETS)[number];
 
 export type StructuredFieldType =
-  "string" | "date" | "date_time" | "time_range" | "integer" | "decimal" | "percent";
+  "string" | "date" | "date_time" | "time_range" | "integer" | "decimal" | "percent" | "boolean";
 
 export interface StructuredFieldCapabilities {
   filter: boolean;
@@ -51,9 +53,9 @@ export interface StructuredFieldRegistryEntry {
 
 export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
-  accessMode: "partition_extract" | "row_query";
+  accessMode: "partition_extract" | "row_query" | "catalog_query";
   rowTable?: StructuredRowTableName;
-  sheetPolicy: "strict_all_nonempty" | "import_matching_visible";
+  sheetPolicy: "strict_all_nonempty" | "import_matching_visible" | "cost_card_candidates";
   metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
   datePolicy?: "row_business_date" | "snapshot_metadata";
   fields: StructuredFieldRegistryEntry[];
@@ -901,11 +903,51 @@ export const STRUCTURED_DATASET_REGISTRIES = {
       )
     )
   })
-} as const satisfies Record<StructuredDatasetName, StructuredDatasetRegistry>;
+} as const satisfies Record<
+  Exclude<StructuredDatasetName, "cost_cards">,
+  StructuredDatasetRegistry
+>;
 
-export function getStructuredRegistry(dataset: StructuredDatasetName): StructuredDatasetRegistry {
-  return STRUCTURED_DATASET_REGISTRIES[dataset];
+export function getStructuredRegistry(dataset: StructuredDatasetName): StructuredDatasetRegistry;
+export function getStructuredRegistry(dataset: "cost_cards"): CostCardUploadRegistry;
+export function getStructuredRegistry(
+  dataset: StructuredDatasetName | "cost_cards"
+): StructuredDatasetRegistry | CostCardUploadRegistry;
+export function getStructuredRegistry(
+  dataset: StructuredDatasetName | "cost_cards"
+): StructuredDatasetRegistry | CostCardUploadRegistry {
+  return dataset === "cost_cards"
+    ? COST_CARD_UPLOAD_REGISTRY
+    : STRUCTURED_DATASET_REGISTRIES[dataset];
 }
+export interface CostCardUploadRegistry {
+  dataset: "cost_cards";
+  accessMode: "catalog_query";
+  sheetPolicy: "cost_card_candidates";
+  metadataPolicy: "none";
+  fields: StructuredFieldRegistryEntry[];
+}
+export const COST_CARD_UPLOAD_REGISTRY: CostCardUploadRegistry = {
+  dataset: "cost_cards",
+  accessMode: "catalog_query",
+  sheetPolicy: "cost_card_candidates",
+  metadataPolicy: "none",
+  fields: COST_CARD_UPLOAD_SCHEMA.map((f) => ({
+    canonicalName: f.canonicalName,
+    sourceColumn: f.sourceColumn,
+    aliases: f.aliases,
+    type: f.type,
+    nullable: f.nullable,
+    inputSource: "file",
+    sensitivity: "normal",
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: false,
+    operators: [],
+    capabilities: { filter: false, sort: false, group: false, aggregate: false },
+    indexStatus: "not_indexed"
+  }))
+};
 
 export function buildStructuredHeaderLookup(
   fields: Array<Pick<StructuredFieldRegistryEntry, "canonicalName" | "sourceColumn" | "aliases">>
@@ -938,7 +980,7 @@ export function buildStructuredHeaderLookup(
 }
 
 export function validateStructuredHeaders(
-  dataset: StructuredDatasetName,
+  dataset: StructuredDatasetName | "cost_cards",
   headers: string[]
 ):
   | {
@@ -962,7 +1004,7 @@ export function validateStructuredHeaders(
 }
 
 export function resolveStructuredHeaders(
-  dataset: StructuredDatasetName,
+  dataset: StructuredDatasetName | "cost_cards",
   headers: string[]
 ):
   | { ok: true; fields: Array<{ canonicalName: string; sourceColumnIndex: number }> }
@@ -982,7 +1024,10 @@ export function resolveStructuredHeaders(
   ) {
     errors.push({ code: "UNKNOWN_COLUMN", column: "" });
   }
-  if (dataset === "supplier_catalog" && headers.some((header) => !normalizeHeader(header))) {
+  if (
+    (dataset === "supplier_catalog" || dataset === "cost_cards") &&
+    headers.some((header) => !normalizeHeader(header))
+  ) {
     errors.push({ code: "UNKNOWN_COLUMN", column: "" });
   }
 
@@ -1219,7 +1264,8 @@ function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): strin
     },
     dish_catalog: {},
     delivery_ledger: {},
-    supplier_catalog: {}
+    supplier_catalog: {},
+    cost_cards: {}
   };
   return [sourceColumn, ...(aliasesByDataset[dataset][sourceColumn] ?? [])];
 }

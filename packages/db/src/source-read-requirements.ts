@@ -37,7 +37,7 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 export function deriveStructuredSourceScopes(input: {
-  dataset: StructuredDatasetName;
+  dataset: StructuredDatasetName | "cost_cards";
   enterpriseKey: string;
   rows: readonly { payload: Record<string, unknown> }[];
 }): BusinessScopeItem[] {
@@ -247,13 +247,14 @@ export async function persistStructuredSourceReadRequirements(
   input: {
     orgId: string;
     sourceDocumentId: string;
-    dataset: StructuredDatasetName;
+    dataset: StructuredDatasetName | "cost_cards";
     rows: readonly { payload: Record<string, unknown> }[];
     enterpriseKey?: string;
     workerId: string;
+    authorizationState?: Awaited<ReturnType<typeof lockAuthorizationPublication>>;
   }
 ) {
-  const state = await lockAuthorizationPublication(tx, input.orgId);
+  const state = input.authorizationState ?? (await lockAuthorizationPublication(tx, input.orgId));
   const document = await tx.document.findFirstOrThrow({
     where: {
       id: input.sourceDocumentId,
@@ -374,6 +375,37 @@ export async function persistPartitionReadRequirement(
       resourceKey: `partition:${input.partitionId}`
     },
     { historicalSupplement: input.historicalSupplement, businessDates, workerId: input.workerId }
+  );
+}
+
+export async function persistCostCardReadRequirement(
+  tx: Tx,
+  input: { orgId: string; costCardId: string; enterpriseKey: string; workerId: string },
+  state: Awaited<ReturnType<typeof lockAuthorizationPublication>>
+) {
+  if (state.mode !== "enabled") fail("AUTHORIZATION_NOT_ENABLED");
+  const scopes: BusinessScopeItem[] = [
+    { enterpriseKey: input.enterpriseKey, ownership: "group", dimensions: {} }
+  ];
+  const category = await prepareFixedPublication(tx, {
+    orgId: input.orgId,
+    category: await fixedCategory(tx, input.orgId, "cost_cards", state.mode),
+    mode: state.mode,
+    scopes,
+    targetId: input.costCardId
+  });
+  if (!category) fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
+  await persistPublishedResource(
+    tx,
+    {
+      orgId: input.orgId,
+      categoryId: category.id,
+      valid: true,
+      scopes,
+      kind: "cost_card",
+      resourceKey: `cost-card:${input.costCardId}`
+    },
+    { workerId: input.workerId }
   );
 }
 

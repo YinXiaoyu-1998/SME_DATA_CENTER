@@ -1,5 +1,7 @@
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
+  COST_CARD_LAUNCHER_VERSION,
+  errorToolResult,
   validationErrorToolResult,
   type SmedcMcpToolContract,
   type SmedcMcpToolName
@@ -10,9 +12,11 @@ import {
   type DelegateJsonApiRequest
 } from "./api-delegation.js";
 import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
+import { launcherVersionAtLeast } from "../request-audit-context.js";
 
 export const ACTION_MCP_TOOL_NAMES = [
   "archive_quarantine_certificates",
+  "archive_cost_card",
   "prepare_ledger_pdf_download",
   "update_account_permissions",
   "create_evidence_category",
@@ -40,6 +44,19 @@ export function createActionMcpToolHandlers(context: ApiDelegationContext): Smed
     ACTION_MCP_TOOL_NAMES.map((toolName) => [
       toolName,
       async (input: unknown, mcpContext: McpRequestContext) => {
+        if (
+          toolName === "archive_cost_card" &&
+          !launcherVersionAtLeast(
+            mcpContext.audit?.launcherVersion ?? context.audit.launcherVersion,
+            COST_CARD_LAUNCHER_VERSION
+          )
+        )
+          return errorToolResult(
+            "LAUNCHER_UPGRADE_REQUIRED",
+            "Update the SMEDC launcher before using cost cards.",
+            undefined,
+            { requestId: mcpContext.audit?.requestId ?? context.audit.requestId }
+          );
         const parsed = ACTION_TOOL_CONTRACTS[toolName].inputSchema.safeParse(input);
 
         if (!parsed.success) {
@@ -64,6 +81,11 @@ function routeForActionTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "archive_cost_card":
+      return {
+        method: "POST",
+        path: `/v1/cost-cards/${encodeURIComponent(String(input["costCardId"]))}/archive`
+      };
     case "update_account_permissions":
       return {
         method: "PATCH",

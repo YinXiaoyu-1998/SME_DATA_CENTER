@@ -70,6 +70,7 @@ describe("read-only MCP tool handlers", () => {
       "get_import_status",
       "get_partition_import_status",
       "download_structured_partitions",
+      "download_cost_cards",
       "prepare_structured_partition_download",
       "get_structured_partition_download_status",
       "describe_ledger_pdf_coverage",
@@ -703,3 +704,34 @@ it.each([
     expect(calls).toHaveLength(2);
   }
 );
+
+it("guards cost-card reads for old launchers and delegates exact selections for candidate clients", async () => {
+  const { calls, handlers } = createCapturingDelegate();
+  const selection = { enterpriseName: "Synthetic", dishNameContains: "%_!", spuIds: ["spu"] };
+  const old = await handlers.download_cost_cards?.(selection, { audit } as never);
+  expect(parseToolResult(old!)).toMatchObject({ error: { code: "LAUNCHER_UPGRADE_REQUIRED" } });
+  expect(calls).toEqual([]);
+  const candidate = { audit: { ...audit, launcherVersion: "0.10.0" } } as never;
+  await handlers.download_cost_cards?.(selection, candidate);
+  await handlers.describe_structured_dataset_coverage?.(
+    { dataset: "cost_cards", enterpriseName: "Synthetic" },
+    candidate
+  );
+  await handlers.query_structured_dataset?.(
+    { dataset: "cost_cards", select: ["sale_price", "revision"] },
+    candidate
+  );
+  expect(calls).toMatchObject([
+    { method: "POST", url: "/v1/cost-cards/manifest", payload: selection },
+    {
+      method: "GET",
+      url: "/v1/structured/datasets/cost_cards/coverage",
+      query: { enterpriseName: "Synthetic" }
+    },
+    {
+      method: "POST",
+      url: "/v1/structured/query",
+      payload: { dataset: "cost_cards", select: ["sale_price", "revision"] }
+    }
+  ]);
+});

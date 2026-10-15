@@ -14,6 +14,9 @@ const inventory = {
   importWindowClaimIds: ["claim-1"],
   structuredPartitionIds: ["dish-1"],
   partitionImportJobIds: ["business-1"],
+  costCardIds: ["card-1"],
+  costCardResources: [{ orgId: "org", id: "resource-1" }],
+  costCardSourceResources: [{ orgId: "org", id: "source-resource-1" }],
   storageGarbageIds: ["garbage-1"],
   quarantineCertificateIds: ["certificate-1"],
   vipRowIds: ["vip-1"],
@@ -118,6 +121,9 @@ describe("staging upload-domain cleanup support", () => {
       "ImportWindowClaim",
       "PartitionImportJob",
       "StructuredPartition",
+      "CostCard BusinessResource (cascading scopes/dimensions)",
+      "Cost-card source_fragment BusinessResource (cascading scopes/dimensions)",
+      "CostCard",
       "StorageGarbage",
       "QuarantineCertificate",
       "VipRow",
@@ -134,4 +140,24 @@ describe("staging upload-domain cleanup support", () => {
       "auth audit"
     ]);
   });
+});
+
+it("keeps repeated resource IDs in different organizations distinct and rejects an empty owner", () => {
+  const plan = buildStagingUploadDomainCleanupPlan({
+    options: { dryRun: true, target: "staging", confirmation: undefined },
+    inventory: {
+      ...inventory,
+      costCardResources: [
+        { orgId: "org", id: "same" },
+        { orgId: "other", id: "same" }
+      ]
+    }
+  });
+  expect(plan.costCardResources).toHaveLength(2);
+  expect(() =>
+    buildStagingUploadDomainCleanupPlan({
+      options: { dryRun: true, target: "staging", confirmation: undefined },
+      inventory: { ...inventory, costCardSourceResources: [{ orgId: "", id: "source" }] }
+    })
+  ).toThrow("organization ID");
 });

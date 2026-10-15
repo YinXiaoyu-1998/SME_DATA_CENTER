@@ -223,3 +223,61 @@ assertion or a prepared plan without real launcher/MCP calls is not acceptance e
 Headless support-class-C acceptance separately proves no-display link delivery, human completion
 on another device, memory-only credentials, successful business use, and loss of authentication
 after process restart. It uses a fresh synthetic account and cleans it afterward.
+
+## Cost-card changed-workflow candidate
+
+This section targets unpublished candidate 0.10.0, not the currently approved 0.9.0 acceptance.
+Do not execute it, install a candidate, configure real tenants or deploy staging based on this
+document update. After independent package verification, matching service rollout, explicit
+synthetic category configuration and a separately requested changed-workflow acceptance, use
+`candidateCostCards` in `fixtures/manual-acceptance/scenarios.json`. It is deliberately outside
+current `tasks[]`. The fixture `structured/cost-cards-known-values.csv` contains three same-name
+cards (same SPU/two specs and same SKU/different SPU), six item rows, standard/exception source text,
+exact 36.123456 price, 0.000001/0 quantity and leading-zero SPU/SKU/item codes; no customer data.
+
+Controller sequence and oracles:
+
+1. Track synthetic original/import/card IDs and exact identity; upload the 35-column original
+   unchanged. Directory lookup returns all three authorized cards without merging by name/SKU.
+2. Download by resolved card IDs, retain each revision/sourceDocumentId/importBatchId in the safe
+   manifest, read each 38-column CSV locally with `readCostCardAcceptanceCsv`, check exact field
+   values/source locations and both recipe types. Names/specifications must not collide on disk.
+   Server queries stay directory-only; source IDs confer no original-read permission.
+3. In a separate controller operation, archive only the synthetic original via the approved
+   operator boundary. There is no new original-archive employee MCP tool. Re-read directory/CSV:
+   active cards remain readable. Do not change category grants to force the result.
+4. Archive the resolved small-spec card as current same-org admin; lookup hides it and explicit-ID
+   download fails as a whole. A new identical original upload with a fresh key restores it;
+   replaying the earlier successful idempotency request does not. Keep the other cards unchanged.
+5. Verify summary counts belong to that publication and current access, and keep download/failure
+   temporary cleanup in finally. Unit/exception assumptions stay unresolved unless explicit source
+   evidence establishes them; no unique final recipe or profit report is expected.
+6. Cleanup only run-owned source/card/candidate keys and permission resources before source
+   batches/documents. Drain active runs; preserve unrelated cards and all category/grant config.
+   An original count of zero alone is insufficient: verify card/resource/garbage/key absence.
+
+Use small focused automated tests for malformed/hidden candidate pages, signing races, one
+whole-batch expiry retry, current permissions and exact decimal behavior. Updating fixtures or
+support does not resolve the separate evidence-category prerequisite for the full official runner,
+prove live service readiness, or authorize the full suite. Historical acceptance reports remain
+historical; record final readiness once after all coordinated gates.
+
+候选接口核对：manifest 为 flat CostCardSelection（非 selection 包裹）；显式缺失／越权 ID
+整次 403、数量超限 409 不截断、签名期间变化为 retryable 409“成本卡已变化，请重新下载”，
+条件零卡是空 manifest。归档端点无业务 body，响应保留 string revision；员工仍走已验证的
+launcher 工具，不为缺少 MCP 接线改用 HTTP。coverage 只统计当前受权未归档目录，按逐卡
+sourceDocumentId/importBatchId 分组保留来源计数，原件归档不影响这份目录统计。新增类别
+通过候选“补齐资料类别 / Add missing categories”按钮受控补齐，先处理草稿，以当前版本
+和 same Origin／CSRF 写入；验证新 cost_cards 为 null 密级、无 grants、原配置／模式不变。
+该步骤限已明确授权的合成租户，不能据此更改真实企业。
+
+最终候选工具核对：成本卡上传使用原始绝对本地文件＋enterpriseName／idempotencyKey，不传日期、
+快照或 confidentialityLevel；用 get_import_status({importBatchId}) 轮询外层
+{document,processing,importBatch}。download_cost_cards 返回 localDirectory、dataset=cost_cards、
+cardCount、totalItemRowCount、files（仅 cost_card_<costCardId>.csv basename）。目录内 manifest.json
+每条保留全部 domain 字段（去 presignedDownloadUrl，增加 fileName），逐卡 string revision／
+sourceDocumentId／importBatchId 不丢失。零卡仍有空 files 和有效 manifest。归档调用
+archive_cost_card({costCardId})，核对 archived=true 和 string revision。失败／拒绝批次的当前
+读者可得源定位与 ignored/source-summary 数组；owner-only 只得安全进度／errorCode，撤权返回404。
+原始 storage key、正文链接与原件读取权均不能由状态／来源 ID 泄漏。上述只验证未发布候选，
+不更改当前安装 pin 或宣称正式人工验收已执行。

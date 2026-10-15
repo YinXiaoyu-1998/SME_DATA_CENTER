@@ -20,6 +20,7 @@ import {
   toResourceReadRequirement,
   loadBusinessGrants
 } from "./business-authorization-records.js";
+import { initializeFixedBusinessCategories } from "./fixed-business-categories.js";
 
 export interface AuthorizationWriteContext {
   orgId: string;
@@ -319,7 +320,8 @@ export async function persistResourceAttributes(
   if (
     (input.kind === "evidence") !== (rule.kind === "evidence") ||
     (input.kind === "quarantine_certificate" && category.key !== "quarantine_certificate") ||
-    (input.kind === "ledger_pdf" && category.key !== "ledger_pdf")
+    (input.kind === "ledger_pdf" && category.key !== "ledger_pdf") ||
+    (input.kind === "cost_card" && category.key !== "cost_cards")
   )
     throw new Error("RESOURCE_CATEGORY_KIND_MISMATCH");
   if (
@@ -333,6 +335,13 @@ export async function persistResourceAttributes(
   if (input.kind === "quarantine_certificate" || input.kind === "ledger_pdf")
     if (input.scopes.length !== 1 || input.scopes[0]!.ownership !== "store")
       throw new Error("RESOURCE_SINGLE_STORE_REQUIRED");
+  if (
+    input.kind === "cost_card" &&
+    (input.scopes.length !== 1 ||
+      input.scopes[0]!.ownership !== "group" ||
+      input.documentId !== undefined)
+  )
+    throw new Error("RESOURCE_SINGLE_GROUP_REQUIRED");
   const where = { orgId_id: { orgId: input.orgId, id: input.id } };
   const before = await tx.businessResource.findUnique({ where, include: resourcesInclude });
   if (
@@ -606,6 +615,16 @@ export function createBusinessAuthorizationRepository({
     }
   }
   return {
+    initializeFixedCategories(input: AuthorizationWriteContext) {
+      return mutate(input, "categories.initialize", input.orgId, async (tx) => {
+        const before = await tx.businessCategory.findMany({
+          where: { orgId: input.orgId },
+          select: { id: true, key: true }
+        });
+        const result = await initializeFixedBusinessCategories(tx, input.orgId);
+        return { before, after: { createdCount: result.count } };
+      });
+    },
     inspectAuthorizationCutover<T>(orgId: string, inspect: (tx: Tx) => Promise<T>) {
       return prisma.$transaction(async (tx) => {
         const state = await tx.businessAuthorizationState.findUnique({ where: { orgId } });

@@ -1,5 +1,6 @@
 import { registerAdminPermissionsRoutes } from "./admin-permissions/routes.js";
 import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
+import { registerCostCardRoutes } from "./routes/cost-cards.js";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import { DEFAULT_RETRIEVAL_CONFIG_VERSION } from "@smedc/domain";
@@ -118,6 +119,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   }
 
   registerBusinessAuthorizationRoutes(app, { auth: requestAuth, permissions: context.permissions });
+  registerCostCardRoutes(app, { auth: requestAuth, costCards: context.costCards });
 
   registerSystemRoutes(app, { auth: requestAuth, readinessCheck });
   registerLedgerPdfRoutes(app, {
@@ -179,6 +181,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     auth: requestAuth,
     structuredQueries,
     structuredCoverage,
+    costCards: context.costCards,
     structuredPartitions,
     ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled,
     cursorSigningSecret

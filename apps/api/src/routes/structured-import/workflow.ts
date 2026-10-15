@@ -69,7 +69,7 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
       ok: false,
       code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
       message:
-        "dataset must be dishes, business, vip, dish_catalog, delivery_ledger, or supplier_catalog."
+        "dataset must be dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, or cost_cards."
     };
   }
 
@@ -290,7 +290,7 @@ export function structuredImportFingerprint(input: {
         : registry.metadataPolicy === "window"
           ? { startDate: input.startDate, endDate: input.endDate }
           : {}),
-    confidentialityLevel: input.confidentialityLevel,
+    ...(input.dataset === "cost_cards" ? {} : { confidentialityLevel: input.confidentialityLevel }),
     fileHash: input.fileHash
   };
 
@@ -348,7 +348,9 @@ function structuredImportResponse(input: {
       documentKind: "structured",
       fileType: input.document.fileType,
       status: input.document.status,
-      storageObjectKey: input.document.storageObjectKey,
+      ...(input.importBatch.dataset === "cost_cards"
+        ? {}
+        : { storageObjectKey: input.document.storageObjectKey }),
       originalFileName: input.document.originalFileName
     },
     processing: {
@@ -390,7 +392,11 @@ export function structuredImportProgressResponse(importBatch: StructuredImportBa
       importBatchId: importBatch.id,
       sourceDocumentId: importBatch.sourceDocumentId,
       status: importBatch.status,
-      hasValidationErrors: importBatch.validationErrorCount > 0
+      hasValidationErrors: importBatch.validationErrorCount > 0,
+      ...(importBatch.dataset === "cost_cards" &&
+      ["failed", "rejected"].includes(importBatch.status)
+        ? { errorCode: importBatch.errorCode ?? null }
+        : {})
     }
   };
 }
@@ -405,13 +411,20 @@ export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
     sourceDocumentId: importBatch.sourceDocumentId,
     dataset: importBatch.dataset,
     status: importBatch.status,
+    ...(importBatch.dataset === "cost_cards" && ["failed", "rejected"].includes(importBatch.status)
+      ? { errorCode: importBatch.errorCode ?? null }
+      : {}),
     sourceSheetSummary: importBatch.sourceSheetSummary,
     validationErrors: importBatch.validationErrors,
     validationErrorCount: importBatch.validationErrorCount,
     validationErrorsTruncated: importBatch.validationErrorsTruncated,
     totalRowCount: importBatch.totalRowCount,
     appliedRowCount: importBatch.appliedRowCount,
-    queryableRowCount: importBatch.queryableRowCount,
+    ...(importBatch.dataset === "cost_cards"
+      ? importBatch.status === "applied" && importBatch.publicationSummary
+        ? { publicationSummary: importBatch.publicationSummary }
+        : {}
+      : { queryableRowCount: importBatch.queryableRowCount }),
     ...(importBatch.status === "applied" && importBatch.dataset === "delivery_ledger"
       ? { affectedLedgerPartitions: importBatch.affectedLedgerPartitions ?? [] }
       : {})

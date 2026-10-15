@@ -28,3 +28,19 @@
 MCP 行为/契约/使用指导变更遵守 [共享发布规则](../../packages/mcp-contract/AGENTS.md)：同批更新服务端与 launcher 契约、测试和双归属 Skill；先发布并独立验证运行包，再更新推荐元数据和安装 pin。纯文档校正不修改运行时版本。
 
 检查 Skill frontmatter、当前命令/字段、引用、双仓库文件字节一致性，以及现有 `scripts/smedc-companion-skill.test.ts` 和 `scripts/official-user-install-and-login.test.ts`。格式检查和 git diff --check 必须通过。测试 Skill 描述的运行行为使用既有 MCP 集成入口，不把 Skill 文本当作新增工具实现。
+
+## 成本卡候选指导
+
+双份 Skill 增加 [cost-cards reference](../../skills/smedc-mcp/references/cost-cards.md)，面向未发布
+候选 0.10.0；基础已验证安装 pin／推荐仍为 0.9.0，companion 仍为 0.8.2。不得仅凭 discovery
+安装候选或宣称服务部署／租户就绪。同步目录需逐文件一致，canonical 用户目录仍为
+`/Users/xiaoyuyin/.agents/skills`；本批不把候选安装到该运行环境。
+
+流程为 35 列原件上传 → 受权目录找卡与同名消歧 → download_cost_cards 交付每卡 38 列 CSV／
+逐卡来源和 revision → agent 本地物品／配方／单位／门店分析与 finally 清理。没有服务端明细
+查询或聚合，下载格式不作上传模板。原件归档独立，单卡归档及新上传恢复使用当前 admin
+管理边界，读取仍须集团成本卡类别 grant 和密级。老 enabled 企业通过受控写入口幂等补登记
+新类别并显式配置，不给默认权限。publication 摘要绑定那次提交，截断和当前读取权须说明。
+
+companion 维护本机较新的名称关联指导：matched_product_name 优先，空／无匹配再 product_name，
+多个候选保留歧义。仅增加本地 CSV 分析说明，不修改现有报表 runner 或增加利润报告。

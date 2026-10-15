@@ -81,7 +81,9 @@ suite("fixed category bootstrap through supported administration", () => {
     const repository = createBusinessAuthorizationRepository({ prisma });
     const migrated = await repository.listCategories(orgId);
     expect(migrated.map((c) => [c.key, c.allowGroup ? "group" : "store"]).sort()).toEqual(
-      Object.entries(ownership).sort()
+      Object.entries(ownership)
+        .filter(([key]) => key !== "cost_cards")
+        .sort()
     );
     expect(migrated.find((c) => c.key === "ledger_pdf")).toMatchObject(existing);
     expect(
@@ -92,11 +94,19 @@ suite("fixed category bootstrap through supported administration", () => {
       mode: "legacy",
       version: 6n
     });
+    expect(
+      (await repository.initializeFixedCategories({ orgId, actorId, expectedVersion: "6" })).value
+        .createdCount
+    ).toBe(1);
+    const initialized = await repository.listCategories(orgId);
+    expect(
+      initialized.find((category) => category.key === "cost_cards")?.confidentialityLevel
+    ).toBeNull();
     await prisma.$transaction(async (tx) => {
       await lockAuthorizationPublication(tx, orgId);
       expect((await initializeFixedBusinessCategories(tx, orgId)).count).toBe(0);
     });
-    expect(await repository.listCategories(orgId)).toEqual(migrated);
+    expect(await repository.listCategories(orgId)).toEqual(initialized);
     const app = Fastify();
     registerBusinessAuthorizationRoutes(app, {
       auth: {
@@ -110,7 +120,11 @@ suite("fixed category bootstrap through supported administration", () => {
       const listed = (await app.inject({ url: "/v1/admin/permissions/categories" })).json();
       const report = (await app.inject({ url: "/v1/admin/permissions/cutover" })).json();
       expect(report.ready).toBe(false);
-      expect(report.missing).toHaveLength(6);
+      expect(report.missing).toHaveLength(7);
+      expect(report.missing).toContainEqual({
+        code: "FIXED_CATEGORY_CLEARANCE_REQUIRED",
+        targetId: "cost_cards"
+      });
       expect(report.missing).not.toContainEqual({
         code: "FIXED_CATEGORY_CLEARANCE_REQUIRED",
         targetId: "delivery_ledger"
@@ -126,7 +140,7 @@ suite("fixed category bootstrap through supported administration", () => {
         ).statusCode
       ).toBe(409);
       let version = listed.authorizationVersion;
-      for (const category of migrated.filter((category) => category.key !== "delivery_ledger")) {
+      for (const category of initialized.filter((category) => category.key !== "delivery_ledger")) {
         const result = await app.inject({
           method: "PATCH",
           url: `/v1/admin/permissions/categories/${category.id}`,

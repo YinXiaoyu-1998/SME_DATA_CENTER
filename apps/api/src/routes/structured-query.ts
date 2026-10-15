@@ -14,6 +14,10 @@ import {
   normalizeEnterpriseIdentity,
   parsePartitionStoreNameContains
 } from "@smedc/domain";
+import { isBusinessClearance, validateBusinessGrant } from "@smedc/domain";
+import { CostCardPublicationError } from "@smedc/db";
+import type { CostCardService } from "../cost-cards.js";
+import { respondCostCardError } from "./cost-cards.js";
 import type { RequestAuth } from "../request-auth.js";
 import type { StructuredCoverageRepository } from "../structured-coverage.js";
 import type { StructuredQueryRepository } from "../structured-query.js";
@@ -45,8 +49,8 @@ function structuredFieldResponse(
 function structuredDatasetRegistryResponse() {
   return {
     limits: STRUCTURED_QUERY_LIMITS,
-    datasets: Object.values(STRUCTURED_DATASET_REGISTRIES).map((original) => {
-      const registry = getPublicStructuredRegistry(original.dataset);
+    datasets: STRUCTURED_DATASETS.map((dataset) => {
+      const registry = getPublicStructuredRegistry(dataset);
       return {
         dataset: registry.dataset,
         accessMode: registry.accessMode,
@@ -70,6 +74,7 @@ export function registerStructuredQueryRoutes(
     structuredQueries: () => StructuredQueryRepository;
     structuredCoverage: () => StructuredCoverageRepository;
     structuredPartitions: () => StructuredPartitionRepository;
+    costCards?: () => CostCardService;
     cursorSigningSecret: string;
     ledgerPdfDeliveryEnabled?: boolean;
   }
@@ -86,6 +91,22 @@ export function registerStructuredQueryRoutes(
     response.datasets = response.datasets.filter(
       (dataset) =>
         dataset.dataset !== "delivery_ledger" &&
+        (dataset.dataset !== "cost_cards" ||
+          (snapshot.mode === "enabled" &&
+            !snapshot.disabled &&
+            snapshot.categories.some(
+              (category) =>
+                category.key === "cost_cards" &&
+                isBusinessClearance(category.confidentialityLevel) &&
+                category.confidentialityLevel <= snapshot.clearance &&
+                snapshot.grants.some(
+                  (grant) =>
+                    grant.orgId === snapshot.orgId &&
+                    grant.ownership === "group" &&
+                    grant.categoryIds.includes(category.id) &&
+                    validateBusinessGrant(grant, snapshot.categories).length === 0
+                )
+            ))) &&
         (snapshot.mode === "legacy" ||
           snapshot.mode === "preparing" ||
           (snapshot.mode === "enabled" &&
@@ -125,6 +146,24 @@ export function registerStructuredQueryRoutes(
           PHASE3_ERROR_CODES.ledgerDetailDisabled,
           "Ledger coverage is disabled. Use archived PDF APIs."
         );
+      if (dataset === "cost_cards") {
+        if (
+          Object.keys(request.query).some((key) => key !== "enterpriseName") ||
+          (request.query.enterpriseName !== undefined &&
+            typeof request.query.enterpriseName !== "string")
+        )
+          throw new StructuredQueryValidationError(
+            PHASE3_ERROR_CODES.invalidQuery,
+            "Cost-card coverage accepts enterpriseName only."
+          );
+        if (!dependencies.costCards) throw new Error("Cost card coverage is not configured.");
+        return await dependencies.costCards().coverage({
+          auth: employee,
+          ...(typeof request.query.enterpriseName === "string"
+            ? { enterpriseName: request.query.enterpriseName }
+            : {})
+        });
+      }
       const registry =
         STRUCTURED_DATASET_REGISTRIES[dataset as keyof typeof STRUCTURED_DATASET_REGISTRIES];
       if (registry.accessMode === "partition_extract") {
@@ -202,6 +241,8 @@ export function registerStructuredQueryRoutes(
 
       return await dependencies.structuredCoverage().list(compiled);
     } catch (error) {
+      if (error instanceof CostCardPublicationError)
+        return respondCostCardError(error, request, reply);
       if (error instanceof PartitionContractError) {
         return reply.code(400).send(phase3ErrorResponse(request, error.code, error.message));
       }
@@ -232,11 +273,26 @@ export function registerStructuredQueryRoutes(
           "Ledger reads are disabled. Use the archived PDF APIs for ledger documents."
         );
       const snapshot = await dependencies.auth.authorization(request);
+      if (
+        dataset === "cost_cards" &&
+        (snapshot.mode !== "enabled" ||
+          snapshot.disabled ||
+          !snapshot.categories.some(
+            (category) =>
+              category.key === "cost_cards" &&
+              category.kind === "fixed" &&
+              isBusinessClearance(category.confidentialityLevel)
+          ))
+      )
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.datasetForbidden,
+          "Cost card category configuration is required."
+        );
       const compiled = compilePublicStructuredQuery({
         orgId: employee.orgId,
         employee: {
           id: employee.id,
-          clearance: employee.clearance
+          clearance: dataset === "cost_cards" ? snapshot.clearance : employee.clearance
         },
         query: request.body,
         cursorSecret: dependencies.cursorSigningSecret,
@@ -245,7 +301,11 @@ export function registerStructuredQueryRoutes(
           ? {
               businessAuthorization: {
                 version: snapshot.authorizationVersion,
-                ...compileStructuredReadScope(snapshot, "row", dataset ?? "")
+                ...compileStructuredReadScope(
+                  snapshot,
+                  dataset === "cost_cards" ? "cost_card" : "row",
+                  dataset ?? ""
+                )
               }
             }
           : {})

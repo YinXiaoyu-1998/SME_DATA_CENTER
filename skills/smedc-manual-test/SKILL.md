@@ -206,3 +206,50 @@ Manual staging uploads must not accumulate.
 - Do not report "beta-ready" unless the browser login, launcher persistence, business tools,
   quarantine/source-download coverage when in scope, and cleanup have actually run.
 - When Windows/OpenClaw are skipped by scope, say so explicitly.
+
+## Cost-card changed workflow (unpublished candidate)
+
+Cost-card acceptance is separately release gated for candidate 0.10.0; do not run it with the
+current published 0.9.0 suite or install a candidate into the user runtime. No official run is
+authorized by updating this Skill. After separate publication/service/tenant verification and an
+explicit changed-workflow request, use `candidateCostCards` in the existing scenario manifest and
+`structured/cost-cards-known-values.csv`: three same-name cards, two specifications under one SPU,
+a reused SKU under another SPU, standard/exception rows, leading-zero codes and exact/null/zero values.
+
+Use directory lookup → complete per-card CSV download → local 38-column checks through
+`readCostCardAcceptanceCsv` in existing support. Preserve each card's revision/sourceDocumentId/
+importBatchId and verify byte/schema/identity/count integrity and same-name filename separation.
+Do not request server-side item/recipe/store aggregates. Read units and exception semantics as
+source values; do not invent a final store recipe. Clean only that download directory in finally.
+
+The controller separately archives a synthetic original through the approved operator path;
+ordinary directory and CSV reads must still succeed. Current same-org admin archives one resolved
+card, which disappears from lookup/download; a fresh identical upload restores it, while old
+idempotency replay does not. Do not invent an original-archive MCP tool or infer admin read rights.
+Test permissions/category initialization with one small synthetic enabled enterprise; no default
+new-category grants, old-category changes or tenant reactivation. Record explicit-ID denial,
+manifest signing race/whole-batch expiry retry and publication-summary truncation/current-read
+boundaries through existing focused runtime tests; do not add a broad manual permission matrix.
+
+Run-scoped cleanup inventories current/archived card object keys plus StorageGarbage candidates,
+removes cost_card resources and directory before restrictive source batches/documents, preserves
+unrelated group cards/config/accounts and verifies exact keys/counts. Full suite, real cleanup,
+staging and tenant actions always retain their separate authorization boundaries.
+
+Tested candidate route details are in api-contract.md: flat manifest selection; explicit IDs
+all-or-error 403; count cap 409 without truncation; signing change retryable 409 “成本卡已变化，请重新下载”;
+condition zero-card success; archive with no business body and string revision. Coverage counts
+only currently readable active directory cards and groups sources by sourceDocumentId/importBatchId.
+For a separately authorized synthetic enabled enterprise, exercise “补齐资料类别 / Add missing categories”
+after saving/resolving drafts, current version and same-origin/CSRF checks; GET never initializes.
+MCP exposure/publication remains a separate launcher gate; do not bypass missing tools with HTTP.
+
+Final candidate tool/output oracle: upload the unchanged absolute local file with enterpriseName
+and idempotencyKey, no date/confidentiality override; poll get_import_status({importBatchId}) with
+outer document/processing/importBatch. Download returns localDirectory/dataset/cardCount/
+totalItemRowCount/files, CSV basenames cost_card_<costCardId>.csv; manifest.json is inside that
+directory and each URL-free entry adds fileName while retaining string revision and its own
+sourceDocumentId/importBatchId. Zero cards has files=[] plus an empty manifest. Use
+archive_cost_card({costCardId}) for the resolved card and verify archived:true/string revision.
+Authorized failed/rejected readers see returned locations/ignored arrays; owner-only status is safe
+progress/errorCode and revoked access is 404, with no raw storage key or original-read entitlement.

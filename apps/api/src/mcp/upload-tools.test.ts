@@ -702,3 +702,28 @@ describe("upload MCP tool handlers", () => {
     expect(serialized).not.toContain("upstream exploded");
   });
 });
+
+it("uploads cost-card originals as ordinary structured multipart with no date parts", async () => {
+  const { handlers, requests } = createHandlers({});
+  const input = {
+    file: inlineFile("cost.csv", "text/csv", "synthetic"),
+    dataset: "cost_cards",
+    enterpriseName: "Synthetic",
+    idempotencyKey: "cost-key"
+  };
+  const old = await handlers.upload_structured_dataset!(input, mcpContext);
+  expect(JSON.parse(old.content[0]!.text)).toMatchObject({
+    error: { code: "LAUNCHER_UPGRADE_REQUIRED" }
+  });
+  expect(requests).toHaveLength(0);
+  const result = await handlers.upload_structured_dataset!(input, {
+    ...mcpContext,
+    audit: { ...mcpAudit, launcherVersion: "0.10.0" }
+  });
+  expect(result.isError).toBe(false);
+  expect(requests[0]?.url).toBe("/v1/structured/imports");
+  const body = requests[0]!.payload.toString("utf8");
+  expect(body).toContain('name="dataset"\r\n\r\ncost_cards');
+  expect(body).toContain('name="file"; filename="cost.csv"');
+  expect(body).not.toMatch(/name="(?:startDate|endDate|snapshotDate|confidentialityLevel)"/);
+});

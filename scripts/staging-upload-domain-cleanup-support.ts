@@ -11,6 +11,11 @@ export interface QdrantPointTarget {
   pointId: string;
 }
 
+export interface CostCardCleanupResourceTarget {
+  orgId: string;
+  id: string;
+}
+
 export interface StagingUploadDomainCleanupInventory {
   documentIds: string[];
   processingRunIds: string[];
@@ -20,6 +25,9 @@ export interface StagingUploadDomainCleanupInventory {
   importWindowClaimIds: string[];
   partitionImportJobIds: string[];
   structuredPartitionIds: string[];
+  costCardIds: string[];
+  costCardResources: CostCardCleanupResourceTarget[];
+  costCardSourceResources: CostCardCleanupResourceTarget[];
   storageGarbageIds: string[];
   quarantineCertificateIds: string[];
   vipRowIds: string[];
@@ -40,6 +48,9 @@ export interface StagingUploadDomainCleanupPlan {
   importWindowClaimIds: string[];
   partitionImportJobIds: string[];
   structuredPartitionIds: string[];
+  costCardIds: string[];
+  costCardResources: CostCardCleanupResourceTarget[];
+  costCardSourceResources: CostCardCleanupResourceTarget[];
   storageGarbageIds: string[];
   quarantineCertificateIds: string[];
   vipRowIds: string[];
@@ -66,6 +77,9 @@ export interface StagingUploadDomainCleanupSafeLog {
     importWindowClaims: number;
     partitionImportJobs: number;
     structuredPartitions: number;
+    costCards: number;
+    costCardResources: number;
+    costCardSourceResources: number;
     storageGarbage: number;
     quarantineCertificates: number;
     vipRows: number;
@@ -95,6 +109,9 @@ export const UPLOAD_DOMAIN_DELETION_TARGETS = [
   "ImportWindowClaim",
   "PartitionImportJob",
   "StructuredPartition",
+  "CostCard BusinessResource (cascading scopes/dimensions)",
+  "Cost-card source_fragment BusinessResource (cascading scopes/dimensions)",
+  "CostCard",
   "StorageGarbage",
   "QuarantineCertificate",
   "VipRow",
@@ -157,6 +174,9 @@ export function buildStagingUploadDomainCleanupPlan(input: {
   const importWindowClaimIds = sortIds(input.inventory.importWindowClaimIds);
   const partitionImportJobIds = sortIds(input.inventory.partitionImportJobIds);
   const structuredPartitionIds = sortIds(input.inventory.structuredPartitionIds);
+  const costCardIds = sortIds(input.inventory.costCardIds);
+  const costCardResources = sortResourceTargets(input.inventory.costCardResources);
+  const costCardSourceResources = sortResourceTargets(input.inventory.costCardSourceResources);
   const storageGarbageIds = sortIds(input.inventory.storageGarbageIds);
   const quarantineCertificateIds = sortIds(input.inventory.quarantineCertificateIds);
   const vipRowIds = sortIds(input.inventory.vipRowIds);
@@ -176,6 +196,9 @@ export function buildStagingUploadDomainCleanupPlan(input: {
     importWindowClaimIds,
     partitionImportJobIds,
     structuredPartitionIds,
+    costCardIds,
+    costCardResources,
+    costCardSourceResources,
     storageGarbageIds,
     quarantineCertificateIds,
     vipRowIds,
@@ -198,6 +221,9 @@ export function buildStagingUploadDomainCleanupPlan(input: {
         importWindowClaims: importWindowClaimIds.length,
         partitionImportJobs: partitionImportJobIds.length,
         structuredPartitions: structuredPartitionIds.length,
+        costCards: costCardIds.length,
+        costCardResources: costCardResources.length,
+        costCardSourceResources: costCardSourceResources.length,
         storageGarbage: storageGarbageIds.length,
         quarantineCertificates: quarantineCertificateIds.length,
         vipRows: vipRowIds.length,
@@ -233,6 +259,9 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
   validateUniqueNonEmpty(inventory.importWindowClaimIds, "import-window claim ID");
   validateUniqueNonEmpty(inventory.partitionImportJobIds, "partition import job ID");
   validateUniqueNonEmpty(inventory.structuredPartitionIds, "structured partition ID");
+  validateUniqueNonEmpty(inventory.costCardIds, "cost card ID");
+  validateResourceTargets(inventory.costCardResources);
+  validateResourceTargets(inventory.costCardSourceResources);
   validateUniqueNonEmpty(inventory.storageGarbageIds, "storage garbage ID");
   validateUniqueNonEmpty(inventory.quarantineCertificateIds, "quarantine certificate ID");
   validateUniqueNonEmpty(inventory.vipRowIds, "VIP row ID");
@@ -252,6 +281,29 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
     (point) => `${point.collection}:${point.pointId}`
   );
   validateUniqueNonEmpty(pointTargets, "Qdrant point target");
+}
+
+function validateResourceTargets(targets: CostCardCleanupResourceTarget[]): void {
+  validateNonEmpty(
+    targets.map((target) => target.orgId),
+    "cost-card resource organization ID"
+  );
+  validateNonEmpty(
+    targets.map((target) => target.id),
+    "cost-card resource ID"
+  );
+  validateUniqueNonEmpty(
+    targets.map((target) => JSON.stringify([target.orgId, target.id])),
+    "cost-card resource target"
+  );
+}
+
+function sortResourceTargets(
+  targets: CostCardCleanupResourceTarget[]
+): CostCardCleanupResourceTarget[] {
+  return [...targets].sort((left, right) =>
+    JSON.stringify([left.orgId, left.id]).localeCompare(JSON.stringify([right.orgId, right.id]))
+  );
 }
 
 function validateUniqueNonEmpty(values: string[], label: string): void {

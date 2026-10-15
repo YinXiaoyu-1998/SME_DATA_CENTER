@@ -8,6 +8,8 @@ import { parseWorkerRetrievalRuntimeConfig } from "./config/retrieval-runtime.js
 import { loadWorkerRuntimeLimits } from "./config/runtime-limits.js";
 import { createPrismaProcessingWorkerRepository, runWorkerOnce } from "./worker.js";
 import { createPartitionImporter, partitionImportLimitsFromRuntime } from "./partition-import.js";
+import { createPrismaCostCardRepository } from "@smedc/db";
+import { createCostCardImporter } from "./cost-card-import.js";
 
 export const workerWorkspaceName = "@smedc/worker";
 
@@ -37,6 +39,10 @@ export async function main(): Promise<void> {
       console.error(JSON.stringify(event));
     }
   });
+  const costCardImporter = createCostCardImporter({
+    repository: createPrismaCostCardRepository(),
+    limits: partitionImportLimitsFromRuntime(runtimeLimits)
+  });
 
   let shutdownFailure: PromiseRejectedResult | undefined;
   try {
@@ -51,6 +57,7 @@ export async function main(): Promise<void> {
       partitionDownloadJob: partitionDownloads.job,
       ledgerJobs: ledgerRuntime.jobs,
       partitionImporter,
+      costCardImporter,
       structuredImportBatchInsertSize: runtimeLimits.structuredImportBatchInsertSize,
       leaseSeconds: runtimeLimits.workerLeaseSeconds,
       maxAttempts: runtimeLimits.workerMaxAttempts,
@@ -64,6 +71,7 @@ export async function main(): Promise<void> {
     const closed = await Promise.allSettled([
       repository.disconnect?.(),
       partitionImporter.disconnect(),
+      costCardImporter.disconnect(),
       ledgerRuntime.disconnect(),
       partitionDownloads.disconnect()
     ]);

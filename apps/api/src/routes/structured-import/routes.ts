@@ -16,6 +16,7 @@ import {
   canEmployeeAccessDocument,
   getStructuredRegistry
 } from "@smedc/domain";
+import { isBusinessClearance, PHASE3_RUNTIME_LIMIT_DEFAULTS } from "@smedc/domain";
 import { preflightStructuredFile, profileStructuredFile } from "@smedc/structured-ingestion";
 import { createOriginalObjectKey, type StorageAdapter } from "@smedc/storage";
 import type { ApiRuntimeLimits } from "../../config/runtime-limits.js";
@@ -259,7 +260,44 @@ export function registerStructuredImportRoutes(
       );
     }
 
-    const confidentialityLevel = parseConfidentialityLevel(upload);
+    let confidentialityLevel = parseConfidentialityLevel(upload);
+    if (dataset === "cost_cards") {
+      if (normalizeEnterpriseIdentity(enterpriseName).enterpriseKey.length > 128)
+        return validationError(
+          reply,
+          "INVALID_COST_CARD_METADATA",
+          "Enterprise identity exceeds the current authorization limit."
+        );
+      if (upload.confidentialityLevelFieldCount > 0)
+        return validationError(
+          reply,
+          "INVALID_COST_CARD_METADATA",
+          "Cost cards use the configured category confidentiality level."
+        );
+      if (uploadedFile.body.length > PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes)
+        return validationError(
+          reply,
+          "COST_CARD_SOURCE_LIMIT_EXCEEDED",
+          "Cost card source exceeds 50 MiB."
+        );
+      const snapshot = await dependencies.auth.authorization(request);
+      const category = snapshot.categories.find(
+        (category) => category.key === "cost_cards" && category.kind === "fixed"
+      );
+      if (
+        snapshot.mode !== "enabled" ||
+        snapshot.disabled ||
+        snapshot.role !== "admin" ||
+        !category ||
+        !isBusinessClearance(category.confidentialityLevel)
+      )
+        return validationError(
+          reply,
+          "RESOURCE_CATEGORY_NOT_CONFIGURED",
+          "Cost card category configuration is required."
+        );
+      confidentialityLevel = category.confidentialityLevel;
+    }
     if (confidentialityLevel === null) {
       return validationError(
         reply,
@@ -371,6 +409,7 @@ export function registerStructuredImportRoutes(
             documentId: candidateDocumentId,
             dataset,
             enterpriseKey: normalizeEnterpriseIdentity(enterpriseName).enterpriseKey,
+            ...(dataset === "cost_cards" ? { enterpriseName } : {}),
             historicalSupplementReason: upload.historicalSupplementReason,
             fileType,
             startDate,
@@ -430,7 +469,13 @@ export function registerStructuredImportRoutes(
     });
     if (reservation.state === "existing") {
       logTiming("upload.total", importRequestStarted, { outcome: "existing" });
-      return reply.code(202).send(responseForReservedImport(reservation.importBatch));
+      return reply
+        .code(202)
+        .send(
+          dataset === "cost_cards"
+            ? structuredImportProgressResponse(reservation.importBatch)
+            : responseForReservedImport(reservation.importBatch)
+        );
     }
 
     const reservedBatch = reservation.importBatch;
@@ -478,7 +523,13 @@ export function registerStructuredImportRoutes(
         })
       );
       logTiming("upload.total", importRequestStarted, { outcome: "queued" });
-      return reply.code(202).send(responseForReservedImport(importBatch));
+      return reply
+        .code(202)
+        .send(
+          dataset === "cost_cards"
+            ? structuredImportProgressResponse(importBatch)
+            : responseForReservedImport(importBatch)
+        );
     } catch (error) {
       request.log.error(
         {
@@ -535,14 +586,38 @@ export function registerStructuredImportRoutes(
           .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
       }
 
+      let readRequirements = importBatch.readRequirements ?? [];
+      // Unpublished errors still belong to the server-accepted enterprise/category.
+      // This status-only scope never grants original-file or directory access.
+      if (
+        importBatch.dataset === "cost_cards" &&
+        ["pending", "validating", "applying", "failed", "rejected"].includes(importBatch.status) &&
+        importBatch.enterpriseKey &&
+        importBatch.enterpriseKey.length <= 128
+      ) {
+        const category = snapshot.categories.find(
+          (category) => category.key === "cost_cards" && category.kind === "fixed"
+        );
+        readRequirements = category
+          ? [
+              {
+                orgId: importBatch.orgId,
+                categoryId: category.id,
+                valid: true,
+                scopes: [
+                  { enterpriseKey: importBatch.enterpriseKey, ownership: "group", dimensions: {} }
+                ]
+              }
+            ]
+          : [];
+      }
       const readable =
         snapshot.mode === "enabled"
           ? importBatch.dataset !== "delivery_ledger" &&
-            !!importBatch.readRequirements?.length &&
-            importBatch.readRequirements.every(
-              (requirement) => canReadResource(snapshot, requirement).allowed
-            )
-          : (snapshot.mode === "legacy" || snapshot.mode === "preparing") &&
+            !!readRequirements.length &&
+            readRequirements.every((requirement) => canReadResource(snapshot, requirement).allowed)
+          : importBatch.dataset !== "cost_cards" &&
+            (snapshot.mode === "legacy" || snapshot.mode === "preparing") &&
             canEmployeeAccessDocument({
               employee: snapshot,
               document: { confidentialityLevel: importBatch.sourceDocumentConfidentialityLevel }

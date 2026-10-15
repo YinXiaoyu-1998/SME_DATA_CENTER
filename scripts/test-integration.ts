@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import assertStrict from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
@@ -18,8 +20,12 @@ import { AuthCore } from "../apps/api/src/auth/auth-core.js";
 import {
   createLauncherToolDependencies,
   createLauncherToolHandler,
-  parseCurrentUserProfileResponse
+  parseCurrentUserProfileResponse,
+  type LauncherToolDependencies
 } from "../apps/mcp-launcher/src/index.js";
+import { COST_CARD_UPLOAD_SCHEMA, hashCostCard, normalizeEnterpriseIdentity } from "@smedc/domain";
+import { readCostCardCsv } from "@smedc/structured-ingestion";
+import { parse as parseCsv } from "csv-parse/sync";
 import {
   DEVICE_VERIFY_COOKIE,
   OAUTH_CLIENT_ID,
@@ -32,6 +38,7 @@ import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { LAUNCHER_VERSION } from "../apps/mcp-launcher/src/oauth-client.js";
 import {
   comparePartitionDownloads,
+  createCostCardIntegrationFixture,
   createOwnedIntegrationDatabase,
   integrationDatabasePlan
 } from "./test-integration-support.js";
@@ -106,10 +113,12 @@ const businessAuthorizationOnly = process.argv.includes("--business-authorizatio
 const structuredReadsOnly = process.argv.includes("--structured-reads-only");
 const ledgerAuthorizationOnly = process.argv.includes("--ledger-authorization-only");
 const partitionDownloadsOnly = process.argv.includes("--partition-downloads-only");
+const costCardsOnly = process.argv.includes("--cost-cards-only");
 const focusedAuthorization =
   businessAuthorizationOnly ||
   structuredReadsOnly ||
   ledgerAuthorizationOnly ||
+  costCardsOnly ||
   partitionDownloadsOnly;
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
@@ -171,27 +180,39 @@ integrationRun: try {
       "vitest",
       "run",
       "--no-file-parallelism",
-      ...(partitionDownloadsOnly
-        ? ["packages/db/src/partition-downloads.prisma.integration.test.ts"]
-        : ledgerAuthorizationOnly
-          ? [
-              "packages/ledger-archive/src/publication.prisma.integration.test.ts",
-              "packages/ledger-archive/src/source-reader.prisma.integration.test.ts"
-            ]
-          : structuredReadsOnly
-            ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
-            : businessAuthorizationOnly
-              ? ["apps/api/src/business-authorization-cutover.prisma.integration.test.ts"]
-              : [
-                  "apps/api/src/structured-query.prisma.integration.test.ts",
-                  "packages/ledger-archive/src/publication.prisma.integration.test.ts",
-                  "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
-                  "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
-                  "packages/db/src/structured-partitions.prisma.integration.test.ts",
-                  "packages/db/src/partition-downloads.prisma.integration.test.ts",
-                  "scripts/test-integration-support.test.ts"
-                ]),
-      ...(!structuredReadsOnly && !ledgerAuthorizationOnly && !partitionDownloadsOnly
+      ...(costCardsOnly
+        ? [
+            "packages/db/src/cost-cards.prisma.integration.test.ts",
+            "apps/worker/src/cost-card-import.prisma.integration.test.ts",
+            "apps/api/src/cost-cards.prisma.integration.test.ts"
+          ]
+        : partitionDownloadsOnly
+          ? ["packages/db/src/partition-downloads.prisma.integration.test.ts"]
+          : ledgerAuthorizationOnly
+            ? [
+                "packages/ledger-archive/src/publication.prisma.integration.test.ts",
+                "packages/ledger-archive/src/source-reader.prisma.integration.test.ts"
+              ]
+            : structuredReadsOnly
+              ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
+              : businessAuthorizationOnly
+                ? ["apps/api/src/business-authorization-cutover.prisma.integration.test.ts"]
+                : [
+                    "apps/api/src/structured-query.prisma.integration.test.ts",
+                    "packages/ledger-archive/src/publication.prisma.integration.test.ts",
+                    "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
+                    "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
+                    "packages/db/src/structured-partitions.prisma.integration.test.ts",
+                    "packages/db/src/partition-downloads.prisma.integration.test.ts",
+                    "packages/db/src/cost-cards.prisma.integration.test.ts",
+                    "apps/worker/src/cost-card-import.prisma.integration.test.ts",
+                    "apps/api/src/cost-cards.prisma.integration.test.ts",
+                    "scripts/test-integration-support.test.ts"
+                  ]),
+      ...(!costCardsOnly &&
+      !structuredReadsOnly &&
+      !ledgerAuthorizationOnly &&
+      !partitionDownloadsOnly
         ? [
             "packages/db/src/business-authorization.prisma.integration.test.ts",
             "apps/api/src/permissions-operator/cli.prisma.integration.test.ts"
@@ -205,7 +226,8 @@ integrationRun: try {
         RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION: "1",
         RUN_PARTITION_PRISMA_INTEGRATION: "1",
         RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION: "1",
-        RUN_PERMISSIONS_OPERATOR_PRISMA_INTEGRATION: "1"
+        RUN_PERMISSIONS_OPERATOR_PRISMA_INTEGRATION: "1",
+        RUN_COST_CARD_PRISMA_INTEGRATION: "1"
       }
     }
   );
@@ -574,6 +596,13 @@ integrationRun: try {
   await assertWorkerLeaseRecovery();
   await assertAdminUploadClearanceOrthogonality(adminAuth, highEmployeeAuth);
   await assertAuditProvenanceMatrix(adminAccessToken);
+  const costCards = await assertCostCardWorkflow({
+    admin: launcherDependencies,
+    reader: launcherDependenciesFor(
+      await createOfficialIntegrationAccessToken("emp_suzhou_employee")
+    ),
+    denied: employeeLauncherDependencies
+  });
 
   console.log(
     JSON.stringify(
@@ -584,6 +613,7 @@ integrationRun: try {
         apiUrl,
         mysqlPort,
         partitionComparison,
+        costCards,
         proved: [
           "seed",
           "official_session_authentication",
@@ -597,6 +627,9 @@ integrationRun: try {
           "partition_manifest_local_download",
           "partition_zip_same_csv_hashes_counts_aggregate_and_request_counts",
           "partition_prisma_repository_regressions",
+          "cost_card_original_precision_hash_csv_launcher_local_filter",
+          "cost_card_archive_replay_restore_rollback_authorization",
+          "cost_card_prisma_atomicity_gc_manifest_regressions",
           "legacy_business_dishes_row_import_rejected",
           "delivery_supplier_query_authorization",
           "phase3_evidence_upload_worker_status_search",
@@ -629,6 +662,395 @@ integrationRun: try {
       );
       if (!integrationFailed) process.exitCode = 1;
     }
+  }
+}
+
+async function assertCostCardWorkflow(input: {
+  admin: LauncherToolDependencies;
+  reader: LauncherToolDependencies;
+  denied: LauncherToolDependencies;
+}) {
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  const permissions = createBusinessAuthorizationRepository({ prisma });
+  const enterpriseName = "Integration Cost Cards";
+  const enterpriseKey = normalizeEnterpriseIdentity(enterpriseName).enterpriseKey;
+  const directories: string[] = [];
+  const fixture = await createCostCardIntegrationFixture();
+  const filePath = path.join(integrationRoot, "cost-card-original.xlsx");
+  const csvPath = path.join(integrationRoot, "cost-card-original.csv");
+  const key = `cost-card-integration-${Date.now()}`;
+  type Receipt = {
+    importBatch: {
+      importBatchId: string;
+      sourceDocumentId: string;
+      status: string;
+      publicationSummary?: {
+        counts: { inserted: number; updated: number; unchanged: number; restored: number };
+        inputCardCount: number;
+        inputItemRowCount: number;
+      };
+    };
+  };
+  type DirectoryRow = {
+    cost_card_id: string;
+    spu_id: string;
+    sku_id: string;
+    specification_name: string;
+    sale_price: string;
+    revision: string;
+    source_document_id: string;
+    import_batch_id: string;
+  };
+  const call = async <T>(name: string, args: unknown, dependencies = input.reader): Promise<T> => {
+    const result = await createLauncherToolHandler(name, dependencies)(args);
+    assert(!result.isError, `${name} must succeed: ${JSON.stringify(result)}`);
+    return parseJson<T>(result.content[0]?.text ?? "null");
+  };
+  const query = () =>
+    call<{ rows: DirectoryRow[] }>("query_structured_dataset", {
+      dataset: "cost_cards",
+      filter: { field: "dish_name", op: "eq", value: "合成精度锅" },
+      select: [
+        "cost_card_id",
+        "spu_id",
+        "sku_id",
+        "specification_name",
+        "sale_price",
+        "revision",
+        "source_document_id",
+        "import_batch_id"
+      ]
+    });
+  const upload = (file: string, idempotencyKey: string) =>
+    call<Receipt>(
+      "upload_structured_dataset",
+      {
+        dataset: "cost_cards",
+        enterpriseName,
+        idempotencyKey,
+        file: {
+          name: path.basename(file),
+          mediaType: file.endsWith(".xlsx")
+            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            : "text/csv",
+          encoding: "path",
+          filePath: file
+        }
+      },
+      input.admin
+    );
+  const worker = async (expected: string) => {
+    const result = parseJson<WorkerResponse>(
+      (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+    );
+    assert(result.processed && result.status === expected, `Cost-card worker must be ${expected}.`);
+  };
+  const snapshot = async () =>
+    JSON.stringify(
+      await prisma.costCard.findMany({
+        where: { orgId: "default-org", enterpriseKey },
+        orderBy: { id: "asc" }
+      }),
+      (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value)
+    );
+  const download = async (ids: string[], expectedSource: Map<string, DirectoryRow>) => {
+    const result = await call<{
+      localDirectory: string;
+      files: string[];
+      cardCount: number;
+      totalItemRowCount: number;
+    }>("download_cost_cards", { costCardIds: ids });
+    directories.push(result.localDirectory);
+    assert(result.cardCount === ids.length, "Launcher must deliver every selected card.");
+    const localManifestText = await readFile(
+      path.join(result.localDirectory, "manifest.json"),
+      "utf8"
+    );
+    assert(
+      !/presignedDownloadUrl|file:\/\/|objectKey/.test(localManifestText),
+      "Local manifest must contain no signed capabilities or object keys."
+    );
+    const manifest = JSON.parse(localManifestText) as {
+      cards: Array<{
+        costCardId: string;
+        fileName: string;
+        sourceDocumentId: string;
+        importBatchId: string;
+      }>;
+    };
+    let itemCount = 0;
+    for (const entry of manifest.cards) {
+      const directory = expectedSource.get(entry.costCardId)!;
+      assert(
+        entry.sourceDocumentId === directory.source_document_id &&
+          entry.importBatchId === directory.import_batch_id,
+        "Local manifest sources must match each independently published directory."
+      );
+      const localPath = path.join(result.localDirectory, entry.fileName);
+      const bytes = await readFile(localPath);
+      const rows = parseCsv(bytes, { columns: true }) as Array<Record<string, string>>;
+      assertStrict.deepEqual(Object.keys(rows[0]!), [
+        ...fixture.headers,
+        "source_sheet_index",
+        "source_sheet_name",
+        "source_row_number"
+      ]);
+      assert(
+        rows.length === 3 &&
+          rows.filter((row) => row["配方类型"] === "全局（标准配方）").length === 2,
+        "Duplicate standard rows and the exception recipe must survive local string parsing."
+      );
+      for (const row of rows) {
+        const original = fixture.rows[Number(row["source_row_number"]) - 2]!;
+        assert(
+          original &&
+            row["source_sheet_index"] === "0" &&
+            row["source_sheet_name"] === fixture.sheetName,
+          "Every source locator must identify its original worksheet and row."
+        );
+        for (const field of COST_CARD_UPLOAD_SCHEMA)
+          assertStrict.equal(
+            row[field.sourceColumn],
+            original[field.canonicalName],
+            `Exact ${field.sourceColumn} string`
+          );
+      }
+      assert(
+        rows.filter((row) => row["物品编码"] === "0007").length === 3,
+        "Agent-side item filtering preserves leading-zero identifiers."
+      );
+      const canonical = await readCostCardCsv({
+        stream: createReadStream(localPath),
+        schemaVersion: 1,
+        identity: {
+          enterpriseKey,
+          sourceNamespace: "meituan",
+          spuId: directory.spu_id,
+          skuId: directory.sku_id
+        }
+      });
+      const stored = await prisma.costCard.findUniqueOrThrow({ where: { id: entry.costCardId } });
+      assert(
+        hashCostCard(canonical) === stored.contentHash &&
+          createHash("sha256").update(bytes).digest("hex") === stored.checksumSha256,
+        "Original reader, business hash, CSV bytes and verified launcher extraction must agree."
+      );
+      itemCount += rows.length;
+    }
+    assert(
+      itemCount === result.totalItemRowCount,
+      "Manifest item counts must match downloaded CSV rows."
+    );
+    return result;
+  };
+  try {
+    // Only this owned synthetic schema changes mode; existing evidence tests finished above.
+    await prisma.businessAuthorizationState.update({
+      where: { orgId: "default-org" },
+      data: { mode: "enabled", version: { increment: 1 } }
+    });
+    const context = async () => ({
+      orgId: "default-org",
+      actorId: "emp_admin",
+      expectedVersion: (await permissions.loadAuthorizationSnapshot("emp_admin", "default-org"))
+        .authorizationVersion
+    });
+    await permissions.initializeFixedCategories(await context());
+    const category = await prisma.businessCategory.findUniqueOrThrow({
+      where: { orgId_key: { orgId: "default-org", key: "cost_cards" } }
+    });
+    await permissions.configureCategory({
+      ...(await context()),
+      id: category.id,
+      name: "Synthetic cost cards",
+      confidentialityLevel: 2,
+      kind: "fixed",
+      key: "cost_cards",
+      ownerships: ["group"],
+      requiredDimensionIds: []
+    });
+    await permissions.configureAccount({
+      ...(await context()),
+      employeeId: "emp_suzhou_employee",
+      clearance: 3,
+      grants: [
+        {
+          id: "integration-cost-card-group",
+          orgId: "default-org",
+          enterpriseKey,
+          categoryIds: [category.id],
+          ownership: "group",
+          dimensions: {}
+        }
+      ]
+    });
+    await writeFile(filePath, fixture.xlsx);
+    await writeFile(csvPath, fixture.csv);
+    const first = await upload(filePath, key);
+    await worker("active");
+    const applied = await call<Receipt>("get_import_status", {
+      importBatchId: first.importBatch.importBatchId
+    });
+    assert(applied.importBatch.status === "applied", "Original upload must reach applied.");
+    assertStrict.deepEqual(applied.importBatch.publicationSummary, {
+      ...(applied.importBatch.publicationSummary ?? {}),
+      inputCardCount: 3,
+      inputItemRowCount: 9,
+      counts: { inserted: 3, updated: 0, unchanged: 0, restored: 0 }
+    });
+    const found = (await query()).rows;
+    assert(
+      found.length === 3 &&
+        new Set(found.map((row) => `${row.spu_id}/${row.sku_id}`)).size === 3 &&
+        new Set(found.map((row) => row.specification_name)).size === 3,
+      "Same-name specifications and the same SKU on independent SPUs must remain distinct candidates."
+    );
+    assert(
+      found.every((row) => row.sale_price === "99999999999999.123456"),
+      "Directory JSON must preserve exact string prices."
+    );
+    const sources = new Map(found.map((row) => [row.cost_card_id, row]));
+    await download(
+      found.map((row) => row.cost_card_id),
+      sources
+    );
+    // A new CSV request has equivalent numeric/text/percent values: hashes and pointers stay unchanged.
+    const initialSnapshot = await snapshot();
+    const equivalent = await upload(csvPath, `${key}-equivalent`);
+    await worker("active");
+    const unchanged = await call<Receipt>("get_import_status", {
+      importBatchId: equivalent.importBatch.importBatchId
+    });
+    assertStrict.deepEqual(unchanged.importBatch.publicationSummary?.counts, {
+      inserted: 0,
+      updated: 0,
+      unchanged: 3,
+      restored: 0
+    });
+    assertStrict.equal(await snapshot(), initialSnapshot);
+    // Original-file archival is independent of card CSV lifecycle.
+    await prisma.document.update({
+      where: { id: first.importBatch.sourceDocumentId },
+      data: { status: "archived", archivedAt: new Date() }
+    });
+    await download(
+      found.map((row) => row.cost_card_id),
+      sources
+    );
+    const originalLink = await fetch(
+      `${apiUrl}/v1/source-documents/${first.importBatch.sourceDocumentId}/download-url`,
+      { method: "POST", headers: authorizationHeader(await input.reader.auth.accessToken()) }
+    );
+    assert(
+      originalLink.status === 404,
+      "Archived original access must fail while card downloads remain available."
+    );
+    const archived = await call<{ archived: boolean }>(
+      "archive_cost_card",
+      { costCardId: found[0]!.cost_card_id },
+      input.admin
+    );
+    assert(
+      archived.archived && (await query()).rows.length === 2,
+      "One archive must leave sibling cards available."
+    );
+    const replay = await upload(filePath, key);
+    assert(
+      replay.importBatch.importBatchId === first.importBatch.importBatchId &&
+        (await query()).rows.length === 2,
+      "Old successful idempotent replay must not republish or restore an archived card."
+    );
+    const restored = await upload(filePath, `${key}-restore`);
+    await worker("active");
+    const restoreStatus = await call<Receipt>("get_import_status", {
+      importBatchId: restored.importBatch.importBatchId
+    });
+    assertStrict.deepEqual(restoreStatus.importBatch.publicationSummary?.counts, {
+      inserted: 0,
+      updated: 0,
+      unchanged: 2,
+      restored: 1
+    });
+    const current = (await query()).rows;
+    assert(
+      current.some((row) => row.cost_card_id === found[0]!.cost_card_id && row.revision === "3"),
+      "New authorized upload restores the stable card ID and advances revision."
+    );
+    await download(
+      current.map((row) => row.cost_card_id),
+      new Map(current.map((row) => [row.cost_card_id, row]))
+    );
+    const stable = await snapshot();
+    const badPath = path.join(integrationRoot, "cost-card-invalid.csv");
+    await writeFile(
+      badPath,
+      fixture.csv.toString("utf8").replace("99999999999999.000001", "invalid-decimal")
+    );
+    const bad = await upload(badPath, `${key}-bad`);
+    await worker("rejected");
+    const rejected = await call<Receipt>("get_import_status", {
+      importBatchId: bad.importBatch.importBatchId
+    });
+    assert(
+      rejected.importBatch.status === "rejected" && !rejected.importBatch.publicationSummary,
+      "Bad file must reject without a publication summary."
+    );
+    assertStrict.equal(
+      await snapshot(),
+      stable,
+      "Bad file cannot partially change any current card."
+    );
+    const forbidden = await createLauncherToolHandler(
+      "download_cost_cards",
+      input.denied
+    )({ costCardIds: [found[0]!.cost_card_id] });
+    assert(forbidden.isError, "Low-clearance ungranted employee cannot download card contents.");
+    const forbiddenArchive = await createLauncherToolHandler(
+      "archive_cost_card",
+      input.reader
+    )({ costCardId: found[0]!.cost_card_id });
+    assert(
+      forbiddenArchive.isError,
+      "Ordinary read permission cannot grant administrator archive authority."
+    );
+    for (const queryInput of [
+      { select: ["item_name"] },
+      { aggregates: [{ op: "count", as: "count" }] }
+    ]) {
+      const response = await fetch(`${apiUrl}/v1/structured/query`, {
+        method: "POST",
+        headers: {
+          ...authorizationHeader(await input.reader.auth.accessToken()),
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ dataset: "cost_cards", ...queryInput })
+      });
+      assert(
+        response.status === 400,
+        "Server must reject cost-card detail projection and aggregation."
+      );
+    }
+    const tables = await prisma.$queryRaw<Array<{ TABLE_NAME: string }>>`
+      SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME LIKE 'cost_card%'`;
+    assertStrict.deepEqual(
+      tables.map((table) => table.TABLE_NAME),
+      ["cost_cards"],
+      "MySQL must have only the cost-card directory, without recipe/item detail copies."
+    );
+    return {
+      cardCount: 3,
+      itemRowCount: 9,
+      exactBusinessColumns: 35,
+      sourceColumns: 3,
+      sameNameSpecifications: 3,
+      restoredStableId: found[0]!.cost_card_id
+    };
+  } finally {
+    await Promise.all(
+      directories.map((directory) => rm(directory, { recursive: true, force: true }))
+    );
+    await prisma.$disconnect();
   }
 }
 
@@ -1788,6 +2210,8 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
     "# Lease recovery\n\nOnly the current lease owner may publish.",
     "utf8"
   );
+  const leaseStart = Date.now();
+  const leaseTime = (offset: number) => new Date(leaseStart + offset);
   try {
     const employee = await prisma.employee.findFirst({
       where: { orgId: "default-org", email: "baoli.employee@example.com" }
@@ -1828,40 +2252,42 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
         jobType: ProcessingJobType.evidence_document_index,
         attemptNumber: 0,
         retryCount: 0,
-        availableAt: new Date("2026-07-20T00:00:00.000Z")
+        availableAt: leaseTime(0)
       }
     });
 
     const claimedByA = await repository.claimNextProcessingRun({
       workerId: "worker-a",
-      leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:00.000Z")
+      leaseSeconds: 60,
+      now: leaseTime(0)
     });
     assert(claimedByA?.id === runId, "Worker A must claim the queued run.");
     const claimedByBWhileLeased = await repository.claimNextProcessingRun({
       workerId: "worker-b",
-      leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:00.100Z")
+      leaseSeconds: 60,
+      now: leaseTime(100)
     });
     assert(!claimedByBWhileLeased, "Worker B must not claim an active lease.");
     const heartbeated = await repository.heartbeatProcessingRun?.({
       runId,
       attemptNumber: 1,
       workerId: "worker-a",
-      leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:00.500Z")
+      leaseSeconds: 60,
+      now: leaseTime(500)
     });
     assert(heartbeated === true, "Heartbeat must extend the current lease.");
+    const heartbeatExpiry = (await prisma.processingRun.findUniqueOrThrow({ where: { id: runId } }))
+      .lockedUntil!;
     const claimedBeforeHeartbeatExpiry = await repository.claimNextProcessingRun({
       workerId: "worker-b",
-      leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:01.000Z")
+      leaseSeconds: 60,
+      now: new Date(heartbeatExpiry.getTime() - 1)
     });
     assert(!claimedBeforeHeartbeatExpiry, "Heartbeat must prevent premature lease recovery.");
     const claimedByB = await repository.claimNextProcessingRun({
       workerId: "worker-b",
-      leaseSeconds: 1,
-      now: new Date("2026-07-20T00:00:01.600Z")
+      leaseSeconds: 60,
+      now: new Date(heartbeatExpiry.getTime() + 1)
     });
     assert(claimedByB?.id === runId, "Worker B must recover the expired running job.");
 
@@ -1872,7 +2298,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
         attemptNumber: 1,
         documentId,
         workerId: "worker-a",
-        now: new Date("2026-07-20T00:00:01.700Z"),
+        now: new Date(heartbeatExpiry.getTime() + 100),
         result: workerLeaseIndexingResult(),
         chunks: []
       });
@@ -1891,7 +2317,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
       attemptNumber: 2,
       documentId,
       workerId: "worker-b",
-      now: new Date("2026-07-20T00:00:01.700Z"),
+      now: new Date(heartbeatExpiry.getTime() + 100),
       result: workerLeaseIndexingResult(),
       chunks: []
     });
@@ -1902,11 +2328,11 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
         attemptNumber: 1,
         documentId,
         workerId: "worker-a",
-        now: new Date("2026-07-20T00:00:01.800Z"),
+        now: new Date(heartbeatExpiry.getTime() + 200),
         errorCode: "STALE_WORKER",
         errorSummary: "old worker attempted to fail after success",
         willRetry: false,
-        nextAvailableAt: new Date("2026-07-20T00:00:01.800Z")
+        nextAvailableAt: new Date(heartbeatExpiry.getTime() + 200)
       });
     } catch {
       oldWorkerFailRejected = true;

@@ -425,7 +425,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     ],
     ["upload_structured_dataset", "structured_dataset", {}],
     ["upload_structured_dataset", "structured_dataset", { dataset: "private-fake-dataset" }],
-    ["upload_structured_dataset", "structured_dataset", { dataset: "delivery_ledger" }]
+    ["upload_structured_dataset", "structured_dataset", { dataset: "delivery_ledger" }],
+    ["upload_structured_dataset", "structured_dataset", { dataset: "cost_cards" }]
   ] as const)(
     "denies old-launcher employee %s before SDK upload validation (%j)",
     async (name, surface, arguments_) => {

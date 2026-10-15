@@ -15,6 +15,9 @@ const inventory: StagingUploadDomainCleanupInventory = {
   importWindowClaimIds: ["claim-1"],
   structuredPartitionIds: ["dish-1"],
   partitionImportJobIds: ["business-1"],
+  costCardIds: ["card-1"],
+  costCardResources: [{ orgId: "org", id: "resource-1" }],
+  costCardSourceResources: [{ orgId: "org", id: "source-resource-1" }],
   storageGarbageIds: ["garbage-1"],
   quarantineCertificateIds: ["certificate-1"],
   vipRowIds: ["vip-1"],
@@ -37,6 +40,9 @@ function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
     deleteImportWindowClaims: vi.fn(async () => undefined),
     deleteStructuredPartitions: vi.fn(async () => undefined),
     deletePartitionImportJobs: vi.fn(async () => undefined),
+    deleteCostCardResources: vi.fn(async () => undefined),
+    deleteCostCardSourceResources: vi.fn(async () => undefined),
+    deleteCostCards: vi.fn(async () => undefined),
     deleteStorageGarbage: vi.fn(async () => undefined),
     deleteQuarantineCertificates: vi.fn(async () => undefined),
     deleteVipRows: vi.fn(async () => undefined),
@@ -52,6 +58,10 @@ function createAdapter(): StagingUploadDomainCleanupRuntimeAdapter {
       importWindowClaims: 0,
       structuredPartitions: 0,
       partitionImportJobs: 0,
+      costCards: 0,
+      costCardResources: 0,
+      costCardSourceResources: 0,
+      costCardResourceScopes: 0,
       storageGarbage: 0,
       quarantineCertificates: 0,
       vipRows: 0,
@@ -176,6 +186,20 @@ describe("staging upload-domain cleanup CLI", () => {
       inventory.structuredPartitionIds
     );
     expect(adapter.deletePartitionImportJobs).toHaveBeenCalledWith(inventory.partitionImportJobIds);
+    expect(adapter.deleteCostCardResources).toHaveBeenCalledWith(inventory.costCardResources);
+    expect(adapter.deleteCostCardSourceResources).toHaveBeenCalledWith(
+      inventory.costCardSourceResources
+    );
+    expect(
+      vi.mocked(adapter.deleteCostCardSourceResources).mock.invocationCallOrder[0]
+    ).toBeLessThan(vi.mocked(adapter.deleteDocuments).mock.invocationCallOrder[0]!);
+    expect(adapter.deleteCostCards).toHaveBeenCalledWith(inventory.costCardIds);
+    expect(vi.mocked(adapter.deleteCostCardResources).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(adapter.deleteCostCards).mock.invocationCallOrder[0]!
+    );
+    expect(vi.mocked(adapter.deleteCostCards).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(adapter.deleteImportBatches).mock.invocationCallOrder[0]!
+    );
     expect(adapter.deleteStorageGarbage).toHaveBeenCalledWith(inventory.storageGarbageIds);
     expect(adapter.deleteQuarantineCertificates).toHaveBeenCalledWith(
       inventory.quarantineCertificateIds

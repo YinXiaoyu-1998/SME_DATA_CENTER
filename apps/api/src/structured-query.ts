@@ -6,6 +6,8 @@ import {
 import { createDatabaseAdapter } from "@smedc/db";
 import { PrismaClient } from "@prisma/client";
 import type { StructuredCompiledQuery } from "@smedc/domain";
+import { COST_CARD_DIRECTORY_REGISTRY } from "@smedc/domain";
+import { safeCostCardInteger } from "@smedc/db";
 
 export interface ExecuteStructuredQueryResult {
   rows: Array<Record<string, unknown>>;
@@ -65,6 +67,31 @@ export function createPrismaStructuredQueryRepository(
       >;
       const visibleRows = rows.slice(0, compiled.limit);
       const hasMore = rows.length > compiled.limit;
+      if (compiled.dataset === "cost_cards") {
+        return {
+          hasMore,
+          rows: visibleRows.map((row) =>
+            Object.fromEntries(
+              compiled.selectedFields.map((name) => {
+                const field = COST_CARD_DIRECTORY_REGISTRY.fields.find(
+                  (field) => field.canonicalName === name
+                )!;
+                const value = row[name];
+                if (field.type === "integer")
+                  return [name, safeCostCardInteger(value as bigint | number)];
+                if (field.type === "boolean") {
+                  if (![true, false, 0, 1, 0n, 1n].includes(value as boolean | number | bigint))
+                    throw new Error("COST_CARD_METADATA_INVALID");
+                  return [name, value === true || value === 1 || value === 1n];
+                }
+                if (value !== null && typeof value !== "string")
+                  throw new Error("COST_CARD_METADATA_INVALID");
+                return [name, value];
+              })
+            )
+          )
+        };
+      }
       if (
         compiled.dataset !== "delivery_ledger" ||
         compiled.mode !== "detail" ||
