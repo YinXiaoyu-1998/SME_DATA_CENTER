@@ -385,7 +385,7 @@
     "existing-session": "Use the current admin for business cases; skip tasks marked identity_excluded and all account lifecycle steps."
   },
   "candidateCostCards": {
-    "releaseGate": "Published launcher 0.10.0: run only after matching service/tenant verification and explicit changed-workflow authorization. Separate from the existing 0.9.0 full-suite runner baseline.",
+    "releaseGate": "Published launcher 0.10.1: run only after matching service/tenant verification and explicit changed-workflow authorization. Separate from the existing 0.9.0 full-suite runner baseline.",
     "fixture": "structured/cost-cards-known-values.csv",
     "tasks": [
       {

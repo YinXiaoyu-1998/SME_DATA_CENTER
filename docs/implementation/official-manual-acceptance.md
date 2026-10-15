@@ -3,7 +3,7 @@
 Last updated: 2026-10-13
 
 The existing full-suite runner baseline tests official staging with macOS Codex and published
-`smedc-mcp-launcher@0.9.0`. The current employee install pin is 0.10.0; its cost-card acceptance
+`smedc-mcp-launcher@0.9.0`. The current employee install pin is 0.10.1; its cost-card acceptance
 is separately gated below. It does not revive the deleted local email-login flow or
 `/auth/dev-login`. Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md`,
 and `test-cases.md` before running it. Beta onboarding uses
@@ -227,7 +227,7 @@ after process restart. It uses a fresh synthetic account and cleans it afterward
 
 ## Cost-card changed workflow after launcher publication
 
-This section targets published, independently verified launcher 0.10.0, separately from the
+This section targets published, independently verified launcher 0.10.1, separately from the
 existing 0.9.0 full-suite runner baseline. This documentation does not authorize execution, user
 installation or real tenant changes. After matching service rollout, explicit
 synthetic category configuration and a separately requested changed-workflow acceptance, use

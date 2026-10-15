@@ -1,6 +1,6 @@
 # Current business permissions and controlled management
 
-The approved install pin is `smedc-mcp-launcher@0.10.0`, published and independently verified.
+The approved install pin is `smedc-mcp-launcher@0.10.1`, published and independently verified.
 Use the capabilities below only after the matching service and approved launcher release are
 available; tool discovery alone does not prove deployment or tenant activation. Do not change
 installation pins from server metadata or install npm `latest`.
@@ -26,7 +26,7 @@ optional internal record, never a required user form.
 
 ## Upload inputs
 
-These transport fields are bundled in approved launcher 0.10.0 and need the matching service
+These transport fields are bundled in approved launcher 0.10.1 and need the matching service
 rollout. A Skill refresh does not upgrade an older installed launcher. If unavailable, follow the
 approved launcher update procedure and report service rollout gaps; never bypass through direct HTTP.
 

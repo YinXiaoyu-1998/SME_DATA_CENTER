@@ -80,7 +80,7 @@ Evidence 的每个片段继承整件完整权限；更改文件属性后按当�
 
 ## 成本卡领域术语 — CSV＋目录已实现，launcher 已发布
 
-本节记录已明确的业务含义及CSV＋MySQL目录架构；详细规则见[成本卡设计](docs/implementation/cost-card-design.md)。用户已确认成本卡属于独立的集团级信息类别，适用门店不构成权限归属。接入已合并 main，launcher `0.10.0` 已公开发布并独立验证；当前基础与 business-analysis 安装 pin 及服务推荐版本为 `0.10.0`，最低兼容 `0.6.0`。服务上线正在另行推进，尚不能据此宣称部署完成或真实租户已授权／验收。
+本节记录已明确的业务含义及CSV＋MySQL目录架构；详细规则见[成本卡设计](docs/implementation/cost-card-design.md)。用户已确认成本卡属于独立的集团级信息类别，适用门店不构成权限归属。接入已合并 main，launcher `0.10.1` 已公开发布并独立验证；当前基础与 business-analysis 安装 pin 及服务推荐版本为 `0.10.1`，最低兼容 `0.6.0`。服务部署以 [staging 当前状态](docs/implementation/staging-readiness.md) 为准，包发布不代表真实租户已授权／验收。
 
 成本卡随新增菜品或配方调整而低频更新，通常是与菜品种类相关的小体量资料。复用现有对象传输、事务和有限重试；实施不引入下载租约/会话表、逐卡续传或独立压力测试体系。
 
