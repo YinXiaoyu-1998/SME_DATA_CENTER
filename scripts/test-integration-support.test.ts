@@ -18,7 +18,29 @@ import { buildApiServer } from "../apps/api/src/server.js";
 import { LAUNCHER_VERSION } from "../apps/mcp-launcher/src/oauth-client.js";
 import { createPartitionDownloadRuntime } from "../apps/worker/src/partition-download/runtime.js";
 import { createPrismaProcessingWorkerRepository } from "../apps/worker/src/worker.js";
-import { comparePartitionDownloads, integrationDatabasePlan } from "./test-integration-support.js";
+import {
+  comparePartitionDownloads,
+  createCostCardIntegrationFixture,
+  integrationDatabasePlan
+} from "./test-integration-support.js";
+import JSZip from "jszip";
+import { parse as parseCsv } from "csv-parse/sync";
+
+describe("small cost-card original fixture", () => {
+  it("contains all business columns, literal numeric XML and duplicate source rows", async () => {
+    const fixture = await createCostCardIntegrationFixture();
+    const zip = await JSZip.loadAsync(fixture.xlsx);
+    const xml = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    expect(xml).toContain('<c r="F2"><v>99999999999999.123456</v></c>');
+    expect(xml).toMatch(/<c r="U2"[^>]*><v>0.823456<\/v>/);
+    const rows = parseCsv(fixture.csv, { columns: true }) as Array<Record<string, string>>;
+    expect(Object.keys(rows[0]!)).toHaveLength(35);
+    expect(rows).toHaveLength(9);
+    expect(rows[0]).toEqual(rows[1]);
+    expect(rows[0]!["净料量"]).toBe("99999999999999.000001");
+    expect(rows[0]!["物品编码"]).toBe("0007");
+  });
+});
 
 describe("fresh integration schema safety", () => {
   it("creates unique schema identities while preserving the loopback connection", () => {

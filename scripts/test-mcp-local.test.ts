@@ -6,9 +6,9 @@ import { assertLauncherVersionOutput, EXPECTED_MCP_LAUNCHER_VERSION } from "./te
 const execFileAsync = promisify(execFile);
 
 describe("local MCP smoke launcher version contract", () => {
-  it("pins the root launcher smoke to the SMEDC 0.9.0 launcher", () => {
-    expect(EXPECTED_MCP_LAUNCHER_VERSION).toBe("0.9.0");
-    expect(() => assertLauncherVersionOutput("0.9.0\n")).not.toThrow();
+  it("checks the local candidate runtime without changing published installation pins", () => {
+    expect(EXPECTED_MCP_LAUNCHER_VERSION).toBe("0.10.0");
+    expect(() => assertLauncherVersionOutput("0.10.0\n")).not.toThrow();
   });
 
   it("forwards root mcp:launcher arguments to the workspace launcher version command", async () => {
@@ -23,7 +23,7 @@ describe("local MCP smoke launcher version contract", () => {
 
   it("rejects the previous launcher version without running the live smoke", () => {
     expect(() => assertLauncherVersionOutput("0.6.0\n")).toThrow(
-      "mcp:launcher should invoke the official launcher CLI at 0.9.0."
+      "mcp:launcher should invoke the local launcher candidate at 0.10.0."
     );
   });
 });

@@ -1,8 +1,8 @@
 # 成本卡 CSV＋MySQL 目录设计
 
-状态：CSV＋MySQL 目录设计及评审补充已确认，尚未实施。更新：2026-10-14。核对基线：`main`（`2c1d23f`，执行前重新核对）。
+状态：CSV＋MySQL 目录已形成 feature 分支候选实现；尚未合并、发布、部署或开展真实租户验收。更新：2026-10-15。实现基线：`main@eb7736a`；launcher 候选版本为 `0.10.0`，当前已验证的安装 pins 与服务推荐版本保持原发布值。
 
-本文件是成本卡当前设计；[Implementation Plan](cost-card-implementation-plan.md)与根目录[术语表](../../CONTEXT.md)采用同一架构。本文的字段、DDL、接口和工具均为待实施合同，不代表已实现、发布或部署。
+本文件是成本卡当前设计与候选实现合同，与根目录[术语表](../../CONTEXT.md)采用同一架构。公共接口以[API 契约](api-contract.md)为准；候选实现不代表线上可用。发布后的推荐版本与安装 pins 同步、staging 部署和真实数据导入均需另行授权。
 
 ## 1. 架构与服务边界
 
@@ -117,7 +117,7 @@ XLSX 前十行查找受控表头，跳过表头前标题；合并多个表头完
 
 ### 4.4 标准CSV
 
-上传使用原始35个业务列，列名/内部字段映射按实施计划附录。下载格式为这35列加末尾`source_sheet_index`、`source_sheet_name`、`source_row_number`三个源定位列，共38列；它不是35列上传模板，本版通过原始档案重新上传。
+上传使用原始35个业务列，列名/内部字段映射以领域模块的 [`COST_CARD_UPLOAD_SCHEMA`](../../packages/domain/src/cost-cards.ts) 为准。下载格式为这35列加末尾`source_sheet_index`、`source_sheet_name`、`source_row_number`三个源定位列，共38列；它不是35列上传模板，本版通过原始档案重新上传。
 
 - UTF-8无BOM，逗号分隔，RFC 4180引号，LF及末尾换行；固定列序，至少一条有效物品明细。
 - 每卡一个完整CSV，卡头/配方公共字段随物品行重复，保留全部业务列和源门店文本，标准与例外分别保留，不合并物品或数量。
@@ -212,7 +212,7 @@ type CostCardSelection = {
 
 字段AND、数组内OR，非空ID/编码数组沿用maxInValues=100；省略条件表示当前获准范围。可按目录条件批量下载，或先检索再用ID下载；不接受日期或门店权限选择器。
 
-同次DB授权/状态读取固定目录ID、revision、身份、schema、行数/字节/checksum、sourceDocumentId、importBatchId及不可变指针，再在事务外签发短期链接。来源两个ID按每张卡固定，不能给整个批量下载共用一个来源；它们使CSV的sheet/row定位可追溯，但不授予原件访问权。显式ID必须全部获准且有效，否则整次拒绝，不静默漏卡；条件筛选仅交付当前获准集合，零卡明确空结果，不推断隐藏卡。manifest字段与实施计划共享类型一致。
+同次DB授权/状态读取固定目录ID、revision、身份、schema、行数/字节/checksum、sourceDocumentId、importBatchId及不可变指针，再在事务外签发短期链接。来源两个ID按每张卡固定，不能给整个批量下载共用一个来源；它们使CSV的sheet/row定位可追溯，但不授予原件访问权。显式ID必须全部获准且有效，否则整次拒绝，不静默漏卡；条件筛选仅交付当前获准集合，零卡明确空结果，不推断隐藏卡。manifest 字段以[领域共享类型](../../packages/domain/src/cost-cards.ts)与[API 契约](api-contract.md)为准。
 
 下载保护采用小体量场景的简单宽限方案：成本卡URL TTL取现有partitionManifestUrlTtlSeconds与900秒的较小值；旧CSV替换后24小时才可清理，不新增下载租约/会话表。签名完成后，以新的短DB读取重新核对已选卡的当前权限、有效状态、revision/来源/指针，不能沿用第一次读取的旧快照；发生变化则丢弃整份manifest并返回可重试的“成本卡已变化，请重新下载”，不交付混合清单。该次操作沿用有限请求超时，不在服务端循环刷新；签发过程中耗尽URL剩余有效期时也不返回失效链接。manifest.expiresAt不得晚于其中最早URL的实际失效时间。共享GC的引用检查与24小时宽限保护正常在途下载；此要求是新增成本卡接线，不假定现有dishes/business已具备。
 
@@ -228,9 +228,9 @@ agent在CSV中按物品/配方/门店/数量筛选和统计，保留重复次数
 
 MCP/API/launcher bundled contracts及双份smedc-mcp、受影响companion/manual/cleanup Skills须同步。launcher独立发布验证后才能更新推荐版本和Skill pins；当前新合同不可当作已上线调用。服务本身不执行Skill或生成报告。
 
-## 8. MySQL目录DDL设计稿
+## 8. MySQL目录DDL
 
-只新增CostCard目录及ImportDataset.cost_cards、ImportBatch.publicationSummary、BusinessResourceKind.cost_card；既有对象垃圾队列/来源/权限设施复用。以下需经Prisma migration与真实本地MySQL验证，尚未执行：
+只新增CostCard目录及ImportDataset.cost_cards、ImportBatch.publicationSummary、BusinessResourceKind.cost_card；既有对象垃圾队列/来源/权限设施复用。候选实现已包含 [Prisma migration](../../packages/db/prisma/migrations/20261014080000_cost_cards/migration.sql)，并通过真实本地 MySQL 的目录发布、权限、并发和垃圾回收回归；下列 DDL 说明该边界，实际结构以迁移与 [schema](../../packages/db/prisma/schema.prisma) 为准：
 
 ```sql
 ALTER TABLE import_batches
@@ -292,11 +292,11 @@ CREATE TABLE cost_cards (
 
 ## 9. 验收与执行边界
 
-按实施计划A–D验证：35列原件/38列CSV及精度；逐卡去重、原子指针发布、有界并发重试和对象清理；菜名/SPU/SKU目录检索/同名候选；当前权限、manifest来源及版本一致性、过期后整批重下；原件独立、单卡归档/新请求恢复/旧幂等不恢复；enabled老租户补类别和有界摘要读取。时钟可控的小样本覆盖24小时延迟GC、提交后崩溃和签名期间更新；不等待真实24小时，不增加独立容量/高并发验收。明细查询/分析在agent本地验证。
+本地合成验证范围：35列原件/38列CSV及精度；逐卡去重、原子指针发布、有界并发重试和对象清理；菜名/SPU/SKU目录检索/同名候选；当前权限、manifest来源及版本一致性、过期后整批重下；原件独立、单卡归档/新请求恢复/旧幂等不恢复；enabled老租户补类别和有界摘要读取。时钟可控的小样本覆盖24小时延迟GC、提交后崩溃和签名期间更新；不等待真实24小时，不增加独立容量/高并发验收。明细查询/分析在agent本地验证。
 
-采用CSV权威内容＋可检索目录的代价是每卡一个对象，跨卡明细分析先下载后本地执行；数据库只处理目录和发布元数据。当前没有数据迁移或兼容旧成本卡表的需要，因为成本卡尚未实施。
+采用CSV权威内容＋可检索目录的代价是每卡一个对象，跨卡明细分析先下载后本地执行；数据库只处理目录和发布元数据。本次增加目录 schema 迁移；无需迁移或兼容旧成本卡业务明细表，也未导入真实企业成本卡。
 
-本轮仅同步设计、计划与术语，不修改产品代码/数据库/运行中Skill，不发布/合并/部署或导入真实数据。实施仍用已选GPT6.1 sol/high、sub-agent driven和分批review，用户明确启动后才执行；发布与staging另行授权。
+服务、launcher 和配套 Skills 均以独立 feature 分支交付审阅。launcher `0.10.0` 仅为候选包，本地 tarball 验证不能替代 npm 发布证据；当前主线祖先发布约束仍有效。后续先经授权合并与发布、独立验证 registry 包，再用独立跟进 PR 同步推荐版本及双份 Skill pins；staging、正式人工验收和真实数据导入分别授权。
 
 ## 10. 设计依据
 
