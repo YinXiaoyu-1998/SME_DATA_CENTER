@@ -310,7 +310,7 @@ unchanged. Last successful publication wins. Retain originals/batches, not histo
 versions. A new successful upload restores an archived card even with identical content; replay of
 an old idempotency request does not. Source configuration/deletion flags do not control lifecycle.
 
-Discovery and `query_structured_dataset(dataset="cost_cards", mode="detail")` expose only
+Discovery and `query_structured_dataset({"dataset":"cost_cards"})` expose only
 registered directory fields, authorized before filtering, with stable cursors (50 default / 200
 maximum rows). No server recipe/item/store detail predicates, grouping or aggregation. Name
 contains/starts_with are controlled literal matches, including SQL wildcard characters. Same-name

@@ -53,8 +53,17 @@ raw storage keys. Do not reconstruct that batch's summary from today's directory
 
 ## Find cards before reading details
 
-Use registry discovery, then `query_structured_dataset` with `dataset: "cost_cards"` and
-`mode: "detail"`. It only queries the current authorized directory, with stable pagination
+Use registry discovery, then call `query_structured_dataset` with this argument object:
+
+```json
+{
+  "dataset": "cost_cards",
+  "filter": { "field": "dish_name", "op": "eq", "value": "滩羊肉锅" }
+}
+```
+
+The service selects detail mode automatically; `mode` is not a request parameter.
+It only queries the current authorized directory, with stable pagination
 (default 50 / maximum 200 rows), registered select/filter/sort fields and a fresh permission
 check per page. There is no server-side detail filtering or aggregation for items, recipes,
 quantities or applicable stores. Do those operations locally after CSV download.

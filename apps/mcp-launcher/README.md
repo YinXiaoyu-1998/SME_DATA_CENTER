@@ -1,6 +1,6 @@
 # SMEDC MCP Launcher
 
-Official stdio MCP launcher. The approved public package is `smedc-mcp-launcher@0.9.0`; the service recommends 0.9.0 and requires at least 0.6.0. Release/target deployment evidence is maintained in the repository's `docs/implementation/staging-readiness.md`.
+Official stdio MCP launcher. This checkout targets candidate `0.10.1`. The approved public package is `smedc-mcp-launcher@0.10.0`; the service recommends 0.10.0 and requires at least 0.6.0. Release/target deployment evidence is maintained in the repository's `docs/implementation/staging-readiness.md`.
 
 ## Installation and identity
 

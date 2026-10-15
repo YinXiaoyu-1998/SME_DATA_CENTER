@@ -7,8 +7,8 @@ const execFileAsync = promisify(execFile);
 
 describe("local MCP smoke launcher version contract", () => {
   it("checks the local candidate runtime without changing published installation pins", () => {
-    expect(EXPECTED_MCP_LAUNCHER_VERSION).toBe("0.10.0");
-    expect(() => assertLauncherVersionOutput("0.10.0\n")).not.toThrow();
+    expect(EXPECTED_MCP_LAUNCHER_VERSION).toBe("0.10.1");
+    expect(() => assertLauncherVersionOutput("0.10.1\n")).not.toThrow();
   });
 
   it("forwards root mcp:launcher arguments to the workspace launcher version command", async () => {
@@ -23,7 +23,7 @@ describe("local MCP smoke launcher version contract", () => {
 
   it("rejects the previous launcher version without running the live smoke", () => {
     expect(() => assertLauncherVersionOutput("0.6.0\n")).toThrow(
-      "mcp:launcher should invoke the local launcher candidate at 0.10.0."
+      "mcp:launcher should invoke the local launcher candidate at 0.10.1."
     );
   });
 });
