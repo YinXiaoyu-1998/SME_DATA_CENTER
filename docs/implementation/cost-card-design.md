@@ -155,6 +155,8 @@ XLSX 前十行查找受控表头，跳过表头前标题；合并多个表头完
 
 事务不读写OSS或比较旧CSV，只处理目录/授权/任务元数据；整个原件的变化卡一起提交，不分卡提交。同幂等键同请求返回原批次，同键不同请求冲突；旧成功请求重放不重新发布/恢复，新请求的旧内容仍可覆盖当前不同内容。
 
+Worker 在配置的工作根目录内使用 `cost-<processingRunId>-<随机后缀>` 本地临时目录生成候选 CSV，正常结束通过 `finally` 删除。异常退出留下的目录由共享维护任务按15分钟间隔扫描；仅处理工作根目录下 `cost-*`／`pjob_*` 的直接子目录，mtime超过24小时后删除，保留未过期目录、无关目录和符号链接。正式 CSV 对象继续遵循上述目录引用和 StorageGarbage 清理规则。
+
 ### 5.3 限额与发布摘要
 
 输入沿用50MiB、100,000物品行及既有sheet/cell/解压限制；每文件卡数复用`PARTITION_IMPORT_MAX_PARTITIONS`（默认10,000），输出/磁盘/句柄/对象并发复用现有分区设施，不自动扩大到dishes/business的2GiB/500万行。目录批写500条、事务120,000ms，分批执行仍一次提交。
@@ -226,7 +228,7 @@ launcher消费内部manifest/短期链接，在新临时目录按稳定卡ID命�
 
 agent在CSV中按物品/配方/门店/数量筛选和统计，保留重复次数与单位，不擅自混单位相加或把多套配方成本合成整卡/最终门店成本。与销售的候选名称关联留在分析Skill：优先matched_product_name，无匹配再product_name；多个候选保留歧义，不写硬映射。
 
-MCP/API/launcher bundled contracts及双份smedc-mcp、受影响companion/manual/cleanup Skills须同步。launcher独立发布验证后才能更新推荐版本和Skill pins；当前新合同不可当作已上线调用。服务本身不执行Skill或生成报告。
+MCP/API/launcher bundled contracts及双份smedc-mcp、受影响companion/manual/cleanup Skills须同步。launcher独立发布验证后才能更新推荐版本和Skill pins；使用能力前须核对匹配的服务部署和当前租户类别授权，当前发布与部署证据见 [staging 状态](staging-readiness.md)。服务本身不执行Skill或生成报告。
 
 ## 8. MySQL目录DDL
 
