@@ -77,6 +77,14 @@ export class StoreReviewValidationError extends Error {
     this.name = "StoreReviewValidationError";
   }
 }
+/** A total batch budget failure, distinct from malformed fields or per-row score limits. */
+export class StoreReviewBatchTooLargeError extends Error {
+  readonly code = "STORE_REVIEW_BATCH_TOO_LARGE";
+  constructor() {
+    super("Batch exceeds UTF-8 byte limit.");
+    this.name = "StoreReviewBatchTooLargeError";
+  }
+}
 export function requireStoreReviewObject(
   value: unknown,
   keys: readonly string[]
@@ -145,7 +153,7 @@ export function normalizeStoreReviewTime(value: string): string {
 }
 export function assertStoreReviewBatchBytes(value: unknown): void {
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > STORE_REVIEW_LIMITS.batchBytes)
-    throw new StoreReviewValidationError("Batch exceeds UTF-8 byte limit.");
+    throw new StoreReviewBatchTooLargeError();
 }
 export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
   const object = requireStoreReviewObject(value, ["reviews"]);

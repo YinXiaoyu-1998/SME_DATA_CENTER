@@ -435,7 +435,11 @@ precision using `T` and explicit `+08:00`. Missing minutes/seconds become zero; 
 fractional seconds, invalid calendar times and timezone-free T forms are rejected. The database
 stores UTC seconds; public reviewed/created/updated times include seconds and `+08:00`.
 
-Each batch has 1–1000 rows and at most 16 MiB of UTF-8 JSON, with the same raw HTTP body limit.
+Each batch has 1–1000 rows. Both original UTF-8 JSON and canonical JSON after time normalization
+must fit 16 MiB, with the same raw HTTP body limit. Size batches with canonical second-precision
+`+08:00` timestamps; shorter accepted times may expand. Either total-batch overflow is HTTP 413
+`PAYLOAD_TOO_LARGE`, including one detected during persistence validation. Per-field/score-object
+validation remains HTTP 400 and is distinct from this total request budget.
 The MCP envelope budget accommodates the full review batch independently of file-upload limits.
 Scores JSON is at most 64 KiB per row, content/reply each 16,384 Unicode characters,
 enterprise/store/reviewer each 255 (normalized enterprise key still at most 128). Duplicate

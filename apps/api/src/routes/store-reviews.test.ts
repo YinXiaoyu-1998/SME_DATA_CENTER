@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { STORE_REVIEW_LIMITS } from "@smedc/domain";
+import { STORE_REVIEW_LIMITS, StoreReviewBatchTooLargeError } from "@smedc/domain";
 import { ResourceAttributesError, StoreReviewRepositoryError } from "@smedc/db";
 import { buildApiServer } from "../server.js";
 import { createStoreReviewService } from "../store-reviews.js";
@@ -60,7 +60,9 @@ describe("authenticated store review routes", () => {
       for (const payload of [
         { reviews: [{ ...row, reviewedAt: "2026-10-17" }] },
         { reviews: [row, { ...row, reviewedAt: "2026-10-17T13:00:00+08:00" }] },
-        { reviews: [row], orgId: "foreign" }
+        { reviews: [row], orgId: "foreign" },
+        { reviews: [{ ...row, scores: { 服务: "bad" } }] },
+        { reviews: [{ ...row, scores: { ["x".repeat(STORE_REVIEW_LIMITS.scoresBytes)]: 1 } }] }
       ]) {
         const response = await app.inject({
           method: "POST",
@@ -75,6 +77,54 @@ describe("authenticated store review routes", () => {
         });
         expect(response.body).not.toContain("合成门店");
       }
+      expect(repository.upsert).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+  it("accepts the exact canonical byte boundary and rejects raw-fit canonical overflow as 413", async () => {
+    const { app, repository } = fixture();
+    const reviews = Array.from({ length: 1000 }, (_, index) => ({
+      ...row,
+      reviewerName: `用户${index}`,
+      reviewedAt: "2026-10-17T13:00:00+08:00",
+      content: "中".repeat(5000)
+    }));
+    const remaining =
+      STORE_REVIEW_LIMITS.batchBytes - Buffer.byteLength(JSON.stringify({ reviews }));
+    const each = Math.floor(remaining / reviews.length);
+    for (const review of reviews) review.content += "a".repeat(each);
+    reviews[0]!.content += "a".repeat(remaining - each * reviews.length);
+    try {
+      const boundary = JSON.stringify({ reviews });
+      expect(Buffer.byteLength(boundary)).toBe(STORE_REVIEW_LIMITS.batchBytes);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/v1/store-reviews/upsert",
+            headers,
+            payload: boundary
+          })
+        ).statusCode
+      ).toBe(200);
+      expect(repository.upsert).toHaveBeenCalledOnce();
+      repository.upsert.mockClear();
+      reviews[0]!.reviewedAt = "2026-10-17 13";
+      reviews[0]!.content += "a";
+      const raw = JSON.stringify({ reviews });
+      expect(Buffer.byteLength(raw)).toBeLessThan(STORE_REVIEW_LIMITS.batchBytes);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/store-reviews/upsert",
+        headers,
+        payload: raw
+      });
+      expect(response.statusCode).toBe(413);
+      expect(response.json().error).toMatchObject({
+        code: "PAYLOAD_TOO_LARGE",
+        requestId: expect.any(String)
+      });
       expect(repository.upsert).not.toHaveBeenCalled();
     } finally {
       await app.close();
@@ -119,6 +169,7 @@ describe("authenticated store review routes", () => {
     const { app, repository } = fixture();
     try {
       for (const [error, code, status] of [
+        [new StoreReviewBatchTooLargeError(), "PAYLOAD_TOO_LARGE", 413],
         [new ResourceAttributesError("UPLOAD_ADMIN_REQUIRED"), "UPLOAD_ADMIN_REQUIRED", 403],
         [
           new StoreReviewRepositoryError("STORE_REVIEW_IDENTITY_NOT_AVAILABLE", { index: 0 }),
@@ -153,12 +204,12 @@ describe("authenticated store review routes", () => {
       });
       expect(response.statusCode).toBe(413);
       expect(response.json().error.code).toBe("PAYLOAD_TOO_LARGE");
-      expect(() =>
+      await expect(
         createStoreReviewService({ repository }).upsert({
           auth: { id: "admin", orgId: "org" },
           input: JSON.parse(tooLarge)
         })
-      ).toThrow("Request payload is too large.");
+      ).rejects.toThrow("Request payload is too large.");
     } finally {
       await app.close();
     }

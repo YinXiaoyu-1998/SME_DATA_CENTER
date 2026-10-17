@@ -115,7 +115,12 @@ wrapper to its arguments.
 
 ## Batches, unknown outcomes and querying
 
-Send 1–1000 rows per batch, within 16 MiB of UTF-8 JSON. Each scores object is at most 64 KiB;
+Send 1–1000 rows per batch. Both the original UTF-8 JSON and its canonical JSON after time
+normalization must fit 16 MiB, and the raw HTTP body has the same limit. Size batches using the
+canonical second-precision `+08:00` times; short hour/minute inputs can expand during normalization.
+A total batch overflow returns HTTP 413 `PAYLOAD_TOO_LARGE`; split the batch without truncation.
+Per-field validation, including the independent 64 KiB score-object limit, remains an input error
+rather than a total-batch overflow. Each scores object is at most 64 KiB;
 content/reply each at most 16,384 characters; enterprise/store/reviewer names at most 255 characters
 (and the normalized registered enterprise key must fit 128). Batch sizing must respect both count
 and bytes; 1000 maximum-length records may require several batches. Never truncate. Duplicate
