@@ -52,6 +52,7 @@ function context(
     partitionDownloadAudit: unexpectedDependency,
     structuredQueries: () => repository,
     structuredCoverage: () => coverageRepository,
+    storeReviews: unexpectedDependency,
     costCards: unexpectedDependency,
     skills: unexpectedDependency,
     ledgerPdfs: () => {

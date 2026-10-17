@@ -31,6 +31,7 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "get_partition_import_status",
   "download_structured_partitions",
   "download_cost_cards",
+  "query_store_reviews",
   "prepare_structured_partition_download",
   "get_structured_partition_download_status",
   "describe_ledger_pdf_coverage",
@@ -130,6 +131,8 @@ function routeForReadOnlyTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "query_store_reviews":
+      return { method: "POST", path: "/v1/store-reviews/query", body: input };
     case "download_cost_cards":
       return { method: "POST", path: "/v1/cost-cards/manifest", body: input };
     case "get_my_permissions":

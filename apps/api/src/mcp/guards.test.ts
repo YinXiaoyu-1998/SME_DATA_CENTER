@@ -77,7 +77,7 @@ describe("MCP endpoint guards", () => {
   });
 
   it("derives the JSON body limit from MAX_UPLOAD_BYTES with bounded envelope overhead", () => {
-    expect(mcpBodyLimitBytes(3)).toBe(65_540);
+    expect(mcpBodyLimitBytes(3)).toBe(16 * 1024 * 1024 + 65_536);
   });
 
   it("fails closed for explicitly non-loopback Phase 3 service listener hosts", () => {

@@ -17,6 +17,7 @@ import { launcherVersionAtLeast } from "../request-audit-context.js";
 export const ACTION_MCP_TOOL_NAMES = [
   "archive_quarantine_certificates",
   "archive_cost_card",
+  "upsert_store_reviews",
   "prepare_ledger_pdf_download",
   "update_account_permissions",
   "create_evidence_category",
@@ -81,6 +82,8 @@ function routeForActionTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "upsert_store_reviews":
+      return { method: "POST", path: "/v1/store-reviews/upsert", body: input };
     case "archive_cost_card":
       return {
         method: "POST",

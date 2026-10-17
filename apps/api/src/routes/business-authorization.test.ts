@@ -21,6 +21,10 @@ function fixture(role: "admin" | "employee" = "admin") {
     grants: []
   };
   const repository = {
+    loadPermissionCard: vi.fn(async () => ({
+      ...snapshot,
+      storeReviewEnterprises: { complete: true, write: [], read: [] }
+    })),
     initializeFixedCategories: vi.fn(async () => ({
       authorizationVersion: "8",
       value: { createdCount: 1 }
@@ -408,4 +412,16 @@ describe("business permission administration", () => {
       await app.close();
     }
   });
+});
+
+it("returns complete review enterprise options in the fresh permission card", async () => {
+  const { app, repository } = fixture();
+  try {
+    const response = await app.inject({ url: "/v1/permissions/me" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().storeReviewEnterprises).toEqual({ complete: true, write: [], read: [] });
+    expect(repository.loadPermissionCard).toHaveBeenCalledWith("actor", "org");
+  } finally {
+    await app.close();
+  }
 });

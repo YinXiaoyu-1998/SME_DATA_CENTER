@@ -113,12 +113,14 @@ const businessAuthorizationOnly = process.argv.includes("--business-authorizatio
 const structuredReadsOnly = process.argv.includes("--structured-reads-only");
 const ledgerAuthorizationOnly = process.argv.includes("--ledger-authorization-only");
 const partitionDownloadsOnly = process.argv.includes("--partition-downloads-only");
+const storeReviewsOnly = process.argv.includes("--store-reviews-only");
 const costCardsOnly = process.argv.includes("--cost-cards-only");
 const focusedAuthorization =
   businessAuthorizationOnly ||
   structuredReadsOnly ||
   ledgerAuthorizationOnly ||
   costCardsOnly ||
+  storeReviewsOnly ||
   partitionDownloadsOnly;
 const rootDir = process.cwd();
 const mysqlPort = process.env["MYSQL_PORT"] ?? DEFAULT_MYSQL_PORT;
@@ -180,36 +182,48 @@ integrationRun: try {
       "vitest",
       "run",
       "--no-file-parallelism",
-      ...(costCardsOnly
+      ...(storeReviewsOnly
         ? [
-            "packages/db/src/cost-cards.prisma.integration.test.ts",
-            "apps/worker/src/cost-card-import.prisma.integration.test.ts",
-            "apps/api/src/cost-cards.prisma.integration.test.ts"
+            "packages/db/src/store-reviews.prisma.integration.test.ts",
+            "packages/db/src/store-review-enterprises.prisma.integration.test.ts",
+            "apps/api/src/store-reviews.prisma.integration.test.ts",
+            "packages/db/src/business-authorization.prisma.integration.test.ts",
+            "apps/api/src/business-authorization-cutover.prisma.integration.test.ts"
           ]
-        : partitionDownloadsOnly
-          ? ["packages/db/src/partition-downloads.prisma.integration.test.ts"]
-          : ledgerAuthorizationOnly
-            ? [
-                "packages/ledger-archive/src/publication.prisma.integration.test.ts",
-                "packages/ledger-archive/src/source-reader.prisma.integration.test.ts"
-              ]
-            : structuredReadsOnly
-              ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
-              : businessAuthorizationOnly
-                ? ["apps/api/src/business-authorization-cutover.prisma.integration.test.ts"]
-                : [
-                    "apps/api/src/structured-query.prisma.integration.test.ts",
-                    "packages/ledger-archive/src/publication.prisma.integration.test.ts",
-                    "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
-                    "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
-                    "packages/db/src/structured-partitions.prisma.integration.test.ts",
-                    "packages/db/src/partition-downloads.prisma.integration.test.ts",
-                    "packages/db/src/cost-cards.prisma.integration.test.ts",
-                    "apps/worker/src/cost-card-import.prisma.integration.test.ts",
-                    "apps/api/src/cost-cards.prisma.integration.test.ts",
-                    "scripts/test-integration-support.test.ts"
-                  ]),
-      ...(!costCardsOnly &&
+        : costCardsOnly
+          ? [
+              "packages/db/src/cost-cards.prisma.integration.test.ts",
+              "apps/worker/src/cost-card-import.prisma.integration.test.ts",
+              "apps/api/src/cost-cards.prisma.integration.test.ts"
+            ]
+          : partitionDownloadsOnly
+            ? ["packages/db/src/partition-downloads.prisma.integration.test.ts"]
+            : ledgerAuthorizationOnly
+              ? [
+                  "packages/ledger-archive/src/publication.prisma.integration.test.ts",
+                  "packages/ledger-archive/src/source-reader.prisma.integration.test.ts"
+                ]
+              : structuredReadsOnly
+                ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
+                : businessAuthorizationOnly
+                  ? ["apps/api/src/business-authorization-cutover.prisma.integration.test.ts"]
+                  : [
+                      "apps/api/src/structured-query.prisma.integration.test.ts",
+                      "packages/ledger-archive/src/publication.prisma.integration.test.ts",
+                      "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
+                      "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
+                      "packages/db/src/structured-partitions.prisma.integration.test.ts",
+                      "packages/db/src/partition-downloads.prisma.integration.test.ts",
+                      "packages/db/src/cost-cards.prisma.integration.test.ts",
+                      "apps/worker/src/cost-card-import.prisma.integration.test.ts",
+                      "apps/api/src/cost-cards.prisma.integration.test.ts",
+                      "packages/db/src/store-reviews.prisma.integration.test.ts",
+                      "packages/db/src/store-review-enterprises.prisma.integration.test.ts",
+                      "apps/api/src/store-reviews.prisma.integration.test.ts",
+                      "scripts/test-integration-support.test.ts"
+                    ]),
+      ...(!storeReviewsOnly &&
+      !costCardsOnly &&
       !structuredReadsOnly &&
       !ledgerAuthorizationOnly &&
       !partitionDownloadsOnly
@@ -227,7 +241,8 @@ integrationRun: try {
         RUN_PARTITION_PRISMA_INTEGRATION: "1",
         RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION: "1",
         RUN_PERMISSIONS_OPERATOR_PRISMA_INTEGRATION: "1",
-        RUN_COST_CARD_PRISMA_INTEGRATION: "1"
+        RUN_COST_CARD_PRISMA_INTEGRATION: "1",
+        RUN_STORE_REVIEW_PRISMA_INTEGRATION: "1"
       }
     }
   );

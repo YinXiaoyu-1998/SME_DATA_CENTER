@@ -267,3 +267,20 @@ existing analysis unittest suite; SMEDC scripts/smedc-companion-skill.test.ts,
 scripts/official-user-install-and-login.test.ts, scripts/purge-data.test.ts and
 scripts/staging-upload-domain-cleanup.test.ts plus affected adapter/support checks. Manual fixture
 support checks validate synthetic scenarios only; they do not execute official acceptance.
+
+## Store reviews candidate regression path
+
+Use `MYSQL_PORT=3307 npm run test:integration -- --store-reviews-only` for runner-owned
+loopback MySQL schemas. The runner includes repository, enterprise options, authorization,
+cutover and launcher → MCP delegate → authenticated HTTP → MySQL fixtures; skipped tests do
+not establish persistence. Synthetic fixtures cover pure scores → query → published reply-only
+update, preservation of content/scores, own `__proto__` score keys without prototype changes,
+unchanged retry/no duplicate rows, large full-row pages consumed by the SDK default stdio read buffer
+with exact continuation/no omissions, later-row failure rollback and a cached admin demoted before
+write. Baseline comparisons and query output both preserve arbitrary JSON score keys.
+Focused HTTP/contract/launcher tests cover 401/403/400/413, canonical duplicate identities,
+null versus omission, strict no-orgId input, safe requestId errors and byte budgets. Companion
+Skill tests parse every synthetic review JSON example through its named shared contract.
+Candidate launcher is `0.11.0`; package verification is local only and keeps approved install pins /
+recommendation `0.10.1`. Real tenant permissions, platform publication, npm publication and staging
+deployment are separate authorized acceptance/release operations.

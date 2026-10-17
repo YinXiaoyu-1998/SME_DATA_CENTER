@@ -24,6 +24,19 @@ For enterprise onboarding or adding an account, the primary entry is the verifie
 The current service implements the UI; users may also explicitly choose these authorized MCP tools. JSON remains an
 optional internal record, never a required user form.
 
+## Candidate store review enterprises
+
+For candidate launcher `0.11.0` and its matching service, `get_my_permissions {}` also returns
+`storeReviewEnterprises: {complete:true, write:[{enterpriseKey,enterpriseName}], read:[...]}`.
+Existing fields remain unchanged. Candidates come from the registered enterprise directory;
+write needs current active admin and eligible review configuration, while read needs the complete
+`store_reviews` category/enterprise/store grant and clearance. Admins have no read bypass.
+Use the operation's full list: validate an explicit enterprise; automatically select and report
+only a sole candidate; ask when several exist; report unavailable when none exist. Never infer an
+enterprise from a historical key or reuse write candidates for reads. Missing candidate support
+is a release gap. See [store reviews](store-reviews.md) for batch and reply rules; this candidate
+addition does not promote the verified `0.10.1` install pin or activate a tenant.
+
 ## Upload inputs
 
 These transport fields are bundled in approved launcher 0.10.1 and need the matching service

@@ -45,6 +45,15 @@ Launcher `0.10.1` is published and independently verified, including cost-card t
 Verify the matching service rollout and explicit tenant category configuration before use;
 package installation or tool discovery alone does not establish readiness.
 
+## Store Reviews (Candidate Release)
+
+For structured platform review synchronization and authorized history queries, read
+[store reviews](references/store-reviews.md). This is a candidate contract requiring launcher
+`0.11.0` and the matching service release. Keep the verified `0.10.1` installation pin until
+publication and independent verification. The reference owns enterprise selection, atomic batches,
+null/omission, pure ratings and verified published reply semantics; it does not authorize platform
+reply publication or change companion approval rules.
+
 ## Enterprise Onboarding And New Account Permissions
 
 For enterprise onboarding or account permissions, follow

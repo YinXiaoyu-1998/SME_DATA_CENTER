@@ -105,6 +105,7 @@ export const permissionsCopy = {
   vip: { zh: "会员资料", en: "Member data" },
   dish_catalog: { zh: "菜品目录", en: "Dish catalog" },
   supplier_catalog: { zh: "供应商目录", en: "Supplier catalog" },
+  store_reviews: { zh: "店铺评价", en: "Store reviews" },
   cost_cards: { zh: "成本卡", en: "Cost cards" },
   name: { zh: "名称", en: "Name" },
   retired: { zh: "已停用", en: "Retired" },
@@ -290,6 +291,10 @@ export const permissionsCopy = {
   RESOURCE_ATTRIBUTES_REQUIRED: {
     zh: "请补齐资料类别、密级和完整范围",
     en: "Complete the material's category, level and scopes"
+  },
+  STORE_REVIEW_ATTRIBUTES_REQUIRED: {
+    zh: "店铺评价的企业或门店关联缺失，请核对",
+    en: "Check the review’s enterprise and exact store references"
   },
   RESOURCE_CATEGORY_MISMATCH: {
     zh: "资料与类别不匹配，请核对",

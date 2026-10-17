@@ -1,6 +1,6 @@
 # SMEDC MCP 用户流程
 
-更新：2026-10-13。安装已发布的 `smedc-mcp-launcher@0.9.0`，最低服务兼容版本为 0.6.0。以双归属基础 Skill 为安装手册；部署证据见 [staging 状态](staging-readiness.md)，企业激活与特定宿主验收分别核对。本文不是运维手册。
+更新：2026-10-13。安装已发布的 `smedc-mcp-launcher@0.10.1`，最低服务兼容版本为 0.6.0。以双归属基础 Skill 为安装手册；部署证据见 [staging 状态](staging-readiness.md)，企业激活与特定宿主验收分别核对。本文不是运维手册。
 
 ## 上传权限
 
@@ -121,7 +121,7 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
 Range is the default. Bundle mode is optional and requires a known matching ZIP service;
 tools/list is insufficient. If ZIP is removed, regenerate saved plans with range downloads.
 
-使用批准的 launcher 0.9.0 及匹配服务；选择可选 ZIP 前仍须确认目标服务可用。
+使用批准的 launcher 0.10.1 及匹配服务；选择可选 ZIP 前仍须确认目标服务可用。
 business/dishes 的 coverage 与 prepare 使用相同 `enterpriseName`/`storeNameContains` 范围。
 后者为 1–20 个 NFC/trim、每项 1–255 字符的字面、区分大小写子串；数组内 OR，与授权及其他条件 AND。
 prepare 使用含首尾日期的 `YYYYMMDD` 和仅精确重放复用的 `idempotencyKey`；按 `retryAfterSeconds`
@@ -137,3 +137,10 @@ prepare 使用含首尾日期的 `YYYYMMDD` 和仅精确重放复用的 `idempot
 当前合同与默认值见 [API/MCP](api-contract.md) 和 [正式登录](official-user-install-and-login.md)。macOS、Windows、Linux 支持安装；特定宿主和手机遥控产品需各自验收。只向管理员交付经过核对的目标企业入口。
 
 经营/菜品通过分区下载后本地分析，不提供通用行查询。员工台账交付只使用 PDF，不开放原始行、汇总或原件。PDF 按服务配置的每日时刻生成，员工工具只查询和准备交付。开发邮箱/JWT、Authorization Code 和 loopback 回调登录路径均不存在。
+
+## 店铺评价（候选契约）
+
+源码接入 `upsert_store_reviews` / `query_store_reviews`，需候选 launcher `0.11.0` 与匹配服务发布；已验证安装 pin 和服务推荐仍为 `0.10.1`。Skill 更新不代表 launcher 升级、部署或租户授权。
+先刷新 `get_my_permissions.storeReviewEnterprises`，写入用 write、查询用 read：明确企业先精确校验；未指定且仅一个候选时填入并告知，多个先问，零个报告不可用。禁止推断 orgId 或默认企业。
+当前有效 admin 可按 1–1000 条及 16 MiB UTF-8 JSON 预算同步，每批独立事务；读需完整类别/企业/门店授权与密级，admin 不绕过。正文/评分/回复省略不更新、null 清空，评分整体替换；纯评分也入库但不进入拟回复表。未读到的回复省略，只有平台发布成功且核验后才补写 merchantReply，草稿不入库。
+北京时间至少到小时，缺小时或身份歧义记未同步；超限分批不截断，多批不承诺全局回滚。超时先核验，分别报告确认与未确认批次，不自动重放可能覆盖新值的旧数据。查询用不透明游标且保持筛选不变，权限或数据变化后重启。详见[评价使用规则](../../skills/smedc-mcp/references/store-reviews.md)。

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { loadStoreReviewEnterpriseOptions } from "./store-review-enterprises.js";
 import { Prisma, type PrismaClient, type BusinessResourceKind } from "@prisma/client";
 import {
   FIXED_BUSINESS_CATEGORY_OWNERSHIP,
@@ -321,7 +322,9 @@ export async function persistResourceAttributes(
     (input.kind === "evidence") !== (rule.kind === "evidence") ||
     (input.kind === "quarantine_certificate" && category.key !== "quarantine_certificate") ||
     (input.kind === "ledger_pdf" && category.key !== "ledger_pdf") ||
-    (input.kind === "cost_card" && category.key !== "cost_cards")
+    (input.kind === "cost_card" && category.key !== "cost_cards") ||
+    (input.kind === "store_review" && category.key !== "store_reviews") ||
+    (category.key === "store_reviews" && input.kind !== "store_review")
   )
     throw new Error("RESOURCE_CATEGORY_KIND_MISMATCH");
   if (
@@ -332,9 +335,15 @@ export async function persistResourceAttributes(
       : input.fileConfidentialityLevel != null)
   )
     throw new Error("RESOURCE_ATTRIBUTES_NOT_READY");
-  if (input.kind === "quarantine_certificate" || input.kind === "ledger_pdf")
+  if (
+    input.kind === "quarantine_certificate" ||
+    input.kind === "ledger_pdf" ||
+    input.kind === "store_review"
+  )
     if (input.scopes.length !== 1 || input.scopes[0]!.ownership !== "store")
       throw new Error("RESOURCE_SINGLE_STORE_REQUIRED");
+  if (input.kind === "store_review" && input.documentId !== undefined)
+    throw new Error("RESOURCE_IDENTITY_IMMUTABLE");
   if (
     input.kind === "cost_card" &&
     (input.scopes.length !== 1 ||
@@ -798,6 +807,18 @@ export function createBusinessAuthorizationRepository({
       });
     },
     loadAuthorizationSnapshot,
+    loadPermissionCard(employeeId: string, orgId: string) {
+      return prisma.$transaction(
+        async (tx) => {
+          const snapshot = await loadAuthorizationSnapshot(employeeId, orgId, tx);
+          return {
+            ...snapshot,
+            storeReviewEnterprises: await loadStoreReviewEnterpriseOptions(tx, snapshot)
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+      );
+    },
     defineDimension(
       input: AuthorizationWriteContext & {
         id: string;

@@ -406,3 +406,74 @@ applied currently readable batches receive publicationSummary verbatim. Failed/r
 readers can receive validation locations and ignored/source-summary arrays; owner-only access
 receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
 read permission is exposed. Launcher 0.10.1 is published and independently verified; service rollout and tenant authorization remain separate.
+
+## Store reviews (candidate launcher 0.11.0)
+
+Implemented source contract requiring candidate launcher `0.11.0` and a matching service release.
+The verified published installation pin and server recommendation remain `0.10.1`. This source
+change does not establish publication, deployment, category configuration or tenant activation.
+
+| HTTP                            | MCP                    | Input / result                                                            |
+| ------------------------------- | ---------------------- | ------------------------------------------------------------------------- |
+| `POST /v1/store-reviews/upsert` | `upsert_store_reviews` | `{reviews:[...]}` → `{received,inserted,updated,unchanged}`               |
+| `POST /v1/store-reviews/query`  | `query_store_reviews`  | one explicit enterprise and optional filters → `{rows,page:{nextCursor}}` |
+
+Every row requires `enterpriseName`, `source` (`美团评价` / `点评评价`), exact `storeName`,
+`reviewedAt`, exact `reviewerName`. The server derives orgId from authentication. The identity is
+organization + registered enterprise key + source + exact store + canonical review instant + exact
+reviewer. No fuzzy merging, deletion, arbitrary sorting or aggregation is exposed.
+
+Optional `content`, `scores`, `merchantReply` preserve omission; null clears, scores replaces the
+whole object and `{}` is valid. Scores retain arbitrary dimension names (including own
+`__proto__`) and finite numeric values without a fixed range or zero fill. Empty text and null
+remain distinct. Merchant replies contain only verified published platform text, never drafts.
+Pure ratings are valid records. Persistence binds validated scores as JSON text and reads JSON text
+before parsing, preserving arbitrary own keys across the Prisma boundary.
+
+Beijing time accepts `YYYY-MM-DD HH`, `HH:mm`, `HH:mm:ss` (each with the date), or the same
+precision using `T` and explicit `+08:00`. Missing minutes/seconds become zero; date-only,
+fractional seconds, invalid calendar times and timezone-free T forms are rejected. The database
+stores UTC seconds; public reviewed/created/updated times include seconds and `+08:00`.
+
+Each batch has 1–1000 rows. Both original UTF-8 JSON and canonical JSON after time normalization
+must fit 16 MiB, with the same raw HTTP body limit. Size batches with canonical second-precision
+`+08:00` timestamps; shorter accepted times may expand. Either total-batch overflow is HTTP 413
+`PAYLOAD_TOO_LARGE`, including one detected during persistence validation. Per-field/score-object
+validation remains HTTP 400 and is distinct from this total request budget.
+The MCP envelope budget accommodates the full review batch independently of file-upload limits.
+Scores JSON is at most 64 KiB per row, content/reply each 16,384 Unicode characters,
+enterprise/store/reviewer each 255 (normalized enterprise key still at most 128). Duplicate
+identities fail validation; every batch commits or rolls back as one transaction. Multiple batches
+have no global rollback. Repeat calls add no duplicate rows, but counts and cursor versions may
+change. Timeout is an unknown result: verify current state before any replay that could overwrite
+newer data.
+
+Writing requires the transaction's current active same-organization admin and eligible category /
+enterprise / store configuration. Reading requires current complete `store_reviews` category,
+enterprise and single-store grant plus clearance; admin has no ordinary-read bypass. Fixed category
+`store_reviews` starts with null confidentiality level and no grants. No permission changes are
+inferred from uploading or from the new tool's presence.
+
+`get_my_permissions {}` keeps all prior fields and adds
+`storeReviewEnterprises:{complete:true,write:[{enterpriseKey,enterpriseName}],read:[...]}` from
+explicitly registered enterprise identities and the same current permission snapshot. Lists are full,
+operation-specific and never inferred from content or historical keys. Validate an explicit name;
+for no name, select/report only a sole candidate, ask when several exist, or report unavailable
+when none exist. Callers cannot choose orgId.
+
+Query filters are optional exact `storeNames` (maximum 100), `sources`, `reviewerName`, inclusive
+`reviewedAtFrom` / `reviewedAtTo`, `hasReply`, `limit`, and opaque `cursor`. false matches null or
+empty reply, true matches other text. Default 50, maximum 200, fixed `reviewedAt DESC,id DESC`;
+permission scope is applied before limit+1 pagination. Large pages are additionally bounded by the actual
+escaped, pretty-printed JSON result text (10 MiB minus a 64 KiB transport envelope margin). Return
+fewer complete rows with nextCursor advanced by the returned count; never truncate fields.
+The launcher stdio input buffer also accommodates a full 16 MiB batch plus its envelope. Signed cursors expire after 15 minutes,
+are at most 4096 characters and bind operation/org/account/enterprise/normalized filters/limit /
+fixed ordering/permission version. Every write invalidates old continuation, including unchanged
+batches; restart when data or permissions change. Responses use `cache-control:no-store`.
+
+HTTP errors expose safe codes, requestId and bounded validation/index details without private
+review text: 400 invalid input/duplicate/cursor, 401 unauthenticated, 403 current admin/read denial,
+409 unavailable identity/category/mode, 413 byte limit, 500 sanitized write failure. MCP keeps
+`isError:true`, code and requestId through its existing redaction adapter. See the
+[synthetic shared-schema examples](../../skills/smedc-mcp/references/store-reviews.md).

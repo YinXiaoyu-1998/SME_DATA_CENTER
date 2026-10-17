@@ -13,7 +13,12 @@ export function createBusinessAuthorizationService(repository: BusinessAuthoriza
       throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
     return snapshot;
   }
-  return { repository, current, ...createAuthorizationCutoverService(repository) };
+  async function permissionCard(employee: Pick<AuthenticatedEmployee, "id" | "orgId">) {
+    const snapshot = await repository.loadPermissionCard(employee.id, employee.orgId);
+    if (snapshot.disabled) throw new Error("AUTHORIZATION_ADMIN_REQUIRED");
+    return snapshot;
+  }
+  return { repository, current, permissionCard, ...createAuthorizationCutoverService(repository) };
 }
 export type BusinessAuthorizationService = ReturnType<typeof createBusinessAuthorizationService>;
 export function createPrismaBusinessAuthorizationService(databaseUrl: string) {

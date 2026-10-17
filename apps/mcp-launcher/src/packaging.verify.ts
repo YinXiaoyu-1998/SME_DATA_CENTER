@@ -122,7 +122,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.10.1");
+    expect(manifest.version).toBe("0.11.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -148,7 +148,7 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.10.1");
+      expect(client.getServerVersion()?.version).toBe("0.11.0");
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -162,6 +162,8 @@ describe("published launcher artifact", () => {
           "download_structured_partitions",
           "download_cost_cards",
           "archive_cost_card",
+          "upsert_store_reviews",
+          "query_store_reviews",
           "describe_ledger_pdf_coverage",
           "get_ledger_pdf_request_status",
           "prepare_ledger_pdf_download",

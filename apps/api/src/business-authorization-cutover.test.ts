@@ -13,6 +13,7 @@ const fixed = [
   "delivery_ledger",
   "quarantine_certificate",
   "ledger_pdf",
+  "store_reviews",
   "cost_cards"
 ];
 function inventory(): CutoverInventory {
@@ -28,6 +29,8 @@ function inventory(): CutoverInventory {
     resources: [],
     documents: [],
     partitions: [],
+    storeReviewEnterpriseKeys: [],
+    storeReviews: [],
     costCards: [],
     pdfs: [],
     accounts: [{ id: "new", grants: [] }],
@@ -249,5 +252,36 @@ describe("tenant authorization preparation", () => {
       }
     ];
     expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).ready).toBe(false);
+  });
+});
+
+it("checks review resources against exact single-store enterprise identity", () => {
+  const data = inventory();
+  data.categories.find((c) => c.key === "store_reviews")!.ownerships = ["store"];
+  data.stores = [{ enterpriseKey: "enterprise", name: "A" }];
+  data.storeReviewEnterpriseKeys = ["enterprise"];
+  data.storeReviews = [{ id: "review", enterpriseKey: "enterprise", storeName: "A" }];
+  expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).missing).toContainEqual({
+    code: "STORE_REVIEW_ATTRIBUTES_REQUIRED",
+    targetId: "review"
+  });
+  data.resources.push({
+    id: "review",
+    kind: "store_review",
+    resourceKey: "store-review:review",
+    documentId: null,
+    sourceDocumentId: null,
+    requirement: {
+      orgId: "tenant",
+      categoryId: "store_reviews",
+      valid: true,
+      scopes: [{ enterpriseKey: "enterprise", ownership: "store", storeName: "A", dimensions: {} }]
+    }
+  });
+  expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).ready).toBe(true);
+  data.storeReviews[0]!.enterpriseKey = "other";
+  expect(inspectCutoverInventory(data, AUTHORIZATION_READ_ADAPTERS).missing).toContainEqual({
+    code: "STORE_REVIEW_ATTRIBUTES_REQUIRED",
+    targetId: "review"
   });
 });

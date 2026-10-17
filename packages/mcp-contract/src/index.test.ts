@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { STRUCTURED_QUERY_LIMITS } from "@smedc/domain";
+import {
+  STRUCTURED_QUERY_LIMITS,
+  storeReviewQueryResponseBytes,
+  type StoreReviewQueryResult
+} from "@smedc/domain";
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
   SMEDC_MCP_TOOL_NAMES,
@@ -39,6 +43,19 @@ it("retains server admin-only upload authorization and explains fixed category a
 });
 
 const validInputs = {
+  upsert_store_reviews: {
+    reviews: [
+      {
+        enterpriseName: "企业",
+        source: "美团评价",
+        storeName: "店",
+        reviewedAt: "2026-10-17 13",
+        reviewerName: "用户",
+        scores: {}
+      }
+    ]
+  },
+  query_store_reviews: { enterpriseName: "企业" },
   smedc_get_current_user: {},
   smedc_list_skills: { q: "menu", category: "menu-analysis" },
   search_document_evidence: {
@@ -196,6 +213,8 @@ const validInputs = {
 } satisfies Record<SmedcMcpToolName, Record<string, unknown>>;
 
 const invalidInputCases = [
+  { tool: "upsert_store_reviews", cases: [{ label: "empty batch", input: { reviews: [] } }] },
+  { tool: "query_store_reviews", cases: [{ label: "missing enterprise", input: {} }] },
   {
     tool: "smedc_get_current_user",
     cases: [{ label: "cross-employee selector", input: { employeeId: "someone-else" } }]
@@ -580,6 +599,8 @@ const invalidInputCases = [
 describe("SMEDC MCP contract", () => {
   it("exports the stable business tool names without local-session tools", () => {
     expect(SMEDC_MCP_TOOL_NAMES).toEqual([
+      "upsert_store_reviews",
+      "query_store_reviews",
       "smedc_get_current_user",
       "smedc_list_skills",
       "search_document_evidence",
@@ -1710,4 +1731,83 @@ it("accepts complete original cost-card uploads without dates or classification 
     { confidentialityLevel: 1 }
   ])
     expect(upload.safeParse({ ...input, ...extra }).success).toBe(false);
+});
+
+it("uses strict store review schemas with shared semantic validation", () => {
+  const schema = contractsByName.get("upsert_store_reviews")!.inputSchema;
+  const row = validInputs.upsert_store_reviews.reviews[0]!;
+  expect(
+    schema.safeParse({
+      reviews: Array.from({ length: 1000 }, (_, i) => ({ ...row, reviewerName: String(i) }))
+    }).success
+  ).toBe(true);
+  expect(
+    schema.safeParse({
+      reviews: Array.from({ length: 1001 }, (_, i) => ({ ...row, reviewerName: String(i) }))
+    }).success
+  ).toBe(false);
+  for (const patch of [
+    { enterpriseName: undefined },
+    { scores: [] },
+    { scores: { x: "5" } },
+    { extra: true },
+    { reviewedAt: "2026-02-30 13" }
+  ])
+    expect(schema.safeParse({ reviews: [{ ...row, ...patch }] }).success).toBe(false);
+  expect(schema.safeParse({ reviews: [{ ...row, scores: null }] }).success).toBe(true);
+  expect(
+    contractsByName
+      .get("query_store_reviews")!
+      .inputSchema.safeParse({ enterpriseName: "企业", orgId: "other" }).success
+  ).toBe(false);
+});
+
+it("preserves arbitrary own score keys from JSON without prototype mutation", () => {
+  const row = validInputs.upsert_store_reviews.reviews[0]!;
+  const scores = JSON.parse('{"__proto__":8,"constructor":7,"服务":9}');
+  const parsed = contractsByName
+    .get("upsert_store_reviews")!
+    .inputSchema.parse({ reviews: [{ ...row, scores }] });
+  expect((parsed.reviews as Array<{ scores: Record<string, number> }>)[0]!.scores).toEqual(scores);
+  expect(
+    Object.hasOwn(
+      (parsed.reviews as Array<{ scores: Record<string, number> }>)[0]!.scores!,
+      "__proto__"
+    )
+  ).toBe(true);
+  expect(
+    Object.getPrototypeOf((parsed.reviews as Array<{ scores: Record<string, number> }>)[0]!.scores!)
+  ).toBe(Object.prototype);
+  expect(
+    contractsByName
+      .get("upsert_store_reviews")!
+      .inputSchema.safeParse({ reviews: [{ ...row, scores: JSON.parse('{"__proto__":"bad"}') }] })
+      .success
+  ).toBe(false);
+});
+
+it("budgets the actual escaped review result text with margin for the MCP envelope", () => {
+  const result: StoreReviewQueryResult = {
+    rows: [
+      {
+        id: "r",
+        enterpriseName: "合成企业",
+        source: "美团评价",
+        storeName: "门店",
+        reviewedAt: "2026-10-17T13:00:00+08:00",
+        reviewerName: "用户",
+        content: '中\n"',
+        scores: JSON.parse('{"__proto__":8}'),
+        merchantReply: null,
+        createdAt: "2026-10-17T13:00:00+08:00",
+        updatedAt: "2026-10-17T13:00:00+08:00"
+      }
+    ],
+    page: { nextCursor: "opaque" }
+  };
+  const messageBytes = Buffer.byteLength(
+    JSON.stringify({ jsonrpc: "2.0", id: 1, result: jsonToolResult(result) }) + "\n"
+  );
+  expect(messageBytes).toBeGreaterThan(storeReviewQueryResponseBytes(result));
+  expect(messageBytes - storeReviewQueryResponseBytes(result)).toBeLessThan(64 * 1024);
 });

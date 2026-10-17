@@ -12,9 +12,11 @@ import type { FastifyRequest } from "fastify";
 import {
   createDatabaseAdapter,
   createPrismaCostCardDirectoryRepository,
+  createPrismaStoreReviewRepository,
   createPrismaPartitionDownloadRepository,
   type PartitionDownloadRepository
 } from "@smedc/db";
+import { createStoreReviewService, type StoreReviewService } from "./store-reviews.js";
 import { createCostCardService, type CostCardService } from "./cost-cards.js";
 import {
   createPrismaPartitionDownloadAuditRepository,
@@ -79,6 +81,7 @@ import {
 } from "./request-audit-context.js";
 
 export interface ApiServerOptions {
+  storeReviewService?: StoreReviewService;
   costCardService?: CostCardService;
   businessAuthorizationService?: BusinessAuthorizationService & { disconnect?(): Promise<void> };
   ledgerPdfDelivery?: LedgerPdfDelivery;
@@ -113,6 +116,7 @@ export interface ApiServerOptions {
 }
 
 export interface ApiServerContext {
+  storeReviews: () => StoreReviewService;
   costCards: () => CostCardService;
   permissions: () => BusinessAuthorizationService;
   environment: NodeJS.ProcessEnv;
@@ -183,6 +187,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let sourceDocumentDownloadIssuer = options.sourceDocumentDownloadIssuer;
   let evidenceRepository = options.evidenceRepository;
   let costCardService = options.costCardService;
+  let storeReviewService = options.storeReviewService;
+  let storeReviewPrisma: PrismaClient | undefined;
   let uploadAuthorizationAuditRepository = options.uploadAuthorizationAuditRepository;
   let storageAdapter = options.storageAdapter;
   const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
@@ -304,6 +310,21 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return structuredCoverageRepository;
   }
 
+  function storeReviews(): StoreReviewService {
+    if (!storeReviewService) {
+      const databaseUrl = environment["DATABASE_URL"];
+      if (!databaseUrl) throw new Error("DATABASE_URL is required for store reviews.");
+      storeReviewPrisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
+      storeReviewService = createStoreReviewService({
+        repository: createPrismaStoreReviewRepository({
+          prisma: storeReviewPrisma,
+          cursorSecret: cursorSigningSecret
+        })
+      });
+    }
+    return storeReviewService;
+  }
+
   function costCards(): CostCardService {
     costCardService ??= createCostCardService({
       repository: createPrismaCostCardDirectoryRepository(undefined, environment["DATABASE_URL"]),
@@ -359,6 +380,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     await permissionService?.disconnect?.();
     await authPrisma?.$disconnect();
     await ledgerPrisma?.$disconnect();
+    await storeReviewPrisma?.$disconnect();
     await documentRepository?.disconnect?.();
     await structuredImportRepository?.disconnect?.();
     await structuredPartitionRepository?.disconnect?.();
@@ -399,6 +421,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     structuredQueries,
     structuredCoverage,
     costCards,
+    storeReviews,
     quarantineCertificates,
     sourceDocuments,
     sourceDocumentDownloads,

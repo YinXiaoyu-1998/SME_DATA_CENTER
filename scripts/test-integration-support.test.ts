@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { readFile, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -266,4 +266,15 @@ integration("small authenticated partition comparison", () => {
       await rm(scratch, { recursive: true, force: true });
     }
   }, 30_000);
+});
+
+it("runs store review Prisma fixtures in focused and normal owned-schema verification", async () => {
+  const runner = await readFile(new URL("./test-integration.ts", import.meta.url), "utf8");
+  expect(runner).toContain('process.argv.includes("--store-reviews-only")');
+  expect(runner).toContain('RUN_STORE_REVIEW_PRISMA_INTEGRATION: "1"');
+  for (const fixture of [
+    "packages/db/src/store-reviews.prisma.integration.test.ts",
+    "packages/db/src/store-review-enterprises.prisma.integration.test.ts"
+  ])
+    expect(runner.match(new RegExp(fixture.replaceAll(".", "\\."), "g"))).toHaveLength(2);
 });
