@@ -1,5 +1,6 @@
 import { registerAdminPermissionsRoutes } from "./admin-permissions/routes.js";
 import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
+import { registerStoreReviewRoutes } from "./routes/store-reviews.js";
 import { registerCostCardRoutes } from "./routes/cost-cards.js";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
@@ -119,6 +120,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   }
 
   registerBusinessAuthorizationRoutes(app, { auth: requestAuth, permissions: context.permissions });
+  registerStoreReviewRoutes(app, { auth: requestAuth, storeReviews: context.storeReviews });
   registerCostCardRoutes(app, { auth: requestAuth, costCards: context.costCards });
 
   registerSystemRoutes(app, { auth: requestAuth, readinessCheck });

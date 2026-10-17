@@ -69,3 +69,31 @@ describe("SMEDC companion skill guidance", () => {
       expect(guide).toContain(invariant);
   });
 });
+
+it("parses every store-review Skill JSON example through its named shared contract", async () => {
+  const guide = await readFile(
+    path.join(root, "skills/smedc-mcp/references/store-reviews.md"),
+    "utf8"
+  );
+  const examples = [
+    ...guide.matchAll(
+      /`(upsert_store_reviews|query_store_reviews)` —[^\n]*\n\n```json\n([\s\S]*?)\n```/g
+    )
+  ];
+  expect(examples).toHaveLength(6);
+  const parsed = examples.map(([, name, json]) => {
+    const contract = SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === name)!;
+    return contract.inputSchema.parse(JSON.parse(json!));
+  });
+  const rows = parsed
+    .slice(0, 4)
+    .map((input) => (input["reviews"] as Array<Record<string, unknown>>)[0]!);
+  expect(rows[0]!["content"]).toBe("环境舒适");
+  expect(rows[1]).not.toHaveProperty("content");
+  expect(Object.hasOwn(rows[1]!["scores"] as object, "__proto__")).toBe(true);
+  expect(rows[2]!["scores"]).toBeNull();
+  expect(rows[3]).not.toHaveProperty("content");
+  expect(rows[3]).not.toHaveProperty("scores");
+  expect(rows[3]!["merchantReply"]).toBeTypeOf("string");
+  expect(parsed[5]!["cursor"]).toBe("opaque-cursor-from-previous-page");
+});

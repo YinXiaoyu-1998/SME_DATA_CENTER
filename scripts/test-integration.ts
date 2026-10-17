@@ -186,6 +186,7 @@ integrationRun: try {
         ? [
             "packages/db/src/store-reviews.prisma.integration.test.ts",
             "packages/db/src/store-review-enterprises.prisma.integration.test.ts",
+            "apps/api/src/store-reviews.prisma.integration.test.ts",
             "packages/db/src/business-authorization.prisma.integration.test.ts",
             "apps/api/src/business-authorization-cutover.prisma.integration.test.ts"
           ]
@@ -218,6 +219,7 @@ integrationRun: try {
                       "apps/api/src/cost-cards.prisma.integration.test.ts",
                       "packages/db/src/store-reviews.prisma.integration.test.ts",
                       "packages/db/src/store-review-enterprises.prisma.integration.test.ts",
+                      "apps/api/src/store-reviews.prisma.integration.test.ts",
                       "scripts/test-integration-support.test.ts"
                     ]),
       ...(!storeReviewsOnly &&

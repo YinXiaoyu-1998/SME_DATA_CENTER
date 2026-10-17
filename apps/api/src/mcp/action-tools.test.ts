@@ -38,6 +38,7 @@ describe("action MCP tool handlers", () => {
     expect(ACTION_MCP_TOOL_NAMES).toEqual([
       "archive_quarantine_certificates",
       "archive_cost_card",
+      "upsert_store_reviews",
       "prepare_ledger_pdf_download",
       "update_account_permissions",
       "create_evidence_category",
@@ -245,4 +246,33 @@ it("delegates cost-card archive without a content body and preserves backend adm
     error: { code: "UPLOAD_ADMIN_REQUIRED", retryable: false }
   });
   expect(result?.isError).toBe(true);
+});
+
+it("delegates reviews with arbitrary dimensions, explicit null and omitted reply intact", async () => {
+  const { calls, handlers } = createCapturingDelegate();
+  const scores = JSON.parse('{"__proto__":8,"服务":9}');
+  const input = {
+    reviews: [
+      {
+        enterpriseName: "合成企业",
+        source: "美团评价",
+        storeName: "门店",
+        reviewedAt: "2026-10-17 13",
+        reviewerName: "用户",
+        content: null,
+        scores
+      }
+    ]
+  };
+  const result = await handlers.upsert_store_reviews?.(input, {} as never);
+  expect(result?.isError).not.toBe(true);
+  expect(calls[0]).toMatchObject({
+    method: "POST",
+    url: "/v1/store-reviews/upsert",
+    payload: input
+  });
+  expect(Object.hasOwn((calls[0]!.payload as typeof input).reviews[0]!.scores, "__proto__")).toBe(
+    true
+  );
+  expect((calls[0]!.payload as typeof input).reviews[0]).not.toHaveProperty("merchantReply");
 });

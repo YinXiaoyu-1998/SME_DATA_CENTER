@@ -63,6 +63,8 @@ export type LauncherBusinessToolName =
   | "download_structured_partitions"
   | "download_cost_cards"
   | "archive_cost_card"
+  | "upsert_store_reviews"
+  | "query_store_reviews"
   | "prepare_structured_partition_download"
   | "get_structured_partition_download_status"
   | "describe_ledger_pdf_coverage"
@@ -256,6 +258,8 @@ export function registerLauncherTools(
               [
                 "download_cost_cards",
                 "archive_cost_card",
+                "upsert_store_reviews",
+                "query_store_reviews",
                 "query_structured_dataset",
                 "describe_structured_dataset_coverage"
               ].includes(tool.name)

@@ -278,7 +278,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.10.1");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.11.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1435,6 +1435,64 @@ it("advertises strict cost-card selectors and rejects unknown selectors at the S
     });
     expect(result.isError).toBe(true);
     expect(remote).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+it("proxies review tools through MCP with null, missing fields and arbitrary dimensions intact", async () => {
+  const calls: Array<{ method?: string; params?: unknown }> = [];
+  const read = vi.spyOn(localFiles, "readLocalUploadFile");
+  const dependencies = createLauncherToolDependencies({
+    config,
+    auth: fakeAuth(),
+    fetchImplementation: fakeMcpFetch(calls)
+  });
+  const scores = JSON.parse('{"__proto__":8,"constructor":7,"服务":9}');
+  const input = {
+    reviews: [
+      {
+        enterpriseName: "合成企业",
+        source: "美团评价",
+        storeName: "门店",
+        reviewedAt: "2026-10-17 13",
+        reviewerName: "用户",
+        content: null,
+        scores
+      }
+    ]
+  };
+  const server = new McpServer({ name: "review-launcher", version: "1.0.0" });
+  registerLauncherTools(server, dependencies);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "review-client", version: "1.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const tools = await client.listTools();
+    expect(
+      tools.tools.find((tool) => tool.name === "upsert_store_reviews")?.annotations
+    ).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    const result = await client.callTool({ name: "upsert_store_reviews", arguments: input });
+    expect(result.isError).not.toBe(true);
+    const sent = calls.find((call) => call.method === "tools/call")!.params as {
+      name: string;
+      arguments: typeof input;
+    };
+    expect(sent.name).toBe("upsert_store_reviews");
+    expect(sent.arguments).toEqual(input);
+    expect(Object.hasOwn(sent.arguments.reviews[0]!.scores, "__proto__")).toBe(true);
+    expect(sent.arguments.reviews[0]).not.toHaveProperty("merchantReply");
+    await client.callTool({
+      name: "query_store_reviews",
+      arguments: { enterpriseName: "合成企业", hasReply: false }
+    });
+    expect(calls.filter((call) => call.method === "tools/call")[1]!.params).toMatchObject({
+      name: "query_store_reviews",
+      arguments: { enterpriseName: "合成企业", hasReply: false }
+    });
+    expect(read).not.toHaveBeenCalled();
   } finally {
     await client.close();
     await server.close();

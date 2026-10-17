@@ -812,7 +812,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expectErrorCode(malformedEnvelope.json<McpErrorBody>(), "MCP_MALFORMED_ENVELOPE");
   });
 
-  it("rejects JSON bodies over the typed MAX_UPLOAD_BYTES limit", async () => {
+  it("rejects JSON bodies over the review/upload transport budget", async () => {
     app = buildMcpTestServer({
       runtimeEnv: { MAX_UPLOAD_BYTES: "1" }
     });
@@ -824,7 +824,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       params: {
         name: "smedc_get_current_user",
         arguments: {
-          oversized: "x".repeat(70_000)
+          oversized: "x".repeat(17 * 1024 * 1024)
         }
       }
     });
@@ -1412,6 +1412,12 @@ describe("HTTP and official MCP business authorization parity", () => {
       ]
     };
     const repository = {
+      loadPermissionCard: vi.fn(async (id: string, orgId: string) => ({
+        ...snapshot,
+        employeeId: id,
+        orgId,
+        storeReviewEnterprises: { complete: true, read: [], write: [] }
+      })),
       loadAuthorizationSnapshot: vi.fn(async (id: string, orgId: string) => {
         if (id === "foreign") throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
         return { ...snapshot, employeeId: id, orgId };

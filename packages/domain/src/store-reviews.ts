@@ -9,6 +9,8 @@ export const STORE_REVIEW_LIMITS = Object.freeze({
   textChars: 16384,
   scoresBytes: 65536,
   batchBytes: 16777216,
+  // SDK clients default to a 10 MiB stdio buffer; reserve 64 KiB for envelopes.
+  queryResponseBytes: 10 * 1024 * 1024 - 64 * 1024,
   defaultLimit: 50,
   maxRows: 200,
   maxStoreNames: 100,
@@ -55,6 +57,10 @@ export type StoreReviewQueryResult = {
   rows: StoreReviewRow[];
   page: { nextCursor: string | null };
 };
+/** Count the escaped JSON text used by the public MCP result, including pretty-printing. */
+export function storeReviewQueryResponseBytes(result: StoreReviewQueryResult): number {
+  return Buffer.byteLength(JSON.stringify(JSON.stringify(result, null, 2)), "utf8");
+}
 export type StoreReviewActor = { id: string; orgId: string };
 export type StoreReviewEnterpriseOptions = {
   complete: true;

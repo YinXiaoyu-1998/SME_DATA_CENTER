@@ -754,7 +754,12 @@ export const upsertStoreReviewsInputSchema = z
               .refine((v) => storeReviewTextFits(v, STORE_REVIEW_LIMITS.textChars))
               .nullable()
               .optional(),
-            scores: z.record(z.string(), z.number().finite()).nullable().optional(),
+            // Intersect with the untouched input so Zod's record parser cannot discard
+            // own "__proto__" dimensions. Intersection uses safe object spread.
+            scores: z
+              .intersection(z.record(z.string(), z.number().finite()), z.unknown())
+              .nullable()
+              .optional(),
             merchantReply: z
               .string()
               .refine((v) => storeReviewTextFits(v, STORE_REVIEW_LIMITS.textChars))
@@ -1444,7 +1449,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upsert_store_reviews",
     title: "Upsert store reviews",
     description:
-      "Atomically record 1–1000 platform reviews using POST /v1/store-reviews/upsert. Requires the current active admin role. Every row requires an explicitly selected registered enterpriseName and exact store identity. Omitted fields remain unchanged; null clears. Only save verified published merchant replies.",
+      "Atomically record 1–1000 platform reviews using POST /v1/store-reviews/upsert. Requires the current active admin role. Every row requires an explicitly selected registered enterpriseName and exact store identity. Omitted fields remain unchanged; null clears and scores replaces the whole object. Beijing time requires at least an hour (YYYY-MM-DD HH or T with +08:00); missing minutes/seconds become zero. Only save verified published merchant replies. The batch fully commits or rolls back; repeated writes do not add duplicate rows, but counts and permission/cursor versions may change.",
     inputSchema: upsertStoreReviewsInputSchema,
     inputFields: [
       {
@@ -1454,13 +1459,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       }
     ],
     resultShape: ["received, inserted, updated, unchanged"],
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }
   }),
   defineToolContract({
     name: "query_store_reviews",
     title: "Query store reviews",
     description:
-      "Read currently authorized store reviews using POST /v1/store-reviews/query. Requires explicit enterpriseName. Administrators also require read grants. Fixed reviewedAt DESC, id DESC order; inclusive Beijing time filters. Restart pagination when data or permissions change.",
+      "Read currently authorized store reviews using POST /v1/store-reviews/query. Requires explicit enterpriseName. Administrators also require read grants. Fixed reviewedAt DESC, id DESC order; inclusive Beijing time filters. Pages may return fewer complete rows than limit to fit the MCP response byte budget; continue with nextCursor. Restart pagination when data or permissions change.",
     inputSchema: queryStoreReviewsInputSchema,
     inputFields: Object.entries(queryStoreReviewsInputSchema.shape).map(([name, schema]) => ({
       name,

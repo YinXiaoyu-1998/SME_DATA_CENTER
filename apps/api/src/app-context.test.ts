@@ -150,3 +150,17 @@ describe("API server context", () => {
     expect(disconnects.evidence).toHaveBeenCalledTimes(1);
   });
 });
+
+it("returns one injected review service and closes an unused review context lazily", async () => {
+  const service = { upsert: vi.fn(), query: vi.fn() };
+  const context = createApiServerContext({
+    cursorSigningSecret: "synthetic",
+    authenticateAccessToken: async () => employee,
+    runtimeEnv: {},
+    storeReviewService: service
+  });
+  expect(context.storeReviews()).toBe(service);
+  expect(context.storeReviews()).toBe(service);
+  await context.close();
+  await context.close();
+});

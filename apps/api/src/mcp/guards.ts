@@ -1,3 +1,4 @@
+import { STORE_REVIEW_LIMITS } from "@smedc/domain";
 import { isIP } from "node:net";
 import { normalizeRequestId } from "../request-audit-context.js";
 
@@ -124,7 +125,10 @@ export function resolvePhase3ServiceListenHost(env: NodeJS.ProcessEnv = process.
 export function mcpBodyLimitBytes(maxUploadBytes: number): number {
   const base64Bytes = Math.ceil((maxUploadBytes * 4) / 3);
 
-  return Math.min(Number.MAX_SAFE_INTEGER, base64Bytes + MCP_JSON_ENVELOPE_OVERHEAD_BYTES);
+  return Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.max(base64Bytes, STORE_REVIEW_LIMITS.batchBytes) + MCP_JSON_ENVELOPE_OVERHEAD_BYTES
+  );
 }
 
 export function createMcpConcurrencyLimiter(maxConcurrentRequests: number) {

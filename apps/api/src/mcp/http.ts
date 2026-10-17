@@ -78,6 +78,14 @@ export function registerMcpHttpRoute(app: FastifyInstance, options: McpHttpRoute
   }
 
   void app.register(async (mcpApp) => {
+    // Scores may contain any own dimension key, including __proto__ and constructor.
+    // Keep JSON keys intact; strict tool schemas and domain parsers validate their shape.
+    mcpApp.removeContentTypeParser("application/json");
+    mcpApp.addContentTypeParser(
+      "application/json",
+      { parseAs: "string" },
+      mcpApp.getDefaultJsonParser("ignore", "ignore")
+    );
     mcpApp.setErrorHandler((error, request, reply) => {
       releaseRequest(request);
       const statusCode = fastifyErrorStatusCode(error);

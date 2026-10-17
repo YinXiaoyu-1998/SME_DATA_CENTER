@@ -9,6 +9,8 @@ import { isDeepStrictEqual } from "node:util";
 import { Prisma, type PrismaClient, type StoreReview } from "@prisma/client";
 import {
   isBusinessClearance,
+  STORE_REVIEW_LIMITS,
+  storeReviewQueryResponseBytes,
   assertStoreReviewBatchBytes,
   parseStoreReviewBatch,
   normalizeEnterpriseIdentity,
@@ -63,9 +65,7 @@ function patch(row: StoreReviewInput): Prisma.StoreReviewUpdateInput {
   return {
     ...(Object.hasOwn(row, "content") ? { content: row.content } : {}),
     ...(Object.hasOwn(row, "merchantReply") ? { merchantReply: row.merchantReply } : {}),
-    ...(Object.hasOwn(row, "scores")
-      ? { scores: row.scores === null ? Prisma.DbNull : row.scores }
-      : {})
+    ...(Object.hasOwn(row, "scores") ? { scores: Prisma.DbNull } : {})
   };
 }
 function changed(existing: StoreReview, input: StoreReviewInput) {
@@ -167,36 +167,58 @@ export function createPrismaStoreReviewRepository({
               updatedAt: Date;
             }>
           >(
-            `SELECT v.id, v.source, v.store_name AS storeName, v.reviewed_at AS reviewedAt, v.reviewer_name AS reviewerName, v.content, v.scores, v.merchant_reply AS merchantReply, v.created_at AS createdAt, v.updated_at AS updatedAt FROM store_reviews v WHERE ${conditions.join(" AND ")} ORDER BY v.reviewed_at DESC, v.id DESC LIMIT ? OFFSET ?`,
+            `SELECT v.id, v.source, v.store_name AS storeName, v.reviewed_at AS reviewedAt, v.reviewer_name AS reviewerName, v.content, CAST(v.scores AS CHAR CHARACTER SET utf8mb4) AS scores, v.merchant_reply AS merchantReply, v.created_at AS createdAt, v.updated_at AS updatedAt FROM store_reviews v WHERE ${conditions.join(" AND ")} ORDER BY v.reviewed_at DESC, v.id DESC LIMIT ? OFFSET ?`,
             ...params,
             limit + 1,
             offset
           );
           const beijing = (date: Date) =>
             new Date(date.getTime() + 28800000).toISOString().slice(0, 19) + "+08:00";
-          return {
-            rows: rows.slice(0, limit).map((row) => ({
-              ...row,
-              enterpriseName: query.enterpriseName,
-              scores:
-                typeof row.scores === "string"
-                  ? (JSON.parse(row.scores) as StoreReviewScores)
-                  : row.scores,
-              reviewedAt: beijing(row.reviewedAt),
-              createdAt: beijing(row.createdAt),
-              updatedAt: beijing(row.updatedAt)
-            })),
+          const publicRows = rows.slice(0, limit).map((row) => ({
+            ...row,
+            enterpriseName: query.enterpriseName,
+            scores:
+              typeof row.scores === "string"
+                ? (JSON.parse(row.scores) as StoreReviewScores)
+                : row.scores,
+            reviewedAt: beijing(row.reviewedAt),
+            createdAt: beijing(row.createdAt),
+            updatedAt: beijing(row.updatedAt)
+          }));
+          const page = (count: number): StoreReviewQueryResult => ({
+            rows: publicRows.slice(0, count),
             page: {
               nextCursor:
-                rows.length > limit
+                rows.length > count
                   ? createStructuredCursor({
-                      offset: offset + limit,
+                      offset: offset + count,
                       shapeHash,
                       secret: cursorSecret
                     })
                   : null
             }
-          };
+          });
+          let count = publicRows.length;
+          if (storeReviewQueryResponseBytes(page(count)) > STORE_REVIEW_LIMITS.queryResponseBytes) {
+            // Return the largest complete-row prefix that fits a default MCP client's
+            // input buffer, accounting for JSON text's second layer of escaping.
+            let low = 1,
+              high = count;
+            while (low < high) {
+              const middle = Math.ceil((low + high) / 2);
+              if (
+                storeReviewQueryResponseBytes(page(middle)) <=
+                STORE_REVIEW_LIMITS.queryResponseBytes
+              )
+                low = middle;
+              else high = middle - 1;
+            }
+            count = low;
+          }
+          const result = page(count);
+          if (storeReviewQueryResponseBytes(result) > STORE_REVIEW_LIMITS.queryResponseBytes)
+            throw new StoreReviewRepositoryError("STORE_REVIEW_RESPONSE_TOO_LARGE");
+          return result;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
       );
@@ -263,18 +285,30 @@ export function createPrismaStoreReviewRepository({
               ...(await tx.storeReview.findMany({
                 where: {
                   orgId: actor.orgId,
-                  OR: rows
-                    .slice(offset, offset + 100)
-                    .map((row) => ({
-                      enterpriseKey: row.enterpriseKey,
-                      source: row.source,
-                      storeName: row.storeName,
-                      reviewerName: row.reviewerName,
-                      reviewedAt: row.reviewedAt
-                    }))
+                  OR: rows.slice(offset, offset + 100).map((row) => ({
+                    enterpriseKey: row.enterpriseKey,
+                    source: row.source,
+                    storeName: row.storeName,
+                    reviewerName: row.reviewerName,
+                    reviewedAt: row.reviewedAt
+                  }))
                 }
               }))
             );
+          // Prisma's object JSON codec can discard own __proto__ keys. Keep scores
+          // as parameterized JSON text on both sides of the persistence boundary.
+          for (let offset = 0; offset < existingRows.length; offset += 100) {
+            const chunk = existingRows.slice(offset, offset + 100);
+            const stored = await tx.$queryRawUnsafe<Array<{ id: string; scores: string | null }>>(
+              `SELECT id, CAST(scores AS CHAR CHARACTER SET utf8mb4) AS scores FROM store_reviews WHERE org_id = ? AND id IN (${chunk.map(() => "?").join(",")})`,
+              actor.orgId,
+              ...chunk.map((row) => row.id)
+            );
+            const scoresById = new Map(
+              stored.map((row) => [row.id, row.scores === null ? null : JSON.parse(row.scores)])
+            );
+            for (const row of chunk) row.scores = scoresById.get(row.id) ?? null;
+          }
           const existingByKey = new Map(existingRows.map((row) => [key(row), row]));
           const result: StoreReviewWriteResult = {
             received: rows.length,
@@ -305,11 +339,13 @@ export function createPrismaStoreReviewRepository({
                     reviewedAt: row.reviewedAt,
                     content: row.input.content ?? null,
                     merchantReply: row.input.merchantReply ?? null,
-                    scores: row.input.scores == null ? Prisma.DbNull : row.input.scores
+                    scores: Prisma.DbNull
                   }
                 });
                 result.inserted++;
               }
+              if (Object.hasOwn(row.input, "scores") && row.input.scores !== null)
+                await tx.$executeRaw`UPDATE store_reviews SET scores = ${JSON.stringify(row.input.scores)} WHERE org_id = ${actor.orgId} AND id = ${id}`;
               await persistStoreReviewResource(
                 tx,
                 {

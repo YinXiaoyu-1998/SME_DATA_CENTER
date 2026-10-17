@@ -1,6 +1,6 @@
 # SMEDC MCP User Flow
 
-Updated: 2026-10-13. Use the published approved `smedc-mcp-launcher@0.9.0` and the dual-homed Skill. Minimum server compatibility remains 0.6.0. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
+Updated: 2026-10-13. Use the published approved `smedc-mcp-launcher@0.10.1` and the dual-homed Skill. Minimum server compatibility remains 0.6.0. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
 
 ## Upload Authorization
 
@@ -14,7 +14,7 @@ without re-login, retry, or a clearance workaround.
 Local prevention produces no backend audit; backend denial best-effort records `file_upload.denied`.
 An admin may explicitly classify above their clearance, but ordinary read/status/search/query/download
 rules still apply. Partition create/parts/complete require admin; owner abort remains allowed.
-The minimum launcher version is 0.6.0 and the recommended version is 0.9.0; older launchers receive an upgrade error. See the
+The minimum launcher version is 0.6.0 and the recommended version is 0.10.1; older launchers receive an upgrade error. See the
 [endpoint matrix](api-contract.md#file-upload-capability) for surfaces and the future service-identity non-goal.
 
 ## Participants And Credential Boundary
@@ -135,7 +135,7 @@ action.
 Range is the default. Bundle mode is optional and requires a known matching ZIP service;
 tools/list is insufficient. If ZIP is removed, regenerate saved plans with range downloads.
 
-Use approved launcher 0.9.0 with the matching deployed service. Verify optional ZIP support before selecting bundle mode.
+Use approved launcher 0.10.1 with the matching deployed service. Verify optional ZIP support before selecting bundle mode.
 For business/dishes, use the same `enterpriseName`/`storeNameContains` scope in coverage and
 prepare. Names are 1–20 NFC/trim literal case-sensitive substrings, OR within the array and AND
 with authorization and other selectors. Prepare with compact inclusive `YYYYMMDD` dates and an
@@ -153,3 +153,21 @@ Service cleanup is operator-only, including for admins. Exact inputs, limits and
 Current contracts and defaults are in [API/MCP](api-contract.md) and [official login](official-user-install-and-login.md). MacOS, Windows and Linux installation are supported; a particular host or phone-controlled product requires its own acceptance evidence. Only verified target URLs are handed to administrators.
 
 Business/dishes use partition download for local analysis, not generic row queries. Ledger delivery uses PDFs, not raw ledger rows, aggregates or source downloads. The server's configured daily schedule generates PDFs; employee tools only observe and prepare delivery. Development email/JWT, Authorization Code and loopback callback login paths are absent.
+
+## Store reviews (candidate contract)
+
+Source adds `upsert_store_reviews` and `query_store_reviews` for candidate launcher `0.11.0`
+and a matching service release. The verified install pin/recommendation remain `0.10.1`;
+Skill refresh does not establish launcher upgrade, service deployment or tenant authorization.
+Refresh `get_my_permissions.storeReviewEnterprises` before choosing: writes use write candidates,
+queries use read. Validate an explicit enterprise exactly; select/report only a sole unnamed
+candidate, ask when multiple exist, report unavailable when none exist. Never infer orgId/defaults.
+Current active admins synchronize 1–1000 reviews within 16 MiB UTF-8 JSON per independent
+transaction. Ordinary reads require complete category/enterprise/store grants and clearance, even
+for admins. Omission preserves values; null clears; scores replace the whole object. Collect pure
+ratings but omit them from reply-draft tables. Omit unread replies; save merchantReply only after
+platform publication is successful and verified, never from a draft. Beijing time requires an hour;
+missing hours or ambiguous identities stay unsynced. Split oversized batches without truncation;
+multiple batches have no global rollback. Verify timeouts and distinguish confirmed/unconfirmed
+batches before replaying anything that could overwrite new values. Keep filters unchanged with
+opaque cursors; restart after data/permission changes. See [review usage](../../skills/smedc-mcp/references/store-reviews.md).
