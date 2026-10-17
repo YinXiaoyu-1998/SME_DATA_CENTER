@@ -1,6 +1,6 @@
 # Current business permissions and controlled management
 
-The approved install pin is `smedc-mcp-launcher@0.10.1`, published and independently verified.
+The approved install pin is `smedc-mcp-launcher@0.11.0`, published and independently verified.
 Use the capabilities below only after the matching service and approved launcher release are
 available; tool discovery alone does not prove deployment or tenant activation. Do not change
 installation pins from server metadata or install npm `latest`.
@@ -24,9 +24,9 @@ For enterprise onboarding or adding an account, the primary entry is the verifie
 The current service implements the UI; users may also explicitly choose these authorized MCP tools. JSON remains an
 optional internal record, never a required user form.
 
-## Candidate store review enterprises
+## Store review enterprises
 
-For candidate launcher `0.11.0` and its matching service, `get_my_permissions {}` also returns
+For published, independently verified launcher `0.11.0` and its matching service, `get_my_permissions {}` also returns
 `storeReviewEnterprises: {complete:true, write:[{enterpriseKey,enterpriseName}], read:[...]}`.
 Existing fields remain unchanged. Candidates come from the registered enterprise directory;
 write needs current active admin and eligible review configuration, while read needs the complete
@@ -34,12 +34,12 @@ write needs current active admin and eligible review configuration, while read n
 Use the operation's full list: validate an explicit enterprise; automatically select and report
 only a sole candidate; ask when several exist; report unavailable when none exist. Never infer an
 enterprise from a historical key or reuse write candidates for reads. Missing candidate support
-is a release gap. See [store reviews](store-reviews.md) for batch and reply rules; this candidate
-addition does not promote the verified `0.10.1` install pin or activate a tenant.
+is a service/release gap. See [store reviews](store-reviews.md) for batch and reply rules. The
+approved install pin is `0.11.0`; installing it does not configure categories/grants or activate a tenant.
 
 ## Upload inputs
 
-These transport fields are bundled in approved launcher 0.10.1 and need the matching service
+These transport fields are bundled in approved launcher 0.11.0 and need the matching service
 rollout. A Skill refresh does not upgrade an older installed launcher. If unavailable, follow the
 approved launcher update procedure and report service rollout gaps; never bypass through direct HTTP.
 

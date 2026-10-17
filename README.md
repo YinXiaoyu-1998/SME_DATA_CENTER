@@ -152,7 +152,7 @@ The API entrypoint automatically loads `.env` from the current working directory
 ## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
-`smedc-mcp-launcher@0.10.1` local stdio launcher. The dual-homed
+`smedc-mcp-launcher@0.11.0` local stdio launcher. The dual-homed
 `skills/smedc-mcp/` skill is the authoritative current-user install, configuration,
 browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
 email/password/token/code input, uses `smedc_login`, `smedc_logout`,
@@ -160,15 +160,17 @@ email/password/token/code input, uses `smedc_login`, `smedc_logout`,
 operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
-`smedc-mcp-launcher@0.10.1` is published on npm and its registry integrity, clean install,
+`smedc-mcp-launcher@0.11.0` is published on npm and its registry integrity, clean install,
 CLI, packaging, and production dependency audit have been verified. The supported installation
 matrix is macOS, Windows, and Linux. macOS/Windows use their native secure stores; Linux uses a
 compatible Secret Service when available and otherwise keeps the session in launcher-process
 memory, so headless Linux requires a fresh tap-link login after restart. Client/business acceptance and target service rollout remain separate from npm package verification. Server
-compatibility requires at least 0.6.0 and recommends launcher 0.10.1; below-minimum launchers are rejected.
-Launcher 0.10.1 allows 45 seconds for business MCP calls; connection and profile checks retain
+compatibility requires at least 0.6.0 and recommends launcher 0.11.0; below-minimum launchers are rejected.
+Launcher 0.11.0 allows 45 seconds for business MCP calls; connection and profile checks retain
 30 seconds. It supports store-filtered coverage/range downloads and optional prepare/status/requestId
 ZIP downloads, plus cost-card directory lookup, per-card CSV downloads and single-card archive.
+It also exposes atomic store-review upserts, authorized queries and operation-specific enterprise
+candidates; see [store reviews](skills/smedc-mcp/references/store-reviews.md).
 Cost-card recipe/item/store analysis remains local to the employee agent. Transfer requests and stalls have 30-second bounds, and downloads have a
 240-second invocation budget. Use the coordinated service deployment and verified exact pin.
 Multipart uploads count progress only when the HTTPS transport consumes bytes, preventing
@@ -178,9 +180,9 @@ Only active admins upload evidence, structured datasets (including Delivery Ledg
 certificates. Employee uploads at every clearance receive HTTP `403` from direct HTTP endpoints;
 MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result. Both carry
 `UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and `retryable: false`.
-Tools stay visible; launcher 0.10.1 preflights the role
+Tools stay visible; launcher 0.11.0 preflights the role
 before reading a file, while the backend remains authoritative for accepted requests. Current category/scope grants and sufficient clearance jointly govern ordinary reads. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
-Launcher 0.10.1 exposes the four ledger PDF download tools and no employee PDF generation tool.
+Launcher 0.11.0 exposes the four ledger PDF download tools and no employee PDF generation tool.
 Archive delivery is gated by the service rollout; until enabled, report `LEDGER_PDF_NOT_ENABLED`.
 The service automatically updates affected daily PDFs; uploads reaching `applied`
 do not mean PDF completion. Current release/deployment evidence is maintained in [staging readiness](docs/implementation/staging-readiness.md); tenant activation is separate.

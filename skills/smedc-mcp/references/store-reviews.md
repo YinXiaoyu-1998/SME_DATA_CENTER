@@ -1,10 +1,10 @@
-# Store reviews — candidate contract
+# Store reviews
 
-Candidate source contract for launcher `0.11.0` and the matching service release; neither is
-published or deployed by this change. The verified installation pin stays
-`smedc-mcp-launcher@0.10.1`. A Skill refresh or tools/list result alone does not establish
-availability. Use these tools only after matching launcher/service release is confirmed; follow
-the core installation procedure for an approved update, never substitute a candidate install pin.
+Launcher `0.11.0` is published, independently verified and approved for installation. Use the
+core Skill's exact `smedc-mcp-launcher@0.11.0` installation procedure. Store-review tools require
+the matching service release and explicit tenant category/grant configuration. Publication,
+installation, a Skill refresh or tools/list alone does not establish service or tenant readiness;
+verify current permission candidates and follow authoritative server denials.
 
 ## Choose an enterprise before calling
 

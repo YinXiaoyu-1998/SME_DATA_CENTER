@@ -27,7 +27,7 @@ function launcherVersions(content: string): string[] {
 function expectPinnedReferences(content: string, label: string): void {
   const versions = launcherVersions(content);
   expect(versions.length, `No launcher references in ${label}`).toBeGreaterThan(0);
-  expect(new Set(versions), label).toEqual(new Set(["0.10.1"]));
+  expect(new Set(versions), label).toEqual(new Set(["0.11.0"]));
 }
 
 describe("official user install and login documentation", () => {

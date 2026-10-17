@@ -37,7 +37,7 @@ describe("SMEDC companion skill guidance", () => {
     for (const field of COST_CARD_DIRECTORY_REGISTRY.fields)
       expect(guide).toContain(`\`${field.canonicalName}\``);
     for (const invariant of [
-      "Launcher `0.10.1` is published and independently verified",
+      "Launcher `0.11.0` is published and independently verified",
       "matching service rollout",
       "35",
       "38",
