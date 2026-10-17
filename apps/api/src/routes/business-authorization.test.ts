@@ -215,6 +215,33 @@ describe("business permission administration", () => {
       await app.close();
     }
   });
+  it("accepts an explicit enterprise name in the ordinary store save and reports identity errors", async () => {
+    const { app, repository } = fixture();
+    try {
+      const payload = { expectedVersion: "7", enterpriseName: "Fresh Cafe", name: "First store" };
+      expect(
+        (await app.inject({ method: "POST", url: "/v1/admin/permissions/stores", payload }))
+          .statusCode
+      ).toBe(200);
+      expect(repository.putStore).toHaveBeenCalledWith({
+        orgId: "org",
+        actorId: "actor",
+        ...payload
+      });
+      for (const code of ["ENTERPRISE_NAME_REQUIRED", "ENTERPRISE_NAME_CONFLICT"]) {
+        repository.putStore.mockRejectedValueOnce(new Error(code));
+        const response = await app.inject({
+          method: "POST",
+          url: "/v1/admin/permissions/stores",
+          payload
+        });
+        expect(response.statusCode).toBe(400);
+        expect(response.json().error.code).toBe(code);
+      }
+    } finally {
+      await app.close();
+    }
+  });
   it("allows an admin without content grants to inspect and update another account and self", async () => {
     const { app, repository } = fixture();
     try {

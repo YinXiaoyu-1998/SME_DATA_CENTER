@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 describe("internal permissions operator CLI", () => {
+  it("plans a first-store save with its explicit business name without a separate declaration", async () => {
+    const { planPermissionChange } = await import("./cli.js");
+    expect(
+      planPermissionChange("store.set", { enterpriseName: "Fresh Cafe", name: "First store" }, "7")
+    ).toEqual({
+      method: "POST",
+      url: "/internal/permissions/stores",
+      body: { enterpriseName: "Fresh Cafe", name: "First store", expectedVersion: "7" }
+    });
+  });
   it("requires an explicit tenant, requesting admin, operator and change reference", async () => {
     const cli = await import("./cli.js");
     expect(() => cli.parsePermissionsOperatorArgs(["apply"])).toThrow();

@@ -3,6 +3,8 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createDatabaseAdapter } from "./adapter.js";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
+import { createPrismaStoreReviewRepository } from "./store-reviews.js";
+import { createPrismaPermissionsUiMetadata } from "../../../apps/api/src/admin-permissions/metadata.js";
 const run = process.env["RUN_STORE_REVIEW_PRISMA_INTEGRATION"] === "1";
 const url = process.env["DATABASE_URL"] ?? "";
 if (run) {
@@ -85,6 +87,88 @@ if (run) {
       ]
     });
   };
+  it("registers a new enterprise in the ordinary first-store save, without requiring any review data", async () => {
+    const metadata = createPrismaPermissionsUiMetadata(prisma);
+    await prisma.businessStore.create({
+      data: { orgId, enterpriseKey: "unconfirmed", name: "Unconfirmed" }
+    });
+    expect(await metadata.listEnterprises(orgId)).toEqual([]);
+    const saved = await repo.putStore({
+      orgId,
+      actorId: id,
+      expectedVersion: "1",
+      enterpriseName: "Fresh Cafe",
+      name: "First store"
+    });
+    expect(saved.value).toMatchObject({
+      enterpriseKey: "fresh cafe",
+      enterpriseName: "Fresh Cafe",
+      name: "First store"
+    });
+    expect(await metadata.listEnterprises(orgId)).toEqual([
+      { enterpriseKey: "fresh cafe", enterpriseName: "Fresh Cafe" }
+    ]);
+    await grant("fresh cafe", { kind: "fixed", values: ["First store"] });
+    expect(await card()).toEqual({
+      complete: true,
+      write: [{ enterpriseKey: "fresh cafe", enterpriseName: "Fresh Cafe" }],
+      read: [{ enterpriseKey: "fresh cafe", enterpriseName: "Fresh Cafe" }]
+    });
+    const reviews = createPrismaStoreReviewRepository({
+      prisma,
+      cursorSecret: "onboarding-regression-test-secret"
+    });
+    expect(await reviews.query({ id, orgId }, { enterpriseName: "Fresh Cafe" })).toEqual({
+      rows: [],
+      page: { nextCursor: null }
+    });
+    expect(await prisma.storeReview.count({ where: { orgId } })).toBe(0);
+    const audits = await prisma.businessAuthorizationAudit.findMany({
+      where: { orgId, outcome: "succeeded", version: 2n }
+    });
+    expect(audits.map((row) => row.action).sort()).toEqual([
+      "enterprise.identity.declare",
+      "store.configure"
+    ]);
+  });
+  it("rejects an unregistered review grant atomically instead of saving unusable permissions", async () => {
+    await prisma.businessStore.create({ data: { orgId, enterpriseKey: "unknown", name: "Store" } });
+    await expect(grant("unknown")).rejects.toThrow("ENTERPRISE_NAME_REQUIRED");
+    expect(await prisma.businessGrant.count({ where: { orgId } })).toBe(0);
+    expect(await prisma.businessAuthorizationState.findUnique({ where: { orgId } })).toMatchObject({
+      version: 1n
+    });
+  });
+  it("rolls back automatic registration when the store save fails and never overwrites a conflicting name", async () => {
+    await expect(
+      repo.putStore({
+        orgId,
+        actorId: id,
+        expectedVersion: "1",
+        enterpriseName: "Fresh Cafe",
+        name: "x".repeat(256)
+      })
+    ).rejects.toThrow();
+    expect(await prisma.businessEnterpriseIdentity.count({ where: { orgId } })).toBe(0);
+    expect(await prisma.businessAuthorizationState.findUnique({ where: { orgId } })).toMatchObject({
+      version: 1n
+    });
+    await declare("Alpha");
+    await expect(
+      repo.putStore({
+        orgId,
+        actorId: id,
+        expectedVersion: "1",
+        enterpriseKey: "alpha",
+        enterpriseName: "ALPHA",
+        name: "Another store"
+      })
+    ).rejects.toThrow("ENTERPRISE_NAME_CONFLICT");
+    expect(await prisma.businessStore.count({ where: { orgId } })).toBe(1);
+    expect(await prisma.businessEnterpriseIdentity.findFirst({ where: { orgId } })).toMatchObject({
+      enterpriseName: "Alpha"
+    });
+  });
   it("lists zero, one and many registered writable enterprises without inferring undeclared keys", async () => {
     expect(await card()).toEqual({ complete: true, write: [], read: [] });
     await declare("Alpha");

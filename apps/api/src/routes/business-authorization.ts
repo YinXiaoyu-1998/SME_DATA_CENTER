@@ -53,6 +53,17 @@ export function respondBusinessAuthorizationError(error: unknown, reply: Fastify
     return reply
       .code(409)
       .send(errorResponse(code, "Permission configuration changed. Reload and retry."));
+  if (code === "ENTERPRISE_NAME_REQUIRED" || code === "ENTERPRISE_NAME_CONFLICT")
+    return reply
+      .code(400)
+      .send(
+        errorResponse(
+          code,
+          code === "ENTERPRISE_NAME_REQUIRED"
+            ? "Save an explicit business enterprise name before configuring its stores or review access."
+            : "The enterprise name conflicts with its saved identity. Reload and confirm the name."
+        )
+      );
   if (
     [
       "AUTHORIZATION_CUTOVER_NOT_READY",
@@ -227,11 +238,14 @@ export function registerBusinessAuthorizationRoutes(
   route("POST", `${adminBase}/stores`, true, async (service, actor, _params, body, reply) => {
     if (
       !text(body["expectedVersion"]) ||
-      !text(body["enterpriseKey"]) ||
+      (!text(body["enterpriseKey"]) && !text(body["enterpriseName"])) ||
+      (body["enterpriseKey"] !== undefined && !text(body["enterpriseKey"])) ||
+      (body["enterpriseName"] !== undefined && !text(body["enterpriseName"])) ||
       !text(body["name"]) ||
       (body["retired"] !== undefined && typeof body["retired"] !== "boolean") ||
       Object.keys(body).some(
-        (key) => !["expectedVersion", "enterpriseKey", "name", "retired"].includes(key)
+        (key) =>
+          !["expectedVersion", "enterpriseKey", "enterpriseName", "name", "retired"].includes(key)
       )
     )
       return invalid(reply);
@@ -239,7 +253,12 @@ export function registerBusinessAuthorizationRoutes(
       orgId: actor.orgId,
       actorId: actor.employeeId,
       expectedVersion: body["expectedVersion"],
-      enterpriseKey: body["enterpriseKey"],
+      ...(typeof body["enterpriseKey"] === "string"
+        ? { enterpriseKey: body["enterpriseKey"] }
+        : {}),
+      ...(typeof body["enterpriseName"] === "string"
+        ? { enterpriseName: body["enterpriseName"] }
+        : {}),
       name: body["name"],
       ...(typeof body["retired"] === "boolean" ? { retired: body["retired"] } : {})
     });

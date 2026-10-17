@@ -303,8 +303,11 @@ suite("internal permissions operator with Prisma", () => {
       "CREATE TRIGGER reject_operator_audit BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic audit failure'"
     );
     try {
-      await expect(save("store.set", { enterpriseKey: "enterprise", name: "A" })).rejects.toThrow();
+      await expect(
+        save("store.set", { enterpriseName: "Enterprise", name: "A" })
+      ).rejects.toThrow();
       expect(await prisma.businessStore.count({ where: { orgId } })).toBe(0);
+      expect(await prisma.businessEnterpriseIdentity.count({ where: { orgId } })).toBe(0);
       expect(
         (await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).version
       ).toBe(0n);

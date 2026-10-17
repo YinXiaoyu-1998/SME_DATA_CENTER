@@ -538,6 +538,38 @@ export function createBusinessAuthorizationRepository({
       categories
     };
   }
+  async function saveEnterpriseIdentity(
+    tx: Tx,
+    orgId: string,
+    input: { enterpriseKey?: string; enterpriseName?: string }
+  ) {
+    let identity: { enterpriseKey: string; enterpriseName: string } | undefined;
+    if (input.enterpriseName !== undefined) {
+      if (!input.enterpriseName.trim() || input.enterpriseName.length > 255)
+        throw new Error("INVALID_ENTERPRISE_IDENTITY");
+      identity = normalizeEnterpriseIdentity(input.enterpriseName);
+      if (identity.enterpriseKey.length > 128) throw new Error("INVALID_ENTERPRISE_IDENTITY");
+      if (input.enterpriseKey !== undefined && input.enterpriseKey !== identity.enterpriseKey)
+        throw new Error("ENTERPRISE_NAME_CONFLICT");
+    }
+    const enterpriseKey = identity?.enterpriseKey ?? input.enterpriseKey;
+    if (!enterpriseKey) throw new Error("ENTERPRISE_NAME_REQUIRED");
+    const where = { orgId_enterpriseKey: { orgId, enterpriseKey } };
+    const before = await tx.businessEnterpriseIdentity.findUnique({ where });
+    if (before) {
+      if (
+        before.enterpriseKey !== enterpriseKey ||
+        (identity && before.enterpriseName !== identity.enterpriseName)
+      )
+        throw new Error("ENTERPRISE_NAME_CONFLICT");
+      return { before, after: before };
+    }
+    if (!identity) throw new Error("ENTERPRISE_NAME_REQUIRED");
+    return {
+      before: null,
+      after: await tx.businessEnterpriseIdentity.create({ data: { orgId, ...identity } })
+    };
+  }
   async function mutate<T>(
     context: AuthorizationWriteContext,
     action: string,
@@ -725,6 +757,28 @@ export function createBusinessAuthorizationRepository({
       return mutate(input, "account.permissions.configure", input.employeeId, async (tx) => {
         if (!isBusinessClearance(input.clearance)) throw new Error("INVALID_ACCOUNT_CLEARANCE");
         const before = await loadAuthorizationSnapshot(input.employeeId, input.orgId, tx);
+        const reviewCategory = before.categories.find(
+          (category) => category.key === "store_reviews"
+        );
+        const reviewEnterprises = [
+          ...new Set(
+            input.grants
+              .filter((grant) => reviewCategory && grant.categoryIds.includes(reviewCategory.id))
+              .map((grant) => grant.enterpriseKey)
+          )
+        ];
+        if (reviewEnterprises.length) {
+          const registered = await tx.businessEnterpriseIdentity.findMany({
+            where: { orgId: input.orgId, enterpriseKey: { in: reviewEnterprises } },
+            select: { enterpriseKey: true }
+          });
+          if (
+            reviewEnterprises.some(
+              (key) => !registered.some((identity) => identity.enterpriseKey === key)
+            )
+          )
+            throw new Error("ENTERPRISE_NAME_REQUIRED");
+        }
         await persistBusinessGrants(tx, input, before.categories);
         await tx.employee.update({
           where: { orgId_id: { orgId: input.orgId, id: input.employeeId } },
@@ -942,46 +996,49 @@ export function createBusinessAuthorizationRepository({
     },
     declareEnterpriseIdentity(input: AuthorizationWriteContext & { name: string }) {
       return mutate(input, "enterprise.identity.declare", "business-enterprise", async (tx) => {
-        if (!input.name.trim() || input.name.length > 255)
-          throw new Error("INVALID_ENTERPRISE_IDENTITY");
-        const normalized = normalizeEnterpriseIdentity(input.name);
-        if (normalized.enterpriseKey.length > 128) throw new Error("INVALID_ENTERPRISE_IDENTITY");
-        const where = {
-          orgId_enterpriseKey: { orgId: input.orgId, enterpriseKey: normalized.enterpriseKey }
-        };
-        const before = await tx.businessEnterpriseIdentity.findUnique({ where });
-        if (before && before.enterpriseName !== normalized.enterpriseName)
-          throw new Error("INVALID_ENTERPRISE_IDENTITY");
-        return {
-          before,
-          after: await tx.businessEnterpriseIdentity.upsert({
-            where,
-            create: { orgId: input.orgId, ...normalized },
-            update: {}
-          })
-        };
+        return saveEnterpriseIdentity(tx, input.orgId, { enterpriseName: input.name });
       });
     },
     putStore(
-      input: AuthorizationWriteContext & { enterpriseKey: string; name: string; retired?: boolean }
+      input: AuthorizationWriteContext & {
+        enterpriseKey?: string;
+        enterpriseName?: string;
+        name: string;
+        retired?: boolean;
+      }
     ) {
       return mutate(input, "store.configure", input.name, async (tx) => {
-        if (!input.enterpriseKey || !input.name.trim()) throw new Error("STORE_NAME_REQUIRED");
+        if (!input.name.trim()) throw new Error("STORE_NAME_REQUIRED");
+        const identity = await saveEnterpriseIdentity(tx, input.orgId, input);
+        if (!identity.before)
+          await writeAudit(tx, {
+            orgId: input.orgId,
+            actorId: input.actorId,
+            action: "enterprise.identity.declare",
+            targetId: "business-enterprise",
+            before: Prisma.JsonNull,
+            after: json(identity.after),
+            outcome: "succeeded",
+            version: BigInt(input.expectedVersion) + 1n
+          });
         const where = {
           orgId_enterpriseKey_name: {
             orgId: input.orgId,
-            enterpriseKey: input.enterpriseKey,
+            enterpriseKey: identity.after.enterpriseKey,
             name: input.name
           }
         };
         const before = await tx.businessStore.findUnique({ where });
         return {
           before,
-          after: await tx.businessStore.upsert({
-            where,
-            create: { ...where.orgId_enterpriseKey_name, retired: input.retired ?? false },
-            update: { retired: input.retired ?? before?.retired ?? false }
-          })
+          after: {
+            ...(await tx.businessStore.upsert({
+              where,
+              create: { ...where.orgId_enterpriseKey_name, retired: input.retired ?? false },
+              update: { retired: input.retired ?? before?.retired ?? false }
+            })),
+            enterpriseName: identity.after.enterpriseName
+          }
         };
       });
     },

@@ -49,16 +49,16 @@ permissions-operator apply --org-id ORG_ID --requested-by-admin-id ADMIN_ID \
 
 上例输入：`{"enterpriseKey":"EXISTING_ENTERPRISE_KEY","name":"门店精确名称","retired":true}`。不接受任意 SQL、API 路径或顶层企业／操作者／版本覆盖字段。
 
-| 操作                                    | JSON 内容                                                                                                                    |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `enterprise.declare`                    | `name`：声明业务企业名称，服务生成企业 key；先从 `inspect enterprises` 获取结果再用于其他操作                                |
-| `store.set`                             | `enterpriseKey`、`name`、可选 `retired`；新增或按精确名称更新                                                                |
-| `dimension.create` / `dimension.update` | `id`、`name`、可选 `retired`                                                                                                 |
-| `value.create` / `value.update`         | `dimensionId`、`id`、`name`、可选 `retired`                                                                                  |
-| `category.create`                       | `id`、`name`、`ownerships`（`group`／`store`）、`requiredDimensionIds`、可选 `retired`；仅新增普通文档类别                   |
-| `category.update`                       | `id`、`name`、可选 `retired`；固定类别还需 `confidentialityLevel`；普通文档类别还需完整 `ownerships`、`requiredDimensionIds` |
-| `account.set`                           | `employeeId`、`clearance`（0–3）、完整 `grants`；替换该账号全部业务授权，必须保留仍需生效的原有 grant                        |
-| `document.set`                          | `documentId`、`categoryId`、`fileConfidentialityLevel`（0–3）、完整 `scopes`；按现有规则可带 `historicalSupplementReason`    |
+| 操作                                    | JSON 内容                                                                                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enterprise.declare`                    | `name`：声明业务企业名称，服务生成企业 key；先从 `inspect enterprises` 获取结果再用于其他操作                                                |
+| `store.set`                             | `name`、已有企业的 `enterpriseKey`，或新企业的 `enterpriseName`；可选 `retired`。名称与首店同事务保存；同时给 key 时必须与名称规范化结果一致 |
+| `dimension.create` / `dimension.update` | `id`、`name`、可选 `retired`                                                                                                                 |
+| `value.create` / `value.update`         | `dimensionId`、`id`、`name`、可选 `retired`                                                                                                  |
+| `category.create`                       | `id`、`name`、`ownerships`（`group`／`store`）、`requiredDimensionIds`、可选 `retired`；仅新增普通文档类别                                   |
+| `category.update`                       | `id`、`name`、可选 `retired`；固定类别还需 `confidentialityLevel`；普通文档类别还需完整 `ownerships`、`requiredDimensionIds`                 |
+| `account.set`                           | `employeeId`、`clearance`（0–3）、完整 `grants`；替换该账号全部业务授权，必须保留仍需生效的原有 grant                                        |
+| `document.set`                          | `documentId`、`categoryId`、`fileConfidentialityLevel`（0–3）、完整 `scopes`；按现有规则可带 `historicalSupplementReason`                    |
 
 `grants` 与 `scopes` 沿用现有业务权限合同。每条 grant 包含 `id`、当前 `orgId`、`enterpriseKey`、`categoryIds`、`ownership` 和 `dimensions`；门店级还需 `stores`。选择集为 `{"kind":"all"}` 或 `{"kind":"fixed","values":["精确值"]}`。每条 scope 包含 `enterpriseKey`、`ownership`、`dimensions`，门店级还需 `storeName`。维度键和值使用已有持久 ID，不使用显示名猜测。集团级与全部门店不同。
 

@@ -82,6 +82,8 @@ export const permissionsClientSource = String.raw`
  }
  function errorKey(code) {
    if (code === "AUTHORIZATION_VERSION_CONFLICT") return "conflict";
+   if (code === "ENTERPRISE_NAME_REQUIRED") return "enterpriseNameRequired";
+   if (code === "ENTERPRISE_NAME_CONFLICT") return "enterpriseNameConflict";
    if (code === "BROWSER_SIGN_IN_REQUIRED") return "expired";
    if (["BROWSER_ACCESS_DENIED", "AUTHORIZATION_ADMIN_REQUIRED"].includes(code)) return "denied";
    if (code === "BROWSER_SECURITY_CHECK_FAILED") return "security";
