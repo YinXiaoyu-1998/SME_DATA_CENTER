@@ -203,6 +203,16 @@ also require `confirm: true`. Preparation is read-only and lists missing configu
 no missing grant, level or historical attribute is inferred. Versioned preparation is recomputed
 inside activation. Real-tenant configuration and activation require separate human authorization.
 
+Enterprise selections use the same registered directory as store-review tools; names are never
+inferred from organization names, store keys or historical data. The HTTP/browser store save also
+accepts an explicit `enterpriseName` instead of an existing `enterpriseKey`, registering the name
+and saving the first store atomically under one version check. If both are supplied they must match.
+The response includes the authoritative `enterpriseName`. Existing MCP store parameters remain
+unchanged and refer to an already saved enterprise key. The operator `store.set` accepts the same
+optional name. `ENTERPRISE_NAME_REQUIRED` and `ENTERPRISE_NAME_CONFLICT` return HTTP 400 without
+partial changes. Review grants cannot be saved against an unregistered enterprise. Registration
+and store configuration never grant content access or set a category level or tenant mode.
+
 ### Filtered partition extracts and asynchronous bundles
 
 The approved launcher 0.11.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;

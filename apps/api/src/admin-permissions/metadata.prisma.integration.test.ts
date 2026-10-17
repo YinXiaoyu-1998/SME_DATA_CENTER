@@ -70,9 +70,7 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
         { orgId: organizations[1]!, enterpriseKey: "foreign-enterprise", name: "外企业门店" }
       ]
     });
-    expect(await metadata.listEnterprises(organizations[0]!)).toEqual([
-      { enterpriseKey: "declared-enterprise", enterpriseName: "declared-enterprise" }
-    ]);
+    expect(await metadata.listEnterprises(organizations[0]!)).toEqual([]);
   });
   it("paginates evidence permission metadata at 50 without exposing content or storage fields", async () => {
     const first = await metadata.listDocuments(organizations[0]!, {});
@@ -140,6 +138,6 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
         expectedVersion: "2",
         name: "示例 小馆 a"
       })
-    ).rejects.toThrow("INVALID_ENTERPRISE_IDENTITY");
+    ).rejects.toThrow("ENTERPRISE_NAME_CONFLICT");
   });
 });

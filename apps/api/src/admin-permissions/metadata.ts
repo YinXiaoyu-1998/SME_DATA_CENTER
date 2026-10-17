@@ -20,52 +20,11 @@ export interface PermissionsUiMetadata {
 export function createPrismaPermissionsUiMetadata(prisma: PrismaClient): PermissionsUiMetadata {
   return {
     async listEnterprises(orgId) {
-      const [stores, grants, scopes, partitions, declarations] = await Promise.all([
-        prisma.businessStore.findMany({
-          where: { orgId },
-          select: { enterpriseKey: true },
-          distinct: ["enterpriseKey"]
-        }),
-        prisma.businessGrant.findMany({
-          where: { orgId },
-          select: { enterpriseKey: true },
-          distinct: ["enterpriseKey"]
-        }),
-        prisma.businessResourceScope.findMany({
-          where: { orgId },
-          select: { enterpriseKey: true },
-          distinct: ["enterpriseKey"]
-        }),
-        prisma.structuredPartition.findMany({
-          where: { orgId },
-          select: { enterpriseKey: true, enterpriseName: true },
-          distinct: ["enterpriseKey", "enterpriseName"]
-        }),
-        prisma.businessEnterpriseIdentity.findMany({
-          where: { orgId },
-          select: { enterpriseKey: true, enterpriseName: true }
-        })
-      ]);
-      const names = new Map<string, Set<string>>();
-      for (const row of partitions) {
-        const candidates = names.get(row.enterpriseKey) ?? new Set<string>();
-        candidates.add(row.enterpriseName);
-        names.set(row.enterpriseKey, candidates);
-      }
-      const keys = new Set(
-        [...stores, ...grants, ...scopes, ...partitions, ...declarations].map(
-          (row) => row.enterpriseKey
-        )
-      );
-      return [...keys].sort().map((enterpriseKey) => {
-        const candidates = names.get(enterpriseKey);
-        // A conflicting historical name is not silently merged or guessed.
-        return {
-          enterpriseKey,
-          enterpriseName:
-            declarations.find((item) => item.enterpriseKey === enterpriseKey)?.enterpriseName ??
-            (candidates?.size === 1 ? [...candidates][0]! : enterpriseKey)
-        };
+      // The management page and review tools must agree on what constitutes an enterprise.
+      return prisma.businessEnterpriseIdentity.findMany({
+        where: { orgId },
+        select: { enterpriseKey: true, enterpriseName: true },
+        orderBy: { enterpriseKey: "asc" }
       });
     },
     async listDocuments(orgId, query) {

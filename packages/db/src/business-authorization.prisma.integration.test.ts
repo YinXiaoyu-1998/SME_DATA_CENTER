@@ -120,6 +120,7 @@ suite("business authorization Prisma foundation", () => {
         repository.putStore({
           ...context(),
           enterpriseKey: "enterprise",
+          enterpriseName: "Enterprise",
           name,
           retired: name === "B"
         })
@@ -383,7 +384,7 @@ suite("business authorization Prisma foundation", () => {
     expect(after.authorizationVersion).toBeGreaterThan(before.authorizationVersion);
     expect(
       await prisma.businessAuthorizationAudit.count({ where: { orgId, outcome: "succeeded" } })
-    ).toBe(Number(version));
+    ).toBe(Number(version) + 1); // The first store also audits enterprise creation at the same version.
     const currentVersion = version;
     await expect(
       repository.configureAccount({
@@ -1294,6 +1295,7 @@ suite("authoritative publication and original lineage", () => {
     await permissions.putStore({
       ...(await currentContext()),
       enterpriseKey: "enterprise",
+      enterpriseName: "Enterprise",
       name: storeName,
       retired: true
     });

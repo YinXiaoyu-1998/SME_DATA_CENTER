@@ -124,28 +124,36 @@ function enterpriseChoices(value = "") {
   if (value && !choices.some(choice => choice.value === value)) choices.push({ value, label: value });
   return choices;
 }
-function enterpriseSelect(value = "") { const control = select(enterpriseChoices(value), value); control.dataset.enterpriseSelect = "true"; return control; }
+function enterpriseSelect(value = "", allowNew = false) {
+  const choices = enterpriseChoices(value).map(choice => allowNew && choice.value ? { ...choice, value: "existing:" + choice.value } : choice);
+  if (allowNew) choices.push({ value: "new", label: translated("newEnterprise") });
+  const control = select(choices, allowNew && value ? "existing:" + value : value);
+  control.dataset.enterpriseSelect = "true";
+  if (allowNew) control.dataset.allowNewEnterprise = "true";
+  return control;
+}
 function refreshEnterpriseOptions() {
-  root.querySelectorAll('[data-enterprise-select="true"]').forEach(control => { const value = control.value; const fresh = enterpriseSelect(value); control.replaceChildren(...fresh.children); control.value = value; });
+  root.querySelectorAll('[data-enterprise-select="true"]').forEach(control => {
+    const value = control.value, allowNew = control.dataset.allowNewEnterprise === "true";
+    const key = allowNew ? (value.startsWith("existing:") ? value.slice(9) : "") : value;
+    const fresh = enterpriseSelect(key, allowNew); control.replaceChildren(...fresh.children); control.value = value;
+  });
 }
 function renderStores(section) {
   section.append(heading("stores"), pair("enterpriseHelp", "p"), pair("storeHelp", "p"));
   const declaration = formWithStatus(); const businessName = input(); declaration.form.className = "subpanel";
   declaration.form.append(heading("declareEnterprise", "h3"), field("enterpriseName", businessName));
-  declaration.form.addEventListener("submit", event => {
-    event.preventDefault();
-    Promise.resolve().then(async () => {
+  onSubmit(declaration.form, declaration.message, async () => {
       if (!businessName.value.trim()) { status(declaration.message, "required", true); return; }
-      const normalized = await request("/enterprises/preview", "POST", { name: businessName.value });
-      const content = { zh: normalized.enterpriseName + "\n" + copy.normalizedIdentity.zh + ": " + normalized.enterpriseKey + "\n" + copy.enterpriseDeclared.zh, en: normalized.enterpriseName + "\n" + copy.normalizedIdentity.en + ": " + normalized.enterpriseKey + "\n" + copy.enterpriseDeclared.en };
-      await saveChange(declaration.form, declaration.message, "/enterprises", "POST", null, { name: normalized.enterpriseName }, content, result => {
-        const existing = state.enterprises.find(item => item.enterpriseKey === normalized.enterpriseKey);
-        if (existing) Object.assign(existing, result.value || normalized); else state.enterprises.push(result.value || normalized);
-        refreshEnterpriseOptions();
+      const name = businessName.value;
+      const content = { zh: name + "\n" + copy.enterpriseDeclared.zh, en: name + "\n" + copy.enterpriseDeclared.en };
+      await saveChange(declaration.form, declaration.message, "/enterprises", "POST", null, { name }, content, result => {
+        const existing = state.enterprises.find(item => item.enterpriseKey === result.value.enterpriseKey);
+        if (existing) Object.assign(existing, result.value); else state.enterprises.push(result.value);
+        businessName.value = ""; refreshEnterpriseOptions();
       });
-    }).catch(error => showError(error, declaration.message));
   });
-  declaration.form.append(el("div", { class: "actions" }, el("button", { type: "submit", "data-write": "true" }, pair("preview"))), declaration.message); section.append(declaration.form);
+  section.append(declaration.form);
   const list = el("div"); section.append(list);
   function existingStore(store) {
     const item = formWithStatus(); item.form.className = "subpanel";
@@ -160,13 +168,25 @@ function renderStores(section) {
     list.append(item.form);
   }
   for (const store of state.stores) existingStore(store);
-  const creation = formWithStatus(); const enterprise = enterpriseSelect(), name = input(); creation.form.className = "subpanel";
-  creation.form.append(heading("addStore", "h3"), field("enterprise", enterprise), field("storeName", name));
+  const creation = formWithStatus(); const enterprise = enterpriseSelect("", true), name = input(), newEnterpriseName = input(); creation.form.className = "subpanel";
+  const newEnterpriseField = field("enterpriseName", newEnterpriseName);
+  const toggleEnterpriseName = () => { newEnterpriseField.hidden = enterprise.value !== "new"; };
+  if (!state.enterprises.length) enterprise.value = "new";
+  enterprise.addEventListener("change", toggleEnterpriseName); toggleEnterpriseName();
+  creation.form.append(heading("addStore", "h3"), field("enterprise", enterprise), newEnterpriseField, pair("automaticEnterpriseHelp", "p"), field("storeName", name));
   onSubmit(creation.form, creation.message, async () => {
-    if (!enterprise.value || !name.value.trim()) { status(creation.message, "required", true); return; }
-    if (state.stores.some(store => store.enterpriseKey === enterprise.value && store.name === name.value)) { status(creation.message, "invalid", true); return; }
-    const after = { enterpriseKey: enterprise.value, name: name.value, retired: false };
-    await saveChange(creation.form, creation.message, "/stores", "POST", null, after, { zh: after.enterpriseKey + " · " + after.name, en: after.enterpriseKey + " · " + after.name }, result => { const saved = result.value || after; state.stores.push(saved); existingStore(saved); name.value = ""; });
+    const isNew = enterprise.value === "new";
+    if (!enterprise.value || !name.value.trim() || (isNew && !newEnterpriseName.value.trim())) { status(creation.message, "required", true); return; }
+    const identity = isNew ? await request("/enterprises/preview", "POST", { name: newEnterpriseName.value }) : state.enterprises.find(item => item.enterpriseKey === enterprise.value.slice(9));
+    if (!identity) { status(creation.message, "enterpriseNameRequired", true); return; }
+    if (state.stores.some(store => store.enterpriseKey === identity.enterpriseKey && store.name === name.value)) { status(creation.message, "invalid", true); return; }
+    const after = { enterpriseKey: identity.enterpriseKey, ...(isNew ? { enterpriseName: identity.enterpriseName } : {}), name: name.value, retired: false };
+    await saveChange(creation.form, creation.message, "/stores", "POST", null, after, { zh: identity.enterpriseName + " · " + after.name, en: identity.enterpriseName + " · " + after.name }, result => {
+      const saved = result.value; state.stores.push(saved);
+      if (!state.enterprises.some(item => item.enterpriseKey === saved.enterpriseKey)) state.enterprises.push({ enterpriseKey: saved.enterpriseKey, enterpriseName: saved.enterpriseName });
+      existingStore(saved);
+      refreshEnterpriseOptions(); enterprise.value = "existing:" + saved.enterpriseKey; toggleEnterpriseName(); name.value = ""; newEnterpriseName.value = "";
+    });
   });
   section.append(creation.form);
 }`;

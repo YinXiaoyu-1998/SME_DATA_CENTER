@@ -111,6 +111,13 @@ describe("operator permission attribution", () => {
         findUnique: vi.fn(async () => null),
         upsert: vi.fn(async () => ({ name: "A ", retired: true }))
       },
+      businessEnterpriseIdentity: {
+        findUnique: vi.fn(async () => ({
+          orgId: "org",
+          enterpriseKey: "enterprise",
+          enterpriseName: "Enterprise"
+        }))
+      },
       businessAuthorizationAudit: businessAudit,
       auditLog: operatorLog
     };

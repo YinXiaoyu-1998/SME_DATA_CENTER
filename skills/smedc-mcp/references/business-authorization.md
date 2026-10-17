@@ -37,6 +37,13 @@ enterprise from a historical key or reuse write candidates for reads. Missing ca
 is a service/release gap. See [store reviews](store-reviews.md) for batch and reply rules. The
 approved install pin is `0.11.0`; installing it does not configure categories/grants or activate a tenant.
 
+Enterprise registration is part of the administrator UI's ordinary business-name or first-store
+save; see [the onboarding flow](tenant-onboarding.md#企业名称与首店保存). An empty review table does
+not prevent enterprise candidates. `ENTERPRISE_NAME_REQUIRED` means the business name must be saved
+before configuring its stores or review grants; `ENTERPRISE_NAME_CONFLICT` requires a name check,
+not a silent rename or merge. Existing MCP store updates still use a saved enterprise key. These
+errors do not authorize changing grants, category levels or tenant mode.
+
 ## Upload inputs
 
 These transport fields are bundled in approved launcher 0.11.0 and need the matching service

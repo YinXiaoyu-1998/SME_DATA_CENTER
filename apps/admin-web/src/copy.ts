@@ -135,13 +135,24 @@ export const permissionsCopy = {
     en: "For example, project or department. Use separate grants for different tuples to avoid expanding cross-combinations."
   },
   enterprise: { zh: "业务企业", en: "Business enterprise" },
-  declareEnterprise: { zh: "确认新的业务企业名称", en: "Confirm a new business name" },
+  declareEnterprise: { zh: "新增业务企业", en: "Add business enterprise" },
+  newEnterprise: { zh: "新增企业…", en: "New enterprise…" },
   enterpriseName: { zh: "业务企业名称", en: "Business name" },
-  preview: { zh: "核对规范身份", en: "Preview normalized identity" },
-  normalizedIdentity: { zh: "规范业务身份", en: "Normalized business identity" },
   enterpriseHelp: {
-    zh: "只选择本企业已确认的业务身份。新空企业可明确声明名称，不从组织名称猜测，也不合并历史别名。",
-    en: "Choose confirmed business identities for this enterprise. An empty enterprise can explicitly declare a name; organization names and historical aliases are never inferred or merged."
+    zh: "选择已有业务企业，或在新增门店时填写新企业名称。企业信息在保存时自动建立，与评价是否已有数据无关。",
+    en: "Choose an existing business or enter a new business name when adding a store. Saving creates its enterprise information, even when no reviews exist."
+  },
+  automaticEnterpriseHelp: {
+    zh: "新增企业时，企业名称与门店一起保存，无需额外登记。密级和账号读取权限仍由你单独设置。",
+    en: "For a new enterprise, its name and store are saved together with no separate registration. Configure category levels and account read access separately."
+  },
+  enterpriseNameRequired: {
+    zh: "请先在“门店与业务企业”保存企业名称或新增该企业的门店，再保存评价授权。现有权限未改变。",
+    en: "Save the business name or its first store under Stores and businesses before saving review access. Existing permissions are unchanged."
+  },
+  enterpriseNameConflict: {
+    zh: "企业名称与已有企业信息冲突。请重新读取配置，核对名称后再保存；系统不会自动更名或合并。",
+    en: "The business name conflicts with the saved enterprise. Reload and confirm the name before saving; enterprises are never automatically renamed or merged."
   },
   enterpriseDeclared: {
     zh: "确认后保存本组织的业务企业名称；此操作不授予任何读取权限。",

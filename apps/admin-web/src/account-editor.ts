@@ -49,6 +49,7 @@ function validateGrant(grant) {
   for (const id of grant.categoryIds) {
     const category = state.categories.find(item => item.id === id);
     if (!category || !(grant.ownership === "store" ? category.allowStore : category.allowGroup)) return "invalidGrant";
+    if (category.key === "store_reviews" && !state.enterprises.some(item => item.enterpriseKey === grant.enterpriseKey)) return "enterpriseNameRequired";
     const required = category.dimensions.map(item => item.dimensionId).sort(); requiredSets.push(required.join("|"));
     if (Object.keys(grant.dimensions).length !== required.length || required.some(dimensionId => !validateSelection(grant.dimensions[dimensionId]))) return "invalidGrant";
   }

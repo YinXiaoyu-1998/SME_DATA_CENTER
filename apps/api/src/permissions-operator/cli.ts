@@ -19,7 +19,7 @@ const operations = {
     ["id"],
     ["name", "confidentialityLevel", "ownerships", "requiredDimensionIds", "retired"]
   ],
-  "store.set": ["POST", "stores", [], ["enterpriseKey", "name", "retired"]],
+  "store.set": ["POST", "stores", [], ["enterpriseKey", "enterpriseName", "name", "retired"]],
   "dimension.create": ["POST", "dimensions", [], ["id", "name", "retired"]],
   "dimension.update": ["PATCH", "dimensions", ["id"], ["name", "retired"]],
   "value.create": ["POST", "dimensions", ["dimensionId"], ["id", "name", "retired"]],
