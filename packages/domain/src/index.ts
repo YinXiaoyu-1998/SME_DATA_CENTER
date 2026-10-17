@@ -165,3 +165,5 @@ export * from "./partition-downloads.js";
 export * from "./business-authorization.js";
 
 export * from "./cost-cards.js";
+export * from "./store-reviews.js";
+export * from "./store-review-query.js";

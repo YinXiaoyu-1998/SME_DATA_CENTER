@@ -8,7 +8,11 @@ import {
   STRUCTURED_QUERY_LIMITS,
   getStructuredRegistry,
   COST_CARD_DIRECTORY_REGISTRY,
-  PHASE3_ERROR_CODES
+  PHASE3_ERROR_CODES,
+  STORE_REVIEW_LIMITS,
+  STORE_REVIEW_SOURCES,
+  parseStoreReviewBatch,
+  parseStoreReviewQuery
 } from "@smedc/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
@@ -728,6 +732,61 @@ function validateLedgerPdfDateSelection(
     });
 }
 
+const storeReviewTime = z.string().max(32);
+const reviewName = z.string().min(1).max(STORE_REVIEW_LIMITS.identityChars);
+export const upsertStoreReviewsInputSchema = z
+  .object({
+    reviews: z
+      .array(
+        z
+          .object({
+            enterpriseName: z.string().min(1).max(STORE_REVIEW_LIMITS.enterpriseNameChars),
+            source: z.enum(STORE_REVIEW_SOURCES),
+            storeName: reviewName,
+            reviewedAt: storeReviewTime,
+            reviewerName: reviewName,
+            content: z.string().max(STORE_REVIEW_LIMITS.textChars).nullable().optional(),
+            scores: z.record(z.string(), z.number().finite()).nullable().optional(),
+            merchantReply: z.string().max(STORE_REVIEW_LIMITS.textChars).nullable().optional()
+          })
+          .strict()
+      )
+      .min(1)
+      .max(STORE_REVIEW_LIMITS.maxBatchRows)
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    try {
+      parseStoreReviewBatch(value);
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Invalid store review batch." });
+    }
+  });
+export const queryStoreReviewsInputSchema = z
+  .object({
+    enterpriseName: z.string().min(1).max(STORE_REVIEW_LIMITS.enterpriseNameChars),
+    storeNames: z.array(reviewName).min(1).max(STORE_REVIEW_LIMITS.maxStoreNames).optional(),
+    sources: z
+      .array(z.enum(STORE_REVIEW_SOURCES))
+      .min(1)
+      .max(STORE_REVIEW_SOURCES.length)
+      .optional(),
+    reviewedAtFrom: storeReviewTime.optional(),
+    reviewedAtTo: storeReviewTime.optional(),
+    reviewerName: reviewName.optional(),
+    hasReply: z.boolean().optional(),
+    limit: z.number().int().min(1).max(STORE_REVIEW_LIMITS.maxRows).optional(),
+    cursor: z.string().min(1).max(STORE_REVIEW_LIMITS.cursorChars).optional()
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    try {
+      parseStoreReviewQuery(value);
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Invalid store review query." });
+    }
+  });
+
 export const PERMISSION_MCP_INPUT_SCHEMAS = {
   get_my_permissions: z.object({}).strict(),
   list_account_permissions: z.object({}).strict(),
@@ -859,6 +918,8 @@ const permissionReadNames = new Set([
 ]);
 
 export const SMEDC_MCP_TOOL_NAMES = [
+  "upsert_store_reviews",
+  "query_store_reviews",
   "smedc_get_current_user",
   "smedc_list_skills",
   "search_document_evidence",
@@ -1366,6 +1427,36 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     inputFields: [{ name: "requestId", required: true, description: "Ready ZIP request ID." }],
     resultShape: ["requestId", "downloadUrl", "expiresAt"],
     annotations: ledgerPdfReadAnnotations
+  }),
+  defineToolContract({
+    name: "upsert_store_reviews",
+    title: "Upsert store reviews",
+    description:
+      "Atomically record 1–1000 platform reviews using POST /v1/store-reviews/upsert. Requires the current active admin role. Every row requires an explicitly selected registered enterpriseName and exact store identity. Omitted fields remain unchanged; null clears. Only save verified published merchant replies.",
+    inputSchema: upsertStoreReviewsInputSchema,
+    inputFields: [
+      {
+        name: "reviews",
+        required: true,
+        description: "Review rows; at most 16 MiB UTF-8 JSON per batch."
+      }
+    ],
+    resultShape: ["received, inserted, updated, unchanged"],
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "query_store_reviews",
+    title: "Query store reviews",
+    description:
+      "Read currently authorized store reviews using POST /v1/store-reviews/query. Requires explicit enterpriseName. Administrators also require read grants. Fixed reviewedAt DESC, id DESC order; inclusive Beijing time filters. Restart pagination when data or permissions change.",
+    inputSchema: queryStoreReviewsInputSchema,
+    inputFields: Object.entries(queryStoreReviewsInputSchema.shape).map(([name, schema]) => ({
+      name,
+      required: !schema.isOptional(),
+      description: name
+    })),
+    resultShape: ["rows: complete authorized review fields", "page.nextCursor"],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   ...PERMISSION_MCP_TOOL_NAMES.map((name) => {
     const inputSchema = PERMISSION_MCP_INPUT_SCHEMAS[name];

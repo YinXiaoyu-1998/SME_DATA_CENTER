@@ -39,6 +39,19 @@ it("retains server admin-only upload authorization and explains fixed category a
 });
 
 const validInputs = {
+  upsert_store_reviews: {
+    reviews: [
+      {
+        enterpriseName: "企业",
+        source: "美团评价",
+        storeName: "店",
+        reviewedAt: "2026-10-17 13",
+        reviewerName: "用户",
+        scores: {}
+      }
+    ]
+  },
+  query_store_reviews: { enterpriseName: "企业" },
   smedc_get_current_user: {},
   smedc_list_skills: { q: "menu", category: "menu-analysis" },
   search_document_evidence: {
@@ -196,6 +209,8 @@ const validInputs = {
 } satisfies Record<SmedcMcpToolName, Record<string, unknown>>;
 
 const invalidInputCases = [
+  { tool: "upsert_store_reviews", cases: [{ label: "empty batch", input: { reviews: [] } }] },
+  { tool: "query_store_reviews", cases: [{ label: "missing enterprise", input: {} }] },
   {
     tool: "smedc_get_current_user",
     cases: [{ label: "cross-employee selector", input: { employeeId: "someone-else" } }]
@@ -580,6 +595,8 @@ const invalidInputCases = [
 describe("SMEDC MCP contract", () => {
   it("exports the stable business tool names without local-session tools", () => {
     expect(SMEDC_MCP_TOOL_NAMES).toEqual([
+      "upsert_store_reviews",
+      "query_store_reviews",
       "smedc_get_current_user",
       "smedc_list_skills",
       "search_document_evidence",
@@ -1710,4 +1727,33 @@ it("accepts complete original cost-card uploads without dates or classification 
     { confidentialityLevel: 1 }
   ])
     expect(upload.safeParse({ ...input, ...extra }).success).toBe(false);
+});
+
+it("uses strict store review schemas with shared semantic validation", () => {
+  const schema = contractsByName.get("upsert_store_reviews")!.inputSchema;
+  const row = validInputs.upsert_store_reviews.reviews[0]!;
+  expect(
+    schema.safeParse({
+      reviews: Array.from({ length: 1000 }, (_, i) => ({ ...row, reviewerName: String(i) }))
+    }).success
+  ).toBe(true);
+  expect(
+    schema.safeParse({
+      reviews: Array.from({ length: 1001 }, (_, i) => ({ ...row, reviewerName: String(i) }))
+    }).success
+  ).toBe(false);
+  for (const patch of [
+    { enterpriseName: undefined },
+    { scores: [] },
+    { scores: { x: "5" } },
+    { extra: true },
+    { reviewedAt: "2026-02-30 13" }
+  ])
+    expect(schema.safeParse({ reviews: [{ ...row, ...patch }] }).success).toBe(false);
+  expect(schema.safeParse({ reviews: [{ ...row, scores: null }] }).success).toBe(true);
+  expect(
+    contractsByName
+      .get("query_store_reviews")!
+      .inputSchema.safeParse({ enterpriseName: "企业", orgId: "other" }).success
+  ).toBe(false);
 });
