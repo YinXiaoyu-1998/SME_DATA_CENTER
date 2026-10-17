@@ -61,6 +61,9 @@ function context(): ApiServerContext {
     structuredCoverage: () => {
       throw new Error("not used");
     },
+    storeReviews: () => {
+      throw new Error("not used");
+    },
     costCards: () => {
       throw new Error("not used");
     },
