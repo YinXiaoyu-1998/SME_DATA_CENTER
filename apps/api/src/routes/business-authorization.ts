@@ -157,12 +157,15 @@ export function registerBusinessAuthorizationRoutes(
             });
       }
     );
-  route("GET", selfPath, false, async (_service, actor) => ({
-    ...actor,
-    categories: actor.categories.filter((category) =>
-      actor.grants.some((grant) => grant.categoryIds.includes(category.id))
-    )
-  }));
+  route("GET", selfPath, false, async (service, actor) => {
+    const card = await service.permissionCard({ id: actor.employeeId, orgId: actor.orgId });
+    return {
+      ...card,
+      categories: card.categories.filter((category) =>
+        card.grants.some((grant) => grant.categoryIds.includes(category.id))
+      )
+    };
+  });
   route("GET", `${adminBase}/accounts`, true, async (service, actor) => ({
     accounts: await service.repository.listAccounts(actor.orgId, actor.employeeId)
   }));

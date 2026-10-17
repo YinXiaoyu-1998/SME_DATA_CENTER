@@ -85,7 +85,8 @@ export function hashStoreReviewQueryScope(input: {
   query: StoreReviewQuery;
 }): string {
   const { query: raw, ...identity } = input;
-  const { cursor: _cursor, ...query } = parseStoreReviewQuery(raw);
+  const query = parseStoreReviewQuery(raw);
+  delete query.cursor;
   return createHash("sha256")
     .update(
       JSON.stringify({

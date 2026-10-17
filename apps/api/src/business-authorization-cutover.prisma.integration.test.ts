@@ -82,7 +82,7 @@ suite("fixed category bootstrap through supported administration", () => {
     const migrated = await repository.listCategories(orgId);
     expect(migrated.map((c) => [c.key, c.allowGroup ? "group" : "store"]).sort()).toEqual(
       Object.entries(ownership)
-        .filter(([key]) => key !== "cost_cards")
+        .filter(([key]) => !["cost_cards", "store_reviews"].includes(key))
         .sort()
     );
     expect(migrated.find((c) => c.key === "ledger_pdf")).toMatchObject(existing);
@@ -97,7 +97,7 @@ suite("fixed category bootstrap through supported administration", () => {
     expect(
       (await repository.initializeFixedCategories({ orgId, actorId, expectedVersion: "6" })).value
         .createdCount
-    ).toBe(1);
+    ).toBe(2);
     const initialized = await repository.listCategories(orgId);
     expect(
       initialized.find((category) => category.key === "cost_cards")?.confidentialityLevel
@@ -120,7 +120,7 @@ suite("fixed category bootstrap through supported administration", () => {
       const listed = (await app.inject({ url: "/v1/admin/permissions/categories" })).json();
       const report = (await app.inject({ url: "/v1/admin/permissions/cutover" })).json();
       expect(report.ready).toBe(false);
-      expect(report.missing).toHaveLength(7);
+      expect(report.missing).toHaveLength(8);
       expect(report.missing).toContainEqual({
         code: "FIXED_CATEGORY_CLEARANCE_REQUIRED",
         targetId: "cost_cards"

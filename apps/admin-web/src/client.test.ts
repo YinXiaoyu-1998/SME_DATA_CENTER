@@ -12,6 +12,7 @@ describe("permissions browser script and localization", () => {
     )) {
       expect(permissionsCopy, `missing bilingual key ${key[1]}`).toHaveProperty(key[1]!);
     }
+    expect(permissionsCopy.store_reviews).toEqual({ zh: "店铺评价", en: "Store reviews" });
     for (const [key, value] of Object.entries(permissionsCopy)) {
       expect(value.zh.trim(), key).not.toBe("");
       expect(value.en.trim(), key).not.toBe("");

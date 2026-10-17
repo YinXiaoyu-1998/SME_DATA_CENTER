@@ -167,6 +167,7 @@ model Organization {
   importClaims           ImportWindowClaim[]
   partitionDownloads     PartitionDownloadRequest[]
   partitionImportJobs    PartitionImportJob[]
+  storeReviews           StoreReview[]
   costCards              CostCard[]
   structuredPartitions   StructuredPartition[]
   vipRows                VipRow[]
@@ -1086,6 +1087,7 @@ enum BusinessCategoryKind {
   evidence
 }
 enum BusinessResourceKind {
+  store_review
   cost_card
   evidence
   structured
@@ -1351,4 +1353,24 @@ model CostCard {
   @@index([orgId, sourceDocumentId], map: "idx_cost_cards_source")
   @@index([orgId, importBatchId, sourceDocumentId], map: "idx_cost_cards_batch_source")
   @@map("cost_cards")
+}
+
+model StoreReview {
+  id String @id @db.VarChar(32)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  source String @db.VarChar(32)
+  storeName String @map("store_name") @db.VarChar(255)
+  reviewedAt DateTime @map("reviewed_at") @db.DateTime(0)
+  reviewerName String @map("reviewer_name") @db.VarChar(255)
+  content String? @db.MediumText
+  scores Json?
+  merchantReply String? @map("merchant_reply") @db.MediumText
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([orgId, enterpriseKey, source, storeName, reviewedAt, reviewerName], map: "uq_store_reviews_identity")
+  @@index([orgId, enterpriseKey, storeName, reviewedAt, id], map: "idx_store_reviews_store_time")
+  @@index([orgId, enterpriseKey, reviewedAt, id], map: "idx_store_reviews_time")
+  @@map("store_reviews")
 }

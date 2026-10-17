@@ -4,7 +4,11 @@ import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import ExcelJS from "exceljs";
-import { COST_CARD_UPLOAD_SCHEMA, normalizeEnterpriseIdentity } from "@smedc/domain";
+import {
+  FIXED_BUSINESS_CATEGORY_KEYS,
+  COST_CARD_UPLOAD_SCHEMA,
+  normalizeEnterpriseIdentity
+} from "@smedc/domain";
 import {
   createDatabaseAdapter,
   createBusinessAuthorizationRepository,
@@ -106,7 +110,7 @@ suite("cost card API to worker publication", () => {
     expect(initialized.statusCode).toBe(200);
     expect(initialized.json()).toMatchObject({
       authorizationVersion: "2",
-      value: { createdCount: 9 }
+      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length }
     });
     const category = await prisma.businessCategory.findUniqueOrThrow({
       where: { orgId_key: { orgId, key: "cost_cards" } }

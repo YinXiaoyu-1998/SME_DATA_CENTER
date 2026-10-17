@@ -9,6 +9,7 @@ import {
   getStructuredRegistry,
   COST_CARD_DIRECTORY_REGISTRY,
   PHASE3_ERROR_CODES,
+  storeReviewTextFits,
   STORE_REVIEW_LIMITS,
   STORE_REVIEW_SOURCES,
   parseStoreReviewBatch,
@@ -733,7 +734,10 @@ function validateLedgerPdfDateSelection(
 }
 
 const storeReviewTime = z.string().max(32);
-const reviewName = z.string().min(1).max(STORE_REVIEW_LIMITS.identityChars);
+const reviewName = z
+  .string()
+  .min(1)
+  .refine((v) => storeReviewTextFits(v, STORE_REVIEW_LIMITS.identityChars));
 export const upsertStoreReviewsInputSchema = z
   .object({
     reviews: z
@@ -745,9 +749,17 @@ export const upsertStoreReviewsInputSchema = z
             storeName: reviewName,
             reviewedAt: storeReviewTime,
             reviewerName: reviewName,
-            content: z.string().max(STORE_REVIEW_LIMITS.textChars).nullable().optional(),
+            content: z
+              .string()
+              .refine((v) => storeReviewTextFits(v, STORE_REVIEW_LIMITS.textChars))
+              .nullable()
+              .optional(),
             scores: z.record(z.string(), z.number().finite()).nullable().optional(),
-            merchantReply: z.string().max(STORE_REVIEW_LIMITS.textChars).nullable().optional()
+            merchantReply: z
+              .string()
+              .refine((v) => storeReviewTextFits(v, STORE_REVIEW_LIMITS.textChars))
+              .nullable()
+              .optional()
           })
           .strict()
       )
@@ -1465,7 +1477,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       title: name.replaceAll("_", " "),
       description:
         name === "get_my_permissions"
-          ? "Read the current server permission card on every call. This is not cached by the launcher; it never grants content access by itself."
+          ? "Read the current server permission card on every call, including complete storeReviewEnterprises.write/read lists of registered enterpriseName choices for store reviews. This is not cached by the launcher; it never grants content access by itself."
           : `${name.replaceAll("_", " ")}. Requires a current active same-organization administrator. Uses the authenticated server permission service; writes require expectedVersion. Status and configuration responses contain no download links.`,
       inputSchema,
       inputFields: Object.entries(inputSchema.shape).map(([field, schema]) => ({
@@ -1476,7 +1488,12 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       resultShape:
         name === "get_my_permissions" || name === "get_account_permissions"
           ? [
-              "current server authorization snapshot: employee, version, mode, clearance, grants, category rules"
+              "current server authorization snapshot: employee, version, mode, clearance, grants, category rules",
+              ...(name === "get_my_permissions"
+                ? [
+                    "storeReviewEnterprises: { complete: true, write: [{ enterpriseKey, enterpriseName }], read: [{ enterpriseKey, enterpriseName }] }"
+                  ]
+                : [])
             ]
           : name === "prepare_authorization_cutover"
             ? ["authorizationVersion, ready, missing configuration and resource attributes"]

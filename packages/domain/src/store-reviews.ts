@@ -87,8 +87,16 @@ export function requireStoreReviewObject(
     if (!keys.includes(field)) throw new StoreReviewValidationError("Unknown field.", { field });
   return object;
 }
+/** Count Unicode characters, rejecting malformed UTF-16 that drivers could replace. */
+export function storeReviewTextFits(value: string, max: number): boolean {
+  const characters = Array.from(value);
+  return (
+    characters.length <= max &&
+    characters.every((character) => character.length !== 1 || !/[\uD800-\uDFFF]/u.test(character))
+  );
+}
 export function requireStoreReviewString(value: unknown, field: string, max: number): string {
-  if (typeof value !== "string" || !value.trim() || value.length > max)
+  if (typeof value !== "string" || !value.trim() || !storeReviewTextFits(value, max))
     throw new StoreReviewValidationError("Invalid string field.", { field });
   return value;
 }
@@ -140,6 +148,7 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
     throw new StoreReviewValidationError("Batch must contain 1–1000 reviews.", {
       field: "reviews"
     });
+  assertStoreReviewBatchBytes(value);
   const seen = new Map<string, number>();
   const reviews = raw.map((value, index): StoreReviewInput => {
     try {
@@ -178,7 +187,7 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
           const text = r[field];
           if (
             text !== null &&
-            (typeof text !== "string" || text.length > STORE_REVIEW_LIMITS.textChars)
+            (typeof text !== "string" || !storeReviewTextFits(text, STORE_REVIEW_LIMITS.textChars))
           )
             throw new StoreReviewValidationError("Invalid nullable text.", { field });
           row[field] = text as string | null;
@@ -191,6 +200,7 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
             scores === null ||
             typeof scores !== "object" ||
             Array.isArray(scores) ||
+            ![Object.prototype, null].includes(Object.getPrototypeOf(scores)) ||
             Object.values(scores).some((v) => typeof v !== "number" || !Number.isFinite(v)) ||
             Buffer.byteLength(JSON.stringify(scores), "utf8") > STORE_REVIEW_LIMITS.scoresBytes
           )

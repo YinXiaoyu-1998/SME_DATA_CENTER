@@ -13,6 +13,7 @@ import type { BusinessAuthorizationRepository } from "./business-authorization.j
 
 // Server-owned release registration. A deployed binary must support the complete set to activate.
 export const AUTHORIZATION_READ_ADAPTERS = [
+  "store_review_query",
   "structured_query",
   "structured_coverage",
   "partition_catalog",
@@ -44,6 +45,8 @@ export interface CutoverInventory {
   }>;
   documents: Array<{ id: string; kind: string | null; dataset: string | null }>;
   partitions: string[];
+  storeReviewEnterpriseKeys: string[];
+  storeReviews: Array<{ id: string; enterpriseKey: string; storeName: string }>;
   costCards: Array<{ id: string; enterpriseKey: string; archived: boolean }>;
   pdfs: string[];
   accounts: Array<{ id: string; grants: BusinessGrant[] }>;
@@ -63,6 +66,7 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
   const documentResources = new Map<string, CutoverInventory["resources"]>();
   const partitions = new Set<string>();
   const pdfs = new Set<string>();
+  const storeReviews = new Map<string, CutoverInventory["resources"][number]>();
   const costCards = new Map<string, CutoverInventory["resources"][number]>();
   for (const resource of inventory.resources) {
     if (resource.kind === "source_fragment" && resource.sourceDocumentId !== null) {
@@ -78,6 +82,7 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
     }
     if (resource.kind === "structured") partitions.add(resource.resourceKey);
     if (resource.kind === "ledger_pdf") pdfs.add(resource.resourceKey);
+    if (resource.kind === "store_review") storeReviews.set(resource.resourceKey, resource);
     if (resource.kind === "cost_card") costCards.set(resource.resourceKey, resource);
   }
   const missing: CutoverIssue[] = [];
@@ -110,13 +115,16 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
       (resource.kind === "evidence" && category?.kind !== "evidence") ||
       (["quarantine_certificate", "ledger_pdf"].includes(resource.kind) &&
         category?.key !== resource.kind) ||
+      (resource.kind === "store_review" &&
+        (category?.key !== "store_reviews" || category.kind !== "fixed")) ||
+      (category?.key === "store_reviews" && resource.kind !== "store_review") ||
       (resource.kind === "cost_card" &&
         (category?.key !== "cost_cards" || category.kind !== "fixed")) ||
       (["structured", "source_fragment"].includes(resource.kind) && category?.kind !== "fixed")
     )
       add("RESOURCE_CATEGORY_MISMATCH", resource.id);
     if (
-      ["quarantine_certificate", "ledger_pdf"].includes(resource.kind) &&
+      ["quarantine_certificate", "ledger_pdf", "store_review"].includes(resource.kind) &&
       (requirement.scopes.length !== 1 || requirement.scopes[0]?.ownership !== "store")
     )
       add("SINGLE_STORE_REQUIRED", resource.id);
@@ -147,6 +155,23 @@ export function inspectCutoverInventory(inventory: CutoverInventory, adapters: r
   }
   for (const id of inventory.partitions)
     if (!partitions.has(`partition:${id}`)) add("PARTITION_ATTRIBUTES_REQUIRED", id);
+  const reviewEnterpriseKeys = new Set(inventory.storeReviewEnterpriseKeys);
+  for (const review of inventory.storeReviews) {
+    const resource = storeReviews.get(`store-review:${review.id}`);
+    const scope = resource?.requirement.scopes[0];
+    if (
+      !resource ||
+      !reviewEnterpriseKeys.has(review.enterpriseKey) ||
+      !resource.requirement.valid ||
+      resource.documentId !== null ||
+      resource.sourceDocumentId !== null ||
+      resource.requirement.scopes.length !== 1 ||
+      scope?.ownership !== "store" ||
+      scope.enterpriseKey !== review.enterpriseKey ||
+      scope.storeName !== review.storeName
+    )
+      add("STORE_REVIEW_ATTRIBUTES_REQUIRED", review.id);
+  }
   for (const card of inventory.costCards) {
     const resource = costCards.get(`cost-card:${card.id}`);
     const scope = resource?.requirement.scopes[0];
@@ -217,6 +242,16 @@ export function createAuthorizationCutoverService(
         partitions: (
           await tx.structuredPartition.findMany({ where: { orgId }, select: { id: true } })
         ).map((p) => p.id),
+        storeReviewEnterpriseKeys: (
+          await tx.businessEnterpriseIdentity.findMany({
+            where: { orgId },
+            select: { enterpriseKey: true }
+          })
+        ).map((e) => e.enterpriseKey),
+        storeReviews: await tx.storeReview.findMany({
+          where: { orgId },
+          select: { id: true, enterpriseKey: true, storeName: true }
+        }),
         costCards: (
           await tx.costCard.findMany({
             where: { orgId },

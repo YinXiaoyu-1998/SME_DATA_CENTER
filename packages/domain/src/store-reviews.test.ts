@@ -29,7 +29,7 @@ describe("store review inputs", () => {
       expect(parseStoreReviewBatch({ reviews: [{ ...row, scores }] }).reviews[0]!.scores).toEqual(
         scores
       );
-    for (const scores of [[], "5", { x: "5" }, { x: Infinity }, { x: NaN }])
+    for (const scores of [new Date(), [], "5", { x: "5" }, { x: Infinity }, { x: NaN }])
       expect(() => parseStoreReviewBatch({ reviews: [{ ...row, scores }] })).toThrow();
   });
   it("normalizes valid Beijing times idempotently and checks real calendars", () => {
@@ -64,4 +64,18 @@ describe("store review inputs", () => {
       parseStoreReviewBatch({ reviews: [{ ...row, scores: { ["😀".repeat(16384)]: 1 } }] })
     ).toThrow();
   });
+});
+
+it("counts supplementary Unicode characters and rejects lossy malformed strings", () => {
+  const content = "😀".repeat(16384);
+  expect(
+    parseStoreReviewBatch({ reviews: [{ ...row, reviewerName: "😀".repeat(255), content }] })
+      .reviews[0]!.content
+  ).toBe(content);
+  expect(() => parseStoreReviewBatch({ reviews: [{ ...row, reviewerName: "\ud800" }] })).toThrow();
+  expect(() =>
+    parseStoreReviewBatch({
+      reviews: Array.from({ length: 300 }, (_, i) => ({ ...row, reviewerName: String(i), content }))
+    })
+  ).toThrow(/byte limit/);
 });

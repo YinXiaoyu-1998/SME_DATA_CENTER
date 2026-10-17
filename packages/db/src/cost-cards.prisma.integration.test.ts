@@ -5,7 +5,12 @@ import path from "node:path";
 import { createReadStream } from "node:fs";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { canReadResource, COST_CARD_UPLOAD_SCHEMA, costCardFromRows } from "@smedc/domain";
+import {
+  FIXED_BUSINESS_CATEGORY_KEYS,
+  canReadResource,
+  COST_CARD_UPLOAD_SCHEMA,
+  costCardFromRows
+} from "@smedc/domain";
 import { exportCostCardCsv } from "@smedc/structured-ingestion";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
 import { createPrismaProcessingWorkerRepository } from "../../../apps/worker/src/worker.js";
@@ -87,7 +92,10 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
       actorId,
       expectedVersion: "1"
     });
-    expect(first).toMatchObject({ authorizationVersion: "2", value: { createdCount: 8 } });
+    expect(first).toMatchObject({
+      authorizationVersion: "2",
+      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length - 1 }
+    });
     const category = await prisma.businessCategory.findUniqueOrThrow({
       where: { orgId_key: { orgId, key: "cost_cards" } }
     });

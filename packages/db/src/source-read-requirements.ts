@@ -651,3 +651,94 @@ async function readSourceRequirements(
     valid: resource.valid && document.status === "active" && !document.archivedAt
   }));
 }
+
+/** Review rows are published only into an existing exact enterprise/store directory. */
+export async function persistStoreReviewResource(
+  tx: Tx,
+  input: {
+    orgId: string;
+    reviewId: string;
+    enterpriseKey: string;
+    storeName: string;
+    actorId: string;
+  },
+  state: Awaited<ReturnType<typeof lockAuthorizationPublication>>,
+  category?: Awaited<ReturnType<typeof fixedCategory>>
+) {
+  if (state.mode !== "enabled") fail("AUTHORIZATION_NOT_ENABLED");
+  const scopes: BusinessScopeItem[] = [
+    {
+      enterpriseKey: input.enterpriseKey,
+      ownership: "store",
+      storeName: input.storeName,
+      dimensions: {}
+    }
+  ];
+  const selected = category ?? (await fixedCategory(tx, input.orgId, "store_reviews", state.mode));
+  const rule = selected ? toBusinessCategoryRule(selected) : null;
+  requirePublicationAttributes(state.mode, rule, scopes);
+  if (!selected || selected.key !== "store_reviews" || selected.retired)
+    fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
+  const store = await tx.businessStore.findUnique({
+    where: {
+      orgId_enterpriseKey_name: {
+        orgId: input.orgId,
+        enterpriseKey: input.enterpriseKey,
+        name: input.storeName
+      }
+    }
+  });
+  if (!store) fail("RESOURCE_ATTRIBUTES_NOT_READY");
+  if (store.retired) fail("RESOURCE_DIRECTORY_RETIRED");
+  const resourceKey = `store-review:${input.reviewId}`;
+  const where = {
+    orgId_kind_resourceKey: { orgId: input.orgId, kind: "store_review" as const, resourceKey }
+  };
+  const existing = await tx.businessResource.findUnique({
+    where,
+    include: { scopes: { include: { dimensions: true } } }
+  });
+  // Keep the same immutable identity, fixed category and exact single-store constraints as
+  // persistResourceAttributes, without loading the already-locked category for every row.
+  if (
+    existing &&
+    (existing.id !== input.reviewId ||
+      existing.categoryId !== selected.id ||
+      existing.documentId !== null ||
+      existing.sourceDocumentId !== null ||
+      existing.scopes.length !== 1 ||
+      existing.scopes[0]!.ownership !== "store" ||
+      existing.scopes[0]!.enterpriseKey !== input.enterpriseKey ||
+      existing.scopes[0]!.storeName !== input.storeName ||
+      existing.scopes[0]!.dimensions.length)
+  )
+    fail("RESOURCE_IDENTITY_IMMUTABLE");
+  const resource = await tx.businessResource.upsert({
+    where,
+    create: {
+      orgId: input.orgId,
+      id: input.reviewId,
+      kind: "store_review",
+      resourceKey,
+      categoryId: selected.id,
+      valid: true
+    },
+    update: {
+      valid: true,
+      authorizationVersion: { increment: 1 },
+      contentVersion: { increment: 1 }
+    }
+  });
+  if (!existing)
+    await tx.businessResourceScope.create({
+      data: {
+        orgId: input.orgId,
+        id: randomUUID().replaceAll("-", ""),
+        resourceId: resource.id,
+        enterpriseKey: input.enterpriseKey,
+        ownership: "store",
+        storeName: input.storeName
+      }
+    });
+  return resource;
+}
