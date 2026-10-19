@@ -1730,14 +1730,14 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     const tokenEvent = await prisma.authSecurityEvent.findFirst({
       where: { requestId: requestIds.oauthToken, eventType: "session_created" }
     });
-    assertAuthEvent(tokenEvent, "198.51.100.32", "0.6.0", "OAuth token");
+    assertAuthEvent(tokenEvent, "198.51.100.32", "0.12.0", "OAuth token");
     assert(Boolean(tokenEvent?.sessionId), "OAuth token event must identify its session.");
     sessionIds.push(tokenEvent!.sessionId!);
 
     const refreshEvent = await prisma.authSecurityEvent.findFirst({
       where: { requestId: requestIds.oauthRefresh, eventType: "renewal_failed" }
     });
-    assertAuthEvent(refreshEvent, "198.51.100.33", "0.6.0", "OAuth refresh");
+    assertAuthEvent(refreshEvent, "198.51.100.33", "0.12.0", "OAuth refresh");
 
     const revokeEvents = await prisma.authSecurityEvent.findMany({
       where: {
@@ -1747,13 +1747,13 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     });
     assert(revokeEvents.length === 2, "OAuth revoke must persist logout and revocation events.");
     for (const event of revokeEvents) {
-      assertAuthEvent(event, "198.51.100.34", "0.6.0", "OAuth revoke");
+      assertAuthEvent(event, "198.51.100.34", "0.12.0", "OAuth revoke");
     }
 
     const deviceRunId = `${runId}_device`;
     const deviceHeaders = (requestId: string, forwardedIp: string) => ({
       ...oauthHeaders(requestId, forwardedIp),
-      "x-smedc-launcher-version": "0.6.0"
+      "x-smedc-launcher-version": "0.12.0"
     });
     const deviceRequest = await fetch(`${apiUrl}/oauth/device_authorization`, {
       method: "POST",
@@ -1854,7 +1854,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
     const deviceTokenEvent = await prisma.authSecurityEvent.findFirst({
       where: { requestId: `${deviceRunId}_token`, eventType: "session_created" }
     });
-    assertAuthEvent(deviceTokenEvent, "198.51.100.39", "0.6.0", "device token");
+    assertAuthEvent(deviceTokenEvent, "198.51.100.39", "0.12.0", "device token");
     if (deviceTokenEvent?.sessionId) {
       sessionIds.push(deviceTokenEvent.sessionId);
     }
@@ -1986,7 +1986,7 @@ async function uploadAuditEvidenceThroughMcp(
 function oauthHeaders(requestId: string, forwardedIp: string): Record<string, string> {
   return {
     "content-type": "application/x-www-form-urlencoded",
-    "x-smedc-launcher-version": "0.6.0",
+    "x-smedc-launcher-version": "0.12.0",
     "x-forwarded-for": forwardedIp,
     "x-request-id": requestId
   };

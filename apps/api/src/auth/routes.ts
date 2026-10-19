@@ -33,7 +33,7 @@ import {
 } from "./pages.js";
 import { validatePassword } from "./primitives.js";
 
-const MINIMUM_LAUNCHER_VERSION = "0.6.0";
+const MINIMUM_LAUNCHER_VERSION = "0.12.0";
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
 const INVALID_LOGIN_MESSAGE: LocalizedText = {
   zh: "邮箱或密码错误。",

@@ -1,6 +1,6 @@
 # 成本卡 CSV＋MySQL 目录设计
 
-状态：CSV＋MySQL 目录实现已合并 main；launcher `0.10.1` 已公开发布并独立验证。更新：2026-10-15。发布源：`main@24c494b`；当前安装 pins 与服务推荐版本为 `0.10.1`，最低兼容 `0.6.0`。服务部署以 [staging 当前状态](staging-readiness.md) 为准；发布不代表真实租户已授权或完成真实数据验收。
+状态：CSV＋MySQL 目录实现已合并 main；launcher `0.10.1` 已公开发布并独立验证。更新：2026-10-15。发布源：`main@24c494b`；当前安装 pin、服务推荐及源码最低版本见 [正式登录契约](official-user-install-and-login.md)。服务部署以 [staging 当前状态](staging-readiness.md) 为准；发布不代表真实租户已授权或完成真实数据验收。
 
 本文件是成本卡当前设计与实现合同，与根目录[术语表](../../CONTEXT.md)采用同一架构。公共接口以[API 契约](api-contract.md)为准；已发布的 launcher 不代表服务或租户已就绪。服务上线、正式人工验收与真实数据导入分别核对授权和实际证据。
 

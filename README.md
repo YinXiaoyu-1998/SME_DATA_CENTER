@@ -164,8 +164,9 @@ The official identity, launcher, and public MCP code are implemented.
 CLI, packaging, and production dependency audit have been verified. The supported installation
 matrix is macOS, Windows, and Linux. macOS/Windows use their native secure stores; Linux uses a
 compatible Secret Service when available and otherwise keeps the session in launcher-process
-memory, so headless Linux requires a fresh tap-link login after restart. Client/business acceptance and target service rollout remain separate from npm package verification. Server
-compatibility requires at least 0.6.0; this source recommends launcher 0.12.0, while the last verified live recommendation remains 0.11.0 pending rollout verification. Below-minimum launchers are rejected.
+memory, so headless Linux requires a fresh tap-link login after restart. Client/business acceptance and target service rollout remain separate from npm package verification. The service source recommends and requires at least launcher 0.12.0 for OAuth issuance and refresh.
+The verified live deployment recommends 0.12.0 with minimum 0.6.0; the source minimum increase
+awaits merge and deployment. Below-minimum launchers receive `LAUNCHER_UPGRADE_REQUIRED`.
 Launcher 0.12.0 allows 45 seconds for business MCP calls; connection and profile checks retain
 30 seconds. It supports store-filtered coverage/range downloads and optional prepare/status/requestId
 ZIP downloads, plus cost-card directory lookup, per-card CSV downloads and single-card archive.

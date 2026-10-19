@@ -13,7 +13,7 @@ const browserAudit = {
 const oauthAudit = {
   requestId: "oauth_request_1",
   sourceIp: "203.0.113.9",
-  launcherVersion: "0.6.0"
+  launcherVersion: "0.12.0"
 };
 
 function authFake() {
@@ -104,7 +104,7 @@ describe("official OAuth and password routes", () => {
     expect(response.json()).toMatchObject({
       issuer: "https://api.smedatacenter.xyz",
       smedc_launcher_package: "smedc-mcp-launcher",
-      smedc_launcher_minimum_version: "0.6.0",
+      smedc_launcher_minimum_version: "0.12.0",
       smedc_launcher_recommended_version: "0.12.0"
     });
     expect(response.json()).not.toHaveProperty("authorization_endpoint");
@@ -126,7 +126,7 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/token",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-smedc-launcher-version": "0.6.0"
+        "x-smedc-launcher-version": "0.12.0"
       },
       payload: new URLSearchParams({
         grant_type: "authorization_code",
@@ -147,7 +147,7 @@ describe("official OAuth and password routes", () => {
       url: "/oauth/token",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        "x-smedc-launcher-version": "0.6.0",
+        "x-smedc-launcher-version": "0.12.0",
         "x-request-id": oauthAudit.requestId
       },
       remoteAddress: oauthAudit.sourceIp,
@@ -178,25 +178,49 @@ describe("official OAuth and password routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(auth.logout).toHaveBeenCalledWith("eh_rt_old", oauthAudit);
-  });
-
-  it("rejects missing or obsolete launcher versions with a stable upgrade code", async () => {
-    const { app } = await build();
-    const response = await app.inject({
-      method: "POST",
-      url: "/oauth/token",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      payload: new URLSearchParams({
-        grant_type: "refresh_token",
-        client_id: "smedc-desktop-launcher",
-        refresh_token: "eh_rt_old"
-      }).toString()
+    expect(auth.logout).toHaveBeenCalledWith("eh_rt_old", {
+      ...oauthAudit,
+      launcherVersion: "0.6.0"
     });
-
-    expect(response.statusCode).toBe(426);
-    expect(response.json()).toMatchObject({ code: "LAUNCHER_UPGRADE_REQUIRED" });
   });
+
+  it.each([
+    { grantType: "refresh_token", credentialName: "refresh_token", credentialValue: "eh_rt_old" },
+    {
+      grantType: "urn:ietf:params:oauth:grant-type:device_code",
+      credentialName: "device_code",
+      credentialValue: "eh_dc_devicecode"
+    }
+  ])(
+    "rejects unsupported launchers before auth work for $grantType",
+    async ({ grantType, credentialName, credentialValue }) => {
+      const { app, auth } = await build();
+      for (const version of ["0.11.0", undefined, "malformed", "0.5.2", "0.12.0-rc.1"]) {
+        const response = await app.inject({
+          method: "POST",
+          url: "/oauth/token",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            ...(version ? { "x-smedc-launcher-version": version } : {})
+          },
+          payload: new URLSearchParams({
+            grant_type: grantType,
+            client_id: "smedc-desktop-launcher",
+            [credentialName]: credentialValue
+          }).toString()
+        });
+
+        expect(response.statusCode).toBe(426);
+        expect(response.json()).toMatchObject({
+          code: "LAUNCHER_UPGRADE_REQUIRED",
+          minimum_version: "0.12.0"
+        });
+      }
+      expect(auth.redeemDeviceAuthorization).not.toHaveBeenCalled();
+      expect(auth.createSession).not.toHaveBeenCalled();
+      expect(auth.rotateDurableCredential).not.toHaveBeenCalled();
+    }
+  );
 
   it("exchanges a fragment-derived setup token for an HttpOnly setup cookie", async () => {
     const { app, auth } = await build();
@@ -327,7 +351,7 @@ describe("official OAuth and password routes", () => {
 describe("device authorization endpoints", () => {
   const launcherHeaders = {
     "content-type": "application/x-www-form-urlencoded",
-    "x-smedc-launcher-version": "0.6.0",
+    "x-smedc-launcher-version": "0.12.0",
     "x-request-id": oauthAudit.requestId
   };
 
@@ -366,7 +390,7 @@ describe("device authorization endpoints", () => {
   });
 
   it("rejects device authorization requests without a supported launcher version", async () => {
-    const { app } = await build();
+    const { app, auth } = await build();
 
     const response = await app.inject({
       method: "POST",
@@ -376,30 +400,40 @@ describe("device authorization endpoints", () => {
     });
 
     expect(response.statusCode).toBe(426);
-    expect(response.json()).toMatchObject({ code: "LAUNCHER_UPGRADE_REQUIRED" });
-  });
-
-  it("rejects device authorization before auth work when launcher 0.5.2 is below the 0.6.0 floor", async () => {
-    const { app, auth } = await build();
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/oauth/device_authorization",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        "x-smedc-launcher-version": "0.5.2"
-      },
-      payload: new URLSearchParams({
-        client_id: "smedc-desktop-launcher",
-        instanceName: "agent-a",
-        instanceHostname: "vps-1"
-      }).toString()
+    expect(response.json()).toMatchObject({
+      code: "LAUNCHER_UPGRADE_REQUIRED",
+      minimum_version: "0.12.0"
     });
-
-    expect(response.statusCode).toBe(426);
-    expect(response.json()).toMatchObject({ code: "LAUNCHER_UPGRADE_REQUIRED" });
     expect(auth.issueDeviceAuthorization).not.toHaveBeenCalled();
   });
+
+  it.each(["malformed", "0.5.2", "0.11.0", "0.12.0-rc.1"])(
+    "rejects device authorization before auth work for launcher %s below the 0.12.0 floor",
+    async (version) => {
+      const { app, auth } = await build();
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/oauth/device_authorization",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "x-smedc-launcher-version": version
+        },
+        payload: new URLSearchParams({
+          client_id: "smedc-desktop-launcher",
+          instanceName: "agent-a",
+          instanceHostname: "vps-1"
+        }).toString()
+      });
+
+      expect(response.statusCode).toBe(426);
+      expect(response.json()).toMatchObject({
+        code: "LAUNCHER_UPGRADE_REQUIRED",
+        minimum_version: "0.12.0"
+      });
+      expect(auth.issueDeviceAuthorization).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects device authorization requests from an unknown client or missing instance identity", async () => {
     const { app } = await build();

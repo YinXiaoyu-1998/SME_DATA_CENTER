@@ -88,8 +88,8 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The published, independently verified Skill pin and source recommendation are 0.12.0; minimum
-compatibility remains 0.6.0. Launcher 0.12.0 bundles this authorization contract; matching service
+The published, independently verified Skill pin and source recommendation are 0.12.0; source minimum
+compatibility is 0.12.0. Launcher 0.12.0 bundles this authorization contract; matching service
 rollout and explicit tenant activation remain separate. Launchers below the minimum are rejected
 with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This release does not backfill historical
 resource attributes, invalidate existing OSS URLs, or add mid-transfer downgrade handling. Future scheduled/connector/service identities need a separate design,
@@ -165,7 +165,7 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.12.0 owns business/dishes upload and partition transfer. Global compatibility requires at least 0.6.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.12.0 owns business/dishes upload and partition transfer. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
@@ -424,14 +424,15 @@ read permission is exposed. Launcher 0.12.0 is published and independently verif
 ## Store reviews (launcher 0.12.0)
 
 Launcher `0.12.0` is published and independently verified, and is the approved installation pin.
-The service source recommends `0.12.0` with minimum compatibility `0.6.0`. Verify the matching
-deployed release in [staging readiness](staging-readiness.md); publication and installation do not
+The service source recommends and requires `0.12.0` for OAuth issuance and refresh. The verified
+live deployment recommends `0.12.0` with minimum `0.6.0`; the source minimum increase awaits
+merge and deployment. See [staging readiness](staging-readiness.md); publication and installation do not
 configure categories/grants or activate a tenant.
 
 Published, independently verified launcher `0.12.0` includes the `replyStatus` / `replyStatuses`
-extension below. Its matching service release and migration still require deployment verification;
-package publication does not prove those gates. Deploying the migration or backfilling real tenant
-data requires separate authorization.
+extension below. The matching service release and migration are verified in staging readiness;
+package publication alone does not prove those gates. Backfilling real tenant data requires
+separate authorization.
 
 | HTTP                            | MCP                    | Input / result                                                            |
 | ------------------------------- | ---------------------- | ------------------------------------------------------------------------- |

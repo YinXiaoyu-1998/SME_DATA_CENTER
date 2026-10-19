@@ -40,7 +40,7 @@ describe("official OAuth HTTP contract", () => {
       grant_types_supported: ["refresh_token", "urn:ietf:params:oauth:grant-type:device_code"],
       token_endpoint_auth_methods_supported: ["none"],
       smedc_launcher_package: "smedc-mcp-launcher",
-      smedc_launcher_minimum_version: "0.6.0",
+      smedc_launcher_minimum_version: "0.12.0",
       smedc_launcher_recommended_version: "0.12.0"
     });
     expect(() => oauthMetadata("http://api.smedatacenter.xyz")).toThrow(

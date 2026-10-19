@@ -1,6 +1,6 @@
 # SMEDC MCP User Flow
 
-Updated: 2026-10-19. Use the published approved `smedc-mcp-launcher@0.12.0` and the dual-homed Skill. Minimum server compatibility remains 0.6.0. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
+Updated: 2026-10-19. Use the published approved `smedc-mcp-launcher@0.12.0` and the dual-homed Skill. The source OAuth minimum is 0.12.0. The verified live deployment recommends 0.12.0 with minimum 0.6.0; the source minimum increase awaits merge and deployment. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
 
 ## Upload Authorization
 
@@ -14,7 +14,7 @@ without re-login, retry, or a clearance workaround.
 Local prevention produces no backend audit; backend denial best-effort records `file_upload.denied`.
 An admin may explicitly classify above their clearance, but ordinary read/status/search/query/download
 rules still apply. Partition create/parts/complete require admin; owner abort remains allowed.
-The minimum launcher version is 0.6.0 and the source recommended version is 0.12.0; older launchers receive an upgrade error. See the
+The source minimum and recommended launcher versions are 0.12.0; older launchers receive an upgrade error. See the
 [endpoint matrix](api-contract.md#file-upload-capability) for surfaces and the future service-identity non-goal.
 
 ## Participants And Credential Boundary

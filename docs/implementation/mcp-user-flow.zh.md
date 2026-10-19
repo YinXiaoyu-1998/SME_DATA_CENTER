@@ -1,6 +1,6 @@
 # SMEDC MCP 用户流程
 
-更新：2026-10-19。安装已发布的 `smedc-mcp-launcher@0.12.0`，最低服务兼容版本为 0.6.0。以双归属基础 Skill 为安装手册；部署证据见 [staging 状态](staging-readiness.md)，企业激活与特定宿主验收分别核对。本文不是运维手册。
+更新：2026-10-19。安装已发布的 `smedc-mcp-launcher@0.12.0`，服务端源码最低版本为 0.12.0。已核实线上推荐 0.12.0、最低 0.6.0；源码最低版本变更待合并与部署。以双归属基础 Skill 为安装手册；部署证据见 [staging 状态](staging-readiness.md)，企业激活与特定宿主验收分别核对。本文不是运维手册。
 
 ## 上传权限
 
@@ -11,8 +11,8 @@ MCP JSON-RPC 传输返回 HTTP `200`，工具结果包含 `isError: true`。两�
 `File upload requires the admin role.`、`retryable: false`。解释管理员要求即可，不重登、不重试，
 不通过提高 clearance 绕过。仅本地阻止不产生后端审计；后端拒绝尽力记录 `file_upload.denied`。
 管理员可明确声明高于自身 clearance 的密级，但普通状态、清单、检索、查询和下载仍遵循原有读取规则。
-分片 create/parts/complete 要求管理员，原上传所有者仍可 abort。最低兼容版本为当前已发布的
-0.6.0；更旧的 launcher 会收到升级要求。完整入口矩阵和未来服务身份的独立设计边界见
+分片 create/parts/complete 要求管理员，原上传所有者仍可 abort。源码 OAuth 签发及刷新要求至少
+0.12.0；更旧的 launcher 会收到升级要求。完整入口矩阵和未来服务身份的独立设计边界见
 [API 契约](api-contract.md#file-upload-capability)。
 
 ## 参与者与凭证边界

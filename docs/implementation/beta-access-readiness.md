@@ -4,9 +4,9 @@
 
 ## 已验证的当前基础
 
-- 官方 launcher 0.9.0 已公开发布，服务推荐 0.9.0、最低兼容 0.6.0。
+- 当前批准的 launcher 安装版本和源码最低版本见 [正式登录契约](official-user-install-and-login.md)；已核实线上策略见 [staging-readiness](staging-readiness.md)。
 - 当前 main 实现 Device Authorization、受控开户/密码设置、官方 MCP、企业业务权限和管理 UI。
-- canonical staging run 38238929827 成功部署 main@75604ec；证据和核验边界集中在 [staging-readiness](staging-readiness.md)。
+- 最新 canonical 部署证据和核验边界集中在 [staging-readiness](staging-readiness.md)。
 - macOS/Windows/Linux 的安装/凭据保管路径由 [正式登录契约](official-user-install-and-login.md) 定义；特定宿主的用户可见验收须单独取证。
 
 ## 每次交付前必须完成
@@ -15,7 +15,7 @@
 2. 批准本次使用的合成或明确非敏感资料；真实客户资料另行确认数据处理、留存和恢复要求。
 3. 通过企业专属管理入口设置类别/业务规则和显式账号授权，保留账号密级边界。已启用企业新增员工复用规则。
 4. 有历史资料时，另行批准并完成必要补齐；只读准备 ready 后由当前 admin 明确激活。部署、开户和登录都不是激活证据。
-5. 通过官方 launcher 0.9.0 做最小允许/拒绝读取验证，确认员工上传被拒绝、admin 上传按当前契约处理、状态成功后才能读取。不要提升角色或密级以掩盖失败。
+5. 通过核心 Skill 当前批准的官方 launcher 做最小允许/拒绝读取验证，确认员工上传被拒绝、admin 上传按当前契约处理、状态成功后才能读取。不要提升角色或密级以掩盖失败。
 6. 约定密码重置、退出、支持与测试数据清理。没有真实资料时只声明配置就绪。
 
 开户步骤见 [Beta 手册](beta-user-onboarding-runbook.md)，企业管理见 [入驻流程](tenant-onboarding.md)。完整官方人工验收使用 [指定验收流程](official-manual-acceptance.md)，需要明确请求。
