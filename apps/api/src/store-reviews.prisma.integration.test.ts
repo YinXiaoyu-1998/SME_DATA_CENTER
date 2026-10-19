@@ -171,6 +171,7 @@ if (run) {
     expect(first.rows[0]).toMatchObject({
       content: null,
       merchantReply: null,
+      replyStatus: "needs_verification",
       scores,
       reviewedAt: "2026-10-17T13:00:00+08:00"
     });
@@ -199,6 +200,49 @@ if (run) {
       read: [{ enterpriseName: "合成企业" }],
       write: [{ enterpriseName: "合成企业" }]
     });
+  });
+  it("returns safe HTTP 400 and MCP errors for merged status contradictions with no partial writes", async () => {
+    await write({
+      reviews: [
+        {
+          ...row,
+          reviewerName: "status-existing",
+          content: "Private customer body",
+          replyStatus: "unreplied_with_content"
+        }
+      ]
+    });
+    const payload = {
+      reviews: [
+        { ...row, reviewerName: "status-new", replyStatus: "unreplied_no_content" },
+        { ...row, reviewerName: "status-existing", replyStatus: "unreplied_no_content" }
+      ]
+    };
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/store-reviews/upsert",
+      headers: { authorization: "Bearer synthetic" },
+      payload
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatchObject({
+      code: "STORE_REVIEW_INVALID_INPUT",
+      requestId: expect.any(String),
+      details: { index: 1, field: "content" }
+    });
+    expect(response.body).not.toContain("Private customer body");
+    const result = await write(payload);
+    expect(result.isError).toBe(true);
+    expect(body(result).error).toMatchObject({
+      code: "STORE_REVIEW_INVALID_INPUT",
+      requestId: expect.any(String)
+    });
+    expect(await prisma.storeReview.count({ where: { orgId, reviewerName: "status-new" } })).toBe(
+      0
+    );
+    expect(
+      await prisma.storeReview.findFirst({ where: { orgId, reviewerName: "status-existing" } })
+    ).toMatchObject({ content: "Private customer body", replyStatus: "unreplied_with_content" });
   });
   it("rolls back a valid earlier row when a later identity fails and uses current admin state", async () => {
     const result = await write({

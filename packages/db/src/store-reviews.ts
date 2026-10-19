@@ -13,6 +13,8 @@ import {
   storeReviewQueryResponseBytes,
   assertStoreReviewBatchBytes,
   parseStoreReviewBatch,
+  resolveStoreReviewReplyState,
+  StoreReviewValidationError,
   normalizeEnterpriseIdentity,
   type StoreReviewActor,
   type StoreReviewInput,
@@ -24,6 +26,7 @@ import {
   type StoreReviewQuery,
   type StoreReviewQueryResult,
   type StoreReviewSource,
+  type StoreReviewReplyStatus,
   type StoreReviewScores,
   type StoreReviewWriteResult
 } from "@smedc/domain";
@@ -65,11 +68,12 @@ function patch(row: StoreReviewInput): Prisma.StoreReviewUpdateInput {
   return {
     ...(Object.hasOwn(row, "content") ? { content: row.content } : {}),
     ...(Object.hasOwn(row, "merchantReply") ? { merchantReply: row.merchantReply } : {}),
+    ...(Object.hasOwn(row, "replyStatus") ? { replyStatus: row.replyStatus } : {}),
     ...(Object.hasOwn(row, "scores") ? { scores: Prisma.DbNull } : {})
   };
 }
 function changed(existing: StoreReview, input: StoreReviewInput) {
-  return (["content", "scores", "merchantReply"] as const).some(
+  return (["content", "scores", "merchantReply", "replyStatus"] as const).some(
     (field) => Object.hasOwn(input, field) && !isDeepStrictEqual(existing[field], input[field])
   );
 }
@@ -126,7 +130,8 @@ export function createPrismaStoreReviewRepository({
           ];
           for (const [values, column] of [
             [query.storeNames, "store_name"],
-            [query.sources, "source"]
+            [query.sources, "source"],
+            [query.replyStatuses, "reply_status"]
           ] as const)
             if (values) {
               conditions.push(
@@ -163,11 +168,12 @@ export function createPrismaStoreReviewRepository({
               content: string | null;
               scores: StoreReviewScores | string;
               merchantReply: string | null;
+              replyStatus: StoreReviewReplyStatus;
               createdAt: Date;
               updatedAt: Date;
             }>
           >(
-            `SELECT v.id, v.source, v.store_name AS storeName, v.reviewed_at AS reviewedAt, v.reviewer_name AS reviewerName, v.content, CAST(v.scores AS CHAR CHARACTER SET utf8mb4) AS scores, v.merchant_reply AS merchantReply, v.created_at AS createdAt, v.updated_at AS updatedAt FROM store_reviews v WHERE ${conditions.join(" AND ")} ORDER BY v.reviewed_at DESC, v.id DESC LIMIT ? OFFSET ?`,
+            `SELECT v.id, v.source, v.store_name AS storeName, v.reviewed_at AS reviewedAt, v.reviewer_name AS reviewerName, v.content, CAST(v.scores AS CHAR CHARACTER SET utf8mb4) AS scores, v.merchant_reply AS merchantReply, v.reply_status AS replyStatus, v.created_at AS createdAt, v.updated_at AS updatedAt FROM store_reviews v WHERE ${conditions.join(" AND ")} ORDER BY v.reviewed_at DESC, v.id DESC LIMIT ? OFFSET ?`,
             ...params,
             limit + 1,
             offset
@@ -310,13 +316,32 @@ export function createPrismaStoreReviewRepository({
             for (const row of chunk) row.scores = scoresById.get(row.id) ?? null;
           }
           const existingByKey = new Map(existingRows.map((row) => [key(row), row]));
+          // Validate every merged row before any write; a contradiction aborts the whole batch.
+          const resolvedRows = rows.map((row) => {
+            try {
+              return {
+                ...row,
+                input: {
+                  ...row.input,
+                  ...resolveStoreReviewReplyState(existingByKey.get(key(row)) ?? null, row.input)
+                }
+              };
+            } catch (error) {
+              if (error instanceof StoreReviewValidationError)
+                throw new StoreReviewValidationError(error.message, {
+                  ...error.details,
+                  index: row.index
+                });
+              throw error;
+            }
+          });
           const result: StoreReviewWriteResult = {
             received: rows.length,
             inserted: 0,
             updated: 0,
             unchanged: 0
           };
-          for (const row of rows) {
+          for (const row of resolvedRows) {
             const existing = existingByKey.get(key(row));
             if (existing && !changed(existing, row.input)) {
               result.unchanged++;
@@ -339,6 +364,7 @@ export function createPrismaStoreReviewRepository({
                     reviewedAt: row.reviewedAt,
                     content: row.input.content ?? null,
                     merchantReply: row.input.merchantReply ?? null,
+                    replyStatus: row.input.replyStatus,
                     scores: Prisma.DbNull
                   }
                 });
