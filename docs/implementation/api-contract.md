@@ -88,8 +88,8 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The published, independently verified Skill pin and source recommendation are 0.12.0; source minimum
-compatibility is 0.12.0. Launcher 0.12.0 bundles this authorization contract; matching service
+The published, independently verified Skill pin and source recommendation are 0.13.0; source minimum
+compatibility remains 0.12.0. Launcher 0.13.0 bundles this authorization contract; matching service
 rollout and explicit tenant activation remain separate. Launchers below the minimum are rejected
 with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This release does not backfill historical
 resource attributes, invalidate existing OSS URLs, or add mid-transfer downgrade handling. Future scheduled/connector/service identities need a separate design,
@@ -165,7 +165,7 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.12.0 owns business/dishes upload and partition transfer. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.13.0 owns business/dishes upload and partition transfer. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
@@ -173,7 +173,7 @@ authorization mode/version, query shape, filters, limit, and retrieval configura
 
 <a id="current-permission-and-management-tools-launcher-0110"></a>
 
-### Current permission and management tools (Launcher 0.12.0)
+### Current permission and management tools (Launcher 0.13.0)
 
 All calls use the existing authenticated HTTP delegation. Every write requires the current
 `expectedVersion`; conflicts return `AUTHORIZATION_VERSION_CONFLICT` without partial changes.
@@ -217,9 +217,9 @@ and store configuration never grant content access or set a category level or te
 
 ### Filtered partition extracts and asynchronous bundles
 
-The approved launcher 0.12.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
+The approved launcher 0.13.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
 tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
-plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.12.0`. This contract is not
+plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.13.0`. This contract is not
 evidence of service deployment or tenant activation.
 
 For `business`/`dishes`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
@@ -303,7 +303,7 @@ See [ledger-pdf-operations.md](./ledger-pdf-operations.md) for backfill and reco
 
 ## Cost Cards (Published Launcher, Separate Service Gate)
 
-Launcher `0.12.0` is published and independently verified and is the approved install pin
+Launcher `0.13.0` is published and independently verified and is the approved install pin
 and source recommendation. Cost-card service rollout and explicit tenant configuration remain
 separate gates; publication does not prove live deployment or acceptance. See [the usage contract](../../skills/smedc-mcp/references/cost-cards.md).
 
@@ -373,7 +373,7 @@ publication success; a later directory cannot recreate an earlier summary.
 
 ### Cost-card endpoints and rollout boundary
 
-These interfaces are included in published launcher 0.12.0 and have focused route coverage.
+These interfaces are included in published launcher 0.13.0 and have focused route coverage.
 Verify actual service rollout and tenant configuration separately; package verification alone
 does not establish live acceptance.
 
@@ -417,19 +417,19 @@ and idempotencyKey, without dates/snapshot/confidentiality override. Follow `get
 applied currently readable batches receive publicationSummary verbatim. Failed/rejected current
 readers can receive validation locations and ignored/source-summary arrays; owner-only access
 receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
-read permission is exposed. Launcher 0.12.0 is published and independently verified; service rollout and tenant authorization remain separate.
+read permission is exposed. Launcher 0.13.0 is published and independently verified; service rollout and tenant authorization remain separate.
 
 <a id="store-reviews-launcher-0110"></a>
 
-## Store reviews (published 0.12.0; candidate 0.13.0)
+## Store reviews (published 0.13.0)
 
-Launcher `0.12.0` is published and independently verified, and is the approved installation pin.
-The service source recommends and requires `0.12.0` for OAuth issuance and refresh. The verified
-live deployment recommends `0.12.0` with minimum `0.6.0`; the source minimum increase awaits
-merge and deployment. See [staging readiness](staging-readiness.md); publication and installation do not
+Launcher `0.13.0` is published and independently verified, and is the approved installation pin.
+The service source recommends `0.13.0` and requires at least `0.12.0` for OAuth issuance and refresh.
+The verified live deployment recommends `0.12.0` with minimum `0.12.0`; matching service deployment
+and the feedbackId migration are verified separately. The recommendation change awaits merge and deployment. See [staging readiness](staging-readiness.md); publication and installation do not
 configure categories/grants or activate a tenant.
 
-Published, independently verified launcher `0.12.0` includes the `replyStatus` / `replyStatuses`
+Published, independently verified launcher `0.12.0` introduced the `replyStatus` / `replyStatuses`
 extension below. The matching service release and migration are verified in staging readiness;
 package publication alone does not prove those gates. Backfilling real tenant data requires
 separate authorization.
@@ -444,11 +444,12 @@ Every row requires `enterpriseName`, `source` (`美团评价` / `点评评价`),
 organization + registered enterprise key + source + exact store + canonical review instant + exact
 reviewer. No fuzzy merging, deletion, arbitrary sorting or aggregation is exposed.
 
-Candidate launcher `0.13.0` adds optional `reviews[].feedbackId` and query `feedbackId`.
-This source capability is not published or deployed by this change: installation pins, service
-recommendation and minimum-version metadata remain `0.12.0`. It requires the matching launcher,
-service release and forward migration `20261019010000_store_review_feedback_id` before use.
-The complete candidate identity adds exact platform ID to the six fields above; IDs are scoped to
+Published, independently verified launcher `0.13.0` adds optional `reviews[].feedbackId` and query
+`feedbackId` and is the approved installation pin and source recommendation. The minimum remains
+`0.12.0`; the recommendation change awaits merge and deployment. Before using these fields,
+verify the matching service deployment and forward migration
+`20261019010000_store_review_feedback_id`; publication alone does not prove those gates.
+The complete identity adds exact platform ID to the six fields above; IDs are scoped to
 that complete business identity, never assumed globally unique. Different IDs can coexist on the
 same nickname/minute key, including pure ratings; the same full identity updates or is unchanged.
 
@@ -556,7 +557,7 @@ operation-specific and never inferred from content or historical keys. Validate 
 for no name, select/report only a sole candidate, ask when several exist, or report unavailable
 when none exist. Callers cannot choose orgId.
 
-Query filters are optional exact `storeNames` (maximum 100), `sources`, `reviewerName`, candidate `feedbackId`, inclusive
+Query filters are optional exact `storeNames` (maximum 100), `sources`, `reviewerName`, `feedbackId`, inclusive
 `reviewedAtFrom` / `reviewedAtTo`, `hasReply`, `replyStatuses`, `limit`, and opaque `cursor`.
 `replyStatuses` accepts 1–4 raw entries from the four states, deduplicated and sorted before querying
 and cursor hashing. `hasReply:false` matches null or empty reply, true matches other text, including

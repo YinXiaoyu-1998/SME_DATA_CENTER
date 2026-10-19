@@ -32,8 +32,8 @@ MCP 行为/契约/使用指导变更遵守 [共享发布规则](../../packages/m
 ## 成本卡发布与上线边界
 
 双份 Skill 的 [cost-cards reference](../../skills/smedc-mcp/references/cost-cards.md) 对应已发布并
-独立验证的 0.12.0；成本卡 0.10.1 发布证据见 [progress](progress.md)。核心 Skill 当前 pin 为
-0.12.0，business-analysis/delivery-ledger companion 保持 0.11.0，独立维护；本次不更新 companion。
+独立验证的 0.13.0；成本卡 0.10.1 发布证据见 [progress](progress.md)。核心 Skill 当前 pin 为
+0.13.0，business-analysis/delivery-ledger companion 保持 0.11.0，独立维护；本次不更新 companion。
 服务版本策略见上述当前入口，发布与安装不证明租户授权就绪，使用前分别核对。同步目录
 需逐文件一致，canonical 用户目录仍为 `/Users/xiaoyuyin/.agents/skills`，安装按员工请求范围执行。
 
