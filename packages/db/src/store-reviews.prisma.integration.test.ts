@@ -310,7 +310,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     expect(await prisma.businessResourceScope.count({ where: { orgId } })).toBe(6);
   });
   it("keeps the same business key independent across organizations", async () => {
-    await repo.upsert(actor(), { reviews: [row()] });
+    await repo.upsert(actor(), { reviews: [{ ...row(), feedbackId: "feedback-test-a" }] });
     const otherOrg = orgId + "_other",
       otherId = id + "_2";
     await prisma.organization.create({ data: { id: otherOrg, name: "Synthetic isolated tenant" } });
@@ -345,9 +345,12 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     await prisma.businessStore.create({
       data: { orgId: otherOrg, enterpriseKey: "企业a", name: "A店😀" }
     });
-    expect(await repo.upsert({ orgId: otherOrg, id: otherId }, { reviews: [row()] })).toMatchObject(
-      { inserted: 1 }
-    );
+    expect(
+      await repo.upsert(
+        { orgId: otherOrg, id: otherId },
+        { reviews: [{ ...row(), feedbackId: "feedback-test-a" }] }
+      )
+    ).toMatchObject({ inserted: 1 });
     await expect(
       repo.upsert({ orgId: otherOrg, id }, { reviews: [row("cross-org")] })
     ).rejects.toThrow("UPLOAD_ADMIN_REQUIRED");

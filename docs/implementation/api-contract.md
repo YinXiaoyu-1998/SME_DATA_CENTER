@@ -421,7 +421,7 @@ read permission is exposed. Launcher 0.12.0 is published and independently verif
 
 <a id="store-reviews-launcher-0110"></a>
 
-## Store reviews (launcher 0.12.0)
+## Store reviews (published 0.12.0; candidate 0.13.0)
 
 Launcher `0.12.0` is published and independently verified, and is the approved installation pin.
 The service source recommends and requires `0.12.0` for OAuth issuance and refresh. The verified
@@ -443,6 +443,47 @@ Every row requires `enterpriseName`, `source` (`美团评价` / `点评评价`),
 `reviewedAt`, exact `reviewerName`. The server derives orgId from authentication. The identity is
 organization + registered enterprise key + source + exact store + canonical review instant + exact
 reviewer. No fuzzy merging, deletion, arbitrary sorting or aggregation is exposed.
+
+Candidate launcher `0.13.0` adds optional `reviews[].feedbackId` and query `feedbackId`.
+This source capability is not published or deployed by this change: installation pins, service
+recommendation and minimum-version metadata remain `0.12.0`. It requires the matching launcher,
+service release and forward migration `20261019010000_store_review_feedback_id` before use.
+The complete candidate identity adds exact platform ID to the six fields above; IDs are scoped to
+that complete business identity, never assumed globally unique. Different IDs can coexist on the
+same nickname/minute key, including pure ratings; the same full identity updates or is unchanged.
+
+`feedbackId` accepts 1–255 valid Unicode characters and must not be all whitespace. Reject null,
+numbers, empty/whitespace-only strings, malformed UTF-16 and overlong input. Preserve the original
+case, spaces, prefix and Unicode spelling without trimming, numeric conversion or normalization.
+It is an identity field, cannot be cleared or patched onto a different record, and omission selects
+the legacy no-ID identity. Duplicate full identities in a batch remain HTTP 400
+`STORE_REVIEW_INVALID_INPUT`; mixing omitted/present IDs on the same old identity also fails 400
+with safe `feedbackId` and row index details, regardless of order.
+
+A present-ID request encountering an old no-ID row, an omitted-ID request encountering any ID row,
+or an existing mixed group rejects the full transaction with HTTP 409
+`STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED` and safe input index only. Authorization and
+current admin/enterprise/exact store checks precede candidate lookup. Conflict checks, rows,
+resources, authorization version and audit reuse the organization publication lock and transaction.
+No row body or conflicting platform ID is echoed. Historical records are preserved with null IDs;
+resubmitting them with IDs does not auto-upgrade them. Later enrichment requires a separately
+approved mapping from original platform evidence to stable internal row IDs; nickname/minute alone
+is insufficient. No real-data backfill or date correction is included.
+
+Storage preserves `feedback_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin`
+and an internal `feedback_id_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT ''`.
+The shared key helper returns empty string for missing ID and SHA-256 lowercase hex over original
+UTF-8 bytes otherwise. The original six-column unique key gains this digest column, with no prefix
+index; existing rows keep their internal IDs, content, scores, replies, status and timestamps.
+Before mapping full identities, the transaction recomputes every candidate digest and rejects
+inconsistency with the same safe 409; matched original text must also be identical before update
+or unchanged. Digest keys never enter public results. After same-old-key multiple-ID rows exist,
+an old service cannot safely write or be a direct rollback target.
+
+The candidate query's exact ID filter uses the same validation, is ANDed inside authorization
+scope before pagination, and participates in cursor binding. Omission queries all authorized rows.
+Every row returns `feedbackId: string | null` (null for legacy records), without truncation or internal
+keys; byte budgets and sorting remain unchanged. Write results remain the four aggregate counts.
 
 Optional `content`, `scores`, `merchantReply` preserve omission; null clears, scores replaces the
 whole object and `{}` is valid. Scores retain arbitrary dimension names (including own
@@ -515,7 +556,7 @@ operation-specific and never inferred from content or historical keys. Validate 
 for no name, select/report only a sole candidate, ask when several exist, or report unavailable
 when none exist. Callers cannot choose orgId.
 
-Query filters are optional exact `storeNames` (maximum 100), `sources`, `reviewerName`, inclusive
+Query filters are optional exact `storeNames` (maximum 100), `sources`, `reviewerName`, candidate `feedbackId`, inclusive
 `reviewedAtFrom` / `reviewedAtTo`, `hasReply`, `replyStatuses`, `limit`, and opaque `cursor`.
 `replyStatuses` accepts 1–4 raw entries from the four states, deduplicated and sorted before querying
 and cursor hashing. `hasReply:false` matches null or empty reply, true matches other text, including

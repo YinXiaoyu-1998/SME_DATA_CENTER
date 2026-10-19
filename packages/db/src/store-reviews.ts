@@ -291,13 +291,15 @@ export function createPrismaStoreReviewRepository({
               };
             })
             .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+          // Several platform IDs may share one legacy identity; query that group once.
+          const identities = [...new Map(rows.map((row) => [key(row), row])).values()];
           const existingRows: StoreReview[] = [];
-          for (let offset = 0; offset < rows.length; offset += 100)
+          for (let offset = 0; offset < identities.length; offset += 100)
             existingRows.push(
               ...(await tx.storeReview.findMany({
                 where: {
                   orgId: actor.orgId,
-                  OR: rows.slice(offset, offset + 100).map((row) => ({
+                  OR: identities.slice(offset, offset + 100).map((row) => ({
                     enterpriseKey: row.enterpriseKey,
                     source: row.source,
                     storeName: row.storeName,
@@ -324,20 +326,23 @@ export function createPrismaStoreReviewRepository({
           // Read by the legacy identity so neither omitted IDs nor corrupt digest keys
           // can hide a conflicting stored row. Validate before building the full map.
           const candidates = new Map<string, StoreReview[]>();
+          const invalidKeys = new Set<string>();
           for (const candidate of existingRows) {
             const oldKey = key(candidate);
             const group = candidates.get(oldKey) ?? [];
             group.push(candidate);
             candidates.set(oldKey, group);
+            if (candidate.feedbackIdKey !== storeReviewFeedbackIdKey(candidate.feedbackId))
+              invalidKeys.add(oldKey);
           }
           const fullKey = (row: Parameters<typeof key>[0], feedbackIdKey: string) =>
             JSON.stringify([key(row), feedbackIdKey]);
           for (const row of rows) {
             const group = candidates.get(key(row)) ?? [];
             if (
+              invalidKeys.has(key(row)) ||
               group.some(
                 (candidate) =>
-                  candidate.feedbackIdKey !== storeReviewFeedbackIdKey(candidate.feedbackId) ||
                   (candidate.feedbackId === null) !== (row.input.feedbackId === undefined)
               )
             )

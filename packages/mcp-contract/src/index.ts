@@ -1458,7 +1458,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upsert_store_reviews",
     title: "Upsert store reviews",
     description:
-      "Atomically record 1–1000 platform reviews using POST /v1/store-reviews/upsert. Requires the current active admin role. Every row requires an explicitly selected registered enterpriseName and exact store identity. Omitted fields remain unchanged; null clears and scores replaces the whole object. Beijing time requires at least an hour (YYYY-MM-DD HH or T with +08:00); missing minutes/seconds become zero. Only save verified published merchant replies. Optional replyStatus records one platform fact: replied, unreplied_no_content, unreplied_with_content, or needs_verification. Explicit status validates merged stored text; omitted status preserves valid state or downgrades contradictions to needs_verification. New rows default to needs_verification. Drafts and approvals are not platform facts. The batch fully commits or rolls back; repeated writes do not add duplicate rows, but counts and permission/cursor versions may change.",
+      "Atomically record 1–1000 platform reviews using POST /v1/store-reviews/upsert. Requires the current active admin role. Every row requires an explicitly selected registered enterpriseName and exact store identity. Optional feedbackId is an exact platform identity string; preserve its case, spaces and prefix. Same legacy identity with different IDs remains separate. Omission uses legacy identity; mixed legacy/ID records require reconciliation and cannot be auto-bound. Omitted mutable fields remain unchanged; null clears mutable text/scores only and scores replaces the whole object. Beijing time requires at least an hour (YYYY-MM-DD HH or T with +08:00); missing minutes/seconds become zero. Only save verified published merchant replies. Optional replyStatus records one platform fact: replied, unreplied_no_content, unreplied_with_content, or needs_verification. Explicit status validates merged stored text; omitted status preserves valid state or downgrades contradictions to needs_verification. New rows default to needs_verification. Drafts and approvals are not platform facts. The batch fully commits or rolls back; repeated writes do not add duplicate rows, but counts and permission/cursor versions may change.",
     inputSchema: upsertStoreReviewsInputSchema,
     inputFields: [
       {
@@ -1474,7 +1474,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "query_store_reviews",
     title: "Query store reviews",
     description:
-      "Read currently authorized store reviews using POST /v1/store-reviews/query. Requires explicit enterpriseName. Administrators also require read grants. Fixed reviewedAt DESC, id DESC order; inclusive Beijing time filters. Pages may return fewer complete rows than limit to fit the MCP response byte budget; continue with nextCursor. replyStatuses filters platform facts; hasReply remains non-null/nonempty reply text presence and combines with status filters using AND. Restart pagination when data or permissions change.",
+      "Read currently authorized store reviews using POST /v1/store-reviews/query. Requires explicit enterpriseName. Administrators also require read grants. Fixed reviewedAt DESC, id DESC order; inclusive Beijing time filters. Pages may return fewer complete rows than limit to fit the MCP response byte budget; continue with nextCursor. Optional feedbackId filters exact original platform IDs with AND before pagination and is bound into the cursor. Every row returns feedbackId or null for legacy records. replyStatuses filters platform facts; hasReply remains non-null/nonempty reply text presence and combines with status filters using AND. Restart pagination when data or permissions change.",
     inputSchema: queryStoreReviewsInputSchema,
     inputFields: Object.entries(queryStoreReviewsInputSchema.shape).map(([name, schema]) => ({
       name,
@@ -1482,7 +1482,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       description: name
     })),
     resultShape: [
-      "rows: complete authorized review fields including replyStatus",
+      "rows: complete authorized review fields including replyStatus and nullable feedbackId",
       "page.nextCursor"
     ],
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }

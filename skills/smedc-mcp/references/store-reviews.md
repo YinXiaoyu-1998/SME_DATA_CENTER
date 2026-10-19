@@ -218,6 +218,79 @@ wrapper to its arguments.
 }
 ```
 
+## Platform feedback identity (candidate 0.13.0)
+
+The following `feedbackId` capability is implemented in candidate launcher `0.13.0` and requires
+its matching service release and database migration. The candidate is unpublished and is not an
+approved installation version; the approved installation pin remains `0.12.0`. Do not send this
+field through the published 0.12.0 contract or infer rollout from this reference.
+
+When the platform exposes an ID, provide `reviews[].feedbackId` exactly as observed. It is an
+optional identity string of 1–255 valid Unicode characters, not all whitespace. Preserve case,
+leading/trailing spaces, the `feedback-` prefix and Unicode spelling: never trim, convert to a
+number, normalize or impose a page-specific ID pattern. Null, numbers, empty/whitespace-only,
+malformed UTF-16 and overlong values are rejected. It cannot be cleared or rebound as a patch.
+
+The complete identity is server-authenticated organization + registered enterprise key + source +
+exact store + canonical review instant + exact reviewer name + exact `feedbackId`. IDs are not
+assumed globally unique across enterprises, stores or sources. Different IDs on the same old
+identity save separate rows, including pure ratings; repeating the full identity updates or counts
+as unchanged. Duplicate full identities in one batch fail with `STORE_REVIEW_INVALID_INPUT`
+(HTTP 400, safe row indices). Mixing omitted and present IDs on the same old identity in one batch
+also fails with HTTP 400 and safe `feedbackId` field/index details, regardless of row order.
+
+Omission uses the legacy no-ID identity, never an arbitrary matching ID row. A present-ID write
+against an existing no-ID row, an omitted-ID write against an existing ID row, or stored mixed
+identity rows fails the entire batch with `STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED`
+(HTTP 409; safe input index only). Do not retry by dropping the ID or changing another identity
+field. Existing no-ID records remain unchanged; adding IDs requires a separately authorized,
+verifiable mapping from original platform records to stable internal row IDs. Nickname and minute
+time alone cannot establish that mapping, and resubmitting old rows with IDs does not upgrade them.
+
+`query_store_reviews.feedbackId` uses the same validation and exact comparison, combines with all
+other filters using AND inside authorization scope before pagination, and is bound into the cursor.
+Omission queries all authorized rows. Every returned row includes `feedbackId: string | null`;
+legacy rows return null. Internal digest keys never appear in MCP results. Writes still return only
+the four aggregate counts. Keep the ID filter unchanged on later pages. Once multiple IDs share
+an old identity, the old service cannot safely process writes or serve as a direct rollback target.
+
+`upsert_store_reviews` — candidate same-minute pure ratings with distinct platform IDs:
+
+```json
+{
+  "reviews": [
+    {
+      "enterpriseName": "合成餐饮企业",
+      "source": "美团评价",
+      "storeName": "合成门店",
+      "reviewedAt": "2026-10-17 17:20",
+      "reviewerName": "合成同名用户",
+      "feedbackId": "feedback-test-a",
+      "scores": { "总评": 4 }
+    },
+    {
+      "enterpriseName": "合成餐饮企业",
+      "source": "美团评价",
+      "storeName": "合成门店",
+      "reviewedAt": "2026-10-17 17:20",
+      "reviewerName": "合成同名用户",
+      "feedbackId": "feedback-test-b",
+      "scores": { "总评": 5 }
+    }
+  ]
+}
+```
+
+`query_store_reviews` — candidate exact platform ID filter:
+
+```json
+{
+  "enterpriseName": "合成餐饮企业",
+  "feedbackId": "feedback-test-a",
+  "limit": 50
+}
+```
+
 ## Batches, unknown outcomes and querying
 
 Send 1–1000 rows per batch. Both the original UTF-8 JSON and its canonical JSON after time
