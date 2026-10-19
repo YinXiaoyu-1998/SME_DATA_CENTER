@@ -1370,6 +1370,8 @@ model StoreReview {
   storeName String @map("store_name") @db.VarChar(255)
   reviewedAt DateTime @map("reviewed_at") @db.DateTime(0)
   reviewerName String @map("reviewer_name") @db.VarChar(255)
+  feedbackId String? @map("feedback_id") @db.VarChar(255)
+  feedbackIdKey String @default("") @map("feedback_id_key") @db.Char(64)
   content String? @db.MediumText
   scores Json?
   merchantReply String? @map("merchant_reply") @db.MediumText
@@ -1377,7 +1379,7 @@ model StoreReview {
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  @@unique([orgId, enterpriseKey, source, storeName, reviewedAt, reviewerName], map: "uq_store_reviews_identity")
+  @@unique([orgId, enterpriseKey, source, storeName, reviewedAt, reviewerName, feedbackIdKey], map: "uq_store_reviews_identity")
   @@index([orgId, enterpriseKey, storeName, reviewedAt, id], map: "idx_store_reviews_store_time")
   @@index([orgId, enterpriseKey, reviewedAt, id], map: "idx_store_reviews_time")
   @@map("store_reviews")

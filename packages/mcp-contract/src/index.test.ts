@@ -1791,6 +1791,7 @@ it("budgets the actual escaped review result text with margin for the MCP envelo
     rows: [
       {
         id: "r",
+        feedbackId: null,
         enterpriseName: "合成企业",
         source: "美团评价",
         storeName: "门店",

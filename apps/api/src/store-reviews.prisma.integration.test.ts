@@ -313,6 +313,74 @@ if (run) {
       scores: { 服务: 9 }
     });
   });
+  it("round-trips feedback identities and safe reconciliation errors through public paths", async () => {
+    const review = { ...row, reviewerName: "feedback-public" };
+    expect(
+      body(
+        await write({
+          reviews: [
+            { ...review, feedbackId: "feedback-test-a" },
+            { ...review, feedbackId: "feedback-test-b" }
+          ]
+        })
+      )
+    ).toEqual({ received: 2, inserted: 2, updated: 0, unchanged: 0 });
+    const result = body(
+      await query({ enterpriseName: row.enterpriseName, feedbackId: "feedback-test-a" })
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      feedbackId: "feedback-test-a",
+      content: null,
+      scores: null
+    });
+    expect(result.rows[0]).not.toHaveProperty("feedbackIdKey");
+    expect(
+      body(
+        await write({
+          reviews: [{ ...review, feedbackId: "feedback-test-a", scores: { 服务: 9 } }]
+        })
+      )
+    ).toMatchObject({ updated: 1 });
+    expect(
+      body(
+        await write({
+          reviews: [{ ...review, feedbackId: "feedback-test-a", scores: { 服务: 9 } }]
+        })
+      )
+    ).toMatchObject({ unchanged: 1 });
+    for (const [reviews, code, status, details] of [
+      [
+        [{ ...row, reviewerName: "feedback-rollback" }, review],
+        "STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED",
+        409,
+        { index: 1 }
+      ],
+      [
+        [review, { ...review, feedbackId: "feedback-test-a" }],
+        "STORE_REVIEW_INVALID_INPUT",
+        400,
+        { index: 1, field: "feedbackId" }
+      ]
+    ] as const) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/store-reviews/upsert",
+        headers: { authorization: "Bearer synthetic" },
+        payload: { reviews }
+      });
+      expect(response.statusCode).toBe(status);
+      expect(response.json().error).toMatchObject({ code, details });
+      expect(response.body).not.toContain("feedback-test-a");
+      const failed = await write({ reviews });
+      expect(failed.isError).toBe(true);
+      if (status === 409) expect(body(failed).error.code).toBe(code);
+      else expect(failed.content[0]!.text).toContain("Invalid store review batch");
+    }
+    expect(
+      await prisma.storeReview.count({ where: { orgId, reviewerName: "feedback-rollback" } })
+    ).toBe(0);
+  });
   it("rolls back a valid earlier row when a later identity fails and uses current admin state", async () => {
     const result = await write({
       reviews: [
