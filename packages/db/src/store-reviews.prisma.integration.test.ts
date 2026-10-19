@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
 import {
+  storeReviewFeedbackIdKey,
   createStructuredCursor,
   hashStoreReviewQueryScope,
   parseStoreReviewQuery,
@@ -308,7 +310,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     expect(await prisma.businessResourceScope.count({ where: { orgId } })).toBe(6);
   });
   it("keeps the same business key independent across organizations", async () => {
-    await repo.upsert(actor(), { reviews: [row()] });
+    await repo.upsert(actor(), { reviews: [{ ...row(), feedbackId: "feedback-test-a" }] });
     const otherOrg = orgId + "_other",
       otherId = id + "_2";
     await prisma.organization.create({ data: { id: otherOrg, name: "Synthetic isolated tenant" } });
@@ -343,9 +345,12 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     await prisma.businessStore.create({
       data: { orgId: otherOrg, enterpriseKey: "企业a", name: "A店😀" }
     });
-    expect(await repo.upsert({ orgId: otherOrg, id: otherId }, { reviews: [row()] })).toMatchObject(
-      { inserted: 1 }
-    );
+    expect(
+      await repo.upsert(
+        { orgId: otherOrg, id: otherId },
+        { reviews: [{ ...row(), feedbackId: "feedback-test-a" }] }
+      )
+    ).toMatchObject({ inserted: 1 });
     await expect(
       repo.upsert({ orgId: otherOrg, id }, { reviews: [row("cross-org")] })
     ).rejects.toThrow("UPLOAD_ADMIN_REQUIRED");
@@ -553,6 +558,213 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     await expect(
       repo.query(actor(), { enterpriseName: "企业B", replyStatuses: ["unreplied_no_content"] })
     ).rejects.toThrow("STORE_REVIEW_ACCESS_DENIED");
+  });
+  it("keeps same-minute platform identities separate and filters exact IDs before pagination", async () => {
+    const reviews = [
+      "feedback-test-a",
+      "feedback-test-b",
+      "Feedback-test-a",
+      "feedback-test-a ",
+      "é",
+      "e\u0301",
+      "😀".repeat(255)
+    ].map((feedbackId) => ({
+      ...row(),
+      feedbackId,
+      scores: { 服务: 8 },
+      replyStatus: "unreplied_no_content" as const
+    }));
+    expect(await repo.upsert(actor(), { reviews })).toEqual({
+      received: 7,
+      inserted: 7,
+      updated: 0,
+      unchanged: 0
+    });
+    expect(await repo.upsert(actor(), { reviews })).toMatchObject({ unchanged: 7 });
+    expect(
+      await repo.upsert(actor(), {
+        reviews: [{ ...reviews[0]!, merchantReply: " Published ", replyStatus: "replied" }]
+      })
+    ).toMatchObject({ updated: 1 });
+    await repo.upsert(actor(), {
+      reviews: [
+        { ...row("neighbor"), storeName: "B店", feedbackId: "feedback-test-a" },
+        { ...row(), source: "点评评价", feedbackId: "feedback-test-a" },
+        { ...row(), enterpriseName: "企业B", feedbackId: "feedback-test-a" }
+      ]
+    });
+    await expect(
+      repo.query(actor(), { enterpriseName: "企业A", feedbackId: "feedback-test-a" })
+    ).rejects.toThrow("STORE_REVIEW_ACCESS_DENIED");
+    await grants();
+    const filtered = await repo.query(actor(), {
+      enterpriseName: "企业A",
+      feedbackId: "feedback-test-a",
+      sources: ["美团评价"],
+      limit: 1
+    });
+    expect(filtered.rows).toHaveLength(1);
+    expect(filtered.page.nextCursor).toBeNull();
+    expect(filtered.rows[0]).toMatchObject({
+      feedbackId: "feedback-test-a",
+      scores: { 服务: 8 },
+      content: null,
+      merchantReply: " Published ",
+      replyStatus: "replied"
+    });
+    expect(filtered.rows[0]).not.toHaveProperty("feedbackIdKey");
+    for (const review of reviews) {
+      const result = await repo.query(actor(), {
+        enterpriseName: "企业A",
+        feedbackId: review.feedbackId,
+        sources: ["美团评价"]
+      });
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0]!.feedbackId).toBe(review.feedbackId);
+    }
+    const page = await repo.query(actor(), { enterpriseName: "企业A", limit: 1 });
+    await expect(
+      repo.query(actor(), {
+        enterpriseName: "企业A",
+        limit: 1,
+        cursor: page.page.nextCursor!,
+        feedbackId: "feedback-test-a"
+      })
+    ).rejects.toThrow(/Cursor/);
+    expect(
+      (await repo.query(actor(), { enterpriseName: "企业A", feedbackId: "absent" })).rows
+    ).toEqual([]);
+  });
+  it("rejects both legacy/platform conflict directions atomically with only a safe index", async () => {
+    await repo.upsert(actor(), {
+      reviews: [row("legacy"), { ...row("platform"), feedbackId: "feedback-test-a" }]
+    });
+    const before = await prisma.storeReview.findMany({ where: { orgId }, orderBy: { id: "asc" } });
+    const version = await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } });
+    const auditCount = await prisma.auditLog.count({ where: { orgId } });
+    const resourceCount = await prisma.businessResource.count({ where: { orgId } });
+    for (const conflict of [{ ...row("legacy"), feedbackId: "feedback-test-a" }, row("platform")]) {
+      await expect(
+        repo.upsert(actor(), { reviews: [row("aaa-new"), conflict] })
+      ).rejects.toMatchObject({
+        code: "STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED",
+        details: { index: 1 }
+      });
+    }
+    await expect(
+      repo.upsert(actor(), { reviews: [row("mixed"), { ...row("mixed"), feedbackId: "test" }] })
+    ).rejects.toMatchObject({
+      code: "STORE_REVIEW_INVALID_INPUT",
+      details: { index: 1, field: "feedbackId" }
+    });
+    expect(await prisma.storeReview.findMany({ where: { orgId }, orderBy: { id: "asc" } })).toEqual(
+      before
+    );
+    expect(await prisma.auditLog.count({ where: { orgId } })).toBe(auditCount);
+    expect(await prisma.businessResource.count({ where: { orgId } })).toBe(resourceCount);
+    expect(await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).toEqual(
+      version
+    );
+    await grants();
+    expect(
+      (await repo.query(actor(), { enterpriseName: "企业A", reviewerName: "legacy" })).rows[0]!
+        .feedbackId
+    ).toBeNull();
+  });
+  it("serializes concurrent legacy/platform inserts without creating both identities", async () => {
+    const results = await Promise.allSettled([
+      repo.upsert(actor(), { reviews: [row()] }),
+      repo.upsert(actor(), { reviews: [{ ...row(), feedbackId: "feedback-test-a" }] })
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")).toMatchObject({
+      reason: { code: "STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED", details: { index: 0 } }
+    });
+    expect(await prisma.storeReview.count({ where: { orgId } })).toBe(1);
+  });
+  it("rejects corrupt digest keys before constructing the identity map, including mixed stored rows", async () => {
+    await repo.upsert(actor(), {
+      reviews: [{ ...row(), feedbackId: "feedback-test-a", content: "Private body" }]
+    });
+    await prisma.$executeRaw`UPDATE store_reviews SET feedback_id_key = ${storeReviewFeedbackIdKey("feedback-test-b")} WHERE org_id = ${orgId}`;
+    const before = await prisma.storeReview.findMany({ where: { orgId } });
+    await expect(
+      repo.upsert(actor(), { reviews: [{ ...row(), feedbackId: "feedback-test-a" }] })
+    ).rejects.toMatchObject({
+      code: "STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED",
+      details: { index: 0 }
+    });
+    expect(await prisma.storeReview.findMany({ where: { orgId } })).toEqual(before);
+    await prisma.$executeRaw`UPDATE store_reviews SET feedback_id_key = ${storeReviewFeedbackIdKey("feedback-test-a")} WHERE org_id = ${orgId}`;
+    await prisma.$executeRaw`INSERT INTO store_reviews (id, org_id, enterprise_key, source, store_name, reviewed_at, reviewer_name, updated_at) VALUES (${randomUUID().replaceAll("-", "")}, ${orgId}, '企业a', '美团评价', 'A店😀', '2026-10-17 05:00:00', '用户😀', NOW(3))`;
+    for (const review of [row(), { ...row(), feedbackId: "feedback-test-a" }])
+      await expect(repo.upsert(actor(), { reviews: [review] })).rejects.toMatchObject({
+        code: "STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED",
+        details: { index: 0 }
+      });
+    expect(await prisma.storeReview.count({ where: { orgId } })).toBe(2);
+  });
+  it("migrates the actual legacy schema preserving rows and full-width unique identity", async () => {
+    const table = `review_migration_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
+    const migration = (name: string) =>
+      readFileSync(
+        new URL(`../prisma/migrations/${name}/migration.sql`, import.meta.url),
+        "utf8"
+      ).replaceAll(/`?\bstore_reviews\b`?/g, `\`${table}\``);
+    const legacy = migration("20261017000000_store_reviews")
+      .slice(migration("20261017000000_store_reviews").indexOf("CREATE TABLE"))
+      .replace(/,\n {2}CONSTRAINT[^\n]+/, "");
+    try {
+      await prisma.$executeRawUnsafe(legacy);
+      await prisma.$executeRawUnsafe(migration("20261019000000_store_review_reply_status"));
+      const org = "o".repeat(64),
+        enterprise = "😀".repeat(128),
+        source = "😀".repeat(32),
+        store = "😀".repeat(255),
+        reviewer = "😀".repeat(255);
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO \`${table}\` (id, org_id, enterprise_key, source, store_name, reviewed_at, reviewer_name, content, scores, merchant_reply, reply_status, updated_at) VALUES ('legacy', ?, ?, ?, ?, '2026-10-17 05:00:00', ?, 'Body', '{"服务":8}', ' Published ', 'replied', '2026-10-17 05:00:00')`,
+        org,
+        enterprise,
+        source,
+        store,
+        reviewer
+      );
+      const before = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+        `SELECT * FROM \`${table}\``
+      );
+      await prisma.$executeRawUnsafe(migration("20261019010000_store_review_feedback_id"));
+      const after = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+        `SELECT * FROM \`${table}\``
+      );
+      expect(after).toEqual([{ ...before[0], feedback_id: null, feedback_id_key: "" }]);
+      const columns = await prisma.$queryRaw<
+        Array<{ name: string; collation: string; charset: string }>
+      >`SELECT COLUMN_NAME AS name, COLLATION_NAME AS collation, CHARACTER_SET_NAME AS charset FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ${table} AND COLUMN_NAME IN ('feedback_id', 'feedback_id_key') ORDER BY COLUMN_NAME`;
+      expect(columns).toEqual([
+        { name: "feedback_id", collation: "utf8mb4_0900_bin", charset: "utf8mb4" },
+        { name: "feedback_id_key", collation: "ascii_bin", charset: "ascii" }
+      ]);
+      await expect(
+        prisma.$executeRawUnsafe(
+          `INSERT INTO \`${table}\` SELECT 'duplicate', org_id, enterprise_key, source, store_name, reviewed_at, reviewer_name, content, scores, merchant_reply, created_at, updated_at, reply_status, feedback_id, feedback_id_key FROM \`${table}\` WHERE id = 'legacy'`
+        )
+      ).rejects.toThrow();
+      await prisma.$executeRawUnsafe(
+        `UPDATE \`${table}\` SET feedback_id = ?, feedback_id_key = ? WHERE id = 'legacy'`,
+        "😀".repeat(255),
+        storeReviewFeedbackIdKey("😀".repeat(255))
+      );
+      expect(
+        (
+          await prisma.$queryRawUnsafe<Array<{ feedback_id: string }>>(
+            `SELECT feedback_id FROM \`${table}\``
+          )
+        )[0]!.feedback_id
+      ).toBe("😀".repeat(255));
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS \`${table}\``);
+    }
   });
   it("successfully persists a full 1000-row batch", async () => {
     const input = parseStoreReviewBatch({

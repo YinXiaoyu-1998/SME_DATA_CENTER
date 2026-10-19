@@ -86,7 +86,7 @@ it("parses every store-review Skill JSON example through its named shared contra
       /`(upsert_store_reviews|query_store_reviews)` —[^\n]*\n\n```json\n([\s\S]*?)\n```/g
     )
   ];
-  expect(examples).toHaveLength(9);
+  expect(examples).toHaveLength(11);
   const parsed = examples.map(([, name, json]) => {
     const contract = SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === name)!;
     return contract.inputSchema.parse(JSON.parse(json!));
@@ -101,7 +101,7 @@ it("parses every store-review Skill JSON example through its named shared contra
   expect(rows[3]).not.toHaveProperty("content");
   expect(rows[3]).not.toHaveProperty("scores");
   expect(rows[3]!["merchantReply"]).toBeTypeOf("string");
-  expect(parsed[8]!["cursor"]).toBe("opaque-cursor-from-previous-page");
+  expect(parsed.at(-1)!["cursor"]).toBe("opaque-cursor-from-previous-page");
 });
 
 it("applies store-review examples as verified facts without treating unknown or drafts as replies", async () => {
@@ -127,7 +127,8 @@ it("applies store-review examples as verified facts without treating unknown or 
         row.source,
         row.storeName,
         row.reviewedAt,
-        row.reviewerName
+        row.reviewerName,
+        row.feedbackId ?? null
       ]);
       const state = resolveStoreReviewReplyState(states.get(identity) ?? null, row);
       states.set(identity, state);
@@ -152,4 +153,39 @@ it("applies store-review examples as verified facts without treating unknown or 
   });
   const query = JSON.parse(examples.at(-1)![2]!);
   expect(query.replyStatuses).toEqual(["unreplied_no_content", "unreplied_with_content"]);
+});
+
+it("applies candidate feedback examples without merging same-minute platform records", async () => {
+  const guide = await readFile(
+    path.join(root, "skills/smedc-mcp/references/store-reviews.md"),
+    "utf8"
+  );
+  const examples = [
+    ...guide.matchAll(
+      /`(upsert_store_reviews|query_store_reviews)` —[^\n]*\n\n```json\n([\s\S]*?)\n```/g
+    )
+  ];
+  const candidate = examples
+    .map(([, name, json]) => ({ name, input: JSON.parse(json!) }))
+    .find(
+      ({ name, input }) =>
+        name === "upsert_store_reviews" &&
+        input.reviews.some((row: Record<string, unknown>) => row.feedbackId)
+    );
+  expect(candidate).toBeDefined();
+  const parsed = parseStoreReviewBatch(candidate!.input);
+  expect(parsed.reviews.map((row) => row.feedbackId)).toEqual([
+    "feedback-test-a",
+    "feedback-test-b"
+  ]);
+  expect(parsed.reviews[0]!.reviewerName).toBe(parsed.reviews[1]!.reviewerName);
+  expect(parsed.reviews[0]!.reviewedAt).toBe(parsed.reviews[1]!.reviewedAt);
+  const filter = examples
+    .map(([, name, json]) => ({ name, input: JSON.parse(json!) }))
+    .find(({ name, input }) => name === "query_store_reviews" && input.feedbackId);
+  expect(
+    SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === "query_store_reviews")!.inputSchema.parse(
+      filter!.input
+    )
+  ).toMatchObject({ feedbackId: "feedback-test-a" });
 });

@@ -11,6 +11,7 @@ import {
   isBusinessClearance,
   STORE_REVIEW_LIMITS,
   storeReviewQueryResponseBytes,
+  storeReviewFeedbackIdKey,
   assertStoreReviewBatchBytes,
   parseStoreReviewBatch,
   resolveStoreReviewReplyState,
@@ -151,6 +152,10 @@ export function createPrismaStoreReviewRepository({
             conditions.push("CAST(v.reviewer_name AS BINARY) = CAST(? AS BINARY)");
             params.push(query.reviewerName);
           }
+          if (query.feedbackId !== undefined) {
+            conditions.push("CAST(v.feedback_id AS BINARY) = CAST(? AS BINARY)");
+            params.push(query.feedbackId);
+          }
           if (query.hasReply !== undefined)
             conditions.push(
               query.hasReply
@@ -165,6 +170,7 @@ export function createPrismaStoreReviewRepository({
               storeName: string;
               reviewedAt: Date;
               reviewerName: string;
+              feedbackId: string | null;
               content: string | null;
               scores: StoreReviewScores | string;
               merchantReply: string | null;
@@ -173,7 +179,7 @@ export function createPrismaStoreReviewRepository({
               updatedAt: Date;
             }>
           >(
-            `SELECT v.id, v.source, v.store_name AS storeName, v.reviewed_at AS reviewedAt, v.reviewer_name AS reviewerName, v.content, CAST(v.scores AS CHAR CHARACTER SET utf8mb4) AS scores, v.merchant_reply AS merchantReply, v.reply_status AS replyStatus, v.created_at AS createdAt, v.updated_at AS updatedAt FROM store_reviews v WHERE ${conditions.join(" AND ")} ORDER BY v.reviewed_at DESC, v.id DESC LIMIT ? OFFSET ?`,
+            `SELECT v.id, v.source, v.store_name AS storeName, v.reviewed_at AS reviewedAt, v.reviewer_name AS reviewerName, v.feedback_id AS feedbackId, v.content, CAST(v.scores AS CHAR CHARACTER SET utf8mb4) AS scores, v.merchant_reply AS merchantReply, v.reply_status AS replyStatus, v.created_at AS createdAt, v.updated_at AS updatedAt FROM store_reviews v WHERE ${conditions.join(" AND ")} ORDER BY v.reviewed_at DESC, v.id DESC LIMIT ? OFFSET ?`,
             ...params,
             limit + 1,
             offset
@@ -285,13 +291,15 @@ export function createPrismaStoreReviewRepository({
               };
             })
             .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+          // Several platform IDs may share one legacy identity; query that group once.
+          const identities = [...new Map(rows.map((row) => [key(row), row])).values()];
           const existingRows: StoreReview[] = [];
-          for (let offset = 0; offset < rows.length; offset += 100)
+          for (let offset = 0; offset < identities.length; offset += 100)
             existingRows.push(
               ...(await tx.storeReview.findMany({
                 where: {
                   orgId: actor.orgId,
-                  OR: rows.slice(offset, offset + 100).map((row) => ({
+                  OR: identities.slice(offset, offset + 100).map((row) => ({
                     enterpriseKey: row.enterpriseKey,
                     source: row.source,
                     storeName: row.storeName,
@@ -315,7 +323,50 @@ export function createPrismaStoreReviewRepository({
             );
             for (const row of chunk) row.scores = scoresById.get(row.id) ?? null;
           }
-          const existingByKey = new Map(existingRows.map((row) => [key(row), row]));
+          // Read by the legacy identity so neither omitted IDs nor corrupt digest keys
+          // can hide a conflicting stored row. Validate before building the full map.
+          const candidates = new Map<string, StoreReview[]>();
+          const invalidKeys = new Set<string>();
+          for (const candidate of existingRows) {
+            const oldKey = key(candidate);
+            const group = candidates.get(oldKey) ?? [];
+            group.push(candidate);
+            candidates.set(oldKey, group);
+            if (candidate.feedbackIdKey !== storeReviewFeedbackIdKey(candidate.feedbackId))
+              invalidKeys.add(oldKey);
+          }
+          const fullKey = (row: Parameters<typeof key>[0], feedbackIdKey: string) =>
+            JSON.stringify([key(row), feedbackIdKey]);
+          for (const row of rows) {
+            const group = candidates.get(key(row)) ?? [];
+            if (
+              invalidKeys.has(key(row)) ||
+              group.some(
+                (candidate) =>
+                  (candidate.feedbackId === null) !== (row.input.feedbackId === undefined)
+              )
+            )
+              throw new StoreReviewRepositoryError(
+                "STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED",
+                { index: row.index }
+              );
+          }
+          const existingByKey = new Map(
+            existingRows.map((candidate) => [
+              fullKey(candidate, candidate.feedbackIdKey),
+              candidate
+            ])
+          );
+          for (const row of rows) {
+            const existing = existingByKey.get(
+              fullKey(row, storeReviewFeedbackIdKey(row.input.feedbackId))
+            );
+            if (existing && existing.feedbackId !== (row.input.feedbackId ?? null))
+              throw new StoreReviewRepositoryError(
+                "STORE_REVIEW_IDENTITY_RECONCILIATION_REQUIRED",
+                { index: row.index }
+              );
+          }
           // Validate every merged row before any write; a contradiction aborts the whole batch.
           const resolvedRows = rows.map((row) => {
             try {
@@ -323,7 +374,12 @@ export function createPrismaStoreReviewRepository({
                 ...row,
                 input: {
                   ...row.input,
-                  ...resolveStoreReviewReplyState(existingByKey.get(key(row)) ?? null, row.input)
+                  ...resolveStoreReviewReplyState(
+                    existingByKey.get(
+                      fullKey(row, storeReviewFeedbackIdKey(row.input.feedbackId))
+                    ) ?? null,
+                    row.input
+                  )
                 }
               };
             } catch (error) {
@@ -342,7 +398,9 @@ export function createPrismaStoreReviewRepository({
             unchanged: 0
           };
           for (const row of resolvedRows) {
-            const existing = existingByKey.get(key(row));
+            const existing = existingByKey.get(
+              fullKey(row, storeReviewFeedbackIdKey(row.input.feedbackId))
+            );
             if (existing && !changed(existing, row.input)) {
               result.unchanged++;
               continue;
@@ -362,6 +420,8 @@ export function createPrismaStoreReviewRepository({
                     storeName: row.storeName,
                     reviewerName: row.reviewerName,
                     reviewedAt: row.reviewedAt,
+                    feedbackId: row.input.feedbackId ?? null,
+                    feedbackIdKey: storeReviewFeedbackIdKey(row.input.feedbackId),
                     content: row.input.content ?? null,
                     merchantReply: row.input.merchantReply ?? null,
                     replyStatus: row.input.replyStatus,

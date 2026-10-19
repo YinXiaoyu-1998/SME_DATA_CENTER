@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 import { normalizeEnterpriseIdentity } from "./structured-partitions.js";
 export const STORE_REVIEW_SOURCES = ["美团评价", "点评评价"] as const;
@@ -32,6 +33,7 @@ export type StoreReviewInput = {
   storeName: string;
   reviewedAt: string;
   reviewerName: string;
+  feedbackId?: string;
   content?: string | null;
   scores?: StoreReviewScores;
   merchantReply?: string | null;
@@ -45,13 +47,15 @@ export type StoreReviewQuery = {
   reviewedAtFrom?: string;
   reviewedAtTo?: string;
   reviewerName?: string;
+  feedbackId?: string;
   hasReply?: boolean;
   replyStatuses?: StoreReviewReplyStatus[];
   limit?: number;
   cursor?: string;
 };
-export type StoreReviewRow = Omit<Required<StoreReviewInput>, "reviewedAt"> & {
+export type StoreReviewRow = Omit<Required<StoreReviewInput>, "reviewedAt" | "feedbackId"> & {
   id: string;
+  feedbackId: string | null;
   reviewedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -123,6 +127,10 @@ export function requireStoreReviewString(value: unknown, field: string, max: num
     throw new StoreReviewValidationError("Invalid string field.", { field });
   return value;
 }
+/** Internal exact UTF-8 identity key; never exposed in public review rows. */
+export function storeReviewFeedbackIdKey(feedbackId: string | null | undefined): string {
+  return feedbackId == null ? "" : createHash("sha256").update(feedbackId, "utf8").digest("hex");
+}
 export function parseStoreReviewEnterprise(value: unknown): string {
   const name = requireStoreReviewString(
     value,
@@ -173,6 +181,7 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
     });
   assertStoreReviewBatchBytes(value);
   const seen = new Map<string, number>();
+  const identityKinds = new Map<string, boolean>();
   const reviews = raw.map((value, index): StoreReviewInput => {
     try {
       const r = requireStoreReviewObject(value, [
@@ -181,6 +190,7 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
         "storeName",
         "reviewedAt",
         "reviewerName",
+        "feedbackId",
         "content",
         "scores",
         "merchantReply",
@@ -206,6 +216,12 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
           requireStoreReviewString(r["reviewedAt"], "reviewedAt", 32)
         )
       };
+      if (Object.hasOwn(r, "feedbackId"))
+        row.feedbackId = requireStoreReviewString(
+          r["feedbackId"],
+          "feedbackId",
+          STORE_REVIEW_LIMITS.identityChars
+        );
       for (const field of ["content", "merchantReply"] as const)
         if (Object.hasOwn(r, field)) {
           const text = r[field];
@@ -240,13 +256,21 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
           row.scores = Object.fromEntries(Object.entries(scores));
         }
       }
-      const key = JSON.stringify([
+      const oldKey = JSON.stringify([
         normalizeEnterpriseIdentity(enterpriseName).enterpriseKey,
         row.source,
         row.storeName,
         new Date(row.reviewedAt).toISOString(),
         row.reviewerName
       ]);
+      const hasId = row.feedbackId !== undefined;
+      if (identityKinds.has(oldKey) && identityKinds.get(oldKey) !== hasId)
+        throw new StoreReviewValidationError(
+          "Mixed legacy and platform review identity in batch.",
+          { field: "feedbackId" }
+        );
+      identityKinds.set(oldKey, hasId);
+      const key = JSON.stringify([oldKey, row.feedbackId ?? null]);
       const duplicateIndex = seen.get(key);
       if (duplicateIndex !== undefined)
         throw new StoreReviewValidationError("Duplicate review identity in batch.", {

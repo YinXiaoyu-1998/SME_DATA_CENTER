@@ -20,6 +20,7 @@ export function parseStoreReviewQuery(value: unknown): StoreReviewQuery {
     "reviewedAtFrom",
     "reviewedAtTo",
     "reviewerName",
+    "feedbackId",
     "hasReply",
     "replyStatuses",
     "limit",
@@ -72,6 +73,12 @@ export function parseStoreReviewQuery(value: unknown): StoreReviewQuery {
     query.reviewerName = requireStoreReviewString(
       r["reviewerName"],
       "reviewerName",
+      STORE_REVIEW_LIMITS.identityChars
+    );
+  if (r["feedbackId"] !== undefined)
+    query.feedbackId = requireStoreReviewString(
+      r["feedbackId"],
+      "feedbackId",
       STORE_REVIEW_LIMITS.identityChars
     );
   if (r["hasReply"] !== undefined) {

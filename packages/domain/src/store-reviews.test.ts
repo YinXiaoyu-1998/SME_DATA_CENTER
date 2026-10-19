@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeStoreReviewTime,
+  storeReviewFeedbackIdKey,
   parseStoreReviewBatch,
   resolveStoreReviewReplyState
 } from "./store-reviews.js";
@@ -181,5 +182,45 @@ describe("platform reply state", () => {
         { merchantReply: "" }
       )
     ).toEqual({ content: null, merchantReply: "", replyStatus: "needs_verification" });
+  });
+});
+
+describe("platform feedback identity", () => {
+  it("keeps distinct exact IDs and rejects duplicate or mixed identities", () => {
+    const reviews = [
+      "feedback-test-a",
+      "feedback-test-b",
+      "Feedback-test-a",
+      "feedback-test-a ",
+      "é",
+      "e\u0301"
+    ].map((feedbackId) => ({ ...row, feedbackId }));
+    expect(parseStoreReviewBatch({ reviews }).reviews).toEqual(
+      reviews.map((review) => ({ ...review, reviewedAt: "2026-10-17T13:00:00+08:00" }))
+    );
+    expect(() => parseStoreReviewBatch({ reviews: [reviews[0], reviews[0]] })).toThrow(/Duplicate/);
+    for (const mixed of [
+      [row, reviews[0]],
+      [reviews[0], row]
+    ])
+      expect(() => parseStoreReviewBatch({ reviews: mixed })).toThrow(
+        expect.objectContaining({
+          details: expect.objectContaining({ index: 1, field: "feedbackId" })
+        })
+      );
+  });
+  it("validates Unicode IDs without changing their original text", () => {
+    for (const feedbackId of [" feedback-A ", "😀".repeat(255)])
+      expect(
+        parseStoreReviewBatch({ reviews: [{ ...row, feedbackId }] }).reviews[0]!.feedbackId
+      ).toBe(feedbackId);
+    for (const feedbackId of [null, 1, "", " \t", "x".repeat(256), "\ud800"])
+      expect(() => parseStoreReviewBatch({ reviews: [{ ...row, feedbackId }] })).toThrow();
+    expect(storeReviewFeedbackIdKey(null)).toBe("");
+    expect(storeReviewFeedbackIdKey(undefined)).toBe("");
+    expect(storeReviewFeedbackIdKey("abc")).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+    expect(storeReviewFeedbackIdKey("abc ")).not.toBe(storeReviewFeedbackIdKey("abc"));
   });
 });
