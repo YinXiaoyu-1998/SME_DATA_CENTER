@@ -14,7 +14,7 @@ export interface OAuthAuthorizationServerMetadata {
   grant_types_supported: ["refresh_token", typeof DEVICE_CODE_GRANT_TYPE];
   token_endpoint_auth_methods_supported: ["none"];
   smedc_launcher_package: "smedc-mcp-launcher";
-  smedc_launcher_minimum_version: "0.6.0";
+  smedc_launcher_minimum_version: "0.12.0";
   smedc_launcher_recommended_version: "0.12.0";
 }
 
@@ -77,7 +77,7 @@ export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMet
     grant_types_supported: ["refresh_token", DEVICE_CODE_GRANT_TYPE],
     token_endpoint_auth_methods_supported: ["none"],
     smedc_launcher_package: "smedc-mcp-launcher",
-    smedc_launcher_minimum_version: "0.6.0",
+    smedc_launcher_minimum_version: "0.12.0",
     smedc_launcher_recommended_version: "0.12.0"
   };
 }

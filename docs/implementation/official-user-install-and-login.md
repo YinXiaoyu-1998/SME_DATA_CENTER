@@ -1,6 +1,6 @@
 # Official User Installation, Login, and Session Design
 
-Status: `smedc-mcp-launcher@0.12.0` is published and independently verified. The approved installation pin and source recommendation are 0.12.0; minimum compatibility is 0.6.0. The last verified live recommendation remains 0.11.0 pending deployment verification. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
+Status: `smedc-mcp-launcher@0.12.0` is published and independently verified. The approved installation pin, source recommendation and source minimum are 0.12.0. The verified live deployment recommends 0.12.0 with minimum 0.6.0; the source minimum increase awaits merge and deployment. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
 
 Last updated: 2026-10-19
 
@@ -8,7 +8,7 @@ Last updated: 2026-10-19
 
 Launcher `0.12.0` is published and independently verified for current permission cards and
 controlled admin configuration. The approved installation pin and source recommendation are
-`0.12.0`; the minimum remains `0.6.0`. Grants are never stored in the launcher profile. The matching
+`0.12.0`; the source minimum is also `0.12.0`. Grants are never stored in the launcher profile. The matching
 service enforces current category/scope/clearance rules after explicit tenant activation; admin
 role or upload ownership does not grant ordinary content reads. See
 [the current API/MCP contract](api-contract.md) for explicit evidence/photo metadata, safe
@@ -39,7 +39,7 @@ Employee-role uploads receive HTTP `403` from direct HTTP endpoints. MCP JSON-RP
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
 `File upload requires the admin role.`, and `retryable: false`. Do not re-login or retry for this error.
 A local preflight denial creates no backend audit; a backend denial best-effort records
-`file_upload.denied`. Launchers older than 0.6.0 are rejected. Partition
+`file_upload.denied`. The source OAuth issuance/refresh gate rejects launchers older than 0.12.0. Partition
 create/parts/complete require admin, while owner abort and existing read/status/manifest rules stay
 available. See [the endpoint matrix](api-contract.md#file-upload-capability). This release adds no
 historical migration, existing OSS URL invalidation, or mid-transfer downgrade mechanism; future
@@ -467,7 +467,7 @@ configuration, but it must not contain a second copy of launcher source.
 Current launcher release status: `smedc-mcp-launcher@0.12.0` is public and independently verified,
 the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and npm
 Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
-stage-publish-only permission. This synchronization keeps the minimum at 0.6.0 and recommends
+stage-publish-only permission. This source policy requires at least 0.12.0 for OAuth issuance and refresh and recommends
 the published 0.12.0 release; both core Skill homes pin 0.12.0. Archive delivery remains gated by the
 service rollout.
 Launcher 0.12.0 allows 45 seconds for business MCP calls while connection and profile checks retain

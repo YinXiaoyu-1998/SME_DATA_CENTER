@@ -1,12 +1,13 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-10-13
+Last updated: 2026-10-19
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
 ## Admin-only upload regression boundary
 
-Launcher source recommendation is 0.12.0; minimum compatibility remains 0.6.0. Run the HTTP upload
+Launcher source recommendation and minimum are 0.12.0. The verified live deployment recommends
+0.12.0 with minimum 0.6.0; the source minimum increase awaits merge and deployment. Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
 prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
@@ -20,7 +21,9 @@ Positive uploads use admin c0 across evidence, row CSV, business/dishes partitio
 Delivery Ledger XLSX, and quarantine images. Explicit high-level admin uploads succeed without
 granting ordinary read access; employee c3 can read eligible data but cannot upload. Partition
 create/parts/complete require admin; owner abort and existing status/manifest/read/search/query/download
-rules remain. Launchers older than 0.6.0 are rejected with `LAUNCHER_UPGRADE_REQUIRED`. The manual manifest uses separate natural-language tasks; the default controller smoke requires
+rules remain. The source OAuth device authorization, device-code token and refresh endpoints reject missing,
+malformed and below-0.12.0 launcher versions with HTTP `426`, `LAUNCHER_UPGRADE_REQUIRED` and
+`minimum_version: "0.12.0"` before auth work; 0.12.0 is accepted. Revocation remains available to old clients. The manual manifest uses separate natural-language tasks; the default controller smoke requires
 synthetic admin c0, while explicit existing-session mode preserves the selected admin. No historical-data migration,
 OSS URL invalidation, mid-transfer downgrade handling, or future service-identity design is added.
 
