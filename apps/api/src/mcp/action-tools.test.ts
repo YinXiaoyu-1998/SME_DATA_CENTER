@@ -248,7 +248,7 @@ it("delegates cost-card archive without a content body and preserves backend adm
   expect(result?.isError).toBe(true);
 });
 
-it("delegates reviews with arbitrary dimensions, explicit null and omitted reply intact", async () => {
+it("delegates reviews with platform status, arbitrary dimensions, explicit null and omitted reply intact", async () => {
   const { calls, handlers } = createCapturingDelegate();
   const scores = JSON.parse('{"__proto__":8,"服务":9}');
   const input = {
@@ -260,6 +260,7 @@ it("delegates reviews with arbitrary dimensions, explicit null and omitted reply
         reviewedAt: "2026-10-17 13",
         reviewerName: "用户",
         content: null,
+        replyStatus: "unreplied_no_content",
         scores
       }
     ]

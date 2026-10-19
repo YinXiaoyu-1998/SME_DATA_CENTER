@@ -1355,6 +1355,13 @@ model CostCard {
   @@map("cost_cards")
 }
 
+enum StoreReviewReplyStatus {
+  replied
+  unreplied_no_content
+  unreplied_with_content
+  needs_verification
+}
+
 model StoreReview {
   id String @id @db.VarChar(32)
   orgId String @map("org_id") @db.VarChar(64)
@@ -1366,6 +1373,7 @@ model StoreReview {
   content String? @db.MediumText
   scores Json?
   merchantReply String? @map("merchant_reply") @db.MediumText
+  replyStatus StoreReviewReplyStatus @default(needs_verification) @map("reply_status")
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict, onUpdate: Restrict)

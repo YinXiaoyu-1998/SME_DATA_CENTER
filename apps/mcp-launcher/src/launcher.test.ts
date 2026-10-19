@@ -278,7 +278,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.11.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.12.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1459,6 +1459,7 @@ it("proxies review tools through MCP with null, missing fields and arbitrary dim
         reviewedAt: "2026-10-17 13",
         reviewerName: "用户",
         content: null,
+        replyStatus: "unreplied_no_content",
         scores
       }
     ]
@@ -1486,11 +1487,19 @@ it("proxies review tools through MCP with null, missing fields and arbitrary dim
     expect(sent.arguments.reviews[0]).not.toHaveProperty("merchantReply");
     await client.callTool({
       name: "query_store_reviews",
-      arguments: { enterpriseName: "合成企业", hasReply: false }
+      arguments: {
+        enterpriseName: "合成企业",
+        replyStatuses: ["unreplied_no_content"],
+        hasReply: false
+      }
     });
     expect(calls.filter((call) => call.method === "tools/call")[1]!.params).toMatchObject({
       name: "query_store_reviews",
-      arguments: { enterpriseName: "合成企业", hasReply: false }
+      arguments: {
+        enterpriseName: "合成企业",
+        replyStatuses: ["unreplied_no_content"],
+        hasReply: false
+      }
     });
     expect(read).not.toHaveBeenCalled();
   } finally {

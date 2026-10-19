@@ -43,3 +43,40 @@ it("hash binds all identity, version and normalized filters while excluding curs
   ])
     expect(hashStoreReviewQueryScope({ ...input, ...patch })).not.toBe(hash);
 });
+
+it("normalizes bounded platform status lists and binds them into cursor scope", () => {
+  const query = parseStoreReviewQuery({
+    enterpriseName: "企业",
+    replyStatuses: ["replied", "needs_verification", "replied"]
+  });
+  expect(query.replyStatuses).toEqual(["needs_verification", "replied"]);
+  expect(
+    parseStoreReviewQuery({
+      enterpriseName: "企业",
+      replyStatuses: [
+        "replied",
+        "needs_verification",
+        "unreplied_no_content",
+        "unreplied_with_content"
+      ]
+    }).replyStatuses
+  ).toHaveLength(4);
+  for (const replyStatuses of [[], ["bad"], [null], null, Array(5).fill("replied")])
+    expect(() => parseStoreReviewQuery({ enterpriseName: "企业", replyStatuses })).toThrow();
+  const scope = {
+    orgId: "org",
+    employeeId: "employee",
+    enterpriseKey: "enterprise",
+    authorizationVersion: "1",
+    query
+  };
+  expect(hashStoreReviewQueryScope(scope)).toBe(
+    hashStoreReviewQueryScope({
+      ...scope,
+      query: { ...query, replyStatuses: ["replied", "needs_verification"] }
+    })
+  );
+  expect(hashStoreReviewQueryScope(scope)).not.toBe(
+    hashStoreReviewQueryScope({ ...scope, query: { ...query, replyStatuses: ["replied"] } })
+  );
+});

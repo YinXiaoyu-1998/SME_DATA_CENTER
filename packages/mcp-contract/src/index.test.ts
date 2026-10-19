@@ -1799,6 +1799,7 @@ it("budgets the actual escaped review result text with margin for the MCP envelo
         content: '中\n"',
         scores: JSON.parse('{"__proto__":8}'),
         merchantReply: null,
+        replyStatus: "needs_verification",
         createdAt: "2026-10-17T13:00:00+08:00",
         updatedAt: "2026-10-17T13:00:00+08:00"
       }
@@ -1810,4 +1811,35 @@ it("budgets the actual escaped review result text with margin for the MCP envelo
   );
   expect(messageBytes).toBeGreaterThan(storeReviewQueryResponseBytes(result));
   expect(messageBytes - storeReviewQueryResponseBytes(result)).toBeLessThan(64 * 1024);
+});
+
+it("accepts platform status patches and filters without inventing missing text", () => {
+  const schema = contractsByName.get("upsert_store_reviews")!.inputSchema;
+  const row = validInputs.upsert_store_reviews.reviews[0]!;
+  for (const replyStatus of [
+    "replied",
+    "unreplied_no_content",
+    "unreplied_with_content",
+    "needs_verification"
+  ]) {
+    const parsed = schema.parse({ reviews: [{ ...row, replyStatus }] });
+    expect(parsed).toEqual({ reviews: [{ ...row, replyStatus }] });
+  }
+  for (const patch of [
+    { replyStatus: null },
+    { replyStatus: "ai_draft" },
+    { draftReply: "draft" },
+    { aiSource: "AI" }
+  ])
+    expect(schema.safeParse({ reviews: [{ ...row, ...patch }] }).success).toBe(false);
+  const query = contractsByName.get("query_store_reviews")!.inputSchema;
+  expect(
+    query.safeParse({
+      enterpriseName: "企业",
+      replyStatuses: ["replied", "needs_verification"],
+      hasReply: true
+    }).success
+  ).toBe(true);
+  for (const replyStatuses of [[], ["draft"], Array(5).fill("replied")])
+    expect(query.safeParse({ enterpriseName: "企业", replyStatuses }).success).toBe(false);
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { STORE_REVIEW_LIMITS, StoreReviewBatchTooLargeError } from "@smedc/domain";
+import {
+  STORE_REVIEW_LIMITS,
+  StoreReviewBatchTooLargeError,
+  StoreReviewValidationError
+} from "@smedc/domain";
 import { ResourceAttributesError, StoreReviewRepositoryError } from "@smedc/db";
 import { buildApiServer } from "../server.js";
 import { createStoreReviewService } from "../store-reviews.js";
@@ -214,4 +218,48 @@ describe("authenticated store review routes", () => {
       await app.close();
     }
   });
+});
+
+it("retains safe merged-state validation indices and fields in HTTP 400", async () => {
+  const { app, repository } = fixture();
+  try {
+    repository.upsert.mockRejectedValueOnce(
+      new StoreReviewValidationError("Reply status contradicts merged review fields.", {
+        index: 1,
+        field: "merchantReply"
+      })
+    );
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/store-reviews/upsert",
+      headers,
+      payload: { reviews: [row] }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatchObject({
+      code: "STORE_REVIEW_INVALID_INPUT",
+      requestId: expect.any(String),
+      details: { index: 1, field: "merchantReply" }
+    });
+    expect(response.body).not.toContain(row.storeName);
+  } finally {
+    await app.close();
+  }
+});
+
+it("does not echo unrecognized field names that may contain private review text", async () => {
+  const { app } = fixture();
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/store-reviews/upsert",
+      headers,
+      payload: { reviews: [{ ...row, "Private customer body": "value" }] }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.body).not.toContain("Private customer body");
+    expect(response.json().error.details).toEqual({ index: 0 });
+  } finally {
+    await app.close();
+  }
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeStoreReviewTime, parseStoreReviewBatch } from "./store-reviews.js";
+import {
+  normalizeStoreReviewTime,
+  parseStoreReviewBatch,
+  resolveStoreReviewReplyState
+} from "./store-reviews.js";
 const row = {
   enterpriseName: "示例企业",
   source: "美团评价",
@@ -78,4 +82,104 @@ it("counts supplementary Unicode characters and rejects lossy malformed strings"
       reviews: Array.from({ length: 300 }, (_, i) => ({ ...row, reviewerName: String(i), content }))
     })
   ).toThrow(/byte limit/);
+});
+
+describe("platform reply state", () => {
+  it("parses optional four-state facts while rejecting null, unknown and workflow fields", () => {
+    for (const replyStatus of [
+      "replied",
+      "unreplied_no_content",
+      "unreplied_with_content",
+      "needs_verification"
+    ])
+      expect(
+        parseStoreReviewBatch({ reviews: [{ ...row, replyStatus }] }).reviews[0]
+      ).toMatchObject({ replyStatus });
+    expect(
+      Object.hasOwn(parseStoreReviewBatch({ reviews: [row] }).reviews[0]!, "replyStatus")
+    ).toBe(false);
+    for (const patch of [
+      { replyStatus: null },
+      { replyStatus: "draft" },
+      { draftReply: "draft" },
+      { aiSource: "AI" }
+    ])
+      expect(() => parseStoreReviewBatch({ reviews: [{ ...row, ...patch }] })).toThrow();
+  });
+  it.each([
+    { content: null, merchantReply: " Published ", replyStatus: "replied" as const },
+    { content: "", merchantReply: "Published", replyStatus: "replied" as const },
+    { content: " \t", merchantReply: null, replyStatus: "unreplied_no_content" as const },
+    { content: null, merchantReply: "", replyStatus: "unreplied_no_content" as const },
+    { content: " Body ", merchantReply: "", replyStatus: "unreplied_with_content" as const },
+    {
+      content: "Recorded",
+      merchantReply: "Old published",
+      replyStatus: "needs_verification" as const
+    }
+  ])("preserves valid merged facts and original text: $replyStatus", (state) => {
+    expect(resolveStoreReviewReplyState(null, state)).toEqual(state);
+    expect(resolveStoreReviewReplyState(state, {})).toEqual(state);
+    expect(resolveStoreReviewReplyState(state, { replyStatus: state.replyStatus })).toEqual(state);
+  });
+  it.each([
+    { replyStatus: "replied" as const, content: "Body", merchantReply: null },
+    { replyStatus: "replied" as const, content: null, merchantReply: " \t" },
+    { replyStatus: "unreplied_no_content" as const, content: "Body", merchantReply: null },
+    { replyStatus: "unreplied_no_content" as const, content: null, merchantReply: " " },
+    { replyStatus: "unreplied_with_content" as const, content: " \t", merchantReply: "" },
+    { replyStatus: "unreplied_with_content" as const, content: "Body", merchantReply: "Published" }
+  ])("rejects explicit contradictory merged facts: $replyStatus", (state) => {
+    expect(() => resolveStoreReviewReplyState(null, state)).toThrow();
+  });
+  it("validates a state-only patch against existing text and keeps scoring-only facts", () => {
+    const existing = {
+      content: null,
+      merchantReply: "Published",
+      replyStatus: "needs_verification" as const
+    };
+    expect(resolveStoreReviewReplyState(existing, { replyStatus: "replied" })).toEqual({
+      ...existing,
+      replyStatus: "replied"
+    });
+    expect(() =>
+      resolveStoreReviewReplyState(existing, { replyStatus: "unreplied_no_content" })
+    ).toThrow();
+    expect(resolveStoreReviewReplyState({ ...existing, replyStatus: "replied" }, {})).toEqual({
+      ...existing,
+      replyStatus: "replied"
+    });
+  });
+  it("defaults new rows to unknown and downgrades contradictory legacy patches without guessing", () => {
+    expect(resolveStoreReviewReplyState(null, { content: "Body" })).toEqual({
+      content: "Body",
+      merchantReply: null,
+      replyStatus: "needs_verification"
+    });
+    const existing = {
+      content: "Body",
+      merchantReply: null,
+      replyStatus: "unreplied_with_content" as const
+    };
+    expect(resolveStoreReviewReplyState(existing, { merchantReply: " Published " })).toEqual({
+      ...existing,
+      merchantReply: " Published ",
+      replyStatus: "needs_verification"
+    });
+    expect(resolveStoreReviewReplyState(existing, { content: null })).toEqual({
+      ...existing,
+      content: null,
+      replyStatus: "needs_verification"
+    });
+    expect(resolveStoreReviewReplyState(existing, { content: "Other body" })).toEqual({
+      ...existing,
+      content: "Other body"
+    });
+    expect(
+      resolveStoreReviewReplyState(
+        { content: null, merchantReply: "Published", replyStatus: "replied" },
+        { merchantReply: "" }
+      )
+    ).toEqual({ content: null, merchantReply: "", replyStatus: "needs_verification" });
+  });
 });

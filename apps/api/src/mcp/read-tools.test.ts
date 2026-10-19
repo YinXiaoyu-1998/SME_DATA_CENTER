@@ -736,3 +736,23 @@ it("guards cost-card reads for old launchers and delegates exact selections for 
     }
   ]);
 });
+
+it("delegates platform status and reply-text filters together through the controlled review route", async () => {
+  const { calls, handlers } = createCapturingDelegate();
+  const input = {
+    enterpriseName: "Synthetic",
+    replyStatuses: ["needs_verification", "replied"],
+    hasReply: true
+  };
+  expect((await handlers.query_store_reviews?.(input, {} as never))?.isError).toBe(false);
+  expect(calls[0]).toMatchObject({
+    method: "POST",
+    url: "/v1/store-reviews/query",
+    payload: input
+  });
+  expect(
+    (await handlers.query_store_reviews?.({ ...input, replyStatuses: ["draft"] }, {} as never))
+      ?.isError
+  ).toBe(true);
+  expect(calls).toHaveLength(1);
+});

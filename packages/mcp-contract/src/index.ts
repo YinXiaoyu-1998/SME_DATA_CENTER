@@ -12,6 +12,7 @@ import {
   storeReviewTextFits,
   STORE_REVIEW_LIMITS,
   STORE_REVIEW_SOURCES,
+  STORE_REVIEW_REPLY_STATUSES,
   parseStoreReviewBatch,
   parseStoreReviewQuery
 } from "@smedc/domain";
@@ -746,6 +747,7 @@ export const upsertStoreReviewsInputSchema = z
           .object({
             enterpriseName: z.string().min(1).max(STORE_REVIEW_LIMITS.enterpriseNameChars),
             source: z.enum(STORE_REVIEW_SOURCES),
+            replyStatus: z.enum(STORE_REVIEW_REPLY_STATUSES).optional(),
             storeName: reviewName,
             reviewedAt: storeReviewTime,
             reviewerName: reviewName,
@@ -792,6 +794,11 @@ export const queryStoreReviewsInputSchema = z
     reviewedAtTo: storeReviewTime.optional(),
     reviewerName: reviewName.optional(),
     hasReply: z.boolean().optional(),
+    replyStatuses: z
+      .array(z.enum(STORE_REVIEW_REPLY_STATUSES))
+      .min(1)
+      .max(STORE_REVIEW_REPLY_STATUSES.length)
+      .optional(),
     limit: z.number().int().min(1).max(STORE_REVIEW_LIMITS.maxRows).optional(),
     cursor: z.string().min(1).max(STORE_REVIEW_LIMITS.cursorChars).optional()
   })
@@ -1449,7 +1456,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upsert_store_reviews",
     title: "Upsert store reviews",
     description:
-      "Atomically record 1–1000 platform reviews using POST /v1/store-reviews/upsert. Requires the current active admin role. Every row requires an explicitly selected registered enterpriseName and exact store identity. Omitted fields remain unchanged; null clears and scores replaces the whole object. Beijing time requires at least an hour (YYYY-MM-DD HH or T with +08:00); missing minutes/seconds become zero. Only save verified published merchant replies. The batch fully commits or rolls back; repeated writes do not add duplicate rows, but counts and permission/cursor versions may change.",
+      "Atomically record 1–1000 platform reviews using POST /v1/store-reviews/upsert. Requires the current active admin role. Every row requires an explicitly selected registered enterpriseName and exact store identity. Omitted fields remain unchanged; null clears and scores replaces the whole object. Beijing time requires at least an hour (YYYY-MM-DD HH or T with +08:00); missing minutes/seconds become zero. Only save verified published merchant replies. Optional replyStatus records one platform fact: replied, unreplied_no_content, unreplied_with_content, or needs_verification. Explicit status validates merged stored text; omitted status preserves valid state or downgrades contradictions to needs_verification. New rows default to needs_verification. Drafts and approvals are not platform facts. The batch fully commits or rolls back; repeated writes do not add duplicate rows, but counts and permission/cursor versions may change.",
     inputSchema: upsertStoreReviewsInputSchema,
     inputFields: [
       {
@@ -1465,14 +1472,17 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "query_store_reviews",
     title: "Query store reviews",
     description:
-      "Read currently authorized store reviews using POST /v1/store-reviews/query. Requires explicit enterpriseName. Administrators also require read grants. Fixed reviewedAt DESC, id DESC order; inclusive Beijing time filters. Pages may return fewer complete rows than limit to fit the MCP response byte budget; continue with nextCursor. Restart pagination when data or permissions change.",
+      "Read currently authorized store reviews using POST /v1/store-reviews/query. Requires explicit enterpriseName. Administrators also require read grants. Fixed reviewedAt DESC, id DESC order; inclusive Beijing time filters. Pages may return fewer complete rows than limit to fit the MCP response byte budget; continue with nextCursor. replyStatuses filters platform facts; hasReply remains non-null/nonempty reply text presence and combines with status filters using AND. Restart pagination when data or permissions change.",
     inputSchema: queryStoreReviewsInputSchema,
     inputFields: Object.entries(queryStoreReviewsInputSchema.shape).map(([name, schema]) => ({
       name,
       required: !schema.isOptional(),
       description: name
     })),
-    resultShape: ["rows: complete authorized review fields", "page.nextCursor"],
+    resultShape: [
+      "rows: complete authorized review fields including replyStatus",
+      "page.nextCursor"
+    ],
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   ...PERMISSION_MCP_TOOL_NAMES.map((name) => {

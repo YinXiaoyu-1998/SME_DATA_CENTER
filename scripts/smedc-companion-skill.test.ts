@@ -1,4 +1,10 @@
-import { COST_CARD_DIRECTORY_REGISTRY, compileCostCardQuery } from "@smedc/domain";
+import {
+  COST_CARD_DIRECTORY_REGISTRY,
+  compileCostCardQuery,
+  parseStoreReviewBatch,
+  resolveStoreReviewReplyState,
+  type StoreReviewReplyState
+} from "@smedc/domain";
 import { SMEDC_MCP_TOOL_CONTRACTS } from "@smedc/mcp-contract";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -80,7 +86,7 @@ it("parses every store-review Skill JSON example through its named shared contra
       /`(upsert_store_reviews|query_store_reviews)` —[^\n]*\n\n```json\n([\s\S]*?)\n```/g
     )
   ];
-  expect(examples).toHaveLength(6);
+  expect(examples).toHaveLength(9);
   const parsed = examples.map(([, name, json]) => {
     const contract = SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === name)!;
     return contract.inputSchema.parse(JSON.parse(json!));
@@ -95,5 +101,55 @@ it("parses every store-review Skill JSON example through its named shared contra
   expect(rows[3]).not.toHaveProperty("content");
   expect(rows[3]).not.toHaveProperty("scores");
   expect(rows[3]!["merchantReply"]).toBeTypeOf("string");
-  expect(parsed[5]!["cursor"]).toBe("opaque-cursor-from-previous-page");
+  expect(parsed[8]!["cursor"]).toBe("opaque-cursor-from-previous-page");
+});
+
+it("applies store-review examples as verified facts without treating unknown or drafts as replies", async () => {
+  const guide = await readFile(
+    path.join(root, "skills/smedc-mcp/references/store-reviews.md"),
+    "utf8"
+  );
+  const examples = [
+    ...guide.matchAll(
+      /`(upsert_store_reviews|query_store_reviews)` —[^\n]*\n\n```json\n([\s\S]*?)\n```/g
+    )
+  ];
+  const states = new Map<string, StoreReviewReplyState>();
+  const seen = new Set<string>();
+  for (const [, name, json] of examples) {
+    const input = SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === name)!.inputSchema.parse(
+      JSON.parse(json!)
+    );
+    if (name !== "upsert_store_reviews") continue;
+    for (const row of parseStoreReviewBatch(input).reviews) {
+      const identity = JSON.stringify([
+        row.enterpriseName,
+        row.source,
+        row.storeName,
+        row.reviewedAt,
+        row.reviewerName
+      ]);
+      const state = resolveStoreReviewReplyState(states.get(identity) ?? null, row);
+      states.set(identity, state);
+      if (row.replyStatus) seen.add(row.replyStatus);
+    }
+  }
+  expect([...seen].sort()).toEqual([
+    "needs_verification",
+    "replied",
+    "unreplied_no_content",
+    "unreplied_with_content"
+  ]);
+  expect([...states.values()]).toContainEqual({
+    content: null,
+    merchantReply: "感谢您的支持。",
+    replyStatus: "replied"
+  });
+  expect([...states.values()]).toContainEqual({
+    content: "环境舒适",
+    merchantReply: "感谢您的评价，期待再次光临。",
+    replyStatus: "needs_verification"
+  });
+  const query = JSON.parse(examples.at(-1)![2]!);
+  expect(query.replyStatuses).toEqual(["unreplied_no_content", "unreplied_with_content"]);
 });

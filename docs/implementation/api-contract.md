@@ -424,6 +424,11 @@ The service source recommends `0.11.0` with minimum compatibility `0.6.0`. Verif
 deployed release in [staging readiness](staging-readiness.md); publication and installation do not
 configure categories/grants or activate a tenant.
 
+Candidate launcher `0.12.0` implements the `replyStatus` / `replyStatuses` extension below with
+its matching service migration; it is not yet published or independently verified. The approved
+installation pin, service recommendation and minimum above stay unchanged. Deploying the migration
+or backfilling real tenant data requires separate authorization.
+
 | HTTP                            | MCP                    | Input / result                                                            |
 | ------------------------------- | ---------------------- | ------------------------------------------------------------------------- |
 | `POST /v1/store-reviews/upsert` | `upsert_store_reviews` | `{reviews:[...]}` → `{received,inserted,updated,unchanged}`               |
@@ -440,6 +445,39 @@ whole object and `{}` is valid. Scores retain arbitrary dimension names (includi
 remain distinct. Merchant replies contain only verified published platform text, never drafts.
 Pure ratings are valid records. Persistence binds validated scores as JSON text and reads JSON text
 before parsing, preserving arbitrary own keys across the Prisma boundary.
+
+`replyStatus` is an optional non-null four-value input and is returned on every row:
+
+| Value                    | Valid merged content/reply                                                                     |
+| ------------------------ | ---------------------------------------------------------------------------------------------- |
+| `replied`                | Non-whitespace verified published merchant reply; customer content may be null/empty.          |
+| `unreplied_no_content`   | Explicitly unreplied on platform, reply null/empty string, no non-whitespace customer content. |
+| `unreplied_with_content` | Explicitly unreplied on platform, reply null/empty string, non-whitespace customer content.    |
+| `needs_verification`     | Incomplete observation; previously recorded content and reply may remain.                      |
+
+Clients confirm platform reply facts and treat system placeholders such as “此用户没有填写评价”
+as no customer content. Server checks whitespace presence without rewriting stored text or interpreting
+language. Local AI drafts, approved-but-unsent replies, generation failures and reviewer/sender labels
+are not service state or fields. An approved draft enters `merchantReply` / `replied` only after platform
+publication and verification. Complete unreplied-with-content facts remain `unreplied_with_content`
+if AI generation fails.
+
+The new database column defaults historical rows and new inserts without status to `needs_verification`;
+null/empty old replies do not prove historical platform facts. Omitted status on an existing valid row
+is preserved, including rating-only patches. A legacy content/reply patch that contradicts that state
+saves the fields and downgrades status to `needs_verification`, never guesses a new fact. Explicit
+status validates after merging omitted fields with the stored row; contradictions return HTTP 400
+`STORE_REVIEW_INVALID_INPUT` with safe input index/field and roll back the full batch, resources,
+versions and audit. State-only changes count as updated; reapplying the same state is unchanged.
+Status, text, resource and audit updates share the existing current-admin transaction/publication lock.
+
+When replied is visible but the full reply cannot be read, send `needs_verification` and omit unknown
+fields to preserve earlier text. Authentication failure, timeout or whole-page access failure is not
+writable review evidence and must not bulk downgrade records or clear replies. Missing business
+identity remains an error. Status records the facts at observation time, grants no later publishing
+authority, and is updated by an authorized client reobserving the platform; SMEDC does not log into it.
+The existing last-write-wins behavior remains: stale complete replays can overwrite newer observations,
+so verify unknown outcomes before replaying. No observation timestamp or optimistic-lock input is added.
 
 Beijing time accepts `YYYY-MM-DD HH`, `HH:mm`, `HH:mm:ss` (each with the date), or the same
 precision using `T` and explicit `+08:00`. Missing minutes/seconds become zero; date-only,
@@ -473,8 +511,11 @@ for no name, select/report only a sole candidate, ask when several exist, or rep
 when none exist. Callers cannot choose orgId.
 
 Query filters are optional exact `storeNames` (maximum 100), `sources`, `reviewerName`, inclusive
-`reviewedAtFrom` / `reviewedAtTo`, `hasReply`, `limit`, and opaque `cursor`. false matches null or
-empty reply, true matches other text. Default 50, maximum 200, fixed `reviewedAt DESC,id DESC`;
+`reviewedAtFrom` / `reviewedAtTo`, `hasReply`, `replyStatuses`, `limit`, and opaque `cursor`.
+`replyStatuses` accepts 1–4 raw entries from the four states, deduplicated and sorted before querying
+and cursor hashing. `hasReply:false` matches null or empty reply, true matches other text, including
+retained replies on `needs_verification`. Status and text-presence filters combine with AND; both
+apply inside authorization scope before pagination. Status values are bound SQL parameters. Default 50, maximum 200, fixed `reviewedAt DESC,id DESC`;
 permission scope is applied before limit+1 pagination. Large pages are additionally bounded by the actual
 escaped, pretty-printed JSON result text (10 MiB minus a 64 KiB transport envelope margin). Return
 fewer complete rows with nextCursor advanced by the returned count; never truncate fields.

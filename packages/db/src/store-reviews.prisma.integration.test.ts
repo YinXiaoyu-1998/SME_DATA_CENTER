@@ -397,6 +397,163 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
       (await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).version
     ).toBe(1n);
   });
+  it("defaults unverified historical text and round-trips all four platform states", async () => {
+    // Omitting the new column exercises the same database default applied to historical rows.
+    await prisma.$executeRaw`INSERT INTO store_reviews (id, org_id, enterprise_key, source, store_name, reviewed_at, reviewer_name, merchant_reply, updated_at) VALUES ('historical', ${orgId}, '企业a', '美团评价', 'A店😀', '2026-10-17 05:00:00', 'historical', 'Recorded published reply', NOW(3))`;
+    expect(await prisma.storeReview.findUnique({ where: { id: "historical" } })).toMatchObject({
+      replyStatus: "needs_verification"
+    });
+    await repo.upsert(actor(), {
+      reviews: [
+        { ...row("replied"), content: null, merchantReply: " Published ", replyStatus: "replied" },
+        {
+          ...row("no-content"),
+          content: " \t",
+          merchantReply: "",
+          replyStatus: "unreplied_no_content"
+        },
+        { ...row("with-content"), content: " Body ", replyStatus: "unreplied_with_content" },
+        { ...row("unknown"), merchantReply: "Recorded", replyStatus: "needs_verification" }
+      ]
+    });
+    await grants();
+    const result = await repo.query(actor(), { enterpriseName: "企业A" });
+    expect(result.rows.find((r) => r.reviewerName === "replied")).toMatchObject({
+      content: null,
+      merchantReply: " Published ",
+      replyStatus: "replied"
+    });
+    expect(result.rows.find((r) => r.reviewerName === "no-content")).toMatchObject({
+      content: " \t",
+      merchantReply: "",
+      replyStatus: "unreplied_no_content"
+    });
+    expect(result.rows.find((r) => r.reviewerName === "with-content")).toMatchObject({
+      content: " Body ",
+      merchantReply: null,
+      replyStatus: "unreplied_with_content"
+    });
+    expect(result.rows.find((r) => r.reviewerName === "unknown")).toMatchObject({
+      merchantReply: "Recorded",
+      replyStatus: "needs_verification"
+    });
+  });
+  it("counts status-only changes, preserves scoring patches, and downgrades conflicting legacy patches", async () => {
+    await repo.upsert(actor(), { reviews: [{ ...row(), merchantReply: "Published" }] });
+    expect(
+      await repo.upsert(actor(), { reviews: [{ ...row(), replyStatus: "replied" }] })
+    ).toMatchObject({ updated: 1, unchanged: 0 });
+    const verified = await prisma.storeReview.findFirstOrThrow({ where: { orgId } });
+    expect(
+      await repo.upsert(actor(), { reviews: [{ ...row(), replyStatus: "replied" }] })
+    ).toMatchObject({ updated: 0, unchanged: 1 });
+    expect(await prisma.storeReview.findFirstOrThrow({ where: { orgId } })).toEqual(verified);
+    await repo.upsert(actor(), { reviews: [{ ...row(), scores: { 服务: 9 } }] });
+    expect(await prisma.storeReview.findFirst({ where: { orgId } })).toMatchObject({
+      content: null,
+      merchantReply: "Published",
+      replyStatus: "replied",
+      scores: { 服务: 9 }
+    });
+    await repo.upsert(actor(), {
+      reviews: [
+        { ...row(), content: "Body", merchantReply: null, replyStatus: "unreplied_with_content" }
+      ]
+    });
+    await repo.upsert(actor(), { reviews: [{ ...row(), merchantReply: " New published " }] });
+    expect(await prisma.storeReview.findFirst({ where: { orgId } })).toMatchObject({
+      content: "Body",
+      merchantReply: " New published ",
+      replyStatus: "needs_verification"
+    });
+    await repo.upsert(actor(), { reviews: [{ ...row(), replyStatus: "replied" }] });
+    await repo.upsert(actor(), { reviews: [{ ...row(), merchantReply: "" }] });
+    expect(await prisma.storeReview.findFirst({ where: { orgId } })).toMatchObject({
+      merchantReply: "",
+      replyStatus: "needs_verification"
+    });
+  });
+  it("validates all merged facts before writing and rolls back rows, resources, audit and version", async () => {
+    await repo.upsert(actor(), {
+      reviews: [
+        { ...row("existing"), content: "Private body", replyStatus: "unreplied_with_content" }
+      ]
+    });
+    const before = await prisma.storeReview.findMany({ where: { orgId } });
+    const version = await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } });
+    const resources = await prisma.businessResource.findMany({ where: { orgId } });
+    const auditCount = await prisma.auditLog.count({ where: { orgId } });
+    await expect(
+      repo.upsert(actor(), {
+        reviews: [
+          { ...row("aaa-new"), replyStatus: "unreplied_no_content" },
+          { ...row("existing"), replyStatus: "unreplied_no_content" }
+        ]
+      })
+    ).rejects.toMatchObject({
+      code: "STORE_REVIEW_INVALID_INPUT",
+      details: { index: 1, field: "content" }
+    });
+    expect(await prisma.storeReview.findMany({ where: { orgId } })).toEqual(before);
+    expect(await prisma.businessResource.findMany({ where: { orgId } })).toEqual(resources);
+    expect(await prisma.auditLog.count({ where: { orgId } })).toBe(auditCount);
+    expect(await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).toEqual(
+      version
+    );
+  });
+  it("filters platform statuses within authorized scope, ANDs text presence and invalidates cursors", async () => {
+    await repo.upsert(actor(), {
+      reviews: [
+        { ...row("one"), replyStatus: "unreplied_no_content" },
+        { ...row("two"), replyStatus: "unreplied_no_content" },
+        { ...row("replied"), merchantReply: "Published", replyStatus: "replied" },
+        { ...row("unknown"), merchantReply: "Recorded", replyStatus: "needs_verification" },
+        { ...row("neighbor"), storeName: "B店", replyStatus: "unreplied_no_content" },
+        { ...row("other enterprise"), enterpriseName: "企业B", replyStatus: "unreplied_no_content" }
+      ]
+    });
+    await grants();
+    expect(
+      (
+        await repo.query(actor(), {
+          enterpriseName: "企业A",
+          replyStatuses: ["needs_verification", "replied"],
+          hasReply: true
+        })
+      ).rows
+        .map((r) => r.reviewerName)
+        .sort()
+    ).toEqual(["replied", "unknown"]);
+    expect(
+      (
+        await repo.query(actor(), {
+          enterpriseName: "企业A",
+          replyStatuses: ["needs_verification", "replied"],
+          hasReply: false
+        })
+      ).rows
+    ).toEqual([]);
+    const query = {
+      enterpriseName: "企业A",
+      replyStatuses: ["unreplied_no_content" as const],
+      limit: 1
+    };
+    const first = await repo.query(actor(), query);
+    expect(first.rows[0]!.storeName).toBe("A店😀");
+    const cursor = first.page.nextCursor!;
+    expect(cursor).toBeTypeOf("string");
+    await expect(
+      repo.query(actor(), { ...query, cursor, replyStatuses: ["replied"] })
+    ).rejects.toThrow(/Cursor/);
+    await repo.upsert(actor(), { reviews: [{ ...row("one"), replyStatus: "needs_verification" }] });
+    await expect(repo.query(actor(), { ...query, cursor })).rejects.toThrow(/Cursor/);
+    const remaining = await repo.query(actor(), query);
+    expect(remaining.rows.map((r) => r.reviewerName)).toEqual(["two"]);
+    expect(remaining.page.nextCursor).toBeNull();
+    await expect(
+      repo.query(actor(), { enterpriseName: "企业B", replyStatuses: ["unreplied_no_content"] })
+    ).rejects.toThrow("STORE_REVIEW_ACCESS_DENIED");
+  });
   it("successfully persists a full 1000-row batch", async () => {
     const input = parseStoreReviewBatch({
       reviews: Array.from({ length: 1000 }, (_, i) => row(String(i).padStart(4, "0")))
