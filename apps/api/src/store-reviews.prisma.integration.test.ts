@@ -244,6 +244,75 @@ if (run) {
       await prisma.storeReview.findFirst({ where: { orgId, reviewerName: "status-existing" } })
     ).toMatchObject({ content: "Private customer body", replyStatus: "unreplied_with_content" });
   });
+  it("round-trips all platform statuses and AND filters through launcher MCP and HTTP", async () => {
+    const reviews = [
+      {
+        ...row,
+        reviewerName: "platform-replied",
+        content: null,
+        merchantReply: "Published",
+        replyStatus: "replied"
+      },
+      {
+        ...row,
+        reviewerName: "platform-no-content",
+        content: null,
+        merchantReply: "",
+        replyStatus: "unreplied_no_content"
+      },
+      {
+        ...row,
+        reviewerName: "platform-with-content",
+        content: "Body",
+        merchantReply: null,
+        replyStatus: "unreplied_with_content"
+      },
+      {
+        ...row,
+        reviewerName: "platform-unknown",
+        merchantReply: "Recorded",
+        replyStatus: "needs_verification"
+      }
+    ];
+    expect(body(await write({ reviews }))).toMatchObject({ inserted: 4 });
+    for (const review of reviews) {
+      const result = await query({
+        enterpriseName: row.enterpriseName,
+        reviewerName: review.reviewerName,
+        replyStatuses: [review.replyStatus]
+      });
+      expect(result.isError).not.toBe(true);
+      expect(body(result).rows).toHaveLength(1);
+      expect(body(result).rows[0]).toMatchObject({
+        replyStatus: review.replyStatus,
+        merchantReply: review.merchantReply
+      });
+    }
+    const filtered = body(
+      await query({
+        enterpriseName: row.enterpriseName,
+        replyStatuses: ["replied"],
+        hasReply: false
+      })
+    );
+    expect(filtered.rows).toEqual([]);
+    expect(
+      body(
+        await write({
+          reviews: [{ ...row, reviewerName: "platform-replied", scores: { 服务: 9 } }]
+        })
+      )
+    ).toMatchObject({ updated: 1 });
+    const retained = body(
+      await query({ enterpriseName: row.enterpriseName, reviewerName: "platform-replied" })
+    );
+    expect(retained.rows[0]).toMatchObject({
+      content: null,
+      merchantReply: "Published",
+      replyStatus: "replied",
+      scores: { 服务: 9 }
+    });
+  });
   it("rolls back a valid earlier row when a later identity fails and uses current admin state", async () => {
     const result = await write({
       reviews: [

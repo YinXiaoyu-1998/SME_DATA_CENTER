@@ -6,6 +6,11 @@ the matching service release and explicit tenant category/grant configuration. P
 installation, a Skill refresh or tools/list alone does not establish service or tenant readiness;
 verify current permission candidates and follow authoritative server denials.
 
+The `replyStatus` / `replyStatuses` extension is implemented for candidate launcher `0.12.0`
+and the matching service release; it is not yet published or independently verified. Keep the
+approved installation pin at `0.11.0` until that release is verified. Do not send the new fields
+through an older installed contract or infer readiness from this reference alone.
+
 ## Choose an enterprise before calling
 
 Call `get_my_permissions {}` freshly and read `storeReviewEnterprises`, whose `complete:true`
@@ -38,13 +43,53 @@ when review synchronization is requested, even though it does not need a drafted
 
 Only `merchantReply` that was actually published on the platform and then verified is stored.
 Omit it when unread or unknown; do not use null for an unobserved reply or store a draft. After
-successful verified publication, send only the identity and published reply so existing content and
-scores remain intact. No delete operation exists.
+successful verified publication, send only the identity, published reply and `replyStatus: "replied"`
+so existing content and scores remain intact. No delete operation exists.
+
+## Record platform reply facts (candidate 0.12.0)
+
+`replyStatus` is optional on input and always present on returned rows. It describes the platform
+facts verified when the record was written, not permission to publish a later reply. The client
+confirms the platform's replied/unreplied state and treats system prompts such as “此用户没有填写评价”
+as no customer content. The service only checks non-whitespace text; it does not interpret language
+or rewrite the original text.
+
+| `replyStatus`            | Required merged platform fields                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------- |
+| `replied`                | `merchantReply` is verified published, non-whitespace text; customer content may be absent.       |
+| `unreplied_no_content`   | Platform explicitly unreplied; reply is null or empty string; content has no non-whitespace text. |
+| `unreplied_with_content` | Platform explicitly unreplied; reply is null or empty string; content has non-whitespace text.    |
+| `needs_verification`     | State or relevant content is incompletely verified; retain previously recorded text and replies.  |
+
+An existing row's omitted status stays unchanged while the merged fields remain valid. A new row
+without status and historical rows added before this column default to `needs_verification`;
+null/empty replies never prove historical unreplied facts. A legacy patch that omits status and
+contradicts the old status saves the changed fields and downgrades to `needs_verification`, without
+guessing another platform state. For example, adding a published reply without status preserves the
+reply but downgrades an old unreplied state. Modern clients send `replied` with that reply.
+Explicit status validates against existing fields merged with the patch; contradictory combinations
+return `STORE_REVIEW_INVALID_INPUT` (HTTP 400 with safe row index/field) and roll back the entire
+batch. A status-only change counts as updated; rating-only patches preserve valid reply facts.
+Null status, unknown status and extra draft/AI/approval fields are rejected.
+
+Local “新生成待审核” / “AI 新稿待审核” and approved-but-unsent drafts remain
+`unreplied_with_content` when those platform facts were verified. Even an approved draft may enter
+`merchantReply` with `replied` only after actual platform publication and verification. AI draft
+generation failure alone does not change complete platform facts to `needs_verification`. Do not
+upload the review workbook's draft column wholesale or replace its five local workflow labels with
+these four service values. The core Skill does not couple SMEDC synchronization into the review
+replying workflow or authorize publication.
+
+If the platform shows replied but the complete reply cannot be read, use `needs_verification` and
+omit unread fields so recorded values survive. A login/authorization failure, timeout or whole-page
+access failure provides no writable review facts: do not downgrade otherwise normal records or clear
+replies in bulk. Missing business identity is still rejected. The authorized client must reobserve
+and update after platform facts change; SMEDC never logs into the platform to verify them.
 
 Examples below are synthetic tool arguments. Use each named tool, without adding orgId or a tool
 wrapper to its arguments.
 
-`upsert_store_reviews` — observed content and scores:
+`upsert_store_reviews` — explicitly unreplied with observed content and scores:
 
 ```json
 {
@@ -56,6 +101,8 @@ wrapper to its arguments.
       "reviewedAt": "2026-10-17 13:20",
       "reviewerName": "合成用户甲",
       "content": "环境舒适",
+      "merchantReply": null,
+      "replyStatus": "unreplied_with_content",
       "scores": { "总评": 4.5, "环境": 5 }
     }
   ]
@@ -107,7 +154,63 @@ wrapper to its arguments.
       "storeName": "合成门店",
       "reviewedAt": "2026-10-17 13:20",
       "reviewerName": "合成用户甲",
-      "merchantReply": "感谢您的评价，期待再次光临。"
+      "merchantReply": "感谢您的评价，期待再次光临。",
+      "replyStatus": "replied"
+    }
+  ]
+}
+```
+
+`upsert_store_reviews` — explicitly unreplied without customer content:
+
+```json
+{
+  "reviews": [
+    {
+      "enterpriseName": "合成餐饮企业",
+      "source": "美团评价",
+      "storeName": "合成门店",
+      "reviewedAt": "2026-10-17 15",
+      "reviewerName": "合成用户丙",
+      "content": null,
+      "merchantReply": "",
+      "replyStatus": "unreplied_no_content"
+    }
+  ]
+}
+```
+
+`upsert_store_reviews` — verified published reply to a review without customer content:
+
+```json
+{
+  "reviews": [
+    {
+      "enterpriseName": "合成餐饮企业",
+      "source": "点评评价",
+      "storeName": "合成门店",
+      "reviewedAt": "2026-10-17 16",
+      "reviewerName": "合成用户丁",
+      "content": null,
+      "merchantReply": "感谢您的支持。",
+      "replyStatus": "replied"
+    }
+  ]
+}
+```
+
+`upsert_store_reviews` — replied indicator observed but unread text omitted for verification:
+
+```json
+{
+  "reviews": [
+    {
+      "enterpriseName": "合成餐饮企业",
+      "source": "美团评价",
+      "storeName": "合成门店",
+      "reviewedAt": "2026-10-17 13:20",
+      "reviewerName": "合成用户甲",
+      "replyStatus": "needs_verification"
     }
   ]
 }
@@ -136,7 +239,10 @@ and request the narrow missing confirmation rather than claiming success or fail
 `query_store_reviews` requires one explicitly chosen enterprise and returns complete currently
 readable rows before pagination. Optional exact `storeNames` (at most 100), `sources`,
 `reviewerName`, inclusive time bounds and `hasReply` filter; false matches null/empty reply, true
-matches other reply text. Default limit 50, maximum 200. Ordering is fixed `reviewedAt DESC, id DESC`;
+matches other reply text (including retained old text on `needs_verification`). Optional
+`replyStatuses` accepts a raw list of 1–4 of the four platform states, deduplicated and sorted.
+It combines with `hasReply` using AND and filters within authorized scope before pagination.
+Neither filter treats drafts as replies. Default limit 50, maximum 200. Ordering is fixed `reviewedAt DESC, id DESC`;
 no arbitrary sort or aggregation. Large pages return fewer complete rows to fit the default MCP client
 response buffer (10 MiB with 64 KiB reserved for its envelope), including JSON text escaping;
 fields are never truncated. Continue with nextCursor even when the returned count is below limit. Admins require complete category/enterprise/store grants and
@@ -151,6 +257,7 @@ sufficient clearance just like other readers.
   "sources": ["美团评价", "点评评价"],
   "reviewedAtFrom": "2026-10-01 00",
   "reviewedAtTo": "2026-10-17 23:59:59",
+  "replyStatuses": ["unreplied_no_content", "unreplied_with_content"],
   "hasReply": false,
   "limit": 50
 }
@@ -165,6 +272,7 @@ sufficient clearance just like other readers.
   "sources": ["美团评价", "点评评价"],
   "reviewedAtFrom": "2026-10-01 00",
   "reviewedAtTo": "2026-10-17 23:59:59",
+  "replyStatuses": ["unreplied_no_content", "unreplied_with_content"],
   "hasReply": false,
   "limit": 50,
   "cursor": "opaque-cursor-from-previous-page"

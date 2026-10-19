@@ -52,7 +52,10 @@ For structured platform review synchronization and authorized history queries, r
 verified and approved for installation. Confirm the matching service release and explicit tenant
 configuration before use. The reference owns enterprise selection, atomic batches,
 null/omission, pure ratings and verified published reply semantics; it does not authorize platform
-reply publication or change companion approval rules.
+reply publication or change companion approval rules. The reference also describes the candidate
+`0.12.0` platform reply-status extension (`replyStatus` / `replyStatuses`), which requires that
+launcher release to be published and independently verified plus the matching service rollout.
+The approved installation pin stays `0.11.0`; local draft/approval labels are not service states.
 
 ## Enterprise Onboarding And New Account Permissions
 

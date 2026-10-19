@@ -38,7 +38,12 @@ export function registerStoreReviewRoutes(
             if (error instanceof StoreReviewValidationError)
               return reply.code(400).send(
                 phase3ErrorResponse(request, error.code, "Invalid store review input.", {
-                  ...(error.details.field !== undefined ? { field: error.details.field } : {}),
+                  // Only fixed reply-state field names are safe to echo; unknown input keys may be private text.
+                  ...(["content", "merchantReply", "replyStatus"].includes(
+                    error.details.field ?? ""
+                  )
+                    ? { field: error.details.field }
+                    : {}),
                   ...(error.details.index !== undefined ? { index: error.details.index } : {}),
                   ...(error.details.duplicateIndex !== undefined
                     ? { duplicateIndex: error.details.duplicateIndex }

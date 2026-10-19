@@ -246,3 +246,20 @@ it("retains safe merged-state validation indices and fields in HTTP 400", async 
     await app.close();
   }
 });
+
+it("does not echo unrecognized field names that may contain private review text", async () => {
+  const { app } = fixture();
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/store-reviews/upsert",
+      headers,
+      payload: { reviews: [{ ...row, "Private customer body": "value" }] }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.body).not.toContain("Private customer body");
+    expect(response.json().error.details).toEqual({ index: 0 });
+  } finally {
+    await app.close();
+  }
+});
