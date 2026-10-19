@@ -57,7 +57,7 @@ Evidence 的每个片段继承整件完整权限；更改文件属性后按当�
 平台顾客评价的当前结构化记录，独立固定门店级类别 `store_reviews`。业务键为组织、已登记企业、来源（美团评价/点评评价）、精确门店、规范化评价时刻及精确用户名称；同名、大小写或尾部空格不模糊合并。北京时间至少到小时，数据库 UTC 到秒，公开时间含秒与 +08:00。
 正文、评分、商家回复允许 null；省略不更新，评分对象整体替换且允许空对象。评分维度及上限不固定，只保存观测的有限数字，不补零；纯评分是有效评价。商家回复只存平台已发布并核验的正文，拟回复不入库。`replyStatus` 为平台事实四态：`replied`（非空白已发布回复，顾客可无正文）、`unreplied_no_content`、`unreplied_with_content`、`needs_verification`（可保留旧正文/回复）；两种未回复要求平台确认且回复为 null/空字符串，正文按非空白判断。状态非空，历史行及新建省略状态默认待核对，不从空回复推断平台事实。显式状态按合并后字段校验，矛盾整批 400；省略状态保留有效值，旧客户端改变正文/回复造成矛盾时降为待核对。状态变化计入 updated 并随原资源/版本/审计事务提交。草稿、审批标签及 AI 生成失败不改变已核验平台事实；网络/鉴权/整页读取失败不批量改状态或清空回复。每批 1–1000 条并受 16 MiB UTF-8 JSON 预算约束，单批原子，多批无全局回滚，无删除接口。
 写入由事务内当前有效 admin 决定；读取需完整类别/企业/单门店 grant 与密级，admin 无读取旁路。权限名片的 `storeReviewEnterprises` 由已登记企业和同一实时权限快照生成完整 write/read 候选。固定类别初始密级 null、无默认授权；评价写入及权限版本变化要求游标重启。
-launcher `0.11.0` 已发布并独立验证，是当前批准安装 pin；服务端源码推荐 `0.11.0`，最低兼容 `0.6.0`。部署证据见 staging 当前状态，不能据此推断真实租户授权或回填。候选 `0.12.0` 已实现 replyStatus/replyStatuses 契约，尚未发布或独立验证，匹配服务迁移尚未部署；不因此更新安装 pin/推荐版本或授权真实数据回填。`replyStatuses` 在授权内、分页前过滤，与原 hasReply 文本存在性条件取 AND，去重排序参与游标绑定。状态是记录时平台事实，不是后续发布授权；由获授权客户端重新观察并更新，SMEDC 不登录平台核验。详见 [API 契约](docs/implementation/api-contract.md#store-reviews-launcher-0110)。
+launcher `0.12.0` 已发布并独立验证，是当前核心 Skill 批准安装 pin；本次同步的服务端源码推荐 `0.12.0`，最低兼容 `0.6.0`。发布核验时线上仍推荐 `0.11.0`，匹配服务部署及迁移尚待核实；部署证据见 staging 当前状态，不能据此推断真实租户授权或回填。已发布包包含 replyStatus/replyStatuses 契约，使用仍需匹配服务部署、迁移及租户配置；包核验不授权真实数据回填。`replyStatuses` 在授权内、分页前过滤，与原 hasReply 文本存在性条件取 AND，去重排序参与游标绑定。状态是记录时平台事实，不是后续发布授权；由获授权客户端重新观察并更新，SMEDC 不登录平台核验。详见 [API 契约](docs/implementation/api-contract.md#store-reviews-launcher-0110)。
 
 ## 查询、任务与发布
 
@@ -87,7 +87,7 @@ launcher `0.11.0` 已发布并独立验证，是当前批准安装 pin；服务�
 
 ## 成本卡领域术语 — CSV＋目录已实现，launcher 已发布
 
-本节记录已明确的业务含义及CSV＋MySQL目录架构；详细规则见[成本卡设计](docs/implementation/cost-card-design.md)。用户已确认成本卡属于独立的集团级信息类别，适用门店不构成权限归属。接入已合并 main，launcher `0.11.0` 已公开发布并独立验证；当前基础、business-analysis 与 delivery-ledger 的安装指导均批准 `0.11.0`，服务端源码推荐同版本，最低兼容 `0.6.0`。业务 companion 仍在独立仓库维护。服务部署以 [staging 当前状态](docs/implementation/staging-readiness.md) 为准，包发布不代表真实租户已授权／验收。
+本节记录已明确的业务含义及CSV＋MySQL目录架构；详细规则见[成本卡设计](docs/implementation/cost-card-design.md)。用户已确认成本卡属于独立的集团级信息类别，适用门店不构成权限归属。接入已合并 main，launcher `0.12.0` 已公开发布并独立验证；当前基础 Skill 安装指导及本次同步的服务端源码推荐 `0.12.0`，最低兼容 `0.6.0`。business-analysis 与 delivery-ledger 的安装指导仍批准 `0.11.0`，业务 companion 在独立仓库维护，不在本次同步范围。服务部署以 [staging 当前状态](docs/implementation/staging-readiness.md) 为准，包发布不代表真实租户已授权／验收。
 
 成本卡随新增菜品或配方调整而低频更新，通常是与菜品种类相关的小体量资料。复用现有对象传输、事务和有限重试；实施不引入下载租约/会话表、逐卡续传或独立压力测试体系。
 
