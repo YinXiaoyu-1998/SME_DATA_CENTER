@@ -6,7 +6,7 @@ This file records the active verification matrix. Historical Phase 1/2 ordinary 
 
 ## Admin-only upload regression boundary
 
-Launcher recommendation is 0.11.0; minimum compatibility remains 0.6.0. Run the HTTP upload
+Launcher source recommendation is 0.12.0; minimum compatibility remains 0.6.0. Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
 prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
@@ -107,7 +107,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-The existing full-suite runner baseline uses installed `smedc-mcp-launcher@0.9.0`; this is separate from the current employee install pin 0.11.0. Its default profile requires the
+The existing full-suite runner baseline uses installed `smedc-mcp-launcher@0.9.0`; this is separate from the current employee install pin 0.12.0. Its default profile requires the
 run's synthetic admin c0. The explicit `--reuse-session=<expected-email>` profile verifies the
 selected existing admin without logging out or changing role/clearance. The runner now verifies the exact raw-ledger aggregate denial. Its evidence-fixture category/scope configuration remains a separate prerequisite; see the official manual guide's current runner limitation. Its intended smoke scope includes real MCP
 evidence readiness/search, run-unique receipt XLSX upload, dishes partition
@@ -226,7 +226,7 @@ Use synthetic fixtures. Focused contract/HTTP/MCP checks:
 They compare current server SQL predicates and denial behavior, admin self/other complete configuration,
 tenant/version failures, strict controlled schemas, and closed raw-ledger aggregate/original paths.
 Launcher build, installed-package tool/schema checks and dry packing are one release boundary.
-Launcher `0.11.0` is published and independently verified; it is the approved exact pin. Service
+Launcher `0.12.0` is published and independently verified; it is the approved exact pin. Service
 rollout, real-tenant activation and the explicitly requested full manual suite remain separate gates.
 
 The default owned integration runner includes the business authorization foundation and cutover,
@@ -238,7 +238,7 @@ full official manual workflow, real-tenant backfills or activation as part of th
 
 ## Cost-card changed-workflow cases (published launcher, synthetic only)
 
-Cost-card checks target published, independently verified launcher 0.11.0. Verify service rollout
+Cost-card checks target published, independently verified launcher 0.12.0. Verify service rollout
 and synthetic tenant configuration separately; publication does not authorize the full official
 suite, real imports/cleanup or real tenant changes. Use small synthetic
 cards with 35-column originals, two same-name specifications, the same SKU under another SPU,
@@ -281,7 +281,7 @@ write. Baseline comparisons and query output both preserve arbitrary JSON score 
 Focused HTTP/contract/launcher tests cover 401/403/400/413, canonical duplicate identities,
 null versus omission, strict no-orgId input, safe requestId errors and byte budgets. Companion
 Skill tests parse every synthetic review JSON example through its named shared contract.
-Launcher `0.11.0` is published and independently verified; approved installation pins and service
-source recommendation are `0.11.0`. Publication evidence is separate from the synthetic deployed
+Launcher `0.12.0` is published and independently verified; approved installation pins and service
+source recommendation are `0.12.0`. Publication evidence is separate from the synthetic deployed
 review probe and target service checks recorded in staging readiness. Real tenant permissions and
 platform reply publication remain separate authorized operations.

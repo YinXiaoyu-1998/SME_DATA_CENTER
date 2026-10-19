@@ -88,8 +88,8 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The published, independently verified Skill pin and server recommendation are 0.11.0; minimum
-compatibility remains 0.6.0. Launcher 0.11.0 bundles this authorization contract; matching service
+The published, independently verified Skill pin and source recommendation are 0.12.0; minimum
+compatibility remains 0.6.0. Launcher 0.12.0 bundles this authorization contract; matching service
 rollout and explicit tenant activation remain separate. Launchers below the minimum are rejected
 with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This release does not backfill historical
 resource attributes, invalidate existing OSS URLs, or add mid-transfer downgrade handling. Future scheduled/connector/service identities need a separate design,
@@ -165,13 +165,15 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.11.0 owns business/dishes upload and partition transfer. Global compatibility requires at least 0.6.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.12.0 owns business/dishes upload and partition transfer. Global compatibility requires at least 0.6.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
 authorization mode/version, query shape, filters, limit, and retrieval configuration.
 
-### Current permission and management tools (Launcher 0.11.0)
+<a id="current-permission-and-management-tools-launcher-0110"></a>
+
+### Current permission and management tools (Launcher 0.12.0)
 
 All calls use the existing authenticated HTTP delegation. Every write requires the current
 `expectedVersion`; conflicts return `AUTHORIZATION_VERSION_CONFLICT` without partial changes.
@@ -215,9 +217,9 @@ and store configuration never grant content access or set a category level or te
 
 ### Filtered partition extracts and asynchronous bundles
 
-The approved launcher 0.11.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
+The approved launcher 0.12.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
 tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
-plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.11.0`. This contract is not
+plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.12.0`. This contract is not
 evidence of service deployment or tenant activation.
 
 For `business`/`dishes`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
@@ -301,8 +303,8 @@ See [ledger-pdf-operations.md](./ledger-pdf-operations.md) for backfill and reco
 
 ## Cost Cards (Published Launcher, Separate Service Gate)
 
-Launcher `0.11.0` is published and independently verified and is the approved install pin
-and service recommendation. Cost-card service rollout and explicit tenant configuration remain
+Launcher `0.12.0` is published and independently verified and is the approved install pin
+and source recommendation. Cost-card service rollout and explicit tenant configuration remain
 separate gates; publication does not prove live deployment or acceptance. See [the usage contract](../../skills/smedc-mcp/references/cost-cards.md).
 
 `upload_structured_dataset` / `POST /v1/structured/imports` accepts `dataset="cost_cards"`,
@@ -371,7 +373,7 @@ publication success; a later directory cannot recreate an earlier summary.
 
 ### Cost-card endpoints and rollout boundary
 
-These interfaces are included in published launcher 0.11.0 and have focused route coverage.
+These interfaces are included in published launcher 0.12.0 and have focused route coverage.
 Verify actual service rollout and tenant configuration separately; package verification alone
 does not establish live acceptance.
 
@@ -415,19 +417,21 @@ and idempotencyKey, without dates/snapshot/confidentiality override. Follow `get
 applied currently readable batches receive publicationSummary verbatim. Failed/rejected current
 readers can receive validation locations and ignored/source-summary arrays; owner-only access
 receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
-read permission is exposed. Launcher 0.11.0 is published and independently verified; service rollout and tenant authorization remain separate.
+read permission is exposed. Launcher 0.12.0 is published and independently verified; service rollout and tenant authorization remain separate.
 
-## Store reviews (launcher 0.11.0)
+<a id="store-reviews-launcher-0110"></a>
 
-Launcher `0.11.0` is published and independently verified, and is the approved installation pin.
-The service source recommends `0.11.0` with minimum compatibility `0.6.0`. Verify the matching
+## Store reviews (launcher 0.12.0)
+
+Launcher `0.12.0` is published and independently verified, and is the approved installation pin.
+The service source recommends `0.12.0` with minimum compatibility `0.6.0`. Verify the matching
 deployed release in [staging readiness](staging-readiness.md); publication and installation do not
 configure categories/grants or activate a tenant.
 
-Candidate launcher `0.12.0` implements the `replyStatus` / `replyStatuses` extension below with
-its matching service migration; it is not yet published or independently verified. The approved
-installation pin, service recommendation and minimum above stay unchanged. Deploying the migration
-or backfilling real tenant data requires separate authorization.
+Published, independently verified launcher `0.12.0` includes the `replyStatus` / `replyStatuses`
+extension below. Its matching service release and migration still require deployment verification;
+package publication does not prove those gates. Deploying the migration or backfilling real tenant
+data requires separate authorization.
 
 | HTTP                            | MCP                    | Input / result                                                            |
 | ------------------------------- | ---------------------- | ------------------------------------------------------------------------- |

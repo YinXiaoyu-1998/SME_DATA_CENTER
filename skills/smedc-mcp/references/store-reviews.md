@@ -1,15 +1,15 @@
 # Store reviews
 
-Launcher `0.11.0` is published, independently verified and approved for installation. Use the
-core Skill's exact `smedc-mcp-launcher@0.11.0` installation procedure. Store-review tools require
+Launcher `0.12.0` is published, independently verified and approved for installation. Use the
+core Skill's exact `smedc-mcp-launcher@0.12.0` installation procedure. Store-review tools require
 the matching service release and explicit tenant category/grant configuration. Publication,
 installation, a Skill refresh or tools/list alone does not establish service or tenant readiness;
 verify current permission candidates and follow authoritative server denials.
 
-The `replyStatus` / `replyStatuses` extension is implemented for candidate launcher `0.12.0`
-and the matching service release; it is not yet published or independently verified. Keep the
-approved installation pin at `0.11.0` until that release is verified. Do not send the new fields
-through an older installed contract or infer readiness from this reference alone.
+Published, independently verified launcher `0.12.0` includes the `replyStatus` / `replyStatuses`
+extension. Confirm its matching service release, migration and tenant configuration before use;
+package verification does not prove those rollout gates. Do not send the new fields through an
+older installed contract or infer readiness from this reference alone.
 
 ## Choose an enterprise before calling
 
@@ -46,7 +46,9 @@ Omit it when unread or unknown; do not use null for an unobserved reply or store
 successful verified publication, send only the identity, published reply and `replyStatus: "replied"`
 so existing content and scores remain intact. No delete operation exists.
 
-## Record platform reply facts (candidate 0.12.0)
+<a id="record-platform-reply-facts-candidate-0120"></a>
+
+## Record platform reply facts (0.12.0)
 
 `replyStatus` is optional on input and always present on returned rows. It describes the platform
 facts verified when the record was written, not permission to publish a later reply. The client
