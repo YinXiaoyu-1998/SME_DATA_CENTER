@@ -1,6 +1,6 @@
 # SMEDC MCP User Flow
 
-Updated: 2026-10-19. Use the published approved `smedc-mcp-launcher@0.12.0` and the dual-homed Skill. The source OAuth minimum is 0.12.0. The verified live deployment recommends 0.12.0 with minimum 0.6.0; the source minimum increase awaits merge and deployment. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
+Updated: 2026-10-19. Use the published approved `smedc-mcp-launcher@0.13.0` and the dual-homed Skill. The source OAuth minimum remains 0.12.0 and recommendation is 0.13.0. The verified live deployment recommends 0.12.0 with minimum 0.12.0; matching service deployment and the feedbackId migration are verified separately. The recommendation change awaits merge and deployment. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
 
 ## Upload Authorization
 
@@ -14,7 +14,7 @@ without re-login, retry, or a clearance workaround.
 Local prevention produces no backend audit; backend denial best-effort records `file_upload.denied`.
 An admin may explicitly classify above their clearance, but ordinary read/status/search/query/download
 rules still apply. Partition create/parts/complete require admin; owner abort remains allowed.
-The source minimum and recommended launcher versions are 0.12.0; older launchers receive an upgrade error. See the
+The source minimum is 0.12.0 and recommended launcher version is 0.13.0; older launchers receive an upgrade error. See the
 [endpoint matrix](api-contract.md#file-upload-capability) for surfaces and the future service-identity non-goal.
 
 ## Participants And Credential Boundary
@@ -135,7 +135,7 @@ action.
 Range is the default. Bundle mode is optional and requires a known matching ZIP service;
 tools/list is insufficient. If ZIP is removed, regenerate saved plans with range downloads.
 
-Use approved launcher 0.12.0 with the matching deployed service. Verify optional ZIP support before selecting bundle mode.
+Use approved launcher 0.13.0 with the matching deployed service. Verify optional ZIP support before selecting bundle mode.
 For business/dishes, use the same `enterpriseName`/`storeNameContains` scope in coverage and
 prepare. Names are 1–20 NFC/trim literal case-sensitive substrings, OR within the array and AND
 with authorization and other selectors. Prepare with compact inclusive `YYYYMMDD` dates and an
@@ -156,7 +156,7 @@ Business/dishes use partition download for local analysis, not generic row queri
 
 ## Store reviews
 
-Published, independently verified launcher `0.12.0` includes `upsert_store_reviews` and
+Published, independently verified launcher `0.13.0` includes `upsert_store_reviews` and
 `query_store_reviews`; it is the approved exact installation pin. Confirm the matching service
 release and tenant configuration through staging readiness and current permission cards.
 Skill refresh does not establish launcher upgrade, service deployment or tenant authorization.

@@ -43,7 +43,7 @@ describe("SMEDC companion skill guidance", () => {
     for (const field of COST_CARD_DIRECTORY_REGISTRY.fields)
       expect(guide).toContain(`\`${field.canonicalName}\``);
     for (const invariant of [
-      "Launcher `0.12.0` is published and independently verified",
+      "Launcher `0.13.0` is published and independently verified",
       "matching service rollout",
       "35",
       "38",
@@ -155,7 +155,7 @@ it("applies store-review examples as verified facts without treating unknown or 
   expect(query.replyStatuses).toEqual(["unreplied_no_content", "unreplied_with_content"]);
 });
 
-it("applies candidate feedback examples without merging same-minute platform records", async () => {
+it("applies published feedback examples without merging same-minute platform records", async () => {
   const guide = await readFile(
     path.join(root, "skills/smedc-mcp/references/store-reviews.md"),
     "utf8"
@@ -165,15 +165,15 @@ it("applies candidate feedback examples without merging same-minute platform rec
       /`(upsert_store_reviews|query_store_reviews)` —[^\n]*\n\n```json\n([\s\S]*?)\n```/g
     )
   ];
-  const candidate = examples
+  const feedbackExample = examples
     .map(([, name, json]) => ({ name, input: JSON.parse(json!) }))
     .find(
       ({ name, input }) =>
         name === "upsert_store_reviews" &&
         input.reviews.some((row: Record<string, unknown>) => row.feedbackId)
     );
-  expect(candidate).toBeDefined();
-  const parsed = parseStoreReviewBatch(candidate!.input);
+  expect(feedbackExample).toBeDefined();
+  const parsed = parseStoreReviewBatch(feedbackExample!.input);
   expect(parsed.reviews.map((row) => row.feedbackId)).toEqual([
     "feedback-test-a",
     "feedback-test-b"

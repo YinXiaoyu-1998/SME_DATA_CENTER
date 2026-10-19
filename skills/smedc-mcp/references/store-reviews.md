@@ -1,12 +1,12 @@
 # Store reviews
 
-Launcher `0.12.0` is published, independently verified and approved for installation. Use the
-core Skill's exact `smedc-mcp-launcher@0.12.0` installation procedure. Store-review tools require
+Launcher `0.13.0` is published, independently verified and approved for installation. Use the
+core Skill's exact `smedc-mcp-launcher@0.13.0` installation procedure. Store-review tools require
 the matching service release and explicit tenant category/grant configuration. Publication,
 installation, a Skill refresh or tools/list alone does not establish service or tenant readiness;
 verify current permission candidates and follow authoritative server denials.
 
-Published, independently verified launcher `0.12.0` includes the `replyStatus` / `replyStatuses`
+Published, independently verified launcher `0.12.0` introduced the `replyStatus` / `replyStatuses`
 extension. Confirm its matching service release, migration and tenant configuration before use;
 package verification does not prove those rollout gates. Do not send the new fields through an
 older installed contract or infer readiness from this reference alone.
@@ -218,12 +218,13 @@ wrapper to its arguments.
 }
 ```
 
-## Platform feedback identity (candidate 0.13.0)
+## Platform feedback identity (published 0.13.0)
 
-The following `feedbackId` capability is implemented in candidate launcher `0.13.0` and requires
-its matching service release and database migration. The candidate is unpublished and is not an
-approved installation version; the approved installation pin remains `0.12.0`. Do not send this
-field through the published 0.12.0 contract or infer rollout from this reference.
+Published, independently verified launcher `0.13.0` includes optional `feedbackId` input and
+exact query filtering and is the approved installation pin. Before use, verify its matching
+service deployment and `20261019010000_store_review_feedback_id` migration; package publication,
+a Skill refresh or tools/list alone does not establish those gates or tenant authorization.
+Do not send this field through an older installed contract.
 
 When the platform exposes an ID, provide `reviews[].feedbackId` exactly as observed. It is an
 optional identity string of 1–255 valid Unicode characters, not all whitespace. Preserve case,
@@ -254,7 +255,7 @@ legacy rows return null. Internal digest keys never appear in MCP results. Write
 the four aggregate counts. Keep the ID filter unchanged on later pages. Once multiple IDs share
 an old identity, the old service cannot safely process writes or serve as a direct rollback target.
 
-`upsert_store_reviews` — candidate same-minute pure ratings with distinct platform IDs:
+`upsert_store_reviews` — same-minute pure ratings with distinct platform IDs:
 
 ```json
 {
@@ -281,7 +282,7 @@ an old identity, the old service cannot safely process writes or serve as a dire
 }
 ```
 
-`query_store_reviews` — candidate exact platform ID filter:
+`query_store_reviews` — exact platform ID filter:
 
 ```json
 {

@@ -1,19 +1,19 @@
 # Official User Installation, Login, and Session Design
 
-Status: `smedc-mcp-launcher@0.12.0` is published and independently verified. The approved installation pin, source recommendation and source minimum are 0.12.0. The verified live deployment recommends 0.12.0 with minimum 0.6.0; the source minimum increase awaits merge and deployment. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
+Status: `smedc-mcp-launcher@0.13.0` is published and independently verified. The approved installation pin and source recommendation are 0.13.0; the source minimum remains 0.12.0. The verified live deployment recommends 0.12.0 with minimum 0.12.0; matching service deployment and the feedbackId migration are verified separately. The recommendation change awaits merge and deployment. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
 
 Last updated: 2026-10-19
 
 ## Business Authorization Release
 
-Launcher `0.12.0` is published and independently verified for current permission cards and
+Launcher `0.13.0` is published and independently verified for current permission cards and
 controlled admin configuration. The approved installation pin and source recommendation are
-`0.12.0`; the source minimum is also `0.12.0`. Grants are never stored in the launcher profile. The matching
+`0.13.0`; the source minimum remains `0.12.0`. Grants are never stored in the launcher profile. The matching
 service enforces current category/scope/clearance rules after explicit tenant activation; admin
 role or upload ownership does not grant ordinary content reads. See
 [the current API/MCP contract](api-contract.md) for explicit evidence/photo metadata, safe
-management status and versioned preparation/activation. These transport fields require launcher
-0.12.0 and the matching service rollout. A Skill-only refresh does not upgrade an older installed
+management status and versioned preparation/activation. Use these transport fields with the approved launcher
+0.13.0 and the matching service rollout. A Skill-only refresh does not upgrade an older installed
 launcher. Publication does not authorize tenant activation or establish live tenant readiness.
 
 ## Enterprise Onboarding Prerequisite
@@ -464,13 +464,13 @@ guidance plus the exact approved launcher version. It may direct an authorized e
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Current launcher release status: `smedc-mcp-launcher@0.12.0` is public and independently verified,
+Current launcher release status: `smedc-mcp-launcher@0.13.0` is public and independently verified,
 the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and npm
 Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
 stage-publish-only permission. This source policy requires at least 0.12.0 for OAuth issuance and refresh and recommends
-the published 0.12.0 release; both core Skill homes pin 0.12.0. Archive delivery remains gated by the
+the published 0.13.0 release; both core Skill homes pin 0.13.0. Archive delivery remains gated by the
 service rollout.
-Launcher 0.12.0 allows 45 seconds for business MCP calls while connection and profile checks retain
+Launcher 0.13.0 allows 45 seconds for business MCP calls while connection and profile checks retain
 30 seconds; existing installations must complete the normal authorized update flow to use it.
 Npm provenance remains unavailable because the source repository is private
 and is not an approval gate.
@@ -730,7 +730,7 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 ## Current Delivery Status
 
-Current source implements the installation, Device Authorization, token/session, secure-store and memory-only custody, browser administrator session, recovery, password and audit contracts above. The exact published pin is 0.12.0; supported operating systems are macOS, Windows and Linux.
+Current source implements the installation, Device Authorization, token/session, secure-store and memory-only custody, browser administrator session, recovery, password and audit contracts above. The exact published pin is 0.13.0; supported operating systems are macOS, Windows and Linux.
 
 Use [staging readiness](staging-readiness.md) for the latest verified deployment/public metadata and [beta readiness](beta-access-readiness.md) for remaining human inputs and acceptance limits. A package, login or deployment check alone does not prove a particular tenant's business permissions or every client host.
 
@@ -738,8 +738,8 @@ There is no development email-login endpoint, JWT compatibility, Authorization C
 
 ## Cost-card publication and rollout boundary
 
-Cost-card directory/CSV tools are included in published, independently verified `0.12.0`.
-The approved install pin and recommendation are 0.12.0. Verify matching service deployment
+Cost-card directory/CSV tools are included in published, independently verified `0.13.0`.
+The approved install pin and recommendation are 0.13.0. Verify matching service deployment
 and explicit cost_cards category configuration before employee use; static tool discovery
 or installation alone does not establish live service or tenant readiness.
 The addition does not change device login, secure-store/session behavior or upload role preflight.
