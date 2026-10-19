@@ -713,7 +713,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
       ).replaceAll(/`?\bstore_reviews\b`?/g, `\`${table}\``);
     const legacy = migration("20261017000000_store_reviews")
       .slice(migration("20261017000000_store_reviews").indexOf("CREATE TABLE"))
-      .replace(/,\n  CONSTRAINT[^\n]+/, "");
+      .replace(/,\n {2}CONSTRAINT[^\n]+/, "");
     try {
       await prisma.$executeRawUnsafe(legacy);
       await prisma.$executeRawUnsafe(migration("20261019000000_store_review_reply_status"));
