@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import {
   STORE_REVIEW_LIMITS,
   STORE_REVIEW_SOURCES,
+  STORE_REVIEW_REPLY_STATUSES,
   StoreReviewValidationError,
   normalizeStoreReviewTime,
   parseStoreReviewEnterprise,
   requireStoreReviewObject,
   requireStoreReviewString,
   type StoreReviewQuery,
+  type StoreReviewReplyStatus,
   type StoreReviewSource
 } from "./store-reviews.js";
 export function parseStoreReviewQuery(value: unknown): StoreReviewQuery {
@@ -19,6 +21,7 @@ export function parseStoreReviewQuery(value: unknown): StoreReviewQuery {
     "reviewedAtTo",
     "reviewerName",
     "hasReply",
+    "replyStatuses",
     "limit",
     "cursor"
   ]);
@@ -47,6 +50,19 @@ export function parseStoreReviewQuery(value: unknown): StoreReviewQuery {
         query.sources = parsed as StoreReviewSource[];
       } else query.storeNames = parsed;
     }
+  if (r["replyStatuses"] !== undefined) {
+    const values = r["replyStatuses"];
+    if (
+      !Array.isArray(values) ||
+      values.length < 1 ||
+      values.length > STORE_REVIEW_REPLY_STATUSES.length ||
+      values.some((value) => !STORE_REVIEW_REPLY_STATUSES.includes(value as StoreReviewReplyStatus))
+    )
+      throw new StoreReviewValidationError("Invalid reply status filter.", {
+        field: "replyStatuses"
+      });
+    query.replyStatuses = [...new Set(values as StoreReviewReplyStatus[])].sort();
+  }
   for (const field of ["reviewedAtFrom", "reviewedAtTo"] as const)
     if (r[field] !== undefined)
       query[field] = normalizeStoreReviewTime(requireStoreReviewString(r[field], field, 32));

@@ -1,6 +1,13 @@
 import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 import { normalizeEnterpriseIdentity } from "./structured-partitions.js";
 export const STORE_REVIEW_SOURCES = ["美团评价", "点评评价"] as const;
+export const STORE_REVIEW_REPLY_STATUSES = [
+  "replied",
+  "unreplied_no_content",
+  "unreplied_with_content",
+  "needs_verification"
+] as const;
+export type StoreReviewReplyStatus = (typeof STORE_REVIEW_REPLY_STATUSES)[number];
 export const STORE_REVIEW_LIMITS = Object.freeze({
   maxBatchRows: 1000,
   enterpriseNameChars: PUBLIC_INPUT_LIMITS.enterpriseNameChars,
@@ -28,6 +35,7 @@ export type StoreReviewInput = {
   content?: string | null;
   scores?: StoreReviewScores;
   merchantReply?: string | null;
+  replyStatus?: StoreReviewReplyStatus;
 };
 export type UpsertStoreReviewsInput = { reviews: StoreReviewInput[] };
 export type StoreReviewQuery = {
@@ -38,6 +46,7 @@ export type StoreReviewQuery = {
   reviewedAtTo?: string;
   reviewerName?: string;
   hasReply?: boolean;
+  replyStatuses?: StoreReviewReplyStatus[];
   limit?: number;
   cursor?: string;
 };
@@ -174,7 +183,8 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
         "reviewerName",
         "content",
         "scores",
-        "merchantReply"
+        "merchantReply",
+        "replyStatus"
       ]);
       const enterpriseName = parseStoreReviewEnterprise(r["enterpriseName"]);
       if (!STORE_REVIEW_SOURCES.includes(r["source"] as StoreReviewSource))
@@ -206,6 +216,11 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
             throw new StoreReviewValidationError("Invalid nullable text.", { field });
           row[field] = text as string | null;
         }
+      if (Object.hasOwn(r, "replyStatus")) {
+        if (!STORE_REVIEW_REPLY_STATUSES.includes(r["replyStatus"] as StoreReviewReplyStatus))
+          throw new StoreReviewValidationError("Invalid reply status.", { field: "replyStatus" });
+        row.replyStatus = r["replyStatus"] as StoreReviewReplyStatus;
+      }
       if (Object.hasOwn(r, "scores")) {
         if (r["scores"] === null) row.scores = null;
         else {
@@ -247,4 +262,44 @@ export function parseStoreReviewBatch(value: unknown): UpsertStoreReviewsInput {
   });
   assertStoreReviewBatchBytes({ reviews });
   return { reviews };
+}
+
+export type StoreReviewReplyState = {
+  content: string | null;
+  merchantReply: string | null;
+  replyStatus: StoreReviewReplyStatus;
+};
+export type StoreReviewReplyPatch = Pick<
+  StoreReviewInput,
+  "content" | "merchantReply" | "replyStatus"
+>;
+
+/** Resolve only observed platform facts; omitted legacy status never infers a new fact. */
+export function resolveStoreReviewReplyState(
+  existing: StoreReviewReplyState | null,
+  patch: StoreReviewReplyPatch
+): StoreReviewReplyState {
+  const state: StoreReviewReplyState = {
+    content: Object.hasOwn(patch, "content") ? patch.content! : (existing?.content ?? null),
+    merchantReply: Object.hasOwn(patch, "merchantReply")
+      ? patch.merchantReply!
+      : (existing?.merchantReply ?? null),
+    replyStatus: patch.replyStatus ?? existing?.replyStatus ?? "needs_verification"
+  };
+  let field: "content" | "merchantReply" | undefined;
+  if (state.replyStatus === "replied") {
+    if (!state.merchantReply?.trim()) field = "merchantReply";
+  } else if (state.replyStatus !== "needs_verification") {
+    if (state.merchantReply !== null && state.merchantReply !== "") field = "merchantReply";
+    else if (Boolean(state.content?.trim()) !== (state.replyStatus === "unreplied_with_content"))
+      field = "content";
+  }
+  if (field) {
+    if (Object.hasOwn(patch, "replyStatus"))
+      throw new StoreReviewValidationError("Reply status contradicts merged review fields.", {
+        field
+      });
+    state.replyStatus = "needs_verification";
+  }
+  return state;
 }
