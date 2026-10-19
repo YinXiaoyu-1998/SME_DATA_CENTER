@@ -80,3 +80,20 @@ it("normalizes bounded platform status lists and binds them into cursor scope", 
     hashStoreReviewQueryScope({ ...scope, query: { ...query, replyStatuses: ["replied"] } })
   );
 });
+
+it("validates exact feedback filters and binds them to cursor scope", () => {
+  const query = parseStoreReviewQuery({ enterpriseName: "企业", feedbackId: " feedback-A " });
+  expect(query.feedbackId).toBe(" feedback-A ");
+  for (const feedbackId of [null, 1, "", " ", "x".repeat(256), "\ud800"])
+    expect(() => parseStoreReviewQuery({ enterpriseName: "企业", feedbackId })).toThrow();
+  const scope = {
+    orgId: "org",
+    employeeId: "employee",
+    enterpriseKey: "enterprise",
+    authorizationVersion: "1",
+    query
+  };
+  expect(hashStoreReviewQueryScope(scope)).not.toBe(
+    hashStoreReviewQueryScope({ ...scope, query: { ...query, feedbackId: "feedback-A" } })
+  );
+});

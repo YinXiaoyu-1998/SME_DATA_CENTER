@@ -751,6 +751,7 @@ export const upsertStoreReviewsInputSchema = z
             storeName: reviewName,
             reviewedAt: storeReviewTime,
             reviewerName: reviewName,
+            feedbackId: reviewName.optional(),
             content: z
               .string()
               .refine((v) => storeReviewTextFits(v, STORE_REVIEW_LIMITS.textChars))
@@ -793,6 +794,7 @@ export const queryStoreReviewsInputSchema = z
     reviewedAtFrom: storeReviewTime.optional(),
     reviewedAtTo: storeReviewTime.optional(),
     reviewerName: reviewName.optional(),
+    feedbackId: reviewName.optional(),
     hasReply: z.boolean().optional(),
     replyStatuses: z
       .array(z.enum(STORE_REVIEW_REPLY_STATUSES))

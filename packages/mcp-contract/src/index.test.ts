@@ -1843,3 +1843,38 @@ it("accepts platform status patches and filters without inventing missing text",
   for (const replyStatuses of [[], ["draft"], Array(5).fill("replied")])
     expect(query.safeParse({ enterpriseName: "企业", replyStatuses }).success).toBe(false);
 });
+
+it("shares exact feedback ID validation and full batch identity", () => {
+  const write = contractsByName.get("upsert_store_reviews")!.inputSchema;
+  const query = contractsByName.get("query_store_reviews")!.inputSchema;
+  const row = validInputs.upsert_store_reviews.reviews[0]!;
+  for (const feedbackId of ["feedback-test-a", " Feedback-test-a ", "😀".repeat(255)]) {
+    expect(write.parse({ reviews: [{ ...row, feedbackId }] })).toEqual({
+      reviews: [{ ...row, feedbackId }]
+    });
+    expect(query.parse({ enterpriseName: "企业", feedbackId })).toEqual({
+      enterpriseName: "企业",
+      feedbackId
+    });
+  }
+  expect(
+    write.safeParse({
+      reviews: [
+        { ...row, feedbackId: "a" },
+        { ...row, feedbackId: "b" }
+      ]
+    }).success
+  ).toBe(true);
+  for (const feedbackId of [null, 1, "", " ", "x".repeat(256), "\ud800"]) {
+    expect(write.safeParse({ reviews: [{ ...row, feedbackId }] }).success).toBe(false);
+    expect(query.safeParse({ enterpriseName: "企业", feedbackId }).success).toBe(false);
+  }
+  for (const reviews of [
+    [row, { ...row, feedbackId: "a" }],
+    [
+      { ...row, feedbackId: "a" },
+      { ...row, feedbackId: "a" }
+    ]
+  ])
+    expect(write.safeParse({ reviews }).success).toBe(false);
+});
