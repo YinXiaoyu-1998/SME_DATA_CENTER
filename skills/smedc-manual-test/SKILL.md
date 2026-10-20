@@ -10,7 +10,17 @@ SME_DATA_CENTER / SMEDC manual acceptance flow.
 
 ## Current runner limitation
 
-Before any requested full run, read `docs/implementation/official-manual-acceptance.md`: the runner hardcodes launcher 0.9.0, below the current OAuth minimum 0.12.0, and evidence-fixture uploads still need explicit category/scopes configuration. The full run is blocked until both prerequisites are fixed and validated; never install the old baseline or lower the service gate. The runner already requires the exact raw-ledger denial. Resolve that separate prerequisite before full acceptance; do not infer attributes or relax authorization. Fixing the runner does not authorize executing the official workflow.
+The runner uses launcher 0.13.0. Full runs require `--evidence-config=<local-json-path>` containing
+an explicitly confirmed existing `categoryId` and complete `scopes`; the shared schema validates
+these before cleanup or uploads. Both fixtures declare file level 0 or 2. Do not infer tenant
+attributes or change grants to make a fixture pass. Read the [runner guide](../../docs/implementation/official-manual-acceptance.md#current-runner-limitation)
+for the configuration shape and per-tenant prerequisites.
+
+For a requested small check with an existing authenticated admin, use
+`--checks=identity,catalog,ledger-denial --reuse-session=<expected-email>` with a unique run ID.
+Any nonempty subset is allowed. This path uses only the selected read-only MCP checks and does
+not invoke the remote controller, upload fixtures or change accounts. Report its exact scope;
+full business/account-lifecycle acceptance remains not run.
 
 ## Current Acceptance Boundary
 
@@ -32,7 +42,7 @@ setup links to the human. The controller must not open setup links or type test 
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
-The outdated full-suite runner baseline records launcher `smedc-mcp-launcher@0.9.0`; this is not an installation target. The scenario manifest and account assignments
+The runner uses published launcher `smedc-mcp-launcher@0.13.0`. The scenario manifest and account assignments
 apply to the full lifecycle profile and map to the current account in the existing-session profile. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
@@ -121,8 +131,7 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
    before proceeding. Never persist the links or password outside the private conversation.
 8. Verify the installed macOS launcher without exposing credentials:
 
-   Use the current core Skill's macOS `self-check` command after the runner-version prerequisite
-   is resolved; do not install or construct a path from the historical runner baseline.
+   Use the current core Skill's macOS `self-check` command with the approved exact version.
 
 9. For the account-lifecycle profile, ensure the launcher starts logged out and switch among only the synthetic
    accounts required by the procedure. For existing-session acceptance, preserve the verified existing
@@ -152,9 +161,10 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
     it as a replacement for the new user-visible task:
 
 ```sh
-npm run test:official-manual
+npm run test:official-manual -- --evidence-config=/absolute/path/fixture-scope.json
 # When reusing the explicitly selected admin:
-npm run test:official-manual -- --run-id=<safe-id> --reuse-session=<expected-email>
+npm run test:official-manual -- --run-id=<safe-id> --reuse-session=<expected-email> \
+  --evidence-config=/absolute/path/fixture-scope.json
 ```
 
 Use `--run-id=<safe-id>` for repeatability. The runner must clean before and after the run unless
@@ -208,7 +218,7 @@ Manual staging uploads must not accumulate.
 ## Cost-card changed workflow (published launcher, separate acceptance)
 
 Use the current core-approved, published and independently verified launcher for cost cards.
-Cost-card acceptance remains separate from the outdated full-suite baseline; this update does not authorize a manual run
+Cost-card acceptance remains separate from the general full-suite smoke; this update does not authorize a manual run
 or installation into the user runtime. After matching service/tenant verification and an
 explicit changed-workflow request, use `candidateCostCards` in the existing scenario manifest and
 `structured/cost-cards-known-values.csv`: three same-name cards, two specifications under one SPU,

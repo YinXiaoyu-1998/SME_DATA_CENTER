@@ -2,26 +2,39 @@
 
 Last updated: 2026-10-20
 
-The existing full-suite runner baseline tests official staging with macOS Codex and published
-`smedc-mcp-launcher@0.9.0`. This is an outdated runner baseline, not an approved installation target.
-The employee installation pin belongs to the [core Skill](../../skills/smedc-mcp/SKILL.md);
-cost-card acceptance is separately gated below. It does not revive the deleted local email-login flow or
-`/auth/dev-login`. Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md`,
-and `test-cases.md` before running it. Beta onboarding uses
-[the operator runbook](beta-user-onboarding-runbook.md).
+The runner uses published `smedc-mcp-launcher@0.13.0` through the official staging MCP boundary.
+The employee installation pin belongs to the [core Skill](../../skills/smedc-mcp/SKILL.md).
+Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md` and `test-cases.md` before
+running it. Beta onboarding uses [the operator runbook](beta-user-onboarding-runbook.md).
 
 ## Current runner limitation
 
-The runner still hardcodes `LAUNCHER_VERSION = "0.9.0"` in `scripts/official-manual-acceptance.ts`,
-below the current OAuth minimum `0.12.0`. A full run is blocked until that runner is updated and
-validated against the core-approved launcher. Do not install the old baseline, downgrade the
-service gate, or treat this documentation cleanup as a runner fix.
+The runner supports a full business smoke and an explicitly selected read-only subset.
+A full run requires `--evidence-config=<local-json-path>` before any controller cleanup or upload.
+The JSON file supplies an existing `categoryId` and complete `scopes`; the shared MCP schema
+validates enterprise, group/store ownership, exact store and dimensions. Both Evidence fixtures
+receive these attributes and explicit file levels 0 and 2. Missing or malformed configuration fails
+before file upload; the runner does not infer attributes or change tenant grants.
 
-The runner now requires raw-ledger aggregation to return an MCP tool error with code `LEDGER_DETAIL_DISABLED`, and reports `deliveryLedgerAggregateDenied: true` only after that check. Unexpected success, authentication/permission errors and transport failures do not pass this boundary. Local regression tests cover these outcomes; the user-visible receipt-summary scenario expects refusal and the separate PDF delivery path.
+Example shape (replace placeholders with explicitly confirmed fixture configuration; keep tenant
+configuration outside Git):
 
-A separate fixture prerequisite remains: `uploadEvidenceFixtures` does not yet supply required `categoryId` and complete `scopes`. The full runner therefore still needs explicit, authorized evidence-fixture configuration before a complete current-contract acceptance run; do not infer attributes or change tenant grants to bypass this gap.
+```json
+{
+  "categoryId": "<existing-evidence-category-id>",
+  "scopes": [
+    { "enterpriseKey": "<registered-enterprise-key>", "ownership": "group", "dimensions": {} }
+  ]
+}
+```
 
-This change does not execute the workflow, alter accounts or backfill data. A future explicitly requested full run must first resolve the runner-version and fixture prerequisites, then follow the human/browser and cleanup rules below.
+Store-owned scopes require exactly one `storeName`; supply every required dimension. Schema
+validation does not prove the category exists, that the tenant is enabled, or that the current
+reader has grants. Prepare those prerequisites explicitly for a requested full run.
+
+Raw-ledger aggregation passes only on MCP error `LEDGER_DETAIL_DISABLED`. Unexpected success,
+authentication/permission errors and transport failures remain failures. A successful partial run
+is evidence only for its named checks, never a complete business or account-lifecycle acceptance.
 
 ## Choose the requested profile
 
@@ -54,8 +67,8 @@ session mode does not inherit macOS Keychain persistence.
 4. Confirm Node.js 22+, the pinned launcher and the invoking Codex MCP entry. Preserve an already
    correct installation and the current login in the existing-session profile.
 
-Run the current core Skill's platform-specific `self-check` after the runner prerequisite is
-resolved. Do not copy a historical runner version into the installation path.
+Run the current core Skill's platform-specific `self-check` using the approved exact
+version. Confirm the actual installed version before collecting acceptance evidence.
 
 Expect `secureStore.available=true`, reachable/compatible server metadata and an `ok` MCP
 handshake when authenticated. The current-user tool returns display name, email, role, clearance
@@ -183,12 +196,26 @@ Do not disable, reset, delete or log out the human's reused account.
 
 ## Controller runner and cleanup
 
+For a few read-only checks with an already authenticated, explicitly selected admin:
+
+```sh
+npm run test:official-manual -- --run-id=<safe-id> --reuse-session=<expected-email> \
+  --checks=identity,catalog,ledger-denial
+```
+
+`--checks` accepts any nonempty subset of these three names. It uses the pinned launcher and
+checks the current account; business checks refresh the permission card. This mode performs no
+uploads, controller/SSH cleanup, account operations or structured-window allocation. It rejects
+cleanup IDs, `--keep-data` and Evidence configuration to avoid mixing read-only and mutating runs.
+The report lists only selected results and marks full acceptance as not run.
+
 The runner is an additional smoke and cleanup helper, not a replacement for natural Codex chats:
 
 ```sh
-npm run test:official-manual -- --run-id=<safe-id>
+npm run test:official-manual -- --run-id=<safe-id> --evidence-config=/absolute/path/fixture-scope.json
 # Explicitly selected current admin; never logs out or changes account attributes:
-npm run test:official-manual -- --run-id=<safe-id> --reuse-session=<expected-email>
+npm run test:official-manual -- --run-id=<safe-id> --reuse-session=<expected-email> \
+  --evidence-config=/absolute/path/fixture-scope.json
 # Exact IDs from separate natural chats (repeat each option as needed):
 npm run test:official-manual -- cleanup --run-id=<safe-id> \
   --reuse-session=<expected-email> --document-id=<doc-id> \
@@ -232,7 +259,7 @@ after process restart. It uses a fresh synthetic account and cleans it afterward
 ## Cost-card changed workflow after launcher publication
 
 This section targets the current core-approved, published and independently verified launcher,
-separately from the outdated full-suite runner baseline. This documentation does not authorize execution, user
+separately from the general full-suite runner. This documentation does not authorize execution, user
 installation or real tenant changes. After matching service rollout, explicit
 synthetic category configuration and a separately requested changed-workflow acceptance, use
 `candidateCostCards` in `fixtures/manual-acceptance/scenarios.json`. It is deliberately outside

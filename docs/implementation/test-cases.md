@@ -106,12 +106,16 @@ The active manual flow is defined in `docs/implementation/official-manual-accept
 For the current macOS Codex slice, run:
 
 ```sh
-npm run test:official-manual
+npm run test:official-manual -- --evidence-config=/absolute/path/fixture-scope.json
 ```
 
-The full-suite runner still records `smedc-mcp-launcher@0.9.0`, below the current OAuth minimum 0.12.0. This is a blocked baseline, not an installation instruction; resolve the version and fixture prerequisites in [official manual acceptance](official-manual-acceptance.md#current-runner-limitation) before a full run. Its default profile requires the
-run's synthetic admin c0. The explicit `--reuse-session=<expected-email>` profile verifies the
-selected existing admin without logging out or changing role/clearance. The runner now verifies the exact raw-ledger aggregate denial. Its evidence-fixture category/scope configuration remains a separate prerequisite; see the official manual guide's current runner limitation. Its intended smoke scope includes real MCP
+The runner uses `smedc-mcp-launcher@0.13.0`. Full business smoke requires explicit Evidence
+category/scopes JSON through `--evidence-config`; missing/invalid configuration fails before
+controller cleanup or uploads. The default profile requires the synthetic admin-c0 identity;
+`--reuse-session` binds an explicitly selected existing admin. Selected read-only
+`--checks=identity,catalog,ledger-denial` bypasses uploads and controller operations, refreshes
+permissions before business checks and validates the exact raw-ledger denial. Its report cannot
+claim full acceptance. See the [runner guide](official-manual-acceptance.md#current-runner-limitation). Its intended smoke scope includes real MCP
 evidence readiness/search, run-unique receipt XLSX upload, dishes partition
 publication/download, invalid-source rejection, unchanged prior partitions, and exact cleanup.
 
