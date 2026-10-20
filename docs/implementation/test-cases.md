@@ -1,13 +1,12 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
 ## Admin-only upload regression boundary
 
-Launcher source recommendation is 0.13.0 and minimum remains 0.12.0. The verified live deployment
-recommends 0.12.0 with minimum 0.12.0; matching service deployment and the feedbackId migration are verified separately. The recommendation change awaits merge and deployment. Run the HTTP upload
+Launcher source recommendation is 0.13.0 and minimum remains 0.12.0. Verified live policy and deployment evidence are maintained in [staging readiness](staging-readiness.md). Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
 prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
@@ -110,7 +109,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual
 ```
 
-The existing full-suite runner baseline uses installed `smedc-mcp-launcher@0.9.0`; this is separate from the current employee install pin 0.13.0. Its default profile requires the
+The full-suite runner still records `smedc-mcp-launcher@0.9.0`, below the current OAuth minimum 0.12.0. This is a blocked baseline, not an installation instruction; resolve the version and fixture prerequisites in [official manual acceptance](official-manual-acceptance.md#current-runner-limitation) before a full run. Its default profile requires the
 run's synthetic admin c0. The explicit `--reuse-session=<expected-email>` profile verifies the
 selected existing admin without logging out or changing role/clearance. The runner now verifies the exact raw-ledger aggregate denial. Its evidence-fixture category/scope configuration remains a separate prerequisite; see the official manual guide's current runner limitation. Its intended smoke scope includes real MCP
 evidence readiness/search, run-unique receipt XLSX upload, dishes partition

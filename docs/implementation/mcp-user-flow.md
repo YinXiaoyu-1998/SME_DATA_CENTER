@@ -1,6 +1,6 @@
 # SMEDC MCP User Flow
 
-Updated: 2026-10-19. Use the published approved `smedc-mcp-launcher@0.13.0` and the dual-homed Skill. The source OAuth minimum remains 0.12.0 and recommendation is 0.13.0. The verified live deployment recommends 0.12.0 with minimum 0.12.0; matching service deployment and the feedbackId migration are verified separately. The recommendation change awaits merge and deployment. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
+Updated: 2026-10-20. Use the published approved `smedc-mcp-launcher@0.13.0` and the dual-homed Skill. The source OAuth minimum remains 0.12.0 and recommendation is 0.13.0. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
 
 ## Upload Authorization
 

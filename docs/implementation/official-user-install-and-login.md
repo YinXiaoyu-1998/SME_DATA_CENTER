@@ -1,8 +1,8 @@
 # Official User Installation, Login, and Session Design
 
-Status: `smedc-mcp-launcher@0.13.0` is published and independently verified. The approved installation pin and source recommendation are 0.13.0; the source minimum remains 0.12.0. The verified live deployment recommends 0.12.0 with minimum 0.12.0; matching service deployment and the feedbackId migration are verified separately. The recommendation change awaits merge and deployment. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
+Status: `smedc-mcp-launcher@0.13.0` is published and independently verified. The approved installation pin and source recommendation are 0.13.0; the source minimum remains 0.12.0. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ## Business Authorization Release
 

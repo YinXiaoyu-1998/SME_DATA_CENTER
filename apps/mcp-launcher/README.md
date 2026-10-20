@@ -1,6 +1,6 @@
 # SMEDC MCP Launcher
 
-Official stdio MCP launcher. This checkout targets unpublished candidate `0.13.0`. The approved installation pin remains `smedc-mcp-launcher@0.12.0`; service recommendation and minimum-version metadata are unchanged by this candidate. Release/target deployment evidence is maintained in the repository's `docs/implementation/staging-readiness.md`.
+Official stdio MCP launcher. Version `0.13.0` is published and independently verified. The current approved installation pin is maintained in the official `smedc-mcp` Skill; package README files are immutable release-time snapshots. Current release and target deployment evidence is maintained in the repository's `docs/implementation/staging-readiness.md`.
 
 ## Installation and identity
 
@@ -20,7 +20,7 @@ Login uses OAuth Device Authorization. The employee authenticates and confirms t
 - Ledger tools expose coverage, preparation, request status and URL issuance. They do not generate PDFs; changed/missing outputs wait for the configured daily service job. PDF delivery is independently enabled on the target service.
 - Published `0.11.0` adds atomic structured `upsert_store_reviews` and authorized `query_store_reviews`; matching service release is required. They use JSON MCP calls, with no file transfer or worker. The stdio input budget accepts a full review batch; query pages bound escaped response bytes for default MCP clients. Enterprise candidates come from current permission cards; only verified published platform replies are recorded.
 - Published `0.12.0` extends store reviews with verified platform `replyStatus` facts and `replyStatuses` filtering. Legacy writes preserve valid status or downgrade contradictions to `needs_verification`; explicit contradictory states fail atomically. Drafts and approvals remain outside service records. Confirm the matching service rollout and tenant configuration before use.
-- Candidate `0.13.0` adds optional exact platform `feedbackId` to review identity and query filters, returning the original ID or null for legacy rows. Same-minute reviews with different IDs remain separate. Legacy/ID identity conflicts require explicit reconciliation; the service never auto-binds old rows. The matching service migration and release are required. This candidate is not published or approved for installation; existing pins remain `0.12.0`.
+- Published `0.13.0` adds optional exact platform `feedbackId` to review identity and query filters, returning the original ID or null for legacy rows. Same-minute reviews with different IDs remain separate. Legacy/ID identity conflicts require explicit reconciliation; the service never auto-binds old rows. The matching service migration and release are required.
 - No tool accepts arbitrary API paths or SQL. Account/tenant authorization, safe status views and content access remain distinct server contracts.
 
 Business MCP calls have a 45-second deadline; connection/profile calls have 30 seconds. Downloads enforce request/stall limits, a 240-second invocation budget and bounded whole-file retries; cancellation removes incomplete output. Multipart progress counts transport-consumed bytes, with a 30-second stall deadline while progressing transfers may continue.

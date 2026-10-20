@@ -10,7 +10,7 @@ SME_DATA_CENTER / SMEDC manual acceptance flow.
 
 ## Current runner limitation
 
-Before any requested full run, read `docs/implementation/official-manual-acceptance.md`: the runner now requires the exact raw-ledger denial, but evidence-fixture uploads still need explicit category/scopes configuration. Resolve that separate prerequisite before full acceptance; do not infer attributes or relax authorization. Fixing the runner does not authorize executing the official workflow.
+Before any requested full run, read `docs/implementation/official-manual-acceptance.md`: the runner hardcodes launcher 0.9.0, below the current OAuth minimum 0.12.0, and evidence-fixture uploads still need explicit category/scopes configuration. The full run is blocked until both prerequisites are fixed and validated; never install the old baseline or lower the service gate. The runner already requires the exact raw-ledger denial. Resolve that separate prerequisite before full acceptance; do not infer attributes or relax authorization. Fixing the runner does not authorize executing the official workflow.
 
 ## Current Acceptance Boundary
 
@@ -32,7 +32,7 @@ setup links to the human. The controller must not open setup links or type test 
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
-The existing full-suite runner baseline uses launcher `smedc-mcp-launcher@0.9.0` and the scenario manifest; account assignments
+The outdated full-suite runner baseline records launcher `smedc-mcp-launcher@0.9.0`; this is not an installation target. The scenario manifest and account assignments
 apply to the full lifecycle profile and map to the current account in the existing-session profile. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
@@ -121,10 +121,8 @@ If MCP tool behavior, API contracts, or usage guidance changes, update both:
    before proceeding. Never persist the links or password outside the private conversation.
 8. Verify the installed macOS launcher without exposing credentials:
 
-   ```sh
-   SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.9.0/node_modules/.bin/smedc-mcp-launcher" self-check
-   ```
+   Use the current core Skill's macOS `self-check` command after the runner-version prerequisite
+   is resolved; do not install or construct a path from the historical runner baseline.
 
 9. For the account-lifecycle profile, ensure the launcher starts logged out and switch among only the synthetic
    accounts required by the procedure. For existing-session acceptance, preserve the verified existing
@@ -209,8 +207,8 @@ Manual staging uploads must not accumulate.
 
 ## Cost-card changed workflow (published launcher, separate acceptance)
 
-Cost-card launcher 0.10.1 is published and independently verified. Cost-card acceptance remains
-separate from the existing 0.9.0 full-suite baseline; this update does not authorize a manual run
+Use the current core-approved, published and independently verified launcher for cost cards.
+Cost-card acceptance remains separate from the outdated full-suite baseline; this update does not authorize a manual run
 or installation into the user runtime. After matching service/tenant verification and an
 explicit changed-workflow request, use `candidateCostCards` in the existing scenario manifest and
 `structured/cost-cards-known-values.csv`: three same-name cards, two specifications under one SPU,
