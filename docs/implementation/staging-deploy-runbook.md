@@ -8,6 +8,15 @@
 
 工作流使用 `smedc-staging` 并发组，保留排队发布；Action 固定提交 SHA、权限最小化，临时 SSH key 无论成功失败都删除。本地执行仅用于明确批准的恢复/工作流诊断，不能作为日常发布捷径。
 
+## CI 构建与镜像交接
+
+- 只有同一 PR 的新检查会取消旧检查；main、手动任务和串行 staging 发布不因此被取消。
+- PR 仅修改测试或 Skill 工具时保留单元、权限和真实 MySQL/Qdrant 集成检查，跳过镜像构建；运行代码、依赖、镜像/工作流配置或未知路径仍构建。main/手动质量任务保留完整门禁。
+- 三个镜像各用 GitHub Actions v2 分层缓存；缓存写入失败不跳过构建或验收，缓存不充当发布证据。main push 的镜像通过既有打包、Prisma、Calamine、PDF 检查后，导出压缩归档及 SHA/镜像 ID 清单，保留一天。同一 run 的重试可复用已测试的同 SHA 产物。
+- 自动部署只下载触发它的成功 main 质量 run 的产物，验证完整提交、归档 SHA-256、三个镜像 ID、linux/amd64 和 revision 标签后，重新打不可变 ACR tag 并推送，不再构建。发布前风险扫描、迁移、smoke 和回滚保持原流程。
+- 产物缺失、过期或不匹配时停止，不改用其他 run/PR 产物。需要恢复时使用获准的 main 手动部署重新构建。短期镜像归档增加 Actions artifact 存储与传输；一天保留期控制累积，不修改账单预算。
+- Launcher 三平台验收与发布仅由 `smedc-mcp-launcher-v*` 版本 tag 或显式手动任务触发；普通 main push 不自动启动。版本必须匹配 package，仍先完成三平台验证和受控 staged publish，已发布版本不可覆盖。
+
 ## 运行拓扑
 
 - API、worker 是非 root 常驻镜像；release-ops 是 Compose release profile 的一次性迁移、Qdrant 初始化及 fixture smoke 进程。
@@ -33,7 +42,7 @@ GitHub staging secrets：ACR_PASSWORD、STAGING_CURSOR_SIGNING_SECRET、STAGING_
 ## 发布顺序
 
 1. 验证授权、main 提交及其所需质量结果，使用干净树产生不可变 tag。
-2. password-stdin 登录 ACR，构建 linux/amd64 API/worker/release-ops，并对运行镜像执行当前依赖风险策略。质量工作流中的审计可见性与发布阻断策略不能混为一谈。
+2. password-stdin 登录 ACR，自动流程验证并复用质量门禁的 API/worker/release-ops 镜像；手动流程构建 linux/amd64 镜像，再对运行镜像执行当前依赖风险策略。质量工作流中的审计可见性与发布阻断策略不能混为一谈。
 3. 保存前一 Compose/镜像状态，安全传输必要 secret，原子更新受控 runtime 中本次允许修改的字段；不重写其他秘密。
 4. 拉取镜像，使用一次性 release-ops 执行 Qdrant 初始化和 `prisma migrate deploy`，再替换 API/worker。
 5. 验证 loopback health/readiness、公开 health、公开 readiness 隔离和本次变更的关键边界。

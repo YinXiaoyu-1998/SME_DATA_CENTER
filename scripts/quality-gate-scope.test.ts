@@ -50,34 +50,54 @@ describe("quality gate change scope", () => {
     repo.write("skills/smedc-mcp/references/upgrade-cleanup.md");
     repo.write("README.md");
     repo.commit();
-    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=false\n" });
+    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=false\nrun_images=false\n" });
     for (const event of ["push", "workflow_dispatch"]) {
-      expect(repo.run(event)).toMatchObject({ status: 0, stdout: "run_full=true\n" });
+      expect(repo.run(event)).toMatchObject({
+        status: 0,
+        stdout: "run_full=true\nrun_images=true\n"
+      });
     }
   });
 
   it.each([
     "apps/api/src/index.ts",
     ".github/workflows/phase3-quality-gates.yml",
-    "skills/smedc-mcp/scripts/helper.sh"
+    "scripts/official-manual-acceptance.ts",
+    "packages/domain/src/business-authorization.ts",
+    "unknown-runtime-input"
   ])("runs the full gate when documentation is mixed with %s", (path) => {
     const repo = repository();
     repo.write("README.md");
     repo.write(path);
     repo.commit();
-    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=true\n" });
+    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=true\nrun_images=true\n" });
+  });
+
+  it.each([
+    "apps/api/src/auth/routes.test.ts",
+    "scripts/helper.test.ts",
+    "skills/smedc-mcp/scripts/helper.sh"
+  ])("retains unit and integration checks without a PR image rebuild for %s", (path) => {
+    const repo = repository();
+    repo.write(path);
+    repo.commit();
+    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=true\nrun_images=false\n" });
+    expect(repo.run("push")).toMatchObject({
+      status: 0,
+      stdout: "run_full=true\nrun_images=true\n"
+    });
   });
 
   it("does not hide a removed executable behind a rename to Markdown", () => {
     const repo = repository();
     repo.git("mv", "scripts/runtime.sh", "README.md");
     repo.commit();
-    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=true\n" });
+    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=true\nrun_images=true\n" });
   });
 
   it("fails closed for unavailable revisions and empty diffs", () => {
     const repo = repository();
-    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=true\n" });
+    expect(repo.run()).toMatchObject({ status: 0, stdout: "run_full=true\nrun_images=true\n" });
     const result = repo.run("pull_request", "missing-revision");
     expect(result.status).not.toBe(0);
     expect(result.stdout).not.toContain("run_full=false");

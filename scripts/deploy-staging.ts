@@ -4,6 +4,13 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  loadRuntimeImages,
+  RUNTIME_IMAGE_COMPONENTS,
+  type RuntimeComponent,
+  type DockerCommand
+} from "./runtime-image-artifact.js";
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
 const DEFAULT_REGISTRY = "crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com";
@@ -672,6 +679,20 @@ async function loginToAcr(config: DeployConfig, password: string, local: boolean
   });
 }
 
+export async function publishVerifiedRuntimeImages(
+  directory: string,
+  commit: string,
+  images: Record<RuntimeComponent, string>,
+  docker: DockerCommand
+): Promise<void> {
+  const verified = await loadRuntimeImages(directory, commit, docker);
+  // Verify every image before publishing any; use content IDs rather than mutable local tags.
+  for (const component of RUNTIME_IMAGE_COMPONENTS) {
+    await docker(["tag", verified[component], images[component]]);
+    await docker(["push", images[component]]);
+  }
+}
+
 async function buildAndPush(
   config: DeployConfig,
   apiImage: string,
@@ -804,7 +825,9 @@ function printPlan(
         apiImage,
         workerImage,
         releaseOpsImage,
-        build: !options.skipBuild && !options.rollback,
+        build:
+          !options.skipBuild && !options.rollback && !process.env["SMEDC_PREBUILT_IMAGE_DIRECTORY"],
+        testedImageHandoff: Boolean(process.env["SMEDC_PREBUILT_IMAGE_DIRECTORY"]),
         migrate: !options.skipMigrate && !options.rollback,
         smoke: !options.skipSmoke,
         vulnerabilityScan: !options.rollback,
@@ -820,7 +843,8 @@ function printPlan(
 function helpText(): string {
   return `Usage: npm run deploy:staging -- [options]
 
-Builds immutable linux/amd64 API, worker, and release-ops images, pushes them to
+Builds immutable linux/amd64 API, worker, and release-ops images (or verifies and
+reuses the exact main CI images from SMEDC_PREBUILT_IMAGE_DIRECTORY), pushes them to
 the approved Beijing ACR registry, rolls them out on staging, applies Prisma
 migrations, checks local readiness/public liveness, and runs the fixture-only
 smoke test. A verified forward deployment retains its current and previous
@@ -849,6 +873,12 @@ async function main(): Promise<void> {
 
   const config = loadDeployConfig();
   const tag = await preflight(config, options);
+  const prebuiltDirectory = process.env["SMEDC_PREBUILT_IMAGE_DIRECTORY"];
+  if (prebuiltDirectory && (options.skipBuild || options.rollback || options.tag)) {
+    throw new Error(
+      "Tested image handoff cannot be combined with rollback or tag/build overrides."
+    );
+  }
   const apiImage = imageReference(config.registry, config.namespace, config.apiRepository, tag);
   const workerImage = imageReference(
     config.registry,
@@ -880,14 +910,26 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!options.skipBuild) {
+  if (!options.skipBuild && !prebuiltDirectory) {
     console.log("\n==> Verify local Docker Buildx");
     await run("docker", ["info"]);
     await run("docker", ["buildx", "version"]);
   }
 
   await loginToAcr(config, password, true);
-  if (!options.skipBuild) {
+  if (prebuiltDirectory) {
+    const commit = await run("git", ["rev-parse", "HEAD"], { capture: true });
+    await publishVerifiedRuntimeImages(
+      prebuiltDirectory,
+      commit,
+      {
+        api: apiImage,
+        worker: workerImage,
+        "release-ops": releaseOpsImage
+      },
+      (args) => run("docker", args, { capture: true })
+    );
+  } else if (!options.skipBuild) {
     await buildAndPush(config, apiImage, workerImage, releaseOpsImage, tag);
   }
   await scanImages(apiImage, workerImage, releaseOpsImage);
