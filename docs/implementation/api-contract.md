@@ -425,8 +425,7 @@ read permission is exposed. Launcher 0.13.0 is published and independently verif
 
 Launcher `0.13.0` is published and independently verified, and is the approved installation pin.
 The service source recommends `0.13.0` and requires at least `0.12.0` for OAuth issuance and refresh.
-The verified live deployment recommends `0.12.0` with minimum `0.12.0`; matching service deployment
-and the feedbackId migration are verified separately. The recommendation change awaits merge and deployment. See [staging readiness](staging-readiness.md); publication and installation do not
+See [staging readiness](staging-readiness.md) for verified live policy and deployment evidence; publication and installation do not
 configure categories/grants or activate a tenant.
 
 Published, independently verified launcher `0.12.0` introduced the `replyStatus` / `replyStatuses`
@@ -446,7 +445,7 @@ reviewer. No fuzzy merging, deletion, arbitrary sorting or aggregation is expose
 
 Published, independently verified launcher `0.13.0` adds optional `reviews[].feedbackId` and query
 `feedbackId` and is the approved installation pin and source recommendation. The minimum remains
-`0.12.0`; the recommendation change awaits merge and deployment. Before using these fields,
+`0.12.0`. Before using these fields,
 verify the matching service deployment and forward migration
 `20261019010000_store_review_feedback_id`; publication alone does not prove those gates.
 The complete identity adds exact platform ID to the six fields above; IDs are scoped to

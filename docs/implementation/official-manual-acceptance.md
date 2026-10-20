@@ -1,21 +1,27 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-10-13
+Last updated: 2026-10-20
 
 The existing full-suite runner baseline tests official staging with macOS Codex and published
-`smedc-mcp-launcher@0.9.0`. The current employee install pin is 0.10.1; its cost-card acceptance
-is separately gated below. It does not revive the deleted local email-login flow or
+`smedc-mcp-launcher@0.9.0`. This is an outdated runner baseline, not an approved installation target.
+The employee installation pin belongs to the [core Skill](../../skills/smedc-mcp/SKILL.md);
+cost-card acceptance is separately gated below. It does not revive the deleted local email-login flow or
 `/auth/dev-login`. Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md`,
 and `test-cases.md` before running it. Beta onboarding uses
 [the operator runbook](beta-user-onboarding-runbook.md).
 
 ## Current runner limitation
 
+The runner still hardcodes `LAUNCHER_VERSION = "0.9.0"` in `scripts/official-manual-acceptance.ts`,
+below the current OAuth minimum `0.12.0`. A full run is blocked until that runner is updated and
+validated against the core-approved launcher. Do not install the old baseline, downgrade the
+service gate, or treat this documentation cleanup as a runner fix.
+
 The runner now requires raw-ledger aggregation to return an MCP tool error with code `LEDGER_DETAIL_DISABLED`, and reports `deliveryLedgerAggregateDenied: true` only after that check. Unexpected success, authentication/permission errors and transport failures do not pass this boundary. Local regression tests cover these outcomes; the user-visible receipt-summary scenario expects refusal and the separate PDF delivery path.
 
 A separate fixture prerequisite remains: `uploadEvidenceFixtures` does not yet supply required `categoryId` and complete `scopes`. The full runner therefore still needs explicit, authorized evidence-fixture configuration before a complete current-contract acceptance run; do not infer attributes or change tenant grants to bypass this gap.
 
-This change does not execute the workflow, alter accounts or backfill data. A future explicitly requested full run must first resolve the fixture prerequisite, then follow the human/browser and cleanup rules below.
+This change does not execute the workflow, alter accounts or backfill data. A future explicitly requested full run must first resolve the runner-version and fixture prerequisites, then follow the human/browser and cleanup rules below.
 
 ## Choose the requested profile
 
@@ -48,10 +54,8 @@ session mode does not inherit macOS Keychain persistence.
 4. Confirm Node.js 22+, the pinned launcher and the invoking Codex MCP entry. Preserve an already
    correct installation and the current login in the existing-session profile.
 
-```sh
-SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.9.0/node_modules/.bin/smedc-mcp-launcher" self-check
-```
+Run the current core Skill's platform-specific `self-check` after the runner prerequisite is
+resolved. Do not copy a historical runner version into the installation path.
 
 Expect `secureStore.available=true`, reachable/compatible server metadata and an `ok` MCP
 handshake when authenticated. The current-user tool returns display name, email, role, clearance
@@ -227,8 +231,8 @@ after process restart. It uses a fresh synthetic account and cleans it afterward
 
 ## Cost-card changed workflow after launcher publication
 
-This section targets published, independently verified launcher 0.10.1, separately from the
-existing 0.9.0 full-suite runner baseline. This documentation does not authorize execution, user
+This section targets the current core-approved, published and independently verified launcher,
+separately from the outdated full-suite runner baseline. This documentation does not authorize execution, user
 installation or real tenant changes. After matching service rollout, explicit
 synthetic category configuration and a separately requested changed-workflow acceptance, use
 `candidateCostCards` in `fixtures/manual-acceptance/scenarios.json`. It is deliberately outside

@@ -64,7 +64,7 @@
 
 - 2026-09-08 independent parity audit: verified default-branch heads `SME_DATA_CENTER@b935c3e`, original reporting skill `66fe2b6`, and SMEDC reporting skill `0dc6676`; installed SMEDC skill matches remote. The reporting skill's 86 tests passed with current-service registry validation. Service integration and weekly/monthly presentation migration are supported by code and existing staging acceptance evidence, but complete business parity remains unproven: focused synthetic probes reproduced missing-period trend misalignment, changed product identity aggregation, and order-dependent ambiguous catalog matching; diagnosis still uses a reduced technical fact-table presentation. No runtime fix or new staging acceptance was performed in this audit.
 
-## Current Phase
+## Historical Phase Snapshot
 
 - Phase: Phase 4 official access remains deployed in staging; launcher 0.2.8 is public and independently verified, while its verified service-recommendation and dual-homed skill synchronization awaits human review and merge. Full user-visible OpenClaw and support-class-C phone/browser acceptance plus real-data readiness controls remain gates.
 - Date: 2026-09-10
@@ -92,7 +92,7 @@
 - 2026-09-01: `codex/delivery-ledger-field-aliases` adds paper-ledger Chinese aliases to the `delivery_ledger` structured registry so employee agents can map terms like `进货数量`, `供货单位名称`, and `保质期` without guessing similar English field names.
 - 2026-09-01: `codex/skill-upload-original-files` narrows base Enterprise Hub MCP guidance so employees' agents upload original structured files instead of treating registry metadata as dataset-specific local ETL instructions.
 
-## Active Workstreams
+## Historical Workstream Snapshots
 
 | Workstream                           | Branch                                         | Owner/Agent      | Status           | PR                                                                  | Notes                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------ | ---------------------------------------------- | ---------------- | ---------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -384,14 +384,14 @@
 - No human blocker was silently assumed. Remote runtime provisioning followed explicit approval; OSS validation used the approved test prefix/actions. Outstanding stop rules remain active.
 - No tracked secret or prohibited file was found. Local ignored `.env`, MCP/CLI session paths, and SSH credential files remain operational risks if copied or logged and must not enter git.
 
-## Blockers
+## Historical Blockers
 
 | Blocker                             | Needed From Human                                                                                                                                                                                                                                                              | Since      | Stop Rule                                                                                                                                                                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | First beta onboarding identity      | No human input blocks implementation. Before live onboarding, provide the beta employee's login email, display name, non-admin role/labels, and approved fixture/non-sensitive first-use data. Codex and OpenClaw on macOS/Windows are the first accepted client matrix.       | 2026-07-23 | Do not expose `/mcp`, re-enable dev login, preserve JWT compatibility, or hand out runtime secrets as a shortcut; complete the accepted official auth and client acceptance gates first.                  |
 | Phase 4 real-data safety follow-ups | Confirm RDS renewal/deletion protection, RPO/RTO and restore-drill authority, alert recipient, and real-data retention/deletion policy. Automated 7-day RDS data/log backups are now verified; provider SSL is disabled. Let’s Encrypt contact email is `consyinxy@gmail.com`. | 2026-07-01 | A real user may use fixture/approved non-sensitive data after beta access passes; do not import customer data until recovery, monitoring/rollback, and data-retention decisions are explicitly completed. |
 
-## Next Actions
+## Historical Next Actions
 
 - [x] Assign Day 0 lead agent.
 - [x] Create Day 0 tracking documents.

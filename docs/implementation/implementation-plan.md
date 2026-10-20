@@ -1,6 +1,6 @@
 # SMEDC 当前实施范围与阶段边界
 
-更新：2026-10-13。本文只记录当前已实现范围和仍需独立完成的阶段，不维护已完成任务的执行清单。
+更新：2026-10-20。本文只记录当前已实现范围和仍需独立完成的阶段，不维护已完成任务的执行清单。
 
 ## 产品边界
 
@@ -15,6 +15,8 @@
 | 经营与菜品销售 | launcher multipart 原件传输、worker 原子发布 OSS 当前门店日分区、授权清单及本地校验下载 | [分区契约](structured-partitions.md) |
 | 其他结构化资料 | 会员、菜品目录、供应商目录的受控查询和原件关联；配送台账仅内部输入 | [API 契约](api-contract.md) |
 | 检疫证明与台账 | 单门店照片、独立 PDF 权限、计划生成/修复、覆盖与 ZIP 下载 | [PDF 运维](ledger-pdf-operations.md) |
+| 成本卡 | 原件校验、逐卡 CSV 与 MySQL 目录、受权本地下载、归档/恢复 | [成本卡设计](cost-card-design.md) |
+| 门店评价 | 平台评价事实批量同步、replyStatus 与可选 feedbackId、受权查询 | [API 契约](api-contract.md#store-reviews-launcher-0110) |
 | 企业权限 | 当前账号密级及完整业务 grant、类别/维度/门店配置、本人权限卡、版本化管理与审计 | [权限设计](business-related-authorization-design.md) |
 | 企业管理入口 | 企业专属 UI、共享浏览器身份、默认中文/English、内部代办 CLI | [入驻流程](tenant-onboarding.md) |
 | 发布与运维 | main 质量门禁、不可变镜像、GitHub staging Environment、前向迁移、镜像回滚 | [部署手册](staging-deploy-runbook.md) |
@@ -37,7 +39,7 @@
 
 ## 当前待修复项
 
-官方人工验收运行器已改为核对原台账汇总的精确拒绝码；完整验收仍需补齐证据夹具的显式类别及完整 scopes。当前说明见 [正式验收限制](official-manual-acceptance.md#current-runner-limitation)。这不授权恢复旧读取路径或执行完整验收。
+官方人工验收运行器已改为核对原台账汇总的精确拒绝码；完整验收仍需升级并验证低于服务最低版本的 0.9.0 runner，以及补齐证据夹具的显式类别及完整 scopes。当前说明见 [正式验收限制](official-manual-acceptance.md#current-runner-limitation)。这不授权恢复旧读取路径或执行完整验收。
 
 ## 验证与发布
 

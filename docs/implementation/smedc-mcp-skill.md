@@ -29,19 +29,34 @@ MCP 行为/契约/使用指导变更遵守 [共享发布规则](../../packages/m
 
 检查 Skill frontmatter、当前命令/字段、引用、双仓库文件字节一致性，以及现有 `scripts/smedc-companion-skill.test.ts` 和 `scripts/official-user-install-and-login.test.ts`。格式检查和 git diff --check 必须通过。测试 Skill 描述的运行行为使用既有 MCP 集成入口，不把 Skill 文本当作新增工具实现。
 
-## 成本卡发布与上线边界
+## 三仓职责与同步
 
-双份 Skill 的 [cost-cards reference](../../skills/smedc-mcp/references/cost-cards.md) 对应已发布并
-独立验证的 0.13.0；成本卡 0.10.1 发布证据见 [progress](progress.md)。核心 Skill 当前 pin 为
-0.13.0，business-analysis/delivery-ledger companion 保持 0.11.0，独立维护；本次不更新 companion。
-服务版本策略见上述当前入口，发布与安装不证明租户授权就绪，使用前分别核对。同步目录
-需逐文件一致，canonical 用户目录仍为 `/Users/xiaoyuyin/.agents/skills`，安装按员工请求范围执行。
+| 仓库/目录                                                                                   | 维护内容                                                                    | 版本依据                                                                                   |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `SME_DATA_CENTER`                                                                           | 服务、launcher 源码、公共契约、设计/运维与发布证据；核心 Skill 的服务侧副本 | launcher package/runtime/contract 的版本对齐；线上事实只在 staging 状态记录                |
+| [smedc-mcp-skill](https://github.com/YinXiaoyu-1998/smedc-mcp-skill) 的 `skills/smedc-mcp/` | 核心 Skill 分发，含所有 references、assets 和 agents 元数据                 | 与服务侧完整目录逐字节一致；安装 pin 由核心 SKILL.md 批准                                  |
+| [smedc-companion-skills](https://github.com/YinXiaoyu-1998/smedc-companion-skills)          | 经营分析、台账交付和独立美团工作流                                          | 各 Skill 以来源 Git commit/子目录标识修订；使用核心 Skill 的安装 pin，不另定 launcher 版本 |
 
-流程为 35 列原件上传 → 受权目录找卡与同名消歧 → download_cost_cards 交付每卡 38 列 CSV／
-逐卡来源和 revision → agent 本地物品／配方／单位／门店分析与 finally 清理。没有服务端明细
-查询或聚合，下载格式不作上传模板。原件归档独立，单卡归档及新上传恢复使用当前 admin
-管理边界，读取仍须集团成本卡类别 grant 和密级。老 enabled 企业通过受控写入口幂等补登记
-新类别并显式配置，不给默认权限。publication 摘要绑定那次提交，截断和当前读取权须说明。
+文档/Skill 修订没有独立的 launcher 语义版本，不为整理文档增加 npm 版本。
+同步三仓不等于更新员工本机 Skill 或 launcher；安装、升级和宿主重载仍按请求范围完成。
+用户技能默认安装到 `~/.agents/skills`，不要将维护者个人绝对路径写成通用安装前提。
 
-companion 维护本机较新的名称关联指导：matched_product_name 优先，空／无匹配再 product_name，
-多个候选保留歧义。仅增加本地 CSV 分析说明，不修改现有报表 runner 或增加利润报告。
+### 同步检查
+
+1. 比较两份完整核心目录的文件集合和内容；不能只比较 SKILL.md 或版本号。
+   宿主专用说明（包括 dsh）也属于镜像目录，不能单边维护。
+2. 核对 launcher 源码版本、已验证发行物、核心安装 pin、源码最低/推荐值；这些值的语义不同，
+   最低版本不必等于推荐版本。线上值只按新的公开核验或部署证据更新。
+3. Companion 按核心 Skill 的批准版本使用客户端；能力还需匹配服务部署与当前授权。
+   缺失/过时前置项走核心更新流程，不使用 npm latest，也不从服务推荐值自动改安装 pin。
+4. 运行上文的服务侧检查、独立核心仓库 `python3 -m unittest discover -s tests -v`、
+   companion 仓库 `python3 scripts/validate_all_skills.py`。README 只维护导航、安装范围和版本归属，
+   业务步骤留在各 Skill/reference。
+
+### 成本卡分工
+
+核心 [cost-cards reference](../../skills/smedc-mcp/references/cost-cards.md) 负责原件上传、受权目录、
+同名消歧、逐卡 CSV 下载及清理；[成本卡设计](cost-card-design.md) 维护服务合同。
+经营分析 companion 的 cost_cards 和 dish_name_association references 负责本地分析及名称候选匹配：
+优先 matched_product_name，空或无匹配再用 product_name，多个候选保留歧义。
+这些指导不增加服务端明细分析、利润报告或新的报表 runner。
