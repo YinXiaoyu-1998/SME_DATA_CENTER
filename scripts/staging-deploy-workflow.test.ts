@@ -26,7 +26,10 @@ describe("staging GitHub Actions release boundary", () => {
     const unit = source.split("\n  unit-and-static:")[1]?.split("\n  runtime-images:")[0];
     expect(unit).toContain("needs: change-scope");
     expect(unit).toContain("if: ${{ needs.change-scope.outputs.run_full == 'true' }}");
-    for (const job of ["runtime-images", "phase3-real-runtime"]) {
+    const images = source.split("\n  runtime-images:")[1]?.split("\n  phase3-real-runtime:")[0];
+    expect(images).toContain("needs: [change-scope, unit-and-static]");
+    expect(images).toContain("if: ${{ needs.change-scope.outputs.run_images == 'true' }}");
+    for (const job of ["phase3-real-runtime"]) {
       const body = source.split(`\n  ${job}:`)[1]?.split(/\n {2}[a-z-]+:/)[0];
       expect(body).toContain("needs: unit-and-static");
     }
@@ -69,4 +72,51 @@ describe("staging GitHub Actions release boundary", () => {
     expect(source).not.toContain("nick2373262573");
     expect(source).not.toContain("39.96.66.185");
   });
+});
+
+it("cancels only obsolete PR checks and retains all permission/integration gates", async () => {
+  const source = await workflow(qualityWorkflowPath);
+  expect(source).toContain(
+    "group: smedc-quality-${{ github.event.pull_request.number || github.run_id }}"
+  );
+  expect(source).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+  for (const command of [
+    "npm test",
+    "npm run test:integration",
+    "RUN_DATABASE_PROTOCOL_INTEGRATION=1",
+    "RUN_LEDGER_PRISMA_INTEGRATION=1"
+  ])
+    expect(source).toContain(command);
+});
+
+it("caches each runtime target and hands off only tested main images to the matching run", async () => {
+  const quality = await workflow(qualityWorkflowPath);
+  const deploy = await workflow(deployWorkflowPath);
+  for (const target of ["api", "worker", "release-ops"]) {
+    expect(quality).toContain(`cache-from: type=gha,version=2,scope=smedc-${target}`);
+    expect(quality).toContain(`cache-to: type=gha,version=2,scope=smedc-${target},mode=max`);
+  }
+  expect(quality).toContain("retention-days: 1");
+  expect(quality).toContain("overwrite: true");
+  expect(quality).toContain("compression-level: 0");
+  expect(quality).toContain("github.event_name == 'push' && github.ref == 'refs/heads/main'");
+  expect(quality).toContain("smedc-runtime-images-${{ github.sha }}\n");
+  expect(deploy).toContain("run-id: ${{ github.event.workflow_run.id }}");
+  expect(deploy).toContain("smedc-runtime-images-${{ github.event.workflow_run.head_sha }}\n");
+  expect(deploy).toContain("SMEDC_PREBUILT_IMAGE_DIRECTORY:");
+  const buildxStep = deploy.split("- name: Set up Docker Buildx")[1]?.split("\n      - name:")[0];
+  expect(buildxStep).toContain(
+    "github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy'"
+  );
+});
+
+it("runs all native launcher release checks only for an explicit version tag or manual release", async () => {
+  const release = await workflow(join(repoRoot, ".github/workflows/launcher-release.yml"));
+  const triggers = release.split("\npermissions:")[0];
+  expect(triggers).not.toContain("branches:");
+  expect(triggers).not.toContain("paths:");
+  expect(release).toContain('"smedc-mcp-launcher-v*"');
+  expect(release).toContain("workflow_dispatch:");
+  for (const os of ["macos-latest", "windows-latest", "ubuntu-latest"])
+    expect(release).toContain(os);
 });

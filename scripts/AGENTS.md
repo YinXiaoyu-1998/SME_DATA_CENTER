@@ -23,4 +23,4 @@
 
 - Deployment, host provisioning and remote cleanup read `deploy/AGENTS.md` even when only a script is edited or run.
 - Keep fixture generation synthetic and commands explicit about targets. Reuse existing harnesses and adjacent script tests.
-- `quality-gate-scope.sh` fails closed for unknown changes/revisions. Documentation-only PRs may skip runtime jobs; main/manual runs retain the full release gate.
+- `quality-gate-scope.sh` fails closed for unknown changes/revisions. Documentation-only PRs may skip runtime jobs; test/Skill-only PRs retain unit and integration checks but may skip image builds. Main/manual runs retain the full release gate.

@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   staging:
@@ -58,6 +59,16 @@ jobs:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 1
 
+      - name: Download the tested main image artifact
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: smedc-runtime-images-${{ github.event.workflow_run.head_sha }}
+          path: ${{ runner.temp }}/smedc-runtime-images
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -81,7 +92,7 @@ jobs:
           printf 'SMEDC_STAGING_SSH_KEY=%s\n' "$key_path" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
-        if: ${{ github.event_name == 'workflow_run' || inputs.operation == 'deploy' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy' }}
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
       - name: Install Trivy
@@ -96,6 +107,7 @@ jobs:
         env:
           SMEDC_ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
           SMEDC_STAGING_CURSOR_SIGNING_SECRET: ${{ secrets.STAGING_CURSOR_SIGNING_SECRET }}
+          SMEDC_PREBUILT_IMAGE_DIRECTORY: ${{ github.event_name == 'workflow_run' && format('{0}/smedc-runtime-images', runner.temp) || '' }}
         run: |
           set -euo pipefail
           test -n "$SMEDC_ACR_PASSWORD"

@@ -192,6 +192,8 @@ manager, never a checked-in env file.
 | `SMEDC_STAGING_CURSOR_KEYCHAIN_ACCOUNT` | Local cursor secret lookup    |      No |             Yes | Defaults to `smedc-staging`.                                                        |
 | `SMEDC_STAGING_CURSOR_SIGNING_SECRET`   | Non-interactive cursor secret |     Yes |              No | Installed into root-only runtime env; never printed or committed.                   |
 
+`SMEDC_PREBUILT_IMAGE_DIRECTORY` 是自动部署的非秘密临时目录，由工作流下载其成功 main 质量 run 的镜像归档及清单后设置。发布脚本校验完整 SHA、归档 checksum 和镜像身份后复用；不用于服务 runtime，不能与 rollback、`--skip-build` 或自定义 tag 混用。手动部署不设置它，沿用完整构建流程。
+
 ### GitHub staging environment
 
 GitHub Actions maps Environment-level configuration onto the process variables
