@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { SMEDC_MCP_TOOL_CONTRACTS } from "@smedc/mcp-contract";
+import * as acceptance from "./official-manual-acceptance.js";
 import type { PrismaClient } from "@prisma/client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
@@ -245,5 +247,108 @@ describe("cost-card acceptance garbage inventory", () => {
         sourceDocumentIds: ["historical", "current"]
       })
     ).rejects.toThrow("Official cleanup refuses a shared cost-card object");
+  });
+});
+
+describe("current-contract manual acceptance", () => {
+  const evidenceConfig = {
+    categoryId: "synthetic-sop",
+    scopes: [{ enterpriseKey: "synthetic-enterprise", ownership: "group", dimensions: {} }]
+  };
+
+  it("targets the approved 0.13.0 launcher and requires complete explicit Evidence metadata", async () => {
+    expect(acceptance.MANUAL_ACCEPTANCE_LAUNCHER_VERSION).toBe("0.13.0");
+    const run = runConfig("current-contract");
+    await expect(acceptance.buildEvidenceFixtureInputs(run, undefined)).rejects.toThrow(
+      "Evidence fixture configuration"
+    );
+    await expect(
+      acceptance.buildEvidenceFixtureInputs(run, { ...evidenceConfig, scopes: [] })
+    ).rejects.toThrow();
+    const inputs = await acceptance.buildEvidenceFixtureInputs(run, evidenceConfig);
+    const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
+      (tool) => tool.name === "upload_evidence_document"
+    )!;
+    const parsed = inputs.map((input) => contract.inputSchema.parse(input));
+    expect(parsed.map((input) => input.confidentialityLevel)).toEqual([0, 2]);
+    for (const input of parsed) {
+      expect(input.categoryId).toBe(evidenceConfig.categoryId);
+      expect(input.scopes).toEqual(evidenceConfig.scopes);
+    }
+  });
+
+  it("rejects incomplete store scopes and unknown or unsafe partial-run options", () => {
+    expect(() =>
+      acceptance.parseArgs(["--checks=unknown", "--reuse-session=qa@example.invalid"])
+    ).toThrow();
+    expect(() => acceptance.parseArgs(["--checks=identity"])).toThrow("--reuse-session");
+    expect(() =>
+      acceptance.parseArgs(["cleanup", "--checks=identity", "--reuse-session=qa@example.invalid"])
+    ).toThrow();
+    expect(() =>
+      acceptance.parseArgs([
+        "--checks=identity",
+        "--reuse-session=qa@example.invalid",
+        "--document-id=doc-1"
+      ])
+    ).toThrow();
+    expect(() =>
+      acceptance.parseEvidenceFixtureConfig({
+        ...evidenceConfig,
+        scopes: [{ enterpriseKey: "synthetic-enterprise", ownership: "store", dimensions: {} }]
+      })
+    ).toThrow();
+    expect(
+      acceptance.parseArgs([
+        "--checks=identity,catalog,ledger-denial",
+        "--reuse-session=qa@example.invalid"
+      ]).checks
+    ).toEqual(["identity", "catalog", "ledger-denial"]);
+  });
+
+  it("runs only selected read-only checks and requires the exact ledger denial", async () => {
+    const client = new Client({ name: "selected-checks", version: "1" });
+    const call = vi.spyOn(client, "callTool").mockImplementation(async ({ name }) => {
+      if (name === "smedc_get_current_user")
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                user: {
+                  displayName: "QA",
+                  email: "qa@example.invalid",
+                  role: "admin",
+                  clearance: 3
+                }
+              })
+            }
+          ]
+        };
+      if (name === "get_my_permissions") return { content: [{ type: "text", text: "{}" }] };
+      if (name === "list_structured_datasets")
+        return { content: [{ type: "text", text: '{"datasets":[]}' }] };
+      if (name === "query_structured_dataset")
+        return {
+          isError: true,
+          content: [{ type: "text", text: '{"error":{"code":"LEDGER_DETAIL_DISABLED"}}' }]
+        };
+      throw new Error("Unexpected tool: " + name);
+    });
+    const result = await acceptance.runSelectedReadOnlyChecks(
+      client,
+      ["identity", "catalog", "ledger-denial"],
+      "qa@example.invalid"
+    );
+    expect(result).toMatchObject({ identity: true, catalog: true, "ledger-denial": true });
+    expect(call.mock.calls.map(([input]) => input.name)).toEqual([
+      "smedc_get_current_user",
+      "get_my_permissions",
+      "list_structured_datasets",
+      "query_structured_dataset"
+    ]);
+    call.mockClear();
+    await acceptance.runSelectedReadOnlyChecks(client, ["identity"], "qa@example.invalid");
+    expect(call.mock.calls.map(([input]) => input.name)).toEqual(["smedc_get_current_user"]);
   });
 });

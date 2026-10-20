@@ -8,6 +8,7 @@ import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "@prisma/client";
 import { parse as parseCsv } from "csv-parse/sync";
 import { config as loadDotenv } from "dotenv";
+import { PERMISSION_MCP_INPUT_SCHEMAS } from "@smedc/mcp-contract";
 import { createStorageAdapter } from "@smedc/storage";
 import {
   ledgerPartitionsFromRows,
@@ -39,13 +40,30 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-const LAUNCHER_VERSION = "0.9.0";
+export const MANUAL_ACCEPTANCE_LAUNCHER_VERSION = "0.13.0";
+const LAUNCHER_VERSION = MANUAL_ACCEPTANCE_LAUNCHER_VERSION;
+const READ_ONLY_CHECKS = ["identity", "catalog", "ledger-denial"] as const;
+type ReadOnlyCheck = (typeof READ_ONLY_CHECKS)[number];
+const evidenceFixtureConfigSchema = PERMISSION_MCP_INPUT_SCHEMAS.update_evidence_document_attributes
+  .pick({ categoryId: true, scopes: true })
+  .strict();
+type EvidenceFixtureConfig = ReturnType<typeof evidenceFixtureConfigSchema.parse>;
+
+export function parseEvidenceFixtureConfig(value: unknown): EvidenceFixtureConfig {
+  if (value === undefined)
+    throw new Error(
+      "Evidence fixture configuration is required: use --evidence-config=<local-json-path>."
+    );
+  return evidenceFixtureConfigSchema.parse(value);
+}
 const RUN_ROOT = path.join(process.cwd(), ".data", "official-manual-acceptance");
 
 interface ParsedArgs extends AcceptanceScope {
   command: "run" | "cleanup" | "controller-cleanup" | "controller-window";
   runId: string;
   keepData: boolean;
+  checks: ReadOnlyCheck[];
+  evidenceConfigPath: string | undefined;
 }
 
 interface ToolTextResult {
@@ -90,8 +108,28 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 }
 
 async function runLocalAcceptance(args: ParsedArgs): Promise<void> {
-  const run = runConfig(args.runId, args);
+  const evidenceConfig =
+    args.command === "run" && args.checks.length === 0
+      ? parseEvidenceFixtureConfig(
+          args.evidenceConfigPath
+            ? JSON.parse(await readFile(args.evidenceConfigPath, "utf8"))
+            : undefined
+        )
+      : undefined;
+  const run = runConfig(args.runId, { ...args, evidenceConfig });
   await removeStaleReport(run);
+  if (args.checks.length > 0) {
+    const outcome = await runAcceptance(run);
+    await writeReport(run, outcome);
+    printSafe({
+      ok: true,
+      command: "run",
+      runId: run.runId,
+      checks: args.checks,
+      report: reportPath(run)
+    });
+    return;
+  }
   await runStagingController("cleanup", run.runId, args);
   if (args.command === "cleanup") {
     await writeReport(run, {
@@ -176,7 +214,7 @@ async function runControllerCommand(args: ParsedArgs): Promise<void> {
 
 async function runAcceptance(
   run: ReturnType<typeof runConfig>,
-  structuredWindow: StructuredWindow
+  structuredWindow?: StructuredWindow
 ): Promise<Record<string, unknown>> {
   const launcher = launcherPath();
   const client = new Client({
@@ -200,6 +238,19 @@ async function runAcceptance(
       throw new Error("Official launcher is not authenticated. Run smedc_login first.");
     }
 
+    if (run.checks.length > 0) {
+      const checks = await runSelectedReadOnlyChecks(client, run.checks, run.reuseSession!);
+      return {
+        ok: true,
+        runId: run.runId,
+        launcherVersion: LAUNCHER_VERSION,
+        coverage: "selected read-only checks only; full acceptance not run",
+        checks,
+        dataMutation: false,
+        cleanupRequired: false
+      };
+    }
+    if (!structuredWindow) throw new Error("Full acceptance requires a structured window.");
     const currentUser = await callJson<CurrentEnterpriseHubUserResult>(
       client,
       "smedc_get_current_user",
@@ -443,37 +494,77 @@ async function runAcceptance(
   }
 }
 
+export async function runSelectedReadOnlyChecks(
+  client: Client,
+  checks: readonly ReadOnlyCheck[],
+  expectedEmail: string
+): Promise<Partial<Record<ReadOnlyCheck, boolean>>> {
+  const currentUser = await callJson<CurrentEnterpriseHubUserResult>(
+    client,
+    "smedc_get_current_user",
+    {}
+  );
+  if (!isReusedAcceptanceAccount(currentUser, expectedEmail))
+    throw new Error("Read-only checks require the explicitly selected active admin session.");
+  const results: Partial<Record<ReadOnlyCheck, boolean>> = {};
+  if (checks.includes("identity")) results.identity = true;
+  if (checks.some((check) => check !== "identity"))
+    await callJson(client, "get_my_permissions", {});
+  if (checks.includes("catalog")) {
+    const catalog = await callJson<{ datasets: unknown[] }>(client, "list_structured_datasets", {});
+    if (!Array.isArray(catalog.datasets))
+      throw new Error("Dataset catalog did not contain datasets.");
+    results.catalog = true;
+  }
+  if (checks.includes("ledger-denial")) {
+    await callJson(
+      client,
+      "query_structured_dataset",
+      {
+        dataset: "delivery_ledger",
+        aggregates: [{ op: "count", as: "rows" }]
+      },
+      "LEDGER_DETAIL_DISABLED"
+    );
+    results["ledger-denial"] = true;
+  }
+  return results;
+}
+
+export async function buildEvidenceFixtureInputs(
+  run: ReturnType<typeof runConfig>,
+  config: unknown
+) {
+  const metadata = parseEvidenceFixtureConfig(config);
+  const fixtures = [
+    { fileName: "baoli-roujiamo-sop.md", title: "Baoli Roujiamo SOP", level: 0 },
+    { fileName: "prompt-injection-sop.md", title: "Prompt Injection Fixture", level: 2 }
+  ];
+  return Promise.all(
+    fixtures.map(async (fixture) => ({
+      ...metadata,
+      file: {
+        name: fixture.fileName,
+        mediaType: "text/markdown",
+        encoding: "base64",
+        contentBase64: await fileBase64(`fixtures/manual-acceptance/evidence/${fixture.fileName}`)
+      },
+      title: `${run.titlePrefix} ${fixture.title}`,
+      sourceSystem: run.evidenceSourceSystem,
+      confidentialityLevel: fixture.level
+    }))
+  );
+}
+
 async function uploadEvidenceFixtures(
   client: Client,
   run: ReturnType<typeof runConfig>
 ): Promise<[EvidenceUploadResult, EvidenceUploadResult]> {
-  const [defaultLevelUpload, explicitLevelUpload] = await Promise.all([
-    callJson<EvidenceUploadResult>(client, "upload_evidence_document", {
-      file: {
-        name: "baoli-roujiamo-sop.md",
-        mediaType: "text/markdown",
-        encoding: "base64",
-        contentBase64: await fileBase64("fixtures/manual-acceptance/evidence/baoli-roujiamo-sop.md")
-      },
-      title: `${run.titlePrefix} Baoli Roujiamo SOP`,
-      sourceSystem: run.evidenceSourceSystem
-    }),
-    callJson<EvidenceUploadResult>(client, "upload_evidence_document", {
-      file: {
-        name: "prompt-injection-sop.md",
-        mediaType: "text/markdown",
-        encoding: "base64",
-        contentBase64: await fileBase64(
-          "fixtures/manual-acceptance/evidence/prompt-injection-sop.md"
-        )
-      },
-      title: `${run.titlePrefix} Prompt Injection Fixture`,
-      sourceSystem: run.evidenceSourceSystem,
-      confidentialityLevel: 2
-    })
-  ]);
-
-  return [defaultLevelUpload, explicitLevelUpload];
+  const inputs = await buildEvidenceFixtureInputs(run, run.evidenceConfig);
+  const results = await Promise.all(
+    inputs.map((input) => callJson<EvidenceUploadResult>(client, "upload_evidence_document", input))
+  );
+  return [results[0]!, results[1]!];
 }
 
 async function waitForEvidenceReady(client: Client, documentId: string): Promise<void> {
@@ -1230,7 +1321,10 @@ async function writeReport(run: ReturnType<typeof runConfig>, result: Record<str
 
 export function runConfig(
   runId: string,
-  scope: AcceptanceScope = { documentIds: [], partitionJobIds: [] }
+  scope: AcceptanceScope & {
+    checks?: ReadOnlyCheck[];
+    evidenceConfig?: EvidenceFixtureConfig | undefined;
+  } = { documentIds: [], partitionJobIds: [] }
 ) {
   const safeRunId = runId
     .trim()
@@ -1242,6 +1336,8 @@ export function runConfig(
   const compact = safeRunId.replace(/[^A-Za-z0-9]/g, "_");
   return {
     ...scope,
+    checks: scope.checks ?? [],
+    evidenceConfig: scope.evidenceConfig,
     ledgerRequestIds: scope.ledgerRequestIds ?? [],
     orgId: "default-org",
     reusedEmployeeId: undefined as string | undefined,
@@ -1278,7 +1374,7 @@ async function removeStaleReport(run: ReturnType<typeof runConfig>): Promise<voi
   }
 }
 
-function parseArgs(args: string[]): ParsedArgs {
+export function parseArgs(args: string[]): ParsedArgs {
   const commands: ParsedArgs["command"][] = [
     "run",
     "cleanup",
@@ -1290,8 +1386,25 @@ function parseArgs(args: string[]): ParsedArgs {
   const rest = first && commands.includes(first) ? args.slice(1) : args;
   let runId = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "Z");
   let keepData = false;
+  let checks: ReadOnlyCheck[] = [];
+  let evidenceConfigPath: string | undefined;
   const scope: AcceptanceScope = { documentIds: [], partitionJobIds: [] };
   for (const arg of rest) {
+    if (arg.startsWith("--checks=")) {
+      const values = arg.slice("--checks=".length).split(",");
+      if (
+        checks.length > 0 ||
+        values.some((value) => !READ_ONLY_CHECKS.includes(value as ReadOnlyCheck))
+      )
+        throw new Error("--checks accepts identity,catalog,ledger-denial only.");
+      checks = [...new Set(values)] as ReadOnlyCheck[];
+      continue;
+    }
+    if (arg.startsWith("--evidence-config=")) {
+      evidenceConfigPath = arg.slice("--evidence-config=".length);
+      if (!evidenceConfigPath) throw new Error("--evidence-config requires a local JSON path.");
+      continue;
+    }
     if (arg.startsWith("--reuse-session=")) {
       scope.reuseSession = arg.slice("--reuse-session=".length);
       if (!scope.reuseSession)
@@ -1321,7 +1434,22 @@ function parseArgs(args: string[]): ParsedArgs {
     throw new Error(`Unknown argument: ${arg}`);
   }
   validateAcceptanceScope(scope);
-  return { command, runId, keepData, ...scope };
+  if (checks.length > 0) {
+    if (!scope.reuseSession)
+      throw new Error("Read-only --checks requires --reuse-session=<expected-email>.");
+    if (
+      command !== "run" ||
+      keepData ||
+      evidenceConfigPath ||
+      scope.documentIds.length ||
+      scope.partitionJobIds.length ||
+      scope.ledgerRequestIds?.length
+    )
+      throw new Error(
+        "Read-only --checks cannot be combined with cleanup, fixture configuration or data-retention options."
+      );
+  }
+  return { command, runId, keepData, checks, evidenceConfigPath, ...scope };
 }
 
 function printSafe(value: Record<string, unknown>): void {
