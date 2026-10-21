@@ -747,6 +747,42 @@ export function createBusinessAuthorizationRepository({
     listStores: (orgId: string) => prisma.businessStore.findMany({ where: { orgId } }),
     listDimensions: (orgId: string) =>
       prisma.businessDimension.findMany({ where: { orgId }, include: { values: true } }),
+    async configureAccountRole(
+      input: AuthorizationWriteContext & { employeeId: string; role: unknown }
+    ) {
+      if (!operator) throw new Error("AUTHORIZATION_OPERATOR_REQUIRED");
+      return mutate(
+        input,
+        "account.role.configure",
+        input.employeeId,
+        async (tx, assertWithinDeadline) => {
+          const role = input.role;
+          if (role !== "admin" && role !== "employee") throw new Error("INVALID_ACCOUNT_ROLE");
+          const before = await tx.employee.findUnique({
+            where: { orgId_id: { orgId: input.orgId, id: input.employeeId } },
+            select: { role: true, disabled: true }
+          });
+          if (!before) throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
+          if (before.role === "admin" && !before.disabled && role === "employee") {
+            const otherAdmins = await tx.employee.count({
+              where: {
+                orgId: input.orgId,
+                role: "admin",
+                disabled: false,
+                id: { not: input.employeeId }
+              }
+            });
+            if (!otherAdmins) throw new Error("AUTHORIZATION_LAST_ADMIN_REQUIRED");
+          }
+          assertWithinDeadline();
+          await tx.employee.update({
+            where: { orgId_id: { orgId: input.orgId, id: input.employeeId } },
+            data: { role }
+          });
+          return { before: { role: before.role }, after: { role } };
+        }
+      );
+    },
     configureAccount(
       input: AuthorizationWriteContext & {
         employeeId: string;

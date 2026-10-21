@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import { createDatabaseAdapter } from "@smedc/db";
+import { createBusinessAuthorizationRepository, createDatabaseAdapter } from "@smedc/db";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   parsePermissionsOperatorArgs,
@@ -237,6 +237,173 @@ suite("internal permissions operator with Prisma", () => {
     });
   });
 
+  it("previews, promotes and demotes without changing the account's clearance or grants", async () => {
+    await save("enterprise.declare", { name: "Role test enterprise" });
+    const enterprise = await prisma.businessEnterpriseIdentity.findFirstOrThrow({
+      where: { orgId }
+    });
+    await save("category.create", {
+      id: "memo",
+      name: "Memo",
+      ownerships: ["group"],
+      requiredDimensionIds: []
+    });
+    await save("account.set", {
+      employeeId,
+      clearance: 2,
+      grants: [
+        {
+          id: "read-grant",
+          orgId,
+          enterpriseKey: enterprise.enterpriseKey,
+          categoryIds: ["memo"],
+          ownership: "group",
+          dimensions: {}
+        }
+      ]
+    });
+    const before = await prisma.employee.findUniqueOrThrow({ where: { id: employeeId } });
+    const beforeGrants = await prisma.businessGrant.findMany({
+      where: { orgId, employeeId },
+      include: { categories: true }
+    });
+    const preview = await invoke(applyArgs("account.role.set", false), {
+      employeeId,
+      role: "admin"
+    });
+    expect(preview).toMatchObject({
+      dryRun: true,
+      change: { body: { role: "admin", expectedVersion: "3" } }
+    });
+    expect((await prisma.employee.findUniqueOrThrow({ where: { id: employeeId } })).role).toBe(
+      "employee"
+    );
+    expect(
+      await prisma.businessAuthorizationAudit.count({ where: { orgId, outcome: "succeeded" } })
+    ).toBe(3);
+    expect(await save("account.role.set", { employeeId, role: "admin" })).toMatchObject({
+      authorizationVersion: "4",
+      value: { role: "admin" }
+    });
+    expect(await save("account.role.set", { employeeId, role: "employee" })).toMatchObject({
+      authorizationVersion: "5",
+      value: { role: "employee" }
+    });
+    const after = await prisma.employee.findUniqueOrThrow({ where: { id: employeeId } });
+    expect({ ...after, updatedAt: before.updatedAt }).toEqual(before);
+    expect(
+      await prisma.businessGrant.findMany({
+        where: { orgId, employeeId },
+        include: { categories: true }
+      })
+    ).toEqual(beforeGrants);
+    const audits = await prisma.businessAuthorizationAudit.findMany({
+      where: { orgId, action: "operator.account.role.configure", outcome: "succeeded" },
+      orderBy: { version: "asc" }
+    });
+    expect(audits).toMatchObject([
+      {
+        actorId: adminId,
+        targetId: employeeId,
+        before: { role: "employee" },
+        after: { role: "admin" }
+      },
+      {
+        actorId: adminId,
+        targetId: employeeId,
+        before: { role: "admin" },
+        after: { role: "employee" }
+      }
+    ]);
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        orgId,
+        action: "permissions.operator.change",
+        targetId: { in: audits.map((a) => a.id) }
+      }
+    });
+    expect(logs).toHaveLength(2);
+    expect(
+      logs.every((log) => log.actorEmployeeId === null && log.clientSource === "operator_cli")
+    ).toBe(true);
+  });
+
+  it("keeps an active administrator and allows self-demotion only when another active admin exists", async () => {
+    await prisma.employee.create({
+      data: {
+        id: `${orgId}_disabled`,
+        orgId,
+        email: `${orgId}_disabled@example.invalid`,
+        displayName: "Disabled admin",
+        role: "admin",
+        clearance: 3,
+        disabled: true
+      }
+    });
+    await expect(
+      save("account.role.set", { employeeId: adminId, role: "employee" })
+    ).rejects.toThrow("AUTHORIZATION_LAST_ADMIN_REQUIRED");
+    expect((await prisma.employee.findUniqueOrThrow({ where: { id: adminId } })).role).toBe(
+      "admin"
+    );
+    expect(
+      (await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).version
+    ).toBe(0n);
+    await save("account.role.set", { employeeId, role: "admin" });
+    expect(await save("account.role.set", { employeeId: adminId, role: "employee" })).toMatchObject(
+      { authorizationVersion: "2", value: { role: "employee" } }
+    );
+    await expect(invoke(["inspect", ...scopeArgs()])).rejects.toThrow(
+      "AUTHORIZATION_ADMIN_REQUIRED"
+    );
+    expect(await prisma.employee.count({ where: { orgId, role: "admin", disabled: false } })).toBe(
+      1
+    );
+  });
+
+  it("rejects foreign role targets and rechecks the version and live admin after inspection", async () => {
+    await expect(
+      save("account.role.set", { employeeId: foreignAdminId, role: "employee" })
+    ).rejects.toThrow("AUTHORIZATION_ACCOUNT_NOT_FOUND");
+    const command = parsePermissionsOperatorArgs(applyArgs("account.role.set", true));
+    if (command.kind !== "apply") throw new Error("Invalid fixture");
+    const runtime = await openPermissionsOperatorRuntime(command, url);
+    const change = planPermissionChange("account.role.set", { employeeId, role: "admin" }, "0");
+    try {
+      await runtime.inspect("accounts");
+      await prisma.businessAuthorizationState.update({ where: { orgId }, data: { version: 1n } });
+      await expect(runtime.apply(change)).rejects.toThrow("AUTHORIZATION_VERSION_CONFLICT");
+      await prisma.employee.update({ where: { id: adminId }, data: { disabled: true } });
+      await expect(
+        runtime.apply({ ...change, body: { ...change.body, expectedVersion: "1" } })
+      ).rejects.toThrow("AUTHORIZATION_ADMIN_REQUIRED");
+      expect((await prisma.employee.findUniqueOrThrow({ where: { id: employeeId } })).role).toBe(
+        "employee"
+      );
+      expect(
+        (await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).version
+      ).toBe(1n);
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("does not expose role changes through an ordinary unaudited repository", async () => {
+    const repository = createBusinessAuthorizationRepository({ prisma });
+    await expect(
+      repository.configureAccountRole({
+        orgId,
+        actorId: adminId,
+        employeeId,
+        role: "admin",
+        expectedVersion: version
+      })
+    ).rejects.toThrow("AUTHORIZATION_OPERATOR_REQUIRED");
+    expect((await prisma.employee.findUniqueOrThrow({ where: { id: employeeId } })).role).toBe(
+      "employee"
+    );
+  });
+
   it("rejects foreign targets, foreign or disabled requesting admins and invalid policy references", async () => {
     await expect(
       invoke(["inspect", "--org-id", foreignOrgId, "--requested-by-admin-id", adminId])
@@ -297,25 +464,36 @@ suite("internal permissions operator with Prisma", () => {
     }
   });
 
-  it("rolls back the permission change and version when operator audit persistence fails", async () => {
-    // Scoped to this disposable database; proves both successful audit rows are in the write transaction.
-    await prisma.$executeRawUnsafe(
-      "CREATE TRIGGER reject_operator_audit BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic audit failure'"
-    );
-    try {
-      await expect(
-        save("store.set", { enterpriseName: "Enterprise", name: "A" })
-      ).rejects.toThrow();
-      expect(await prisma.businessStore.count({ where: { orgId } })).toBe(0);
-      expect(await prisma.businessEnterpriseIdentity.count({ where: { orgId } })).toBe(0);
-      expect(
-        (await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).version
-      ).toBe(0n);
-      expect(
-        await prisma.businessAuthorizationAudit.count({ where: { orgId, outcome: "succeeded" } })
-      ).toBe(0);
-    } finally {
-      await prisma.$executeRawUnsafe("DROP TRIGGER reject_operator_audit");
+  it.each(["store.set", "account.role.set"] as const)(
+    "rolls back %s and its version when operator audit persistence fails",
+    async (operation) => {
+      // Scoped to this disposable database; proves both successful audit rows are in the write transaction.
+      await prisma.$executeRawUnsafe(
+        "CREATE TRIGGER reject_operator_audit BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic audit failure'"
+      );
+      try {
+        await expect(
+          save(
+            operation,
+            operation === "store.set"
+              ? { enterpriseName: "Enterprise", name: "A" }
+              : { employeeId, role: "admin" }
+          )
+        ).rejects.toThrow("OPERATOR_CHANGE_REJECTED");
+        expect(await prisma.businessStore.count({ where: { orgId } })).toBe(0);
+        expect(await prisma.businessEnterpriseIdentity.count({ where: { orgId } })).toBe(0);
+        expect((await prisma.employee.findUniqueOrThrow({ where: { id: employeeId } })).role).toBe(
+          "employee"
+        );
+        expect(
+          (await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).version
+        ).toBe(0n);
+        expect(
+          await prisma.businessAuthorizationAudit.count({ where: { orgId, outcome: "succeeded" } })
+        ).toBe(0);
+      } finally {
+        await prisma.$executeRawUnsafe("DROP TRIGGER reject_operator_audit");
+      }
     }
-  });
+  );
 });
