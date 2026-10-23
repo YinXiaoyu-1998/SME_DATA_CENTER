@@ -10,14 +10,14 @@ interface PageOptions {
   orgId: string;
   csrfToken: string;
 }
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value.replace(
     /[&<>"']/g,
     (character) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!
   );
 }
-function localized(value: LocalizedText): string {
+export function localized(value: LocalizedText): string {
   return `<span data-locale="zh-CN">${escapeHtml(value.zh)}</span><span data-locale="en" hidden>${escapeHtml(value.en)}</span>`;
 }
 const localeSource = String.raw`
@@ -48,14 +48,15 @@ const localeSource = String.raw`
    }
  });
 })();`;
-function shell(
-  options: { nonce: string; title: LocalizedText },
+export function shell(
+  options: { nonce: string; title: LocalizedText; styles?: string },
   body: string,
   script = ""
 ): string {
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(options.nonce)) throw new Error("Invalid page nonce");
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title data-title-zh="${escapeHtml(options.title.zh)}" data-title-en="${escapeHtml(options.title.en)}">${escapeHtml(options.title.zh)}</title><style nonce="${options.nonce}">
   ${browserPageStyles}
+  ${options.styles ?? ""}
   </style></head><body><header><div class="brand">SMEDC</div><nav class="language-switcher" aria-label="语言" data-aria-zh="语言" data-aria-en="Language"><button type="button" data-locale-option="zh-CN" aria-pressed="true">中文</button><button type="button" data-locale-option="en" aria-pressed="false">English</button></nav></header>${body}<script nonce="${options.nonce}">${localeSource}</script>${script ? `<script nonce="${options.nonce}">${script}</script>` : ""}</body></html>`;
 }
 export function renderPermissionsLogin(

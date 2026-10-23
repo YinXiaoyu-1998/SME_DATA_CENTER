@@ -11,6 +11,8 @@ import { enqueueStorageGarbage, storageGarbageKeyHash } from "@smedc/db";
 import type { StorageAdapter } from "@smedc/storage";
 import {
   ledgerBundleContentCurrent,
+  LEDGER_BUNDLE_LIMITS,
+  ledgerBundleEntryName,
   ledgerBundleEntriesEqual,
   capturedLedgerBundleEntries,
   parseLedgerBundleManifest,
@@ -40,26 +42,7 @@ export interface LedgerBundleArchive {
     code: string;
   }): Promise<boolean>;
 }
-export const LEDGER_BUNDLE_LIMITS = {
-  files: 5000,
-  bytes: 1024 ** 3,
-  deadlineMs: 600000,
-  retentionMs: 86400000
-} as const;
-export function ledgerBundleEntryName(entry: LedgerBundleEntry): string {
-  // Percent itself is escaped, making the segment reversible and preventing collisions/traversal.
-  const store = [...entry.key.storeName]
-    .map((character, index, characters) =>
-      '%./\\<>:"|?*'.includes(character) ||
-      character.codePointAt(0)! < 32 ||
-      character.codePointAt(0) === 127 ||
-      (character === " " && index === characters.length - 1)
-        ? `%${character.codePointAt(0)!.toString(16).toUpperCase().padStart(2, "0")}`
-        : character
-    )
-    .join("");
-  return `${store}/${entry.key.purchaseDate}/食品经营单位进货台帐_${store}_${entry.key.purchaseDate}.pdf`;
-}
+export { LEDGER_BUNDLE_LIMITS, ledgerBundleEntryName } from "@smedc/ledger-archive/delivery";
 function error(code: string): never {
   throw new Error(code);
 }
@@ -115,6 +98,10 @@ export async function processLedgerBundle({
       )
         error("LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED");
       const names = entries.map(ledgerBundleEntryName);
+      // STORE preserves input bytes. Budget the local/central headers, descriptors and
+      // UTF-8 filename extras separately so a full 1 GiB of PDFs remains valid.
+      const outputByteLimit =
+        limits.bytes + 22 + names.reduce((sum, name) => sum + 128 + 4 * Buffer.byteLength(name), 0);
       if (new Set(names).size !== names.length) error("LEDGER_BUNDLE_DUPLICATE_ENTRY");
       const key = `org/${encodeURIComponent(record.orgId)}/ledger_bundles/${record.requestId}/${lease.attemptNumber}-${randomBytes(12).toString("hex")}.zip`;
       if (!(await bounded(() => archive.registerCandidate({ record, lease, key }))))
@@ -160,7 +147,7 @@ export async function processLedgerBundle({
           new Transform({
             transform(chunk: Buffer, _encoding, callback) {
               bytes += chunk.length;
-              if (bytes > limits.bytes)
+              if (bytes > outputByteLimit)
                 return callback(new Error("LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED"));
               hash.update(chunk);
               callback(null, chunk);

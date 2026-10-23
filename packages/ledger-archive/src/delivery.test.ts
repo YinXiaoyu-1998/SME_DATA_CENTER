@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
   createLedgerPdfDelivery,
@@ -69,6 +71,218 @@ function fixture() {
   };
 }
 describe("authorized ledger PDF delivery", () => {
+  it("bounds exact selections at 5000 PDFs, 50 stores and 366 dates and paginates 200 items", async () => {
+    const f = fixture();
+    const date = (day: number) => new Date(Date.UTC(2024, 0, day + 1)).toISOString().slice(0, 10);
+    const selection = Array.from({ length: 5000 }, (_, index) => ({
+      storeName: `Store ${Math.floor(index / 100)}`,
+      purchaseDate: date(index % 100)
+    }));
+    vi.mocked(f.repository.facts).mockImplementation(async (_employee, _scope, options) =>
+      (options?.selection ?? []).map((item) => {
+        const e = {
+          ...entry(item.purchaseDate),
+          key: { ...item, orgId: "org" },
+          partitionId: JSON.stringify(item)
+        };
+        return { key: e.key, status: "ready", entry: e };
+      })
+    );
+    await expect(
+      f.delivery.requestSelectedLedgerBundle({ employee, selection, idempotencyKey: "5000" })
+    ).resolves.toMatchObject({ status: "queued" });
+    const first = await f.delivery.coverageForBrowser({ employee, selection });
+    expect(first.partitions).toHaveLength(200);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const second = await f.delivery.coverageForBrowser({
+      employee,
+      selection: [...selection].reverse(),
+      cursor: first.nextCursor!
+    });
+    expect(second.partitions).toHaveLength(200);
+    expect(second.partitions[0]).not.toEqual(first.partitions[0]);
+    await expect(
+      f.delivery.coverageForBrowser({
+        employee: { ...employee, clearance: 0 },
+        selection,
+        cursor: first.nextCursor!
+      })
+    ).rejects.toThrow("LEDGER_CURSOR_INVALID");
+    for (const tooMany of [
+      [...selection, { storeName: "Store 0", purchaseDate: date(100) }],
+      Array.from({ length: 51 }, (_, i) => ({ storeName: `Store ${i}`, purchaseDate: date(0) })),
+      Array.from({ length: 367 }, (_, i) => ({ storeName: "Store", purchaseDate: date(i) }))
+    ])
+      await expect(
+        f.delivery.requestSelectedLedgerBundle({
+          employee,
+          selection: tooMany,
+          idempotencyKey: "overflow"
+        })
+      ).rejects.toThrow("LEDGER_SCOPE_LIMIT_EXCEEDED");
+    await expect(
+      f.delivery.requestSelectedLedgerBundle({
+        employee,
+        selection: Array.from({ length: 366 }, (_, i) => ({
+          storeName: "Store",
+          purchaseDate: date(i)
+        })),
+        idempotencyKey: "366"
+      })
+    ).resolves.toMatchObject({ status: "queued" });
+  });
+  it("revalidates a completed ZIP using only captured pairs even when its scope has over 5000 unselected candidates", async () => {
+    const f = fixture();
+    const entries = [
+      entry(),
+      { ...entry("2026-10-02"), key: { ...entry("2026-10-02").key, storeName: "Other" } }
+    ];
+    vi.mocked(f.repository.request).mockResolvedValue({
+      kind: "download",
+      status: "succeeded",
+      scope,
+      items: [],
+      bundle: {
+        requestId: "download",
+        orgId: "org",
+        employeeId: employee.id,
+        status: "succeeded",
+        manifest: { version: 1, scope, entries },
+        zipObjectKey: "bundle.zip",
+        zipExpiresAt: new Date("2026-10-05"),
+        errorCode: null
+      }
+    });
+    vi.mocked(f.repository.facts).mockImplementation(async (_employee, _scope, options) => {
+      if (!options?.selection) throw new Error("LEDGER_SCOPE_LIMIT_EXCEEDED");
+      expect(options.selection).toEqual(
+        entries.map(({ key: { storeName, purchaseDate } }) => ({ storeName, purchaseDate }))
+      );
+      return entries.map((e) => ({ key: e.key, status: "ready", entry: e }));
+    });
+    await expect(
+      f.delivery.issueLedgerBundleUrl({ employee, requestId: "download" })
+    ).resolves.toHaveProperty("downloadUrl");
+  });
+  it("streams a selected PDF with a safe readable name and rejects revocation before returning bytes", async () => {
+    const f = fixture();
+    const pdf = Buffer.from("%PDF-synthetic");
+    const selected = { storeName: '../%门店/\\:*?"<>| ', purchaseDate: "2026-10-01" };
+    const e = {
+      ...entry(),
+      key: { ...selected, orgId: "org" },
+      byteSize: pdf.length,
+      checksumSha256: createHash("sha256").update(pdf).digest("hex")
+    };
+    vi.mocked(f.repository.facts).mockResolvedValue([{ key: e.key, status: "ready", entry: e }]);
+    const source = Readable.from([pdf]);
+    Object.assign(f.storage, { getObjectStream: vi.fn(async () => source) });
+    const result = await f.delivery.openLedgerPdf({ employee, selection: selected });
+    expect(result.fileName).toBe(
+      "食品经营单位进货台帐_%2E%2E%2F%25门店%2F%5C%3A%2A%3F%22%3C%3E%7C%20_2026-10-01.pdf"
+    );
+    expect(result.byteSize).toBe(pdf.length);
+    const chunks = [];
+    for await (const chunk of result.stream) chunks.push(Buffer.from(chunk));
+    expect(Buffer.concat(chunks)).toEqual(pdf);
+    expect(f.repository.reserveBundle).not.toHaveBeenCalled();
+    const revoked = Readable.from([pdf]);
+    vi.mocked(f.storage.getObjectStream).mockImplementation(async () => {
+      vi.mocked(f.repository.currentEmployee).mockResolvedValue(null);
+      return revoked;
+    });
+    await expect(f.delivery.openLedgerPdf({ employee, selection: selected })).rejects.toThrow(
+      "LEDGER_PDF_UNAVAILABLE"
+    );
+    expect(revoked.destroyed).toBe(true);
+  });
+  it("accepts exactly 1 GiB, rejects one extra byte and refuses unknown or invalid sizes", async () => {
+    const f = fixture();
+    const selection = [{ storeName: "门店", purchaseDate: "2026-10-01" }];
+    for (const byteSize of [1073741824, 1073741825, 0, -1, NaN, 1.5]) {
+      vi.mocked(f.repository.facts).mockResolvedValue([
+        { key: entry().key, status: "ready", entry: { ...entry(), byteSize } }
+      ]);
+      const request = f.delivery.requestSelectedLedgerBundle({
+        employee,
+        selection,
+        idempotencyKey: String(byteSize)
+      });
+      if (byteSize === 1073741824)
+        await expect(request).resolves.toMatchObject({ status: "queued" });
+      else
+        await expect(request).rejects.toThrow(
+          byteSize === 1073741825 ? "LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED" : "LEDGER_PDF_NOT_READY"
+        );
+    }
+  });
+  it("captures only exact selected pairs and binds idempotency to their raw canonical identities", async () => {
+    const f = fixture();
+    const selected = [
+      { storeName: " A ", purchaseDate: "2026-10-01" },
+      { storeName: "é", purchaseDate: "2026-10-02" }
+    ];
+    const candidates = selected.flatMap(({ storeName }) =>
+      ["2026-10-01", "2026-10-02"].map((date) => {
+        const e = { ...entry(date), key: { orgId: "org", storeName, purchaseDate: date } };
+        return { key: e.key, status: "ready" as const, entry: e };
+      })
+    );
+    vi.mocked(f.repository.facts).mockResolvedValue(candidates);
+    await f.delivery.requestSelectedLedgerBundle({
+      employee,
+      selection: selected,
+      idempotencyKey: "exact"
+    });
+    const first = vi.mocked(f.repository.reserveBundle).mock.calls[0]![0];
+    expect(first.manifest.entries.map(({ key }) => key)).toEqual([
+      { orgId: "org", storeName: " A ", purchaseDate: "2026-10-01" },
+      { orgId: "org", storeName: "é", purchaseDate: "2026-10-02" }
+    ]);
+    await f.delivery.requestSelectedLedgerBundle({
+      employee,
+      selection: [...selected].reverse().concat(selected),
+      idempotencyKey: "exact"
+    });
+    expect(vi.mocked(f.repository.reserveBundle).mock.calls[1]![0].fingerprint).toBe(
+      first.fingerprint
+    );
+    const browser = await f.delivery.coverageForBrowser({ employee, selection: selected });
+    expect(
+      browser.partitions.map(({ storeName, purchaseDate }) => ({ storeName, purchaseDate }))
+    ).toEqual(selected);
+    vi.mocked(f.repository.facts).mockResolvedValue(candidates.slice(0, 1));
+    await expect(
+      f.delivery.requestSelectedLedgerBundle({
+        employee,
+        selection: selected,
+        idempotencyKey: "missing"
+      })
+    ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");
+  });
+  it("projects sizes only for browser-ready PDFs and preserves the MCP coverage shape", async () => {
+    const f = fixture();
+    vi.mocked(f.repository.facts).mockResolvedValue(
+      (["ready", "pending", "stale", "missing"] as const).map((status, index) => ({
+        key: entry(`2026-10-0${index + 1}`).key,
+        status,
+        entry: status === "ready" ? entry() : null
+      }))
+    );
+    const result = await f.delivery.coverageForBrowser({ employee, scope });
+    expect(result.partitions).toEqual([
+      { storeName: "门店", purchaseDate: "2026-10-01", status: "ready", byteSize: 10 },
+      { storeName: "门店", purchaseDate: "2026-10-02", status: "pending", byteSize: null },
+      { storeName: "门店", purchaseDate: "2026-10-03", status: "stale", byteSize: null },
+      { storeName: "门店", purchaseDate: "2026-10-04", status: "missing", byteSize: null }
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/objectKey|source|generation|private/);
+    expect((await f.delivery.coverage({ employee, scope })).partitions[0]).toEqual({
+      storeName: "门店",
+      purchaseDate: "2026-10-01",
+      status: "ready"
+    });
+  });
   it("rejects a cutover during signing and keeps the owner's successful task status", async () => {
     const f = fixture();
     const authorization = {

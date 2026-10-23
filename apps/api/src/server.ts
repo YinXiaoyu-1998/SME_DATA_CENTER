@@ -1,3 +1,4 @@
+import { registerLedgerWebRoutes } from "./ledger-web/routes.js";
 import { registerAdminPermissionsRoutes } from "./admin-permissions/routes.js";
 import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
 import { registerStoreReviewRoutes } from "./routes/store-reviews.js";
@@ -96,6 +97,14 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       publicOrigin,
       browserSessions: context.browserSessions
     });
+    if (context.browserSessions)
+      registerLedgerWebRoutes(app, {
+        auth: context.authCore,
+        browserSessions: context.browserSessions,
+        publicOrigin,
+        ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled,
+        delivery: context.ledgerPdfs
+      });
     if (context.browserSessions && context.permissionsUiMetadata)
       registerAdminPermissionsRoutes(app, {
         auth: context.authCore,

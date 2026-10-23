@@ -4,7 +4,7 @@ import type { AuthRequestAudit } from "./auth-core.js";
 import { hashOpaqueSecret } from "./primitives.js";
 
 export const BROWSER_SESSION_COOKIE = "__Host-smedc_browser";
-export const BROWSER_SESSION_SECONDS = 30 * 60;
+export const BROWSER_SESSION_SECONDS = 604_800;
 export interface BrowserPrincipal extends AuthenticatedEmployee {
   identityId: string;
 }

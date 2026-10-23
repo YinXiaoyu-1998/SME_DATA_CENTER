@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AuthorizationSnapshot } from "@smedc/domain";
@@ -6,7 +7,12 @@ import type { StorageAdapter } from "@smedc/storage";
 import { createPrismaLedgerArtifactAccess } from "./access.js";
 import { createPrismaLedgerArchiveRepository } from "./repository.js";
 import { reduceLedgerRequestStatus } from "./service.js";
-import { ledgerScopeDates, parseLedgerScope, LEDGER_SCOPE_MAX_PARTITIONS } from "./scope.js";
+import {
+  ledgerScopeDates,
+  parseLedgerScope,
+  LEDGER_SCOPE_MAX_PARTITIONS,
+  LEDGER_PAGE_SIZE
+} from "./scope.js";
 import { ledgerStoreNameHash } from "./keys.js";
 import {
   readLedgerSourceMetadata,
@@ -26,6 +32,34 @@ import type {
   LedgerRequestRef
 } from "./types.js";
 
+export const LEDGER_BUNDLE_LIMITS = {
+  files: LEDGER_SCOPE_MAX_PARTITIONS,
+  bytes: 1073741824,
+  deadlineMs: 600000,
+  retentionMs: 86400000
+} as const;
+
+function ledgerStoreFileSegment(storeName: string): string {
+  // Percent itself is escaped, making the segment reversible and preventing collisions/traversal.
+  const store = [...storeName]
+    .map((character, index, characters) =>
+      '%./\\<>:"|?*'.includes(character) ||
+      character.codePointAt(0)! < 32 ||
+      character.codePointAt(0) === 127 ||
+      (character === " " && index === characters.length - 1)
+        ? `%${character.codePointAt(0)!.toString(16).toUpperCase().padStart(2, "0")}`
+        : character
+    )
+    .join("");
+  return store;
+}
+export function ledgerPdfFileName(selection: LedgerPdfSelectionItem): string {
+  return `食品经营单位进货台帐_${ledgerStoreFileSegment(selection.storeName)}_${selection.purchaseDate}.pdf`;
+}
+export function ledgerBundleEntryName(entry: LedgerBundleEntry): string {
+  return `${ledgerStoreFileSegment(entry.key.storeName)}/${entry.key.purchaseDate}/${ledgerPdfFileName(entry.key)}`;
+}
+
 export type LedgerDeliveryEmployee = {
   id: string;
   orgId: string;
@@ -35,6 +69,18 @@ export type LedgerDeliveryEmployee = {
   authorization?: AuthorizationSnapshot;
 };
 export type LedgerCoverageScope = Omit<LedgerScope, "storeNames"> & { storeNames?: string[] };
+export type LedgerPdfSelectionItem = Pick<LedgerPartitionKey, "storeName" | "purchaseDate">;
+export type LedgerBrowserCoverageInput = {
+  employee: LedgerDeliveryEmployee;
+  cursor?: string;
+} & (
+  | { scope: LedgerCoverageScope; selection?: never }
+  | { selection: LedgerPdfSelectionItem[]; scope?: never }
+);
+export type LedgerBrowserCoverageItem = LedgerPdfSelectionItem & {
+  status: LedgerPdfFact["status"];
+  byteSize: number | null;
+};
 export type LedgerPdfFact = {
   key: LedgerPartitionKey;
   status: "ready" | "pending" | "stale" | "missing";
@@ -69,7 +115,7 @@ export interface LedgerDeliveryRepository {
   facts(
     employee: LedgerDeliveryEmployee,
     scope: LedgerCoverageScope,
-    options?: { requireComplete?: boolean }
+    options?: { requireComplete?: boolean; selection?: LedgerPdfSelectionItem[] }
   ): Promise<LedgerPdfFact[]>;
   auditDenied?(employee: LedgerDeliveryEmployee, requestId: string, code: string): Promise<void>;
   reserveBundle(input: {
@@ -105,6 +151,39 @@ export class LedgerDeliveryError extends Error {
 const fail = (code: string): never => {
   throw new LedgerDeliveryError(code);
 };
+/** Canonicalize identities without normalizing names or expanding their Cartesian product. */
+function parseSelection(value: unknown): LedgerPdfSelectionItem[] {
+  if (!Array.isArray(value) || !value.length) return fail("LEDGER_SCOPE_INVALID");
+  const items = value.map((item: unknown) => {
+    if (!item || typeof item !== "object" || Array.isArray(item))
+      return fail("LEDGER_SCOPE_INVALID");
+    const fields = item as Record<string, unknown>;
+    if (
+      Object.keys(fields).some((key) => !["storeName", "purchaseDate"].includes(key)) ||
+      typeof fields.storeName !== "string" ||
+      Buffer.from(fields.storeName).toString("utf8") !== fields.storeName
+    )
+      return fail("LEDGER_SCOPE_INVALID");
+    parseLedgerScope({ storeNames: [fields.storeName], dates: [fields.purchaseDate] });
+    return { storeName: fields.storeName, purchaseDate: fields.purchaseDate as string };
+  });
+  const unique = [
+    ...new Map(
+      items.map((item) => [JSON.stringify([item.storeName, item.purchaseDate]), item])
+    ).entries()
+  ]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([, item]) => item);
+  if (unique.length > LEDGER_SCOPE_MAX_PARTITIONS) return fail("LEDGER_SCOPE_LIMIT_EXCEEDED");
+  selectionScope(unique);
+  return unique;
+}
+function selectionScope(selection: LedgerPdfSelectionItem[]): LedgerScope {
+  return parseLedgerScope({
+    storeNames: selection.map((item) => item.storeName),
+    dates: selection.map((item) => item.purchaseDate)
+  });
+}
 export function ledgerBundleFingerprint(
   employee: LedgerDeliveryEmployee,
   scope: LedgerScope
@@ -191,10 +270,19 @@ const publicErrorCode = (code?: string | null) =>
 
 export function readyLedgerBundleEntries(facts: LedgerPdfFact[]): LedgerBundleEntry[] {
   if (!facts.length) return fail("LEDGER_PDF_UNAVAILABLE");
-  if (facts.some((f) => f.status !== "ready" || !f.entry)) return fail("LEDGER_PDF_NOT_READY");
-  if (facts.length > 5000) return fail("LEDGER_SCOPE_LIMIT_EXCEEDED");
+  if (
+    facts.some(
+      (f) =>
+        f.status !== "ready" ||
+        !f.entry ||
+        !Number.isSafeInteger(f.entry.byteSize) ||
+        f.entry.byteSize <= 0
+    )
+  )
+    return fail("LEDGER_PDF_NOT_READY");
+  if (facts.length > LEDGER_BUNDLE_LIMITS.files) return fail("LEDGER_SCOPE_LIMIT_EXCEEDED");
   const entries = facts.map((f) => f.entry!);
-  if (entries.reduce((sum, e) => sum + e.byteSize, 0) > 1024 ** 3)
+  if (entries.reduce((sum, e) => sum + e.byteSize, 0) > LEDGER_BUNDLE_LIMITS.bytes)
     return fail("LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED");
   return entries;
 }
@@ -239,17 +327,37 @@ export function createLedgerPdfDelivery({
       }
     }
     let nextCursor: string | null = null;
-    if (offset + 200 < values.length) {
+    if (offset + LEDGER_PAGE_SIZE < values.length) {
       const iv = randomBytes(12);
       const cipher = createCipheriv("aes-256-gcm", encryptionKey, iv);
       cipher.setAAD(Buffer.from(context));
       const encrypted = Buffer.concat([
-        cipher.update(JSON.stringify({ offset: offset + 200, expires: now().getTime() + 900000 })),
+        cipher.update(
+          JSON.stringify({ offset: offset + LEDGER_PAGE_SIZE, expires: now().getTime() + 900000 })
+        ),
         cipher.final()
       ]);
       nextCursor = Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString("base64url");
     }
-    return { partitions: values.slice(offset, offset + 200), nextCursor };
+    return { partitions: values.slice(offset, offset + LEDGER_PAGE_SIZE), nextCursor };
+  }
+  async function selectedFacts(
+    current: LedgerDeliveryEmployee,
+    selection: LedgerPdfSelectionItem[],
+    requireComplete = false
+  ) {
+    const facts = await repository.facts(current, selectionScope(selection), {
+      selection,
+      requireComplete
+    });
+    const byKey = new Map(facts.map((fact) => [partitionIdentity(fact.key), fact]));
+    const selected = selection.flatMap((item) => {
+      const fact = byKey.get(partitionIdentity({ ...item, orgId: current.orgId }));
+      return fact ? [fact] : [];
+    });
+    if (requireComplete && selected.length !== selection.length)
+      return fail("LEDGER_PDF_UNAVAILABLE");
+    return selected;
   }
   const publicFact = (fact: LedgerPdfFact) => ({
     storeName: fact.key.storeName,
@@ -279,6 +387,107 @@ export function createLedgerPdfDelivery({
         )
       };
     },
+    async coverageForBrowser(
+      input: LedgerBrowserCoverageInput
+    ): Promise<{ partitions: LedgerBrowserCoverageItem[]; nextCursor: string | null }> {
+      if ((input.scope === undefined) === (input.selection === undefined))
+        return fail("LEDGER_SCOPE_INVALID");
+      const current = await employee(input.employee);
+      const selection = input.selection === undefined ? undefined : parseSelection(input.selection);
+      const facts = selection
+        ? await selectedFacts(current, selection)
+        : await repository.facts(current, input.scope!);
+      return page(
+        facts.map((fact) => ({
+          ...publicFact(fact),
+          byteSize:
+            fact.status === "ready" &&
+            Number.isSafeInteger(fact.entry?.byteSize) &&
+            fact.entry!.byteSize > 0
+              ? fact.entry!.byteSize
+              : null
+        })),
+        {
+          browser: true,
+          orgId: current.orgId,
+          employeeId: current.id,
+          clearance: current.clearance,
+          authorizationVersion: current.authorization?.authorizationVersion,
+          scope: input.scope,
+          selection
+        },
+        input.cursor
+      );
+    },
+    async openLedgerPdf(input: {
+      employee: LedgerDeliveryEmployee;
+      selection: LedgerPdfSelectionItem;
+    }): Promise<{ stream: Readable; fileName: string; byteSize: number }> {
+      const current = await employee(input.employee);
+      const selection = parseSelection([input.selection]);
+      const facts = await selectedFacts(current, selection, true);
+      const entry = facts[0]!.entry;
+      if (
+        facts[0]!.status !== "ready" ||
+        !entry ||
+        !Number.isSafeInteger(entry.byteSize) ||
+        entry.byteSize <= 0
+      )
+        return fail("LEDGER_PDF_NOT_READY");
+      const source = (await storage.getObjectStream(entry.objectKey)) as Readable;
+      let sourceError: Error | undefined;
+      source.on("error", (error: Error) => {
+        sourceError = error;
+      });
+      try {
+        const fresh = await employee(current);
+        const freshFacts = await selectedFacts(fresh, selection, true);
+        readyCapturedLedgerBundleEntries(freshFacts, [entry]);
+        if (sourceError) throw sourceError;
+        if (repository.commitDownloadIssue) await repository.commitDownloadIssue(fresh, undefined);
+        const stream = Readable.from(
+          (async function* () {
+            const hash = createHash("sha256");
+            let bytes = 0;
+            try {
+              for await (const chunk of source) {
+                const buffer = Buffer.from(chunk as Uint8Array);
+                bytes += buffer.length;
+                if (bytes > entry.byteSize) return fail("LEDGER_PDF_BUNDLE_STALE");
+                hash.update(buffer);
+                yield buffer;
+              }
+              if (bytes !== entry.byteSize || hash.digest("hex") !== entry.checksumSha256)
+                return fail("LEDGER_PDF_BUNDLE_STALE");
+            } finally {
+              source.destroy();
+            }
+          })()
+        );
+        stream.once("close", () => source.destroy());
+        return { stream, fileName: ledgerPdfFileName(selection[0]!), byteSize: entry.byteSize };
+      } catch (error) {
+        source.destroy();
+        throw error;
+      }
+    },
+    async requestSelectedLedgerBundle(input: {
+      employee: LedgerDeliveryEmployee;
+      selection: LedgerPdfSelectionItem[];
+      idempotencyKey: string;
+    }) {
+      const current = await employee(input.employee);
+      const selection = parseSelection(input.selection);
+      const entries = readyLedgerBundleEntries(await selectedFacts(current, selection, true));
+      return repository.reserveBundle({
+        employee: current,
+        manifest: { version: 1, scope: selectionScope(selection), entries },
+        idempotencyKey: input.idempotencyKey,
+        fingerprint: createHash("sha256")
+          .update(JSON.stringify(["download-selection", current.orgId, current.id, selection]))
+          .digest("hex")
+      });
+    },
     async requestLedgerBundle(input: {
       employee: LedgerDeliveryEmployee;
       scope: LedgerScope;
@@ -296,10 +505,17 @@ export function createLedgerPdfDelivery({
         fingerprint: ledgerBundleFingerprint(current, scope)
       });
     },
-    async status(input: { employee: LedgerDeliveryEmployee; requestId: string; cursor?: string }) {
+    async status(input: {
+      employee: LedgerDeliveryEmployee;
+      requestId: string;
+      cursor?: string;
+      downloadOnly?: boolean;
+    }) {
       const current = await employee(input.employee);
       const request = await repository.request(current, input.requestId);
-      if (!request) return fail("LEDGER_PDF_UNAVAILABLE");
+      // Browser callers cannot inherit the legacy admin refresh-status exception.
+      if (!request || (input.downloadOnly && request.kind !== "download"))
+        return fail("LEDGER_PDF_UNAVAILABLE");
       const items = request.items;
       const partitions: {
         storeName: string;
@@ -362,7 +578,11 @@ export function createLedgerPdfDelivery({
               ? "LEDGER_PDF_BUNDLE_STALE"
               : "LEDGER_PDF_NOT_READY"
           );
-        const facts = await repository.facts(current, bundle.manifest.scope);
+        const selection = bundle.manifest.entries.map(({ key: { storeName, purchaseDate } }) => ({
+          storeName,
+          purchaseDate
+        }));
+        const facts = await selectedFacts(current, selection);
         if (!facts.length) return fail("LEDGER_PDF_UNAVAILABLE");
         const entries = readyCapturedLedgerBundleEntries(facts, bundle.manifest.entries);
         if (!ledgerBundleEntriesEqual(entries, bundle.manifest.entries))
@@ -387,7 +607,7 @@ export function createLedgerPdfDelivery({
             fresh.authorization?.mode !== current.authorization.mode)
         )
           return fail("AUTHORIZATION_VERSION_CONFLICT");
-        const freshFacts = await repository.facts(fresh, bundle.manifest.scope);
+        const freshFacts = await selectedFacts(fresh, selection);
         if (!freshFacts.length) return fail("LEDGER_PDF_UNAVAILABLE");
         const latest = readyCapturedLedgerBundleEntries(freshFacts, bundle.manifest.entries);
         if (!ledgerBundleEntriesEqual(latest, bundle.manifest.entries))
@@ -458,7 +678,7 @@ export function parseLedgerBundleManifest(value: Prisma.JsonValue): LedgerBundle
   });
   if (
     !entries.length ||
-    entries.length > 5000 ||
+    entries.length > LEDGER_BUNDLE_LIMITS.files ||
     new Set(entries.map((e) => partitionIdentity(e.key))).size !== entries.length
   )
     return fail("LEDGER_BUNDLE_MANIFEST_INVALID");
@@ -592,7 +812,8 @@ export function createPrismaLedgerDeliveryRepository({
       partition.publishedSourceFingerprint === metadata.sourceFingerprint &&
       partition.currentObjectKey &&
       partition.checksumSha256 &&
-      partition.byteSize;
+      Number.isSafeInteger(Number(partition.byteSize)) &&
+      Number(partition.byteSize) > 0;
     if (ready)
       sources = partition.sources
         .map((s) => ({
@@ -742,11 +963,19 @@ export function createPrismaLedgerDeliveryRepository({
       const facts: LedgerPdfFact[] = [];
       let cursor: string | undefined;
       do {
-        const page = await archive.listPartitionKeys({
-          orgId: employee.orgId,
-          ...(scope.storeNames ? { scope: parseLedgerScope(scope) } : {}),
-          ...(cursor ? { cursor } : {})
-        });
+        const page = options?.selection
+          ? {
+              keys: parseSelection(options.selection).map((item) => ({
+                ...item,
+                orgId: employee.orgId
+              })),
+              nextCursor: null
+            }
+          : await archive.listPartitionKeys({
+              orgId: employee.orgId,
+              ...(scope.storeNames ? { scope: parseLedgerScope(scope) } : {}),
+              ...(cursor ? { cursor } : {})
+            });
         const keys = page.keys.filter((k) => dates.includes(k.purchaseDate));
         for (let offset = 0; offset < keys.length; offset += LEDGER_METADATA_BATCH_SIZE) {
           const batch = keys.slice(offset, offset + LEDGER_METADATA_BATCH_SIZE);
@@ -817,6 +1046,8 @@ export function createPrismaLedgerDeliveryRepository({
           )
             return fail("LEDGER_PDF_UNAVAILABLE");
         }
+        if (!(await ledgerBundleContentCurrent(tx, employee.orgId, manifest.entries)))
+          return fail("LEDGER_PDF_BUNDLE_STALE");
         const request = await tx.ledgerArtifactRequest.create({
           data: {
             orgId: employee.orgId,

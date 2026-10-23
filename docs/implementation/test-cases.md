@@ -1,6 +1,6 @@
 # 企业资料中枢 Test Cases
 
-Last updated: 2026-10-20
+Last updated: 2026-10-24
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
@@ -44,6 +44,22 @@ OSS URL invalidation, mid-transfer downgrade handling, or future service-identit
 | Production audit   | `npm run audit:production`                                                                                                             | Direct command enforces the risk policy; Phase 3 quality CI reports findings without blocking PR/main runs                              |
 | Runtime images     | CI-equivalent `docker buildx build --pull --platform linux/amd64 --target {api,worker,release-ops} --load .` plus Trivy policy reports | All three lean targets build; vulnerability findings are informational in Phase 3 quality CI                                            |
 | Local release path | Disposable MySQL/Qdrant runtime with compiled API/worker/release-ops commands                                                          | Health/readiness, non-root users, worker termination, Qdrant init, forward migration, and fixture-only upload/index/search/cleanup pass |
+
+## Ledger browser persistence
+
+`MYSQL_PORT=3307 npm run test:integration -- --ledger-authorization-only` reuses the existing
+loopback-only owned-schema runner. It enables `RUN_AUTH_INTEGRATION=1` for both browser-session
+and auth-repository persistence regressions, and `RUN_LEDGER_PRISMA_INTEGRATION=1` for the ledger
+publication/source tests and `apps/api/src/ledger-web/download.prisma.integration.test.ts`.
+The default integration command includes these same regressions.
+
+The browser case uses actual login HTTP, persisted ordinary employee sessions and business grants,
+current published PDF/source metadata, local storage and the existing worker runtime. It verifies
+seven-day absolute expiry without renewal, single PDF bytes, two crossed store/date selections,
+idempotent submission, owner-only status, worker completion after partial revocation, refused URL
+issuance with succeeded status, restored access, and the downloaded ZIP's exact names and hashes.
+Only the storage adapter's signed URL transport is local fixture HTTP; this check does not claim
+real provider, production OSS, PDF rendering, deployment or browser-interaction acceptance.
 
 ## Audit Provenance Verification
 

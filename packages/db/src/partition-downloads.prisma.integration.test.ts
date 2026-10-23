@@ -837,6 +837,16 @@ suite("partition download persistence", () => {
   });
   it("deletes only exact partitions, preserves mixed source jobs/runs/accounts, and reclaims late candidate writes idempotently", async () => {
     await partitions(2);
+    const unrelatedKey = "download-test/unrelated-garbage";
+    const unrelatedGarbage = await prisma.storageGarbage.create({
+      data: {
+        id: "download_unrelated_garbage",
+        objectKey: unrelatedKey,
+        objectKeyHash: createHash("sha256").update(unrelatedKey).digest("hex"),
+        reason: "unrelated_fixture",
+        availableAt: new Date(0)
+      }
+    });
     const sourceRun = await prisma.processingRun.create({
       data: {
         orgId,
@@ -908,21 +918,36 @@ suite("partition download persistence", () => {
         expiresAt: request.expiresAt
       })
     ).toBe(false);
-    expect(
-      await prisma.storageGarbage.findMany({
-        select: { objectKey: true },
-        orderBy: { objectKey: "asc" }
-      })
-    ).toEqual([{ objectKey: "download-test/source-0" }, { objectKey }]);
+    const garbage = await prisma.storageGarbage.findMany({
+      where: {
+        id: { not: unrelatedGarbage.id },
+        OR: [
+          { objectKey: { startsWith: "download-test/" } },
+          { objectKey: { startsWith: `partition-downloads/${orgId}/` } }
+        ]
+      },
+      select: { id: true, objectKey: true },
+      orderBy: { objectKey: "asc" }
+    });
+    expect(garbage.map(({ objectKey }) => objectKey)).toEqual([
+      "download-test/source-0",
+      objectKey
+    ]);
+    const garbageIds = new Set(garbage.map(({ id }) => id));
     const gc = createPrismaStructuredPartitionRepository({ prisma });
     const objects = new Set(["download-test/source-0", "download-test/source-1", objectKey]);
     for (let round = 0; round < 2; round++) {
       for (const item of await gc.listDueGarbage(new Date(Date.now() + round * 86400001), 100)) {
+        // This fixture simulates GC only for its asserted cleanup outputs.
+        if (!garbageIds.has(item.id)) continue;
         objects.delete(item.objectKey);
         await gc.deleteGarbage(item.id);
       }
       expect(objects.has("download-test/source-1")).toBe(true);
       expect(objects.has(objectKey)).toBe(false);
+      expect(
+        await prisma.storageGarbage.findUnique({ where: { id: unrelatedGarbage.id } })
+      ).toEqual(unrelatedGarbage);
       if (!round) objects.add(objectKey); // A paused upload completes after the first GC pass.
     }
     expect(await prisma.storageGarbage.findFirst({ where: { objectKey } })).toMatchObject({
