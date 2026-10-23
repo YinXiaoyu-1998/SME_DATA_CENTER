@@ -69,6 +69,15 @@ describe("shared browser identity session", () => {
     expect(stored.has(secret!)).toBe(false);
     expect(stored.has(hashOpaqueSecret(secret!))).toBe(true);
     expect(await sessions.authenticate(secret)).toMatchObject({ id: "admin_a", orgId: "org_a" });
+    advance(604_799_000);
+    expect(await sessions.authenticate(secret)).not.toBeNull();
+    advance(1000);
+    expect(await sessions.authenticate(secret)).toBeNull();
+  });
+  it("honors the shorter absolute expiry of an already-issued session", async () => {
+    const { sessions, stored, advance } = await fixture();
+    const secret = await sessions.issue(identity, null, audit);
+    stored.get(hashOpaqueSecret(secret!))!.expiresAt = new Date("2026-10-11T10:30:00Z");
     advance(29 * 60_000);
     expect(await sessions.authenticate(secret)).not.toBeNull();
     advance(60_000);

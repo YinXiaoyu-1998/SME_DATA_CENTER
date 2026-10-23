@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { BROWSER_SESSION_COOKIE, BROWSER_SESSION_SECONDS } from "./browser-session.js";
 
 export const OAUTH_CLIENT_ID = "smedc-desktop-launcher";
 export const PASSWORD_SETUP_COOKIE = "__Host-eh_password_setup";
@@ -25,7 +26,8 @@ export function hostOnlyCookie(name: string, value: string, maxAgeSeconds: numbe
   if (!/^[A-Za-z0-9._~-]{1,2048}$/.test(value)) {
     throw new Error("invalid cookie value");
   }
-  if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0 || maxAgeSeconds > 86_400) {
+  const maxLifetime = name === BROWSER_SESSION_COOKIE ? BROWSER_SESSION_SECONDS : 86_400;
+  if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0 || maxAgeSeconds > maxLifetime) {
     throw new Error("invalid cookie lifetime");
   }
 

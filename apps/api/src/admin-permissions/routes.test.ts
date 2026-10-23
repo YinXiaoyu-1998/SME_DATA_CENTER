@@ -196,8 +196,11 @@ async function fixture() {
     permissionsRepository,
     metadata,
     cookie,
+    advance: (ms: number) => {
+      now = new Date(now.getTime() + ms);
+    },
     expire: () => {
-      now = new Date(now.getTime() + 30 * 60_000);
+      now = new Date(now.getTime() + 604_800_000);
     }
   };
 }
@@ -244,9 +247,10 @@ describe("enterprise-bound browser permission management", () => {
       expectedVersion: "7"
     });
   });
-  it("reuses the browser session established by official device login without verifying a second password", async () => {
-    const { app, auth } = await fixture();
+  it("reuses device login for one absolute week without verifying a second password", async () => {
+    const { app, auth, advance } = await fixture();
     const page = await app.inject({ url: "/oauth/device/verify?user_code=ABCDEFGH" });
+    expect(page.headers["set-cookie"]).toContain("Max-Age=600;");
     const verifyCookie = cookiePair(page.headers["set-cookie"], "__Host-eh_device_verify");
     const secret = verifyCookie.slice(verifyCookie.indexOf("=") + 1);
     const login = await app.inject({
@@ -265,6 +269,13 @@ describe("enterprise-bound browser permission management", () => {
       }).toString()
     });
     expect(login.statusCode).toBe(200);
+    expect(login.headers["set-cookie"]).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^__Host-smedc_browser=[^;]+; Max-Age=604800; Path=\/; HttpOnly; Secure; SameSite=Lax$/
+        )
+      ])
+    );
     const sharedCookie = cookiePair(login.headers["set-cookie"], BROWSER_SESSION_COOKIE);
     expect(sharedCookie).not.toContain("eh_at_");
     const permissions = await app.inject({
@@ -282,6 +293,22 @@ describe("enterprise-bound browser permission management", () => {
     });
     expect(reuseLogin.statusCode).toBe(303);
     expect(reuseLogin.headers.location).toBe("/admin/permissions/org_a");
+    advance(604_799_000);
+    const lastSecond = await app.inject({
+      url: "/admin/permissions/org_a/api/accounts",
+      headers: { cookie: sharedCookie }
+    });
+    expect(lastSecond.statusCode).toBe(200);
+    expect(lastSecond.headers["set-cookie"]).toBeUndefined();
+    advance(1000);
+    expect(
+      (
+        await app.inject({
+          url: "/admin/permissions/org_a/api/accounts",
+          headers: { cookie: sharedCookie }
+        })
+      ).statusCode
+    ).toBe(401);
   });
   it("refuses another enterprise's page and every management read/write without leaking its metadata", async () => {
     const { app, cookie, secretB, permissionsRepository, metadata } = await fixture();

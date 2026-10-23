@@ -242,6 +242,7 @@ describe("official OAuth and password routes", () => {
     expect(response.statusCode).toBe(303);
     expect(response.headers.location).toBe("/auth/password/setup/form");
     expect(response.headers["set-cookie"]).toContain("__Host-eh_password_setup=eh_ps_");
+    expect(response.headers["set-cookie"]).toContain("Max-Age=600;");
     expect(response.headers["set-cookie"]).toContain("HttpOnly");
     expect(auth.exchangePasswordSetupGrant).toHaveBeenCalledWith("eh_ps_grant", browserAudit);
   });
