@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import type { StorageAdapter } from "@smedc/storage";
-import { createPrismaLedgerDeliveryRepository, type LedgerDeliveryEmployee } from "./delivery.js";
+import {
+  createPrismaLedgerDeliveryRepository,
+  createLedgerPdfDelivery,
+  type LedgerDeliveryEmployee
+} from "./delivery.js";
 import { readLedgerSourceMetadata } from "./source-reader.js";
 vi.mock("./source-reader.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./source-reader.js")>()),
@@ -103,6 +107,58 @@ beforeEach(() =>
     .mockResolvedValue({ sourceFingerprint: hash, rowCount: 1, sources: [ledger] })
 );
 describe("Prisma delivery current data boundaries", () => {
+  it("rejects a source revision changed between selection and reservation", async () => {
+    const f = fixture();
+    const scope = { storeNames: [key.storeName], dates: [key.purchaseDate] };
+    const facts = await f.repository.facts(employee, scope);
+    const pointer = await f.tx.ledgerPdfPartition.findUnique();
+    const create = vi.fn(async () => ({ id: "bundle", status: "queued" }));
+    Object.assign(f.tx, {
+      ledgerArtifactRequest: { findUnique: vi.fn(async () => null), create },
+      processingRun: { create: vi.fn() }
+    });
+    Object.assign(f.tx.ledgerPdfPartition, {
+      findMany: vi.fn(async () => [
+        {
+          ...pointer,
+          purchaseDate: new Date(key.purchaseDate),
+          dataRevision: 2
+        }
+      ])
+    });
+    await expect(
+      f.repository.reserveBundle({
+        employee,
+        manifest: { version: 1, scope, entries: [facts[0]!.entry!] },
+        idempotencyKey: "changed",
+        fingerprint: "changed"
+      })
+    ).rejects.toThrow("LEDGER_PDF_BUNDLE_STALE");
+    expect(create).not.toHaveBeenCalled();
+  });
+  it("reads an exact browser selection without enumerating unrelated catalog partitions, and still rejects revoked sources", async () => {
+    const f = fixture();
+    // A large unrelated candidate set must never be expanded for a selected key.
+    f.prisma.$queryRaw.mockRejectedValue(new Error("unselected catalog exceeds 5000 candidates"));
+    const delivery = createLedgerPdfDelivery({
+      repository: f.repository,
+      storage: f.storage,
+      cursorSecret: "test"
+    });
+    const selection = [{ storeName: key.storeName, purchaseDate: key.purchaseDate }];
+    expect(await delivery.coverageForBrowser({ employee, selection })).toEqual({
+      partitions: [{ ...selection[0], status: "ready", byteSize: 10 }],
+      nextCursor: null
+    });
+    f.prisma.document.findMany.mockResolvedValue([{ ...document("ledger"), status: "archived" }]);
+    expect((await delivery.coverageForBrowser({ employee, selection })).partitions).toEqual([]);
+    await expect(
+      delivery.requestSelectedLedgerBundle({ employee, selection, idempotencyKey: "revoked" })
+    ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");
+    await expect(delivery.openLedgerPdf({ employee, selection: selection[0]! })).rejects.toThrow(
+      "LEDGER_PDF_UNAVAILABLE"
+    );
+  });
   it("keeps the current prior PDF readable after a voluntary failed refresh and requires HEAD hash", async () => {
     const f = fixture();
     const pointer = await f.tx.ledgerPdfPartition.findUnique();

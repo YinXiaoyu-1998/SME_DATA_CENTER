@@ -87,6 +87,21 @@ function fixture() {
   return { record, archive, storage, objects, run };
 }
 describe("streaming existing ledger PDF ZIP", () => {
+  it("accepts input exactly at the byte budget while allowing the ZIP container headers", async () => {
+    const f = fixture();
+    await processLedgerBundle({
+      requestId: "r",
+      lease: { runId: "run", lockedBy: "w", attemptNumber: 1 },
+      archive: f.archive,
+      storage: f.storage,
+      limits: { files: 5000, bytes: pdf.length * 3, deadlineMs: 10000, retentionMs: 86400000 }
+    });
+    expect(f.archive.completeBundle).toHaveBeenCalled();
+    const zip = await JSZip.loadAsync([...f.objects.values()][0]!);
+    expect(Object.keys(zip.files)).toHaveLength(3);
+    for (const file of Object.values(zip.files))
+      expect(await file.async("nodebuffer")).toEqual(pdf);
+  });
   it("fails a mixed-clearance revocation after prepare without completing a partial subset", async () => {
     const f = fixture();
     vi.mocked(f.archive.selectBundle)
@@ -156,7 +171,7 @@ describe("streaming existing ledger PDF ZIP", () => {
     expect(f.archive.completeBundle).not.toHaveBeenCalled();
     expect(f.storage.putObjectAtKey).not.toHaveBeenCalled();
   });
-  it("enforces input/output/file limits and deadline before publication", async () => {
+  it("enforces input/file limits and deadline before publication", async () => {
     const f = fixture();
     await processLedgerBundle({
       requestId: "r",
@@ -175,7 +190,7 @@ describe("streaming existing ledger PDF ZIP", () => {
       lease: { runId: "run", lockedBy: "w", attemptNumber: 1 },
       archive: g.archive,
       storage: g.storage,
-      limits: { files: 5000, bytes: 100, deadlineMs: 10000, retentionMs: 86400000 }
+      limits: { files: 5000, bytes: pdf.length * 3 - 1, deadlineMs: 10000, retentionMs: 86400000 }
     });
     expect(g.storage.putObjectAtKey).not.toHaveBeenCalled();
     expect(g.archive.failBundle).toHaveBeenLastCalledWith(
