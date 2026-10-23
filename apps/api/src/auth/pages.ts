@@ -1,3 +1,4 @@
+import { browserPageStyles } from "@smedc/admin-web";
 import type { PasswordSetupAccount } from "./auth-core.js";
 
 export interface AuthPageHeaders {
@@ -59,7 +60,7 @@ export function renderDeviceVerificationPage(
       nonce: options.nonce,
       title: { zh: "登录 SMEDC", en: "Sign in to SMEDC" }
     },
-    `<main>
+    `<main class="login"><section class="panel">
       <h1>${localized({ zh: "登录 SMEDC", en: "Sign in to SMEDC" })}</h1>
       <p class="device" data-locale="zh-CN">本次登录将授权 <strong>${escapeHtml(
         options.instanceName
@@ -77,7 +78,7 @@ export function renderDeviceVerificationPage(
         <input id="password" name="password" type="password" autocomplete="current-password" required>
         <button type="submit">${localized({ zh: "登录", en: "Sign in" })}</button>
       </form>
-    </main>`
+    </section></main>`
   );
 }
 
@@ -87,7 +88,7 @@ export function renderPasswordSetupBootstrapPage(options: PageOptions): string {
       nonce: options.nonce,
       title: { zh: "设置 SMEDC 密码", en: "Set your SMEDC password" }
     },
-    `<main>
+    `<main class="login"><section class="panel">
       <h1>${localized({ zh: "正在准备密码设置…", en: "Preparing password setup…" })}</h1>
       <p role="status">
         <span id="status-zh" data-locale="zh-CN">正在检查此安全链接。</span>
@@ -97,7 +98,7 @@ export function renderPasswordSetupBootstrapPage(options: PageOptions): string {
         zh: "此密码设置链接需要启用 JavaScript，以保护其中的一次性令牌。",
         en: "This password setup link requires JavaScript to protect its one-time token."
       })}</noscript>
-    </main>
+    </section></main>
     <script nonce="${escapeHtml(options.nonce)}">
       (() => {
         const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -135,13 +136,13 @@ export function renderPasswordSetupForm(
       nonce: options.nonce,
       title: { zh: "设置 SMEDC 密码", en: "Set your SMEDC password" }
     },
-    `<main>
+    `<main class="login"><section class="panel">
       <h1>${localized({ zh: "设置 SMEDC 密码", en: "Set your SMEDC password" })}</h1>
       <p>${localized({
         zh: "请选择一个长度为 8–128 个字符的密码。",
         en: "Choose a password with 8–128 characters."
       })}</p>
-      <section class="account-details" aria-labelledby="account-details-heading">
+      <section class="account-details subpanel" aria-labelledby="account-details-heading">
         <h2 id="account-details-heading">${localized({ zh: "账户", en: "Account" })}</h2>
         <dl>
           <div><dt>${localized({ zh: "显示名称", en: "Display name" })}</dt><dd>${escapeHtml(options.account.displayName)}</dd></div>
@@ -166,7 +167,7 @@ export function renderPasswordSetupForm(
         <input id="passwordConfirmation" name="passwordConfirmation" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
         <button type="submit">${localized({ zh: "设置密码", en: "Set password" })}</button>
       </form>
-    </main>`
+    </section></main>`
   );
 }
 
@@ -178,7 +179,7 @@ export function renderSafeMessagePage(
       nonce: options.nonce,
       title: options.title
     },
-    `<main><h1>${localized(options.title)}</h1><p>${localized(options.message)}</p></main>`
+    `<main class="login"><section class="panel"><h1>${localized(options.title)}</h1><p>${localized(options.message)}</p></section></main>`
   );
 }
 
@@ -194,30 +195,27 @@ function pageShell(options: PageOptions & { title: LocalizedText }, body: string
       options.title.en
     )}">${escapeHtml(options.title.zh)}</title>
     <style nonce="${escapeHtml(options.nonce)}">
-      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-      body { margin: 0; padding: 2rem 1rem; }
-      .language-switcher { position: fixed; top: 1rem; right: 1rem; display: flex; align-items: center; gap: 0.35rem; }
-      .language-switcher button { min-height: auto; margin: 0; padding: 0.25rem 0.4rem; border: 0; background: transparent; }
-      .language-switcher button[aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
-      main { max-width: 28rem; margin: 8vh auto; }
-      form { display: grid; gap: 0.75rem; }
-      .account-details { margin: 1.5rem 0; }
+      ${browserPageStyles}
+      .login form > button { margin-top: 1rem; }
+      .device { color: #536761; overflow-wrap: anywhere; }
       .account-details h2 { font-size: 1rem; }
       .account-details dl { display: grid; gap: 0.5rem; margin: 0; }
-      .account-details dl div { display: grid; grid-template-columns: 8rem 1fr; gap: 0.75rem; }
+      .account-details dl div { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: 0.75rem; }
       .account-details dt { font-weight: 600; }
       .account-details dd { margin: 0; overflow-wrap: anywhere; }
-      input, button { box-sizing: border-box; font: inherit; min-height: 2.75rem; padding: 0.6rem; }
-      button { cursor: pointer; margin-top: 0.5rem; }
-      .error { color: #b42318; }
+      @media (max-width: 400px) {
+        .account-details dl div { grid-template-columns: 1fr; gap: 0.125rem; }
+      }
     </style>
   </head>
   <body>
+    <header>
+    <div class="brand">SMEDC</div>
     <nav class="language-switcher" aria-label="语言 / Language">
       <button type="button" data-locale-option="zh-CN" aria-pressed="true">中文</button>
-      <span aria-hidden="true">/</span>
       <button type="button" data-locale-option="en" aria-pressed="false">English</button>
     </nav>
+    </header>
     ${body}
     <script nonce="${escapeHtml(options.nonce)}">
       (() => {
