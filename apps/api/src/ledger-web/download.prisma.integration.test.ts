@@ -215,15 +215,17 @@ it.skipIf(!enabled)(
       const publication = createPrismaLedgerPublicationArchive({ prisma });
       const sourceReader = createPrismaLedgerSourceReader({ prisma });
       const pdfs = new Map<string, Buffer>();
+      let refreshRequestId = "";
       for (const key of keys) {
         const result = await archive.reserveRefresh({
           orgId,
-          actor: { kind: "operator", label: "synthetic fixture" },
+          actor: { kind: "employee", employeeId: owner.id },
           idempotencyKey: randomUUID(),
           requestFingerprint: "c".repeat(64),
           scope: { storeNames: [key.storeName], dates: [key.purchaseDate] },
           keys: [key]
         });
+        refreshRequestId ||= result!.requestId;
         const item = await prisma.ledgerArtifactRequestItem.findFirstOrThrow({
           where: { requestId: result!.requestId }
         });
@@ -400,6 +402,48 @@ it.skipIf(!enabled)(
         "x-csrf-token": adminBrowser.context.csrfToken,
         "content-type": "application/json"
       };
+      // Browser status is only for owned downloads, even for admins or the refresh owner.
+      for (const cookie of [adminBrowser.cookie, browser.cookie]) {
+        const refresh = await fetch(`${origin}/ledger-pdfs/api/requests/${refreshRequestId}`, {
+          headers: { cookie }
+        });
+        expect(refresh.status).toBe(404);
+        const body = await refresh.json();
+        expect(body).toMatchObject({ error: { code: "LEDGER_PDF_UNAVAILABLE" } });
+        expect(body).not.toHaveProperty("partitions");
+        expect(body).not.toHaveProperty("status");
+        expect(JSON.stringify(body)).not.toContain(stores[0]);
+        expect(JSON.stringify(body)).not.toContain(dates[0]);
+      }
+      // The existing authenticated HTTP/MCP admin refresh contract remains available.
+      const adminIdentity = await prisma.loginIdentity.findFirstOrThrow({
+        where: { orgId, employeeId: admin.id }
+      });
+      const adminToken = randomUUID();
+      await createPrismaAuthCoreRepository(prisma).createSessionBundle({
+        identityId: adminIdentity.id,
+        employeeId: admin.id,
+        orgId,
+        credentialHash: hashOpaqueSecret(randomUUID()),
+        accessTokenHash: hashOpaqueSecret(adminToken),
+        accessTokenExpiresAt: new Date(Date.now() + 600000),
+        absoluteExpiresAt: new Date(Date.now() + 86400000),
+        now: new Date(),
+        audit: {
+          requestId: "synthetic-admin-refresh",
+          sourceIp: "127.0.0.1",
+          launcherVersion: null
+        }
+      });
+      const legacyRefresh = await fetch(`${origin}/v1/ledger-pdfs/requests/${refreshRequestId}`, {
+        headers: { authorization: `Bearer ${adminToken}` }
+      });
+      expect(legacyRefresh.status).toBe(200);
+      expect(await legacyRefresh.json()).toMatchObject({
+        requestId: refreshRequestId,
+        status: "succeeded",
+        partitions: [{ storeName: stores[0], purchaseDate: dates[0], status: "succeeded" }]
+      });
       const adminCoverage = await fetch(`${origin}/ledger-pdfs/api/coverage`, {
         method: "POST",
         headers: adminHeaders,

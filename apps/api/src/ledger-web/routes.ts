@@ -315,9 +315,12 @@ export function registerLedgerWebRoutes(
     const query = object(request.query, ["cursor"]);
     if (request.body !== undefined) throw new LedgerDeliveryError("LEDGER_REQUEST_INVALID");
     const next = cursor(query["cursor"]);
-    return options
-      .delivery()
-      .status({ employee, requestId: requestId(request), ...(next ? { cursor: next } : {}) });
+    return options.delivery().status({
+      employee,
+      requestId: requestId(request),
+      downloadOnly: true,
+      ...(next ? { cursor: next } : {})
+    });
   });
   route("POST", "requests/:requestId/download-url", async (request, _reply, employee) => {
     object(request.query, []);

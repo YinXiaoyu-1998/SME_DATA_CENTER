@@ -505,10 +505,17 @@ export function createLedgerPdfDelivery({
         fingerprint: ledgerBundleFingerprint(current, scope)
       });
     },
-    async status(input: { employee: LedgerDeliveryEmployee; requestId: string; cursor?: string }) {
+    async status(input: {
+      employee: LedgerDeliveryEmployee;
+      requestId: string;
+      cursor?: string;
+      downloadOnly?: boolean;
+    }) {
       const current = await employee(input.employee);
       const request = await repository.request(current, input.requestId);
-      if (!request) return fail("LEDGER_PDF_UNAVAILABLE");
+      // Browser callers cannot inherit the legacy admin refresh-status exception.
+      if (!request || (input.downloadOnly && request.kind !== "download"))
+        return fail("LEDGER_PDF_UNAVAILABLE");
       const items = request.items;
       const partitions: {
         storeName: string;
