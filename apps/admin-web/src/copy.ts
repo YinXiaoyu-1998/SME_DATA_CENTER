@@ -115,6 +115,11 @@ export const permissionsCopy = {
   },
   active: { zh: "可用", en: "Available" },
   addCategory: { zh: "新增普通文档类别", en: "Add document category" },
+  categoryName: { zh: "文档类别名称", en: "Document category name" },
+  categoryNameHelp: {
+    zh: "例如：运营制度、培训资料",
+    en: "For example: operating policies, training materials"
+  },
   evidenceHelp: {
     zh: "普通文档按文件设置密级。类别定义可用的归属与所需业务条件。",
     en: "Document levels are set per file. Categories define supported ownership and required business conditions."

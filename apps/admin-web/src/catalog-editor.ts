@@ -52,11 +52,14 @@ function categoryForm(existing, onCreated) {
   const { form, message } = formWithStatus(); form.className = "subpanel";
   const title = existing ? el("h3", {}, existing.name) : heading("addCategory", "h3");
   const name = input(category.name);
+  const nameField = field("categoryName", name), nameHelp = pair("categoryNameHelp", "p");
+  nameHelp.id = name.id + "-help"; nameHelp.className = "muted";
+  name.setAttribute("aria-describedby", nameHelp.id); nameField.append(nameHelp);
   const store = check("store", category.allowStore), group = check("group", category.allowGroup), retired = check("retire", category.retired);
   const dimensions = checklist("requiredConditions", selectedDimensionChoices(category.dimensions.map(item => item.dimensionId)), category.dimensions.map(item => item.dimensionId));
   const read = () => ({ name: name.value, ownerships: [...(store.control.checked ? ["store"] : []), ...(group.control.checked ? ["group"] : [])], requiredDimensionIds: dimensions.read(), retired: retired.control.checked });
   let baseline = read();
-  form.append(title, field("name", name), el("fieldset", {}, el("legend", {}, pair("ownership")), store.node, group.node), dimensions.node, retired.node);
+  form.append(title, nameField, el("fieldset", {}, el("legend", {}, pair("ownership")), store.node, group.node), dimensions.node, retired.node);
   onSubmit(form, message, async () => {
     const after = read();
     if (!after.name.trim() || !after.ownerships.length) { status(message, "required", true); return; }
