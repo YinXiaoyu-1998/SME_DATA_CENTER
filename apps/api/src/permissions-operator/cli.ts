@@ -2,11 +2,12 @@ import { open } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const MAX_INPUT_BYTES = 262144;
 const base = "/internal/permissions";
 const operations = {
   "account.set": ["PATCH", "accounts", ["employeeId"], ["clearance", "grants"]],
+  "account.role.set": ["PATCH", "accounts", ["employeeId"], ["role"]],
   "category.create": [
     "POST",
     "categories",
@@ -164,17 +165,22 @@ export function planPermissionChange(
   if (Object.keys(payload).some((key) => !allowed.has(key)))
     throw new Error("OPERATOR_UNEXPECTED_INPUT_FIELD");
   const input = payload as Record<string, unknown>;
+  if (operation === "account.role.set" && input["role"] !== "admin" && input["role"] !== "employee")
+    throw new Error("OPERATOR_INVALID_ROLE");
   const ids = selectors.map((key) => {
     const value = bounded(input[key], 64);
     if (/[/?#]/.test(value) || value === "." || value === "..")
       throw new Error("OPERATOR_INVALID_TARGET");
     return encodeURIComponent(value);
   });
-  const suffix = operation.startsWith("value.")
-    ? `/${ids[0]}/values${method === "PATCH" ? `/${ids[1]}` : ""}`
-    : ids.length
-      ? `/${ids.join("/")}`
-      : "";
+  const suffix =
+    operation === "account.role.set"
+      ? `/${ids[0]}/role`
+      : operation.startsWith("value.")
+        ? `/${ids[0]}/values${method === "PATCH" ? `/${ids[1]}` : ""}`
+        : ids.length
+          ? `/${ids.join("/")}`
+          : "";
   const bodyFields = new Set<string>(fields);
   const body = Object.fromEntries(Object.entries(input).filter(([key]) => bodyFields.has(key)));
   return { method, url: `${base}/${directory}${suffix}`, body: { ...body, expectedVersion } };
@@ -274,8 +280,9 @@ Usage:
   permissions-operator --help | --version
 Operations: ${Object.keys(operations).join(", ")}
 Apply previews by default. --execute saves one operation. Input is JSON, maximum ${MAX_INPUT_BYTES} bytes.
-An active same-enterprise admin must have requested the change. Runtime database access authenticates the operator; operator-id and request-reference are audit declarations, not credentials.
-Use release-ops with its approved server runtime environment. No public listener, account password, token, role change, activation, or arbitrary SQL/API path is supported.`;
+An active same-organization admin must have requested the change. Runtime database access authenticates the operator; operator-id and request-reference are audit declarations, not credentials.
+Use account.role.set with {employeeId,role:"admin"|"employee"} for audited role-only changes. Clearance and read grants stay unchanged; removing the last active admin is rejected.
+Use release-ops with its approved server runtime environment. No public listener, account password, token, account lifecycle, activation, or arbitrary SQL/API path is supported.`;
 }
 async function readInput(path: string): Promise<unknown> {
   let text: string;

@@ -7,6 +7,7 @@ import {
   respondBusinessAuthorizationError
 } from "../routes/business-authorization.js";
 import { createPrismaPermissionsUiMetadata } from "../admin-permissions/metadata.js";
+import { errorResponse } from "../request-errors.js";
 import type { DataCommand, PermissionSection, PermissionsOperatorRuntime } from "./cli.js";
 
 export async function openPermissionsOperatorRuntime(
@@ -63,6 +64,42 @@ export async function openPermissionsOperatorRuntime(
       adminBase: "/internal/permissions",
       selfPath: "/internal/permissions/me"
     });
+    app.patch<{ Params: { employeeId: string }; Body: Record<string, unknown> }>(
+      "/internal/permissions/accounts/:employeeId/role",
+      async (request, reply) => {
+        try {
+          const actor = await service.current(employee, true);
+          const body = request.body;
+          if (
+            !body ||
+            typeof body !== "object" ||
+            Array.isArray(body) ||
+            Object.keys(body).some((key) => key !== "role" && key !== "expectedVersion") ||
+            (body["role"] !== "admin" && body["role"] !== "employee") ||
+            typeof body["expectedVersion"] !== "string"
+          )
+            throw new Error("INVALID_ACCOUNT_ROLE");
+          return await repository.configureAccountRole({
+            orgId: actor.orgId,
+            actorId: actor.employeeId,
+            employeeId: request.params.employeeId,
+            role: body["role"],
+            expectedVersion: body["expectedVersion"]
+          });
+        } catch (error) {
+          if (error instanceof Error && error.message === "AUTHORIZATION_LAST_ADMIN_REQUIRED")
+            return reply
+              .code(409)
+              .send(
+                errorResponse(
+                  error.message,
+                  "Keep at least one active administrator in this organization."
+                )
+              );
+          return respondBusinessAuthorizationError(error, reply);
+        }
+      }
+    );
     app.post<{ Body: { name: string; expectedVersion: string } }>(
       "/internal/permissions/enterprises",
       async (request, reply) => {

@@ -1,6 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
 
 describe("internal permissions operator CLI", () => {
+  it("plans role-only changes through their separate controlled operation", async () => {
+    const { planPermissionChange } = await import("./cli.js");
+    for (const role of ["admin", "employee"]) {
+      expect(planPermissionChange("account.role.set", { employeeId: "target", role }, "7")).toEqual(
+        {
+          method: "PATCH",
+          url: "/internal/permissions/accounts/target/role",
+          body: { role, expectedVersion: "7" }
+        }
+      );
+    }
+    for (const role of [undefined, null, "owner", " admin"])
+      expect(() =>
+        planPermissionChange("account.role.set", { employeeId: "target", role }, "7")
+      ).toThrow("OPERATOR_INVALID_ROLE");
+    expect(() =>
+      planPermissionChange(
+        "account.role.set",
+        { employeeId: "target", role: "admin", clearance: 3 },
+        "7"
+      )
+    ).toThrow("OPERATOR_UNEXPECTED_INPUT_FIELD");
+    expect(() =>
+      planPermissionChange(
+        "account.set",
+        { employeeId: "target", role: "admin", clearance: 3, grants: [] },
+        "7"
+      )
+    ).toThrow("OPERATOR_UNEXPECTED_INPUT_FIELD");
+  });
+
   it("plans a first-store save with its explicit business name without a separate declaration", async () => {
     const { planPermissionChange } = await import("./cli.js");
     expect(

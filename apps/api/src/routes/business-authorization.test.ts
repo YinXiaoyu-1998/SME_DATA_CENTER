@@ -88,6 +88,22 @@ function fixture(role: "admin" | "employee" = "admin") {
 }
 
 describe("business permission administration", () => {
+  it("does not register the operator-only role endpoint on the public admin router", async () => {
+    const { app } = fixture();
+    try {
+      expect(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: "/v1/admin/permissions/accounts/other/role",
+            payload: { role: "admin", expectedVersion: "7" }
+          })
+        ).statusCode
+      ).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
   it("initializes missing fixed categories only through a current admin versioned write", async () => {
     const { app, repository, snapshot } = fixture();
     try {
