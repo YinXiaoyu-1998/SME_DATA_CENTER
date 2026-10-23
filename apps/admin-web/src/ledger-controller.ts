@@ -40,15 +40,32 @@ function createLedgerController({ request, limits, changed, newKey, schedule, ca
     }
     model.reconcile(results);
   }
-  async function resume() {
+  async function resume({ passive = false } = {}) {
     if (recovery) return recovery;
     recovery = (async () => {
+      let context;
+      if (passive && state.authenticated) {
+        const session = epoch;
+        try { context = await request("context"); }
+        catch (error) {
+          if (session === epoch) {
+            if (["BROWSER_SIGN_IN_REQUIRED", "BROWSER_SECURITY_CHECK_FAILED"].includes(error?.code)) expire();
+            else { state.error = failCode(error); notify(); }
+          }
+          return false;
+        }
+        if (session !== epoch) return false;
+        if (identityKey(state.identity) === identityKey(context.identity) && state.csrfToken === context.csrfToken) {
+          if (state.error) { state.error = null; notify(); }
+          return false;
+        }
+      }
       const version = ++epoch;
       queryVersion++; state.querying = false; state.submitting = false; state.downloads.clear();
       for (const task of state.tasks) { task.waiting = false; task.linking = false; }
       state.recovering = true; state.authenticated = false; state.error = null; stopTimers(); clearPreview(); notify();
       try {
-        const context = await request("context");
+        context ??= await request("context");
         if (version !== epoch) return;
         if (identityKey(state.identity) !== identityKey(context.identity)) {
           model.clear(); state.rows = []; state.stores.clear(); state.cursors = [null]; state.batch = 0; state.nextCursor = null; state.tasks = []; state.activeTask = null; attempt = null; state.scope = null; state.notices.clear(); state.submitError = null;
@@ -59,9 +76,10 @@ function createLedgerController({ request, limits, changed, newKey, schedule, ca
         state.authenticated = true;
         for (const task of state.tasks) if (["queued", "running"].includes(task.status)) queuePoll(task);
       } catch (error) { if (version === epoch) state.error = failCode(error); }
-      finally { state.recovering = false; recovery = null; notify(); }
+      finally { state.recovering = false; notify(); }
+      return state.authenticated;
     })();
-    return recovery;
+    try { return await recovery; } finally { recovery = null; }
   }
   async function query(scope, batch = 0) {
     if (!state.authenticated || state.recovering) return;

@@ -151,9 +151,9 @@ function formScope() {
   return { startDate, endDate, ...(storeName ? { storeNames: [storeName] } : {}) };
 }
 async function search() { try { await client.query(formScope()); } catch (error) { state.queryError = error.code || "LEDGER_SCOPE_INVALID"; render(); } }
-async function resume() {
+async function resume(passive = false) {
   if (resumeWork) return resumeWork;
-  resumeWork = (async () => { await client.resume(); if (state.authenticated) await search(); })();
+  resumeWork = (async () => { const recovered = await client.resume({ passive }); if (state.authenticated && (!passive || recovered)) await search(); })();
   try { await resumeWork; } finally { resumeWork = null; }
 }
 $("filter").addEventListener("submit", event => { event.preventDefault(); void search(); });
@@ -167,8 +167,8 @@ $("logout").addEventListener("click", async () => {
   catch (error) { state.error = error.code || "NETWORK_ERROR"; render(); }
 });
 window.addEventListener("smedc-locale-changed", render);
-window.addEventListener("focus", () => { if (!document.hidden) void resume(); });
-document.addEventListener("visibilitychange", () => { if (!document.hidden) void resume(); });
+window.addEventListener("focus", () => { if (!document.hidden) void resume(true); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) void resume(true); });
 window.addEventListener("pagehide", () => client.expire());
 const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
 const datePart = type => parts.find(part => part.type === type).value;

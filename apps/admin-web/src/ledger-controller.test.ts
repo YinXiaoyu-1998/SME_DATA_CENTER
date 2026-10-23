@@ -8,6 +8,8 @@ async function client(request: (path: string, body?: unknown) => Promise<unknown
   const module = await import("./ledger-controller.js").catch(() => null);
   expect(module).not.toBeNull();
   const schedule = vi.fn();
+  const save = vi.fn(),
+    release = vi.fn();
   const c = runInNewContext(
     `${ledgerModelSource}\n${module!.ledgerControllerSource}; createLedgerController(options);`,
     {
@@ -19,13 +21,70 @@ async function client(request: (path: string, body?: unknown) => Promise<unknown
         newKey: () => "synthetic-key",
         schedule,
         cancel() {},
-        release() {},
-        save() {}
+        release,
+        save
       }
     }
   );
-  return { c, schedule };
+  return { c, schedule, save, release };
 }
+it("preserves the current batch, preview and pending download when focus checks the same session", async () => {
+  let finish!: (value: unknown) => void;
+  const request = async (path: string) => {
+    if (path === "context")
+      return { identity: { orgId: "org", employeeId: "one" }, csrfToken: "csrf" };
+    if (path.includes("attachment"))
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    if (path.startsWith("pdf?")) return { url: "blob:preview", fileName: "single.pdf" };
+    return { partitions: [item], nextCursor: "next" };
+  };
+  const { c, save, release } = await client(request);
+  await c.resume();
+  await c.query({ dates: [item.purchaseDate] }, 1);
+  c.model.select(item, true);
+  await c.preview(item);
+  const download = c.download(item);
+  await c.resume({ passive: true });
+  expect(c.state.batch).toBe(1);
+  expect(c.state.preview.url).toBe("blob:preview");
+  expect(c.state.downloads.size).toBe(1);
+  expect(c.model.summary().allowed).toBe(true);
+  finish({ url: "blob:download", fileName: "single.pdf" });
+  await download;
+  expect(save).toHaveBeenCalledWith("blob:download", "single.pdf");
+  expect(release).not.toHaveBeenCalled();
+});
+it("fully recovers a rotated session on focus and rejects its old pending download", async () => {
+  let csrfToken = "old",
+    employeeId = "one",
+    finish!: (value: unknown) => void;
+  const request = async (path: string) => {
+    if (path === "context") return { identity: { orgId: "org", employeeId }, csrfToken };
+    if (path.startsWith("pdf?"))
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return { partitions: [item], nextCursor: null };
+  };
+  const { c, save, release } = await client(request);
+  await c.resume();
+  c.model.select(item, true);
+  const download = c.download(item);
+  csrfToken = "new";
+  await c.resume({ passive: true });
+  expect(c.state.csrfToken).toBe("new");
+  expect(c.model.summary().allowed).toBe(true);
+  finish({ url: "blob:old-session", fileName: "single.pdf" });
+  await download;
+  expect(save).not.toHaveBeenCalled();
+  expect(release).toHaveBeenCalledWith("blob:old-session");
+  employeeId = "two";
+  await c.resume({ passive: true });
+  expect(c.state.identity.employeeId).toBe("two");
+  expect(c.model.selection()).toHaveLength(0);
+});
 it("refreshes context and CSRF before revalidating all selections and clears another account's data", async () => {
   let context = { identity: { orgId: "org", employeeId: "one" }, csrfToken: "new-token" };
   const request = vi.fn(async (path: string) =>
