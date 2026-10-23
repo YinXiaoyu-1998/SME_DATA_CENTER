@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEVICE_VERIFY_COOKIE,
   PASSWORD_SETUP_COOKIE,
   cookieValue,
   csrfTokenForSecret,
@@ -29,6 +30,19 @@ describe("official OAuth HTTP contract", () => {
     expect(matchesCsrfToken("csrf_private", csrf)).toBe(true);
     expect(matchesCsrfToken("csrf_private", `${csrf}x`)).toBe(false);
     expect(matchesCsrfToken("other", csrf)).toBe(false);
+  });
+
+  it("reserves the longer lifetime for the shared browser identity cookie", () => {
+    expect(() => hostOnlyCookie("__Host-smedc_browser", "eh_bs_secret", 604_800)).not.toThrow();
+    expect(() => hostOnlyCookie("__Host-smedc_browser", "eh_bs_secret", 604_801)).toThrow(
+      "invalid cookie lifetime"
+    );
+    for (const name of [PASSWORD_SETUP_COOKIE, DEVICE_VERIFY_COOKIE, "__Host-smedc_login"]) {
+      expect(() => hostOnlyCookie(name, "temporary_secret", 86_400)).not.toThrow();
+      expect(() => hostOnlyCookie(name, "temporary_secret", 86_401)).toThrow(
+        "invalid cookie lifetime"
+      );
+    }
   });
 
   it("publishes only the current device authorization metadata", () => {
