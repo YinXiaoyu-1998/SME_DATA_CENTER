@@ -301,6 +301,47 @@ ZIP preparation returns `LEDGER_PDF_NOT_READY`; report the scheduled wait. Inter
 operator CLI refresh/backfill remains available outside the employee API.
 See [ledger-pdf-operations.md](./ledger-pdf-operations.md) for backfill and recovery.
 
+## Ledger PDF Browser Download Center
+
+Source implements the same-origin `/ledger-pdfs` page and APIs below. Deployment and tenant
+activation remain separate checks. Ordinary employees sign in with their existing account;
+admin status does not grant content access. The shared Secure/HttpOnly browser cookie lasts
+604800 seconds absolutely, without rolling renewal; old records retain their existing expiry.
+Existing `/v1` and MCP routes retain their current bearer authentication and contracts.
+
+| Method   | Route                                               | Behavior                                                    |
+| -------- | --------------------------------------------------- | ----------------------------------------------------------- |
+| GET      | `/ledger-pdfs`                                      | Download center; redirect unauthenticated browsers to login |
+| GET/POST | `/ledger-pdfs/login`                                | Existing account/password sign-in; rotate shared session    |
+| GET      | `/ledger-pdfs/api/context`                          | Safe current identity, CSRF token and shared limits         |
+| POST     | `/ledger-pdfs/api/coverage`                         | Authorized states and ready PDF `byteSize`, 200 per batch   |
+| GET      | `/ledger-pdfs/api/pdf`                              | Stream one current authorized PDF inline or as attachment   |
+| POST     | `/ledger-pdfs/api/downloads`                        | Queue the complete exact selection with `idempotencyKey`    |
+| GET      | `/ledger-pdfs/api/requests/:requestId`              | Owner-only safe status, optional `cursor`                   |
+| POST     | `/ledger-pdfs/api/requests/:requestId/download-url` | Recheck all captured targets and issue existing ZIP link    |
+| POST     | `/ledger-pdfs/logout`                               | Revoke this browser session                                 |
+
+API POSTs require Cookie, matching Origin and `x-csrf-token`; login forms use their existing
+short-lived CSRF cookie and body token. Authenticated API GETs require the browser cookie. Responses are no-store.
+Context returns `identity.{employeeId,orgId,displayName,organizationName}`, `csrfToken`, and
+`limits.{files,bytes,stores,dates,pageSize}`. Organization is always derived from the session.
+
+Coverage accepts exactly one of `{scope,cursor?}` or `{selection,cursor?}`. Scope has optional
+`storeNames` and either `dates` or inclusive `startDate`/`endDate`. Selection is an array of
+`{storeName,purchaseDate}` exact pairs; downloads accept `{selection,idempotencyKey}`.
+PDF GET requires raw `storeName`, `purchaseDate` and `disposition=inline|attachment` query
+values. URL issuance has an empty body. Unknown fields, object keys and organization selectors
+are rejected. Ready items include positive integer bytes; other states have null bytes.
+
+The limits are 50 explicitly named stores, 366 distinct dates, a 366-day inclusive query range,
+5000 selected PDFs and 1 GiB of original PDF bytes. Selection never expands into store/date
+cross-pairs. Reordering a selection preserves idempotency; changing it conflicts with the same
+key. Single-PDF reads create no ZIP or generation task. ZIP creation fixes the complete manifest;
+worker processing continues through requester-only permission changes. A current valid owner
+can still read succeeded status after revocation, while URL issuance rejects unless every target
+remains readable and current. Restored permission can issue a link again. Existing ZIP retention,
+timeout and signed-link TTL apply; read operations never generate PDFs.
+
 ## Cost Cards (Published Launcher, Separate Service Gate)
 
 Launcher `0.13.0` is published and independently verified and is the approved install pin

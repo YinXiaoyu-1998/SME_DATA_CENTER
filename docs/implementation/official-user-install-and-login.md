@@ -339,13 +339,19 @@ neutral styling. Login pages keep the normal same-origin form target and add onl
 The browser never receives a launcher durable credential. The short-lived device-verification
 cookie still expires after 10 minutes and is deleted on completion. Successful official password
 login additionally issues a separate `Secure`, `HttpOnly`, `SameSite=Lax`, host-only browser
-identity cookie with a 30-minute absolute lifetime. The service stores only its hash and rechecks
-current identity, organization, role and enabled status on every permissions request. The same
-browser/profile can open its enterprise-bound permissions UI without a second login while this
+identity cookie with a seven-day (604800-second) absolute lifetime. Access does not renew it;
+previously issued records retain their stored expiry until a fresh login. The service stores only its hash and rechecks
+current identity, organization, role and enabled status on every browser request. The same
+browser/profile can open its enterprise-bound permissions UI and `/ledger-pdfs` download center
+without a second login while this
 session is valid; another browser, incognito profile or expired session must sign in. Password
 reset and identity revocation invalidate it. Signing out of the permissions UI revokes only the
 browser session. Closing the page or clearing browser cookies does not revoke continued MCP use.
-Browser-session code is part of the current service; target deployment evidence is maintained in staging-readiness.md.
+The download center accepts ordinary employees; permission administration still requires current
+admin status and the matching organization. Browsers use the shared session only on their own
+routes; existing API/MCP authentication is unchanged. The seven-day session and download center
+are implemented in source; deployment and tenant activation require separate verification in
+[staging-readiness.md](staging-readiness.md).
 
 Closing or clearing the browser before code handoff leaves no authenticated launcher session; the
 launcher safely starts a new browser flow when needed. A revoked, removed, or missing launcher

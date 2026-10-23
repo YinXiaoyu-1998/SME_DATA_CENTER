@@ -70,6 +70,9 @@ describeIntegration("Prisma auth core repository", () => {
     });
     await prisma.loginIdentity.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.employee.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.auditLog.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.businessCategory.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.businessAuthorizationState.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.organization.deleteMany({ where: { id: "auth-test-org" } });
     await prisma.$disconnect();
   });
@@ -571,11 +574,12 @@ describeIntegration("Prisma auth core repository", () => {
         displayName: "Rolled Back",
         role: "employee",
         clearance: 1,
-        grantTokenHash: "f".repeat(64),
+        // Reuse an existing token hash to fail after account creation and prove rollback.
+        grantTokenHash: "0".repeat(64),
         grantExpiresAt: new Date(now.getTime() + 86_400_000),
         now
       })
-    ).rejects.toThrow("do not exist");
+    ).rejects.toMatchObject({ code: "P2002" });
     expect(
       await prisma.employee.findUnique({ where: { email: "rolled-back@example.com" } })
     ).toBeNull();
