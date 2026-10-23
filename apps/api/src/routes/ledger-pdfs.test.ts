@@ -17,6 +17,11 @@ const employee: AuthenticatedEmployee = {
 };
 function fixture(enabled = true, role: "employee" | "admin" = "employee") {
   const delivery = {
+    coverageForBrowser: vi.fn(async () => ({ partitions: [], nextCursor: null })),
+    requestSelectedLedgerBundle: vi.fn(async () => ({ requestId: "b", status: "queued" })),
+    openLedgerPdf: vi.fn<LedgerPdfDelivery["openLedgerPdf"]>(async () => {
+      throw new Error("unused");
+    }),
     coverage: vi.fn(async () => ({
       scope: { dates: ["2026-10-01"] },
       partitions: [],
