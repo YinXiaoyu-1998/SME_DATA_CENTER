@@ -85,11 +85,14 @@ describe("published launcher artifact", () => {
       "utf8"
     );
     expect(workflow).not.toMatch(/smedc-mcp-launcher-\d+\.\d+\.\d+\.tgz/);
-    expect(workflow).toMatch(/branches:\s*\n\s*- main/);
+    expect(workflow).toMatch(/workflow_dispatch:/);
+    expect(workflow).toMatch(/push:\s*\n\s*tags:\s*\n\s*- "smedc-mcp-launcher-v\*"/);
+    expect(workflow).not.toMatch(/branches:\s*\n\s*- main/);
     expect(workflow).toMatch(/npm pack --workspace smedc-mcp-launcher --json/);
     expect(workflow).toContain("${{ steps.pack.outputs.tarball }}");
     expect(workflow).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
     expect(workflow).toContain('if [[ "$GITHUB_REF_TYPE" = "tag" ]]');
+    expect(workflow).toContain('test "$GITHUB_REF_NAME" = "main"');
     expect(workflow).toContain('diff -qr "$compare_dir/extracted-registry/package"');
     expect(workflow).toContain('npm view "$package_name" name');
     expect(workflow).toContain("Initial npm package bootstrap required");
